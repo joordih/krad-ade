@@ -5,6 +5,7 @@ mod error;
 mod history;
 mod live;
 mod message;
+mod opencode;
 mod parse;
 mod process;
 mod prompt;
@@ -27,9 +28,14 @@ pub use history::{
 };
 pub use krad_domain::{ChatEvent, Effort, ToolCall, ToolUseId};
 pub use live::{
-    is_missing_conversation, new_session_id, spawn_live_chat, LiveChat, LiveConfig, MessageQueue,
+    is_missing_conversation, new_session_id, spawn_live_chat, spawn_opencode_chat, LiveChat,
+    LiveConfig, MessageQueue,
 };
 pub use message::SlashCommand;
+pub use opencode::{
+    new_opencode_session_id, opencode_models, prepare_opencode_session, read_opencode_transcript,
+    watch_opencode_session, OpencodeError, OpencodeServer,
+};
 pub use parse::parse_line;
 pub use process::Runner;
 pub use prompt::{compose_prompt, shared_skill_message, ChatContext, PriorMessage, Speaker};

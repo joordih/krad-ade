@@ -1,16 +1,17 @@
 use gpui_kit::Context;
-use krad_domain::{EnvironmentName, GroupId, NodeKind, ResumeId, TerminalId};
+use krad_chat::LiveSession;
+use krad_domain::{AgentPreset, EnvironmentName, GroupId, NodeKind, ResumeId, TerminalId};
+use std::sync::atomic::Ordering;
 
 use super::super::super::sessions::Launch;
 use super::super::super::EnvironmentShell;
-use super::super::SURFACE_HARNESS;
 
 impl EnvironmentShell {
     fn node_resume(
         &self,
         env: &EnvironmentName,
         id: TerminalId,
-    ) -> Option<(Option<GroupId>, ResumeId)> {
+    ) -> Option<(Option<GroupId>, AgentPreset, ResumeId)> {
         let node = self
             .envs
             .get(env)?
@@ -18,7 +19,8 @@ impl EnvironmentShell {
             .nodes
             .iter()
             .find(|node| node.id == id)?;
-        Some((node.group, node.resume.clone()?))
+        let harness = node.harness.filter(|preset| preset.is_agent())?;
+        Some((node.group, harness, node.resume.clone()?))
     }
 
     pub(in crate::environment_shell) fn continue_in_terminal(
@@ -27,7 +29,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        let Some((group, resume)) = self.node_resume(&env, id) else {
+        let Some((group, harness, resume)) = self.node_resume(&env, id) else {
             return;
         };
         let Some(live) = self.envs.get_mut(&env) else {
@@ -40,13 +42,41 @@ impl EnvironmentShell {
             .map(|group| group.root.clone());
         if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
             node.kind = NodeKind::Terminal;
-            node.harness = Some(SURFACE_HARNESS);
+            node.harness = Some(harness);
         }
         let launch = Launch::Resume {
-            preset: SURFACE_HARNESS,
+            preset: harness,
             resume: Some(resume),
         };
         self.start_session(&env, id, launch, cwd, &[]);
+        self.store();
+        cx.notify();
+    }
+
+    pub(in crate::environment_shell) fn return_to_chat(
+        &mut self,
+        id: TerminalId,
+        cx: &mut Context<Self>,
+    ) {
+        let env = self.active.clone();
+        let Some((_, harness, resume)) = self.node_resume(&env, id) else {
+            return;
+        };
+        self.forget_opencode_terminal(&env, id);
+        let Some(live) = self.envs.get_mut(&env) else {
+            return;
+        };
+        if let Some(session) = live.sessions.remove(&id) {
+            session.cancelled.store(true, Ordering::SeqCst);
+            if let Some(killer) = session.killer {
+                killer.kill();
+            }
+        }
+        if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
+            node.kind = NodeKind::Chat;
+            node.harness = Some(harness);
+        }
+        live.pending_chats.insert(id, LiveSession::Resume(resume));
         self.store();
         cx.notify();
     }

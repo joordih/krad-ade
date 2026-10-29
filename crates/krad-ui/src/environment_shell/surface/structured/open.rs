@@ -1,6 +1,10 @@
 use gpui_kit::{AppContext as _, Context, Window};
-use krad_chat::{new_session_id, read_claude_transcript_before, LiveSession};
-use krad_domain::{ChatEntry, EnvironmentName, NodeKind, ResumeId, TerminalId, TerminalNode};
+use krad_chat::{
+    new_session_id, read_claude_transcript_before, read_opencode_transcript, LiveSession,
+};
+use krad_domain::{
+    AgentPreset, ChatEntry, EnvironmentName, NodeKind, ResumeId, TerminalId, TerminalNode,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -71,25 +75,36 @@ impl EnvironmentShell {
             return;
         }
         let nodes = &live.data.nodes;
-        let pending: Vec<(TerminalId, LiveSession)> = live
+        let pending: Vec<(TerminalId, LiveSession, AgentPreset)> = live
             .pending_chats
             .drain()
-            .filter(|(id, _)| nodes.iter().any(|node| node.id == *id))
+            .filter_map(|(id, session)| {
+                let node = nodes.iter().find(|node| node.id == id)?;
+                let harness = node
+                    .harness
+                    .filter(|preset| *preset == AgentPreset::Opencode)
+                    .unwrap_or(AgentPreset::ClaudeCode);
+                Some((id, session, harness))
+            })
             .collect();
-        for (id, session) in pending {
+        for (id, session, harness) in pending {
             let (input, events) = Self::chat_input(id, window, cx);
             let history = session.history().cloned();
             let chat = SurfaceChat::new(
                 input,
                 events,
-                Backend::Structured(Box::new(StructuredChat::new(session))),
+                Backend::Structured(Box::new(StructuredChat::new(session, harness))),
             );
             if let Some(live) = self.envs.get_mut(&env) {
                 live.chats.insert(id, chat);
             }
             self.watch_subagents(&env, id, cx);
-            if let Some(resume) = history {
-                self.load_structured_history(env.clone(), id, resume, cx);
+            match (history, harness) {
+                (Some(resume), AgentPreset::Opencode) => {
+                    self.load_opencode_history(env.clone(), id, resume, cx);
+                }
+                (Some(resume), _) => self.load_structured_history(env.clone(), id, resume, cx),
+                (None, _) => {}
             }
         }
     }
@@ -112,6 +127,49 @@ impl EnvironmentShell {
         }
         node.resume = Some(resume);
         self.store();
+    }
+
+    fn load_opencode_history(
+        &mut self,
+        env: EnvironmentName,
+        id: TerminalId,
+        resume: ResumeId,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(server) = self.opencode_server().cloned() else {
+            self.opencode.waiting_histories.push((env, id, resume));
+            return;
+        };
+        let read = cx.background_spawn(async move { read_opencode_transcript(&server, &resume) });
+        cx.spawn(async move |this, cx| {
+            let read = read.await;
+            this.update(cx, |shell, cx| {
+                let Some(chat) =
+                    structured_chat(shell, &env, id).filter(|chat| chat.messages.is_empty())
+                else {
+                    return;
+                };
+                match read {
+                    Ok(entries) => {
+                        prepend_history(chat, &entries, None);
+                        if let Backend::Structured(structured) = &mut chat.backend {
+                            structured.permission_mode = last_permission_mode(&entries);
+                        }
+                        chat.thread.scroll_to_end();
+                    }
+                    Err(error) => chat.problem = Some(error.to_string()),
+                }
+                cx.notify();
+            })
+            .unwrap_or_default();
+        })
+        .detach();
+    }
+
+    pub(in crate::environment_shell) fn load_waiting_histories(&mut self, cx: &mut Context<Self>) {
+        for (env, id, resume) in std::mem::take(&mut self.opencode.waiting_histories) {
+            self.load_opencode_history(env, id, resume, cx);
+        }
     }
 
     fn load_structured_history(

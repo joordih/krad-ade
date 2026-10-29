@@ -18,6 +18,7 @@ use crate::control::{
 };
 use crate::error::ChatError;
 use crate::message::{user_message_line, SlashCommand};
+use crate::opencode::{spawn_opencode, OpencodeChat, OpencodeServer, Order};
 use crate::parse::claude;
 use crate::process::{harness_command, Runner};
 use crate::turn::{closing_event, STDERR_TAIL_CHARS};
@@ -119,8 +120,7 @@ pub struct LiveConfig {
     pub approvals: Approvals,
 }
 
-pub struct LiveChat {
-    pub config: LiveConfig,
+struct ClaudeProcess {
     outbox: Sender<String>,
     child: Arc<Mutex<Option<Child>>>,
     pending: Arc<AtomicUsize>,
@@ -129,7 +129,7 @@ pub struct LiveChat {
     next_request: AtomicU64,
 }
 
-impl LiveChat {
+impl ClaudeProcess {
     fn request_id(&self) -> String {
         let id = self.next_request.fetch_add(1, Ordering::SeqCst);
         format!("{REQUEST_ID_PREFIX}{id}")
@@ -139,39 +139,14 @@ impl LiveChat {
         self.outbox.send(line).unwrap_or_default();
     }
 
-    pub fn answer(&self, ask: &ToolAsk, answer: &AskAnswer) {
-        self.write(answer_line(ask, answer));
-    }
-
-    pub fn interrupt(&self) {
-        self.write(interrupt_line(&self.request_id()));
-    }
-
-    pub fn set_model(&self, model: &ModelId) {
-        self.write(set_model_line(&self.request_id(), model));
-    }
-
-    pub fn set_permission_mode(&self, mode: PermissionMode) {
-        self.write(set_permission_mode_line(&self.request_id(), mode));
-    }
-
-    pub fn run(&self, command: &SlashCommand) {
-        self.send(&command.to_string());
-    }
-
-    pub fn send(&self, prompt: &str) {
+    fn send(&self, prompt: &str) {
         self.pending.fetch_add(1, Ordering::SeqCst);
         if self.outbox.send(user_message_line(prompt)).is_err() {
             self.pending.fetch_sub(1, Ordering::SeqCst);
         }
     }
 
-    #[must_use]
-    pub fn is_alive(&self) -> bool {
-        !self.exited.load(Ordering::SeqCst)
-    }
-
-    pub fn stop(&self) {
+    fn stop(&self) {
         self.stopped.store(true, Ordering::SeqCst);
         let mut child = self.child.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(child) = child.as_mut() {
@@ -180,10 +155,99 @@ impl LiveChat {
     }
 }
 
+enum Engine {
+    Claude(ClaudeProcess),
+    Opencode(OpencodeChat),
+}
+
+pub struct LiveChat {
+    pub config: LiveConfig,
+    engine: Engine,
+}
+
+impl LiveChat {
+    pub fn answer(&self, ask: &ToolAsk, answer: &AskAnswer) {
+        match &self.engine {
+            Engine::Claude(claude) => claude.write(answer_line(ask, answer)),
+            Engine::Opencode(opencode) => {
+                opencode.order(Order::Answer(Box::new(ask.clone()), answer.clone()));
+            }
+        }
+    }
+
+    pub fn interrupt(&self) {
+        match &self.engine {
+            Engine::Claude(claude) => claude.write(interrupt_line(&claude.request_id())),
+            Engine::Opencode(opencode) => opencode.order(Order::Interrupt),
+        }
+    }
+
+    pub fn set_model(&self, model: &ModelId) {
+        match &self.engine {
+            Engine::Claude(claude) => claude.write(set_model_line(&claude.request_id(), model)),
+            Engine::Opencode(opencode) => opencode.order(Order::Model(model.clone())),
+        }
+    }
+
+    pub fn set_permission_mode(&self, mode: PermissionMode) {
+        match &self.engine {
+            Engine::Claude(claude) => {
+                claude.write(set_permission_mode_line(&claude.request_id(), mode));
+            }
+            Engine::Opencode(opencode) => opencode.order(Order::Mode(mode)),
+        }
+    }
+
+    pub fn run(&self, command: &SlashCommand) {
+        match (&self.engine, command) {
+            (Engine::Claude(claude), command) => claude.send(&command.to_string()),
+            (Engine::Opencode(opencode), SlashCommand::Model(model)) => {
+                opencode.order(Order::Model(model.clone()));
+            }
+            (Engine::Opencode(opencode), SlashCommand::Effort(effort)) => {
+                opencode.order(Order::Effort(*effort));
+            }
+            (Engine::Opencode(_), SlashCommand::Thinking(_)) => {}
+        }
+    }
+
+    pub fn send(&self, prompt: &str) {
+        match &self.engine {
+            Engine::Claude(claude) => claude.send(prompt),
+            Engine::Opencode(opencode) => opencode.order(Order::Send(prompt.to_owned())),
+        }
+    }
+
+    #[must_use]
+    pub fn is_alive(&self) -> bool {
+        match &self.engine {
+            Engine::Claude(claude) => !claude.exited.load(Ordering::SeqCst),
+            Engine::Opencode(opencode) => opencode.is_alive(),
+        }
+    }
+
+    pub fn stop(&self) {
+        if let Engine::Claude(claude) = &self.engine {
+            claude.stop();
+        }
+    }
+}
+
 impl Drop for LiveChat {
     fn drop(&mut self) {
         self.stop();
     }
+}
+
+#[must_use]
+pub fn spawn_opencode_chat(
+    server: Arc<OpencodeServer>,
+    config: LiveConfig,
+    session: &LiveSession,
+    sink: impl FnMut(LiveEvent) + Send + 'static,
+) -> LiveChat {
+    let engine = Engine::Opencode(spawn_opencode(server, config.clone(), session, sink));
+    LiveChat { config, engine }
 }
 
 /// # Errors
@@ -220,8 +284,7 @@ pub fn spawn_live_chat(
         let tail = Arc::clone(&stderr_tail);
         thread::spawn(move || keep_stderr_tail(stderr, &tail))
     });
-    let chat = LiveChat {
-        config,
+    let claude = ClaudeProcess {
         outbox,
         child: Arc::new(Mutex::new(Some(child))),
         pending: Arc::new(AtomicUsize::new(0)),
@@ -229,14 +292,18 @@ pub fn spawn_live_chat(
         exited: Arc::new(AtomicBool::new(false)),
         next_request: AtomicU64::new(0),
     };
-    let init_id = chat.request_id();
-    if chat.config.approvals == Approvals::Asked {
-        chat.write(initialize_line(&init_id));
+    let init_id = claude.request_id();
+    if config.approvals == Approvals::Asked {
+        claude.write(initialize_line(&init_id));
     }
-    let child = Arc::clone(&chat.child);
-    let pending = Arc::clone(&chat.pending);
-    let stopped = Arc::clone(&chat.stopped);
-    let exited = Arc::clone(&chat.exited);
+    let child = Arc::clone(&claude.child);
+    let pending = Arc::clone(&claude.pending);
+    let stopped = Arc::clone(&claude.stopped);
+    let exited = Arc::clone(&claude.exited);
+    let chat = LiveChat {
+        config,
+        engine: Engine::Claude(claude),
+    };
     thread::spawn(move || {
         if let Some(stdout) = stdout {
             for line in BufReader::new(stdout).lines() {
@@ -270,7 +337,7 @@ pub fn spawn_live_chat(
 fn route_line(line: &str, init_id: &str, pending: &AtomicUsize, sink: &mut impl FnMut(LiveEvent)) {
     let value = match route(line, init_id) {
         None | Some(Routed::Control) => return,
-        Some(Routed::Ask(ask)) => return sink(LiveEvent::Ask(ask)),
+        Some(Routed::Ask(ask)) => return sink(LiveEvent::Ask(*ask)),
         Some(Routed::Ready(catalog)) => return sink(LiveEvent::Ready(catalog)),
         Some(Routed::Conversation(value)) => value,
     };
@@ -298,7 +365,7 @@ fn write_messages(mut stdin: ChildStdin, inbox: &Receiver<String>) {
     }
 }
 
-fn keep_stderr_tail(stderr: impl Read, tail: &Mutex<String>) {
+pub(crate) fn keep_stderr_tail(stderr: impl Read, tail: &Mutex<String>) {
     for line in BufReader::new(stderr).lines() {
         let Ok(line) = line else { break };
         let mut tail = tail.lock().unwrap_or_else(PoisonError::into_inner);
