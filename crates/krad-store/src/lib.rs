@@ -3,7 +3,6 @@ mod config_dir;
 mod github_login;
 mod gitlab_login;
 mod layout;
-mod legacy;
 mod settings;
 mod vault;
 
@@ -16,6 +15,5 @@ pub use gitlab_login::{
     delete_gitlab_login, find_gitlab_login, read_gitlab_login, write_gitlab_login,
 };
 pub use layout::{read_layout_snapshot, LayoutWriter};
-pub use legacy::migrate_legacy_data;
 pub use settings::{read_settings, write_settings};
 pub use vault::{LoginPlace, LoginStoreError};

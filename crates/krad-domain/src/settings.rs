@@ -1,7 +1,7 @@
 use crate::agent::AgentPreset;
 use crate::gitlab::GitlabSettings;
 use crate::hue::Hue;
-use crate::model::{clean_models, default_models, ModelId};
+use crate::model::{clean_models, ModelId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -67,7 +67,6 @@ impl TerminalTheme {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum TerminalFont {
     #[default]
-    #[serde(alias = "SfMono")]
     System,
     JetBrainsMono,
 }
@@ -247,7 +246,7 @@ impl Settings {
     pub fn models(&self, preset: AgentPreset) -> Vec<ModelId> {
         self.harness_models
             .get(&preset)
-            .map_or_else(|| default_models(preset), |models| clean_models(models))
+            .map_or_else(Vec::new, |models| clean_models(models))
     }
 
     #[must_use]
@@ -326,15 +325,12 @@ mod tests {
     }
 
     #[test]
-    fn settings_from_before_models_load_with_defaults() -> serde_json::Result<()> {
+    fn harnesses_offer_no_models_until_some_are_added() -> serde_json::Result<()> {
         let old: Settings = serde_json::from_str(
             r#"{"appearance":"Dark","default_harness":"Codex","harness_commands":{"Codex":"codex"}}"#,
         )?;
         assert!(old.harness_models.is_empty());
-        assert_eq!(
-            old.models(AgentPreset::Codex),
-            default_models(AgentPreset::Codex)
-        );
+        assert_eq!(old.models(AgentPreset::Codex), Vec::<ModelId>::new());
         let unchanged = serde_json::to_string(&Settings::default())?;
         assert!(
             !unchanged.contains("harness_models"),

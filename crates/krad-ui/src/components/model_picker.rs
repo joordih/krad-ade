@@ -22,10 +22,11 @@ const MODEL_INDENT: f32 = 26.0;
 const FOOTER_H: f32 = 30.0;
 const DIVIDER_H: f32 = 1.0;
 const MISSING_NOTE: &str = "Not found on PATH";
-const FOOTER_TEXT: &str = "Models come from Settings › Harnesses";
+const FOOTER_TEXT: &str = "Add models under harness_models in settings.json";
 const ROW_PREFIX: &str = "model-option";
+const DEFAULT_MODEL_LABEL: &str = "Default model";
 
-type PickHandler = Rc<dyn Fn(AgentPreset, ModelId, &mut Window, &mut App)>;
+type PickHandler = Rc<dyn Fn(AgentPreset, Option<ModelId>, &mut Window, &mut App)>;
 type ToggleHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 
 #[derive(Clone, Debug)]
@@ -86,7 +87,7 @@ impl ModelPicker {
 
     pub(crate) fn on_pick(
         mut self,
-        handler: impl Fn(AgentPreset, ModelId, &mut Window, &mut App) + 'static,
+        handler: impl Fn(AgentPreset, Option<ModelId>, &mut Window, &mut App) + 'static,
     ) -> Self {
         self.on_pick = Some(Rc::new(handler));
         self
@@ -195,10 +196,16 @@ fn model_group(
 ) -> AnyElement {
     let pal = palette(cx);
     let (mark, mark_color) = harness_icon(choice.preset, pal);
-    let rows = choice.models.iter().enumerate().map(|(index, model)| {
-        let selected = current.0 == choice.preset && current.1 == Some(model);
+    let picks: Vec<Option<&ModelId>> = if choice.models.is_empty() {
+        vec![None]
+    } else {
+        choice.models.iter().map(Some).collect()
+    };
+    let rows = picks.into_iter().enumerate().map(|(index, model)| {
+        let selected = current.0 == choice.preset && current.1 == model;
         let preset = choice.preset;
-        let picked = model.clone();
+        let picked = model.cloned();
+        let label = model.map_or_else(|| DEFAULT_MODEL_LABEL.to_owned(), ToString::to_string);
         let handler = on_pick.cloned();
         div()
             .id(SharedString::from(format!(
@@ -227,7 +234,7 @@ fn model_group(
             .when_some(handler.filter(|_| choice.available), |row, handler| {
                 row.on_click(move |_, window, cx| handler(preset, picked.clone(), window, cx))
             })
-            .child(div().flex_1().child(model.to_string()))
+            .child(div().flex_1().child(label))
             .when(selected, |row| {
                 row.child(icon(IconName::Tick, ICON_SM, pal.text_strong))
             })

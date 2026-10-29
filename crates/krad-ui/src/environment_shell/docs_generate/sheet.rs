@@ -216,7 +216,7 @@ impl EnvironmentShell {
                         .update(cx, |this, cx| {
                             if let Some(dialog) = &mut this.docs_dialog {
                                 dialog.preset = Some(preset);
-                                dialog.model = Some(model);
+                                dialog.model = model;
                                 dialog.picker_open = false;
                             }
                             cx.notify();

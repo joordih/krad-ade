@@ -34,7 +34,7 @@ actions!(
     ]
 );
 
-pub(crate) const CANVAS_KEY_CONTEXT: &str = "KradCanvas";
+pub(crate) const SHELL_KEY_CONTEXT: &str = "KradShell";
 
 pub(crate) const VIEWER_KEY_CONTEXT: &str = "KradCodeViewer";
 

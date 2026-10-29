@@ -7,7 +7,7 @@ use gpui_kit::component::command::CommandState;
 use gpui_kit::component::TitleBar;
 use gpui_kit::{application, init, open_window, AppContext, WindowDecorations, WindowOptions};
 use krad_domain::AppearanceMode;
-use krad_store::{migrate_legacy_data, read_layout_snapshot, read_settings, APP_NAME};
+use krad_store::{read_layout_snapshot, read_settings, APP_NAME};
 use krad_ui::{
     apply_appearance, apply_code_look, apply_window_material, apply_window_tint, http_client,
     initial_window_bounds, install_app_menus, key_bindings, login_shell_env, match_window_frame,
@@ -20,7 +20,6 @@ fn main() {
     for (name, value) in login_shell_env() {
         std::env::set_var(name, value);
     }
-    migrate_legacy_data();
     let seed = read_layout_snapshot();
     let settings = read_settings();
     application()

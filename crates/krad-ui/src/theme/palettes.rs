@@ -2,8 +2,8 @@ use krad_session::AnsiPalette;
 
 use super::{Palette, ShadowLayer, Shadows, SyntaxColors, Tint};
 
-const LIGHT_INK: u32 = 0x0026_232b;
-const DARK_INK: u32 = 0x00ed_eaf0;
+const LIGHT_INK: u32 = 0x001d_1d1f;
+const DARK_INK: u32 = 0x00f5_f5f7;
 const SHADOW_BLACK: u32 = 0x0000_0000;
 
 const WASH_HOVER: f32 = 0.05;
@@ -51,7 +51,7 @@ const DARK_DROP_ALPHA: f32 = 0.4;
 const DARK_ROW_DROP_ALPHA: f32 = 0.35;
 const DARK_FLOATING_ALPHA: f32 = 0.4;
 
-pub(super) const fn light_shadows(ink: u32) -> Shadows {
+const fn light_shadows(ink: u32) -> Shadows {
     Shadows {
         card: [
             ring(Tint::new(ink, LIGHT_CARD_RING_ALPHA)),
@@ -73,7 +73,7 @@ pub(super) const fn light_shadows(ink: u32) -> Shadows {
     }
 }
 
-pub(super) const fn dark_shadows(ink: u32) -> Shadows {
+const fn dark_shadows(ink: u32) -> Shadows {
     Shadows {
         card: [
             ring(Tint::new(ink, DARK_CARD_RING_ALPHA)),
@@ -100,33 +100,33 @@ pub(super) const fn dark_shadows(ink: u32) -> Shadows {
 }
 
 pub(super) const LIGHT: Palette = Palette {
-    backdrop_from: 0x00ea_dcf5,
-    backdrop_to: 0x00f6_e9da,
+    backdrop_from: 0x00e8_e8ed,
+    backdrop_to: 0x00ed_edf0,
     text_strong: LIGHT_INK,
-    text_default: 0x005e_5a61,
-    text_subtle: 0x0065_5f6c,
-    text_muted: 0x007d_7886,
-    text_disabled: 0x00a3_9eac,
-    bg_surface: 0x00fd_fafc,
+    text_default: 0x0042_4245,
+    text_subtle: 0x0058_585d,
+    text_muted: 0x006e_6e73,
+    text_disabled: 0x00ae_aeb2,
+    bg_surface: 0x00ff_ffff,
     bg_row_selected: 0x00ff_ffff,
-    bg_panel: 0x00f7_f3f6,
+    bg_panel: 0x00f5_f5f7,
     bg_hover: Tint::new(LIGHT_INK, WASH_HOVER),
     bg_selected: Tint::new(LIGHT_INK, WASH_SELECTED),
     border: Tint::new(LIGHT_INK, WASH_BORDER),
     divider: Tint::new(LIGHT_INK, WASH_BORDER),
     scrim: Tint::new(LIGHT_INK, LIGHT_SCRIM),
-    attention: 0x00a8_6d0c,
-    attention_text: 0x008f_5c08,
-    chip_bg: 0x00ec_e6ed,
-    chip_fg: 0x0065_5f6c,
-    accent: 0x0000_77e6,
-    accent_hover: 0x0000_6bcf,
-    accent_pressed: 0x0000_5fb8,
+    attention: 0x00c2_6a00,
+    attention_text: 0x00a3_5a00,
+    chip_bg: 0x00e8_e8ed,
+    chip_fg: 0x0058_585d,
+    accent: 0x0000_7aff,
+    accent_hover: 0x0000_71eb,
+    accent_pressed: 0x0000_62cc,
     on_accent: 0x00ff_ffff,
-    success_fg: 0x0015_b042,
-    warning_fg: 0x00b7_791f,
-    error_fg: 0x00e5_484d,
-    info_fg: 0x0000_77e6,
+    success_fg: 0x0024_8a3d,
+    warning_fg: 0x00c2_6a00,
+    error_fg: 0x00d7_0015,
+    info_fg: 0x0000_7aff,
     ansi: AnsiPalette([
         LIGHT_INK,
         0x00cf_4b4b,
@@ -156,33 +156,33 @@ pub(super) const LIGHT: Palette = Palette {
 };
 
 pub(super) const DARK: Palette = Palette {
-    backdrop_from: 0x001d_1824,
-    backdrop_to: 0x0020_1b17,
+    backdrop_from: 0x001c_1c1e,
+    backdrop_to: 0x001f_1f1f,
     text_strong: DARK_INK,
-    text_default: 0x00b9_b4bd,
-    text_subtle: 0x009a_95a1,
-    text_muted: 0x008a_8591,
-    text_disabled: 0x005e_5a63,
-    bg_surface: 0x0019_171b,
-    bg_row_selected: 0x002a_272d,
-    bg_panel: 0x0020_1e23,
+    text_default: 0x00c7_c7cc,
+    text_subtle: 0x0098_989d,
+    text_muted: 0x008e_8e93,
+    text_disabled: 0x005a_5a5e,
+    bg_surface: 0x0026_2626,
+    bg_row_selected: 0x003a_3a3c,
+    bg_panel: 0x002c_2c2e,
     bg_hover: Tint::new(DARK_INK, WASH_HOVER),
     bg_selected: Tint::new(DARK_INK, WASH_SELECTED),
     border: Tint::new(DARK_INK, WASH_BORDER),
     divider: Tint::new(DARK_INK, WASH_BORDER),
     scrim: Tint::new(SHADOW_BLACK, DARK_SCRIM),
-    attention: 0x00e0_a83a,
-    attention_text: 0x00e0_a83a,
-    chip_bg: 0x002a_272d,
-    chip_fg: 0x00a6_a1ab,
-    accent: 0x003b_97f0,
-    accent_hover: 0x0052_a4f2,
-    accent_pressed: 0x002f_86db,
+    attention: 0x00ff_9f0a,
+    attention_text: 0x00ff_9f0a,
+    chip_bg: 0x003a_3a3c,
+    chip_fg: 0x00ae_aeb2,
+    accent: 0x000a_84ff,
+    accent_hover: 0x0040_9cff,
+    accent_pressed: 0x0000_71e3,
     on_accent: 0x00ff_ffff,
-    success_fg: 0x003d_d068,
-    warning_fg: 0x00e0_a83a,
-    error_fg: 0x00f2_666b,
-    info_fg: 0x003b_97f0,
+    success_fg: 0x0030_d158,
+    warning_fg: 0x00ff_9f0a,
+    error_fg: 0x00ff_453a,
+    info_fg: 0x000a_84ff,
     ansi: krad_session::XTERM_PALETTE,
     syntax: SyntaxColors {
         keyword: 0x00fc_5fa3,
@@ -224,66 +224,11 @@ mod tests {
         (light + 0.05) / (dark + 0.05)
     }
 
-    fn catalog_palettes() -> Vec<&'static Palette> {
-        super::super::catalog::app_palettes()
-            .into_iter()
-            .flat_map(|palettes| {
-                [
-                    palettes.of(crate::theme::Appearance::Light),
-                    palettes.of(crate::theme::Appearance::Dark),
-                ]
-            })
-            .collect()
-    }
-
     #[test]
     fn body_text_is_readable_on_cards() {
-        for pal in [&LIGHT, &DARK].into_iter().chain(catalog_palettes()) {
+        for pal in [&LIGHT, &DARK] {
             assert!(contrast(pal.text_strong, pal.bg_surface) >= MIN_TEXT_CONTRAST);
             assert!(contrast(pal.text_default, pal.bg_surface) >= MIN_TEXT_CONTRAST);
-        }
-    }
-
-    fn css_layer(layer: &ShadowLayer) -> String {
-        let [r, g, b] = [16, 8, 0].map(|shift| (layer.tint.color >> shift) & 0xff);
-        let spread = if layer.spread == NO_SPREAD {
-            String::new()
-        } else {
-            format!(" {}px", layer.spread)
-        };
-        format!(
-            "0px {}px {}px{spread} rgba({r}, {g}, {b}, {})",
-            layer.y, layer.blur, layer.tint.alpha
-        )
-    }
-
-    fn css_shadow(layers: &[ShadowLayer]) -> String {
-        layers.iter().map(css_layer).collect::<Vec<_>>().join(", ")
-    }
-
-    #[test]
-    fn catalog_shadows_match_the_theme_file() {
-        let json = include_str!("../../../../assets/themes/themes.json");
-        let declared = |name: &str| -> Vec<String> {
-            let key = format!("\"{name}\": \"");
-            json.match_indices(&key)
-                .map(|(at, _)| {
-                    let value = &json[at + key.len()..];
-                    value[..value.find('"').unwrap_or(0)].to_owned()
-                })
-                .collect()
-        };
-        let palettes = catalog_palettes();
-        for (name, shadow) in [
-            (
-                "shadow-card",
-                (|pal: &Palette| css_shadow(&pal.shadows.card)) as fn(&Palette) -> String,
-            ),
-            ("shadow-row", |pal| css_shadow(&pal.shadows.row)),
-            ("shadow-floating", |pal| css_shadow(&[pal.shadows.floating])),
-        ] {
-            let derived: Vec<String> = palettes.iter().map(|pal| shadow(pal)).collect();
-            assert_eq!(declared(name), derived, "{name}");
         }
     }
 }

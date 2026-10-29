@@ -6,7 +6,7 @@ use krad_session::{KeyModifiers, LiveSession, PtyInput, SessionState};
 
 use super::rename::KEY_ESCAPE;
 use super::EnvironmentShell;
-use crate::actions::{SendBackTab, SendTab, CANVAS_KEY_CONTEXT};
+use crate::actions::{SendBackTab, SendTab, SHELL_KEY_CONTEXT};
 
 const WRITER_LOST_TEXT: &str = "writer lost";
 const TAB: &[u8] = b"\t";
@@ -102,7 +102,7 @@ impl EnvironmentShell {
             .min_w_0()
             .min_h_0()
             .track_focus(&self.focus)
-            .key_context(CANVAS_KEY_CONTEXT)
+            .key_context(SHELL_KEY_CONTEXT)
             .on_action(cx.listener(Self::on_toggle_fps))
             .on_action(cx.listener(Self::on_toggle_palette))
             .on_action(cx.listener(Self::on_new_terminal))

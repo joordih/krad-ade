@@ -15,7 +15,7 @@ pub fn config_dir() -> Option<PathBuf> {
     config_dir_named(APP_NAME)
 }
 
-pub(crate) fn config_dir_named(name: &str) -> Option<PathBuf> {
+fn config_dir_named(name: &str) -> Option<PathBuf> {
     if let Some(dir) = non_empty_var(XDG_CONFIG_HOME_VAR) {
         return Some(PathBuf::from(dir).join(name));
     }

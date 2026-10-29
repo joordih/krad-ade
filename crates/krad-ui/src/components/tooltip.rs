@@ -4,7 +4,7 @@ use gpui_kit::{
     KeyContext, ParentElement, Render, SharedString, Styled, Window,
 };
 
-use crate::actions::CANVAS_KEY_CONTEXT;
+use crate::actions::SHELL_KEY_CONTEXT;
 use crate::theme::{LINE_XS, RADIUS_XS, SPACE_1, SPACE_2, TEXT_XS};
 
 const TOOLTIP_BG: u32 = 0x0029_2929;
@@ -19,7 +19,7 @@ struct TooltipView {
 impl Render for TooltipView {
     fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let keys = self.shortcut.as_deref().and_then(|action| {
-            let context = KeyContext::parse(CANVAS_KEY_CONTEXT).ok()?;
+            let context = KeyContext::parse(SHELL_KEY_CONTEXT).ok()?;
             let binding =
                 window.highest_precedence_binding_for_action_in_context(action, context)?;
             let keys: Vec<String> = binding

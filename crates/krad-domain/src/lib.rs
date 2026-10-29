@@ -1,5 +1,4 @@
 mod agent;
-mod app_theme;
 mod chat;
 mod chrome;
 mod code_host;
@@ -29,7 +28,6 @@ mod view;
 mod wsl;
 
 pub use agent::*;
-pub use app_theme::*;
 pub use chat::*;
 pub use chrome::*;
 pub use code_host::CodeHost;

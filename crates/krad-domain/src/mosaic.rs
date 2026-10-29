@@ -49,7 +49,6 @@ pub struct Tile {
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct MosaicTab {
     pub id: TabId,
-    #[serde(alias = "nombre")]
     pub name: String,
     pub arrangement: Arrangement,
     pub tiles: Vec<Tile>,

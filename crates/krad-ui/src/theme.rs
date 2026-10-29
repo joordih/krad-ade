@@ -1,11 +1,9 @@
-mod catalog;
 mod editor;
 mod fonts;
 mod palettes;
 mod tint;
 mod tokens;
 
-use catalog::app_palettes;
 pub use editor::apply_code_look;
 use fonts::{app_fonts, JETBRAINS_MONO_FAMILY, MONO_FONT_FAMILY};
 pub(crate) use fonts::{SYSTEM_MONO_LABEL, UI_FONT_FAMILY};
@@ -199,7 +197,7 @@ pub fn register_fonts(cx: &App) -> gpui_kit::Result<()> {
 }
 
 pub fn apply_appearance(appearance: Appearance, cx: &mut App) {
-    let palette = app_palettes().map_or(appearance.palette(), |palettes| palettes.of(appearance));
+    let palette = appearance.palette();
     cx.set_global(CurrentTheme {
         appearance,
         palette,

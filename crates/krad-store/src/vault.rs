@@ -89,26 +89,6 @@ pub(crate) fn delete_login(vault: &Vault, host: &str) -> Result<(), LoginStoreEr
     remove_fallback(vault, host)
 }
 
-pub(crate) fn adopt_keyring_login(
-    vault: &Vault,
-    legacy_service: &str,
-    host: &str,
-) -> Result<(), LoginStoreError> {
-    let Some(text) = in_keyring(legacy_service, host, saved_password)?.flatten() else {
-        return Ok(());
-    };
-    if in_keyring(vault.keyring_service, host, saved_password)?
-        .flatten()
-        .is_none()
-    {
-        in_keyring(vault.keyring_service, host, |entry| {
-            entry.set_password(&text)
-        })?;
-    }
-    in_keyring(legacy_service, host, Entry::delete_credential)?;
-    Ok(())
-}
-
 fn saved_password(entry: &Entry) -> Result<Option<String>, KeyringError> {
     match entry.get_password() {
         Ok(text) => Ok(Some(text)),

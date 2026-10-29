@@ -4,8 +4,8 @@ use crate::actions::{
     AskConfirm, AskDeny, CopySelection, HideApp, HideOtherApps, MinimizeWindow, NewAgent,
     NewTerminal, OpenSettings, PasteClipboard, Quit, RenameFile, SaveFile, SearchTerminal,
     SendBackTab, SendTab, SplitTerminal, TextLarger, TextReset, TextSmaller, ToggleActivity,
-    ToggleFps, TogglePalette, ToggleSidePanel, ToggleSidebar, ASK_KEY_CONTEXT, CANVAS_KEY_CONTEXT,
-    FILE_TAB_KEY_CONTEXT, FILE_TREE_KEY_CONTEXT, VIEWER_KEY_CONTEXT,
+    ToggleFps, TogglePalette, ToggleSidePanel, ToggleSidebar, ASK_KEY_CONTEXT,
+    FILE_TAB_KEY_CONTEXT, FILE_TREE_KEY_CONTEXT, SHELL_KEY_CONTEXT, VIEWER_KEY_CONTEXT,
 };
 
 #[cfg(target_os = "macos")]
@@ -87,7 +87,7 @@ pub(crate) const PASTE_HINT: &str = keys::PASTE_HINT;
 
 #[must_use]
 pub fn key_bindings() -> Vec<KeyBinding> {
-    let scope = Some(CANVAS_KEY_CONTEXT);
+    let scope = Some(SHELL_KEY_CONTEXT);
     let mut bindings = app_bindings();
     bindings.extend([
         KeyBinding::new(keys::TOGGLE_FPS, ToggleFps, scope),

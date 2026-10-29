@@ -1,10 +1,5 @@
-use crate::agent::AgentPreset;
 use serde::{Deserialize, Serialize};
 
-const CLAUDE_MODELS: &[&str] = &["opus", "sonnet", "haiku"];
-const CODEX_MODELS: &[&str] = &["gpt-5-codex", "gpt-5"];
-const OPENCODE_MODELS: &[&str] = &["anthropic/claude-sonnet-4", "openai/gpt-5"];
-const GEMINI_MODELS: &[&str] = &["gemini-2.5-pro"];
 const MODEL_PUNCTUATION: &str = "._/:@-";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -33,26 +28,6 @@ impl std::fmt::Display for ModelId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
     }
-}
-
-#[must_use]
-pub fn default_models(preset: AgentPreset) -> Vec<ModelId> {
-    let names: &[&str] = match preset {
-        AgentPreset::ClaudeCode => CLAUDE_MODELS,
-        AgentPreset::Codex => CODEX_MODELS,
-        AgentPreset::Opencode => OPENCODE_MODELS,
-        AgentPreset::Gemini => GEMINI_MODELS,
-        AgentPreset::Shell
-        | AgentPreset::Copilot
-        | AgentPreset::CursorAgent
-        | AgentPreset::Amp
-        | AgentPreset::Aider
-        | AgentPreset::Goose => &[],
-    };
-    names
-        .iter()
-        .filter_map(|name| ModelId::parse(name))
-        .collect()
 }
 
 pub(crate) fn clean_models(models: &[ModelId]) -> Vec<ModelId> {
@@ -152,19 +127,6 @@ mod tests {
         assert_eq!(ModelId::parse("claude opus"), None);
         assert_eq!(ModelId::parse("opus&calc"), None);
         assert_eq!(ModelId::parse("\"opus\""), None);
-    }
-
-    #[test]
-    fn main_harnesses_ship_with_the_design_models() {
-        let names = |preset| {
-            default_models(preset)
-                .iter()
-                .map(|model| model.as_str().to_owned())
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(names(AgentPreset::ClaudeCode), ["opus", "sonnet", "haiku"]);
-        assert_eq!(names(AgentPreset::Codex), ["gpt-5-codex", "gpt-5"]);
-        assert_eq!(names(AgentPreset::Shell), Vec::<String>::new());
     }
 
     #[test]

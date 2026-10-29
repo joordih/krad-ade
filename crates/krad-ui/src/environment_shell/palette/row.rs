@@ -2,7 +2,7 @@ use gpui_kit::component::command::CommandItem;
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::{div, px, rgb, Action, IntoElement, ParentElement, SharedString, Styled};
 
-use crate::actions::CANVAS_KEY_CONTEXT;
+use crate::actions::SHELL_KEY_CONTEXT;
 use crate::components::{icon, IconName};
 use crate::theme::{palette, LINE_XS, SPACE_1, SPACE_2, SPACE_3, TEXT_XS};
 
@@ -33,7 +33,7 @@ pub(super) fn command_row(
             .child(icon(name, ROW_ICON, color.unwrap_or(pal.text_muted)))
             .child(div().flex_1().min_w_0().truncate().child(shown.clone()))
             .children(shortcut.as_deref().and_then(|action| {
-                Kbd::binding_for_action(action, Some(CANVAS_KEY_CONTEXT), window)
+                Kbd::binding_for_action(action, Some(SHELL_KEY_CONTEXT), window)
             }))
     })
 }
