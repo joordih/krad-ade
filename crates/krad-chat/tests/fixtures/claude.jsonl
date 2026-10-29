@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","session_id":"s1","model":"claude-opus","tools":["Read","Bash"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"server/auth/refresh.ts"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"..."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Both tabs call `rotate()` at once."}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"Both tabs call `rotate()` at once.","session_id":"s1"}

@@ -1,0 +1,21 @@
+[package]
+name = "krad-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "krad-ade"
+path = "src/main.rs"
+
+[[bin]]
+name = "krad-ade-agents"
+path = "src/bin/krad-ade-agents.rs"
+
+[dependencies]
+gpui-kit.workspace = true
+krad-agents.workspace = true
+krad-domain.workspace = true
+krad-store.workspace = true
+krad-ui.workspace = true

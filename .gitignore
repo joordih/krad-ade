@@ -1,0 +1,9 @@
+target/
+.opencode/
+.krad-ade/
+.claude/
+*.local*
+docs/
+DESIGN.md
+.sc/
+dist/

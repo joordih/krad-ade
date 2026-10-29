@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  GH_TOKEN: ${{ github.token }}
+  KRAD_GITHUB_CLIENT_ID: ${{ secrets.KRAD_GITHUB_CLIENT_ID }}
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        name: Read the version and check it is not released yet
+        run: |
+          version=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::v$version is already released; bump the version in Cargo.toml"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  linux:
+    needs: version
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GPUI's build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig-dev libfreetype-dev libwayland-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - uses: Swatinem/rust-cache@v2
+      - if: hashFiles('packaging/ghostty-vt/package.sh') != ''
+        run: just ghostty-libs x86_64-unknown-linux-gnu
+      - run: cargo build --release --locked -p krad-app
+      - name: Package
+        run: |
+          name=krad-ade-${{ needs.version.outputs.version }}-x86_64-linux
+          mkdir -p "$name/licenses"
+          cp target/release/krad-ade target/release/krad-ade-agents packaging/linux/krad-ade.desktop "$name/"
+          cp packaging/icon/png/krad-ade-256.png "$name/krad-ade.png"
+          shopt -s nullglob
+          cp assets/icons/LICENSE-*.txt assets/fonts/*.txt "$name/licenses/"
+          tar -czf "$name.tar.gz" "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: krad-ade-*-x86_64-linux.tar.gz
+
+  windows:
+    needs: version
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: bash
+    env:
+      PKG_CONFIG: pkgconf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        id: msys2
+        with:
+          msystem: UCRT64
+          install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf
+      - run: echo '${{ steps.msys2.outputs.msys2-location }}\ucrt64\bin' >> "$GITHUB_PATH"
+      - run: rustup set default-host x86_64-pc-windows-gnu
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - uses: Swatinem/rust-cache@v2
+      - if: hashFiles('packaging/ghostty-vt/package.sh') != ''
+        run: just ghostty-libs x86_64-pc-windows-gnu
+      - if: hashFiles('packaging/windows/LICENSE-conpty.txt') != ''
+        run: just conpty
+      - run: cargo build --release --locked -p krad-app
+      - run: choco install innosetup --no-progress -y
+      - shell: pwsh
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.version.outputs.version }}" installer\krad-ade.iss'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: target/installer/krad-ade-*-setup.exe
+
+  macos:
+    needs: version
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - uses: Swatinem/rust-cache@v2
+      - run: just ghostty-libs aarch64-apple-darwin
+      - run: cargo build --release --locked -p krad-app
+      - name: Bundle Krad ADE.app into a DMG
+        run: |
+          version=${{ needs.version.outputs.version }}
+          app="dmg/Krad ADE.app"
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/licenses"
+          cp target/release/krad-ade target/release/krad-ade-agents "$app/Contents/MacOS/"
+          cp packaging/macos/krad-ade.icns "$app/Contents/Resources/"
+          cp assets/icons/LICENSE-*.txt assets/fonts/*.txt "$app/Contents/Resources/licenses/"
+          cp packaging/macos/Info.plist "$app/Contents/"
+          plutil -replace CFBundleShortVersionString -string "$version" "$app/Contents/Info.plist"
+          plutil -replace CFBundleVersion -string "$version" "$app/Contents/Info.plist"
+          codesign --force --deep --sign - "$app"
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "Krad ADE" -srcfolder dmg -format UDZO \
+            "krad-ade-$version-aarch64-macos.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: krad-ade-*-aarch64-macos.dmg
+
+  release:
+    needs: [version, linux, windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - run: |
+          version=${{ needs.version.outputs.version }}
+          gh release create "v$version" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Krad ADE $version" --generate-notes krad-ade-*

@@ -1,0 +1,252 @@
+use gpui_kit::component::input::Input;
+use gpui_kit::component::switch::Switch;
+use gpui_kit::component::Sizable as _;
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::{
+    div, px, AnyElement, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, Window,
+};
+
+use super::super::dialog_parts::{
+    sheet_body, sheet_footer, sheet_group, sheet_overlay, sheet_panel, sheet_row, sheet_section,
+    sheet_title,
+};
+use super::super::EnvironmentShell;
+use super::{DocsDialog, NOTE_CHOICES};
+use crate::components::{Button, ButtonVariant, ModelPicker};
+use crate::theme::palette;
+
+const SHEET_W: f32 = 620.0;
+const FOLDER_W: f32 = 200.0;
+const TITLE: &str = "Generate documentation";
+const SOURCES_LABEL: &str = "Sources";
+const NOTES_LABEL: &str = "Notes to write";
+const NOTES_DETAIL: &str = "The agent writes these, or updates them when they already exist.";
+const OUTPUT_LABEL: &str = "Output";
+const FOLDER_LABEL: &str = "Folder";
+const FOLDER_DETAIL: &str = "Where the notes go inside the vault; empty means its root.";
+const KEEP_LABEL: &str = "Keep notes I edited";
+const KEEP_DETAIL: &str = "Generated notes you changed stay as they are.";
+const CANCEL_LABEL: &str = "Cancel";
+const GENERATE_LABEL: &str = "Generate notes";
+const ITEMS_SUFFIX: &str = "items";
+const FILE_DETAIL: &str = "File";
+const BODY_ID: &str = "docs-dialog-body";
+const BTN_CLOSE: &str = "docs-dialog-close";
+const BTN_CANCEL: &str = "docs-dialog-cancel";
+const BTN_GENERATE: &str = "docs-dialog-generate";
+const SOURCE_PREFIX: &str = "docs-source";
+const SOURCE_SWITCH_PREFIX: &str = "docs-source-switch";
+const NOTE_PREFIX: &str = "docs-note";
+const NOTE_SWITCH_PREFIX: &str = "docs-note-switch";
+const SWITCH_KEEP: &str = "docs-keep";
+const MODEL_PICKER_ID: &str = "docs-model";
+
+fn close(this: &mut EnvironmentShell, _: &mut Window, cx: &mut Context<EnvironmentShell>) {
+    this.docs_dialog = None;
+    cx.notify();
+}
+
+fn row_key(index: usize) -> u64 {
+    u64::try_from(index).unwrap_or(u64::MAX)
+}
+
+impl EnvironmentShell {
+    pub(in crate::environment_shell) fn docs_generate_sheet(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let dialog = self.docs_dialog.as_ref()?;
+        let pal = palette(cx);
+        let group = self
+            .active_group()
+            .map_or_default(|group| group.name.clone());
+        let sheet = sheet_panel(SHEET_W, pal)
+            .child(sheet_title(TITLE, None, BTN_CLOSE, close, cx))
+            .child(
+                sheet_body(BODY_ID)
+                    .child(Self::docs_sources(dialog, &group, cx))
+                    .child(Self::docs_notes(dialog, cx))
+                    .child(Self::docs_output(dialog, cx)),
+            )
+            .child(self.docs_footer(dialog, cx));
+        Some(sheet_overlay(sheet, close, cx))
+    }
+
+    fn docs_sources(dialog: &DocsDialog, group: &str, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
+        let rows: Vec<AnyElement> = dialog
+            .sources
+            .iter()
+            .enumerate()
+            .map(|(index, (entry, chosen))| {
+                let toggle = move |this: &mut Self, cx: &mut Context<Self>| {
+                    if let Some((_, chosen)) = this
+                        .docs_dialog
+                        .as_mut()
+                        .and_then(|dialog| dialog.sources.get_mut(index))
+                    {
+                        *chosen = !*chosen;
+                    }
+                    cx.notify();
+                };
+                let detail: SharedString = if entry.is_dir {
+                    format!("{} {ITEMS_SUFFIX}", entry.children).into()
+                } else {
+                    FILE_DETAIL.into()
+                };
+                sheet_row(entry.relative.clone(), Some(detail), None, pal)
+                    .id((SOURCE_PREFIX, row_key(index)))
+                    .cursor_pointer()
+                    .hover(|style| style.bg(pal.bg_hover))
+                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| toggle(this, cx)))
+                    .child(
+                        Switch::new((SOURCE_SWITCH_PREFIX, row_key(index)))
+                            .checked(*chosen)
+                            .on_click(cx.listener(move |this: &mut Self, _: &bool, _, cx| {
+                                toggle(this, cx);
+                            })),
+                    )
+                    .into_any_element()
+            })
+            .collect();
+        let description = format!("What the agent reads in {group}.");
+        sheet_section(SOURCES_LABEL, Some(&description), pal)
+            .child(sheet_group(rows, pal))
+            .into_any_element()
+    }
+
+    fn docs_notes(dialog: &DocsDialog, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
+        let rows: Vec<AnyElement> = dialog
+            .notes
+            .iter()
+            .enumerate()
+            .map(|(index, (note, chosen))| {
+                let toggle = move |this: &mut Self, cx: &mut Context<Self>| {
+                    if let Some((_, chosen)) = this
+                        .docs_dialog
+                        .as_mut()
+                        .and_then(|dialog| dialog.notes.get_mut(index))
+                    {
+                        *chosen = !*chosen;
+                    }
+                    cx.notify();
+                };
+                let detail = NOTE_CHOICES
+                    .get(index)
+                    .map(|(_, detail)| SharedString::from(*detail));
+                sheet_row(*note, detail, None, pal)
+                    .id((NOTE_PREFIX, row_key(index)))
+                    .cursor_pointer()
+                    .hover(|style| style.bg(pal.bg_hover))
+                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| toggle(this, cx)))
+                    .child(
+                        Switch::new((NOTE_SWITCH_PREFIX, row_key(index)))
+                            .checked(*chosen)
+                            .on_click(cx.listener(move |this: &mut Self, _: &bool, _, cx| {
+                                toggle(this, cx);
+                            })),
+                    )
+                    .into_any_element()
+            })
+            .collect();
+        sheet_section(NOTES_LABEL, Some(NOTES_DETAIL), pal)
+            .child(sheet_group(rows, pal))
+            .into_any_element()
+    }
+
+    fn docs_output(dialog: &DocsDialog, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
+        let folder = sheet_row(
+            FOLDER_LABEL,
+            Some(FOLDER_DETAIL.into()),
+            Some(
+                div()
+                    .w(px(FOLDER_W))
+                    .child(Input::new(&dialog.folder).small())
+                    .into_any_element(),
+            ),
+            pal,
+        )
+        .into_any_element();
+        let keep = sheet_row(
+            KEEP_LABEL,
+            Some(KEEP_DETAIL.into()),
+            Some(
+                Switch::new(SWITCH_KEEP)
+                    .checked(dialog.keep_edited)
+                    .on_click(cx.listener(|this: &mut Self, checked: &bool, _, cx| {
+                        if let Some(dialog) = &mut this.docs_dialog {
+                            dialog.keep_edited = *checked;
+                        }
+                        cx.notify();
+                    }))
+                    .into_any_element(),
+            ),
+            pal,
+        )
+        .into_any_element();
+        sheet_section(OUTPUT_LABEL, None, pal)
+            .child(sheet_group([folder, keep], pal))
+            .into_any_element()
+    }
+
+    fn docs_footer(&self, dialog: &DocsDialog, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
+        let picker = dialog.preset.map(|preset| {
+            ModelPicker::new(
+                MODEL_PICKER_ID,
+                preset,
+                dialog.model.clone(),
+                self.agent_choices(),
+            )
+            .open(dialog.picker_open)
+            .opens_up()
+            .on_toggle(cx.listener(|this: &mut Self, _, _, cx| {
+                if let Some(dialog) = &mut this.docs_dialog {
+                    dialog.picker_open = !dialog.picker_open;
+                }
+                cx.notify();
+            }))
+            .on_pick({
+                let shell = cx.weak_entity();
+                move |preset, model, _, cx| {
+                    shell
+                        .update(cx, |this, cx| {
+                            if let Some(dialog) = &mut this.docs_dialog {
+                                dialog.preset = Some(preset);
+                                dialog.model = Some(model);
+                                dialog.picker_open = false;
+                            }
+                            cx.notify();
+                        })
+                        .unwrap_or_default();
+                }
+            })
+        });
+        let ready = dialog.preset.is_some() && dialog.notes.iter().any(|(_, chosen)| *chosen);
+        sheet_footer(pal)
+            .children(picker)
+            .child(div().flex_1())
+            .child(
+                Button::new(BTN_CANCEL)
+                    .label(CANCEL_LABEL)
+                    .variant(ButtonVariant::Secondary)
+                    .on_click(
+                        cx.listener(|this: &mut Self, _, window, cx| close(this, window, cx)),
+                    ),
+            )
+            .when(ready, |footer| {
+                footer.child(
+                    Button::new(BTN_GENERATE)
+                        .label(GENERATE_LABEL)
+                        .variant(ButtonVariant::Primary)
+                        .on_click(cx.listener(|this: &mut Self, _, _, cx| {
+                            this.start_docs_generation(cx);
+                        })),
+                )
+            })
+            .into_any_element()
+    }
+}

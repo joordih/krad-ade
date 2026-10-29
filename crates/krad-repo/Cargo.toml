@@ -1,0 +1,10 @@
+[package]
+name = "krad-repo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+krad-domain.workspace = true
+thiserror.workspace = true

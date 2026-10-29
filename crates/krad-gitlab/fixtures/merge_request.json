@@ -1,0 +1,29 @@
+{
+  "id": 9001,
+  "iid": 42,
+  "project_id": 7,
+  "title": "Add the review view",
+  "description": "Lists merge requests.",
+  "state": "opened",
+  "draft": false,
+  "author": { "id": 1, "username": "author", "name": "Author", "avatar_url": null },
+  "reviewers": [{ "id": 2, "username": "reviewer", "name": "Reviewer" }],
+  "source_branch": "feature",
+  "target_branch": "master",
+  "sha": "abc123",
+  "detailed_merge_status": "security_policy_violations",
+  "has_conflicts": false,
+  "user_notes_count": 3,
+  "web_url": "https://gitlab.example.test/group/project/-/merge_requests/42",
+  "created_at": "2026-10-01T10:00:00.000Z",
+  "updated_at": "2026-10-02T10:00:00.000Z",
+  "head_pipeline": {
+    "id": 1823,
+    "sha": "abc123",
+    "ref": "feature",
+    "status": "success",
+    "web_url": "https://gitlab.example.test/group/project/-/pipelines/1823",
+    "duration": 252
+  },
+  "diff_refs": { "base_sha": "base000", "head_sha": "abc123", "start_sha": "base000" }
+}

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Krad ADE
+GenericName=Agentic Development Environment
+Comment=Drive many agentic CLI terminals on one canvas
+Exec=krad-ade
+Icon=krad-ade
+Terminal=false
+Categories=Development;IDE;TerminalEmulator;
+StartupWMClass=krad-ade

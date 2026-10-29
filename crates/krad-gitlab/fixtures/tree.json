@@ -1,0 +1,5 @@
+[
+  { "id": "a1", "name": "src", "type": "tree", "path": "src", "mode": "040000" },
+  { "id": "b2", "name": "README.md", "type": "blob", "path": "README.md", "mode": "100644" },
+  { "id": "c3", "name": "vendor", "type": "commit", "path": "vendor", "mode": "160000" }
+]

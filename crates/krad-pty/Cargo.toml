@@ -1,0 +1,11 @@
+[package]
+name = "krad-pty"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+krad-domain.workspace = true
+portable-pty.workspace = true
+thiserror.workspace = true

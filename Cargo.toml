@@ -1,0 +1,107 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/joordih/krad-ade"
+
+[workspace.dependencies]
+futures = "0.3"
+gpui-fps = "0.7.3"
+gpui-kit = { version = "0.7.3", features = [
+  "tree-sitter-bash",
+  "tree-sitter-c",
+  "tree-sitter-cmake",
+  "tree-sitter-cpp",
+  "tree-sitter-csharp",
+  "tree-sitter-css",
+  "tree-sitter-diff",
+  "tree-sitter-go",
+  "tree-sitter-graphql",
+  "tree-sitter-html",
+  "tree-sitter-java",
+  "tree-sitter-javascript",
+  "tree-sitter-kotlin",
+  "tree-sitter-lua",
+  "tree-sitter-make",
+  "tree-sitter-markdown-inline",
+  "tree-sitter-php",
+  "tree-sitter-proto",
+  "tree-sitter-python",
+  "tree-sitter-ruby",
+  "tree-sitter-rust",
+  "tree-sitter-scala",
+  "tree-sitter-sql",
+  "tree-sitter-swift",
+  "tree-sitter-toml",
+  "tree-sitter-tsx",
+  "tree-sitter-typescript",
+  "tree-sitter-yaml",
+  "tree-sitter-zig",
+] }
+image = { version = "0.25", default-features = false }
+keyring = "4.2"
+mermaid-rs-renderer = { version = "0.3.1", default-features = false }
+libghostty-vt = { git = "https://github.com/joordih/libghostty-rs", rev = "f21a9e5e9a26b8d641040b9ab4624b59aa5254d7", default-features = false, features = [
+  "kitty-graphics",
+  "png",
+] }
+libghostty-vt-sys = { git = "https://github.com/joordih/libghostty-rs", rev = "f21a9e5e9a26b8d641040b9ab4624b59aa5254d7", default-features = false, features = [
+  "pkg-config",
+] }
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+  "NSAccessibility",
+  "NSCell",
+  "NSGlassEffectView",
+  "NSGraphics",
+  "NSImage",
+  "NSMenu",
+  "NSMenuItem",
+  "NSResponder",
+  "NSView",
+  "NSWorkspace",
+  "std",
+] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+  "NSGeometry",
+  "NSString",
+  "std",
+] }
+portable-pty = "0.9"
+ratex-layout = "0.1.15"
+ratex-parser = "0.1.15"
+ratex-svg = { version = "0.1.15", features = ["embed-fonts"] }
+ratex-types = "0.1.15"
+raw-window-handle = "0.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+ureq = { version = "3.5", default-features = false, features = [
+  "json",
+  "rustls",
+] }
+krad-agents = { path = "crates/krad-agents" }
+krad-chat = { path = "crates/krad-chat" }
+krad-domain = { path = "crates/krad-domain" }
+krad-github = { path = "crates/krad-github" }
+krad-gitlab = { path = "crates/krad-gitlab" }
+krad-pty = { path = "crates/krad-pty" }
+krad-repo = { path = "crates/krad-repo" }
+krad-term = { path = "crates/krad-term" }
+krad-session = { path = "crates/krad-session" }
+krad-store = { path = "crates/krad-store" }
+krad-ui = { path = "crates/krad-ui" }
+
+[profile.dev.package]
+gpui-pre = { opt-level = 3 }
+gpui-component = { opt-level = 3 }
+gpui-kit = { opt-level = 3 }
+gpui-kit-assets = { opt-level = 3 }
+gpui-pre-macros = { opt-level = 3 }
+gpui-pre-platform = { opt-level = 3 }
+rustybuzz = { opt-level = 3 }
+taffy = { opt-level = 3 }

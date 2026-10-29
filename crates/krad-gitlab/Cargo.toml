@@ -1,0 +1,15 @@
+[package]
+name = "krad-gitlab"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+krad-domain.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+ureq.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

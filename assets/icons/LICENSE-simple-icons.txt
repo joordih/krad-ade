@@ -1,0 +1,8 @@
+Simple Icons - https://simpleicons.org
+Harness marks brand-claude.svg, brand-openai.svg and brand-opencode.svg,
+taken from the Iconify icon set "simple-icons" (https://github.com/iconify/icon-sets).
+License: CC0 1.0 Universal (https://creativecommons.org/publicdomain/zero/1.0/)
+
+The icons themselves are dedicated to the public domain. The brands they
+depict remain trademarks of their respective owners; they are shown only to
+identify which agent CLI a terminal runs.

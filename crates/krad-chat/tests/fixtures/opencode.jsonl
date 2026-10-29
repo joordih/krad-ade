@@ -1,0 +1,4 @@
+{"type":"step_start","timestamp":1,"sessionID":"s1","part":{"type":"step-start"}}
+{"type":"tool_use","timestamp":2,"sessionID":"s1","part":{"type":"tool","tool":"read","state":{"status":"completed","input":{"filePath":"/work/portfolio/server/auth/refresh.ts"}}}}
+{"type":"text","timestamp":3,"sessionID":"s1","part":{"type":"text","text":"The refresh token is spent twice."}}
+{"type":"step_finish","timestamp":4,"sessionID":"s1","part":{"type":"step-finish"}}

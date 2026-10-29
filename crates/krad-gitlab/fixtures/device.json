@@ -1,0 +1,8 @@
+{
+  "device_code": "fixture-device-code",
+  "user_code": "ABCD-EFGH",
+  "verification_uri": "https://gitlab.example.test/oauth/device",
+  "verification_uri_complete": "https://gitlab.example.test/oauth/device?user_code=ABCD-EFGH",
+  "expires_in": 300,
+  "interval": 5
+}

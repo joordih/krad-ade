@@ -1,0 +1,32 @@
+[package]
+name = "krad-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+futures.workspace = true
+gpui-fps.workspace = true
+gpui-kit.workspace = true
+image.workspace = true
+krad-agents.workspace = true
+krad-chat.workspace = true
+krad-domain.workspace = true
+krad-github.workspace = true
+krad-gitlab.workspace = true
+krad-repo.workspace = true
+krad-session.workspace = true
+krad-store.workspace = true
+mermaid-rs-renderer.workspace = true
+ratex-layout.workspace = true
+ratex-parser.workspace = true
+ratex-svg.workspace = true
+ratex-types.workspace = true
+ureq.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2.workspace = true
+objc2-app-kit.workspace = true
+objc2-foundation.workspace = true
+raw-window-handle.workspace = true

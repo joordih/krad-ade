@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Info.plist of Krad ADE.app. The release workflow stamps both version
+     keys with the version in the root Cargo.toml. -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Krad ADE</string>
+	<key>CFBundleDisplayName</key>
+	<string>Krad ADE</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.joordih.krad-ade</string>
+	<key>CFBundleExecutable</key>
+	<string>krad-ade</string>
+	<key>CFBundleIconFile</key>
+	<string>krad-ade</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>0.1.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.developer-tools</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+</dict>
+</plist>

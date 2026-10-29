@@ -1,0 +1,9 @@
+{"type":"system","subtype":"init","session_id":"0b7c3a52-9f1e-4d2a-8c6b-1f2e3d4c5b6a","model":"claude-opus","tools":["Read","Bash"]}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Why does it race?"}]},"session_id":"0b7c3a52-9f1e-4d2a-8c6b-1f2e3d4c5b6a"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Two tabs rotate at once."}]},"session_id":"0b7c3a52-9f1e-4d2a-8c6b-1f2e3d4c5b6a"}
+{"type":"result","subtype":"success","is_error":false,"result":"Two tabs rotate at once.","session_id":"0b7c3a52-9f1e-4d2a-8c6b-1f2e3d4c5b6a"}
+{"type":"system","subtype":"init","session_id":"0b7c3a52-9f1e-4d2a-8c6b-1f2e3d4c5b6a","model":"claude-opus","tools":["Read","Bash"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Edit","input":{"file_path":"server/auth/refresh.ts"}}]},"session_id":"0b7c3a52-9f1e-4d2a-8c6b-1f2e3d4c5b6a"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]},"session_id":"0b7c3a52-9f1e-4d2a-8c6b-1f2e3d4c5b6a"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Shared one in-flight promise."}]},"session_id":"0b7c3a52-9f1e-4d2a-8c6b-1f2e3d4c5b6a"}
+{"type":"result","subtype":"success","is_error":false,"result":"Shared one in-flight promise.","session_id":"0b7c3a52-9f1e-4d2a-8c6b-1f2e3d4c5b6a"}
