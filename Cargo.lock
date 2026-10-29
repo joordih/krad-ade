@@ -3618,7 +3618,7 @@ dependencies = [
 
 [[package]]
 name = "krad-agents"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "futures",
  "krad-domain",
@@ -3629,7 +3629,7 @@ dependencies = [
 
 [[package]]
 name = "krad-app"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "gpui-kit",
  "krad-agents",
@@ -3640,7 +3640,7 @@ dependencies = [
 
 [[package]]
 name = "krad-chat"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "base64 0.22.1",
  "krad-domain",
@@ -3652,7 +3652,7 @@ dependencies = [
 
 [[package]]
 name = "krad-domain"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -3660,7 +3660,7 @@ dependencies = [
 
 [[package]]
 name = "krad-github"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "krad-domain",
  "serde",
@@ -3671,7 +3671,7 @@ dependencies = [
 
 [[package]]
 name = "krad-gitlab"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "krad-domain",
  "serde",
@@ -3682,7 +3682,7 @@ dependencies = [
 
 [[package]]
 name = "krad-pty"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "krad-domain",
  "portable-pty",
@@ -3691,7 +3691,7 @@ dependencies = [
 
 [[package]]
 name = "krad-repo"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "krad-domain",
  "thiserror 2.0.21",
@@ -3699,7 +3699,7 @@ dependencies = [
 
 [[package]]
 name = "krad-session"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "futures",
  "krad-domain",
@@ -3709,7 +3709,7 @@ dependencies = [
 
 [[package]]
 name = "krad-store"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "keyring",
  "krad-domain",
@@ -3720,7 +3720,7 @@ dependencies = [
 
 [[package]]
 name = "krad-term"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "libghostty-vt",
  "libghostty-vt-sys",
@@ -3728,7 +3728,7 @@ dependencies = [
 
 [[package]]
 name = "krad-ui"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "futures",
  "gpui-fps",

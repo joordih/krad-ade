@@ -348,7 +348,7 @@ pub(crate) fn row_fill(pal: &Palette, cx: &App) -> Rgba {
     if window_material(cx).is_translucent() {
         return Tint::new(pal.bg_selected.color, TRANSLUCENT_ROW_ALPHA).into();
     }
-    row_fill(pal, cx)
+    rgb(pal.bg_row_selected)
 }
 
 pub(crate) fn floating_shadow(pal: &Palette) -> Vec<BoxShadow> {
