@@ -140,3 +140,13 @@ fn a_live_claude_answers_and_resumes_its_conversation() {
     resumed.send(RECALL_PROMPT);
     assert!(answer(&receiver).to_lowercase().contains(EXPECTED));
 }
+
+#[test]
+#[ignore = "runs the real claude CLI"]
+fn claude_lists_its_models_without_a_turn() {
+    let Some(program) = find(PROGRAM) else {
+        return;
+    };
+    let models = krad_chat::claude_models(&Runner::Native(program), &std::env::temp_dir());
+    assert!(models.is_ok_and(|models| !models.is_empty()));
+}

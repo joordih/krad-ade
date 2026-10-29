@@ -74,6 +74,7 @@ const OPENCODE_TOOL_BEFORE: &str = "tool.execute.before";
 const CLAUDE_STARTUP_SOURCE: &str = "startup";
 const CLAUDE_COMPACT_SOURCE: &str = "compact";
 const CLAUDE_RESUME_FLAG: &str = "--resume";
+const CODEX_RESUME_COMMAND: &str = "resume";
 const CLAUDE_FORK_FLAG: &str = "--fork-session";
 const POSIX_QUOTE_ESCAPE: &str = r"'\''";
 const POWERSHELL_QUOTE_ESCAPE: &str = "''";
@@ -126,6 +127,7 @@ impl AgentPreset {
     pub const fn resume_flag(self) -> Option<&'static str> {
         match self {
             Self::ClaudeCode => Some(CLAUDE_RESUME_FLAG),
+            Self::Codex => Some(CODEX_RESUME_COMMAND),
             _ => None,
         }
     }
@@ -407,7 +409,11 @@ mod tests {
         );
         assert_eq!(
             resume_line("codex", AgentPreset::Codex, &id, ShellQuoting::Posix),
-            "codex"
+            "codex resume 0b7c3a52-9f1e || codex"
+        );
+        assert_eq!(
+            resume_line("opencode", AgentPreset::Opencode, &id, ShellQuoting::Posix),
+            "opencode"
         );
     }
 

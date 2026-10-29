@@ -294,7 +294,7 @@ impl EnvironmentShell {
     fn harness_skills(&self, composer: Composer) -> Option<Vec<Skill>> {
         let Composer::Surface(id) = composer;
         let chat = self.envs.get(&self.active)?.chats.get(&id)?;
-        if chat.harness() != AgentPreset::Opencode {
+        if chat.harness() == AgentPreset::ClaudeCode {
             return None;
         }
         let catalog = chat.structured()?.catalog.as_ref()?;

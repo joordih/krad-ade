@@ -14,6 +14,11 @@ use super::sessions_view::session_terminals;
 use super::EnvironmentShell;
 
 const NEW_CHAT_LABEL: &str = "New chat";
+const DEFAULT_CHAT_HARNESSES: [AgentPreset; 3] = [
+    AgentPreset::ClaudeCode,
+    AgentPreset::Opencode,
+    AgentPreset::Codex,
+];
 const WSL_LABEL: &str = "WSL";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -172,11 +177,10 @@ impl EnvironmentShell {
     }
 
     fn default_chat_harness(&self) -> AgentPreset {
-        let installed = |preset| self.native_agents.contains(&preset);
-        if !installed(AgentPreset::ClaudeCode) && installed(AgentPreset::Opencode) {
-            return AgentPreset::Opencode;
-        }
-        AgentPreset::ClaudeCode
+        DEFAULT_CHAT_HARNESSES
+            .into_iter()
+            .find(|preset| self.native_agents.contains(preset))
+            .unwrap_or(AgentPreset::ClaudeCode)
     }
 
     fn settle_new_node(&mut self, cx: &mut Context<Self>) {

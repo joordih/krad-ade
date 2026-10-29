@@ -1,6 +1,7 @@
-use gpui_kit::{AppContext as _, Context, Window};
+use gpui_kit::{AppContext as _, Context, Task, Window};
 use krad_chat::{
-    new_session_id, read_claude_transcript_before, read_opencode_transcript, LiveSession,
+    new_session_id, read_claude_transcript_before, read_codex_transcript, read_opencode_transcript,
+    LiveSession,
 };
 use krad_domain::{
     AgentPreset, ChatEntry, EnvironmentName, NodeKind, ResumeId, TerminalId, TerminalNode,
@@ -82,7 +83,7 @@ impl EnvironmentShell {
                 let node = nodes.iter().find(|node| node.id == id)?;
                 let harness = node
                     .harness
-                    .filter(|preset| *preset == AgentPreset::Opencode)
+                    .filter(|preset| matches!(preset, AgentPreset::Opencode | AgentPreset::Codex))
                     .unwrap_or(AgentPreset::ClaudeCode);
                 Some((id, session, harness))
             })
@@ -102,6 +103,9 @@ impl EnvironmentShell {
             match (history, harness) {
                 (Some(resume), AgentPreset::Opencode) => {
                     self.load_opencode_history(env.clone(), id, resume, cx);
+                }
+                (Some(resume), AgentPreset::Codex) => {
+                    self.load_codex_history(env.clone(), id, resume, cx);
                 }
                 (Some(resume), _) => self.load_structured_history(env.clone(), id, resume, cx),
                 (None, _) => {}
@@ -140,7 +144,45 @@ impl EnvironmentShell {
             self.opencode.waiting_histories.push((env, id, resume));
             return;
         };
-        let read = cx.background_spawn(async move { read_opencode_transcript(&server, &resume) });
+        let read = cx.background_spawn(async move {
+            read_opencode_transcript(&server, &resume).map_err(|error| error.to_string())
+        });
+        Self::show_history_when_read(env, id, read, cx);
+    }
+
+    fn load_codex_history(
+        &mut self,
+        env: EnvironmentName,
+        id: TerminalId,
+        resume: ResumeId,
+        cx: &mut Context<Self>,
+    ) {
+        let root = self
+            .envs
+            .get(&env)
+            .and_then(|live| live.data.group_of(id))
+            .map(|group| group.root.clone());
+        let (runner, cwd) = match self.harness_runner(AgentPreset::Codex, root.as_deref()) {
+            Ok(found) => found,
+            Err(error) => {
+                if let Some(chat) = structured_chat(self, &env, id) {
+                    chat.problem = Some(error.to_string());
+                }
+                return;
+            }
+        };
+        let read = cx.background_spawn(async move {
+            read_codex_transcript(&runner, &cwd, &resume).map_err(|error| error.to_string())
+        });
+        Self::show_history_when_read(env, id, read, cx);
+    }
+
+    fn show_history_when_read(
+        env: EnvironmentName,
+        id: TerminalId,
+        read: Task<Result<Vec<ChatEntry>, String>>,
+        cx: &mut Context<Self>,
+    ) {
         cx.spawn(async move |this, cx| {
             let read = read.await;
             this.update(cx, |shell, cx| {
@@ -157,7 +199,7 @@ impl EnvironmentShell {
                         }
                         chat.thread.scroll_to_end();
                     }
-                    Err(error) => chat.problem = Some(error.to_string()),
+                    Err(error) => chat.problem = Some(error),
                 }
                 cx.notify();
             })

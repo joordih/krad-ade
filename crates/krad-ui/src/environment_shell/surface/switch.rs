@@ -14,7 +14,16 @@ pub(in crate::environment_shell) enum SurfaceLock {
     UnknownResumeId,
 }
 
-const CHAT_HARNESSES: [AgentPreset; 2] = [AgentPreset::ClaudeCode, AgentPreset::Opencode];
+const CHAT_HARNESSES: [AgentPreset; 3] = [
+    AgentPreset::ClaudeCode,
+    AgentPreset::Opencode,
+    AgentPreset::Codex,
+];
+const REOPENED_HARNESSES: [AgentPreset; 2] = [AgentPreset::Opencode, AgentPreset::Codex];
+
+pub(in crate::environment_shell) fn reopens_as_chat(harness: Option<AgentPreset>) -> bool {
+    harness.is_some_and(|harness| REOPENED_HARNESSES.contains(&harness))
+}
 
 fn surface_lock(harness: AgentPreset, resume: Option<&ResumeId>) -> Option<SurfaceLock> {
     if !CHAT_HARNESSES.contains(&harness) {
@@ -32,7 +41,7 @@ pub(in crate::environment_shell) struct SurfaceSwitch {
 impl SurfaceLock {
     pub(in crate::environment_shell) const fn hint(self) -> &'static str {
         match self {
-            Self::ChatUnsupported => "Chat surface is for Claude Code and opencode only",
+            Self::ChatUnsupported => "Chat surface is for Claude Code, opencode and Codex only",
             Self::UnknownResumeId => "Switch once the agent reports its session",
         }
     }
@@ -112,13 +121,16 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_code_and_opencode_have_a_chat_surface() {
+    fn claude_code_opencode_and_codex_have_a_chat_surface() {
         let id = resume("4f2c0b7c-a91e");
         assert_eq!(
-            surface_lock(AgentPreset::Codex, Some(&id)),
+            surface_lock(AgentPreset::Gemini, Some(&id)),
             Some(SurfaceLock::ChatUnsupported)
         );
         assert_eq!(surface_lock(AgentPreset::Opencode, Some(&id)), None);
+        assert_eq!(surface_lock(AgentPreset::Codex, Some(&id)), None);
+        assert!(reopens_as_chat(Some(AgentPreset::Codex)));
+        assert!(!reopens_as_chat(Some(AgentPreset::ClaudeCode)));
     }
 
     #[test]

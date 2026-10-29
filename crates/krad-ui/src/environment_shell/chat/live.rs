@@ -2,8 +2,8 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver};
 use futures::StreamExt as _;
 use gpui_kit::{Context, Task};
 use krad_chat::{
-    spawn_live_chat, spawn_opencode_chat, ChatError, LiveChat, LiveConfig, LiveEvent, LiveSession,
-    OpencodeServer, Runner,
+    spawn_codex_chat, spawn_live_chat, spawn_opencode_chat, ChatError, LiveChat, LiveConfig,
+    LiveEvent, LiveSession, OpencodeServer, Runner,
 };
 use krad_domain::{parse_wsl_path, AgentPreset};
 use krad_session::find_program;
@@ -71,6 +71,23 @@ impl LiveProcess {
             _events: EnvironmentShell::listen(receiver, cx, apply),
             confirmed: false,
         })
+    }
+
+    pub(in crate::environment_shell) fn spawn_codex(
+        config: LiveConfig,
+        session: &LiveSession,
+        cx: &mut Context<EnvironmentShell>,
+        apply: impl FnMut(&mut EnvironmentShell, LiveEvent, &mut Context<EnvironmentShell>) + 'static,
+    ) -> Self {
+        let (sender, receiver) = unbounded();
+        let chat = spawn_codex_chat(config, session, move |event| {
+            sender.unbounded_send(event).unwrap_or_default();
+        });
+        Self {
+            chat,
+            _events: EnvironmentShell::listen(receiver, cx, apply),
+            confirmed: false,
+        }
     }
 
     pub(in crate::environment_shell) fn spawn_opencode(
