@@ -2,7 +2,6 @@ use krad_domain::{AgentPreset, EnvironmentName, NodeKind, ResumeId, TerminalId};
 
 use super::super::context_menu::{MenuAction, MenuEntry};
 use super::super::EnvironmentShell;
-use super::SURFACE_HARNESS;
 use crate::components::IconName;
 
 const SHOW_CHAT_LABEL: &str = "Show as Chat";
@@ -15,8 +14,10 @@ pub(in crate::environment_shell) enum SurfaceLock {
     UnknownResumeId,
 }
 
+const CHAT_HARNESSES: [AgentPreset; 2] = [AgentPreset::ClaudeCode, AgentPreset::Opencode];
+
 fn surface_lock(harness: AgentPreset, resume: Option<&ResumeId>) -> Option<SurfaceLock> {
-    if harness != SURFACE_HARNESS {
+    if !CHAT_HARNESSES.contains(&harness) {
         return Some(SurfaceLock::ChatUnsupported);
     }
     resume.is_none().then_some(SurfaceLock::UnknownResumeId)
@@ -31,7 +32,7 @@ pub(in crate::environment_shell) struct SurfaceSwitch {
 impl SurfaceLock {
     pub(in crate::environment_shell) const fn hint(self) -> &'static str {
         match self {
-            Self::ChatUnsupported => "Chat surface is Claude Code only for now",
+            Self::ChatUnsupported => "Chat surface is for Claude Code and opencode only",
             Self::UnknownResumeId => "Switch once the agent reports its session",
         }
     }
@@ -111,12 +112,13 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_code_has_a_chat_surface() {
+    fn only_claude_code_and_opencode_have_a_chat_surface() {
         let id = resume("4f2c0b7c-a91e");
         assert_eq!(
             surface_lock(AgentPreset::Codex, Some(&id)),
             Some(SurfaceLock::ChatUnsupported)
         );
+        assert_eq!(surface_lock(AgentPreset::Opencode, Some(&id)), None);
     }
 
     #[test]

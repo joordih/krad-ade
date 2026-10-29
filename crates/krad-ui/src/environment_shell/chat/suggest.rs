@@ -2,7 +2,7 @@ use gpui_kit::component::input::InlineToken;
 use gpui_kit::component::input::TextareaState;
 use gpui_kit::{AppContext as _, Context, Entity, SharedString, Window};
 use krad_chat::{claude_skills, search_skills, shared_skill_message, Skill, SkillSource};
-use krad_domain::{parse_wsl_path, wsl_unc_path, TerminalId, WslPath};
+use krad_domain::{parse_wsl_path, wsl_unc_path, AgentPreset, TerminalId, WslPath};
 use krad_repo::{index_files, wsl_home, EntryKind, IndexEntry, RepoError};
 use std::collections::HashMap;
 use std::ops::Range;
@@ -191,13 +191,17 @@ impl EnvironmentShell {
                     .search(&suggest.query, SUGGESTION_LIMIT);
                 Some(files.into_iter().cloned().map(Suggestion::Entry).collect())
             }
-            SuggestKind::Skill => Some(
-                search_skills(self.chat.skills.as_ref()?, &suggest.query, SUGGESTION_LIMIT)
-                    .into_iter()
-                    .cloned()
-                    .map(Suggestion::Skill)
-                    .collect(),
-            ),
+            SuggestKind::Skill => {
+                let offered = self.harness_skills(suggest.composer);
+                let skills = offered.as_deref().or(self.chat.skills.as_deref())?;
+                Some(
+                    search_skills(skills, &suggest.query, SUGGESTION_LIMIT)
+                        .into_iter()
+                        .cloned()
+                        .map(Suggestion::Skill)
+                        .collect(),
+                )
+            }
         }
     }
 
@@ -285,6 +289,26 @@ impl EnvironmentShell {
                 .get_mut(&id)
                 .map(|chat| &mut chat.mentions),
         }
+    }
+
+    fn harness_skills(&self, composer: Composer) -> Option<Vec<Skill>> {
+        let Composer::Surface(id) = composer;
+        let chat = self.envs.get(&self.active)?.chats.get(&id)?;
+        if chat.harness() != AgentPreset::Opencode {
+            return None;
+        }
+        let catalog = chat.structured()?.catalog.as_ref()?;
+        Some(
+            catalog
+                .commands
+                .iter()
+                .map(|command| Skill {
+                    name: command.name.clone(),
+                    description: command.description.clone(),
+                    source: SkillSource::Claude,
+                })
+                .collect(),
+        )
     }
 
     pub(in crate::environment_shell) fn shared_skill_message(

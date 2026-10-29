@@ -1,13 +1,14 @@
 use gpui_kit::Context;
 use krad_chat::{Approvals, BusVars, ChatEvent, LiveConfig};
-use krad_domain::{AgentState, ChatEntry, EnvironmentName, TerminalId};
+use krad_domain::{AgentPreset, AgentState, ChatEntry, EnvironmentName, TerminalId};
 use std::time::Instant;
 
 use super::super::super::agent_bus::{cli_name, BUS_HINT};
 use super::super::super::agent_hooks::LEAD_HINT;
 use super::super::super::chat::{fold_entry, LiveProcess, StartError};
+use super::super::super::opencode::OpencodeLink;
 use super::super::super::EnvironmentShell;
-use super::super::{Backend, SurfaceChat, SURFACE_HARNESS};
+use super::super::{Backend, SurfaceChat};
 use super::{structured_chat, structured_mut, Batch};
 
 impl EnvironmentShell {
@@ -41,7 +42,7 @@ impl EnvironmentShell {
                 messages,
                 &ChatEntry::User {
                     text: text.clone(),
-                    preset: SURFACE_HARNESS,
+                    preset: structured.harness,
                     model: None,
                 },
             );
@@ -106,6 +107,9 @@ impl EnvironmentShell {
         let Err(error) = self.ensure_live(env, id, cx) else {
             return true;
         };
+        if matches!(error, StartError::Waiting) {
+            return false;
+        }
         if let Some(chat) = self
             .envs
             .get_mut(env)
@@ -148,7 +152,23 @@ impl EnvironmentShell {
             .get(env)
             .and_then(|live| live.data.group_of(id))
             .map(|group| group.root.clone());
-        let (runner, cwd) = self.harness_runner(SURFACE_HARNESS, root.as_deref())?;
+        let harness =
+            structured_mut(self, env, id).map_or(AgentPreset::ClaudeCode, |chat| chat.harness);
+        let (runner, cwd) = self.harness_runner(harness, root.as_deref())?;
+        let opencode = match (harness, &self.opencode.link) {
+            (AgentPreset::Opencode, _) if runner.in_wsl() => {
+                return Err(StartError::NotInWsl(harness));
+            }
+            (AgentPreset::Opencode, OpencodeLink::Ready { server, .. }) => Some(server.clone()),
+            (AgentPreset::Opencode, OpencodeLink::Failed(error)) => {
+                return Err(StartError::Opencode(error.clone()));
+            }
+            (AgentPreset::Opencode, OpencodeLink::Absent | OpencodeLink::Starting) => {
+                self.ensure_opencode(cx);
+                return Err(StartError::Waiting);
+            }
+            _ => None,
+        };
         let system_prompt = if self.orchestrates_in(env, id) {
             self.lead_hint(runner.in_wsl())
         } else {
@@ -171,10 +191,39 @@ impl EnvironmentShell {
             approvals: Approvals::Asked,
         };
         let owner = env.clone();
-        let live = LiveProcess::spawn(config, &structured.session, cx, move |shell, event, cx| {
+        let apply = move |shell: &mut Self, event, cx: &mut Context<Self>| {
             shell.apply_structured_event(&owner, id, event, cx);
-        })?;
+        };
+        let live = match opencode {
+            Some(server) => {
+                LiveProcess::spawn_opencode(server, config, &structured.session, cx, apply)
+            }
+            None => LiveProcess::spawn(config, &structured.session, cx, apply)?,
+        };
         structured.live = Some(live);
         Ok(())
+    }
+
+    pub(in crate::environment_shell) fn flush_chats_of(
+        &mut self,
+        harness: AgentPreset,
+        cx: &mut Context<Self>,
+    ) {
+        let waiting: Vec<(EnvironmentName, TerminalId)> = self
+            .envs
+            .iter()
+            .flat_map(|(env, live)| {
+                live.chats
+                    .iter()
+                    .filter(|(_, chat)| {
+                        chat.structured()
+                            .is_some_and(|structured| structured.harness == harness)
+                    })
+                    .map(move |(id, _)| (env.clone(), *id))
+            })
+            .collect();
+        for (env, id) in waiting {
+            self.flush_structured(&env, id, cx);
+        }
     }
 }

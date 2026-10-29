@@ -156,7 +156,7 @@ impl EnvironmentShell {
         session: LiveSession,
         cx: &mut Context<Self>,
     ) -> Option<TerminalId> {
-        let preset = AgentPreset::ClaudeCode;
+        let preset = self.default_chat_harness();
         let spec = NodeSpec {
             kind: NodeKind::Chat,
             harness: Some(preset),
@@ -169,6 +169,14 @@ impl EnvironmentShell {
         }
         self.settle_new_node(cx);
         Some(id)
+    }
+
+    fn default_chat_harness(&self) -> AgentPreset {
+        let installed = |preset| self.native_agents.contains(&preset);
+        if !installed(AgentPreset::ClaudeCode) && installed(AgentPreset::Opencode) {
+            return AgentPreset::Opencode;
+        }
+        AgentPreset::ClaudeCode
     }
 
     fn settle_new_node(&mut self, cx: &mut Context<Self>) {

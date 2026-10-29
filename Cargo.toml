@@ -9,6 +9,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/joordih/krad-ade"
 
 [workspace.dependencies]
+base64 = "0.22"
 futures = "0.3"
 gpui-fps = "0.7.3"
 gpui-kit = { version = "0.7.3", features = [

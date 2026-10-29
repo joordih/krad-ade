@@ -31,7 +31,7 @@ use super::chat::{ChatMessage, Composer};
 use super::EnvironmentShell;
 use outbox::Outbox;
 use subagents::Subagents;
-use transcript::TranscriptView;
+use transcript::{TranscriptView, TRANSCRIPT_HARNESS};
 
 pub(super) use answer::tool_icon;
 pub(super) use edit_diff::edit_diff;
@@ -41,7 +41,6 @@ pub(super) use structured::StructuredChat;
 
 const INPUT_ROWS: usize = 2;
 const INPUT_PLACEHOLDER: &str = "Ask anything…  @ for files, / for skills";
-const SURFACE_HARNESS: AgentPreset = AgentPreset::ClaudeCode;
 const THINKING_LABEL: &str = "Thinking";
 const WORKING_LABEL: &str = "Working";
 const MINUTE: Duration = Duration::from_mins(1);
@@ -63,9 +62,16 @@ fn new_thread() -> ListState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum SurfaceCommand {
     Stop,
-    Model(ModelId),
+    Model(AgentPreset, ModelId),
     Effort(Effort),
     ToggleThinking,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HarnessChange {
+    Kept,
+    Switched,
+    Refused,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -143,6 +149,13 @@ impl SurfaceChat {
             problem: None,
             backend,
             subagents: Subagents::default(),
+        }
+    }
+
+    pub(super) const fn harness(&self) -> AgentPreset {
+        match &self.backend {
+            Backend::Structured(structured) => structured.harness,
+            Backend::Transcript(_) => TRANSCRIPT_HARNESS,
         }
     }
 
@@ -228,7 +241,16 @@ impl EnvironmentShell {
             return;
         }
         input.update(cx, |input, cx| input.set_value("", window, cx));
-        let text = self.shared_skill_message(&text).unwrap_or(text);
+        let opencode = self
+            .envs
+            .get(&env)
+            .and_then(|live| live.chats.get(&id))
+            .is_some_and(|chat| chat.harness() == AgentPreset::Opencode);
+        let text = if opencode {
+            text
+        } else {
+            self.shared_skill_message(&text).unwrap_or(text)
+        };
         if let Some(chat) = self
             .envs
             .get_mut(&env)
@@ -295,6 +317,39 @@ impl EnvironmentShell {
         cx.notify();
     }
 
+    fn harness_change(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        command: &SurfaceCommand,
+    ) -> HarnessChange {
+        let SurfaceCommand::Model(harness, _) = command else {
+            return HarnessChange::Kept;
+        };
+        let Some(live) = self.envs.get_mut(env) else {
+            return HarnessChange::Kept;
+        };
+        let Some(SurfaceChat {
+            backend: Backend::Structured(structured),
+            messages,
+            ..
+        }) = live.chats.get_mut(&id)
+        else {
+            return HarnessChange::Kept;
+        };
+        if *harness == structured.harness {
+            return HarnessChange::Kept;
+        }
+        if !messages.is_empty() || !structured.is_fresh() {
+            return HarnessChange::Refused;
+        }
+        structured.switch_harness(*harness);
+        if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
+            node.harness = Some(*harness);
+        }
+        HarnessChange::Switched
+    }
+
     pub(super) fn command_surface(
         &mut self,
         id: TerminalId,
@@ -302,6 +357,11 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
+        match self.harness_change(&env, id, &command) {
+            HarnessChange::Refused => return,
+            HarnessChange::Switched => self.store(),
+            HarnessChange::Kept => {}
+        }
         match self
             .envs
             .get_mut(&env)

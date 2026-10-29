@@ -14,7 +14,7 @@ use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
 use super::super::EnvironmentShell;
 use super::facts::Facts;
 use super::view::{AgentNow, ROUND_BUTTON};
-use super::{SurfaceChat, SurfaceCommand, SURFACE_HARNESS, THINKING_LABEL};
+use super::{SurfaceChat, SurfaceCommand, THINKING_LABEL};
 use crate::components::{harness_icon, icon, tooltip_view, IconName};
 use crate::theme::{
     palette, row_fill, row_shadow, Palette, ICON_SM, ICON_XS, LINE_SM, LINE_XS, RADIUS_MD,
@@ -95,7 +95,7 @@ impl EnvironmentShell {
             )
             .child(Self::send_control(id, chat, now, cx))
             .children(self.suggestion_menu(Composer::Surface(id), cx));
-        let (mark, mark_color) = harness_icon(SURFACE_HARNESS, pal);
+        let (mark, mark_color) = harness_icon(chat.harness(), pal);
         let settings = div()
             .flex()
             .flex_row()
@@ -184,15 +184,27 @@ impl EnvironmentShell {
             .model
             .clone()
             .unwrap_or_else(|| MODEL_LABEL.to_owned());
-        let entries: Vec<MenuEntry> = std::iter::once(MenuEntry::Header(MODEL_LABEL.to_owned()))
-            .chain(facts.models.iter().map(|pick| {
-                MenuEntry::checked(
-                    pick.label.clone(),
-                    pick.current,
-                    MenuAction::SetModel(id, pick.id.clone()),
-                )
-            }))
-            .collect();
+        let mixed = facts.models.first().is_some_and(|first| {
+            facts
+                .models
+                .iter()
+                .any(|pick| pick.harness != first.harness)
+        });
+        let mut entries = Vec::with_capacity(facts.models.len() + 2);
+        let mut heading = None;
+        for pick in &facts.models {
+            if !mixed && heading.is_none() {
+                entries.push(MenuEntry::Header(MODEL_LABEL.to_owned()));
+            } else if mixed && heading != Some(pick.harness) {
+                entries.push(MenuEntry::Header(pick.harness.display_name().to_owned()));
+            }
+            heading = Some(pick.harness);
+            entries.push(MenuEntry::checked(
+                pick.label.clone(),
+                pick.current,
+                MenuAction::SetModel(id, pick.harness, pick.id.clone()),
+            ));
+        }
         let entries = std::rc::Rc::new(entries);
         control_pill((MODEL_PREFIX, id.as_u64()), pal)
             .tooltip(|_, cx| tooltip_view(TOOLTIP_MODEL.into(), cx))

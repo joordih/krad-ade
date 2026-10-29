@@ -1,4 +1,5 @@
 use super::*;
+use krad_domain::AgentPreset;
 
 const MISSING: &str = "No conversation found with session ID: 4f2c0b7c-a91e";
 
@@ -8,7 +9,10 @@ fn id(raw: &str) -> ResumeId {
 }
 
 fn resumed() -> StructuredChat {
-    StructuredChat::new(LiveSession::Resume(id("4f2c0b7c-a91e")))
+    StructuredChat::new(
+        LiveSession::Resume(id("4f2c0b7c-a91e")),
+        AgentPreset::ClaudeCode,
+    )
 }
 
 fn queued(text: &str) -> Outbox {
@@ -74,7 +78,10 @@ fn a_process_that_ended_owes_nothing_more() {
 
 #[test]
 fn a_reported_session_is_what_the_next_process_resumes() {
-    let mut chat = StructuredChat::new(LiveSession::Start(id("0b7c3a52-9f1e")));
+    let mut chat = StructuredChat::new(
+        LiveSession::Start(id("0b7c3a52-9f1e")),
+        AgentPreset::ClaudeCode,
+    );
     chat.session_reported(id("4f2c0b7c-a91e"));
     assert_eq!(chat.session, LiveSession::Resume(id("4f2c0b7c-a91e")));
 }
@@ -97,7 +104,10 @@ fn a_resume_of_a_missing_conversation_starts_a_new_one_once() {
 
 #[test]
 fn a_new_conversation_never_falls_back() {
-    let mut chat = StructuredChat::new(LiveSession::Start(id("0b7c3a52-9f1e")));
+    let mut chat = StructuredChat::new(
+        LiveSession::Start(id("0b7c3a52-9f1e")),
+        AgentPreset::ClaudeCode,
+    );
     assert_eq!(chat.falls_back(MISSING), None);
 }
 
@@ -130,4 +140,21 @@ fn a_bus_notice_waits_for_a_free_chat_and_never_jumps_the_queue() {
         !chat.takes_bus_notice(&Outbox::default()),
         "a turn is running"
     );
+}
+
+#[test]
+fn a_new_chat_can_move_to_another_harness_until_its_conversation_exists() {
+    let mut chat = StructuredChat::new(
+        LiveSession::Start(id("0b7c3a52-9f1e")),
+        AgentPreset::ClaudeCode,
+    );
+    chat.effort = Some(Effort::Max);
+    assert!(chat.is_fresh());
+    chat.switch_harness(AgentPreset::Opencode);
+    assert_eq!(chat.harness, AgentPreset::Opencode);
+    assert_eq!(chat.effort, None);
+    assert!(matches!(chat.session, LiveSession::Start(_)));
+    chat.session_reported(id("ses_4f2c0b7ca91e"));
+    assert!(!chat.is_fresh());
+    assert!(!resumed().is_fresh());
 }

@@ -26,6 +26,7 @@ mod menus;
 mod name_dialogs;
 mod native_alert;
 mod notes_view;
+mod opencode;
 mod palette;
 mod rename;
 mod review_view;
@@ -195,6 +196,7 @@ pub struct EnvironmentShell {
     settings: Settings,
     settings_ui: Option<settings_view::SettingsUi>,
     agent_bus: Option<agent_bus::AgentBus>,
+    opencode: opencode::Opencode,
     account_usage: surface::AccountUsage,
     context_menu: Option<context_menu::ContextMenu>,
     agent_composer: Option<agent_composer::AgentComposer>,
@@ -222,6 +224,7 @@ impl EnvironmentShell {
                         changed |= shell.apply_pump(msg);
                     }
                     shell.flush_noticed_chats(cx);
+                    shell.watch_new_opencode_terminals(cx);
                     if changed {
                         cx.notify();
                     }
@@ -289,6 +292,7 @@ impl EnvironmentShell {
             settings,
             settings_ui: None,
             agent_bus: None,
+            opencode: opencode::Opencode::default(),
             account_usage: surface::AccountUsage::default(),
             context_menu: None,
             agent_composer: None,

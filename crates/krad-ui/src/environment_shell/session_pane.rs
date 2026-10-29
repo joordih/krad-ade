@@ -539,11 +539,14 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let on_chat = self
-            .envs
-            .get(&self.active)
-            .is_some_and(|live| live.chats.contains_key(&id));
-        if on_chat {
+        let live = self.envs.get(&self.active);
+        let on_chat = live.is_some_and(|live| live.chats.contains_key(&id));
+        let opencode = live
+            .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
+            .is_some_and(|node| node.harness == Some(AgentPreset::Opencode));
+        if opencode && !on_chat {
+            self.return_to_chat(id, cx);
+        } else if on_chat {
             self.switch_to_terminal(id, cx);
         } else {
             self.switch_to_chat(id, window, cx);

@@ -1,3 +1,4 @@
+use krad_chat::{new_opencode_session_id, prepare_opencode_session, OpencodeServer};
 use krad_domain::{
     classify_agent_state, parse_wsl_path, resume_line, AgentPreset, AgentState, EnvironmentName,
     ModelId, ResumeId, ShellQuoting, TerminalId, WslPath,
@@ -9,7 +10,7 @@ use krad_session::{
 };
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -19,6 +20,9 @@ use super::EnvironmentShell;
 const SHELL_SUBMIT: &str = "\r";
 const ENGINE_FAILED_TEXT: &str = "The terminal could not start";
 const RESTORE_MARKER: &str = "── restored session ──";
+const SERVER_FLAG: &str = "--server";
+const SESSION_FLAG: &str = "--session";
+const SCROLLBACK_CLEARED: &[u8] = b"\x1b[3J";
 
 pub(super) enum Launch {
     Preset(AgentPreset),
@@ -36,6 +40,28 @@ pub(super) enum Launch {
         args: Vec<String>,
         vars: Vec<(String, String)>,
     },
+}
+
+impl Launch {
+    const fn harness(&self) -> Option<AgentPreset> {
+        match self {
+            Self::Preset(preset) | Self::Agent { preset, .. } | Self::Resume { preset, .. }
+                if preset.is_agent() =>
+            {
+                Some(*preset)
+            }
+            Self::Preset(_) | Self::Agent { .. } | Self::Resume { .. } | Self::Command { .. } => {
+                None
+            }
+        }
+    }
+
+    fn model(&self) -> Option<ModelId> {
+        match self {
+            Self::Agent { model, .. } => model.clone(),
+            Self::Preset(_) | Self::Resume { .. } | Self::Command { .. } => None,
+        }
+    }
 }
 
 struct ResolvedLaunch {
@@ -110,26 +136,11 @@ impl EnvironmentShell {
             }
         };
         engine.push_text_lines(prefill);
-        let harness = match &launch {
-            Launch::Preset(preset)
-            | Launch::Agent { preset, .. }
-            | Launch::Resume { preset, .. }
-                if preset.is_agent() =>
-            {
-                Some(*preset)
-            }
-            _ => None,
-        };
-        let leads = self
-            .envs
-            .get(env)
-            .is_some_and(|live| live.data.session_led_by(id).is_some());
-        let role = if leads {
-            AgentRole::Lead
-        } else {
-            AgentRole::Member
-        };
+        let harness = launch.harness();
+        let role = self.role_of(env, id);
         let wsl = cwd.as_deref().and_then(parse_wsl_path);
+        let model = launch.model();
+        let attached = self.opencode_attach(&launch, harness, wsl.is_some());
         let ResolvedLaunch {
             program,
             args,
@@ -139,11 +150,18 @@ impl EnvironmentShell {
         let cwd = if wsl.is_some() { None } else { cwd };
         let mut vars = self.bus_vars(env, id);
         vars.extend(extra_vars);
+        if let Some((server, _)) = &attached {
+            vars.extend(server.client_env());
+        }
         let (writer_tx, writer_rx) = channel();
         if let Some((agent, after_start)) = agent {
-            let clear = clear_screen_prefix(wsl.is_some());
-            let line = format!("{clear}{agent}{SHELL_SUBMIT}").into_bytes();
-            drop(writer_tx.send(PtyInput::Bytes(line)));
+            let typed = TypedLine {
+                agent,
+                in_wsl: wsl.is_some(),
+                cwd: cwd.clone(),
+                model,
+            };
+            type_agent_line(&writer_tx, typed, attached.as_ref());
             if let Some(prompt) = after_start {
                 self.queue_prompt(env, id, prompt);
             }
@@ -174,6 +192,9 @@ impl EnvironmentShell {
                 live.focused = Some(id);
             }
         }
+        if let Some((_, resume)) = attached {
+            self.keep_opencode_resume(env, id, resume);
+        }
         let job = SpawnJob {
             env: env.clone(),
             id,
@@ -191,6 +212,52 @@ impl EnvironmentShell {
         if let Err(error) = spawned {
             self.apply_spawn_failed(env, id, error.to_string());
         }
+    }
+
+    fn role_of(&self, env: &EnvironmentName, id: TerminalId) -> AgentRole {
+        let leads = self
+            .envs
+            .get(env)
+            .is_some_and(|live| live.data.session_led_by(id).is_some());
+        if leads {
+            AgentRole::Lead
+        } else {
+            AgentRole::Member
+        }
+    }
+
+    fn keep_opencode_resume(&mut self, env: &EnvironmentName, id: TerminalId, resume: ResumeId) {
+        if let Some(node) = self
+            .envs
+            .get_mut(env)
+            .and_then(|live| live.data.nodes.iter_mut().find(|node| node.id == id))
+        {
+            node.resume = Some(resume.clone());
+        }
+        self.note_opencode_terminal(env, id, resume);
+    }
+
+    fn opencode_attach(
+        &self,
+        launch: &Launch,
+        harness: Option<AgentPreset>,
+        in_wsl: bool,
+    ) -> Option<(Arc<OpencodeServer>, ResumeId)> {
+        if harness != Some(AgentPreset::Opencode) || in_wsl {
+            return None;
+        }
+        let server = self.opencode_server()?.clone();
+        let resume = match launch {
+            Launch::Resume {
+                resume: Some(resume),
+                ..
+            } => resume.clone(),
+            Launch::Preset(_)
+            | Launch::Agent { .. }
+            | Launch::Resume { .. }
+            | Launch::Command { .. } => new_opencode_session_id(),
+        };
+        Some((server, resume))
     }
 
     fn resolve_launch(
@@ -280,6 +347,9 @@ impl EnvironmentShell {
             return false;
         };
         session.feed(bytes);
+        if session.harness == Some(AgentPreset::Opencode) && contains(bytes, SCROLLBACK_CLEARED) {
+            session.hooked = true;
+        }
         if session.hooked {
             return true;
         }
@@ -406,4 +476,45 @@ impl EnvironmentShell {
         }
         true
     }
+}
+
+fn contains(bytes: &[u8], needle: &[u8]) -> bool {
+    bytes.windows(needle.len()).any(|window| window == needle)
+}
+
+struct TypedLine {
+    agent: String,
+    in_wsl: bool,
+    cwd: Option<PathBuf>,
+    model: Option<ModelId>,
+}
+
+fn type_agent_line(
+    writer: &Sender<PtyInput>,
+    typed: TypedLine,
+    attached: Option<&(Arc<OpencodeServer>, ResumeId)>,
+) {
+    let clear = clear_screen_prefix(typed.in_wsl);
+    let agent = match attached {
+        Some((server, resume)) => format!(
+            "{} {SERVER_FLAG} {} {SESSION_FLAG} {resume}",
+            typed.agent,
+            server.url()
+        ),
+        None => typed.agent,
+    };
+    let line = PtyInput::Bytes(format!("{clear}{agent}{SHELL_SUBMIT}").into_bytes());
+    let Some((server, resume)) = attached else {
+        drop(writer.send(line));
+        return;
+    };
+    let server = Arc::clone(server);
+    let resume = resume.clone();
+    let directory = typed.cwd.unwrap_or_default();
+    let writer = writer.clone();
+    std::thread::spawn(move || {
+        prepare_opencode_session(&server, &resume, &directory, typed.model.as_ref())
+            .unwrap_or_default();
+        drop(writer.send(line));
+    });
 }

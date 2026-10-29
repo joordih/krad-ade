@@ -12,7 +12,7 @@ use krad_domain::{AgentPreset, AskOutcome, AskVerdict, PermissionMode};
 use std::time::Duration;
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
-use super::super::surface::{edit_diff, tool_icon};
+use super::super::surface::{edit_diff, tool_icon, SurfaceChat};
 use super::super::EnvironmentShell;
 use super::picks::{offered, OTHER_LABEL};
 use super::{AskOwner, AskQueue, Choice, NotePurpose, Waiting, OFFERED_MODES};
@@ -24,7 +24,7 @@ use crate::theme::{
     TEXT_2XS, TEXT_SM, TEXT_XS,
 };
 
-const HARNESS: AgentPreset = AgentPreset::ClaudeCode;
+const DEFAULT_HARNESS: AgentPreset = AgentPreset::ClaudeCode;
 const CARD_PAD: f32 = 14.0;
 const RULE_W: f32 = 3.0;
 const PLAN_MAX_H: f32 = 320.0;
@@ -187,7 +187,8 @@ impl EnvironmentShell {
         let pal = palette(cx);
         let noting = queue.note.is_some();
         let asks_questions = matches!(waiting.ask.kind, AskKind::Questions(_));
-        let body = Self::ask_body(owner, &waiting.ask, queue, cx);
+        let harness = self.ask_harness(owner);
+        let body = Self::ask_body(owner, harness, &waiting.ask, queue, cx);
         let note = Self::note_box(owner, queue, cx);
         let buttons = Self::ask_buttons(owner, waiting, queue, cx);
         Some(
@@ -267,8 +268,20 @@ impl EnvironmentShell {
             })
     }
 
+    fn ask_harness(&self, owner: AskOwner) -> AgentPreset {
+        match owner {
+            AskOwner::Surface(id) => self
+                .envs
+                .get(&self.active)
+                .and_then(|live| live.chats.get(&id))
+                .map_or(DEFAULT_HARNESS, SurfaceChat::harness),
+            AskOwner::Chat => DEFAULT_HARNESS,
+        }
+    }
+
     fn ask_body(
         owner: AskOwner,
+        harness: AgentPreset,
         ask: &ToolAsk,
         queue: &AskQueue,
         cx: &mut Context<Self>,
@@ -286,8 +299,11 @@ impl EnvironmentShell {
                 column
                     .child(heading(
                         tool_icon(tool),
-                        PERMISSION_VERB,
-                        Some(tool),
+                        &Heading {
+                            harness,
+                            verb: PERMISSION_VERB,
+                            tool: Some(tool),
+                        },
                         queue,
                         pal,
                     ))
@@ -305,7 +321,16 @@ impl EnvironmentShell {
                     .into_any_element()
             }
             AskKind::Plan { plan } => column
-                .child(heading(IconName::Note, PLAN_VERB, None, queue, pal))
+                .child(heading(
+                    IconName::Note,
+                    &Heading {
+                        harness,
+                        verb: PLAN_VERB,
+                        tool: None,
+                    },
+                    queue,
+                    pal,
+                ))
                 .child(
                     div()
                         .id(owned_id(PLAN_PREFIX, owner, 0))
@@ -720,13 +745,19 @@ fn option_mark(row: OptionRow, pal: &Palette) -> Div {
         .child((row.index + 1).to_string())
 }
 
-fn heading(
-    glyph: IconName,
-    verb: &str,
-    tool: Option<&String>,
-    queue: &AskQueue,
-    pal: &Palette,
-) -> Div {
+#[derive(Clone, Copy)]
+struct Heading<'a> {
+    harness: AgentPreset,
+    verb: &'a str,
+    tool: Option<&'a String>,
+}
+
+fn heading(glyph: IconName, line: &Heading<'_>, queue: &AskQueue, pal: &Palette) -> Div {
+    let Heading {
+        harness,
+        verb,
+        tool,
+    } = *line;
     let count = queue.waiting.len();
     div()
         .flex()
@@ -737,7 +768,7 @@ fn heading(
         .child(
             div()
                 .text_color(rgb(pal.text_muted))
-                .child(format!("{} {verb}", HARNESS.display_name())),
+                .child(format!("{} {verb}", harness.display_name())),
         )
         .children(tool.map(|tool| div().font_weight(FontWeight::MEDIUM).child(tool.clone())))
         .child(div().flex_1())

@@ -25,7 +25,7 @@ fn suggested_ask(input: &Value, tool: &str, suggestions: &Value) -> ToolAsk {
         },
     });
     match routed(&request) {
-        Some(Routed::Ask(ask)) => ask,
+        Some(Routed::Ask(ask)) => *ask,
         other => unreachable!("a can_use_tool request, not {other:?}"),
     }
 }
