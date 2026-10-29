@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <em>Alpha: Claude Code is the only supported harness for now.</em>
+  <em>Alpha: works with Claude Code, opencode v2 and Codex.</em>
 </p>
 
 <p align="center">
@@ -28,8 +28,9 @@
 ---
 
 Krad ADE is a native desktop app to work with coding agents. Every group of yours is a folder of a
-repository, and every group holds sessions: lines of work that open on a chat with Claude Code and
-grow with shells, more Claude Code agents and files as tabs. Split a session into panes, turn its chat into an
+repository, and every group holds sessions: lines of work that open on a chat with Claude Code,
+opencode or Codex and grow with shells, more agents and files as tabs. Split a session into panes,
+turn its chat into an
 orchestrator that starts and directs other agents, and keep notes, reviews and the repository's
 changes one click away.
 
@@ -45,14 +46,23 @@ Electron.
 
 ### Sessions that start as a chat
 
-- **Chat first.** A new session opens on a chat with Claude Code: pick the model and the effort,
-  mention files with `@`, call skills with `/` and answer its permission requests in place.
+- **Chat first.** A new session opens on a chat: pick the model and the effort, mention files with
+  `@`, call skills with `/` and answer its permission requests and questions in place.
+- **Three harnesses, one picker.** The model picker groups the models of every installed harness,
+  Claude Code, opencode v2 and Codex, behind one tab each, with search and the keyboard; opencode's
+  are split into OpenCode Go, OpenCode Zen, your other providers and free models. Picking a model
+  before the first message decides which harness runs the chat.
 - **Orchestrator mode.** One switch in the composer turns a chat into the session's orchestrator:
-  it splits the work, starts Claude Code workers in terminals of the group, types instructions into them
-  and checks what they did.
-- **Claude Code, as a chat or a terminal.** Claude Code is the only harness supported in this
-  alpha; more harnesses are coming. Shells open in tabs beside the chat, and Claude Code's chat and
-  its terminal can continue each other's conversation.
+  it splits the work, starts workers in terminals of the group, types instructions into them and
+  checks what they did.
+- **As a chat or a terminal.** Terminal view turns a chat's tab into the harness's own TUI on the
+  same conversation (`claude --resume`, `opencode --session`, `codex resume`), and back. Shells open
+  in tabs beside the chat.
+- **Each harness through its own protocol.** Claude Code runs as one live stream-json process per
+  chat, opencode through a private `opencode serve` the app starts and talks to over HTTP and server
+  events, and Codex through one `codex app-server` per chat over JSON-RPC. Permission modes map to
+  each harness's own approvals, sandboxes and plan mode, and usage limits show where the harness
+  reports them.
 - **Panes and snap layouts.** Drag a tab to a half or a quarter of the view, or onto a template at
   the top, to split the session into up to four panes; drag their dividers to resize them.
 - **Live agent state.** Hooks report whether each agent is working, waiting for you or done, and
@@ -118,8 +128,10 @@ can generate documentation into it from the folders you pick.
   development headers).
 - **Windows:** the `x86_64-pc-windows-gnu` toolchain with a MinGW GCC on `PATH`.
 - `git` on `PATH` for groups, worktrees and the file tree.
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed as usual (`claude` on
-  `PATH`), the only harness supported in this alpha.
+- At least one harness installed as usual and signed in:
+  - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude` on `PATH`)
+  - [opencode](https://opencode.ai) v2 (`opencode` on `PATH`; 1.x is not supported)
+  - [Codex](https://github.com/openai/codex) (`codex` on `PATH`, `codex login`)
 
 ### Build and run
 
@@ -184,7 +196,9 @@ flowchart LR
     CLI["krad-ade-agents CLI"] -. line JSON .-> Agents
 ```
 
-A chat drives Claude Code without a terminal and renders its stream natively. A terminal is a PTY
+A chat drives its harness without a terminal and renders its stream natively: Claude Code's
+stream-json, opencode's server events or Codex's app-server notifications become the same chat
+events. A terminal is a PTY
 paired with an emulator: a dedicated thread pumps its output through a bounded channel, the
 emulator turns bytes into snapshots and the UI paints only what is on screen. Agents report their
 state through their vendor's hooks and reach each other, and the orchestrator, through a
