@@ -1,5 +1,5 @@
 use krad_agents::AgentStatus;
-use krad_chat::ModelOffer;
+use krad_chat::{ModelOffer, ModelSource};
 use krad_domain::{AgentPreset, Effort, ModelId, TerminalId};
 
 use super::super::EnvironmentShell;
@@ -18,6 +18,7 @@ pub(super) struct ModelPick {
     pub(super) label: String,
     pub(super) current: bool,
     pub(super) harness: AgentPreset,
+    pub(super) source: Option<ModelSource>,
 }
 
 pub(super) struct Facts {
@@ -44,6 +45,7 @@ fn settings_picks(
             label: model.as_str().to_owned(),
             id: model,
             harness,
+            source: None,
         })
         .collect()
 }
@@ -61,6 +63,7 @@ fn offer_picks(
                 label: offer.name.clone(),
                 current: current == Some(offer.value.as_str()),
                 harness,
+                source: offer.source.clone(),
             })
         })
         .collect()

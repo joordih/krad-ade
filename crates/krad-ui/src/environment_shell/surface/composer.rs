@@ -11,6 +11,7 @@ use std::f32::consts::{FRAC_PI_2, TAU};
 use super::super::ask::AskOwner;
 use super::super::chat::Composer;
 use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
+use super::super::model_picker::{grouped, ModelChoice};
 use super::super::EnvironmentShell;
 use super::facts::Facts;
 use super::view::{AgentNow, ROUND_BUTTON};
@@ -184,33 +185,24 @@ impl EnvironmentShell {
             .model
             .clone()
             .unwrap_or_else(|| MODEL_LABEL.to_owned());
-        let mixed = facts.models.first().is_some_and(|first| {
-            facts
-                .models
-                .iter()
-                .any(|pick| pick.harness != first.harness)
-        });
-        let mut entries = Vec::with_capacity(facts.models.len() + 2);
-        let mut heading = None;
-        for pick in &facts.models {
-            if !mixed && heading.is_none() {
-                entries.push(MenuEntry::Header(MODEL_LABEL.to_owned()));
-            } else if mixed && heading != Some(pick.harness) {
-                entries.push(MenuEntry::Header(pick.harness.display_name().to_owned()));
-            }
-            heading = Some(pick.harness);
-            entries.push(MenuEntry::checked(
-                pick.label.clone(),
-                pick.current,
-                MenuAction::SetModel(id, pick.harness, pick.id.clone()),
-            ));
-        }
-        let entries = std::rc::Rc::new(entries);
+        let groups = std::rc::Rc::new(grouped(facts.models.iter().map(|pick| {
+            (
+                pick.harness,
+                ModelChoice {
+                    id: pick.id.clone(),
+                    label: pick.label.clone(),
+                    current: pick.current,
+                    section: pick.source.clone(),
+                },
+            )
+        })));
         control_pill((MODEL_PREFIX, id.as_u64()), pal)
             .tooltip(|_, cx| tooltip_view(TOOLTIP_MODEL.into(), cx))
             .on_click(
                 cx.listener(move |this: &mut Self, event: &ClickEvent, _, cx| {
-                    this.open_menu_above(event, entries.to_vec(), cx);
+                    let at = event.position();
+                    let origin = (at.x.as_f32(), at.y.as_f32());
+                    this.open_model_picker(id, origin, groups.to_vec(), cx);
                 }),
             )
             .child(div().font_weight(FontWeight::MEDIUM).child(label))
