@@ -1,10 +1,10 @@
 use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::FocusHandle;
 use krad_agents::Response;
-use krad_chat::ToolAsk;
+use krad_chat::{AskKind, ToolAsk};
 use krad_domain::{AskOutcome, AskVerdict, ToolDecision};
 
-use super::{outcome, Note, Picks};
+use super::{outcome, Note, NotePurpose, Picks};
 
 pub(in crate::environment_shell) enum AskReply {
     Live,
@@ -69,6 +69,24 @@ impl AskQueue {
     pub(in crate::environment_shell) fn push(&mut self, waiting: Waiting) {
         self.waiting.push(waiting);
         self.claims_focus = true;
+    }
+
+    pub(super) fn other_question(&self) -> Option<String> {
+        match &self.note.as_ref()?.purpose {
+            NotePurpose::OtherAnswer { question } => Some(question.clone()),
+            NotePurpose::DenyReason | NotePurpose::PlanFeedback => None,
+        }
+    }
+
+    pub(super) fn drop_other_answer(&mut self) {
+        if self.other_question().is_some() {
+            self.note = None;
+        }
+    }
+
+    pub(in crate::environment_shell) fn blocks_typing(&self) -> bool {
+        self.front()
+            .is_some_and(|waiting| matches!(waiting.ask.kind, AskKind::Questions(_)))
     }
 
     pub(super) fn front(&self) -> Option<&Waiting> {

@@ -13,6 +13,7 @@ use crate::theme::{palette, LINE_2XS, SPACE_1, SPACE_1_5, TEXT_2XS};
 const SENT_TIMEOUT: Duration = Duration::from_secs(15);
 const HANDOFF_GRACE: Duration = Duration::from_millis(1500);
 const PENDING_OPACITY: f32 = 0.6;
+const PENDING_BUBBLE_PREFIX: &str = "surface-pending-question";
 const QUEUED_LABEL: &str = "Queued";
 const SENDING_LABEL: &str = "Sending…";
 const CANCEL_LABEL: &str = "Cancel";
@@ -113,7 +114,12 @@ impl EnvironmentShell {
             .items_end()
             .gap(px(SPACE_1))
             .opacity(PENDING_OPACITY)
-            .child(question_bubble(&outgoing.text, false, pal))
+            .child(question_bubble(
+                ElementId::Name(format!("{PENDING_BUBBLE_PREFIX}-{}-{raw}", id.as_u64()).into()),
+                &outgoing.text,
+                false,
+                pal,
+            ))
             .child(
                 div()
                     .flex()

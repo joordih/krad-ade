@@ -21,6 +21,7 @@ use crate::theme::{
 const CARD_PREFIX: &str = "surface-subagent";
 const BACK_PREFIX: &str = "surface-subagent-back";
 const THREAD_PREFIX: &str = "surface-subagent-thread";
+const SUBAGENT_BUBBLE_PREFIX: &str = "surface-subagent-question";
 const AGENT_LABEL: &str = "Agent";
 const STARTING_LABEL: &str = "Starting…";
 const BACK_LABEL: &str = "Back";
@@ -165,7 +166,10 @@ impl EnvironmentShell {
         let mut thread: Vec<AnyElement> = Vec::new();
         for (index, message) in run.map_or(&[][..], |run| &run.messages).iter().enumerate() {
             thread.push(match message.speaker {
-                Speaker::User => question_bubble(&message.text, false, pal),
+                Speaker::User => {
+                    let bubble = format!("{SUBAGENT_BUBBLE_PREFIX}-{}-{index}", tool.as_str());
+                    question_bubble(ElementId::Name(bubble.into()), &message.text, false, pal)
+                }
                 Speaker::Assistant => Self::surface_answer(id, index, message, chat, cx),
             });
         }

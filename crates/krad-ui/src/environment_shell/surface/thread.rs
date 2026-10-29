@@ -1,6 +1,8 @@
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::{div, list, px, AnyElement, Context, IntoElement, ParentElement, Styled, Window};
+use gpui_kit::{
+    div, list, px, AnyElement, Context, ElementId, IntoElement, ParentElement, Styled, Window,
+};
 use krad_chat::Speaker;
 use krad_domain::TerminalId;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -19,7 +21,9 @@ use crate::theme::palette;
 const THREAD_PAD_TOP: f32 = 20.0;
 const THREAD_PAD_BOTTOM: f32 = 28.0;
 const MESSAGE_GAP: f32 = 22.0;
+const RUNWAY_SETTLE: f32 = 0.5;
 const EARLIER_PREFIX: &str = "surface-earlier";
+const BUBBLE_PREFIX: &str = "surface-question";
 const EARLIER_LABEL: &str = "Show earlier messages";
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -31,7 +35,7 @@ enum ThreadItem {
     Pending(usize),
     Status,
     Problem,
-    Notice,
+    Runway,
 }
 
 fn thread_items(chat: &SurfaceChat, now: AgentNow) -> Vec<ThreadItem> {
@@ -51,12 +55,38 @@ fn thread_items(chat: &SurfaceChat, now: AgentNow) -> Vec<ThreadItem> {
     if chat.problem.is_some() {
         items.push(ThreadItem::Problem);
     }
-    let terminal_backed = chat.structured().is_none();
-    let waits_unseen = now == AgentNow::Waiting && chat.asks().is_empty();
-    if terminal_backed && (waits_unseen || now == AgentNow::Exited) {
-        items.push(ThreadItem::Notice);
+    if chat.pins_latest && latest_question(chat, &items).is_some() {
+        items.push(ThreadItem::Runway);
     }
     items
+}
+
+fn latest_question(chat: &SurfaceChat, items: &[ThreadItem]) -> Option<usize> {
+    items.iter().rposition(|item| match item {
+        ThreadItem::Message(index) => chat
+            .messages
+            .get(*index)
+            .is_some_and(|message| message.speaker == Speaker::User),
+        ThreadItem::Pending(_) => true,
+        _ => false,
+    })
+}
+
+fn first_question(chat: &SurfaceChat, items: &[ThreadItem]) -> Option<usize> {
+    items.iter().position(|item| match item {
+        ThreadItem::Message(index) => chat
+            .messages
+            .get(*index)
+            .is_some_and(|message| message.speaker == Speaker::User),
+        ThreadItem::Pending(_) => true,
+        _ => false,
+    })
+}
+
+fn runway_height(viewport: f32, below: Option<f32>, lead: f32, previous: f32) -> f32 {
+    below.map_or(previous, |below| {
+        (viewport - below - lead - THREAD_PAD_BOTTOM).max(0.0)
+    })
 }
 
 fn status_label(last: Option<&ChatMessage>) -> &'static str {
@@ -116,13 +146,17 @@ impl EnvironmentShell {
         let items: Rc<[ThreadItem]> = thread_items(chat, now).into();
         sync_thread(chat, &items);
         let last = items.len().saturating_sub(1);
+        let runway = Self::size_runway(chat, &items);
         list(
             chat.thread.clone(),
             cx.processor(move |this: &mut Self, index: usize, window, cx| {
-                let row = items
-                    .get(index)
-                    .and_then(|item| this.thread_row(id, *item, window, cx))
-                    .unwrap_or_else(|| div().into_any_element());
+                let row = match items.get(index) {
+                    Some(ThreadItem::Runway) => div().h(px(runway)).into_any_element(),
+                    Some(item) => this
+                        .thread_row(id, *item, window, cx)
+                        .unwrap_or_else(|| div().into_any_element()),
+                    None => div().into_any_element(),
+                };
                 div()
                     .w_full()
                     .flex()
@@ -142,6 +176,42 @@ impl EnvironmentShell {
         )
         .size_full()
         .into_any_element()
+    }
+
+    fn size_runway(chat: &SurfaceChat, items: &[ThreadItem]) -> f32 {
+        let Some(runway) = items.iter().position(|item| *item == ThreadItem::Runway) else {
+            return 0.0;
+        };
+        let Some(question) = latest_question(chat, items) else {
+            return 0.0;
+        };
+        let thread = &chat.thread;
+        if chat.lead.get().is_none() {
+            let first = first_question(chat, items);
+            let bounds = first.and_then(|first| thread.bounds_for_item(first));
+            if let (Some(first), Some(bounds), Some(top)) =
+                (first, bounds, thread.bounds_for_item(0))
+            {
+                let padded = if first == 0 { THREAD_PAD_TOP } else { 0.0 };
+                chat.lead
+                    .set(Some((bounds.origin.y - top.origin.y).as_f32() + padded));
+            }
+        }
+        let lead = chat.lead.get().unwrap_or(THREAD_PAD_TOP);
+        let below: Option<f32> = (question..runway)
+            .map(|index| {
+                thread
+                    .bounds_for_item(index)
+                    .map(|bounds| bounds.size.height.as_f32())
+            })
+            .sum();
+        let viewport = thread.viewport_bounds().size.height.as_f32();
+        let height = runway_height(viewport, below, lead, chat.runway.get());
+        if (height - chat.runway.get()).abs() > RUNWAY_SETTLE {
+            chat.runway.set(height);
+            thread.remeasure_items(runway..runway + 1);
+        }
+        height
     }
 
     fn thread_row(
@@ -166,7 +236,10 @@ impl EnvironmentShell {
             ThreadItem::Message(index) => {
                 let message = chat.messages.get(index)?;
                 match message.speaker {
-                    Speaker::User => question_bubble(&message.text, false, pal),
+                    Speaker::User => {
+                        let bubble = format!("{BUBBLE_PREFIX}-{}-{index}", id.as_u64());
+                        question_bubble(ElementId::Name(bubble.into()), &message.text, false, pal)
+                    }
                     Speaker::Assistant => Self::surface_answer(id, index, message, chat, cx),
                 }
             }
@@ -193,7 +266,7 @@ impl EnvironmentShell {
                 )
             }
             ThreadItem::Problem => error_line(chat.problem.as_deref()?, pal),
-            ThreadItem::Notice => Self::agent_notice(id, self.agent_now(id), cx)?,
+            ThreadItem::Runway => div().into_any_element(),
         })
     }
 }
@@ -201,6 +274,15 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_runway_fills_what_the_latest_question_leaves_of_the_view() {
+        let lead = 60.0;
+        let fitted = runway_height(600.0, Some(200.0), lead, 0.0);
+        assert!((fitted - (600.0 - 200.0 - lead - THREAD_PAD_BOTTOM)).abs() < f32::EPSILON);
+        assert!(runway_height(600.0, Some(900.0), lead, 120.0).abs() < f32::EPSILON);
+        assert!((runway_height(600.0, None, lead, 120.0) - 120.0).abs() < f32::EPSILON);
+    }
 
     #[test]
     fn the_rows_that_can_change_start_at_the_last_message() {

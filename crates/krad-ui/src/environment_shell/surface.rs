@@ -29,11 +29,12 @@ use std::time::{Duration, Instant, SystemTime};
 use super::ask::AskQueue;
 use super::chat::{ChatMessage, Composer};
 use super::EnvironmentShell;
+use crate::motion::Spring;
 use outbox::Outbox;
 use subagents::Subagents;
 use transcript::{TranscriptView, TRANSCRIPT_HARNESS};
 
-pub(super) use answer::tool_icon;
+pub(super) use answer::tool_question;
 pub(super) use edit_diff::edit_diff;
 pub(super) use facts::AccountUsage;
 pub(super) use structured::restored_chats;
@@ -53,6 +54,7 @@ const HOURS_UNIT: &str = "h";
 const DAYS_UNIT: &str = "d";
 const AGO: &str = "ago";
 const THREAD_OVERDRAW: f32 = 800.0;
+const GLIDE_RESPONSE_S: f32 = 0.35;
 
 fn new_thread() -> ListState {
     let thread = ListState::new(0, ListAlignment::Top, px(THREAD_OVERDRAW));
@@ -117,6 +119,10 @@ pub(super) struct SurfaceChat {
     pub(super) tool_groups: HashMap<(usize, usize), bool>,
     pub(super) thread: ListState,
     pub(super) measured_tail: Cell<u64>,
+    pub(super) pins_latest: bool,
+    pub(super) runway: Cell<f32>,
+    pub(super) lead: Cell<Option<f32>>,
+    glide: Option<Glide>,
     pub(super) working_since: Cell<Option<Instant>>,
     outbox: Outbox,
     pub(super) problem: Option<String>,
@@ -124,7 +130,44 @@ pub(super) struct SurfaceChat {
     subagents: Subagents,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct Glide {
+    spring: Spring,
+    last: Instant,
+}
+
 impl SurfaceChat {
+    fn scrolled(&self) -> f32 {
+        -self.thread.scroll_px_offset_for_scrollbar().y.as_f32()
+    }
+
+    fn start_glide(&mut self, now: Instant) {
+        self.thread.pause_following_tail();
+        self.glide = Some(Glide {
+            spring: Spring::at_rest(self.scrolled(), GLIDE_RESPONSE_S),
+            last: now,
+        });
+    }
+
+    fn advance_glide(&mut self, now: Instant) -> bool {
+        let scrolled = self.scrolled();
+        let Some(glide) = self.glide.as_mut() else {
+            return false;
+        };
+        glide
+            .spring
+            .set_target(self.thread.max_offset_for_scrollbar().y.as_f32());
+        glide.spring.step((now - glide.last).as_secs_f32());
+        glide.last = now;
+        self.thread.scroll_by(px(glide.spring.value() - scrolled));
+        if !glide.spring.is_settled() {
+            return true;
+        }
+        self.glide = None;
+        self.thread.scroll_to_end();
+        false
+    }
+
     pub(super) fn takes_bus_notice(&self) -> bool {
         self.structured()
             .is_some_and(|structured| structured.takes_bus_notice(&self.outbox))
@@ -145,6 +188,10 @@ impl SurfaceChat {
             tool_groups: HashMap::new(),
             thread: new_thread(),
             measured_tail: Cell::new(0),
+            pins_latest: false,
+            runway: Cell::new(0.0),
+            lead: Cell::new(None),
+            glide: None,
             working_since: Cell::new(None),
             outbox: Outbox::default(),
             problem: None,
@@ -234,6 +281,14 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
+        let blocked = self
+            .envs
+            .get(&env)
+            .and_then(|live| live.chats.get(&id))
+            .is_some_and(|chat| chat.asks().blocks_typing());
+        if blocked {
+            return;
+        }
         let Some(input) = self.composer_input(Composer::Surface(id)) else {
             return;
         };
@@ -259,10 +314,20 @@ impl EnvironmentShell {
         {
             chat.mentions.clear();
             chat.outbox.push(text);
-            chat.thread.scroll_to_end();
+            chat.pins_latest = true;
+            chat.start_glide(Instant::now());
         }
         self.flush_outbox(&env, id, cx);
         cx.notify();
+    }
+
+    pub(super) fn glide_chats(&mut self, now: Instant) -> bool {
+        let Some(live) = self.envs.get_mut(&self.active) else {
+            return false;
+        };
+        live.chats
+            .values_mut()
+            .fold(false, |moving, chat| chat.advance_glide(now) | moving)
     }
 
     pub(super) fn flush_noticed_chats(&mut self, cx: &mut Context<Self>) {

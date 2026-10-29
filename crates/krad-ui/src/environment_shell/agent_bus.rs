@@ -12,7 +12,7 @@ use krad_agents::{
 };
 use krad_chat::ToolAsk;
 use krad_domain::{claude_hook_settings, parse_wsl_path, AgentState, EnvironmentName, TerminalId};
-use krad_session::PtyInput;
+use krad_session::{find_program, PtyInput};
 use krad_store::config_dir;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -121,13 +121,18 @@ fn handle(env: &EnvironmentName, id: TerminalId) -> TerminalHandle {
 
 impl EnvironmentShell {
     pub(super) fn start_agent_bus(&mut self, cx: &mut Context<Self>) {
+        let cli_file = format!("{CLI_PROGRAM}{}", std::env::consts::EXE_SUFFIX);
+        let cli_dir = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(PathBuf::from))
+            .filter(|dir| dir.join(&cli_file).is_file());
+        if cli_dir.is_none() && find_program(CLI_PROGRAM).is_none() {
+            return;
+        }
         let (requests, incoming) = channel(BUS_CAPACITY);
         let Ok(endpoint) = serve(requests) else {
             return;
         };
-        let cli_dir = std::env::current_exe()
-            .ok()
-            .and_then(|exe| exe.parent().map(PathBuf::from));
         self.agent_bus = Some(AgentBus {
             endpoint,
             cli_dir,
