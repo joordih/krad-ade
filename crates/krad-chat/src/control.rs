@@ -10,7 +10,7 @@ use crate::parse::tool_summary;
 mod catalog;
 mod held;
 
-pub use catalog::{Catalog, CommandOffer, ModelOffer};
+pub use catalog::{Catalog, CommandOffer, ModelOffer, ModelSource};
 
 const ANSWERS_KEY: &str = "answers";
 const LABEL_SEPARATOR: &str = ", ";

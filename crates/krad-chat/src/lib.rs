@@ -18,8 +18,8 @@ pub use command::{
     BusVars, ChatCommand, LiveSession, Orchestration,
 };
 pub use control::{
-    Approvals, AskAnswer, AskKind, Catalog, CommandOffer, LiveEvent, ModelOffer, PickedAnswer,
-    Question, QuestionOption, ToolAsk,
+    Approvals, AskAnswer, AskKind, Catalog, CommandOffer, LiveEvent, ModelOffer, ModelSource,
+    PickedAnswer, Question, QuestionOption, ToolAsk,
 };
 pub use error::ChatError;
 pub use history::{

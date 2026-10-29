@@ -3,8 +3,8 @@ mod view;
 
 use gpui_kit::{Context, FocusHandle, Window};
 use krad_domain::{
-    AgentPreset, Effort, EnvironmentData, EnvironmentName, GroupId, ModelId, PermissionMode,
-    SessionId, TerminalId,
+    AgentPreset, Effort, EnvironmentData, EnvironmentName, GroupId, PermissionMode, SessionId,
+    TerminalId,
 };
 
 use super::ask::AskOwner;
@@ -29,7 +29,6 @@ pub(super) enum MenuAction {
     ShowSessionTab(TerminalId),
     DismissLead(SessionId),
     SetEffort(TerminalId, Effort),
-    SetModel(TerminalId, AgentPreset, ModelId),
     SetPermissionMode(AskOwner, PermissionMode),
     ContinueInTerminal(TerminalId),
     Note(super::notes_view::NoteAction),
@@ -308,9 +307,6 @@ impl EnvironmentShell {
             MenuAction::DismissLead(id) => self.dismiss_lead(id, cx),
             MenuAction::SetEffort(id, effort) => {
                 self.command_surface(id, SurfaceCommand::Effort(effort), cx);
-            }
-            MenuAction::SetModel(id, harness, model) => {
-                self.command_surface(id, SurfaceCommand::Model(harness, model), cx);
             }
             MenuAction::SetPermissionMode(owner, mode) => {
                 self.set_permission_mode(owner, mode, cx);

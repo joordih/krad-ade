@@ -23,6 +23,7 @@ mod input;
 mod layout;
 mod markdown_images;
 mod menus;
+mod model_picker;
 mod name_dialogs;
 mod native_alert;
 mod notes_view;
@@ -199,6 +200,7 @@ pub struct EnvironmentShell {
     opencode: opencode::Opencode,
     account_usage: surface::AccountUsage,
     context_menu: Option<context_menu::ContextMenu>,
+    model_picker: Option<model_picker::ModelPicker>,
     agent_composer: Option<agent_composer::AgentComposer>,
     panel_widths: layout::PanelWidths,
     chat: chat::ChatState,
@@ -295,6 +297,7 @@ impl EnvironmentShell {
             opencode: opencode::Opencode::default(),
             account_usage: surface::AccountUsage::default(),
             context_menu: None,
+            model_picker: None,
             agent_composer: None,
             panel_widths: layout::PanelWidths::default(),
             chat: chat::ChatState::default(),

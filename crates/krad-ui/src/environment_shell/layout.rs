@@ -243,6 +243,7 @@ impl Render for EnvironmentShell {
         self.ensure_chat_sessions(cx);
         self.sync_session_panes();
         self.sync_menu_focus(window, cx);
+        self.sync_model_picker_focus(window, cx);
         self.sync_ask_focus(window, cx);
         self.sync_terminal_images(window);
         self.probe_review(cx);
@@ -299,6 +300,7 @@ impl Render for EnvironmentShell {
             .children(self.docs_generate_sheet(cx))
             .children(self.delete_file_dialog(cx))
             .children(self.context_menu_overlay(window, cx))
+            .children(self.model_picker_overlay(window, cx))
             .children(self.name_dialog_sheet(cx))
             .child(self.close_dialog(cx));
         let root = if self.fps_hud.is_visible() {

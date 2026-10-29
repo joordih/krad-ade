@@ -3,6 +3,14 @@ use serde::Deserialize;
 
 use super::each_entry;
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ModelSource {
+    OpencodeGo,
+    OpencodeZen,
+    Provider(String),
+    Free,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(from = "ModelOfferLine")]
 pub struct ModelOffer {
@@ -11,6 +19,7 @@ pub struct ModelOffer {
     pub description: Option<String>,
     pub efforts: Vec<Effort>,
     pub thinking_off: bool,
+    pub source: Option<ModelSource>,
 }
 
 #[derive(Deserialize)]
@@ -37,6 +46,7 @@ impl From<ModelOfferLine> for ModelOffer {
                 .filter_map(|level| level.parse().ok())
                 .collect(),
             thinking_off: line.supports_thinking_off,
+            source: None,
         }
     }
 }
