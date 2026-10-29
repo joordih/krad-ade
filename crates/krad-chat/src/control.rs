@@ -87,11 +87,30 @@ pub enum AskKind {
     },
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct FormSlot {
+    pub(crate) key: String,
+    pub(crate) many: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Responder {
+    ClaudeCode,
+    OpencodePermission {
+        session: String,
+    },
+    OpencodeForm {
+        session: String,
+        slots: Vec<FormSlot>,
+    },
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ToolAsk {
-    request_id: String,
-    input: Value,
-    suggestions: Vec<Value>,
+    pub(crate) request_id: String,
+    pub(crate) input: Value,
+    pub(crate) suggestions: Vec<Value>,
+    pub(crate) responder: Responder,
     pub kind: AskKind,
 }
 
@@ -161,7 +180,7 @@ enum IncomingResponse {
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum Routed {
-    Ask(ToolAsk),
+    Ask(Box<ToolAsk>),
     Ready(Catalog),
     Control,
     Conversation(Value),
@@ -176,7 +195,9 @@ pub(crate) fn route(line: &str, init_id: &str) -> Option<Routed> {
         IncomingLine::ControlRequest {
             request_id,
             request,
-        } => tool_ask(request_id, request).map_or(Routed::Control, Routed::Ask),
+        } => {
+            tool_ask(request_id, request).map_or(Routed::Control, |ask| Routed::Ask(Box::new(ask)))
+        }
         IncomingLine::ControlResponse {
             response:
                 IncomingResponse::Success {
@@ -239,6 +260,7 @@ fn ask_of(
         request_id,
         input,
         suggestions,
+        responder: Responder::ClaudeCode,
         kind,
     }
 }

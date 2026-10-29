@@ -29,7 +29,7 @@ pub(super) enum MenuAction {
     ShowSessionTab(TerminalId),
     DismissLead(SessionId),
     SetEffort(TerminalId, Effort),
-    SetModel(TerminalId, ModelId),
+    SetModel(TerminalId, AgentPreset, ModelId),
     SetPermissionMode(AskOwner, PermissionMode),
     ContinueInTerminal(TerminalId),
     Note(super::notes_view::NoteAction),
@@ -309,8 +309,8 @@ impl EnvironmentShell {
             MenuAction::SetEffort(id, effort) => {
                 self.command_surface(id, SurfaceCommand::Effort(effort), cx);
             }
-            MenuAction::SetModel(id, model) => {
-                self.command_surface(id, SurfaceCommand::Model(model), cx);
+            MenuAction::SetModel(id, harness, model) => {
+                self.command_surface(id, SurfaceCommand::Model(harness, model), cx);
             }
             MenuAction::SetPermissionMode(owner, mode) => {
                 self.set_permission_mode(owner, mode, cx);

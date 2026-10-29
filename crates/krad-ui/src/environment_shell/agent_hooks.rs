@@ -84,6 +84,7 @@ impl EnvironmentShell {
         role: AgentRole,
     ) -> Option<(String, Option<String>)> {
         let mut line = self.settings.launch_line(preset)?;
+        let model = model.filter(|_| preset != AgentPreset::Opencode);
         if let (Some(model), Some(flag)) = (model, preset.model_flag()) {
             line = format!("{line} {flag} {model}");
         }

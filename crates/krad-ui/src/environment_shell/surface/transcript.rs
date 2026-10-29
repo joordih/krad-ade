@@ -3,15 +3,16 @@ use krad_chat::{
     claude_conversation_file, read_claude_transcript, read_claude_transcript_tail, SlashCommand,
     Speaker, TranscriptChunk,
 };
-use krad_domain::{AgentState, ChatEntry, EnvironmentName, ResumeId, TerminalId};
+use krad_domain::{AgentPreset, AgentState, ChatEntry, EnvironmentName, ResumeId, TerminalId};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
 use super::super::ask::AskQueue;
 use super::super::chat::{fold_entry, workplace_home, ChatMessage, Composer};
 use super::super::EnvironmentShell;
-use super::{view, Backend, Origin, SurfaceChat, SurfaceCommand, SURFACE_HARNESS};
+use super::{view, Backend, Origin, SurfaceChat, SurfaceCommand};
 
+pub(super) const TRANSCRIPT_HARNESS: AgentPreset = AgentPreset::ClaudeCode;
 const TAIL_INTERVAL: Duration = Duration::from_millis(400);
 const FIRST_LOOK_BYTES: u64 = 2 * 1024 * 1024;
 const NO_HOME_TEXT: &str = "Cannot find the home folder Claude Code keeps conversations in";
@@ -119,7 +120,7 @@ fn open_answer() -> ChatMessage {
         text: String::new(),
         tools: Vec::new(),
         parts: Vec::new(),
-        preset: SURFACE_HARNESS,
+        preset: TRANSCRIPT_HARNESS,
         error: None,
         running: true,
     }
@@ -238,7 +239,7 @@ impl EnvironmentShell {
             SurfaceCommand::ToggleThinking => {
                 self.type_into_terminal(env, id, THINKING_TOGGLE.to_vec());
             }
-            SurfaceCommand::Model(model) => {
+            SurfaceCommand::Model(_, model) => {
                 let slash = SlashCommand::Model(model.clone());
                 self.submit_text_into(env, id, &slash.to_string());
             }

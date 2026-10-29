@@ -9,7 +9,8 @@ use krad_chat::{
     SlashCommand,
 };
 use krad_domain::{
-    AgentState, ChatEntry, Effort, EnvironmentName, ModelId, PermissionMode, ResumeId, TerminalId,
+    AgentPreset, AgentState, ChatEntry, Effort, EnvironmentName, ModelId, PermissionMode, ResumeId,
+    TerminalId,
 };
 use std::time::Instant;
 
@@ -38,6 +39,7 @@ impl Batch {
 }
 
 pub(in crate::environment_shell) struct StructuredChat {
+    pub(in crate::environment_shell) harness: AgentPreset,
     pub(super) live: Option<LiveProcess>,
     pub(super) session: LiveSession,
     fell_back: bool,
@@ -45,7 +47,7 @@ pub(in crate::environment_shell) struct StructuredChat {
     outstanding: usize,
     pub(in crate::environment_shell) asks: AskQueue,
     pub(in crate::environment_shell) permission_mode: Option<PermissionMode>,
-    pub(super) catalog: Option<Catalog>,
+    pub(in crate::environment_shell) catalog: Option<Catalog>,
     pub(super) model: Option<String>,
     pub(super) chosen_model: Option<ModelId>,
     pub(super) effort: Option<Effort>,
@@ -58,8 +60,9 @@ pub(in crate::environment_shell) struct StructuredChat {
 }
 
 impl StructuredChat {
-    fn new(session: LiveSession) -> Self {
+    fn new(session: LiveSession, harness: AgentPreset) -> Self {
         Self {
+            harness,
             live: None,
             session,
             fell_back: false,
@@ -78,6 +81,23 @@ impl StructuredChat {
             working: false,
             earlier: None,
         }
+    }
+
+    pub(super) fn is_fresh(&self) -> bool {
+        self.session.history().is_none()
+            && self.outstanding == 0
+            && !self.live.as_ref().is_some_and(|live| live.confirmed)
+    }
+
+    pub(super) fn switch_harness(&mut self, harness: AgentPreset) {
+        self.harness = harness;
+        self.live = None;
+        self.catalog = None;
+        self.model = None;
+        self.effort = None;
+        self.context_tokens = None;
+        self.context_window = None;
+        self.session = LiveSession::Start(new_session_id());
     }
 
     pub(super) fn context_used(&self) -> Option<u16> {
@@ -160,7 +180,7 @@ impl StructuredChat {
                     live.interrupt();
                 }
             }
-            SurfaceCommand::Model(model) => {
+            SurfaceCommand::Model(_, model) => {
                 if let Some(live) = self.live() {
                     live.set_model(&model);
                 }

@@ -3642,10 +3642,12 @@ dependencies = [
 name = "krad-chat"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "krad-domain",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "ureq",
 ]
 
 [[package]]

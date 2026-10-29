@@ -18,7 +18,10 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        let model = structured_mut(self, &env, id).and_then(|chat| chat.chosen_model.clone());
+        let (harness, model) = structured_mut(self, &env, id)
+            .map_or((AgentPreset::ClaudeCode, None), |chat| {
+                (chat.harness, chat.chosen_model.clone())
+            });
         let Some(live) = self.envs.get_mut(&env) else {
             return;
         };
@@ -45,7 +48,7 @@ impl EnvironmentShell {
             .is_some_and(|lead| lead.terminal == Some(id));
         session.lead = (!leads).then(|| SessionLead {
             terminal: Some(id),
-            ..SessionLead::new(AgentPreset::ClaudeCode, model)
+            ..SessionLead::new(harness, model)
         });
         if let Some(chat) = structured_mut(self, &env, id) {
             if let Some(resume) = resume {
