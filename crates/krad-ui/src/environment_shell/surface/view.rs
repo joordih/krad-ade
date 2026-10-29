@@ -1,26 +1,26 @@
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, relative, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement,
-    ListState, ParentElement, ScrollHandle, SharedString, StatefulInteractiveElement, Styled,
+    div, px, relative, rgb, AnyElement, Context, ElementId, FontWeight, InteractiveElement,
+    IntoElement, ListState, ParentElement, ScrollHandle, SharedString, StatefulInteractiveElement,
+    Styled,
 };
 use krad_domain::{AgentState, TerminalId};
 use std::time::{Instant, SystemTime};
 
-use super::super::ask::AskOwner;
+use super::super::ask::{tray, tray_button, AskOwner};
 use super::super::sidebar::PanelReveal;
 use super::super::EnvironmentShell;
 use super::dot_field::dot_field;
 use super::{age_label, Opener, Origin, SurfaceChat};
-use crate::components::{icon, thinking_indicator, tooltip_view, Button, ButtonVariant, IconName};
+use crate::components::{icon, thinking_indicator, tooltip_view, IconName};
 use crate::theme::{
-    floating_shadow, palette, Palette, ICON, ICON_SM, ICON_XS, LINE_XS, RADIUS_MD, SPACE_1_5,
-    SPACE_2, SPACE_3, TEXT_XS,
+    floating_shadow, palette, Palette, ICON, ICON_XS, LINE_XS, SPACE_1_5, SPACE_2, SPACE_3, TEXT_XS,
 };
 
 const COLUMN_MAX_W: f32 = 760.0;
+const TRAY_INSET: f32 = SPACE_3;
 const COLUMN_PAD_X: f32 = 24.0;
-pub(super) const NOTICE_RULE_W: f32 = 3.0;
 pub(super) const ROUND_BUTTON: f32 = 30.0;
 const DOWN_BUTTON_OFFSET: f32 = 12.0;
 const BOTTOM_SLACK: f32 = 24.0;
@@ -31,9 +31,9 @@ const TOOLTIP_DOWN: &str = "Jump to the latest";
 const FROM_LEAD: &str = "From Lead";
 const FROM_USER: &str = "From you";
 const ORIGIN_SEPARATOR: &str = " · ";
-const WAITING_TEXT: &str = "Claude Code is asking you something in the terminal.";
+const WAITING_TEXT: &str = "is asking you something in the terminal.";
 const OPEN_TERMINAL_LABEL: &str = "Open terminal";
-const EXITED_TEXT: &str = "The agent's terminal has exited.";
+const EXITED_TEXT: &str = "The agent's terminal has closed.";
 pub(super) const LOADING_TEXT: &str = "Reading the conversation…";
 
 impl Origin {
@@ -243,8 +243,22 @@ impl EnvironmentShell {
                         .children(banner)
                         .children(question)
                         .child(
-                            self.ask_panel(AskOwner::Surface(id), cx)
-                                .unwrap_or_else(|| self.surface_composer(id, chat, cx)),
+                            div()
+                                .relative()
+                                .w_full()
+                                .children(
+                                    self.ask_tray(AskOwner::Surface(id), cx)
+                                        .or_else(|| self.agent_notice(id, chat, cx))
+                                        .map(|tray| {
+                                            div()
+                                                .absolute()
+                                                .left(px(TRAY_INSET))
+                                                .right(px(TRAY_INSET))
+                                                .bottom(relative(1.0))
+                                                .child(tray)
+                                        }),
+                                )
+                                .child(self.surface_composer(id, chat, cx)),
                         ),
                 ),
             )
@@ -252,47 +266,50 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    pub(super) fn agent_notice(
+    fn agent_notice(
+        &self,
         id: TerminalId,
-        now: AgentNow,
+        chat: &SurfaceChat,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let pal = palette(cx);
+        let now = self.agent_now(id);
+        let terminal_backed = chat.structured().is_none();
+        let waits_unseen = now == AgentNow::Waiting && chat.asks().is_empty();
+        if !terminal_backed {
+            return None;
+        }
         let text = match now {
-            AgentNow::Waiting => WAITING_TEXT,
-            AgentNow::Exited => EXITED_TEXT,
-            AgentNow::Idle | AgentNow::Working => return None,
+            AgentNow::Waiting if waits_unseen => {
+                format!("{} {WAITING_TEXT}", chat.harness().display_name())
+            }
+            AgentNow::Exited => EXITED_TEXT.to_owned(),
+            AgentNow::Waiting | AgentNow::Idle | AgentNow::Working => return None,
         };
+        let pal = palette(cx);
+        let open = ElementId::Name(format!("{OPEN_TERMINAL_PREFIX}-{}", id.as_u64()).into());
         Some(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(SPACE_3))
-                .px(px(SPACE_3))
-                .py(px(SPACE_2))
-                .rounded(px(RADIUS_MD))
-                .bg(rgb(pal.bg_panel))
-                .border_l(px(NOTICE_RULE_W))
-                .border_color(rgb(pal.attention))
-                .text_size(px(TEXT_XS))
-                .line_height(px(LINE_XS))
-                .text_color(rgb(pal.attention_text))
-                .child(icon(IconName::Terminal, ICON_SM, pal.attention_text))
-                .child(div().flex_1().min_w_0().child(text))
+            tray(pal)
                 .child(
-                    Button::new(SharedString::from(format!(
-                        "{OPEN_TERMINAL_PREFIX}-{}",
-                        id.as_u64()
-                    )))
-                    .label(OPEN_TERMINAL_LABEL)
-                    .small()
-                    .variant(ButtonVariant::Secondary)
-                    .on_click(cx.listener(
-                        move |this: &mut Self, _, _, cx| {
-                            this.switch_to_terminal(id, cx);
-                        },
-                    )),
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(SPACE_2))
+                        .child(icon(IconName::Terminal, ICON, pal.text_muted))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .text_color(rgb(pal.text_default))
+                                .child(text),
+                        )
+                        .child(
+                            tray_button(open, true, pal)
+                                .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                                    this.switch_to_terminal(id, cx);
+                                }))
+                                .child(OPEN_TERMINAL_LABEL),
+                        ),
                 )
                 .into_any_element(),
         )

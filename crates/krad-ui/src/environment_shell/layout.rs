@@ -1,4 +1,5 @@
 use gpui_fps::fps_monitor;
+use gpui_kit::base::TextSelectionLayer;
 use gpui_kit::{
     canvas, div, px, rgb, AnyElement, Context, DispatchPhase, InteractiveElement, IntoElement,
     MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Render, Styled, Window,
@@ -254,6 +255,7 @@ impl Render for EnvironmentShell {
             | self.sync_activity(now)
             | self.pane_drag.advance(now)
             | self.sync_chat_landings(now)
+            | self.glide_chats(now)
             | self.tick_arcade(now)
         {
             window.request_animation_frame();
@@ -289,6 +291,7 @@ impl Render for EnvironmentShell {
             .size_full()
             .relative()
             .text_color(rgb(pal.text_default))
+            .child(TextSelectionLayer)
             .child(match self.settings_page(cx) {
                 Some(settings) => settings,
                 None => self.workspace_row(view, window, cx),

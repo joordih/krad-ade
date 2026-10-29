@@ -1,8 +1,9 @@
 mod composer;
 mod suggestions;
 
+use gpui_kit::base::SelectableText;
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::{div, px, relative, rgb, AnyElement, IntoElement, ParentElement, Styled};
+use gpui_kit::{div, px, relative, rgb, AnyElement, ElementId, IntoElement, ParentElement, Styled};
 
 use crate::theme::{Palette, RADIUS_LG, SPACE_0_5, SPACE_3, TEXT_SM, TEXT_XS};
 
@@ -14,6 +15,7 @@ const BUBBLE_LINE_H: f32 = 19.0;
 const QUEUED_LABEL: &str = "Queued";
 
 pub(in crate::environment_shell) fn question_bubble(
+    id: ElementId,
     text: &str,
     queued: bool,
     pal: &Palette,
@@ -34,7 +36,7 @@ pub(in crate::environment_shell) fn question_bubble(
                 .text_size(px(TEXT_SM))
                 .line_height(px(BUBBLE_LINE_H))
                 .text_color(rgb(pal.text_strong))
-                .child(text.to_owned()),
+                .child(SelectableText::new(id, text.to_owned())),
         )
         .when(queued, |bubble| {
             bubble.child(

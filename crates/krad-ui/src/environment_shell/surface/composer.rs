@@ -88,11 +88,11 @@ impl EnvironmentShell {
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
         let field = Self::suggestion_keys(field, Composer::Surface(id), cx)
             .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .py(px(SPACE_1))
-                    .child(Textarea::new(&chat.input).appearance(false)),
+                div().flex_1().min_w_0().py(px(SPACE_1)).child(
+                    Textarea::new(&chat.input)
+                        .appearance(false)
+                        .disabled(chat.asks().blocks_typing()),
+                ),
             )
             .child(Self::send_control(id, chat, now, cx))
             .children(self.suggestion_menu(Composer::Surface(id), cx));

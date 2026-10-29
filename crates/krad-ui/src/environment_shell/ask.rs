@@ -16,11 +16,11 @@ use super::surface::{StructuredChat, SurfaceChat};
 use super::EnvironmentShell;
 pub(super) use picks::Picks;
 pub(super) use queue::{AskQueue, AskReply, Waiting};
-pub(super) use view::ask_line;
+pub(super) use view::{ask_line, tray, tray_button};
 
 const DENIED_TEXT: &str = "The user declined this";
 const KEEP_PLANNING_TEXT: &str = "The user wants to keep planning";
-const REASON_PLACEHOLDER: &str = "Tell Claude what to do instead";
+const REASON_PLACEHOLDER: &str = "Tell the agent what to do instead";
 const FEEDBACK_PLACEHOLDER: &str = "What should the plan change?";
 const OTHER_PLACEHOLDER: &str = "Your own answer";
 const NOTE_ROWS: usize = 2;
@@ -439,6 +439,7 @@ impl EnvironmentShell {
         let Some(queue) = self.ask_queue_mut(owner) else {
             return;
         };
+        queue.drop_other_answer();
         if let Some((questions, asked)) = front_question(&queue.waiting, question) {
             queue.picks.pick_in(&questions, &asked, label);
         }
@@ -446,6 +447,7 @@ impl EnvironmentShell {
     }
 
     fn show_question(&mut self, owner: AskOwner, step: usize, cx: &mut Context<Self>) {
+        self.keep_other_answer(owner, cx);
         let Some(queue) = self.ask_queue_mut(owner) else {
             return;
         };
@@ -458,7 +460,28 @@ impl EnvironmentShell {
         cx.notify();
     }
 
+    fn keep_other_answer(&mut self, owner: AskOwner, cx: &mut Context<Self>) {
+        let Some(queue) = self.ask_queue_mut(owner) else {
+            return;
+        };
+        let Some(question) = queue.other_question() else {
+            return;
+        };
+        let typed = queue
+            .note
+            .as_ref()
+            .map(|note| note.input.read(cx).value().trim().to_owned());
+        queue.drop_other_answer();
+        if let (Some(typed), Some((questions, asked))) = (
+            typed.filter(|typed| !typed.is_empty()),
+            front_question(&queue.waiting, &question),
+        ) {
+            queue.picks.pick_in(&questions, &asked, &typed);
+        }
+    }
+
     fn next_question(&mut self, owner: AskOwner, cx: &mut Context<Self>) {
+        self.keep_other_answer(owner, cx);
         let Some(queue) = self.ask_queue(owner) else {
             return;
         };

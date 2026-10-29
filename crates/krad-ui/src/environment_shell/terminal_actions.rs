@@ -1,3 +1,4 @@
+use gpui_kit::base::TextSelection;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, ClipboardItem, Context, IntoElement, ParentElement, Styled, Window,
@@ -46,9 +47,13 @@ impl EnvironmentShell {
     pub(super) fn on_copy_selection(
         &mut self,
         _: &CopySelection,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let chosen = TextSelection::selected_text(window, cx).trim().to_owned();
+        if !chosen.is_empty() {
+            return Self::copy_text(Some(chosen), cx);
+        }
         if !self.settings.copy_mode.copies_on_shortcut() {
             return;
         }

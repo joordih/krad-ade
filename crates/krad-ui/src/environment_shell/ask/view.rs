@@ -7,31 +7,30 @@ use gpui_kit::{
     Div, ElementId, FontWeight, InteractiveElement, IntoElement, KeyDownEvent, MouseButton,
     ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
-use krad_chat::{AskKind, Question, QuestionOption, ToolAsk};
-use krad_domain::{AgentPreset, AskOutcome, AskVerdict, PermissionMode};
+use krad_chat::{AskKind, Question, QuestionOption};
+use krad_domain::{AskOutcome, AskVerdict, PermissionMode};
 use std::time::Duration;
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
-use super::super::surface::{edit_diff, tool_icon, SurfaceChat};
+use super::super::surface::{edit_diff, tool_question};
 use super::super::EnvironmentShell;
 use super::picks::{offered, OTHER_LABEL};
 use super::{AskOwner, AskQueue, Choice, NotePurpose, Waiting, OFFERED_MODES};
 use crate::actions::{AskConfirm, AskDeny, ASK_KEY_CONTEXT};
 use crate::components::{check_box, icon, tooltip_view, Button, ButtonVariant, IconName};
 use crate::theme::{
-    card_shadow, palette, Palette, ICON_SM, ICON_XS, LINE_2XS, LINE_SM, LINE_XS, RADIUS_LG,
-    RADIUS_MD, RADIUS_SM, RADIUS_XL, RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3,
-    TEXT_2XS, TEXT_SM, TEXT_XS,
+    palette, Palette, ICON, ICON_XS, LINE_2XS, LINE_SM, LINE_XS, RADIUS_LG, RADIUS_MD, RADIUS_SM,
+    RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3, TEXT_2XS, TEXT_SM, TEXT_XS,
 };
 
-const DEFAULT_HARNESS: AgentPreset = AgentPreset::ClaudeCode;
-const CARD_PAD: f32 = 14.0;
-const RULE_W: f32 = 3.0;
+const DETAIL_MAX_H: f32 = 160.0;
+const TRAY_TUCK: f32 = 14.0;
+const TRAY_BUTTON_H: f32 = 28.0;
+const DIVIDER_H: f32 = 1.0;
+const PRIMARY_HOVER_OPACITY: f32 = 0.9;
 const PLAN_MAX_H: f32 = 320.0;
 const MODE_CONTROL_H: f32 = 24.0;
 const NUMBER_BADGE: f32 = 18.0;
-const STEP_TAB_H: f32 = 24.0;
-const DISABLED_OPACITY: f32 = 0.5;
 const STEP_ENTER: Duration = Duration::from_millis(180);
 const ROWS_PER_STEP: usize = 100;
 const NUMBER_KEYS: std::ops::RangeInclusive<usize> = 1..=9;
@@ -45,29 +44,32 @@ const DENY_PREFIX: &str = "ask-deny";
 const NOTE_SEND_PREFIX: &str = "ask-note-send";
 const PLAN_PREFIX: &str = "ask-plan";
 const STEP_PREFIX: &str = "ask-step";
-const STEP_TAB_PREFIX: &str = "ask-step-tab";
 const PREVIOUS_PREFIX: &str = "ask-previous";
 const MODE_PREFIX: &str = "ask-mode";
 const CHAT_KEY: &str = "chat";
 
-const PERMISSION_VERB: &str = "wants to use";
-const PLAN_VERB: &str = "has a plan";
+const PLAN_QUESTION: &str = "Approve this plan?";
+const DETAIL_PREFIX: &str = "ask-detail";
 const COUNT_SEPARATOR: &str = " of ";
-const ALLOW_LABEL: &str = "Allow";
-const ALLOW_ALWAYS_LABEL: &str = "Allow, don't ask again";
+const ALLOW_LABEL: &str = "Allow once";
+const ALLOW_ALWAYS_LABEL: &str = "Always allow";
 const DENY_LABEL: &str = "Deny…";
+const DENY_SHORT_LABEL: &str = "Deny";
+const APPROVE_LABEL: &str = "Approve";
+const APPROVE_AUTO_LABEL: &str = "Approve in auto mode";
+const APPROVE_MANUALLY_LABEL: &str = "Approve, ask before edits";
+const KEEP_PLANNING_SHORT_LABEL: &str = "Keep planning";
 const ACCEPT_EDITS_LABEL: &str = "Yes, and accept edits";
 const AUTO_LABEL: &str = "Yes, and use auto mode";
 const MANUAL_LABEL: &str = "Yes, approve edits by hand";
 const KEEP_PLANNING_LABEL: &str = "No, keep planning…";
 const OTHER_PLACEHOLDER: &str = "Enter your custom answer here";
 const SKIP_TOOLTIP: &str = "Skip the questions";
-const STEP_LABEL: &str = "Step";
-const PREVIOUS_LABEL: &str = "Previous";
+const SKIP_LABEL: &str = "Skip";
+const PREVIOUS_LABEL: &str = "Back";
 const NEXT_LABEL: &str = "Next";
 const SUBMIT_LABEL: &str = "Submit";
 const SEND_LABEL: &str = "Send";
-const KEYS_HINT: &str = "Number keys pick, Enter confirms, Esc stops";
 const NOTE_HINT: &str = "Enter sends";
 const TOOLTIP_MODE: &str = "Permission mode";
 const MODE_HEADER: &str = "Permission mode";
@@ -96,6 +98,18 @@ impl Choice {
             Self::ApproveAuto => AUTO_LABEL,
             Self::ApproveManually => MANUAL_LABEL,
             Self::KeepPlanning => KEEP_PLANNING_LABEL,
+        }
+    }
+
+    const fn tray_label(self) -> &'static str {
+        match self {
+            Self::Allow => ALLOW_LABEL,
+            Self::AllowAlways => ALLOW_ALWAYS_LABEL,
+            Self::Deny => DENY_SHORT_LABEL,
+            Self::ApproveAcceptingEdits => APPROVE_LABEL,
+            Self::ApproveAuto => APPROVE_AUTO_LABEL,
+            Self::ApproveManually => APPROVE_MANUALLY_LABEL,
+            Self::KeepPlanning => KEEP_PLANNING_SHORT_LABEL,
         }
     }
 }
@@ -177,7 +191,7 @@ fn number_key(event: &KeyDownEvent) -> Option<usize> {
 }
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn ask_panel(
+    pub(in crate::environment_shell) fn ask_tray(
         &self,
         owner: AskOwner,
         cx: &mut Context<Self>,
@@ -185,60 +199,100 @@ impl EnvironmentShell {
         let queue = self.ask_queue(owner)?;
         let waiting = queue.front()?;
         let pal = palette(cx);
-        let noting = queue.note.is_some();
-        let asks_questions = matches!(waiting.ask.kind, AskKind::Questions(_));
-        let harness = self.ask_harness(owner);
-        let body = Self::ask_body(owner, harness, &waiting.ask, queue, cx);
-        let note = Self::note_box(owner, queue, cx);
-        let buttons = Self::ask_buttons(owner, waiting, queue, cx);
-        Some(
-            Self::ask_card(owner, queue, asks_questions, cx)
-                .child(body)
-                .children(note)
-                .child(buttons)
-                .when(!noting, |card| {
-                    card.child(
-                        div()
-                            .text_size(px(TEXT_XS))
-                            .line_height(px(LINE_XS))
-                            .text_color(rgb(pal.text_subtle))
-                            .child(KEYS_HINT),
+        let mono = cx.theme().mono_font_family.clone();
+        let (question, detail) = match &waiting.ask.kind {
+            AskKind::Questions(questions) => {
+                return Some(Self::question_tray(owner, questions, queue, cx));
+            }
+            AskKind::Permission {
+                tool,
+                summary,
+                title,
+                edit,
+            } => {
+                let detail = match edit {
+                    Some(edit) => edit_diff(edit, &mono, pal),
+                    None => div()
+                        .id(owned_id(DETAIL_PREFIX, owner, 0))
+                        .max_h(px(DETAIL_MAX_H))
+                        .overflow_y_scroll()
+                        .flex()
+                        .flex_col()
+                        .gap(px(SPACE_1))
+                        .child(
+                            div()
+                                .font_family(mono)
+                                .text_color(rgb(pal.text_strong))
+                                .child(summary.clone()),
+                        )
+                        .children(title.clone().map(|title| {
+                            div()
+                                .text_size(px(TEXT_XS))
+                                .line_height(px(LINE_XS))
+                                .text_color(rgb(pal.text_muted))
+                                .child(title)
+                        }))
+                        .into_any_element(),
+                };
+                (tool_question(tool), detail)
+            }
+            AskKind::Plan { plan } => (
+                PLAN_QUESTION.into(),
+                div()
+                    .id(owned_id(PLAN_PREFIX, owner, 0))
+                    .max_h(px(PLAN_MAX_H))
+                    .overflow_y_scroll()
+                    .child(
+                        TextView::markdown(owned_id(PLAN_PREFIX, owner, 1), plan.clone())
+                            .selectable(true),
                     )
-                })
+                    .into_any_element(),
+            ),
+        };
+        let count = queue.waiting.len();
+        let header = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(SPACE_2))
+            .child(icon(IconName::Lock, ICON, pal.text_muted))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_color(rgb(pal.text_default))
+                    .child(question),
+            )
+            .when(count > 1, |line| {
+                line.child(
+                    div()
+                        .flex_none()
+                        .text_size(px(TEXT_XS))
+                        .text_color(rgb(pal.text_muted))
+                        .child(format!("1{COUNT_SEPARATOR}{count}")),
+                )
+            })
+            .children(Self::tray_buttons(owner, waiting, cx));
+        let note = Self::note_box(owner, queue, cx);
+        Some(
+            Self::ask_keys(owner, queue, tray(pal), cx)
+                .child(header)
+                .child(div().h(px(DIVIDER_H)).bg(pal.divider))
+                .child(detail)
+                .children(note)
                 .into_any_element(),
         )
     }
 
-    fn ask_card(
+    fn ask_keys(
         owner: AskOwner,
         queue: &AskQueue,
-        asks_questions: bool,
+        shell: Div,
         cx: &mut Context<Self>,
     ) -> gpui_kit::Stateful<Div> {
-        let pal = palette(cx);
-        let card = div()
+        let shell = shell
             .id(owned_id(CARD_PREFIX, owner, 0))
-            .flex()
-            .flex_col()
-            .flex_none()
-            .gap(px(SPACE_2))
-            .p(px(CARD_PAD))
-            .when(asks_questions, |card| {
-                card.rounded(px(RADIUS_XL))
-                    .bg(rgb(pal.bg_surface))
-                    .border_1()
-                    .border_color(pal.divider)
-                    .shadow(card_shadow(pal))
-            })
-            .when(!asks_questions, |card| {
-                card.rounded(px(RADIUS_MD))
-                    .bg(rgb(pal.bg_panel))
-                    .border_l(px(RULE_W))
-                    .border_color(rgb(pal.attention))
-            })
-            .text_size(px(TEXT_SM))
-            .line_height(px(LINE_SM))
-            .text_color(rgb(pal.text_strong))
             .key_context(ASK_KEY_CONTEXT)
             .on_action(
                 cx.listener(move |this: &mut Self, _: &AskConfirm, window, cx| {
@@ -260,90 +314,135 @@ impl EnvironmentShell {
                 }),
             );
         let Some(focus) = queue.focus.clone() else {
-            return card;
+            return shell;
         };
-        card.track_focus(&focus)
+        shell
+            .track_focus(&focus)
             .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                window.focus(&focus, cx);
+                if !focus.contains_focused(window, cx) {
+                    window.focus(&focus, cx);
+                }
             })
     }
 
-    fn ask_harness(&self, owner: AskOwner) -> AgentPreset {
-        match owner {
-            AskOwner::Surface(id) => self
-                .envs
-                .get(&self.active)
-                .and_then(|live| live.chats.get(&id))
-                .map_or(DEFAULT_HARNESS, SurfaceChat::harness),
-            AskOwner::Chat => DEFAULT_HARNESS,
-        }
+    fn tray_buttons(owner: AskOwner, waiting: &Waiting, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let pal = palette(cx);
+        let choices = Choice::of_waiting(waiting);
+        let last = choices.len().saturating_sub(1);
+        choices
+            .into_iter()
+            .enumerate()
+            .rev()
+            .map(|(index, choice)| {
+                let key = format!("{} ({})", choice.label(), index + 1);
+                tray_button(owned_id(CHOICE_PREFIX, owner, index), index == 0, pal)
+                    .when(index == last && last > 0, |button| button.ml(px(SPACE_1)))
+                    .tooltip(move |_, cx| tooltip_view(key.clone().into(), cx))
+                    .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                        this.choose(owner, choice, window, cx);
+                    }))
+                    .child(choice.tray_label())
+                    .into_any_element()
+            })
+            .collect()
     }
 
-    fn ask_body(
+    fn question_tray(
         owner: AskOwner,
-        harness: AgentPreset,
-        ask: &ToolAsk,
+        questions: &[Question],
         queue: &AskQueue,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let column = div().flex().flex_col().gap(px(SPACE_1_5));
-        match &ask.kind {
-            AskKind::Permission {
-                tool,
-                summary,
-                title,
-                edit,
-            } => {
-                let mono = cx.theme().mono_font_family.clone();
-                column
-                    .child(heading(
-                        tool_icon(tool),
-                        &Heading {
-                            harness,
-                            verb: PERMISSION_VERB,
-                            tool: Some(tool),
-                        },
-                        queue,
-                        pal,
-                    ))
-                    .children(title.clone().map(|title| div().child(title)))
-                    .when(!summary.is_empty(), |body| {
-                        body.child(
-                            div()
-                                .font_family(mono.clone())
-                                .text_size(px(TEXT_XS))
-                                .text_color(rgb(pal.text_default))
-                                .child(summary.clone()),
-                        )
-                    })
-                    .children(edit.as_ref().map(|edit| edit_diff(edit, &mono, pal)))
-                    .into_any_element()
-            }
-            AskKind::Plan { plan } => column
-                .child(heading(
-                    IconName::Note,
-                    &Heading {
-                        harness,
-                        verb: PLAN_VERB,
-                        tool: None,
-                    },
-                    queue,
-                    pal,
-                ))
-                .child(
+        let count = questions.len();
+        let step = queue.picks.step(count);
+        let Some(question) = questions.get(step) else {
+            return div().into_any_element();
+        };
+        let mut rows: Vec<AnyElement> = offered(question)
+            .enumerate()
+            .map(|(index, option)| {
+                let row = OptionRow {
+                    owner,
+                    step,
+                    index,
+                    multi: question.multi_select,
+                    on: queue.picks.is_picked(&question.text, &option.label),
+                };
+                Self::option_row(row, &question.text, option, cx)
+            })
+            .collect();
+        let own = OptionRow {
+            owner,
+            step,
+            index: rows.len(),
+            multi: question.multi_select,
+            on: queue.picks.own_answer(question).is_some(),
+        };
+        rows.push(Self::own_answer_row(own, question, queue, cx));
+        let last = step + 1 >= count;
+        let header = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(SPACE_2))
+            .child(icon(IconName::Chat, ICON, pal.text_muted))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_color(rgb(pal.text_default))
+                    .child(question.text.clone()),
+            )
+            .when(count > 1, |line| {
+                line.child(
                     div()
-                        .id(owned_id(PLAN_PREFIX, owner, 0))
-                        .max_h(px(PLAN_MAX_H))
-                        .overflow_y_scroll()
-                        .child(
-                            TextView::markdown(owned_id(PLAN_PREFIX, owner, 1), plan.clone())
-                                .selectable(true),
-                        ),
+                        .flex_none()
+                        .text_size(px(TEXT_XS))
+                        .text_color(rgb(pal.text_muted))
+                        .child(format!("{}{COUNT_SEPARATOR}{count}", step + 1)),
                 )
-                .into_any_element(),
-            AskKind::Questions(questions) => Self::question_step(owner, questions, queue, cx),
-        }
+            })
+            .child(
+                tray_button(owned_id(DENY_PREFIX, owner, 0), false, pal)
+                    .tooltip(|_, cx| tooltip_view(SKIP_TOOLTIP.into(), cx))
+                    .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                        this.open_note(owner, NotePurpose::DenyReason, window, cx);
+                    }))
+                    .child(SKIP_LABEL),
+            )
+            .when(step > 0, |line| {
+                line.child(
+                    tray_button(owned_id(PREVIOUS_PREFIX, owner, 0), false, pal)
+                        .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                            this.show_question(owner, step.saturating_sub(1), cx);
+                        }))
+                        .child(PREVIOUS_LABEL),
+                )
+            })
+            .child(
+                tray_button(owned_id(SUBMIT_PREFIX, owner, 0), true, pal)
+                    .ml(px(SPACE_1))
+                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                        this.next_question(owner, cx);
+                    }))
+                    .child(if last { SUBMIT_LABEL } else { NEXT_LABEL }),
+            );
+        let shown = Animation::new(STEP_ENTER).with_easing(ease_out_quint());
+        let note = Self::note_box(owner, queue, cx);
+        Self::ask_keys(owner, queue, tray(pal), cx)
+            .child(header)
+            .child(div().h(px(DIVIDER_H)).bg(pal.divider))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(SPACE_0_5))
+                    .children(rows)
+                    .with_animation(owned_id(STEP_PREFIX, owner, step), shown, Styled::opacity),
+            )
+            .children(note)
+            .into_any_element()
     }
 
     fn note_box(owner: AskOwner, queue: &AskQueue, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -378,116 +477,6 @@ impl EnvironmentShell {
                 )
                 .into_any_element(),
         )
-    }
-
-    fn ask_buttons(
-        owner: AskOwner,
-        waiting: &Waiting,
-        queue: &AskQueue,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let row = div().flex().flex_row().flex_wrap().gap(px(SPACE_2));
-        if let AskKind::Questions(questions) = &waiting.ask.kind {
-            return Self::question_footer(owner, questions, queue, cx);
-        }
-        let choices = Choice::of_waiting(waiting);
-        row.children(choices.into_iter().enumerate().map(|(index, choice)| {
-            let number = index + 1;
-            Button::new(owned_id(CHOICE_PREFIX, owner, index))
-                .label(format!("{number}  {}", choice.label()))
-                .small()
-                .variant(if index == 0 {
-                    ButtonVariant::Primary
-                } else {
-                    ButtonVariant::Secondary
-                })
-                .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
-                    this.choose(owner, choice, window, cx);
-                }))
-        }))
-        .into_any_element()
-    }
-
-    fn question_step(
-        owner: AskOwner,
-        questions: &[Question],
-        queue: &AskQueue,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let pal = palette(cx);
-        let step = queue.picks.step(questions.len());
-        let Some(question) = questions.get(step) else {
-            return div().into_any_element();
-        };
-        let mut rows: Vec<AnyElement> = offered(question)
-            .enumerate()
-            .map(|(index, option)| {
-                let row = OptionRow {
-                    owner,
-                    step,
-                    index,
-                    multi: question.multi_select,
-                    on: queue.picks.is_picked(&question.text, &option.label),
-                };
-                Self::option_row(row, &question.text, option, cx)
-            })
-            .collect();
-        let own = OptionRow {
-            owner,
-            step,
-            index: rows.len(),
-            multi: question.multi_select,
-            on: queue.picks.own_answer(question).is_some(),
-        };
-        rows.push(Self::own_answer_row(own, question, queue, cx));
-        let shown = Animation::new(STEP_ENTER).with_easing(ease_out_quint());
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(SPACE_2))
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_start()
-                    .gap(px(SPACE_2))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .pt(px(SPACE_0_5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(question.text.clone()),
-                    )
-                    .when(queue.waiting.len() > 1, |line| {
-                        line.child(
-                            div()
-                                .flex_none()
-                                .pt(px(SPACE_0_5))
-                                .text_size(px(TEXT_XS))
-                                .text_color(rgb(pal.text_muted))
-                                .child(format!("1{COUNT_SEPARATOR}{}", queue.waiting.len())),
-                        )
-                    })
-                    .child(
-                        Button::new(owned_id(DENY_PREFIX, owner, 0))
-                            .icon(IconName::Close)
-                            .small()
-                            .tooltip(SKIP_TOOLTIP)
-                            .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
-                                this.open_note(owner, NotePurpose::DenyReason, window, cx);
-                            })),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(SPACE_1_5))
-                    .children(rows)
-                    .with_animation(owned_id(STEP_PREFIX, owner, step), shown, Styled::opacity),
-            )
-            .into_any_element()
     }
 
     fn option_row(
@@ -563,77 +552,6 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    fn question_footer(
-        owner: AskOwner,
-        questions: &[Question],
-        queue: &AskQueue,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let pal = palette(cx);
-        let count = questions.len();
-        let step = queue.picks.step(count);
-        let several = count > 1;
-        let last = step + 1 >= count;
-        let steps = questions.iter().enumerate().map(|(index, question)| {
-            let current = index == step;
-            let name = question
-                .header
-                .clone()
-                .unwrap_or_else(|| format!("{STEP_LABEL} {}", index + 1));
-            div()
-                .id(owned_id(STEP_TAB_PREFIX, owner, index))
-                .flex()
-                .items_center()
-                .h(px(STEP_TAB_H))
-                .px(px(SPACE_2))
-                .rounded(px(RADIUS_SM))
-                .cursor_pointer()
-                .text_size(px(TEXT_XS))
-                .text_color(rgb(if current { pal.accent } else { pal.text_muted }))
-                .when(current, |tab| tab.bg(pal.bg_selected))
-                .when(!current, |tab| {
-                    tab.hover(|style| style.text_color(rgb(pal.text_default)))
-                })
-                .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                    this.show_question(owner, index, cx);
-                }))
-                .child(name)
-        });
-        let previous = Button::new(owned_id(PREVIOUS_PREFIX, owner, 0))
-            .label(PREVIOUS_LABEL)
-            .small()
-            .variant(ButtonVariant::Secondary)
-            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                this.show_question(owner, step.saturating_sub(1), cx);
-            }));
-        div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(SPACE_1))
-            .when(several, |footer| footer.children(steps))
-            .child(div().flex_1())
-            .when(several, |footer| {
-                footer.child(
-                    div()
-                        .when(step == 0, |back| back.opacity(DISABLED_OPACITY).occlude())
-                        .child(previous),
-                )
-            })
-            .child(
-                div().pl(px(SPACE_1)).child(
-                    Button::new(owned_id(SUBMIT_PREFIX, owner, 0))
-                        .label(if last { SUBMIT_LABEL } else { NEXT_LABEL })
-                        .small()
-                        .variant(ButtonVariant::Primary)
-                        .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                            this.next_question(owner, cx);
-                        })),
-                ),
-            )
-            .into_any_element()
-    }
-
     pub(in crate::environment_shell) fn mode_control(
         &self,
         owner: AskOwner,
@@ -706,18 +624,13 @@ fn option_shell(row: OptionRow, prefix: &str, pal: &Palette) -> gpui_kit::Statef
         .flex_row()
         .items_center()
         .gap(px(SPACE_3))
-        .px(px(SPACE_3))
-        .py(px(SPACE_2))
-        .rounded(px(RADIUS_LG))
-        .border_1()
+        .px(px(SPACE_2))
+        .py(px(SPACE_1_5))
+        .rounded(px(RADIUS_SM))
         .cursor_pointer()
-        .when(row.on, |option| {
-            option.border_color(rgb(pal.accent)).bg(pal.bg_selected)
-        })
+        .when(row.on, |option| option.bg(pal.bg_selected))
         .when(!row.on, |option| {
-            option
-                .border_color(pal.divider)
-                .hover(|style| style.bg(pal.bg_hover))
+            option.hover(|style| style.bg(pal.bg_hover))
         })
 }
 
@@ -745,39 +658,49 @@ fn option_mark(row: OptionRow, pal: &Palette) -> Div {
         .child((row.index + 1).to_string())
 }
 
-#[derive(Clone, Copy)]
-struct Heading<'a> {
-    harness: AgentPreset,
-    verb: &'a str,
-    tool: Option<&'a String>,
-}
-
-fn heading(glyph: IconName, line: &Heading<'_>, queue: &AskQueue, pal: &Palette) -> Div {
-    let Heading {
-        harness,
-        verb,
-        tool,
-    } = *line;
-    let count = queue.waiting.len();
+pub(in crate::environment_shell) fn tray(pal: &Palette) -> Div {
     div()
         .flex()
-        .flex_row()
+        .flex_col()
+        .flex_none()
+        .gap(px(SPACE_2))
+        .mb(px(-TRAY_TUCK))
+        .px(px(SPACE_3))
+        .pt(px(SPACE_2))
+        .pb(px(TRAY_TUCK + SPACE_2))
+        .rounded_t(px(RADIUS_LG))
+        .bg(rgb(pal.bg_panel))
+        .border_1()
+        .border_color(pal.divider)
+        .text_size(px(TEXT_SM))
+        .line_height(px(LINE_SM))
+        .text_color(rgb(pal.text_strong))
+}
+
+pub(in crate::environment_shell) fn tray_button(
+    id: ElementId,
+    primary: bool,
+    pal: &Palette,
+) -> gpui_kit::Stateful<Div> {
+    div()
+        .id(id)
+        .flex()
+        .flex_none()
         .items_center()
-        .gap(px(SPACE_1_5))
-        .child(icon(glyph, ICON_SM, pal.attention_text))
-        .child(
-            div()
+        .h(px(TRAY_BUTTON_H))
+        .px(px(if primary { SPACE_3 } else { SPACE_2 }))
+        .rounded(px(RADIUS_MD))
+        .cursor_pointer()
+        .when(primary, |button| {
+            button
+                .bg(rgb(pal.text_strong))
+                .text_color(rgb(pal.bg_surface))
+                .font_weight(FontWeight::MEDIUM)
+                .hover(|style| style.opacity(PRIMARY_HOVER_OPACITY))
+        })
+        .when(!primary, |button| {
+            button
                 .text_color(rgb(pal.text_muted))
-                .child(format!("{} {verb}", harness.display_name())),
-        )
-        .children(tool.map(|tool| div().font_weight(FontWeight::MEDIUM).child(tool.clone())))
-        .child(div().flex_1())
-        .when(count > 1, |line| {
-            line.child(
-                div()
-                    .text_size(px(TEXT_XS))
-                    .text_color(rgb(pal.text_muted))
-                    .child(format!("1{COUNT_SEPARATOR}{count}")),
-            )
+                .hover(|style| style.text_color(rgb(pal.text_strong)))
         })
 }
