@@ -194,11 +194,14 @@ impl EnvironmentShell {
         let apply = move |shell: &mut Self, event, cx: &mut Context<Self>| {
             shell.apply_structured_event(&owner, id, event, cx);
         };
-        let live = match opencode {
-            Some(server) => {
+        let live = match (opencode, harness) {
+            (Some(server), _) => {
                 LiveProcess::spawn_opencode(server, config, &structured.session, cx, apply)
             }
-            None => LiveProcess::spawn(config, &structured.session, cx, apply)?,
+            (None, AgentPreset::Codex) => {
+                LiveProcess::spawn_codex(config, &structured.session, cx, apply)
+            }
+            (None, _) => LiveProcess::spawn(config, &structured.session, cx, apply)?,
         };
         structured.live = Some(live);
         Ok(())

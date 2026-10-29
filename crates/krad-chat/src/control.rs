@@ -4,6 +4,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
 use std::borrow::Cow;
 
+use crate::codex::{CodexAsk, RpcId};
 use crate::edits::file_edit;
 use crate::parse::tool_summary;
 
@@ -29,11 +30,18 @@ where
         .collect())
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PlanUsage {
+    pub five_hour: Option<u16>,
+    pub seven_day: Option<u16>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum LiveEvent {
     Chat(ChatEvent),
-    Ask(ToolAsk),
+    Ask(Box<ToolAsk>),
     Ready(Catalog),
+    Usage(PlanUsage),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -102,6 +110,10 @@ pub(crate) enum Responder {
     OpencodeForm {
         session: String,
         slots: Vec<FormSlot>,
+    },
+    Codex {
+        id: RpcId,
+        ask: CodexAsk,
     },
 }
 

@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::codex::{spawn_codex, CodexChat, Order as CodexOrder};
 use crate::command::{live_chat_command, BusVars, LiveSession, Orchestration};
 use crate::control::{
     answer_line, initialize_line, interrupt_line, route, set_model_line, set_permission_mode_line,
@@ -158,6 +159,7 @@ impl ClaudeProcess {
 enum Engine {
     Claude(ClaudeProcess),
     Opencode(OpencodeChat),
+    Codex(CodexChat),
 }
 
 pub struct LiveChat {
@@ -172,6 +174,9 @@ impl LiveChat {
             Engine::Opencode(opencode) => {
                 opencode.order(Order::Answer(Box::new(ask.clone()), answer.clone()));
             }
+            Engine::Codex(codex) => {
+                codex.order(CodexOrder::Answer(Box::new(ask.clone()), answer.clone()));
+            }
         }
     }
 
@@ -179,6 +184,7 @@ impl LiveChat {
         match &self.engine {
             Engine::Claude(claude) => claude.write(interrupt_line(&claude.request_id())),
             Engine::Opencode(opencode) => opencode.order(Order::Interrupt),
+            Engine::Codex(codex) => codex.order(CodexOrder::Interrupt),
         }
     }
 
@@ -186,6 +192,7 @@ impl LiveChat {
         match &self.engine {
             Engine::Claude(claude) => claude.write(set_model_line(&claude.request_id(), model)),
             Engine::Opencode(opencode) => opencode.order(Order::Model(model.clone())),
+            Engine::Codex(codex) => codex.order(CodexOrder::Model(model.clone())),
         }
     }
 
@@ -195,6 +202,7 @@ impl LiveChat {
                 claude.write(set_permission_mode_line(&claude.request_id(), mode));
             }
             Engine::Opencode(opencode) => opencode.order(Order::Mode(mode)),
+            Engine::Codex(codex) => codex.order(CodexOrder::Mode(mode)),
         }
     }
 
@@ -207,7 +215,13 @@ impl LiveChat {
             (Engine::Opencode(opencode), SlashCommand::Effort(effort)) => {
                 opencode.order(Order::Effort(*effort));
             }
-            (Engine::Opencode(_), SlashCommand::Thinking(_)) => {}
+            (Engine::Codex(codex), SlashCommand::Model(model)) => {
+                codex.order(CodexOrder::Model(model.clone()));
+            }
+            (Engine::Codex(codex), SlashCommand::Effort(effort)) => {
+                codex.order(CodexOrder::Effort(*effort));
+            }
+            (Engine::Opencode(_) | Engine::Codex(_), SlashCommand::Thinking(_)) => {}
         }
     }
 
@@ -215,6 +229,7 @@ impl LiveChat {
         match &self.engine {
             Engine::Claude(claude) => claude.send(prompt),
             Engine::Opencode(opencode) => opencode.order(Order::Send(prompt.to_owned())),
+            Engine::Codex(codex) => codex.order(CodexOrder::Send(prompt.to_owned())),
         }
     }
 
@@ -223,12 +238,15 @@ impl LiveChat {
         match &self.engine {
             Engine::Claude(claude) => !claude.exited.load(Ordering::SeqCst),
             Engine::Opencode(opencode) => opencode.is_alive(),
+            Engine::Codex(codex) => codex.is_alive(),
         }
     }
 
     pub fn stop(&self) {
-        if let Engine::Claude(claude) = &self.engine {
-            claude.stop();
+        match &self.engine {
+            Engine::Claude(claude) => claude.stop(),
+            Engine::Codex(codex) => codex.stop(),
+            Engine::Opencode(_) => {}
         }
     }
 }
@@ -237,6 +255,16 @@ impl Drop for LiveChat {
     fn drop(&mut self) {
         self.stop();
     }
+}
+
+#[must_use]
+pub fn spawn_codex_chat(
+    config: LiveConfig,
+    session: &LiveSession,
+    sink: impl FnMut(LiveEvent) + Send + 'static,
+) -> LiveChat {
+    let engine = Engine::Codex(spawn_codex(config.clone(), session, sink));
+    LiveChat { config, engine }
 }
 
 #[must_use]
@@ -337,7 +365,7 @@ pub fn spawn_live_chat(
 fn route_line(line: &str, init_id: &str, pending: &AtomicUsize, sink: &mut impl FnMut(LiveEvent)) {
     let value = match route(line, init_id) {
         None | Some(Routed::Control) => return,
-        Some(Routed::Ask(ask)) => return sink(LiveEvent::Ask(*ask)),
+        Some(Routed::Ask(ask)) => return sink(LiveEvent::Ask(ask)),
         Some(Routed::Ready(catalog)) => return sink(LiveEvent::Ready(catalog)),
         Some(Routed::Conversation(value)) => value,
     };

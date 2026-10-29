@@ -19,6 +19,7 @@ mod environment_order;
 mod file_tab;
 mod file_tree;
 mod groups;
+mod harness_models;
 mod input;
 mod layout;
 mod markdown_images;
@@ -198,6 +199,7 @@ pub struct EnvironmentShell {
     settings_ui: Option<settings_view::SettingsUi>,
     agent_bus: Option<agent_bus::AgentBus>,
     opencode: opencode::Opencode,
+    harness_models: harness_models::HarnessModels,
     account_usage: surface::AccountUsage,
     context_menu: Option<context_menu::ContextMenu>,
     model_picker: Option<model_picker::ModelPicker>,
@@ -295,6 +297,7 @@ impl EnvironmentShell {
             settings_ui: None,
             agent_bus: None,
             opencode: opencode::Opencode::default(),
+            harness_models: harness_models::HarnessModels::default(),
             account_usage: surface::AccountUsage::default(),
             context_menu: None,
             model_picker: None,

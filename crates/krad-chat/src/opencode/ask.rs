@@ -177,7 +177,7 @@ fn to_body(body: &impl Serialize) -> Value {
 
 pub(crate) fn reply(ask: &ToolAsk, answer: &AskAnswer) -> Option<Reply> {
     match &ask.responder {
-        Responder::ClaudeCode => None,
+        Responder::ClaudeCode | Responder::Codex { .. } => None,
         Responder::OpencodePermission { session } => {
             let (decision, message) = match answer {
                 AskAnswer::AllowAlways => (Decision::Always, None),

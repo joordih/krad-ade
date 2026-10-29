@@ -250,9 +250,11 @@ impl Translator {
 
     pub(crate) fn translate(&mut self, event: &ServerEvent, nested: bool) -> Vec<LiveEvent> {
         match event {
-            ServerEvent::PermissionAsked(asked) => vec![LiveEvent::Ask(permission_ask(asked))],
+            ServerEvent::PermissionAsked(asked) => {
+                vec![LiveEvent::Ask(Box::new(permission_ask(asked)))]
+            }
             ServerEvent::FormCreated(created) => form_ask(&created.form)
-                .map(LiveEvent::Ask)
+                .map(|ask| LiveEvent::Ask(Box::new(ask)))
                 .into_iter()
                 .collect(),
             _ if nested => Vec::new(),
@@ -329,7 +331,7 @@ mod tests {
             .into_iter()
             .filter_map(|event| match event {
                 LiveEvent::Chat(event) => Some(event),
-                LiveEvent::Ask(_) | LiveEvent::Ready(_) => None,
+                LiveEvent::Ask(_) | LiveEvent::Ready(_) | LiveEvent::Usage(_) => None,
             })
             .collect()
     }

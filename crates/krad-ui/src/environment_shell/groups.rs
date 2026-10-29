@@ -208,6 +208,7 @@ impl EnvironmentShell {
             this.update(cx, |shell, cx| {
                 shell.native_agents = installed;
                 shell.ensure_opencode(cx);
+                shell.list_harness_models(cx);
                 cx.notify();
             })
             .unwrap_or_default();

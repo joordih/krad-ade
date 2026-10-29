@@ -28,6 +28,7 @@ const INPUT_PREVIEW_KEYS: [&str; 5] = ["command", "file_path", "pattern", "url",
 const CODEX_TYPE_KEY: &str = "type";
 const CODEX_MESSAGE_KEY: &str = "last-assistant-message";
 const CODEX_TITLE_KEY: &str = "title";
+const CODEX_THREAD_KEY: &str = "thread-id";
 const EXIT_OK: i32 = 0;
 
 #[must_use]
@@ -204,7 +205,10 @@ fn codex_request(payload: &str) -> Option<Request> {
         event: value.get(CODEX_TYPE_KEY)?.as_str()?.to_owned(),
         tool: None,
         detail: message.map(preview),
-        resume: None,
+        resume: value
+            .get(CODEX_THREAD_KEY)
+            .and_then(Value::as_str)
+            .map(str::to_owned),
     })
 }
 
@@ -338,11 +342,11 @@ mod tests {
             Some(Request::Hook { tool: Some(source), resume: Some(id), .. })
                 if source == "resume" && id == "0b7c3a52-9f1e"
         ));
-        let codex = r#"{"type":"agent-turn-complete","last-assistant-message":"All tests pass."}"#;
+        let codex = r#"{"type":"agent-turn-complete","thread-id":"01a18999-1b58","last-assistant-message":"All tests pass."}"#;
         assert!(matches!(
             codex_request(codex),
-            Some(Request::Hook { event, detail: Some(detail), .. })
-                if event == "agent-turn-complete" && detail == "All tests pass."
+            Some(Request::Hook { event, detail: Some(detail), resume: Some(thread), .. })
+                if event == "agent-turn-complete" && detail == "All tests pass." && thread == "01a18999-1b58"
         ));
         let title =
             r#"{"type":"agent-turn-complete","last-assistant-message":"{\"title\":\"Run echo\"}"}"#;

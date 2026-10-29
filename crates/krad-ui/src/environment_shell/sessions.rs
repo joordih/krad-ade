@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use super::agent_hooks::AgentRole;
+use super::surface::reopens_as_chat;
 use super::EnvironmentShell;
 
 const SHELL_SUBMIT: &str = "\r";
@@ -347,7 +348,7 @@ impl EnvironmentShell {
             return false;
         };
         session.feed(bytes);
-        if session.harness == Some(AgentPreset::Opencode) && contains(bytes, SCROLLBACK_CLEARED) {
+        if reopens_as_chat(session.harness) && contains(bytes, SCROLLBACK_CLEARED) {
             session.hooked = true;
         }
         if session.hooked {

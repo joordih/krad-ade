@@ -1,3 +1,4 @@
+mod codex;
 mod command;
 mod control;
 mod edits;
@@ -5,6 +6,7 @@ mod error;
 mod history;
 mod live;
 mod message;
+mod models;
 mod opencode;
 mod parse;
 mod process;
@@ -13,13 +15,14 @@ mod skills;
 mod subagents;
 mod turn;
 
+pub use codex::{codex_models, read_codex_transcript, CodexError};
 pub use command::{
     chat_command, live_chat_command, supports_chat, supports_live_chat, supports_orchestration,
     BusVars, ChatCommand, LiveSession, Orchestration,
 };
 pub use control::{
     Approvals, AskAnswer, AskKind, Catalog, CommandOffer, LiveEvent, ModelOffer, ModelSource,
-    PickedAnswer, Question, QuestionOption, ToolAsk,
+    PickedAnswer, PlanUsage, Question, QuestionOption, ToolAsk,
 };
 pub use error::ChatError;
 pub use history::{
@@ -28,10 +31,11 @@ pub use history::{
 };
 pub use krad_domain::{ChatEvent, Effort, ToolCall, ToolUseId};
 pub use live::{
-    is_missing_conversation, new_session_id, spawn_live_chat, spawn_opencode_chat, LiveChat,
-    LiveConfig, MessageQueue,
+    is_missing_conversation, new_session_id, spawn_codex_chat, spawn_live_chat,
+    spawn_opencode_chat, LiveChat, LiveConfig, MessageQueue,
 };
 pub use message::SlashCommand;
+pub use models::claude_models;
 pub use opencode::{
     new_opencode_session_id, opencode_models, prepare_opencode_session, read_opencode_transcript,
     watch_opencode_session, OpencodeError, OpencodeServer,

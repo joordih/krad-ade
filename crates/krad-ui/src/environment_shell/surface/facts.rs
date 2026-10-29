@@ -145,7 +145,28 @@ impl StructuredChat {
     }
 }
 
+const CHAT_HARNESSES: [AgentPreset; 3] = [
+    AgentPreset::ClaudeCode,
+    AgentPreset::Opencode,
+    AgentPreset::Codex,
+];
+
 impl EnvironmentShell {
+    fn harness_offers(&self, harness: AgentPreset) -> Option<&[ModelOffer]> {
+        let offers = match harness {
+            AgentPreset::Opencode => self.opencode_models(),
+            other => self.harness_models.of(other),
+        };
+        (!offers.is_empty()).then_some(offers)
+    }
+
+    fn harness_picks(&self, harness: AgentPreset) -> Vec<ModelPick> {
+        match self.harness_offers(harness) {
+            Some(offers) => offer_picks(offers, None, harness),
+            None => settings_picks(self.settings.models(harness), None, harness),
+        }
+    }
+
     pub(super) fn composer_facts(&self, id: TerminalId, chat: &SurfaceChat) -> Facts {
         let claude_models = self.settings.models(AgentPreset::ClaudeCode);
         match &chat.backend {
@@ -159,29 +180,33 @@ impl EnvironmentShell {
                 transcript_facts(status, claude_models, self.account_usage)
             }
             Backend::Structured(structured) => {
+                let harness = structured.harness;
                 let fresh = chat.messages.is_empty() && structured.is_fresh();
-                let opencode = self.opencode_models();
-                let offered = match structured.harness {
-                    AgentPreset::Opencode => Offered {
-                        fallback: Some(opencode),
-                        settings: Vec::new(),
-                        others: if fresh {
-                            settings_picks(claude_models, None, AgentPreset::ClaudeCode)
-                        } else {
-                            Vec::new()
-                        },
-                    },
-                    _ => Offered {
-                        fallback: None,
-                        settings: claude_models,
-                        others: if fresh {
-                            offer_picks(opencode, None, AgentPreset::Opencode)
-                        } else {
-                            Vec::new()
-                        },
-                    },
+                let others = if fresh {
+                    CHAT_HARNESSES
+                        .into_iter()
+                        .filter(|other| *other != harness && self.native_agents.contains(other))
+                        .flat_map(|other| self.harness_picks(other))
+                        .collect()
+                } else {
+                    Vec::new()
                 };
-                structured.facts(offered, self.account_usage)
+                let offered = Offered {
+                    fallback: self.harness_offers(harness),
+                    settings: if harness == AgentPreset::ClaudeCode {
+                        claude_models
+                    } else {
+                        Vec::new()
+                    },
+                    others,
+                };
+                let usage = structured
+                    .usage
+                    .map_or(self.account_usage, |usage| AccountUsage {
+                        five_hour: usage.five_hour,
+                        seven_day: usage.seven_day,
+                    });
+                structured.facts(offered, usage)
             }
         }
     }

@@ -38,6 +38,7 @@ pub(super) use edit_diff::edit_diff;
 pub(super) use facts::AccountUsage;
 pub(super) use structured::restored_chats;
 pub(super) use structured::StructuredChat;
+pub(super) use switch::reopens_as_chat;
 
 const INPUT_ROWS: usize = 2;
 const INPUT_PLACEHOLDER: &str = "Ask anything…  @ for files, / for skills";
@@ -241,15 +242,15 @@ impl EnvironmentShell {
             return;
         }
         input.update(cx, |input, cx| input.set_value("", window, cx));
-        let opencode = self
+        let claude = self
             .envs
             .get(&env)
             .and_then(|live| live.chats.get(&id))
-            .is_some_and(|chat| chat.harness() == AgentPreset::Opencode);
-        let text = if opencode {
-            text
-        } else {
+            .is_none_or(|chat| chat.harness() == AgentPreset::ClaudeCode);
+        let text = if claude {
             self.shared_skill_message(&text).unwrap_or(text)
+        } else {
+            text
         };
         if let Some(chat) = self
             .envs

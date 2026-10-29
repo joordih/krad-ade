@@ -6,7 +6,7 @@ mod orchestrator;
 use gpui_kit::Context;
 use krad_chat::{
     is_missing_conversation, new_session_id, Catalog, ChatEvent, LiveChat, LiveEvent, LiveSession,
-    SlashCommand,
+    PlanUsage, SlashCommand,
 };
 use krad_domain::{
     AgentPreset, AgentState, ChatEntry, Effort, EnvironmentName, ModelId, PermissionMode, ResumeId,
@@ -56,6 +56,7 @@ pub(in crate::environment_shell) struct StructuredChat {
     context_tokens: Option<u64>,
     pub(super) context_window: Option<u64>,
     pub(super) working: bool,
+    pub(super) usage: Option<PlanUsage>,
     pub(super) earlier: Option<Earlier>,
 }
 
@@ -79,6 +80,7 @@ impl StructuredChat {
             context_tokens: None,
             context_window: None,
             working: false,
+            usage: None,
             earlier: None,
         }
     }
@@ -245,9 +247,17 @@ impl EnvironmentShell {
         let followed = view::following(thread);
         let mut state = None;
         match event {
-            LiveEvent::Ready(catalog) => structured.catalog = Some(catalog),
+            LiveEvent::Ready(catalog) => {
+                let harness = structured.harness;
+                self.keep_harness_models(harness, &catalog.models);
+                if let Some(structured) = structured_mut(self, env, id) {
+                    structured.catalog = Some(catalog);
+                }
+                return self.flush_structured(env, id, cx);
+            }
+            LiveEvent::Usage(usage) => structured.usage = Some(usage),
             LiveEvent::Ask(ask) => {
-                structured.asks.push(Waiting::live(ask));
+                structured.asks.push(Waiting::live(*ask));
                 state = Some(AgentState::WaitingForInput);
             }
             LiveEvent::Chat(ChatEvent::Session(resume)) => {

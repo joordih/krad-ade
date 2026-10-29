@@ -15,6 +15,7 @@ use krad_session::SessionState;
 
 use super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
 use super::sessions_view::session_terminals;
+use super::surface::reopens_as_chat;
 use super::terminal_body::{
     body_grid, BodyGeometry, BodyLook, BODY_PAD_TOP, BODY_PAD_X, TERMINAL_FONT_PX, TERMINAL_LINE_PX,
 };
@@ -541,10 +542,10 @@ impl EnvironmentShell {
     ) {
         let live = self.envs.get(&self.active);
         let on_chat = live.is_some_and(|live| live.chats.contains_key(&id));
-        let opencode = live
+        let reopens = live
             .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
-            .is_some_and(|node| node.harness == Some(AgentPreset::Opencode));
-        if opencode && !on_chat {
+            .is_some_and(|node| reopens_as_chat(node.harness));
+        if reopens && !on_chat {
             self.return_to_chat(id, cx);
         } else if on_chat {
             self.switch_to_terminal(id, cx);
