@@ -32,6 +32,7 @@ fn config(runner: Runner) -> LiveConfig {
         permission_mode: Some(PermissionMode::Manual),
         bus_vars: BusVars(vec![("KRAD_TEST".to_owned(), "1".to_owned())]),
         approvals: Approvals::Asked,
+        gateway: None,
     }
 }
 

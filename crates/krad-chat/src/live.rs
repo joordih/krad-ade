@@ -1,10 +1,10 @@
-use krad_domain::{ChatEvent, Effort, ModelId, PermissionMode, ResumeId};
+use krad_domain::{ChatEvent, Effort, GatewayAccess, ModelId, PermissionMode, ResumeId};
 use std::collections::hash_map::RandomState;
 use std::collections::VecDeque;
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
-use std::process::{Child, ChildStdin, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -18,6 +18,7 @@ use crate::control::{
     Approvals, AskAnswer, LiveEvent, Routed, ToolAsk,
 };
 use crate::error::ChatError;
+use crate::gateway::{gateway_env, CLEARED_VARS};
 use crate::message::{user_message_line, SlashCommand};
 use crate::opencode::{spawn_opencode, OpencodeChat, OpencodeServer, Order};
 use crate::parse::claude;
@@ -119,6 +120,7 @@ pub struct LiveConfig {
     pub permission_mode: Option<PermissionMode>,
     pub bus_vars: BusVars,
     pub approvals: Approvals,
+    pub gateway: Option<GatewayAccess>,
 }
 
 struct ClaudeProcess {
@@ -286,16 +288,7 @@ pub fn spawn_live_chat(
     session: &LiveSession,
     mut sink: impl FnMut(LiveEvent) + Send + 'static,
 ) -> Result<LiveChat, ChatError> {
-    let command = live_chat_command(&config, session);
-    let mut env = command.env;
-    env.extend(
-        config
-            .orchestration
-            .iter()
-            .flat_map(|orchestration| orchestration.env.0.iter().cloned()),
-    );
-    env.extend(config.bus_vars.0.iter().cloned());
-    let mut child = harness_command(&config.runner, &config.cwd, &command.args, &env)
+    let mut child = live_process(&config, session)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -360,6 +353,28 @@ pub fn spawn_live_chat(
         }
     });
     Ok(chat)
+}
+
+fn live_process(config: &LiveConfig, session: &LiveSession) -> Command {
+    let command = live_chat_command(config, session);
+    let mut env = command.env;
+    env.extend(
+        config
+            .orchestration
+            .iter()
+            .flat_map(|orchestration| orchestration.env.0.iter().cloned()),
+    );
+    env.extend(config.bus_vars.0.iter().cloned());
+    if let Some(access) = &config.gateway {
+        env.extend(gateway_env(access, config.model.as_ref()));
+    }
+    let mut process = harness_command(&config.runner, &config.cwd, &command.args, &env);
+    if config.gateway.is_some() {
+        for name in CLEARED_VARS {
+            process.env_remove(name);
+        }
+    }
+    process
 }
 
 fn route_line(line: &str, init_id: &str, pending: &AtomicUsize, sink: &mut impl FnMut(LiveEvent)) {

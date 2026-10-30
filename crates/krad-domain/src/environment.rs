@@ -1,4 +1,5 @@
 use crate::agent::{AgentPreset, AgentState};
+use crate::gateway::Route;
 use crate::group::{Session, TerminalGroup};
 use crate::ids::{EnvironmentName, ResumeId, SessionId, TerminalId};
 use crate::side_panel::SidePanelLayout;
@@ -28,6 +29,8 @@ pub struct TerminalNode {
     pub kind: NodeKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file: Option<crate::group::OpenFile>,
+    #[serde(default, skip_serializing_if = "Route::is_direct")]
+    pub route: Route,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -145,6 +148,7 @@ pub(crate) fn seed_terminals() -> (Vec<TerminalNode>, u64) {
             text_scale: TextScale::default(),
             kind: NodeKind::default(),
             file: None,
+            route: Route::Direct,
         })
         .collect();
     (terminals, SEED_NEXT_ID)

@@ -2,7 +2,7 @@ mod view;
 
 use gpui_kit::{Context, FocusHandle, KeyDownEvent, Window};
 use krad_chat::ModelSource;
-use krad_domain::{AgentPreset, ModelId, TerminalId};
+use krad_domain::{AgentPreset, ModelId, Route, TerminalId};
 
 use super::surface::SurfaceCommand;
 use super::EnvironmentShell;
@@ -33,21 +33,43 @@ const fn section_rank(section: Option<&ModelSource>) -> u8 {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(super) struct HarnessRoute {
+    pub(super) harness: AgentPreset,
+    pub(super) route: Route,
+}
+
+impl HarnessRoute {
+    pub(super) const fn direct(harness: AgentPreset) -> Self {
+        Self {
+            harness,
+            route: Route::Direct,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct HarnessModels {
-    pub(super) harness: AgentPreset,
+    pub(super) lane: HarnessRoute,
     pub(super) models: Vec<ModelChoice>,
 }
 
 pub(super) fn grouped(
-    picks: impl IntoIterator<Item = (AgentPreset, ModelChoice)>,
+    lanes: impl IntoIterator<Item = HarnessRoute>,
+    picks: impl IntoIterator<Item = (HarnessRoute, ModelChoice)>,
 ) -> Vec<HarnessModels> {
-    let mut groups: Vec<HarnessModels> = Vec::new();
-    for (harness, choice) in picks {
-        match groups.iter_mut().find(|group| group.harness == harness) {
+    let mut groups: Vec<HarnessModels> = lanes
+        .into_iter()
+        .map(|lane| HarnessModels {
+            lane,
+            models: Vec::new(),
+        })
+        .collect();
+    for (lane, choice) in picks {
+        match groups.iter_mut().find(|group| group.lane == lane) {
             Some(group) => group.models.push(choice),
             None => groups.push(HarnessModels {
-                harness,
+                lane,
                 models: vec![choice],
             }),
         }
@@ -58,25 +80,25 @@ pub(super) fn grouped(
 #[derive(Debug, PartialEq, Eq)]
 struct Choosing {
     groups: Vec<HarnessModels>,
-    harness: AgentPreset,
+    lane: HarnessRoute,
     query: String,
     highlighted: usize,
 }
 
 impl Choosing {
     fn new(groups: Vec<HarnessModels>) -> Option<Self> {
-        let harness = groups
+        let lane = groups
             .iter()
             .find(|group| group.models.iter().any(|choice| choice.current))
             .or(groups.first())?
-            .harness;
+            .lane;
         let mut choosing = Self {
             groups,
-            harness,
+            lane,
             query: String::new(),
             highlighted: 0,
         };
-        choosing.show_harness(harness);
+        choosing.show_lane(lane);
         Some(choosing)
     }
 
@@ -85,7 +107,7 @@ impl Choosing {
         let mut shown: Vec<&ModelChoice> = self
             .groups
             .iter()
-            .find(|group| group.harness == self.harness)
+            .find(|group| group.lane == self.lane)
             .map_or_default(|group| {
                 group
                     .models
@@ -101,8 +123,8 @@ impl Choosing {
         shown
     }
 
-    fn show_harness(&mut self, harness: AgentPreset) {
-        self.harness = harness;
+    fn show_lane(&mut self, lane: HarnessRoute) {
+        self.lane = lane;
         self.query.clear();
         self.highlighted = self
             .shown()
@@ -113,11 +135,7 @@ impl Choosing {
 
     fn step_harness(&mut self, forward: bool) {
         let count = self.groups.len();
-        let Some(at) = self
-            .groups
-            .iter()
-            .position(|group| group.harness == self.harness)
-        else {
+        let Some(at) = self.groups.iter().position(|group| group.lane == self.lane) else {
             return;
         };
         let next = if forward {
@@ -125,7 +143,7 @@ impl Choosing {
         } else {
             (at + count - 1) % count
         };
-        self.show_harness(self.groups[next].harness);
+        self.show_lane(self.groups[next].lane);
     }
 
     fn step_row(&mut self, down: bool) {
@@ -150,9 +168,9 @@ impl Choosing {
         self.highlighted = 0;
     }
 
-    fn picked(&self, index: usize) -> Option<(AgentPreset, ModelId)> {
+    fn picked(&self, index: usize) -> Option<(HarnessRoute, ModelId)> {
         let choice = self.shown().get(index).map(|choice| choice.id.clone())?;
-        Some((self.harness, choice))
+        Some((self.lane, choice))
     }
 }
 
@@ -194,17 +212,22 @@ impl EnvironmentShell {
         let Some(picker) = self.model_picker.take() else {
             return;
         };
-        if let Some((harness, model)) = picker.choosing.picked(index) {
-            self.command_surface(picker.chat, SurfaceCommand::Model(harness, model), cx);
+        if let Some((lane, model)) = picker.choosing.picked(index) {
+            self.command_surface(picker.chat, SurfaceCommand::Model(lane, model), cx);
         }
         cx.notify();
     }
 
-    fn show_picker_harness(&mut self, harness: AgentPreset, cx: &mut Context<Self>) {
+    fn show_picker_lane(&mut self, lane: HarnessRoute, cx: &mut Context<Self>) {
         if let Some(picker) = self.model_picker.as_mut() {
-            picker.choosing.show_harness(harness);
+            picker.choosing.show_lane(lane);
         }
         cx.notify();
+    }
+
+    fn open_gateway_settings_from_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.model_picker = None;
+        self.open_gateway_settings(window, cx);
     }
 
     fn highlight_model(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -277,9 +300,9 @@ mod tests {
         }
     }
 
-    fn sold(id: &str, label: &str, section: ModelSource) -> (AgentPreset, ModelChoice) {
+    fn sold(id: &str, label: &str, section: ModelSource) -> (HarnessRoute, ModelChoice) {
         (
-            AgentPreset::Opencode,
+            HarnessRoute::direct(AgentPreset::Opencode),
             ModelChoice {
                 section: Some(section),
                 ..choice(id, label, false)
@@ -289,20 +312,23 @@ mod tests {
 
     #[test]
     fn opencode_models_show_go_then_zen_then_providers_then_free() {
-        let picker = Choosing::new(grouped([
-            sold("opencode/beam-free", "Beam", ModelSource::Free),
-            sold(
-                "opencode/claude-opus-5-5",
-                "Opus 5.5",
-                ModelSource::OpencodeZen,
-            ),
-            sold(
-                "anthropic/claude-sonnet-5-5",
-                "Sonnet 5.5",
-                ModelSource::Provider("Anthropic".to_owned()),
-            ),
-            sold("opencode-go/kimi-k3", "Kimi K3", ModelSource::OpencodeGo),
-        ]))
+        let picker = Choosing::new(grouped(
+            [],
+            [
+                sold("opencode/beam-free", "Beam", ModelSource::Free),
+                sold(
+                    "opencode/claude-opus-5-5",
+                    "Opus 5.5",
+                    ModelSource::OpencodeZen,
+                ),
+                sold(
+                    "anthropic/claude-sonnet-5-5",
+                    "Sonnet 5.5",
+                    ModelSource::Provider("Anthropic".to_owned()),
+                ),
+                sold("opencode-go/kimi-k3", "Kimi K3", ModelSource::OpencodeGo),
+            ],
+        ))
         .unwrap_or_else(|| unreachable!("there are models"));
         let shown: Vec<&str> = picker
             .shown()
@@ -312,26 +338,33 @@ mod tests {
         assert_eq!(shown, ["Kimi K3", "Opus 5.5", "Sonnet 5.5", "Beam"]);
     }
 
+    const CLAUDE: HarnessRoute = HarnessRoute::direct(AgentPreset::ClaudeCode);
+    const OPENCODE: HarnessRoute = HarnessRoute::direct(AgentPreset::Opencode);
+    const CLAUDE_GATEWAY: HarnessRoute = HarnessRoute {
+        harness: AgentPreset::ClaudeCode,
+        route: Route::Gateway,
+    };
+
     fn groups() -> Vec<HarnessModels> {
-        grouped([
-            (AgentPreset::ClaudeCode, choice("default", "Default", false)),
-            (
-                AgentPreset::Opencode,
-                choice("anthropic/claude-opus-5-5", "Opus 5.5", true),
-            ),
-            (AgentPreset::ClaudeCode, choice("opus", "Opus 5.5", false)),
-            (
-                AgentPreset::Opencode,
-                choice("opencode/big-pickle", "Big Pickle", false),
-            ),
-        ])
+        grouped(
+            [],
+            [
+                (CLAUDE, choice("default", "Default", false)),
+                (
+                    OPENCODE,
+                    choice("anthropic/claude-opus-5-5", "Opus 5.5", true),
+                ),
+                (CLAUDE, choice("opus", "Opus 5.5", false)),
+                (OPENCODE, choice("opencode/big-pickle", "Big Pickle", false)),
+            ],
+        )
     }
 
     #[test]
     fn models_gather_under_their_harness_in_the_order_they_came() {
         let groups = groups();
-        let harnesses: Vec<AgentPreset> = groups.iter().map(|group| group.harness).collect();
-        assert_eq!(harnesses, [AgentPreset::ClaudeCode, AgentPreset::Opencode]);
+        let lanes: Vec<HarnessRoute> = groups.iter().map(|group| group.lane).collect();
+        assert_eq!(lanes, [CLAUDE, OPENCODE]);
         assert_eq!(groups[0].models.len(), 2);
         assert_eq!(groups[1].models[1].label, "Big Pickle");
     }
@@ -340,7 +373,7 @@ mod tests {
     fn the_picker_opens_on_the_current_model_filters_and_cycles_harnesses() {
         let mut picker =
             Choosing::new(groups()).unwrap_or_else(|| unreachable!("there are models"));
-        assert_eq!(picker.harness, AgentPreset::Opencode);
+        assert_eq!(picker.lane, OPENCODE);
         assert_eq!(picker.highlighted, 0);
         picker.type_text("pick");
         let shown: Vec<&str> = picker
@@ -349,15 +382,25 @@ mod tests {
             .map(|choice| choice.label.as_str())
             .collect();
         assert_eq!(shown, ["Big Pickle"]);
-        assert_eq!(
-            picker.picked(0).map(|(harness, _)| harness),
-            Some(AgentPreset::Opencode)
-        );
+        assert_eq!(picker.picked(0).map(|(lane, _)| lane), Some(OPENCODE));
         picker.step_harness(true);
-        assert_eq!(picker.harness, AgentPreset::ClaudeCode);
+        assert_eq!(picker.lane, CLAUDE);
         assert_eq!(picker.query, "");
         picker.step_row(false);
         assert_eq!(picker.highlighted, 1);
         assert_eq!(Choosing::new(Vec::new()), None);
+    }
+    #[test]
+    fn the_gateway_lane_stays_in_the_picker_even_before_models_are_picked() {
+        let groups = grouped(
+            [CLAUDE, CLAUDE_GATEWAY],
+            [(CLAUDE, choice("opus", "Opus 5.5", true))],
+        );
+        let mut picker = Choosing::new(groups).unwrap_or_else(|| unreachable!("there are lanes"));
+        assert_eq!(picker.lane, CLAUDE);
+        picker.step_harness(true);
+        assert_eq!(picker.lane, CLAUDE_GATEWAY);
+        assert_eq!(picker.shown(), Vec::<&ModelChoice>::new());
+        assert_eq!(picker.picked(0), None);
     }
 }

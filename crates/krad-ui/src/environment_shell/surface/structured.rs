@@ -10,7 +10,7 @@ use krad_chat::{
 };
 use krad_domain::{
     AgentPreset, AgentState, ChatEntry, Effort, EnvironmentName, ModelId, PermissionMode, ResumeId,
-    TerminalId,
+    Route, TerminalId,
 };
 use std::time::Instant;
 
@@ -26,6 +26,12 @@ use open::Earlier;
 const FULL_PERCENT: u64 = 100;
 const THINKING_DEFAULT: bool = true;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ProcessEnv {
+    Current,
+    Stale,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Batch {
     commands: Vec<SlashCommand>,
@@ -40,6 +46,8 @@ impl Batch {
 
 pub(in crate::environment_shell) struct StructuredChat {
     pub(in crate::environment_shell) harness: AgentPreset,
+    pub(in crate::environment_shell) route: Route,
+    process_env: ProcessEnv,
     pub(super) live: Option<LiveProcess>,
     pub(super) session: LiveSession,
     fell_back: bool,
@@ -61,9 +69,11 @@ pub(in crate::environment_shell) struct StructuredChat {
 }
 
 impl StructuredChat {
-    fn new(session: LiveSession, harness: AgentPreset) -> Self {
+    fn new(session: LiveSession, harness: AgentPreset, route: Route) -> Self {
         Self {
             harness,
+            route: route.for_harness(harness),
+            process_env: ProcessEnv::Current,
             live: None,
             session,
             fell_back: false,
@@ -91,8 +101,24 @@ impl StructuredChat {
             && !self.live.as_ref().is_some_and(|live| live.confirmed)
     }
 
-    pub(super) fn switch_harness(&mut self, harness: AgentPreset) {
+    pub(super) fn switch_route(&mut self, route: Route) {
+        self.route = route;
+        self.live = None;
+        self.process_env = ProcessEnv::Current;
+        self.usage = None;
+        self.context_window = None;
+    }
+
+    fn respawn_if_free(&mut self) {
+        if self.process_env == ProcessEnv::Stale && self.is_free() {
+            self.process_env = ProcessEnv::Current;
+            self.live = None;
+        }
+    }
+
+    pub(super) fn switch_harness(&mut self, harness: AgentPreset, route: Route) {
         self.harness = harness;
+        self.route = route.for_harness(harness);
         self.live = None;
         self.catalog = None;
         self.model = None;
@@ -153,6 +179,7 @@ impl StructuredChat {
             return false;
         }
         self.working = false;
+        self.respawn_if_free();
         true
     }
 
@@ -183,10 +210,16 @@ impl StructuredChat {
                 }
             }
             SurfaceCommand::Model(_, model) => {
+                let side_models_change =
+                    self.route == Route::Gateway && self.chosen_model.as_ref() != Some(&model);
                 if let Some(live) = self.live() {
                     live.set_model(&model);
                 }
                 self.chosen_model = Some(model);
+                if side_models_change && self.live.is_some() {
+                    self.process_env = ProcessEnv::Stale;
+                }
+                self.respawn_if_free();
             }
             SurfaceCommand::Effort(effort) => {
                 self.effort = Some(effort);
@@ -249,7 +282,9 @@ impl EnvironmentShell {
         match event {
             LiveEvent::Ready(catalog) => {
                 let harness = structured.harness;
-                self.keep_harness_models(harness, &catalog.models);
+                if structured.route == Route::Direct {
+                    self.keep_harness_models(harness, &catalog.models);
+                }
                 if let Some(structured) = structured_mut(self, env, id) {
                     structured.catalog = Some(catalog);
                 }

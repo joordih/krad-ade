@@ -2,7 +2,7 @@ use gpui_kit::Context;
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::SessionSpec;
 use krad_domain::{
-    AgentPreset, AgentState, EnvironmentName, GroupId, NodeKind, TerminalId, TerminalNode,
+    AgentPreset, AgentState, EnvironmentName, GroupId, NodeKind, Route, TerminalId, TerminalNode,
     TextScale,
 };
 use krad_session::wsl_shell;
@@ -33,6 +33,19 @@ pub(super) struct NodeSpec<'a> {
     pub(super) harness: Option<AgentPreset>,
     pub(super) label: &'a str,
     pub(super) group: NodeGroup,
+    pub(super) route: Route,
+}
+
+impl<'a> NodeSpec<'a> {
+    pub(super) const fn terminal(label: &'a str, group: Option<GroupId>, route: Route) -> Self {
+        Self {
+            kind: NodeKind::Terminal,
+            harness: None,
+            label,
+            group: NodeGroup::OrSelected(group),
+            route,
+        }
+    }
 }
 
 impl EnvironmentShell {
@@ -131,13 +144,18 @@ impl EnvironmentShell {
         after: Option<TerminalId>,
         cx: &mut Context<Self>,
     ) -> Option<TerminalId> {
-        let spec = NodeSpec {
-            kind: NodeKind::Terminal,
-            harness: None,
-            label,
-            group: NodeGroup::OrSelected(group),
-        };
+        let route = self.new_terminal_route(&launch);
+        let spec = NodeSpec::terminal(label, group, route);
         self.open_terminal(env, &spec, launch, after, cx)
+    }
+
+    fn new_terminal_route(&self, launch: &Launch) -> Route {
+        launch
+            .harness()
+            .filter(|harness| self.settings.opens_as_chat(*harness))
+            .map_or(Route::Direct, |harness| {
+                self.settings.gateway.new_chat_route(harness)
+            })
     }
 
     pub(super) fn open_terminal(
@@ -167,6 +185,7 @@ impl EnvironmentShell {
             harness: Some(preset),
             label: NEW_CHAT_LABEL,
             group,
+            route: self.settings.gateway.new_chat_route(preset),
         };
         let (id, _) = self.add_node(env, &spec, None)?;
         if let Some(live) = self.envs.get_mut(env) {
@@ -225,6 +244,7 @@ impl EnvironmentShell {
                 .map_or_else(TextScale::default, |node| node.text_scale),
             kind: spec.kind,
             file: None,
+            route: spec.route,
         });
         live.data
             .place_terminal(id, anchor_node.as_ref().map(|node| node.id));

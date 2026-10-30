@@ -69,10 +69,66 @@ fn a_live_config_never_prints_the_bus_token() {
         permission_mode: None,
         bus_vars: BusVars(vec![("KRAD_ADE_TOKEN".to_owned(), token.to_owned())]),
         approvals: Approvals::Asked,
+        gateway: None,
     };
     let printed = format!("{config:?}");
     assert!(printed.contains("KRAD_ADE_TOKEN"));
     assert!(!printed.contains(token));
+}
+
+fn gateway_config(gateway: Option<GatewayAccess>) -> LiveConfig {
+    LiveConfig {
+        runner: Runner::Native(PathBuf::from("claude")),
+        model: ModelId::parse("gpt-5"),
+        cwd: PathBuf::from("/work"),
+        extra_dirs: Vec::new(),
+        orchestration: None,
+        system_prompt: None,
+        effort: None,
+        permission_mode: None,
+        bus_vars: BusVars::default(),
+        approvals: Approvals::Asked,
+        gateway,
+    }
+}
+
+fn env_of(command: &Command) -> Vec<(String, Option<String>)> {
+    command
+        .get_envs()
+        .map(|(name, value)| {
+            (
+                name.to_string_lossy().into_owned(),
+                value.map(|value| value.to_string_lossy().into_owned()),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_routed_chat_reaches_the_gateway_and_drops_the_own_login() {
+    let access = GatewayAccess {
+        url: "http://127.0.0.1:8317"
+            .parse()
+            .unwrap_or_else(|_| unreachable!("a loopback address")),
+        key: krad_domain::GatewayKey::parse("sk-local").unwrap_or_else(|| unreachable!("set")),
+    };
+    let session = LiveSession::Start(new_session_id());
+    let routed = env_of(&live_process(&gateway_config(Some(access)), &session));
+    assert!(routed.contains(&(
+        "ANTHROPIC_BASE_URL".to_owned(),
+        Some("http://127.0.0.1:8317".to_owned())
+    )));
+    assert!(routed.contains(&(
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL".to_owned(),
+        Some("gpt-5".to_owned())
+    )));
+    for name in CLEARED_VARS {
+        assert!(routed.contains(&(name.to_owned(), None)), "{name} is kept");
+    }
+    let direct = env_of(&live_process(&gateway_config(None), &session));
+    assert!(direct
+        .iter()
+        .all(|(name, _)| !name.starts_with("ANTHROPIC_")));
 }
 
 #[test]

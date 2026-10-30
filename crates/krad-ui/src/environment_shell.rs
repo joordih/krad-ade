@@ -18,6 +18,7 @@ mod environment_menu;
 mod environment_order;
 mod file_tab;
 mod file_tree;
+mod gateway;
 mod groups;
 mod harness_models;
 mod input;
@@ -199,6 +200,7 @@ pub struct EnvironmentShell {
     settings_ui: Option<settings_view::SettingsUi>,
     agent_bus: Option<agent_bus::AgentBus>,
     opencode: opencode::Opencode,
+    gateway: gateway::Gateway,
     harness_models: harness_models::HarnessModels,
     account_usage: surface::AccountUsage,
     context_menu: Option<context_menu::ContextMenu>,
@@ -297,6 +299,7 @@ impl EnvironmentShell {
             settings_ui: None,
             agent_bus: None,
             opencode: opencode::Opencode::default(),
+            gateway: gateway::Gateway::default(),
             harness_models: harness_models::HarnessModels::default(),
             account_usage: surface::AccountUsage::default(),
             context_menu: None,
@@ -311,6 +314,7 @@ impl EnvironmentShell {
             name_dialogs: name_dialogs::NameDialogs::Closed,
         };
         shell.start_agent_bus(cx);
+        shell.check_gateway(cx);
         Self::restore_chat(cx);
         match seed {
             Some(snapshot) => shell.restore_snapshot(snapshot),

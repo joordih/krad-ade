@@ -110,6 +110,7 @@ fn a_live_claude_answers_and_resumes_its_conversation() {
         permission_mode: None,
         bus_vars: BusVars::default(),
         approvals: Approvals::Refused,
+        gateway: None,
     };
     let id = new_session_id();
     let (sender, receiver) = channel();

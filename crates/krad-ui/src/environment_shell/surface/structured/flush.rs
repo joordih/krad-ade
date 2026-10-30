@@ -1,11 +1,12 @@
 use gpui_kit::Context;
 use krad_chat::{Approvals, BusVars, ChatEvent, LiveConfig};
-use krad_domain::{AgentPreset, AgentState, ChatEntry, EnvironmentName, TerminalId};
+use krad_domain::{AgentPreset, AgentState, ChatEntry, EnvironmentName, Route, TerminalId};
 use std::time::Instant;
 
 use super::super::super::agent_bus::{cli_name, BUS_HINT};
 use super::super::super::agent_hooks::LEAD_HINT;
 use super::super::super::chat::{fold_entry, LiveProcess, StartError};
+use super::super::super::gateway::GatewayReach;
 use super::super::super::opencode::OpencodeLink;
 use super::super::super::EnvironmentShell;
 use super::super::{Backend, SurfaceChat};
@@ -152,8 +153,24 @@ impl EnvironmentShell {
             .get(env)
             .and_then(|live| live.data.group_of(id))
             .map(|group| group.root.clone());
-        let harness =
-            structured_mut(self, env, id).map_or(AgentPreset::ClaudeCode, |chat| chat.harness);
+        let (harness, route, chosen) = structured_mut(self, env, id)
+            .map_or((AgentPreset::ClaudeCode, Route::Direct, None), |chat| {
+                (chat.harness, chat.route, chat.chosen_model.clone())
+            });
+        let (gateway, model) = match route {
+            Route::Direct => (None, chosen),
+            Route::Gateway => {
+                let access = match self.gateway_reach() {
+                    GatewayReach::Ready(access) => access,
+                    GatewayReach::Waiting => return Err(StartError::Waiting),
+                    GatewayReach::Unavailable(reason) => return Err(StartError::Gateway(reason)),
+                };
+                let model = self
+                    .routed_model(chosen.as_ref())
+                    .ok_or_else(|| StartError::Gateway(Self::no_gateway_model_text().to_owned()))?;
+                (Some(access), Some(model))
+            }
+        };
         let (runner, cwd) = self.harness_runner(harness, root.as_deref())?;
         let opencode = match (harness, &self.opencode.link) {
             (AgentPreset::Opencode, _) if runner.in_wsl() => {
@@ -180,7 +197,7 @@ impl EnvironmentShell {
         };
         let config = LiveConfig {
             runner,
-            model: structured.chosen_model.clone(),
+            model,
             cwd,
             extra_dirs: Vec::new(),
             orchestration: None,
@@ -189,6 +206,7 @@ impl EnvironmentShell {
             permission_mode: structured.permission_mode,
             bus_vars,
             approvals: Approvals::Asked,
+            gateway,
         };
         let owner = env.clone();
         let apply = move |shell: &mut Self, event, cx: &mut Context<Self>| {

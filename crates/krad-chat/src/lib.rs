@@ -3,6 +3,7 @@ mod command;
 mod control;
 mod edits;
 mod error;
+mod gateway;
 mod history;
 mod live;
 mod message;
@@ -25,6 +26,7 @@ pub use control::{
     PickedAnswer, PlanUsage, Question, QuestionOption, ToolAsk,
 };
 pub use error::ChatError;
+pub use gateway::{gateway_env, gateway_models, GatewayError};
 pub use history::{
     claude_conversation_file, read_claude_transcript, read_claude_transcript_before,
     read_claude_transcript_tail, TranscriptChunk,

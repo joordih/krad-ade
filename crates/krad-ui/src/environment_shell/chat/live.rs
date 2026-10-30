@@ -24,6 +24,7 @@ pub(in crate::environment_shell) enum StartError {
     NotInWsl(AgentPreset),
     Waiting,
     Opencode(String),
+    Gateway(String),
     Chat(ChatError),
 }
 
@@ -37,7 +38,7 @@ impl fmt::Display for StartError {
                 write!(formatter, "{} {NOT_IN_WSL_TEXT}", preset.display_name())
             }
             Self::Waiting => formatter.write_str(WAITING_TEXT),
-            Self::Opencode(error) => formatter.write_str(error),
+            Self::Opencode(error) | Self::Gateway(error) => formatter.write_str(error),
             Self::Chat(error) => error.fmt(formatter),
         }
     }

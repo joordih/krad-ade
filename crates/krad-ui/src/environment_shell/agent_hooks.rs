@@ -3,7 +3,7 @@ use gpui_kit::{AppContext as _, Context};
 use krad_agents::{AgentStatus, Response, TerminalHandle};
 use krad_domain::{
     hook_launch_args, launch_with_prompt, quote_for_shell, worker_brief, AgentPreset, AgentState,
-    EnvironmentName, ModelId, ResumeId, SessionId, ShellQuoting, TerminalGroup, TerminalId,
+    EnvironmentName, ModelId, ResumeId, Route, SessionId, ShellQuoting, TerminalGroup, TerminalId,
     WorktreeOrigin,
 };
 use krad_repo::{add_worktree, sanitize_worktree_name};
@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use super::agent_bus::{cli_name, BUS_HINT};
 use super::sessions::Launch;
 use super::surface::AccountUsage;
+use super::terminal_lifecycle::NodeSpec;
 use super::EnvironmentShell;
 
 const PROMPT_DELAY: Duration = Duration::from_secs(4);
@@ -44,6 +45,7 @@ pub(super) struct WorkerOrder {
     pub(super) worktree: Option<String>,
     pub(super) brief: String,
     pub(super) lead: Option<WorkerOf>,
+    pub(super) route: Route,
 }
 
 pub(super) struct WorkerOf {
@@ -224,6 +226,7 @@ impl EnvironmentShell {
             worktree,
             brief,
             lead: None,
+            route: self.terminal_route(&env, caller),
         };
         self.start_worker(&env, &group, order, reply, cx);
     }
@@ -242,20 +245,16 @@ impl EnvironmentShell {
             worktree,
             brief,
             lead,
+            route,
         } = order;
         let Some(name) = worktree else {
-            let started = self.spawn_terminal_in(
-                &env,
-                Some(group.id),
-                preset.display_name(),
-                Launch::Agent {
-                    preset,
-                    prompt: brief,
-                    model: None,
-                },
-                None,
-                cx,
-            );
+            let spec = NodeSpec::terminal(preset.display_name(), Some(group.id), route);
+            let launch = Launch::Agent {
+                preset,
+                prompt: brief,
+                model: None,
+            };
+            let started = self.open_terminal(&env, &spec, launch, None, cx);
             let response = self.worker_started(&env, lead, started);
             reply.send(response).unwrap_or_default();
             return;
@@ -286,18 +285,13 @@ impl EnvironmentShell {
                             .clone()
                             .map(|branch| WorktreeOrigin { repo_root, branch });
                         let group = shell.add_group_to(&env, worktree.path, origin, cx);
-                        let started = shell.spawn_terminal_in(
-                            &env,
-                            group,
-                            preset.display_name(),
-                            Launch::Agent {
-                                preset,
-                                prompt: brief,
-                                model: None,
-                            },
-                            None,
-                            cx,
-                        );
+                        let spec = NodeSpec::terminal(preset.display_name(), group, route);
+                        let launch = Launch::Agent {
+                            preset,
+                            prompt: brief,
+                            model: None,
+                        };
+                        let started = shell.open_terminal(&env, &spec, launch, None, cx);
                         shell.worker_started(&env, lead, started)
                     }
                     Err(error) => Response::Error(error.to_string()),

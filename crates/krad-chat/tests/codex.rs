@@ -42,6 +42,7 @@ fn a_codex_chat_opens_a_thread_answers_and_reads_back() {
         permission_mode: Some(PermissionMode::Manual),
         bus_vars: BusVars::default(),
         approvals: Approvals::Asked,
+        gateway: None,
     };
     let (sender, receiver) = channel();
     let chat = spawn_codex_chat(

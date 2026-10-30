@@ -25,6 +25,7 @@ pub fn claude_models(runner: &Runner, cwd: &Path) -> Result<Vec<ModelOffer>, Cha
         permission_mode: None,
         bus_vars: BusVars::default(),
         approvals: Approvals::Asked,
+        gateway: None,
     };
     let (sender, receiver) = channel();
     let chat = spawn_live_chat(

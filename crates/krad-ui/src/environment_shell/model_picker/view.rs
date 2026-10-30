@@ -4,9 +4,10 @@ use gpui_kit::{
     MouseButton, ParentElement, StatefulInteractiveElement, Styled, Window,
 };
 use krad_chat::ModelSource;
+use krad_domain::Route;
 
 use super::super::EnvironmentShell;
-use super::Choosing;
+use super::{Choosing, HarnessRoute};
 use crate::components::{harness_icon, icon, tooltip_view, IconName};
 use crate::theme::{
     palette, popover_fill, popover_shadow, Palette, ICON, ICON_SM, LINE_BASE, LINE_XS, SPACE_1,
@@ -35,6 +36,27 @@ const SECTION_H: f32 = 26.0;
 const GO_LABEL: &str = "OpenCode Go";
 const ZEN_LABEL: &str = "OpenCode Zen";
 const FREE_LABEL: &str = "Free";
+const LANE_SEPARATOR: &str = " · ";
+const GATEWAY_SETTINGS_ID: &str = "model-picker-gateway-settings";
+const OPEN_SETTINGS_LABEL: &str = "Open Settings";
+
+fn lane_name(lane: HarnessRoute) -> String {
+    match lane.route {
+        Route::Direct => lane.harness.display_name().to_owned(),
+        Route::Gateway => format!(
+            "{}{LANE_SEPARATOR}{}",
+            lane.harness.display_name(),
+            lane.route.label()
+        ),
+    }
+}
+
+fn lane_icon(lane: HarnessRoute, pal: &Palette) -> (IconName, u32) {
+    match lane.route {
+        Route::Direct => harness_icon(lane.harness, pal),
+        Route::Gateway => (IconName::Flow, pal.accent),
+    }
+}
 
 fn section_label(section: &ModelSource) -> &str {
     match section {
@@ -113,9 +135,9 @@ impl EnvironmentShell {
             .iter()
             .enumerate()
             .map(|(index, group)| {
-                let harness = group.harness;
-                let selected = harness == choosing.harness;
-                let (glyph, color) = harness_icon(harness, pal);
+                let lane = group.lane;
+                let selected = lane == choosing.lane;
+                let (glyph, color) = lane_icon(lane, pal);
                 div()
                     .id((RAIL_PREFIX, element_index(index)))
                     .flex()
@@ -128,9 +150,9 @@ impl EnvironmentShell {
                     .when(!selected, |button| {
                         button.hover(|style| style.bg(pal.bg_hover))
                     })
-                    .tooltip(move |_, cx| tooltip_view(harness.display_name().into(), cx))
+                    .tooltip(move |_, cx| tooltip_view(lane_name(lane).into(), cx))
                     .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                        this.show_picker_harness(harness, cx);
+                        this.show_picker_lane(lane, cx);
                     }))
                     .child(icon(glyph, ICON, color))
                     .into_any_element()
@@ -201,13 +223,29 @@ impl EnvironmentShell {
                     .into_any_element(),
             );
         }
+        let gateway_hint = choosing.lane.route == Route::Gateway && choosing.query.is_empty();
         let empty = shown.is_empty().then(|| {
             div()
+                .flex()
+                .flex_col()
+                .gap(px(SPACE_2))
                 .px(px(SPACE_2))
                 .py(px(SPACE_2))
                 .text_size(px(TEXT_SM))
                 .text_color(rgb(pal.text_muted))
-                .child(NO_MODELS_TEXT)
+                .when(!gateway_hint, |empty| empty.child(NO_MODELS_TEXT))
+                .when(gateway_hint, |empty| {
+                    empty.child(Self::no_gateway_model_text()).child(
+                        div()
+                            .id(GATEWAY_SETTINGS_ID)
+                            .cursor_pointer()
+                            .text_color(rgb(pal.accent))
+                            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                                this.open_gateway_settings_from_picker(window, cx);
+                            }))
+                            .child(OPEN_SETTINGS_LABEL),
+                    )
+                })
         });
         div()
             .id(LIST_ID)

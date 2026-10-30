@@ -2,7 +2,7 @@ use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
 use krad_agents::{ChatHandle, Request, Response};
 use krad_domain::{
-    chat_worker_brief, EnvironmentName, GroupId, SessionId, TerminalGroup, TerminalId,
+    chat_worker_brief, EnvironmentName, GroupId, Route, SessionId, TerminalGroup, TerminalId,
 };
 
 use super::super::agent_hooks::{preset_named, WorkerOf, WorkerOrder, UNKNOWN_AGENT};
@@ -104,6 +104,10 @@ impl EnvironmentShell {
             .and_then(|live| live.data.group(group))
             .cloned()
             .ok_or_else(|| Response::Error(NO_CHAT_GROUP.to_owned()))?;
+        let route = spawn
+            .lead
+            .and_then(|session| self.lead_route(env, session))
+            .unwrap_or_else(|| self.settings.gateway.new_chat_route(preset));
         let order = WorkerOrder {
             preset,
             worktree: spawn.worktree,
@@ -112,7 +116,13 @@ impl EnvironmentShell {
                 session,
                 task: text,
             }),
+            route,
         };
         Ok((group, order))
+    }
+    fn lead_route(&self, env: &EnvironmentName, session: SessionId) -> Option<Route> {
+        let live = self.envs.get(env)?;
+        let lead = live.data.session(session)?.lead.as_ref()?.terminal?;
+        Some(self.terminal_route(env, lead))
     }
 }

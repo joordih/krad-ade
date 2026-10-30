@@ -138,6 +138,14 @@ _Avoid_: provider, integration, plugin
 Language model a harness runs, such as `sonnet` for Claude Code; Settings keeps the list each harness offers.
 _Avoid_: engine, LLM, provider
 
+**Gateway**:
+Server the user runs that offers many models from their accounts behind one Anthropic- and OpenAI-compatible address and key, such as CLIProxyAPI. The app knows at most one.
+_Avoid_: proxy, provider, backend, router
+
+**Route**:
+How a chat reaches its model: direct, through the harness's own login, or through the Gateway. Each chat keeps its own, starting from the harness's default in Settings, and Workers it starts take the same one.
+_Avoid_: backend, provider, connection
+
 **Chat**:
 Conversation with a harness and model rendered natively instead of as a terminal, kept by the harness under its resume id and restored with its history when the app reopens; messages sent while it works wait in a queue. An agent's chat surface, the lead's included, is a different thing: a view of that agent's own conversation (see Surface). With Claude Code it can also orchestrate: start Workers in the group through the Agents bus, type instructions into them and check their work.
 _Avoid_: assistant, agent, conversation, agents bus

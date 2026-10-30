@@ -1,6 +1,7 @@
 use super::DEFAULT_SESSION_NAME;
 use crate::agent::AgentState;
 use crate::environment::{EnvironmentData, NodeKind, TerminalNode};
+use crate::gateway::Route;
 use crate::ids::{GroupId, SessionId, TerminalId};
 use crate::text_scale::TextScale;
 use crate::view::EnvironmentView;
@@ -124,6 +125,7 @@ impl EnvironmentData {
                 pinned,
                 view,
             }),
+            route: Route::Direct,
         });
         self.place_terminal(id, None);
         self.reveal_terminal(id);

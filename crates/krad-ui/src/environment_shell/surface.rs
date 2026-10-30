@@ -19,7 +19,7 @@ use gpui_kit::{
     Subscription, Window,
 };
 use krad_domain::{
-    is_worker_brief, AgentPreset, ChatEntry, Effort, EnvironmentName, ModelId, TerminalId,
+    is_worker_brief, AgentPreset, ChatEntry, Effort, EnvironmentName, ModelId, Route, TerminalId,
 };
 use krad_repo::IndexEntry;
 use std::cell::Cell;
@@ -28,6 +28,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use super::ask::AskQueue;
 use super::chat::{ChatMessage, Composer};
+use super::model_picker::HarnessRoute;
 use super::EnvironmentShell;
 use crate::motion::Spring;
 use outbox::Outbox;
@@ -55,6 +56,7 @@ const DAYS_UNIT: &str = "d";
 const AGO: &str = "ago";
 const THREAD_OVERDRAW: f32 = 800.0;
 const GLIDE_RESPONSE_S: f32 = 0.35;
+const ROUTE_WHILE_BUSY: &str = "Wait for the chat to finish before changing its route";
 
 fn new_thread() -> ListState {
     let thread = ListState::new(0, ListAlignment::Top, px(THREAD_OVERDRAW));
@@ -65,7 +67,7 @@ fn new_thread() -> ListState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum SurfaceCommand {
     Stop,
-    Model(AgentPreset, ModelId),
+    Model(HarnessRoute, ModelId),
     Effort(Effort),
     ToggleThinking,
 }
@@ -75,6 +77,7 @@ enum HarnessChange {
     Kept,
     Switched,
     Refused,
+    Busy,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -207,6 +210,13 @@ impl SurfaceChat {
         }
     }
 
+    pub(super) const fn route(&self) -> Route {
+        match &self.backend {
+            Backend::Structured(structured) => structured.route,
+            Backend::Transcript(_) => Route::Direct,
+        }
+    }
+
     pub(super) const fn structured(&self) -> Option<&StructuredChat> {
         match &self.backend {
             Backend::Structured(structured) => Some(structured),
@@ -316,6 +326,9 @@ impl EnvironmentShell {
             chat.outbox.push(text);
             chat.pins_latest = true;
             chat.start_glide(Instant::now());
+            if chat.route() == Route::Gateway {
+                self.recheck_failed_gateway(cx);
+            }
         }
         self.flush_outbox(&env, id, cx);
         cx.notify();
@@ -389,7 +402,7 @@ impl EnvironmentShell {
         id: TerminalId,
         command: &SurfaceCommand,
     ) -> HarnessChange {
-        let SurfaceCommand::Model(harness, _) = command else {
+        let SurfaceCommand::Model(lane, _) = command else {
             return HarnessChange::Kept;
         };
         let Some(live) = self.envs.get_mut(env) else {
@@ -403,15 +416,23 @@ impl EnvironmentShell {
         else {
             return HarnessChange::Kept;
         };
-        if *harness == structured.harness {
+        let route = lane.route.for_harness(lane.harness);
+        if lane.harness != structured.harness {
+            if !messages.is_empty() || !structured.is_fresh() {
+                return HarnessChange::Refused;
+            }
+            structured.switch_harness(lane.harness, route);
+        } else if route != structured.route {
+            if !structured.is_free() {
+                return HarnessChange::Busy;
+            }
+            structured.switch_route(route);
+        } else {
             return HarnessChange::Kept;
         }
-        if !messages.is_empty() || !structured.is_fresh() {
-            return HarnessChange::Refused;
-        }
-        structured.switch_harness(*harness);
         if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
-            node.harness = Some(*harness);
+            node.harness = Some(lane.harness);
+            node.route = route;
         }
         HarnessChange::Switched
     }
@@ -425,6 +446,7 @@ impl EnvironmentShell {
         let env = self.active.clone();
         match self.harness_change(&env, id, &command) {
             HarnessChange::Refused => return,
+            HarnessChange::Busy => return self.toast(ROUTE_WHILE_BUSY, cx),
             HarnessChange::Switched => self.store(),
             HarnessChange::Kept => {}
         }

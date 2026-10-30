@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use super::agent_hooks::AgentRole;
+use super::gateway::RoutedLaunch;
 use super::surface::reopens_as_chat;
 use super::EnvironmentShell;
 
@@ -44,7 +45,7 @@ pub(super) enum Launch {
 }
 
 impl Launch {
-    const fn harness(&self) -> Option<AgentPreset> {
+    pub(super) const fn harness(&self) -> Option<AgentPreset> {
         match self {
             Self::Preset(preset) | Self::Agent { preset, .. } | Self::Resume { preset, .. }
                 if preset.is_agent() =>
@@ -57,7 +58,7 @@ impl Launch {
         }
     }
 
-    fn model(&self) -> Option<ModelId> {
+    pub(super) fn model(&self) -> Option<ModelId> {
         match self {
             Self::Agent { model, .. } => model.clone(),
             Self::Preset(_) | Self::Resume { .. } | Self::Command { .. } => None,
@@ -129,6 +130,14 @@ impl EnvironmentShell {
         let Some(pump) = self.pump_tx.clone() else {
             return;
         };
+        let Some(RoutedLaunch {
+            launch,
+            cwd,
+            vars: gateway_vars,
+        }) = self.routed_launch(env, id, launch, cwd)
+        else {
+            return;
+        };
         let mut engine = match VtEngine::new(ENGINE_COLS, ENGINE_ROWS) {
             Ok(engine) => engine,
             Err(error) => {
@@ -151,6 +160,7 @@ impl EnvironmentShell {
         let cwd = if wsl.is_some() { None } else { cwd };
         let mut vars = self.bus_vars(env, id);
         vars.extend(extra_vars);
+        vars.extend(gateway_vars);
         if let Some((server, _)) = &attached {
             vars.extend(server.client_env());
         }

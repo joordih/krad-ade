@@ -5,7 +5,7 @@ use gpui_kit::{
     FontWeight, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement, PathBuilder,
     Pixels, SharedString, StatefulInteractiveElement, Styled, Window,
 };
-use krad_domain::{Effort, TerminalId};
+use krad_domain::{Effort, Route, TerminalId};
 use std::f32::consts::{FRAC_PI_2, TAU};
 
 use super::super::ask::AskOwner;
@@ -41,6 +41,7 @@ const TOOLTIP_ORCHESTRATOR_ON: &str = "Leading this session; click to make it a 
 const TOOLTIP_EFFORT: &str = "Reasoning effort";
 const TOOLTIP_THINKING: &str = "Extended thinking";
 const MODEL_LABEL: &str = "Model";
+const GATEWAY_MARK: &str = "via Gateway";
 const EFFORT_LABEL: &str = "Effort";
 const CONTEXT_LABEL: &str = "Context";
 const FIVE_HOUR_LABEL: &str = "5h";
@@ -96,7 +97,14 @@ impl EnvironmentShell {
             )
             .child(Self::send_control(id, chat, now, cx))
             .children(self.suggestion_menu(Composer::Surface(id), cx));
-        let (mark, mark_color) = harness_icon(chat.harness(), pal);
+        let (mark, mark_color) = match facts.route {
+            Route::Direct => harness_icon(chat.harness(), pal),
+            Route::Gateway => (IconName::Flow, pal.accent),
+        };
+        let account = match facts.route {
+            Route::Direct => facts.account.clone(),
+            Route::Gateway => Some(GATEWAY_MARK.to_owned()),
+        };
         let settings = div()
             .flex()
             .flex_row()
@@ -115,7 +123,7 @@ impl EnvironmentShell {
             )
             .child(div().flex_1())
             .child(icon(mark, ICON_XS, mark_color))
-            .children(facts.account.clone().map(|account| {
+            .children(account.map(|account| {
                 div()
                     .flex_none()
                     .text_size(px(TEXT_XS))
@@ -185,17 +193,20 @@ impl EnvironmentShell {
             .model
             .clone()
             .unwrap_or_else(|| MODEL_LABEL.to_owned());
-        let groups = std::rc::Rc::new(grouped(facts.models.iter().map(|pick| {
-            (
-                pick.harness,
-                ModelChoice {
-                    id: pick.id.clone(),
-                    label: pick.label.clone(),
-                    current: pick.current,
-                    section: pick.source.clone(),
-                },
-            )
-        })));
+        let groups = std::rc::Rc::new(grouped(
+            facts.lanes.iter().copied(),
+            facts.models.iter().map(|pick| {
+                (
+                    pick.lane,
+                    ModelChoice {
+                        id: pick.id.clone(),
+                        label: pick.label.clone(),
+                        current: pick.current,
+                        section: pick.source.clone(),
+                    },
+                )
+            }),
+        ));
         control_pill((MODEL_PREFIX, id.as_u64()), pal)
             .tooltip(|_, cx| tooltip_view(TOOLTIP_MODEL.into(), cx))
             .on_click(

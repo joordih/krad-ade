@@ -95,6 +95,7 @@ fn live_config() -> LiveConfig {
         permission_mode: None,
         bus_vars: BusVars::default(),
         approvals: Approvals::Refused,
+        gateway: None,
     }
 }
 
@@ -163,6 +164,7 @@ fn a_live_claude_asking_approvals_takes_its_prompt_and_effort_last() {
     let command = live_chat_command(
         &LiveConfig {
             approvals: Approvals::Asked,
+            gateway: None,
             system_prompt: Some("Use the bus.".to_owned()),
             effort: Some(Effort::ExtraHigh),
             ..live_config()

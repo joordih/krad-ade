@@ -4,7 +4,7 @@ use krad_chat::{
     LiveSession,
 };
 use krad_domain::{
-    AgentPreset, ChatEntry, EnvironmentName, NodeKind, ResumeId, TerminalId, TerminalNode,
+    AgentPreset, ChatEntry, EnvironmentName, NodeKind, ResumeId, Route, TerminalId, TerminalNode,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -76,7 +76,7 @@ impl EnvironmentShell {
             return;
         }
         let nodes = &live.data.nodes;
-        let pending: Vec<(TerminalId, LiveSession, AgentPreset)> = live
+        let pending: Vec<(TerminalId, LiveSession, AgentPreset, Route)> = live
             .pending_chats
             .drain()
             .filter_map(|(id, session)| {
@@ -85,16 +85,16 @@ impl EnvironmentShell {
                     .harness
                     .filter(|preset| matches!(preset, AgentPreset::Opencode | AgentPreset::Codex))
                     .unwrap_or(AgentPreset::ClaudeCode);
-                Some((id, session, harness))
+                Some((id, session, harness, node.route))
             })
             .collect();
-        for (id, session, harness) in pending {
+        for (id, session, harness, route) in pending {
             let (input, events) = Self::chat_input(id, window, cx);
             let history = session.history().cloned();
             let chat = SurfaceChat::new(
                 input,
                 events,
-                Backend::Structured(Box::new(StructuredChat::new(session, harness))),
+                Backend::Structured(Box::new(StructuredChat::new(session, harness, route))),
             );
             if let Some(live) = self.envs.get_mut(&env) {
                 live.chats.insert(id, chat);

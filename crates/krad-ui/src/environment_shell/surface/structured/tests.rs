@@ -1,6 +1,8 @@
 use super::*;
 use krad_domain::AgentPreset;
 
+const CLAUDE_WINDOW: u64 = 200_000;
+
 const MISSING: &str = "No conversation found with session ID: 4f2c0b7c-a91e";
 
 fn id(raw: &str) -> ResumeId {
@@ -12,6 +14,7 @@ fn resumed() -> StructuredChat {
     StructuredChat::new(
         LiveSession::Resume(id("4f2c0b7c-a91e")),
         AgentPreset::ClaudeCode,
+        Route::Direct,
     )
 }
 
@@ -27,7 +30,7 @@ fn the_context_reads_as_the_share_of_the_window_in_use() {
     assert_eq!(chat.context_used(), None);
     chat.context_tokens = Some(50_000);
     assert_eq!(chat.context_used(), None, "the window is still unknown");
-    chat.context_window = Some(200_000);
+    chat.context_window = Some(CLAUDE_WINDOW);
     assert_eq!(chat.context_used(), Some(25));
 }
 
@@ -81,6 +84,7 @@ fn a_reported_session_is_what_the_next_process_resumes() {
     let mut chat = StructuredChat::new(
         LiveSession::Start(id("0b7c3a52-9f1e")),
         AgentPreset::ClaudeCode,
+        Route::Direct,
     );
     chat.session_reported(id("4f2c0b7c-a91e"));
     assert_eq!(chat.session, LiveSession::Resume(id("4f2c0b7c-a91e")));
@@ -107,6 +111,7 @@ fn a_new_conversation_never_falls_back() {
     let mut chat = StructuredChat::new(
         LiveSession::Start(id("0b7c3a52-9f1e")),
         AgentPreset::ClaudeCode,
+        Route::Direct,
     );
     assert_eq!(chat.falls_back(MISSING), None);
 }
@@ -147,14 +152,46 @@ fn a_new_chat_can_move_to_another_harness_until_its_conversation_exists() {
     let mut chat = StructuredChat::new(
         LiveSession::Start(id("0b7c3a52-9f1e")),
         AgentPreset::ClaudeCode,
+        Route::Direct,
     );
     chat.effort = Some(Effort::Max);
     assert!(chat.is_fresh());
-    chat.switch_harness(AgentPreset::Opencode);
+    chat.switch_harness(AgentPreset::Opencode, Route::Gateway);
     assert_eq!(chat.harness, AgentPreset::Opencode);
+    assert_eq!(
+        chat.route,
+        Route::Direct,
+        "only Claude Code reaches the Gateway"
+    );
     assert_eq!(chat.effort, None);
     assert!(matches!(chat.session, LiveSession::Start(_)));
     chat.session_reported(id("ses_4f2c0b7ca91e"));
     assert!(!chat.is_fresh());
     assert!(!resumed().is_fresh());
+}
+
+#[test]
+fn changing_route_keeps_the_conversation_and_forgets_the_plan_usage() {
+    let mut chat = StructuredChat::new(
+        LiveSession::Resume(id("4f2c0b7c-a91e")),
+        AgentPreset::ClaudeCode,
+        Route::Direct,
+    );
+    chat.usage = Some(PlanUsage::default());
+    chat.context_window = Some(200_000);
+    chat.switch_route(Route::Gateway);
+    assert_eq!(chat.route, Route::Gateway);
+    assert!(matches!(chat.session, LiveSession::Resume(_)));
+    assert_eq!(chat.usage, None);
+    assert_eq!(chat.context_window, None);
+}
+
+#[test]
+fn a_chat_restored_on_the_gateway_stays_direct_for_harnesses_that_cannot_reach_it() {
+    let chat = StructuredChat::new(
+        LiveSession::Start(id("0b7c3a52-9f1e")),
+        AgentPreset::Codex,
+        Route::Gateway,
+    );
+    assert_eq!(chat.route, Route::Direct);
 }
