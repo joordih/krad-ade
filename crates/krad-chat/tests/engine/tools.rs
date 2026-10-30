@@ -2,8 +2,6 @@ use krad_chat::{new_session_id, AskAnswer, AskKind, ChatEvent, LiveEvent, LiveSe
 use krad_domain::{ModelId, PermissionMode};
 use std::fs;
 use std::io;
-use std::thread;
-use std::time::Duration;
 
 use super::support::{
     call_stream, completions, config, fake_gateway, fake_page, finished, gateway_model, scratch,
@@ -56,6 +54,9 @@ fn a_web_page_is_fetched_after_the_user_allows_it_and_read_as_text() -> io::Resu
 #[cfg(unix)]
 #[test]
 fn background_shells_die_with_their_chat() -> io::Result<()> {
+    use std::thread;
+    use std::time::Duration;
+
     let root = scratch("background");
     fs::create_dir_all(root.join("work"))?;
     let start_call = call_stream(
