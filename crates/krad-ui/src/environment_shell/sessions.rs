@@ -496,7 +496,7 @@ fn type_agent_line(
 ) {
     let clear = clear_screen_prefix(typed.in_wsl);
     let agent = match attached {
-        Some((server, resume)) => attach_line(&typed.agent, server.url(), resume),
+        Some((server, resume)) => attach_line(&typed.agent, &server.url(), resume),
         None => typed.agent,
     };
     let line = PtyInput::Bytes(format!("{clear}{agent}{SHELL_SUBMIT}").into_bytes());
