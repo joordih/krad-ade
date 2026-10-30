@@ -76,6 +76,7 @@ Source: "{#Root}\assets\fonts\Inter-OFL.txt"; DestDir: "{app}\licenses"; Flags: 
 Source: "{#Root}\target\conpty\conpty.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\target\conpty\OpenConsole.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\packaging\windows\LICENSE-conpty.txt"; DestDir: "{app}\licenses"; Flags: ignoreversion
+Source: "{#Root}\packaging\update\krad-ade.install"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
@@ -83,3 +84,10 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExe}"; Flags: nowait; Check: RelaunchAfterUpdate
+
+[Code]
+function RelaunchAfterUpdate: Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:RELAUNCH|no}') = 'yes');
+end;

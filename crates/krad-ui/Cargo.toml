@@ -18,6 +18,7 @@ krad-gitlab.workspace = true
 krad-repo.workspace = true
 krad-session.workspace = true
 krad-store.workspace = true
+krad-update.workspace = true
 mermaid-rs-renderer.workspace = true
 ratex-layout.workspace = true
 ratex-parser.workspace = true

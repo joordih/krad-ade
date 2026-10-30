@@ -46,8 +46,9 @@ const PALETTE_GROUPS: [(&str, PaletteCmd); 5] = [
     ("Close file viewer", PaletteCmd::CloseViewer),
 ];
 
-const PALETTE_VIEW: [(&str, PaletteCmd); 12] = [
+const PALETTE_VIEW: [(&str, PaletteCmd); 13] = [
     ("Settings…", PaletteCmd::OpenSettings),
+    ("Check for updates", PaletteCmd::CheckForUpdates),
     ("New agent with a prompt…", PaletteCmd::NewAgent),
     ("New WSL terminal (bash)", PaletteCmd::NewWslTerminal),
     ("Toggle FPS", PaletteCmd::ToggleFps),
@@ -81,6 +82,7 @@ enum PaletteCmd {
     RemoveWorktree,
     CloseViewer,
     OpenSettings,
+    CheckForUpdates,
     NewAgent,
     OpenNote(String, Option<u32>),
 }
@@ -107,6 +109,7 @@ impl PaletteCmd {
             Self::RemoveGroup | Self::RemoveWorktree => IconName::Minus,
             Self::NewWorktree => IconName::GitBranch,
             Self::OpenSettings => IconName::Settings,
+            Self::CheckForUpdates => IconName::Refresh,
             Self::NewAgent => IconName::Magic,
             Self::RenameFocused | Self::RenameEnv | Self::OpenNote(_, None) => IconName::Note,
             Self::OpenNote(_, Some(_)) => IconName::Search,
@@ -223,6 +226,7 @@ impl EnvironmentShell {
             PaletteCmd::RemoveWorktree => self.remove_selected_worktree(cx),
             PaletteCmd::CloseViewer => self.close_viewer(cx),
             PaletteCmd::OpenSettings => self.open_settings(window, cx),
+            PaletteCmd::CheckForUpdates => self.ask_for_app_update(cx),
             PaletteCmd::NewAgent => self.open_agent_composer(window, cx),
             PaletteCmd::OpenNote(path, line) => self.open_note_from_palette(&path, line, cx),
         }

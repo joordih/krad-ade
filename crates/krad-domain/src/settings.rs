@@ -136,6 +136,13 @@ impl CopyMode {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum AppUpdateCheck {
+    #[default]
+    Automatic,
+    Manual,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
@@ -168,6 +175,8 @@ pub struct Settings {
     pub window_material: WindowMaterial,
     #[serde(default, skip_serializing_if = "WindowTint::is_default")]
     pub window_tint: WindowTint,
+    #[serde(default)]
+    pub app_updates: AppUpdateCheck,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
@@ -309,6 +318,11 @@ mod tests {
             partial.ligatures,
             Ligatures::On,
             "fonts join ligatures unless turned off"
+        );
+        assert_eq!(
+            partial.app_updates,
+            AppUpdateCheck::Automatic,
+            "older settings files check for app updates"
         );
         Ok(())
     }
