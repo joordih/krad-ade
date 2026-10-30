@@ -33,7 +33,14 @@ const PAGE_GAP: f32 = 24.0;
 
 const GROUPS: [(&str, &[SettingsPane]); 2] = [
     ("App", &[SettingsPane::General, SettingsPane::Terminal]),
-    ("Workspace", &[SettingsPane::Integrations]),
+    (
+        "Workspace",
+        &[
+            SettingsPane::Integrations,
+            SettingsPane::Gateway,
+            SettingsPane::Mcp,
+        ],
+    ),
 ];
 
 impl EnvironmentShell {
@@ -46,6 +53,8 @@ impl EnvironmentShell {
             SettingsPane::General => self.general_pane(cx),
             SettingsPane::Terminal => self.terminal_pane(cx),
             SettingsPane::Integrations => self.integrations_pane(ui, cx),
+            SettingsPane::Gateway => self.gateway_pane(&ui.gateway, cx),
+            SettingsPane::Mcp => self.mcp_pane(&ui.mcp, cx),
         };
         Some(
             div()

@@ -9,12 +9,14 @@ pub(super) use live::{LiveProcess, StartError};
 pub(super) use panel::question_bubble;
 use suggest::Suggest;
 pub(super) use suggest::{workplace_home, Composer};
-pub(super) use transcript::{fold_entry, last_permission_mode};
+pub(super) use transcript::{fold_entry, fold_prompt, last_permission_mode};
 
 use gpui_kit::component::input::TextareaState;
 use gpui_kit::{Entity, ScrollHandle, Subscription};
 use krad_chat::{Skill, Speaker, ToolCall};
-use krad_domain::{AgentPreset, AskOutcome, ChatId, PermissionMode, ResumeId};
+use krad_domain::{
+    AgentPreset, AskOutcome, ChatId, Checklist, Mention, PermissionMode, ResumeId, RewindPoint,
+};
 use krad_repo::FileIndex;
 use krad_store::ChatLogWriter;
 use std::path::PathBuf;
@@ -38,6 +40,9 @@ pub(super) struct ChatMessage {
     pub(super) preset: AgentPreset,
     pub(super) error: Option<String>,
     pub(super) running: bool,
+    pub(super) mentions: Vec<Mention>,
+    pub(super) checklist: Option<Checklist>,
+    pub(super) rewind: Option<RewindPoint>,
 }
 
 #[derive(Default)]

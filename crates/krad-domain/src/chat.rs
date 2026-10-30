@@ -3,10 +3,13 @@ use std::fmt;
 use std::str::FromStr;
 
 use crate::agent::AgentPreset;
+use crate::checklist::Checklist;
 use crate::file_edit::FileEdit;
 use crate::ids::{InvalidResumeId, ResumeId};
+use crate::mention::ChatImage;
 use crate::model::ModelId;
 use crate::permission_mode::PermissionMode;
+use crate::rewind::RewindPoint;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -46,6 +49,8 @@ pub enum ChatEvent {
     ContextWindow(u64),
     Tool(ToolCall),
     Edited { tool: ToolUseId, edit: FileEdit },
+    Checklist(Checklist),
+    Prompted(RewindPoint),
     Done,
     Error(String),
 }
@@ -73,6 +78,8 @@ pub enum ChatEntry {
         text: String,
         preset: AgentPreset,
         model: Option<ModelId>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        images: Vec<ChatImage>,
     },
     Event(ChatEvent),
     Asked(AskOutcome),
@@ -119,6 +126,16 @@ mod tests {
                 text: "hi".to_owned(),
                 preset: AgentPreset::ClaudeCode,
                 model: ModelId::parse("opus"),
+                images: Vec::new(),
+            },
+            ChatEntry::User {
+                text: "look".to_owned(),
+                preset: AgentPreset::Gateway,
+                model: None,
+                images: vec![ChatImage {
+                    path: std::path::PathBuf::from("/shots/1.png"),
+                    format: crate::mention::ImageFormat::Png,
+                }],
             },
             ChatEntry::Event(ChatEvent::Tool(ToolCall {
                 id: None,
@@ -126,12 +143,27 @@ mod tests {
                 summary: "a.rs".to_owned(),
                 edit: None,
             })),
+            ChatEntry::Event(ChatEvent::Checklist(Checklist {
+                items: vec![crate::checklist::ChecklistItem {
+                    text: "Fix it".to_owned(),
+                    status: crate::checklist::ChecklistStatus::Pending,
+                }],
+            })),
             ChatEntry::Event(ChatEvent::Done),
         ];
         for entry in entries {
             let line = serde_json::to_string(&entry).unwrap_or_default();
             assert_eq!(serde_json::from_str::<ChatEntry>(&line).ok(), Some(entry));
         }
+    }
+
+    #[test]
+    fn a_user_entry_saved_before_images_still_loads() {
+        let line = r#"{"User":{"text":"hi","preset":"ClaudeCode","model":null}}"#;
+        assert!(matches!(
+            serde_json::from_str::<ChatEntry>(line),
+            Ok(ChatEntry::User { images, .. }) if images.is_empty()
+        ));
     }
 
     #[test]

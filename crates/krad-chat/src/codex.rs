@@ -3,6 +3,7 @@ mod catalog;
 mod chat;
 mod events;
 mod history;
+mod plan;
 mod rpc;
 
 pub(crate) use ask::CodexAsk;

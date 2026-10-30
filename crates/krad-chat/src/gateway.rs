@@ -1,0 +1,119 @@
+use krad_domain::{Effort, GatewayAccess, ModelId};
+use serde::Deserialize;
+use std::time::Duration;
+use thiserror::Error;
+use ureq::Agent;
+
+use crate::control::{ModelOffer, ModelSource};
+
+const MODELS_PATH: &str = "/v1/models";
+const AUTHORIZATION: &str = "Authorization";
+const BEARER: &str = "Bearer";
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const UNAUTHORIZED: u16 = 401;
+const FORBIDDEN: u16 = 403;
+
+#[derive(Debug, Error)]
+pub enum GatewayError {
+    #[error("the Gateway rejected the key")]
+    Rejected,
+    #[error("the Gateway answered with status {0}")]
+    Status(u16),
+    #[error("the Gateway could not be reached: {0}")]
+    Unreachable(String),
+    #[error("the Gateway sent a model list that could not be read")]
+    Unreadable,
+}
+
+impl From<ureq::Error> for GatewayError {
+    fn from(error: ureq::Error) -> Self {
+        match error {
+            ureq::Error::StatusCode(UNAUTHORIZED | FORBIDDEN) => Self::Rejected,
+            ureq::Error::StatusCode(status) => Self::Status(status),
+            ureq::Error::Json(_) => Self::Unreadable,
+            error => Self::Unreachable(error.to_string()),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct ModelList {
+    #[serde(default)]
+    data: Vec<ListedModel>,
+}
+
+#[derive(Deserialize)]
+struct ListedModel {
+    id: String,
+    #[serde(default)]
+    owned_by: Option<String>,
+}
+
+impl ListedModel {
+    fn offer(self) -> Option<ModelOffer> {
+        let id = ModelId::parse(&self.id)?;
+        Some(ModelOffer {
+            value: id.as_str().to_owned(),
+            name: id.as_str().to_owned(),
+            description: None,
+            efforts: Effort::ALL.to_vec(),
+            thinking_off: false,
+            source: self
+                .owned_by
+                .filter(|owner| !owner.trim().is_empty())
+                .map(ModelSource::Provider),
+        })
+    }
+}
+
+/// # Errors
+///
+/// Fails when the Gateway cannot be reached, rejects the key or answers
+/// with something else than a model list.
+pub fn gateway_models(access: &GatewayAccess) -> Result<Vec<ModelOffer>, GatewayError> {
+    let agent: Agent = Agent::config_builder()
+        .timeout_global(Some(REQUEST_TIMEOUT))
+        .build()
+        .into();
+    let list: ModelList = agent
+        .get(access.url.join(MODELS_PATH))
+        .header(AUTHORIZATION, format!("{BEARER} {}", access.key.expose()))
+        .call()?
+        .body_mut()
+        .read_json()?;
+    Ok(read_models(list))
+}
+
+fn read_models(list: ModelList) -> Vec<ModelOffer> {
+    let mut offers: Vec<ModelOffer> = Vec::with_capacity(list.data.len());
+    for offer in list.data.into_iter().filter_map(ListedModel::offer) {
+        if !offers.iter().any(|kept| kept.value == offer.value) {
+            offers.push(offer);
+        }
+    }
+    offers
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn the_model_list_keeps_valid_unique_ids_with_their_owner() -> serde_json::Result<()> {
+        let list: ModelList = serde_json::from_str(
+            r#"{"object":"list","data":[
+                {"id":"gpt-5","object":"model","owned_by":"openai"},
+                {"id":"gpt-5","object":"model","owned_by":"openai"},
+                {"id":"bad id","object":"model"},
+                {"id":"gemini-3-pro(high)","object":"model","owned_by":""}
+            ]}"#,
+        )?;
+        let offers = read_models(list);
+        let ids: Vec<&str> = offers.iter().map(|offer| offer.value.as_str()).collect();
+        assert_eq!(ids, ["gpt-5"]);
+        assert_eq!(
+            offers[0].source,
+            Some(ModelSource::Provider("openai".to_owned()))
+        );
+        Ok(())
+    }
+}

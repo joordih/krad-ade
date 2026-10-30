@@ -44,7 +44,7 @@ Commands:
   {cli} read <id> [--lines N]
       Show the last lines of terminal <id>'s screen.
       Example: {cli} read 4 --lines 40
-  {cli} spawn --agent <claude|codex|opencode|...> [--worktree <name>] \"<task>\"
+  {cli} spawn --agent <claude|codex|opencode> [--worktree <name>] \"<task>\"
       Start a worker agent in a new terminal of your group (or a new git
       worktree of it). It reports back to you with send when done; wait for
       it with {cli} check --wait 900.
@@ -70,7 +70,7 @@ work to agents and check it by reading files and their screens.
 Commands:
   {cli} list
       The terminals of the environment: id, title, state and group.
-  {cli} spawn --agent <claude|codex|opencode|gemini|...> [--worktree <name>] \"<task>\"
+  {cli} spawn --agent <claude|codex|opencode> [--worktree <name>] \"<task>\"
       Start an agent in a new terminal of the group and print its id. Use
       --worktree for agents that edit the same repository in parallel.
   {cli} send <id> \"<instruction>\"

@@ -1,7 +1,8 @@
-use krad_domain::{AgentPreset, ChatEvent, PermissionMode, ToolCall, ToolUseId};
+use krad_domain::{ChatEvent, PermissionMode, ToolCall, ToolUseId};
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::checklist::{todos, TODO_TOOL};
 use crate::edits::{file_edit, patched_edit};
 
 const SUMMARY_KEYS: &[&str] = &[
@@ -14,38 +15,16 @@ const SUMMARY_KEYS: &[&str] = &[
     "url",
     "description",
 ];
-const RUN_TOOL: &str = "Run";
-const EDIT_TOOL: &str = "Edit";
-const SEARCH_TOOL: &str = "Search";
 const UNKNOWN_TOOL: &str = "tool";
 const UNKNOWN_ERROR: &str = "the harness reported an error";
-const PATH_SEPARATOR: &str = ", ";
 const PARENT_TOOL_USE: &str = "/parent_tool_use_id";
+const FIRST_ERROR: &str = "/errors/0";
 const PERMISSION_MODE_KEY: &str = "permissionMode";
 const CONTEXT_TOKEN_KEYS: [&str; 3] = [
     "input_tokens",
     "cache_creation_input_tokens",
     "cache_read_input_tokens",
 ];
-
-#[must_use]
-pub fn parse_line(preset: AgentPreset, line: &str) -> Vec<ChatEvent> {
-    let Ok(value) = serde_json::from_str::<Value>(line.trim()) else {
-        return Vec::new();
-    };
-    match preset {
-        AgentPreset::ClaudeCode => claude(&value),
-        AgentPreset::Codex => codex(&value),
-        AgentPreset::Opencode => opencode(&value),
-        AgentPreset::Gemini => gemini(&value),
-        AgentPreset::Shell
-        | AgentPreset::Copilot
-        | AgentPreset::CursorAgent
-        | AgentPreset::Amp
-        | AgentPreset::Aider
-        | AgentPreset::Goose => Vec::new(),
-    }
-}
 
 fn str_at<'a>(value: &'a Value, pointer: &str) -> Option<&'a str> {
     value.pointer(pointer).and_then(Value::as_str)
@@ -60,15 +39,6 @@ pub(crate) fn tool_summary(input: Option<&Value>) -> String {
         })
         .unwrap_or_default()
         .to_owned()
-}
-
-fn tool(name: &str, summary: String) -> ChatEvent {
-    ChatEvent::Tool(ToolCall {
-        id: None,
-        name: name.to_owned(),
-        summary,
-        edit: None,
-    })
 }
 
 fn error(message: Option<&str>) -> ChatEvent {
@@ -99,37 +69,7 @@ pub(crate) fn claude(value: &Value) -> Vec<ChatEvent> {
             let blocks = value
                 .pointer("/message/content")
                 .and_then(Value::as_array)
-                .map_or_default(|blocks| {
-                    blocks
-                        .iter()
-                        .filter_map(|block| match block.get("type").and_then(Value::as_str) {
-                            Some("text") => block
-                                .get("text")
-                                .and_then(Value::as_str)
-                                .map(|text| ChatEvent::Text(text.to_owned())),
-                            Some("thinking") => block
-                                .get("thinking")
-                                .and_then(Value::as_str)
-                                .map(str::trim)
-                                .filter(|thinking| !thinking.is_empty())
-                                .map(|thinking| ChatEvent::Thinking(thinking.to_owned())),
-                            Some("tool_use") => Some(ChatEvent::Tool(ToolCall {
-                                id: block.get("id").and_then(Value::as_str).map(ToolUseId::from),
-                                name: block
-                                    .get("name")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or(UNKNOWN_TOOL)
-                                    .to_owned(),
-                                summary: tool_summary(block.get("input")),
-                                edit: block
-                                    .get("name")
-                                    .and_then(Value::as_str)
-                                    .and_then(|name| file_edit(name, block.get("input"))),
-                            })),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                });
+                .map_or_default(|blocks| blocks.iter().flat_map(block_events).collect::<Vec<_>>());
             blocks.into_iter().chain(context).collect()
         }
         Some("result") => {
@@ -137,7 +77,9 @@ pub(crate) fn claude(value: &Value) -> Vec<ChatEvent> {
                 || str_at(value, "/subtype").is_some_and(|subtype| subtype != "success");
             if failed {
                 vec![error(
-                    str_at(value, "/result").or(str_at(value, "/subtype")),
+                    str_at(value, "/result")
+                        .or(str_at(value, FIRST_ERROR))
+                        .or(str_at(value, "/subtype")),
                 )]
             } else {
                 context_window(value)
@@ -150,6 +92,43 @@ pub(crate) fn claude(value: &Value) -> Vec<ChatEvent> {
         Some("user") => patched_edit(value).into_iter().collect(),
         _ => Vec::new(),
     }
+}
+
+fn block_events(block: &Value) -> Vec<ChatEvent> {
+    match block.get("type").and_then(Value::as_str) {
+        Some("text") => block
+            .get("text")
+            .and_then(Value::as_str)
+            .map(|text| ChatEvent::Text(text.to_owned()))
+            .into_iter()
+            .collect(),
+        Some("thinking") => block
+            .get("thinking")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|thinking| !thinking.is_empty())
+            .map(|thinking| ChatEvent::Thinking(thinking.to_owned()))
+            .into_iter()
+            .collect(),
+        Some("tool_use") => tool_use_events(block),
+        _ => Vec::new(),
+    }
+}
+
+fn tool_use_events(block: &Value) -> Vec<ChatEvent> {
+    let name = block.get("name").and_then(Value::as_str);
+    let input = block.get("input");
+    let tool = ChatEvent::Tool(ToolCall {
+        id: block.get("id").and_then(Value::as_str).map(ToolUseId::from),
+        name: name.unwrap_or(UNKNOWN_TOOL).to_owned(),
+        summary: tool_summary(input),
+        edit: name.and_then(|name| file_edit(name, input)),
+    });
+    let checklist = (name == Some(TODO_TOOL))
+        .then(|| input.and_then(todos))
+        .flatten()
+        .map(ChatEvent::Checklist);
+    std::iter::once(tool).chain(checklist).collect()
 }
 
 pub(crate) fn permission_mode(value: &Value) -> Option<ChatEvent> {
@@ -177,134 +156,131 @@ fn context_window(value: &Value) -> Option<u64> {
         .max()
 }
 
-fn codex(value: &Value) -> Vec<ChatEvent> {
-    match str_at(value, "/type") {
-        Some("item.completed") => {
-            let item = value.get("item");
-            let text_of = |pointer: &str| item.and_then(|item| str_at(item, pointer));
-            match text_of("/type") {
-                Some("agent_message") => {
-                    text_of("/text").map_or_default(|text| vec![ChatEvent::Text(text.to_owned())])
-                }
-                Some("command_execution") => {
-                    vec![tool(
-                        RUN_TOOL,
-                        text_of("/command").unwrap_or_default().to_owned(),
-                    )]
-                }
-                Some("file_change") => {
-                    let paths: Vec<&str> = item
-                        .and_then(|item| item.get("changes"))
-                        .and_then(Value::as_array)
-                        .map_or_default(|changes| {
-                            changes
-                                .iter()
-                                .filter_map(|change| str_at(change, "/path"))
-                                .collect()
-                        });
-                    vec![tool(EDIT_TOOL, paths.join(PATH_SEPARATOR))]
-                }
-                Some("web_search") => {
-                    vec![tool(
-                        SEARCH_TOOL,
-                        text_of("/query").unwrap_or_default().to_owned(),
-                    )]
-                }
-                Some("mcp_tool_call") => vec![tool(
-                    text_of("/tool").unwrap_or(UNKNOWN_TOOL),
-                    String::new(),
-                )],
-                _ => Vec::new(),
-            }
-        }
-        Some("turn.completed") => vec![ChatEvent::Done],
-        Some("turn.failed") => vec![error(str_at(value, "/error/message"))],
-        Some("error") => vec![error(str_at(value, "/message"))],
-        _ => Vec::new(),
-    }
-}
-
-fn opencode(value: &Value) -> Vec<ChatEvent> {
-    match str_at(value, "/type") {
-        Some("text") => str_at(value, "/part/text")
-            .map_or_default(|text| vec![ChatEvent::Text(text.to_owned())]),
-        Some("tool_use" | "tool") => vec![tool(
-            str_at(value, "/part/tool").unwrap_or(UNKNOWN_TOOL),
-            tool_summary(value.pointer("/part/state/input")),
-        )],
-        Some("error") => vec![error(
-            str_at(value, "/error/data/message")
-                .or(str_at(value, "/error/message"))
-                .or(str_at(value, "/message")),
-        )],
-        _ => Vec::new(),
-    }
-}
-
-fn gemini(value: &Value) -> Vec<ChatEvent> {
-    match str_at(value, "/type") {
-        Some("message") if str_at(value, "/role") == Some("assistant") => {
-            str_at(value, "/content").map_or_default(|text| vec![ChatEvent::Text(text.to_owned())])
-        }
-        Some("tool_use") => vec![tool(
-            str_at(value, "/tool_name").unwrap_or(UNKNOWN_TOOL),
-            tool_summary(value.get("parameters")),
-        )],
-        Some("result") => {
-            if str_at(value, "/status") == Some("success") {
-                vec![ChatEvent::Done]
-            } else {
-                vec![error(str_at(value, "/error/message"))]
-            }
-        }
-        Some("error") => vec![error(str_at(value, "/message"))],
-        _ => Vec::new(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use krad_domain::ResumeId;
 
-    #[test]
-    fn lines_that_are_not_json_are_skipped() {
-        assert_eq!(
-            parse_line(AgentPreset::ClaudeCode, "warning: update available"),
-            []
-        );
-        assert_eq!(parse_line(AgentPreset::Codex, ""), []);
-        assert_eq!(parse_line(AgentPreset::Shell, r#"{"type":"text"}"#), []);
+    fn events(transcript: &str) -> Vec<ChatEvent> {
+        transcript
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok())
+            .flat_map(|value| claude(&value))
+            .collect()
+    }
+
+    fn model(name: &str) -> ChatEvent {
+        ChatEvent::Model(name.to_owned())
+    }
+
+    fn session(id: &str) -> ChatEvent {
+        let Ok(id) = id.parse::<ResumeId>() else {
+            unreachable!("{id} is a valid resume id");
+        };
+        ChatEvent::Session(id)
+    }
+
+    fn claude_tool(id: &str, name: &str, summary: &str) -> ChatEvent {
+        ChatEvent::Tool(ToolCall {
+            id: Some(ToolUseId::from(id)),
+            name: name.to_owned(),
+            summary: summary.to_owned(),
+            edit: None,
+        })
     }
 
     #[test]
     fn claude_failures_carry_their_message() {
-        let events = parse_line(
-            AgentPreset::ClaudeCode,
-            r#"{"type":"result","subtype":"error_max_turns","is_error":true}"#,
+        let failed = events(r#"{"type":"result","subtype":"error_max_turns","is_error":true}"#);
+        assert_eq!(failed, [ChatEvent::Error("error_max_turns".to_owned())]);
+        let refused = events(
+            r#"{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["Resume rejected by --resume-drops-turn: range"]}"#,
         );
-        assert_eq!(events, [ChatEvent::Error("error_max_turns".to_owned())]);
+        assert_eq!(
+            refused,
+            [ChatEvent::Error(
+                "Resume rejected by --resume-drops-turn: range".to_owned()
+            )]
+        );
     }
 
     #[test]
     fn claude_reports_its_permission_mode_when_it_starts_and_when_it_changes() {
-        let started = parse_line(
-            AgentPreset::ClaudeCode,
-            r#"{"type":"system","subtype":"init","permissionMode":"default"}"#,
-        );
-        let changed = parse_line(
-            AgentPreset::ClaudeCode,
-            r#"{"type":"system","subtype":"status","status":null,"permissionMode":"plan"}"#,
-        );
+        let started = events(r#"{"type":"system","subtype":"init","permissionMode":"default"}"#);
+        let changed =
+            events(r#"{"type":"system","subtype":"status","status":null,"permissionMode":"plan"}"#);
         assert_eq!(started, [ChatEvent::PermissionMode(PermissionMode::Manual)]);
         assert_eq!(changed, [ChatEvent::PermissionMode(PermissionMode::Plan)]);
     }
 
     #[test]
     fn a_permission_mode_claude_code_added_later_is_skipped() {
-        let events = parse_line(
-            AgentPreset::ClaudeCode,
-            r#"{"type":"system","subtype":"status","permissionMode":"yolo"}"#,
-        );
+        let events = events(r#"{"type":"system","subtype":"status","permissionMode":"yolo"}"#);
         assert_eq!(events, []);
+    }
+
+    #[test]
+    fn claude_transcript_yields_the_read_the_answer_and_done() {
+        assert_eq!(
+            events(include_str!("../tests/fixtures/claude.jsonl")),
+            [
+                session("s1"),
+                model("claude-opus"),
+                claude_tool("t1", "Read", "server/auth/refresh.ts"),
+                ChatEvent::Text("Both tabs call `rotate()` at once.".to_owned()),
+                ChatEvent::Done,
+            ]
+        );
+    }
+
+    #[test]
+    fn a_recorded_claude_turn_parses_to_its_answer() {
+        assert_eq!(
+            events(include_str!("../tests/fixtures/claude-recorded.jsonl")),
+            [
+                ChatEvent::Text("pong".to_owned()),
+                ChatEvent::ContextTokens(33_694),
+                ChatEvent::ContextWindow(1_000_000),
+                ChatEvent::Done
+            ],
+            "the context the answer took, and the window it fits in"
+        );
+    }
+
+    #[test]
+    fn a_live_claude_conversation_reports_its_session_and_closes_each_answer() {
+        let id = "0b7c3a52-9f1e-4d2a-8c6b-1f2e3d4c5b6a";
+        assert_eq!(
+            events(include_str!("../tests/fixtures/claude-live.jsonl")),
+            [
+                session(id),
+                model("claude-opus"),
+                ChatEvent::Text("Two tabs rotate at once.".to_owned()),
+                ChatEvent::Done,
+                session(id),
+                model("claude-opus"),
+                claude_tool("t1", "Edit", "server/auth/refresh.ts"),
+                ChatEvent::Text("Shared one in-flight promise.".to_owned()),
+                ChatEvent::Done,
+            ]
+        );
+    }
+
+    #[test]
+    fn a_todo_write_keeps_its_tool_row_and_sends_the_checklist() {
+        let events = events(concat!(
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t4","name":"TodoWrite","input":{"todos":["#,
+            r#"{"content":"Fix the bug","status":"in_progress","activeForm":"Fixing the bug"},"#,
+            r#"{"content":"Run the tests","status":"pending","activeForm":"Running the tests"}]}}]}}"#
+        ));
+        assert_eq!(events[0], claude_tool("t4", "TodoWrite", ""));
+        let ChatEvent::Checklist(list) = &events[1] else {
+            unreachable!("a TodoWrite carries a checklist: {events:?}");
+        };
+        assert_eq!(list.items.len(), 2);
+        assert_eq!(
+            list.current().map(|item| item.text.as_str()),
+            Some("Fix the bug")
+        );
     }
 }

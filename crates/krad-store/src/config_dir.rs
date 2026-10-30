@@ -7,12 +7,18 @@ const USERPROFILE_VAR: &str = "USERPROFILE";
 const APPDATA_VAR: &str = "APPDATA";
 const CONFIG_FALLBACK_DIR: &str = ".config";
 const OPENCODE_DIR: &str = "opencode";
+const GATEWAY_SESSIONS_DIR: &str = "gateway-sessions";
 
 pub const APP_NAME: &str = "krad-ade";
 
 #[must_use]
 pub fn config_dir() -> Option<PathBuf> {
     config_dir_named(APP_NAME)
+}
+
+#[must_use]
+pub fn gateway_sessions_dir() -> Option<PathBuf> {
+    config_dir().map(|dir| dir.join(GATEWAY_SESSIONS_DIR))
 }
 
 fn config_dir_named(name: &str) -> Option<PathBuf> {

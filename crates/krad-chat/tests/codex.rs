@@ -1,6 +1,6 @@
 use krad_chat::{
-    new_session_id, read_codex_transcript, spawn_codex_chat, Approvals, BusVars, ChatEvent,
-    LiveConfig, LiveEvent, LiveSession, Runner,
+    new_session_id, read_codex_transcript, spawn_codex_chat, BusVars, ChatEvent, LiveConfig,
+    LiveEvent, LiveSession, Runner,
 };
 use krad_domain::{AgentPreset, ChatEntry, PermissionMode};
 use std::path::PathBuf;
@@ -35,13 +35,10 @@ fn a_codex_chat_opens_a_thread_answers_and_reads_back() {
         runner: runner.clone(),
         model: None,
         cwd: std::env::temp_dir(),
-        extra_dirs: Vec::new(),
-        orchestration: None,
         system_prompt: Some("Answer briefly.".to_owned()),
         effort: Some(krad_domain::Effort::Low),
         permission_mode: Some(PermissionMode::Manual),
         bus_vars: BusVars::default(),
-        approvals: Approvals::Asked,
     };
     let (sender, receiver) = channel();
     let chat = spawn_codex_chat(

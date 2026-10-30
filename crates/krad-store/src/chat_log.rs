@@ -140,6 +140,7 @@ mod tests {
                 text: "hi".to_owned(),
                 preset: AgentPreset::ClaudeCode,
                 model: None,
+                images: Vec::new(),
             },
             ChatEntry::Event(ChatEvent::Text("hello".to_owned())),
             ChatEntry::Event(ChatEvent::Done),

@@ -15,9 +15,9 @@ per crate:
 | `krad-pty` | Process spawning and PTY I/O over `portable-pty` (Unix PTY, Windows ConPTY) behind a platform-neutral API; platform shells in `unix.rs`, `windows.rs`, `wsl.rs`. |
 | `krad-term` | Terminal emulation over libghostty-vt, linked from prebuilt static libraries. Bytes in, renderable snapshots out, key and mouse input encoded. |
 | `krad-session` | Glue: owns a PTY + terminal pair, spawn/reader/writer threads, emits session events (`PumpMsg`). Re-exports the PTY and terminal items `krad-ui` needs, so the UI never depends on `krad-pty` or `krad-term` directly. |
-| `krad-store` | The app's files on disk: config folder lookup, the layout file and its writer thread, the chat transcripts and their writer thread, `settings.json`, the saved Claude Code logins and the GitLab and GitHub logins (system keyring, config-folder fallback). Synchronous. |
+| `krad-store` | The app's files on disk: config folder lookup, the layout file and its writer thread, the chat transcripts and their writer thread, `settings.json`, the GitLab and GitHub logins, the Gateway key and the MCP server secrets (system keyring, config-folder fallback), the images pasted into chats and the folder of Gateway chat sessions. Synchronous. |
 | `krad-repo` | A Group's root folder: directory listing, the file index behind `@` mentions, text file reads, git status and worktrees through the `git` CLI. Synchronous; the UI calls it from the background executor. |
-| `krad-chat` | Headless agent turns and Claude Code's live chat process with its message queue: the non-interactive command line per harness, the prompt, the Claude Code skills a message can call, and the parsed output stream of each turn. |
+| `krad-chat` | The live chat of each harness: Claude Code's stream-JSON process, Codex's app server and opencode's server, their asks, histories and model lists, the skills a message can call, and the Gateway's model list and the app's own agent engine that chats through it (agent loop, Anthropic Messages, OpenAI Responses and Chat Completions streams, its tools: files, search, shell, web fetch and search, questions, plans, checklists and subagents, an MCP client over stdio and HTTP, permissions and its session files). |
 | `krad-gitlab` | GitLab's REST API v4: OAuth sign-in (Authorization Code with PKCE through a loopback redirect, Device Authorization Grant as fallback) and token refresh, merge requests, commits, changes, discussions, notes, approvals, merge, pipelines, jobs, branches and repository tree and files, over `ureq`. Synchronous; the UI calls it from the background executor. |
 | `krad-github` | GitHub's REST API, with GraphQL for review threads: device-flow sign-in, pull requests, commits, changed files, conversation comments, reviews, review threads, approvals, merge, Actions runs and jobs, branches and repository files, read into the review types of `krad-domain`, over `ureq`. Synchronous; the UI calls it from the background executor. |
 | `krad-agents` | Agent coordination bus, after Orca's orchestration: the loopback endpoint the app serves, its line-JSON protocol, the mailbox, and the `krad-ade-agents` CLI agents run from their shell. |
@@ -35,7 +35,7 @@ per crate:
 
 Inside `krad-ui`, the root view lives in `environment_shell.rs` and each concern of it (sessions
 and their panes, chat surfaces, terminal bodies and actions, sidebar, groups, file tree, file
-tabs, notes, review, side panel, utilities panel, settings, agent bus, agent hooks, context menus,
+tabs, notes, review, side panel, utilities panel, settings, gateway, agent bus, agent hooks, context menus,
 dialogs, palette, input, terminal lifecycle, layout snapshot, window close, arcade) is a child
 module in
 `environment_shell/` with its own `impl EnvironmentShell` block. Children see the shell's private

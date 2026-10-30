@@ -1,6 +1,8 @@
 use crate::agent::AgentPreset;
+use crate::gateway::GatewaySettings;
 use crate::gitlab::GitlabSettings;
 use crate::hue::Hue;
+use crate::mcp::McpSettings;
 use crate::model::{clean_models, ModelId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -154,6 +156,10 @@ pub struct Settings {
     pub harness_models: HashMap<AgentPreset, Vec<ModelId>>,
     #[serde(default, skip_serializing_if = "GitlabSettings::is_empty")]
     pub gitlab: GitlabSettings,
+    #[serde(default, skip_serializing_if = "GatewaySettings::is_empty")]
+    pub gateway: GatewaySettings,
+    #[serde(default, skip_serializing_if = "McpSettings::is_empty")]
+    pub mcp: McpSettings,
     #[serde(default)]
     pub agent_surface: AgentSurface,
     #[serde(default)]

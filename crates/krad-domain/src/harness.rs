@@ -88,11 +88,9 @@ impl AgentPreset {
     #[must_use]
     pub const fn prompt_delivery(self) -> PromptDelivery {
         match self {
-            Self::ClaudeCode | Self::Codex | Self::CursorAgent => PromptDelivery::Argument,
+            Self::ClaudeCode | Self::Codex => PromptDelivery::Argument,
             Self::Opencode => PromptDelivery::Flag("--prompt"),
-            Self::Gemini => PromptDelivery::Flag("--prompt-interactive"),
-            Self::Copilot => PromptDelivery::Flag("-i"),
-            Self::Shell | Self::Amp | Self::Aider | Self::Goose => PromptDelivery::AfterStart,
+            Self::Shell | Self::Gateway => PromptDelivery::AfterStart,
         }
     }
 
@@ -450,8 +448,8 @@ mod tests {
             ("opencode --prompt 'fix Bob''s test'".to_owned(), None)
         );
         assert_eq!(
-            launch_with_prompt("aider", AgentPreset::Aider, prompt, ShellQuoting::Posix),
-            ("aider".to_owned(), Some("fix Bob's test".to_owned()))
+            launch_with_prompt("zsh", AgentPreset::Shell, prompt, ShellQuoting::Posix),
+            ("zsh".to_owned(), Some("fix Bob's test".to_owned()))
         );
         assert_eq!(
             launch_with_prompt("codex", AgentPreset::Codex, "  ", ShellQuoting::Posix),
@@ -466,7 +464,6 @@ mod tests {
             ("claude", AgentPreset::ClaudeCode),
             ("codex", AgentPreset::Codex),
             ("opencode", AgentPreset::Opencode),
-            ("gemini", AgentPreset::Gemini),
         ] {
             for quoting in [ShellQuoting::Posix, ShellQuoting::PowerShell] {
                 assert_eq!(

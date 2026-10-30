@@ -14,10 +14,11 @@ use super::sessions_view::session_terminals;
 use super::EnvironmentShell;
 
 const NEW_CHAT_LABEL: &str = "New chat";
-const DEFAULT_CHAT_HARNESSES: [AgentPreset; 3] = [
+const DEFAULT_CHAT_HARNESSES: [AgentPreset; 4] = [
     AgentPreset::ClaudeCode,
     AgentPreset::Opencode,
     AgentPreset::Codex,
+    AgentPreset::Gateway,
 ];
 const WSL_LABEL: &str = "WSL";
 
@@ -179,7 +180,7 @@ impl EnvironmentShell {
     fn default_chat_harness(&self) -> AgentPreset {
         DEFAULT_CHAT_HARNESSES
             .into_iter()
-            .find(|preset| self.native_agents.contains(preset))
+            .find(|preset| self.chats_on(*preset))
             .unwrap_or(AgentPreset::ClaudeCode)
     }
 
@@ -243,7 +244,7 @@ impl EnvironmentShell {
                 killer.kill();
             }
         }
-        live.chats.remove(&id);
+        let chat = live.chats.remove(&id);
         live.pending_chats.remove(&id);
         live.data.nodes.retain(|node| node.id != id);
         live.data.meta.remove(&id);
@@ -251,6 +252,9 @@ impl EnvironmentShell {
         live.data.remove_terminal_tiles(id);
         if live.focused == Some(id) {
             live.focused = live.data.nodes.first().map(|node| node.id);
+        }
+        if chat.is_some_and(|chat| chat.structured().is_some()) {
+            Self::forget_chat_images(&env, id, cx);
         }
         cx.notify();
         self.store();

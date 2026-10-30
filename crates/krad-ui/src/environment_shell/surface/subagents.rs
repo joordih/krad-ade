@@ -1,11 +1,13 @@
 use gpui_kit::{Context, ScrollHandle, Task};
 use krad_chat::{
-    claude_conversation_file, claude_subagents, read_subagent_meta, read_subagent_record,
-    SubagentMeta, TranscriptChunk,
+    claude_conversation_file, claude_subagents, engine_subagents, read_engine_subagent,
+    read_subagent_meta, read_subagent_record, SubagentFiles, SubagentMeta, TranscriptChunk,
 };
-use krad_domain::{EnvironmentName, ResumeId, TerminalId, ToolUseId};
+use krad_domain::{AgentPreset, EnvironmentName, ResumeId, TerminalId, ToolUseId};
+use krad_store::gateway_sessions_dir;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::io;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::super::chat::{fold_entry, workplace_home, AnswerPart, ChatMessage};
@@ -43,11 +45,21 @@ pub(super) struct Subagents {
     watch: Option<Task<()>>,
 }
 
+enum SubagentSource {
+    Claude {
+        root: Option<PathBuf>,
+        home: Option<PathBuf>,
+        conversation: Option<PathBuf>,
+    },
+    Gateway {
+        sessions: PathBuf,
+        cwd: PathBuf,
+    },
+}
+
 struct SubagentJob {
     resume: ResumeId,
-    root: Option<PathBuf>,
-    home: Option<PathBuf>,
-    conversation: Option<PathBuf>,
+    source: SubagentSource,
     known: Vec<(PathBuf, u64, bool)>,
 }
 
@@ -69,36 +81,63 @@ enum Look {
     Read(SubagentJob),
 }
 
+fn updates(
+    files: Vec<SubagentFiles>,
+    known: &[(PathBuf, u64, bool)],
+    read: impl Fn(&Path, u64) -> io::Result<TranscriptChunk>,
+) -> Vec<SubagentUpdate> {
+    files
+        .into_iter()
+        .filter_map(|files| {
+            let (from, done) = known
+                .iter()
+                .find(|(record, _, _)| *record == files.record)
+                .map_or((0, false), |(_, read, done)| (*read, *done));
+            if done {
+                return None;
+            }
+            let meta = read_subagent_meta(&files.meta).ok()?;
+            let chunk = read(&files.record, from).ok()?;
+            Some(SubagentUpdate {
+                meta,
+                record: files.record,
+                chunk,
+            })
+        })
+        .collect()
+}
+
 impl SubagentJob {
     fn run(self) -> SubagentRead {
-        let home = self
-            .home
-            .or_else(|| workplace_home(self.root.as_deref()).ok().flatten());
-        let conversation = self.conversation.or_else(|| {
+        let (root, home, conversation) = match self.source {
+            SubagentSource::Gateway { sessions, cwd } => {
+                return SubagentRead {
+                    home: None,
+                    conversation: None,
+                    updates: updates(
+                        engine_subagents(&sessions, &self.resume),
+                        &self.known,
+                        |record, from| read_engine_subagent(record, &cwd, from),
+                    ),
+                };
+            }
+            SubagentSource::Claude {
+                root,
+                home,
+                conversation,
+            } => (root, home, conversation),
+        };
+        let home = home.or_else(|| workplace_home(root.as_deref()).ok().flatten());
+        let conversation = conversation.or_else(|| {
             home.as_deref()
                 .and_then(|home| claude_conversation_file(home, &self.resume))
         });
         let updates = conversation.as_deref().map_or_default(|conversation| {
-            claude_subagents(conversation)
-                .into_iter()
-                .filter_map(|files| {
-                    let (from, done) = self
-                        .known
-                        .iter()
-                        .find(|(record, _, _)| *record == files.record)
-                        .map_or((0, false), |(_, read, done)| (*read, *done));
-                    if done {
-                        return None;
-                    }
-                    let meta = read_subagent_meta(&files.meta).ok()?;
-                    let chunk = read_subagent_record(&files.record, from).ok()?;
-                    Some(SubagentUpdate {
-                        meta,
-                        record: files.record,
-                        chunk,
-                    })
-                })
-                .collect()
+            updates(
+                claude_subagents(conversation),
+                &self.known,
+                read_subagent_record,
+            )
         });
         SubagentRead {
             home,
@@ -181,11 +220,24 @@ impl EnvironmentShell {
         let (true, Some(resume)) = (following, resume) else {
             return Look::Idle;
         };
+        let source = if chat.harness() == AgentPreset::Gateway {
+            let Some(sessions) = gateway_sessions_dir() else {
+                return Look::Idle;
+            };
+            SubagentSource::Gateway {
+                sessions,
+                cwd: self.chat_folder(env, id),
+            }
+        } else {
+            SubagentSource::Claude {
+                root: live.data.group_of(id).map(|group| group.root.clone()),
+                home: subagents.home.clone(),
+                conversation: subagents.conversation.clone(),
+            }
+        };
         Look::Read(SubagentJob {
             resume,
-            root: live.data.group_of(id).map(|group| group.root.clone()),
-            home: subagents.home.clone(),
-            conversation: subagents.conversation.clone(),
+            source,
             known: subagents
                 .runs
                 .values()
@@ -302,6 +354,7 @@ mod tests {
                 text: "Map it".to_owned(),
                 preset: AgentPreset::ClaudeCode,
                 model: None,
+                images: Vec::new(),
             },
         );
         for (id, name) in calls {

@@ -145,16 +145,25 @@ impl StructuredChat {
     }
 }
 
-const CHAT_HARNESSES: [AgentPreset; 3] = [
+const CHAT_HARNESSES: [AgentPreset; 4] = [
     AgentPreset::ClaudeCode,
     AgentPreset::Opencode,
     AgentPreset::Codex,
+    AgentPreset::Gateway,
 ];
 
 impl EnvironmentShell {
+    pub(in crate::environment_shell) fn chats_on(&self, harness: AgentPreset) -> bool {
+        match harness {
+            AgentPreset::Gateway => self.gateway_ready(),
+            other => self.native_agents.contains(&other),
+        }
+    }
+
     fn harness_offers(&self, harness: AgentPreset) -> Option<&[ModelOffer]> {
         let offers = match harness {
             AgentPreset::Opencode => self.opencode_models(),
+            AgentPreset::Gateway => self.gateway_offers(),
             other => self.harness_models.of(other),
         };
         (!offers.is_empty()).then_some(offers)
@@ -185,7 +194,7 @@ impl EnvironmentShell {
                 let others = if fresh {
                     CHAT_HARNESSES
                         .into_iter()
-                        .filter(|other| *other != harness && self.native_agents.contains(other))
+                        .filter(|other| *other != harness && self.chats_on(*other))
                         .flat_map(|other| self.harness_picks(other))
                         .collect()
                 } else {
@@ -200,9 +209,14 @@ impl EnvironmentShell {
                     },
                     others,
                 };
+                let account_usage = if harness == AgentPreset::Gateway {
+                    AccountUsage::default()
+                } else {
+                    self.account_usage
+                };
                 let usage = structured
                     .usage
-                    .map_or(self.account_usage, |usage| AccountUsage {
+                    .map_or(account_usage, |usage| AccountUsage {
                         five_hour: usage.five_hour,
                         seven_day: usage.seven_day,
                     });

@@ -1,4 +1,7 @@
-use krad_domain::{parse_wsl_path, ChatEvent, Effort, ModelId, PermissionMode, ResumeId};
+use krad_domain::{
+    parse_wsl_path, ChatEvent, Effort, ModelId, PermissionMode, Prompt, ResumeId, RewindId,
+    RewindPoint,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,13 +12,14 @@ use std::thread;
 use super::ask::{reply, Reply};
 use super::catalog::{listing, Listing};
 use super::events::Translator;
-use super::prompt::{outgoing, Known, Outgoing, Place};
+use super::prompt::{attachments, outgoing, Known, Outgoing, Place};
 use super::server::{Delivery, OpencodeError, OpencodeServer};
 use super::tools::{agent, rules, Rule, BUILD_AGENT};
 use crate::command::LiveSession;
 use crate::control::{AskAnswer, LiveEvent, ToolAsk};
 use crate::live::{new_session_id, LiveConfig};
 use crate::process::Runner;
+use crate::rewind::{ResumeCut, RewindRequest};
 
 const SESSION_PREFIX: &str = "ses";
 const SESSION_SEPARATOR: char = '_';
@@ -26,12 +30,13 @@ const SESSIONS_PATH: &str = "/api/session";
 
 #[derive(Debug)]
 pub(crate) enum Order {
-    Send(String),
+    Send(Prompt),
     Interrupt,
     Model(ModelId),
     Effort(Effort),
     Mode(PermissionMode),
     Answer(Box<ToolAsk>, AskAnswer),
+    Rewind(RewindRequest),
 }
 
 enum Inbound {
@@ -283,7 +288,7 @@ impl Worker {
                 };
                 self.server.post::<_, SessionInfo>(SESSIONS_PATH, &body)?;
             }
-            LiveSession::Resume(resume) => {
+            LiveSession::Resume(resume) | LiveSession::Cut(ResumeCut { from: resume, .. }) => {
                 self.session = opencode_session_id(resume);
                 if !self.server.exists(&session_path(&self.session, ""))? {
                     self.emit(LiveEvent::Chat(ChatEvent::Error(format!(
@@ -345,7 +350,7 @@ impl Worker {
         )
     }
 
-    fn deliver(&mut self, text: &str) -> Result<(), OpencodeError> {
+    fn deliver(&mut self, prompt: &Prompt) -> Result<(), OpencodeError> {
         let preamble = self.preamble.take();
         let known = Known {
             commands: &self.listing.commands,
@@ -355,11 +360,19 @@ impl Worker {
             local: &self.config.cwd,
             served: &self.directory,
         };
-        match outgoing(text, preamble.as_deref(), &known, &place) {
-            Outgoing::Prompt(body) => self
-                .server
-                .post::<_, serde_json::Value>(&session_path(&self.session, "/prompt"), &body)
-                .map(drop),
+        let attached = attachments(prompt);
+        match outgoing(&prompt.text, preamble.as_deref(), &known, &place, attached) {
+            Outgoing::Prompt(body) => {
+                let posted: serde_json::Value = self
+                    .server
+                    .post(&session_path(&self.session, "/prompt"), &body)?;
+                if let Ok(posted) = SessionInfo::deserialize(posted) {
+                    self.emit(LiveEvent::Chat(ChatEvent::Prompted(RewindPoint::Message(
+                        RewindId::from(posted.id),
+                    ))));
+                }
+                Ok(())
+            }
             Outgoing::Command(body) => self
                 .server
                 .send(&session_path(&self.session, "/command"), &body),
@@ -368,7 +381,7 @@ impl Worker {
 
     fn handle(&mut self, order: Order) -> Result<(), OpencodeError> {
         match order {
-            Order::Send(text) => self.deliver(&text),
+            Order::Send(prompt) => self.deliver(&prompt),
             Order::Interrupt => self
                 .server
                 .nudge(&session_path(&self.session, "/interrupt")),
@@ -395,6 +408,11 @@ impl Worker {
                 Some(Reply::Delete { path }) => self.server.delete(&path),
                 None => Ok(()),
             },
+            Order::Rewind(request) => {
+                let outcome = self.rewind(&request);
+                self.emit(LiveEvent::Rewound(outcome));
+                Ok(())
+            }
         }
     }
 
@@ -418,6 +436,8 @@ impl Worker {
         self.server.unsubscribe(&self.session, self.token);
     }
 }
+
+mod rewind;
 
 #[cfg(test)]
 mod tests {

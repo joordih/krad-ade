@@ -3,11 +3,12 @@ use gpui_kit::{
     div, px, rgb, AnyElement, Context, ElementId, InteractiveElement, IntoElement, ParentElement,
     SharedString, StatefulInteractiveElement, Styled,
 };
-use krad_domain::TerminalId;
+use krad_domain::{Prompt, TerminalId};
 use std::time::{Duration, Instant};
 
 use super::super::chat::question_bubble;
 use super::super::EnvironmentShell;
+use super::mentions::sent_mentions;
 use crate::theme::{palette, LINE_2XS, SPACE_1, SPACE_1_5, TEXT_2XS};
 
 const SENT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -27,7 +28,7 @@ pub(super) enum Stage {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Outgoing {
-    pub(super) text: String,
+    pub(super) prompt: Prompt,
     pub(super) stage: Stage,
 }
 
@@ -37,14 +38,24 @@ pub(super) struct Outbox {
 }
 
 impl Outbox {
-    pub(super) fn push(&mut self, text: String) {
+    pub(super) fn push(&mut self, prompt: Prompt) {
         self.messages.push(Outgoing {
-            text,
+            prompt,
             stage: Stage::Queued,
         });
     }
 
-    pub(super) fn next_to_send(&mut self, free: bool, now: Instant) -> Option<String> {
+    pub(super) fn push_first(&mut self, prompt: Prompt) {
+        self.messages.insert(
+            0,
+            Outgoing {
+                prompt,
+                stage: Stage::Queued,
+            },
+        );
+    }
+
+    pub(super) fn next_to_send(&mut self, free: bool, now: Instant) -> Option<Prompt> {
         let in_flight = self
             .messages
             .iter()
@@ -57,7 +68,7 @@ impl Outbox {
             .iter_mut()
             .find(|message| message.stage == Stage::Queued)?;
         next.stage = Stage::Sent(now);
-        Some(next.text.clone())
+        Some(next.prompt.clone())
     }
 
     pub(super) fn has_queued(&self) -> bool {
@@ -114,12 +125,17 @@ impl EnvironmentShell {
             .items_end()
             .gap(px(SPACE_1))
             .opacity(PENDING_OPACITY)
-            .child(question_bubble(
-                ElementId::Name(format!("{PENDING_BUBBLE_PREFIX}-{}-{raw}", id.as_u64()).into()),
-                &outgoing.text,
-                false,
-                pal,
-            ))
+            .when(!outgoing.prompt.text.is_empty(), |bubble| {
+                bubble.child(question_bubble(
+                    ElementId::Name(
+                        format!("{PENDING_BUBBLE_PREFIX}-{}-{raw}", id.as_u64()).into(),
+                    ),
+                    &outgoing.prompt.text,
+                    false,
+                    pal,
+                ))
+            })
+            .children(sent_mentions(&outgoing.prompt.mentions, pal))
             .child(
                 div()
                     .flex()
@@ -159,21 +175,21 @@ mod tests {
     fn a_message_waits_while_the_agent_works_and_goes_when_it_is_free() {
         let now = Instant::now();
         let mut outbox = Outbox::default();
-        outbox.push("first".to_owned());
-        outbox.push("second".to_owned());
+        outbox.push(Prompt::from("first"));
+        outbox.push(Prompt::from("second"));
         assert_eq!(outbox.next_to_send(false, now), None, "the agent works");
-        assert_eq!(outbox.next_to_send(true, now).as_deref(), Some("first"));
+        assert_eq!(outbox.next_to_send(true, now), Some(Prompt::from("first")));
         assert_eq!(outbox.next_to_send(true, now), None, "one at a time");
         outbox.delivered();
-        assert_eq!(outbox.next_to_send(true, now).as_deref(), Some("second"));
+        assert_eq!(outbox.next_to_send(true, now), Some(Prompt::from("second")));
     }
 
     #[test]
     fn only_a_queued_message_can_be_cancelled() {
         let now = Instant::now();
         let mut outbox = Outbox::default();
-        outbox.push("typed".to_owned());
-        outbox.push("waiting".to_owned());
+        outbox.push(Prompt::from("typed"));
+        outbox.push(Prompt::from("waiting"));
         outbox.next_to_send(true, now);
         assert!(!outbox.cancel(0), "already handed over");
         assert!(outbox.cancel(1));
@@ -184,13 +200,13 @@ mod tests {
     fn a_handed_over_message_the_conversation_never_shows_is_let_go() {
         let now = Instant::now();
         let mut outbox = Outbox::default();
-        outbox.push("/clear".to_owned());
+        outbox.push(Prompt::from("/clear"));
         outbox.next_to_send(true, now);
         outbox.settle(false, now + HANDOFF_GRACE);
         assert_eq!(outbox.messages.len(), 1, "an idle agent may still take it");
         outbox.settle(true, now + HANDOFF_GRACE);
         assert!(outbox.messages.is_empty(), "the agent works on it");
-        outbox.push("late".to_owned());
+        outbox.push(Prompt::from("late"));
         outbox.next_to_send(true, now);
         outbox.settle(false, now + SENT_TIMEOUT);
         assert_eq!(outbox.messages, Vec::new());

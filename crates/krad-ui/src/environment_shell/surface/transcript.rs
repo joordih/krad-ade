@@ -123,6 +123,9 @@ fn open_answer() -> ChatMessage {
         preset: TRANSCRIPT_HARNESS,
         error: None,
         running: true,
+        mentions: Vec::new(),
+        checklist: None,
+        rewind: None,
     }
 }
 
@@ -223,8 +226,8 @@ impl EnvironmentShell {
         );
         chat.outbox.settle(working, now);
         let free = running && matches!(state, Some(AgentState::Idle | AgentState::Done));
-        if let Some(text) = chat.outbox.next_to_send(free, now) {
-            self.submit_text_into(env, id, &text);
+        if let Some(prompt) = chat.outbox.next_to_send(free, now) {
+            self.submit_text_into(env, id, &prompt.text);
         }
     }
 

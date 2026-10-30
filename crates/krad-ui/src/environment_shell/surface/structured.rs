@@ -1,7 +1,9 @@
 mod flush;
 mod forks;
+mod mcp;
 mod open;
 mod orchestrator;
+mod rewind;
 
 use gpui_kit::Context;
 use krad_chat::{
@@ -9,8 +11,8 @@ use krad_chat::{
     PlanUsage, SlashCommand,
 };
 use krad_domain::{
-    AgentPreset, AgentState, ChatEntry, Effort, EnvironmentName, ModelId, PermissionMode, ResumeId,
-    TerminalId,
+    AgentPreset, AgentState, ChatEntry, Effort, EnvironmentName, ModelId, PermissionMode, Prompt,
+    ResumeId, TerminalId,
 };
 use std::time::Instant;
 
@@ -20,16 +22,29 @@ use super::super::EnvironmentShell;
 use super::outbox::Outbox;
 use super::{view, Backend, SurfaceChat, SurfaceCommand};
 
+use mcp::McpPrep;
 pub(in crate::environment_shell) use open::restored_chats;
 use open::Earlier;
+use rewind::Rewinding;
 
 const FULL_PERCENT: u64 = 100;
 const THINKING_DEFAULT: bool = true;
+const NOTICE_SEPARATOR: &str = "\n";
+
+fn add_notice(problem: &mut Option<String>, notice: &str) {
+    match problem {
+        Some(shown) => {
+            shown.push_str(NOTICE_SEPARATOR);
+            shown.push_str(notice);
+        }
+        None => *problem = Some(notice.to_owned()),
+    }
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Batch {
     commands: Vec<SlashCommand>,
-    message: Option<String>,
+    message: Option<Prompt>,
 }
 
 impl Batch {
@@ -58,6 +73,9 @@ pub(in crate::environment_shell) struct StructuredChat {
     pub(super) working: bool,
     pub(super) usage: Option<PlanUsage>,
     pub(super) earlier: Option<Earlier>,
+    mcp: McpPrep,
+    notices: Vec<String>,
+    rewinding: Option<Rewinding>,
 }
 
 impl StructuredChat {
@@ -82,6 +100,9 @@ impl StructuredChat {
             working: false,
             usage: None,
             earlier: None,
+            mcp: McpPrep::default(),
+            notices: Vec::new(),
+            rewinding: None,
         }
     }
 
@@ -94,6 +115,7 @@ impl StructuredChat {
     pub(super) fn switch_harness(&mut self, harness: AgentPreset) {
         self.harness = harness;
         self.live = None;
+        self.mcp = McpPrep::default();
         self.catalog = None;
         self.model = None;
         self.effort = None;
@@ -256,6 +278,11 @@ impl EnvironmentShell {
                 return self.flush_structured(env, id, cx);
             }
             LiveEvent::Usage(usage) => structured.usage = Some(usage),
+            LiveEvent::Rewound(outcome) => {
+                self.rewound(env, id, outcome);
+                return self.flush_structured(env, id, cx);
+            }
+            LiveEvent::Notice(notice) => add_notice(problem, &notice),
             LiveEvent::Ask(ask) => {
                 structured.asks.push(Waiting::live(*ask));
                 state = Some(AgentState::WaitingForInput);
@@ -277,7 +304,10 @@ impl EnvironmentShell {
             }
             LiveEvent::Chat(event @ (ChatEvent::Done | ChatEvent::Error(_))) => {
                 if let ChatEvent::Error(error) = &event {
-                    if let Some(batch) = structured.falls_back(error) {
+                    let again = structured
+                        .drops_turn_again(error)
+                        .or_else(|| structured.falls_back(error));
+                    if let Some(batch) = again {
                         self.hand_over_again(env, id, batch, event, cx);
                         return;
                     }

@@ -1,7 +1,8 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_chat::{new_session_id, ChatEvent, Speaker};
 use krad_domain::{
-    AgentPreset, ChatEntry, ChatId, FileEdit, PermissionMode, ResumeId, ToolCall, ToolUseId,
+    AgentPreset, ChatEntry, ChatId, FileEdit, Mention, PermissionMode, Prompt, ResumeId, ToolCall,
+    ToolUseId,
 };
 use krad_store::{read_latest_chat, ChatLogWriter, StoredChat};
 
@@ -10,7 +11,7 @@ use super::{AnswerPart, ChatMessage, EnvironmentShell};
 const BLOCK_SEPARATOR: &str = "\n\n";
 
 const fn joins_whole_blocks(preset: AgentPreset) -> bool {
-    !matches!(preset, AgentPreset::Gemini)
+    !matches!(preset, AgentPreset::Gateway)
 }
 
 fn append_text(answer: &mut String, piece: &str, whole_blocks: bool) {
@@ -20,19 +21,44 @@ fn append_text(answer: &mut String, piece: &str, whole_blocks: bool) {
     answer.push_str(piece);
 }
 
+pub(in crate::environment_shell) fn fold_prompt(
+    messages: &mut Vec<ChatMessage>,
+    prompt: &Prompt,
+    preset: AgentPreset,
+) {
+    fold_entry(
+        messages,
+        &ChatEntry::User {
+            text: prompt.text.clone(),
+            preset,
+            model: None,
+            images: Vec::new(),
+        },
+    );
+    if let Some(asked) = messages
+        .iter_mut()
+        .rev()
+        .find(|message| message.speaker == Speaker::User)
+    {
+        asked.mentions.clone_from(&prompt.mentions);
+    }
+}
+
 pub(in crate::environment_shell) fn fold_entry(messages: &mut Vec<ChatMessage>, entry: &ChatEntry) {
     match entry {
         ChatEntry::User {
             text,
             preset,
             model: _,
+            images,
         } => {
             if let Some(last) = messages.last_mut() {
                 last.running = false;
             }
-            for (speaker, text, running) in [
-                (Speaker::User, text.clone(), false),
-                (Speaker::Assistant, String::new(), true),
+            let shown: Vec<Mention> = images.iter().cloned().map(Mention::Image).collect();
+            for (speaker, text, running, mentions) in [
+                (Speaker::User, text.clone(), false, shown),
+                (Speaker::Assistant, String::new(), true, Vec::new()),
             ] {
                 messages.push(ChatMessage {
                     speaker,
@@ -42,10 +68,22 @@ pub(in crate::environment_shell) fn fold_entry(messages: &mut Vec<ChatMessage>, 
                     preset: *preset,
                     error: None,
                     running,
+                    mentions,
+                    checklist: None,
+                    rewind: None,
                 });
             }
         }
         ChatEntry::Event(ChatEvent::Edited { tool, edit }) => place_edit(messages, tool, edit),
+        ChatEntry::Event(ChatEvent::Prompted(point)) => {
+            if let Some(asked) = messages
+                .iter_mut()
+                .rev()
+                .find(|message| message.speaker == Speaker::User)
+            {
+                asked.rewind = Some(point.clone());
+            }
+        }
         ChatEntry::Asked(outcome) => {
             if let Some(answer) = messages.last_mut().filter(|answer| answer.running) {
                 answer.parts.push(AnswerPart::Ask(outcome.clone()));
@@ -61,7 +99,9 @@ pub(in crate::environment_shell) fn fold_entry(messages: &mut Vec<ChatMessage>, 
                 | ChatEvent::PermissionMode(_)
                 | ChatEvent::ContextTokens(_)
                 | ChatEvent::ContextWindow(_)
+                | ChatEvent::Prompted(_)
                 | ChatEvent::Edited { .. } => {}
+                ChatEvent::Checklist(list) => answer.checklist = Some(list.clone()),
                 ChatEvent::Text(piece) => {
                     let whole_blocks = joins_whole_blocks(answer.preset);
                     append_text(&mut answer.text, piece, whole_blocks);
@@ -184,11 +224,32 @@ mod tests {
             text: text.to_owned(),
             preset: AgentPreset::ClaudeCode,
             model: ModelId::parse("opus"),
+            images: Vec::new(),
         }
     }
 
     fn event(event: ChatEvent) -> ChatEntry {
         ChatEntry::Event(event)
+    }
+
+    #[test]
+    fn images_saved_with_a_user_entry_come_back_as_its_mentions() {
+        let shot = krad_domain::ChatImage {
+            path: std::path::PathBuf::from("/shots/1.png"),
+            format: krad_domain::ImageFormat::Png,
+        };
+        let mut messages = Vec::new();
+        fold_entry(
+            &mut messages,
+            &ChatEntry::User {
+                text: "Look".to_owned(),
+                preset: AgentPreset::Gateway,
+                model: None,
+                images: vec![shot.clone()],
+            },
+        );
+        assert_eq!(messages[0].mentions, [Mention::Image(shot)]);
+        assert_eq!(messages[1].mentions, []);
     }
 
     #[test]
@@ -230,6 +291,26 @@ mod tests {
     }
 
     #[test]
+    fn a_rewind_point_lands_on_the_latest_question() {
+        let point = krad_domain::RewindPoint::Prompt(1);
+        let mut messages = Vec::new();
+        for entry in [
+            user("One"),
+            event(ChatEvent::Done),
+            user("Two"),
+            event(ChatEvent::Text("Sure.".to_owned())),
+            event(ChatEvent::Prompted(point.clone())),
+        ] {
+            fold_entry(&mut messages, &entry);
+        }
+        let points: Vec<Option<&krad_domain::RewindPoint>> = messages
+            .iter()
+            .map(|message| message.rewind.as_ref())
+            .collect();
+        assert_eq!(points, [None, None, Some(&point), None]);
+    }
+
+    #[test]
     fn whole_messages_are_separated_and_deltas_are_joined() {
         let mut answer = String::new();
         append_text(&mut answer, "First.", true);
@@ -239,7 +320,7 @@ mod tests {
         append_text(&mut streamed, "Two ref", false);
         append_text(&mut streamed, "reshes.", false);
         assert_eq!(streamed, "Two refreshes.");
-        assert!(!joins_whole_blocks(AgentPreset::Gemini));
+        assert!(!joins_whole_blocks(AgentPreset::Gateway));
         assert!(joins_whole_blocks(AgentPreset::ClaudeCode));
     }
 

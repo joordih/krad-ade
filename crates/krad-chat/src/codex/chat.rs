@@ -1,4 +1,4 @@
-use krad_domain::{parse_wsl_path, ChatEvent, Effort, ModelId, PermissionMode, ResumeId};
+use krad_domain::{parse_wsl_path, ChatEvent, Effort, ModelId, PermissionMode, Prompt, ResumeId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::borrow::Cow;
@@ -16,7 +16,9 @@ use super::rpc::{AppServer, CodexError, Pushed};
 use crate::command::LiveSession;
 use crate::control::{AskAnswer, LiveEvent, Responder, ToolAsk};
 use crate::live::LiveConfig;
+use crate::mention::served_path;
 use crate::process::Runner;
+use crate::rewind::{ResumeCut, RewindRequest};
 
 const THREAD_START: &str = "thread/start";
 const THREAD_RESUME: &str = "thread/resume";
@@ -37,12 +39,13 @@ const NEVER: &str = "never";
 
 #[derive(Debug)]
 pub(crate) enum Order {
-    Send(String),
+    Send(Prompt),
     Interrupt,
     Model(ModelId),
     Effort(Effort),
     Mode(PermissionMode),
     Answer(Box<ToolAsk>, AskAnswer),
+    Rewind(RewindRequest),
 }
 
 enum Inbound {
@@ -114,9 +117,25 @@ enum Input<'a> {
         name: &'a str,
         path: &'a str,
     },
+    LocalImage {
+        path: &'a str,
+    },
 }
 
-fn inputs<'a>(text: &'a str, skills: &'a HashMap<String, String>) -> Vec<Input<'a>> {
+fn inputs<'a>(
+    text: &'a str,
+    skills: &'a HashMap<String, String>,
+    images: &'a [String],
+) -> Vec<Input<'a>> {
+    let mut input = typed_inputs(text, skills);
+    if !images.is_empty() {
+        input.retain(|input| !matches!(input, Input::Text { text, .. } if text.is_empty()));
+    }
+    input.extend(images.iter().map(|path| Input::LocalImage { path }));
+    input
+}
+
+fn typed_inputs<'a>(text: &'a str, skills: &'a HashMap<String, String>) -> Vec<Input<'a>> {
     let text = text.trim();
     let called = text.strip_prefix(SKILL_MARK).and_then(|call| {
         let (name, rest) = call
@@ -324,18 +343,11 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             .then(|| BUS_NETWORK.to_owned())
             .into_iter()
             .collect();
-        let mut env = self.config.bus_vars.0.clone();
-        env.extend(
-            self.config
-                .orchestration
-                .iter()
-                .flat_map(|orchestration| orchestration.env.0.iter().cloned()),
-        );
         AppServer::start(
             &self.config.runner,
             &self.config.cwd,
             &overrides,
-            &env,
+            &self.config.bus_vars.0,
             pushed,
         )
     }
@@ -354,7 +366,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         };
         let opened: Result<ThreadOpened, CodexError> = match session {
             LiveSession::Start(_) => server.call(THREAD_START, &opening(None)),
-            LiveSession::Resume(resume) => {
+            LiveSession::Resume(resume) | LiveSession::Cut(ResumeCut { from: resume, .. }) => {
                 server.call(THREAD_RESUME, &opening(Some(resume.as_str())))
             }
             LiveSession::Fork(resume) => server.call(THREAD_FORK, &opening(Some(resume.as_str()))),
@@ -384,8 +396,14 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         Ok(true)
     }
 
-    fn deliver(&mut self, server: &AppServer, text: &str) -> Result<(), CodexError> {
-        let input = inputs(text, &self.listing.skills);
+    fn deliver(&mut self, server: &AppServer, prompt: &Prompt) -> Result<(), CodexError> {
+        let runner = &self.config.runner;
+        let text = prompt.text_with_paths(|path| served_path(runner, path));
+        let images: Vec<String> = prompt
+            .images()
+            .map(|image| served_path(runner, &image.path))
+            .collect();
+        let input = inputs(&text, &self.listing.skills, &images);
         if let Some(turn) = self.translator.turn.as_deref() {
             return server
                 .call::<_, Value>(
@@ -427,7 +445,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
 
     fn handle(&mut self, server: &AppServer, order: Order) -> Result<(), CodexError> {
         match order {
-            Order::Send(text) => return self.deliver(server, &text),
+            Order::Send(prompt) => return self.deliver(server, &prompt),
             Order::Interrupt => {
                 if let Some(turn) = self.translator.turn.clone() {
                     server.call::<_, Value>(
@@ -456,6 +474,10 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
                     Some(body) => server.answer(&id, &body),
                     None => server.refuse(&id),
                 }
+            }
+            Order::Rewind(request) => {
+                let outcome = self.rewind(server, &request);
+                (self.sink)(LiveEvent::Rewound(outcome));
             }
         }
         Ok(())
@@ -519,60 +541,6 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
     }
 }
 
+mod rewind;
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn permission_modes_become_approval_policies_and_sandboxes() {
-        assert_eq!(
-            policy(PermissionMode::Manual, true),
-            Policy {
-                approval: "untrusted",
-                sandbox: Sandbox::WorkspaceWrite {
-                    network_access: true
-                },
-                mode: Mode::Default,
-            }
-        );
-        assert_eq!(policy(PermissionMode::Plan, false).mode, Mode::Plan);
-        assert_eq!(
-            policy(PermissionMode::BypassPermissions, false).sandbox,
-            Sandbox::DangerFullAccess
-        );
-        assert_eq!(
-            serde_json::to_value(Sandbox::WorkspaceWrite {
-                network_access: false
-            })
-            .unwrap_or_default(),
-            json!({"type": "workspaceWrite", "networkAccess": false})
-        );
-    }
-
-    #[test]
-    fn a_skill_call_becomes_a_skill_input_followed_by_its_arguments() {
-        let skills = HashMap::from([("release".to_owned(), "/s/release/SKILL.md".to_owned())]);
-        let called = serde_json::to_value(inputs("/release v2", &skills)).unwrap_or_default();
-        assert_eq!(
-            called,
-            json!([
-                {"type": "text", "text": "$release v2", "text_elements": []},
-                {"type": "skill", "name": "release", "path": "/s/release/SKILL.md"}
-            ])
-        );
-        let plain = serde_json::to_value(inputs("/unknown thing", &skills)).unwrap_or_default();
-        assert_eq!(
-            plain,
-            json!([{"type": "text", "text": "/unknown thing", "text_elements": []}])
-        );
-    }
-
-    #[test]
-    fn a_missing_thread_starts_a_new_conversation() {
-        assert!(missing_thread(&CodexError::Refused(
-            "thread not found: 01a1".to_owned()
-        )));
-        assert!(!missing_thread(&CodexError::Gone));
-    }
-}
+mod tests;

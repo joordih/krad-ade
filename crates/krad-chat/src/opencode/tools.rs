@@ -3,6 +3,7 @@ use serde::Serialize;
 
 pub(crate) const PLAN_AGENT: &str = "plan";
 pub(crate) const BUILD_AGENT: &str = "build";
+pub(crate) const TODO_TOOL: &str = "todowrite";
 const ANY: &str = "*";
 
 const HARNESS_TOOL_NAMES: [(&str, &str); 13] = [
@@ -16,7 +17,7 @@ const HARNESS_TOOL_NAMES: [(&str, &str); 13] = [
     ("webfetch", "WebFetch"),
     ("websearch", "WebSearch"),
     ("subagent", "Task"),
-    ("todowrite", "TodoWrite"),
+    (TODO_TOOL, "TodoWrite"),
     ("skill", "Skill"),
     ("question", "AskUserQuestion"),
 ];

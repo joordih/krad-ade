@@ -2,8 +2,8 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver};
 use futures::StreamExt as _;
 use gpui_kit::{Context, Task};
 use krad_chat::{
-    spawn_codex_chat, spawn_live_chat, spawn_opencode_chat, ChatError, LiveChat, LiveConfig,
-    LiveEvent, LiveSession, OpencodeServer, Runner,
+    spawn_codex_chat, spawn_engine_chat, spawn_live_chat, spawn_opencode_chat, ChatError,
+    EngineConfig, LiveChat, LiveConfig, LiveEvent, LiveSession, OpencodeServer, Runner,
 };
 use krad_domain::{parse_wsl_path, AgentPreset};
 use krad_session::find_program;
@@ -17,6 +17,7 @@ use super::super::EnvironmentShell;
 const NO_PROGRAM_TEXT: &str = "is not on PATH";
 const NOT_IN_WSL_TEXT: &str = "chats do not run in WSL folders yet";
 const WAITING_TEXT: &str = "opencode is still starting";
+const NO_CONFIG_FOLDER_TEXT: &str = "Krad ADE has no config folder to keep the chat in";
 
 #[derive(Debug)]
 pub(in crate::environment_shell) enum StartError {
@@ -24,6 +25,8 @@ pub(in crate::environment_shell) enum StartError {
     NotInWsl(AgentPreset),
     Waiting,
     Opencode(String),
+    Gateway(String),
+    NoConfigFolder,
     Chat(ChatError),
 }
 
@@ -37,7 +40,8 @@ impl fmt::Display for StartError {
                 write!(formatter, "{} {NOT_IN_WSL_TEXT}", preset.display_name())
             }
             Self::Waiting => formatter.write_str(WAITING_TEXT),
-            Self::Opencode(error) => formatter.write_str(error),
+            Self::Opencode(error) | Self::Gateway(error) => formatter.write_str(error),
+            Self::NoConfigFolder => formatter.write_str(NO_CONFIG_FOLDER_TEXT),
             Self::Chat(error) => error.fmt(formatter),
         }
     }
@@ -57,7 +61,7 @@ pub(in crate::environment_shell) struct LiveProcess {
 
 impl LiveProcess {
     pub(in crate::environment_shell) fn spawn(
-        config: LiveConfig,
+        config: &LiveConfig,
         session: &LiveSession,
         cx: &mut Context<EnvironmentShell>,
         apply: impl FnMut(&mut EnvironmentShell, LiveEvent, &mut Context<EnvironmentShell>) + 'static,
@@ -81,6 +85,23 @@ impl LiveProcess {
     ) -> Self {
         let (sender, receiver) = unbounded();
         let chat = spawn_codex_chat(config, session, move |event| {
+            sender.unbounded_send(event).unwrap_or_default();
+        });
+        Self {
+            chat,
+            _events: EnvironmentShell::listen(receiver, cx, apply),
+            confirmed: false,
+        }
+    }
+
+    pub(in crate::environment_shell) fn spawn_engine(
+        config: EngineConfig,
+        session: &LiveSession,
+        cx: &mut Context<EnvironmentShell>,
+        apply: impl FnMut(&mut EnvironmentShell, LiveEvent, &mut Context<EnvironmentShell>) + 'static,
+    ) -> Self {
+        let (sender, receiver) = unbounded();
+        let chat = spawn_engine_chat(config, session, move |event| {
             sender.unbounded_send(event).unwrap_or_default();
         });
         Self {

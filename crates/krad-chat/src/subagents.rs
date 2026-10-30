@@ -1,5 +1,5 @@
 use krad_domain::ToolUseId;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -7,12 +7,12 @@ use std::path::{Path, PathBuf};
 use crate::error::ChatError;
 use crate::history::{read_lines, Sidechain, TranscriptChunk};
 
-const SUBAGENTS_DIR: &str = "subagents";
+pub(crate) const SUBAGENTS_DIR: &str = "subagents";
 const RECORD_PREFIX: &str = "agent-";
-const RECORD_EXTENSION: &str = "jsonl";
-const META_EXTENSION: &str = "meta.json";
+pub(crate) const RECORD_EXTENSION: &str = "jsonl";
+pub(crate) const META_EXTENSION: &str = "meta.json";
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubagentMeta {
     pub tool_use_id: ToolUseId,

@@ -1,4 +1,4 @@
-use krad_domain::{AgentPreset, ChatEntry, ChatEvent, ResumeId};
+use krad_domain::{AgentPreset, ChatEntry, ChatEvent, ResumeId, RewindId, RewindPoint};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -55,6 +55,7 @@ enum Content {
 #[serde(tag = "type", rename_all = "lowercase")]
 enum Message {
     User {
+        id: Option<String>,
         #[serde(default)]
         text: String,
     },
@@ -68,16 +69,24 @@ enum Message {
 
 fn entries_of(message: Message) -> Vec<ChatEntry> {
     match message {
-        Message::User { text } => {
+        Message::User { id, text } => {
             let text = strip_preamble(&text).trim();
             if text.is_empty() {
                 return Vec::new();
             }
-            vec![ChatEntry::User {
+            let point = id.map(|id| {
+                ChatEntry::Event(ChatEvent::Prompted(RewindPoint::Message(RewindId::from(
+                    id,
+                ))))
+            });
+            std::iter::once(ChatEntry::User {
                 text: text.to_owned(),
                 preset: AgentPreset::Opencode,
                 model: None,
-            }]
+                images: Vec::new(),
+            })
+            .chain(point)
+            .collect()
         }
         Message::Assistant { content } => content
             .into_iter()
@@ -151,7 +160,11 @@ mod tests {
                     text: "List the files".to_owned(),
                     preset: AgentPreset::Opencode,
                     model: None,
+                    images: Vec::new(),
                 },
+                ChatEntry::Event(ChatEvent::Prompted(RewindPoint::Message(RewindId::from(
+                    "msg_1"
+                )))),
                 ChatEntry::Event(ChatEvent::Thinking("first look".to_owned())),
                 ChatEntry::Event(ChatEvent::Tool(ToolCall {
                     id: Some("call_1".into()),

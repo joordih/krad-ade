@@ -3,8 +3,8 @@ use gpui_kit::component::text::TextView;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, App, ClipboardItem, Context, ElementId, InteractiveElement,
-    IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
+    div, px, rgb, AnyElement, App, Context, ElementId, InteractiveElement, IntoElement,
+    ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
 };
 use krad_chat::ToolCall;
 use krad_domain::TerminalId;
@@ -13,13 +13,12 @@ use std::borrow::Cow;
 use super::super::ask::ask_line;
 use super::super::chat::{AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
+use super::message_actions::{copy_button, message_actions, message_group};
 use super::tool_group::ToolKind;
 use super::view::error_line;
 use super::{SurfaceChat, THINKING_LABEL};
-use crate::components::{icon, tooltip_view, IconName};
-use crate::theme::{
-    palette, Palette, ICON_XS, LINE_SM, LINE_XS, RADIUS_XS, SPACE_1_5, SPACE_3, TEXT_BASE, TEXT_XS,
-};
+use crate::components::{icon, IconName};
+use crate::theme::{palette, ICON_XS, LINE_SM, LINE_XS, SPACE_1_5, SPACE_3, TEXT_BASE, TEXT_XS};
 
 const PART_GAP: f32 = 12.0;
 const ANSWER_LINE_H: f32 = 22.0;
@@ -28,7 +27,6 @@ const THOUGHT_PREFIX: &str = "surface-thought";
 const ANSWER_PREFIX: &str = "surface-answer";
 const CODE_COPY_PREFIX: &str = "surface-code-copy";
 const CODE_COPY_TOOLTIP: &str = "Copy code";
-const CODE_COPY_SIZE: f32 = 24.0;
 const MESSAGE_COPY_PREFIX: &str = "surface-answer-copy";
 const MESSAGE_COPY_TOOLTIP: &str = "Copy message";
 const PARAGRAPH_BREAK: &str = "\n\n";
@@ -79,25 +77,6 @@ fn code_copy_button(block: &CodeBlock, _: &mut Window, cx: &mut App) -> AnyEleme
         CODE_COPY_TOOLTIP,
         palette(cx),
     )
-}
-
-fn copy_button(id: ElementId, text: String, tooltip: &'static str, pal: &Palette) -> AnyElement {
-    div()
-        .id(id)
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .size(px(CODE_COPY_SIZE))
-        .rounded(px(RADIUS_XS))
-        .cursor_pointer()
-        .hover(|style| style.bg(pal.bg_hover))
-        .tooltip(move |_, cx| tooltip_view(tooltip.into(), cx))
-        .on_click(move |_, _, cx| {
-            cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
-        })
-        .child(icon(IconName::Copy, ICON_XS, pal.text_muted))
-        .into_any_element()
 }
 
 impl EnvironmentShell {
@@ -167,16 +146,14 @@ impl EnvironmentShell {
         group(&mut calls, message.running, &mut parts, cx);
         parts.extend(message.error.as_deref().map(|error| error_line(error, pal)));
         let said = answer_text(message);
+        let group = message_group(id, index);
         if !message.running && !said.is_empty() {
             let key = format!("{MESSAGE_COPY_PREFIX}-{raw}-{index}");
-            parts.push(copy_button(
-                ElementId::Name(key.into()),
-                said,
-                MESSAGE_COPY_TOOLTIP,
-                pal,
-            ));
+            let copy = copy_button(ElementId::Name(key.into()), said, MESSAGE_COPY_TOOLTIP, pal);
+            parts.push(message_actions(group.clone(), [copy]));
         }
         div()
+            .group(group)
             .flex()
             .flex_col()
             .gap(px(PART_GAP))
@@ -295,6 +272,9 @@ mod tests {
             preset: krad_domain::AgentPreset::Codex,
             error: None,
             running: false,
+            mentions: Vec::new(),
+            checklist: None,
+            rewind: None,
         };
         assert_eq!(answer_text(&message), "First part.\n\nSecond part.");
     }

@@ -95,6 +95,7 @@ icons! {
     Crown => "crown",
     Key => "key-01",
     Copy => "copy-01",
+    Pencil => "pencil-edit-01",
     Lock => "square-lock-02",
     BrandClaude => "brand-claude",
     BrandOpenai => "brand-openai",
@@ -114,7 +115,8 @@ pub(crate) const fn harness_icon(preset: AgentPreset, pal: &Palette) -> (IconNam
         AgentPreset::ClaudeCode => (IconName::BrandClaude, CLAUDE_BRAND),
         AgentPreset::Codex => (IconName::BrandOpenai, pal.text_strong),
         AgentPreset::Opencode => (IconName::BrandOpencode, pal.text_strong),
-        _ => (IconName::Terminal, pal.text_subtle),
+        AgentPreset::Gateway => (IconName::Flow, pal.accent),
+        AgentPreset::Shell => (IconName::Terminal, pal.text_subtle),
     }
 }
 
@@ -153,6 +155,7 @@ mod tests {
             harness_icon(AgentPreset::Opencode, pal).0,
             IconName::BrandOpencode
         );
+        assert_eq!(harness_icon(AgentPreset::Gateway, pal).0, IconName::Flow);
         assert_eq!(harness_icon(AgentPreset::Shell, pal).0, IconName::Terminal);
     }
 }

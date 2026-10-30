@@ -1,4 +1,4 @@
-use krad_domain::{AgentPreset, ChatEvent, FileEdit, ModelId, PermissionMode};
+use krad_domain::{AgentPreset, ChatEvent, FileEdit, ModelId, PermissionMode, RewindId};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
@@ -7,6 +7,7 @@ use std::borrow::Cow;
 use crate::codex::{CodexAsk, RpcId};
 use crate::edits::file_edit;
 use crate::parse::tool_summary;
+use crate::rewind::{RewindError, Rewound};
 
 mod catalog;
 mod held;
@@ -42,13 +43,8 @@ pub enum LiveEvent {
     Ask(Box<ToolAsk>),
     Ready(Catalog),
     Usage(PlanUsage),
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Approvals {
-    #[default]
-    Refused,
-    Asked,
+    Notice(String),
+    Rewound(Result<Rewound, RewindError>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -104,6 +100,7 @@ pub(crate) struct FormSlot {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Responder {
     ClaudeCode,
+    Engine,
     OpencodePermission {
         session: String,
     },
@@ -186,6 +183,11 @@ enum IncomingResponse {
         #[serde(default)]
         response: Value,
     },
+    Error {
+        request_id: String,
+        #[serde(default)]
+        error: String,
+    },
     #[serde(other)]
     Other,
 }
@@ -194,6 +196,10 @@ enum IncomingResponse {
 pub(crate) enum Routed {
     Ask(Box<ToolAsk>),
     Ready(Catalog),
+    Replied {
+        request_id: String,
+        reply: Result<Value, String>,
+    },
     Control,
     Conversation(Value),
 }
@@ -219,7 +225,25 @@ pub(crate) fn route(line: &str, init_id: &str) -> Option<Routed> {
         } if request_id == init_id => {
             Routed::Ready(Catalog::deserialize(&response).unwrap_or_default())
         }
-        IncomingLine::ControlResponse { .. } => Routed::Control,
+        IncomingLine::ControlResponse {
+            response:
+                IncomingResponse::Success {
+                    request_id,
+                    response,
+                },
+        } => Routed::Replied {
+            request_id,
+            reply: Ok(response),
+        },
+        IncomingLine::ControlResponse {
+            response: IncomingResponse::Error { request_id, error },
+        } => Routed::Replied {
+            request_id,
+            reply: Err(error),
+        },
+        IncomingLine::ControlResponse {
+            response: IncomingResponse::Other,
+        } => Routed::Control,
         IncomingLine::Conversation => Routed::Conversation(value),
     })
 }
@@ -296,6 +320,7 @@ enum OutgoingRequest<'a> {
     Interrupt,
     SetModel { model: &'a ModelId },
     SetPermissionMode { mode: PermissionMode },
+    RewindFiles { user_message_id: &'a str },
 }
 
 #[derive(Serialize)]
@@ -371,6 +396,15 @@ pub(crate) fn set_model_line(request_id: &str, model: &ModelId) -> String {
 
 pub(crate) fn set_permission_mode_line(request_id: &str, mode: PermissionMode) -> String {
     control_request(request_id, OutgoingRequest::SetPermissionMode { mode })
+}
+
+pub(crate) fn rewind_files_line(request_id: &str, prompt: &RewindId) -> String {
+    control_request(
+        request_id,
+        OutgoingRequest::RewindFiles {
+            user_message_id: prompt.as_str(),
+        },
+    )
 }
 
 fn answered_input(input: &Value, answers: &[PickedAnswer]) -> Value {

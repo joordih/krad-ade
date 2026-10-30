@@ -1,8 +1,13 @@
-use krad_domain::{line_diff, ChatEvent, EditLine, FileEdit, LineChange, ToolCall, ToolUseId};
+mod diff;
+
+use krad_domain::{ChatEvent, FileEdit, RewindId, RewindPoint, ToolCall, ToolUseId};
 use serde::Deserialize;
 use serde_json::Value;
 
+use super::plan::{checklist, PLAN_UPDATED};
 use crate::control::{LiveEvent, PlanUsage};
+use diff::file_edit;
+pub(crate) use diff::{ChangeKind, FileUpdate};
 
 const BASH_TOOL: &str = "Bash";
 const READ_TOOL: &str = "Read";
@@ -13,12 +18,6 @@ const WRITE_TOOL: &str = "Write";
 const WEB_SEARCH_TOOL: &str = "WebSearch";
 const TASK_TOOL: &str = "Task";
 const REASONING_SEPARATOR: &str = "\n\n";
-const HUNK_MARK: &str = "@@";
-const OLD_FILE_MARK: &str = "--- ";
-const NEW_FILE_MARK: &str = "+++ ";
-const KEPT_MARK: char = ' ';
-const REMOVED_MARK: char = '-';
-const ADDED_MARK: char = '+';
 const FIVE_HOURS_MINS: u32 = 300;
 const SEVEN_DAYS_MINS: u32 = 10_080;
 const UNKNOWN_FAILURE: &str = "codex reported an error";
@@ -51,22 +50,6 @@ pub(crate) enum CommandAction {
     },
     #[serde(other)]
     Other,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub(crate) enum ChangeKind {
-    Add,
-    Delete,
-    Update,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct FileUpdate {
-    pub(crate) path: String,
-    #[serde(default)]
-    pub(crate) diff: String,
-    pub(crate) kind: ChangeKind,
 }
 
 #[derive(Debug, Deserialize)]
@@ -133,68 +116,6 @@ fn call(id: &str, name: &str, summary: String, edit: Option<FileEdit>) -> ToolCa
         summary,
         edit,
     }
-}
-
-fn numbered(diff: &str) -> Vec<EditLine> {
-    let (mut old, mut new) = (0_u32, 0_u32);
-    let mut lines = Vec::new();
-    for line in diff.lines() {
-        if line.starts_with(OLD_FILE_MARK) || line.starts_with(NEW_FILE_MARK) {
-            continue;
-        }
-        if let Some(header) = line.strip_prefix(HUNK_MARK) {
-            if !lines.is_empty() {
-                lines.push(EditLine {
-                    change: LineChange::Gap,
-                    text: String::new(),
-                    old_line: None,
-                    new_line: None,
-                });
-            }
-            let mut starts = header
-                .split_whitespace()
-                .filter_map(|range| range.get(1..)?.split(',').next()?.parse::<u32>().ok());
-            old = starts.next().unwrap_or(1);
-            new = starts.next().unwrap_or(1);
-            continue;
-        }
-        let mut chars = line.chars();
-        let Some(mark) = chars.next() else {
-            continue;
-        };
-        let text = chars.as_str().to_owned();
-        let (change, old_line, new_line) = match mark {
-            KEPT_MARK => (LineChange::Kept, Some(old), Some(new)),
-            REMOVED_MARK => (LineChange::Removed, Some(old), None),
-            ADDED_MARK => (LineChange::Added, None, Some(new)),
-            _ => continue,
-        };
-        old += u32::from(old_line.is_some());
-        new += u32::from(new_line.is_some());
-        lines.push(EditLine {
-            change,
-            text,
-            old_line,
-            new_line,
-        });
-    }
-    lines
-}
-
-pub(crate) fn file_edit(update: &FileUpdate) -> Option<FileEdit> {
-    let lines = if update.diff.contains(HUNK_MARK) {
-        numbered(&update.diff)
-    } else {
-        match update.kind {
-            ChangeKind::Add => line_diff("", &update.diff),
-            ChangeKind::Delete => line_diff(&update.diff, ""),
-            ChangeKind::Update => Vec::new(),
-        }
-    };
-    (!lines.is_empty()).then(|| FileEdit {
-        path: update.path.clone(),
-        lines,
-    })
 }
 
 fn command_tool(id: &str, command: &str, actions: &[CommandAction]) -> ToolCall {
@@ -411,7 +332,11 @@ impl Translator {
             }),
             TURN_STARTED => {
                 self.turn = parsed::<TurnNotice>(params).map(|notice| notice.turn.id);
-                Vec::new()
+                self.turn.as_deref().map_or_default(|turn| {
+                    chat(vec![ChatEvent::Prompted(RewindPoint::Turn(
+                        RewindId::from(turn),
+                    ))])
+                })
             }
             TURN_COMPLETED => {
                 self.turn = None;
@@ -444,6 +369,9 @@ impl Translator {
                     self.model = Some(model.clone());
                     chat(vec![ChatEvent::Model(model)])
                 }),
+            PLAN_UPDATED => {
+                checklist(params).map_or_default(|list| chat(vec![ChatEvent::Checklist(list)]))
+            }
             RATE_LIMITS => parsed::<LimitsNotice>(params)
                 .map_or_default(|notice| vec![LiveEvent::Usage(plan_usage(&notice.rate_limits))]),
             _ => Vec::new(),
@@ -452,118 +380,4 @@ impl Translator {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn chat(events: Vec<LiveEvent>) -> Vec<ChatEvent> {
-        events
-            .into_iter()
-            .filter_map(|event| match event {
-                LiveEvent::Chat(event) => Some(event),
-                LiveEvent::Ask(_) | LiveEvent::Ready(_) | LiveEvent::Usage(_) => None,
-            })
-            .collect()
-    }
-
-    #[test]
-    fn a_turn_becomes_its_tools_text_usage_and_end() {
-        let mut translator = Translator::default();
-        let notices = [
-            (
-                TURN_STARTED,
-                json!({"threadId": "t", "turn": {"id": "turn-1", "items": [], "status": "inProgress", "error": null}}),
-            ),
-            (
-                ITEM_STARTED,
-                json!({"threadId": "t", "turnId": "turn-1", "item": {"type": "commandExecution", "id": "exec-1",
-                "command": "/bin/zsh -lc 'git status'", "status": "inProgress",
-                "commandActions": [{"type": "unknown", "command": "git status"}]}}),
-            ),
-            (
-                ITEM_COMPLETED,
-                json!({"threadId": "t", "turnId": "turn-1", "item": {"type": "commandExecution", "id": "exec-1",
-                "command": "/bin/zsh -lc 'git status'", "status": "completed", "commandActions": []}}),
-            ),
-            (
-                ITEM_COMPLETED,
-                json!({"threadId": "t", "turnId": "turn-1", "item": {"type": "fileChange", "id": "patch-1",
-                "status": "completed", "changes": [{"path": "src/a.rs", "kind": {"type": "update", "move_path": null},
-                "diff": "@@ -3,2 +3,2 @@\n fn a() {}\n-old\n+new\n"}]}}),
-            ),
-            (
-                ITEM_COMPLETED,
-                json!({"threadId": "t", "turnId": "turn-1", "item": {"type": "agentMessage", "id": "m1",
-                "text": "Clean tree.", "phase": "final_answer"}}),
-            ),
-            (
-                TOKEN_USAGE,
-                json!({"threadId": "t", "turnId": "turn-1", "tokenUsage": {
-                "total": {"totalTokens": 1, "inputTokens": 1, "cachedInputTokens": 0, "outputTokens": 0, "reasoningOutputTokens": 0},
-                "last": {"totalTokens": 14316, "inputTokens": 14263, "cachedInputTokens": 12288, "outputTokens": 53, "reasoningOutputTokens": 0},
-                "modelContextWindow": 475_000}}),
-            ),
-        ];
-        let events: Vec<ChatEvent> = notices
-            .iter()
-            .flat_map(|(method, params)| chat(translator.translate(method, params)))
-            .collect();
-        assert_eq!(translator.turn.as_deref(), Some("turn-1"));
-        let ChatEvent::Tool(edit) = &events[1] else {
-            unreachable!("the file change is a tool");
-        };
-        let lines: Vec<(LineChange, Option<u32>, Option<u32>)> =
-            edit.edit.as_ref().map_or_default(|edit| {
-                edit.lines
-                    .iter()
-                    .map(|line| (line.change, line.old_line, line.new_line))
-                    .collect()
-            });
-        assert_eq!(
-            lines,
-            [
-                (LineChange::Kept, Some(3), Some(3)),
-                (LineChange::Removed, Some(4), None),
-                (LineChange::Added, None, Some(4)),
-            ]
-        );
-        assert_eq!(
-            events,
-            [
-                ChatEvent::Tool(call("exec-1", BASH_TOOL, "git status".to_owned(), None)),
-                events[1].clone(),
-                ChatEvent::Text("Clean tree.".to_owned()),
-                ChatEvent::ContextTokens(14_263),
-                ChatEvent::ContextWindow(475_000),
-            ]
-        );
-        let done = translator.translate(
-            TURN_COMPLETED,
-            &json!({"threadId": "t", "turn": {"id": "turn-1", "items": [], "status": "failed",
-                "error": {"message": "usage limit reached"}}}),
-        );
-        assert_eq!(
-            chat(done),
-            [ChatEvent::Error("usage limit reached".to_owned())]
-        );
-        assert_eq!(translator.turn, None);
-    }
-
-    #[test]
-    fn rate_limits_fill_the_five_hour_and_weekly_rings() {
-        let mut translator = Translator::default();
-        let events = translator.translate(
-            RATE_LIMITS,
-            &json!({"rateLimits": {"limitId": "codex",
-                "primary": {"usedPercent": 12, "windowDurationMins": 300, "resetsAt": 1},
-                "secondary": {"usedPercent": 40, "windowDurationMins": 10_080, "resetsAt": 2}}}),
-        );
-        assert_eq!(
-            events,
-            [LiveEvent::Usage(PlanUsage {
-                five_hour: Some(12),
-                seven_day: Some(40),
-            })]
-        );
-    }
-}
+mod tests;

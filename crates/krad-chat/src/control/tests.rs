@@ -206,10 +206,26 @@ fn the_initialize_answer_lists_models_commands_and_the_plan() {
     assert_eq!(found.subscription.as_deref(), Some("Claude Max"));
     let mut other = answer;
     other["response"]["request_id"] = json!("krad_9");
-    assert_eq!(
-        routed(&other),
-        Some(Routed::Control),
+    assert!(
+        matches!(routed(&other), Some(Routed::Replied { request_id, reply: Ok(_) }) if request_id == "krad_9"),
         "another request's answer"
+    );
+}
+
+#[test]
+fn a_failed_request_answers_with_its_error_and_a_rewind_names_the_prompt() {
+    let failed = json!({"type": "control_response", "response": {"subtype": "error", "request_id": "krad_3", "error": "File rewinding is not enabled."}});
+    assert_eq!(
+        routed(&failed),
+        Some(Routed::Replied {
+            request_id: "krad_3".to_owned(),
+            reply: Err("File rewinding is not enabled.".to_owned()),
+        })
+    );
+    let line = rewind_files_line("krad_4", &RewindId::from("u2"));
+    assert_eq!(
+        serde_json::from_str::<Value>(&line).unwrap_or_default(),
+        json!({"type": "control_request", "request_id": "krad_4", "request": {"subtype": "rewind_files", "user_message_id": "u2"}})
     );
 }
 

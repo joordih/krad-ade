@@ -1,6 +1,6 @@
 use krad_chat::{
-    new_session_id, opencode_models, read_opencode_transcript, spawn_opencode_chat, Approvals,
-    BusVars, ChatEvent, LiveConfig, LiveEvent, LiveSession, OpencodeServer, Runner,
+    new_session_id, opencode_models, read_opencode_transcript, spawn_opencode_chat, BusVars,
+    ChatEvent, LiveConfig, LiveEvent, LiveSession, OpencodeServer, Runner,
 };
 use krad_domain::{AgentPreset, ChatEntry, PermissionMode};
 use std::path::PathBuf;
@@ -25,13 +25,10 @@ fn config(runner: Runner) -> LiveConfig {
         runner,
         model: None,
         cwd: std::env::temp_dir(),
-        extra_dirs: Vec::new(),
-        orchestration: None,
         system_prompt: Some("Answer briefly.".to_owned()),
         effort: None,
         permission_mode: Some(PermissionMode::Manual),
         bus_vars: BusVars(vec![("KRAD_TEST".to_owned(), "1".to_owned())]),
-        approvals: Approvals::Asked,
     }
 }
 

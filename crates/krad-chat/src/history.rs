@@ -1,4 +1,4 @@
-use krad_domain::{AgentPreset, ChatEntry, ResumeId};
+use krad_domain::{AgentPreset, ChatEntry, ChatEvent, ResumeId, RewindId, RewindPoint};
 use serde_json::Value;
 use std::fs;
 use std::io::{self, Read as _, Seek as _, SeekFrom};
@@ -17,6 +17,8 @@ const META_FLAG: &str = "/isMeta";
 const SIDECHAIN_FLAG: &str = "/isSidechain";
 const PERMISSION_MODE_LINE: &str = "permission-mode";
 const TAGGED_TEXT_START: char = '<';
+const USER_LINE: &str = "user";
+const UUID_KEY: &str = "uuid";
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TranscriptChunk {
@@ -131,12 +133,15 @@ fn entries_of_line(line: &str, sidechain: Sidechain) -> Vec<ChatEntry> {
         return Vec::new();
     }
     match value.get("type").and_then(Value::as_str) {
-        Some("user") => match user_text(&value) {
-            Some(text) => vec![ChatEntry::User {
+        Some(USER_LINE) => match user_text(&value) {
+            Some(text) => std::iter::once(ChatEntry::User {
                 text,
                 preset: AgentPreset::ClaudeCode,
                 model: None,
-            }],
+                images: Vec::new(),
+            })
+            .chain(prompted(&value))
+            .collect(),
             None => claude(&value).into_iter().map(ChatEntry::Event).collect(),
         },
         Some("assistant") => claude(&value).into_iter().map(ChatEntry::Event).collect(),
@@ -146,6 +151,21 @@ fn entries_of_line(line: &str, sidechain: Sidechain) -> Vec<ChatEntry> {
             .collect(),
         _ => Vec::new(),
     }
+}
+
+fn prompted(value: &Value) -> Option<ChatEntry> {
+    let uuid = value.get(UUID_KEY).and_then(Value::as_str)?;
+    Some(ChatEntry::Event(ChatEvent::Prompted(RewindPoint::Message(
+        RewindId::from(uuid),
+    ))))
+}
+
+pub(crate) fn is_prompt(value: &Value) -> bool {
+    let flagged = |flag: &str| value.pointer(flag).and_then(Value::as_bool) == Some(true);
+    value.get("type").and_then(Value::as_str) == Some(USER_LINE)
+        && !flagged(META_FLAG)
+        && !flagged(SIDECHAIN_FLAG)
+        && user_text(value).is_some()
 }
 
 fn block_type(block: &Value) -> Option<&str> {
@@ -178,7 +198,7 @@ fn user_text(value: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_domain::{ChatEvent, PermissionMode, ToolCall};
+    use krad_domain::{PermissionMode, ToolCall};
 
     const CONVERSATION: &str = r#"{"type":"permission-mode","permissionMode":"auto"}
 {"type":"user","message":{"role":"user","content":"Verify the Stripe signature."}}
@@ -198,6 +218,7 @@ not json"#;
             text: text.to_owned(),
             preset: AgentPreset::ClaudeCode,
             model: None,
+            images: Vec::new(),
         }
     }
 
@@ -247,6 +268,27 @@ not json"#;
                 user("Look [Image #1]"),
             ]
         );
+    }
+
+    #[test]
+    fn a_prompt_with_a_uuid_can_be_rewound_to() {
+        let line = r#"{"type":"user","uuid":"u1","parentUuid":null,"message":{"role":"user","content":"Fix it"}}"#;
+        assert_eq!(
+            entries_of_line(line, Sidechain::Skipped),
+            [
+                user("Fix it"),
+                ChatEntry::Event(ChatEvent::Prompted(RewindPoint::Message(RewindId::from(
+                    "u1"
+                )))),
+            ]
+        );
+        let value: Value = serde_json::from_str(line).unwrap_or_default();
+        assert!(is_prompt(&value));
+        let result: Value = serde_json::from_str(
+            r#"{"type":"user","uuid":"r1","message":{"content":[{"type":"tool_result","content":"ok"}]}}"#,
+        )
+        .unwrap_or_default();
+        assert!(!is_prompt(&result));
     }
 
     #[test]

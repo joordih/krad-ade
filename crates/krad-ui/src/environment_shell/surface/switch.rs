@@ -124,7 +124,7 @@ mod tests {
     fn claude_code_opencode_and_codex_have_a_chat_surface() {
         let id = resume("4f2c0b7c-a91e");
         assert_eq!(
-            surface_lock(AgentPreset::Gemini, Some(&id)),
+            surface_lock(AgentPreset::Shell, Some(&id)),
             Some(SurfaceLock::ChatUnsupported)
         );
         assert_eq!(surface_lock(AgentPreset::Opencode, Some(&id)), None);
