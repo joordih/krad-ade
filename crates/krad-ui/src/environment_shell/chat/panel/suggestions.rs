@@ -3,9 +3,10 @@ use gpui_kit::{
     div, px, relative, rgb, AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled,
 };
+use krad_domain::TerminalId;
 use krad_repo::EntryKind;
 
-use super::super::suggest::{entry_labels, Composer, SuggestKind, Suggestion};
+use super::super::suggest::{entry_labels, SuggestKind, Suggestion};
 use super::super::EnvironmentShell;
 use crate::components::{icon, IconName};
 use crate::theme::{
@@ -24,7 +25,7 @@ const NO_SKILLS_TEXT: &str = "No matching skills";
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn suggestion_menu(
         &self,
-        composer: Composer,
+        composer: TerminalId,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let suggest = self

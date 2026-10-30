@@ -1,9 +1,8 @@
-use krad_domain::{parse_wsl_path, ChatEvent, Effort, ModelId, PermissionMode, ResumeId};
+use krad_domain::{ChatEvent, Effort, PermissionMode, Prompt, ResumeId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
@@ -11,12 +10,14 @@ use std::thread;
 
 use super::ask::{reply, server_ask};
 use super::catalog::{listing, Listing};
-use super::events::{tools_of, Item, Translator};
+use super::events::{tools_of, Item, ItemNotice, Translator, ITEM_STARTED};
 use super::rpc::{AppServer, CodexError, Pushed};
-use crate::command::LiveSession;
-use crate::control::{AskAnswer, LiveEvent, Responder, ToolAsk};
+use crate::control::{LiveEvent, Responder};
 use crate::live::LiveConfig;
-use crate::process::Runner;
+use crate::live::{LiveHarness, LiveSession, Order};
+use crate::mention::served_path;
+use crate::refused::ResumeRefused;
+use crate::rewind::ResumeCut;
 
 const THREAD_START: &str = "thread/start";
 const THREAD_RESUME: &str = "thread/resume";
@@ -24,26 +25,11 @@ const THREAD_FORK: &str = "thread/fork";
 const TURN_START: &str = "turn/start";
 const TURN_STEER: &str = "turn/steer";
 const TURN_INTERRUPT: &str = "turn/interrupt";
-const ITEM_STARTED: &str = "item/started";
 const SKILL_MARK: char = '/';
 const SKILL_SIGIL: char = '$';
-const MISSING_CONVERSATION: &str = "No conversation found with session ID";
 const MISSING_THREAD_HINTS: [&str; 3] = ["not found", "no rollout", "does not exist"];
 const BUS_NETWORK: &str = "sandbox_workspace_write.network_access=true";
 const STOPPED_TEXT: &str = "codex stopped";
-const UNTRUSTED: &str = "untrusted";
-const ON_REQUEST: &str = "on-request";
-const NEVER: &str = "never";
-
-#[derive(Debug)]
-pub(crate) enum Order {
-    Send(String),
-    Interrupt,
-    Model(ModelId),
-    Effort(Effort),
-    Mode(PermissionMode),
-    Answer(Box<ToolAsk>, AskAnswer),
-}
 
 enum Inbound {
     Order(Order),
@@ -66,6 +52,32 @@ enum Sandbox {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum SandboxMode {
+    WorkspaceWrite,
+    ReadOnly,
+    DangerFullAccess,
+}
+
+impl From<Sandbox> for SandboxMode {
+    fn from(sandbox: Sandbox) -> Self {
+        match sandbox {
+            Sandbox::WorkspaceWrite { .. } => Self::WorkspaceWrite,
+            Sandbox::ReadOnly { .. } => Self::ReadOnly,
+            Sandbox::DangerFullAccess => Self::DangerFullAccess,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum Approval {
+    Untrusted,
+    OnRequest,
+    Never,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 enum Mode {
     Default,
@@ -74,7 +86,7 @@ enum Mode {
 
 #[derive(Debug, PartialEq, Eq)]
 struct Policy {
-    approval: &'static str,
+    approval: Approval,
     sandbox: Sandbox,
     mode: Mode,
 }
@@ -84,17 +96,19 @@ fn policy(mode: PermissionMode, network: bool) -> Policy {
         network_access: network,
     };
     let (approval, sandbox, mode) = match mode {
-        PermissionMode::Manual => (UNTRUSTED, write, Mode::Default),
-        PermissionMode::AcceptEdits => (ON_REQUEST, write, Mode::Default),
+        PermissionMode::Manual => (Approval::Untrusted, write, Mode::Default),
+        PermissionMode::AcceptEdits => (Approval::OnRequest, write, Mode::Default),
         PermissionMode::Plan => (
-            ON_REQUEST,
+            Approval::OnRequest,
             Sandbox::ReadOnly {
                 network_access: network,
             },
             Mode::Plan,
         ),
-        PermissionMode::Auto | PermissionMode::DontAsk => (NEVER, write, Mode::Default),
-        PermissionMode::BypassPermissions => (NEVER, Sandbox::DangerFullAccess, Mode::Default),
+        PermissionMode::Auto | PermissionMode::DontAsk => (Approval::Never, write, Mode::Default),
+        PermissionMode::BypassPermissions => {
+            (Approval::Never, Sandbox::DangerFullAccess, Mode::Default)
+        }
     };
     Policy {
         approval,
@@ -114,9 +128,25 @@ enum Input<'a> {
         name: &'a str,
         path: &'a str,
     },
+    LocalImage {
+        path: &'a str,
+    },
 }
 
-fn inputs<'a>(text: &'a str, skills: &'a HashMap<String, String>) -> Vec<Input<'a>> {
+fn inputs<'a>(
+    text: &'a str,
+    skills: &'a HashMap<String, String>,
+    images: &'a [String],
+) -> Vec<Input<'a>> {
+    let mut input = typed_inputs(text, skills);
+    if !images.is_empty() {
+        input.retain(|input| !matches!(input, Input::Text { text, .. } if text.is_empty()));
+    }
+    input.extend(images.iter().map(|path| Input::LocalImage { path }));
+    input
+}
+
+fn typed_inputs<'a>(text: &'a str, skills: &'a HashMap<String, String>) -> Vec<Input<'a>> {
     let text = text.trim();
     let called = text.strip_prefix(SKILL_MARK).and_then(|call| {
         let (name, rest) = call
@@ -149,8 +179,8 @@ struct ThreadOpen<'a> {
     cwd: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     model: Option<&'a str>,
-    approval_policy: &'static str,
-    sandbox: &'static str,
+    approval_policy: Approval,
+    sandbox: SandboxMode,
     #[serde(skip_serializing_if = "Option::is_none")]
     developer_instructions: Option<&'a str>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -190,7 +220,7 @@ struct TurnStart<'a> {
     model: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     effort: Option<String>,
-    approval_policy: &'static str,
+    approval_policy: Approval,
     sandbox_policy: Sandbox,
     #[serde(skip_serializing_if = "Option::is_none")]
     collaboration_mode: Option<Collaboration<'a>>,
@@ -211,26 +241,6 @@ struct TurnInterrupt<'a> {
     turn_id: &'a str,
 }
 
-#[derive(Deserialize)]
-struct ItemNotice {
-    item: Item,
-}
-
-const fn sandbox_mode(sandbox: Sandbox) -> &'static str {
-    match sandbox {
-        Sandbox::WorkspaceWrite { .. } => "workspace-write",
-        Sandbox::ReadOnly { .. } => "read-only",
-        Sandbox::DangerFullAccess => "danger-full-access",
-    }
-}
-
-pub(crate) fn served_directory(runner: &Runner, cwd: &Path) -> String {
-    match runner {
-        Runner::Wsl { .. } => parse_wsl_path(cwd).map_or_default(|inside| inside.linux),
-        Runner::Native(_) => cwd.to_string_lossy().into_owned(),
-    }
-}
-
 fn missing_thread(error: &CodexError) -> bool {
     let CodexError::Refused(message) = error else {
         return false;
@@ -246,16 +256,16 @@ pub(crate) struct CodexChat {
     running: Arc<AtomicBool>,
 }
 
-impl CodexChat {
-    pub(crate) fn order(&self, order: Order) {
+impl LiveHarness for CodexChat {
+    fn order(&self, order: Order) {
         self.orders.send(Inbound::Order(order)).unwrap_or_default();
     }
 
-    pub(crate) fn is_alive(&self) -> bool {
+    fn is_alive(&self) -> bool {
         self.running.load(Ordering::SeqCst)
     }
 
-    pub(crate) fn stop(&self) {
+    fn stop(&self) {
         self.orders.send(Inbound::Stop).unwrap_or_default();
     }
 }
@@ -287,7 +297,7 @@ pub(crate) fn spawn_codex(
     thread::spawn(move || {
         let network = !config.bus_vars.0.is_empty();
         let mut worker = Worker {
-            directory: served_directory(&config.runner, &config.cwd),
+            directory: config.runner.served_directory(&config.cwd),
             model: config.model.as_ref().map(|model| model.as_str().to_owned()),
             effort: config.effort,
             mode: config.permission_mode.unwrap_or(PermissionMode::Manual),
@@ -324,18 +334,11 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             .then(|| BUS_NETWORK.to_owned())
             .into_iter()
             .collect();
-        let mut env = self.config.bus_vars.0.clone();
-        env.extend(
-            self.config
-                .orchestration
-                .iter()
-                .flat_map(|orchestration| orchestration.env.0.iter().cloned()),
-        );
         AppServer::start(
             &self.config.runner,
             &self.config.cwd,
             &overrides,
-            &env,
+            &self.config.bus_vars.0,
             pushed,
         )
     }
@@ -348,13 +351,13 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             cwd: &self.directory,
             model: self.model.as_deref(),
             approval_policy: policy.approval,
-            sandbox: sandbox_mode(policy.sandbox),
+            sandbox: policy.sandbox.into(),
             developer_instructions: instructions.as_deref(),
             exclude_turns: thread_id.is_some(),
         };
         let opened: Result<ThreadOpened, CodexError> = match session {
             LiveSession::Start(_) => server.call(THREAD_START, &opening(None)),
-            LiveSession::Resume(resume) => {
+            LiveSession::Resume(resume) | LiveSession::Cut(ResumeCut { from: resume, .. }) => {
                 server.call(THREAD_RESUME, &opening(Some(resume.as_str())))
             }
             LiveSession::Fork(resume) => server.call(THREAD_FORK, &opening(Some(resume.as_str()))),
@@ -363,9 +366,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             Ok(opened) => opened,
             Err(error) if missing_thread(&error) => {
                 let resumed = session.history().map_or("", ResumeId::as_str);
-                self.emit(ChatEvent::Error(format!(
-                    "{MISSING_CONVERSATION} {resumed}"
-                )));
+                (self.sink)(LiveEvent::Refused(ResumeRefused::missing(resumed)));
                 return Ok(false);
             }
             Err(error) => return Err(error),
@@ -384,8 +385,14 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         Ok(true)
     }
 
-    fn deliver(&mut self, server: &AppServer, text: &str) -> Result<(), CodexError> {
-        let input = inputs(text, &self.listing.skills);
+    fn deliver(&mut self, server: &AppServer, prompt: &Prompt) -> Result<(), CodexError> {
+        let runner = &self.config.runner;
+        let text = prompt.text_with_paths(|path| served_path(runner, path));
+        let images: Vec<String> = prompt
+            .images()
+            .map(|image| served_path(runner, &image.path))
+            .collect();
+        let input = inputs(&text, &self.listing.skills, &images);
         if let Some(turn) = self.translator.turn.as_deref() {
             return server
                 .call::<_, Value>(
@@ -427,7 +434,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
 
     fn handle(&mut self, server: &AppServer, order: Order) -> Result<(), CodexError> {
         match order {
-            Order::Send(text) => return self.deliver(server, &text),
+            Order::Send(prompt) => return self.deliver(server, &prompt),
             Order::Interrupt => {
                 if let Some(turn) = self.translator.turn.clone() {
                     server.call::<_, Value>(
@@ -456,6 +463,10 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
                     Some(body) => server.answer(&id, &body),
                     None => server.refuse(&id),
                 }
+            }
+            Order::Rewind(request) => {
+                let outcome = self.rewind(server, &request);
+                (self.sink)(LiveEvent::Rewound(outcome));
             }
         }
         Ok(())
@@ -519,60 +530,6 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
     }
 }
 
+mod rewind;
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn permission_modes_become_approval_policies_and_sandboxes() {
-        assert_eq!(
-            policy(PermissionMode::Manual, true),
-            Policy {
-                approval: "untrusted",
-                sandbox: Sandbox::WorkspaceWrite {
-                    network_access: true
-                },
-                mode: Mode::Default,
-            }
-        );
-        assert_eq!(policy(PermissionMode::Plan, false).mode, Mode::Plan);
-        assert_eq!(
-            policy(PermissionMode::BypassPermissions, false).sandbox,
-            Sandbox::DangerFullAccess
-        );
-        assert_eq!(
-            serde_json::to_value(Sandbox::WorkspaceWrite {
-                network_access: false
-            })
-            .unwrap_or_default(),
-            json!({"type": "workspaceWrite", "networkAccess": false})
-        );
-    }
-
-    #[test]
-    fn a_skill_call_becomes_a_skill_input_followed_by_its_arguments() {
-        let skills = HashMap::from([("release".to_owned(), "/s/release/SKILL.md".to_owned())]);
-        let called = serde_json::to_value(inputs("/release v2", &skills)).unwrap_or_default();
-        assert_eq!(
-            called,
-            json!([
-                {"type": "text", "text": "$release v2", "text_elements": []},
-                {"type": "skill", "name": "release", "path": "/s/release/SKILL.md"}
-            ])
-        );
-        let plain = serde_json::to_value(inputs("/unknown thing", &skills)).unwrap_or_default();
-        assert_eq!(
-            plain,
-            json!([{"type": "text", "text": "/unknown thing", "text_elements": []}])
-        );
-    }
-
-    #[test]
-    fn a_missing_thread_starts_a_new_conversation() {
-        assert!(missing_thread(&CodexError::Refused(
-            "thread not found: 01a1".to_owned()
-        )));
-        assert!(!missing_thread(&CodexError::Gone));
-    }
-}
+mod tests;

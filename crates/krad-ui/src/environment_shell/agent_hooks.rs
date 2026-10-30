@@ -3,8 +3,8 @@ use gpui_kit::{AppContext as _, Context};
 use krad_agents::{AgentStatus, Response, TerminalHandle};
 use krad_domain::{
     hook_launch_args, launch_with_prompt, quote_for_shell, worker_brief, AgentPreset, AgentState,
-    EnvironmentName, ModelId, ResumeId, SessionId, ShellQuoting, TerminalGroup, TerminalId,
-    WorktreeOrigin,
+    EnvironmentName, ModelDelivery, ModelId, ResumeId, SessionId, ShellQuoting, TerminalGroup,
+    TerminalId, WorktreeOrigin,
 };
 use krad_repo::{add_worktree, sanitize_worktree_name};
 use krad_session::SHELL_QUOTING;
@@ -19,14 +19,12 @@ const PROMPT_DELAY: Duration = Duration::from_secs(4);
 const FRESH_CONVERSATION: &str = "Fresh conversation";
 const FRESH_TOAST: &str = "could not resume its conversation and started a fresh one";
 pub(super) const NO_GROUP: &str = "Run spawn from a terminal that belongs to a group";
-pub(super) const UNKNOWN_AGENT: &str =
-    "Unknown agent; use a harness program such as claude, codex or opencode";
 const NOT_A_REPO: &str =
     "The caller's group is not in a git repository, so it cannot branch a worktree";
 const BAD_WORKTREE_NAME: &str = "Use letters, digits, '-', '_' or '.' for the worktree name";
 
 pub(super) struct HookReport<'a> {
-    pub(super) harness: &'a str,
+    pub(super) harness: AgentPreset,
     pub(super) event: &'a str,
     pub(super) tool: Option<&'a str>,
     pub(super) detail: Option<String>,
@@ -49,12 +47,6 @@ pub(super) struct WorkerOrder {
 pub(super) struct WorkerOf {
     pub(super) session: SessionId,
     pub(super) task: String,
-}
-
-pub(super) fn preset_named(name: &str) -> Option<AgentPreset> {
-    AgentPreset::all().into_iter().find(|preset| {
-        preset.program() == Some(name) || preset.display_name().eq_ignore_ascii_case(name)
-    })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -84,8 +76,7 @@ impl EnvironmentShell {
         role: AgentRole,
     ) -> Option<(String, Option<String>)> {
         let mut line = self.settings.launch_line(preset)?;
-        let model = model.filter(|_| preset != AgentPreset::Opencode);
-        if let (Some(model), Some(flag)) = (model, preset.model_flag()) {
+        if let (Some(model), Some(ModelDelivery::Flag(flag))) = (model, preset.model_delivery()) {
             line = format!("{line} {flag} {model}");
         }
         let quoting = if in_wsl {
@@ -137,8 +128,8 @@ impl EnvironmentShell {
     pub(super) fn apply_hook(&mut self, from: &TerminalHandle, report: HookReport<'_>) -> Response {
         let env = EnvironmentName::new(from.environment.clone());
         let id = TerminalId(from.terminal);
-        let preset = preset_named(report.harness);
-        let signal = preset.and_then(|preset| preset.hook_signal(report.event, report.tool));
+        let preset = report.harness;
+        let signal = preset.hook_signal(report.event, report.tool);
         if let Some(session) = self
             .envs
             .get_mut(&env)
@@ -149,12 +140,10 @@ impl EnvironmentShell {
                 session.activity = report.detail;
             }
         }
-        if let Some(preset) = preset {
-            self.settle_held_asks(&env, id, preset, report.event, report.tool);
-            let resume = report.resume.and_then(|raw| raw.parse::<ResumeId>().ok());
-            let fresh = preset.started_fresh(report.event, report.tool);
-            self.note_resume_id(&env, id, preset, resume, fresh);
-        }
+        self.settle_held_asks(&env, id, preset, report.event, report.tool);
+        let resume = report.resume.and_then(|raw| raw.parse::<ResumeId>().ok());
+        let fresh = preset.started_fresh(report.event, report.tool);
+        self.note_resume_id(&env, id, preset, resume, fresh);
         if let Some(signal) = signal {
             self.set_agent_state(&env, id, AgentState::from(signal));
         }
@@ -192,7 +181,7 @@ impl EnvironmentShell {
     pub(super) fn spawn_worker(
         &mut self,
         from: &TerminalHandle,
-        agent: &str,
+        preset: AgentPreset,
         worktree: Option<String>,
         text: &str,
         reply: ReplySender<Response>,
@@ -200,12 +189,6 @@ impl EnvironmentShell {
     ) {
         let env = EnvironmentName::new(from.environment.clone());
         let caller = TerminalId(from.terminal);
-        let Some(preset) = preset_named(agent).filter(|preset| preset.is_agent()) else {
-            reply
-                .send(Response::Error(UNKNOWN_AGENT.to_owned()))
-                .unwrap_or_default();
-            return;
-        };
         let Some(group) = self
             .envs
             .get(&env)

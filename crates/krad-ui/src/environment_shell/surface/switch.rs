@@ -14,22 +14,27 @@ pub(in crate::environment_shell) enum SurfaceLock {
     UnknownResumeId,
 }
 
-const CHAT_HARNESSES: [AgentPreset; 3] = [
-    AgentPreset::ClaudeCode,
-    AgentPreset::Opencode,
-    AgentPreset::Codex,
-];
-const REOPENED_HARNESSES: [AgentPreset; 2] = [AgentPreset::Opencode, AgentPreset::Codex];
-
-pub(in crate::environment_shell) fn reopens_as_chat(harness: Option<AgentPreset>) -> bool {
-    harness.is_some_and(|harness| REOPENED_HARNESSES.contains(&harness))
-}
+const CHAT_SURFACE_HINT: &str = "Chat surface is for";
+const ONLY_SUFFIX: &str = "only";
+const LIST_SEPARATOR: &str = ", ";
+const LIST_LAST_SEPARATOR: &str = " and ";
+const UNKNOWN_RESUME_HINT: &str = "Switch once the agent reports its session";
 
 fn surface_lock(harness: AgentPreset, resume: Option<&ResumeId>) -> Option<SurfaceLock> {
-    if !CHAT_HARNESSES.contains(&harness) {
+    if harness.terminal_chat().is_none() {
         return Some(SurfaceLock::ChatUnsupported);
     }
     resume.is_none().then_some(SurfaceLock::UnknownResumeId)
+}
+
+fn spoken_list(names: &[&str]) -> String {
+    match names.split_last() {
+        Some((last, rest)) if !rest.is_empty() => {
+            format!("{}{LIST_LAST_SEPARATOR}{last}", rest.join(LIST_SEPARATOR))
+        }
+        Some((last, _)) => (*last).to_owned(),
+        None => String::new(),
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,10 +44,17 @@ pub(in crate::environment_shell) struct SurfaceSwitch {
 }
 
 impl SurfaceLock {
-    pub(in crate::environment_shell) const fn hint(self) -> &'static str {
+    pub(in crate::environment_shell) fn hint(self) -> String {
         match self {
-            Self::ChatUnsupported => "Chat surface is for Claude Code, opencode and Codex only",
-            Self::UnknownResumeId => "Switch once the agent reports its session",
+            Self::ChatUnsupported => {
+                let names: Vec<&str> = AgentPreset::all()
+                    .into_iter()
+                    .filter(|preset| preset.terminal_chat().is_some())
+                    .map(AgentPreset::display_name)
+                    .collect();
+                format!("{CHAT_SURFACE_HINT} {} {ONLY_SUFFIX}", spoken_list(&names))
+            }
+            Self::UnknownResumeId => UNKNOWN_RESUME_HINT.to_owned(),
         }
     }
 }
@@ -95,7 +107,7 @@ impl EnvironmentShell {
                     Some(IconName::Chat),
                     MenuAction::SwitchSurface(id),
                 ),
-                Some(lock) => MenuEntry::Header(lock.hint().to_owned()),
+                Some(lock) => MenuEntry::Header(lock.hint()),
             });
         }
         if !entries.is_empty() {
@@ -115,22 +127,23 @@ mod tests {
     }
 
     #[test]
-    fn a_claude_code_agent_with_a_resume_id_can_show_its_chat_even_while_busy() {
+    fn a_harness_without_a_terminal_chat_is_locked_before_its_resume_id_is_asked() {
         let id = resume("4f2c0b7c-a91e");
-        assert_eq!(surface_lock(AgentPreset::ClaudeCode, Some(&id)), None);
+        assert_eq!(
+            surface_lock(AgentPreset::Shell, Some(&id)),
+            Some(SurfaceLock::ChatUnsupported)
+        );
+        assert_eq!(surface_lock(AgentPreset::Codex, Some(&id)), None);
     }
 
     #[test]
-    fn claude_code_opencode_and_codex_have_a_chat_surface() {
-        let id = resume("4f2c0b7c-a91e");
+    fn the_unsupported_hint_names_the_harnesses_in_a_spoken_list() {
+        assert_eq!(spoken_list(&["A", "B", "C"]), "A, B and C");
+        assert_eq!(spoken_list(&["A"]), "A");
         assert_eq!(
-            surface_lock(AgentPreset::Gemini, Some(&id)),
-            Some(SurfaceLock::ChatUnsupported)
+            SurfaceLock::ChatUnsupported.hint(),
+            "Chat surface is for Claude Code, Codex and opencode only"
         );
-        assert_eq!(surface_lock(AgentPreset::Opencode, Some(&id)), None);
-        assert_eq!(surface_lock(AgentPreset::Codex, Some(&id)), None);
-        assert!(reopens_as_chat(Some(AgentPreset::Codex)));
-        assert!(!reopens_as_chat(Some(AgentPreset::ClaudeCode)));
     }
 
     #[test]

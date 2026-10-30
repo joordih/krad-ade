@@ -31,16 +31,20 @@ mod tests {
     use super::PermissionMode;
     use serde_json::{json, Value};
 
+    const fn after(mode: PermissionMode) -> Option<PermissionMode> {
+        match mode {
+            PermissionMode::Manual => Some(PermissionMode::AcceptEdits),
+            PermissionMode::AcceptEdits => Some(PermissionMode::Plan),
+            PermissionMode::Plan => Some(PermissionMode::Auto),
+            PermissionMode::Auto => Some(PermissionMode::DontAsk),
+            PermissionMode::DontAsk => Some(PermissionMode::BypassPermissions),
+            PermissionMode::BypassPermissions => None,
+        }
+    }
+
     #[test]
     fn the_flag_name_matches_the_protocol_name() {
-        for mode in [
-            PermissionMode::Manual,
-            PermissionMode::AcceptEdits,
-            PermissionMode::Plan,
-            PermissionMode::Auto,
-            PermissionMode::DontAsk,
-            PermissionMode::BypassPermissions,
-        ] {
+        for mode in std::iter::successors(Some(PermissionMode::Manual), |mode| after(*mode)) {
             assert_eq!(json!(mode), Value::from(mode.to_string()));
         }
     }

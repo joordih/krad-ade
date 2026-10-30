@@ -27,8 +27,6 @@ use std::rc::Rc;
 use std::sync::Once;
 use wheel::MouseInput;
 
-pub const ENGINE_COLS: usize = 80;
-pub const ENGINE_ROWS: usize = 24;
 pub const SCROLLBACK_LINES: usize = 50_000;
 const ESC: char = '\u{1b}';
 const BEL: char = '\u{7}';
@@ -153,14 +151,6 @@ impl VtEngine {
         self.sized_cell = self.cell;
         term.resize(cols, rows, self.cell.width, self.cell.height)
             .is_ok()
-    }
-
-    #[must_use]
-    pub fn visible_size(&self) -> (usize, usize) {
-        let term = self.term.borrow();
-        let cols = term.cols().map_or(1, usize::from);
-        let rows = term.rows().map_or(1, usize::from);
-        (cols, rows)
     }
 
     #[must_use]

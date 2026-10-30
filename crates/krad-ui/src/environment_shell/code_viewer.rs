@@ -19,7 +19,8 @@ use super::markdown_images::with_local_images;
 use super::settings_view::segmented_track;
 use super::EnvironmentShell;
 use crate::components::{card, chip, icon, Button, IconName};
-use crate::highlight::{highlight_lines, Language, Span};
+use crate::highlight::{highlight_lines, Span, Syntax};
+use crate::language::Language;
 use crate::theme::{
     palette, Palette, CARD_HEADER_H, ICON_SM, LINE_SM, LINE_XS, SPACE_2, SPACE_3, TEXT_SM, TEXT_XS,
 };
@@ -39,44 +40,11 @@ const FOOTER_H: f32 = 28.0;
 const LINES_SUFFIX: &str = "lines";
 const ENCODING_LABEL: &str = "UTF-8";
 const READ_ONLY_LABEL: &str = "Read only";
-const MARKDOWN_EXTENSIONS: &[&str] = &["md", "markdown"];
 const PREVIEW_ID: &str = "code-viewer-preview";
 const SEGMENT_SOURCE_ID: &str = "code-viewer-source";
 const SEGMENT_PREVIEW_ID: &str = "code-viewer-rendered";
 const SOURCE_LABEL: &str = "Markdown";
 const PREVIEW_LABEL: &str = "Preview";
-const LANGUAGE_NAMES: &[(&str, &str)] = &[
-    ("rs", "Rust"),
-    ("ts", "TypeScript"),
-    ("tsx", "TypeScript"),
-    ("js", "JavaScript"),
-    ("jsx", "JavaScript"),
-    ("mjs", "JavaScript"),
-    ("cjs", "JavaScript"),
-    ("py", "Python"),
-    ("go", "Go"),
-    ("c", "C"),
-    ("h", "C"),
-    ("cc", "C++"),
-    ("cpp", "C++"),
-    ("hpp", "C++"),
-    ("cs", "C#"),
-    ("java", "Java"),
-    ("kt", "Kotlin"),
-    ("swift", "Swift"),
-    ("css", "CSS"),
-    ("scss", "SCSS"),
-    ("html", "HTML"),
-    ("sh", "Shell"),
-    ("bash", "Shell"),
-    ("zsh", "Shell"),
-    ("ps1", "PowerShell"),
-    ("toml", "TOML"),
-    ("yaml", "YAML"),
-    ("yml", "YAML"),
-    ("json", "JSON"),
-    ("md", "Markdown"),
-];
 
 pub(super) struct CodeView {
     pub(super) path: PathBuf,
@@ -113,7 +81,7 @@ fn load(path: &Path) -> ViewerContent {
     match krad_repo::read_text(path, MAX_VIEW_BYTES) {
         Ok(file) => {
             let text = file.text.replace('\t', TAB_AS_SPACES);
-            let spans = highlight_lines(&text, Language::from_path(path));
+            let spans = highlight_lines(&text, Syntax::from(Language::from_path(path)));
             let markdown = is_markdown(path).then(|| SharedString::from(text.clone()));
             let lines: Vec<SharedString> = text
                 .lines()
@@ -132,14 +100,6 @@ fn load(path: &Path) -> ViewerContent {
     }
 }
 
-fn language_name(path: &Path) -> Option<&'static str> {
-    let extension = path.extension()?.to_string_lossy().to_ascii_lowercase();
-    LANGUAGE_NAMES
-        .iter()
-        .find(|(known, _)| *known == extension)
-        .map(|(_, name)| *name)
-}
-
 fn widest_line(lines: &[SharedString]) -> usize {
     lines
         .iter()
@@ -149,11 +109,7 @@ fn widest_line(lines: &[SharedString]) -> usize {
 }
 
 fn is_markdown(path: &Path) -> bool {
-    path.extension().is_some_and(|extension| {
-        MARKDOWN_EXTENSIONS
-            .iter()
-            .any(|known| extension.eq_ignore_ascii_case(known))
-    })
+    Language::from_path(path) == Some(Language::Markdown)
 }
 
 impl EnvironmentShell {
@@ -275,7 +231,7 @@ impl EnvironmentShell {
                 )
             })
             .children(mode_toggle)
-            .children(language_name(&viewer.path).map(|name| chip(name, pal)))
+            .children(Language::from_path(&viewer.path).map(|language| chip(language.name(), pal)))
             .child(
                 Button::new(BTN_CLOSE_VIEWER)
                     .icon(IconName::Close)
@@ -395,14 +351,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn known_extensions_name_their_language_in_any_case() {
-        assert_eq!(language_name(Path::new("api/index.ts")), Some("TypeScript"));
-        assert_eq!(language_name(Path::new("src/MAIN.RS")), Some("Rust"));
-        assert_eq!(language_name(Path::new("LICENSE")), None);
-        assert_eq!(language_name(Path::new("data.bin")), None);
-    }
-
-    #[test]
     fn the_widest_line_counts_characters_not_bytes() {
         let lines = ["short", "ñññññññ", "longer"].map(SharedString::from);
         assert_eq!(widest_line(&lines), 1);
@@ -415,17 +363,5 @@ mod tests {
         assert!(is_markdown(Path::new("NOTES.Markdown")));
         assert!(!is_markdown(Path::new("src/main.rs")));
         assert!(!is_markdown(Path::new("md")));
-    }
-
-    #[test]
-    fn every_extension_is_listed_once() {
-        for (index, (extension, _)) in LANGUAGE_NAMES.iter().enumerate() {
-            assert!(
-                !LANGUAGE_NAMES[index + 1..]
-                    .iter()
-                    .any(|(other, _)| other == extension),
-                "{extension} is listed twice"
-            );
-        }
     }
 }

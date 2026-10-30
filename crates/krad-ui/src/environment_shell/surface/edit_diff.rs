@@ -121,13 +121,26 @@ pub(in crate::environment_shell) fn edit_diff(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_domain::line_diff;
+
+    fn line(change: LineChange) -> EditLine {
+        EditLine {
+            change,
+            text: "x".to_owned(),
+            old_line: None,
+            new_line: None,
+        }
+    }
 
     #[test]
-    fn an_edited_file_counts_its_added_and_removed_lines() {
+    fn an_edited_file_is_labelled_with_its_added_and_removed_counts() {
         let edit = FileEdit {
             path: "a".to_owned(),
-            lines: line_diff("x\ny", "x\nz\nw"),
+            lines: vec![
+                line(LineChange::Kept),
+                line(LineChange::Removed),
+                line(LineChange::Added),
+                line(LineChange::Added),
+            ],
         };
         assert_eq!(edit_counts(&edit), "+2 -1");
     }

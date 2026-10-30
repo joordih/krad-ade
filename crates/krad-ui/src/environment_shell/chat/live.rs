@@ -1,15 +1,11 @@
 use futures::channel::mpsc::{unbounded, UnboundedReceiver};
 use futures::StreamExt as _;
 use gpui_kit::{Context, Task};
-use krad_chat::{
-    spawn_codex_chat, spawn_live_chat, spawn_opencode_chat, ChatError, LiveChat, LiveConfig,
-    LiveEvent, LiveSession, OpencodeServer, Runner,
-};
+use krad_chat::{start_chat, ChatBackend, ChatError, LiveChat, LiveEvent, LiveSession, Runner};
 use krad_domain::{parse_wsl_path, AgentPreset};
 use krad_session::find_program;
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use super::super::terminal_card::home_dir;
 use super::super::EnvironmentShell;
@@ -17,13 +13,18 @@ use super::super::EnvironmentShell;
 const NO_PROGRAM_TEXT: &str = "is not on PATH";
 const NOT_IN_WSL_TEXT: &str = "chats do not run in WSL folders yet";
 const WAITING_TEXT: &str = "opencode is still starting";
+const NO_CONFIG_FOLDER_TEXT: &str = "Krad ADE has no config folder to keep the chat in";
+const NO_CHAT_TEXT: &str = "has no chat";
 
 #[derive(Debug)]
 pub(in crate::environment_shell) enum StartError {
     NoProgram(AgentPreset),
+    NoChat(AgentPreset),
     NotInWsl(AgentPreset),
     Waiting,
     Opencode(String),
+    Gateway(String),
+    NoConfigFolder,
     Chat(ChatError),
 }
 
@@ -33,11 +34,15 @@ impl fmt::Display for StartError {
             Self::NoProgram(preset) => {
                 write!(formatter, "{} {NO_PROGRAM_TEXT}", preset.display_name())
             }
+            Self::NoChat(preset) => {
+                write!(formatter, "{} {NO_CHAT_TEXT}", preset.display_name())
+            }
             Self::NotInWsl(preset) => {
                 write!(formatter, "{} {NOT_IN_WSL_TEXT}", preset.display_name())
             }
             Self::Waiting => formatter.write_str(WAITING_TEXT),
-            Self::Opencode(error) => formatter.write_str(error),
+            Self::Opencode(error) | Self::Gateway(error) => formatter.write_str(error),
+            Self::NoConfigFolder => formatter.write_str(NO_CONFIG_FOLDER_TEXT),
             Self::Chat(error) => error.fmt(formatter),
         }
     }
@@ -57,13 +62,13 @@ pub(in crate::environment_shell) struct LiveProcess {
 
 impl LiveProcess {
     pub(in crate::environment_shell) fn spawn(
-        config: LiveConfig,
+        backend: ChatBackend,
         session: &LiveSession,
         cx: &mut Context<EnvironmentShell>,
         apply: impl FnMut(&mut EnvironmentShell, LiveEvent, &mut Context<EnvironmentShell>) + 'static,
     ) -> Result<Self, ChatError> {
         let (sender, receiver) = unbounded();
-        let chat = spawn_live_chat(config, session, move |event| {
+        let chat = start_chat(backend, session, move |event| {
             sender.unbounded_send(event).unwrap_or_default();
         })?;
         Ok(Self {
@@ -71,41 +76,6 @@ impl LiveProcess {
             _events: EnvironmentShell::listen(receiver, cx, apply),
             confirmed: false,
         })
-    }
-
-    pub(in crate::environment_shell) fn spawn_codex(
-        config: LiveConfig,
-        session: &LiveSession,
-        cx: &mut Context<EnvironmentShell>,
-        apply: impl FnMut(&mut EnvironmentShell, LiveEvent, &mut Context<EnvironmentShell>) + 'static,
-    ) -> Self {
-        let (sender, receiver) = unbounded();
-        let chat = spawn_codex_chat(config, session, move |event| {
-            sender.unbounded_send(event).unwrap_or_default();
-        });
-        Self {
-            chat,
-            _events: EnvironmentShell::listen(receiver, cx, apply),
-            confirmed: false,
-        }
-    }
-
-    pub(in crate::environment_shell) fn spawn_opencode(
-        server: Arc<OpencodeServer>,
-        config: LiveConfig,
-        session: &LiveSession,
-        cx: &mut Context<EnvironmentShell>,
-        apply: impl FnMut(&mut EnvironmentShell, LiveEvent, &mut Context<EnvironmentShell>) + 'static,
-    ) -> Self {
-        let (sender, receiver) = unbounded();
-        let chat = spawn_opencode_chat(server, config, session, move |event| {
-            sender.unbounded_send(event).unwrap_or_default();
-        });
-        Self {
-            chat,
-            _events: EnvironmentShell::listen(receiver, cx, apply),
-            confirmed: false,
-        }
     }
 
     pub(in crate::environment_shell) fn alive(&self) -> Option<&LiveChat> {

@@ -1,7 +1,7 @@
 use krad_domain::ToolDecision;
 use serde_json::Value;
 
-use super::{answered_input, ask_of, AskAnswer, ToolAsk};
+use super::{answered_input, ask_of, AskAnswer, Responder, ToolAsk};
 
 impl ToolAsk {
     #[must_use]
@@ -11,6 +11,9 @@ impl ToolAsk {
 
     #[must_use]
     pub fn decision(&self, answer: &AskAnswer) -> ToolDecision {
+        let Responder::ClaudeCode(held) = &self.responder else {
+            return ToolDecision::Pass;
+        };
         match answer {
             AskAnswer::Allow => ToolDecision::Allow {
                 updated_input: None,
@@ -18,10 +21,10 @@ impl ToolAsk {
             },
             AskAnswer::AllowAlways => ToolDecision::Allow {
                 updated_input: None,
-                permissions: self.suggestions.clone(),
+                permissions: held.suggestions.clone(),
             },
             AskAnswer::Answers(answers) => ToolDecision::Allow {
-                updated_input: Some(answered_input(&self.input, answers)),
+                updated_input: Some(answered_input(&held.input, answers)),
                 permissions: Vec::new(),
             },
             AskAnswer::Deny { message } => ToolDecision::Deny {

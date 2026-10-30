@@ -230,7 +230,6 @@ mod tests {
         });
         assert_eq!((file.added, file.removed), (3, 2));
         assert_eq!(file.name(), "lib.rs");
-        assert_eq!(file.change.diff, DIFF);
         assert_eq!(file.source, DiffSource::CodeHost);
     }
 

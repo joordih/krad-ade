@@ -1,11 +1,11 @@
 use krad_chat::{new_opencode_session_id, prepare_opencode_session, OpencodeServer};
 use krad_domain::{
-    classify_agent_state, parse_wsl_path, resume_line, AgentPreset, AgentState, EnvironmentName,
-    ModelId, ResumeId, ShellQuoting, TerminalId, WslPath,
+    attach_line, classify_agent_state, parse_wsl_path, resume_line, AgentPreset, AgentState,
+    EnvironmentName, ModelId, ResumeId, ShellQuoting, TerminalId, WslPath,
 };
 use krad_session::{
     clear_screen_prefix, default_shell, run_spawn_job, wsl_shell_in, LiveSession, PtyInput,
-    PumpMsg, SessionState, SharedKiller, SpawnJob, VtEngine, ENGINE_COLS, ENGINE_ROWS,
+    PumpMsg, SessionState, SharedKiller, SpawnJob, VtEngine, DEFAULT_COLS, DEFAULT_ROWS,
     SHELL_QUOTING, THREAD_IO_NAME,
 };
 use std::path::PathBuf;
@@ -15,14 +15,11 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use super::agent_hooks::AgentRole;
-use super::surface::reopens_as_chat;
 use super::EnvironmentShell;
 
 const SHELL_SUBMIT: &str = "\r";
 const ENGINE_FAILED_TEXT: &str = "The terminal could not start";
 const RESTORE_MARKER: &str = "── restored session ──";
-const SERVER_FLAG: &str = "--server";
-const SESSION_FLAG: &str = "--session";
 const SCROLLBACK_CLEARED: &[u8] = b"\x1b[3J";
 
 pub(super) enum Launch {
@@ -129,7 +126,7 @@ impl EnvironmentShell {
         let Some(pump) = self.pump_tx.clone() else {
             return;
         };
-        let mut engine = match VtEngine::new(ENGINE_COLS, ENGINE_ROWS) {
+        let mut engine = match VtEngine::new(DEFAULT_COLS.into(), DEFAULT_ROWS.into()) {
             Ok(engine) => engine,
             Err(error) => {
                 self.push_toast(format!("{ENGINE_FAILED_TEXT}: {error}"));
@@ -244,7 +241,7 @@ impl EnvironmentShell {
         harness: Option<AgentPreset>,
         in_wsl: bool,
     ) -> Option<(Arc<OpencodeServer>, ResumeId)> {
-        if harness != Some(AgentPreset::Opencode) || in_wsl {
+        if !harness.is_some_and(AgentPreset::attaches_to_server) || in_wsl {
             return None;
         }
         let server = self.opencode_server()?.clone();
@@ -348,7 +345,9 @@ impl EnvironmentShell {
             return false;
         };
         session.feed(bytes);
-        if reopens_as_chat(session.harness) && contains(bytes, SCROLLBACK_CLEARED) {
+        if session.harness.is_some_and(AgentPreset::reopens_as_chat)
+            && contains(bytes, SCROLLBACK_CLEARED)
+        {
             session.hooked = true;
         }
         if session.hooked {
@@ -497,11 +496,7 @@ fn type_agent_line(
 ) {
     let clear = clear_screen_prefix(typed.in_wsl);
     let agent = match attached {
-        Some((server, resume)) => format!(
-            "{} {SERVER_FLAG} {} {SESSION_FLAG} {resume}",
-            typed.agent,
-            server.url()
-        ),
+        Some((server, resume)) => attach_line(&typed.agent, server.url(), resume),
         None => typed.agent,
     };
     let line = PtyInput::Bytes(format!("{clear}{agent}{SHELL_SUBMIT}").into_bytes());

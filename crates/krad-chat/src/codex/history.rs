@@ -1,4 +1,4 @@
-use krad_domain::{AgentPreset, ChatEntry, ChatEvent, ResumeId};
+use krad_domain::{AgentPreset, ChatEntry, ChatEvent, ResumeId, RewindId, RewindPoint};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::Path;
@@ -28,6 +28,7 @@ struct TurnsList<'a> {
 
 #[derive(Debug, Deserialize)]
 struct Turn {
+    id: Option<String>,
     #[serde(default)]
     items: Vec<Value>,
 }
@@ -55,6 +56,7 @@ fn entries_of(item: &Item) -> Vec<ChatEntry> {
                 text: text.trim().to_owned(),
                 preset: AgentPreset::Codex,
                 model: None,
+                images: Vec::new(),
             })
             .into_iter()
             .collect();
@@ -66,13 +68,25 @@ fn entries_of(item: &Item) -> Vec<ChatEntry> {
         .collect()
 }
 
-fn entries(turns: Vec<Turn>) -> Vec<ChatEntry> {
-    turns
+fn turn_entries(turn: Turn) -> Vec<ChatEntry> {
+    let mut entries: Vec<ChatEntry> = turn
+        .items
         .into_iter()
-        .flat_map(|turn| turn.items)
         .filter_map(|item| Item::deserialize(item).ok())
         .flat_map(|item| entries_of(&item))
-        .collect()
+        .collect();
+    let asked = entries
+        .iter()
+        .position(|entry| matches!(entry, ChatEntry::User { .. }));
+    if let (Some(asked), Some(id)) = (asked, turn.id) {
+        let point = RewindPoint::Turn(RewindId::from(id));
+        entries.insert(asked + 1, ChatEntry::Event(ChatEvent::Prompted(point)));
+    }
+    entries
+}
+
+fn entries(turns: Vec<Turn>) -> Vec<ChatEntry> {
+    turns.into_iter().flat_map(turn_entries).collect()
 }
 
 /// # Errors
@@ -116,7 +130,7 @@ mod tests {
 
     #[test]
     fn a_stored_thread_reads_back_as_the_chat_showed_it() {
-        let turns: Vec<Turn> = serde_json::from_value(json!([{"items": [
+        let turns: Vec<Turn> = serde_json::from_value(json!([{"id": "turn-1", "items": [
             {"type": "userMessage", "id": "u1", "content": [{"type": "text", "text": "Read the notes", "text_elements": []}]},
             {"type": "reasoning", "id": "r1", "summary": ["Look first"], "content": []},
             {"type": "commandExecution", "id": "exec-1", "command": "/bin/zsh -lc 'cat notes.txt'", "status": "completed",
@@ -131,11 +145,16 @@ mod tests {
                     text: "Read the notes".to_owned(),
                     preset: AgentPreset::Codex,
                     model: None,
+                    images: Vec::new(),
                 },
+                ChatEntry::Event(ChatEvent::Prompted(RewindPoint::Turn(RewindId::from(
+                    "turn-1"
+                )))),
                 ChatEntry::Event(ChatEvent::Thinking("Look first".to_owned())),
                 ChatEntry::Event(ChatEvent::Tool(ToolCall {
                     id: Some("exec-1".into()),
                     name: "Read".to_owned(),
+                    kind: krad_domain::ToolKind::Read,
                     summary: "/p/notes.txt".to_owned(),
                     edit: None,
                 })),

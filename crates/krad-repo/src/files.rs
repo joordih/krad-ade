@@ -40,7 +40,7 @@ pub fn list_dir(dir: &Path) -> Result<Vec<DirEntry>, RepoError> {
     Ok(entries)
 }
 
-pub fn sort_entries(entries: &mut [DirEntry]) {
+fn sort_entries(entries: &mut [DirEntry]) {
     entries.sort_by_cached_key(|entry| (entry.kind == EntryKind::File, entry.name.to_lowercase()));
 }
 
@@ -68,10 +68,7 @@ pub fn read_text(path: &Path, max_bytes: u64) -> Result<TextFile, RepoError> {
     decode_text(bytes, max_bytes)
 }
 
-/// # Errors
-///
-/// Returns [`RepoError::Binary`] when `bytes` are not text.
-pub fn decode_text(mut bytes: Vec<u8>, max_bytes: u64) -> Result<TextFile, RepoError> {
+fn decode_text(mut bytes: Vec<u8>, max_bytes: u64) -> Result<TextFile, RepoError> {
     let sniffed = &bytes[..bytes.len().min(BINARY_SNIFF_BYTES)];
     if sniffed.contains(&NUL) {
         return Err(RepoError::Binary);

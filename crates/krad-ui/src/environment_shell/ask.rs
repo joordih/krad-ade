@@ -11,7 +11,7 @@ use krad_domain::{
     AgentState, AskOutcome, AskVerdict, ChatEntry, PermissionMode, TerminalId, ToolDecision,
 };
 
-use super::chat::{fold_entry, LiveProcess};
+use super::chat::fold_entry;
 use super::surface::{StructuredChat, SurfaceChat};
 use super::EnvironmentShell;
 pub(super) use picks::Picks;
@@ -25,9 +25,6 @@ const FEEDBACK_PLACEHOLDER: &str = "What should the plan change?";
 const OTHER_PLACEHOLDER: &str = "Your own answer";
 const NOTE_ROWS: usize = 2;
 const ESCAPE: &[u8] = b"\x1b";
-const PLAN_AUTO_KEY: &[u8] = b"1";
-const PLAN_MANUAL_KEY: &[u8] = b"2";
-const PLAN_CHANGE_KEY: &[u8] = b"3";
 const SUBJECT_SEPARATOR: &str = " ";
 const QUESTIONS_SEPARATOR: &str = "; ";
 
@@ -37,12 +34,6 @@ pub(super) const OFFERED_MODES: [PermissionMode; 4] = [
     PermissionMode::Plan,
     PermissionMode::Auto,
 ];
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum AskOwner {
-    Chat,
-    Surface(TerminalId),
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Choice {
@@ -199,84 +190,59 @@ impl EnvironmentShell {
             .structured_mut()
     }
 
-    pub(super) fn ask_queue(&self, owner: AskOwner) -> Option<&AskQueue> {
-        match owner {
-            AskOwner::Chat => Some(&self.chat.asks),
-            AskOwner::Surface(id) => self
-                .envs
-                .get(&self.active)?
-                .chats
-                .get(&id)
-                .map(SurfaceChat::asks),
-        }
+    pub(super) fn ask_queue(&self, owner: TerminalId) -> Option<&AskQueue> {
+        self.envs
+            .get(&self.active)?
+            .chats
+            .get(&owner)
+            .map(SurfaceChat::asks)
     }
 
-    fn ask_queue_mut(&mut self, owner: AskOwner) -> Option<&mut AskQueue> {
-        match owner {
-            AskOwner::Chat => Some(&mut self.chat.asks),
-            AskOwner::Surface(id) => {
-                let env = self.active.clone();
-                self.envs
-                    .get_mut(&env)?
-                    .chats
-                    .get_mut(&id)
-                    .map(SurfaceChat::asks_mut)
-            }
-        }
+    fn ask_queue_mut(&mut self, owner: TerminalId) -> Option<&mut AskQueue> {
+        let env = self.active.clone();
+        self.envs
+            .get_mut(&env)?
+            .chats
+            .get_mut(&owner)
+            .map(SurfaceChat::asks_mut)
     }
 
-    fn ask_process(&self, owner: AskOwner) -> Option<&LiveChat> {
-        match owner {
-            AskOwner::Chat => self.chat.live.as_ref().and_then(LiveProcess::alive),
-            AskOwner::Surface(id) => self.structured_of(id)?.live(),
-        }
+    fn ask_process(&self, owner: TerminalId) -> Option<&LiveChat> {
+        self.structured_of(owner)?.live()
     }
 
-    pub(super) fn permission_mode(&self, owner: AskOwner) -> Option<PermissionMode> {
-        match owner {
-            AskOwner::Chat => self.chat.permission_mode,
-            AskOwner::Surface(id) => self.structured_of(id)?.permission_mode,
-        }
+    pub(super) fn permission_mode(&self, owner: TerminalId) -> Option<PermissionMode> {
+        self.structured_of(owner)?.permission_mode
     }
 
     pub(super) fn set_permission_mode(
         &mut self,
-        owner: AskOwner,
+        owner: TerminalId,
         mode: PermissionMode,
         cx: &mut Context<Self>,
     ) {
         if let Some(live) = self.ask_process(owner) {
             live.set_permission_mode(mode);
         }
-        match owner {
-            AskOwner::Chat => self.chat.permission_mode = Some(mode),
-            AskOwner::Surface(id) => {
-                if let Some(structured) = self.structured_of_mut(id) {
-                    structured.permission_mode = Some(mode);
-                }
-            }
+        if let Some(structured) = self.structured_of_mut(owner) {
+            structured.permission_mode = Some(mode);
         }
         cx.notify();
     }
 
-    fn record_ask(&mut self, owner: AskOwner, outcome: AskOutcome) {
+    fn record_ask(&mut self, owner: TerminalId, outcome: AskOutcome) {
         let entry = ChatEntry::Asked(outcome);
-        match owner {
-            AskOwner::Chat => self.record_chat(&entry),
-            AskOwner::Surface(id) => {
-                let env = self.active.clone();
-                if let Some(chat) = self
-                    .envs
-                    .get_mut(&env)
-                    .and_then(|live| live.chats.get_mut(&id))
-                {
-                    fold_entry(&mut chat.messages, &entry);
-                }
-            }
+        let env = self.active.clone();
+        if let Some(chat) = self
+            .envs
+            .get_mut(&env)
+            .and_then(|live| live.chats.get_mut(&owner))
+        {
+            fold_entry(&mut chat.messages, &entry);
         }
     }
 
-    fn answer_ask(&mut self, owner: AskOwner, answer: &AskAnswer, cx: &mut Context<Self>) {
+    fn answer_ask(&mut self, owner: TerminalId, answer: &AskAnswer, cx: &mut Context<Self>) {
         let Some(Waiting { ask, reply, .. }) =
             self.ask_queue_mut(owner).and_then(AskQueue::take_front)
         else {
@@ -294,22 +260,20 @@ impl EnvironmentShell {
             AskReply::Keys => self.type_plan_answer(owner, answer),
         }
         self.record_ask(owner, outcome(&ask.kind, verdict(&ask.kind, answer)));
-        if let AskOwner::Surface(id) = owner {
-            let waits = self.ask_queue(owner).is_some_and(|queue| !queue.is_empty());
-            let state = if waits {
-                AgentState::WaitingForInput
-            } else {
-                AgentState::Working
-            };
-            let env = self.active.clone();
-            self.set_agent_state(&env, id, state);
-        }
+        let waits = self.ask_queue(owner).is_some_and(|queue| !queue.is_empty());
+        let state = if waits {
+            AgentState::WaitingForInput
+        } else {
+            AgentState::Working
+        };
+        let env = self.active.clone();
+        self.set_agent_state(&env, owner, state);
         cx.notify();
     }
 
     fn choose(
         &mut self,
-        owner: AskOwner,
+        owner: TerminalId,
         choice: Choice,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -323,7 +287,7 @@ impl EnvironmentShell {
 
     fn choose_number(
         &mut self,
-        owner: AskOwner,
+        owner: TerminalId,
         number: usize,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -364,7 +328,7 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    fn confirm_ask(&mut self, owner: AskOwner, window: &mut Window, cx: &mut Context<Self>) {
+    fn confirm_ask(&mut self, owner: TerminalId, window: &mut Window, cx: &mut Context<Self>) {
         let Some(queue) = self.ask_queue(owner) else {
             return;
         };
@@ -382,7 +346,7 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn deny_and_interrupt(&mut self, owner: AskOwner, cx: &mut Context<Self>) {
+    pub(super) fn deny_and_interrupt(&mut self, owner: TerminalId, cx: &mut Context<Self>) {
         let answer = AskAnswer::Deny {
             message: DENIED_TEXT.to_owned(),
         };
@@ -431,7 +395,7 @@ impl EnvironmentShell {
 
     fn pick_option(
         &mut self,
-        owner: AskOwner,
+        owner: TerminalId,
         question: &str,
         label: &str,
         cx: &mut Context<Self>,
@@ -446,7 +410,7 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    fn show_question(&mut self, owner: AskOwner, step: usize, cx: &mut Context<Self>) {
+    fn show_question(&mut self, owner: TerminalId, step: usize, cx: &mut Context<Self>) {
         self.keep_other_answer(owner, cx);
         let Some(queue) = self.ask_queue_mut(owner) else {
             return;
@@ -460,7 +424,7 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    fn keep_other_answer(&mut self, owner: AskOwner, cx: &mut Context<Self>) {
+    fn keep_other_answer(&mut self, owner: TerminalId, cx: &mut Context<Self>) {
         let Some(queue) = self.ask_queue_mut(owner) else {
             return;
         };
@@ -480,7 +444,7 @@ impl EnvironmentShell {
         }
     }
 
-    fn next_question(&mut self, owner: AskOwner, cx: &mut Context<Self>) {
+    fn next_question(&mut self, owner: TerminalId, cx: &mut Context<Self>) {
         self.keep_other_answer(owner, cx);
         let Some(queue) = self.ask_queue(owner) else {
             return;
@@ -500,7 +464,7 @@ impl EnvironmentShell {
         }
     }
 
-    fn submit_picks(&mut self, owner: AskOwner, cx: &mut Context<Self>) {
+    fn submit_picks(&mut self, owner: TerminalId, cx: &mut Context<Self>) {
         let Some(queue) = self.ask_queue(owner) else {
             return;
         };
@@ -510,7 +474,7 @@ impl EnvironmentShell {
 
     fn open_note(
         &mut self,
-        owner: AskOwner,
+        owner: TerminalId,
         purpose: NotePurpose,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -542,7 +506,7 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    fn submit_note(&mut self, owner: AskOwner, cx: &mut Context<Self>) {
+    fn submit_note(&mut self, owner: TerminalId, cx: &mut Context<Self>) {
         let Some(queue) = self.ask_queue_mut(owner) else {
             return;
         };
@@ -581,16 +545,16 @@ impl EnvironmentShell {
     }
 
     pub(super) fn sync_ask_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let mut owners = vec![AskOwner::Chat];
-        if let Some(live) = self.envs.get(&self.active) {
-            owners.extend(live.chats.keys().map(|id| AskOwner::Surface(*id)));
-        }
+        let owners: Vec<TerminalId> = self
+            .envs
+            .get(&self.active)
+            .map_or_default(|live| live.chats.keys().copied().collect());
         for owner in owners {
             self.sync_owner_focus(owner, window, cx);
         }
     }
 
-    fn sync_owner_focus(&mut self, owner: AskOwner, window: &mut Window, cx: &mut Context<Self>) {
+    fn sync_owner_focus(&mut self, owner: TerminalId, window: &mut Window, cx: &mut Context<Self>) {
         let composer = self.ask_composer(owner);
         let composer_focused = composer
             .as_ref()
@@ -614,16 +578,12 @@ impl EnvironmentShell {
         }
     }
 
-    fn ask_composer(&self, owner: AskOwner) -> Option<Entity<TextareaState>> {
-        match owner {
-            AskOwner::Chat => self.chat.input().cloned(),
-            AskOwner::Surface(id) => self
-                .envs
-                .get(&self.active)?
-                .chats
-                .get(&id)
-                .map(|chat| chat.input.clone()),
-        }
+    fn ask_composer(&self, owner: TerminalId) -> Option<Entity<TextareaState>> {
+        self.envs
+            .get(&self.active)?
+            .chats
+            .get(&owner)
+            .map(|chat| chat.input.clone())
     }
 }
 
@@ -634,6 +594,7 @@ mod tests {
     fn permission(tool: &str, summary: &str) -> AskKind {
         AskKind::Permission {
             tool: tool.to_owned(),
+            kind: krad_domain::ToolKind::of_claude_code(tool),
             summary: summary.to_owned(),
             title: None,
             edit: None,

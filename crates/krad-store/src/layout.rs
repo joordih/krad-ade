@@ -15,7 +15,11 @@ fn layout_file_path() -> Option<PathBuf> {
 #[must_use]
 pub fn read_layout_snapshot() -> Option<PersistedLayout> {
     let bytes = std::fs::read(layout_file_path()?).ok()?;
-    let snapshot: PersistedLayout = serde_json::from_slice(&bytes).ok()?;
+    known_layout(&bytes)
+}
+
+fn known_layout(bytes: &[u8]) -> Option<PersistedLayout> {
+    let snapshot: PersistedLayout = serde_json::from_slice(bytes).ok()?;
     (snapshot.version <= LAYOUT_SCHEMA_VERSION).then_some(snapshot)
 }
 
@@ -79,6 +83,23 @@ impl Drop for LayoutWriter {
 mod tests {
     use super::*;
     use krad_domain::EnvironmentName;
+
+    #[test]
+    fn a_layout_from_a_newer_app_is_not_loaded() -> serde_json::Result<()> {
+        let layout = |version| PersistedLayout {
+            version,
+            active: EnvironmentName::new("main".to_owned()),
+            environments: Vec::new(),
+        };
+        let current = serde_json::to_vec(&layout(LAYOUT_SCHEMA_VERSION))?;
+        assert_eq!(
+            known_layout(&current).map(|loaded| loaded.version),
+            Some(LAYOUT_SCHEMA_VERSION)
+        );
+        let newer = serde_json::to_vec(&layout(LAYOUT_SCHEMA_VERSION + 1))?;
+        assert!(known_layout(&newer).is_none());
+        Ok(())
+    }
 
     #[test]
     fn writer_lands_the_newest_snapshot() {

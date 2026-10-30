@@ -1,6 +1,8 @@
 use krad_domain::review::{Discussion, DiscussionId, Note, NoteId, NotePosition, User, UserId};
 use serde::{Deserialize, Serialize};
 
+use crate::GithubError;
+
 const LIST_THREADS: &str = "query($owner: String!, $name: String!, $number: Int!, $after: String) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
@@ -24,6 +26,7 @@ const REPLY: &str = "mutation($thread: ID!, $body: String!) {
 const RESOLVE: &str = "mutation($thread: ID!) {
   resolveReviewThread(input: { threadId: $thread }) { thread { id } }
 }";
+const ERROR_SEPARATOR: &str = "; ";
 const UNRESOLVE: &str = "mutation($thread: ID!) {
   unresolveReviewThread(input: { threadId: $thread }) { thread { id } }
 }";
@@ -39,6 +42,22 @@ pub(crate) struct Answer<D> {
     pub(crate) data: Option<D>,
     #[serde(default)]
     pub(crate) errors: Vec<GraphqlError>,
+}
+
+impl<D> Answer<D> {
+    pub(crate) fn into_data(self) -> Result<D, GithubError> {
+        let Self { data, errors } = self;
+        match data {
+            Some(data) if errors.is_empty() => Ok(data),
+            _ => Err(GithubError::Graphql(
+                errors
+                    .into_iter()
+                    .map(|error| error.message)
+                    .collect::<Vec<_>>()
+                    .join(ERROR_SEPARATOR),
+            )),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -301,12 +320,29 @@ mod tests {
         Ok(())
     }
 
+    fn refusal(json: &str) -> Option<String> {
+        let answer: Answer<Ignored> = serde_json::from_str(json).ok()?;
+        match answer.into_data() {
+            Err(GithubError::Graphql(message)) => Some(message),
+            Ok(_) | Err(_) => None,
+        }
+    }
+
     #[test]
-    fn errors_come_back_without_data() -> serde_json::Result<()> {
-        let answer: Answer<ThreadsData> =
-            serde_json::from_str(r#"{"data":null,"errors":[{"message":"Not found"}]}"#)?;
-        assert!(answer.data.is_none());
-        assert_eq!(answer.errors[0].message, "Not found");
-        Ok(())
+    fn graphql_errors_refuse_the_request_with_every_message() {
+        assert_eq!(
+            refusal(
+                r#"{"data":null,"errors":[{"message":"Not found"},{"message":"Rate limited"}]}"#
+            ),
+            Some("Not found; Rate limited".to_owned())
+        );
+        assert_eq!(
+            refusal(r#"{"data":{},"errors":[{"message":"Partly failed"}]}"#),
+            Some("Partly failed".to_owned()),
+            "an answer with errors is refused even when it carries data"
+        );
+        assert_eq!(refusal(r#"{"data":null}"#), Some(String::new()));
+        let answered: Option<Answer<Ignored>> = serde_json::from_str(r#"{"data":{}}"#).ok();
+        assert!(answered.is_some_and(|answer| answer.into_data().is_ok()));
     }
 }

@@ -5,7 +5,7 @@ use gpui_kit::{
     StatefulInteractiveElement, Styled,
 };
 use krad_chat::ToolCall;
-use krad_domain::TerminalId;
+use krad_domain::{TerminalId, ToolKind};
 use std::path::Path;
 use std::time::Duration;
 
@@ -16,14 +16,6 @@ use crate::theme::{
     palette, Palette, CHIP_H, ICON_SM, ICON_XS, LINE_SM, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2,
     TEXT_SM, TEXT_XS,
 };
-
-const SHELL_TOOLS: [&str; 3] = ["Bash", "BashOutput", "KillShell"];
-const READ_TOOLS: [&str; 1] = ["Read"];
-const EDIT_TOOLS: [&str; 4] = ["Write", "Edit", "MultiEdit", "NotebookEdit"];
-const SEARCH_TOOLS: [&str; 3] = ["Grep", "Glob", "WebSearch"];
-const AGENT_TOOLS: [&str; 2] = ["Task", "Agent"];
-const PLAN_TOOLS: [&str; 1] = ["TodoWrite"];
-const WEB_TOOLS: [&str; 1] = ["WebFetch"];
 
 const HEADER_PREFIX: &str = "surface-tools";
 const ROW_PREFIX: &str = "surface-tool-row";
@@ -39,7 +31,7 @@ const ROW_ENTER: Duration = Duration::from_millis(260);
 const ROW_ENTER_RISE: f32 = 6.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum ToolKind {
+pub(super) enum ToolLook {
     Shell,
     Read,
     Edit,
@@ -58,28 +50,22 @@ struct Wording {
     doing: &'static str,
 }
 
-impl ToolKind {
-    pub(super) fn of(name: &str) -> Self {
-        let any = |names: &[&str]| names.contains(&name);
-        if any(&SHELL_TOOLS) {
-            Self::Shell
-        } else if any(&READ_TOOLS) {
-            Self::Read
-        } else if any(&EDIT_TOOLS) {
-            Self::Edit
-        } else if any(&SEARCH_TOOLS) {
-            Self::Search
-        } else if any(&AGENT_TOOLS) {
-            Self::Agent
-        } else if any(&PLAN_TOOLS) {
-            Self::Plan
-        } else if any(&WEB_TOOLS) {
-            Self::Web
-        } else {
-            Self::Other
+impl From<ToolKind> for ToolLook {
+    fn from(kind: ToolKind) -> Self {
+        match kind {
+            ToolKind::Shell => Self::Shell,
+            ToolKind::Read => Self::Read,
+            ToolKind::Edit => Self::Edit,
+            ToolKind::Search => Self::Search,
+            ToolKind::Subagent => Self::Agent,
+            ToolKind::Checklist => Self::Plan,
+            ToolKind::Fetch => Self::Web,
+            ToolKind::Question | ToolKind::Plan | ToolKind::Other => Self::Other,
         }
     }
+}
 
+impl ToolLook {
     pub(super) const fn icon(self) -> IconName {
         match self {
             Self::Shell => IconName::Terminal,
@@ -118,9 +104,9 @@ impl ToolKind {
 }
 
 fn done_summary(calls: &[(usize, &ToolCall)]) -> String {
-    let mut counts: Vec<(ToolKind, usize)> = Vec::new();
+    let mut counts: Vec<(ToolLook, usize)> = Vec::new();
     for (_, call) in calls {
-        let kind = ToolKind::of(&call.name);
+        let kind = ToolLook::from(call.kind);
         match counts.iter_mut().find(|(counted, _)| *counted == kind) {
             Some((_, count)) => *count += 1,
             None => counts.push((kind, 1)),
@@ -201,9 +187,9 @@ fn rail(last: bool, pal: &Palette) -> impl IntoElement {
 }
 
 fn call_row(call: &ToolCall, last: bool, mono: &SharedString, pal: &Palette) -> gpui_kit::Div {
-    let kind = ToolKind::of(&call.name);
+    let kind = ToolLook::from(call.kind);
     let verb = match kind {
-        ToolKind::Other => call.name.clone(),
+        ToolLook::Other => call.name.clone(),
         _ => kind.wording().row.to_owned(),
     };
     let target = if kind.names_file() && !call.summary.is_empty() {
@@ -266,7 +252,7 @@ impl EnvironmentShell {
         let raw = id.as_u64();
         let kind = calls
             .last()
-            .map_or(ToolKind::Other, |(_, call)| ToolKind::of(&call.name));
+            .map_or(ToolLook::Other, |(_, call)| ToolLook::from(call.kind));
         let header_id = ElementId::Name(SharedString::from(format!(
             "{HEADER_PREFIX}-{raw}-{}-{}",
             key.0, key.1
@@ -376,27 +362,31 @@ impl EnvironmentShell {
 mod tests {
     use super::*;
 
-    fn call(name: &str) -> ToolCall {
+    fn call(name: &str, kind: ToolKind) -> ToolCall {
         ToolCall {
             id: None,
             name: name.to_owned(),
+            kind,
             summary: String::new(),
             edit: None,
         }
     }
 
     #[test]
-    fn tools_are_told_apart_by_what_they_touch() {
-        assert_eq!(ToolKind::of("Bash"), ToolKind::Shell);
-        assert_eq!(ToolKind::of("Read"), ToolKind::Read);
-        assert_eq!(ToolKind::of("Edit"), ToolKind::Edit);
-        assert_eq!(ToolKind::of("Grep"), ToolKind::Search);
-        assert_eq!(ToolKind::of("mcp__linear__create"), ToolKind::Other);
+    fn questions_plans_and_unknown_tools_look_alike() {
+        assert_eq!(ToolLook::from(ToolKind::Subagent), ToolLook::Agent);
+        assert_eq!(ToolLook::from(ToolKind::Checklist), ToolLook::Plan);
+        assert_eq!(ToolLook::from(ToolKind::Question), ToolLook::Other);
+        assert_eq!(ToolLook::from(ToolKind::Plan), ToolLook::Other);
     }
 
     #[test]
     fn a_finished_step_counts_its_calls_by_kind_in_the_order_they_came() {
-        let (bash, read, edit) = (call("Bash"), call("Read"), call("Edit"));
+        let (bash, read, edit) = (
+            call("Bash", ToolKind::Shell),
+            call("Read", ToolKind::Read),
+            call("Edit", ToolKind::Edit),
+        );
         let calls = [(0, &bash), (1, &read), (2, &bash), (3, &edit)];
         assert_eq!(
             done_summary(&calls),

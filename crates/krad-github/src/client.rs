@@ -1,14 +1,14 @@
 use crate::encode::encode_path;
 use crate::graphql::{self, Answer, Ignored, ReplyData, ThreadsData};
 use crate::model::{
-    BranchJson, CommentBody, CommitJson, CompareJson, ContentJson, DismissBody, FileJson,
-    IssueCommentJson, JobsJson, MergeBody, PullJson, RepositoryJson, ReviewBody, ReviewJson,
-    ReviewState, RunsJson, UserJson, CONVERSATION_PREFIX,
+    CommentBody, CommitJson, CompareJson, DismissBody, FileJson, IssueCommentJson, JobsJson,
+    MergeBody, PullJson, ReviewBody, ReviewJson, ReviewState, RunsJson, UserJson,
+    CONVERSATION_PREFIX,
 };
 use krad_domain::review::{
-    Approval, Approvals, Branch, Change, Commit, CommitSha, DiffRefs, Discussion, DiscussionId,
-    Job, MergeOptions, MergeRequest, MergeRequestIid, MergeRequestQuery, Note, Pipeline,
-    PipelineId, ProjectPath, Scope, StateFilter, TreeEntry, User, UserId,
+    Approval, Approvals, Change, Commit, CommitSha, DiffRefs, Discussion, DiscussionId, Job,
+    MergeOptions, MergeRequest, MergeRequestIid, MergeRequestQuery, Note, Pipeline, PipelineId,
+    ProjectPath, Scope, StateFilter, User, UserId,
 };
 use krad_domain::GithubToken;
 use serde::de::DeserializeOwned;
@@ -21,13 +21,12 @@ use ureq::Agent;
 pub const GITHUB_HOST: &str = "github.com";
 const API_URL: &str = "https://api.github.com";
 const GRAPHQL_PATH: &str = "/graphql";
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const UNAUTHORIZED: u16 = 401;
 const AUTHORIZATION: &str = "Authorization";
 const BEARER: &str = "Bearer ";
 const ACCEPT: &str = "Accept";
 const JSON_MEDIA: &str = "application/vnd.github+json";
-const RAW_MEDIA: &str = "application/vnd.github.raw+json";
 const API_VERSION_HEADER: &str = "X-GitHub-Api-Version";
 const API_VERSION: &str = "2022-11-28";
 const USER_AGENT_HEADER: &str = "User-Agent";
@@ -40,7 +39,6 @@ const PER_PAGE_PARAM: &str = "per_page";
 const PER_PAGE: &str = "100";
 const STATE_PARAM: &str = "state";
 const HEAD_SHA_PARAM: &str = "head_sha";
-const REF_PARAM: &str = "ref";
 const OPEN_STATE: &str = "open";
 const CLOSED_STATE: &str = "closed";
 const ALL_STATE: &str = "all";
@@ -74,7 +72,6 @@ impl From<ureq::Error> for GithubError {
 
 pub struct GithubClient {
     agent: Agent,
-    api: String,
     bearer: String,
     me: OnceLock<User>,
 }
@@ -82,17 +79,12 @@ pub struct GithubClient {
 impl GithubClient {
     #[must_use]
     pub fn new(token: &GithubToken) -> Self {
-        Self::with_api(API_URL.to_owned(), token)
-    }
-
-    fn with_api(api: String, token: &GithubToken) -> Self {
         let agent = Agent::config_builder()
             .timeout_global(Some(REQUEST_TIMEOUT))
             .build()
             .new_agent();
         Self {
             agent,
-            api,
             bearer: format!("{BEARER}{}", token.access_token),
             me: OnceLock::new(),
         }
@@ -365,7 +357,7 @@ impl GithubClient {
         let merged = self.merge_request(project, iid)?;
         if options.should_remove_source_branch {
             let branch = format!("/git/refs/heads/{}", encode_path(&merged.source_branch));
-            let url = self.url(&repo_path(project, &branch)?);
+            let url = api_url(&repo_path(project, &branch)?);
             self.call(self.agent.delete(&url)).map(drop)?;
         }
         Ok(merged)
@@ -384,7 +376,7 @@ impl GithubClient {
     }
 
     fn runs(&self, project: &ProjectPath, head: &str) -> Result<Vec<Pipeline>, GithubError> {
-        let url = self.url(&repo_path(project, "/actions/runs")?);
+        let url = api_url(&repo_path(project, "/actions/runs")?);
         let runs: RunsJson = self.read(
             self.agent
                 .get(&url)
@@ -409,63 +401,8 @@ impl GithubClient {
         Ok(jobs.jobs.into_iter().map(Job::from).collect())
     }
 
-    /// # Errors
-    ///
-    /// See [`GithubClient::current_user`].
-    pub fn branches(&self, project: &ProjectPath) -> Result<Vec<Branch>, GithubError> {
-        let repository: RepositoryJson = self.get(&repo_path(project, "")?)?;
-        let branches: Vec<BranchJson> = self.list(&repo_path(project, "/branches")?, &[])?;
-        Ok(branches
-            .into_iter()
-            .map(|branch| branch.into_branch(&repository.default_branch))
-            .collect())
-    }
-
-    /// # Errors
-    ///
-    /// See [`GithubClient::current_user`].
-    pub fn tree(
-        &self,
-        project: &ProjectPath,
-        git_ref: &str,
-        path: &str,
-    ) -> Result<Vec<TreeEntry>, GithubError> {
-        let url = self.url(&contents_path(project, path)?);
-        let entries: Vec<ContentJson> =
-            self.read(self.agent.get(&url).query(REF_PARAM, git_ref))?;
-        Ok(entries
-            .into_iter()
-            .filter_map(ContentJson::into_entry)
-            .collect())
-    }
-
-    /// # Errors
-    ///
-    /// See [`GithubClient::current_user`].
-    pub fn file(
-        &self,
-        project: &ProjectPath,
-        git_ref: &str,
-        path: &str,
-    ) -> Result<Vec<u8>, GithubError> {
-        let url = self.url(&contents_path(project, path)?);
-        let request = self
-            .agent
-            .get(&url)
-            .header(AUTHORIZATION, &self.bearer)
-            .header(ACCEPT, RAW_MEDIA)
-            .header(API_VERSION_HEADER, API_VERSION)
-            .header(USER_AGENT_HEADER, USER_AGENT)
-            .query(REF_PARAM, git_ref);
-        Ok(request.call()?.body_mut().read_to_vec()?)
-    }
-
-    fn url(&self, path: &str) -> String {
-        format!("{}{path}", self.api)
-    }
-
     fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, GithubError> {
-        self.read(self.agent.get(&self.url(path)))
+        self.read(self.agent.get(&api_url(path)))
     }
 
     fn read<T: DeserializeOwned>(
@@ -487,7 +424,7 @@ impl GithubClient {
         path: &str,
         body: &B,
     ) -> Result<T, GithubError> {
-        let request = signed(self.agent.post(&self.url(path)), &self.bearer);
+        let request = signed(self.agent.post(&api_url(path)), &self.bearer);
         Ok(request.send_json(body)?.body_mut().read_json()?)
     }
 
@@ -496,7 +433,7 @@ impl GithubClient {
         path: &str,
         body: &B,
     ) -> Result<T, GithubError> {
-        let request = signed(self.agent.put(&self.url(path)), &self.bearer);
+        let request = signed(self.agent.put(&api_url(path)), &self.bearer);
         Ok(request.send_json(body)?.body_mut().read_json()?)
     }
 
@@ -505,17 +442,7 @@ impl GithubClient {
         request: &graphql::Request<V>,
     ) -> Result<D, GithubError> {
         let answer: Answer<D> = self.send_json(GRAPHQL_PATH, request)?;
-        match answer.data {
-            Some(data) if answer.errors.is_empty() => Ok(data),
-            _ => Err(GithubError::Graphql(
-                answer
-                    .errors
-                    .into_iter()
-                    .map(|error| error.message)
-                    .collect::<Vec<_>>()
-                    .join("; "),
-            )),
-        }
+        answer.into_data()
     }
 
     fn list<T: DeserializeOwned>(
@@ -524,7 +451,7 @@ impl GithubClient {
         params: &[(&str, String)],
     ) -> Result<Vec<T>, GithubError> {
         let mut items = Vec::new();
-        let mut next = Some(self.url(path));
+        let mut next = Some(api_url(path));
         let mut first = true;
         while let Some(url) = next {
             let mut request = self.agent.get(&url);
@@ -604,6 +531,10 @@ fn repo_path(project: &ProjectPath, rest: &str) -> Result<String, GithubError> {
     ))
 }
 
+fn api_url(path: &str) -> String {
+    format!("{API_URL}{path}")
+}
+
 fn pull_path(
     project: &ProjectPath,
     iid: MergeRequestIid,
@@ -618,11 +549,6 @@ fn issue_path(
     rest: &str,
 ) -> Result<String, GithubError> {
     repo_path(project, &format!("/issues/{iid}{rest}"))
-}
-
-fn contents_path(project: &ProjectPath, path: &str) -> Result<String, GithubError> {
-    let path = path.trim_matches(PATH_SEPARATOR);
-    repo_path(project, &format!("/contents/{}", encode_path(path)))
 }
 
 #[cfg(test)]

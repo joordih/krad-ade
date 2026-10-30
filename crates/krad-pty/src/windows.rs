@@ -5,25 +5,12 @@ const DEFAULT_PATHEXT: &str = ".COM;.EXE;.BAT;.CMD";
 const PATHEXT_SEPARATOR: char = ';';
 const POWERSHELL_PROGRAM: &str = "powershell.exe";
 const NO_LOGO_FLAG: &str = "-NoLogo";
-const NO_PROFILE_FLAG: &str = "-NoProfile";
-const COMMAND_FLAG: &str = "-Command";
-const SPAM_SCRIPT: &str = "while ($true) { Get-Date; 1..200 }";
 const POWERSHELL_CLEAR: &str = "Clear-Host; ";
 const POSIX_CLEAR: &str = "printf '\\033[H\\033[2J\\033[3J'; ";
 
 #[must_use]
 pub fn default_shell() -> (String, Vec<String>) {
     (POWERSHELL_PROGRAM.to_owned(), vec![NO_LOGO_FLAG.to_owned()])
-}
-
-#[must_use]
-pub fn log_spammer() -> (String, Vec<String>) {
-    (
-        POWERSHELL_PROGRAM.to_owned(),
-        [NO_LOGO_FLAG, NO_PROFILE_FLAG, COMMAND_FLAG, SPAM_SCRIPT]
-            .map(str::to_owned)
-            .to_vec(),
-    )
 }
 
 pub const SHELL_QUOTING: krad_domain::ShellQuoting = krad_domain::ShellQuoting::PowerShell;

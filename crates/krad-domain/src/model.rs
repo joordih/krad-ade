@@ -1,10 +1,23 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::HashMap;
+use std::hash::Hash;
 
 const MODEL_PUNCTUATION: &str = "._/:@-";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(transparent)]
+#[serde(try_from = "String", into = "String")]
 pub struct ModelId(String);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InvalidModelId;
+
+impl std::fmt::Display for InvalidModelId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("a model name is one word of letters, digits and ._/:@-")
+    }
+}
+
+impl std::error::Error for InvalidModelId {}
 
 impl ModelId {
     #[must_use]
@@ -18,9 +31,19 @@ impl ModelId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
 
-    fn is_valid(&self) -> bool {
-        Self::parse(&self.0).is_some_and(|parsed| parsed == *self)
+impl TryFrom<String> for ModelId {
+    type Error = InvalidModelId;
+
+    fn try_from(name: String) -> Result<Self, Self::Error> {
+        Self::parse(&name).ok_or(InvalidModelId)
+    }
+}
+
+impl From<ModelId> for String {
+    fn from(model: ModelId) -> Self {
+        model.0
     }
 }
 
@@ -30,14 +53,41 @@ impl std::fmt::Display for ModelId {
     }
 }
 
-pub(crate) fn clean_models(models: &[ModelId]) -> Vec<ModelId> {
-    let mut clean: Vec<ModelId> = Vec::with_capacity(models.len());
-    for model in models.iter().filter(|model| model.is_valid()) {
-        if !clean.contains(model) {
-            clean.push(model.clone());
+fn valid_models(names: &[String]) -> Vec<ModelId> {
+    let mut valid: Vec<ModelId> = Vec::with_capacity(names.len());
+    for model in names.iter().filter_map(|name| ModelId::parse(name)) {
+        if !valid.contains(&model) {
+            valid.push(model);
         }
     }
-    clean
+    valid
+}
+
+pub(crate) fn lenient_models<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<ModelId>, D::Error> {
+    Vec::<String>::deserialize(deserializer).map(|names| valid_models(&names))
+}
+
+pub(crate) fn lenient_model_lists<'de, D, K>(
+    deserializer: D,
+) -> Result<HashMap<K, Vec<ModelId>>, D::Error>
+where
+    D: Deserializer<'de>,
+    K: Deserialize<'de> + Eq + Hash,
+{
+    let lists = HashMap::<K, Vec<String>>::deserialize(deserializer)?;
+    Ok(lists
+        .into_iter()
+        .map(|(key, names)| (key, valid_models(&names)))
+        .collect())
+}
+
+pub(crate) fn lenient_model<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<ModelId>, D::Error> {
+    let name = Option::<String>::deserialize(deserializer)?;
+    Ok(name.and_then(|name| ModelId::parse(&name)))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -130,19 +180,17 @@ mod tests {
     }
 
     #[test]
-    fn stored_lists_drop_invalid_and_repeated_names() {
-        let stored = vec![
-            ModelId("opus".to_owned()),
-            ModelId(" ".to_owned()),
-            ModelId("opus".to_owned()),
-            ModelId("two words".to_owned()),
-            ModelId("haiku".to_owned()),
-        ];
-        let clean: Vec<String> = clean_models(&stored)
-            .into_iter()
-            .map(|model| model.0)
-            .collect();
-        assert_eq!(clean, ["opus", "haiku"]);
+    fn a_model_is_checked_when_read() -> serde_json::Result<()> {
+        assert_eq!(
+            serde_json::from_str::<ModelId>(r#""openai/gpt-5""#)?,
+            ModelId("openai/gpt-5".to_owned())
+        );
+        assert!(serde_json::from_str::<ModelId>(r#""two words""#).is_err());
+        assert_eq!(
+            serde_json::to_string(&ModelId("opus".to_owned()))?,
+            r#""opus""#
+        );
+        Ok(())
     }
 
     #[test]

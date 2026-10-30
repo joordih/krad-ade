@@ -106,13 +106,29 @@ fn system_has_glass() -> bool {
     *GLASS.get_or_init(read)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SystemMaterials {
+    transparency: bool,
+    mica: bool,
+    glass: bool,
+}
+
 #[must_use]
 pub(crate) fn usable_material(material: WindowMaterial) -> WindowMaterial {
+    let system = SystemMaterials {
+        transparency: system_transparency(),
+        mica: system_has_mica(),
+        glass: system_has_glass(),
+    };
+    material_on(material, system)
+}
+
+const fn material_on(material: WindowMaterial, system: SystemMaterials) -> WindowMaterial {
     match material {
         WindowMaterial::Opaque => WindowMaterial::Opaque,
-        _ if !system_transparency() => WindowMaterial::Opaque,
-        WindowMaterial::Mica if !system_has_mica() => WindowMaterial::Blurred,
-        WindowMaterial::Glass if !system_has_glass() => WindowMaterial::Blurred,
+        _ if !system.transparency => WindowMaterial::Opaque,
+        WindowMaterial::Mica if !system.mica => WindowMaterial::Blurred,
+        WindowMaterial::Glass if !system.glass => WindowMaterial::Blurred,
         material => material,
     }
 }
@@ -255,14 +271,85 @@ mod tests {
     use super::*;
 
     #[test]
-    fn glass_is_a_transparent_window_where_the_system_has_it_and_a_blur_elsewhere() {
-        let expected = match (system_transparency(), system_has_glass()) {
-            (false, _) if IS_LINUX => WindowBackgroundAppearance::Transparent,
-            (false, _) => WindowBackgroundAppearance::Opaque,
-            (true, true) => WindowBackgroundAppearance::Transparent,
-            (true, false) => WindowBackgroundAppearance::Blurred,
+    fn a_material_the_system_lacks_falls_back_to_blur_or_to_opaque() {
+        let full = SystemMaterials {
+            transparency: true,
+            mica: true,
+            glass: true,
         };
-        assert_eq!(window_background(WindowMaterial::Glass, true), expected);
-        assert_eq!(window_background(WindowMaterial::Glass, false), expected);
+        let bare = SystemMaterials {
+            mica: false,
+            glass: false,
+            ..full
+        };
+        let solid = SystemMaterials {
+            transparency: false,
+            ..full
+        };
+        for (material, system, expected) in [
+            (WindowMaterial::Glass, full, WindowMaterial::Glass),
+            (WindowMaterial::Mica, full, WindowMaterial::Mica),
+            (WindowMaterial::Glass, bare, WindowMaterial::Blurred),
+            (WindowMaterial::Mica, bare, WindowMaterial::Blurred),
+            (WindowMaterial::Blurred, bare, WindowMaterial::Blurred),
+            (WindowMaterial::Glass, solid, WindowMaterial::Opaque),
+            (WindowMaterial::Blurred, solid, WindowMaterial::Opaque),
+            (WindowMaterial::Opaque, full, WindowMaterial::Opaque),
+        ] {
+            assert_eq!(
+                material_on(material, system),
+                expected,
+                "{material:?} on {system:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn each_usable_material_asks_the_window_for_its_own_background() {
+        let opaque = if cfg!(target_os = "linux") {
+            WindowBackgroundAppearance::Transparent
+        } else {
+            WindowBackgroundAppearance::Opaque
+        };
+        for (material, dark, expected) in [
+            (WindowMaterial::Opaque, false, opaque),
+            (WindowMaterial::Opaque, true, opaque),
+            (
+                WindowMaterial::Mica,
+                false,
+                WindowBackgroundAppearance::MicaBackdrop,
+            ),
+            (
+                WindowMaterial::Mica,
+                true,
+                WindowBackgroundAppearance::MicaAltBackdrop,
+            ),
+            (
+                WindowMaterial::Blurred,
+                false,
+                WindowBackgroundAppearance::Blurred,
+            ),
+            (
+                WindowMaterial::Blurred,
+                true,
+                WindowBackgroundAppearance::Blurred,
+            ),
+            (
+                WindowMaterial::Glass,
+                false,
+                WindowBackgroundAppearance::Transparent,
+            ),
+            (
+                WindowMaterial::Glass,
+                true,
+                WindowBackgroundAppearance::Transparent,
+            ),
+        ] {
+            assert_eq!(
+                usable_window_background(material, dark),
+                expected,
+                "{material:?}, dark {dark}"
+            );
+        }
     }
 }

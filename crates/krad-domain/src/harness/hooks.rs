@@ -1,24 +1,33 @@
 use super::{quote_for_shell, ShellQuoting};
-use super::{CLAUDE_PERMISSION_REQUEST, CLAUDE_PRE_TOOL_USE, CLAUDE_QUESTION_TOOL};
+use super::{
+    CLAUDE_NOTIFICATION, CLAUDE_PERMISSION_REQUEST, CLAUDE_POST_TOOL_USE,
+    CLAUDE_POST_TOOL_USE_FAILURE, CLAUDE_PRE_TOOL_USE, CLAUDE_QUESTION_TOOL, CLAUDE_SESSION_START,
+    CLAUDE_STOP, CLAUDE_STOP_FAILURE, CLAUDE_USER_PROMPT_SUBMIT,
+};
 use crate::agent::AgentPreset;
+use std::time::Duration;
 
 const CLAUDE_EVENTS: [&str; 6] = [
-    "UserPromptSubmit",
-    "PermissionRequest",
-    "Notification",
-    "Stop",
-    "StopFailure",
-    "SessionStart",
+    CLAUDE_USER_PROMPT_SUBMIT,
+    CLAUDE_PERMISSION_REQUEST,
+    CLAUDE_NOTIFICATION,
+    CLAUDE_STOP,
+    CLAUDE_STOP_FAILURE,
+    CLAUDE_SESSION_START,
 ];
-const CLAUDE_TOOL_EVENTS: [&str; 3] = ["PreToolUse", "PostToolUse", "PostToolUseFailure"];
+const CLAUDE_TOOL_EVENTS: [&str; 3] = [
+    CLAUDE_PRE_TOOL_USE,
+    CLAUDE_POST_TOOL_USE,
+    CLAUDE_POST_TOOL_USE_FAILURE,
+];
 const CLAUDE_MATCH_ALL: &str = "*";
-const CLAUDE_HOOK_TIMEOUT_SECS: u64 = 10;
-pub const ASK_WAIT_SECS: u64 = 1800;
-const CLAUDE_ASK_TIMEOUT_SECS: u64 = ASK_WAIT_SECS + 30;
+const CLAUDE_HOOK_TIMEOUT: Duration = Duration::from_secs(10);
+pub const ASK_WAIT: Duration = Duration::from_mins(30);
+const CLAUDE_ASK_TIMEOUT: Duration = ASK_WAIT.saturating_add(Duration::from_secs(30));
 const HOOK_VERB: &str = "hook";
 const ASK_VERB: &str = "ask";
 const STATUS_LINE_VERB: &str = "statusline";
-const STATUS_LINE_TYPE: &str = "command";
+const COMMAND_TYPE: &str = "command";
 const USER_SETTINGS: &str = "$HOME/.claude/settings.json";
 const CODEX_BUS_NETWORK: &str = "sandbox_workspace_write.network_access=true";
 
@@ -27,12 +36,12 @@ pub fn claude_hook_settings(cli: &str) -> String {
     let program = AgentPreset::ClaudeCode.program().unwrap_or_default();
     let command = format!("{cli} {HOOK_VERB} {program}");
     let ask = format!("{cli} {ASK_VERB} {program}");
-    let hook = |command: &str, timeout: u64, matcher: Option<&str>| {
+    let hook = |command: &str, timeout: Duration, matcher: Option<&str>| {
         let mut hook = serde_json::json!({
             "hooks": [{
-                "type": "command",
+                "type": COMMAND_TYPE,
                 "command": command,
-                "timeout": timeout,
+                "timeout": timeout.as_secs(),
             }]
         });
         if let Some(matcher) = matcher {
@@ -42,11 +51,11 @@ pub fn claude_hook_settings(cli: &str) -> String {
     };
     let mut hooks = serde_json::Map::new();
     for event in CLAUDE_EVENTS {
-        let reports = hook(&command, CLAUDE_HOOK_TIMEOUT_SECS, None);
+        let reports = hook(&command, CLAUDE_HOOK_TIMEOUT, None);
         hooks.insert(event.to_owned(), serde_json::Value::Array(vec![reports]));
     }
     for event in CLAUDE_TOOL_EVENTS {
-        let reports = hook(&command, CLAUDE_HOOK_TIMEOUT_SECS, Some(CLAUDE_MATCH_ALL));
+        let reports = hook(&command, CLAUDE_HOOK_TIMEOUT, Some(CLAUDE_MATCH_ALL));
         hooks.insert(event.to_owned(), serde_json::Value::Array(vec![reports]));
     }
     let asks = [
@@ -55,13 +64,13 @@ pub fn claude_hook_settings(cli: &str) -> String {
     ];
     for (event, matcher) in asks {
         if let Some(serde_json::Value::Array(entries)) = hooks.get_mut(event) {
-            entries.push(hook(&ask, CLAUDE_ASK_TIMEOUT_SECS, matcher));
+            entries.push(hook(&ask, CLAUDE_ASK_TIMEOUT, matcher));
         }
     }
     serde_json::json!({
         "hooks": hooks,
         "statusLine": {
-            "type": STATUS_LINE_TYPE,
+            "type": COMMAND_TYPE,
             "command": status_line_command(cli, program),
         },
     })
@@ -129,6 +138,39 @@ mod tests {
         assert_eq!(
             settings["hooks"]["Stop"][0]["hooks"][0]["command"],
             "krad-ade-agents hook claude"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn claude_reports_every_event_and_holds_asks_past_the_apps_wait() -> serde_json::Result<()> {
+        let settings: serde_json::Value =
+            serde_json::from_str(&claude_hook_settings("krad-ade-agents"))?;
+        let mut events: Vec<&str> = settings["hooks"]
+            .as_object()
+            .map_or_default(|hooks| hooks.keys().map(String::as_str).collect());
+        events.sort_unstable();
+        assert_eq!(
+            events,
+            [
+                "Notification",
+                "PermissionRequest",
+                "PostToolUse",
+                "PostToolUseFailure",
+                "PreToolUse",
+                "SessionStart",
+                "Stop",
+                "StopFailure",
+                "UserPromptSubmit",
+            ]
+        );
+        assert_eq!(settings["hooks"]["Stop"][0]["hooks"][0]["timeout"], 10);
+        let ask = &settings["hooks"]["PermissionRequest"][1]["hooks"][0];
+        assert_eq!(ask["command"], "krad-ade-agents ask claude");
+        assert_eq!(ask["timeout"], 1830);
+        assert_eq!(
+            settings["hooks"]["PreToolUse"][1]["matcher"],
+            "AskUserQuestion"
         );
         Ok(())
     }

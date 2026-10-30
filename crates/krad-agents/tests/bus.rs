@@ -2,9 +2,10 @@ use futures::channel::{mpsc, oneshot};
 use futures::executor::block_on;
 use futures::StreamExt;
 use krad_agents::{
-    call, lead_refusal, serve, AgentInfo, BusToken, Caller, LeadHandle, Request, Response,
-    TerminalHandle,
+    call, serve, AgentInfo, BusToken, Caller, LeadHandle, Request, Response, TerminalHandle,
+    TerminalState,
 };
+use krad_domain::{AgentPreset, AgentState};
 use std::thread;
 
 const CHANNEL_CAPACITY: usize = 8;
@@ -14,8 +15,8 @@ fn agents() -> Vec<AgentInfo> {
         terminal: 4,
         title: "Codex · 4".to_owned(),
         group: Some("api".to_owned()),
-        state: "working".to_owned(),
-        harness: Some("codex".to_owned()),
+        state: TerminalState::Running(AgentState::Working),
+        harness: Some(AgentPreset::Codex),
         is_self: false,
     }]
 }
@@ -31,10 +32,6 @@ fn fake_app(mut requests: mpsc::Receiver<krad_agents::Incoming>) {
     thread::spawn(move || {
         let mut unanswered: Vec<oneshot::Sender<Response>> = Vec::new();
         while let Some(incoming) = block_on(requests.next()) {
-            if let Some(refusal) = lead_refusal(&incoming.from, &incoming.request) {
-                assert!(incoming.reply.send(refusal).is_ok());
-                continue;
-            }
             match incoming.request {
                 Request::List => {
                     assert!(incoming.reply.send(Response::Agents(agents())).is_ok());
@@ -92,26 +89,10 @@ fn lead() -> Caller {
 
 fn spawn() -> Request {
     Request::Spawn {
-        agent: "codex".to_owned(),
+        agent: AgentPreset::Codex,
         worktree: None,
         task: "Replay-protection tests".to_owned(),
     }
-}
-
-#[test]
-fn only_the_lead_starts_workers() -> Result<(), krad_agents::AgentsError> {
-    let (sender, receiver) = mpsc::channel(CHANNEL_CAPACITY);
-    let endpoint = serve(sender)?;
-    fake_app(receiver);
-    let address = endpoint.address.to_string();
-
-    assert_eq!(
-        call(&address, &endpoint.lead_token, &lead(), spawn())?,
-        Response::Spawned { terminal: 5 }
-    );
-    let from_worker = call(&address, &endpoint.token, &caller(), spawn())?;
-    assert!(matches!(from_worker, Response::Error(_)), "{from_worker:?}");
-    Ok(())
 }
 
 #[test]

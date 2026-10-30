@@ -3,7 +3,7 @@ use krad_chat::{new_session_id, LiveSession};
 use krad_domain::SessionSpec;
 use krad_domain::{
     AgentPreset, AgentState, EnvironmentName, GroupId, NodeKind, TerminalId, TerminalNode,
-    TextScale,
+    TextScale, DEFAULT_CHAT_HARNESS,
 };
 use krad_session::wsl_shell;
 use std::path::PathBuf;
@@ -14,11 +14,6 @@ use super::sessions_view::session_terminals;
 use super::EnvironmentShell;
 
 const NEW_CHAT_LABEL: &str = "New chat";
-const DEFAULT_CHAT_HARNESSES: [AgentPreset; 3] = [
-    AgentPreset::ClaudeCode,
-    AgentPreset::Opencode,
-    AgentPreset::Codex,
-];
 const WSL_LABEL: &str = "WSL";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,12 +39,6 @@ impl EnvironmentShell {
     }
 
     pub(super) fn add_terminal(&mut self, preset: AgentPreset, cx: &mut Context<Self>) {
-        if self.settings.opens_as_chat(preset) {
-            let env = self.active.clone();
-            let session = LiveSession::Start(new_session_id());
-            self.spawn_chat_in(&env, NodeGroup::OrSelected(None), session, cx);
-            return;
-        }
         self.spawn_terminal(preset.display_name(), Launch::Preset(preset), None, cx);
     }
 
@@ -177,10 +166,10 @@ impl EnvironmentShell {
     }
 
     fn default_chat_harness(&self) -> AgentPreset {
-        DEFAULT_CHAT_HARNESSES
+        AgentPreset::chat_harnesses()
             .into_iter()
-            .find(|preset| self.native_agents.contains(preset))
-            .unwrap_or(AgentPreset::ClaudeCode)
+            .find(|preset| self.chats_on(*preset))
+            .unwrap_or(DEFAULT_CHAT_HARNESS)
     }
 
     fn settle_new_node(&mut self, cx: &mut Context<Self>) {
@@ -243,7 +232,7 @@ impl EnvironmentShell {
                 killer.kill();
             }
         }
-        live.chats.remove(&id);
+        let chat = live.chats.remove(&id);
         live.pending_chats.remove(&id);
         live.data.nodes.retain(|node| node.id != id);
         live.data.meta.remove(&id);
@@ -251,6 +240,9 @@ impl EnvironmentShell {
         live.data.remove_terminal_tiles(id);
         if live.focused == Some(id) {
             live.focused = live.data.nodes.first().map(|node| node.id);
+        }
+        if chat.is_some_and(|chat| chat.structured().is_some()) {
+            Self::forget_chat_images(&env, id, cx);
         }
         cx.notify();
         self.store();

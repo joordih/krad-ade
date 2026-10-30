@@ -1,3 +1,4 @@
+use crate::client::REQUEST_TIMEOUT;
 use crate::config::GitlabConfig;
 use crate::encode::{form_decode, percent_encode};
 use crate::pkce::{random_secret, Pkce};
@@ -12,10 +13,20 @@ use ureq::Agent;
 const AUTHORIZE_PATH: &str = "/oauth/authorize";
 const TOKEN_PATH: &str = "/oauth/token";
 const DEVICE_PATH: &str = "/oauth/authorize_device";
-const CALLBACK_PATH: &str = "/callback";
-const LOOPBACK_SCHEME: &str = "http://";
+macro_rules! loopback_origin {
+    () => {
+        "http://127.0.0.1"
+    };
+}
+macro_rules! callback_path {
+    () => {
+        "/callback"
+    };
+}
+const CALLBACK_PATH: &str = callback_path!();
+const LOOPBACK_ORIGIN: &str = loopback_origin!();
 pub const SCOPE: &str = "api";
-pub const REDIRECT_URI: &str = "http://127.0.0.1/callback";
+pub const REDIRECT_URI: &str = concat!(loopback_origin!(), callback_path!());
 const CHALLENGE_METHOD: &str = "S256";
 const RESPONSE_TYPE: &str = "code";
 const AUTHORIZATION_CODE_GRANT: &str = "authorization_code";
@@ -44,7 +55,6 @@ const QUERY_START: char = '?';
 const PAIR_SEPARATOR: &str = "&";
 const KEY_SEPARATOR: char = '=';
 const REQUEST_METHOD: &str = "GET";
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const LOGIN_TIMEOUT: Duration = Duration::from_mins(5);
 const ACCEPT_POLL: Duration = Duration::from_millis(200);
 const CALLBACK_READ_TIMEOUT: Duration = Duration::from_secs(5);
@@ -172,10 +182,7 @@ impl LoopbackLogin {
         Ok(Self {
             config,
             listener,
-            redirect_uri: format!(
-                "{LOOPBACK_SCHEME}{}:{port}{CALLBACK_PATH}",
-                Ipv4Addr::LOCALHOST
-            ),
+            redirect_uri: format!("{LOOPBACK_ORIGIN}:{port}{CALLBACK_PATH}"),
             pkce: Pkce::new(),
             state: random_secret(),
         })
@@ -430,7 +437,8 @@ mod tests {
         assert_eq!(query_param(&url, STATE_PARAM), Some(login.state.clone()));
         let redirect = query_param(&url, REDIRECT_URI_PARAM).unwrap_or_default();
         assert!(redirect.starts_with("http://127.0.0.1:"));
-        assert!(redirect.ends_with(CALLBACK_PATH));
+        assert!(redirect.ends_with("/callback"));
+        assert_eq!(REDIRECT_URI, "http://127.0.0.1/callback");
         assert!(!url.contains(&login.pkce.verifier));
         Ok(())
     }

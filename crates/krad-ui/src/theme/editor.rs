@@ -161,20 +161,28 @@ pub(super) fn style_editor(cx: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui_kit::{rgba, FontStyle, FontWeight, Hsla};
 
     const THEMED_TERMINAL_ALPHA: u32 = 0x1a;
+    const ANSI_SLOTS: usize = 16;
+    const BRIGHT_BLACK_SLOT: usize = 8;
+    const BASE_ANSI: u32 = 0x0011_2233;
+    const COMMENT_GREY: u32 = 0x0044_5566;
+    const COMMENT_GREY_RGBA: u32 = 0x4455_66ff;
 
     #[test]
     fn gpui_component_reads_the_highlight_theme_with_its_colors() {
+        let mut ansi = [BASE_ANSI; ANSI_SLOTS];
+        ansi[BRIGHT_BLACK_SLOT] = COMMENT_GREY;
         let colors = Colors {
             background: 0x0019_171b,
             foreground: 0x00ed_eaf0,
-            ansi: AnsiPalette([0x0011_2233; 16]),
+            ansi: AnsiPalette(ansi),
         };
         let background = hex(0x0028_2828, THEMED_TERMINAL_ALPHA);
         let json = highlight_json("t", DARK_MODE, &background, &colors);
         let style = parse_highlight("t", &json);
-        let alphas = style.map(|style| {
+        let alphas = style.as_ref().map(|style| {
             (
                 style.editor_background.map(|color| color.a > 0.0),
                 style.editor_gutter_background.map(|color| color.a),
@@ -185,27 +193,20 @@ mod tests {
             Some((Some(true), Some(0.0))),
             "the gutter adds nothing over the editor's own translucent background"
         );
-    }
-
-    #[test]
-    fn the_highlight_theme_is_one_balanced_json_document() {
-        let colors = Colors {
-            background: 0x0019_171b,
-            foreground: 0x00ed_eaf0,
-            ansi: AnsiPalette([0x0011_2233; 16]),
-        };
-        let json = highlight_json("t", DARK_MODE, &hex(0x0019_171b, CLEAR_ALPHA), &colors);
-        let opened = json.matches('{').count();
-        assert_eq!(opened, json.matches('}').count(), "{json}");
-        assert!(
-            json.contains(r##""editor.background":"#19171b00""##),
-            "{json}"
+        let syntax = |name: &str| style.as_ref().and_then(|style| style.syntax.style(name));
+        let comment = syntax("comment");
+        assert_eq!(
+            comment.and_then(|comment| comment.color),
+            Some(Hsla::from(rgba(COMMENT_GREY_RGBA))),
+            "comments take the bright black of the terminal"
         );
-        assert!(
-            json.contains(r##""comment":{"color":"#112233ff","font_style":"italic"}"##),
-            "{json}"
+        assert_eq!(
+            comment.and_then(|comment| comment.font_style),
+            Some(FontStyle::Italic)
         );
-        assert!(json.contains(r#""font_weight":700"#), "{json}");
-        assert!(!json.contains(",,"), "{json}");
+        assert_eq!(
+            syntax("title").and_then(|title| title.font_weight),
+            Some(FontWeight::BOLD)
+        );
     }
 }

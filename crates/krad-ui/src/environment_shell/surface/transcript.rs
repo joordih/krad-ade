@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
 use super::super::ask::AskQueue;
-use super::super::chat::{fold_entry, workplace_home, ChatMessage, Composer};
+use super::super::chat::{fold_entry, workplace_home, ChatMessage};
 use super::super::EnvironmentShell;
 use super::{view, Backend, Origin, SurfaceChat, SurfaceCommand};
 
@@ -118,11 +118,12 @@ fn open_answer() -> ChatMessage {
     ChatMessage {
         speaker: Speaker::Assistant,
         text: String::new(),
-        tools: Vec::new(),
         parts: Vec::new(),
-        preset: TRANSCRIPT_HARNESS,
         error: None,
         running: true,
+        mentions: Vec::new(),
+        checklist: None,
+        rewind: None,
     }
 }
 
@@ -192,7 +193,7 @@ impl EnvironmentShell {
             .chat
             .suggest
             .as_ref()
-            .is_some_and(|suggest| suggest.composer == Composer::Surface(id))
+            .is_some_and(|suggest| suggest.composer == id)
         {
             self.close_suggest(cx);
         }
@@ -223,8 +224,8 @@ impl EnvironmentShell {
         );
         chat.outbox.settle(working, now);
         let free = running && matches!(state, Some(AgentState::Idle | AgentState::Done));
-        if let Some(text) = chat.outbox.next_to_send(free, now) {
-            self.submit_text_into(env, id, &text);
+        if let Some(prompt) = chat.outbox.next_to_send(free, now) {
+            self.submit_text_into(env, id, &prompt.text);
         }
     }
 

@@ -138,20 +138,36 @@ _Avoid_: provider, integration, plugin
 Language model a harness runs, such as `sonnet` for Claude Code; Settings keeps the list each harness offers.
 _Avoid_: engine, LLM, provider
 
+**Gateway**:
+Server the user runs that offers many models from their accounts behind one Anthropic- and OpenAI-compatible address and key, such as CLIProxyAPI. The app knows at most one, and offers it as a harness of its own for chats: the app's own agent works with the Gateway's models.
+_Avoid_: proxy, provider, backend, router
+
+**MCP server**:
+Program or address that offers tools to the Gateway's agent over the Model Context Protocol. It comes from Settings or from a project's `.mcp.json`, which the user trusts or ignores once per folder; its tools run under the chat's permission mode like any other.
+_Avoid_: plugin, extension, connector, integration
+
 **Chat**:
 Conversation with a harness and model rendered natively instead of as a terminal, kept by the harness under its resume id and restored with its history when the app reopens; messages sent while it works wait in a queue. An agent's chat surface, the lead's included, is a different thing: a view of that agent's own conversation (see Surface). With Claude Code it can also orchestrate: start Workers in the group through the Agents bus, type instructions into them and check their work.
 _Avoid_: assistant, agent, conversation, agents bus
 
 **Mention**:
-A file or folder of the group written as `@path` in a Chat message, sent to the harness as context.
-_Avoid_: reference, link, tag
+A file, folder or image sent with a Chat message as context: typed as `@path`, picked, dropped or pasted. Images reach the model as images and other files by their path; pasted images are kept with the chat and go with it when it is deleted.
+_Avoid_: reference, link, tag, attachment, upload
+
+**Rewind**:
+Cutting a Chat back to one of the user's messages, edited, so the harness answers it again; it rewinds the conversation, and the files too where the harness can restore them. Only while the chat is idle.
+_Avoid_: edit, retry, regenerate, undo
+
+**Checklist**:
+The steps an agent tracks for its current work, kept up to date as it goes and shown above a Chat's composer.
+_Avoid_: todo list, plan, tasks
 
 **Ask**:
-A tool call a Claude Code chat waits on the user for: a permission to run a tool, questions to answer by picking options or writing one's own, or the approval of a plan. While it waits it takes the place of the composer.
+A tool call a chat waits on the user for: a permission to run a tool, questions to answer by picking options or writing one's own, or the approval of a plan. While it waits it takes the place of the composer.
 _Avoid_: prompt, approval, confirmation, dialog
 
 **Permission mode**:
-How freely a Claude Code chat may run tools without an Ask: manual, accept edits, plan or auto. It starts as Claude Code's own setting and keeps the last one the user picks for that chat.
+How freely a chat may run tools without an Ask: manual, accept edits, plan or auto. It starts as Claude Code's own setting and keeps the last one the user picks for that chat.
 _Avoid_: approval mode, safety level
 
 **Hook**:
@@ -163,7 +179,7 @@ Agent started through the bus by another agent, briefed to report back when done
 _Avoid_: sub-agent, child, job
 
 **Subagent**:
-Helper a harness starts inside its own turn, such as one Claude Code runs through its Agent tool; it has no terminal and the bus does not know it. The agent's chat shows it as a card the user can go into to read its whole conversation.
+Helper a harness starts inside its own turn, such as one Claude Code or the Gateway's agent runs through its agent tool, with a fresh context; it has no terminal and the bus does not know it. The agent's chat shows it as a card the user can go into to read its whole conversation.
 _Avoid_: worker, child agent
 
 **Lead**:

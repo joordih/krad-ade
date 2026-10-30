@@ -1,17 +1,11 @@
-use gpui_kit::{AppContext as _, Context};
-use krad_chat::{new_session_id, ChatEvent, Speaker};
+use krad_chat::{ChatEvent, Speaker};
 use krad_domain::{
-    AgentPreset, ChatEntry, ChatId, FileEdit, PermissionMode, ResumeId, ToolCall, ToolUseId,
+    AgentPreset, ChatEntry, FileEdit, Mention, PermissionMode, Prompt, ToolCall, ToolUseId,
 };
-use krad_store::{read_latest_chat, ChatLogWriter, StoredChat};
 
-use super::{AnswerPart, ChatMessage, EnvironmentShell};
+use super::{AnswerPart, ChatMessage};
 
 const BLOCK_SEPARATOR: &str = "\n\n";
-
-const fn joins_whole_blocks(preset: AgentPreset) -> bool {
-    !matches!(preset, AgentPreset::Gemini)
-}
 
 fn append_text(answer: &mut String, piece: &str, whole_blocks: bool) {
     if whole_blocks && !answer.is_empty() {
@@ -20,32 +14,67 @@ fn append_text(answer: &mut String, piece: &str, whole_blocks: bool) {
     answer.push_str(piece);
 }
 
+pub(in crate::environment_shell) fn fold_prompt(
+    messages: &mut Vec<ChatMessage>,
+    prompt: &Prompt,
+    preset: AgentPreset,
+) {
+    fold_entry(
+        messages,
+        &ChatEntry::User {
+            text: prompt.text.clone(),
+            preset,
+            model: None,
+            images: Vec::new(),
+        },
+    );
+    if let Some(asked) = messages
+        .iter_mut()
+        .rev()
+        .find(|message| message.speaker == Speaker::User)
+    {
+        asked.mentions.clone_from(&prompt.mentions);
+    }
+}
+
 pub(in crate::environment_shell) fn fold_entry(messages: &mut Vec<ChatMessage>, entry: &ChatEntry) {
     match entry {
         ChatEntry::User {
             text,
-            preset,
+            preset: _,
             model: _,
+            images,
         } => {
             if let Some(last) = messages.last_mut() {
                 last.running = false;
             }
-            for (speaker, text, running) in [
-                (Speaker::User, text.clone(), false),
-                (Speaker::Assistant, String::new(), true),
+            let shown: Vec<Mention> = images.iter().cloned().map(Mention::Image).collect();
+            for (speaker, text, running, mentions) in [
+                (Speaker::User, text.clone(), false, shown),
+                (Speaker::Assistant, String::new(), true, Vec::new()),
             ] {
                 messages.push(ChatMessage {
                     speaker,
                     text,
-                    tools: Vec::new(),
                     parts: Vec::new(),
-                    preset: *preset,
                     error: None,
                     running,
+                    mentions,
+                    checklist: None,
+                    rewind: None,
                 });
             }
         }
         ChatEntry::Event(ChatEvent::Edited { tool, edit }) => place_edit(messages, tool, edit),
+        ChatEntry::Event(ChatEvent::Prompted(point)) => {
+            if let Some(asked) = messages
+                .iter_mut()
+                .rev()
+                .find(|message| message.speaker == Speaker::User)
+            {
+                asked.rewind = Some(point.clone());
+            }
+        }
         ChatEntry::Asked(outcome) => {
             if let Some(answer) = messages.last_mut().filter(|answer| answer.running) {
                 answer.parts.push(AnswerPart::Ask(outcome.clone()));
@@ -61,9 +90,11 @@ pub(in crate::environment_shell) fn fold_entry(messages: &mut Vec<ChatMessage>, 
                 | ChatEvent::PermissionMode(_)
                 | ChatEvent::ContextTokens(_)
                 | ChatEvent::ContextWindow(_)
+                | ChatEvent::Prompted(_)
                 | ChatEvent::Edited { .. } => {}
-                ChatEvent::Text(piece) => {
-                    let whole_blocks = joins_whole_blocks(answer.preset);
+                ChatEvent::Checklist(list) => answer.checklist = Some(list.clone()),
+                ChatEvent::Text(piece) | ChatEvent::TextDelta(piece) => {
+                    let whole_blocks = matches!(event, ChatEvent::Text(_));
                     append_text(&mut answer.text, piece, whole_blocks);
                     match answer.parts.last_mut() {
                         Some(AnswerPart::Text(text)) => append_text(text, piece, whole_blocks),
@@ -73,10 +104,7 @@ pub(in crate::environment_shell) fn fold_entry(messages: &mut Vec<ChatMessage>, 
                 ChatEvent::Thinking(thought) => {
                     answer.parts.push(AnswerPart::Thinking(thought.clone()));
                 }
-                ChatEvent::Tool(call) => {
-                    answer.tools.push(call.clone());
-                    answer.parts.push(AnswerPart::Tool(call.clone()));
-                }
+                ChatEvent::Tool(call) => answer.parts.push(AnswerPart::Tool(call.clone())),
                 ChatEvent::Done => answer.running = false,
                 ChatEvent::Error(text) => {
                     answer.running = false;
@@ -98,9 +126,6 @@ fn place_edit(messages: &mut [ChatMessage], tool: &ToolUseId, edit: &FileEdit) {
             continue;
         };
         call.edit = Some(edit.clone());
-        if let Some(listed) = message.tools.iter_mut().rev().find(|call| answered(call)) {
-            listed.edit = Some(edit.clone());
-        }
         return;
     }
 }
@@ -114,65 +139,6 @@ pub(in crate::environment_shell) fn last_permission_mode(
     })
 }
 
-pub(in crate::environment_shell) fn replay(
-    entries: &[ChatEntry],
-) -> (Vec<ChatMessage>, Option<ResumeId>) {
-    let mut messages = Vec::new();
-    let mut resume = None;
-    for entry in entries {
-        fold_entry(&mut messages, entry);
-        if let ChatEntry::Event(ChatEvent::Session(id)) = entry {
-            resume = Some(id.clone());
-        }
-    }
-    if let Some(last) = messages.last_mut() {
-        last.running = false;
-    }
-    (messages, resume)
-}
-
-impl EnvironmentShell {
-    pub(in crate::environment_shell) fn record_chat(&mut self, entry: &ChatEntry) {
-        fold_entry(&mut self.chat.messages, entry);
-        let id = self
-            .chat
-            .id
-            .get_or_insert_with(|| ChatId::from(new_session_id()));
-        if self.chat.log.is_none() {
-            self.chat.log = ChatLogWriter::spawn();
-        }
-        if let Some(log) = &self.chat.log {
-            log.append(id, entry);
-        }
-    }
-
-    pub(in crate::environment_shell) fn restore_chat(cx: &mut Context<Self>) {
-        let read = cx.background_spawn(async { read_latest_chat() });
-        cx.spawn(async move |this, cx| {
-            let Some(stored) = read.await else {
-                return;
-            };
-            this.update(cx, |shell, cx| {
-                shell.load_chat(stored);
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
-    }
-
-    fn load_chat(&mut self, stored: StoredChat) {
-        if self.chat.id.is_some() || !self.chat.messages.is_empty() {
-            return;
-        }
-        let (messages, resume) = replay(&stored.entries);
-        self.chat.messages = messages;
-        self.chat.resume = resume;
-        self.chat.permission_mode = last_permission_mode(&stored.entries);
-        self.chat.id = Some(stored.id);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,6 +150,7 @@ mod tests {
             text: text.to_owned(),
             preset: AgentPreset::ClaudeCode,
             model: ModelId::parse("opus"),
+            images: Vec::new(),
         }
     }
 
@@ -192,11 +159,32 @@ mod tests {
     }
 
     #[test]
+    fn images_saved_with_a_user_entry_come_back_as_its_mentions() {
+        let shot = krad_domain::ChatImage {
+            path: std::path::PathBuf::from("/shots/1.png"),
+            format: krad_domain::ImageFormat::Png,
+        };
+        let mut messages = Vec::new();
+        fold_entry(
+            &mut messages,
+            &ChatEntry::User {
+                text: "Look".to_owned(),
+                preset: AgentPreset::Gateway,
+                model: None,
+                images: vec![shot.clone()],
+            },
+        );
+        assert_eq!(messages[0].mentions, [Mention::Image(shot)]);
+        assert_eq!(messages[1].mentions, []);
+    }
+
+    #[test]
     fn a_tool_result_patch_replaces_the_diff_of_its_call_after_the_answer() {
         let tool = ToolUseId::from("t1");
         let call = ToolCall {
             id: Some(tool.clone()),
             name: "Edit".to_owned(),
+            kind: krad_domain::ToolKind::Edit,
             summary: "src/a.rs".to_owned(),
             edit: None,
         };
@@ -226,77 +214,59 @@ mod tests {
             _ => None,
         });
         assert_eq!(placed, Some(patch.clone()));
-        assert_eq!(messages[1].tools[0].edit, Some(patch));
+        assert_eq!(
+            messages[1]
+                .tools()
+                .next()
+                .and_then(|call| call.edit.clone()),
+            Some(patch)
+        );
+    }
+
+    #[test]
+    fn a_rewind_point_lands_on_the_latest_question() {
+        let point = krad_domain::RewindPoint::Prompt(1);
+        let mut messages = Vec::new();
+        for entry in [
+            user("One"),
+            event(ChatEvent::Done),
+            user("Two"),
+            event(ChatEvent::Text("Sure.".to_owned())),
+            event(ChatEvent::Prompted(point.clone())),
+        ] {
+            fold_entry(&mut messages, &entry);
+        }
+        let points: Vec<Option<&krad_domain::RewindPoint>> = messages
+            .iter()
+            .map(|message| message.rewind.as_ref())
+            .collect();
+        assert_eq!(points, [None, None, Some(&point), None]);
     }
 
     #[test]
     fn whole_messages_are_separated_and_deltas_are_joined() {
-        let mut answer = String::new();
-        append_text(&mut answer, "First.", true);
-        append_text(&mut answer, "Second.", true);
-        assert_eq!(answer, "First.\n\nSecond.");
-        let mut streamed = String::new();
-        append_text(&mut streamed, "Two ref", false);
-        append_text(&mut streamed, "reshes.", false);
-        assert_eq!(streamed, "Two refreshes.");
-        assert!(!joins_whole_blocks(AgentPreset::Gemini));
-        assert!(joins_whole_blocks(AgentPreset::ClaudeCode));
-    }
-
-    #[test]
-    fn a_stored_transcript_replays_its_answers_and_resume_id() {
-        let Ok(id) = "0b7c3a52-9f1e".parse::<ResumeId>() else {
-            unreachable!("a valid resume id");
+        let answer = |pieces: [ChatEvent; 2]| {
+            let mut messages = Vec::new();
+            fold_entry(&mut messages, &user("Go"));
+            for piece in pieces {
+                fold_entry(&mut messages, &event(piece));
+            }
+            messages[1].text.clone()
         };
-        let read = ToolCall {
-            id: None,
-            name: "Read".to_owned(),
-            summary: "a.rs".to_owned(),
-            edit: None,
-        };
-        let entries = [
-            user("Why?"),
-            event(ChatEvent::Session(id.clone())),
-            event(ChatEvent::Tool(read.clone())),
-            event(ChatEvent::Text("Because.".to_owned())),
-            event(ChatEvent::Done),
-            user("And then?"),
-            event(ChatEvent::Error("boom".to_owned())),
-            user("Again"),
-            event(ChatEvent::Text("Partial".to_owned())),
-        ];
-        let (messages, resume) = replay(&entries);
-        assert_eq!(resume, Some(id));
-        let shown: Vec<(Speaker, &str, Option<&str>)> = messages
-            .iter()
-            .map(|message| {
-                (
-                    message.speaker,
-                    message.text.as_str(),
-                    message.error.as_deref(),
-                )
-            })
-            .collect();
         assert_eq!(
-            shown,
-            [
-                (Speaker::User, "Why?", None),
-                (Speaker::Assistant, "Because.", None),
-                (Speaker::User, "And then?", None),
-                (Speaker::Assistant, "", Some("boom")),
-                (Speaker::User, "Again", None),
-                (Speaker::Assistant, "Partial", None),
-            ]
+            answer([
+                ChatEvent::Text("First.".to_owned()),
+                ChatEvent::Text("Second.".to_owned())
+            ]),
+            "First.\n\nSecond."
         );
-        assert_eq!(messages[1].tools, std::slice::from_ref(&read));
         assert_eq!(
-            messages[1].parts,
-            [
-                AnswerPart::Tool(read),
-                AnswerPart::Text("Because.".to_owned())
-            ]
+            answer([
+                ChatEvent::TextDelta("Two ref".to_owned()),
+                ChatEvent::TextDelta("reshes.".to_owned())
+            ]),
+            "Two refreshes."
         );
-        assert!(messages.iter().all(|message| !message.running));
     }
 
     #[test]
@@ -304,6 +274,7 @@ mod tests {
         let grep = ToolCall {
             id: None,
             name: "Grep".to_owned(),
+            kind: krad_domain::ToolKind::Search,
             summary: "refund".to_owned(),
             edit: None,
         };
@@ -327,6 +298,19 @@ mod tests {
                 AnswerPart::Text("In refunds.rs.\n\nLine 40.".to_owned()),
             ]
         );
+    }
+
+    #[test]
+    fn an_error_ends_the_answer_and_keeps_its_text() {
+        let mut messages = Vec::new();
+        for entry in [
+            user("And then?"),
+            event(ChatEvent::Error("boom".to_owned())),
+        ] {
+            fold_entry(&mut messages, &entry);
+        }
+        assert_eq!(messages[1].error.as_deref(), Some("boom"));
+        assert!(!messages[1].running);
     }
 
     #[test]

@@ -40,7 +40,7 @@ const fn mode_label(mode: NoteMode) -> &'static str {
     }
 }
 
-fn tab_title(path: &str) -> &str {
+pub(super) fn note_name(path: &str) -> &str {
     let name = path.rsplit(PATH_SEPARATOR).next().unwrap_or(path);
     name.strip_suffix(NOTE_SUFFIX).unwrap_or(name)
 }
@@ -142,7 +142,7 @@ impl EnvironmentShell {
                     .max_w(px(TAB_TITLE_MAX_W))
                     .truncate()
                     .when(!tab.pinned, Styled::italic)
-                    .child(tab_title(&tab.path).to_owned()),
+                    .child(note_name(&tab.path).to_owned()),
             )
             .when(dirty, |tab| {
                 tab.child(div().text_color(rgb(pal.text_muted)).child(DIRTY_MARK))
@@ -261,8 +261,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tabs_are_titled_by_the_note_name() {
-        assert_eq!(tab_title("Ideas/Spark.md"), "Spark");
-        assert_eq!(tab_title("Plan.md"), "Plan");
+    fn a_note_is_named_by_its_file_without_folders_or_suffix() {
+        assert_eq!(note_name("Ideas/Spark.md"), "Spark");
+        assert_eq!(note_name("Plan.md"), "Plan");
     }
 }

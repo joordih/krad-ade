@@ -1,22 +1,20 @@
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, relative, rgb, AnyElement, Context, ElementId, FontWeight, InteractiveElement,
-    IntoElement, ListState, ParentElement, ScrollHandle, SharedString, StatefulInteractiveElement,
-    Styled,
+    div, px, relative, rgb, AnyElement, Context, ElementId, ExternalPaths, FontWeight,
+    InteractiveElement, IntoElement, ListState, ParentElement, ScrollHandle, SharedString,
+    StatefulInteractiveElement, Styled,
 };
 use krad_domain::{AgentState, TerminalId};
-use std::time::{Instant, SystemTime};
+use std::time::Instant;
 
-use super::super::ask::{tray, tray_button, AskOwner};
+use super::super::ask::{tray, tray_button};
 use super::super::sidebar::PanelReveal;
 use super::super::EnvironmentShell;
 use super::dot_field::dot_field;
-use super::{age_label, Opener, Origin, SurfaceChat};
+use super::SurfaceChat;
 use crate::components::{icon, thinking_indicator, tooltip_view, IconName};
-use crate::theme::{
-    floating_shadow, palette, Palette, ICON, ICON_XS, LINE_XS, SPACE_1_5, SPACE_2, SPACE_3, TEXT_XS,
-};
+use crate::theme::{floating_shadow, palette, Palette, ICON, LINE_XS, SPACE_2, SPACE_3, TEXT_XS};
 
 const COLUMN_MAX_W: f32 = 760.0;
 const TRAY_INSET: f32 = SPACE_3;
@@ -28,30 +26,10 @@ const BOTTOM_SLACK: f32 = 24.0;
 const DOWN_PREFIX: &str = "surface-down";
 const OPEN_TERMINAL_PREFIX: &str = "surface-open-terminal";
 const TOOLTIP_DOWN: &str = "Jump to the latest";
-const FROM_LEAD: &str = "From Lead";
-const FROM_USER: &str = "From you";
-const ORIGIN_SEPARATOR: &str = " · ";
 const WAITING_TEXT: &str = "is asking you something in the terminal.";
 const OPEN_TERMINAL_LABEL: &str = "Open terminal";
 const EXITED_TEXT: &str = "The agent's terminal has closed.";
 pub(super) const LOADING_TEXT: &str = "Reading the conversation…";
-
-impl Origin {
-    fn label(self, now: SystemTime) -> String {
-        let from = match self.opener {
-            Opener::Lead => FROM_LEAD,
-            Opener::User => FROM_USER,
-        };
-        let age = self
-            .started
-            .and_then(|started| now.duration_since(started).ok())
-            .map(age_label);
-        match age {
-            Some(age) => format!("{from}{ORIGIN_SEPARATOR}{age}"),
-            None => from.to_owned(),
-        }
-    }
-}
 
 pub(super) fn following(thread: &ListState) -> bool {
     thread.is_following_tail() || thread.is_scrolled_to_end().unwrap_or(true)
@@ -68,22 +46,6 @@ pub(super) enum AgentNow {
     Working,
     Waiting,
     Exited,
-}
-
-pub(super) fn origin_line(origin: Origin, pal: &Palette) -> AnyElement {
-    div()
-        .flex()
-        .flex_row()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .gap(px(SPACE_1_5))
-        .text_size(px(TEXT_XS))
-        .line_height(px(LINE_XS))
-        .text_color(rgb(pal.text_muted))
-        .child(icon(IconName::Crown, ICON_XS, pal.text_muted))
-        .child(origin.label(SystemTime::now()))
-        .into_any_element()
 }
 
 pub(super) fn status_line(
@@ -224,6 +186,13 @@ impl EnvironmentShell {
             .flex_1()
             .min_h_0()
             .font_family(cx.theme().font_family.clone())
+            .when(chat.structured().is_some(), |view| {
+                view.on_drop(
+                    cx.listener(move |this: &mut Self, dropped: &ExternalPaths, _, cx| {
+                        this.attach_paths(id, dropped.paths(), cx);
+                    }),
+                )
+            })
             .child(dot_field(pal, hole))
             .child(
                 div()
@@ -247,8 +216,10 @@ impl EnvironmentShell {
                                 .relative()
                                 .w_full()
                                 .children(
-                                    self.ask_tray(AskOwner::Surface(id), cx)
+                                    self.ask_tray(id, cx)
+                                        .or_else(|| self.mcp_tray(id, chat, cx))
                                         .or_else(|| self.agent_notice(id, chat, cx))
+                                        .or_else(|| Self::checklist_tray(id, chat, cx))
                                         .map(|tray| {
                                             div()
                                                 .absolute()
@@ -371,25 +342,4 @@ pub(super) fn error_line(text: &str, pal: &Palette) -> AnyElement {
         .text_color(rgb(pal.error_fg))
         .child(text.to_owned())
         .into_any_element()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::Duration;
-
-    #[test]
-    fn the_origin_line_says_who_opened_the_conversation_and_when() {
-        let now = SystemTime::now();
-        let lead = Origin {
-            opener: Opener::Lead,
-            started: now.checked_sub(Duration::from_mins(6)),
-        };
-        assert_eq!(lead.label(now), "From Lead · 6 min ago");
-        let user = Origin {
-            opener: Opener::User,
-            started: None,
-        };
-        assert_eq!(user.label(now), "From you");
-    }
 }

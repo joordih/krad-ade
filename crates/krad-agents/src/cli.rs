@@ -2,17 +2,23 @@ use crate::client::call;
 use crate::env::{guide, orchestrator_guide, CLI_PROGRAM, ENV_ENDPOINT, ENV_TERMINAL, ENV_TOKEN};
 use crate::handle::Caller;
 use crate::hook::{run_ask, run_hook};
-use crate::protocol::{AgentInfo, BusToken, Message, Request, Response, MAX_WAIT_SECS};
+use crate::protocol::{
+    preset_by_display_name, AgentInfo, BusToken, Message, Request, Response, MAX_WAIT,
+};
 use crate::statusline::run_status_line;
+use krad_domain::AgentPreset;
 use std::str::FromStr;
+use std::time::Duration;
 
 const EXIT_OK: i32 = 0;
 const LEAD_TOPIC: &str = "lead";
 const EXIT_USAGE: i32 = 1;
 const EXIT_BUS: i32 = 2;
 
-const DEFAULT_WAIT_TIMEOUT_SECS: u64 = 600;
-const DEFAULT_READ_LINES: usize = 40;
+pub(crate) const DEFAULT_WAIT_TIMEOUT: Duration = Duration::from_mins(10);
+pub(crate) const DEFAULT_READ_LINES: usize = 40;
+pub(crate) const UNKNOWN_AGENT: &str =
+    "Unknown agent; use a harness program such as claude, codex or opencode";
 
 const FLAG_JSON: &str = "--json";
 const FLAG_WAIT: &str = "--wait";
@@ -110,6 +116,8 @@ enum CliError {
     SpawnNeedsTask,
     #[error("spawn needs --agent <harness>")]
     SpawnNeedsAgent,
+    #[error("{UNKNOWN_AGENT}: `{0}`")]
+    UnknownAgent(String),
     #[error("missing terminal id")]
     MissingTerminal,
     #[error("unknown command `{0}`")]
@@ -149,17 +157,15 @@ pub fn run_cli(args: &[String]) -> i32 {
             return EXIT_USAGE;
         }
     };
-    if verb == Verb::Hook {
-        let Some((harness, hook_args)) = rest.split_first() else {
+    if matches!(verb, Verb::Hook | Verb::Ask | Verb::StatusLine) {
+        let Some((harness, args)) = harness_args(rest) else {
             return EXIT_OK;
         };
-        return run_hook(harness, hook_args);
-    }
-    if verb == Verb::Ask {
-        return rest.first().map_or(EXIT_OK, |harness| run_ask(harness));
-    }
-    if verb == Verb::StatusLine {
-        return run_status_line(rest);
+        return match verb {
+            Verb::Ask => run_ask(harness),
+            Verb::StatusLine => run_status_line(harness, args),
+            _ => run_hook(harness, args),
+        };
     }
     if verb == Verb::Help && rest.first().map(String::as_str) == Some(LEAD_TOPIC) {
         emit(Output::Stdout(orchestrator_guide(CLI_PROGRAM)));
@@ -178,6 +184,11 @@ pub fn run_cli(args: &[String]) -> i32 {
             EXIT_USAGE
         }
     }
+}
+
+fn harness_args(rest: &[String]) -> Option<(AgentPreset, &[String])> {
+    let (harness, args) = rest.split_first()?;
+    Some((harness.parse().ok()?, args))
 }
 
 fn execute(request: &Request, json: bool) -> i32 {
@@ -244,14 +255,14 @@ fn build_request(verb: Verb, options: &Options) -> Result<Option<Request>, CliEr
             }
         }
         Verb::Check => Request::Check {
-            wait_secs: options.wait.map(|secs| secs.min(MAX_WAIT_SECS)),
+            wait_secs: options.wait.map(|secs| secs.min(MAX_WAIT.as_secs())),
         },
         Verb::Wait => Request::Wait {
             target: target(options)?,
             timeout_secs: options
                 .timeout
-                .unwrap_or(DEFAULT_WAIT_TIMEOUT_SECS)
-                .min(MAX_WAIT_SECS),
+                .unwrap_or(DEFAULT_WAIT_TIMEOUT.as_secs())
+                .min(MAX_WAIT.as_secs()),
         },
         Verb::Read => Request::Read {
             target: target(options)?,
@@ -263,13 +274,22 @@ fn build_request(verb: Verb, options: &Options) -> Result<Option<Request>, CliEr
                 return Err(CliError::SpawnNeedsTask);
             }
             Request::Spawn {
-                agent: options.agent.clone().ok_or(CliError::SpawnNeedsAgent)?,
+                agent: spawned_agent(options.agent.as_deref())?,
                 worktree: options.worktree.clone(),
                 task,
             }
         }
     };
     Ok(Some(request))
+}
+
+fn spawned_agent(name: Option<&str>) -> Result<AgentPreset, CliError> {
+    let name = name.ok_or(CliError::SpawnNeedsAgent)?;
+    name.parse()
+        .ok()
+        .or_else(|| preset_by_display_name(name))
+        .filter(|preset| preset.is_agent())
+        .ok_or_else(|| CliError::UnknownAgent(name.to_owned()))
 }
 
 fn target(options: &Options) -> Result<u64, CliError> {
@@ -375,11 +395,23 @@ mod tests {
         assert_eq!(
             build_request(Verb::Spawn, &options)?,
             Some(Request::Spawn {
-                agent: "claude".to_owned(),
+                agent: AgentPreset::ClaudeCode,
                 worktree: None,
                 task: "fix it".to_owned(),
             })
         );
+        for (name, agent) in [
+            ("codex", AgentPreset::Codex),
+            ("Claude Code", AgentPreset::ClaudeCode),
+        ] {
+            assert_eq!(spawned_agent(Some(name)), Ok(agent));
+        }
+        for name in ["zsh", "shell", "Gateway"] {
+            assert_eq!(
+                spawned_agent(Some(name)),
+                Err(CliError::UnknownAgent(name.to_owned()))
+            );
+        }
         assert_eq!(
             usage(),
             "Usage: krad-ade-agents <list|send|check|wait|read|spawn|help> [args] [--json]"

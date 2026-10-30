@@ -8,6 +8,7 @@ mod environment_shell;
 mod highlight;
 mod http;
 mod keymap;
+mod language;
 mod motion;
 mod terminal_theme;
 mod theme;

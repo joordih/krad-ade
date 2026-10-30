@@ -33,7 +33,14 @@ const PAGE_GAP: f32 = 24.0;
 
 const GROUPS: [(&str, &[SettingsPane]); 2] = [
     ("App", &[SettingsPane::General, SettingsPane::Terminal]),
-    ("Workspace", &[SettingsPane::Integrations]),
+    (
+        "Workspace",
+        &[
+            SettingsPane::Integrations,
+            SettingsPane::Gateway,
+            SettingsPane::Mcp,
+        ],
+    ),
 ];
 
 impl EnvironmentShell {
@@ -46,6 +53,8 @@ impl EnvironmentShell {
             SettingsPane::General => self.general_pane(cx),
             SettingsPane::Terminal => self.terminal_pane(cx),
             SettingsPane::Integrations => self.integrations_pane(ui, cx),
+            SettingsPane::Gateway => self.gateway_pane(&ui.gateway, cx),
+            SettingsPane::Mcp => self.mcp_pane(&ui.mcp, cx),
         };
         Some(
             div()
@@ -264,13 +273,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_page_sits_in_one_group() {
-        for pane in SettingsPane::ALL {
-            let homes = GROUPS
-                .iter()
-                .filter(|(_, panes)| panes.contains(&pane))
-                .count();
-            assert_eq!(homes, 1, "{}", pane.title());
+    fn every_page_sits_in_one_group_with_its_own_title_and_icon() {
+        let panes: Vec<SettingsPane> = GROUPS
+            .iter()
+            .flat_map(|(_, panes)| panes.iter().copied())
+            .collect();
+        for (index, pane) in panes.iter().enumerate() {
+            for other in &panes[index + 1..] {
+                assert!(pane != other, "{} sits in two groups", pane.title());
+                assert_ne!(pane.title(), other.title());
+                assert_ne!(pane.icon(), other.icon());
+            }
         }
     }
 }

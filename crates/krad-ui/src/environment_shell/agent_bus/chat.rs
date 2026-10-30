@@ -1,11 +1,11 @@
 use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
-use krad_agents::{ChatHandle, Request, Response};
+use krad_agents::{Request, Response};
 use krad_domain::{
-    chat_worker_brief, EnvironmentName, GroupId, SessionId, TerminalGroup, TerminalId,
+    chat_worker_brief, AgentPreset, EnvironmentName, GroupId, SessionId, TerminalGroup, TerminalId,
 };
 
-use super::super::agent_hooks::{preset_named, WorkerOf, WorkerOrder, UNKNOWN_AGENT};
+use super::super::agent_hooks::{WorkerOf, WorkerOrder};
 use super::super::EnvironmentShell;
 use super::requests::CLOSED_TERMINAL;
 
@@ -14,7 +14,7 @@ const TERMINALS_ONLY: &str = "Only agents in terminals can do that";
 const NO_CHAT_GROUP: &str = "The chat's group no longer exists";
 
 pub(super) struct ChatSpawn {
-    pub(super) agent: String,
+    pub(super) agent: AgentPreset,
     pub(super) worktree: Option<String>,
     pub(super) task: String,
     pub(super) lead: Option<SessionId>,
@@ -23,12 +23,12 @@ pub(super) struct ChatSpawn {
 impl EnvironmentShell {
     pub(super) fn answer_chat(
         &mut self,
-        chat: &ChatHandle,
+        environment: &str,
+        group: GroupId,
         request: Request,
         reply: ReplySender<Response>,
         cx: &mut Context<Self>,
     ) {
-        let environment = chat.environment.as_str();
         let response = match request {
             Request::List => Response::Agents(self.agent_infos(environment, None)),
             Request::Send { to, body } => self.submit_from_chat(environment, to, &body),
@@ -48,7 +48,7 @@ impl EnvironmentShell {
                     task,
                     lead: None,
                 };
-                self.start_chat_worker(chat, spawn, reply, cx);
+                self.start_chat_worker(environment, group, spawn, reply, cx);
                 return;
             }
             Request::Check { .. } => Response::Error(NO_CHAT_INBOX.to_owned()),
@@ -76,13 +76,14 @@ impl EnvironmentShell {
 
     pub(super) fn start_chat_worker(
         &mut self,
-        chat: &ChatHandle,
+        environment: &str,
+        group: GroupId,
         spawn: ChatSpawn,
         reply: ReplySender<Response>,
         cx: &mut Context<Self>,
     ) {
-        let env = EnvironmentName::new(chat.environment.clone());
-        match self.chat_worker_order(&env, GroupId(chat.group), spawn) {
+        let env = EnvironmentName::new(environment.to_owned());
+        match self.chat_worker_order(&env, group, spawn) {
             Ok((group, order)) => self.start_worker(&env, &group, order, reply, cx),
             Err(error) => reply.send(error).unwrap_or_default(),
         }
@@ -95,9 +96,7 @@ impl EnvironmentShell {
         spawn: ChatSpawn,
     ) -> Result<(TerminalGroup, WorkerOrder), Response> {
         let text = spawn.task;
-        let preset = preset_named(&spawn.agent)
-            .filter(|preset| preset.is_agent())
-            .ok_or_else(|| Response::Error(UNKNOWN_AGENT.to_owned()))?;
+        let preset = spawn.agent;
         let group = self
             .envs
             .get(env)

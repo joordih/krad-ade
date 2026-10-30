@@ -8,7 +8,7 @@ use futures::StreamExt as _;
 use gpui_kit::Context;
 use krad_agents::{
     lead_refusal, notice_text, serve, terminal_env, Caller, Endpoint, Incoming, LeadHandle,
-    Request, Response, TerminalHandle, CLI_PROGRAM,
+    Request, Response, TerminalHandle, TerminalState, CLI_PROGRAM,
 };
 use krad_chat::ToolAsk;
 use krad_domain::{claude_hook_settings, parse_wsl_path, AgentState, EnvironmentName, TerminalId};
@@ -91,7 +91,7 @@ impl AgentBus {
 enum Settlement {
     Missing,
     Working,
-    Settled(String),
+    Settled(TerminalState),
 }
 
 pub(super) fn cli_name(in_wsl: bool) -> &'static str {
@@ -207,7 +207,6 @@ impl EnvironmentShell {
         }
         match from {
             Caller::Terminal(from) => self.answer_terminal(from, request, reply, cx),
-            Caller::Chat(chat) => self.answer_chat(&chat, request, reply, cx),
             Caller::Lead(lead) => self.answer_lead(&lead, request, reply, cx),
         }
         cx.notify();
@@ -270,7 +269,7 @@ impl EnvironmentShell {
                 resume,
             } => {
                 let report = HookReport {
-                    harness: &harness,
+                    harness,
                     event: &event,
                     tool: tool.as_deref(),
                     detail,
@@ -294,7 +293,7 @@ impl EnvironmentShell {
                 worktree,
                 task,
             } => {
-                self.spawn_worker(&from, &agent, worktree, &task, reply, cx);
+                self.spawn_worker(&from, agent, worktree, &task, reply, cx);
                 return;
             }
         };

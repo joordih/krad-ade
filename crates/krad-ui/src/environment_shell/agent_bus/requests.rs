@@ -1,10 +1,9 @@
-use krad_agents::{AgentInfo, Response, TerminalHandle};
+use krad_agents::{AgentInfo, Response, TerminalHandle, TerminalState};
 use krad_domain::{AgentState, EnvironmentName, TerminalId};
 
 use super::super::EnvironmentShell;
 use super::{handle, Settlement, NO_SUCH_TERMINAL};
 
-const EXITED_LABEL: &str = "exited";
 pub(super) const CLOSED_TERMINAL: &str = "That terminal has no running session";
 
 impl EnvironmentShell {
@@ -24,13 +23,11 @@ impl EnvironmentShell {
                     title: node.title.clone(),
                     group: live.data.group_of(node.id).map(|group| group.name.clone()),
                     state: if alive {
-                        node.state.label().to_owned()
+                        TerminalState::Running(node.state)
                     } else {
-                        EXITED_LABEL.to_owned()
+                        TerminalState::Exited
                     },
-                    harness: session
-                        .and_then(|session| session.harness)
-                        .map(|preset| preset.display_name().to_owned()),
+                    harness: session.and_then(|session| session.harness),
                     is_self: Some(node.id.as_u64()) == me,
                 }
             })
@@ -97,9 +94,9 @@ impl EnvironmentShell {
             .get(&node.id)
             .is_some_and(|session| session.state.is_running());
         Some(match (alive, node.state) {
-            (false, _) => Settlement::Settled(EXITED_LABEL.to_owned()),
+            (false, _) => Settlement::Settled(TerminalState::Exited),
             (true, AgentState::Working) => Settlement::Working,
-            (true, state) => Settlement::Settled(state.label().to_owned()),
+            (true, state) => Settlement::Settled(TerminalState::Running(state)),
         })
     }
 

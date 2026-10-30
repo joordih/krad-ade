@@ -142,6 +142,13 @@ mod tests {
                 assert!(rect.right <= CELL_STEPS && rect.bottom <= CELL_STEPS);
             }
         }
+        assert_eq!(
+            shape('█').rects,
+            [CellRect::new(0, 0, CELL_STEPS, CELL_STEPS)],
+            "the full block fills its cell"
+        );
+        assert_eq!(shape('▛').rects.len(), 3, "three quadrants");
+        assert_eq!(shape('▒').shade, Shade::Medium);
     }
 
     #[test]
@@ -151,12 +158,5 @@ mod tests {
         assert!(!is_blocks(""));
         assert!(!is_blocks("█a"));
         assert!(is_blocks("▐▛███▜▌"));
-    }
-
-    #[test]
-    fn quadrants_cover_their_corners() {
-        assert_eq!(shape('▛').rects.len(), 3);
-        assert_eq!(shape('█').rects, [FULL]);
-        assert_eq!(shape('▒').shade, Shade::Medium);
     }
 }

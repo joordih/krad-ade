@@ -1,7 +1,8 @@
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, list, px, AnyElement, Context, ElementId, IntoElement, ParentElement, Styled, Window,
+    div, list, px, AnyElement, Context, ElementId, InteractiveElement, IntoElement, ParentElement,
+    Styled, Window,
 };
 use krad_chat::Speaker;
 use krad_domain::TerminalId;
@@ -11,12 +12,14 @@ use std::time::Instant;
 
 use super::super::chat::{question_bubble, AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
-use super::view::{
-    column, error_line, muted_line, origin_line, status_line, AgentNow, LOADING_TEXT,
-};
-use super::{Origin, SurfaceChat, THINKING_LABEL, WORKING_LABEL};
+use super::edit_message::is_edited;
+use super::mentions::sent_mentions;
+use super::message_actions::{copy_button, message_actions, message_group};
+use super::origin::origin_line;
+use super::view::{column, error_line, muted_line, status_line, AgentNow, LOADING_TEXT};
+use super::{Backend, Origin, SurfaceChat, THINKING_LABEL, WORKING_LABEL};
 use crate::components::{Button, ButtonVariant};
-use crate::theme::palette;
+use crate::theme::{palette, Palette, SPACE_0_5};
 
 const THREAD_PAD_TOP: f32 = 20.0;
 const THREAD_PAD_BOTTOM: f32 = 28.0;
@@ -25,6 +28,8 @@ const RUNWAY_SETTLE: f32 = 0.5;
 const EARLIER_PREFIX: &str = "surface-earlier";
 const BUBBLE_PREFIX: &str = "surface-question";
 const EARLIER_LABEL: &str = "Show earlier messages";
+const QUESTION_COPY_PREFIX: &str = "surface-question-copy";
+const QUESTION_COPY_TOOLTIP: &str = "Copy message";
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum ThreadItem {
@@ -81,6 +86,52 @@ fn first_question(chat: &SurfaceChat, items: &[ThreadItem]) -> Option<usize> {
         ThreadItem::Pending(_) => true,
         _ => false,
     })
+}
+
+fn question_text(text: &str) -> Option<&str> {
+    Some(text.trim()).filter(|text| !text.is_empty())
+}
+
+fn question_row(
+    id: TerminalId,
+    index: usize,
+    message: &ChatMessage,
+    chat: &SurfaceChat,
+    edit: Option<AnyElement>,
+    pal: &Palette,
+) -> AnyElement {
+    let bubble = format!("{BUBBLE_PREFIX}-{}-{index}", id.as_u64());
+    let group = message_group(id, index);
+    let copy = question_text(&message.text)
+        .filter(|_| matches!(chat.backend, Backend::Structured(_)))
+        .map(|text| {
+            let key = format!("{QUESTION_COPY_PREFIX}-{}-{index}", id.as_u64());
+            let copy = copy_button(
+                ElementId::Name(key.into()),
+                text.to_owned(),
+                QUESTION_COPY_TOOLTIP,
+                pal,
+            );
+            message_actions(group.clone(), edit.into_iter().chain([copy]))
+        });
+    div()
+        .group(group)
+        .flex()
+        .flex_col()
+        .w_full()
+        .items_end()
+        .gap(px(SPACE_0_5))
+        .when(!message.text.is_empty(), |column| {
+            column.child(question_bubble(
+                ElementId::Name(bubble.into()),
+                &message.text,
+                false,
+                pal,
+            ))
+        })
+        .children(sent_mentions(&message.mentions, pal))
+        .children(copy)
+        .into_any_element()
 }
 
 fn runway_height(viewport: f32, below: Option<f32>, lead: f32, previous: f32) -> f32 {
@@ -236,9 +287,14 @@ impl EnvironmentShell {
             ThreadItem::Message(index) => {
                 let message = chat.messages.get(index)?;
                 match message.speaker {
+                    Speaker::User if is_edited(chat, index) => {
+                        Self::message_editor(id, chat, pal, cx)?
+                    }
                     Speaker::User => {
-                        let bubble = format!("{BUBBLE_PREFIX}-{}-{index}", id.as_u64());
-                        question_bubble(ElementId::Name(bubble.into()), &message.text, false, pal)
+                        let edit = chat
+                            .offers_edit(index)
+                            .then(|| Self::edit_button(id, index, pal, cx));
+                        question_row(id, index, message, chat, edit, pal)
                     }
                     Speaker::Assistant => Self::surface_answer(id, index, message, chat, cx),
                 }
@@ -294,5 +350,14 @@ mod tests {
         ];
         assert_eq!(volatile_start(&items), 1);
         assert_eq!(volatile_start(&[ThreadItem::Loading]), 0);
+    }
+
+    #[test]
+    fn copying_a_question_takes_what_was_asked_without_surrounding_space() {
+        assert_eq!(
+            question_text("  Fix the **build**\n\n- then test\n"),
+            Some("Fix the **build**\n\n- then test")
+        );
+        assert_eq!(question_text(" \n "), None);
     }
 }

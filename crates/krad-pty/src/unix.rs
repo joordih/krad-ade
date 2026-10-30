@@ -8,8 +8,6 @@ use std::time::Duration;
 const EXECUTE_BITS: u32 = 0o111;
 const SHELL_ENV: &str = "SHELL";
 const FALLBACK_SHELL: &str = "/bin/sh";
-const COMMAND_FLAG: &str = "-c";
-const SPAM_SCRIPT: &str = "while :; do date; seq 1 200; done";
 const POSIX_CLEAR: &str = "printf '\\033[H\\033[2J\\033[3J'; ";
 const LOGIN_FLAGS: [&str; 3] = ["-l", "-i", "-c"];
 const ENV_MARKER: &str = "KRAD_LOGIN_ENV";
@@ -22,14 +20,6 @@ pub fn default_shell() -> (String, Vec<String>) {
         Ok(shell) if !shell.is_empty() => (shell, Vec::new()),
         _ => (FALLBACK_SHELL.to_owned(), Vec::new()),
     }
-}
-
-#[must_use]
-pub fn log_spammer() -> (String, Vec<String>) {
-    (
-        FALLBACK_SHELL.to_owned(),
-        vec![COMMAND_FLAG.to_owned(), SPAM_SCRIPT.to_owned()],
-    )
 }
 
 pub const SHELL_QUOTING: krad_domain::ShellQuoting = krad_domain::ShellQuoting::Posix;
