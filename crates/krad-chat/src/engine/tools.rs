@@ -47,6 +47,7 @@ const SHELL_LABEL: &str = "Bash";
 const WEB_FETCH_LABEL: &str = "WebFetch";
 const WEB_SEARCH_LABEL: &str = "WebSearch";
 const IN_PREFIX: &str = " in ";
+const SHOWN_SEPARATOR: &str = "/";
 
 #[derive(Clone)]
 pub(crate) struct Workspace {
@@ -65,12 +66,14 @@ impl Workspace {
 
     fn shown(&self, path: &Path) -> String {
         let full = self.resolve(path);
-        full.strip_prefix(normalize(&self.cwd))
-            .ok()
-            .filter(|inside| !inside.as_os_str().is_empty())
-            .unwrap_or(&full)
-            .to_string_lossy()
-            .into_owned()
+        match full.strip_prefix(normalize(&self.cwd)) {
+            Ok(inside) if !inside.as_os_str().is_empty() => inside
+                .components()
+                .map(|part| part.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(SHOWN_SEPARATOR),
+            _ => full.to_string_lossy().into_owned(),
+        }
     }
 }
 
