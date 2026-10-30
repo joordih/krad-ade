@@ -152,8 +152,11 @@ jobs:
       - name: Create the DMG
         run: |
           dmg="krad-ade-${{ needs.version.outputs.version }}-aarch64-macos.dmg"
+          headroom_mb=64
           ln -s /Applications dmg/Applications
-          hdiutil create -volname "Krad ADE" -srcfolder dmg -format UDZO "$dmg"
+          content_mb=$(du -sm dmg | cut -f1)
+          hdiutil create -volname "Krad ADE" -srcfolder dmg -fs HFS+ \
+            -size "$((content_mb + headroom_mb))m" -format UDZO "$dmg"
           if [ -n "$MACOS_SIGNING_IDENTITY" ]; then
             codesign --force --timestamp --sign "$MACOS_SIGNING_IDENTITY" "$dmg"
           fi
