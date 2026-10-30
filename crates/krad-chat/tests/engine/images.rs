@@ -28,7 +28,7 @@ fn an_image_mention_reaches_the_model_and_stays_in_the_history() -> io::Result<(
     assert_eq!(content[1]["text"], "what is this?");
     let entries = read_engine_transcript(&root.join("sessions"), &root.join("work"), &id)?;
     assert!(matches!(
-        entries.first(),
+        entries.iter().find(|entry| matches!(entry, ChatEntry::User { .. })),
         Some(ChatEntry::User { images, .. }) if images.iter().map(|image| &image.path).eq([&shot])
     ));
     Ok(())

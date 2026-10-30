@@ -1,6 +1,5 @@
 use krad_domain::ChatEvent;
 
-pub(crate) const STDERR_TAIL_CHARS: usize = 600;
 const EXIT_PREFIX: &str = "the harness exited with";
 const NO_STATUS: &str = "an unknown status";
 
@@ -18,11 +17,6 @@ pub(crate) fn closing_event(
         return Some(ChatEvent::Done);
     }
     let tail = stderr.trim();
-    let tail = &tail[tail
-        .char_indices()
-        .rev()
-        .nth(STDERR_TAIL_CHARS)
-        .map_or(0, |(at, _)| at)..];
     Some(ChatEvent::Error(if tail.is_empty() {
         exit.map_or_else(
             || format!("{EXIT_PREFIX} {NO_STATUS}"),
@@ -61,11 +55,5 @@ mod tests {
             closing_event(false, false, Some(127), false, ""),
             Some(ChatEvent::Error(format!("{EXIT_PREFIX} code 127")))
         );
-        let noisy = "x".repeat(STDERR_TAIL_CHARS * 2);
-        let Some(ChatEvent::Error(text)) = closing_event(false, false, Some(1), false, &noisy)
-        else {
-            unreachable!("a failed turn reports an error");
-        };
-        assert!(text.chars().count() <= STDERR_TAIL_CHARS + 1);
     }
 }

@@ -1,5 +1,5 @@
 use krad_chat::{
-    new_session_id, opencode_models, read_opencode_transcript, spawn_opencode_chat, BusVars,
+    new_session_id, opencode_models, read_opencode_transcript, start_chat, BusVars, ChatBackend,
     ChatEvent, LiveConfig, LiveEvent, LiveSession, OpencodeServer, Runner,
 };
 use krad_domain::{AgentPreset, ChatEntry, PermissionMode};
@@ -40,7 +40,7 @@ fn next(receiver: &Receiver<LiveEvent>) -> Option<LiveEvent> {
 #[ignore = "runs the real opencode CLI"]
 fn an_opencode_chat_opens_a_session_lists_models_and_runs_a_turn() {
     let Some(program) = find(PROGRAM) else {
-        return;
+        unreachable!("{PROGRAM} must be on PATH to run this test");
     };
     let runner = Runner::Native(program);
     let Ok(server) = OpencodeServer::start(&runner, &std::env::temp_dir(), &[]) else {
@@ -51,9 +51,11 @@ fn an_opencode_chat_opens_a_session_lists_models_and_runs_a_turn() {
     assert!(models.is_ok_and(|models| !models.is_empty()));
     let (sender, receiver) = channel();
     let session = LiveSession::Start(new_session_id());
-    let chat = spawn_opencode_chat(server.clone(), config(runner), &session, move |event| {
+    let backend = ChatBackend::Opencode(server.clone(), config(runner));
+    let chat = start_chat(backend, &session, move |event| {
         sender.send(event).unwrap_or_default();
-    });
+    })
+    .unwrap_or_else(|_| unreachable!("an opencode chat always starts"));
     let Some(LiveEvent::Chat(ChatEvent::Session(resume))) = next(&receiver) else {
         unreachable!("the chat reports its session first");
     };
@@ -70,17 +72,23 @@ fn an_opencode_chat_opens_a_session_lists_models_and_runs_a_turn() {
     assert_ne!(catalog.models.len(), 0);
     chat.send(PROMPT);
     let mut answer = String::new();
+    let mut failure = None;
     while let Some(event) = next(&receiver) {
         match event {
             LiveEvent::Chat(ChatEvent::Text(text)) => answer.push_str(&text),
-            LiveEvent::Chat(ChatEvent::Done | ChatEvent::Error(_)) => break,
+            LiveEvent::Chat(ChatEvent::Done) => break,
+            LiveEvent::Chat(ChatEvent::Error(error)) => {
+                failure = Some(error);
+                break;
+            }
             _ => {}
         }
     }
+    assert_eq!(failure, None, "the turn ends without an error");
     let history = read_opencode_transcript(&server, &resume);
     assert!(history.is_ok_and(|history| matches!(
         history.first(),
         Some(ChatEntry::User { text, preset: AgentPreset::Opencode, .. }) if text == PROMPT
     )));
-    assert!(answer.is_empty() || answer.to_lowercase().contains(EXPECTED));
+    assert!(answer.to_lowercase().contains(EXPECTED), "{answer:?}");
 }

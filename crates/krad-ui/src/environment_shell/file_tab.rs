@@ -7,12 +7,11 @@ use krad_domain::{EnvironmentName, FileOpening, FileView, TerminalId};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use super::disk_text::{
-    disk_change, language_for, modified_at, read_file, DiskChange, ReadError, ReadFile,
-};
+use super::disk_text::{disk_change, modified_at, read_file, DiskChange, ReadError, ReadFile};
 use super::{EnvironmentShell, LiveEnv};
 use crate::actions::{SaveFile, FILE_TAB_KEY_CONTEXT};
 use crate::components::{Button, ButtonVariant, EmptyState, IconName};
+use crate::language::Language;
 use crate::theme::{palette, LINE_SM, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM};
 
 const DISK_CHECK_EVERY: Duration = Duration::from_secs(2);
@@ -218,7 +217,7 @@ impl EnvironmentShell {
             state.update(cx, |state, cx| state.set_value(file.text, window, cx));
             return;
         }
-        let language = language_for(&editor.path);
+        let language = Language::from_path(&editor.path).and_then(Language::editor_id);
         let state = cx.new(|cx| {
             let state = EditorState::new(window, cx);
             let state = match language {

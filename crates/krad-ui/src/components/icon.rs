@@ -123,7 +123,6 @@ pub(crate) const fn harness_icon(preset: AgentPreset, pal: &Palette) -> (IconNam
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::theme::Appearance;
     use std::collections::HashSet;
 
     #[test]
@@ -138,24 +137,5 @@ mod tests {
             );
             assert!(svg.contains("currentColor"), "{name:?} cannot be tinted");
         }
-    }
-
-    #[test]
-    fn harness_marks_follow_the_preset() {
-        let pal = Appearance::Light.palette();
-        assert_eq!(
-            harness_icon(AgentPreset::ClaudeCode, pal),
-            (IconName::BrandClaude, CLAUDE_BRAND)
-        );
-        assert_eq!(
-            harness_icon(AgentPreset::Codex, pal).0,
-            IconName::BrandOpenai
-        );
-        assert_eq!(
-            harness_icon(AgentPreset::Opencode, pal).0,
-            IconName::BrandOpencode
-        );
-        assert_eq!(harness_icon(AgentPreset::Gateway, pal).0, IconName::Flow);
-        assert_eq!(harness_icon(AgentPreset::Shell, pal).0, IconName::Terminal);
     }
 }

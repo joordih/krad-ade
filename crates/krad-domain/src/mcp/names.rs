@@ -1,14 +1,10 @@
-use crate::gateway::{host_of, is_loopback};
+use crate::http_url::{checked_http_url, HttpUrlError};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
 const NAME_PUNCTUATION: &str = "-_.";
 const VARIABLE_FORBIDDEN: &str = "=:";
-const HTTPS_SCHEME: &str = "https://";
-const HTTP_SCHEME: &str = "http://";
-const PATH_SEPARATOR: char = '/';
-const USERINFO_SEPARATOR: char = '@';
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum McpNameError {
@@ -121,31 +117,6 @@ impl fmt::Display for McpVariableName {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum McpUrlError {
-    Empty,
-    NoScheme,
-    NoHost,
-    PlainHttpToRemote,
-    Credentials,
-}
-
-impl fmt::Display for McpUrlError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::Empty => "Enter the server address",
-            Self::NoScheme => "The address starts with http:// or https://",
-            Self::NoHost => "The address has no host",
-            Self::PlainHttpToRemote => {
-                "Use https:// for a server on another machine; plain http:// is only for this one"
-            }
-            Self::Credentials => "Put credentials in a header, not in the address",
-        })
-    }
-}
-
-impl std::error::Error for McpUrlError {}
-
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct McpUrl(String);
@@ -158,43 +129,15 @@ impl McpUrl {
 }
 
 impl FromStr for McpUrl {
-    type Err = McpUrlError;
+    type Err = HttpUrlError;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
-        let text = text.trim();
-        if text.is_empty() {
-            return Err(McpUrlError::Empty);
-        }
-        let lowered = text.to_ascii_lowercase();
-        let (secure, rest) = if lowered.starts_with(HTTPS_SCHEME) {
-            (true, &text[HTTPS_SCHEME.len()..])
-        } else if lowered.starts_with(HTTP_SCHEME) {
-            (false, &text[HTTP_SCHEME.len()..])
-        } else {
-            return Err(McpUrlError::NoScheme);
-        };
-        if rest.chars().any(char::is_whitespace) {
-            return Err(McpUrlError::NoHost);
-        }
-        let authority = rest
-            .split_once(PATH_SEPARATOR)
-            .map_or(rest, |(authority, _)| authority);
-        if authority.contains(USERINFO_SEPARATOR) {
-            return Err(McpUrlError::Credentials);
-        }
-        let host = host_of(authority);
-        if host.is_empty() {
-            return Err(McpUrlError::NoHost);
-        }
-        if !secure && !is_loopback(host) {
-            return Err(McpUrlError::PlainHttpToRemote);
-        }
-        Ok(Self(text.to_owned()))
+        Ok(Self(checked_http_url(text)?.to_owned()))
     }
 }
 
 impl TryFrom<String> for McpUrl {
-    type Error = McpUrlError;
+    type Error = HttpUrlError;
 
     fn try_from(text: String) -> Result<Self, Self::Error> {
         text.parse()
@@ -243,25 +186,5 @@ mod tests {
             "Bad Name".parse::<McpVariableName>(),
             Err(McpNameError::Character)
         );
-    }
-
-    #[test]
-    fn addresses_keep_their_path_and_plain_http_stays_local() {
-        assert_eq!(
-            "https://mcp.example.test/mcp/"
-                .parse::<McpUrl>()
-                .map(String::from),
-            Ok("https://mcp.example.test/mcp/".to_owned())
-        );
-        assert!("http://127.0.0.1:3000/mcp".parse::<McpUrl>().is_ok());
-        assert_eq!(
-            "http://10.0.0.4/mcp".parse::<McpUrl>(),
-            Err(McpUrlError::PlainHttpToRemote)
-        );
-        assert_eq!(
-            "https://user:pass@example.test".parse::<McpUrl>(),
-            Err(McpUrlError::Credentials)
-        );
-        assert_eq!("example.test".parse::<McpUrl>(), Err(McpUrlError::NoScheme));
     }
 }

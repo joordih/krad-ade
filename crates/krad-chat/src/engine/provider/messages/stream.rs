@@ -3,9 +3,9 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 
-use super::super::sse::Event;
-use super::super::{error_message, object_arguments, push_text, Parse, ProviderError};
+use super::super::{error_message, object_arguments, push_text, Parse};
 use crate::engine::wire::{Block, Call, Delta, Protocol, Reply, Source, Stop, Usage};
+use crate::gateway::GatewayError;
 
 const TOOL_USE_STOP: &str = "tool_use";
 const LENGTH_STOP: &str = "max_tokens";
@@ -264,12 +264,8 @@ fn arguments(input: Value, json: &str) -> Value {
 }
 
 impl Parse for Parser {
-    fn feed(
-        &mut self,
-        event: &Event,
-        on_delta: &mut dyn FnMut(Delta),
-    ) -> Result<(), ProviderError> {
-        match serde_json::from_str::<Streamed>(&event.data)? {
+    fn feed(&mut self, data: &str, on_delta: &mut dyn FnMut(Delta)) -> Result<(), GatewayError> {
+        match serde_json::from_str::<Streamed>(data)? {
             Streamed::MessageStart { message } => self.take_usage(&message.usage),
             Streamed::ContentBlockStart {
                 index,
@@ -284,10 +280,8 @@ impl Parse for Parser {
             }
             Streamed::Error { error } => {
                 let message = error.map(|failure| failure.message);
-                return Err(ProviderError::Failed(
-                    message
-                        .or_else(|| error_message(&event.data))
-                        .unwrap_or_default(),
+                return Err(GatewayError::Failed(
+                    message.or_else(|| error_message(data)).unwrap_or_default(),
                 ));
             }
             Streamed::Other => {}

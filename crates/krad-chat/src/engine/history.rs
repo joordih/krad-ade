@@ -1,89 +1,34 @@
-use krad_domain::{AgentPreset, ChatEntry, ChatEvent, ModelId, RewindPoint, ToolCall, ToolUseId};
+use krad_domain::{AgentPreset, ChatEntry, ChatEvent, ModelId, RewindPoint};
 
-use crate::checklist::TODO_TOOL;
-
-use super::agent::{self, AGENT_LABEL, AGENT_TOOL};
-use super::checklist::{self, CHECKLIST_TOOL};
-use super::plan::{self, PLAN_LABEL, PLAN_TOOL};
-use super::questions::{self, QUESTIONS_LABEL, QUESTIONS_TOOL};
+use super::call::EngineCall;
 use super::session::{effective, Record};
-use super::tools::{Action, Workspace};
+use super::tools::Workspace;
 use super::wire::{Block, Call, Message, Stop};
 
-fn labelled(call: &Call, name: &str, summary: String) -> ChatEntry {
-    ChatEntry::Event(ChatEvent::Tool(ToolCall {
-        id: Some(ToolUseId::from(call.id.as_str())),
-        name: name.to_owned(),
-        summary,
-        edit: None,
-    }))
-}
-
 fn tool_entries(call: &Call, workspace: &Workspace) -> Vec<ChatEntry> {
-    if call.name == CHECKLIST_TOOL {
-        let Ok(list) = checklist::parse(&call.arguments) else {
-            return vec![labelled(call, TODO_TOOL, String::new())];
-        };
-        return vec![
-            labelled(call, TODO_TOOL, checklist::summary(&list)),
-            ChatEntry::Event(ChatEvent::Checklist(list)),
-        ];
+    let parsed = EngineCall::parse(call);
+    let row = ChatEntry::Event(ChatEvent::Tool(parsed.row(&call.id, workspace)));
+    match parsed {
+        EngineCall::Checklist(Ok(list)) => vec![row, ChatEntry::Event(ChatEvent::Checklist(list))],
+        _ => vec![row],
     }
-    if call.name == AGENT_TOOL {
-        return vec![labelled(call, AGENT_LABEL, agent::summary(&call.arguments))];
-    }
-    vec![tool_entry(call, workspace)]
-}
-
-fn tool_entry(call: &Call, workspace: &Workspace) -> ChatEntry {
-    if call.name == QUESTIONS_TOOL {
-        return ChatEntry::Event(ChatEvent::Tool(ToolCall {
-            id: Some(ToolUseId::from(call.id.as_str())),
-            name: QUESTIONS_LABEL.to_owned(),
-            summary: questions::parse(&call.arguments)
-                .map_or_else(|_| String::new(), |asked| questions::summary(&asked)),
-            edit: None,
-        }));
-    }
-    if call.name == PLAN_TOOL {
-        return ChatEntry::Event(ChatEvent::Tool(ToolCall {
-            id: Some(ToolUseId::from(call.id.as_str())),
-            name: PLAN_LABEL.to_owned(),
-            summary: plan::parse(&call.arguments)
-                .map_or_else(|_| String::new(), |proposed| plan::summary(&proposed)),
-            edit: None,
-        }));
-    }
-    let tool = match Action::parse(&call.name, &call.arguments) {
-        Ok(action) => ToolCall {
-            id: Some(ToolUseId::from(call.id.as_str())),
-            name: action.label().into_owned(),
-            summary: action.summary(workspace),
-            edit: None,
-        },
-        Err(_) => ToolCall {
-            id: Some(ToolUseId::from(call.id.as_str())),
-            name: call.name.clone(),
-            summary: String::new(),
-            edit: None,
-        },
-    };
-    ChatEntry::Event(ChatEvent::Tool(tool))
 }
 
 fn assistant_entries(blocks: &[Block], stop: Stop, workspace: &Workspace) -> Vec<ChatEntry> {
     let mut entries: Vec<ChatEntry> = blocks
         .iter()
         .flat_map(|block| match block {
-            Block::Text { text } => vec![ChatEntry::Event(ChatEvent::Text(text.clone()))],
+            Block::Text { text } => vec![ChatEntry::Event(ChatEvent::TextDelta(text.clone()))],
             Block::Thinking { text, .. } => {
                 vec![ChatEntry::Event(ChatEvent::Thinking(text.clone()))]
             }
             Block::Call(call) => tool_entries(call, workspace),
         })
         .collect();
-    if stop != Stop::Tools {
-        entries.push(ChatEntry::Event(ChatEvent::Done));
+    match stop.problem() {
+        Some(problem) => entries.push(ChatEntry::Event(ChatEvent::Error(problem.to_owned()))),
+        None if stop == Stop::Finished => entries.push(ChatEntry::Event(ChatEvent::Done)),
+        None => {}
     }
     entries
 }
@@ -94,7 +39,7 @@ pub(crate) fn transcript(records: Vec<Record>, workspace: &Workspace) -> Vec<Cha
     let mut prompts = 0;
     for record in effective(records) {
         match record {
-            Record::Model { model: chosen } => {
+            Record::Model { model: chosen, .. } => {
                 model = ModelId::parse(&chosen);
                 entries.push(ChatEntry::Event(ChatEvent::Model(chosen)));
             }
@@ -137,6 +82,7 @@ mod tests {
         let records = vec![
             Record::Model {
                 model: "gpt-5".to_owned(),
+                vendor: None,
             },
             Record::Message(Message::user("fix it".to_owned())),
             Record::Message(Message::Assistant {
@@ -173,7 +119,7 @@ mod tests {
         assert_eq!(
             entries[4..],
             [
-                ChatEntry::Event(ChatEvent::Text("Done.".to_owned())),
+                ChatEntry::Event(ChatEvent::TextDelta("Done.".to_owned())),
                 ChatEntry::Event(ChatEvent::Done)
             ]
         );

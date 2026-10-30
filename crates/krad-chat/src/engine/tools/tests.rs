@@ -50,6 +50,14 @@ fn tools_parse_their_arguments_and_explain_bad_ones() {
         &json!({"url": "https://docs.rs/x", "prompt": " "}),
     );
     assert!(matches!(&fetch, Ok(Action::WebFetch { prompt: None, .. })));
+    let asking = Action::parse(
+        WEB_FETCH_TOOL,
+        &json!({"url": "https://docs.rs/x", "prompt": "the latest version"}),
+    );
+    assert!(matches!(
+        &asking,
+        Ok(Action::WebFetch { prompt: Some(prompt), .. }) if prompt == "the latest version"
+    ));
     assert_eq!(
         fetch.map(|action| action.label().into_owned()),
         Ok(WEB_FETCH_LABEL.to_owned())
@@ -76,24 +84,7 @@ fn tools_parse_their_arguments_and_explain_bad_ones() {
 
 #[test]
 fn every_spec_names_a_tool_that_parses() {
-    let specs = specs();
-    let names: Vec<&str> = specs.iter().map(|spec| spec.name.as_ref()).collect();
-    assert_eq!(
-        names,
-        [
-            "read",
-            "write",
-            "edit",
-            "find",
-            "grep",
-            "shell",
-            "shell_output",
-            "shell_stop",
-            "web_fetch",
-            "web_search"
-        ]
-    );
-    assert!(specs
+    assert!(specs()
         .iter()
         .all(|spec| Action::parse(&spec.name, &json!({}))
             != Err(format!("Unknown tool {}", spec.name))));

@@ -2,10 +2,10 @@ use std::path::Path;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 
-use crate::command::{BusVars, LiveSession};
 use crate::control::{LiveEvent, ModelOffer};
 use crate::error::ChatError;
-use crate::live::{new_session_id, spawn_live_chat, LiveConfig};
+use crate::live::{new_session_id, start_chat, ChatBackend, LiveConfig};
+use crate::live::{BusVars, LiveSession};
 use crate::process::Runner;
 
 const CATALOG_WAIT: Duration = Duration::from_secs(30);
@@ -24,8 +24,8 @@ pub fn claude_models(runner: &Runner, cwd: &Path) -> Result<Vec<ModelOffer>, Cha
         bus_vars: BusVars::default(),
     };
     let (sender, receiver) = channel();
-    let chat = spawn_live_chat(
-        &config,
+    let chat = start_chat(
+        ChatBackend::Claude(config),
         &LiveSession::Start(new_session_id()),
         move |event| {
             if let LiveEvent::Ready(catalog) = event {

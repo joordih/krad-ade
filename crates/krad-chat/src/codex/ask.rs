@@ -1,8 +1,9 @@
-use krad_domain::ToolCall;
+use krad_domain::{ToolCall, ToolKind};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 
+use super::events::{BASH_TOOL, EDIT_TOOL};
 use super::rpc::RpcId;
 use crate::control::{AskAnswer, AskKind, Question, QuestionOption, Responder, ToolAsk};
 
@@ -10,8 +11,6 @@ const COMMAND_APPROVAL: &str = "item/commandExecution/requestApproval";
 const FILE_APPROVAL: &str = "item/fileChange/requestApproval";
 const USER_INPUT: &str = "item/tool/requestUserInput";
 const PERMISSIONS_APPROVAL: &str = "item/permissions/requestApproval";
-const BASH_TOOL: &str = "Bash";
-const EDIT_TOOL: &str = "Edit";
 const PERMISSIONS_TOOL: &str = "Permissions";
 const ACCEPT: &str = "accept";
 const ACCEPT_FOR_SESSION: &str = "acceptForSession";
@@ -25,6 +24,7 @@ const PATH_SEPARATOR: &str = ", ";
 pub(crate) enum CodexAsk {
     Command {
         amendment: Option<Vec<String>>,
+        for_session: bool,
         declinable: bool,
     },
     FileChange,
@@ -87,15 +87,22 @@ struct PermissionsRequest {
     permissions: Value,
 }
 
-fn ask(id: RpcId, kind: AskKind, codex: CodexAsk, always: bool) -> ToolAsk {
+impl CodexAsk {
+    pub(crate) const fn can_allow_always(&self) -> bool {
+        match self {
+            Self::Command {
+                amendment,
+                for_session,
+                ..
+            } => *for_session || amendment.is_some(),
+            Self::FileChange | Self::Permissions { .. } => true,
+            Self::UserInput { .. } => false,
+        }
+    }
+}
+
+const fn ask(id: RpcId, kind: AskKind, codex: CodexAsk) -> ToolAsk {
     ToolAsk {
-        request_id: String::new(),
-        input: Value::Null,
-        suggestions: if always {
-            vec![Value::Bool(true)]
-        } else {
-            Vec::new()
-        },
         responder: Responder::Codex { id, ask: codex },
         kind,
     }
@@ -122,28 +129,32 @@ pub(crate) fn server_ask(
                 .and_then(|action| action.command.clone())
                 .or(asked.command)
                 .unwrap_or_default();
-            let session = offers(&asked.available_decisions, ACCEPT_FOR_SESSION);
-            let amendment = asked.proposed_execpolicy_amendment.filter(|_| !session);
-            let always = session || amendment.is_some();
+            let for_session = offers(&asked.available_decisions, ACCEPT_FOR_SESSION);
             let codex = CodexAsk::Command {
                 declinable: offers(&asked.available_decisions, DECLINE),
-                amendment,
+                amendment: asked.proposed_execpolicy_amendment.filter(|_| !for_session),
+                for_session,
             };
+            let (tool, kind) = BASH_TOOL;
             let kind = AskKind::Permission {
-                tool: BASH_TOOL.to_owned(),
+                tool: tool.to_owned(),
+                kind,
                 summary,
                 title: asked.reason,
                 edit: None,
             };
-            Some(ask(id, kind, codex, always))
+            Some(ask(id, kind, codex))
         }
         FILE_APPROVAL => {
             let asked = FileApproval::deserialize(params).ok()?;
             let tools = changes.get(&asked.item_id).map_or(&[][..], Vec::as_slice);
+            let (tool, kind) = tools.first().map_or_else(
+                || (EDIT_TOOL.0.to_owned(), EDIT_TOOL.1),
+                |tool| (tool.name.clone(), tool.kind),
+            );
             let kind = AskKind::Permission {
-                tool: tools
-                    .first()
-                    .map_or_else(|| EDIT_TOOL.to_owned(), |tool| tool.name.clone()),
+                tool,
+                kind,
                 summary: tools
                     .iter()
                     .map(|tool| tool.summary.as_str())
@@ -152,7 +163,7 @@ pub(crate) fn server_ask(
                 title: asked.reason,
                 edit: tools.iter().find_map(|tool| tool.edit.clone()),
             };
-            Some(ask(id, kind, CodexAsk::FileChange, true))
+            Some(ask(id, kind, CodexAsk::FileChange))
         }
         USER_INPUT => {
             let asked = UserInputRequest::deserialize(params).ok()?;
@@ -181,12 +192,13 @@ pub(crate) fn server_ask(
                     multi_select: false,
                 })
                 .collect();
-            Some(ask(id, AskKind::Questions(questions), codex, false))
+            Some(ask(id, AskKind::Questions(questions), codex))
         }
         PERMISSIONS_APPROVAL => {
             let asked = PermissionsRequest::deserialize(params).ok()?;
             let kind = AskKind::Permission {
                 tool: PERMISSIONS_TOOL.to_owned(),
+                kind: ToolKind::Other,
                 summary: asked.reason.clone().unwrap_or_default(),
                 title: asked.reason,
                 edit: None,
@@ -194,7 +206,7 @@ pub(crate) fn server_ask(
             let codex = CodexAsk::Permissions {
                 requested: asked.permissions,
             };
-            Some(ask(id, kind, codex, true))
+            Some(ask(id, kind, codex))
         }
         _ => None,
     }
@@ -319,6 +331,7 @@ mod tests {
             ask.kind,
             AskKind::Permission {
                 tool: "Bash".to_owned(),
+                kind: ToolKind::Shell,
                 summary: "cat notes.txt".to_owned(),
                 title: None,
                 edit: None,
@@ -348,6 +361,7 @@ mod tests {
         let tool = ToolCall {
             id: None,
             name: "Write".to_owned(),
+            kind: ToolKind::Edit,
             summary: "out.txt".to_owned(),
             edit: None,
         };

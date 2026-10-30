@@ -1,10 +1,10 @@
-use krad_domain::{line_diff, ChatEvent, FileEdit, PermissionMode, ToolCall, ToolUseId};
+use krad_domain::{line_diff, ChatEvent, FileEdit, PermissionMode, ToolCall, ToolKind, ToolUseId};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 
 use super::ask::{form_ask, permission_ask, FormInfo};
-use super::tools::{harness_tool_name, PLAN_AGENT, TODO_TOOL};
+use super::tools::{harness_tool, PLAN_AGENT};
 use crate::checklist::todos;
 use crate::control::LiveEvent;
 use crate::parse::tool_summary;
@@ -64,9 +64,15 @@ pub(crate) struct ModelRef {
     pub(crate) id: String,
 }
 
+pub(super) const MODEL_SEPARATOR: char = '/';
+
+pub(super) fn model_selector(provider_id: &str, id: &str) -> String {
+    format!("{provider_id}{MODEL_SEPARATOR}{id}")
+}
+
 impl ModelRef {
     pub(crate) fn selector(&self) -> String {
-        format!("{}/{}", self.provider_id, self.id)
+        model_selector(&self.provider_id, &self.id)
     }
 }
 
@@ -169,8 +175,6 @@ pub(crate) enum ServerEvent {
     Interrupted(Session),
     #[serde(rename = "session.execution.failed")]
     Failed(Failed),
-    #[serde(rename = "session.idle")]
-    Idle(Session),
     #[serde(rename = "session.agent.selected")]
     AgentSelected(AgentSelected),
     #[serde(rename = "permission.asked")]
@@ -188,10 +192,9 @@ impl ServerEvent {
             Self::ToolCalled(called) => &called.session_id,
             Self::StepStarted(step) => &step.session_id,
             Self::StepEnded(step) => &step.session_id,
-            Self::Started(session)
-            | Self::Succeeded(session)
-            | Self::Interrupted(session)
-            | Self::Idle(session) => &session.session_id,
+            Self::Started(session) | Self::Succeeded(session) | Self::Interrupted(session) => {
+                &session.session_id
+            }
             Self::Failed(failed) => &failed.session_id,
             Self::AgentSelected(selected) => &selected.session_id,
             Self::PermissionAsked(asked) => &asked.session_id,
@@ -225,9 +228,11 @@ pub(crate) fn opencode_edit(tool: &str, input: &Value) -> Option<FileEdit> {
 }
 
 pub(crate) fn tool_call(id: &str, tool: &str, input: &Value) -> ToolCall {
+    let (name, kind) = harness_tool(tool);
     ToolCall {
         id: Some(ToolUseId::from(id)),
-        name: harness_tool_name(tool).to_owned(),
+        name: name.to_owned(),
+        kind,
         summary: tool_summary(Some(input)),
         edit: opencode_edit(tool, input),
     }
@@ -273,11 +278,12 @@ impl Translator {
             }
             ServerEvent::ToolCalled(called) => {
                 let tool = self.tools.get(&called.id).map_or("", String::as_str);
-                let checklist = (tool == TODO_TOOL)
+                let call = tool_call(&called.id, tool, &called.input);
+                let checklist = (call.kind == ToolKind::Checklist)
                     .then(|| todos(&called.input))
                     .flatten()
                     .map(ChatEvent::Checklist);
-                std::iter::once(ChatEvent::Tool(tool_call(&called.id, tool, &called.input)))
+                std::iter::once(ChatEvent::Tool(call))
                     .chain(checklist)
                     .map(LiveEvent::Chat)
                     .collect()

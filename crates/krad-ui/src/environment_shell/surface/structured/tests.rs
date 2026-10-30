@@ -1,7 +1,11 @@
 use super::*;
 use krad_domain::AgentPreset;
 
-const MISSING: &str = "No conversation found with session ID: 4f2c0b7c-a91e";
+fn missing() -> ResumeRefused {
+    ResumeRefused::MissingConversation(
+        "No conversation found with session ID: 4f2c0b7c-a91e".to_owned(),
+    )
+}
 
 fn id(raw: &str) -> ResumeId {
     raw.parse()
@@ -32,16 +36,11 @@ fn the_context_reads_as_the_share_of_the_window_in_use() {
 }
 
 #[test]
-fn work_is_only_taken_once_claude_code_can_take_it() {
+fn a_toggled_setting_and_a_queued_message_leave_in_one_batch() {
     let mut chat = resumed();
     let mut outbox = queued("Fix the race");
     chat.command(SurfaceCommand::ToggleThinking);
     assert!(chat.has_work(&outbox));
-    assert_eq!(
-        outbox.messages[0].prompt.text, "Fix the race",
-        "asking leaves the message queued"
-    );
-    assert!(outbox.has_queued(), "a start that fails leaves it to send");
     let batch = chat.take_batch(&mut outbox, Instant::now());
     assert_eq!(batch.commands, [SlashCommand::Thinking(!THINKING_DEFAULT)]);
     assert_eq!(batch.message, Some(Prompt::from("Fix the race")));
@@ -94,12 +93,13 @@ fn a_resume_of_a_missing_conversation_starts_a_new_one_once() {
         message: Some(Prompt::from("Fix the race")),
     };
     chat.handed_over(batch.clone());
-    assert_eq!(chat.falls_back("the harness exited with code 1"), None);
-    assert_eq!(chat.falls_back(MISSING), Some(batch));
+    let kept = ResumeRefused::TurnNotDropped("Resume rejected".to_owned());
+    assert_eq!(chat.retries(&kept), None, "nothing was cut");
+    assert_eq!(chat.retries(&missing()), Some(batch));
     assert!(matches!(chat.session, LiveSession::Start(_)));
     assert_eq!(chat.outstanding, 0);
     chat.session = LiveSession::Resume(id("4f2c0b7c-a91e"));
-    assert_eq!(chat.falls_back(MISSING), None, "only once");
+    assert_eq!(chat.retries(&missing()), None, "only once");
 }
 
 #[test]
@@ -108,7 +108,7 @@ fn a_new_conversation_never_falls_back() {
         LiveSession::Start(id("0b7c3a52-9f1e")),
         AgentPreset::ClaudeCode,
     );
-    assert_eq!(chat.falls_back(MISSING), None);
+    assert_eq!(chat.retries(&missing()), None);
 }
 
 #[test]

@@ -11,7 +11,7 @@ const QUESTIONS_DESCRIPTION: &str = "Ask the user one to four multiple-choice qu
 const NO_QUESTIONS_TEXT: &str = "ask_user needs at least one question with options";
 const BAD_QUESTIONS_TEXT: &str = "Invalid arguments for ask_user:";
 const ANSWERS_INTRO: &str = "The user answered:";
-const DISMISSED_TEXT: &str = "The user dismissed the questions without answering.";
+pub(crate) const DISMISSED_TEXT: &str = "The user dismissed the questions without answering.";
 const LABEL_SEPARATOR: &str = ", ";
 const MAX_QUESTIONS: usize = 4;
 
@@ -97,10 +97,6 @@ pub(crate) fn answered(answers: &[PickedAnswer]) -> String {
     format!("{ANSWERS_INTRO}\n{}", lines.join("\n"))
 }
 
-pub(crate) const fn dismissed() -> &'static str {
-    DISMISSED_TEXT
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,6 +125,6 @@ mod tests {
             labels: vec!["Quicksort".to_owned()],
         }]);
         assert_eq!(text, "The user answered:\n- Which sort?: Quicksort");
-        assert_eq!(answered(&[]), dismissed());
+        assert_eq!(answered(&[]), DISMISSED_TEXT);
     }
 }

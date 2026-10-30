@@ -4,6 +4,12 @@ use serde_json::Value;
 use std::borrow::Cow;
 
 use super::attachments::Attachments;
+use crate::gateway::Vendor;
+
+const REASONING_EFFORTS: [Effort; 3] = [Effort::Low, Effort::Medium, Effort::High];
+const CUT_OFF_TEXT: &str = "The answer was cut off: it reached the output token limit.";
+const REFUSED_TEXT: &str = "The model refused to answer.";
+const BLOCK_JOINER: &str = "\n";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -11,6 +17,25 @@ pub(crate) enum Protocol {
     Messages,
     Responses,
     Completions,
+}
+
+impl From<Vendor> for Protocol {
+    fn from(vendor: Vendor) -> Self {
+        match vendor {
+            Vendor::Anthropic => Self::Messages,
+            Vendor::OpenAi => Self::Responses,
+            Vendor::Google | Vendor::Other => Self::Completions,
+        }
+    }
+}
+
+impl Protocol {
+    pub(crate) const fn efforts(self) -> &'static [Effort] {
+        match self {
+            Self::Messages => &Effort::ALL,
+            Self::Responses | Self::Completions => &REASONING_EFFORTS,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,7 +63,6 @@ pub(crate) struct Call {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Outcome {
     pub(crate) call: String,
-    pub(crate) name: String,
     pub(crate) content: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) failed: bool,
@@ -66,6 +90,16 @@ pub(crate) enum Stop {
     Tools,
     Length,
     Refused,
+}
+
+impl Stop {
+    pub(crate) const fn problem(self) -> Option<&'static str> {
+        match self {
+            Self::Finished | Self::Tools => None,
+            Self::Length => Some(CUT_OFF_TEXT),
+            Self::Refused => Some(REFUSED_TEXT),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,6 +136,17 @@ impl Message {
             Self::Assistant { .. } | Self::Results { .. } => &[],
         }
     }
+}
+
+pub(crate) fn answer_text(blocks: &[Block]) -> String {
+    blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Text { text } => Some(text.as_str()),
+            Block::Thinking { .. } | Block::Call(_) => None,
+        })
+        .collect::<Vec<_>>()
+        .join(BLOCK_JOINER)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

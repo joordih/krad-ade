@@ -154,6 +154,7 @@ mod tests {
                 ChatEntry::Event(ChatEvent::Tool(ToolCall {
                     id: Some("exec-1".into()),
                     name: "Read".to_owned(),
+                    kind: krad_domain::ToolKind::Read,
                     summary: "/p/notes.txt".to_owned(),
                     edit: None,
                 })),

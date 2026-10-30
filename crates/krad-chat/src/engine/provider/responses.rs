@@ -1,9 +1,9 @@
 mod stream;
 
-use krad_domain::Effort;
 use serde::Serialize;
 use serde_json::Value;
 
+use super::{ReasoningEffort, IMAGE_DETAIL};
 use crate::engine::attachments::{Attached, Attachments};
 use crate::engine::wire::{Block, Message, NativeTool, Protocol, Request};
 pub(super) use stream::Parser;
@@ -11,10 +11,6 @@ pub(super) use stream::Parser;
 pub(super) const PATH: &str = "/v1/responses";
 const ENCRYPTED_REASONING: &str = "reasoning.encrypted_content";
 const AUTO_SUMMARY: &str = "auto";
-const LOW_EFFORT: &str = "low";
-const MEDIUM_EFFORT: &str = "medium";
-const HIGH_EFFORT: &str = "high";
-const IMAGE_DETAIL: &str = "auto";
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -85,7 +81,7 @@ const fn native_tool<'a>(native: NativeTool) -> Tool<'a> {
 
 #[derive(Debug, Serialize)]
 struct Reasoning {
-    effort: &'static str,
+    effort: ReasoningEffort,
     summary: &'static str,
 }
 
@@ -103,14 +99,6 @@ pub(super) struct Body<'a> {
     max_output_tokens: u64,
     store: bool,
     stream: bool,
-}
-
-const fn effort_name(effort: Effort) -> &'static str {
-    match effort {
-        Effort::Low => LOW_EFFORT,
-        Effort::Medium => MEDIUM_EFFORT,
-        Effort::High | Effort::ExtraHigh | Effort::Max => HIGH_EFFORT,
-    }
 }
 
 fn assistant_items(blocks: &[Block]) -> Vec<Item<'_>> {
@@ -195,7 +183,7 @@ pub(super) fn body<'a>(request: &Request<'a>) -> Body<'a> {
             .chain(request.native.map(native_tool))
             .collect(),
         reasoning: request.effort.map(|effort| Reasoning {
-            effort: effort_name(effort),
+            effort: effort.into(),
             summary: AUTO_SUMMARY,
         }),
         include: [ENCRYPTED_REASONING],

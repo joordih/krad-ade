@@ -1,5 +1,5 @@
 use krad_chat::{
-    new_session_id, read_codex_transcript, spawn_codex_chat, BusVars, ChatEvent, LiveConfig,
+    new_session_id, read_codex_transcript, start_chat, BusVars, ChatBackend, ChatEvent, LiveConfig,
     LiveEvent, LiveSession, Runner,
 };
 use krad_domain::{AgentPreset, ChatEntry, PermissionMode};
@@ -28,7 +28,7 @@ fn next(receiver: &Receiver<LiveEvent>) -> Option<LiveEvent> {
 #[ignore = "runs the real codex CLI"]
 fn a_codex_chat_opens_a_thread_answers_and_reads_back() {
     let Some(program) = find(PROGRAM) else {
-        return;
+        unreachable!("{PROGRAM} must be on PATH to run this test");
     };
     let runner = Runner::Native(program);
     let config = LiveConfig {
@@ -41,13 +41,14 @@ fn a_codex_chat_opens_a_thread_answers_and_reads_back() {
         bus_vars: BusVars::default(),
     };
     let (sender, receiver) = channel();
-    let chat = spawn_codex_chat(
-        config,
+    let chat = start_chat(
+        ChatBackend::Codex(config),
         &LiveSession::Start(new_session_id()),
         move |event| {
             sender.send(event).unwrap_or_default();
         },
-    );
+    )
+    .unwrap_or_else(|_| unreachable!("a codex chat always starts"));
     let Some(LiveEvent::Chat(ChatEvent::Session(resume))) = next(&receiver) else {
         unreachable!("the chat reports its thread first");
     };

@@ -1,6 +1,7 @@
-use super::claude::Routing;
+use super::claude::{live_event, Routing};
 use super::*;
 use crate::control::AskKind;
+use crate::refused::ResumeRefused;
 use krad_domain::ChatEvent;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -98,9 +99,22 @@ fn only_the_stderr_tail_is_kept() {
 }
 
 #[test]
-fn a_resume_of_a_conversation_claude_code_never_kept_is_told_apart() {
-    assert!(is_missing_conversation(
-        "No conversation found with session ID: 4f2c0b7c-a91e"
-    ));
-    assert!(!is_missing_conversation("the harness exited with code 1"));
+fn claude_code_refusals_to_resume_are_told_apart_from_other_failures() {
+    let error = |text: &str| live_event(ChatEvent::Error(text.to_owned()));
+    let missing = "No conversation found with session ID: 4f2c0b7c-a91e";
+    assert_eq!(
+        error(missing),
+        LiveEvent::Refused(ResumeRefused::MissingConversation(missing.to_owned()))
+    );
+    let kept = "Resume rejected by --resume-drops-turn: range";
+    assert_eq!(
+        error(kept),
+        LiveEvent::Refused(ResumeRefused::TurnNotDropped(kept.to_owned()))
+    );
+    assert_eq!(
+        error("the harness exited with code 1"),
+        LiveEvent::Chat(ChatEvent::Error(
+            "the harness exited with code 1".to_owned()
+        ))
+    );
 }

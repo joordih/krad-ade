@@ -3,7 +3,7 @@ use krad_chat::{new_session_id, LiveSession};
 use krad_domain::SessionSpec;
 use krad_domain::{
     AgentPreset, AgentState, EnvironmentName, GroupId, NodeKind, TerminalId, TerminalNode,
-    TextScale,
+    TextScale, DEFAULT_CHAT_HARNESS,
 };
 use krad_session::wsl_shell;
 use std::path::PathBuf;
@@ -14,12 +14,6 @@ use super::sessions_view::session_terminals;
 use super::EnvironmentShell;
 
 const NEW_CHAT_LABEL: &str = "New chat";
-const DEFAULT_CHAT_HARNESSES: [AgentPreset; 4] = [
-    AgentPreset::ClaudeCode,
-    AgentPreset::Opencode,
-    AgentPreset::Codex,
-    AgentPreset::Gateway,
-];
 const WSL_LABEL: &str = "WSL";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,12 +39,6 @@ impl EnvironmentShell {
     }
 
     pub(super) fn add_terminal(&mut self, preset: AgentPreset, cx: &mut Context<Self>) {
-        if self.settings.opens_as_chat(preset) {
-            let env = self.active.clone();
-            let session = LiveSession::Start(new_session_id());
-            self.spawn_chat_in(&env, NodeGroup::OrSelected(None), session, cx);
-            return;
-        }
         self.spawn_terminal(preset.display_name(), Launch::Preset(preset), None, cx);
     }
 
@@ -178,10 +166,10 @@ impl EnvironmentShell {
     }
 
     fn default_chat_harness(&self) -> AgentPreset {
-        DEFAULT_CHAT_HARNESSES
+        AgentPreset::chat_harnesses()
             .into_iter()
             .find(|preset| self.chats_on(*preset))
-            .unwrap_or(AgentPreset::ClaudeCode)
+            .unwrap_or(DEFAULT_CHAT_HARNESS)
     }
 
     fn settle_new_node(&mut self, cx: &mut Context<Self>) {

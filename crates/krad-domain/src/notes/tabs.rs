@@ -197,7 +197,13 @@ mod tests {
         );
         tabs.remove("Archive");
         assert_eq!(paths(&tabs), [("Ideas2.md", true)]);
-        assert_eq!(NoteMode::Source.next().next().next(), NoteMode::Source);
+    }
+
+    #[test]
+    fn the_note_mode_cycles_from_source_to_reading_to_split_and_back() {
+        assert_eq!(NoteMode::Source.next(), NoteMode::Reading);
+        assert_eq!(NoteMode::Reading.next(), NoteMode::Split);
+        assert_eq!(NoteMode::Split.next(), NoteMode::Source);
     }
 
     #[test]

@@ -65,7 +65,10 @@ fn the_model_list_is_asked_with_the_key_as_a_bearer_token() -> Result<(), Box<dy
     assert!(head
         .iter()
         .any(|line| line.eq_ignore_ascii_case(&format!("authorization: Bearer {KEY}"))));
-    let ids: Vec<&str> = models.iter().map(|model| model.value.as_str()).collect();
+    let ids: Vec<&str> = models
+        .iter()
+        .map(|model| model.offer.value.as_str())
+        .collect();
     assert_eq!(ids, ["gpt-5", "gemini-3-pro"]);
     Ok(())
 }

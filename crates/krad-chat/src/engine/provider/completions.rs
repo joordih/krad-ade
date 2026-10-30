@@ -1,18 +1,15 @@
 mod stream;
 
-use krad_domain::{ChatImage, Effort};
+use krad_domain::ChatImage;
 use serde::Serialize;
 use serde_json::Value;
 
+use super::{ReasoningEffort, IMAGE_DETAIL};
 use crate::engine::attachments::{Attached, Attachments};
 use crate::engine::wire::{Block, Message, NativeTool, Request};
 pub(super) use stream::Parser;
 
 pub(super) const PATH: &str = "/v1/chat/completions";
-const LOW_EFFORT: &str = "low";
-const MEDIUM_EFFORT: &str = "medium";
-const HIGH_EFFORT: &str = "high";
-const IMAGE_DETAIL: &str = "auto";
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -117,18 +114,10 @@ pub(super) struct Body<'a> {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<Tool<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    reasoning_effort: Option<&'static str>,
+    reasoning_effort: Option<ReasoningEffort>,
     max_tokens: u64,
     stream: bool,
     stream_options: StreamOptions,
-}
-
-const fn effort_name(effort: Effort) -> &'static str {
-    match effort {
-        Effort::Low => LOW_EFFORT,
-        Effort::Medium => MEDIUM_EFFORT,
-        Effort::High | Effort::ExtraHigh | Effort::Max => HIGH_EFFORT,
-    }
 }
 
 fn assistant_turn(blocks: &[Block]) -> Option<Turn<'_>> {
@@ -234,7 +223,7 @@ pub(super) fn body<'a>(request: &Request<'a>) -> Body<'a> {
             })
             .chain(request.native.map(native_tool))
             .collect(),
-        reasoning_effort: request.effort.map(effort_name),
+        reasoning_effort: request.effort.map(ReasoningEffort::from),
         max_tokens: request.max_tokens,
         stream: true,
         stream_options: StreamOptions {

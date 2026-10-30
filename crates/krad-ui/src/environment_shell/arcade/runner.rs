@@ -266,6 +266,14 @@ mod tests {
         runner.press();
         runner.step(FRAME);
         assert!(runner.velocity < JUMP_SPEED, "a second jump in the air");
+    }
+
+    #[test]
+    fn releasing_the_caret_lands_it_back_in_the_demo() {
+        let mut runner = Runner::seeded(7);
+        runner.press();
+        runner.press();
+        runner.step(FRAME);
         runner.release();
         assert_eq!((runner.play, runner.height), (Play::Demo, 0.0));
     }

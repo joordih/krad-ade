@@ -5,9 +5,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use super::tools::{Action, WebUrl, Workspace};
-use commands::{is_dangerous, parse, segment_is_safe, segment_key};
-
-pub(crate) use commands::is_known_safe;
+use commands::{is_dangerous, is_known_safe, parse, segment_is_safe, segment_key};
 
 const PLAN_FILES_TEXT: &str = "Plan mode does not change files";
 const PLAN_COMMANDS_TEXT: &str = "Plan mode only runs read-only commands";

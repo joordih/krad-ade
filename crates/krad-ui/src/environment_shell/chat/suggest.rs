@@ -19,11 +19,6 @@ const UNIX_SEPARATOR: &str = "/";
 const WORD_GAP: &str = " ";
 const SUGGESTION_LIMIT: usize = 200;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::environment_shell) enum Composer {
-    Surface(TerminalId),
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::environment_shell) enum SuggestKind {
     Mention,
@@ -32,7 +27,7 @@ pub(in crate::environment_shell) enum SuggestKind {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::environment_shell) struct Suggest {
-    pub(in crate::environment_shell) composer: Composer,
+    pub(in crate::environment_shell) composer: TerminalId,
     pub(in crate::environment_shell) kind: SuggestKind,
     range: Range<usize>,
     query: String,
@@ -44,7 +39,7 @@ pub(in crate::environment_shell) enum Suggestion {
     Skill(Skill),
 }
 
-fn trigger(composer: Composer, text: &str, cursor: usize) -> Option<Suggest> {
+fn trigger(composer: TerminalId, text: &str, cursor: usize) -> Option<Suggest> {
     let before = text.get(..cursor)?;
     let start = before
         .char_indices()
@@ -82,7 +77,7 @@ pub(in crate::environment_shell) fn mention_text(entry: &IndexEntry) -> String {
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn update_suggest(
         &mut self,
-        composer: Composer,
+        composer: TerminalId,
         cx: &mut Context<Self>,
     ) {
         let Some(input) = self.composer_input(composer) else {
@@ -115,27 +110,21 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn composer_input(
         &self,
-        composer: Composer,
+        composer: TerminalId,
     ) -> Option<Entity<TextareaState>> {
-        match composer {
-            Composer::Surface(id) => self
-                .envs
-                .get(&self.active)?
-                .chats
-                .get(&id)
-                .map(|chat| chat.input.clone()),
-        }
+        self.envs
+            .get(&self.active)?
+            .chats
+            .get(&composer)
+            .map(|chat| chat.input.clone())
     }
 
-    fn composer_root(&self, composer: Composer) -> Option<PathBuf> {
-        match composer {
-            Composer::Surface(id) => self
-                .envs
-                .get(&self.active)?
-                .data
-                .group_of(id)
-                .map(|group| group.root.clone()),
-        }
+    fn composer_root(&self, composer: TerminalId) -> Option<PathBuf> {
+        self.envs
+            .get(&self.active)?
+            .data
+            .group_of(composer)
+            .map(|group| group.root.clone())
     }
 
     fn refresh_file_index(root: Option<PathBuf>, cx: &mut Context<Self>) {
@@ -279,22 +268,18 @@ impl EnvironmentShell {
 
     fn composer_mentions(
         &mut self,
-        composer: Composer,
+        composer: TerminalId,
     ) -> Option<&mut HashMap<SharedString, IndexEntry>> {
-        match composer {
-            Composer::Surface(id) => self
-                .envs
-                .get_mut(&self.active)?
-                .chats
-                .get_mut(&id)
-                .map(|chat| &mut chat.mentions),
-        }
+        self.envs
+            .get_mut(&self.active)?
+            .chats
+            .get_mut(&composer)
+            .map(|chat| &mut chat.mentions)
     }
 
-    fn harness_skills(&self, composer: Composer) -> Option<Vec<Skill>> {
-        let Composer::Surface(id) = composer;
-        let chat = self.envs.get(&self.active)?.chats.get(&id)?;
-        if chat.harness() == AgentPreset::ClaudeCode {
+    fn harness_skills(&self, composer: TerminalId) -> Option<Vec<Skill>> {
+        let chat = self.envs.get(&self.active)?.chats.get(&composer)?;
+        if chat.harness().reads_shared_skills() {
             return None;
         }
         let catalog = chat.structured()?.catalog.as_ref()?;
@@ -311,10 +296,18 @@ impl EnvironmentShell {
         )
     }
 
-    pub(in crate::environment_shell) fn shared_skill_message(
+    pub(in crate::environment_shell) fn skill_message(
         &self,
-        message: &str,
-    ) -> Option<String> {
+        harness: AgentPreset,
+        message: String,
+    ) -> String {
+        if !harness.reads_shared_skills() {
+            return message;
+        }
+        self.shared_skill_message(&message).unwrap_or(message)
+    }
+
+    fn shared_skill_message(&self, message: &str) -> Option<String> {
         let name = message
             .trim_start()
             .strip_prefix(SKILL_PREFIX)?
@@ -360,7 +353,7 @@ mod tests {
     use super::*;
 
     fn found(text: &str) -> Option<(SuggestKind, Range<usize>, String)> {
-        trigger(Composer::Surface(TerminalId(1)), text, text.len())
+        trigger(TerminalId(1), text, text.len())
             .map(|suggest| (suggest.kind, suggest.range, suggest.query))
     }
 
@@ -379,7 +372,7 @@ mod tests {
     }
 
     #[test]
-    fn a_claude_code_prompt_takes_a_skill_at_any_word() {
+    fn a_skill_is_suggested_at_any_word_of_the_prompt() {
         assert_eq!(
             found("then run /rev"),
             Some((SuggestKind::Skill, 9..13, "rev".to_owned()))

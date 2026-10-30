@@ -1,4 +1,4 @@
-use krad_domain::{AgentPreset, ChatEvent, FileEdit, ModelId, PermissionMode, RewindId};
+use krad_domain::{ChatEvent, FileEdit, ModelId, PermissionMode, RewindId, ToolKind};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
@@ -7,12 +7,13 @@ use std::borrow::Cow;
 use crate::codex::{CodexAsk, RpcId};
 use crate::edits::file_edit;
 use crate::parse::tool_summary;
+use crate::refused::ResumeRefused;
 use crate::rewind::{RewindError, Rewound};
 
 mod catalog;
 mod held;
 
-pub use catalog::{Catalog, CommandOffer, ModelOffer, ModelSource};
+pub use catalog::{Catalog, CommandOffer, ModelOffer, ModelSource, SourceRank};
 
 const ANSWERS_KEY: &str = "answers";
 const LABEL_SEPARATOR: &str = ", ";
@@ -45,6 +46,7 @@ pub enum LiveEvent {
     Usage(PlanUsage),
     Notice(String),
     Rewound(Result<Rewound, RewindError>),
+    Refused(ResumeRefused),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -81,6 +83,7 @@ struct QuestionInput {
 pub enum AskKind {
     Permission {
         tool: String,
+        kind: ToolKind,
         summary: String,
         title: Option<String>,
         edit: Option<FileEdit>,
@@ -92,20 +95,39 @@ pub enum AskKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct FormValue {
+    pub(crate) label: String,
+    pub(crate) value: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct FormSlot {
     pub(crate) key: String,
     pub(crate) many: bool,
+    pub(crate) values: Vec<FormValue>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ClaudeAsk {
+    pub(crate) request_id: String,
+    pub(crate) input: Value,
+    pub(crate) suggestions: Vec<Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Responder {
-    ClaudeCode,
-    Engine,
+    ClaudeCode(ClaudeAsk),
+    Engine {
+        call: String,
+    },
     OpencodePermission {
         session: String,
+        request: String,
+        savable: bool,
     },
     OpencodeForm {
         session: String,
+        form: String,
         slots: Vec<FormSlot>,
     },
     Codex {
@@ -114,19 +136,22 @@ pub(crate) enum Responder {
     },
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToolAsk {
-    pub(crate) request_id: String,
-    pub(crate) input: Value,
-    pub(crate) suggestions: Vec<Value>,
     pub(crate) responder: Responder,
     pub kind: AskKind,
 }
 
 impl ToolAsk {
     #[must_use]
-    pub const fn can_allow_always(&self) -> bool {
-        !self.suggestions.is_empty()
+    pub fn can_allow_always(&self) -> bool {
+        match &self.responder {
+            Responder::ClaudeCode(claude) => !claude.suggestions.is_empty(),
+            Responder::Engine { .. } => matches!(self.kind, AskKind::Permission { .. }),
+            Responder::OpencodePermission { savable, .. } => *savable,
+            Responder::OpencodeForm { .. } => false,
+            Responder::Codex { ask, .. } => ask.can_allow_always(),
+        }
     }
 }
 
@@ -276,27 +301,29 @@ fn ask_of(
     title: Option<String>,
     suggestions: Vec<Value>,
 ) -> ToolAsk {
-    let claude = AgentPreset::ClaudeCode;
-    let tool = Some(tool_name.as_str());
-    let kind = if claude.question_tool() == tool {
-        let asked = QuestionInput::deserialize(&input).unwrap_or_default();
-        AskKind::Questions(asked.questions)
-    } else if claude.plan_tool() == tool {
-        let asked = PlanInput::deserialize(&input).unwrap_or_default();
-        AskKind::Plan { plan: asked.plan }
-    } else {
-        AskKind::Permission {
+    let kind = match ToolKind::of_claude_code(&tool_name) {
+        ToolKind::Question => {
+            let asked = QuestionInput::deserialize(&input).unwrap_or_default();
+            AskKind::Questions(asked.questions)
+        }
+        ToolKind::Plan => {
+            let asked = PlanInput::deserialize(&input).unwrap_or_default();
+            AskKind::Plan { plan: asked.plan }
+        }
+        kind => AskKind::Permission {
             summary: tool_summary(Some(&input)),
             edit: file_edit(&tool_name, Some(&input)),
             tool: tool_name,
+            kind,
             title,
-        }
+        },
     };
     ToolAsk {
-        request_id,
-        input,
-        suggestions,
-        responder: Responder::ClaudeCode,
+        responder: Responder::ClaudeCode(ClaudeAsk {
+            request_id,
+            input,
+            suggestions,
+        }),
         kind,
     }
 }
@@ -422,7 +449,7 @@ fn answered_input(input: &Value, answers: &[PickedAnswer]) -> Value {
     input
 }
 
-pub(crate) fn answer_line(ask: &ToolAsk, answer: &AskAnswer) -> String {
+pub(crate) fn answer_line(ask: &ClaudeAsk, answer: &AskAnswer) -> String {
     let allow = |updated_permissions| Decision::Allow {
         updated_input: Cow::Borrowed(&ask.input),
         updated_permissions,

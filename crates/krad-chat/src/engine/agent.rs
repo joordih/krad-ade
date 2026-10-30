@@ -49,10 +49,6 @@ pub(crate) fn parse(arguments: &Value) -> Result<Task, String> {
     Ok(task)
 }
 
-pub(crate) fn summary(arguments: &Value) -> String {
-    parse(arguments).map_or_else(|_| String::new(), |task| task.description)
-}
-
 pub(crate) fn system(parent: &str) -> String {
     format!("{parent}{SECTION_GAP}{SUBAGENT_BRIEF}")
 }
@@ -85,7 +81,6 @@ mod tests {
             parse(&arguments).map(|task| task.prompt),
             Ok("Find every view".to_owned())
         );
-        assert_eq!(summary(&arguments), "Map the UI");
         assert!(parse(&json!({"description": "x", "prompt": " "})).is_err());
         assert!(parse(&json!({"description": "x"})).is_err());
     }
@@ -97,10 +92,12 @@ mod tests {
             .chain([questions::spec(), plan::spec(), checklist::spec(), spec()])
             .collect();
         let kept = tools(&parent);
-        assert_eq!(kept.len(), parent.len() - PARENT_ONLY.len());
-        assert!(kept
+        let dropped: Vec<&str> = parent
             .iter()
-            .all(|spec| !PARENT_ONLY.contains(&spec.name.as_ref())));
+            .filter(|spec| !kept.contains(spec))
+            .map(|spec| spec.name.as_ref())
+            .collect();
+        assert_eq!(dropped, ["ask_user", "exit_plan", "checklist", "agent"]);
         assert!(system("Base").ends_with(SUBAGENT_BRIEF));
     }
 

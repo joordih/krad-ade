@@ -4,16 +4,16 @@ use std::io;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
-use super::compact::text_of;
-use super::{Inbound, Order, Phase, Setup, Start, Worker};
-use crate::control::{AskAnswer, LiveEvent, ToolAsk};
-use crate::engine::agent::{self, Task, AGENT_LABEL, AGENT_TOOL, MAX_SUBAGENTS};
+use super::{Inbound, Phase, Setup, Start, Worker};
+use crate::control::{AskAnswer, AskKind, LiveEvent, Responder, ToolAsk};
+use crate::engine::agent::{self, Task, MAX_SUBAGENTS};
+use crate::engine::call::EngineCall;
 use crate::engine::policy::Allowed;
 use crate::engine::session::SessionFile;
 use crate::engine::subagents::{subagent_files, write_meta};
 use crate::engine::tools::Ran;
-use crate::engine::wire::Message;
-use crate::live::new_session_id;
+use crate::engine::wire::{answer_text, Message};
+use crate::live::{new_session_id, Order};
 use crate::subagents::SubagentMeta;
 
 const ASK_ID_SEPARATOR: char = '/';
@@ -23,6 +23,12 @@ pub(crate) enum SubagentNews {
     Finished(Ran),
 }
 
+struct Queued {
+    call: String,
+    task: Task,
+    row: ToolCall,
+}
+
 struct RoutedAsk {
     call: String,
     inner: String,
@@ -30,7 +36,7 @@ struct RoutedAsk {
 
 #[derive(Default)]
 pub(super) struct Subagents {
-    queued: VecDeque<(String, Task)>,
+    queued: VecDeque<Queued>,
     running: HashMap<String, Sender<Inbound>>,
     reports: HashMap<String, Ran>,
     asks: HashMap<String, RoutedAsk>,
@@ -41,14 +47,14 @@ impl Subagents {
         self.reports.remove(call)
     }
 
-    pub(super) fn route(&mut self, ask: &ToolAsk, answer: &AskAnswer) -> bool {
-        let Some(routed) = self.asks.remove(&ask.request_id) else {
+    pub(super) fn route(&mut self, call: &str, kind: &AskKind, answer: &AskAnswer) -> bool {
+        let Some(routed) = self.asks.remove(call) else {
             return false;
         };
         if let Some(orders) = self.running.get(&routed.call) {
             let inner = ToolAsk {
-                request_id: routed.inner,
-                ..ask.clone()
+                responder: Responder::Engine { call: routed.inner },
+                kind: kind.clone(),
             };
             orders
                 .send(Inbound::Order(Order::Answer(
@@ -103,7 +109,8 @@ fn run_subagent(
         | LiveEvent::Ready(_)
         | LiveEvent::Usage(_)
         | LiveEvent::Notice(_)
-        | LiveEvent::Rewound(_) => {}
+        | LiveEvent::Rewound(_)
+        | LiveEvent::Refused(_) => {}
     };
     let mut worker = Worker::subagent(start, sink, own, allowed);
     worker.run(inbox);
@@ -120,7 +127,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         let Some(Message::Assistant { blocks, .. }) = self.messages.last() else {
             return None;
         };
-        let text = text_of(blocks);
+        let text = answer_text(blocks);
         (!text.trim().is_empty()).then_some(text)
     }
 
@@ -134,14 +141,21 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         let Phase::Tools(batch) = &mut self.phase else {
             return;
         };
-        let tasks: Vec<(String, Task)> = batch
+        let workspace = &self.setup.workspace;
+        let tasks: Vec<Queued> = batch
             .calls
             .iter()
-            .filter(|call| call.name == AGENT_TOOL)
             .filter_map(|call| {
-                agent::parse(&call.arguments)
-                    .ok()
-                    .map(|task| (call.id.clone(), task))
+                let parsed = EngineCall::parse(call);
+                let row = parsed.row(&call.id, workspace);
+                match parsed {
+                    EngineCall::Agent(Ok(task)) => Some(Queued {
+                        call: call.id.clone(),
+                        task,
+                        row,
+                    }),
+                    _ => None,
+                }
             })
             .collect();
         batch.subagents.queued.extend(tasks);
@@ -156,10 +170,10 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             if batch.subagents.running.len() >= MAX_SUBAGENTS {
                 return;
             }
-            let Some((call, task)) = batch.subagents.queued.pop_front() else {
+            let Some(queued) = batch.subagents.queued.pop_front() else {
                 return;
             };
-            self.launch(call, task);
+            self.launch(queued);
         }
     }
 
@@ -181,13 +195,8 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         }
     }
 
-    fn launch(&mut self, call: String, task: Task) {
-        self.emit(ChatEvent::Tool(ToolCall {
-            id: Some(ToolUseId::from(call.as_str())),
-            name: AGENT_LABEL.to_owned(),
-            summary: task.description.clone(),
-            edit: None,
-        }));
+    fn launch(&mut self, Queued { call, task, row }: Queued) {
+        self.emit(ChatEvent::Tool(row));
         let files = subagent_files(&self.session.subagents, &call);
         let opened = SessionFile::create(&files.record, new_session_id()).and_then(|session| {
             write_meta(&files, &meta(&call, &task, false))?;
@@ -239,8 +248,11 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         }
         match news {
             SubagentNews::Asked(mut ask) => {
-                let outer = format!("{call}{ASK_ID_SEPARATOR}{}", ask.request_id);
-                let inner = std::mem::replace(&mut ask.request_id, outer.clone());
+                let Responder::Engine { call: asked } = &mut ask.responder else {
+                    return;
+                };
+                let outer = format!("{call}{ASK_ID_SEPARATOR}{asked}");
+                let inner = std::mem::replace(asked, outer.clone());
                 batch
                     .subagents
                     .asks

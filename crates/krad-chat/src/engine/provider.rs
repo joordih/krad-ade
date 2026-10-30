@@ -3,70 +3,45 @@ mod messages;
 mod responses;
 mod sse;
 
-use krad_domain::GatewayAccess;
+use krad_domain::{Effort, GatewayAccess};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::io::{BufRead, BufReader};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use thiserror::Error;
 use ureq::Agent;
 
 use super::wire::{Block, Delta, Protocol, Reply, Request};
-use sse::{Event, Events};
+use crate::gateway::{GatewayError, AUTHORIZATION, BEARER};
+pub(crate) use sse::Events;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const ERROR_BODY_LIMIT: u64 = 64 * 1024;
 const DETAIL_CHARS: usize = 300;
-const AUTHORIZATION: &str = "Authorization";
-const BEARER: &str = "Bearer";
 const ACCEPT: &str = "Accept";
 const EVENT_STREAM: &str = "text/event-stream";
-const UNAUTHORIZED: u16 = 401;
-const FORBIDDEN: u16 = 403;
-const ANTHROPIC_OWNERS: [&str; 2] = ["anthropic", "claude"];
-const OPENAI_OWNERS: [&str; 3] = ["openai", "codex", "azure-openai"];
-const ANTHROPIC_PREFIXES: [&str; 1] = ["claude"];
-const OPENAI_PREFIXES: [&str; 5] = ["gpt-", "o1", "o3", "o4", "codex"];
+pub(super) const IMAGE_DETAIL: &str = "auto";
 
-#[derive(Debug, Error)]
-pub(crate) enum ProviderError {
-    #[error("the Gateway rejected the key")]
-    Rejected,
-    #[error("the Gateway answered with status {code}: {detail}")]
-    Status { code: u16, detail: String },
-    #[error("the Gateway could not be reached: {0}")]
-    Unreachable(String),
-    #[error("the Gateway sent an answer that could not be read: {0}")]
-    Unreadable(String),
-    #[error("the model stopped with an error: {0}")]
-    Failed(String),
-    #[error("the answer was stopped")]
-    Cancelled,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ReasoningEffort {
+    Low,
+    Medium,
+    High,
 }
 
-impl From<ureq::Error> for ProviderError {
-    fn from(error: ureq::Error) -> Self {
-        match error {
-            ureq::Error::StatusCode(UNAUTHORIZED | FORBIDDEN) => Self::Rejected,
-            ureq::Error::StatusCode(code) => Self::Status {
-                code,
-                detail: String::new(),
-            },
-            error => Self::Unreachable(error.to_string()),
+impl From<Effort> for ReasoningEffort {
+    fn from(effort: Effort) -> Self {
+        match effort {
+            Effort::Low => Self::Low,
+            Effort::Medium => Self::Medium,
+            Effort::High | Effort::ExtraHigh | Effort::Max => Self::High,
         }
     }
 }
 
-impl From<serde_json::Error> for ProviderError {
-    fn from(error: serde_json::Error) -> Self {
-        Self::Unreadable(error.to_string())
-    }
-}
-
 pub(crate) trait Parse {
-    fn feed(&mut self, event: &Event, on_delta: &mut dyn FnMut(Delta))
-        -> Result<(), ProviderError>;
+    fn feed(&mut self, data: &str, on_delta: &mut dyn FnMut(Delta)) -> Result<(), GatewayError>;
 
     fn finish(self) -> Reply;
 }
@@ -102,11 +77,11 @@ fn detail_of(text: &str) -> String {
     }
 }
 
-fn status_error(code: u16, body: &str) -> ProviderError {
-    if matches!(code, UNAUTHORIZED | FORBIDDEN) && error_message(body).is_none() {
-        return ProviderError::Rejected;
+fn status_error(code: u16, body: &str) -> GatewayError {
+    if GatewayError::rejects(code) && error_message(body).is_none() {
+        return GatewayError::Rejected;
     }
-    ProviderError::Status {
+    GatewayError::Status {
         code,
         detail: detail_of(body),
     }
@@ -132,47 +107,21 @@ pub(crate) fn object_arguments(json: &str) -> Value {
     }
 }
 
-fn owned_by(owner: &str, known: &[&str]) -> bool {
-    known.iter().any(|name| owner.eq_ignore_ascii_case(name))
-}
-
-fn named_like(model: &str, prefixes: &[&str]) -> bool {
-    let model = model.to_ascii_lowercase();
-    prefixes.iter().any(|prefix| model.starts_with(prefix))
-}
-
-pub(crate) fn protocol_for(owner: Option<&str>, model: &str) -> Protocol {
-    let owner = owner.map(str::trim).filter(|owner| !owner.is_empty());
-    let known = |owners: &[&str], prefixes: &[&str]| {
-        owner.map_or_else(
-            || named_like(model, prefixes),
-            |owner| owned_by(owner, owners),
-        )
-    };
-    if known(&ANTHROPIC_OWNERS, &ANTHROPIC_PREFIXES) {
-        Protocol::Messages
-    } else if known(&OPENAI_OWNERS, &OPENAI_PREFIXES) {
-        Protocol::Responses
-    } else {
-        Protocol::Completions
-    }
-}
-
 pub(crate) fn read_stream<P: Parse>(
     reader: impl BufRead,
     mut parser: P,
     cancel: &AtomicBool,
     on_delta: &mut dyn FnMut(Delta),
-) -> Result<Reply, ProviderError> {
-    for event in Events::new(reader) {
+) -> Result<Reply, GatewayError> {
+    for data in Events::new(reader) {
         if cancel.load(Ordering::SeqCst) {
-            return Err(ProviderError::Cancelled);
+            return Err(GatewayError::Cancelled);
         }
-        let event = event.map_err(|error| ProviderError::Unreachable(error.to_string()))?;
-        parser.feed(&event, on_delta)?;
+        let data = data.map_err(|error| GatewayError::Unreachable(error.to_string()))?;
+        parser.feed(&data, on_delta)?;
     }
     if cancel.load(Ordering::SeqCst) {
-        return Err(ProviderError::Cancelled);
+        return Err(GatewayError::Cancelled);
     }
     Ok(parser.finish())
 }
@@ -185,7 +134,7 @@ fn post<B: Serialize, P: Parse>(
     parser: P,
     cancel: &AtomicBool,
     on_delta: &mut dyn FnMut(Delta),
-) -> Result<Reply, ProviderError> {
+) -> Result<Reply, GatewayError> {
     let agent: Agent = Agent::config_builder()
         .timeout_connect(Some(CONNECT_TIMEOUT))
         .http_status_as_error(false)
@@ -219,7 +168,7 @@ pub(crate) fn stream(
     request: &Request<'_>,
     cancel: &AtomicBool,
     on_delta: &mut dyn FnMut(Delta),
-) -> Result<Reply, ProviderError> {
+) -> Result<Reply, GatewayError> {
     match protocol {
         Protocol::Messages => post(
             access,

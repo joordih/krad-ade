@@ -1,10 +1,11 @@
 use serde_json::Value;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::time::Duration;
 use ureq::{Agent, Body};
 
 use super::protocol::{notification_line, request_line, Incoming, Received, PROTOCOL_VERSION};
 use super::McpError;
+use crate::engine::provider::Events;
 
 const CONTENT_TYPE: &str = "Content-Type";
 const ACCEPT: &str = "Accept";
@@ -16,10 +17,6 @@ const VERSION_HEADER: &str = "MCP-Protocol-Version";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const CLOSE_TIMEOUT: Duration = Duration::from_secs(2);
 const ERROR_BODY_LIMIT: u64 = 4096;
-const DATA_FIELD: &str = "data:";
-const DATA_JOINER: char = '\n';
-const VALUE_LEAD: char = ' ';
-const CARRIAGE_RETURN: char = '\r';
 
 pub(super) struct HttpLink {
     agent: Agent,
@@ -30,33 +27,7 @@ pub(super) struct HttpLink {
 }
 
 fn data_events(body: Body) -> impl Iterator<Item = String> {
-    let mut lines = BufReader::new(body.into_reader()).lines();
-    std::iter::from_fn(move || {
-        let mut data: Option<String> = None;
-        loop {
-            let Some(Ok(line)) = lines.next() else {
-                return data;
-            };
-            let line = line.trim_end_matches(CARRIAGE_RETURN);
-            if line.is_empty() {
-                if data.is_some() {
-                    return data;
-                }
-                continue;
-            }
-            let Some(value) = line.strip_prefix(DATA_FIELD) else {
-                continue;
-            };
-            let value = value.strip_prefix(VALUE_LEAD).unwrap_or(value);
-            match data.as_mut() {
-                Some(joined) => {
-                    joined.push(DATA_JOINER);
-                    joined.push_str(value);
-                }
-                None => data = Some(value.to_owned()),
-            }
-        }
-    })
+    Events::new(BufReader::new(body.into_reader())).map_while(Result::ok)
 }
 
 fn reply_in(messages: impl Iterator<Item = Incoming>, id: u64) -> Result<Value, McpError> {

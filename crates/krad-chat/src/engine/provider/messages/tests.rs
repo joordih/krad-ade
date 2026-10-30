@@ -2,8 +2,8 @@ use super::*;
 use crate::engine::provider::tests::{
     conversation, parse, pictured, read_tool, request, GONE_NOTE,
 };
-use crate::engine::provider::ProviderError;
 use crate::engine::wire::{Call, Delta, Stop, Usage};
+use crate::gateway::GatewayError;
 use serde_json::json;
 
 const STREAM: &str = r#"event: message_start
@@ -109,7 +109,7 @@ data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}
     let failed = r#"data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}
 "#;
     let (reply, _) = parse(Parser::default(), failed);
-    assert!(matches!(reply, Err(ProviderError::Failed(message)) if message == "Overloaded"));
+    assert!(matches!(reply, Err(GatewayError::Failed(message)) if message == "Overloaded"));
 }
 
 #[test]
@@ -176,18 +176,36 @@ fn a_summary_after_compaction_and_empty_turns_keep_roles_alternating() -> serde_
 }
 
 #[test]
-fn effort_turns_thinking_on_with_room_left_for_the_answer() -> serde_json::Result<()> {
+fn thinking_fits_inside_the_output_cap_and_grows_with_effort() -> serde_json::Result<()> {
+    const CAP: u64 = 32_768;
     let messages = [Message::user("hi".to_owned())];
-    let thinking = Request {
-        effort: Some(Effort::High),
+    let mut budgets = Vec::new();
+    for effort in Effort::ALL {
+        let thinking = Request {
+            effort: Some(effort),
+            max_tokens: CAP,
+            ..request(&messages, &[])
+        };
+        let sent = serde_json::to_value(body(&thinking))?;
+        assert_eq!(sent["max_tokens"], json!(CAP), "{effort:?}");
+        let budget = sent["thinking"]["budget_tokens"]
+            .as_u64()
+            .unwrap_or_default();
+        assert!(budget + ANSWER_ROOM <= CAP, "{effort:?}: {budget}");
+        budgets.push(budget);
+    }
+    assert!(
+        budgets.windows(2).all(|pair| pair[0] < pair[1]),
+        "{budgets:?}"
+    );
+    let tight = Request {
+        effort: Some(Effort::Max),
+        max_tokens: ANSWER_ROOM,
         ..request(&messages, &[])
     };
-    let sent = serde_json::to_value(body(&thinking))?;
-    assert_eq!(
-        sent["thinking"],
-        json!({"type": "enabled", "budget_tokens": HIGH_BUDGET})
-    );
-    assert_eq!(sent["max_tokens"], json!(HIGH_BUDGET + ANSWER_ROOM));
+    let sent = serde_json::to_value(body(&tight))?;
+    assert_eq!(sent["thinking"], json!(null));
+    assert_eq!(sent["max_tokens"], json!(ANSWER_ROOM));
     Ok(())
 }
 

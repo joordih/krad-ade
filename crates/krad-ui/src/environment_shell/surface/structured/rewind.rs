@@ -1,8 +1,6 @@
 use gpui_kit::{AppContext as _, Context};
-use krad_chat::{
-    LiveSession, RewindError, RewindRequest, RewindScope, Rewound, DROPS_TURN_REFUSED,
-};
-use krad_domain::{AgentPreset, AgentState, EnvironmentName, Prompt, TerminalId};
+use krad_chat::{LiveSession, RewindError, RewindRequest, RewindScope, Rewound};
+use krad_domain::{AgentState, EnvironmentName, Prompt, TerminalId};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
@@ -44,12 +42,12 @@ impl StructuredChat {
         self.rewinding.is_some()
     }
 
-    pub(super) fn drops_turn_again(&mut self, error: &str) -> Option<Batch> {
+    pub(super) fn drops_turn_again(&mut self) -> Option<Batch> {
         let confirmed = self.live.as_ref().is_some_and(|live| live.confirmed);
         let LiveSession::Cut(cut) = &mut self.session else {
             return None;
         };
-        if confirmed || !error.contains(DROPS_TURN_REFUSED) {
+        if confirmed {
             return None;
         }
         cut.drops.take()?;
@@ -93,7 +91,7 @@ impl EnvironmentShell {
             scope,
             home: None,
         };
-        if harness != AgentPreset::ClaudeCode {
+        if !harness.rewinds_from_home() {
             return self.hand_rewind(env, id, request);
         }
         let root = self
@@ -168,9 +166,7 @@ mod tests {
         ChatMessage {
             speaker,
             text: text.to_owned(),
-            tools: Vec::new(),
             parts: Vec::new(),
-            preset: AgentPreset::Gateway,
             error: None,
             running: false,
             mentions: Vec::new(),

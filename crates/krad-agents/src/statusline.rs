@@ -1,5 +1,6 @@
 use crate::hook::{read_stdin, send};
 use crate::protocol::{AgentStatus, Request};
+use krad_domain::AgentPreset;
 use serde_json::Value;
 use std::io::Write as _;
 
@@ -14,11 +15,14 @@ const SEVEN_DAY_USED: &str = "/rate_limits/seven_day/used_percentage";
 const USER_COMMAND: &str = "/statusLine/command";
 
 #[must_use]
-pub fn run_status_line(args: &[String]) -> i32 {
+pub fn run_status_line(harness: AgentPreset, args: &[String]) -> i32 {
+    if harness != AgentPreset::ClaudeCode {
+        return EXIT_OK;
+    }
     if let Some(status) = read_stdin().and_then(|payload| claude_status(&payload)) {
         send(Request::Status(status));
     }
-    if let Some(command) = args.get(1).and_then(|settings| user_command(settings)) {
+    if let Some(command) = args.first().and_then(|settings| user_command(settings)) {
         std::io::stdout()
             .write_all(command.as_bytes())
             .unwrap_or_default();

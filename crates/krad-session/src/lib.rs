@@ -1,12 +1,11 @@
 pub use krad_pty::{
-    clear_screen_prefix, default_shell, find_program, log_spammer, login_shell_env, wsl_shell,
-    wsl_shell_in, GridSize, PtyInput, SharedKiller, SHELL_QUOTING,
+    clear_screen_prefix, default_shell, find_program, login_shell_env, wsl_shell, wsl_shell_in,
+    GridSize, PtyInput, SharedKiller, DEFAULT_COLS, DEFAULT_ROWS, SHELL_QUOTING,
 };
 pub use krad_term::{
-    block, AnsiPalette, Block, CellPixels, CellPoint, CellRect, CursorShape, EngineError,
-    ImageDepth, ImagePixels, KeyModifiers, MouseAction, SearchDirection, SourceRect, SpanStyle,
-    TermCursor, TermImage, TermRow, TermSpan, VtEngine, WheelInput, ANSI_COLORS, CELL_STEPS,
-    ENGINE_COLS, ENGINE_ROWS, XTERM_PALETTE,
+    block, AnsiPalette, Block, CellPixels, CellPoint, CellRect, CursorShape, ImageDepth,
+    ImagePixels, KeyModifiers, MouseAction, SearchDirection, SpanStyle, TermCursor, TermImage,
+    TermRow, TermSpan, VtEngine, WheelInput, ANSI_COLORS, CELL_STEPS, XTERM_PALETTE,
 };
 
 use futures::channel::mpsc::{channel, Receiver as PumpReceiver, Sender as PumpSender};
@@ -135,23 +134,13 @@ pub fn run_spawn_job(job: SpawnJob) {
     } = job;
     let mut pump = pump;
     let cwd_text = cwd.as_ref().map(|path| path.to_string_lossy().into_owned());
-    let cols = if let Ok(cols) = u16::try_from(ENGINE_COLS) {
-        cols
-    } else {
-        krad_pty::DEFAULT_COLS
-    };
-    let rows = if let Ok(rows) = u16::try_from(ENGINE_ROWS) {
-        rows
-    } else {
-        krad_pty::DEFAULT_ROWS
-    };
     let request = SpawnRequest {
         program,
         args,
         cwd,
         env: vars,
-        cols,
-        rows,
+        cols: DEFAULT_COLS,
+        rows: DEFAULT_ROWS,
     };
     let spawned = match spawn_pty(&request) {
         Ok(spawned) => spawned,
@@ -229,7 +218,7 @@ mod tests {
     fn session(state: SessionState) -> LiveSession {
         let (writer_tx, _writer_rx) = std::sync::mpsc::channel();
         LiveSession {
-            engine: VtEngine::new(ENGINE_COLS, ENGINE_ROWS)
+            engine: VtEngine::new(DEFAULT_COLS.into(), DEFAULT_ROWS.into())
                 .unwrap_or_else(|error| unreachable!("{error}")),
             writer_tx,
             killer: None,

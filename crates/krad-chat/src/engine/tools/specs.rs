@@ -16,7 +16,7 @@ const SHELL_DESCRIPTION: &str = "Run a shell command in the working folder and r
 const SHELL_OUTPUT_DESCRIPTION: &str = "Read the new output of a background shell since the last read, and whether it is still running or its exit code.";
 const SHELL_STOP_DESCRIPTION: &str =
     "Stop a background shell and everything it started, returning its last output.";
-const WEB_FETCH_DESCRIPTION: &str = "Fetch a web page over http or https and return it as readable text, with links as text (url). Use it to read documentation, issues or pages the user mentions. Redirects to another host are reported, not followed.";
+const WEB_FETCH_DESCRIPTION: &str = "Fetch a web page over http or https and return it as readable text, with links as text (url). Use it to read documentation, issues or pages the user mentions. With prompt, a separate model request reads the page and only its answer to the prompt comes back, which saves context on long pages. Redirects to another host are reported, not followed.";
 const WEB_SEARCH_DESCRIPTION: &str = "Search the web and return an answer with its source links. Use it for current information, such as library versions, release notes or error messages, then fetch a source with web_fetch to read it in full.";
 
 pub(crate) fn specs() -> Vec<ToolSpec> {
@@ -159,7 +159,7 @@ fn web_specs() -> Vec<ToolSpec> {
                 "type": "object",
                 "properties": {
                     "url": {"type": "string", "description": "The http or https address of the page"},
-                    "prompt": {"type": "string", "description": "What to look for in the page"}
+                    "prompt": {"type": "string", "description": "What to find in the page. When given, the result is a model's answer drawn from the page instead of the whole page; leave it out to read the page itself"}
                 },
                 "required": ["url"]
             }),

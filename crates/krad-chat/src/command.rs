@@ -1,7 +1,6 @@
-use krad_domain::{AgentPreset, ResumeId};
-use std::fmt;
+use krad_domain::{AgentPreset, ModelDelivery};
 
-use crate::live::LiveConfig;
+use crate::live::{LiveConfig, LiveSession};
 use crate::rewind::ResumeCut;
 
 const LIVE_CLAUDE_ARGS: &[&str] = &[
@@ -21,36 +20,6 @@ const CLAUDE_RESUME_AT: &str = "--resume-session-at";
 const CLAUDE_DROPS_TURN: &str = "--resume-drops-turn";
 const FLAG_VALUE_SEPARATOR: char = '=';
 
-#[derive(Clone, Default, PartialEq, Eq)]
-pub struct BusVars(pub Vec<(String, String)>);
-
-impl fmt::Debug for BusVars {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_list()
-            .entries(self.0.iter().map(|(name, _)| name))
-            .finish()
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum LiveSession {
-    Start(ResumeId),
-    Resume(ResumeId),
-    Fork(ResumeId),
-    Cut(ResumeCut),
-}
-
-impl LiveSession {
-    #[must_use]
-    pub const fn history(&self) -> Option<&ResumeId> {
-        match self {
-            Self::Start(_) => None,
-            Self::Resume(id) | Self::Fork(id) | Self::Cut(ResumeCut { from: id, .. }) => Some(id),
-        }
-    }
-}
-
 #[must_use]
 pub(crate) fn live_chat_command(config: &LiveConfig, session: &LiveSession) -> Vec<String> {
     let claude = AgentPreset::ClaudeCode;
@@ -58,7 +27,8 @@ pub(crate) fn live_chat_command(config: &LiveConfig, session: &LiveSession) -> V
         .iter()
         .map(|arg| (*arg).to_owned())
         .collect();
-    if let (Some(model), Some(flag)) = (&config.model, claude.model_flag()) {
+    if let (Some(model), Some(ModelDelivery::Flag(flag))) = (&config.model, claude.model_delivery())
+    {
         args.extend([flag.to_owned(), model.as_str().to_owned()]);
     }
     let (flag, id) = match session {

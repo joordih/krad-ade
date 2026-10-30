@@ -4,11 +4,9 @@ use krad_domain::{ResumeId, RewindId, RewindPoint, RewindScope};
 use std::path::PathBuf;
 use thiserror::Error;
 
-use crate::command::LiveSession;
+use crate::live::LiveSession;
 
 pub(crate) use claude::{files_reply, transcript_cut};
-
-pub const DROPS_TURN_REFUSED: &str = "Resume rejected by --resume-drops-turn";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RewindRequest {

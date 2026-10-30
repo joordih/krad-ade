@@ -1,5 +1,4 @@
 mod chat_images;
-mod chat_log;
 mod config_dir;
 mod gateway_key;
 mod github_login;
@@ -10,8 +9,7 @@ mod settings;
 mod vault;
 
 pub use chat_images::{chat_images_dir, delete_chat_images, save_pasted_image, ChatImageError};
-pub use chat_log::{read_latest_chat, ChatLogWriter, StoredChat};
-pub use config_dir::{config_dir, gateway_sessions_dir, opencode_config_dir, APP_NAME};
+pub use config_dir::{config_dir, gateway_sessions_dir, APP_NAME};
 pub use gateway_key::{delete_gateway_key, find_gateway_key, write_gateway_key};
 pub use github_login::{
     delete_github_login, find_github_login, read_github_login, write_github_login,

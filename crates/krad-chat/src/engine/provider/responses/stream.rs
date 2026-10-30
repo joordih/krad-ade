@@ -1,8 +1,8 @@
 use serde::Deserialize;
 
-use super::super::sse::Event;
-use super::super::{error_message, object_arguments, push_text, Parse, ProviderError};
+use super::super::{error_message, object_arguments, push_text, Parse};
 use crate::engine::wire::{Block, Call, Delta, Protocol, Reply, Source, Stop, Usage};
+use crate::gateway::GatewayError;
 
 const LENGTH_REASON: &str = "max_output_tokens";
 const SUMMARY_JOINER: &str = "\n\n";
@@ -205,25 +205,19 @@ impl Parser {
 }
 
 impl Parse for Parser {
-    fn feed(
-        &mut self,
-        event: &Event,
-        on_delta: &mut dyn FnMut(Delta),
-    ) -> Result<(), ProviderError> {
-        match serde_json::from_str::<Streamed>(&event.data)? {
+    fn feed(&mut self, data: &str, on_delta: &mut dyn FnMut(Delta)) -> Result<(), GatewayError> {
+        match serde_json::from_str::<Streamed>(data)? {
             Streamed::TextDelta { delta } => on_delta(Delta::Text(delta)),
             Streamed::ReasoningDelta { delta } => on_delta(Delta::Thinking(delta)),
             Streamed::ItemDone { item } => self.take_item(item),
             Streamed::Completed { response } => self.take_finish(response),
             Streamed::Failed { response } => {
                 let message = response.error.and_then(|failure| failure.message);
-                return Err(ProviderError::Failed(message.unwrap_or_default()));
+                return Err(GatewayError::Failed(message.unwrap_or_default()));
             }
             Streamed::Error { message } => {
-                return Err(ProviderError::Failed(
-                    message
-                        .or_else(|| error_message(&event.data))
-                        .unwrap_or_default(),
+                return Err(GatewayError::Failed(
+                    message.or_else(|| error_message(data)).unwrap_or_default(),
                 ));
             }
             Streamed::Other => {}

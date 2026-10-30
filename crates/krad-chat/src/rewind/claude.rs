@@ -3,9 +3,9 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::{ResumeCut, RewindError};
-use crate::command::LiveSession;
 use crate::history::is_prompt;
 use crate::live::new_session_id;
+use crate::live::LiveSession;
 
 const UUID_KEY: &str = "uuid";
 const PARENT_KEY: &str = "parentUuid";

@@ -5,26 +5,6 @@ const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const TOO_LARGE_TEXT: &str = "This file is larger than 2 MB, too large to edit here.";
 const NOT_TEXT_TEXT: &str = "This file is not UTF-8 text.";
 
-pub(super) fn language_for(path: &Path) -> Option<&'static str> {
-    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
-    let language = match extension.as_str() {
-        "rs" => "rust",
-        "toml" => "toml",
-        "md" | "markdown" => "markdown",
-        "json" => "json",
-        "js" | "mjs" | "cjs" | "jsx" => "javascript",
-        "ts" | "mts" | "cts" => "typescript",
-        "tsx" => "tsx",
-        "html" | "htm" => "html",
-        "css" => "css",
-        "py" => "python",
-        "sh" | "bash" | "zsh" => "bash",
-        "yaml" | "yml" => "yaml",
-        _ => return None,
-    };
-    Some(language)
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum DiskChange {
     Unchanged,
@@ -89,15 +69,6 @@ pub(super) fn modified_at(path: &Path) -> Option<SystemTime> {
 mod tests {
     use super::*;
     use std::time::Duration;
-
-    #[test]
-    fn languages_follow_the_extension() {
-        assert_eq!(language_for(Path::new("src/main.rs")), Some("rust"));
-        assert_eq!(language_for(Path::new("Cargo.TOML")), Some("toml"));
-        assert_eq!(language_for(Path::new("app.tsx")), Some("tsx"));
-        assert_eq!(language_for(Path::new("notes.txt")), None);
-        assert_eq!(language_for(Path::new("Makefile")), None);
-    }
 
     #[test]
     fn the_disk_reloads_a_clean_tab_and_asks_about_a_dirty_one() {

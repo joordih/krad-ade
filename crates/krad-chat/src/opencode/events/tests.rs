@@ -14,7 +14,8 @@ fn chat(events: Vec<LiveEvent>) -> Vec<ChatEvent> {
             | LiveEvent::Ready(_)
             | LiveEvent::Usage(_)
             | LiveEvent::Notice(_)
-            | LiveEvent::Rewound(_) => None,
+            | LiveEvent::Rewound(_)
+            | LiveEvent::Refused(_) => None,
         })
         .collect()
 }
@@ -45,6 +46,7 @@ fn a_turn_becomes_text_tools_usage_and_its_end() {
             ChatEvent::Tool(ToolCall {
                 id: Some(ToolUseId::from("call_1")),
                 name: "Bash".to_owned(),
+                kind: krad_domain::ToolKind::Shell,
                 summary: "git status".to_owned(),
                 edit: None,
             }),

@@ -7,8 +7,8 @@ mod rewind;
 
 use gpui_kit::Context;
 use krad_chat::{
-    is_missing_conversation, new_session_id, Catalog, ChatEvent, LiveChat, LiveEvent, LiveSession,
-    PlanUsage, SlashCommand,
+    new_session_id, Catalog, ChatEvent, LiveChat, LiveEvent, LiveSession, PlanUsage, ResumeRefused,
+    SlashCommand,
 };
 use krad_domain::{
     AgentPreset, AgentState, ChatEntry, Effort, EnvironmentName, ModelId, PermissionMode, Prompt,
@@ -178,16 +178,19 @@ impl StructuredChat {
         true
     }
 
-    fn falls_back(&mut self, error: &str) -> Option<Batch> {
+    fn retries(&mut self, refused: &ResumeRefused) -> Option<Batch> {
+        match refused {
+            ResumeRefused::MissingConversation(_) => self.falls_back(),
+            ResumeRefused::TurnNotDropped(_) => self.drops_turn_again(),
+        }
+    }
+
+    fn falls_back(&mut self) -> Option<Batch> {
         let reported = self
             .live
             .as_ref()
             .is_some_and(|live| live.confirmed || live.chat.is_alive());
-        if self.fell_back
-            || reported
-            || self.session.history().is_none()
-            || !is_missing_conversation(error)
-        {
+        if self.fell_back || reported || self.session.history().is_none() {
             return None;
         }
         self.fell_back = true;
@@ -268,6 +271,13 @@ impl EnvironmentShell {
         };
         let followed = view::following(thread);
         let mut state = None;
+        let (event, refused) = match event {
+            LiveEvent::Refused(refused) => (
+                LiveEvent::Chat(ChatEvent::Error(refused.to_string())),
+                Some(refused),
+            ),
+            event => (event, None),
+        };
         match event {
             LiveEvent::Ready(catalog) => {
                 let harness = structured.harness;
@@ -302,15 +312,11 @@ impl EnvironmentShell {
             LiveEvent::Chat(ChatEvent::ContextWindow(window)) => {
                 structured.context_window = Some(window);
             }
+            LiveEvent::Refused(_) => {}
             LiveEvent::Chat(event @ (ChatEvent::Done | ChatEvent::Error(_))) => {
-                if let ChatEvent::Error(error) = &event {
-                    let again = structured
-                        .drops_turn_again(error)
-                        .or_else(|| structured.falls_back(error));
-                    if let Some(batch) = again {
-                        self.hand_over_again(env, id, batch, event, cx);
-                        return;
-                    }
+                if let Some(batch) = refused.and_then(|refused| structured.retries(&refused)) {
+                    self.hand_over_again(env, id, batch, event, cx);
+                    return;
                 }
                 let ended = structured.live().is_none();
                 if structured.closes_turn(ended) {

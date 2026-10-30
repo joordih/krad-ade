@@ -3,7 +3,7 @@ use krad_chat::{
     claude_conversation_file, claude_subagents, engine_subagents, read_engine_subagent,
     read_subagent_meta, read_subagent_record, SubagentFiles, SubagentMeta, TranscriptChunk,
 };
-use krad_domain::{AgentPreset, EnvironmentName, ResumeId, TerminalId, ToolUseId};
+use krad_domain::{AgentPreset, EnvironmentName, ResumeId, TerminalId, ToolKind, ToolUseId};
 use krad_store::gateway_sessions_dir;
 use std::collections::HashMap;
 use std::io;
@@ -12,7 +12,6 @@ use std::time::Duration;
 
 use super::super::chat::{fold_entry, workplace_home, AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
-use super::answer::is_agent_tool;
 use super::view::{at_bottom, following};
 use super::SurfaceChat;
 
@@ -152,7 +151,7 @@ fn agent_calls(messages: &[ChatMessage]) -> impl Iterator<Item = &ToolUseId> {
         .iter()
         .flat_map(|message| &message.parts)
         .filter_map(|part| match part {
-            AnswerPart::Tool(call) if is_agent_tool(&call.name) => call.id.as_ref(),
+            AnswerPart::Tool(call) if call.kind == ToolKind::Subagent => call.id.as_ref(),
             _ => None,
         })
 }
@@ -220,20 +219,22 @@ impl EnvironmentShell {
         let (true, Some(resume)) = (following, resume) else {
             return Look::Idle;
         };
-        let source = if chat.harness() == AgentPreset::Gateway {
-            let Some(sessions) = gateway_sessions_dir() else {
-                return Look::Idle;
-            };
-            SubagentSource::Gateway {
-                sessions,
-                cwd: self.chat_folder(env, id),
+        let source = match chat.harness() {
+            AgentPreset::Gateway => {
+                let Some(sessions) = gateway_sessions_dir() else {
+                    return Look::Idle;
+                };
+                SubagentSource::Gateway {
+                    sessions,
+                    cwd: self.chat_folder(env, id),
+                }
             }
-        } else {
-            SubagentSource::Claude {
+            AgentPreset::ClaudeCode => SubagentSource::Claude {
                 root: live.data.group_of(id).map(|group| group.root.clone()),
                 home: subagents.home.clone(),
                 conversation: subagents.conversation.clone(),
-            }
+            },
+            AgentPreset::Codex | AgentPreset::Opencode | AgentPreset::Shell => return Look::Idle,
         };
         Look::Read(SubagentJob {
             resume,
@@ -363,6 +364,7 @@ mod tests {
                 &ChatEntry::Event(ChatEvent::Tool(ToolCall {
                     id: Some(ToolUseId::from(*id)),
                     name: (*name).to_owned(),
+                    kind: ToolKind::of_claude_code(name),
                     summary: String::new(),
                     edit: None,
                 })),

@@ -1,6 +1,5 @@
 mod activity;
 mod agent_bus;
-mod agent_choices;
 mod agent_composer;
 mod agent_hooks;
 mod arcade;
@@ -202,7 +201,7 @@ pub struct EnvironmentShell {
     agent_bus: Option<agent_bus::AgentBus>,
     opencode: opencode::Opencode,
     gateway: gateway::Gateway,
-    harness_models: harness_models::HarnessModels,
+    listed_models: harness_models::ListedModels,
     account_usage: surface::AccountUsage,
     context_menu: Option<context_menu::ContextMenu>,
     model_picker: Option<model_picker::ModelPicker>,
@@ -301,7 +300,7 @@ impl EnvironmentShell {
             agent_bus: None,
             opencode: opencode::Opencode::default(),
             gateway: gateway::Gateway::default(),
-            harness_models: harness_models::HarnessModels::default(),
+            listed_models: harness_models::ListedModels::default(),
             account_usage: surface::AccountUsage::default(),
             context_menu: None,
             model_picker: None,
@@ -316,7 +315,6 @@ impl EnvironmentShell {
         };
         shell.start_agent_bus(cx);
         shell.check_gateway(cx);
-        Self::restore_chat(cx);
         match seed {
             Some(snapshot) => shell.restore_snapshot(snapshot),
             None => shell.restore_env(EnvironmentData::empty(EnvironmentName::new(

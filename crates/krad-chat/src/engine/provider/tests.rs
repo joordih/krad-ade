@@ -37,7 +37,6 @@ pub(super) fn conversation(thinking: Protocol) -> Vec<Message> {
         Message::Results {
             outcomes: vec![Outcome {
                 call: "c1".to_owned(),
-                name: "read".to_owned(),
                 content: "fn a() {}".to_owned(),
                 failed: false,
             }],
@@ -91,7 +90,7 @@ pub(super) const GONE_NOTE: &str = "[The image /nowhere/gone.png could not be re
 pub(super) fn parse<P: Parse>(
     parser: P,
     stream: &str,
-) -> (Result<Reply, ProviderError>, Vec<Delta>) {
+) -> (Result<Reply, GatewayError>, Vec<Delta>) {
     let mut deltas = Vec::new();
     let reply = read_stream(
         io::Cursor::new(stream.to_owned()),
@@ -168,7 +167,7 @@ fn joined(server: JoinHandle<io::Result<Served>>) -> io::Result<Served> {
         .unwrap_or_else(|_| unreachable!("the test server does not panic"))
 }
 
-fn ask(url: &str, protocol: Protocol) -> (Result<Reply, ProviderError>, Vec<Delta>) {
+fn ask(url: &str, protocol: Protocol) -> (Result<Reply, GatewayError>, Vec<Delta>) {
     let messages = [Message::user("hi".to_owned())];
     let mut deltas = Vec::new();
     let reply = stream(
@@ -233,7 +232,7 @@ fn a_rejected_key_and_a_failing_gateway_are_told_apart() -> io::Result<()> {
     let (url, server) = serve_once("401 Unauthorized", "{}")?;
     let (rejected, _) = ask(&url, Protocol::Completions);
     joined(server)?;
-    assert!(matches!(rejected, Err(ProviderError::Rejected)));
+    assert!(matches!(rejected, Err(GatewayError::Rejected)));
     assert!(rejected.is_err_and(|error| !error.to_string().contains(KEY)));
     let (url, server) = serve_once(
         "403 Forbidden",
@@ -242,7 +241,7 @@ fn a_rejected_key_and_a_failing_gateway_are_told_apart() -> io::Result<()> {
     let (upstream, _) = ask(&url, Protocol::Completions);
     joined(server)?;
     assert!(
-        matches!(&upstream, Err(ProviderError::Status { code: 403, detail }) if detail == "client_attestation_denied"),
+        matches!(&upstream, Err(GatewayError::Status { code: 403, detail }) if detail == "client_attestation_denied"),
         "an account behind the Gateway refusing is not the key: {upstream:?}"
     );
     let (url, server) = serve_once(
@@ -252,7 +251,7 @@ fn a_rejected_key_and_a_failing_gateway_are_told_apart() -> io::Result<()> {
     let (failed, _) = ask(&url, Protocol::Messages);
     joined(server)?;
     assert!(
-        matches!(&failed, Err(ProviderError::Status { code: 503, detail }) if detail == "no account left"),
+        matches!(&failed, Err(GatewayError::Status { code: 503, detail }) if detail == "no account left"),
         "{failed:?}"
     );
     Ok(())
@@ -265,7 +264,7 @@ fn a_gateway_that_is_not_running_is_unreachable() -> io::Result<()> {
     drop(listener);
     let (reply, _) = ask(&url, Protocol::Responses);
     assert!(
-        matches!(reply, Err(ProviderError::Unreachable(_))),
+        matches!(reply, Err(GatewayError::Unreachable(_))),
         "{reply:?}"
     );
     Ok(())
@@ -283,21 +282,31 @@ fn a_stopped_answer_ends_as_cancelled() {
         );
         (reply, deltas)
     };
-    assert!(matches!(reply, Err(ProviderError::Cancelled)));
+    assert!(matches!(reply, Err(GatewayError::Cancelled)));
 }
 
 #[test]
-fn the_protocol_follows_the_owner_then_the_model_name() {
-    assert_eq!(protocol_for(Some("anthropic"), "x"), Protocol::Messages);
-    assert_eq!(protocol_for(Some("OpenAI"), "x"), Protocol::Responses);
-    assert_eq!(protocol_for(Some("codex"), "x"), Protocol::Responses);
+fn only_what_a_protocol_offers_reaches_its_reasoning_effort() {
+    let sent: Vec<ReasoningEffort> = Protocol::Responses
+        .efforts()
+        .iter()
+        .copied()
+        .map(ReasoningEffort::from)
+        .collect();
     assert_eq!(
-        protocol_for(Some("google"), "claude-x"),
-        Protocol::Completions
+        sent,
+        [
+            ReasoningEffort::Low,
+            ReasoningEffort::Medium,
+            ReasoningEffort::High
+        ]
     );
-    assert_eq!(protocol_for(None, "claude-sonnet-5-5"), Protocol::Messages);
-    assert_eq!(protocol_for(Some(" "), "gpt-6-astra"), Protocol::Responses);
-    assert_eq!(protocol_for(None, "gemini-3-pro"), Protocol::Completions);
+    assert_eq!(
+        Protocol::Completions.efforts(),
+        Protocol::Responses.efforts()
+    );
+    assert_eq!(Protocol::Messages.efforts(), Effort::ALL);
+    assert_eq!(ReasoningEffort::from(Effort::Max), ReasoningEffort::High);
 }
 
 #[test]

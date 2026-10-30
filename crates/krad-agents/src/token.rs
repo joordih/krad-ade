@@ -1,18 +1,16 @@
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hash, Hasher};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 use crate::protocol::BusToken;
 
 #[must_use]
 pub fn new_token() -> BusToken {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or_default(|elapsed| elapsed.as_nanos());
+    let now = Instant::now();
     let halves = [RandomState::new(), RandomState::new()].map(|state| {
         let mut hasher = state.build_hasher();
         std::process::id().hash(&mut hasher);
-        nanos.hash(&mut hasher);
+        now.hash(&mut hasher);
         hasher.finish()
     });
     BusToken::from(format!("{:016x}{:016x}", halves[0], halves[1]))

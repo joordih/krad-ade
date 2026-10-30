@@ -6,7 +6,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, Entity, FontWeight, IntoElement,
     ParentElement, Styled, Subscription, Window,
 };
-use krad_domain::{GatewayKey, GatewayUrl, GatewayUrlError};
+use krad_domain::{GatewayKey, GatewayUrl, HttpUrlError, EXAMPLE_GATEWAY_URL};
 use krad_store::LoginPlace;
 
 use super::gitlab::page::{field_row, section_heading, status_detail, status_mark, KEYRING_NOTE};
@@ -15,9 +15,8 @@ use crate::components::{icon, Button, ButtonVariant, IconName};
 use crate::environment_shell::gateway::GatewayLink;
 use crate::theme::{palette, ICON_SM, LINE_SM, RADIUS_XL, SPACE_0_5, SPACE_2, SPACE_3, TEXT_SM};
 
-const URL_PLACEHOLDER: &str = "http://127.0.0.1:8317";
-const KEY_PLACEHOLDER: &str = "A key from access.api-keys";
-const INTRO: &str = "Connect CLIProxyAPI, or another gateway with the same API, to chat with the models of your accounts. The app only connects to it; start it and add accounts with its own tools.";
+const KEY_PLACEHOLDER: &str = "An API key the gateway accepts";
+const INTRO: &str = "Connect a gateway you run, such as CLIProxyAPI, to chat with the models of your accounts through the app's own agent. The app only connects to it; start it and add accounts with its own tools.";
 const CONNECTION_TITLE: &str = "Connection";
 const URL_LABEL: &str = "Address";
 const KEY_LABEL: &str = "Key";
@@ -42,7 +41,7 @@ const FIELD_GAP: f32 = 10.0;
 pub(in crate::environment_shell) struct GatewayUi {
     url: Entity<InputState>,
     key: Entity<InputState>,
-    url_error: Option<GatewayUrlError>,
+    url_error: Option<HttpUrlError>,
     _edits: Subscription,
 }
 
@@ -53,10 +52,10 @@ const fn place_text(place: LoginPlace) -> &'static str {
     }
 }
 
-fn read_url(text: &str) -> Result<Option<GatewayUrl>, GatewayUrlError> {
+fn read_url(text: &str) -> Result<Option<GatewayUrl>, HttpUrlError> {
     match text.parse() {
         Ok(url) => Ok(Some(url)),
-        Err(GatewayUrlError::Empty) => Ok(None),
+        Err(HttpUrlError::Empty) => Ok(None),
         Err(error) => Err(error),
     }
 }
@@ -75,7 +74,7 @@ impl EnvironmentShell {
             .map_or_else(String::new, ToString::to_string);
         let url = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder(URL_PLACEHOLDER)
+                .placeholder(EXAMPLE_GATEWAY_URL)
                 .default_value(saved)
         });
         let key = cx.new(|cx| {
@@ -287,12 +286,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_empty_address_turns_the_gateway_off_and_a_bad_one_is_explained() {
+    fn an_empty_address_turns_the_gateway_off() {
         assert_eq!(read_url("  "), Ok(None));
-        assert_eq!(
-            read_url("http://10.0.0.5:8317"),
-            Err(GatewayUrlError::PlainHttpToRemote)
-        );
-        assert!(read_url("http://127.0.0.1:8317").is_ok_and(|url| url.is_some()));
+        assert_eq!(read_url("gateway.local"), Err(HttpUrlError::NoScheme));
     }
 }

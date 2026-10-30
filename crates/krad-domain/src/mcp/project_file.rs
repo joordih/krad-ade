@@ -1,7 +1,8 @@
 use super::{
-    McpServer, McpServerName, McpServerState, McpTransport, McpUrl, McpUrlError, McpValue,
-    McpVariable, McpVariableName,
+    McpServer, McpServerName, McpServerState, McpTransport, McpUrl, McpValue, McpVariable,
+    McpVariableName,
 };
+use crate::http_url::HttpUrlError;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -38,7 +39,7 @@ pub enum McpSkipReason {
     BadName,
     Malformed,
     NoCommand,
-    BadUrl(McpUrlError),
+    BadUrl(HttpUrlError),
     BadVariableName,
     Sse,
     UnknownType(String),
@@ -241,7 +242,7 @@ mod tests {
                 ("empty", &McpSkipReason::NoCommand),
                 (
                     "far",
-                    &McpSkipReason::BadUrl(McpUrlError::PlainHttpToRemote)
+                    &McpSkipReason::BadUrl(HttpUrlError::PlainHttpToRemote)
                 ),
                 ("odd", &McpSkipReason::UnknownType("websocket".to_owned())),
                 ("old", &McpSkipReason::Sse),

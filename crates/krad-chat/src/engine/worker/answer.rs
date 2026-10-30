@@ -1,7 +1,7 @@
 use krad_domain::ChatEvent;
 
 use super::{Phase, Worker};
-use crate::control::{AskAnswer, LiveEvent, ToolAsk};
+use crate::control::{AskAnswer, LiveEvent, Responder, ToolAsk};
 use crate::engine::{plan, questions};
 
 impl<S: FnMut(LiveEvent)> Worker<S> {
@@ -9,10 +9,13 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         let Phase::Tools(batch) = &mut self.phase else {
             return;
         };
-        if batch.subagents.route(ask, answer) {
+        let Responder::Engine { call } = &ask.responder else {
+            return;
+        };
+        if batch.subagents.route(call, &ask.kind, answer) {
             return;
         }
-        if !batch.awaits(&ask.request_id) {
+        if !batch.awaits(call) {
             return;
         }
         if batch.asks_questions() {
@@ -21,7 +24,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
                 AskAnswer::Allow
                 | AskAnswer::AllowAlways
                 | AskAnswer::ApprovePlan { .. }
-                | AskAnswer::Deny { .. } => questions::dismissed().to_owned(),
+                | AskAnswer::Deny { .. } => questions::DISMISSED_TEXT.to_owned(),
             };
             batch.settle(content, false);
             return self.advance_batch();

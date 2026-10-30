@@ -11,11 +11,12 @@ pub(super) use stream::Parser;
 pub(super) const PATH: &str = "/v1/messages";
 pub(super) const HEADERS: [(&str, &str); 1] = [("anthropic-version", "2023-06-01")];
 const LOW_BUDGET: u64 = 2_048;
-const MEDIUM_BUDGET: u64 = 8_192;
-const HIGH_BUDGET: u64 = 16_384;
-const EXTRA_HIGH_BUDGET: u64 = 32_768;
-const MAX_BUDGET: u64 = 49_152;
-const ANSWER_ROOM: u64 = 16_384;
+const MEDIUM_BUDGET: u64 = 6_144;
+const HIGH_BUDGET: u64 = 12_288;
+const EXTRA_HIGH_BUDGET: u64 = 18_432;
+const MAX_BUDGET: u64 = 24_576;
+const ANSWER_ROOM: u64 = 8_192;
+const MIN_BUDGET: u64 = 1_024;
 const WEB_SEARCH_KIND: &str = "web_search_20250305";
 const WEB_SEARCH_NAME: &str = "web_search";
 const WEB_SEARCH_MAX_USES: u32 = 5;
@@ -207,16 +208,16 @@ fn turns<'a>(messages: &'a [Message], attachments: &'a Attachments) -> Vec<Turn<
     turns
 }
 
+fn thinking(effort: Option<Effort>, max_tokens: u64) -> Option<Thinking> {
+    let room = max_tokens.saturating_sub(ANSWER_ROOM);
+    let budget_tokens = budget(effort?).min(room);
+    (budget_tokens >= MIN_BUDGET).then_some(Thinking::Enabled { budget_tokens })
+}
+
 pub(super) fn body<'a>(request: &Request<'a>) -> Body<'a> {
-    let thinking = request.effort.map(|effort| Thinking::Enabled {
-        budget_tokens: budget(effort),
-    });
-    let max_tokens = request.effort.map_or(request.max_tokens, |effort| {
-        request.max_tokens.max(budget(effort) + ANSWER_ROOM)
-    });
     Body {
         model: request.model,
-        max_tokens,
+        max_tokens: request.max_tokens,
         system: request.system,
         messages: turns(request.messages, request.images),
         tools: request
@@ -229,7 +230,7 @@ pub(super) fn body<'a>(request: &Request<'a>) -> Body<'a> {
             })
             .chain(request.native.map(native_tool))
             .collect(),
-        thinking,
+        thinking: thinking(request.effort, request.max_tokens),
         stream: true,
     }
 }

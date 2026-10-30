@@ -4,7 +4,7 @@ mod project_file;
 mod settings;
 
 pub use expand::expand_variables;
-pub use names::{McpNameError, McpServerName, McpUrl, McpUrlError, McpVariableName};
+pub use names::{McpNameError, McpServerName, McpUrl, McpVariableName};
 pub use project_file::{McpFileError, McpProjectFile, McpSkipReason, McpSkipped, PROJECT_MCP_FILE};
 pub use settings::{McpProjectTrust, McpServerTaken, McpSettings};
 

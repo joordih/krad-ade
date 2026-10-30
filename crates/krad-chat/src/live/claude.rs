@@ -8,21 +8,28 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
-use super::{keep_stderr_tail, new_uuid, LiveConfig};
-use crate::command::{live_chat_command, LiveSession};
-use crate::control::{initialize_line, rewind_files_line, route, LiveEvent, Routed};
+use super::{keep_stderr_tail, new_uuid, LiveConfig, LiveHarness, Order};
+use crate::command::live_chat_command;
+use crate::control::{
+    answer_line, initialize_line, interrupt_line, rewind_files_line, route, set_model_line,
+    set_permission_mode_line, LiveEvent, Responder, Routed,
+};
 use crate::error::ChatError;
 use crate::exit::closing_event;
 use crate::history::claude_conversation_file;
-use crate::message::user_message_line;
+use crate::live::LiveSession;
+use crate::message::{user_message_line, SlashCommand};
 use crate::parse::claude;
 use crate::process::harness_command;
+use crate::refused::ResumeRefused;
 use crate::rewind::{files_reply, transcript_cut, RewindError, RewindRequest, Rewound};
 
 const REQUEST_ID_PREFIX: &str = "krad_";
 const CHECKPOINTING_VAR: &str = "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING";
 const CHECKPOINTING_ON: &str = "true";
 const FILES_REPLY_WAIT: Duration = Duration::from_secs(60);
+const MISSING_CONVERSATION_TEXT: &str = "No conversation found";
+const DROPS_TURN_REFUSED_TEXT: &str = "Resume rejected by --resume-drops-turn";
 
 enum Outbound {
     Line(String),
@@ -52,19 +59,19 @@ pub(super) struct ClaudeProcess {
     child: Arc<Mutex<Option<Child>>>,
     pending: Arc<AtomicUsize>,
     stopped: Arc<AtomicBool>,
-    pub(super) exited: Arc<AtomicBool>,
+    exited: Arc<AtomicBool>,
     next_request: AtomicU64,
     session: KnownSession,
     awaited: AwaitedReply,
 }
 
 impl ClaudeProcess {
-    pub(super) fn request_id(&self) -> String {
+    fn request_id(&self) -> String {
         let id = self.next_request.fetch_add(1, Ordering::SeqCst);
         format!("{REQUEST_ID_PREFIX}{id}")
     }
 
-    pub(super) fn write(&self, line: String) {
+    fn write(&self, line: String) {
         self.outbox.send(Outbound::Line(line)).unwrap_or_default();
     }
 
@@ -77,11 +84,7 @@ impl ClaudeProcess {
         sent
     }
 
-    pub(super) fn run(&self, command: Prompt) {
-        self.queue(command, None);
-    }
-
-    pub(super) fn send(&self, prompt: Prompt) {
+    fn send(&self, prompt: Prompt) {
         let uuid = RewindId::from(new_uuid());
         if self.queue(prompt, Some(uuid.clone())) {
             let point = ChatEvent::Prompted(RewindPoint::Message(uuid));
@@ -89,15 +92,7 @@ impl ClaudeProcess {
         }
     }
 
-    pub(super) fn stop(&self) {
-        self.stopped.store(true, Ordering::SeqCst);
-        let mut child = self.child.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(child) = child.as_mut() {
-            child.kill().unwrap_or_default();
-        }
-    }
-
-    pub(super) fn rewind(&self, request: RewindRequest) {
+    fn rewind(&self, request: RewindRequest) {
         let job = RewindJob {
             session: self
                 .session
@@ -113,6 +108,40 @@ impl ClaudeProcess {
             let outcome = job.run(&request);
             events.send(LiveEvent::Rewound(outcome)).unwrap_or_default();
         });
+    }
+}
+
+impl LiveHarness for ClaudeProcess {
+    fn order(&self, order: Order) {
+        match order {
+            Order::Send(prompt) => self.send(prompt),
+            Order::Interrupt => self.write(interrupt_line(&self.request_id())),
+            Order::Model(model) => self.write(set_model_line(&self.request_id(), &model)),
+            Order::Effort(effort) => self.run(&SlashCommand::Effort(effort)),
+            Order::Mode(mode) => self.write(set_permission_mode_line(&self.request_id(), mode)),
+            Order::Answer(ask, answer) => {
+                if let Responder::ClaudeCode(asked) = &ask.responder {
+                    self.write(answer_line(asked, &answer));
+                }
+            }
+            Order::Rewind(request) => self.rewind(request),
+        }
+    }
+
+    fn is_alive(&self) -> bool {
+        !self.exited.load(Ordering::SeqCst)
+    }
+
+    fn stop(&self) {
+        self.stopped.store(true, Ordering::SeqCst);
+        let mut child = self.child.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(child) = child.as_mut() {
+            child.kill().unwrap_or_default();
+        }
+    }
+
+    fn run(&self, command: &SlashCommand) {
+        self.queue(Prompt::from(command.to_string()), None);
     }
 }
 
@@ -154,6 +183,19 @@ impl RewindJob {
                 RecvTimeoutError::Disconnected => RewindError::Stopped,
             })?
     }
+}
+
+pub(super) fn live_event(event: ChatEvent) -> LiveEvent {
+    let ChatEvent::Error(error) = event else {
+        return LiveEvent::Chat(event);
+    };
+    if error.contains(DROPS_TURN_REFUSED_TEXT) {
+        return LiveEvent::Refused(ResumeRefused::TurnNotDropped(error));
+    }
+    if error.contains(MISSING_CONVERSATION_TEXT) {
+        return LiveEvent::Refused(ResumeRefused::MissingConversation(error));
+    }
+    LiveEvent::Chat(ChatEvent::Error(error))
 }
 
 const fn known_session(session: &LiveSession) -> Option<&ResumeId> {
@@ -241,7 +283,7 @@ pub(super) fn spawn_claude(
             status.is_some_and(|status| status.success()),
             &stderr,
         ) {
-            emit(LiveEvent::Chat(event));
+            emit(live_event(event));
         }
     });
     Ok(claude)
@@ -311,7 +353,7 @@ impl Routing {
                 }
                 _ => {}
             }
-            sink(LiveEvent::Chat(event));
+            sink(live_event(event));
         }
     }
 }

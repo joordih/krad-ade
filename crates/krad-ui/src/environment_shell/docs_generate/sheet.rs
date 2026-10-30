@@ -1,11 +1,13 @@
 use gpui_kit::component::input::Input;
 use gpui_kit::component::switch::Switch;
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, AnyElement, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, Window,
+    div, px, rgb, AnyElement, ClickEvent, Context, FontWeight, InteractiveElement, IntoElement,
+    ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
 };
+use krad_domain::{AgentPreset, ModelId};
 
 use super::super::dialog_parts::{
     sheet_body, sheet_footer, sheet_group, sheet_overlay, sheet_panel, sheet_row, sheet_section,
@@ -13,10 +15,11 @@ use super::super::dialog_parts::{
 };
 use super::super::EnvironmentShell;
 use super::{DocsDialog, NOTE_CHOICES};
-use crate::components::{Button, ButtonVariant, ModelPicker};
-use crate::theme::palette;
+use crate::components::{harness_icon, icon, Button, ButtonVariant, IconName};
+use crate::theme::{palette, ICON_SM, ICON_XS, LINE_XS, NAV_ROW_H, SPACE_1_5, SPACE_2, TEXT_XS};
 
 const SHEET_W: f32 = 620.0;
+const TRIGGER_RADIUS: f32 = 8.0;
 const FOLDER_W: f32 = 200.0;
 const TITLE: &str = "Generate documentation";
 const SOURCES_LABEL: &str = "Sources";
@@ -69,7 +72,7 @@ impl EnvironmentShell {
                     .child(Self::docs_notes(dialog, cx))
                     .child(Self::docs_output(dialog, cx)),
             )
-            .child(self.docs_footer(dialog, cx));
+            .child(Self::docs_footer(dialog, cx));
         Some(sheet_overlay(sheet, close, cx))
     }
 
@@ -192,39 +195,52 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    fn docs_footer(&self, dialog: &DocsDialog, cx: &mut Context<Self>) -> AnyElement {
+    fn docs_model_trigger(
+        preset: AgentPreset,
+        model: Option<&ModelId>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let pal = palette(cx);
-        let picker = dialog.preset.map(|preset| {
-            ModelPicker::new(
-                MODEL_PICKER_ID,
-                preset,
-                dialog.model.clone(),
-                self.agent_choices(),
-            )
-            .open(dialog.picker_open)
-            .opens_up()
-            .on_toggle(cx.listener(|this: &mut Self, _, _, cx| {
-                if let Some(dialog) = &mut this.docs_dialog {
-                    dialog.picker_open = !dialog.picker_open;
-                }
-                cx.notify();
+        let mono = cx.theme().mono_font_family.clone();
+        let (mark, mark_color) = harness_icon(preset, pal);
+        div()
+            .id(MODEL_PICKER_ID)
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(SPACE_1_5))
+            .h(px(NAV_ROW_H))
+            .px(px(SPACE_2))
+            .rounded(px(TRIGGER_RADIUS))
+            .bg(pal.bg_hover)
+            .cursor_pointer()
+            .whitespace_nowrap()
+            .text_size(px(TEXT_XS))
+            .line_height(px(LINE_XS))
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(rgb(pal.text_strong))
+            .child(icon(mark, ICON_SM, mark_color))
+            .child(preset.display_name())
+            .children(model.map(|model| {
+                div()
+                    .font_family(mono)
+                    .font_weight(FontWeight::NORMAL)
+                    .text_color(rgb(pal.text_muted))
+                    .child(model.to_string())
             }))
-            .on_pick({
-                let shell = cx.weak_entity();
-                move |preset, model, _, cx| {
-                    shell
-                        .update(cx, |this, cx| {
-                            if let Some(dialog) = &mut this.docs_dialog {
-                                dialog.preset = Some(preset);
-                                dialog.model = model;
-                                dialog.picker_open = false;
-                            }
-                            cx.notify();
-                        })
-                        .unwrap_or_default();
-                }
-            })
-        });
+            .child(icon(IconName::ChevronDown, ICON_XS, pal.text_muted))
+            .on_click(cx.listener(|this: &mut Self, event: &ClickEvent, _, cx| {
+                let at = event.position();
+                this.open_docs_model_picker((at.x.as_f32(), at.y.as_f32()), cx);
+            }))
+            .into_any_element()
+    }
+
+    fn docs_footer(dialog: &DocsDialog, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
+        let picker = dialog
+            .preset
+            .map(|preset| Self::docs_model_trigger(preset, dialog.model.as_ref(), cx));
         let ready = dialog.preset.is_some() && dialog.notes.iter().any(|(_, chosen)| *chosen);
         sheet_footer(pal)
             .children(picker)

@@ -24,14 +24,17 @@ use gpui_kit::{
     px, AppContext as _, Context, Entity, FollowMode, ListAlignment, ListState, SharedString,
     Subscription, Window,
 };
-use krad_domain::{AgentPreset, Effort, EnvironmentName, Mention, ModelId, Prompt, TerminalId};
+use krad_domain::{
+    AgentPreset, Effort, EnvironmentName, Mention, ModelId, Prompt, TerminalId,
+    DEFAULT_CHAT_HARNESS,
+};
 use krad_repo::IndexEntry;
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use super::ask::AskQueue;
-use super::chat::{ChatMessage, Composer};
+use super::chat::ChatMessage;
 use super::EnvironmentShell;
 use checklist::ChecklistView;
 use edit_message::MessageEditor;
@@ -46,7 +49,6 @@ pub(super) use edit_diff::edit_diff;
 pub(super) use facts::AccountUsage;
 pub(super) use structured::restored_chats;
 pub(super) use structured::StructuredChat;
-pub(super) use switch::reopens_as_chat;
 
 const INPUT_ROWS: usize = 2;
 const INPUT_PLACEHOLDER: &str = "Ask anything…  @ for files, / for skills";
@@ -193,7 +195,7 @@ impl EnvironmentShell {
             window,
             move |this: &mut Self, _, event: &InputEvent, window, cx| match event {
                 InputEvent::PressEnter { shift: false, .. } => this.send_on_surface(id, window, cx),
-                InputEvent::Change => this.update_suggest(Composer::Surface(id), cx),
+                InputEvent::Change => this.update_suggest(id, cx),
                 InputEvent::PressEnter { .. } | InputEvent::Focus | InputEvent::Blur => {}
             },
         );
@@ -215,7 +217,7 @@ impl EnvironmentShell {
         if blocked {
             return;
         }
-        let Some(input) = self.composer_input(Composer::Surface(id)) else {
+        let Some(input) = self.composer_input(id) else {
             return;
         };
         let text = input.read(cx).value().trim().to_owned();
@@ -232,15 +234,11 @@ impl EnvironmentShell {
             .envs
             .get(&env)
             .and_then(|live| live.chats.get(&id))
-            .map_or(AgentPreset::ClaudeCode, SurfaceChat::harness);
-        if harness == AgentPreset::Gateway {
+            .map_or(DEFAULT_CHAT_HARNESS, SurfaceChat::harness);
+        if harness.chats_through_gateway() {
             self.recheck_failed_gateway(cx);
         }
-        let text = if harness == AgentPreset::ClaudeCode {
-            self.shared_skill_message(&text).unwrap_or(text)
-        } else {
-            text
-        };
+        let text = self.skill_message(harness, text);
         if let Some(chat) = self
             .envs
             .get_mut(&env)

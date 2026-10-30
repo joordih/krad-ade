@@ -2,9 +2,9 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-use super::super::sse::Event;
-use super::super::{error_message, object_arguments, push_text, Parse, ProviderError};
+use super::super::{error_message, object_arguments, push_text, Parse};
 use crate::engine::wire::{Block, Call, Delta, Protocol, Reply, Stop, Usage};
+use crate::gateway::GatewayError;
 
 const TOOLS_FINISH: &str = "tool_calls";
 const LENGTH_FINISH: &str = "length";
@@ -125,15 +125,11 @@ fn stop_of(reason: &str) -> Stop {
 }
 
 impl Parse for Parser {
-    fn feed(
-        &mut self,
-        event: &Event,
-        on_delta: &mut dyn FnMut(Delta),
-    ) -> Result<(), ProviderError> {
-        let chunk: Chunk = serde_json::from_str(&event.data)?;
+    fn feed(&mut self, data: &str, on_delta: &mut dyn FnMut(Delta)) -> Result<(), GatewayError> {
+        let chunk: Chunk = serde_json::from_str(data)?;
         if chunk.error.is_some() {
-            return Err(ProviderError::Failed(
-                error_message(&event.data).unwrap_or_default(),
+            return Err(GatewayError::Failed(
+                error_message(data).unwrap_or_default(),
             ));
         }
         if let Some(usage) = chunk.usage {

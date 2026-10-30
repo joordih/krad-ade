@@ -1,6 +1,6 @@
 use gpui_kit::component::switch::Switch;
 use gpui_kit::{div, px, AnyElement, Context, IntoElement, ParentElement, Styled};
-use krad_chat::{ModelOffer, ModelSource};
+use krad_chat::{GatewayModel, ModelSource};
 use krad_domain::ModelId;
 
 use super::super::gitlab::page::section_heading;
@@ -22,10 +22,14 @@ struct ModelRow {
     picked: bool,
 }
 
-fn model_rows(served: &[ModelOffer], curated: &[ModelId]) -> Vec<ModelRow> {
+fn model_rows(served: &[GatewayModel], curated: &[ModelId]) -> Vec<ModelRow> {
     let mut rows: Vec<ModelRow> = curated
         .iter()
-        .filter(|model| !served.iter().any(|offer| offer.value == model.as_str()))
+        .filter(|model| {
+            !served
+                .iter()
+                .any(|served| served.offer.value == model.as_str())
+        })
         .map(|model| ModelRow {
             id: model.clone(),
             owner: None,
@@ -33,18 +37,23 @@ fn model_rows(served: &[ModelOffer], curated: &[ModelId]) -> Vec<ModelRow> {
             picked: true,
         })
         .collect();
-    rows.extend(served.iter().filter_map(|offer| {
-        let id = ModelId::parse(&offer.value)?;
-        Some(ModelRow {
-            picked: curated.contains(&id),
-            owner: match &offer.source {
-                Some(ModelSource::Provider(owner)) => Some(owner.clone()),
-                _ => None,
-            },
-            id,
-            served: true,
-        })
-    }));
+    rows.extend(
+        served
+            .iter()
+            .map(|served| &served.offer)
+            .filter_map(|offer| {
+                let id = ModelId::parse(&offer.value)?;
+                Some(ModelRow {
+                    picked: curated.contains(&id),
+                    owner: match &offer.source {
+                        Some(ModelSource::Provider(owner)) => Some(owner.clone()),
+                        _ => None,
+                    },
+                    id,
+                    served: true,
+                })
+            }),
+    );
     rows
 }
 
@@ -58,8 +67,7 @@ impl EnvironmentShell {
 
     pub(super) fn gateway_models_card(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let curated = self.settings.gateway.models();
-        let rows = model_rows(self.gateway_served(), &curated);
+        let rows = model_rows(self.gateway_served(), &self.settings.gateway.models);
         let shown: Vec<AnyElement> = if rows.is_empty() {
             vec![hint(MODELS_EMPTY, pal)]
         } else {
@@ -104,19 +112,23 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use krad_chat::{ModelOffer, Vendor};
 
     fn model(id: &str) -> ModelId {
         ModelId::parse(id).unwrap_or_else(|| unreachable!("{id} is a model id"))
     }
 
-    fn offer(id: &str, owner: &str) -> ModelOffer {
-        ModelOffer {
-            value: id.to_owned(),
-            name: id.to_owned(),
-            description: None,
-            efforts: Vec::new(),
-            thinking_off: false,
-            source: Some(ModelSource::Provider(owner.to_owned())),
+    fn offer(id: &str, owner: &str) -> GatewayModel {
+        GatewayModel {
+            offer: ModelOffer {
+                value: id.to_owned(),
+                name: id.to_owned(),
+                description: None,
+                efforts: Vec::new(),
+                thinking_off: false,
+                source: Some(ModelSource::Provider(owner.to_owned())),
+            },
+            vendor: Vendor::from(owner),
         }
     }
 

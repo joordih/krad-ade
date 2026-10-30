@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
 use super::super::ask::AskQueue;
-use super::super::chat::{fold_entry, workplace_home, ChatMessage, Composer};
+use super::super::chat::{fold_entry, workplace_home, ChatMessage};
 use super::super::EnvironmentShell;
 use super::{view, Backend, Origin, SurfaceChat, SurfaceCommand};
 
@@ -118,9 +118,7 @@ fn open_answer() -> ChatMessage {
     ChatMessage {
         speaker: Speaker::Assistant,
         text: String::new(),
-        tools: Vec::new(),
         parts: Vec::new(),
-        preset: TRANSCRIPT_HARNESS,
         error: None,
         running: true,
         mentions: Vec::new(),
@@ -195,7 +193,7 @@ impl EnvironmentShell {
             .chat
             .suggest
             .as_ref()
-            .is_some_and(|suggest| suggest.composer == Composer::Surface(id))
+            .is_some_and(|suggest| suggest.composer == id)
         {
             self.close_suggest(cx);
         }

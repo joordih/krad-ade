@@ -4,7 +4,9 @@ mod compact;
 mod rewind;
 mod subagents;
 
-use krad_domain::{ChatEvent, Effort, GatewayAccess, ModelId, PermissionMode, Prompt, RewindPoint};
+use krad_domain::{
+    ChatEvent, ContextWindow, Effort, GatewayAccess, PermissionMode, Prompt, RewindPoint,
+};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
@@ -15,32 +17,22 @@ use super::attachments::Attachments;
 use super::mcp::McpToolbox;
 use super::policy::Allowed;
 use super::prompt::expand_skill_call;
-use super::provider::{protocol_for, stream, ProviderError};
-use super::session::{Record, SessionFile};
+use super::provider::stream;
+use super::session::{Chosen, Record, SessionFile};
 use super::snapshots::Snapshots;
 use super::tools::{Background, Ran, Workspace};
-use super::wire::{Block, Delta, Message, Protocol, Reply, Request, ToolSpec};
-use crate::control::{AskAnswer, LiveEvent, ToolAsk};
+use super::wire::{Block, Delta, Message, Protocol, Reply, Request, Stop, ToolSpec};
+use crate::control::LiveEvent;
+use crate::gateway::GatewayError;
+use crate::gateway::Vendor;
+use crate::live::Order;
 use crate::mention::shown_path;
-use crate::rewind::RewindRequest;
 use crate::skills::SkillFile;
 use batch::Batch;
 use subagents::SubagentNews;
 
-pub(crate) const CONTEXT_WINDOW: u64 = 200_000;
 const MAX_OUTPUT_TOKENS: u64 = 32_768;
 const NO_MODEL_TEXT: &str = "Pick a Gateway model to start the chat";
-
-#[derive(Debug)]
-pub(crate) enum Order {
-    Send(Prompt),
-    Interrupt,
-    Model(ModelId),
-    Effort(Effort),
-    Mode(PermissionMode),
-    Answer(Box<ToolAsk>, AskAnswer),
-    Rewind(RewindRequest),
-}
 
 pub(crate) enum Inbound {
     Order(Order),
@@ -50,7 +42,7 @@ pub(crate) enum Inbound {
     },
     Replied {
         attempt: u64,
-        reply: Result<Reply, ProviderError>,
+        reply: Result<Reply, GatewayError>,
     },
     Ran {
         attempt: u64,
@@ -58,7 +50,7 @@ pub(crate) enum Inbound {
     },
     Compacted {
         attempt: u64,
-        summary: Result<String, ProviderError>,
+        summary: Result<String, GatewayError>,
     },
     Subagent {
         call: String,
@@ -73,9 +65,23 @@ pub(crate) struct Setup {
     pub(crate) workspace: Workspace,
     pub(crate) system: String,
     pub(crate) skills: Vec<SkillFile>,
-    pub(crate) protocols: HashMap<String, Protocol>,
+    pub(crate) vendors: HashMap<String, Vendor>,
+    pub(crate) windows: HashMap<String, ContextWindow>,
     pub(crate) tools: Vec<ToolSpec>,
     pub(crate) mcp: Arc<McpToolbox>,
+}
+
+impl Setup {
+    pub(crate) fn vendor(&self, model: &str) -> Vendor {
+        self.vendors.get(model).copied().unwrap_or_default()
+    }
+
+    pub(crate) fn window(&self, model: Option<&Chosen>) -> ContextWindow {
+        model
+            .and_then(|model| self.windows.get(&model.id))
+            .copied()
+            .unwrap_or_default()
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -98,7 +104,7 @@ pub(crate) struct Worker<S> {
     session: SessionFile,
     inbound: Sender<Inbound>,
     messages: Vec<Message>,
-    model: Option<String>,
+    model: Option<Chosen>,
     effort: Option<Effort>,
     mode: PermissionMode,
     allowed: Allowed,
@@ -118,7 +124,7 @@ pub(crate) struct Start {
     pub(crate) setup: Setup,
     pub(crate) session: SessionFile,
     pub(crate) messages: Vec<Message>,
-    pub(crate) model: Option<String>,
+    pub(crate) model: Option<Chosen>,
     pub(crate) effort: Option<Effort>,
     pub(crate) mode: PermissionMode,
     pub(crate) snapshots: Snapshots,
@@ -216,12 +222,16 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             Order::Send(prompt) => self.send(&prompt),
             Order::Interrupt => self.interrupt(),
             Order::Model(model) => {
-                let model = model.as_str().to_owned();
-                self.record(&Record::Model {
-                    model: model.clone(),
-                });
-                self.model = Some(model.clone());
-                self.emit(ChatEvent::Model(model));
+                let id = model.as_str().to_owned();
+                let chosen = Chosen {
+                    vendor: self.setup.vendor(&id),
+                    id,
+                };
+                self.record(&Record::from(&chosen));
+                let window = self.setup.window(Some(&chosen));
+                self.emit(ChatEvent::Model(chosen.id.clone()));
+                self.emit(ChatEvent::ContextWindow(window.tokens()));
+                self.model = Some(chosen);
             }
             Order::Effort(effort) => self.effort = Some(effort),
             Order::Mode(mode) => {
@@ -261,14 +271,6 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         (self.attempt, Arc::clone(&self.cancel))
     }
 
-    fn protocol(&self, model: &str) -> Protocol {
-        self.setup
-            .protocols
-            .get(model)
-            .copied()
-            .unwrap_or_else(|| protocol_for(None, model))
-    }
-
     fn begin_request(&mut self) {
         let Some(model) = self.model.clone() else {
             self.phase = Phase::Idle;
@@ -279,7 +281,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         }
         let (attempt, cancel) = self.next_attempt();
         let access = self.setup.access.clone();
-        let protocol = self.protocol(&model);
+        let protocol = Protocol::from(model.vendor);
         let system = self.setup.system.clone();
         let messages = self.messages.clone();
         let tools = self.setup.tools.clone();
@@ -289,7 +291,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         thread::spawn(move || {
             let images = Attachments::read(&messages);
             let request = Request {
-                model: &model,
+                model: &model.id,
                 system: &system,
                 messages: &messages,
                 images: &images,
@@ -324,16 +326,16 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             Delta::Thinking(text) => self.thinking.push_str(&text),
             Delta::Text(text) => {
                 self.flush_thinking();
-                self.emit(ChatEvent::Text(text));
+                self.emit(ChatEvent::TextDelta(text));
             }
         }
     }
 
-    fn replied(&mut self, reply: Result<Reply, ProviderError>) {
+    fn replied(&mut self, reply: Result<Reply, GatewayError>) {
         self.flush_thinking();
         let reply = match reply {
             Ok(reply) => reply,
-            Err(ProviderError::Cancelled) => return self.finish_turn(),
+            Err(GatewayError::Cancelled) => return self.finish_turn(),
             Err(error) => {
                 self.phase = Phase::Idle;
                 self.queued.clear();
@@ -357,7 +359,10 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         });
         if calls.is_empty() {
             if self.queued.is_empty() {
-                return self.finish_turn();
+                return self.end_answer(reply.stop);
+            }
+            if let Some(problem) = reply.stop.problem() {
+                (self.sink)(LiveEvent::Notice(problem.to_owned()));
             }
             self.deliver_queued();
             return self.begin_request();
@@ -370,6 +375,14 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
     fn finish_turn(&mut self) {
         self.phase = Phase::Idle;
         self.emit(ChatEvent::Done);
+    }
+
+    fn end_answer(&mut self, stop: Stop) {
+        let Some(problem) = stop.problem() else {
+            return self.finish_turn();
+        };
+        self.phase = Phase::Idle;
+        self.emit(ChatEvent::Error(problem.to_owned()));
     }
 
     fn interrupt(&mut self) {

@@ -2,6 +2,7 @@ use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::thread;
 
+use super::events::model_selector;
 use super::server::{OpencodeError, OpencodeServer};
 use crate::control::{Catalog, CommandOffer, ModelOffer, ModelSource};
 
@@ -13,6 +14,9 @@ const PROVIDERS_PATH: &str = "/api/provider";
 const DEPRECATED: &str = "deprecated";
 const GO_PROVIDER: &str = "opencode-go";
 const ZEN_PROVIDER: &str = "opencode";
+const GO_PLAN: &str = "OpenCode Go";
+const ZEN_PLAN: &str = "OpenCode Zen";
+const PLANS: [(&str, &str); 2] = [(GO_PROVIDER, GO_PLAN), (ZEN_PROVIDER, ZEN_PLAN)];
 
 #[derive(Debug, Deserialize)]
 struct Variant {
@@ -62,7 +66,7 @@ const fn enabled() -> bool {
 
 impl ModelInfo {
     fn selector(&self) -> String {
-        format!("{}/{}", self.provider_id, self.id)
+        model_selector(&self.provider_id, &self.id)
     }
 
     fn usable(&self) -> bool {
@@ -81,16 +85,23 @@ impl ModelInfo {
         if self.free() {
             return ModelSource::Free;
         }
-        match self.provider_id.as_str() {
-            GO_PROVIDER => ModelSource::OpencodeGo,
-            ZEN_PROVIDER => ModelSource::OpencodeZen,
-            other => ModelSource::Provider(
-                providers
-                    .get(other)
-                    .cloned()
-                    .unwrap_or_else(|| other.to_owned()),
-            ),
+        let provider = self.provider_id.as_str();
+        if let Some((order, (_, plan))) = PLANS
+            .iter()
+            .enumerate()
+            .find(|(_, (id, _))| *id == provider)
+        {
+            return ModelSource::Plan {
+                name: (*plan).to_owned(),
+                order,
+            };
         }
+        ModelSource::Provider(
+            providers
+                .get(provider)
+                .cloned()
+                .unwrap_or_else(|| provider.to_owned()),
+        )
     }
 
     fn offer(&self, providers: &HashMap<String, String>) -> ModelOffer {
@@ -299,11 +310,17 @@ mod tests {
             [
                 (
                     "opencode-go/kimi-k3".to_owned(),
-                    Some(ModelSource::OpencodeGo)
+                    Some(ModelSource::Plan {
+                        name: "OpenCode Go".to_owned(),
+                        order: 0
+                    })
                 ),
                 (
                     "opencode/claude-opus-5-5".to_owned(),
-                    Some(ModelSource::OpencodeZen)
+                    Some(ModelSource::Plan {
+                        name: "OpenCode Zen".to_owned(),
+                        order: 1
+                    })
                 ),
                 ("opencode/beam-free".to_owned(), Some(ModelSource::Free)),
                 (

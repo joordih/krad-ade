@@ -8,7 +8,10 @@ use ureq::http::header::{ACCEPT, CONTENT_TYPE, LOCATION, USER_AGENT};
 use ureq::http::Response;
 use ureq::{Agent, Body};
 
+use super::side::{Asked, SideRequest};
 use super::Ran;
+use crate::engine::wire::answer_text;
+use crate::gateway::GatewayError;
 pub(crate) use url::WebUrl;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -29,9 +32,27 @@ const NO_LOCATION_TEXT: &str = "the page redirected without saying where";
 const NOT_TEXT_TEXT: &str = "the page is not text";
 const EMPTY_PAGE_TEXT: &str = "(empty page)";
 const CUT_TEXT: &str = "characters cut";
+const EXTRACT_MAX_TOKENS: u64 = 8_192;
+const EXTRACT_SYSTEM: &str = "You read one web page for a coding agent. Answer the request from the page alone: quote code, names, versions and numbers exactly, keep the links that matter, and say plainly when the page does not hold the answer. Answer with the findings only.";
+const EXTRACT_REQUEST_LABEL: &str = "Request:";
+const EXTRACT_PAGE_LABEL: &str = "Page";
+const EXTRACT_FAILED_TEXT: &str = "the model could not read the page for the prompt";
+const EMPTY_EXTRACT_TEXT: &str = "the model answered nothing for the prompt";
+const RAW_PAGE_HINT: &str = "Call web_fetch without prompt to read the whole page.";
+const NO_MODEL_TEXT: &str = "Pick a Gateway model before fetching a page with a prompt";
 
 enum Arrived {
     Page(WebUrl, Response<Body>),
+    Elsewhere(WebUrl),
+}
+
+struct Page {
+    at: WebUrl,
+    text: String,
+}
+
+enum Fetched {
+    Page(Page),
     Elsewhere(WebUrl),
 }
 
@@ -107,7 +128,7 @@ fn clip(text: &str) -> String {
     format!("{head}\n… [{} {CUT_TEXT}]", count - MAX_FETCH_CHARS)
 }
 
-fn read_page(url: &WebUrl, response: Response<Body>) -> Ran {
+fn read_page(url: WebUrl, response: Response<Body>) -> Result<Page, String> {
     let code = response.status().as_u16();
     let failed = !response.status().is_success();
     let content_type = response
@@ -116,19 +137,17 @@ fn read_page(url: &WebUrl, response: Response<Body>) -> Ran {
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
     let mut bytes = Vec::new();
-    if let Err(error) = response
+    response
         .into_body()
         .into_reader()
         .take(MAX_FETCH_BYTES)
         .read_to_end(&mut bytes)
-    {
-        return Ran::failed(format!("{url}: {error}"));
-    }
+        .map_err(|error| format!("{url}: {error}"))?;
     let body = String::from_utf8_lossy(&bytes);
     let text = match kind_of(content_type.as_deref(), &body) {
-        Kind::Html => html::readable(&body, url),
+        Kind::Html => html::readable(&body, &url),
         Kind::Text => body.trim().to_owned(),
-        Kind::Other(kind) => return Ran::failed(format!("{url}: {NOT_TEXT_TEXT} ({kind})")),
+        Kind::Other(kind) => return Err(format!("{url}: {NOT_TEXT_TEXT} ({kind})")),
     };
     let text = if text.is_empty() {
         EMPTY_PAGE_TEXT.to_owned()
@@ -136,21 +155,78 @@ fn read_page(url: &WebUrl, response: Response<Body>) -> Ran {
         clip(&text)
     };
     if failed {
-        return Ran::failed(format!("{url} answered with status {code}\n\n{text}"));
+        return Err(format!("{url} answered with status {code}\n\n{text}"));
     }
-    Ran::done(format!("{url}\n\n{text}"))
+    Ok(Page { at: url, text })
+}
+
+fn load(url: &WebUrl, cancel: &AtomicBool) -> Result<Fetched, String> {
+    let arrived = follow(&agent(), url);
+    if cancel.load(Ordering::SeqCst) {
+        return Err(CANCELLED_TEXT.to_owned());
+    }
+    match arrived? {
+        Arrived::Page(at, response) => read_page(at, response).map(Fetched::Page),
+        Arrived::Elsewhere(next) => Ok(Fetched::Elsewhere(next)),
+    }
+}
+
+fn elsewhere(url: &WebUrl, next: &WebUrl) -> Ran {
+    Ran::done(format!(
+        "{url} redirected to {next}, on another host. Call web_fetch with that address to read it."
+    ))
 }
 
 pub(super) fn fetch(url: &WebUrl, cancel: &AtomicBool) -> Ran {
-    let arrived = follow(&agent(), url);
-    if cancel.load(Ordering::SeqCst) {
-        return Ran::failed(CANCELLED_TEXT.to_owned());
+    match load(url, cancel) {
+        Ok(Fetched::Page(page)) => Ran::done(format!("{}\n\n{}", page.at, page.text)),
+        Ok(Fetched::Elsewhere(next)) => elsewhere(url, &next),
+        Err(error) => Ran::failed(error),
     }
-    match arrived {
-        Ok(Arrived::Page(at, response)) => read_page(&at, response),
-        Ok(Arrived::Elsewhere(next)) => Ran::done(format!(
-            "{url} redirected to {next}, on another host. Call web_fetch with that address to read it."
+}
+
+fn extract(page: &Page, prompt: &str, side: &SideRequest, cancel: &AtomicBool) -> Ran {
+    let asked = Asked {
+        system: EXTRACT_SYSTEM,
+        text: format!(
+            "{EXTRACT_REQUEST_LABEL} {prompt}\n\n{EXTRACT_PAGE_LABEL} {}:\n\n{}",
+            page.at, page.text
+        ),
+        native: None,
+        max_tokens: EXTRACT_MAX_TOKENS,
+    };
+    match side.ask(asked, cancel) {
+        Ok(reply) => {
+            let found = answer_text(&reply.blocks);
+            let found = found.trim();
+            if found.is_empty() {
+                return Ran::failed(format!(
+                    "{}: {EMPTY_EXTRACT_TEXT}. {RAW_PAGE_HINT}",
+                    page.at
+                ));
+            }
+            Ran::done(format!("{}\n\n{found}", page.at))
+        }
+        Err(GatewayError::Cancelled) => Ran::failed(CANCELLED_TEXT.to_owned()),
+        Err(error) => Ran::failed(format!(
+            "{}: {EXTRACT_FAILED_TEXT} ({error}). {RAW_PAGE_HINT}",
+            page.at
         )),
+    }
+}
+
+pub(super) fn fetch_for(
+    url: &WebUrl,
+    prompt: &str,
+    side: Option<&SideRequest>,
+    cancel: &AtomicBool,
+) -> Ran {
+    let Some(side) = side else {
+        return Ran::failed(NO_MODEL_TEXT.to_owned());
+    };
+    match load(url, cancel) {
+        Ok(Fetched::Page(page)) => extract(&page, prompt, side, cancel),
+        Ok(Fetched::Elsewhere(next)) => elsewhere(url, &next),
         Err(error) => Ran::failed(error),
     }
 }

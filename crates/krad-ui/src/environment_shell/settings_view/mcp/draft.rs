@@ -1,6 +1,6 @@
 use krad_domain::{
-    McpNameError, McpSecret, McpServer, McpServerName, McpServerState, McpTransport, McpUrl,
-    McpUrlError, McpValue, McpVariable, McpVariableName,
+    HttpUrlError, McpNameError, McpSecret, McpServer, McpServerName, McpServerState, McpTransport,
+    McpUrl, McpValue, McpVariable, McpVariableName,
 };
 use std::fmt;
 
@@ -36,7 +36,7 @@ pub(super) struct Draft {
 pub(super) enum DraftError {
     Name(McpNameError),
     NoCommand,
-    Url(McpUrlError),
+    Url(HttpUrlError),
     VariableName(String),
     EmptySecret(String),
 }
@@ -197,7 +197,7 @@ mod tests {
         far.url = "http://10.0.0.3/mcp".to_owned();
         assert_eq!(
             far.ready().err(),
-            Some(DraftError::Url(McpUrlError::PlainHttpToRemote))
+            Some(DraftError::Url(HttpUrlError::PlainHttpToRemote))
         );
         let blank = draft(McpKind::Stdio, vec![row("TOKEN", " ", ValueKind::Secret)]);
         assert_eq!(

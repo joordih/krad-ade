@@ -17,6 +17,13 @@ impl Runner {
     pub const fn in_wsl(&self) -> bool {
         matches!(self, Self::Wsl { .. })
     }
+
+    pub(crate) fn served_directory(&self, cwd: &Path) -> String {
+        match self {
+            Self::Wsl { .. } => parse_wsl_path(cwd).map_or_default(|inside| inside.linux),
+            Self::Native(_) => cwd.to_string_lossy().into_owned(),
+        }
+    }
 }
 
 pub(crate) fn harness_command(
@@ -32,7 +39,7 @@ pub(crate) fn harness_command(
             command
         }
         Runner::Wsl { distro, program } => {
-            let linux_dir = parse_wsl_path(cwd).map_or_default(|inside| inside.linux);
+            let linux_dir = runner.served_directory(cwd);
             let mut command = Command::new(WSL_PROGRAM);
             command
                 .args(wsl_login_exec_args(distro, &linux_dir))

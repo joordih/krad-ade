@@ -1,8 +1,7 @@
 use krad_domain::review::{
-    Approval, Approvals, Branch, Change, CiStatus, Commit, CommitSha, DiffRefs, Discussion,
-    DiscussionId, Job, JobId, MergeOptions, MergeRequest, MergeRequestIid, MergeRequestState,
-    MergeStatus, Note, NoteId, NotePosition, Pipeline, PipelineId, Scope, StateFilter, TreeEntry,
-    TreeEntryKind, User, UserId,
+    Approval, Approvals, Change, CiStatus, Commit, CommitSha, DiffRefs, Discussion, DiscussionId,
+    Job, JobId, MergeOptions, MergeRequest, MergeRequestIid, MergeRequestState, MergeStatus, Note,
+    NoteId, NotePosition, Pipeline, PipelineId, Scope, StateFilter, User, UserId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -403,60 +402,6 @@ impl From<JobJson> for Job {
     }
 }
 
-#[derive(Deserialize)]
-pub(crate) struct BranchJson {
-    name: String,
-    #[serde(default)]
-    merged: bool,
-    #[serde(default)]
-    protected: bool,
-    #[serde(default)]
-    default: bool,
-    commit: CommitJson,
-}
-
-impl From<BranchJson> for Branch {
-    fn from(branch: BranchJson) -> Self {
-        Self {
-            name: branch.name,
-            merged: branch.merged,
-            protected: branch.protected,
-            default: branch.default,
-            commit: branch.commit.into(),
-        }
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum TreeEntryKindJson {
-    Blob,
-    Tree,
-    Commit,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct TreeEntryJson {
-    name: String,
-    path: String,
-    #[serde(rename = "type")]
-    kind: TreeEntryKindJson,
-}
-
-impl From<TreeEntryJson> for TreeEntry {
-    fn from(entry: TreeEntryJson) -> Self {
-        Self {
-            name: entry.name,
-            path: entry.path,
-            kind: match entry.kind {
-                TreeEntryKindJson::Blob => TreeEntryKind::Blob,
-                TreeEntryKindJson::Tree => TreeEntryKind::Tree,
-                TreeEntryKindJson::Commit => TreeEntryKind::Commit,
-            },
-        }
-    }
-}
-
 pub(crate) const fn state_param(state: StateFilter) -> &'static str {
     match state {
         StateFilter::Opened => "opened",
@@ -509,7 +454,6 @@ mod tests {
     const MERGE_REQUEST: &str = include_str!("../fixtures/merge_request.json");
     const DISCUSSIONS: &str = include_str!("../fixtures/discussions.json");
     const PIPELINES: &str = include_str!("../fixtures/pipelines.json");
-    const TREE: &str = include_str!("../fixtures/tree.json");
 
     fn parse<J: serde::de::DeserializeOwned, T: From<J>>(json: &str) -> serde_json::Result<T> {
         serde_json::from_str::<J>(json).map(T::from)
@@ -561,21 +505,6 @@ mod tests {
         assert_eq!(pipelines[0].git_ref, "feature");
         assert_eq!(pipelines[0].status, CiStatus::Success);
         assert_eq!(pipelines[1].status, CiStatus::Other);
-        Ok(())
-    }
-
-    #[test]
-    fn tree_entries_tell_files_from_folders() -> serde_json::Result<()> {
-        let tree: Vec<TreeEntry> = parse_list::<TreeEntryJson, _>(TREE)?;
-        let kinds: Vec<TreeEntryKind> = tree.iter().map(|entry| entry.kind).collect();
-        assert_eq!(
-            kinds,
-            [
-                TreeEntryKind::Tree,
-                TreeEntryKind::Blob,
-                TreeEntryKind::Commit
-            ]
-        );
         Ok(())
     }
 

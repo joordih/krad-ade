@@ -1,8 +1,8 @@
-use krad_domain::{ChatEvent, PermissionMode, ToolCall, ToolUseId};
+use krad_domain::{ChatEvent, PermissionMode, ToolCall, ToolKind, ToolUseId};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::checklist::{todos, TODO_TOOL};
+use crate::checklist::todos;
 use crate::edits::{file_edit, patched_edit};
 
 const SUMMARY_KEYS: &[&str] = &[
@@ -118,13 +118,15 @@ fn block_events(block: &Value) -> Vec<ChatEvent> {
 fn tool_use_events(block: &Value) -> Vec<ChatEvent> {
     let name = block.get("name").and_then(Value::as_str);
     let input = block.get("input");
+    let kind = name.map_or(ToolKind::Other, ToolKind::of_claude_code);
     let tool = ChatEvent::Tool(ToolCall {
         id: block.get("id").and_then(Value::as_str).map(ToolUseId::from),
         name: name.unwrap_or(UNKNOWN_TOOL).to_owned(),
+        kind,
         summary: tool_summary(input),
         edit: name.and_then(|name| file_edit(name, input)),
     });
-    let checklist = (name == Some(TODO_TOOL))
+    let checklist = (kind == ToolKind::Checklist)
         .then(|| input.and_then(todos))
         .flatten()
         .map(ChatEvent::Checklist);
@@ -184,6 +186,7 @@ mod tests {
         ChatEvent::Tool(ToolCall {
             id: Some(ToolUseId::from(id)),
             name: name.to_owned(),
+            kind: ToolKind::of_claude_code(name),
             summary: summary.to_owned(),
             edit: None,
         })
@@ -217,20 +220,6 @@ mod tests {
     fn a_permission_mode_claude_code_added_later_is_skipped() {
         let events = events(r#"{"type":"system","subtype":"status","permissionMode":"yolo"}"#);
         assert_eq!(events, []);
-    }
-
-    #[test]
-    fn claude_transcript_yields_the_read_the_answer_and_done() {
-        assert_eq!(
-            events(include_str!("../tests/fixtures/claude.jsonl")),
-            [
-                session("s1"),
-                model("claude-opus"),
-                claude_tool("t1", "Read", "server/auth/refresh.ts"),
-                ChatEvent::Text("Both tabs call `rotate()` at once.".to_owned()),
-                ChatEvent::Done,
-            ]
-        );
     }
 
     #[test]

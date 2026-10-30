@@ -1,10 +1,13 @@
+mod capabilities;
 mod hooks;
 mod inherited_env;
+pub use capabilities::*;
 pub use hooks::*;
 pub use inherited_env::INHERITED_SESSION_VARS;
 
 use crate::agent::{AgentPreset, AgentState};
 use crate::ids::ResumeId;
+use crate::tool_kind::CLAUDE_QUESTION_TOOL;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PromptDelivery {
@@ -26,6 +29,19 @@ pub enum SettledAsks {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PlanDialogKeys {
+    pub approve: &'static [u8],
+    pub approve_manually: &'static [u8],
+    pub keep_planning: &'static [u8],
+}
+
+const CLAUDE_PLAN_DIALOG: PlanDialogKeys = PlanDialogKeys {
+    approve: b"1",
+    approve_manually: b"2",
+    keep_planning: b"3",
+};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HookSignal {
     Ready,
     Working,
@@ -44,17 +60,15 @@ impl From<HookSignal> for AgentState {
     }
 }
 
-const CLAUDE_QUESTION_TOOL: &str = "AskUserQuestion";
-const CLAUDE_PLAN_TOOL: &str = "ExitPlanMode";
 const CLAUDE_IDLE_NOTIFICATION: &str = "idle_prompt";
 const CODEX_TURN_COMPLETE: &str = "agent-turn-complete";
 const CLAUDE_SESSION_START: &str = "SessionStart";
-const CLAUDE_PRE_TOOL_USE: &str = "PreToolUse";
+pub const CLAUDE_PRE_TOOL_USE: &str = "PreToolUse";
 const CLAUDE_POST_TOOL_USE: &str = "PostToolUse";
 const CLAUDE_POST_TOOL_USE_FAILURE: &str = "PostToolUseFailure";
 const CLAUDE_USER_PROMPT_SUBMIT: &str = "UserPromptSubmit";
 const CLAUDE_NOTIFICATION: &str = "Notification";
-const CLAUDE_PERMISSION_REQUEST: &str = "PermissionRequest";
+pub const CLAUDE_PERMISSION_REQUEST: &str = "PermissionRequest";
 const CLAUDE_STOP: &str = "Stop";
 const CLAUDE_STOP_FAILURE: &str = "StopFailure";
 const OPENCODE_SESSION_IDLE: &str = "session.idle";
@@ -76,6 +90,9 @@ const CLAUDE_COMPACT_SOURCE: &str = "compact";
 const CLAUDE_RESUME_FLAG: &str = "--resume";
 const CODEX_RESUME_COMMAND: &str = "resume";
 const CLAUDE_FORK_FLAG: &str = "--fork-session";
+const OPENCODE_PROMPT_FLAG: &str = "--prompt";
+const OPENCODE_SERVER_FLAG: &str = "--server";
+const OPENCODE_SESSION_FLAG: &str = "--session";
 const POSIX_QUOTE_ESCAPE: &str = r"'\''";
 const POWERSHELL_QUOTE_ESCAPE: &str = "''";
 const QUOTE: char = '\'';
@@ -89,7 +106,7 @@ impl AgentPreset {
     pub const fn prompt_delivery(self) -> PromptDelivery {
         match self {
             Self::ClaudeCode | Self::Codex => PromptDelivery::Argument,
-            Self::Opencode => PromptDelivery::Flag("--prompt"),
+            Self::Opencode => PromptDelivery::Flag(OPENCODE_PROMPT_FLAG),
             Self::Shell | Self::Gateway => PromptDelivery::AfterStart,
         }
     }
@@ -131,17 +148,9 @@ impl AgentPreset {
     }
 
     #[must_use]
-    pub const fn question_tool(self) -> Option<&'static str> {
+    pub const fn plan_dialog_keys(self) -> Option<PlanDialogKeys> {
         match self {
-            Self::ClaudeCode => Some(CLAUDE_QUESTION_TOOL),
-            _ => None,
-        }
-    }
-
-    #[must_use]
-    pub const fn plan_tool(self) -> Option<&'static str> {
-        match self {
-            Self::ClaudeCode => Some(CLAUDE_PLAN_TOOL),
+            Self::ClaudeCode => Some(CLAUDE_PLAN_DIALOG),
             _ => None,
         }
     }
@@ -177,6 +186,11 @@ pub fn resume_line(
         ShellQuoting::Posix => format!("{resumed} || {line}"),
         ShellQuoting::PowerShell => format!("{resumed}; if (-not $?) {{ {line} }}"),
     }
+}
+
+#[must_use]
+pub fn attach_line(line: &str, server: &str, session: &ResumeId) -> String {
+    format!("{line} {OPENCODE_SERVER_FLAG} {server} {OPENCODE_SESSION_FLAG} {session}")
 }
 
 fn claude_signal(event: &str, tool: Option<&str>) -> Option<HookSignal> {
@@ -324,7 +338,7 @@ mod tests {
     fn claude_idle_notifications_leave_the_state_alone() {
         let claude = AgentPreset::ClaudeCode;
         assert_eq!(
-            claude.hook_signal("Notification", Some(CLAUDE_IDLE_NOTIFICATION)),
+            claude.hook_signal("Notification", Some("idle_prompt")),
             None
         );
         assert_eq!(
@@ -416,14 +430,25 @@ mod tests {
     }
 
     #[test]
+    fn an_opencode_terminal_attaches_to_the_shared_server_session() {
+        let parsed = "ses_7Hq2".parse::<ResumeId>();
+        assert!(parsed.is_ok(), "an opencode session id parses");
+        let Ok(id) = parsed else {
+            return;
+        };
+        assert_eq!(
+            attach_line("opencode", "http://127.0.0.1:4096", &id),
+            "opencode --server http://127.0.0.1:4096 --session ses_7Hq2"
+        );
+    }
+
+    #[test]
     fn only_a_claude_startup_is_a_fresh_conversation() {
         let claude = AgentPreset::ClaudeCode;
-        assert!(claude.started_fresh(CLAUDE_SESSION_START, Some(CLAUDE_STARTUP_SOURCE)));
-        assert!(!claude.started_fresh(CLAUDE_SESSION_START, Some("resume")));
+        assert!(claude.started_fresh("SessionStart", Some("startup")));
+        assert!(!claude.started_fresh("SessionStart", Some("resume")));
         assert!(!claude.started_fresh("Stop", None));
-        assert!(
-            !AgentPreset::Codex.started_fresh(CLAUDE_SESSION_START, Some(CLAUDE_STARTUP_SOURCE))
-        );
+        assert!(!AgentPreset::Codex.started_fresh("SessionStart", Some("startup")));
     }
 
     #[test]

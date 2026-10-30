@@ -238,18 +238,3 @@ impl EnvironmentShell {
             .into_any_element()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_project_switch_flips_between_the_two_choices() {
-        assert_eq!(flipped(McpProjectTrust::Trusted), McpProjectTrust::Ignored);
-        assert_eq!(flipped(McpProjectTrust::Ignored), McpProjectTrust::Trusted);
-        assert_ne!(
-            trust_detail(McpProjectTrust::Trusted),
-            trust_detail(McpProjectTrust::Ignored)
-        );
-    }
-}

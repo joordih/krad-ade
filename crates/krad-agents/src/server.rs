@@ -31,7 +31,7 @@ impl Endpoint {
     fn refusal(&self, envelope: &Envelope) -> Option<&'static str> {
         let expected = match envelope.from {
             Caller::Lead(_) => &self.lead_token,
-            Caller::Terminal(_) | Caller::Chat(_) => &self.token,
+            Caller::Terminal(_) => &self.token,
         };
         if envelope.token == *expected {
             None

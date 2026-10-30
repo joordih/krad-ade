@@ -1,6 +1,6 @@
 mod diff;
 
-use krad_domain::{ChatEvent, FileEdit, RewindId, RewindPoint, ToolCall, ToolUseId};
+use krad_domain::{ChatEvent, FileEdit, RewindId, RewindPoint, ToolCall, ToolKind, ToolUseId};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -9,20 +9,20 @@ use crate::control::{LiveEvent, PlanUsage};
 use diff::file_edit;
 pub(crate) use diff::{ChangeKind, FileUpdate};
 
-const BASH_TOOL: &str = "Bash";
-const READ_TOOL: &str = "Read";
-const LIST_TOOL: &str = "Glob";
-const SEARCH_TOOL: &str = "Grep";
-const EDIT_TOOL: &str = "Edit";
-const WRITE_TOOL: &str = "Write";
-const WEB_SEARCH_TOOL: &str = "WebSearch";
-const TASK_TOOL: &str = "Task";
+pub(super) const BASH_TOOL: (&str, ToolKind) = ("Bash", ToolKind::Shell);
+const READ_TOOL: (&str, ToolKind) = ("Read", ToolKind::Read);
+const LIST_TOOL: (&str, ToolKind) = ("Glob", ToolKind::Search);
+const SEARCH_TOOL: (&str, ToolKind) = ("Grep", ToolKind::Search);
+pub(super) const EDIT_TOOL: (&str, ToolKind) = ("Edit", ToolKind::Edit);
+const WRITE_TOOL: (&str, ToolKind) = ("Write", ToolKind::Edit);
+const WEB_SEARCH_TOOL: (&str, ToolKind) = ("WebSearch", ToolKind::Search);
+const TASK_TOOL: (&str, ToolKind) = ("Task", ToolKind::Subagent);
 const REASONING_SEPARATOR: &str = "\n\n";
 const FIVE_HOURS_MINS: u32 = 300;
 const SEVEN_DAYS_MINS: u32 = 10_080;
 const UNKNOWN_FAILURE: &str = "codex reported an error";
 
-const ITEM_STARTED: &str = "item/started";
+pub(super) const ITEM_STARTED: &str = "item/started";
 const ITEM_COMPLETED: &str = "item/completed";
 const TURN_STARTED: &str = "turn/started";
 const TURN_COMPLETED: &str = "turn/completed";
@@ -109,10 +109,16 @@ pub(crate) enum Item {
     Other,
 }
 
-fn call(id: &str, name: &str, summary: String, edit: Option<FileEdit>) -> ToolCall {
+fn call(
+    id: &str,
+    (name, kind): (&str, ToolKind),
+    summary: String,
+    edit: Option<FileEdit>,
+) -> ToolCall {
     ToolCall {
         id: Some(ToolUseId::from(id)),
         name: name.to_owned(),
+        kind,
         summary,
         edit,
     }
@@ -160,7 +166,9 @@ pub(crate) fn tools_of(item: &Item) -> Vec<ToolCall> {
                 call(id, name, change.path.clone(), file_edit(change))
             })
             .collect(),
-        Item::McpToolCall { id, server, tool } => vec![call(id, tool, server.clone(), None)],
+        Item::McpToolCall { id, server, tool } => {
+            vec![call(id, (tool, ToolKind::Other), server.clone(), None)]
+        }
         Item::WebSearch { id, query } => vec![call(id, WEB_SEARCH_TOOL, query.clone(), None)],
         Item::CollabAgentToolCall { id, prompt } => {
             vec![call(
@@ -200,8 +208,8 @@ const fn shows_when_started(item: &Item) -> bool {
 }
 
 #[derive(Debug, Deserialize)]
-struct ItemNotice {
-    item: Item,
+pub(super) struct ItemNotice {
+    pub(super) item: Item,
 }
 
 #[derive(Debug, Deserialize)]

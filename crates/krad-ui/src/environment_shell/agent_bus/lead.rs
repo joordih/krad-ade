@@ -1,6 +1,6 @@
 use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
-use krad_agents::{ChatHandle, LeadHandle, Request, Response};
+use krad_agents::{LeadHandle, Request, Response};
 use krad_domain::{EnvironmentName, SessionId};
 
 use super::super::EnvironmentShell;
@@ -28,10 +28,6 @@ impl EnvironmentShell {
             None => NOT_A_LEAD_ANYMORE,
             Some(None) => NO_LEAD_GROUP,
             Some(Some(group)) => {
-                let chat = ChatHandle {
-                    environment: lead.environment.clone(),
-                    group: group.as_u64(),
-                };
                 match request {
                     Request::Spawn {
                         agent,
@@ -44,9 +40,9 @@ impl EnvironmentShell {
                             task,
                             lead: Some(session),
                         };
-                        self.start_chat_worker(&chat, spawn, reply, cx);
+                        self.start_chat_worker(&lead.environment, group, spawn, reply, cx);
                     }
-                    other => self.answer_chat(&chat, other, reply, cx),
+                    other => self.answer_chat(&lead.environment, group, other, reply, cx),
                 }
                 return;
             }

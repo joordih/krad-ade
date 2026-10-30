@@ -1,9 +1,8 @@
-use krad_domain::{parse_wsl_path, ChatEvent, Effort, ModelId, PermissionMode, Prompt, ResumeId};
+use krad_domain::{ChatEvent, Effort, PermissionMode, Prompt, ResumeId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
@@ -11,14 +10,14 @@ use std::thread;
 
 use super::ask::{reply, server_ask};
 use super::catalog::{listing, Listing};
-use super::events::{tools_of, Item, Translator};
+use super::events::{tools_of, Item, ItemNotice, Translator, ITEM_STARTED};
 use super::rpc::{AppServer, CodexError, Pushed};
-use crate::command::LiveSession;
-use crate::control::{AskAnswer, LiveEvent, Responder, ToolAsk};
+use crate::control::{LiveEvent, Responder};
 use crate::live::LiveConfig;
+use crate::live::{LiveHarness, LiveSession, Order};
 use crate::mention::served_path;
-use crate::process::Runner;
-use crate::rewind::{ResumeCut, RewindRequest};
+use crate::refused::ResumeRefused;
+use crate::rewind::ResumeCut;
 
 const THREAD_START: &str = "thread/start";
 const THREAD_RESUME: &str = "thread/resume";
@@ -26,27 +25,11 @@ const THREAD_FORK: &str = "thread/fork";
 const TURN_START: &str = "turn/start";
 const TURN_STEER: &str = "turn/steer";
 const TURN_INTERRUPT: &str = "turn/interrupt";
-const ITEM_STARTED: &str = "item/started";
 const SKILL_MARK: char = '/';
 const SKILL_SIGIL: char = '$';
-const MISSING_CONVERSATION: &str = "No conversation found with session ID";
 const MISSING_THREAD_HINTS: [&str; 3] = ["not found", "no rollout", "does not exist"];
 const BUS_NETWORK: &str = "sandbox_workspace_write.network_access=true";
 const STOPPED_TEXT: &str = "codex stopped";
-const UNTRUSTED: &str = "untrusted";
-const ON_REQUEST: &str = "on-request";
-const NEVER: &str = "never";
-
-#[derive(Debug)]
-pub(crate) enum Order {
-    Send(Prompt),
-    Interrupt,
-    Model(ModelId),
-    Effort(Effort),
-    Mode(PermissionMode),
-    Answer(Box<ToolAsk>, AskAnswer),
-    Rewind(RewindRequest),
-}
 
 enum Inbound {
     Order(Order),
@@ -69,6 +52,32 @@ enum Sandbox {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum SandboxMode {
+    WorkspaceWrite,
+    ReadOnly,
+    DangerFullAccess,
+}
+
+impl From<Sandbox> for SandboxMode {
+    fn from(sandbox: Sandbox) -> Self {
+        match sandbox {
+            Sandbox::WorkspaceWrite { .. } => Self::WorkspaceWrite,
+            Sandbox::ReadOnly { .. } => Self::ReadOnly,
+            Sandbox::DangerFullAccess => Self::DangerFullAccess,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum Approval {
+    Untrusted,
+    OnRequest,
+    Never,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 enum Mode {
     Default,
@@ -77,7 +86,7 @@ enum Mode {
 
 #[derive(Debug, PartialEq, Eq)]
 struct Policy {
-    approval: &'static str,
+    approval: Approval,
     sandbox: Sandbox,
     mode: Mode,
 }
@@ -87,17 +96,19 @@ fn policy(mode: PermissionMode, network: bool) -> Policy {
         network_access: network,
     };
     let (approval, sandbox, mode) = match mode {
-        PermissionMode::Manual => (UNTRUSTED, write, Mode::Default),
-        PermissionMode::AcceptEdits => (ON_REQUEST, write, Mode::Default),
+        PermissionMode::Manual => (Approval::Untrusted, write, Mode::Default),
+        PermissionMode::AcceptEdits => (Approval::OnRequest, write, Mode::Default),
         PermissionMode::Plan => (
-            ON_REQUEST,
+            Approval::OnRequest,
             Sandbox::ReadOnly {
                 network_access: network,
             },
             Mode::Plan,
         ),
-        PermissionMode::Auto | PermissionMode::DontAsk => (NEVER, write, Mode::Default),
-        PermissionMode::BypassPermissions => (NEVER, Sandbox::DangerFullAccess, Mode::Default),
+        PermissionMode::Auto | PermissionMode::DontAsk => (Approval::Never, write, Mode::Default),
+        PermissionMode::BypassPermissions => {
+            (Approval::Never, Sandbox::DangerFullAccess, Mode::Default)
+        }
     };
     Policy {
         approval,
@@ -168,8 +179,8 @@ struct ThreadOpen<'a> {
     cwd: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     model: Option<&'a str>,
-    approval_policy: &'static str,
-    sandbox: &'static str,
+    approval_policy: Approval,
+    sandbox: SandboxMode,
     #[serde(skip_serializing_if = "Option::is_none")]
     developer_instructions: Option<&'a str>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -209,7 +220,7 @@ struct TurnStart<'a> {
     model: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     effort: Option<String>,
-    approval_policy: &'static str,
+    approval_policy: Approval,
     sandbox_policy: Sandbox,
     #[serde(skip_serializing_if = "Option::is_none")]
     collaboration_mode: Option<Collaboration<'a>>,
@@ -230,26 +241,6 @@ struct TurnInterrupt<'a> {
     turn_id: &'a str,
 }
 
-#[derive(Deserialize)]
-struct ItemNotice {
-    item: Item,
-}
-
-const fn sandbox_mode(sandbox: Sandbox) -> &'static str {
-    match sandbox {
-        Sandbox::WorkspaceWrite { .. } => "workspace-write",
-        Sandbox::ReadOnly { .. } => "read-only",
-        Sandbox::DangerFullAccess => "danger-full-access",
-    }
-}
-
-pub(crate) fn served_directory(runner: &Runner, cwd: &Path) -> String {
-    match runner {
-        Runner::Wsl { .. } => parse_wsl_path(cwd).map_or_default(|inside| inside.linux),
-        Runner::Native(_) => cwd.to_string_lossy().into_owned(),
-    }
-}
-
 fn missing_thread(error: &CodexError) -> bool {
     let CodexError::Refused(message) = error else {
         return false;
@@ -265,16 +256,16 @@ pub(crate) struct CodexChat {
     running: Arc<AtomicBool>,
 }
 
-impl CodexChat {
-    pub(crate) fn order(&self, order: Order) {
+impl LiveHarness for CodexChat {
+    fn order(&self, order: Order) {
         self.orders.send(Inbound::Order(order)).unwrap_or_default();
     }
 
-    pub(crate) fn is_alive(&self) -> bool {
+    fn is_alive(&self) -> bool {
         self.running.load(Ordering::SeqCst)
     }
 
-    pub(crate) fn stop(&self) {
+    fn stop(&self) {
         self.orders.send(Inbound::Stop).unwrap_or_default();
     }
 }
@@ -306,7 +297,7 @@ pub(crate) fn spawn_codex(
     thread::spawn(move || {
         let network = !config.bus_vars.0.is_empty();
         let mut worker = Worker {
-            directory: served_directory(&config.runner, &config.cwd),
+            directory: config.runner.served_directory(&config.cwd),
             model: config.model.as_ref().map(|model| model.as_str().to_owned()),
             effort: config.effort,
             mode: config.permission_mode.unwrap_or(PermissionMode::Manual),
@@ -360,7 +351,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             cwd: &self.directory,
             model: self.model.as_deref(),
             approval_policy: policy.approval,
-            sandbox: sandbox_mode(policy.sandbox),
+            sandbox: policy.sandbox.into(),
             developer_instructions: instructions.as_deref(),
             exclude_turns: thread_id.is_some(),
         };
@@ -375,9 +366,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             Ok(opened) => opened,
             Err(error) if missing_thread(&error) => {
                 let resumed = session.history().map_or("", ResumeId::as_str);
-                self.emit(ChatEvent::Error(format!(
-                    "{MISSING_CONVERSATION} {resumed}"
-                )));
+                (self.sink)(LiveEvent::Refused(ResumeRefused::missing(resumed)));
                 return Ok(false);
             }
             Err(error) => return Err(error),

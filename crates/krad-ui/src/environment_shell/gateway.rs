@@ -1,5 +1,5 @@
 use gpui_kit::{AppContext as _, Context};
-use krad_chat::{gateway_models, ModelOffer};
+use krad_chat::{gateway_models, GatewayModel, ModelOffer};
 use krad_domain::{
     AgentPreset, EnvironmentName, GatewayAccess, GatewayKey, GatewayUrl, ModelId, TerminalId,
 };
@@ -27,7 +27,7 @@ pub(super) enum GatewayLink {
     Ready {
         access: GatewayAccess,
         place: LoginPlace,
-        models: Vec<ModelOffer>,
+        models: Vec<GatewayModel>,
     },
     Failed {
         access: Option<GatewayAccess>,
@@ -51,7 +51,7 @@ pub(super) enum GatewayReach {
 struct Checked {
     access: GatewayAccess,
     place: LoginPlace,
-    models: Result<Vec<ModelOffer>, String>,
+    models: Result<Vec<GatewayModel>, String>,
 }
 
 fn read_access(url: &GatewayUrl) -> Result<Option<(GatewayAccess, LoginPlace)>, String> {
@@ -204,7 +204,7 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn gateway_served(&self) -> &[ModelOffer] {
+    pub(super) fn gateway_served(&self) -> &[GatewayModel] {
         match &self.gateway.link {
             GatewayLink::Ready { models, .. } => models,
             GatewayLink::Unset | GatewayLink::Checking | GatewayLink::Failed { .. } => &[],
@@ -216,13 +216,13 @@ impl EnvironmentShell {
         let offers = self
             .settings
             .gateway
-            .models()
+            .models
             .iter()
             .filter_map(|model| {
                 served
                     .iter()
-                    .find(|offer| offer.value == model.as_str())
-                    .cloned()
+                    .find(|served| served.offer.value == model.as_str())
+                    .map(|served| served.offer.clone())
             })
             .collect();
         self.gateway.offers = offers;

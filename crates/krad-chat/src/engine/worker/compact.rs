@@ -1,12 +1,13 @@
 use krad_domain::ChatEvent;
 use std::thread;
 
-use super::{Inbound, Phase, Worker, CONTEXT_WINDOW, MAX_OUTPUT_TOKENS};
+use super::{Inbound, Phase, Worker, MAX_OUTPUT_TOKENS};
 use crate::control::LiveEvent;
 use crate::engine::attachments::Attachments;
-use crate::engine::provider::{stream, ProviderError};
-use crate::engine::session::Record;
-use crate::engine::wire::{Block, Message, Request};
+use crate::engine::provider::stream;
+use crate::engine::session::{Chosen, Record};
+use crate::engine::wire::{answer_text, Message, Protocol, Request};
+use crate::gateway::GatewayError;
 
 const COMPACT_AT_PERCENT: u64 = 80;
 const PERCENT: u64 = 100;
@@ -23,20 +24,10 @@ fn split_point(messages: &[Message]) -> Option<usize> {
         .filter(|at| *at > 0)
 }
 
-pub(super) fn text_of(blocks: &[Block]) -> String {
-    blocks
-        .iter()
-        .filter_map(|block| match block {
-            Block::Text { text } => Some(text.as_str()),
-            Block::Thinking { .. } | Block::Call(_) => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 impl<S: FnMut(LiveEvent)> Worker<S> {
-    pub(super) fn compact_if_needed(&mut self, model: &str) -> bool {
-        if self.context * PERCENT < CONTEXT_WINDOW * COMPACT_AT_PERCENT {
+    pub(super) fn compact_if_needed(&mut self, model: &Chosen) -> bool {
+        let window = self.setup.window(Some(model)).tokens();
+        if self.context * PERCENT < window * COMPACT_AT_PERCENT {
             return false;
         }
         let Some(split) = split_point(&self.messages) else {
@@ -44,8 +35,8 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         };
         let (attempt, cancel) = self.next_attempt();
         let access = self.setup.access.clone();
-        let protocol = self.protocol(model);
-        let model = model.to_owned();
+        let protocol = Protocol::from(model.vendor);
+        let model = model.id.clone();
         let mut older = self.messages[..split].to_vec();
         older.push(Message::user(COMPACT_ASK.to_owned()));
         let effort = self.effort;
@@ -63,10 +54,10 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
                 max_tokens: MAX_OUTPUT_TOKENS,
             };
             let summary = stream(&access, protocol, &request, &cancel, &mut |_| {})
-                .map(|reply| text_of(&reply.blocks))
+                .map(|reply| answer_text(&reply.blocks))
                 .and_then(|summary| {
                     if summary.trim().is_empty() {
-                        Err(ProviderError::Unreadable(EMPTY_SUMMARY.to_owned()))
+                        Err(GatewayError::Unreadable(EMPTY_SUMMARY.to_owned()))
                     } else {
                         Ok(summary)
                     }
@@ -78,10 +69,10 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         true
     }
 
-    pub(super) fn compacted(&mut self, summary: Result<String, ProviderError>) {
+    pub(super) fn compacted(&mut self, summary: Result<String, GatewayError>) {
         let summary = match summary {
             Ok(summary) => summary,
-            Err(ProviderError::Cancelled) => return self.finish_turn(),
+            Err(GatewayError::Cancelled) => return self.finish_turn(),
             Err(error) => {
                 self.phase = Phase::Idle;
                 return self.emit(ChatEvent::Error(error.to_string()));

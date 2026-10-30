@@ -265,7 +265,7 @@ pub(super) fn segment_is_safe(words: &[String]) -> bool {
     }
 }
 
-pub(crate) fn is_known_safe(command: &str) -> bool {
+pub(super) fn is_known_safe(command: &str) -> bool {
     let parsed = parse(command);
     parsed.is_plain()
         && !parsed.segments.is_empty()

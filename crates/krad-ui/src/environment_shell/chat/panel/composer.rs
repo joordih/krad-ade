@@ -1,13 +1,13 @@
 use gpui_kit::component::input::{Enter, Escape, IndentInline, MoveDown, MoveUp};
 use gpui_kit::{Context, Div, InteractiveElement, Window};
+use krad_domain::TerminalId;
 
-use super::super::suggest::Composer;
 use super::super::EnvironmentShell;
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn suggestion_keys(
         field: Div,
-        composer: Composer,
+        composer: TerminalId,
         cx: &mut Context<Self>,
     ) -> Div {
         field
@@ -39,7 +39,7 @@ impl EnvironmentShell {
             }))
     }
 
-    fn suggesting_in(&self, composer: Composer) -> bool {
+    fn suggesting_in(&self, composer: TerminalId) -> bool {
         self.chat
             .suggest
             .as_ref()
@@ -48,7 +48,7 @@ impl EnvironmentShell {
 
     fn accept_highlighted(
         &mut self,
-        composer: Composer,
+        composer: TerminalId,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {

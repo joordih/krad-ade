@@ -1,5 +1,6 @@
 mod agent;
 mod attachments;
+mod call;
 mod checklist;
 mod history;
 mod mcp;
@@ -16,7 +17,8 @@ mod wire;
 mod worker;
 
 use krad_domain::{
-    ChatEntry, ChatEvent, Effort, GatewayAccess, McpServerStart, ModelId, PermissionMode, ResumeId,
+    ChatEntry, ChatEvent, ContextWindow, Effort, GatewayAccess, McpServerStart, ModelId,
+    PermissionMode, ResumeId,
 };
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -27,21 +29,20 @@ use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
 use std::thread;
 
-use crate::command::{BusVars, LiveSession};
-use crate::control::{Catalog, CommandOffer, LiveEvent, ModelOffer, ModelSource};
-use crate::gateway::gateway_models;
+use crate::control::{Catalog, CommandOffer, LiveEvent};
+use crate::gateway::GatewayModel;
+use crate::live::{BusVars, LiveHarness, LiveSession, Order};
 use crate::skills::skill_files;
 use mcp::{McpStartFailure, McpTool, McpToolbox};
 use prompt::{instruction_files, system_prompt, PromptParts};
-use provider::protocol_for;
-use session::{read_records, session_path, SessionFile};
+use session::{read_records, refusal, session_path, Chosen, Record, Restored, SessionFile};
 use snapshots::Snapshots;
 use tools::{Background, Workspace};
-use wire::{Protocol, ToolSpec};
-use worker::{Inbound, Setup, Start, Worker, CONTEXT_WINDOW};
+use wire::ToolSpec;
+use worker::{Inbound, Setup, Start, Worker};
 
 pub use subagents::{engine_subagents, read_engine_subagent};
-pub(crate) use worker::Order;
+pub(crate) use wire::Protocol;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EngineConfig {
@@ -50,6 +51,8 @@ pub struct EngineConfig {
     pub home: Option<PathBuf>,
     pub cwd: PathBuf,
     pub model: Option<ModelId>,
+    pub models: Vec<GatewayModel>,
+    pub context_windows: HashMap<ModelId, ContextWindow>,
     pub system_prompt: Option<String>,
     pub effort: Option<Effort>,
     pub permission_mode: Option<PermissionMode>,
@@ -68,32 +71,19 @@ pub(crate) struct EngineChat {
     background: Background,
 }
 
-impl EngineChat {
-    pub(crate) fn order(&self, order: Order) {
+impl LiveHarness for EngineChat {
+    fn order(&self, order: Order) {
         self.orders.send(Inbound::Order(order)).unwrap_or_default();
     }
 
-    pub(crate) fn is_alive(&self) -> bool {
+    fn is_alive(&self) -> bool {
         self.running.load(Ordering::SeqCst)
     }
 
-    pub(crate) fn stop(&self) {
+    fn stop(&self) {
         self.orders.send(Inbound::Stop).unwrap_or_default();
         self.background.stop_all();
     }
-}
-
-fn protocols(offers: &[ModelOffer]) -> HashMap<String, Protocol> {
-    offers
-        .iter()
-        .map(|offer| {
-            let owner = match &offer.source {
-                Some(ModelSource::Provider(owner)) => Some(owner.as_str()),
-                _ => None,
-            };
-            (offer.value.clone(), protocol_for(owner, &offer.value))
-        })
-        .collect()
 }
 
 fn mcp_spec(tool: &McpTool) -> ToolSpec {
@@ -119,7 +109,7 @@ fn failure_notice(failure: &McpStartFailure) -> String {
     )
 }
 
-fn setup(config: &EngineConfig, offers: &[ModelOffer], mcp: Arc<McpToolbox>) -> Setup {
+fn setup(config: &EngineConfig, mcp: Arc<McpToolbox>) -> Setup {
     let skills = skill_files(config.home.as_deref(), Some(&config.cwd));
     let instructions = instruction_files(config.home.as_deref(), &config.cwd);
     let system = system_prompt(&PromptParts {
@@ -135,7 +125,16 @@ fn setup(config: &EngineConfig, offers: &[ModelOffer], mcp: Arc<McpToolbox>) -> 
             env: config.bus_vars.0.clone(),
         },
         system,
-        protocols: protocols(offers),
+        vendors: config
+            .models
+            .iter()
+            .map(|model| (model.offer.value.clone(), model.vendor))
+            .collect(),
+        windows: config
+            .context_windows
+            .iter()
+            .map(|(model, window)| (model.as_str().to_owned(), *window))
+            .collect(),
         tools: tools::specs()
             .into_iter()
             .chain([
@@ -171,37 +170,36 @@ fn open(
     session: &LiveSession,
     sink: &mut impl FnMut(LiveEvent),
 ) -> Option<Start> {
-    let (file, restored) = match SessionFile::open(&config.sessions, session) {
+    let (mut file, restored) = match SessionFile::open(&config.sessions, session) {
         Ok(opened) => opened,
         Err(error) => {
-            sink(LiveEvent::Chat(ChatEvent::Error(error.to_string())));
+            sink(refusal(&error).map_or_else(
+                || LiveEvent::Chat(ChatEvent::Error(error.to_string())),
+                LiveEvent::Refused,
+            ));
             return None;
         }
     };
-    let ((toolbox, failures), offers) = thread::scope(|scope| {
-        let started = scope.spawn(|| McpToolbox::start(&config.mcp, &config.cwd));
-        let offers = gateway_models(&config.access).unwrap_or_default();
-        let started = started
-            .join()
-            .unwrap_or_else(|_| McpToolbox::start(&[], &config.cwd));
-        (started, offers)
-    });
+    let (toolbox, failures) = McpToolbox::start(&config.mcp, &config.cwd);
     for failure in &failures {
         sink(LiveEvent::Notice(failure_notice(failure)));
     }
-    let setup = setup(config, &offers, Arc::new(toolbox));
-    let model = config
-        .model
-        .as_ref()
-        .map(|model| model.as_str().to_owned())
-        .or(restored.model);
+    let setup = setup(config, Arc::new(toolbox));
+    let model = chosen(config, &setup, &restored);
+    if let Some(model) = model.as_ref().filter(|model| !restored.holds(model)) {
+        if let Err(error) = file.append(&Record::from(model)) {
+            sink(LiveEvent::Chat(ChatEvent::Error(error.to_string())));
+        }
+    }
     let mode = config.permission_mode.unwrap_or(PermissionMode::Manual);
     sink(LiveEvent::Chat(ChatEvent::Session(file.id.clone())));
     if let Some(model) = &model {
-        sink(LiveEvent::Chat(ChatEvent::Model(model.clone())));
+        sink(LiveEvent::Chat(ChatEvent::Model(model.id.clone())));
     }
     sink(LiveEvent::Chat(ChatEvent::PermissionMode(mode)));
-    sink(LiveEvent::Chat(ChatEvent::ContextWindow(CONTEXT_WINDOW)));
+    sink(LiveEvent::Chat(ChatEvent::ContextWindow(
+        setup.window(model.as_ref()).tokens(),
+    )));
     sink(LiveEvent::Ready(catalog(&setup)));
     Some(Start {
         setup,
@@ -214,6 +212,19 @@ fn open(
         effort: config.effort,
         mode,
     })
+}
+
+fn chosen(config: &EngineConfig, setup: &Setup, restored: &Restored) -> Option<Chosen> {
+    let id = config
+        .model
+        .as_ref()
+        .map(|model| model.as_str().to_owned())
+        .or_else(|| restored.model.clone())?;
+    let vendor = restored
+        .vendor
+        .filter(|_| restored.model.as_ref() == Some(&id))
+        .unwrap_or_else(|| setup.vendor(&id));
+    Some(Chosen { id, vendor })
 }
 
 pub(crate) fn spawn_engine(

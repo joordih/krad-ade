@@ -48,7 +48,18 @@ impl RewindScope {
 impl AgentPreset {
     #[must_use]
     pub const fn restores_files(self) -> bool {
-        matches!(self, Self::ClaudeCode | Self::Opencode | Self::Gateway)
+        match self {
+            Self::ClaudeCode | Self::Opencode | Self::Gateway => true,
+            Self::Shell | Self::Codex => false,
+        }
+    }
+
+    #[must_use]
+    pub const fn rewinds_from_home(self) -> bool {
+        match self {
+            Self::ClaudeCode => true,
+            Self::Shell | Self::Codex | Self::Opencode | Self::Gateway => false,
+        }
     }
 }
 
@@ -57,30 +68,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_codex_rewinds_without_its_files() {
-        let restoring: Vec<AgentPreset> = AgentPreset::all()
-            .into_iter()
-            .filter(|preset| preset.restores_files())
-            .collect();
-        assert_eq!(
-            restoring,
-            [
-                AgentPreset::ClaudeCode,
-                AgentPreset::Opencode,
-                AgentPreset::Gateway
-            ]
-        );
+    fn codex_rewinds_without_its_files_and_only_claude_code_reads_them_from_home() {
+        for preset in AgentPreset::all() {
+            let (restores, from_home) = match preset {
+                AgentPreset::ClaudeCode => (true, true),
+                AgentPreset::Opencode | AgentPreset::Gateway => (true, false),
+                AgentPreset::Shell | AgentPreset::Codex => (false, false),
+            };
+            assert_eq!(preset.restores_files(), restores, "{preset:?}");
+            assert_eq!(preset.rewinds_from_home(), from_home, "{preset:?}");
+        }
     }
 
     #[test]
-    fn rewind_points_round_trip_through_json() {
-        for point in [
-            RewindPoint::Message(RewindId::from("msg_1")),
-            RewindPoint::Turn(RewindId::from("turn-2")),
-            RewindPoint::Prompt(3),
+    fn rewind_points_persist_as_tagged_ids() {
+        for (point, persisted) in [
+            (
+                RewindPoint::Message(RewindId::from("msg_1")),
+                r#"{"Message":"msg_1"}"#,
+            ),
+            (
+                RewindPoint::Turn(RewindId::from("turn-2")),
+                r#"{"Turn":"turn-2"}"#,
+            ),
+            (RewindPoint::Prompt(3), r#"{"Prompt":3}"#),
         ] {
-            let line = serde_json::to_string(&point).unwrap_or_default();
-            assert_eq!(serde_json::from_str::<RewindPoint>(&line).ok(), Some(point));
+            assert_eq!(
+                serde_json::to_string(&point).ok().as_deref(),
+                Some(persisted)
+            );
+            assert_eq!(
+                serde_json::from_str::<RewindPoint>(persisted).ok(),
+                Some(point)
+            );
         }
     }
 }

@@ -11,7 +11,8 @@ fn chat(events: Vec<LiveEvent>) -> Vec<ChatEvent> {
             | LiveEvent::Ready(_)
             | LiveEvent::Usage(_)
             | LiveEvent::Notice(_)
-            | LiveEvent::Rewound(_) => None,
+            | LiveEvent::Rewound(_)
+            | LiveEvent::Refused(_) => None,
         })
         .collect()
 }
@@ -129,4 +130,21 @@ fn an_updated_plan_reaches_the_chat_as_its_checklist() {
         events.as_slice(),
         [ChatEvent::Checklist(list)] if list.items.len() == 1
     ));
+}
+
+#[test]
+fn a_codex_subagent_call_is_told_apart_as_a_subagent() {
+    let events = chat(Translator::default().translate(
+        ITEM_STARTED,
+        &json!({"threadId": "t", "turnId": "turn-1", "item": {"type": "collabAgentToolCall",
+            "id": "agent-1", "prompt": "Map the UI"}}),
+    ));
+    assert!(
+        matches!(
+            events.as_slice(),
+            [ChatEvent::Tool(call)] if call.kind == krad_domain::ToolKind::Subagent
+                && call.summary == "Map the UI"
+        ),
+        "{events:?}"
+    );
 }

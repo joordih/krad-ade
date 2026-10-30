@@ -7,6 +7,7 @@ use gpui_kit::{
 use krad_domain::{FileOpening, GraphLayout, NoteGraph};
 
 use super::super::EnvironmentShell;
+use super::tabs_bar::note_name;
 use crate::theme::{palette, tinted, LINE_XS, RADIUS_XS, TEXT_XS};
 
 const STEPS_PER_FRAME: usize = 6;
@@ -26,8 +27,6 @@ const HALF: f32 = 0.5;
 const LOCAL_H: f32 = 220.0;
 const GRAPH_NODE_PREFIX: &str = "graph-node";
 const LOCAL_NODE_PREFIX: &str = "local-graph-node";
-const PATH_SEPARATOR: char = '/';
-const NOTE_SUFFIX: &str = ".md";
 
 struct DrawnGraph {
     graph: NoteGraph,
@@ -87,11 +86,6 @@ fn node_size(links: usize) -> f32 {
     #[allow(clippy::cast_precision_loss)]
     let size = NODE_MIN + links as f32 * NODE_PER_LINK;
     size.min(NODE_MAX)
-}
-
-fn label_of(path: &str) -> String {
-    let name = path.rsplit(PATH_SEPARATOR).next().unwrap_or(path);
-    name.strip_suffix(NOTE_SUFFIX).unwrap_or(name).to_owned()
 }
 
 impl EnvironmentShell {
@@ -247,7 +241,7 @@ impl EnvironmentShell {
                             pal.text_default
                         }))
                         .truncate()
-                        .child(label_of(path)),
+                        .child(note_name(path).to_owned()),
                 )
             })
             .into_any_element()
@@ -342,6 +336,5 @@ mod tests {
         assert!((node_size(0) - NODE_MIN).abs() < f32::EPSILON);
         assert!(node_size(2) > node_size(1));
         assert!((node_size(100) - NODE_MAX).abs() < f32::EPSILON);
-        assert_eq!(label_of("Ideas/Spark.md"), "Spark");
     }
 }

@@ -9,10 +9,11 @@ mod read;
 mod scratch;
 mod search;
 mod shell;
+mod side;
 mod specs;
 mod write;
 
-use krad_domain::FileEdit;
+use krad_domain::{FileEdit, ToolKind};
 use serde_json::Value;
 use std::borrow::Cow;
 use std::path::{Component, Path, PathBuf};
@@ -23,8 +24,8 @@ use std::time::Duration;
 use super::mcp::{shown_tool, McpToolbox};
 
 pub(crate) use fetch::WebUrl;
-pub(crate) use search::Search;
 pub(crate) use shell::Background;
+pub(crate) use side::SideRequest;
 pub(crate) use specs::specs;
 
 const READ_TOOL: &str = "read";
@@ -90,7 +91,7 @@ fn normalize(path: &Path) -> PathBuf {
 pub(crate) struct Context {
     pub(crate) workspace: Workspace,
     pub(crate) background: Background,
-    pub(crate) search: Option<Search>,
+    pub(crate) side: Option<SideRequest>,
     pub(crate) mcp: Arc<McpToolbox>,
 }
 
@@ -202,6 +203,19 @@ impl Action {
         Cow::Borrowed(label)
     }
 
+    pub(crate) const fn kind(&self) -> ToolKind {
+        match self {
+            Self::Read { .. } => ToolKind::Read,
+            Self::Write { .. } | Self::Edit { .. } => ToolKind::Edit,
+            Self::Find { .. } | Self::Grep { .. } | Self::WebSearch { .. } => ToolKind::Search,
+            Self::Shell { .. } | Self::ShellOutput { .. } | Self::ShellStop { .. } => {
+                ToolKind::Shell
+            }
+            Self::WebFetch { .. } => ToolKind::Fetch,
+            Self::Mcp { .. } => ToolKind::Other,
+        }
+    }
+
     pub(crate) fn summary(&self, workspace: &Workspace) -> String {
         let searched = |pattern: &str, path: Option<&PathBuf>| match path {
             Some(path) => format!("{pattern}{IN_PREFIX}{}", workspace.shown(path)),
@@ -311,8 +325,12 @@ impl Action {
             } => context.background.start(workspace, command),
             Self::ShellOutput { id } => context.background.output(id),
             Self::ShellStop { id } => context.background.stop(id),
-            Self::WebFetch { url, .. } => fetch::fetch(url, cancel),
-            Self::WebSearch { query } => search::search(context.search.as_ref(), query, cancel),
+            Self::WebFetch { url, prompt: None } => fetch::fetch(url, cancel),
+            Self::WebFetch {
+                url,
+                prompt: Some(prompt),
+            } => fetch::fetch_for(url, prompt, context.side.as_ref(), cancel),
+            Self::WebSearch { query } => search::search(context.side.as_ref(), query, cancel),
             Self::Mcp { name, arguments } => mcp_call::run(&context.mcp, name, arguments),
         }
     }

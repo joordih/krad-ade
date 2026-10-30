@@ -246,29 +246,6 @@ pub struct Job {
     pub duration: Option<f64>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Branch {
-    pub name: String,
-    pub merged: bool,
-    pub protected: bool,
-    pub default: bool,
-    pub commit: Commit,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum TreeEntryKind {
-    Blob,
-    Tree,
-    Commit,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct TreeEntry {
-    pub name: String,
-    pub path: String,
-    pub kind: TreeEntryKind,
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub enum StateFilter {
     #[default]

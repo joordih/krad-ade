@@ -4,7 +4,6 @@ use std::fmt;
 use std::str::FromStr;
 
 const SEPARATOR: char = ':';
-const CHAT_PREFIX: &str = "chat-";
 const LEAD_PREFIX: &str = "lead-";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -37,12 +36,6 @@ impl FromStr for TerminalHandle {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ChatHandle {
-    pub environment: String,
-    pub group: u64,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LeadHandle {
     pub environment: String,
     pub session: u64,
@@ -51,30 +44,13 @@ pub struct LeadHandle {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Caller {
     Terminal(TerminalHandle),
-    Chat(ChatHandle),
     Lead(LeadHandle),
-}
-
-impl Caller {
-    #[must_use]
-    pub fn environment(&self) -> &str {
-        match self {
-            Self::Terminal(handle) => &handle.environment,
-            Self::Chat(handle) => &handle.environment,
-            Self::Lead(handle) => &handle.environment,
-        }
-    }
 }
 
 impl fmt::Display for Caller {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Terminal(handle) => handle.fmt(f),
-            Self::Chat(handle) => write!(
-                f,
-                "{}{SEPARATOR}{CHAT_PREFIX}{}",
-                handle.environment, handle.group
-            ),
             Self::Lead(handle) => write!(
                 f,
                 "{}{SEPARATOR}{LEAD_PREFIX}{}",
@@ -91,22 +67,17 @@ impl FromStr for Caller {
         let (environment, last) = text
             .rsplit_once(SEPARATOR)
             .ok_or(HandleError::MissingSeparator)?;
-        let named = |prefix| last.strip_prefix(prefix).map(str::parse::<u64>);
-        let parsed = match (named(CHAT_PREFIX), named(LEAD_PREFIX)) {
-            (Some(group), _) => Self::Chat(ChatHandle {
-                environment: environment.to_owned(),
-                group: group?,
-            }),
-            (None, Some(session)) => Self::Lead(LeadHandle {
-                environment: environment.to_owned(),
-                session: session?,
-            }),
-            (None, None) => return text.parse().map(Self::Terminal),
+        let Some(session) = last.strip_prefix(LEAD_PREFIX) else {
+            return text.parse().map(Self::Terminal);
         };
+        let session = session.parse()?;
         if environment.is_empty() {
             return Err(HandleError::EmptyEnvironment);
         }
-        Ok(parsed)
+        Ok(Self::Lead(LeadHandle {
+            environment: environment.to_owned(),
+            session,
+        }))
     }
 }
 
@@ -115,13 +86,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn callers_roundtrip_as_terminals_or_the_chat() -> Result<(), HandleError> {
-        let chat = Caller::Chat(ChatHandle {
-            environment: "wsl:Ubuntu".to_owned(),
-            group: 3,
-        });
-        assert_eq!(chat.to_string(), "wsl:Ubuntu:chat-3");
-        assert_eq!(chat.to_string().parse::<Caller>()?, chat);
+    fn callers_roundtrip_as_terminals_or_leads() -> Result<(), HandleError> {
         assert_eq!(
             "main:7".parse::<Caller>()?,
             Caller::Terminal(TerminalHandle {
@@ -136,7 +101,7 @@ mod tests {
         assert_eq!(lead.to_string(), "main:lead-2");
         assert_eq!(lead.to_string().parse::<Caller>()?, lead);
         assert!(matches!(
-            "main:chat-x".parse::<Caller>(),
+            "main:lead-x".parse::<Caller>(),
             Err(HandleError::InvalidTerminal(_))
         ));
         Ok(())

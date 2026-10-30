@@ -9,7 +9,7 @@ use std::sync::PoisonError;
 
 use super::support::{
     call_stream, completions, config, fake_gateway, finished, scratch, start, streams, until,
-    Asked, ANSWER, KEY, QUESTION_CALL, WRITE_CALL,
+    Asked, ANSWER, KEY, MODEL, QUESTION_CALL, WRITE_CALL,
 };
 
 #[test]
@@ -46,7 +46,7 @@ fn a_gateway_chat_asks_before_writing_then_answers_and_resumes() -> io::Result<(
     let text: String = answered
         .iter()
         .filter_map(|event| match event {
-            LiveEvent::Chat(ChatEvent::Text(piece)) => Some(piece.as_str()),
+            LiveEvent::Chat(ChatEvent::TextDelta(piece)) => Some(piece.as_str()),
             _ => None,
         })
         .collect();
@@ -67,11 +67,17 @@ fn a_gateway_chat_asks_before_writing_then_answers_and_resumes() -> io::Result<(
         .all(|turn| turn.authorization.as_deref() == Some(&format!("Bearer {KEY}"))));
     assert!(turns[1].body.contains("call_1"), "the result goes back");
     let entries = read_engine_transcript(&root.join("sessions"), &root.join("work"), &id)?;
-    assert!(
-        matches!(entries.first(), Some(ChatEntry::User { text, .. }) if text == "write a note")
+    assert_eq!(
+        entries.first(),
+        Some(&ChatEntry::Event(ChatEvent::Model(MODEL.to_owned())))
     );
+    assert!(matches!(
+        entries.get(1),
+        Some(ChatEntry::User { text, model: Some(model), .. })
+            if text == "write a note" && model.as_str() == MODEL
+    ));
     assert!(entries.iter().any(
-        |entry| matches!(entry, ChatEntry::Event(ChatEvent::Text(text)) if text == "Wrote it.")
+        |entry| matches!(entry, ChatEntry::Event(ChatEvent::TextDelta(text)) if text == "Wrote it.")
     ));
     Ok(())
 }
@@ -127,6 +133,7 @@ fn the_model_can_ask_the_user_and_gets_the_picked_answers_back() -> io::Result<(
         unreachable!("an ask_user call is a question form: {:?}", ask.kind);
     };
     assert_eq!(questions[0].text, "Which sort?");
+    assert!(!ask.can_allow_always(), "questions are never remembered");
     chat.answer(
         ask,
         &AskAnswer::Answers(vec![PickedAnswer {

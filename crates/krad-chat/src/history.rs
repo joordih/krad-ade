@@ -260,6 +260,7 @@ not json"#;
                 ChatEntry::Event(ChatEvent::Tool(ToolCall {
                     id: None,
                     name: "Read".to_owned(),
+                    kind: krad_domain::ToolKind::Read,
                     summary: "webhook.ts".to_owned(),
                     edit: None,
                 })),

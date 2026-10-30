@@ -6,7 +6,7 @@ fn permission_modes_become_approval_policies_and_sandboxes() {
     assert_eq!(
         policy(PermissionMode::Manual, true),
         Policy {
-            approval: "untrusted",
+            approval: Approval::Untrusted,
             sandbox: Sandbox::WorkspaceWrite {
                 network_access: true
             },
@@ -24,6 +24,30 @@ fn permission_modes_become_approval_policies_and_sandboxes() {
         })
         .unwrap_or_default(),
         json!({"type": "workspaceWrite", "networkAccess": false})
+    );
+    let approvals = [Approval::Untrusted, Approval::OnRequest, Approval::Never]
+        .map(|approval| serde_json::to_value(approval).unwrap_or_default());
+    assert_eq!(
+        approvals,
+        [json!("untrusted"), json!("on-request"), json!("never")]
+    );
+    let modes = [
+        Sandbox::WorkspaceWrite {
+            network_access: true,
+        },
+        Sandbox::ReadOnly {
+            network_access: false,
+        },
+        Sandbox::DangerFullAccess,
+    ]
+    .map(|sandbox| serde_json::to_value(SandboxMode::from(sandbox)).unwrap_or_default());
+    assert_eq!(
+        modes,
+        [
+            json!("workspace-write"),
+            json!("read-only"),
+            json!("danger-full-access")
+        ]
     );
 }
 
@@ -63,7 +87,7 @@ fn an_image_goes_as_a_local_image_the_app_server_reads() {
 }
 
 #[test]
-fn a_missing_thread_starts_a_new_conversation() {
+fn a_thread_not_found_refusal_reads_as_a_missing_thread() {
     assert!(missing_thread(&CodexError::Refused(
         "thread not found: 01a1".to_owned()
     )));

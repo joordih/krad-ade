@@ -1,18 +1,15 @@
-use krad_domain::{ChatEvent, FileEdit, PermissionMode, ToolCall, ToolUseId};
-use serde_json::Value;
+use krad_domain::{ChatEvent, Checklist, PermissionMode, ToolCall, ToolUseId};
 use std::sync::Arc;
 use std::thread;
 
 use super::subagents::Subagents;
 use super::{Inbound, Phase, Worker};
-use crate::checklist::TODO_TOOL;
 use crate::control::{AskKind, LiveEvent, Question, Responder, ToolAsk};
-use crate::engine::agent::{self, AGENT_TOOL};
-use crate::engine::checklist::{self, CHECKLIST_TOOL};
-use crate::engine::plan::{self, PLAN_LABEL, PLAN_TOOL};
+use crate::engine::call::EngineCall;
+use crate::engine::checklist;
+use crate::engine::plan;
 use crate::engine::policy::{verdict, Verdict};
-use crate::engine::questions::{self, QUESTIONS_LABEL, QUESTIONS_TOOL};
-use crate::engine::tools::{Action, Context, Ran, Search, Workspace};
+use crate::engine::tools::{Action, Context, Ran, SideRequest};
 use crate::engine::wire::{Call, Message, Outcome};
 
 const DENIED_TEXT: &str = "The user denied this tool call.";
@@ -86,7 +83,6 @@ impl Batch {
         };
         self.outcomes.push(Outcome {
             call: call.id.clone(),
-            name: call.name.clone(),
             content,
             failed,
         });
@@ -111,51 +107,22 @@ impl Batch {
     }
 }
 
-fn tool_event(call: &Call, action: &Action, workspace: &Workspace) -> ChatEvent {
-    ChatEvent::Tool(ToolCall {
-        id: Some(ToolUseId::from(call.id.as_str())),
-        name: action.label().into_owned(),
-        summary: action.summary(workspace),
-        edit: action.preview(workspace),
-    })
-}
-
-fn plan_event(call: &Call, proposed: &str) -> ChatEvent {
-    ChatEvent::Tool(ToolCall {
-        id: Some(ToolUseId::from(call.id.as_str())),
-        name: PLAN_LABEL.to_owned(),
-        summary: plan::summary(proposed),
-        edit: None,
-    })
-}
-
-fn plan_ask(call: &Call, proposed: String) -> ToolAsk {
+fn engine_ask(call: &Call, kind: AskKind) -> ToolAsk {
     ToolAsk {
-        request_id: call.id.clone(),
-        input: call.arguments.clone(),
-        suggestions: Vec::new(),
-        responder: Responder::Engine,
-        kind: AskKind::Plan { plan: proposed },
+        responder: Responder::Engine {
+            call: call.id.clone(),
+        },
+        kind,
     }
 }
 
-fn permission_ask(
-    call: &Call,
-    action: &Action,
-    edit: Option<FileEdit>,
-    workspace: &Workspace,
-) -> ToolAsk {
-    ToolAsk {
-        request_id: call.id.clone(),
-        input: call.arguments.clone(),
-        suggestions: vec![Value::Bool(true)],
-        responder: Responder::Engine,
-        kind: AskKind::Permission {
-            tool: action.label().into_owned(),
-            summary: action.summary(workspace),
-            title: None,
-            edit,
-        },
+fn permission_ask(row: &ToolCall) -> AskKind {
+    AskKind::Permission {
+        tool: row.name.clone(),
+        kind: row.kind,
+        summary: row.summary.clone(),
+        title: None,
+        edit: row.edit.clone(),
     }
 }
 
@@ -168,118 +135,98 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             let Some(call) = batch.current().cloned() else {
                 return self.finish_batch();
             };
-            if call.name == QUESTIONS_TOOL {
-                match questions::parse(&call.arguments) {
-                    Ok(asked) => {
-                        batch.waiting = Waiting::Questions;
-                        return self.ask_questions(&call, asked);
-                    }
-                    Err(error) => {
-                        batch.settle(error, true);
-                        continue;
-                    }
-                }
-            }
-            if call.name == CHECKLIST_TOOL {
-                self.update_checklist(&call);
-                continue;
-            }
-            if call.name == AGENT_TOOL {
-                if let Some(report) = batch.subagents.take_report(&call.id) {
-                    batch.settle(report.content, report.failed);
-                    continue;
-                }
-                if let Err(error) = agent::parse(&call.arguments) {
-                    batch.settle(error, true);
-                    continue;
-                }
-                batch.waiting = Waiting::Subagent;
-                return;
-            }
-            if call.name == PLAN_TOOL {
-                let proposed = match plan::parse(&call.arguments) {
-                    Ok(proposed) => proposed,
-                    Err(error) => {
-                        batch.settle(error, true);
-                        continue;
-                    }
-                };
-                self.emit(plan_event(&call, &proposed));
-                let Phase::Tools(batch) = &mut self.phase else {
-                    return;
-                };
-                if self.mode != PermissionMode::Plan {
-                    batch.settle(plan::not_in_plan().to_owned(), false);
-                    continue;
-                }
-                batch.waiting = Waiting::Plan;
-                return (self.sink)(LiveEvent::Ask(Box::new(plan_ask(&call, proposed))));
-            }
             let workspace = &self.setup.workspace;
-            let action = match Action::parse(&call.name, &call.arguments) {
-                Ok(action) => action,
-                Err(error) => {
-                    batch.settle(error, true);
-                    continue;
+            let parsed = EngineCall::parse(&call);
+            let row = parsed.row(&call.id, workspace);
+            match parsed {
+                EngineCall::Questions(Ok(asked)) => {
+                    batch.waiting = Waiting::Questions;
+                    return self.ask_questions(&call, row, asked);
                 }
-            };
-            let event = tool_event(&call, &action, workspace);
-            let preview = match &event {
-                ChatEvent::Tool(tool) => tool.edit.clone(),
-                _ => None,
-            };
-            match verdict(&action, self.mode, workspace, &self.allowed) {
-                Verdict::Deny(reason) => {
-                    batch.settle(reason.to_owned(), true);
-                    self.emit(event);
+                EngineCall::Checklist(Ok(list)) => self.update_checklist(row, list),
+                EngineCall::Agent(task) => {
+                    if let Some(report) = batch.subagents.take_report(&call.id) {
+                        batch.settle(report.content, report.failed);
+                        continue;
+                    }
+                    if let Err(error) = task {
+                        batch.settle(error, true);
+                        continue;
+                    }
+                    batch.waiting = Waiting::Subagent;
+                    return;
                 }
-                Verdict::Allow => {
-                    batch.waiting = Waiting::Run;
-                    self.emit(event);
-                    return self.spawn_run(action);
-                }
-                Verdict::Ask => {
-                    let ask = permission_ask(&call, &action, preview, workspace);
-                    batch.waiting = Waiting::Answer(action);
-                    self.emit(event);
+                EngineCall::Plan(Ok(proposed)) => {
+                    self.emit(ChatEvent::Tool(row));
+                    let Phase::Tools(batch) = &mut self.phase else {
+                        return;
+                    };
+                    if self.mode != PermissionMode::Plan {
+                        batch.settle(plan::NOT_IN_PLAN_TEXT.to_owned(), false);
+                        continue;
+                    }
+                    batch.waiting = Waiting::Plan;
+                    let ask = engine_ask(&call, AskKind::Plan { plan: proposed });
                     return (self.sink)(LiveEvent::Ask(Box::new(ask)));
                 }
+                EngineCall::Tool(action) => {
+                    if self.use_tool(&call, row, action) {
+                        return;
+                    }
+                }
+                EngineCall::Questions(Err(error))
+                | EngineCall::Checklist(Err(error))
+                | EngineCall::Plan(Err(error))
+                | EngineCall::Unparsed { error, .. } => batch.settle(error, true),
             }
         }
     }
 
-    fn update_checklist(&mut self, call: &Call) {
+    fn use_tool(&mut self, call: &Call, row: ToolCall, action: Action) -> bool {
+        let workspace = &self.setup.workspace;
+        let row = ToolCall {
+            edit: action.preview(workspace),
+            ..row
+        };
+        let decided = verdict(&action, self.mode, workspace, &self.allowed);
+        let Phase::Tools(batch) = &mut self.phase else {
+            return true;
+        };
+        match decided {
+            Verdict::Deny(reason) => {
+                batch.settle(reason.to_owned(), true);
+                self.emit(ChatEvent::Tool(row));
+                false
+            }
+            Verdict::Allow => {
+                batch.waiting = Waiting::Run;
+                self.emit(ChatEvent::Tool(row));
+                self.spawn_run(action);
+                true
+            }
+            Verdict::Ask => {
+                let ask = engine_ask(call, permission_ask(&row));
+                batch.waiting = Waiting::Answer(action);
+                self.emit(ChatEvent::Tool(row));
+                (self.sink)(LiveEvent::Ask(Box::new(ask)));
+                true
+            }
+        }
+    }
+
+    fn update_checklist(&mut self, row: ToolCall, list: Checklist) {
         let Phase::Tools(batch) = &mut self.phase else {
             return;
         };
-        let list = match checklist::parse(&call.arguments) {
-            Ok(list) => list,
-            Err(error) => return batch.settle(error, true),
-        };
         batch.settle(checklist::recorded(&list), false);
-        self.emit(ChatEvent::Tool(ToolCall {
-            id: Some(ToolUseId::from(call.id.as_str())),
-            name: TODO_TOOL.to_owned(),
-            summary: checklist::summary(&list),
-            edit: None,
-        }));
+        self.emit(ChatEvent::Tool(row));
         self.emit(ChatEvent::Checklist(list));
     }
 
-    fn ask_questions(&mut self, call: &Call, asked: Vec<Question>) {
-        self.emit(ChatEvent::Tool(ToolCall {
-            id: Some(ToolUseId::from(call.id.as_str())),
-            name: QUESTIONS_LABEL.to_owned(),
-            summary: questions::summary(&asked),
-            edit: None,
-        }));
-        (self.sink)(LiveEvent::Ask(Box::new(ToolAsk {
-            request_id: call.id.clone(),
-            input: call.arguments.clone(),
-            suggestions: Vec::new(),
-            responder: Responder::Engine,
-            kind: AskKind::Questions(asked),
-        })));
+    fn ask_questions(&mut self, call: &Call, row: ToolCall, asked: Vec<Question>) {
+        self.emit(ChatEvent::Tool(row));
+        let ask = engine_ask(call, AskKind::Questions(asked));
+        (self.sink)(LiveEvent::Ask(Box::new(ask)));
     }
 
     pub(super) fn run_waiting(&mut self) {
@@ -293,15 +240,15 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
     }
 
     fn context(&self) -> Context {
-        let search = self.model.as_ref().map(|model| Search {
+        let side = self.model.as_ref().map(|model| SideRequest {
             access: self.setup.access.clone(),
-            model: model.clone(),
-            protocol: self.protocol(model),
+            model: model.id.clone(),
+            vendor: model.vendor,
         });
         Context {
             workspace: self.setup.workspace.clone(),
             background: self.background.clone(),
-            search,
+            side,
             mcp: Arc::clone(&self.setup.mcp),
         }
     }

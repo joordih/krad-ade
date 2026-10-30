@@ -1,6 +1,5 @@
 use krad_domain::{
-    parse_wsl_path, ChatEvent, Effort, ModelId, PermissionMode, Prompt, ResumeId, RewindId,
-    RewindPoint,
+    ChatEvent, Effort, ModelId, PermissionMode, Prompt, ResumeId, RewindId, RewindPoint,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -11,33 +10,20 @@ use std::thread;
 
 use super::ask::{reply, Reply};
 use super::catalog::{listing, Listing};
-use super::events::Translator;
+use super::events::{Translator, MODEL_SEPARATOR};
 use super::prompt::{attachments, outgoing, Known, Outgoing, Place};
 use super::server::{Delivery, OpencodeError, OpencodeServer};
 use super::tools::{agent, rules, Rule, BUILD_AGENT};
-use crate::command::LiveSession;
-use crate::control::{AskAnswer, LiveEvent, ToolAsk};
+use crate::control::LiveEvent;
 use crate::live::{new_session_id, LiveConfig};
-use crate::process::Runner;
-use crate::rewind::{ResumeCut, RewindRequest};
+use crate::live::{LiveHarness, LiveSession, Order};
+use crate::refused::ResumeRefused;
+use crate::rewind::ResumeCut;
 
 const SESSION_PREFIX: &str = "ses";
 const SESSION_SEPARATOR: char = '_';
 const UUID_SEPARATOR: char = '-';
-const MODEL_SEPARATOR: char = '/';
-const MISSING_CONVERSATION: &str = "No conversation found with session ID";
 const SESSIONS_PATH: &str = "/api/session";
-
-#[derive(Debug)]
-pub(crate) enum Order {
-    Send(Prompt),
-    Interrupt,
-    Model(ModelId),
-    Effort(Effort),
-    Mode(PermissionMode),
-    Answer(Box<ToolAsk>, AskAnswer),
-    Rewind(RewindRequest),
-}
 
 enum Inbound {
     Server(Delivery),
@@ -154,14 +140,7 @@ pub fn prepare_opencode_session(
         .map(drop)
 }
 
-pub(crate) fn served_directory(runner: &Runner, cwd: &std::path::Path) -> String {
-    match runner {
-        Runner::Wsl { .. } => parse_wsl_path(cwd).map_or_default(|inside| inside.linux),
-        Runner::Native(_) => cwd.to_string_lossy().into_owned(),
-    }
-}
-
-fn session_path(session: &str, tail: &str) -> String {
+pub(super) fn session_path(session: &str, tail: &str) -> String {
     format!("{SESSIONS_PATH}/{session}{tail}")
 }
 
@@ -171,12 +150,12 @@ pub(crate) struct OpencodeChat {
     running: Arc<AtomicBool>,
 }
 
-impl OpencodeChat {
-    pub(crate) fn order(&self, order: Order) {
+impl LiveHarness for OpencodeChat {
+    fn order(&self, order: Order) {
         self.orders.send(order).unwrap_or_default();
     }
 
-    pub(crate) fn is_alive(&self) -> bool {
+    fn is_alive(&self) -> bool {
         self.running.load(Ordering::SeqCst) && self.server.is_alive()
     }
 }
@@ -219,7 +198,7 @@ pub(crate) fn spawn_opencode(
         }
     });
     let worker = Worker {
-        directory: served_directory(&config.runner, &config.cwd),
+        directory: config.runner.served_directory(&config.cwd),
         preamble: config.system_prompt.clone(),
         effort: config.effort,
         model: config.model.clone(),
@@ -291,10 +270,7 @@ impl Worker {
             LiveSession::Resume(resume) | LiveSession::Cut(ResumeCut { from: resume, .. }) => {
                 self.session = opencode_session_id(resume);
                 if !self.server.exists(&session_path(&self.session, ""))? {
-                    self.emit(LiveEvent::Chat(ChatEvent::Error(format!(
-                        "{MISSING_CONVERSATION} {}",
-                        self.session
-                    ))));
+                    self.emit(LiveEvent::Refused(ResumeRefused::missing(&self.session)));
                     return Ok(false);
                 }
                 self.listen(&self.session.clone());

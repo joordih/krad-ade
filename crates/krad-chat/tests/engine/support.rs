@@ -1,8 +1,9 @@
 use krad_chat::{
-    new_session_id, spawn_engine_chat, BusVars, ChatEvent, EngineConfig, LiveChat, LiveEvent,
-    LiveSession,
+    new_session_id, start_chat, BusVars, ChatBackend, ChatEvent, EngineConfig, GatewayModel,
+    LiveChat, LiveEvent, LiveSession, ModelOffer, Vendor,
 };
 use krad_domain::{GatewayAccess, GatewayKey, ModelId, PermissionMode};
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
@@ -15,8 +16,7 @@ use std::time::Duration;
 
 pub(crate) const KEY: &str = "sk-engine-test";
 pub(crate) const MODEL: &str = "gemini-3-pro";
-pub(crate) const MODELS: &str =
-    r#"{"object":"list","data":[{"id":"gemini-3-pro","object":"model","owned_by":"google"}]}"#;
+pub(crate) const COMPLETIONS_PATH: &str = "/v1/chat/completions";
 pub(crate) const WRITE_CALL: &str = concat!(
     r#"data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"write","arguments":"{\"path\":\"note.txt\",\"content\":\"hi\\n\"}"}}]},"finish_reason":null}]}"#,
     "\n\n",
@@ -116,30 +116,44 @@ pub(crate) fn fake_page(html: &'static str) -> io::Result<String> {
     Ok(url)
 }
 
-pub(crate) fn fake_gateway(streams: Vec<String>) -> io::Result<(String, Seen)> {
+pub(crate) fn serve_gateway(
+    mut reply: impl FnMut(&Asked) -> String + Send + 'static,
+) -> io::Result<(String, Seen)> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let url = format!("http://{}", listener.local_addr()?);
     let seen: Seen = Arc::default();
     let kept = Arc::clone(&seen);
-    let mut streams: VecDeque<String> = streams.into();
     thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             let Ok(asked) = read_request(&stream) else {
                 continue;
             };
-            let served = if asked.path == "/v1/models" {
-                answer(stream, "application/json", MODELS)
-            } else {
-                let body = streams.pop_front().unwrap_or_else(|| ANSWER.to_owned());
-                answer(stream, "text/event-stream", &body)
-            };
-            served.unwrap_or_default();
+            answer(stream, "text/event-stream", &reply(&asked)).unwrap_or_default();
             kept.lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .push(asked);
         }
     });
     Ok((url, seen))
+}
+
+pub(crate) fn fake_gateway(streams: Vec<String>) -> io::Result<(String, Seen)> {
+    let mut streams: VecDeque<String> = streams.into();
+    serve_gateway(move |_| streams.pop_front().unwrap_or_else(|| ANSWER.to_owned()))
+}
+
+pub(crate) fn gateway_model(id: &str, vendor: Vendor) -> GatewayModel {
+    GatewayModel {
+        offer: ModelOffer {
+            value: id.to_owned(),
+            name: id.to_owned(),
+            description: None,
+            efforts: Vec::new(),
+            thinking_off: false,
+            source: None,
+        },
+        vendor,
+    }
 }
 
 pub(crate) fn scratch(name: &str) -> PathBuf {
@@ -162,6 +176,8 @@ pub(crate) fn config(url: &str, root: &Path) -> EngineConfig {
         home: None,
         cwd: root.join("work"),
         model: ModelId::parse(MODEL),
+        models: vec![gateway_model(MODEL, Vendor::Google)],
+        context_windows: HashMap::new(),
         system_prompt: None,
         effort: None,
         permission_mode: Some(PermissionMode::Manual),
@@ -181,7 +197,7 @@ pub(crate) fn completions(seen: &Seen) -> Vec<String> {
     seen.lock()
         .unwrap_or_else(PoisonError::into_inner)
         .iter()
-        .filter(|asked| asked.path == "/v1/chat/completions")
+        .filter(|asked| asked.path == COMPLETIONS_PATH)
         .map(|asked| asked.body.clone())
         .collect()
 }
@@ -191,9 +207,10 @@ pub(crate) fn start(
     session: &LiveSession,
 ) -> (LiveChat, Receiver<LiveEvent>) {
     let (sender, events) = channel();
-    let chat = spawn_engine_chat(config, session, move |event| {
+    let chat = start_chat(ChatBackend::Gateway(config), session, move |event| {
         sender.send(event).unwrap_or_default();
-    });
+    })
+    .unwrap_or_else(|_| unreachable!("a gateway chat always starts"));
     (chat, events)
 }
 

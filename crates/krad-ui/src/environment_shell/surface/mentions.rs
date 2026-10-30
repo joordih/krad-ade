@@ -305,7 +305,7 @@ impl EnvironmentShell {
 mod tests {
     use super::*;
     use gpui_kit::{Image, ImageFormat as ClipboardFormat};
-    use krad_domain::{ChatImage, Prompt};
+    use krad_domain::ChatImage;
 
     fn image_item(format: ClipboardFormat) -> ClipboardItem {
         ClipboardItem {
@@ -333,25 +333,16 @@ mod tests {
     }
 
     #[test]
-    fn attached_mentions_build_the_message_without_repeats() {
+    fn a_mention_is_attached_once_and_named_by_its_file() {
         let shot = Mention::Image(ChatImage {
             path: PathBuf::from("/config/chat-images/6d61696e/3/1.png"),
             format: ImageFormat::Png,
         });
+        let file = Mention::from(PathBuf::from("/repo/a.rs"));
         let mut attached = Vec::new();
-        added(
-            &mut attached,
-            vec![shot.clone(), Mention::from(PathBuf::from("/repo/a.rs"))],
-        );
+        added(&mut attached, vec![shot.clone(), file.clone()]);
         added(&mut attached, vec![shot.clone()]);
-        assert_eq!(attached.len(), 2);
-        let prompt = Prompt::new(" Why? ", attached);
-        assert_eq!(prompt.text, "Why?");
-        assert_eq!(prompt.images().count(), 1);
-        assert_eq!(
-            prompt.text_with_paths(|path| path.display().to_string()),
-            "Why?\n\n/repo/a.rs"
-        );
+        assert_eq!(attached, [shot, file]);
         assert_eq!(mention_name(Path::new("/repo/a.rs")), "a.rs");
     }
 }

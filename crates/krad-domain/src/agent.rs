@@ -9,6 +9,8 @@ pub enum AgentState {
 }
 
 impl AgentState {
+    pub const ALL: [Self; 4] = [Self::Idle, Self::Working, Self::WaitingForInput, Self::Done];
+
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
@@ -20,19 +22,43 @@ impl AgentState {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UnknownAgentState;
+
+impl std::fmt::Display for UnknownAgentState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("unknown agent state")
+    }
+}
+
+impl std::error::Error for UnknownAgentState {}
+
+impl std::str::FromStr for AgentState {
+    type Err = UnknownAgentState;
+
+    fn from_str(label: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|state| state.label() == label)
+            .ok_or(UnknownAgentState)
+    }
+}
+
 pub const AGENT_WAIT_SECS: f32 = 3.0;
+
+const CLAUDE_SYSTEM_PROMPT_FLAG: &str = "--append-system-prompt";
+const CLAUDE_MODEL_FLAG: &str = "--model";
+const CODEX_MODEL_FLAG: &str = "-m";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModelDelivery {
+    Flag(&'static str),
+    AttachedSession,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
 pub enum AgentPreset {
     #[default]
-    #[serde(
-        alias = "Gemini",
-        alias = "Copilot",
-        alias = "CursorAgent",
-        alias = "Amp",
-        alias = "Aider",
-        alias = "Goose"
-    )]
     Shell,
     ClaudeCode,
     Codex,
@@ -76,16 +102,17 @@ impl AgentPreset {
     #[must_use]
     pub const fn system_prompt_flag(self) -> Option<&'static str> {
         match self {
-            Self::ClaudeCode => Some("--append-system-prompt"),
-            _ => None,
+            Self::ClaudeCode => Some(CLAUDE_SYSTEM_PROMPT_FLAG),
+            Self::Shell | Self::Codex | Self::Opencode | Self::Gateway => None,
         }
     }
 
     #[must_use]
-    pub const fn model_flag(self) -> Option<&'static str> {
+    pub const fn model_delivery(self) -> Option<ModelDelivery> {
         match self {
-            Self::ClaudeCode => Some("--model"),
-            Self::Codex | Self::Opencode => Some("-m"),
+            Self::ClaudeCode => Some(ModelDelivery::Flag(CLAUDE_MODEL_FLAG)),
+            Self::Codex => Some(ModelDelivery::Flag(CODEX_MODEL_FLAG)),
+            Self::Opencode => Some(ModelDelivery::AttachedSession),
             Self::Shell | Self::Gateway => None,
         }
     }
@@ -93,6 +120,28 @@ impl AgentPreset {
     #[must_use]
     pub const fn is_agent(self) -> bool {
         self.program().is_some()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UnknownHarness;
+
+impl std::fmt::Display for UnknownHarness {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("unknown harness program")
+    }
+}
+
+impl std::error::Error for UnknownHarness {}
+
+impl std::str::FromStr for AgentPreset {
+    type Err = UnknownHarness;
+
+    fn from_str(program: &str) -> Result<Self, Self::Err> {
+        Self::all()
+            .into_iter()
+            .find(|preset| preset.program() == Some(program))
+            .ok_or(UnknownHarness)
     }
 }
 
@@ -124,19 +173,19 @@ mod tests {
             .collect();
         let unique: std::collections::HashSet<&&str> = programs.iter().collect();
         assert_eq!(unique.len(), programs.len());
-        assert_eq!(programs.len(), AgentPreset::all().len() - 2);
-        assert!(!AgentPreset::Shell.is_agent());
-        assert!(!AgentPreset::Gateway.is_agent());
     }
 
     #[test]
-    fn presets_of_dropped_agents_read_back_as_a_shell() -> serde_json::Result<()> {
-        let read: Vec<AgentPreset> = serde_json::from_str(r#"["Gemini","Aider","Codex"]"#)?;
-        assert_eq!(
-            read,
-            [AgentPreset::Shell, AgentPreset::Shell, AgentPreset::Codex]
-        );
-        Ok(())
+    fn harnesses_parse_from_their_program_and_states_from_their_label() {
+        for preset in AgentPreset::all() {
+            let parsed = preset.program().map(str::parse::<AgentPreset>);
+            assert_eq!(parsed, preset.program().map(|_| Ok(preset)), "{preset:?}");
+        }
+        assert_eq!("Claude Code".parse::<AgentPreset>(), Err(UnknownHarness));
+        for state in AgentState::ALL {
+            assert_eq!(state.label().parse(), Ok(state));
+        }
+        assert_eq!("exited".parse::<AgentState>(), Err(UnknownAgentState));
     }
 
     #[test]

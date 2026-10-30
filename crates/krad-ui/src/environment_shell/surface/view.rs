@@ -8,7 +8,7 @@ use gpui_kit::{
 use krad_domain::{AgentState, TerminalId};
 use std::time::Instant;
 
-use super::super::ask::{tray, tray_button, AskOwner};
+use super::super::ask::{tray, tray_button};
 use super::super::sidebar::PanelReveal;
 use super::super::EnvironmentShell;
 use super::dot_field::dot_field;
@@ -216,7 +216,7 @@ impl EnvironmentShell {
                                 .relative()
                                 .w_full()
                                 .children(
-                                    self.ask_tray(AskOwner::Surface(id), cx)
+                                    self.ask_tray(id, cx)
                                         .or_else(|| self.mcp_tray(id, chat, cx))
                                         .or_else(|| self.agent_notice(id, chat, cx))
                                         .or_else(|| Self::checklist_tray(id, chat, cx))

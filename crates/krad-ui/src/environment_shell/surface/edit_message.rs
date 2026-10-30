@@ -5,7 +5,7 @@ use gpui_kit::{
     Window,
 };
 use krad_chat::{RewindScope, Speaker};
-use krad_domain::{AgentPreset, Mention, Prompt, TerminalId};
+use krad_domain::{Mention, Prompt, TerminalId};
 
 use super::super::chat::ChatMessage;
 use super::super::EnvironmentShell;
@@ -49,7 +49,7 @@ pub(super) fn changed_files_after(messages: &[ChatMessage], index: usize) -> boo
     messages
         .iter()
         .skip(index + 1)
-        .flat_map(|message| &message.tools)
+        .flat_map(ChatMessage::tools)
         .any(|tool| tool.edit.is_some())
 }
 
@@ -172,11 +172,7 @@ impl EnvironmentShell {
         let harness = chat.harness();
         let asks_files = harness.restores_files() && changed_files_after(&chat.messages, index);
         let mentions = editor.mentions.clone();
-        let text = if harness == AgentPreset::ClaudeCode {
-            self.shared_skill_message(&text).unwrap_or(text)
-        } else {
-            text
-        };
+        let text = self.skill_message(harness, text);
         let prompt = Prompt::new(&text, mentions);
         if !asks_files {
             self.start_rewind(&env, id, index, prompt, RewindScope::Conversation, cx);
@@ -279,6 +275,7 @@ pub(super) fn is_edited(chat: &SurfaceChat, index: usize) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::chat::AnswerPart;
     use super::*;
     use krad_chat::ToolCall;
     use krad_domain::{FileEdit, RewindPoint};
@@ -287,9 +284,7 @@ mod tests {
         ChatMessage {
             speaker,
             text: "text".to_owned(),
-            tools: Vec::new(),
             parts: Vec::new(),
-            preset: AgentPreset::ClaudeCode,
             error: None,
             running: false,
             mentions: Vec::new(),
@@ -321,15 +316,16 @@ mod tests {
             message(Speaker::Assistant, None),
         ];
         assert!(!changed_files_after(&messages, 0));
-        messages[1].tools.push(ToolCall {
+        messages[1].parts.push(AnswerPart::Tool(ToolCall {
             id: None,
             name: "Edit".to_owned(),
+            kind: krad_domain::ToolKind::Edit,
             summary: "src/a.rs".to_owned(),
             edit: Some(FileEdit {
                 path: "src/a.rs".to_owned(),
                 lines: Vec::new(),
             }),
-        });
+        }));
         assert!(changed_files_after(&messages, 0));
         assert!(!changed_files_after(&messages, 1));
     }

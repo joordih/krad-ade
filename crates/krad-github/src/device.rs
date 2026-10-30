@@ -1,3 +1,4 @@
+use crate::client::{GITHUB_HOST, REQUEST_TIMEOUT};
 use krad_domain::GithubToken;
 use serde::Deserialize;
 use std::fmt;
@@ -6,8 +7,9 @@ use ureq::Agent;
 
 const CLIENT_ID: Option<&str> = option_env!("KRAD_GITHUB_CLIENT_ID");
 pub const SCOPE: &str = "repo";
-const DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
-const TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
+const HTTPS_SCHEME: &str = "https://";
+const DEVICE_CODE_PATH: &str = "/login/device/code";
+const TOKEN_PATH: &str = "/login/oauth/access_token";
 const DEVICE_GRANT: &str = "urn:ietf:params:oauth:grant-type:device_code";
 const CLIENT_ID_PARAM: &str = "client_id";
 const SCOPE_PARAM: &str = "scope";
@@ -15,7 +17,6 @@ const DEVICE_CODE_PARAM: &str = "device_code";
 const GRANT_TYPE_PARAM: &str = "grant_type";
 const ACCEPT: &str = "Accept";
 const JSON: &str = "application/json";
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const SLOW_DOWN_STEP: Duration = Duration::from_secs(5);
 const PENDING: &str = "authorization_pending";
 const SLOW_DOWN: &str = "slow_down";
@@ -67,6 +68,10 @@ impl fmt::Debug for DeviceLogin {
     }
 }
 
+fn github_url(path: &str) -> String {
+    format!("{HTTPS_SCHEME}{GITHUB_HOST}{path}")
+}
+
 fn agent() -> Agent {
     Agent::config_builder()
         .timeout_global(Some(REQUEST_TIMEOUT))
@@ -83,7 +88,7 @@ impl DeviceLogin {
     pub fn start() -> Result<Self, DeviceError> {
         let client_id = CLIENT_ID.ok_or(DeviceError::MissingClientId)?;
         let text = agent()
-            .post(DEVICE_CODE_URL)
+            .post(github_url(DEVICE_CODE_PATH))
             .header(ACCEPT, JSON)
             .send_form([(CLIENT_ID_PARAM, client_id), (SCOPE_PARAM, SCOPE)])?
             .body_mut()
@@ -119,7 +124,7 @@ impl DeviceLogin {
                 return Err(DeviceError::TimedOut);
             }
             let answer = agent
-                .post(TOKEN_URL)
+                .post(github_url(TOKEN_PATH))
                 .header(ACCEPT, JSON)
                 .send_form([
                     (CLIENT_ID_PARAM, self.client_id.as_str()),
@@ -163,6 +168,18 @@ mod tests {
         assert_eq!(login.interval, Duration::from_secs(5));
         assert!(!format!("{login:?}").contains("secret-device"));
         Ok(())
+    }
+
+    #[test]
+    fn the_device_flow_talks_to_github() {
+        assert_eq!(
+            github_url(DEVICE_CODE_PATH),
+            "https://github.com/login/device/code"
+        );
+        assert_eq!(
+            github_url(TOKEN_PATH),
+            "https://github.com/login/oauth/access_token"
+        );
     }
 
     #[test]

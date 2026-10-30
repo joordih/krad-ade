@@ -3,7 +3,7 @@ use crate::gateway::GatewaySettings;
 use crate::gitlab::GitlabSettings;
 use crate::hue::Hue;
 use crate::mcp::McpSettings;
-use crate::model::{clean_models, ModelId};
+use crate::model::{lenient_model_lists, ModelId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -152,7 +152,11 @@ pub struct Settings {
     pub terminal_font: TerminalFont,
     #[serde(default)]
     pub ligatures: Ligatures,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[serde(
+        default,
+        deserialize_with = "lenient_model_lists",
+        skip_serializing_if = "HashMap::is_empty"
+    )]
     pub harness_models: HashMap<AgentPreset, Vec<ModelId>>,
     #[serde(default, skip_serializing_if = "GitlabSettings::is_empty")]
     pub gitlab: GitlabSettings,
@@ -160,8 +164,6 @@ pub struct Settings {
     pub gateway: GatewaySettings,
     #[serde(default, skip_serializing_if = "McpSettings::is_empty")]
     pub mcp: McpSettings,
-    #[serde(default)]
-    pub agent_surface: AgentSurface,
     #[serde(default)]
     pub window_material: WindowMaterial,
     #[serde(default, skip_serializing_if = "WindowTint::is_default")]
@@ -235,24 +237,13 @@ impl WindowTint {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
-pub enum AgentSurface {
-    #[default]
-    Terminal,
-    Chat,
-}
-
 impl Settings {
-    #[must_use]
-    pub fn opens_as_chat(&self, preset: AgentPreset) -> bool {
-        preset == AgentPreset::ClaudeCode && self.agent_surface == AgentSurface::Chat
-    }
-
     #[must_use]
     pub fn models(&self, preset: AgentPreset) -> Vec<ModelId> {
         self.harness_models
             .get(&preset)
-            .map_or_else(Vec::new, |models| clean_models(models))
+            .cloned()
+            .unwrap_or_default()
     }
 
     #[must_use]
@@ -270,15 +261,6 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn only_claude_code_opens_as_a_chat_and_only_when_settings_ask() {
-        let mut settings = Settings::default();
-        assert!(!settings.opens_as_chat(AgentPreset::ClaudeCode));
-        settings.agent_surface = AgentSurface::Chat;
-        assert!(settings.opens_as_chat(AgentPreset::ClaudeCode));
-        assert!(!settings.opens_as_chat(AgentPreset::Codex));
-    }
 
     #[test]
     fn custom_harness_command_replaces_the_bare_program() {
@@ -318,7 +300,8 @@ mod tests {
             .insert(AgentPreset::ClaudeCode, "claude --model opus".to_owned());
         let back: Settings = serde_json::from_str(&serde_json::to_string(&settings)?)?;
         assert_eq!(back, settings);
-        let partial: Settings = serde_json::from_str(r#"{"terminal_theme":"Nord"}"#)?;
+        let partial: Settings =
+            serde_json::from_str(r#"{"terminal_theme":"Nord","agent_surface":"Chat"}"#)?;
         assert_eq!(partial.terminal_theme, TerminalTheme::Nord);
         assert_eq!(partial.default_harness, AgentPreset::Shell);
         assert_eq!(partial.copy_mode, CopyMode::Shortcut);
@@ -327,6 +310,25 @@ mod tests {
             Ligatures::On,
             "fonts join ligatures unless turned off"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn stored_lists_drop_invalid_and_repeated_names() -> serde_json::Result<()> {
+        let stored: Settings = serde_json::from_str(
+            r#"{"terminal_theme":"Nord",
+            "harness_models":{"ClaudeCode":["opus"," ","opus","two words","haiku"]},
+            "gateway":{"models":["gemini-3-pro","a&b","gemini-3-pro"]}}"#,
+        )?;
+        assert_eq!(stored.terminal_theme, TerminalTheme::Nord);
+        let names = |models: &[ModelId]| -> Vec<String> {
+            models.iter().map(ToString::to_string).collect()
+        };
+        assert_eq!(
+            names(&stored.models(AgentPreset::ClaudeCode)),
+            ["opus", "haiku"]
+        );
+        assert_eq!(names(&stored.gateway.models), ["gemini-3-pro"]);
         Ok(())
     }
 

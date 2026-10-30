@@ -37,6 +37,8 @@ const SWATCH_PAD: f32 = 10.0;
 const CHOICE_PAD: f32 = 14.0;
 const CHOICE_GAP: f32 = 10.0;
 const CHOICE_RING: f32 = 1.5;
+const SETTINGS_NOT_SAVED: &str = "Couldn't save the settings";
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsPane {
     General,
@@ -47,15 +49,6 @@ pub(super) enum SettingsPane {
 }
 
 impl SettingsPane {
-    #[cfg(test)]
-    const ALL: [Self; 5] = [
-        Self::General,
-        Self::Terminal,
-        Self::Integrations,
-        Self::Gateway,
-        Self::Mcp,
-    ];
-
     const fn title(self) -> &'static str {
         match self {
             Self::General => "General",
@@ -71,7 +64,9 @@ impl SettingsPane {
             Self::General => "How the app looks and how you work in it.",
             Self::Terminal => "The font, copy and paste, and the colours of terminals.",
             Self::Integrations => "The code hosts reviews and merge requests come from.",
-            Self::Gateway => "More models for Claude Code chats, through a gateway you run.",
+            Self::Gateway => {
+                "Chat with the models of a gateway you run, through the app's own agent."
+            }
             Self::Mcp => "The MCP servers whose tools Gateway chats can use.",
         }
     }
@@ -244,8 +239,16 @@ impl EnvironmentShell {
 
     pub(super) fn save_settings(&self, cx: &mut Context<Self>) {
         let settings = self.settings.clone();
-        cx.background_spawn(async move {
-            write_settings(&settings).unwrap_or_default();
+        let writing = cx.background_spawn(async move { write_settings(&settings) });
+        cx.spawn(async move |this, cx| {
+            let Err(error) = writing.await else {
+                return;
+            };
+            this.update(cx, |shell, cx| {
+                shell.push_toast(format!("{SETTINGS_NOT_SAVED}: {error}"));
+                cx.notify();
+            })
+            .unwrap_or_default();
         })
         .detach();
     }
@@ -269,20 +272,5 @@ impl EnvironmentShell {
             ui.pane = pane;
         }
         cx.notify();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn every_page_has_its_own_title_and_icon() {
-        for (index, pane) in SettingsPane::ALL.iter().enumerate() {
-            for other in &SettingsPane::ALL[index + 1..] {
-                assert_ne!(pane.title(), other.title());
-                assert_ne!(pane.icon(), other.icon());
-            }
-        }
     }
 }

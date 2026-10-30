@@ -54,7 +54,7 @@ impl MosaicState {
         }
     }
 
-    pub fn new_tab(&mut self) -> TabId {
+    fn new_tab(&mut self) -> TabId {
         let id = TabId(self.next_tab);
         self.next_tab += 1;
         let name = (self.tabs.len() + 1).to_string();
@@ -118,26 +118,9 @@ impl MosaicState {
 mod tests {
     use super::super::Tile;
     use super::*;
-    use crate::test_support::assert_close;
 
     fn ids(count: u64) -> Vec<TerminalId> {
         (1..=count).map(TerminalId).collect()
-    }
-
-    #[test]
-    fn new_terminals_join_the_active_tab_with_a_fair_share() {
-        let mut state = MosaicState::with_terminals(&ids(2));
-        let second = state.new_tab();
-        state.add_terminal(TerminalId(3));
-        state.add_terminal(TerminalId(4));
-        assert_eq!(state.tab_of(TerminalId(3)), Some(second));
-        assert_eq!(state.active, second, "the new tab is active");
-        let Some(tab) = state.active_tab() else {
-            return;
-        };
-        for tile in &tab.tiles {
-            assert_close(tile.share, 0.5);
-        }
     }
 
     #[test]

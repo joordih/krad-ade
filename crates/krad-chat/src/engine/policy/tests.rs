@@ -51,12 +51,30 @@ fn verdicts(action: &Action, allowed: &Allowed) -> Vec<Verdict> {
 
 #[test]
 fn reading_is_always_allowed() {
-    let read = Action::Read {
-        path: PathBuf::from("/etc/hosts"),
-        offset: None,
-        limit: None,
-    };
-    assert_eq!(verdicts(&read, &Allowed::default()), [Allow; 6]);
+    let outside = PathBuf::from("/etc");
+    let reads = [
+        Action::Read {
+            path: outside.join("hosts"),
+            offset: None,
+            limit: None,
+        },
+        Action::Find {
+            pattern: "*.conf".to_owned(),
+            path: Some(outside.clone()),
+        },
+        Action::Grep {
+            pattern: "localhost".to_owned(),
+            path: Some(outside),
+            glob: None,
+            ignore_case: false,
+        },
+        Action::WebSearch {
+            query: "rust 2024 edition".to_owned(),
+        },
+    ];
+    for read in reads {
+        assert_eq!(verdicts(&read, &Allowed::default()), [Allow; 6], "{read:?}");
+    }
 }
 
 #[test]
@@ -189,14 +207,6 @@ fn background_shells_start_like_commands_and_are_read_and_stopped_freely() {
     };
     assert_eq!(verdicts(&output, &allowed), [Allow; 6]);
     assert_eq!(verdicts(&stop, &allowed), [Allow; 6]);
-}
-
-#[test]
-fn web_search_is_always_allowed() {
-    let search = Action::WebSearch {
-        query: "rust 2024 edition".to_owned(),
-    };
-    assert_eq!(verdicts(&search, &Allowed::default()), [Allow; 6]);
 }
 
 #[test]

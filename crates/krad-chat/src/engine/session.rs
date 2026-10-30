@@ -6,22 +6,31 @@ use std::path::{Path, PathBuf};
 
 use super::subagents::subagents_dir;
 use super::wire::Message;
-use crate::command::LiveSession;
-use crate::live::new_session_id;
+use crate::gateway::Vendor;
+use crate::live::{new_session_id, LiveSession};
+use crate::refused::ResumeRefused;
 use crate::rewind::ResumeCut;
 use crate::subagents::SUBAGENTS_DIR;
 
 const SESSION_EXTENSION: &str = "jsonl";
-const MISSING_CONVERSATION: &str = "No conversation found with session ID";
 const SNAPSHOTS_DIR: &str = "snapshots";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum Record {
     Message(Message),
-    Model { model: String },
-    Compacted { summary: String, kept: usize },
-    Rewound { prompt: usize },
+    Model {
+        model: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        vendor: Option<Vendor>,
+    },
+    Compacted {
+        summary: String,
+        kept: usize,
+    },
+    Rewound {
+        prompt: usize,
+    },
 }
 
 impl Record {
@@ -30,10 +39,26 @@ impl Record {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Chosen {
+    pub(crate) id: String,
+    pub(crate) vendor: Vendor,
+}
+
+impl From<&Chosen> for Record {
+    fn from(chosen: &Chosen) -> Self {
+        Self::Model {
+            model: chosen.id.clone(),
+            vendor: Some(chosen.vendor),
+        }
+    }
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct Restored {
     pub(crate) messages: Vec<Message>,
     pub(crate) model: Option<String>,
+    pub(crate) vendor: Option<Vendor>,
     pub(crate) prompts: usize,
 }
 
@@ -61,13 +86,20 @@ pub(crate) fn effective(records: Vec<Record>) -> Vec<Record> {
 }
 
 impl Restored {
+    pub(crate) fn holds(&self, chosen: &Chosen) -> bool {
+        self.model.as_ref() == Some(&chosen.id) && self.vendor == Some(chosen.vendor)
+    }
+
     fn apply(&mut self, record: Record) {
         match record {
             Record::Message(message) => {
                 self.prompts += usize::from(matches!(message, Message::User { .. }));
                 self.messages.push(message);
             }
-            Record::Model { model } => self.model = Some(model),
+            Record::Model { model, vendor } => {
+                self.model = Some(model);
+                self.vendor = vendor;
+            }
             Record::Rewound { .. } => {}
             Record::Compacted { summary, kept } => {
                 let start = self.messages.len().saturating_sub(kept);
@@ -95,10 +127,9 @@ pub(crate) fn read_records(path: &Path) -> io::Result<Vec<Record>> {
     let file = File::open(path).map_err(|error| match error.kind() {
         io::ErrorKind::NotFound => io::Error::new(
             io::ErrorKind::NotFound,
-            format!(
-                "{MISSING_CONVERSATION} {}",
+            ResumeRefused::missing(
                 path.file_stem()
-                    .map_or_default(|stem| stem.to_string_lossy().into_owned())
+                    .map_or_default(|stem| stem.to_string_lossy().into_owned()),
             ),
         ),
         _ => error,
@@ -111,6 +142,13 @@ pub(crate) fn read_records(path: &Path) -> io::Result<Vec<Record>> {
         }
     }
     Ok(records)
+}
+
+pub(crate) fn refusal(error: &io::Error) -> Option<ResumeRefused> {
+    error
+        .get_ref()
+        .and_then(|inner| inner.downcast_ref::<ResumeRefused>())
+        .cloned()
 }
 
 pub(crate) fn restore(records: Vec<Record>) -> Restored {
@@ -215,10 +253,12 @@ mod tests {
         started.append(&Record::Message(Message::user("hi".to_owned())))?;
         started.append(&Record::Model {
             model: "gpt-5".to_owned(),
+            vendor: Some(Vendor::OpenAi),
         })?;
         started.append(&Record::Message(answer("hello")))?;
         let (_, restored) = SessionFile::open(&dir, &LiveSession::Resume(id))?;
         assert_eq!(restored.model.as_deref(), Some("gpt-5"));
+        assert_eq!(restored.vendor, Some(Vendor::OpenAi));
         assert_eq!(restored.messages.len(), 2);
         Ok(())
     }
@@ -267,6 +307,7 @@ mod tests {
             Record::Message(Message::user("two".to_owned())),
             Record::Model {
                 model: "gpt-5".to_owned(),
+                vendor: None,
             },
             Record::Message(answer("2")),
             Record::Rewound { prompt: 1 },
@@ -309,6 +350,27 @@ mod tests {
     }
 
     #[test]
+    fn a_model_saved_before_vendors_still_loads_without_one() {
+        let line = r#"{"kind":"model","model":"gpt-5"}"#;
+        assert_eq!(
+            serde_json::from_str::<Record>(line).ok(),
+            Some(Record::Model {
+                model: "gpt-5".to_owned(),
+                vendor: None
+            })
+        );
+        let saved = serde_json::to_string(&Record::from(&Chosen {
+            id: "claude-x".to_owned(),
+            vendor: Vendor::Anthropic,
+        }))
+        .unwrap_or_default();
+        assert_eq!(
+            saved,
+            r#"{"kind":"model","model":"claude-x","vendor":"anthropic"}"#
+        );
+    }
+
+    #[test]
     fn a_user_message_saved_before_images_still_loads() {
         let line = r#"{"kind":"message","role":"user","text":"hi"}"#;
         assert_eq!(
@@ -321,11 +383,15 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_session_says_so_like_the_other_harnesses() {
+    fn a_missing_session_is_refused_as_a_missing_conversation() {
         let dir = scratch("missing");
-        let error = SessionFile::open(&dir, &LiveSession::Resume(new_session_id()))
+        let refused = SessionFile::open(&dir, &LiveSession::Resume(new_session_id()))
             .err()
-            .map_or_default(|error| error.to_string());
-        assert!(crate::is_missing_conversation(&error), "{error}");
+            .as_ref()
+            .and_then(refusal);
+        assert!(
+            matches!(refused, Some(ResumeRefused::MissingConversation(_))),
+            "{refused:?}"
+        );
     }
 }

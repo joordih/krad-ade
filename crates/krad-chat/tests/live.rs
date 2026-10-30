@@ -1,7 +1,7 @@
 use krad_chat::{
-    claude_conversation_file, new_session_id, spawn_live_chat, BusVars, ChatEvent, LiveConfig,
-    LiveEvent, LiveSession, ResumeCut, RewindPoint, RewindRequest, RewindScope, Rewound, Runner,
-    DROPS_TURN_REFUSED,
+    claude_conversation_file, new_session_id, start_chat, BusVars, ChatBackend, ChatEvent,
+    LiveConfig, LiveEvent, LiveSession, ResumeRefused, RewindPoint, RewindRequest, RewindScope,
+    Rewound, Runner,
 };
 use krad_domain::ModelId;
 use std::path::{Path, PathBuf};
@@ -30,7 +30,7 @@ fn answer(receiver: &Receiver<ChatEvent>) -> String {
     let mut answer = String::new();
     while let Ok(event) = receiver.recv_timeout(TIMEOUT) {
         match event {
-            ChatEvent::Text(text) => answer.push_str(&text),
+            ChatEvent::Text(text) | ChatEvent::TextDelta(text) => answer.push_str(&text),
             ChatEvent::Tool(_)
             | ChatEvent::Edited { .. }
             | ChatEvent::Checklist(_)
@@ -55,7 +55,7 @@ fn answer(receiver: &Receiver<ChatEvent>) -> String {
 #[ignore = "runs the real claude CLI"]
 fn a_live_claude_answers_and_resumes_its_conversation() {
     let Some(program) = find(PROGRAM) else {
-        return;
+        unreachable!("{PROGRAM} must be on PATH to run this test");
     };
     let config = LiveConfig {
         runner: Runner::Native(program),
@@ -68,7 +68,8 @@ fn a_live_claude_answers_and_resumes_its_conversation() {
     };
     let id = new_session_id();
     let (sender, receiver) = channel();
-    let live = spawn_live_chat(&config, &LiveSession::Start(id.clone()), move |event| {
+    let start = LiveSession::Start(id.clone());
+    let live = start_chat(ChatBackend::Claude(config.clone()), &start, move |event| {
         if let LiveEvent::Chat(event) = event {
             sender.send(event).unwrap_or_default();
         }
@@ -80,11 +81,15 @@ fn a_live_claude_answers_and_resumes_its_conversation() {
     assert!(answer(&receiver).contains(EXPECTED));
     drop(live);
     let (sender, receiver) = channel();
-    let resumed = spawn_live_chat(&config, &LiveSession::Resume(id), move |event| {
-        if let LiveEvent::Chat(event) = event {
-            sender.send(event).unwrap_or_default();
-        }
-    });
+    let resumed = start_chat(
+        ChatBackend::Claude(config),
+        &LiveSession::Resume(id),
+        move |event| {
+            if let LiveEvent::Chat(event) = event {
+                sender.send(event).unwrap_or_default();
+            }
+        },
+    );
     let Ok(resumed) = resumed else {
         unreachable!("the live chat resumes");
     };
@@ -96,7 +101,7 @@ fn a_live_claude_answers_and_resumes_its_conversation() {
 #[ignore = "runs the real claude CLI"]
 fn claude_lists_its_models_without_a_turn() {
     let Some(program) = find(PROGRAM) else {
-        return;
+        unreachable!("{PROGRAM} must be on PATH to run this test");
     };
     let models = krad_chat::claude_models(&Runner::Native(program), &std::env::temp_dir());
     assert!(models.is_ok_and(|models| !models.is_empty()));
@@ -107,7 +112,9 @@ fn turn(receiver: &Receiver<LiveEvent>) -> Vec<LiveEvent> {
     while let Ok(event) = receiver.recv_timeout(TIMEOUT) {
         let done = matches!(
             event,
-            LiveEvent::Chat(ChatEvent::Done | ChatEvent::Error(_)) | LiveEvent::Rewound(_)
+            LiveEvent::Chat(ChatEvent::Done | ChatEvent::Error(_))
+                | LiveEvent::Rewound(_)
+                | LiveEvent::Refused(_)
         );
         seen.push(event);
         if done {
@@ -128,7 +135,7 @@ fn prompted(events: &[LiveEvent]) -> Option<RewindPoint> {
 #[ignore = "runs the real claude CLI"]
 fn a_live_claude_rewinds_to_an_edited_last_prompt() {
     let Some(program) = find(PROGRAM) else {
-        return;
+        unreachable!("{PROGRAM} must be on PATH to run this test");
     };
     let config = LiveConfig {
         runner: Runner::Native(program),
@@ -141,7 +148,7 @@ fn a_live_claude_rewinds_to_an_edited_last_prompt() {
     };
     let spawn = |session: &LiveSession| {
         let (sender, receiver) = channel();
-        let live = spawn_live_chat(&config, session, move |event| {
+        let live = start_chat(ChatBackend::Claude(config.clone()), session, move |event| {
             sender.send(event).unwrap_or_default();
         });
         let Ok(live) = live else {
@@ -172,16 +179,15 @@ fn a_live_claude_rewinds_to_an_edited_last_prompt() {
         unreachable!("the last prompt is cut back: {rewound:?}");
     };
     assert_eq!(cut.drops.as_ref(), Some(&prompt));
-    let cut: ResumeCut = cut.clone();
+    let cut = cut.clone();
     drop(live);
     let (again, receiver) = spawn(&LiveSession::Cut(cut));
     again.send(EDITED_PROMPT);
     let edited = turn(&receiver);
     assert!(
-        !edited.iter().any(|event| matches!(
-            event,
-            LiveEvent::Chat(ChatEvent::Error(error)) if error.contains(DROPS_TURN_REFUSED)
-        )),
+        !edited
+            .iter()
+            .any(|event| matches!(event, LiveEvent::Refused(ResumeRefused::TurnNotDropped(_)))),
         "{edited:?}"
     );
     let Some(copy) = edited.iter().find_map(|event| match event {

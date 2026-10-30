@@ -9,10 +9,8 @@ use gpui_kit::{
 };
 use krad_domain::{Effort, TerminalId};
 
-use super::super::ask::AskOwner;
-use super::super::chat::Composer;
 use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
-use super::super::model_picker::{grouped, ModelChoice};
+use super::super::model_picker::{grouped, ModelChoice, PickFor};
 use super::super::EnvironmentShell;
 use super::facts::Facts;
 use super::mentions::PASTE_KEY;
@@ -85,7 +83,7 @@ impl EnvironmentShell {
                     }
                 }),
             );
-        let field = Self::suggestion_keys(field, Composer::Surface(id), cx)
+        let field = Self::suggestion_keys(field, id, cx)
             .child(
                 div().flex_1().min_w_0().py(px(SPACE_1)).child(
                     Textarea::new(&chat.input)
@@ -94,7 +92,7 @@ impl EnvironmentShell {
                 ),
             )
             .child(Self::send_control(id, chat, now, cx))
-            .children(self.suggestion_menu(Composer::Surface(id), cx));
+            .children(self.suggestion_menu(id, cx));
         let (mark, mark_color) = harness_icon(chat.harness(), pal);
         let settings = div()
             .flex()
@@ -110,7 +108,7 @@ impl EnvironmentShell {
             .children(
                 chat.structured()
                     .is_some()
-                    .then(|| self.mode_control(AskOwner::Surface(id), cx)),
+                    .then(|| self.mode_control(id, cx)),
             )
             .children(
                 chat.structured()
@@ -190,24 +188,19 @@ impl EnvironmentShell {
             .model
             .clone()
             .unwrap_or_else(|| MODEL_LABEL.to_owned());
-        let groups = std::rc::Rc::new(grouped(facts.models.iter().map(|pick| {
-            (
-                pick.harness,
-                ModelChoice {
-                    id: pick.id.clone(),
-                    label: pick.label.clone(),
-                    current: pick.current,
-                    section: pick.source.clone(),
-                },
-            )
-        })));
+        let groups = std::rc::Rc::new(grouped(
+            facts
+                .models
+                .iter()
+                .map(|pick| (pick.harness, ModelChoice::from(pick))),
+        ));
         control_pill((MODEL_PREFIX, id.as_u64()), pal)
             .tooltip(|_, cx| tooltip_view(TOOLTIP_MODEL.into(), cx))
             .on_click(
                 cx.listener(move |this: &mut Self, event: &ClickEvent, _, cx| {
                     let at = event.position();
                     let origin = (at.x.as_f32(), at.y.as_f32());
-                    this.open_model_picker(id, origin, groups.to_vec(), cx);
+                    this.open_model_picker(PickFor::Chat(id), origin, groups.to_vec(), cx);
                 }),
             )
             .child(div().font_weight(FontWeight::MEDIUM).child(label))

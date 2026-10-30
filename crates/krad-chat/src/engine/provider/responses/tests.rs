@@ -2,8 +2,9 @@ use super::*;
 use crate::engine::provider::tests::{
     conversation, parse, pictured, read_tool, request, GONE_NOTE,
 };
-use crate::engine::provider::ProviderError;
 use crate::engine::wire::{Call, Delta, Source, Stop, Usage};
+use crate::gateway::GatewayError;
+use krad_domain::Effort;
 use serde_json::json;
 
 const STREAM: &str = r#"event: response.created
@@ -84,7 +85,7 @@ fn a_cut_answer_stops_for_length_and_a_failure_carries_its_message() {
     let failed = r#"data: {"type":"response.failed","response":{"error":{"message":"usage limit"}}}
 "#;
     let (reply, _) = parse(Parser::default(), failed);
-    assert!(matches!(reply, Err(ProviderError::Failed(message)) if message == "usage limit"));
+    assert!(matches!(reply, Err(GatewayError::Failed(message)) if message == "usage limit"));
 }
 
 #[test]

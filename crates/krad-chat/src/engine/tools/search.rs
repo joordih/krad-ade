@@ -1,11 +1,10 @@
-use krad_domain::GatewayAccess;
 use std::collections::HashSet;
 use std::sync::atomic::AtomicBool;
 
+use super::side::{Asked, SideRequest};
 use super::Ran;
-use crate::engine::attachments::Attachments;
-use crate::engine::provider::{stream, ProviderError};
-use crate::engine::wire::{Block, Message, NativeTool, Protocol, Reply, Request, Source};
+use crate::engine::wire::{answer_text, NativeTool, Reply, Source};
+use crate::gateway::{GatewayError, Vendor};
 
 const SEARCH_SYSTEM: &str = "You search the web for a coding agent. Search for the query, then answer it concisely with the facts you found, naming the pages they come from. Answer with the findings only.";
 const SEARCH_MAX_TOKENS: u64 = 8_192;
@@ -13,24 +12,14 @@ const SOURCES_HEADING: &str = "Sources:";
 const NO_ANSWER_TEXT: &str = "The search returned no answer.";
 const NO_MODEL_TEXT: &str = "Pick a Gateway model before searching the web";
 const CANCELLED_TEXT: &str = "[cancelled]";
+const NO_NATIVE_SEARCH_LEAD: &str = "Web search is not available for ";
+const NO_NATIVE_SEARCH_TAIL: &str = ": the Gateway offers native search only for Anthropic, OpenAI and Google models. Use web_fetch with an address you know instead.";
 
-#[derive(Clone, Debug)]
-pub(crate) struct Search {
-    pub(crate) access: GatewayAccess,
-    pub(crate) model: String,
-    pub(crate) protocol: Protocol,
-}
-
-fn answer_text(blocks: &[Block]) -> String {
-    blocks
-        .iter()
-        .filter_map(|block| match block {
-            Block::Text { text } => Some(text.as_str()),
-            Block::Thinking { .. } | Block::Call(_) => None,
-        })
-        .collect::<String>()
-        .trim()
-        .to_owned()
+const fn native_search(vendor: Vendor) -> Option<NativeTool> {
+    match vendor {
+        Vendor::Anthropic | Vendor::OpenAi | Vendor::Google => Some(NativeTool::WebSearch),
+        Vendor::Other => None,
+    }
 }
 
 fn source_line(source: &Source) -> String {
@@ -43,7 +32,7 @@ fn source_line(source: &Source) -> String {
 }
 
 pub(super) fn findings(reply: &Reply) -> String {
-    let answer = answer_text(&reply.blocks);
+    let answer = answer_text(&reply.blocks).trim().to_owned();
     let answer = if answer.is_empty() {
         NO_ANSWER_TEXT.to_owned()
     } else {
@@ -62,30 +51,25 @@ pub(super) fn findings(reply: &Reply) -> String {
     format!("{answer}\n\n{SOURCES_HEADING}\n{}", sources.join("\n"))
 }
 
-pub(super) fn search(search: Option<&Search>, query: &str, cancel: &AtomicBool) -> Ran {
-    let Some(search) = search else {
+pub(super) fn search(side: Option<&SideRequest>, query: &str, cancel: &AtomicBool) -> Ran {
+    let Some(side) = side else {
         return Ran::failed(NO_MODEL_TEXT.to_owned());
     };
-    let messages = [Message::user(query.to_owned())];
-    let request = Request {
-        model: &search.model,
+    let Some(native) = native_search(side.vendor) else {
+        return Ran::failed(format!(
+            "{NO_NATIVE_SEARCH_LEAD}{}{NO_NATIVE_SEARCH_TAIL}",
+            side.model
+        ));
+    };
+    let asked = Asked {
         system: SEARCH_SYSTEM,
-        messages: &messages,
-        images: Attachments::none(),
-        tools: &[],
-        native: Some(NativeTool::WebSearch),
-        effort: None,
+        text: query.to_owned(),
+        native: Some(native),
         max_tokens: SEARCH_MAX_TOKENS,
     };
-    match stream(
-        &search.access,
-        search.protocol,
-        &request,
-        cancel,
-        &mut |_| {},
-    ) {
+    match side.ask(asked, cancel) {
         Ok(reply) => Ran::done(findings(&reply)),
-        Err(ProviderError::Cancelled) => Ran::failed(CANCELLED_TEXT.to_owned()),
+        Err(GatewayError::Cancelled) => Ran::failed(CANCELLED_TEXT.to_owned()),
         Err(error) => Ran::failed(error.to_string()),
     }
 }
@@ -93,6 +77,7 @@ pub(super) fn search(search: Option<&Search>, query: &str, cancel: &AtomicBool) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::wire::Block;
 
     #[test]
     fn findings_list_each_source_once_after_the_answer() {
