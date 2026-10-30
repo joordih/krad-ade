@@ -10,7 +10,9 @@ use crate::traffic_lights;
 
 pub(crate) const TITLE_BAR_HEIGHT_PX: f32 = crate::theme::TOOLBAR_H;
 const NATIVE_LIGHT_SIZE_PX: f32 = 16.0;
+#[cfg(target_os = "macos")]
 const NATIVE_LIGHT_STEP_PX: f32 = 23.0;
+#[cfg(target_os = "macos")]
 const NATIVE_LIGHT_COUNT: f32 = 3.0;
 const NATIVE_LIGHTS_SHIFT_PX: f32 = 1.0;
 const NATIVE_LIGHTS_MARGIN_PX: f32 =

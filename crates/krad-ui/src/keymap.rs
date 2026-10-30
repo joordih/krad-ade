@@ -1,12 +1,14 @@
 use gpui_kit::KeyBinding;
 
 use crate::actions::{
-    AskConfirm, AskDeny, CopySelection, HideApp, HideOtherApps, MinimizeWindow, NewAgent,
-    NewTerminal, OpenSettings, PasteClipboard, Quit, RenameFile, SaveFile, SearchTerminal,
-    SendBackTab, SendTab, SplitTerminal, TextLarger, TextReset, TextSmaller, ToggleActivity,
-    ToggleFps, TogglePalette, ToggleSidePanel, ToggleSidebar, ASK_KEY_CONTEXT,
-    FILE_TAB_KEY_CONTEXT, FILE_TREE_KEY_CONTEXT, SHELL_KEY_CONTEXT, VIEWER_KEY_CONTEXT,
+    AskConfirm, AskDeny, CopySelection, NewAgent, NewTerminal, OpenSettings, PasteClipboard,
+    RenameFile, SaveFile, SearchTerminal, SendBackTab, SendTab, SplitTerminal, TextLarger,
+    TextReset, TextSmaller, ToggleActivity, ToggleFps, TogglePalette, ToggleSidePanel,
+    ToggleSidebar, ASK_KEY_CONTEXT, FILE_TAB_KEY_CONTEXT, FILE_TREE_KEY_CONTEXT, SHELL_KEY_CONTEXT,
+    VIEWER_KEY_CONTEXT,
 };
+#[cfg(target_os = "macos")]
+use crate::actions::{HideApp, HideOtherApps, MinimizeWindow, Quit};
 
 #[cfg(target_os = "macos")]
 mod keys {
