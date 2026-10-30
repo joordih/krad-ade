@@ -20,13 +20,14 @@ per crate:
 | `krad-chat` | The live chat of each harness: Claude Code's stream-JSON process, Codex's app server and opencode's server, their asks, histories and model lists, the skills a message can call, and the Gateway's model list and the app's own agent engine that chats through it (agent loop, Anthropic Messages, OpenAI Responses and Chat Completions streams, its tools: files, search, shell, web fetch and search, questions, plans, checklists and subagents, an MCP client over stdio and HTTP, permissions and its session files). |
 | `krad-gitlab` | GitLab's REST API v4: OAuth sign-in (Authorization Code with PKCE through a loopback redirect, Device Authorization Grant as fallback) and token refresh, merge requests, commits, changes, discussions, notes, approvals, merge, pipelines and jobs, over `ureq`. Synchronous; the UI calls it from the background executor. |
 | `krad-github` | GitHub's REST API, with GraphQL for review threads: device-flow sign-in, pull requests, commits, changed files, conversation comments, reviews, review threads, approvals, merge, Actions runs and jobs, read into the review types of `krad-domain`, over `ureq`. Synchronous; the UI calls it from the background executor. |
+| `krad-update` | App updates from the app's own GitHub releases: the signed `latest.json` manifest (minisign, public key in `packaging/update/minisign.pub`), the verified download, and replacing the installation per platform (`installation/macos.rs`, `linux.rs`, `windows.rs`) after the install marker shows it is a release build, unpacking with the system `tar`. Synchronous; the UI calls it from the background executor. |
 | `krad-agents` | Agent coordination bus, after Orca's orchestration: the loopback endpoint the app serves, its line-JSON protocol, the mailbox, and the `krad-ade-agents` CLI agents run from their shell. |
 | `krad-ui` | All GPUI views, elements, actions, the per-platform keymap (`keymap.rs`: Cmd on macOS, Ctrl+Shift on Windows/Linux so shells keep their control keys) and the light/dark theme. |
 | `krad-app` | Binaries: `krad-ade` (bootstrap, wiring, window creation; kept thin) and the console `krad-ade-agents` CLI, which only calls `krad-agents`. |
 
 **Dependency rules (mandatory):**
 
-- `krad-app -> krad-ui -> {krad-session -> {krad-pty, krad-term}, krad-repo, krad-store, krad-agents, krad-chat, krad-gitlab, krad-github}`,
+- `krad-app -> krad-ui -> {krad-session -> {krad-pty, krad-term}, krad-repo, krad-store, krad-agents, krad-chat, krad-gitlab, krad-github, krad-update}`,
   `krad-app -> krad-agents` and `krad-app -> krad-store`. Any crate may depend on `krad-domain`. No other edges, no cycles.
 - `krad-domain` depends on no workspace crate and on none of `gpui`, `libghostty-vt` or `tokio`.
 - `krad-term` must not depend on `krad-pty`; it is tested by feeding raw bytes.
@@ -35,7 +36,7 @@ per crate:
 
 Inside `krad-ui`, the root view lives in `environment_shell.rs` and each concern of it (sessions
 and their panes, chat surfaces, terminal bodies and actions, sidebar, groups, file tree, file
-tabs, notes, review, side panel, utilities panel, settings, gateway, agent bus, agent hooks, context menus,
+tabs, notes, review, side panel, utilities panel, settings, gateway, app updates, agent bus, agent hooks, context menus,
 dialogs, palette, input, terminal lifecycle, layout snapshot, window close, arcade) is a child
 module in
 `environment_shell/` with its own `impl EnvironmentShell` block. Children see the shell's private

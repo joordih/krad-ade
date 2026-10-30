@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/joordih/krad-ade"
@@ -50,6 +50,7 @@ gpui-kit = { version = "0.7.3", features = [
 ignore = "0.4"
 image = { version = "0.25", default-features = false }
 keyring = "4.2"
+minisign-verify = "0.3"
 mermaid-rs-renderer = { version = "0.3.1", default-features = false }
 libghostty-vt = { git = "https://github.com/joordih/libghostty-rs", rev = "f21a9e5e9a26b8d641040b9ab4624b59aa5254d7", default-features = false, features = [
   "kitty-graphics",
@@ -101,6 +102,7 @@ krad-term = { path = "crates/krad-term" }
 krad-session = { path = "crates/krad-session" }
 krad-store = { path = "crates/krad-store" }
 krad-ui = { path = "crates/krad-ui" }
+krad-update = { path = "crates/krad-update" }
 
 [profile.dev.package]
 gpui-pre = { opt-level = 3 }

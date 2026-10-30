@@ -106,6 +106,10 @@ _Avoid_: GitLab view, MR panel, code review
 Proposal on a code host to merge a branch, reviewed by other people. GitHub calls it a pull request, and the app uses that name for groups on GitHub.
 _Avoid_: MR, PR (in prose)
 
+**App update**:
+Newer stable Krad ADE release that an installed app finds on GitHub, downloads, verifies and installs over itself, so the user never reinstalls by hand. It is available, then downloading, then ready: a ready update waits for the user to restart the app, or applies when the app quits. When the app cannot replace itself, the update is only announced.
+_Avoid_: upgrade, self-update, release (for the thing the user gets), patch
+
 ### Spatial unit
 
 **Terminal**:

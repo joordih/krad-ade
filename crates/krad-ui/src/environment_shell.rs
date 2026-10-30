@@ -2,6 +2,7 @@ mod activity;
 mod agent_bus;
 mod agent_composer;
 mod agent_hooks;
+mod app_update;
 mod arcade;
 mod ask;
 mod changes_tab;
@@ -213,6 +214,7 @@ pub struct EnvironmentShell {
     docs_dialog: Option<docs_generate::DocsDialog>,
     name_dialogs: name_dialogs::NameDialogs,
     arcade: arcade::Arcade,
+    app_updates: app_update::AppUpdates,
 }
 
 impl EnvironmentShell {
@@ -312,9 +314,11 @@ impl EnvironmentShell {
             docs_dialog: None,
             arcade: arcade::Arcade::new(cx.focus_handle()),
             name_dialogs: name_dialogs::NameDialogs::Closed,
+            app_updates: app_update::AppUpdates::default(),
         };
         shell.start_agent_bus(cx);
         shell.check_gateway(cx);
+        shell.start_app_updates(cx);
         match seed {
             Some(snapshot) => shell.restore_snapshot(snapshot),
             None => shell.restore_env(EnvironmentData::empty(EnvironmentName::new(

@@ -1,4 +1,5 @@
 use gpui_kit::{div, px, rgb, AnyElement, Context, IntoElement, ParentElement, Styled, Window};
+use krad_update::AfterInstall;
 
 use super::dialog_parts::{sheet_footer, sheet_overlay, sheet_panel, sheet_title};
 use super::native_alert::Confirmation;
@@ -8,8 +9,10 @@ use crate::components::{Button, ButtonVariant};
 use crate::theme::{palette, LINE_SM, SPACE_5, SPACE_6, TEXT_SM};
 
 const CLOSE_DIALOG_TITLE: &str = "Quit Krad ADE?";
+const RESTART_DIALOG_TITLE: &str = "Restart to update?";
 const CLOSE_DIALOG_CANCEL: &str = "Cancel";
 const CLOSE_DIALOG_CONFIRM: &str = "Quit and end sessions";
+const RESTART_DIALOG_CONFIRM: &str = "Restart and end sessions";
 const BTN_CLOSE_CANCEL: &str = "close-cancel";
 const BTN_CLOSE_CONFIRM: &str = "close-confirm";
 const BTN_CLOSE_DISMISS: &str = "close-dismiss";
@@ -19,6 +22,23 @@ const CLOSE_DIALOG_W: f32 = 400.0;
 pub(super) enum CloseThen {
     RemoveWindow,
     Quit,
+    RestartToUpdate,
+}
+
+impl CloseThen {
+    const fn title(self) -> &'static str {
+        match self {
+            Self::RemoveWindow | Self::Quit => CLOSE_DIALOG_TITLE,
+            Self::RestartToUpdate => RESTART_DIALOG_TITLE,
+        }
+    }
+
+    const fn confirm(self) -> &'static str {
+        match self {
+            Self::RemoveWindow | Self::Quit => CLOSE_DIALOG_CONFIRM,
+            Self::RestartToUpdate => RESTART_DIALOG_CONFIRM,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -33,8 +53,15 @@ fn cancel(this: &mut EnvironmentShell, _: &mut Window, cx: &mut Context<Environm
     this.cancel_close(cx);
 }
 
-fn close_dialog_text(running: usize) -> String {
-    format!("{running} terminals are still running. Closing the window ends their processes.")
+fn close_dialog_text(then: CloseThen, running: usize) -> String {
+    match then {
+        CloseThen::RemoveWindow | CloseThen::Quit => format!(
+            "{running} terminals are still running. Closing the window ends their processes."
+        ),
+        CloseThen::RestartToUpdate => format!(
+            "{running} terminals are still running. Restarting ends their processes; chats pick up where they left off."
+        ),
+    }
 }
 
 impl EnvironmentShell {
@@ -64,11 +91,11 @@ impl EnvironmentShell {
     }
 
     fn ask_to_close(&mut self, then: CloseThen, window: &mut Window, cx: &mut Context<Self>) {
-        let detail = close_dialog_text(self.any_alive_count());
+        let detail = close_dialog_text(then, self.any_alive_count());
         let confirmation = Confirmation {
-            title: CLOSE_DIALOG_TITLE,
+            title: then.title(),
             detail: &detail,
-            confirm: CLOSE_DIALOG_CONFIRM,
+            confirm: then.confirm(),
             cancel: CLOSE_DIALOG_CANCEL,
         };
         let asked = Self::confirm_natively(
@@ -108,6 +135,12 @@ impl EnvironmentShell {
         }
     }
 
+    pub(super) fn restart_to_update(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.may_close(CloseThen::RestartToUpdate, window, cx) {
+            self.confirm_close(CloseThen::RestartToUpdate, window, cx);
+        }
+    }
+
     pub(super) fn confirm_close(
         &mut self,
         then: CloseThen,
@@ -116,9 +149,18 @@ impl EnvironmentShell {
     ) {
         self.close_request = CloseRequest::Confirmed;
         self.store();
-        window.remove_window();
-        if then == CloseThen::Quit {
-            cx.quit();
+        match then {
+            CloseThen::RemoveWindow => window.remove_window(),
+            CloseThen::Quit if self.app_update_ready() => {
+                self.install_app_update_then_quit(AfterInstall::Exit, window, cx);
+            }
+            CloseThen::Quit => {
+                window.remove_window();
+                cx.quit();
+            }
+            CloseThen::RestartToUpdate => {
+                self.install_app_update_then_quit(AfterInstall::Relaunch, window, cx);
+            }
         }
     }
 
@@ -135,7 +177,7 @@ impl EnvironmentShell {
         let running = self.any_alive_count();
         let sheet = sheet_panel(CLOSE_DIALOG_W, pal)
             .child(sheet_title(
-                CLOSE_DIALOG_TITLE,
+                then.title(),
                 None,
                 BTN_CLOSE_DISMISS,
                 cancel,
@@ -148,7 +190,7 @@ impl EnvironmentShell {
                     .text_size(px(TEXT_SM))
                     .line_height(px(LINE_SM))
                     .text_color(rgb(pal.text_muted))
-                    .child(close_dialog_text(running)),
+                    .child(close_dialog_text(then, running)),
             )
             .child(
                 sheet_footer(pal)
@@ -163,7 +205,7 @@ impl EnvironmentShell {
                     )
                     .child(
                         Button::new(BTN_CLOSE_CONFIRM)
-                            .label(CLOSE_DIALOG_CONFIRM)
+                            .label(then.confirm())
                             .variant(ButtonVariant::Destructive)
                             .on_click(cx.listener(
                                 move |this: &mut Self, _, window: &mut Window, cx| {

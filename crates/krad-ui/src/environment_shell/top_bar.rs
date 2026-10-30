@@ -37,6 +37,7 @@ impl EnvironmentShell {
                     .items_center()
                     .gap(px(SPACE_2))
                     .child(self.top_bar_middle(cx))
+                    .children(self.app_update_pill(cx))
                     .child(self.panel_toggles(cx)),
             )
     }

@@ -50,6 +50,7 @@ jobs:
           name=krad-ade-${{ needs.version.outputs.version }}-x86_64-linux
           mkdir -p "$name/licenses"
           cp target/release/krad-ade target/release/krad-ade-agents packaging/linux/krad-ade.desktop "$name/"
+          cp packaging/update/krad-ade.install "$name/"
           cp packaging/icon/png/krad-ade-256.png "$name/krad-ade.png"
           shopt -s nullglob
           cp assets/icons/LICENSE-*.txt assets/fonts/*.txt "$name/licenses/"
@@ -131,7 +132,7 @@ jobs:
           app="dmg/Krad ADE.app"
           mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/licenses"
           cp target/release/krad-ade target/release/krad-ade-agents "$app/Contents/MacOS/"
-          cp packaging/macos/krad-ade.icns "$app/Contents/Resources/"
+          cp packaging/macos/krad-ade.icns packaging/update/krad-ade.install "$app/Contents/Resources/"
           cp assets/icons/LICENSE-*.txt assets/fonts/*.txt "$app/Contents/Resources/licenses/"
           cp packaging/macos/Info.plist "$app/Contents/"
           plutil -replace CFBundleShortVersionString -string "$version" "$app/Contents/Info.plist"
@@ -167,11 +168,17 @@ jobs:
           xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_PASSWORD" --wait
           xcrun stapler staple "$dmg"
+          xcrun stapler staple "dmg/Krad ADE.app"
           spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+      - name: Archive Krad ADE.app for in-app updates
+        run: |
+          tar -czf "krad-ade-${{ needs.version.outputs.version }}-aarch64-macos.app.tar.gz" -C dmg "Krad ADE.app"
       - uses: actions/upload-artifact@v4
         with:
           name: macos
-          path: krad-ade-*-aarch64-macos.dmg
+          path: |
+            krad-ade-*-aarch64-macos.dmg
+            krad-ade-*-aarch64-macos.app.tar.gz
 
   release:
     needs: [version, linux, windows, macos]
@@ -180,7 +187,32 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
+      - run: sudo apt-get update && sudo apt-get install -y minisign
+      - name: Sign the builds into the update manifest
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          version=${{ needs.version.outputs.version }}
+          key="$RUNNER_TEMP/krad-ade.key"
+          printf 'krad-ade\n%s\n' "$MINISIGN_SECRET_KEY" > "$key"
+          sign() {
+            minisign -S -s "$key" -m "$1" -x "$1.minisig" -t "krad-ade $version" > /dev/null
+            tail -n +2 "$1.minisig"
+            rm "$1.minisig"
+          }
+          build() {
+            jq -n --arg file "$1" --argjson size "$(stat -c %s "$1")" --arg signature "$(sign "$1")" \
+              '{file: $file, size: $size, signature: $signature}'
+          }
+          jq -n --arg version "$version" \
+            --argjson macos "$(build "krad-ade-$version-aarch64-macos.app.tar.gz")" \
+            --argjson windows "$(build "krad-ade-$version-setup.exe")" \
+            --argjson linux "$(build "krad-ade-$version-x86_64-linux.tar.gz")" \
+            '{version: $version, builds: {"aarch64-macos": $macos, "x86_64-windows": $windows, "x86_64-linux": $linux}}' \
+            > latest.json
+          sign latest.json > latest.json.sig
+          rm "$key"
       - run: |
           version=${{ needs.version.outputs.version }}
           gh release create "v$version" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Krad ADE $version" --generate-notes krad-ade-*
+            --title "Krad ADE $version" --generate-notes krad-ade-* latest.json latest.json.sig
