@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -33,7 +34,7 @@ pub(super) fn writable_dirs(installation: &Installation) -> Vec<&Path> {
 }
 
 pub(super) fn unpack(archive: &Path, _staging: &Path) -> Result<PathBuf, UpdateError> {
-    Ok(archive.to_path_buf())
+    Ok(fs::canonicalize(archive)?)
 }
 
 pub(super) fn install(
