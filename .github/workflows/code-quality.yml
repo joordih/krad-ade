@@ -16,6 +16,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_PROFILE_DEV_DEBUG: 0
   GH_TOKEN: ${{ github.token }}
 
 jobs:
@@ -36,6 +37,9 @@ jobs:
     name: Lint and test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: sccache
     strategy:
       fail-fast: false
       matrix:
@@ -77,9 +81,12 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: just
+      - uses: mozilla-actions/sccache-action@v0.0.11
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: just ghostty-libs ${{ matrix.target }}
       - run: just lint
       - run: cargo test --workspace --locked
