@@ -40,8 +40,7 @@ fn read_latest_chat_in(dir: &Path) -> Option<StoredChat> {
                 return None;
             }
             let id = path.file_stem()?.to_str()?.parse::<ChatId>().ok()?;
-            let modified = entry
-                .metadata()
+            let modified = std::fs::metadata(&path)
                 .and_then(|metadata| metadata.modified())
                 .unwrap_or(SystemTime::UNIX_EPOCH);
             Some((modified, path, id))
@@ -123,6 +122,10 @@ impl Drop for ChatLogWriter {
 mod tests {
     use super::*;
     use krad_domain::{AgentPreset, ChatEvent};
+    use std::fs::File;
+    use std::time::Duration;
+
+    const OLDER_CHAT_AGE: Duration = Duration::from_secs(60);
 
     fn id(raw: &str) -> ChatId {
         raw.parse()
@@ -150,6 +153,11 @@ mod tests {
             }
         }
         assert!(append(&dir, &id("newer"), "{\"cut short").is_ok());
+        let aged = File::options()
+            .write(true)
+            .open(chat_file(&dir, &id("older")))
+            .and_then(|file| file.set_modified(SystemTime::now() - OLDER_CHAT_AGE));
+        assert!(aged.is_ok(), "the older chat is dated back");
         let latest = read_latest_chat_in(&dir);
         assert_eq!(
             latest,
