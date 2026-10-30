@@ -5,6 +5,7 @@ mod events;
 mod history;
 mod prompt;
 mod server;
+mod service;
 mod tools;
 mod watch;
 

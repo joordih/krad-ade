@@ -10,7 +10,7 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Child, ChildStdin, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::thread;
 use std::time::Duration;
 use thiserror::Error;
@@ -18,6 +18,7 @@ use ureq::typestate::{WithBody, WithoutBody};
 use ureq::{Agent, RequestBuilder};
 
 use super::events::ServerEvent;
+use super::service;
 use crate::live::keep_stderr_tail;
 use crate::process::{harness_command, Runner};
 
@@ -46,8 +47,8 @@ pub enum OpencodeError {
     Http(#[from] ureq::Error),
 }
 
-#[derive(Clone, PartialEq, Eq)]
-struct Secret(String);
+#[derive(Clone, PartialEq, Eq, Deserialize)]
+pub(super) struct Secret(String);
 
 impl fmt::Debug for Secret {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -112,32 +113,52 @@ impl Routes {
 }
 
 #[derive(Clone)]
-struct Endpoint {
-    url: String,
-    authorization: Secret,
+pub(super) struct Endpoint {
+    pub(super) url: String,
+    password: Option<Secret>,
 }
 
 impl Endpoint {
-    fn sign<B>(&self, request: RequestBuilder<B>) -> RequestBuilder<B> {
-        request.header(AUTHORIZATION, &self.authorization.0)
+    pub(super) const fn new(url: String, password: Option<Secret>) -> Self {
+        Self { url, password }
+    }
+
+    pub(super) fn sign<B>(&self, request: RequestBuilder<B>) -> RequestBuilder<B> {
+        let Some(password) = &self.password else {
+            return request;
+        };
+        let credentials = STANDARD.encode(format!("{USER}:{}", password.0));
+        request.header(AUTHORIZATION, format!("{BASIC}{credentials}"))
     }
 }
 
+enum Host {
+    Private {
+        child: Child,
+        lease: Option<ChildStdin>,
+    },
+    Shared,
+}
+
+type Relocate = fn() -> Option<Endpoint>;
+
+const fn stay() -> Option<Endpoint> {
+    None
+}
+
 pub struct OpencodeServer {
-    endpoint: Endpoint,
-    password: Secret,
+    endpoint: Arc<RwLock<Endpoint>>,
     agent: Agent,
     routes: Arc<Mutex<Routes>>,
     closed: Arc<AtomicBool>,
-    child: Mutex<Child>,
-    lease: Mutex<Option<ChildStdin>>,
+    host: Mutex<Host>,
 }
 
 impl fmt::Debug for OpencodeServer {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("OpencodeServer")
-            .field("url", &self.endpoint.url)
+            .field("url", &self.url())
             .finish_non_exhaustive()
     }
 }
@@ -151,14 +172,27 @@ impl OpencodeServer {
         cwd: &Path,
         env: &[(String, String)],
     ) -> Result<Arc<Self>, OpencodeError> {
-        let password = new_password();
         let mut env = env.to_vec();
-        env.push((PASSWORD_VAR.to_owned(), password.0.clone()));
         env.extend(
             QUIET_VARS
                 .iter()
                 .map(|(name, value)| ((*name).to_owned(), (*value).to_owned())),
         );
+        if !runner.in_wsl() {
+            if let Ok(endpoint) = service::attach(runner, cwd, &env) {
+                return Ok(Self::serve(endpoint, Host::Shared, service::discover));
+            }
+        }
+        Self::start_private(runner, cwd, env)
+    }
+
+    fn start_private(
+        runner: &Runner,
+        cwd: &Path,
+        mut env: Vec<(String, String)>,
+    ) -> Result<Arc<Self>, OpencodeError> {
+        let password = new_password();
+        env.push((PASSWORD_VAR.to_owned(), password.0.clone()));
         let args: Vec<String> = SERVE_ARGS.iter().map(|arg| (*arg).to_owned()).collect();
         let mut child = harness_command(runner, cwd, &args, &env)
             .stdin(Stdio::piped())
@@ -190,11 +224,11 @@ impl OpencodeServer {
                 .to_owned();
             return Err(OpencodeError::NotStarted(tail));
         };
-        let credentials = STANDARD.encode(format!("{USER}:{}", password.0));
-        let endpoint = Endpoint {
-            url: ready.url,
-            authorization: Secret(format!("{BASIC}{credentials}")),
-        };
+        let endpoint = Endpoint::new(ready.url, Some(password));
+        Ok(Self::serve(endpoint, Host::Private { child, lease }, stay))
+    }
+
+    fn serve(endpoint: Endpoint, host: Host, relocate: Relocate) -> Arc<Self> {
         let server = Arc::new(Self {
             agent: Agent::config_builder()
                 .timeout_global(Some(REQUEST_TIMEOUT))
@@ -202,37 +236,46 @@ impl OpencodeServer {
                 .new_agent(),
             routes: Arc::new(Mutex::new(Routes::default())),
             closed: Arc::new(AtomicBool::new(false)),
-            child: Mutex::new(child),
-            lease: Mutex::new(lease),
-            endpoint,
-            password,
+            endpoint: Arc::new(RwLock::new(endpoint)),
+            host: Mutex::new(host),
         });
-        let feed = server.endpoint.clone();
+        let feed = Arc::clone(&server.endpoint);
         let routes = Arc::clone(&server.routes);
         let closed = Arc::clone(&server.closed);
-        thread::spawn(move || listen(&feed, &routes, &closed));
-        Ok(server)
+        thread::spawn(move || listen(&feed, &routes, &closed, relocate));
+        server
+    }
+
+    fn endpoint(&self) -> Endpoint {
+        self.endpoint
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     #[must_use]
-    pub fn url(&self) -> &str {
-        &self.endpoint.url
+    pub fn url(&self) -> String {
+        self.endpoint().url
     }
 
     #[must_use]
     pub fn client_env(&self) -> Vec<(String, String)> {
-        vec![(PASSWORD_VAR.to_owned(), self.password.0.clone())]
+        self.endpoint()
+            .password
+            .map(|password| (PASSWORD_VAR.to_owned(), password.0))
+            .into_iter()
+            .collect()
     }
 
     #[must_use]
     pub fn is_alive(&self) -> bool {
-        !self.closed.load(Ordering::SeqCst)
-            && self
-                .child
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .try_wait()
-                .is_ok_and(|status| status.is_none())
+        if self.closed.load(Ordering::SeqCst) {
+            return false;
+        }
+        match &mut *self.host.lock().unwrap_or_else(PoisonError::into_inner) {
+            Host::Private { child, .. } => child.try_wait().is_ok_and(|status| status.is_none()),
+            Host::Shared => true,
+        }
     }
 
     pub(crate) fn subscribe(&self, session: &str, sink: Sink) -> u64 {
@@ -255,7 +298,7 @@ impl OpencodeServer {
     }
 
     fn url_of(&self, path: &str) -> String {
-        format!("{}{path}", self.endpoint.url)
+        format!("{}{path}", self.url())
     }
 
     fn located<B>(request: RequestBuilder<B>, directory: Option<&str>) -> RequestBuilder<B> {
@@ -266,11 +309,11 @@ impl OpencodeServer {
     }
 
     fn without_body(&self, request: RequestBuilder<WithoutBody>) -> RequestBuilder<WithoutBody> {
-        self.endpoint.sign(request)
+        self.endpoint().sign(request)
     }
 
     fn with_body(&self, request: RequestBuilder<WithBody>) -> RequestBuilder<WithBody> {
-        self.endpoint.sign(request)
+        self.endpoint().sign(request)
     }
 
     pub(crate) fn get<T: DeserializeOwned>(
@@ -343,22 +386,36 @@ impl OpencodeServer {
 impl Drop for OpencodeServer {
     fn drop(&mut self) {
         self.closed.store(true, Ordering::SeqCst);
-        self.lease
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .take();
-        let mut child = self.child.lock().unwrap_or_else(PoisonError::into_inner);
+        let host = self.host.get_mut().unwrap_or_else(PoisonError::into_inner);
+        let Host::Private { child, lease } = host else {
+            return;
+        };
+        lease.take();
         child.kill().unwrap_or_default();
         drop(child.wait());
     }
 }
 
-fn listen(endpoint: &Endpoint, routes: &Mutex<Routes>, closed: &AtomicBool) {
+fn listen(
+    endpoint: &RwLock<Endpoint>,
+    routes: &Mutex<Routes>,
+    closed: &AtomicBool,
+    relocate: Relocate,
+) {
     let agent = Agent::new_with_defaults();
     while !closed.load(Ordering::SeqCst) {
-        let url = format!("{}{EVENT_PATH}", endpoint.url);
-        if let Ok(response) = endpoint.sign(agent.get(&url)).call() {
-            pump(BufReader::new(response.into_body().into_reader()), routes);
+        let current = endpoint
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        let url = format!("{}{EVENT_PATH}", current.url);
+        match current.sign(agent.get(&url)).call() {
+            Ok(response) => pump(BufReader::new(response.into_body().into_reader()), routes),
+            Err(_) => {
+                if let Some(moved) = relocate() {
+                    *endpoint.write().unwrap_or_else(PoisonError::into_inner) = moved;
+                }
+            }
         }
         thread::sleep(RECONNECT_DELAY);
     }
