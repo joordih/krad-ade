@@ -39,7 +39,7 @@ jobs:
     timeout-minutes: 90
     env:
       SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: sccache
+      RUSTC_WRAPPER: ${{ matrix.rustc-wrapper }}
     strategy:
       fail-fast: false
       matrix:
@@ -47,9 +47,11 @@ jobs:
           - name: linux
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            rustc-wrapper: sccache
           - name: macos
             os: macos-15
             target: aarch64-apple-darwin
+            rustc-wrapper: sccache
           - name: windows
             os: windows-2022
             target: x86_64-pc-windows-gnu
@@ -82,6 +84,7 @@ jobs:
         with:
           tool: just
       - uses: mozilla-actions/sccache-action@v0.0.11
+        if: matrix.rustc-wrapper == 'sccache'
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
