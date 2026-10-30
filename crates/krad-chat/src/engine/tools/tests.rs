@@ -105,7 +105,10 @@ fn paths_show_relative_inside_the_workspace_and_absolute_outside() {
         path: PathBuf::from("/etc/hosts"),
         replacements: Vec::new(),
     };
-    assert_eq!(outside.summary(&workspace), "/etc/hosts");
+    assert_eq!(
+        outside.summary(&workspace),
+        ["", "etc", "hosts"].join(std::path::MAIN_SEPARATOR_STR)
+    );
     assert_eq!(outside.label(), EDIT_LABEL);
     let grep = Action::Grep {
         pattern: "todo".to_owned(),
