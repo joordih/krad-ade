@@ -21,10 +21,8 @@ const SH_PROGRAM: &str = "sh";
 const SH_COMMAND_FLAG: &str = "-c";
 const PRINT_HOME: &str = r#"printf %s "$HOME""#;
 const LINUX_ROOT: char = '/';
-const CHMOD_PROGRAM: &str = "chmod";
 const READLINK_PROGRAM: &str = "readlink";
 const CANONICALIZE_FLAG: &str = "-f";
-const OWNER_ONLY_MODE: &str = "600";
 const ARG_SEPARATOR: &str = " ";
 const PRINT_FOUND_PROGRAMS: &str = r#"for program in "$@"; do command -v "$program" >/dev/null 2>&1 && printf '%s\n' "$program"; done; :"#;
 
@@ -101,11 +99,6 @@ pub fn wsl_programs<'a>(distro: &str, programs: &[&'a str]) -> Result<Vec<&'a st
         .copied()
         .filter(|program| output.lines().any(|line| line.trim() == *program))
         .collect())
-}
-
-/// # Errors
-pub fn wsl_restrict_to_owner(distro: &str, linux_path: &str) -> Result<(), RepoError> {
-    run_in_wsl(distro, &[CHMOD_PROGRAM, OWNER_ONLY_MODE, linux_path]).map(drop)
 }
 
 pub(crate) fn wsl_resolve_symlinks(path: &Path) -> Result<Option<PathBuf>, RepoError> {

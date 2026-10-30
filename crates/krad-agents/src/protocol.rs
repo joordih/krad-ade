@@ -1,11 +1,16 @@
+mod harness_name;
+
+pub(crate) use harness_name::preset_by_display_name;
+
 use crate::handle::Caller;
-use krad_domain::{ToolDecision, ASK_WAIT_SECS};
+use krad_domain::{AgentPreset, AgentState, ToolDecision, UnknownAgentState, ASK_WAIT};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
 use std::time::Duration;
 
-pub const MAX_WAIT_SECS: u64 = 1800;
+pub const MAX_WAIT: Duration = Duration::from_mins(30);
+const EXITED: &str = "exited";
 const BLOCKING_MARGIN: Duration = Duration::from_secs(1);
 const DEFAULT_DEADLINE: Duration = Duration::from_secs(10);
 const SPAWN_DEADLINE: Duration = Duration::from_mins(1);
@@ -42,7 +47,8 @@ pub enum Request {
         lines: usize,
     },
     Hook {
-        harness: String,
+        #[serde(with = "harness_name::program")]
+        harness: AgentPreset,
         event: String,
         tool: Option<String>,
         detail: Option<String>,
@@ -57,7 +63,8 @@ pub enum Request {
         suggestions: Vec<Value>,
     },
     Spawn {
-        agent: String,
+        #[serde(with = "harness_name::program")]
+        agent: AgentPreset,
         worktree: Option<String>,
         task: String,
     },
@@ -72,8 +79,8 @@ impl Request {
             }
             | Self::Wait {
                 timeout_secs: secs, ..
-            } => Duration::from_secs((*secs).min(MAX_WAIT_SECS)) + BLOCKING_MARGIN,
-            Self::Ask { .. } => Duration::from_secs(ASK_WAIT_SECS) + BLOCKING_MARGIN,
+            } => Duration::from_secs(*secs).min(MAX_WAIT) + BLOCKING_MARGIN,
+            Self::Ask { .. } => ASK_WAIT + BLOCKING_MARGIN,
             Self::List
             | Self::Send { .. }
             | Self::Check { wait_secs: None }
@@ -136,9 +143,43 @@ pub struct AgentInfo {
     pub terminal: u64,
     pub title: String,
     pub group: Option<String>,
-    pub state: String,
-    pub harness: Option<String>,
+    pub state: TerminalState,
+    #[serde(with = "harness_name::display_name")]
+    pub harness: Option<AgentPreset>,
     pub is_self: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "String", try_from = "String")]
+pub enum TerminalState {
+    Running(AgentState),
+    Exited,
+}
+
+impl fmt::Display for TerminalState {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Running(state) => state.label(),
+            Self::Exited => EXITED,
+        })
+    }
+}
+
+impl From<TerminalState> for String {
+    fn from(state: TerminalState) -> Self {
+        state.to_string()
+    }
+}
+
+impl TryFrom<String> for TerminalState {
+    type Error = UnknownAgentState;
+
+    fn try_from(label: String) -> Result<Self, Self::Error> {
+        if label == EXITED {
+            return Ok(Self::Exited);
+        }
+        label.parse().map(Self::Running)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -154,7 +195,7 @@ pub enum Response {
     Agents(Vec<AgentInfo>),
     Sent { id: u64 },
     Messages(Vec<Message>),
-    Settled { target: u64, state: String },
+    Settled { target: u64, state: TerminalState },
     TimedOut,
     Screen(String),
     Noted,
@@ -167,7 +208,7 @@ pub enum Response {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::handle::{ChatHandle, LeadHandle, TerminalHandle};
+    use crate::handle::{LeadHandle, TerminalHandle};
 
     #[test]
     fn envelope_roundtrips_through_json() -> Result<(), serde_json::Error> {
@@ -191,7 +232,7 @@ mod tests {
     #[test]
     fn only_a_lead_may_start_or_direct_workers() {
         let spawn = Request::Spawn {
-            agent: "codex".to_owned(),
+            agent: AgentPreset::Codex,
             worktree: None,
             task: "tests".to_owned(),
         };
@@ -203,10 +244,6 @@ mod tests {
             environment: "main".to_owned(),
             terminal: 4,
         });
-        let side_chat = Caller::Chat(ChatHandle {
-            environment: "main".to_owned(),
-            group: 1,
-        });
         let lead = Caller::Lead(LeadHandle {
             environment: "main".to_owned(),
             session: 2,
@@ -216,10 +253,71 @@ mod tests {
                 lead_refusal(&worker, request),
                 Some(Response::Error(_))
             ));
-            assert!(lead_refusal(&side_chat, request).is_some());
             assert_eq!(lead_refusal(&lead, request), None);
         }
         assert_eq!(lead_refusal(&worker, &Request::List), None);
+    }
+
+    #[test]
+    fn harnesses_and_states_keep_their_strings_on_the_wire() -> Result<(), serde_json::Error> {
+        let hook = Request::Hook {
+            harness: AgentPreset::ClaudeCode,
+            event: "Stop".to_owned(),
+            tool: None,
+            detail: None,
+            resume: None,
+        };
+        let hook_line = r#"{"Hook":{"harness":"claude","event":"Stop","tool":null,"detail":null}}"#;
+        assert_eq!(serde_json::to_string(&hook)?, hook_line);
+        assert_eq!(serde_json::from_str::<Request>(hook_line)?, hook);
+        let spawn = Request::Spawn {
+            agent: AgentPreset::Opencode,
+            worktree: None,
+            task: "tests".to_owned(),
+        };
+        let spawn_line = r#"{"Spawn":{"agent":"opencode","worktree":null,"task":"tests"}}"#;
+        assert_eq!(serde_json::to_string(&spawn)?, spawn_line);
+        assert_eq!(serde_json::from_str::<Request>(spawn_line)?, spawn);
+        let codex = r#"{"Spawn":{"agent":"codex","worktree":null,"task":"tests"}}"#;
+        assert!(matches!(
+            serde_json::from_str::<Request>(codex)?,
+            Request::Spawn {
+                agent: AgentPreset::Codex,
+                ..
+            }
+        ));
+        assert!(serde_json::from_str::<Request>(&spawn_line.replace("opencode", "zsh")).is_err());
+        let agent = AgentInfo {
+            terminal: 4,
+            title: "Claude Code · 4".to_owned(),
+            group: None,
+            state: TerminalState::Running(AgentState::WaitingForInput),
+            harness: Some(AgentPreset::ClaudeCode),
+            is_self: false,
+        };
+        let agent_line = r#"{"terminal":4,"title":"Claude Code · 4","group":null,"state":"waiting-for-input","harness":"Claude Code","is_self":false}"#;
+        assert_eq!(serde_json::to_string(&agent)?, agent_line);
+        assert_eq!(serde_json::from_str::<AgentInfo>(agent_line)?, agent);
+        let unknown = AgentInfo {
+            harness: None,
+            ..agent
+        };
+        assert_eq!(
+            serde_json::to_string(&unknown)?,
+            agent_line.replace(r#""Claude Code","is_self""#, r#"null,"is_self""#)
+        );
+        let settled = Response::Settled {
+            target: 4,
+            state: TerminalState::Exited,
+        };
+        let settled_line = r#"{"Settled":{"target":4,"state":"exited"}}"#;
+        assert_eq!(serde_json::to_string(&settled)?, settled_line);
+        assert_eq!(serde_json::from_str::<Response>(settled_line)?, settled);
+        for state in AgentState::ALL {
+            let line = serde_json::to_string(&TerminalState::Running(state))?;
+            assert_eq!(line, format!("\"{}\"", state.label()));
+        }
+        Ok(())
     }
 
     #[test]

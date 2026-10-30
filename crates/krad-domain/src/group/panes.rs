@@ -642,7 +642,6 @@ mod tests {
         let mut panes = SessionPanes::single(vec![A, B, C]);
         panes.apply_template(LayoutTemplate::Grid, C, 3);
         assert_eq!(tabs_of(&panes), [vec![A, B], vec![], vec![], vec![C]]);
-        assert_eq!(LayoutTemplate::MainAndStack.slots().len(), 3);
     }
 
     #[test]

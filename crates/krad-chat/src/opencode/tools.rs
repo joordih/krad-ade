@@ -1,34 +1,35 @@
-use krad_domain::PermissionMode;
+use krad_domain::{PermissionMode, ToolKind};
 use serde::Serialize;
 
 pub(crate) const PLAN_AGENT: &str = "plan";
 pub(crate) const BUILD_AGENT: &str = "build";
+const TODO_TOOL: &str = "todowrite";
 const ANY: &str = "*";
 
-const HARNESS_TOOL_NAMES: [(&str, &str); 13] = [
-    ("shell", "Bash"),
-    ("read", "Read"),
-    ("edit", "Edit"),
-    ("write", "Write"),
-    ("patch", "Edit"),
-    ("grep", "Grep"),
-    ("glob", "Glob"),
-    ("webfetch", "WebFetch"),
-    ("websearch", "WebSearch"),
-    ("subagent", "Task"),
-    ("todowrite", "TodoWrite"),
-    ("skill", "Skill"),
-    ("question", "AskUserQuestion"),
+const HARNESS_TOOLS: [(&str, &str, ToolKind); 13] = [
+    ("shell", "Bash", ToolKind::Shell),
+    ("read", "Read", ToolKind::Read),
+    ("edit", "Edit", ToolKind::Edit),
+    ("write", "Write", ToolKind::Edit),
+    ("patch", "Edit", ToolKind::Edit),
+    ("grep", "Grep", ToolKind::Search),
+    ("glob", "Glob", ToolKind::Search),
+    ("webfetch", "WebFetch", ToolKind::Fetch),
+    ("websearch", "WebSearch", ToolKind::Search),
+    ("subagent", "Task", ToolKind::Subagent),
+    (TODO_TOOL, "TodoWrite", ToolKind::Checklist),
+    ("skill", "Skill", ToolKind::Other),
+    ("question", "AskUserQuestion", ToolKind::Question),
 ];
 
 const ASKED_IN_MANUAL: [&str; 4] = ["edit", "shell", "webfetch", "external_directory"];
 const ASKED_ACCEPTING_EDITS: [&str; 3] = ["shell", "webfetch", "external_directory"];
 
-pub(crate) fn harness_tool_name(tool: &str) -> &str {
-    HARNESS_TOOL_NAMES
+pub(crate) fn harness_tool(tool: &str) -> (&str, ToolKind) {
+    HARNESS_TOOLS
         .iter()
-        .find(|(opencode, _)| *opencode == tool)
-        .map_or(tool, |(_, shown)| shown)
+        .find(|(opencode, _, _)| *opencode == tool)
+        .map_or((tool, ToolKind::Other), |(_, shown, kind)| (shown, *kind))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -81,11 +82,11 @@ mod tests {
 
     #[test]
     fn opencode_tools_show_under_the_names_the_chat_draws() {
-        assert_eq!(harness_tool_name("shell"), "Bash");
-        assert_eq!(harness_tool_name("subagent"), "Task");
+        assert_eq!(harness_tool("shell"), ("Bash", ToolKind::Shell));
+        assert_eq!(harness_tool("subagent"), ("Task", ToolKind::Subagent));
         assert_eq!(
-            harness_tool_name("github_create_issue"),
-            "github_create_issue"
+            harness_tool("github_create_issue"),
+            ("github_create_issue", ToolKind::Other)
         );
     }
 

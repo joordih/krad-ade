@@ -71,6 +71,7 @@ Source: "{#Release}\{#AgentsExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\assets\icons\LICENSE-hugeicons.txt"; DestDir: "{app}\licenses"; Flags: ignoreversion
 Source: "{#Root}\assets\icons\LICENSE-simple-icons.txt"; DestDir: "{app}\licenses"; Flags: ignoreversion
 Source: "{#Root}\assets\fonts\JetBrainsMono-OFL.txt"; DestDir: "{app}\licenses"; Flags: ignoreversion
+Source: "{#Root}\assets\fonts\Inter-OFL.txt"; DestDir: "{app}\licenses"; Flags: ignoreversion
 ; Next to the app, portable-pty loads them in place of the system's ConPTY (ADR-0025).
 Source: "{#Root}\target\conpty\conpty.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\target\conpty\OpenConsole.exe"; DestDir: "{app}"; Flags: ignoreversion

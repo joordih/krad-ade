@@ -2,15 +2,12 @@ use crate::client::call;
 use crate::env::{ENV_ENDPOINT, ENV_TERMINAL, ENV_TOKEN};
 use crate::handle::Caller;
 use crate::protocol::{BusToken, Request, Response};
-use krad_domain::ToolDecision;
+use krad_domain::{AgentPreset, ToolDecision, CLAUDE_PERMISSION_REQUEST, CLAUDE_PRE_TOOL_USE};
 use serde_json::{json, Value};
 use std::io::{Read as _, Write as _};
 
 const MAX_PAYLOAD_BYTES: u64 = 1024 * 1024;
 const DETAIL_CHARS: usize = 120;
-const HARNESS_CLAUDE: &str = "claude";
-const HARNESS_CODEX: &str = "codex";
-const HARNESS_OPENCODE: &str = "opencode";
 const EVENT_FLAG: &str = "--event";
 const CLAUDE_EVENT_KEY: &str = "hook_event_name";
 const CLAUDE_TOOL_KEY: &str = "tool_name";
@@ -20,8 +17,6 @@ const CLAUDE_SESSION_KEY: &str = "session_id";
 const CLAUDE_INPUT_KEY: &str = "tool_input";
 const CLAUDE_MESSAGE_KEY: &str = "message";
 const CLAUDE_SUGGESTIONS_KEY: &str = "permission_suggestions";
-const CLAUDE_PRE_TOOL_USE: &str = "PreToolUse";
-const CLAUDE_PERMISSION_REQUEST: &str = "PermissionRequest";
 const CLAUDE_ALLOW: &str = "allow";
 const CLAUDE_DENY: &str = "deny";
 const INPUT_PREVIEW_KEYS: [&str; 5] = ["command", "file_path", "pattern", "url", "description"];
@@ -32,12 +27,12 @@ const CODEX_THREAD_KEY: &str = "thread-id";
 const EXIT_OK: i32 = 0;
 
 #[must_use]
-pub fn run_hook(harness: &str, args: &[String]) -> i32 {
+pub fn run_hook(harness: AgentPreset, args: &[String]) -> i32 {
     let request = match harness {
-        HARNESS_CLAUDE => read_stdin().and_then(|payload| claude_request(&payload)),
-        HARNESS_CODEX => args.last().and_then(|payload| codex_request(payload)),
-        HARNESS_OPENCODE => opencode_request(args),
-        _ => None,
+        AgentPreset::ClaudeCode => read_stdin().and_then(|payload| claude_request(&payload)),
+        AgentPreset::Codex => args.last().and_then(|payload| codex_request(payload)),
+        AgentPreset::Opencode => opencode_request(args),
+        AgentPreset::Shell | AgentPreset::Gateway => None,
     };
     if let Some(request) = request {
         send(request);
@@ -69,8 +64,8 @@ impl AskHook {
 }
 
 #[must_use]
-pub fn run_ask(harness: &str) -> i32 {
-    if harness != HARNESS_CLAUDE {
+pub fn run_ask(harness: AgentPreset) -> i32 {
+    if harness != AgentPreset::ClaudeCode {
         return EXIT_OK;
     }
     let Some((hook, request)) = read_stdin().and_then(|payload| claude_ask(&payload)) else {
@@ -186,7 +181,7 @@ fn claude_request(payload: &str) -> Option<Request> {
         .and_then(Value::as_str)
         .map(str::to_owned);
     Some(Request::Hook {
-        harness: HARNESS_CLAUDE.to_owned(),
+        harness: AgentPreset::ClaudeCode,
         event,
         tool,
         detail,
@@ -201,7 +196,7 @@ fn codex_request(payload: &str) -> Option<Request> {
         return None;
     }
     Some(Request::Hook {
-        harness: HARNESS_CODEX.to_owned(),
+        harness: AgentPreset::Codex,
         event: value.get(CODEX_TYPE_KEY)?.as_str()?.to_owned(),
         tool: None,
         detail: message.map(preview),
@@ -223,7 +218,7 @@ fn is_codex_title(message: &str) -> bool {
 fn opencode_request(args: &[String]) -> Option<Request> {
     let position = args.iter().position(|arg| arg == EVENT_FLAG)?;
     Some(Request::Hook {
-        harness: HARNESS_OPENCODE.to_owned(),
+        harness: AgentPreset::Opencode,
         event: args.get(position + 1)?.clone(),
         tool: None,
         detail: None,
@@ -321,7 +316,7 @@ mod tests {
         assert_eq!(
             claude_request(payload),
             Some(Request::Hook {
-                harness: HARNESS_CLAUDE.to_owned(),
+                harness: AgentPreset::ClaudeCode,
                 event: "PreToolUse".to_owned(),
                 tool: Some("Bash".to_owned()),
                 detail: Some("cargo test --workspace".to_owned()),

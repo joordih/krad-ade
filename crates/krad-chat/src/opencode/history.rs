@@ -1,14 +1,14 @@
-use krad_domain::{AgentPreset, ChatEntry, ChatEvent, ResumeId};
+use krad_domain::{AgentPreset, ChatEntry, ChatEvent, ResumeId, RewindId, RewindPoint};
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::chat::opencode_session_id;
+use super::chat::{opencode_session_id, session_path};
 use super::events::tool_call;
 use super::prompt::strip_preamble;
 use super::server::{OpencodeError, OpencodeServer};
 
-const FIRST_PAGE_QUERY: &str = "/message?limit=200&order=asc";
-const NEXT_PAGE_QUERY: &str = "/message?limit=200&cursor=";
+const MESSAGES_PATH: &str = "/message";
+const PAGE_LIMIT: usize = 200;
 const MAX_PAGES: usize = 50;
 
 #[derive(Debug, Default, Deserialize)]
@@ -55,6 +55,7 @@ enum Content {
 #[serde(tag = "type", rename_all = "lowercase")]
 enum Message {
     User {
+        id: Option<String>,
         #[serde(default)]
         text: String,
     },
@@ -68,16 +69,24 @@ enum Message {
 
 fn entries_of(message: Message) -> Vec<ChatEntry> {
     match message {
-        Message::User { text } => {
+        Message::User { id, text } => {
             let text = strip_preamble(&text).trim();
             if text.is_empty() {
                 return Vec::new();
             }
-            vec![ChatEntry::User {
+            let point = id.map(|id| {
+                ChatEntry::Event(ChatEvent::Prompted(RewindPoint::Message(RewindId::from(
+                    id,
+                ))))
+            });
+            std::iter::once(ChatEntry::User {
                 text: text.to_owned(),
                 preset: AgentPreset::Opencode,
                 model: None,
-            }]
+                images: Vec::new(),
+            })
+            .chain(point)
+            .collect()
         }
         Message::Assistant { content } => content
             .into_iter()
@@ -112,15 +121,17 @@ pub fn read_opencode_transcript(
     server: &OpencodeServer,
     resume: &ResumeId,
 ) -> Result<Vec<ChatEntry>, OpencodeError> {
-    let session = format!("/api/session/{}", opencode_session_id(resume));
+    let messages_path = session_path(&opencode_session_id(resume), MESSAGES_PATH);
     let mut messages = Vec::new();
-    let mut path = format!("{session}{FIRST_PAGE_QUERY}");
+    let mut path = format!("{messages_path}?limit={PAGE_LIMIT}&order=asc");
     for _ in 0..MAX_PAGES {
         let page: Page = server.read(&path)?;
         let empty = page.data.is_empty();
         messages.extend(page.data);
         match page.cursor.next {
-            Some(next) if !empty => path = format!("{session}{NEXT_PAGE_QUERY}{next}"),
+            Some(next) if !empty => {
+                path = format!("{messages_path}?limit={PAGE_LIMIT}&cursor={next}");
+            }
             _ => break,
         }
     }
@@ -151,11 +162,16 @@ mod tests {
                     text: "List the files".to_owned(),
                     preset: AgentPreset::Opencode,
                     model: None,
+                    images: Vec::new(),
                 },
+                ChatEntry::Event(ChatEvent::Prompted(RewindPoint::Message(RewindId::from(
+                    "msg_1"
+                )))),
                 ChatEntry::Event(ChatEvent::Thinking("first look".to_owned())),
                 ChatEntry::Event(ChatEvent::Tool(ToolCall {
                     id: Some("call_1".into()),
                     name: "Glob".to_owned(),
+                    kind: krad_domain::ToolKind::Search,
                     summary: "*.rs".to_owned(),
                     edit: None,
                 })),

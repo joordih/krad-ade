@@ -11,6 +11,10 @@ repository = "https://github.com/joordih/krad-ade"
 [workspace.dependencies]
 base64 = "0.22"
 futures = "0.3"
+globset = "0.4"
+grep-matcher = "0.1"
+grep-regex = "0.1"
+grep-searcher = "0.1"
 gpui-fps = "0.7.3"
 gpui-kit = { version = "0.7.3", features = [
   "tree-sitter-bash",
@@ -43,6 +47,7 @@ gpui-kit = { version = "0.7.3", features = [
   "tree-sitter-yaml",
   "tree-sitter-zig",
 ] }
+ignore = "0.4"
 image = { version = "0.25", default-features = false }
 keyring = "4.2"
 mermaid-rs-renderer = { version = "0.3.1", default-features = false }

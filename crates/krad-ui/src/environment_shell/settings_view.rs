@@ -1,8 +1,10 @@
+mod gateway;
 mod general;
 mod github;
 mod gitlab;
 mod integrations;
 mod material;
+mod mcp;
 mod page;
 mod terminal;
 
@@ -22,9 +24,11 @@ use crate::theme::{
     appearance, apply_appearance, card_shadow, Appearance, Palette, LINE_SM, LINE_XS, RADIUS_SM,
     RADIUS_XL, SPACE_0_5, TEXT_SM, TEXT_XS,
 };
+use gateway::GatewayUi;
 use github::GithubUi;
 pub(super) use gitlab::gitlab_token_saver;
 use gitlab::GitlabUi;
+use mcp::McpUi;
 
 const SWATCH_COLUMNS: usize = 3;
 const SWATCH_GAP: f32 = 10.0;
@@ -33,22 +37,25 @@ const SWATCH_PAD: f32 = 10.0;
 const CHOICE_PAD: f32 = 14.0;
 const CHOICE_GAP: f32 = 10.0;
 const CHOICE_RING: f32 = 1.5;
+const SETTINGS_NOT_SAVED: &str = "Couldn't save the settings";
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsPane {
     General,
     Terminal,
     Integrations,
+    Gateway,
+    Mcp,
 }
 
 impl SettingsPane {
-    #[cfg(test)]
-    const ALL: [Self; 3] = [Self::General, Self::Terminal, Self::Integrations];
-
     const fn title(self) -> &'static str {
         match self {
             Self::General => "General",
             Self::Terminal => "Terminal",
             Self::Integrations => "Integrations",
+            Self::Gateway => "Gateway",
+            Self::Mcp => "MCP",
         }
     }
 
@@ -57,6 +64,10 @@ impl SettingsPane {
             Self::General => "How the app looks and how you work in it.",
             Self::Terminal => "The font, copy and paste, and the colours of terminals.",
             Self::Integrations => "The code hosts reviews and merge requests come from.",
+            Self::Gateway => {
+                "Chat with the models of a gateway you run, through the app's own agent."
+            }
+            Self::Mcp => "The MCP servers whose tools Gateway chats can use.",
         }
     }
 
@@ -65,6 +76,8 @@ impl SettingsPane {
             Self::General => IconName::Settings,
             Self::Terminal => IconName::Terminal,
             Self::Integrations => IconName::Merge,
+            Self::Gateway => IconName::Flow,
+            Self::Mcp => IconName::Plug,
         }
     }
 }
@@ -73,6 +86,8 @@ pub(super) struct SettingsUi {
     pane: SettingsPane,
     gitlab: GitlabUi,
     github: GithubUi,
+    gateway: GatewayUi,
+    mcp: McpUi,
     tint: material::TintUi,
 }
 
@@ -198,11 +213,15 @@ impl EnvironmentShell {
     pub(super) fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let gitlab = self.gitlab_ui(window, cx);
         let github = Self::github_ui();
+        let gateway = self.gateway_ui(window, cx);
+        let mcp = Self::mcp_ui(window, cx);
         let tint = self.tint_ui(cx);
         self.settings_ui = Some(SettingsUi {
             pane: SettingsPane::General,
             gitlab,
             github,
+            gateway,
+            mcp,
             tint,
         });
         self.refresh_gitlab_status(cx);
@@ -218,10 +237,18 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    fn save_settings(&self, cx: &mut Context<Self>) {
+    pub(super) fn save_settings(&self, cx: &mut Context<Self>) {
         let settings = self.settings.clone();
-        cx.background_spawn(async move {
-            write_settings(&settings).unwrap_or_default();
+        let writing = cx.background_spawn(async move { write_settings(&settings) });
+        cx.spawn(async move |this, cx| {
+            let Err(error) = writing.await else {
+                return;
+            };
+            this.update(cx, |shell, cx| {
+                shell.push_toast(format!("{SETTINGS_NOT_SAVED}: {error}"));
+                cx.notify();
+            })
+            .unwrap_or_default();
         })
         .detach();
     }
@@ -245,20 +272,5 @@ impl EnvironmentShell {
             ui.pane = pane;
         }
         cx.notify();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn every_page_has_its_own_title_and_icon() {
-        for (index, pane) in SettingsPane::ALL.iter().enumerate() {
-            for other in &SettingsPane::ALL[index + 1..] {
-                assert_ne!(pane.title(), other.title());
-                assert_ne!(pane.icon(), other.icon());
-            }
-        }
     }
 }

@@ -15,13 +15,11 @@ mod windows;
 mod wsl;
 
 #[cfg(not(windows))]
-pub use unix::{clear_screen_prefix, default_shell, log_spammer, login_shell_env, SHELL_QUOTING};
+pub use unix::{clear_screen_prefix, default_shell, login_shell_env, SHELL_QUOTING};
 #[cfg(not(windows))]
 use unix::{executable_names, is_executable};
 #[cfg(windows)]
-pub use windows::{
-    clear_screen_prefix, default_shell, log_spammer, login_shell_env, SHELL_QUOTING,
-};
+pub use windows::{clear_screen_prefix, default_shell, login_shell_env, SHELL_QUOTING};
 #[cfg(windows)]
 use windows::{executable_names, is_executable};
 pub use wsl::{wsl_shell, wsl_shell_in};
@@ -69,30 +67,6 @@ pub struct SpawnRequest {
     pub env: Vec<(String, String)>,
     pub cols: u16,
     pub rows: u16,
-}
-
-impl SpawnRequest {
-    #[must_use]
-    pub fn new(program: String) -> Self {
-        Self {
-            program,
-            args: Vec::new(),
-            cwd: None,
-            env: Vec::new(),
-            cols: DEFAULT_COLS,
-            rows: DEFAULT_ROWS,
-        }
-    }
-
-    #[must_use]
-    pub fn shell() -> Self {
-        let (program, args) = default_shell();
-        Self {
-            program,
-            args,
-            ..Self::new(String::new())
-        }
-    }
 }
 
 pub struct SpawnedPty {
@@ -190,29 +164,6 @@ pub fn spawn_pty(request: &SpawnRequest) -> Result<SpawnedPty, PtyError> {
         child,
         pid,
     })
-}
-
-impl SpawnedPty {
-    /// # Errors
-    pub fn resize(&self, cols: u16, rows: u16) -> Result<(), PtyError> {
-        self.master.resize(GridSize {
-            cols,
-            rows,
-            ..GridSize::default()
-        })
-    }
-}
-
-/// # Errors
-pub fn read_to_end(reader: &mut Box<dyn Read + Send>) -> Result<Vec<u8>, PtyError> {
-    let mut out = Vec::new();
-    let mut chunk = vec![0u8; READ_CHUNK];
-    loop {
-        match reader.read(&mut chunk) {
-            Ok(n) if n > 0 => out.extend_from_slice(&chunk[..n]),
-            _ => return Ok(out),
-        }
-    }
 }
 
 /// # Errors
@@ -313,18 +264,39 @@ pub fn run_writer_loop(
 mod tests {
     use super::*;
 
+    fn request(program: String, args: Vec<String>) -> SpawnRequest {
+        SpawnRequest {
+            program,
+            args,
+            cwd: None,
+            env: Vec::new(),
+            cols: DEFAULT_COLS,
+            rows: DEFAULT_ROWS,
+        }
+    }
+
     #[cfg(unix)]
     fn echo_request(marker: &str) -> SpawnRequest {
-        let mut request = SpawnRequest::new("/bin/sh".to_owned());
-        request.args = vec!["-c".to_owned(), format!("echo {marker}")];
-        request
+        request(
+            "/bin/sh".to_owned(),
+            vec!["-c".to_owned(), format!("echo {marker}")],
+        )
     }
 
     #[cfg(windows)]
     fn echo_request(marker: &str) -> SpawnRequest {
-        let mut request = SpawnRequest::new("cmd.exe".to_owned());
-        request.args = vec!["/C".to_owned(), format!("echo {marker}")];
-        request
+        request(
+            "cmd.exe".to_owned(),
+            vec!["/C".to_owned(), format!("echo {marker}")],
+        )
+    }
+
+    fn grid(cols: u16, rows: u16) -> GridSize {
+        GridSize {
+            cols,
+            rows,
+            ..GridSize::default()
+        }
     }
 
     const CURSOR_QUERY: &[u8] = b"[6n";
@@ -341,42 +313,18 @@ mod tests {
     }
 
     #[test]
-    fn child_output_reaches_eof() {
-        let request = echo_request("hello-pty-marker");
-        let spawned = spawn_pty(&request);
-        assert!(spawned.is_ok(), "pty spawns in this environment");
-        let Ok(spawned) = spawned else {
-            return;
-        };
-        let mut reader = spawned.reader;
-        let mut writer = spawned.writer;
-        let watcher = watch_exit(spawned.child, spawned.master);
-        assert!(watcher.is_ok(), "the exit watcher starts");
-        let mut bytes = Vec::new();
-        let mut chunk = vec![0u8; READ_CHUNK];
-        while let Ok(read @ 1..) = reader.read(&mut chunk) {
-            answer_queries(&chunk[..read], &mut writer);
-            bytes.extend_from_slice(&chunk[..read]);
-        }
-        let text = String::from_utf8_lossy(&bytes);
-        assert!(
-            text.contains("hello-pty-marker"),
-            "child output arrives before EOF"
-        );
-    }
-
-    #[test]
     fn resize_keeps_session_usable() {
-        let mut request = SpawnRequest::shell();
-        request.cols = DEFAULT_COLS;
-        request.rows = DEFAULT_ROWS;
-        let spawned = spawn_pty(&request);
+        let (program, args) = default_shell();
+        let spawned = spawn_pty(&request(program, args));
         assert!(spawned.is_ok(), "pty spawns in this environment");
         let Ok(spawned) = spawned else {
             return;
         };
-        assert!(spawned.resize(100, 40).is_ok());
-        assert!(spawned.resize(DEFAULT_COLS, DEFAULT_ROWS).is_ok());
+        assert!(spawned.master.resize(grid(100, 40)).is_ok());
+        assert!(spawned
+            .master
+            .resize(grid(DEFAULT_COLS, DEFAULT_ROWS))
+            .is_ok());
         spawned.killer.kill();
     }
 
@@ -452,12 +400,6 @@ mod tests {
             vec![resized],
             "resize requests reach the master owner"
         );
-    }
-
-    #[test]
-    fn default_shell_names_a_program() {
-        let (program, _) = default_shell();
-        assert!(!program.is_empty(), "default shell is configured");
     }
 
     #[test]

@@ -1,14 +1,14 @@
 use crate::config::GitlabConfig;
 use crate::encode::percent_encode;
 use crate::model::{
-    scope_param, state_param, ApprovalsJson, BranchJson, ChangeJson, CommitJson, DiscussionJson,
-    JobJson, MergeRequestBody, MergeRequestJson, NoteJson, NoteRequest, PipelineJson,
-    ResolveRequest, TreeEntryJson, UserJson,
+    scope_param, state_param, ApprovalsJson, ChangeJson, CommitJson, DiscussionJson, JobJson,
+    MergeRequestBody, MergeRequestJson, NoteJson, NoteRequest, PipelineJson, ResolveRequest,
+    UserJson,
 };
 use crate::oauth::{self, oauth_agent, OAuthError};
 use krad_domain::review::{
-    Approvals, Branch, Change, Commit, Discussion, DiscussionId, Job, MergeOptions, MergeRequest,
-    MergeRequestIid, MergeRequestQuery, Note, Pipeline, PipelineId, ProjectPath, TreeEntry, User,
+    Approvals, Change, Commit, Discussion, DiscussionId, Job, MergeOptions, MergeRequest,
+    MergeRequestIid, MergeRequestQuery, Note, Pipeline, PipelineId, ProjectPath, User,
 };
 use krad_domain::GitlabTokens;
 use serde::de::DeserializeOwned;
@@ -16,7 +16,7 @@ use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 use ureq::Agent;
 
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const UNAUTHORIZED: u16 = 401;
 const AUTHORIZATION: &str = "Authorization";
 const BEARER: &str = "Bearer ";
@@ -28,8 +28,6 @@ const PER_PAGE: &str = "100";
 const STATE_PARAM: &str = "state";
 const SCOPE_PARAM: &str = "scope";
 const REVIEWER_PARAM: &str = "reviewer_id";
-const REF_PARAM: &str = "ref";
-const PATH_PARAM: &str = "path";
 const USER_PATH: &str = "/user";
 const PROJECTS_PATH: &str = "/projects";
 const MERGE_REQUESTS_PATH: &str = "/merge_requests";
@@ -43,10 +41,6 @@ const UNAPPROVE_PATH: &str = "/unapprove";
 const MERGE_PATH: &str = "/merge";
 const PIPELINES_PATH: &str = "/pipelines";
 const JOBS_PATH: &str = "/jobs";
-const BRANCHES_PATH: &str = "/repository/branches";
-const TREE_PATH: &str = "/repository/tree";
-const FILES_PATH: &str = "/repository/files";
-const RAW_PATH: &str = "/raw";
 
 pub type TokenSaver = Box<dyn Fn(&GitlabTokens) -> std::io::Result<()> + Send + Sync>;
 
@@ -295,51 +289,6 @@ impl GitlabClient {
         self.list::<JobJson, _>(&project_path(project, &path), &[])
     }
 
-    /// # Errors
-    ///
-    /// See [`GitlabClient::current_user`].
-    pub fn branches(&self, project: &ProjectPath) -> Result<Vec<Branch>, GitlabError> {
-        self.list::<BranchJson, _>(&project_path(project, BRANCHES_PATH), &[])
-    }
-
-    /// # Errors
-    ///
-    /// See [`GitlabClient::current_user`].
-    pub fn tree(
-        &self,
-        project: &ProjectPath,
-        git_ref: &str,
-        path: &str,
-    ) -> Result<Vec<TreeEntry>, GitlabError> {
-        let mut params = vec![(REF_PARAM, git_ref.to_owned())];
-        if !path.is_empty() {
-            params.push((PATH_PARAM, path.to_owned()));
-        }
-        self.list::<TreeEntryJson, _>(&project_path(project, TREE_PATH), &params)
-    }
-
-    /// # Errors
-    ///
-    /// See [`GitlabClient::current_user`].
-    pub fn file(
-        &self,
-        project: &ProjectPath,
-        git_ref: &str,
-        path: &str,
-    ) -> Result<Vec<u8>, GitlabError> {
-        let file = format!("{FILES_PATH}/{}{RAW_PATH}", percent_encode(path));
-        let url = self.config.api_url(&project_path(project, &file));
-        self.authorized(|bearer| {
-            self.agent
-                .get(&url)
-                .header(AUTHORIZATION, bearer)
-                .query(REF_PARAM, git_ref)
-                .call()?
-                .body_mut()
-                .read_to_vec()
-        })
-    }
-
     fn get<J: DeserializeOwned, T: From<J>>(&self, path: &str) -> Result<T, GitlabError> {
         let url = self.config.api_url(path);
         self.authorized(|bearer| {
@@ -517,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn project_and_file_paths_are_one_encoded_segment() -> Result<(), InvalidProjectPath> {
+    fn a_merge_request_path_encodes_the_project_as_one_segment() -> Result<(), InvalidProjectPath> {
         let project: ProjectPath = "group/sub/project".parse()?;
         assert_eq!(
             merge_request_path(&project, MergeRequestIid(7), NOTES_PATH),

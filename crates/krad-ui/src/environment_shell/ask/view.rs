@@ -8,14 +8,14 @@ use gpui_kit::{
     ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_chat::{AskKind, Question, QuestionOption};
-use krad_domain::{AskOutcome, AskVerdict, PermissionMode};
+use krad_domain::{AskOutcome, AskVerdict, PermissionMode, TerminalId};
 use std::time::Duration;
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
 use super::super::surface::{edit_diff, tool_question};
 use super::super::EnvironmentShell;
 use super::picks::{offered, OTHER_LABEL};
-use super::{AskOwner, AskQueue, Choice, NotePurpose, Waiting, OFFERED_MODES};
+use super::{AskQueue, Choice, NotePurpose, Waiting, OFFERED_MODES};
 use crate::actions::{AskConfirm, AskDeny, ASK_KEY_CONTEXT};
 use crate::components::{check_box, icon, tooltip_view, Button, ButtonVariant, IconName};
 use crate::theme::{
@@ -46,7 +46,6 @@ const PLAN_PREFIX: &str = "ask-plan";
 const STEP_PREFIX: &str = "ask-step";
 const PREVIOUS_PREFIX: &str = "ask-previous";
 const MODE_PREFIX: &str = "ask-mode";
-const CHAT_KEY: &str = "chat";
 
 const PLAN_QUESTION: &str = "Approve this plan?";
 const DETAIL_PREFIX: &str = "ask-detail";
@@ -170,12 +169,11 @@ pub(in crate::environment_shell) fn ask_line(outcome: &AskOutcome, pal: &Palette
         .into_any_element()
 }
 
-fn owned_id(prefix: &str, owner: AskOwner, index: usize) -> ElementId {
-    let owner = match owner {
-        AskOwner::Chat => CHAT_KEY.to_owned(),
-        AskOwner::Surface(id) => id.as_u64().to_string(),
-    };
-    ElementId::Name(SharedString::from(format!("{prefix}-{owner}-{index}")))
+fn owned_id(prefix: &str, owner: TerminalId, index: usize) -> ElementId {
+    ElementId::Name(SharedString::from(format!(
+        "{prefix}-{}-{index}",
+        owner.as_u64()
+    )))
 }
 
 fn number_key(event: &KeyDownEvent) -> Option<usize> {
@@ -193,7 +191,7 @@ fn number_key(event: &KeyDownEvent) -> Option<usize> {
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn ask_tray(
         &self,
-        owner: AskOwner,
+        owner: TerminalId,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let queue = self.ask_queue(owner)?;
@@ -206,6 +204,7 @@ impl EnvironmentShell {
             }
             AskKind::Permission {
                 tool,
+                kind,
                 summary,
                 title,
                 edit,
@@ -234,7 +233,7 @@ impl EnvironmentShell {
                         }))
                         .into_any_element(),
                 };
-                (tool_question(tool), detail)
+                (tool_question(tool, *kind), detail)
             }
             AskKind::Plan { plan } => (
                 PLAN_QUESTION.into(),
@@ -286,7 +285,7 @@ impl EnvironmentShell {
     }
 
     fn ask_keys(
-        owner: AskOwner,
+        owner: TerminalId,
         queue: &AskQueue,
         shell: Div,
         cx: &mut Context<Self>,
@@ -325,7 +324,11 @@ impl EnvironmentShell {
             })
     }
 
-    fn tray_buttons(owner: AskOwner, waiting: &Waiting, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    fn tray_buttons(
+        owner: TerminalId,
+        waiting: &Waiting,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
         let pal = palette(cx);
         let choices = Choice::of_waiting(waiting);
         let last = choices.len().saturating_sub(1);
@@ -348,7 +351,7 @@ impl EnvironmentShell {
     }
 
     fn question_tray(
-        owner: AskOwner,
+        owner: TerminalId,
         questions: &[Question],
         queue: &AskQueue,
         cx: &mut Context<Self>,
@@ -445,7 +448,7 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    fn note_box(owner: AskOwner, queue: &AskQueue, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn note_box(owner: TerminalId, queue: &AskQueue, cx: &mut Context<Self>) -> Option<AnyElement> {
         let note = queue.note.as_ref()?;
         let pal = palette(cx);
         Some(
@@ -554,7 +557,7 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn mode_control(
         &self,
-        owner: AskOwner,
+        owner: TerminalId,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
@@ -606,7 +609,7 @@ impl EnvironmentShell {
 
 #[derive(Clone, Copy)]
 struct OptionRow {
-    owner: AskOwner,
+    owner: TerminalId,
     step: usize,
     index: usize,
     multi: bool,

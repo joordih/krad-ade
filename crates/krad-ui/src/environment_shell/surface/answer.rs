@@ -3,23 +3,22 @@ use gpui_kit::component::text::TextView;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, App, ClipboardItem, Context, ElementId, InteractiveElement,
-    IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
+    div, px, rgb, AnyElement, App, Context, ElementId, InteractiveElement, IntoElement,
+    ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
 };
 use krad_chat::ToolCall;
-use krad_domain::TerminalId;
+use krad_domain::{TerminalId, ToolKind};
 use std::borrow::Cow;
 
 use super::super::ask::ask_line;
 use super::super::chat::{AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
-use super::tool_group::ToolKind;
+use super::message_actions::{copy_button, message_actions, message_group};
+use super::tool_group::ToolLook;
 use super::view::error_line;
 use super::{SurfaceChat, THINKING_LABEL};
-use crate::components::{icon, tooltip_view, IconName};
-use crate::theme::{
-    palette, Palette, ICON_XS, LINE_SM, LINE_XS, RADIUS_XS, SPACE_1_5, SPACE_3, TEXT_BASE, TEXT_XS,
-};
+use crate::components::{icon, IconName};
+use crate::theme::{palette, ICON_XS, LINE_SM, LINE_XS, SPACE_1_5, SPACE_3, TEXT_BASE, TEXT_XS};
 
 const PART_GAP: f32 = 12.0;
 const ANSWER_LINE_H: f32 = 22.0;
@@ -28,7 +27,6 @@ const THOUGHT_PREFIX: &str = "surface-thought";
 const ANSWER_PREFIX: &str = "surface-answer";
 const CODE_COPY_PREFIX: &str = "surface-code-copy";
 const CODE_COPY_TOOLTIP: &str = "Copy code";
-const CODE_COPY_SIZE: f32 = 24.0;
 const MESSAGE_COPY_PREFIX: &str = "surface-answer-copy";
 const MESSAGE_COPY_TOOLTIP: &str = "Copy message";
 const PARAGRAPH_BREAK: &str = "\n\n";
@@ -41,21 +39,17 @@ const PLAN_QUESTION: &str = "Allow this plan update?";
 const FETCH_QUESTION: &str = "Allow this request?";
 const USE_QUESTION: &str = "Allow";
 
-pub(in crate::environment_shell) fn tool_question(name: &str) -> Cow<'static, str> {
-    Cow::Borrowed(match ToolKind::of(name) {
-        ToolKind::Shell => RUN_QUESTION,
-        ToolKind::Read => READ_QUESTION,
-        ToolKind::Edit => EDIT_QUESTION,
-        ToolKind::Search => SEARCH_QUESTION,
-        ToolKind::Agent => SUBAGENT_QUESTION,
-        ToolKind::Plan => PLAN_QUESTION,
-        ToolKind::Web => FETCH_QUESTION,
-        ToolKind::Other => return Cow::Owned(format!("{USE_QUESTION} {name}?")),
+pub(in crate::environment_shell) fn tool_question(name: &str, kind: ToolKind) -> Cow<'static, str> {
+    Cow::Borrowed(match ToolLook::from(kind) {
+        ToolLook::Shell => RUN_QUESTION,
+        ToolLook::Read => READ_QUESTION,
+        ToolLook::Edit => EDIT_QUESTION,
+        ToolLook::Search => SEARCH_QUESTION,
+        ToolLook::Agent => SUBAGENT_QUESTION,
+        ToolLook::Plan => PLAN_QUESTION,
+        ToolLook::Web => FETCH_QUESTION,
+        ToolLook::Other => return Cow::Owned(format!("{USE_QUESTION} {name}?")),
     })
-}
-
-pub(super) fn is_agent_tool(name: &str) -> bool {
-    ToolKind::of(name) == ToolKind::Agent
 }
 
 fn answer_text(message: &ChatMessage) -> String {
@@ -79,25 +73,6 @@ fn code_copy_button(block: &CodeBlock, _: &mut Window, cx: &mut App) -> AnyEleme
         CODE_COPY_TOOLTIP,
         palette(cx),
     )
-}
-
-fn copy_button(id: ElementId, text: String, tooltip: &'static str, pal: &Palette) -> AnyElement {
-    div()
-        .id(id)
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .size(px(CODE_COPY_SIZE))
-        .rounded(px(RADIUS_XS))
-        .cursor_pointer()
-        .hover(|style| style.bg(pal.bg_hover))
-        .tooltip(move |_, cx| tooltip_view(tooltip.into(), cx))
-        .on_click(move |_, _, cx| {
-            cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
-        })
-        .child(icon(IconName::Copy, ICON_XS, pal.text_muted))
-        .into_any_element()
 }
 
 impl EnvironmentShell {
@@ -127,7 +102,7 @@ impl EnvironmentShell {
         };
         for (part_index, part) in message.parts.iter().enumerate() {
             if let AnswerPart::Tool(call) = part {
-                match call.id.as_ref().filter(|_| is_agent_tool(&call.name)) {
+                match call.id.as_ref().filter(|_| call.kind == ToolKind::Subagent) {
                     Some(tool) => {
                         group(&mut calls, false, &mut parts, cx);
                         let run = chat.subagents.runs.get(tool);
@@ -167,16 +142,14 @@ impl EnvironmentShell {
         group(&mut calls, message.running, &mut parts, cx);
         parts.extend(message.error.as_deref().map(|error| error_line(error, pal)));
         let said = answer_text(message);
+        let group = message_group(id, index);
         if !message.running && !said.is_empty() {
             let key = format!("{MESSAGE_COPY_PREFIX}-{raw}-{index}");
-            parts.push(copy_button(
-                ElementId::Name(key.into()),
-                said,
-                MESSAGE_COPY_TOOLTIP,
-                pal,
-            ));
+            let copy = copy_button(ElementId::Name(key.into()), said, MESSAGE_COPY_TOOLTIP, pal);
+            parts.push(message_actions(group.clone(), [copy]));
         }
         div()
+            .group(group)
             .flex()
             .flex_col()
             .gap(px(PART_GAP))
@@ -266,11 +239,11 @@ mod tests {
 
     #[test]
     fn an_ask_says_what_it_asks_for() {
-        assert_eq!(tool_question("Bash"), RUN_QUESTION);
-        assert_eq!(tool_question("Write"), EDIT_QUESTION);
-        assert_eq!(tool_question("Grep"), SEARCH_QUESTION);
+        assert_eq!(tool_question("Bash", ToolKind::Shell), RUN_QUESTION);
+        assert_eq!(tool_question("Write", ToolKind::Edit), EDIT_QUESTION);
+        assert_eq!(tool_question("Grep", ToolKind::Search), SEARCH_QUESTION);
         assert_eq!(
-            tool_question("mcp__linear__create"),
+            tool_question("mcp__linear__create", ToolKind::Other),
             "Allow mcp__linear__create?"
         );
     }
@@ -280,21 +253,23 @@ mod tests {
         let message = ChatMessage {
             speaker: krad_chat::Speaker::Assistant,
             text: String::new(),
-            tools: Vec::new(),
             parts: vec![
                 AnswerPart::Thinking("weigh it".to_owned()),
                 AnswerPart::Text(" First part. ".to_owned()),
                 AnswerPart::Tool(ToolCall {
                     id: None,
                     name: "Bash".to_owned(),
+                    kind: ToolKind::Shell,
                     summary: "ls".to_owned(),
                     edit: None,
                 }),
                 AnswerPart::Text("Second part.".to_owned()),
             ],
-            preset: krad_domain::AgentPreset::Codex,
             error: None,
             running: false,
+            mentions: Vec::new(),
+            checklist: None,
+            rewind: None,
         };
         assert_eq!(answer_text(&message), "First part.\n\nSecond part.");
     }

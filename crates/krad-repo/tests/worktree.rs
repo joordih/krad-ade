@@ -4,9 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use krad_repo::{
-    add_worktree, list_worktrees, remove_worktree, repo_root, status, ChangeKind, FileChange,
-};
+use krad_repo::{add_worktree, remove_worktree, repo_root, status, ChangeKind, FileChange};
 
 const WORKTREE_NAME: &str = "fix-login";
 
@@ -17,7 +15,7 @@ fn git_available() -> bool {
         .is_ok_and(|output| output.status.success())
 }
 
-fn git(repo: &Path, args: &[&str]) -> Result<(), Box<dyn Error>> {
+fn git(repo: &Path, args: &[&str]) -> Result<String, Box<dyn Error>> {
     let output = Command::new("git")
         .arg("-C")
         .arg(repo)
@@ -25,7 +23,7 @@ fn git(repo: &Path, args: &[&str]) -> Result<(), Box<dyn Error>> {
         .args(args)
         .output()?;
     if output.status.success() {
-        Ok(())
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
         Err(String::from_utf8_lossy(&output.stderr).into())
     }
@@ -63,22 +61,24 @@ fn exercise_repository(base: &Path) -> Result<(), Box<dyn Error>> {
 
     let added = add_worktree(&root, WORKTREE_NAME)?;
     assert!(added.path.join("README.md").is_file());
-    let listed = list_worktrees(&root)?;
-    assert_eq!(listed.len(), 2);
-    assert!(listed
-        .iter()
-        .any(|worktree| worktree.branch.as_deref() == Some(WORKTREE_NAME)));
+    assert_eq!(added.branch.as_deref(), Some(WORKTREE_NAME));
+    assert_eq!(
+        git(&added.path, &["rev-parse", "--abbrev-ref", "HEAD"])?.trim(),
+        WORKTREE_NAME
+    );
+    let admin = root.join(".git").join("worktrees").join(WORKTREE_NAME);
+    assert!(admin.is_dir());
 
     remove_worktree(&root, &added.path)?;
     assert!(!added.path.exists());
-    assert_eq!(list_worktrees(&root)?.len(), 1);
+    assert!(!admin.exists());
     Ok(())
 }
 
 #[test]
 fn status_and_worktree_lifecycle_against_real_git() -> Result<(), Box<dyn Error>> {
     if !git_available() {
-        return Ok(());
+        return Err("git is not on PATH; this test needs the git CLI".into());
     }
     let base = unique_temp_dir()?;
     let result = exercise_repository(&base);

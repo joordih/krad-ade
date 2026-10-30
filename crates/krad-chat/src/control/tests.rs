@@ -30,6 +30,13 @@ fn suggested_ask(input: &Value, tool: &str, suggestions: &Value) -> ToolAsk {
     }
 }
 
+fn claude(asked: &ToolAsk) -> &ClaudeAsk {
+    match &asked.responder {
+        Responder::ClaudeCode(claude) => claude,
+        other => unreachable!("a claude code ask, not {other:?}"),
+    }
+}
+
 fn parsed(line: &str) -> Value {
     serde_json::from_str(line).unwrap_or_default()
 }
@@ -48,6 +55,7 @@ fn a_permission_request_names_its_tool_and_what_it_touches() {
         asked.kind,
         AskKind::Permission {
             tool: "Bash".to_owned(),
+            kind: ToolKind::Shell,
             summary: "npm test".to_owned(),
             title: Some("Run the tests".to_owned()),
             edit: None,
@@ -83,7 +91,7 @@ fn allowing_echoes_the_input_and_denying_says_why() {
     let input = json!({ "command": "npm test" });
     let asked = ask(&input, "Bash");
     assert_eq!(
-        parsed(&answer_line(&asked, &AskAnswer::Allow)),
+        parsed(&answer_line(claude(&asked), &AskAnswer::Allow)),
         json!({
             "type": "control_response",
             "response": {
@@ -94,7 +102,7 @@ fn allowing_echoes_the_input_and_denying_says_why() {
         })
     );
     let denied = answer_line(
-        &asked,
+        claude(&asked),
         &AskAnswer::Deny {
             message: "not now".to_owned(),
         },
@@ -127,7 +135,7 @@ fn questions_are_answered_with_the_picked_labels() {
     assert_eq!(asked_questions[0].options[1].label, "SQLite");
     assert!(!asked_questions[0].multi_select);
     let answered = parsed(&answer_line(
-        &asked,
+        claude(&asked),
         &AskAnswer::Answers(vec![PickedAnswer {
             question: "Which database?".to_owned(),
             labels: vec!["SQLite".to_owned()],
@@ -152,7 +160,7 @@ fn several_labels_of_a_multi_select_question_are_joined() {
     assert_eq!(asked_questions[0].header, None);
     assert_eq!(asked_questions[0].options.len(), 3);
     let answered = parsed(&answer_line(
-        &asked,
+        claude(&asked),
         &AskAnswer::Answers(vec![PickedAnswer {
             question: "Which checks?".to_owned(),
             labels: vec!["Lint".to_owned(), "Build".to_owned()],
@@ -206,10 +214,26 @@ fn the_initialize_answer_lists_models_commands_and_the_plan() {
     assert_eq!(found.subscription.as_deref(), Some("Claude Max"));
     let mut other = answer;
     other["response"]["request_id"] = json!("krad_9");
-    assert_eq!(
-        routed(&other),
-        Some(Routed::Control),
+    assert!(
+        matches!(routed(&other), Some(Routed::Replied { request_id, reply: Ok(_) }) if request_id == "krad_9"),
         "another request's answer"
+    );
+}
+
+#[test]
+fn a_failed_request_answers_with_its_error_and_a_rewind_names_the_prompt() {
+    let failed = json!({"type": "control_response", "response": {"subtype": "error", "request_id": "krad_3", "error": "File rewinding is not enabled."}});
+    assert_eq!(
+        routed(&failed),
+        Some(Routed::Replied {
+            request_id: "krad_3".to_owned(),
+            reply: Err("File rewinding is not enabled.".to_owned()),
+        })
+    );
+    let line = rewind_files_line("krad_4", &RewindId::from("u2"));
+    assert_eq!(
+        serde_json::from_str::<Value>(&line).unwrap_or_default(),
+        json!({"type": "control_request", "request_id": "krad_4", "request": {"subtype": "rewind_files", "user_message_id": "u2"}})
     );
 }
 
@@ -309,7 +333,7 @@ fn allowing_always_sends_back_the_harness_suggestions() {
     });
     let asked = suggested_ask(&json!({ "command": "npm test" }), "Bash", &json!([rule]));
     assert!(asked.can_allow_always());
-    let answered = parsed(&answer_line(&asked, &AskAnswer::AllowAlways));
+    let answered = parsed(&answer_line(claude(&asked), &AskAnswer::AllowAlways));
     assert_eq!(
         answered["response"]["response"],
         json!({
@@ -318,7 +342,7 @@ fn allowing_always_sends_back_the_harness_suggestions() {
             "updatedPermissions": [rule],
         })
     );
-    let once = parsed(&answer_line(&asked, &AskAnswer::Allow));
+    let once = parsed(&answer_line(claude(&asked), &AskAnswer::Allow));
     assert_eq!(once["response"]["response"].get("updatedPermissions"), None);
     assert!(!ask(&json!({ "command": "ls" }), "Bash").can_allow_always());
 }
@@ -334,7 +358,7 @@ fn a_plan_is_approved_with_the_mode_to_go_on_in() {
         }
     );
     let answered = parsed(&answer_line(
-        &asked,
+        claude(&asked),
         &AskAnswer::ApprovePlan {
             mode: PermissionMode::AcceptEdits,
         },

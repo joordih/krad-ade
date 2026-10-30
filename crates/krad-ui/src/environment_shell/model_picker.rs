@@ -18,19 +18,10 @@ const KEY_TAB: &str = "tab";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct ModelChoice {
-    pub(super) id: ModelId,
+    pub(super) id: Option<ModelId>,
     pub(super) label: String,
     pub(super) current: bool,
     pub(super) section: Option<ModelSource>,
-}
-
-const fn section_rank(section: Option<&ModelSource>) -> u8 {
-    match section {
-        None | Some(ModelSource::OpencodeGo) => 0,
-        Some(ModelSource::OpencodeZen) => 1,
-        Some(ModelSource::Provider(_)) => 2,
-        Some(ModelSource::Free) => 3,
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -93,11 +84,14 @@ impl Choosing {
                     .filter(|choice| {
                         query.is_empty()
                             || choice.label.to_lowercase().contains(&query)
-                            || choice.id.as_str().to_lowercase().contains(&query)
+                            || choice
+                                .id
+                                .as_ref()
+                                .is_some_and(|id| id.as_str().to_lowercase().contains(&query))
                     })
                     .collect()
             });
-        shown.sort_by_key(|choice| section_rank(choice.section.as_ref()));
+        shown.sort_by_key(|choice| choice.section.as_ref().map(ModelSource::rank));
         shown
     }
 
@@ -150,14 +144,20 @@ impl Choosing {
         self.highlighted = 0;
     }
 
-    fn picked(&self, index: usize) -> Option<(AgentPreset, ModelId)> {
+    fn picked(&self, index: usize) -> Option<(AgentPreset, Option<ModelId>)> {
         let choice = self.shown().get(index).map(|choice| choice.id.clone())?;
         Some((self.harness, choice))
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum PickFor {
+    Chat(TerminalId),
+    Docs,
+}
+
 pub(super) struct ModelPicker {
-    chat: TerminalId,
+    target: PickFor,
     origin: (f32, f32),
     choosing: Choosing,
     focus: FocusHandle,
@@ -167,7 +167,7 @@ pub(super) struct ModelPicker {
 impl EnvironmentShell {
     pub(super) fn open_model_picker(
         &mut self,
-        chat: TerminalId,
+        target: PickFor,
         origin: (f32, f32),
         groups: Vec<HarnessModels>,
         cx: &mut Context<Self>,
@@ -176,7 +176,7 @@ impl EnvironmentShell {
             return;
         };
         self.model_picker = Some(ModelPicker {
-            chat,
+            target,
             origin,
             choosing,
             focus: cx.focus_handle(),
@@ -194,8 +194,15 @@ impl EnvironmentShell {
         let Some(picker) = self.model_picker.take() else {
             return;
         };
-        if let Some((harness, model)) = picker.choosing.picked(index) {
-            self.command_surface(picker.chat, SurfaceCommand::Model(harness, model), cx);
+        let Some((harness, model)) = picker.choosing.picked(index) else {
+            return cx.notify();
+        };
+        match (picker.target, model) {
+            (PickFor::Chat(chat), Some(model)) => {
+                self.command_surface(chat, SurfaceCommand::Model(harness, model), cx);
+            }
+            (PickFor::Chat(_), None) => {}
+            (PickFor::Docs, model) => self.pick_docs_agent(harness, model),
         }
         cx.notify();
     }
@@ -270,7 +277,7 @@ mod tests {
 
     fn choice(id: &str, label: &str, current: bool) -> ModelChoice {
         ModelChoice {
-            id: ModelId::parse(id).unwrap_or_else(|| unreachable!("{id} is a model id")),
+            id: Some(ModelId::parse(id).unwrap_or_else(|| unreachable!("{id} is a model id"))),
             label: label.to_owned(),
             current,
             section: None,
@@ -287,21 +294,29 @@ mod tests {
         )
     }
 
+    fn plan(name: &str, order: usize) -> ModelSource {
+        ModelSource::Plan {
+            name: name.to_owned(),
+            order,
+        }
+    }
+
     #[test]
-    fn opencode_models_show_go_then_zen_then_providers_then_free() {
+    fn models_show_by_plan_order_then_providers_then_free() {
         let picker = Choosing::new(grouped([
             sold("opencode/beam-free", "Beam", ModelSource::Free),
-            sold(
-                "opencode/claude-opus-5-5",
-                "Opus 5.5",
-                ModelSource::OpencodeZen,
-            ),
+            sold("opencode/claude-opus-5-5", "Opus 5.5", plan("Zen", 1)),
             sold(
                 "anthropic/claude-sonnet-5-5",
                 "Sonnet 5.5",
                 ModelSource::Provider("Anthropic".to_owned()),
             ),
-            sold("opencode-go/kimi-k3", "Kimi K3", ModelSource::OpencodeGo),
+            sold(
+                "openai/gpt-6",
+                "GPT 6",
+                ModelSource::Provider("OpenAI".to_owned()),
+            ),
+            sold("opencode-go/kimi-k3", "Kimi K3", plan("Go", 0)),
         ]))
         .unwrap_or_else(|| unreachable!("there are models"));
         let shown: Vec<&str> = picker
@@ -309,7 +324,10 @@ mod tests {
             .iter()
             .map(|choice| choice.label.as_str())
             .collect();
-        assert_eq!(shown, ["Kimi K3", "Opus 5.5", "Sonnet 5.5", "Beam"]);
+        assert_eq!(
+            shown,
+            ["Kimi K3", "Opus 5.5", "Sonnet 5.5", "GPT 6", "Beam"]
+        );
     }
 
     fn groups() -> Vec<HarnessModels> {

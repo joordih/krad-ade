@@ -1,6 +1,0 @@
-{"type":"init","session_id":"s1","model":"gemini-2.5-pro"}
-{"type":"message","role":"user","content":"Why does it race?"}
-{"type":"tool_use","tool_name":"read_file","tool_id":"r1","parameters":{"file_path":"server/auth/refresh.ts"}}
-{"type":"tool_result","tool_id":"r1","status":"success"}
-{"type":"message","role":"assistant","content":"Two refreshes race.","delta":true}
-{"type":"result","status":"success","stats":{}}

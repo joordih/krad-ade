@@ -1,12 +1,13 @@
 use crate::agent::AgentPreset;
 use crate::environment::EnvironmentData;
 use crate::ids::{SessionId, TerminalId};
-use crate::model::ModelId;
+use crate::model::{lenient_model, ModelId};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionLead {
     pub preset: AgentPreset,
+    #[serde(default, deserialize_with = "lenient_model")]
     pub model: Option<ModelId>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub workers: Vec<Worker>,

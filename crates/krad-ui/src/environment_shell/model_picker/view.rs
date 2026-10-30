@@ -32,15 +32,11 @@ const ROW_PREFIX: &str = "model-picker-row";
 const SEARCH_PLACEHOLDER: &str = "Search models";
 const NO_MODELS_TEXT: &str = "No models";
 const SECTION_H: f32 = 26.0;
-const GO_LABEL: &str = "OpenCode Go";
-const ZEN_LABEL: &str = "OpenCode Zen";
 const FREE_LABEL: &str = "Free";
 
 fn section_label(section: &ModelSource) -> &str {
     match section {
-        ModelSource::OpencodeGo => GO_LABEL,
-        ModelSource::OpencodeZen => ZEN_LABEL,
-        ModelSource::Provider(name) => name,
+        ModelSource::Plan { name, .. } | ModelSource::Provider(name) => name,
         ModelSource::Free => FREE_LABEL,
     }
 }

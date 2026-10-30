@@ -2,22 +2,23 @@ use futures::channel::oneshot::Sender as ReplySender;
 use krad_agents::{Response, TerminalHandle};
 use krad_chat::{AskAnswer, AskKind, ToolAsk};
 use krad_domain::{
-    AgentPreset, EnvironmentName, PermissionMode, SettledAsks, TerminalId, ToolDecision,
+    AgentPreset, EnvironmentName, PermissionMode, PlanDialogKeys, SettledAsks, TerminalId,
+    ToolDecision,
 };
 
 use super::super::agent_bus::ENTER;
 use super::super::surface::Backend;
 use super::super::EnvironmentShell;
-use super::{AskOwner, AskReply, Waiting, PLAN_AUTO_KEY, PLAN_CHANGE_KEY, PLAN_MANUAL_KEY};
+use super::{AskReply, Waiting};
 
-fn plan_keys(answer: &AskAnswer) -> Vec<Vec<u8>> {
+fn plan_keys(keys: PlanDialogKeys, answer: &AskAnswer) -> Vec<Vec<u8>> {
     match answer {
         AskAnswer::ApprovePlan {
             mode: PermissionMode::Manual,
-        } => vec![PLAN_MANUAL_KEY.to_vec()],
-        AskAnswer::ApprovePlan { .. } => vec![PLAN_AUTO_KEY.to_vec()],
+        } => vec![keys.approve_manually.to_vec()],
+        AskAnswer::ApprovePlan { .. } => vec![keys.approve.to_vec()],
         AskAnswer::Deny { message } => vec![
-            PLAN_CHANGE_KEY.to_vec(),
+            keys.keep_planning.to_vec(),
             message.as_bytes().to_vec(),
             ENTER.to_vec(),
         ],
@@ -80,17 +81,21 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn type_plan_answer(&mut self, owner: AskOwner, answer: &AskAnswer) {
-        if let AskOwner::Surface(id) = owner {
-            let env = self.active.clone();
-            self.type_in_steps(&env, id, plan_keys(answer));
-        }
+    pub(super) fn type_plan_answer(&mut self, owner: TerminalId, answer: &AskAnswer) {
+        let env = self.active.clone();
+        let keys = self
+            .envs
+            .get(&env)
+            .and_then(|live| live.chats.get(&owner))
+            .and_then(|chat| chat.harness().plan_dialog_keys());
+        let Some(keys) = keys else {
+            return;
+        };
+        self.type_in_steps(&env, owner, plan_keys(keys, answer));
     }
 
-    pub(super) fn type_into_owner(&self, owner: AskOwner, keys: &[u8]) {
-        if let AskOwner::Surface(id) = owner {
-            self.type_into_terminal(&self.active, id, keys.to_vec());
-        }
+    pub(super) fn type_into_owner(&self, owner: TerminalId, keys: &[u8]) {
+        self.type_into_terminal(&self.active, owner, keys.to_vec());
     }
 }
 
@@ -100,6 +105,9 @@ mod tests {
 
     #[test]
     fn a_plan_is_answered_with_the_keys_of_claude_codes_own_dialog() {
+        let Some(claude) = AgentPreset::ClaudeCode.plan_dialog_keys() else {
+            unreachable!("claude code answers its plan dialog by keys");
+        };
         let auto = AskAnswer::ApprovePlan {
             mode: PermissionMode::Auto,
         };
@@ -109,13 +117,13 @@ mod tests {
         let change = AskAnswer::Deny {
             message: "Split it".to_owned(),
         };
-        assert_eq!(plan_keys(&auto), [b"1".to_vec()]);
-        assert_eq!(plan_keys(&manual), [b"2".to_vec()]);
+        assert_eq!(plan_keys(claude, &auto), [b"1".to_vec()]);
+        assert_eq!(plan_keys(claude, &manual), [b"2".to_vec()]);
         assert_eq!(
-            plan_keys(&change),
+            plan_keys(claude, &change),
             [b"3".to_vec(), b"Split it".to_vec(), b"\r".to_vec()],
             "the feedback waits for the dialog's field"
         );
-        assert_eq!(plan_keys(&AskAnswer::Allow).len(), 0);
+        assert_eq!(plan_keys(claude, &AskAnswer::Allow).len(), 0);
     }
 }

@@ -1,7 +1,7 @@
 use krad_domain::review::{
-    Branch, Change, CiStatus, Commit, CommitSha, Discussion, DiscussionId, Job, JobId,
-    MergeRequest, MergeRequestIid, MergeRequestState, MergeStatus, Note, NoteId, Pipeline,
-    PipelineId, TreeEntry, TreeEntryKind, User, UserId,
+    Change, CiStatus, Commit, CommitSha, Discussion, DiscussionId, Job, JobId, MergeRequest,
+    MergeRequestIid, MergeRequestState, MergeStatus, Note, NoteId, Pipeline, PipelineId, User,
+    UserId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -447,73 +447,6 @@ impl From<JobJson> for Job {
     }
 }
 
-#[derive(Deserialize)]
-pub(crate) struct RepositoryJson {
-    pub(crate) default_branch: String,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct BranchJson {
-    name: String,
-    commit: ShaJson,
-    #[serde(default)]
-    protected: bool,
-}
-
-impl BranchJson {
-    pub(crate) fn into_branch(self, default_branch: &str) -> Branch {
-        Branch {
-            default: self.name == default_branch,
-            commit: Commit {
-                short_id: self.commit.sha.chars().take(SHORT_SHA).collect(),
-                id: CommitSha(self.commit.sha),
-                title: String::new(),
-                message: String::new(),
-                author_name: String::new(),
-                authored_date: None,
-                web_url: None,
-            },
-            name: self.name,
-            merged: false,
-            protected: self.protected,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum ContentKind {
-    File,
-    Dir,
-    Submodule,
-    #[serde(other)]
-    Symlink,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct ContentJson {
-    name: String,
-    path: String,
-    #[serde(rename = "type")]
-    kind: ContentKind,
-}
-
-impl ContentJson {
-    pub(crate) fn into_entry(self) -> Option<TreeEntry> {
-        let kind = match self.kind {
-            ContentKind::File => TreeEntryKind::Blob,
-            ContentKind::Dir => TreeEntryKind::Tree,
-            ContentKind::Submodule => TreeEntryKind::Commit,
-            ContentKind::Symlink => return None,
-        };
-        Some(TreeEntry {
-            name: self.name,
-            path: self.path,
-            kind,
-        })
-    }
-}
-
 #[derive(Serialize)]
 pub(crate) struct CommentBody<'a> {
     pub(crate) body: &'a str,
@@ -636,14 +569,6 @@ mod tests {
             discussion.map(|discussion| discussion.id),
             Some(DiscussionId("conversation:PRR_y".to_owned()))
         );
-        Ok(())
-    }
-
-    #[test]
-    fn symlinks_are_left_out_of_the_tree() -> serde_json::Result<()> {
-        let link: ContentJson =
-            serde_json::from_str(r#"{"name":"l","path":"l","type":"symlink"}"#)?;
-        assert!(link.into_entry().is_none());
         Ok(())
     }
 }

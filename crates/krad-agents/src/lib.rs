@@ -16,11 +16,11 @@ pub use env::{
     guide, orchestrator_guide, terminal_env, CLI_PROGRAM, ENV_ENDPOINT, ENV_TERMINAL, ENV_TOKEN,
 };
 pub use error::{AgentsError, HandleError};
-pub use handle::{Caller, ChatHandle, LeadHandle, TerminalHandle};
+pub use handle::{Caller, LeadHandle, TerminalHandle};
 pub use mailbox::{notice_text, Mailbox};
 pub use protocol::{
     lead_refusal, AgentInfo, AgentStatus, BusToken, Envelope, Message, Request, Response,
-    MAX_WAIT_SECS,
+    TerminalState, MAX_WAIT,
 };
 pub use server::{serve, Endpoint, Incoming};
 pub use token::new_token;

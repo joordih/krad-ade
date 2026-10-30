@@ -5,6 +5,7 @@ use gpui_kit::{AppContext as _, Context, Entity, Window};
 use krad_domain::{docs_prompt, AgentPreset, ModelId, DEFAULT_DOCS_FOLDER, VAULT_DIR};
 use krad_repo::{docs_source_candidates, read_docs_sources, write_docs_sources, SourceEntry};
 
+use super::model_picker::{grouped, ModelChoice, PickFor};
 use super::sessions::Launch;
 use super::EnvironmentShell;
 
@@ -35,6 +36,7 @@ const DEFAULT_NOTES: usize = 4;
 const TERMINAL_LABEL: &str = "docs";
 const STARTED_TEXT: &str = "Writing the documentation in a new terminal";
 const FOLDER_PLACEHOLDER: &str = "Vault folder, empty for the vault's root";
+const DEFAULT_MODEL_LABEL: &str = "Default model";
 
 pub(super) struct DocsDialog {
     sources: Vec<(SourceEntry, bool)>,
@@ -43,7 +45,6 @@ pub(super) struct DocsDialog {
     keep_edited: bool,
     preset: Option<AgentPreset>,
     model: Option<ModelId>,
-    picker_open: bool,
 }
 
 impl EnvironmentShell {
@@ -51,7 +52,9 @@ impl EnvironmentShell {
         let Some(root) = self.active_group().map(|group| group.root.clone()) else {
             return;
         };
-        let (preset, model) = self.default_agent_choice();
+        self.list_harness_models(cx);
+        self.ensure_opencode(cx);
+        let preset = self.default_agent();
         let picked = read_docs_sources(&root).unwrap_or_default();
         let sources = docs_source_candidates(&root)
             .unwrap_or_default()
@@ -78,10 +81,56 @@ impl EnvironmentShell {
             folder,
             keep_edited: true,
             preset,
-            model,
-            picker_open: false,
+            model: None,
         });
         cx.notify();
+    }
+
+    fn briefed_agents(&self) -> Vec<AgentPreset> {
+        self.installed_agents()
+            .iter()
+            .copied()
+            .filter(|preset| preset.is_agent())
+            .collect()
+    }
+
+    pub(super) fn default_agent(&self) -> Option<AgentPreset> {
+        let agents = self.briefed_agents();
+        agents
+            .iter()
+            .copied()
+            .find(|preset| *preset == self.settings.default_harness)
+            .or_else(|| agents.first().copied())
+    }
+
+    fn open_docs_model_picker(&mut self, origin: (f32, f32), cx: &mut Context<Self>) {
+        let Some(dialog) = &self.docs_dialog else {
+            return;
+        };
+        let current = (dialog.preset, dialog.model.clone());
+        let picks = self.briefed_agents().into_iter().flat_map(|harness| {
+            let chosen = current.0 == Some(harness);
+            let model = current.1.as_ref().filter(|_| chosen);
+            let mut choices = self.model_choices(harness, model);
+            if choices.is_empty() {
+                choices.push(ModelChoice {
+                    id: None,
+                    label: DEFAULT_MODEL_LABEL.to_owned(),
+                    current: chosen && model.is_none(),
+                    section: None,
+                });
+            }
+            choices.into_iter().map(move |choice| (harness, choice))
+        });
+        let groups = grouped(picks.collect::<Vec<_>>());
+        self.open_model_picker(PickFor::Docs, origin, groups, cx);
+    }
+
+    pub(super) fn pick_docs_agent(&mut self, harness: AgentPreset, model: Option<ModelId>) {
+        if let Some(dialog) = &mut self.docs_dialog {
+            dialog.preset = Some(harness);
+            dialog.model = model;
+        }
     }
 
     fn start_docs_generation(&mut self, cx: &mut Context<Self>) {

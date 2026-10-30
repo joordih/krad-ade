@@ -7,7 +7,6 @@ use krad_domain::{
     TerminalId,
 };
 
-use super::ask::AskOwner;
 use super::file_tree::FileAction;
 use super::name_dialogs::{DeleteTarget, NameTarget};
 use super::surface::SurfaceCommand;
@@ -29,7 +28,7 @@ pub(super) enum MenuAction {
     ShowSessionTab(TerminalId),
     DismissLead(SessionId),
     SetEffort(TerminalId, Effort),
-    SetPermissionMode(AskOwner, PermissionMode),
+    SetPermissionMode(TerminalId, PermissionMode),
     ContinueInTerminal(TerminalId),
     Note(super::notes_view::NoteAction),
     File(FileAction),

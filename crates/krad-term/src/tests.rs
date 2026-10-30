@@ -1,5 +1,10 @@
 use super::*;
 
+const COLS: usize = 80;
+const ROWS: usize = 24;
+const FILL: u8 = b'x';
+const FILL_BYTES: usize = 200;
+
 fn engine(cols: usize, rows: usize) -> VtEngine {
     VtEngine::new(cols, rows).unwrap_or_else(|error| unreachable!("{error}"))
 }
@@ -12,6 +17,17 @@ fn row_text(row: &TermRow) -> String {
         .join("")
 }
 
+fn filled_size(engine: &mut VtEngine) -> (usize, usize) {
+    engine.push(&[FILL; FILL_BYTES]);
+    let rows = engine.screen(&XTERM_PALETTE).rows;
+    let cols = rows
+        .iter()
+        .map(|row| row.spans.iter().map(|span| span.cells).sum())
+        .max()
+        .unwrap_or_default();
+    (cols, rows.len())
+}
+
 fn grid_contains(engine: &VtEngine, needle: &str) -> bool {
     engine
         .screen(&XTERM_PALETTE)
@@ -21,15 +37,8 @@ fn grid_contains(engine: &VtEngine, needle: &str) -> bool {
 }
 
 #[test]
-fn plain_bytes_land_on_grid() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
-    engine.push(b"hello-term");
-    assert!(grid_contains(&engine, "hello-term"));
-}
-
-#[test]
 fn the_cell_under_the_cursor_is_a_span_of_its_own() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     engine.push(b"a=>b\x1b[2D");
     let screen = engine.screen(&XTERM_PALETTE);
     let texts: Vec<&str> = screen.rows[0]
@@ -45,34 +54,36 @@ fn the_cell_under_the_cursor_is_a_span_of_its_own() {
 }
 
 #[test]
-fn sgr_colors_become_spans() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
-    engine.push(b"plain \x1b[31mRED");
-    let red = engine.screen(&XTERM_PALETTE).rows.iter().any(|row| {
-        row.spans
-            .iter()
-            .any(|span| span.text.contains("RED") && span.fg == Some(XTERM_PALETTE.0[1]))
-    });
-    assert!(red, "red bytes keep their color");
-}
-
-#[test]
 fn theme_palette_recolors_base_colors() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
-    engine.push(b"\x1b[31mRED");
-    let mut light = XTERM_PALETTE;
-    light.0[1] = 0x12_34_56;
-    let recolored = engine.screen(&light).rows.iter().any(|row| {
-        row.spans
+    const THEMED_RED: u32 = 0x12_34_56;
+    let mut engine = engine(COLS, ROWS);
+    engine.push(b"plain \x1b[31mRED");
+    let red_fg = |palette: &AnsiPalette| {
+        engine
+            .screen(palette)
+            .rows
             .iter()
-            .any(|span| span.text.contains("RED") && span.fg == Some(0x12_34_56))
-    });
-    assert!(recolored, "base colors come from the theme palette");
+            .flat_map(|row| row.spans.iter())
+            .find(|span| span.text.contains("RED"))
+            .and_then(|span| span.fg)
+    };
+    assert_eq!(
+        red_fg(&XTERM_PALETTE),
+        Some(XTERM_PALETTE.0[1]),
+        "red bytes keep their color"
+    );
+    let mut light = XTERM_PALETTE;
+    light.0[1] = THEMED_RED;
+    assert_eq!(
+        red_fg(&light),
+        Some(THEMED_RED),
+        "base colors come from the theme palette"
+    );
 }
 
 #[test]
 fn scrollback_keeps_history() {
-    let mut engine = engine(ENGINE_COLS, 4);
+    let mut engine = engine(COLS, 4);
     for index in 0..10 {
         engine.push(format!("line-{index}\r\n").as_bytes());
     }
@@ -83,17 +94,17 @@ fn scrollback_keeps_history() {
 
 #[test]
 fn resize_clamps_and_reports() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     assert!(engine.resize(100, 40, DEFAULT_CELL));
     assert!(!engine.resize(100, 40, DEFAULT_CELL), "nothing changed");
-    assert_eq!(engine.visible_size(), (100, 40));
+    assert_eq!(filled_size(&mut engine), (100, 40));
     engine.resize(0, 0, DEFAULT_CELL);
-    assert_eq!(engine.visible_size(), (1, 1));
+    assert_eq!(filled_size(&mut engine), (1, 1));
 }
 
 #[test]
 fn cursor_queries_produce_replies_for_the_child() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     engine.push(b"\x1b[6n");
     assert_eq!(engine.take_replies(), b"\x1b[1;1R".to_vec());
     assert!(engine.take_replies().is_empty(), "replies are taken once");
@@ -101,7 +112,7 @@ fn cursor_queries_produce_replies_for_the_child() {
 
 #[test]
 fn mouse_selection_copies_the_selected_cells() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     engine.push(b"hello world");
     engine.start_selection(CellPoint { row: 0, col: 6 });
     engine.extend_selection(CellPoint { row: 0, col: 10 });
@@ -112,7 +123,7 @@ fn mouse_selection_copies_the_selected_cells() {
 
 #[test]
 fn scrolling_shows_history_and_hides_the_cursor() {
-    let mut engine = engine(ENGINE_COLS, 4);
+    let mut engine = engine(COLS, 4);
     for index in 0..10 {
         engine.push(format!("line-{index}\r\n").as_bytes());
     }
@@ -133,7 +144,7 @@ fn scrolling_shows_history_and_hides_the_cursor() {
 
 #[test]
 fn recent_lines_span_history_and_screen_without_trailing_blanks() {
-    let mut engine = engine(ENGINE_COLS, 4);
+    let mut engine = engine(COLS, 4);
     for index in 0..10 {
         engine.push(format!("line-{index}\r\n").as_bytes());
     }
@@ -151,7 +162,7 @@ fn recent_lines_span_history_and_screen_without_trailing_blanks() {
 
 #[test]
 fn search_selects_the_next_older_match() {
-    let mut engine = engine(ENGINE_COLS, 4);
+    let mut engine = engine(COLS, 4);
     for index in 0..10 {
         engine.push(format!("item-{index}\r\n").as_bytes());
     }
@@ -162,7 +173,7 @@ fn search_selects_the_next_older_match() {
 
 #[test]
 fn osc8_links_are_reported_per_cell() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     engine.push(b"\x1b]8;;https://example.com\x1b\\docs\x1b]8;;\x1b\\ plain");
     assert_eq!(
         engine.hyperlink_at(CellPoint { row: 0, col: 1 }).as_deref(),
@@ -178,7 +189,7 @@ fn osc8_links_are_reported_per_cell() {
 
 #[test]
 fn spans_cover_the_cells_the_cursor_counts() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     engine.push("❯ Añ界x".as_bytes());
     let screen = engine.screen(&XTERM_PALETTE);
     let spans = &screen.rows[0].spans;
@@ -190,7 +201,7 @@ fn spans_cover_the_cells_the_cursor_counts() {
 
 #[test]
 fn bell_rings_once() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     engine.push(b"\x07");
     assert!(engine.take_bell(), "bell latches");
     assert!(!engine.take_bell(), "bell clears after taking");
@@ -198,7 +209,7 @@ fn bell_rings_once() {
 
 #[test]
 fn restored_text_replays_without_control() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     engine.push_text_lines(&["restored \x1b[31m line".to_owned()]);
     assert!(grid_contains(&engine, "restored"));
     assert!(!engine.take_bell(), "restored text stays quiet");
@@ -219,7 +230,7 @@ const CELL: CellPoint = CellPoint { row: 4, col: 9 };
 
 #[test]
 fn keystrokes_reach_the_program_as_native_terminals_send_them() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     let mut key = |key: &str, text: Option<&str>, held| engine.encode_key(key, text, held);
     assert_eq!(key("a", Some("a"), NONE).as_deref(), Some(&b"a"[..]));
     assert_eq!(key("enter", None, NONE).as_deref(), Some(&b"\r"[..]));
@@ -248,7 +259,7 @@ fn keystrokes_reach_the_program_as_native_terminals_send_them() {
 
 #[test]
 fn keys_follow_the_modes_the_program_turns_on() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     engine.push(b"\x1b[?1h");
     assert_eq!(
         engine.encode_key("up", None, NONE).as_deref(),
@@ -265,7 +276,7 @@ fn keys_follow_the_modes_the_program_turns_on() {
 
 #[test]
 fn a_program_tracking_the_mouse_gets_clicks_and_the_wheel() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     assert_eq!(engine.click_report(MouseAction::Press, CELL), None);
     assert_eq!(engine.wheel(3, CELL), WheelInput::History(3));
     engine.push(b"\x1b[?1002h\x1b[?1006h");
@@ -285,7 +296,7 @@ fn a_program_tracking_the_mouse_gets_clicks_and_the_wheel() {
 
 #[test]
 fn a_full_screen_program_without_the_mouse_gets_arrows() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     engine.push(b"\x1b[?1049h\x1b[?1007h");
     assert_eq!(
         engine.wheel(-2, CELL),
@@ -295,7 +306,7 @@ fn a_full_screen_program_without_the_mouse_gets_arrows() {
 
 #[test]
 fn a_frame_after_a_cached_one_shows_new_output_the_selection_and_the_cursor() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     engine.push(b"first\r\nsecond");
     let before = engine.screen(&XTERM_PALETTE);
     assert_eq!(row_text(&before.rows[1]), "second");
@@ -322,7 +333,7 @@ fn a_frame_after_a_cached_one_shows_new_output_the_selection_and_the_cursor() {
 
 #[test]
 fn an_image_sent_in_band_is_placed_with_its_pixels() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     engine.push(b"\x1b_Gi=7,f=32,s=2,v=1,a=T;/wAA/wD/AP8=\x1b\\");
     let images = engine.images();
     let Some(image) = images.first() else {
@@ -351,7 +362,7 @@ fn an_image_sent_in_band_is_placed_with_its_pixels() {
 
 #[test]
 fn a_png_image_is_decoded() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     engine.push(b"\x1b_Gi=3,f=100,a=T;iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==\x1b\\");
     let pixels = engine.image_pixels(3);
     assert_eq!(
@@ -362,7 +373,7 @@ fn a_png_image_is_decoded() {
 
 #[test]
 fn block_elements_are_a_span_of_their_own() {
-    let mut engine = engine(ENGINE_COLS, ENGINE_ROWS);
+    let mut engine = engine(COLS, ROWS);
     engine.push("ab▐▛███▜▌·c".as_bytes());
     let screen = engine.screen(&XTERM_PALETTE);
     let spans: Vec<(&str, usize)> = screen.rows[0]

@@ -9,6 +9,8 @@ pub enum AgentState {
 }
 
 impl AgentState {
+    pub const ALL: [Self; 4] = [Self::Idle, Self::Working, Self::WaitingForInput, Self::Done];
+
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
@@ -20,7 +22,39 @@ impl AgentState {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UnknownAgentState;
+
+impl std::fmt::Display for UnknownAgentState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("unknown agent state")
+    }
+}
+
+impl std::error::Error for UnknownAgentState {}
+
+impl std::str::FromStr for AgentState {
+    type Err = UnknownAgentState;
+
+    fn from_str(label: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|state| state.label() == label)
+            .ok_or(UnknownAgentState)
+    }
+}
+
 pub const AGENT_WAIT_SECS: f32 = 3.0;
+
+const CLAUDE_SYSTEM_PROMPT_FLAG: &str = "--append-system-prompt";
+const CLAUDE_MODEL_FLAG: &str = "--model";
+const CODEX_MODEL_FLAG: &str = "-m";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModelDelivery {
+    Flag(&'static str),
+    AttachedSession,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
 pub enum AgentPreset {
@@ -29,28 +63,18 @@ pub enum AgentPreset {
     ClaudeCode,
     Codex,
     Opencode,
-    Gemini,
-    Copilot,
-    CursorAgent,
-    Amp,
-    Aider,
-    Goose,
+    Gateway,
 }
 
 impl AgentPreset {
     #[must_use]
-    pub const fn all() -> [Self; 10] {
+    pub const fn all() -> [Self; 5] {
         [
             Self::Shell,
             Self::ClaudeCode,
             Self::Codex,
             Self::Opencode,
-            Self::Gemini,
-            Self::Copilot,
-            Self::CursorAgent,
-            Self::Amp,
-            Self::Aider,
-            Self::Goose,
+            Self::Gateway,
         ]
     }
 
@@ -61,56 +85,63 @@ impl AgentPreset {
             Self::ClaudeCode => "Claude Code",
             Self::Codex => "Codex",
             Self::Opencode => "opencode",
-            Self::Gemini => "Gemini CLI",
-            Self::Copilot => "GitHub Copilot CLI",
-            Self::CursorAgent => "Cursor Agent",
-            Self::Amp => "Amp",
-            Self::Aider => "Aider",
-            Self::Goose => "Goose",
+            Self::Gateway => "Gateway",
         }
     }
 
     #[must_use]
     pub const fn program(self) -> Option<&'static str> {
         match self {
-            Self::Shell => None,
+            Self::Shell | Self::Gateway => None,
             Self::ClaudeCode => Some("claude"),
             Self::Codex => Some("codex"),
             Self::Opencode => Some("opencode"),
-            Self::Gemini => Some("gemini"),
-            Self::Copilot => Some("copilot"),
-            Self::CursorAgent => Some("cursor-agent"),
-            Self::Amp => Some("amp"),
-            Self::Aider => Some("aider"),
-            Self::Goose => Some("goose"),
         }
     }
 
     #[must_use]
     pub const fn system_prompt_flag(self) -> Option<&'static str> {
         match self {
-            Self::ClaudeCode => Some("--append-system-prompt"),
-            _ => None,
+            Self::ClaudeCode => Some(CLAUDE_SYSTEM_PROMPT_FLAG),
+            Self::Shell | Self::Codex | Self::Opencode | Self::Gateway => None,
         }
     }
 
     #[must_use]
-    pub const fn model_flag(self) -> Option<&'static str> {
+    pub const fn model_delivery(self) -> Option<ModelDelivery> {
         match self {
-            Self::ClaudeCode => Some("--model"),
-            Self::Codex | Self::Opencode | Self::Gemini => Some("-m"),
-            Self::Shell
-            | Self::Copilot
-            | Self::CursorAgent
-            | Self::Amp
-            | Self::Aider
-            | Self::Goose => None,
+            Self::ClaudeCode => Some(ModelDelivery::Flag(CLAUDE_MODEL_FLAG)),
+            Self::Codex => Some(ModelDelivery::Flag(CODEX_MODEL_FLAG)),
+            Self::Opencode => Some(ModelDelivery::AttachedSession),
+            Self::Shell | Self::Gateway => None,
         }
     }
 
     #[must_use]
     pub const fn is_agent(self) -> bool {
         self.program().is_some()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UnknownHarness;
+
+impl std::fmt::Display for UnknownHarness {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("unknown harness program")
+    }
+}
+
+impl std::error::Error for UnknownHarness {}
+
+impl std::str::FromStr for AgentPreset {
+    type Err = UnknownHarness;
+
+    fn from_str(program: &str) -> Result<Self, Self::Err> {
+        Self::all()
+            .into_iter()
+            .find(|preset| preset.program() == Some(program))
+            .ok_or(UnknownHarness)
     }
 }
 
@@ -142,8 +173,19 @@ mod tests {
             .collect();
         let unique: std::collections::HashSet<&&str> = programs.iter().collect();
         assert_eq!(unique.len(), programs.len());
-        assert_eq!(programs.len(), AgentPreset::all().len() - 1);
-        assert!(!AgentPreset::Shell.is_agent());
+    }
+
+    #[test]
+    fn harnesses_parse_from_their_program_and_states_from_their_label() {
+        for preset in AgentPreset::all() {
+            let parsed = preset.program().map(str::parse::<AgentPreset>);
+            assert_eq!(parsed, preset.program().map(|_| Ok(preset)), "{preset:?}");
+        }
+        assert_eq!("Claude Code".parse::<AgentPreset>(), Err(UnknownHarness));
+        for state in AgentState::ALL {
+            assert_eq!(state.label().parse(), Ok(state));
+        }
+        assert_eq!("exited".parse::<AgentState>(), Err(UnknownAgentState));
     }
 
     #[test]

@@ -1,6 +1,9 @@
+use krad_domain::{Mention as Attached, Prompt};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::Path;
+
+use crate::mention::read_image;
 
 const MENTION_MARK: char = '@';
 const COMMAND_MARK: char = '/';
@@ -8,6 +11,8 @@ const FILE_SCHEME: &str = "file://";
 const PREAMBLE_OPEN: &str = "<system-reminder>\n";
 const PREAMBLE_CLOSE: &str = "\n</system-reminder>\n\n";
 const URI_KEPT: &[u8] = b"-._~/";
+const URI_SEPARATOR: char = '/';
+const WINDOWS_SEPARATOR: char = '\\';
 const TRAILING_PUNCTUATION: &[char] = &[',', '.', ';', ':', '!', '?', ')', ']'];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -27,7 +32,8 @@ pub(crate) struct Mention {
 pub(crate) struct FilePart {
     uri: String,
     name: String,
-    mention: Mention,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mention: Option<Mention>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -73,7 +79,24 @@ fn utf16_len(text: &str) -> usize {
 }
 
 fn file_uri(served: &str, relative: &str) -> String {
-    let path = format!("{}/{relative}", served.trim_end_matches(COMMAND_MARK));
+    encoded_uri(&format!(
+        "{}/{relative}",
+        served.trim_end_matches(COMMAND_MARK)
+    ))
+}
+
+fn path_uri(path: &Path) -> String {
+    let path = path
+        .to_string_lossy()
+        .replace(WINDOWS_SEPARATOR, &URI_SEPARATOR.to_string());
+    if path.starts_with(URI_SEPARATOR) {
+        encoded_uri(&path)
+    } else {
+        encoded_uri(&format!("{URI_SEPARATOR}{path}"))
+    }
+}
+
+fn encoded_uri(path: &str) -> String {
     let encoded: String = path
         .bytes()
         .map(|byte| {
@@ -107,14 +130,40 @@ fn mentioned_files(text: &str, place: &Place<'_>) -> Vec<FilePart> {
                 || relative.to_owned(),
                 |name| name.to_string_lossy().into_owned(),
             ),
-            mention: Mention {
+            mention: Some(Mention {
                 start,
                 end: start + utf16_len(&shown),
                 text: shown,
-            },
+            }),
         });
     }
     files
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name().map_or_else(
+        || path.to_string_lossy().into_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    )
+}
+
+pub(crate) fn attachments(prompt: &Prompt) -> Vec<FilePart> {
+    prompt
+        .mentions
+        .iter()
+        .map(|mention| {
+            let uri = match mention {
+                Attached::Image(image) => read_image(image)
+                    .map_or_else(|_| path_uri(&image.path), |encoded| encoded.data_url()),
+                Attached::Path(path) => path_uri(path),
+            };
+            FilePart {
+                uri,
+                name: file_name(mention.path()),
+                mention: None,
+            }
+        })
+        .collect()
 }
 
 pub(crate) fn strip_preamble(text: &str) -> &str {
@@ -135,6 +184,7 @@ pub(crate) fn outgoing(
     preamble: Option<&str>,
     known: &Known<'_>,
     place: &Place<'_>,
+    attached: Vec<FilePart>,
 ) -> Outgoing {
     let trimmed = text.trim();
     let called = trimmed.strip_prefix(COMMAND_MARK).map(|call| {
@@ -142,7 +192,7 @@ pub(crate) fn outgoing(
             .map_or((call, ""), |(name, rest)| (name, rest.trim()))
     });
     if let Some((name, rest)) = called.filter(|(name, _)| known.commands.contains(*name)) {
-        if preamble.is_none() {
+        if preamble.is_none() && attached.is_empty() {
             return Outgoing::Command(CommandBody {
                 name: name.to_owned(),
                 text: rest.to_owned(),
@@ -160,8 +210,10 @@ pub(crate) fn outgoing(
         None => (trimmed, Vec::new()),
     };
     let text = with_preamble(text, preamble);
+    let mut files = mentioned_files(&text, place);
+    files.extend(attached);
     Outgoing::Prompt(PromptBody {
-        files: mentioned_files(&text, place),
+        files,
         text,
         skills,
         delivery: Delivery::Queue,
@@ -203,6 +255,7 @@ mod tests {
             None,
             &known,
             &place,
+            Vec::new(),
         ) else {
             unreachable!("a plain message is a prompt");
         };
@@ -211,11 +264,11 @@ mod tests {
             [FilePart {
                 uri: "file:///srv/proj/src/a.rs".to_owned(),
                 name: "a.rs".to_owned(),
-                mention: Mention {
+                mention: Some(Mention {
                     start: 11,
                     end: 20,
                     text: "@src/a.rs".to_owned(),
-                },
+                }),
             }]
         );
         assert_eq!(
@@ -236,14 +289,15 @@ mod tests {
             served: "/nowhere",
         };
         assert_eq!(
-            outgoing("/review src/auth.rs", None, &known, &place),
+            outgoing("/review src/auth.rs", None, &known, &place, Vec::new()),
             Outgoing::Command(CommandBody {
                 name: "review".to_owned(),
                 text: "src/auth.rs".to_owned(),
                 delivery: Delivery::Queue,
             })
         );
-        let Outgoing::Prompt(body) = outgoing("/git-release v2", None, &known, &place) else {
+        let Outgoing::Prompt(body) = outgoing("/git-release v2", None, &known, &place, Vec::new())
+        else {
             unreachable!("a skill goes with a prompt");
         };
         assert_eq!(body.text, "v2");
@@ -253,7 +307,8 @@ mod tests {
                 id: "git-release".to_owned()
             }]
         );
-        let Outgoing::Prompt(body) = outgoing("/unknown thing", None, &known, &place) else {
+        let Outgoing::Prompt(body) = outgoing("/unknown thing", None, &known, &place, Vec::new())
+        else {
             unreachable!("an unknown command is plain text");
         };
         assert_eq!(body.text, "/unknown thing");
@@ -270,12 +325,62 @@ mod tests {
             local: Path::new("/nowhere"),
             served: "/nowhere",
         };
-        let Outgoing::Prompt(body) = outgoing("hi", Some("Use the bus."), &known, &place) else {
+        let Outgoing::Prompt(body) =
+            outgoing("hi", Some("Use the bus."), &known, &place, Vec::new())
+        else {
             unreachable!("a message with instructions is a prompt");
         };
         assert_eq!(
             body.text,
             "<system-reminder>\nUse the bus.\n</system-reminder>\n\nhi"
         );
+    }
+
+    #[test]
+    fn a_picked_file_goes_by_its_uri_and_an_image_inline_as_a_data_url() {
+        let dir = std::env::temp_dir().join("krad-opencode-attachments");
+        fs::create_dir_all(&dir).unwrap_or_else(|_| unreachable!("the fixture is valid"));
+        let shot = dir.join("1.png");
+        fs::write(&shot, b"png").unwrap_or_else(|_| unreachable!("the fixture is valid"));
+        let prompt = Prompt::new(
+            "Compare",
+            vec![
+                Attached::from(std::path::PathBuf::from("/repo/my notes.md")),
+                Attached::from(shot),
+            ],
+        );
+        let files = attachments(&prompt);
+        assert_eq!(
+            files,
+            [
+                FilePart {
+                    uri: "file:///repo/my%20notes.md".to_owned(),
+                    name: "my notes.md".to_owned(),
+                    mention: None,
+                },
+                FilePart {
+                    uri: "data:image/png;base64,cG5n".to_owned(),
+                    name: "1.png".to_owned(),
+                    mention: None,
+                },
+            ]
+        );
+        assert_eq!(
+            serde_json::to_value(&files[1]).unwrap_or_default(),
+            serde_json::json!({"uri": "data:image/png;base64,cG5n", "name": "1.png"})
+        );
+        let (commands, skills) = sets();
+        let known = Known {
+            commands: &commands,
+            skills: &skills,
+        };
+        let place = Place {
+            local: Path::new("/nowhere"),
+            served: "/nowhere",
+        };
+        let Outgoing::Prompt(body) = outgoing("/review", None, &known, &place, files) else {
+            unreachable!("a command with attachments goes as a prompt");
+        };
+        assert_eq!(body.files.len(), 2);
     }
 }

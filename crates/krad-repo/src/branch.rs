@@ -1,40 +1,17 @@
 use krad_domain::review::resolve_ssh_alias;
-use std::path::{Component, Path};
+use std::path::Path;
 
-use crate::files::{decode_text, sort_entries};
 use crate::git::run_git;
-use crate::{DirEntry, EntryKind, RepoError, TextFile};
+use crate::RepoError;
 
-const FETCH_ARGS: [&str; 3] = ["fetch", "--all", "--prune"];
-const BRANCH_LIST_ARGS: [&str; 4] = [
-    "for-each-ref",
-    "--format=%(refname:short)%00%(symref)",
-    "refs/heads",
-    "refs/remotes",
-];
-const REF_FIELD_SEPARATOR: char = '\0';
 const SSH_DIR: &str = ".ssh";
 const SSH_CONFIG: &str = "config";
-const TREE_RECORD_SEPARATOR: u8 = 0;
-const TREE_PATH_SEPARATOR: char = '\t';
-const TREE_FIELD_SEPARATOR: char = ' ';
-const TREE_TYPE: &str = "tree";
-const GIT_PATH_SEPARATOR: &str = "/";
-const REVISION_PATH_SEPARATOR: &str = ":";
 const NO_SUCH_REMOTE: &str = "No such remote";
 const DIFF_ARGS: [&str; 4] = ["diff", "--no-color", "--no-ext-diff", "--find-renames"];
 const PATHSPEC_SEPARATOR: &str = "--";
 const HUNK_PREFIX: &str = "@@";
 
 pub const ORIGIN_REMOTE: &str = "origin";
-
-/// # Errors
-///
-/// Returns [`RepoError::Git`] when `git fetch` fails, as when offline or not
-/// signed in to the remote.
-pub fn fetch_branches(repo: &Path) -> Result<(), RepoError> {
-    run_git(repo, &FETCH_ARGS).map(drop)
-}
 
 /// # Errors
 ///
@@ -66,74 +43,6 @@ pub fn resolved_remote_url(
 
 /// # Errors
 ///
-/// Returns [`RepoError::Git`] when `repo` is not a git repository.
-pub fn list_branches(repo: &Path) -> Result<Vec<String>, RepoError> {
-    let stdout = run_git(repo, &BRANCH_LIST_ARGS)?;
-    Ok(String::from_utf8_lossy(&stdout)
-        .lines()
-        .filter_map(|line| match line.split_once(REF_FIELD_SEPARATOR) {
-            Some((name, "")) => Some(name.to_owned()),
-            Some(_) => None,
-            None => Some(line.to_owned()),
-        })
-        .collect())
-}
-
-/// # Errors
-///
-/// Returns [`RepoError::OutsideRepository`] when `dir` is not inside
-/// `repo_root`, and [`RepoError::Git`] when `branch` does not exist.
-pub fn list_tree(repo_root: &Path, branch: &str, dir: &Path) -> Result<Vec<DirEntry>, RepoError> {
-    let relative = git_relative_path(repo_root, dir)?;
-    let mut args = vec!["ls-tree", "-z", branch, "--"];
-    let folder = format!("{relative}{GIT_PATH_SEPARATOR}");
-    if !relative.is_empty() {
-        args.push(&folder);
-    }
-    let stdout = run_git(repo_root, &args)?;
-    let mut entries: Vec<DirEntry> = stdout
-        .split(|&byte| byte == TREE_RECORD_SEPARATOR)
-        .filter_map(|record| tree_entry(repo_root, &String::from_utf8_lossy(record)))
-        .collect();
-    sort_entries(&mut entries);
-    Ok(entries)
-}
-
-fn tree_entry(repo_root: &Path, record: &str) -> Option<DirEntry> {
-    let (fields, path) = record.split_once(TREE_PATH_SEPARATOR)?;
-    let object_type = fields.split(TREE_FIELD_SEPARATOR).nth(1)?;
-    let path = path
-        .split(GIT_PATH_SEPARATOR)
-        .fold(repo_root.to_path_buf(), |path, part| path.join(part));
-    Some(DirEntry {
-        name: path.file_name()?.to_string_lossy().into_owned(),
-        path,
-        kind: if object_type == TREE_TYPE {
-            EntryKind::Directory
-        } else {
-            EntryKind::File
-        },
-    })
-}
-
-/// # Errors
-///
-/// Returns [`RepoError::Binary`] for a binary file,
-/// [`RepoError::OutsideRepository`] when `path` is not inside `repo_root` and
-/// [`RepoError::Git`] when `branch` lacks the file.
-pub fn read_text_at(
-    repo_root: &Path,
-    branch: &str,
-    path: &Path,
-    max_bytes: u64,
-) -> Result<TextFile, RepoError> {
-    let relative = git_relative_path(repo_root, path)?;
-    let revision = format!("{branch}{REVISION_PATH_SEPARATOR}{relative}");
-    decode_text(run_git(repo_root, &["show", &revision])?, max_bytes)
-}
-
-/// # Errors
-///
 /// Returns [`RepoError::Git`] when either commit is not in the local
 /// repository, as before fetching a branch pushed from elsewhere.
 pub fn diff_between(
@@ -152,23 +61,6 @@ pub fn diff_between(
 fn hunks_only(diff: &str) -> String {
     diff.find(HUNK_PREFIX)
         .map_or_else(String::new, |start| diff[start..].to_owned())
-}
-
-/// # Errors
-///
-/// Returns [`RepoError::OutsideRepository`] when `path` is not inside
-/// `repo_root`.
-pub fn git_relative_path(repo_root: &Path, path: &Path) -> Result<String, RepoError> {
-    let outside = || RepoError::OutsideRepository(path.display().to_string());
-    let relative = path.strip_prefix(repo_root).map_err(|_| outside())?;
-    relative
-        .components()
-        .map(|part| match part {
-            Component::Normal(name) => Ok(name.to_string_lossy()),
-            _ => Err(outside()),
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map(|parts| parts.join(GIT_PATH_SEPARATOR))
 }
 
 #[cfg(test)]
@@ -215,83 +107,6 @@ mod tests {
         git(&repo, &["commit", "-q", "-m", "feature"])?;
         git(&repo, &["checkout", "-q", "main"])?;
         Ok(repo)
-    }
-
-    fn names(entries: &[DirEntry]) -> Vec<(&str, EntryKind)> {
-        entries
-            .iter()
-            .map(|entry| (entry.name.as_str(), entry.kind))
-            .collect()
-    }
-
-    #[test]
-    fn branches_list_locals_then_remotes_without_head_aliases() -> Result<(), Box<dyn Error>> {
-        let repo = repo_with_feature_branch("list")?;
-        git(&repo, &["update-ref", "refs/remotes/origin/main", "main"])?;
-        git(
-            &repo,
-            &[
-                "symbolic-ref",
-                "refs/remotes/origin/HEAD",
-                "refs/remotes/origin/main",
-            ],
-        )?;
-
-        let branches = list_branches(&repo);
-        fs::remove_dir_all(&repo)?;
-
-        assert_eq!(branches?, ["feature", "main", "origin/main"]);
-        Ok(())
-    }
-
-    #[test]
-    fn another_branch_lists_its_own_folders_first() -> Result<(), Box<dyn Error>> {
-        let repo = repo_with_feature_branch("tree")?;
-
-        let root = list_tree(&repo, "feature", &repo);
-        let src = list_tree(&repo, "feature", &repo.join("src"));
-        let main_root = list_tree(&repo, "main", &repo);
-        fs::remove_dir_all(&repo)?;
-
-        let root = root?;
-        assert_eq!(
-            names(&root),
-            [
-                ("docs", EntryKind::Directory),
-                ("src", EntryKind::Directory),
-                ("README.md", EntryKind::File)
-            ]
-        );
-        assert_eq!(root[0].path, repo.join("docs"));
-        let src = src?;
-        assert_eq!(names(&src), [("lib.rs", EntryKind::File)]);
-        assert_eq!(src[0].path, repo.join("src").join("lib.rs"));
-        assert_eq!(
-            names(&main_root?),
-            [
-                ("src", EntryKind::Directory),
-                ("README.md", EntryKind::File)
-            ]
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn files_read_as_the_branch_holds_them() -> Result<(), Box<dyn Error>> {
-        let repo = repo_with_feature_branch("show")?;
-        let lib = repo.join("src").join("lib.rs");
-
-        let feature = read_text_at(&repo, "feature", &lib, 100);
-        let main = read_text_at(&repo, "main", &lib, 100);
-        let missing = read_text_at(&repo, "main", &repo.join("docs").join("notes.md"), 100);
-        let outside = read_text_at(&repo, "main", Path::new("/elsewhere/lib.rs"), 100);
-        fs::remove_dir_all(&repo)?;
-
-        assert_eq!(feature?.text, "feature\n");
-        assert_eq!(main?.text, "main\n");
-        assert!(matches!(missing, Err(RepoError::Git { .. })));
-        assert!(matches!(outside, Err(RepoError::OutsideRepository(_))));
-        Ok(())
     }
 
     #[test]

@@ -1,11 +1,13 @@
 use gpui_kit::{AppContext as _, Context, Task, Window};
 use krad_chat::{
-    new_session_id, read_claude_transcript_before, read_codex_transcript, read_opencode_transcript,
-    LiveSession,
+    new_session_id, read_claude_transcript_before, read_codex_transcript, read_engine_transcript,
+    read_opencode_transcript, LiveSession,
 };
 use krad_domain::{
     AgentPreset, ChatEntry, EnvironmentName, NodeKind, ResumeId, TerminalId, TerminalNode,
+    DEFAULT_CHAT_HARNESS,
 };
+use krad_store::gateway_sessions_dir;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -43,6 +45,7 @@ fn prepend_history(chat: &mut SurfaceChat, entries: &[ChatEntry], started: Optio
     chat.messages = messages;
     chat.origin = Origin::of(entries, started);
     chat.opened_thoughts.clear();
+    chat.editing = None;
     chat.thread.remeasure();
 }
 
@@ -83,8 +86,8 @@ impl EnvironmentShell {
                 let node = nodes.iter().find(|node| node.id == id)?;
                 let harness = node
                     .harness
-                    .filter(|preset| matches!(preset, AgentPreset::Opencode | AgentPreset::Codex))
-                    .unwrap_or(AgentPreset::ClaudeCode);
+                    .filter(|preset| preset.has_structured_chat())
+                    .unwrap_or(DEFAULT_CHAT_HARNESS);
                 Some((id, session, harness))
             })
             .collect();
@@ -100,16 +103,26 @@ impl EnvironmentShell {
                 live.chats.insert(id, chat);
             }
             self.watch_subagents(&env, id, cx);
-            match (history, harness) {
-                (Some(resume), AgentPreset::Opencode) => {
-                    self.load_opencode_history(env.clone(), id, resume, cx);
-                }
-                (Some(resume), AgentPreset::Codex) => {
-                    self.load_codex_history(env.clone(), id, resume, cx);
-                }
-                (Some(resume), _) => self.load_structured_history(env.clone(), id, resume, cx),
-                (None, _) => {}
+            if let Some(resume) = history {
+                self.load_history(env.clone(), id, harness, resume, cx);
             }
+        }
+    }
+
+    fn load_history(
+        &mut self,
+        env: EnvironmentName,
+        id: TerminalId,
+        harness: AgentPreset,
+        resume: ResumeId,
+        cx: &mut Context<Self>,
+    ) {
+        match harness {
+            AgentPreset::ClaudeCode => self.load_structured_history(env, id, resume, cx),
+            AgentPreset::Opencode => self.load_opencode_history(env, id, resume, cx),
+            AgentPreset::Codex => self.load_codex_history(env, id, resume, cx),
+            AgentPreset::Gateway => self.load_gateway_history(env, id, resume, cx),
+            AgentPreset::Shell => {}
         }
     }
 
@@ -173,6 +186,23 @@ impl EnvironmentShell {
         };
         let read = cx.background_spawn(async move {
             read_codex_transcript(&runner, &cwd, &resume).map_err(|error| error.to_string())
+        });
+        Self::show_history_when_read(env, id, read, cx);
+    }
+
+    fn load_gateway_history(
+        &mut self,
+        env: EnvironmentName,
+        id: TerminalId,
+        resume: ResumeId,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(sessions) = gateway_sessions_dir() else {
+            return;
+        };
+        let cwd = self.chat_folder(&env, id);
+        let read = cx.background_spawn(async move {
+            read_engine_transcript(&sessions, &cwd, &resume).map_err(|error| error.to_string())
         });
         Self::show_history_when_read(env, id, read, cx);
     }

@@ -1,10 +1,12 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use super::chat::session_path;
 use super::events::PermissionAsked;
-use super::tools::harness_tool_name;
+use super::tools::harness_tool;
 use crate::control::{
-    AskAnswer, AskKind, FormSlot, PickedAnswer, Question, QuestionOption, Responder, ToolAsk,
+    AskAnswer, AskKind, FormSlot, FormValue, PickedAnswer, Question, QuestionOption, Responder,
+    ToolAsk,
 };
 
 const RESOURCE_SEPARATOR: &str = ", ";
@@ -38,15 +40,16 @@ pub(crate) struct FormInfo {
 }
 
 pub(crate) fn permission_ask(asked: &PermissionAsked) -> ToolAsk {
+    let (tool, kind) = harness_tool(&asked.action);
     ToolAsk {
-        request_id: asked.id.clone(),
-        input: Value::from(asked.resources.clone()),
-        suggestions: asked.save.iter().cloned().map(Value::from).collect(),
         responder: Responder::OpencodePermission {
             session: asked.session_id.clone(),
+            request: asked.id.clone(),
+            savable: !asked.save.is_empty(),
         },
         kind: AskKind::Permission {
-            tool: harness_tool_name(&asked.action).to_owned(),
+            tool: tool.to_owned(),
+            kind,
             summary: asked.resources.join(RESOURCE_SEPARATOR),
             title: asked.message.clone(),
             edit: None,
@@ -79,32 +82,27 @@ pub(crate) fn form_ask(form: &FormInfo) -> Option<ToolAsk> {
             multi_select: field.kind == MULTISELECT,
         })
         .collect();
-    let options: Map<String, Value> = form
+    let slots = form
         .fields
         .iter()
-        .map(|field| {
-            let labels: Map<String, Value> = field
+        .map(|field| FormSlot {
+            key: field.key.clone(),
+            many: field.kind == MULTISELECT,
+            values: field
                 .options
                 .iter()
-                .map(|option| (option.label.clone(), Value::from(option.value.clone())))
-                .collect();
-            (field.key.clone(), Value::Object(labels))
+                .map(|option| FormValue {
+                    label: option.label.clone(),
+                    value: option.value.clone(),
+                })
+                .collect(),
         })
         .collect();
     Some(ToolAsk {
-        request_id: form.id.clone(),
-        input: Value::Object(options),
-        suggestions: Vec::new(),
         responder: Responder::OpencodeForm {
             session: form.session_id.clone(),
-            slots: form
-                .fields
-                .iter()
-                .map(|field| FormSlot {
-                    key: field.key.clone(),
-                    many: field.kind == MULTISELECT,
-                })
-                .collect(),
+            form: form.id.clone(),
+            slots,
         },
         kind: AskKind::Questions(questions),
     })
@@ -137,30 +135,29 @@ pub(crate) enum Reply {
 }
 
 fn permission_path(session: &str, request: &str) -> String {
-    format!("/api/session/{session}/permission/{request}/reply")
+    session_path(session, &format!("/permission/{request}/reply"))
 }
 
 fn form_path(session: &str, form: &str) -> String {
-    format!("/api/session/{session}/form/{form}")
+    session_path(session, &format!("/form/{form}"))
 }
 
-fn picked_value(ask: &ToolAsk, key: &str, label: &str) -> Value {
-    ask.input
-        .get(key)
-        .and_then(|labels| labels.get(label))
-        .cloned()
-        .unwrap_or_else(|| Value::from(label))
+fn picked_value(slot: &FormSlot, label: &str) -> Value {
+    slot.values
+        .iter()
+        .find(|offered| offered.label == label)
+        .map_or_else(
+            || Value::from(label),
+            |offered| Value::from(offered.value.clone()),
+        )
 }
 
-fn form_answer(ask: &ToolAsk, slots: &[FormSlot], answers: &[PickedAnswer]) -> Map<String, Value> {
+fn form_answer(slots: &[FormSlot], answers: &[PickedAnswer]) -> Map<String, Value> {
     slots
         .iter()
         .zip(answers)
         .map(|(slot, picked)| {
-            let mut values = picked
-                .labels
-                .iter()
-                .map(|label| picked_value(ask, &slot.key, label));
+            let mut values = picked.labels.iter().map(|label| picked_value(slot, label));
             let value = if slot.many {
                 Value::Array(values.collect())
             } else {
@@ -177,8 +174,10 @@ fn to_body(body: &impl Serialize) -> Value {
 
 pub(crate) fn reply(ask: &ToolAsk, answer: &AskAnswer) -> Option<Reply> {
     match &ask.responder {
-        Responder::ClaudeCode | Responder::Codex { .. } => None,
-        Responder::OpencodePermission { session } => {
+        Responder::ClaudeCode(_) | Responder::Engine { .. } | Responder::Codex { .. } => None,
+        Responder::OpencodePermission {
+            session, request, ..
+        } => {
             let (decision, message) = match answer {
                 AskAnswer::AllowAlways => (Decision::Always, None),
                 AskAnswer::Deny { message } => (
@@ -190,22 +189,26 @@ pub(crate) fn reply(ask: &ToolAsk, answer: &AskAnswer) -> Option<Reply> {
                 }
             };
             Some(Reply::Post {
-                path: permission_path(session, &ask.request_id),
+                path: permission_path(session, request),
                 body: to_body(&PermissionReply { decision, message }),
             })
         }
-        Responder::OpencodeForm { session, slots } => Some(match answer {
+        Responder::OpencodeForm {
+            session,
+            form,
+            slots,
+        } => Some(match answer {
             AskAnswer::Answers(answers) => Reply::Post {
-                path: format!("{}/reply", form_path(session, &ask.request_id)),
+                path: format!("{}/reply", form_path(session, form)),
                 body: to_body(&FormReply {
-                    answer: form_answer(ask, slots, answers),
+                    answer: form_answer(slots, answers),
                 }),
             },
             AskAnswer::Allow
             | AskAnswer::AllowAlways
             | AskAnswer::ApprovePlan { .. }
             | AskAnswer::Deny { .. } => Reply::Delete {
-                path: form_path(session, &ask.request_id),
+                path: form_path(session, form),
             },
         }),
     }
@@ -250,6 +253,7 @@ mod tests {
             ask.kind,
             AskKind::Permission {
                 tool: "Bash".to_owned(),
+                kind: krad_domain::ToolKind::Shell,
                 summary: "git push origin main".to_owned(),
                 title: None,
                 edit: None,

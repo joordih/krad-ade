@@ -5,10 +5,27 @@ use super::each_entry;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ModelSource {
-    OpencodeGo,
-    OpencodeZen,
+    Plan { name: String, order: usize },
     Provider(String),
     Free,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SourceRank {
+    Plan(usize),
+    Provider,
+    Free,
+}
+
+impl ModelSource {
+    #[must_use]
+    pub const fn rank(&self) -> SourceRank {
+        match self {
+            Self::Plan { order, .. } => SourceRank::Plan(*order),
+            Self::Provider(_) => SourceRank::Provider,
+            Self::Free => SourceRank::Free,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]

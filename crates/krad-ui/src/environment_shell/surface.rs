@@ -1,8 +1,14 @@
 mod answer;
+mod checklist;
 mod composer;
 mod dot_field;
 mod edit_diff;
+mod edit_message;
 mod facts;
+mod glide;
+mod mentions;
+mod message_actions;
+mod origin;
 mod outbox;
 mod structured;
 mod subagent_card;
@@ -19,17 +25,21 @@ use gpui_kit::{
     Subscription, Window,
 };
 use krad_domain::{
-    is_worker_brief, AgentPreset, ChatEntry, Effort, EnvironmentName, ModelId, TerminalId,
+    AgentPreset, Effort, EnvironmentName, Mention, ModelId, Prompt, TerminalId,
+    DEFAULT_CHAT_HARNESS,
 };
 use krad_repo::IndexEntry;
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::Instant;
 
 use super::ask::AskQueue;
-use super::chat::{ChatMessage, Composer};
+use super::chat::ChatMessage;
 use super::EnvironmentShell;
-use crate::motion::Spring;
+use checklist::ChecklistView;
+use edit_message::MessageEditor;
+use glide::Glide;
+use origin::Origin;
 use outbox::Outbox;
 use subagents::Subagents;
 use transcript::{TranscriptView, TRANSCRIPT_HARNESS};
@@ -39,22 +49,12 @@ pub(super) use edit_diff::edit_diff;
 pub(super) use facts::AccountUsage;
 pub(super) use structured::restored_chats;
 pub(super) use structured::StructuredChat;
-pub(super) use switch::reopens_as_chat;
 
 const INPUT_ROWS: usize = 2;
 const INPUT_PLACEHOLDER: &str = "Ask anything…  @ for files, / for skills";
 const THINKING_LABEL: &str = "Thinking";
 const WORKING_LABEL: &str = "Working";
-const MINUTE: Duration = Duration::from_mins(1);
-const HOUR: Duration = Duration::from_hours(1);
-const DAY: Duration = Duration::from_hours(24);
-const JUST_NOW: &str = "just now";
-const MINUTES_UNIT: &str = "min";
-const HOURS_UNIT: &str = "h";
-const DAYS_UNIT: &str = "d";
-const AGO: &str = "ago";
 const THREAD_OVERDRAW: f32 = 800.0;
-const GLIDE_RESPONSE_S: f32 = 0.35;
 
 fn new_thread() -> ListState {
     let thread = ListState::new(0, ListAlignment::Top, px(THREAD_OVERDRAW));
@@ -77,33 +77,6 @@ enum HarnessChange {
     Refused,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(super) enum Opener {
-    Lead,
-    User,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(super) struct Origin {
-    pub(super) opener: Opener,
-    pub(super) started: Option<SystemTime>,
-}
-
-impl Origin {
-    fn of(entries: &[ChatEntry], started: Option<SystemTime>) -> Option<Self> {
-        let first = entries.iter().find_map(|entry| match entry {
-            ChatEntry::User { text, .. } => Some(text),
-            ChatEntry::Event(_) | ChatEntry::Asked(_) => None,
-        })?;
-        let opener = if is_worker_brief(first) {
-            Opener::Lead
-        } else {
-            Opener::User
-        };
-        Some(Self { opener, started })
-    }
-}
-
 pub(super) enum Backend {
     Transcript(Box<TranscriptView>),
     Structured(Box<StructuredChat>),
@@ -115,6 +88,7 @@ pub(super) struct SurfaceChat {
     pub(super) input: Entity<TextareaState>,
     _input_events: Subscription,
     pub(super) mentions: HashMap<SharedString, IndexEntry>,
+    pub(super) attached: Vec<Mention>,
     pub(super) opened_thoughts: HashSet<(usize, usize)>,
     pub(super) tool_groups: HashMap<(usize, usize), bool>,
     pub(super) thread: ListState,
@@ -128,53 +102,18 @@ pub(super) struct SurfaceChat {
     pub(super) problem: Option<String>,
     pub(super) backend: Backend,
     subagents: Subagents,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct Glide {
-    spring: Spring,
-    last: Instant,
+    checklist_view: ChecklistView,
+    editing: Option<MessageEditor>,
 }
 
 impl SurfaceChat {
-    fn scrolled(&self) -> f32 {
-        -self.thread.scroll_px_offset_for_scrollbar().y.as_f32()
-    }
-
-    fn start_glide(&mut self, now: Instant) {
-        self.thread.pause_following_tail();
-        self.glide = Some(Glide {
-            spring: Spring::at_rest(self.scrolled(), GLIDE_RESPONSE_S),
-            last: now,
-        });
-    }
-
-    fn advance_glide(&mut self, now: Instant) -> bool {
-        let scrolled = self.scrolled();
-        let Some(glide) = self.glide.as_mut() else {
-            return false;
-        };
-        glide
-            .spring
-            .set_target(self.thread.max_offset_for_scrollbar().y.as_f32());
-        glide.spring.step((now - glide.last).as_secs_f32());
-        glide.last = now;
-        self.thread.scroll_by(px(glide.spring.value() - scrolled));
-        if !glide.spring.is_settled() {
-            return true;
-        }
-        self.glide = None;
-        self.thread.scroll_to_end();
-        false
-    }
-
     pub(super) fn takes_bus_notice(&self) -> bool {
         self.structured()
             .is_some_and(|structured| structured.takes_bus_notice(&self.outbox))
     }
 
     pub(super) fn queue_bus_notice(&mut self, notice: String) {
-        self.outbox.push(notice);
+        self.outbox.push(Prompt::from(notice));
     }
 
     fn new(input: Entity<TextareaState>, input_events: Subscription, backend: Backend) -> Self {
@@ -184,6 +123,7 @@ impl SurfaceChat {
             input,
             _input_events: input_events,
             mentions: HashMap::new(),
+            attached: Vec::new(),
             opened_thoughts: HashSet::new(),
             tool_groups: HashMap::new(),
             thread: new_thread(),
@@ -197,6 +137,8 @@ impl SurfaceChat {
             problem: None,
             backend,
             subagents: Subagents::default(),
+            checklist_view: ChecklistView::default(),
+            editing: None,
         }
     }
 
@@ -236,20 +178,6 @@ impl SurfaceChat {
     }
 }
 
-pub(super) fn age_label(elapsed: Duration) -> String {
-    if elapsed < MINUTE {
-        return JUST_NOW.to_owned();
-    }
-    let (unit, name) = if elapsed < HOUR {
-        (MINUTE, MINUTES_UNIT)
-    } else if elapsed < DAY {
-        (HOUR, HOURS_UNIT)
-    } else {
-        (DAY, DAYS_UNIT)
-    };
-    format!("{} {name} {AGO}", elapsed.as_secs() / unit.as_secs())
-}
-
 impl EnvironmentShell {
     fn chat_input(
         id: TerminalId,
@@ -267,7 +195,7 @@ impl EnvironmentShell {
             window,
             move |this: &mut Self, _, event: &InputEvent, window, cx| match event {
                 InputEvent::PressEnter { shift: false, .. } => this.send_on_surface(id, window, cx),
-                InputEvent::Change => this.update_suggest(Composer::Surface(id), cx),
+                InputEvent::Change => this.update_suggest(id, cx),
                 InputEvent::PressEnter { .. } | InputEvent::Focus | InputEvent::Blur => {}
             },
         );
@@ -289,45 +217,41 @@ impl EnvironmentShell {
         if blocked {
             return;
         }
-        let Some(input) = self.composer_input(Composer::Surface(id)) else {
+        let Some(input) = self.composer_input(id) else {
             return;
         };
         let text = input.read(cx).value().trim().to_owned();
-        if text.is_empty() {
-            return;
-        }
-        input.update(cx, |input, cx| input.set_value("", window, cx));
-        let claude = self
+        let attached = self
             .envs
             .get(&env)
             .and_then(|live| live.chats.get(&id))
-            .is_none_or(|chat| chat.harness() == AgentPreset::ClaudeCode);
-        let text = if claude {
-            self.shared_skill_message(&text).unwrap_or(text)
-        } else {
-            text
-        };
+            .is_some_and(|chat| !chat.attached.is_empty());
+        if text.is_empty() && !attached {
+            return;
+        }
+        input.update(cx, |input, cx| input.set_value("", window, cx));
+        let harness = self
+            .envs
+            .get(&env)
+            .and_then(|live| live.chats.get(&id))
+            .map_or(DEFAULT_CHAT_HARNESS, SurfaceChat::harness);
+        if harness.chats_through_gateway() {
+            self.recheck_failed_gateway(cx);
+        }
+        let text = self.skill_message(harness, text);
         if let Some(chat) = self
             .envs
             .get_mut(&env)
             .and_then(|live| live.chats.get_mut(&id))
         {
             chat.mentions.clear();
-            chat.outbox.push(text);
+            let prompt = Prompt::new(&text, std::mem::take(&mut chat.attached));
+            chat.outbox.push(prompt);
             chat.pins_latest = true;
             chat.start_glide(Instant::now());
         }
         self.flush_outbox(&env, id, cx);
         cx.notify();
-    }
-
-    pub(super) fn glide_chats(&mut self, now: Instant) -> bool {
-        let Some(live) = self.envs.get_mut(&self.active) else {
-            return false;
-        };
-        live.chats
-            .values_mut()
-            .fold(false, |moving, chat| chat.advance_glide(now) | moving)
     }
 
     pub(super) fn flush_noticed_chats(&mut self, cx: &mut Context<Self>) {
@@ -438,34 +362,5 @@ impl EnvironmentShell {
             Some(Backend::Transcript(_)) | None => self.command_transcript(&env, id, &command),
         }
         cx.notify();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use krad_domain::ChatEvent;
-
-    #[test]
-    fn ages_read_in_the_largest_whole_unit() {
-        assert_eq!(age_label(Duration::from_secs(20)), "just now");
-        assert_eq!(age_label(6 * MINUTE + Duration::from_secs(30)), "6 min ago");
-        assert_eq!(age_label(3 * HOUR), "3 h ago");
-        assert_eq!(age_label(2 * DAY), "2 d ago");
-    }
-
-    #[test]
-    fn a_conversation_a_worker_brief_opened_comes_from_the_lead() {
-        let user = |text: String| ChatEntry::User {
-            text,
-            preset: AgentPreset::ClaudeCode,
-            model: None,
-        };
-        let brief = krad_domain::chat_worker_brief("Verify the signature");
-        let origin = Origin::of(&[ChatEntry::Event(ChatEvent::Done), user(brief)], None);
-        assert_eq!(origin.map(|origin| origin.opener), Some(Opener::Lead));
-        let asked = Origin::of(&[user("Why?".to_owned())], None);
-        assert_eq!(asked.map(|origin| origin.opener), Some(Opener::User));
-        assert_eq!(Origin::of(&[], None), None);
     }
 }

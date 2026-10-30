@@ -1,5 +1,4 @@
 use std::ops::Range;
-use std::path::Path;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TokenKind {
@@ -17,7 +16,7 @@ pub(crate) struct Span {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Language {
+pub(crate) enum Syntax {
     Rust,
     TypeScript,
     Python,
@@ -193,27 +192,7 @@ const BLOCK_COMMENT_OPEN: &str = "/*";
 const BLOCK_COMMENT_CLOSE: &str = "*/";
 const ESCAPE: u8 = b'\\';
 
-impl Language {
-    pub(crate) fn from_path(path: &Path) -> Self {
-        let extension = path
-            .extension()
-            .map(|extension| extension.to_string_lossy().to_ascii_lowercase());
-        match extension.as_deref() {
-            Some("rs") => Self::Rust,
-            Some("ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs") => Self::TypeScript,
-            Some("py" | "pyi") => Self::Python,
-            Some("go") => Self::Go,
-            Some(
-                "c" | "h" | "cc" | "cpp" | "hpp" | "cs" | "java" | "kt" | "swift" | "scala" | "css"
-                | "scss",
-            ) => Self::CFamily,
-            Some("sh" | "bash" | "zsh" | "fish" | "ps1") => Self::Shell,
-            Some("toml" | "yaml" | "yml" | "ini" | "cfg" | "conf" | "env") => Self::Config,
-            Some("json" | "jsonc") => Self::Json,
-            _ => Self::Plain,
-        }
-    }
-
+impl Syntax {
     const fn keywords(self) -> &'static [&'static str] {
         match self {
             Self::Rust => RUST_KEYWORDS,
@@ -259,14 +238,14 @@ impl Language {
     }
 }
 
-pub(crate) fn highlight_lines(text: &str, language: Language) -> Vec<Vec<Span>> {
+pub(crate) fn highlight_lines(text: &str, syntax: Syntax) -> Vec<Vec<Span>> {
     let mut in_block_comment = false;
     text.lines()
-        .map(|line| highlight_line(line, language, &mut in_block_comment))
+        .map(|line| highlight_line(line, syntax, &mut in_block_comment))
         .collect()
 }
 
-fn highlight_line(line: &str, language: Language, in_block_comment: &mut bool) -> Vec<Span> {
+fn highlight_line(line: &str, syntax: Syntax, in_block_comment: &mut bool) -> Vec<Span> {
     let bytes = line.as_bytes();
     let mut spans = Vec::new();
     let mut index = 0;
@@ -279,14 +258,14 @@ fn highlight_line(line: &str, language: Language, in_block_comment: &mut bool) -
     }
     while index < bytes.len() {
         let rest = &line[index..];
-        if language
+        if syntax
             .line_comment()
             .is_some_and(|marker| rest.starts_with(marker))
         {
             push(&mut spans, index..bytes.len(), TokenKind::Comment);
             break;
         }
-        if language.has_block_comments() && rest.starts_with(BLOCK_COMMENT_OPEN) {
+        if syntax.has_block_comments() && rest.starts_with(BLOCK_COMMENT_OPEN) {
             let close = find_from(line, index + BLOCK_COMMENT_OPEN.len(), BLOCK_COMMENT_CLOSE);
             let end = close.map_or(bytes.len(), |close| close + BLOCK_COMMENT_CLOSE.len());
             *in_block_comment = close.is_none();
@@ -295,7 +274,7 @@ fn highlight_line(line: &str, language: Language, in_block_comment: &mut bool) -
             continue;
         }
         let byte = bytes[index];
-        if language.quotes().contains(&byte) {
+        if syntax.quotes().contains(&byte) {
             let end = string_end(bytes, index);
             push(&mut spans, index..end, TokenKind::String);
             index = end;
@@ -308,9 +287,9 @@ fn highlight_line(line: &str, language: Language, in_block_comment: &mut bool) -
         } else if is_word_start(byte) {
             let end = scan(bytes, index, is_word_byte);
             let word = &line[index..end];
-            if language.keywords().contains(&word) {
+            if syntax.keywords().contains(&word) {
                 push(&mut spans, index..end, TokenKind::Keyword);
-            } else if language.capitalised_types() && word.starts_with(char::is_uppercase) {
+            } else if syntax.capitalised_types() && word.starts_with(char::is_uppercase) {
                 push(&mut spans, index..end, TokenKind::TypeName);
             }
             index = end;
@@ -382,7 +361,7 @@ mod tests {
     #[test]
     fn rust_line_marks_keywords_types_strings_numbers_and_comments() {
         let line = r#"let path: PathBuf = "a\"b".into(); // 42 is not a number here"#;
-        let spans = highlight_lines(line, Language::Rust);
+        let spans = highlight_lines(line, Syntax::Rust);
         assert_eq!(
             kinds(line, &spans[0]),
             vec![
@@ -397,7 +376,7 @@ mod tests {
     #[test]
     fn block_comments_carry_across_lines() {
         let text = "a /* open\nstill inside\nclose */ return 1";
-        let spans = highlight_lines(text, Language::TypeScript);
+        let spans = highlight_lines(text, Syntax::TypeScript);
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(
             kinds(lines[1], &spans[1]),
@@ -415,12 +394,15 @@ mod tests {
 
     #[test]
     fn hash_comments_and_unknown_files() {
+        let line = "key = 'v' # note";
+        let spans = highlight_lines(line, Syntax::Config);
         assert_eq!(
-            Language::from_path(Path::new("Cargo.toml")),
-            Language::Config
+            kinds(line, &spans[0]),
+            vec![
+                ("'v'".to_owned(), TokenKind::String),
+                ("# note".to_owned(), TokenKind::Comment),
+            ]
         );
-        let spans = highlight_lines("key = 'v' # note", Language::Config);
-        assert_eq!(spans[0].len(), 2);
-        assert_eq!(highlight_lines("let it be", Language::Plain)[0], []);
+        assert_eq!(highlight_lines("let it be", Syntax::Plain)[0], []);
     }
 }

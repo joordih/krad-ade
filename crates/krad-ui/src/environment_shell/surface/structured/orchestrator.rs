@@ -1,6 +1,6 @@
 use gpui_kit::Context;
 use krad_chat::LiveSession;
-use krad_domain::{AgentPreset, SessionId, SessionLead, TerminalId};
+use krad_domain::{SessionId, SessionLead, TerminalId, DEFAULT_CHAT_HARNESS};
 
 use super::super::super::EnvironmentShell;
 use super::structured_mut;
@@ -19,7 +19,7 @@ impl EnvironmentShell {
     ) {
         let env = self.active.clone();
         let (harness, model) = structured_mut(self, &env, id)
-            .map_or((AgentPreset::ClaudeCode, None), |chat| {
+            .map_or((DEFAULT_CHAT_HARNESS, None), |chat| {
                 (chat.harness, chat.chosen_model.clone())
             });
         let Some(live) = self.envs.get_mut(&env) else {

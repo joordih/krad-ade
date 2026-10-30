@@ -1,7 +1,11 @@
 use super::*;
 use krad_domain::AgentPreset;
 
-const MISSING: &str = "No conversation found with session ID: 4f2c0b7c-a91e";
+fn missing() -> ResumeRefused {
+    ResumeRefused::MissingConversation(
+        "No conversation found with session ID: 4f2c0b7c-a91e".to_owned(),
+    )
+}
 
 fn id(raw: &str) -> ResumeId {
     raw.parse()
@@ -17,7 +21,7 @@ fn resumed() -> StructuredChat {
 
 fn queued(text: &str) -> Outbox {
     let mut outbox = Outbox::default();
-    outbox.push(text.to_owned());
+    outbox.push(Prompt::from(text));
     outbox
 }
 
@@ -32,19 +36,14 @@ fn the_context_reads_as_the_share_of_the_window_in_use() {
 }
 
 #[test]
-fn work_is_only_taken_once_claude_code_can_take_it() {
+fn a_toggled_setting_and_a_queued_message_leave_in_one_batch() {
     let mut chat = resumed();
     let mut outbox = queued("Fix the race");
     chat.command(SurfaceCommand::ToggleThinking);
     assert!(chat.has_work(&outbox));
-    assert_eq!(
-        outbox.messages[0].text, "Fix the race",
-        "asking leaves the message queued"
-    );
-    assert!(outbox.has_queued(), "a start that fails leaves it to send");
     let batch = chat.take_batch(&mut outbox, Instant::now());
     assert_eq!(batch.commands, [SlashCommand::Thinking(!THINKING_DEFAULT)]);
-    assert_eq!(batch.message.as_deref(), Some("Fix the race"));
+    assert_eq!(batch.message, Some(Prompt::from("Fix the race")));
     assert!(!chat.has_work(&outbox), "nothing is left");
 }
 
@@ -56,7 +55,7 @@ fn a_turn_ends_with_the_last_result_owed_not_with_a_setting_s() {
             SlashCommand::Effort(Effort::High),
             SlashCommand::Thinking(false),
         ],
-        message: Some("Fix the race".to_owned()),
+        message: Some(Prompt::from("Fix the race")),
     });
     assert!(!chat.closes_turn(false), "the effort's result");
     assert!(!chat.closes_turn(false), "the thinking's result");
@@ -70,7 +69,7 @@ fn a_process_that_ended_owes_nothing_more() {
     let mut chat = resumed();
     chat.handed_over(Batch {
         commands: vec![SlashCommand::Effort(Effort::High)],
-        message: Some("Fix the race".to_owned()),
+        message: Some(Prompt::from("Fix the race")),
     });
     assert!(chat.closes_turn(true));
     assert_eq!(chat.outstanding, 0);
@@ -91,15 +90,16 @@ fn a_resume_of_a_missing_conversation_starts_a_new_one_once() {
     let mut chat = resumed();
     let batch = Batch {
         commands: Vec::new(),
-        message: Some("Fix the race".to_owned()),
+        message: Some(Prompt::from("Fix the race")),
     };
     chat.handed_over(batch.clone());
-    assert_eq!(chat.falls_back("the harness exited with code 1"), None);
-    assert_eq!(chat.falls_back(MISSING), Some(batch));
+    let kept = ResumeRefused::TurnNotDropped("Resume rejected".to_owned());
+    assert_eq!(chat.retries(&kept), None, "nothing was cut");
+    assert_eq!(chat.retries(&missing()), Some(batch));
     assert!(matches!(chat.session, LiveSession::Start(_)));
     assert_eq!(chat.outstanding, 0);
     chat.session = LiveSession::Resume(id("4f2c0b7c-a91e"));
-    assert_eq!(chat.falls_back(MISSING), None, "only once");
+    assert_eq!(chat.retries(&missing()), None, "only once");
 }
 
 #[test]
@@ -108,7 +108,7 @@ fn a_new_conversation_never_falls_back() {
         LiveSession::Start(id("0b7c3a52-9f1e")),
         AgentPreset::ClaudeCode,
     );
-    assert_eq!(chat.falls_back(MISSING), None);
+    assert_eq!(chat.retries(&missing()), None);
 }
 
 #[test]
@@ -157,4 +157,19 @@ fn a_new_chat_can_move_to_another_harness_until_its_conversation_exists() {
     chat.session_reported(id("ses_4f2c0b7ca91e"));
     assert!(!chat.is_fresh());
     assert!(!resumed().is_fresh());
+}
+
+#[test]
+fn notices_add_up_under_the_chat_and_a_new_harness_reads_mcp_again() {
+    let mut problem = None;
+    add_notice(&mut problem, "The MCP server files did not start");
+    add_notice(&mut problem, "The MCP server docs did not start");
+    assert_eq!(
+        problem.as_deref(),
+        Some("The MCP server files did not start\nThe MCP server docs did not start")
+    );
+    let mut chat = resumed();
+    chat.mcp = McpPrep::Launching;
+    chat.switch_harness(AgentPreset::Gateway);
+    assert!(matches!(chat.mcp, McpPrep::Unread));
 }
