@@ -20,6 +20,7 @@ const MANIFEST_SIGNATURE_FILE: &str = "latest.json.sig";
 const MANIFEST_LIMIT: u64 = 1024 * 1024;
 const SIGNATURE_LIMIT: u64 = 4 * 1024;
 const DOWNLOAD_CHUNK: usize = 64 * 1024;
+const END_OF_BODY_READ: u64 = 1;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const READ_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -69,6 +70,37 @@ fn fetch(agent: &Agent, url: &str, limit: u64) -> Result<Vec<u8>, UpdateError> {
         .with_config()
         .limit(limit)
         .read_to_vec()?)
+}
+
+fn stream_download(
+    agent: &Agent,
+    url: &str,
+    size: u64,
+    mut sink: impl FnMut(&[u8]) -> Result<(), UpdateError>,
+) -> Result<(), UpdateError> {
+    let mut response = agent.get(url).call()?;
+    let mut reader = response
+        .body_mut()
+        .with_config()
+        .limit(size.saturating_add(END_OF_BODY_READ))
+        .reader();
+    let mut chunk = vec![0; DOWNLOAD_CHUNK];
+    let mut received: u64 = 0;
+    loop {
+        let read = reader.read(&mut chunk)?;
+        if read == 0 {
+            break;
+        }
+        sink(&chunk[..read])?;
+        received += read as u64;
+    }
+    if received != size {
+        return Err(UpdateError::Size {
+            expected: size,
+            received,
+        });
+    }
+    Ok(())
 }
 
 fn verified_manifest(agent: &Agent) -> Result<ReleaseManifest, UpdateError> {
@@ -125,31 +157,11 @@ impl AvailableUpdate {
         let key = ReleaseKey::embedded()?;
         let mut verifier = key.stream(&self.build.signature)?;
         let url = release_file_url(self.version, self.build.file.as_ref());
-        let mut response = agent().get(&url).call()?;
-        let mut reader = response
-            .body_mut()
-            .with_config()
-            .limit(self.build.size)
-            .reader();
         let mut file = File::create(&archive)?;
-        let mut chunk = vec![0; DOWNLOAD_CHUNK];
-        let mut received: u64 = 0;
-        loop {
-            let read = reader.read(&mut chunk)?;
-            if read == 0 {
-                break;
-            }
-            let bytes = &chunk[..read];
+        stream_download(&agent(), &url, self.build.size, |bytes| {
             verifier.update(bytes);
-            file.write_all(bytes)?;
-            received += read as u64;
-        }
-        if received != self.build.size {
-            return Err(UpdateError::Size {
-                expected: self.build.size,
-                received,
-            });
-        }
+            Ok(file.write_all(bytes)?)
+        })?;
         verifier.finalize()?;
         file.sync_all()?;
         let payload = self.installation.unpack(&archive)?;
@@ -217,6 +229,53 @@ mod tests {
             Err(UpdateError::NoBuild)
         ));
         Ok(())
+    }
+
+    fn serve_once(body: &'static [u8]) -> Result<String, std::io::Error> {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        let url = format!("http://{}/build", listener.local_addr()?);
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else {
+                return;
+            };
+            let mut request = [0; 1024];
+            stream.read(&mut request).unwrap_or_default();
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            stream.write_all(head.as_bytes()).unwrap_or_default();
+            stream.write_all(body).unwrap_or_default();
+        });
+        Ok(url)
+    }
+
+    fn download(body: &'static [u8], size: u64) -> Result<Vec<u8>, UpdateError> {
+        let url = serve_once(body)?;
+        let mut received = Vec::new();
+        stream_download(&agent(), &url, size, |bytes| {
+            received.extend_from_slice(bytes);
+            Ok(())
+        })?;
+        Ok(received)
+    }
+
+    #[test]
+    fn a_build_of_exactly_its_manifest_size_downloads_whole() -> TestResult {
+        let body = b"build bytes";
+        assert_eq!(download(body, body.len() as u64)?, body);
+        Ok(())
+    }
+
+    #[test]
+    fn a_build_larger_or_smaller_than_its_manifest_size_is_refused() {
+        let body = b"build bytes";
+        let size = body.len() as u64;
+        assert!(download(body, size - 2).is_err());
+        assert!(matches!(
+            download(body, size + 2),
+            Err(UpdateError::Size { expected, received }) if expected == size + 2 && received == size
+        ));
     }
 
     #[test]
