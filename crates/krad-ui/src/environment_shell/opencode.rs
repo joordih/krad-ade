@@ -18,9 +18,19 @@ pub(super) enum OpencodeLink {
     Failed(String),
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Refresh {
+    #[default]
+    Idle,
+    Running,
+    Queued,
+}
+
 #[derive(Default)]
 pub(super) struct Opencode {
     pub(super) link: OpencodeLink,
+    refresh: Refresh,
+    catalog_watch: Option<Task<()>>,
     unwatched: Vec<(EnvironmentName, TerminalId, ResumeId)>,
     pub(super) waiting_histories: Vec<(EnvironmentName, TerminalId, ResumeId)>,
     watches: HashMap<(EnvironmentName, TerminalId), Task<()>>,
@@ -45,7 +55,10 @@ impl EnvironmentShell {
             let started = started.await;
             this.update(cx, |shell, cx| {
                 shell.opencode.link = match started {
-                    Ok((server, models)) => OpencodeLink::Ready { server, models },
+                    Ok((server, models)) => {
+                        shell.watch_opencode_catalog(&server, cx);
+                        OpencodeLink::Ready { server, models }
+                    }
                     Err(error) => OpencodeLink::Failed(error.to_string()),
                 };
                 shell.load_waiting_histories(cx);
@@ -55,6 +68,61 @@ impl EnvironmentShell {
             .unwrap_or_default();
         })
         .detach();
+    }
+
+    fn watch_opencode_catalog(&mut self, server: &OpencodeServer, cx: &mut Context<Self>) {
+        let (sender, receiver) = futures::channel::mpsc::unbounded();
+        server.watch_catalog(move || {
+            sender.unbounded_send(()).unwrap_or_default();
+        });
+        let task = Self::listen(receiver, cx, |shell, (), cx| {
+            shell.refresh_opencode_models(cx);
+        });
+        self.opencode.catalog_watch = Some(task);
+    }
+
+    pub(super) fn refresh_opencode_models(&mut self, cx: &mut Context<Self>) {
+        let Some(server) = self.opencode_server().cloned() else {
+            return;
+        };
+        if self.opencode.refresh != Refresh::Idle {
+            self.opencode.refresh = Refresh::Queued;
+            return;
+        }
+        self.opencode.refresh = Refresh::Running;
+        let listed = cx.background_spawn(async move { opencode_models(&server, None) });
+        cx.spawn(async move |this, cx| {
+            let listed = listed.await;
+            this.update(cx, |shell, cx| shell.opencode_models_listed(listed, cx))
+                .unwrap_or_default();
+        })
+        .detach();
+    }
+
+    fn opencode_models_listed(
+        &mut self,
+        listed: Result<Vec<ModelOffer>, OpencodeError>,
+        cx: &mut Context<Self>,
+    ) {
+        let queued = self.opencode.refresh == Refresh::Queued;
+        self.opencode.refresh = Refresh::Idle;
+        match listed {
+            Ok(fresh) => self.keep_opencode_models(fresh),
+            Err(error) => self.toast(&error.to_string(), cx),
+        }
+        if queued {
+            self.refresh_opencode_models(cx);
+        }
+        cx.notify();
+    }
+
+    fn keep_opencode_models(&mut self, fresh: Vec<ModelOffer>) {
+        if fresh.is_empty() {
+            return;
+        }
+        if let OpencodeLink::Ready { models, .. } = &mut self.opencode.link {
+            *models = fresh;
+        }
     }
 
     pub(super) const fn opencode_server(&self) -> Option<&Arc<OpencodeServer>> {

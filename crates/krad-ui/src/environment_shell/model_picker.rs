@@ -172,6 +172,12 @@ impl EnvironmentShell {
         groups: Vec<HarnessModels>,
         cx: &mut Context<Self>,
     ) {
+        if groups
+            .iter()
+            .any(|group| group.harness == AgentPreset::Opencode)
+        {
+            self.refresh_opencode_models(cx);
+        }
         let Some(choosing) = Choosing::new(groups) else {
             return;
         };

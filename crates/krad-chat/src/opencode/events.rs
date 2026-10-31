@@ -183,6 +183,15 @@ pub(crate) enum ServerEvent {
     FormCreated(FormCreated),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(tag = "type")]
+pub(crate) enum CatalogChange {
+    #[serde(rename = "model.updated")]
+    Models,
+    #[serde(rename = "provider.updated")]
+    Providers,
+}
+
 impl ServerEvent {
     pub(crate) fn session(&self) -> &str {
         match self {
