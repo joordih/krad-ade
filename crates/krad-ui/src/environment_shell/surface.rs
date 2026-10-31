@@ -1,4 +1,5 @@
 mod answer;
+mod bus;
 mod checklist;
 mod composer;
 mod dot_field;
@@ -45,6 +46,7 @@ use subagents::Subagents;
 use transcript::{TranscriptView, TRANSCRIPT_HARNESS};
 
 pub(super) use answer::tool_question;
+pub(super) use bus::ChatPresence;
 pub(super) use edit_diff::edit_diff;
 pub(super) use facts::AccountUsage;
 pub(super) use structured::restored_chats;

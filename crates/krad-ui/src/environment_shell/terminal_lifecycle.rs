@@ -2,7 +2,7 @@ use gpui_kit::Context;
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::SessionSpec;
 use krad_domain::{
-    AgentPreset, AgentState, EnvironmentName, GroupId, NodeKind, TerminalId, TerminalNode,
+    AgentPreset, AgentState, EnvironmentName, GroupId, NodeKind, Prompt, TerminalId, TerminalNode,
     TextScale, DEFAULT_CHAT_HARNESS,
 };
 use krad_session::wsl_shell;
@@ -165,6 +165,30 @@ impl EnvironmentShell {
         Some(id)
     }
 
+    pub(super) fn spawn_worker_chat(
+        &mut self,
+        env: &EnvironmentName,
+        group: Option<GroupId>,
+        preset: AgentPreset,
+        brief: String,
+        cx: &mut Context<Self>,
+    ) -> Option<TerminalId> {
+        let spec = NodeSpec {
+            kind: NodeKind::Chat,
+            harness: Some(preset),
+            label: preset.display_name(),
+            group: NodeGroup::OrSelected(group),
+        };
+        let (id, _) = self.add_node(env, &spec, None)?;
+        if let Some(live) = self.envs.get_mut(env) {
+            live.pending_chats
+                .insert(id, LiveSession::Start(new_session_id()));
+            live.waiting_prompts.insert(id, vec![Prompt::from(brief)]);
+        }
+        self.settle_new_node(cx);
+        Some(id)
+    }
+
     fn default_chat_harness(&self) -> AgentPreset {
         AgentPreset::chat_harnesses()
             .into_iter()
@@ -234,6 +258,7 @@ impl EnvironmentShell {
         }
         let chat = live.chats.remove(&id);
         live.pending_chats.remove(&id);
+        live.waiting_prompts.remove(&id);
         live.data.nodes.retain(|node| node.id != id);
         live.data.meta.remove(&id);
         live.mailbox.forget(id.as_u64());

@@ -179,7 +179,7 @@ Report an agent CLI sends to the app at a point of its work (a prompt submitted,
 _Avoid_: callback, event, webhook
 
 **Worker**:
-Agent started through the bus by another agent, briefed to report back when done, or by the Chat, which follows its screen.
+Agent started through the bus by another agent, briefed to report back when done, or by the Chat, which follows its screen. It opens as a terminal running its harness's own interface, except opencode's, which opens as a structured chat on the opencode server; the bus sends it messages, waits on it and reads its conversation as it does a terminal's.
 _Avoid_: sub-agent, child, job
 
 **Subagent**:

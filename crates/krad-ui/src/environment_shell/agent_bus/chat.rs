@@ -31,7 +31,7 @@ impl EnvironmentShell {
     ) {
         let response = match request {
             Request::List => Response::Agents(self.agent_infos(environment, None)),
-            Request::Send { to, body } => self.submit_from_chat(environment, to, &body),
+            Request::Send { to, body } => self.submit_from_chat(environment, to, &body, cx),
             Request::Wait { target, .. } => {
                 self.wait_for(environment, target, reply);
                 return;
@@ -59,9 +59,18 @@ impl EnvironmentShell {
         reply.send(response).unwrap_or_default();
     }
 
-    fn submit_from_chat(&mut self, environment: &str, to: u64, body: &str) -> Response {
+    fn submit_from_chat(
+        &mut self,
+        environment: &str,
+        to: u64,
+        body: &str,
+        cx: &mut Context<Self>,
+    ) -> Response {
         let env = EnvironmentName::new(environment.to_owned());
         let id = TerminalId(to);
+        if self.queue_chat_prompt(&env, id, body, cx) {
+            return Response::Submitted { terminal: to };
+        }
         let running = self
             .envs
             .get(&env)

@@ -64,7 +64,8 @@ use gpui_kit::{
 };
 use krad_domain::{
     AgentPreset, EnvironmentData, EnvironmentName, EnvironmentView, GroupId, PersistedLayout,
-    Settings, TerminalId, TerminalMeta, Visibility, DEFAULT_ENVIRONMENT, SCROLLBACK_PERSIST_LINES,
+    Prompt, Settings, TerminalId, TerminalMeta, Visibility, DEFAULT_ENVIRONMENT,
+    SCROLLBACK_PERSIST_LINES,
 };
 use krad_store::LayoutWriter;
 use std::collections::{HashMap, HashSet};
@@ -96,6 +97,7 @@ struct LiveEnv {
     working_since: HashMap<TerminalId, Instant>,
     statuses: HashMap<TerminalId, AgentStatus>,
     pending_chats: HashMap<TerminalId, krad_chat::LiveSession>,
+    waiting_prompts: HashMap<TerminalId, Vec<Prompt>>,
     noticed_chats: Vec<TerminalId>,
     images: HashMap<TerminalId, terminal_images::TerminalImages>,
     editors: HashMap<TerminalId, file_tab::FileEditor>,
@@ -127,6 +129,7 @@ impl LiveEnv {
             working_since: HashMap::new(),
             statuses: HashMap::new(),
             pending_chats,
+            waiting_prompts: HashMap::new(),
             noticed_chats: Vec::new(),
             images: HashMap::new(),
             editors: HashMap::new(),
