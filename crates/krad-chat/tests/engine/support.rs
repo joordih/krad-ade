@@ -128,10 +128,11 @@ pub(crate) fn serve_gateway(
             let Ok(asked) = read_request(&stream) else {
                 continue;
             };
-            answer(stream, "text/event-stream", &reply(&asked)).unwrap_or_default();
+            let streamed = reply(&asked);
             kept.lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .push(asked);
+            answer(stream, "text/event-stream", &streamed).unwrap_or_default();
         }
     });
     Ok((url, seen))
