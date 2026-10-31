@@ -9,6 +9,12 @@ pub enum TerminalChat {
     Reopened,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WorkerSurface {
+    Terminal,
+    Chat,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum ChatPreference {
     First,
@@ -102,6 +108,14 @@ impl AgentPreset {
         match self {
             Self::Opencode => true,
             Self::Shell | Self::ClaudeCode | Self::Codex | Self::Gateway => false,
+        }
+    }
+
+    #[must_use]
+    pub const fn worker_surface(self) -> WorkerSurface {
+        match self {
+            Self::Opencode => WorkerSurface::Chat,
+            Self::Shell | Self::ClaudeCode | Self::Codex | Self::Gateway => WorkerSurface::Terminal,
         }
     }
 }
@@ -199,6 +213,20 @@ mod tests {
                 | AgentPreset::Gateway => false,
             };
             assert_eq!(preset.attaches_to_server(), attaches, "{preset:?}");
+        }
+    }
+
+    #[test]
+    fn only_opencode_workers_open_as_chats() {
+        for preset in AgentPreset::all() {
+            let surface = match preset {
+                AgentPreset::Opencode => WorkerSurface::Chat,
+                AgentPreset::Shell
+                | AgentPreset::ClaudeCode
+                | AgentPreset::Codex
+                | AgentPreset::Gateway => WorkerSurface::Terminal,
+            };
+            assert_eq!(preset.worker_surface(), surface, "{preset:?}");
         }
     }
 }

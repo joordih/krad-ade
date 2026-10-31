@@ -3,8 +3,8 @@ use gpui_kit::{AppContext as _, Context};
 use krad_agents::{AgentStatus, Response, TerminalHandle};
 use krad_domain::{
     hook_launch_args, launch_with_prompt, quote_for_shell, worker_brief, AgentPreset, AgentState,
-    EnvironmentName, ModelDelivery, ModelId, ResumeId, SessionId, ShellQuoting, TerminalGroup,
-    TerminalId, WorktreeOrigin,
+    EnvironmentName, GroupId, ModelDelivery, ModelId, ResumeId, SessionId, ShellQuoting,
+    TerminalGroup, TerminalId, WorkerSurface, WorktreeOrigin,
 };
 use krad_repo::{add_worktree, sanitize_worktree_name};
 use krad_session::SHELL_QUOTING;
@@ -227,18 +227,7 @@ impl EnvironmentShell {
             lead,
         } = order;
         let Some(name) = worktree else {
-            let started = self.spawn_terminal_in(
-                &env,
-                Some(group.id),
-                preset.display_name(),
-                Launch::Agent {
-                    preset,
-                    prompt: brief,
-                    model: None,
-                },
-                None,
-                cx,
-            );
+            let started = self.open_worker(&env, Some(group.id), preset, brief, cx);
             let response = self.worker_started(&env, lead, started);
             reply.send(response).unwrap_or_default();
             return;
@@ -269,18 +258,7 @@ impl EnvironmentShell {
                             .clone()
                             .map(|branch| WorktreeOrigin { repo_root, branch });
                         let group = shell.add_group_to(&env, worktree.path, origin, cx);
-                        let started = shell.spawn_terminal_in(
-                            &env,
-                            group,
-                            preset.display_name(),
-                            Launch::Agent {
-                                preset,
-                                prompt: brief,
-                                model: None,
-                            },
-                            None,
-                            cx,
-                        );
+                        let started = shell.open_worker(&env, group, preset, brief, cx);
                         shell.worker_started(&env, lead, started)
                     }
                     Err(error) => Response::Error(error.to_string()),
@@ -290,6 +268,31 @@ impl EnvironmentShell {
             .unwrap_or_default();
         })
         .detach();
+    }
+
+    fn open_worker(
+        &mut self,
+        env: &EnvironmentName,
+        group: Option<GroupId>,
+        preset: AgentPreset,
+        brief: String,
+        cx: &mut Context<Self>,
+    ) -> Option<TerminalId> {
+        match preset.worker_surface() {
+            WorkerSurface::Chat => self.spawn_worker_chat(env, group, preset, brief, cx),
+            WorkerSurface::Terminal => self.spawn_terminal_in(
+                env,
+                group,
+                preset.display_name(),
+                Launch::Agent {
+                    preset,
+                    prompt: brief,
+                    model: None,
+                },
+                None,
+                cx,
+            ),
+        }
     }
 
     fn worker_started(

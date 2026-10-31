@@ -94,17 +94,29 @@ impl EnvironmentShell {
         for (id, session, harness) in pending {
             let (input, events) = Self::chat_input(id, window, cx);
             let history = session.history().cloned();
-            let chat = SurfaceChat::new(
+            let mut chat = SurfaceChat::new(
                 input,
                 events,
                 Backend::Structured(Box::new(StructuredChat::new(session, harness))),
             );
+            let waiting = self
+                .envs
+                .get_mut(&env)
+                .and_then(|live| live.waiting_prompts.remove(&id))
+                .unwrap_or_default();
+            let prompted = !waiting.is_empty();
+            for prompt in waiting {
+                chat.outbox.push(prompt);
+            }
             if let Some(live) = self.envs.get_mut(&env) {
                 live.chats.insert(id, chat);
             }
             self.watch_subagents(&env, id, cx);
             if let Some(resume) = history {
                 self.load_history(env.clone(), id, harness, resume, cx);
+            }
+            if prompted {
+                self.flush_structured(&env, id, cx);
             }
         }
     }
