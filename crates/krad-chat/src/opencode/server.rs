@@ -17,7 +17,7 @@ use thiserror::Error;
 use ureq::typestate::{WithBody, WithoutBody};
 use ureq::{Agent, RequestBuilder};
 
-use super::events::ServerEvent;
+use super::events::{CatalogChange, ServerEvent};
 use super::service;
 use crate::live::keep_stderr_tail;
 use crate::process::{harness_command, Runner};
@@ -80,10 +80,13 @@ pub(crate) struct Delivery {
 
 pub(crate) type Sink = Box<dyn FnMut(Delivery) + Send>;
 
+type CatalogSink = Box<dyn FnMut() + Send>;
+
 #[derive(Default)]
 struct Routes {
     sinks: HashMap<String, (u64, Sink)>,
     parents: HashMap<String, String>,
+    catalog: Option<CatalogSink>,
     next: u64,
 }
 
@@ -108,6 +111,21 @@ impl Routes {
         let nested = root != session;
         if let Some((_, sink)) = self.sinks.get_mut(&root) {
             sink(Delivery { event, nested });
+        }
+    }
+
+    fn catalog_changed(&mut self) {
+        if let Some(sink) = self.catalog.as_mut() {
+            sink();
+        }
+    }
+
+    fn route(&mut self, data: &str) {
+        if let Ok(event) = serde_json::from_str::<ServerEvent>(data) {
+            return self.deliver(event);
+        }
+        if serde_json::from_str::<CatalogChange>(data).is_ok() {
+            self.catalog_changed();
         }
     }
 }
@@ -286,6 +304,13 @@ impl OpencodeServer {
         token
     }
 
+    pub fn watch_catalog(&self, sink: impl FnMut() + Send + 'static) {
+        self.routes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .catalog = Some(Box::new(sink));
+    }
+
     pub(crate) fn unsubscribe(&self, session: &str, token: u64) {
         let mut routes = self.routes.lock().unwrap_or_else(PoisonError::into_inner);
         if routes
@@ -426,13 +451,10 @@ fn pump(reader: impl BufRead, routes: &Mutex<Routes>) {
         let Some(data) = line.strip_prefix(DATA_PREFIX) else {
             continue;
         };
-        let Ok(event) = serde_json::from_str::<ServerEvent>(data.trim()) else {
-            continue;
-        };
         routes
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .deliver(event);
+            .route(data.trim());
     }
 }
 
@@ -471,6 +493,28 @@ mod tests {
         pump(feed.as_bytes(), &routes);
         let nested: Vec<bool> = receiver.try_iter().collect();
         assert_eq!(nested, [true, true, false]);
+    }
+
+    #[test]
+    fn a_change_of_models_or_providers_tells_the_catalog_watcher() {
+        let routes = Mutex::new(Routes::default());
+        let (sender, receiver) = channel();
+        routes
+            .lock()
+            .unwrap_or_else(|_| unreachable!("the fixture is valid"))
+            .catalog = Some(Box::new(move || {
+            sender
+                .send(())
+                .unwrap_or_else(|_| unreachable!("the fixture is valid"));
+        }));
+        let feed = concat!(
+            "data: {\"type\":\"provider.updated\",\"location\":{\"directory\":\"/home\"},\"data\":{}}\n\n",
+            "data: {\"type\":\"model.updated\",\"data\":{}}\n\n",
+            "data: {\"type\":\"command.updated\",\"data\":{}}\n\n",
+            "data: {\"type\":\"session.execution.succeeded\",\"data\":{\"sessionID\":\"ses_root\"}}\n\n",
+        );
+        pump(feed.as_bytes(), &routes);
+        assert_eq!(receiver.try_iter().count(), 2);
     }
 
     #[test]
