@@ -152,6 +152,20 @@ impl EnvironmentShell {
         }
     }
 
+    pub(super) fn follow_activity_drag(&mut self, y: f32, cx: &mut Context<Self>) {
+        let DragState::ResizeActivity(drag) = self.drag else {
+            return;
+        };
+        self.activity_log.set_height(drag.height_at(y));
+        cx.notify();
+    }
+
+    pub(super) fn release_activity_drag(&mut self, cx: &mut Context<Self>) {
+        if matches!(self.drag, DragState::ResizeActivity(_)) {
+            self.end_drag(cx);
+        }
+    }
+
     pub(super) fn toggle_activity(&mut self, cx: &mut Context<Self>) {
         self.activity = self.activity.toggle();
         self.activity_opened = ActivityOpened::Deliberately;

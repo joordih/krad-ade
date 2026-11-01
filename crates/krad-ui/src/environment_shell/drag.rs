@@ -88,9 +88,9 @@ impl EnvironmentShell {
             DragState::None
             | DragState::SelectCode
             | DragState::SidePanel(_)
+            | DragState::ResizeActivity(_)
             | DragState::ResizePane { .. } => return,
             DragState::ResizePanel(drag) => self.panel_widths.set(drag.panel, drag.width_at(x)),
-            DragState::ResizeActivity(drag) => self.activity_log.set_height(drag.height_at(y)),
             DragState::Select { id, geometry } => {
                 if let Some(session) = live.sessions.get_mut(id) {
                     session.engine.extend_selection(geometry.cell_at(x, y));

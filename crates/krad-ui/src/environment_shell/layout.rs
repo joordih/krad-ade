@@ -2,7 +2,8 @@ use gpui_fps::fps_monitor;
 use gpui_kit::base::TextSelectionLayer;
 use gpui_kit::{
     canvas, div, px, rgb, AnyElement, Context, DispatchPhase, InteractiveElement, IntoElement,
-    MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Render, Styled, Window,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Render, Styled,
+    Window,
 };
 use krad_domain::EnvironmentView;
 use std::time::Instant;
@@ -156,18 +157,31 @@ impl EnvironmentShell {
         canvas(
             |_, _, _| (),
             move |_, (), window, _| {
-                let shell = shell.clone();
+                let moved = shell.clone();
                 window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
-                    if phase != DispatchPhase::Capture || event.pressed_button.is_some() {
+                    if phase != DispatchPhase::Capture {
                         return;
                     }
                     let (x, y) = (event.position.x.as_f32(), event.position.y.as_f32());
                     let window_h = window.viewport_size().height.as_f32();
-                    shell
-                        .update(cx, |shell, cx| {
-                            shell.follow_pointer_for_peek(x, cx);
-                            shell.follow_pointer_for_activity(y, window_h, cx);
+                    moved
+                        .update(cx, |shell, cx| match event.pressed_button {
+                            Some(MouseButton::Left) => shell.follow_activity_drag(y, cx),
+                            Some(_) => {}
+                            None => {
+                                shell.follow_pointer_for_peek(x, cx);
+                                shell.follow_pointer_for_activity(y, window_h, cx);
+                            }
                         })
+                        .unwrap_or_default();
+                });
+                let released = shell.clone();
+                window.on_mouse_event(move |event: &MouseUpEvent, phase, _, cx| {
+                    if phase != DispatchPhase::Capture || event.button != MouseButton::Left {
+                        return;
+                    }
+                    released
+                        .update(cx, EnvironmentShell::release_activity_drag)
                         .unwrap_or_default();
                 });
             },
