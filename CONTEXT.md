@@ -227,3 +227,11 @@ _Avoid_: UI shell, frame, decoration
 **Top bar**:
 Row above the work area with the tabs of a single-pane session or the open notes, and the side panel toggle.
 _Avoid_: header, toolbar, title bar
+
+**Arcade**:
+Dot-matrix banner above a new Chat's empty view, gone once the conversation starts. Each new Chat draws one Arcade game at random, never the one shown last; the banner's next-game control cycles to another. One Arcade serves the whole app, so every empty Chat on screen shows the same game.
+_Avoid_: minigame, easter egg, game panel
+
+**Arcade game**:
+One of the Arcade's games: byte run, bug hunt, line break or token trail. It plays itself until the user takes control, a run ends at the first loss, and each game keeps its own best score across restarts.
+_Avoid_: minigame, level, mode

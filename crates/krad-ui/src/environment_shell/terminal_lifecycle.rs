@@ -161,6 +161,7 @@ impl EnvironmentShell {
         if let Some(live) = self.envs.get_mut(env) {
             live.pending_chats.insert(id, session);
         }
+        self.draw_arcade_game();
         self.settle_new_node(cx);
         Some(id)
     }

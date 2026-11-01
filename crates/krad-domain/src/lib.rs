@@ -1,4 +1,5 @@
 mod agent;
+mod arcade;
 mod chat;
 mod checklist;
 mod chrome;
@@ -35,6 +36,7 @@ mod view;
 mod wsl;
 
 pub use agent::*;
+pub use arcade::*;
 pub use chat::*;
 pub use checklist::*;
 pub use chrome::*;
