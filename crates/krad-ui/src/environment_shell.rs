@@ -322,6 +322,7 @@ impl EnvironmentShell {
         shell.start_agent_bus(cx);
         shell.check_gateway(cx);
         shell.start_app_updates(cx);
+        Self::load_arcade_scores(cx);
         match seed {
             Some(snapshot) => shell.restore_snapshot(snapshot),
             None => shell.restore_env(EnvironmentData::empty(EnvironmentName::new(
