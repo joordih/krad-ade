@@ -68,6 +68,7 @@ pub(super) trait Board {
     fn points(&self) -> u32;
     fn restart(&mut self, play: Play);
     fn steer(&mut self, steer: Steer);
+    fn release(&mut self, _heading: Heading) {}
     fn step(&mut self, elapsed: Duration);
     fn dots(&self, out: &mut Vec<Dot>);
 }
@@ -92,8 +93,8 @@ impl Cell {
         }
     }
 
-    pub(super) const fn on_board(self) -> bool {
-        self.x >= 0 && self.y >= 0 && self.x < CELLS_X && self.y < CELLS_Y
+    pub(super) const fn wrapped(self) -> Self {
+        Self::new(self.x.rem_euclid(CELLS_X), self.y.rem_euclid(CELLS_Y))
     }
 
     pub(super) const fn index(self) -> usize {

@@ -1,8 +1,8 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     canvas, div, fill, point, px, rgb, size, AnyElement, App, Bounds, Context, FontWeight,
-    InteractiveElement, IntoElement, KeyDownEvent, MouseMoveEvent, ParentElement, Pixels, Rgba,
-    StatefulInteractiveElement, Styled, Window,
+    InteractiveElement, IntoElement, KeyDownEvent, KeyUpEvent, MouseMoveEvent, ParentElement,
+    Pixels, Rgba, StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::ArcadeGame;
 use std::rc::Rc;
@@ -251,7 +251,9 @@ impl EnvironmentShell {
                         this.arcade.cabinet.leave();
                         window.focus(&this.focus, cx);
                     } else if let Some(steer) = steer_of(key) {
-                        this.arcade.cabinet.take(steer);
+                        if !event.is_held {
+                            this.arcade.cabinet.take(steer);
+                        }
                     } else {
                         return;
                     }
@@ -259,6 +261,13 @@ impl EnvironmentShell {
                     cx.notify();
                 }),
             )
+            .on_key_up(cx.listener(|this: &mut Self, event: &KeyUpEvent, _, cx| {
+                let Some(Steer::Turn(heading)) = steer_of(event.keystroke.key.as_str()) else {
+                    return;
+                };
+                this.arcade.cabinet.release(heading);
+                cx.stop_propagation();
+            }))
             .child(self.arcade_header(cx))
             .child(matrix)
             .into_any_element()
