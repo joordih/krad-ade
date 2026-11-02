@@ -89,7 +89,7 @@ pub(crate) fn mark_executables(link: &HostLink, dir: &Path) -> Result<(), Extens
     crate::package::output::checked(EXECUTABLES_PROGRAM, &output)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::process::Command;
@@ -105,7 +105,6 @@ mod tests {
         Ok(dir)
     }
 
-    #[cfg(unix)]
     #[test]
     fn executables_are_found_by_their_magic_bytes() -> TestResult {
         use std::os::unix::fs::PermissionsExt;
@@ -129,7 +128,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_wrong_checksum_is_refused_and_leaves_nothing_behind() -> TestResult {
         let dir = scratch("digest")?;
