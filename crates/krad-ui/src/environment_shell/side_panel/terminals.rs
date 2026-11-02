@@ -1,10 +1,8 @@
 use gpui_kit::{Context, Window};
 use krad_domain::{AgentPreset, TerminalId};
-use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
 use super::super::sessions::Launch;
-use super::super::terminal_card::home_dir;
 use super::super::EnvironmentShell;
 
 const SHELL_LABEL: &str = "Terminal";
@@ -12,6 +10,10 @@ const SHELL_LABEL: &str = "Terminal";
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn start_system_terminals(&mut self) {
         let env = self.active.clone();
+        if !self.host_ready(&env) {
+            return;
+        }
+        let home = self.env_home(&env);
         let missing: Vec<TerminalId> = self.envs.get(&env).map_or_default(|live| {
             live.data
                 .side_panel
@@ -26,7 +28,7 @@ impl EnvironmentShell {
                 &env,
                 id,
                 Launch::Preset(AgentPreset::Shell),
-                home_dir().map(PathBuf::from),
+                home.clone(),
                 &[],
             );
         }

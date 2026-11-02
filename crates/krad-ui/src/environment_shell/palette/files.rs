@@ -18,8 +18,8 @@ impl EnvironmentShell {
         Some(group.root.clone())
     }
 
-    pub(super) fn index_palette_files(&self, cx: &mut Context<Self>) {
-        Self::refresh_file_index(self.palette_root(), cx);
+    pub(super) fn index_palette_files(&mut self, cx: &mut Context<Self>) {
+        self.refresh_file_index(self.palette_root(), cx);
     }
 
     pub(super) fn find_palette_files(&mut self, query: &str) {

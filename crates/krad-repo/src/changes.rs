@@ -6,6 +6,7 @@ use crate::files::read_text;
 use crate::git::run_git;
 use crate::status::{ChangeKind, FileChange};
 use crate::RepoError;
+use krad_host::HostLink;
 
 const HEAD: &str = "HEAD";
 const PATHSPEC_SEPARATOR: &str = "--";
@@ -46,8 +47,8 @@ impl std::ops::Add for LineCount {
 ///
 /// Returns [`RepoError::Git`] when `git diff` fails, as in a repository with
 /// no commit yet.
-pub fn line_counts(repo: &Path) -> Result<HashMap<PathBuf, LineCount>, RepoError> {
-    run_git(repo, &NUMSTAT_ARGS).map(|stdout| parse_numstat(&stdout))
+pub fn line_counts(host: &HostLink, repo: &Path) -> Result<HashMap<PathBuf, LineCount>, RepoError> {
+    run_git(host, repo, &NUMSTAT_ARGS).map(|stdout| parse_numstat(&stdout))
 }
 
 fn parse_numstat(output: &[u8]) -> HashMap<PathBuf, LineCount> {
@@ -86,9 +87,13 @@ fn parse_numstat(output: &[u8]) -> HashMap<PathBuf, LineCount> {
 ///
 /// Returns [`RepoError::Git`] when `git diff` fails and
 /// [`RepoError::Binary`] for an untracked binary file.
-pub fn working_diff(repo: &Path, change: &FileChange) -> Result<String, RepoError> {
+pub fn working_diff(
+    host: &HostLink,
+    repo: &Path,
+    change: &FileChange,
+) -> Result<String, RepoError> {
     if change.kind == ChangeKind::Untracked {
-        let file = read_text(&repo.join(&change.path), MAX_UNTRACKED_BYTES)?;
+        let file = read_text(host, &repo.join(&change.path), MAX_UNTRACKED_BYTES)?;
         return Ok(added_file_diff(&file.text));
     }
     let mut args: Vec<&OsStr> = DIFF_ARGS.iter().map(OsStr::new).collect();
@@ -97,7 +102,7 @@ pub fn working_diff(repo: &Path, change: &FileChange) -> Result<String, RepoErro
         OsStr::new(PATHSPEC_SEPARATOR),
         change.path.as_os_str(),
     ]);
-    let stdout = run_git(repo, &args)?;
+    let stdout = run_git(host, repo, &args)?;
     let diff = String::from_utf8_lossy(&stdout);
     Ok(diff
         .find(HUNK_PREFIX)

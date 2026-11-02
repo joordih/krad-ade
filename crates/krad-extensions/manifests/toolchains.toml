@@ -1,0 +1,766 @@
+[[locator]]
+locate = "command"
+id = "mise"
+kind = "mise"
+program = "mise"
+args = ["ls", "--installed", "--json", "{{tool}}"]
+output = { format = "json", items = "", path = "/install_path", version = "/version" }
+path = "{{match}}/{{binary}}"
+name = "mise {{version}}"
+
+[[locator]]
+locate = "glob"
+id = "asdf"
+kind = "asdf"
+base = "home"
+patterns = [".asdf/installs/{{tool}}/*"]
+path = "{{match}}/{{binary}}"
+name = "asdf {{match_name}}"
+version = { from = "name" }
+
+[[toolchains]]
+id = "python"
+name = "Python"
+languages = ["python"]
+markers = [
+  "pyproject.toml",
+  "setup.py",
+  "setup.cfg",
+  "requirements.txt",
+  "Pipfile",
+  "pixi.toml",
+  "pyrightconfig.json",
+]
+priority = [
+  "uv-workspace",
+  "uv",
+  "poetry",
+  "pipenv",
+  "virtualenvwrapper",
+  "venv",
+  "virtualenv",
+  "hatch",
+  "pyenv-virtualenv",
+  "pixi",
+  "conda",
+  "pyenv",
+  "mise",
+  "asdf",
+  "global-paths",
+  "homebrew",
+  "linux-global",
+  "mac-python-org",
+  "mac-command-line-tools",
+  "mac-xcode",
+  "windows-store",
+  "windows-registry",
+  "winpython",
+  "system",
+]
+kinds = [
+  { id = "uv-workspace", label = "uv workspace" },
+  { id = "uv", label = "uv" },
+  { id = "poetry", label = "Poetry" },
+  { id = "pipenv", label = "Pipenv" },
+  { id = "virtualenvwrapper", label = "virtualenvwrapper" },
+  { id = "venv", label = "Virtual environment" },
+  { id = "virtualenv", label = "virtualenv" },
+  { id = "hatch", label = "Hatch" },
+  { id = "pyenv-virtualenv", label = "pyenv virtualenv" },
+  { id = "pixi", label = "Pixi" },
+  { id = "conda", label = "Conda" },
+  { id = "pyenv", label = "pyenv" },
+  { id = "mise", label = "mise" },
+  { id = "asdf", label = "asdf" },
+  { id = "global-paths", label = "System" },
+  { id = "homebrew", label = "Homebrew" },
+  { id = "linux-global", label = "System" },
+  { id = "mac-python-org", label = "python.org" },
+  { id = "mac-command-line-tools", label = "Command Line Tools" },
+  { id = "mac-xcode", label = "Xcode" },
+  { id = "windows-store", label = "Microsoft Store" },
+  { id = "windows-registry", label = "Installed" },
+  { id = "winpython", label = "WinPython" },
+  { id = "system", label = "System" },
+  { id = "entered", label = "Entered path" },
+]
+
+[[toolchains.locators]]
+locate = "pet"
+id = "pet"
+
+[[toolchains.locators]]
+locate = "glob"
+id = "project-venv"
+kind = "venv"
+base = "project_folder"
+patterns = [".venv", "venv", ".env", "env"]
+require = ["pyvenv.cfg"]
+path = "{{match}}/bin/python"
+prefix = "{{match}}"
+version = { from = "command", args = ["--version"], after = "Python" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "project-venv-windows"
+kind = "venv"
+base = "project_folder"
+patterns = [".venv", "venv", ".env", "env"]
+require = ["pyvenv.cfg"]
+path = "{{match}}/Scripts/python.exe"
+prefix = "{{match}}"
+version = { from = "command", args = ["--version"], after = "Python" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "group-venv"
+kind = "venv"
+base = "group_root"
+patterns = [".venv", "venv"]
+require = ["pyvenv.cfg"]
+path = "{{match}}/bin/python"
+prefix = "{{match}}"
+version = { from = "command", args = ["--version"], after = "Python" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "group-venv-windows"
+kind = "venv"
+base = "group_root"
+patterns = [".venv", "venv"]
+require = ["pyvenv.cfg"]
+path = "{{match}}/Scripts/python.exe"
+prefix = "{{match}}"
+version = { from = "command", args = ["--version"], after = "Python" }
+
+[[toolchains.locators]]
+locate = "shared"
+id = "mise-python"
+uses = "mise"
+params = { tool = "python", binary = "bin/python" }
+
+[[toolchains.locators]]
+locate = "shared"
+id = "asdf-python"
+uses = "asdf"
+params = { tool = "python", binary = "bin/python" }
+
+[[toolchains.locators]]
+locate = "command"
+id = "system-python"
+kind = "system"
+program = "which"
+args = ["-a", "python3", "python"]
+output = { format = "lines" }
+name = "{{match}}"
+version = { from = "command", args = ["--version"], after = "Python" }
+
+[[toolchains.hints]]
+file = ".venv"
+format = "environment_name"
+
+[[toolchains.hints]]
+file = "pyrightconfig.json"
+format = "pyright_venv"
+
+[[toolchains.hints]]
+file = "pyproject.toml"
+format = "pyright_venv"
+
+[[toolchains.hints]]
+file = ".python-version"
+format = "version_text"
+
+[[toolchains.hints]]
+file = ".tool-versions"
+format = "tool_versions"
+tool = "python"
+
+[[toolchains.activation]]
+kinds = [
+  "venv",
+  "virtualenv",
+  "uv",
+  "uv-workspace",
+  "poetry",
+  "pipenv",
+  "virtualenvwrapper",
+  "hatch",
+  "pyenv-virtualenv",
+]
+script = [". {{toolchain.prefix | quote}}/bin/activate"]
+
+[[toolchains.activation]]
+kinds = ["conda"]
+script = ["conda activate {{toolchain.prefix | quote}}"]
+
+[[toolchains.activation]]
+script = ["export PATH={{toolchain.dir | quote}}:\"$PATH\""]
+
+[[toolchains.entered]]
+id = "entered-python-environment"
+kind = "entered"
+base = "entered"
+patterns = ["bin/python3", "bin/python", "Scripts/python.exe"]
+prefix = "{{entered}}"
+name = "{{entered}}"
+version = { from = "command", args = ["--version"], after = "Python" }
+
+[[toolchains.entered]]
+id = "entered-python"
+kind = "entered"
+base = "entered"
+patterns = [""]
+name = "{{entered}}"
+version = { from = "command", args = ["--version"], after = "Python" }
+
+[[toolchains]]
+id = "typescript"
+name = "TypeScript"
+languages = ["typescript", "tsx", "javascript"]
+markers = ["package.json", "tsconfig.json", "jsconfig.json"]
+priority = ["workspace", "yarn-sdk", "bundled"]
+kinds = [
+  { id = "workspace", label = "Workspace" },
+  { id = "yarn-sdk", label = "Yarn SDK" },
+  { id = "bundled", label = "Server's own" },
+  { id = "entered", label = "Entered path" },
+]
+
+[[toolchains.locators]]
+locate = "glob"
+id = "project-typescript"
+kind = "workspace"
+base = "project_folder"
+patterns = ["node_modules/typescript/lib"]
+require = ["tsserver.js"]
+name = "TypeScript"
+version = { from = "json_file", file = "{{match_dir}}/package.json", pointer = "/version" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "group-typescript"
+kind = "workspace"
+base = "group_root"
+patterns = ["node_modules/typescript/lib"]
+require = ["tsserver.js"]
+name = "TypeScript"
+version = { from = "json_file", file = "{{match_dir}}/package.json", pointer = "/version" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "yarn-sdk-typescript"
+kind = "yarn-sdk"
+base = "group_root"
+patterns = [".yarn/sdks/typescript/lib"]
+require = ["tsserver.js"]
+name = "TypeScript (Yarn SDK)"
+version = { from = "json_file", file = "{{match_dir}}/package.json", pointer = "/version" }
+
+[[toolchains.locators]]
+locate = "bundled"
+id = "bundled-typescript"
+kind = "bundled"
+name = "TypeScript bundled with the server"
+
+[[toolchains.entered]]
+id = "entered-typescript"
+kind = "entered"
+base = "entered"
+patterns = ["node_modules/typescript/lib", "lib", ""]
+require = ["tsserver.js"]
+name = "TypeScript"
+version = { from = "json_file", file = "{{match_dir}}/package.json", pointer = "/version" }
+
+[[toolchains]]
+id = "node"
+name = "Node.js"
+languages = ["typescript", "tsx", "javascript"]
+markers = ["package.json"]
+priority = ["volta", "fnm", "nvm", "mise", "asdf", "system"]
+kinds = [
+  { id = "volta", label = "Volta" },
+  { id = "fnm", label = "fnm" },
+  { id = "nvm", label = "nvm" },
+  { id = "mise", label = "mise" },
+  { id = "asdf", label = "asdf" },
+  { id = "system", label = "System" },
+  { id = "entered", label = "Entered path" },
+]
+
+[[toolchains.locators]]
+locate = "glob"
+id = "nvm"
+kind = "nvm"
+base = "home"
+patterns = [".nvm/versions/node/*"]
+path = "{{match}}/bin/node"
+prefix = "{{match}}"
+name = "nvm {{match_name}}"
+version = { from = "name" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "fnm"
+kind = "fnm"
+base = "home"
+patterns = [
+  ".local/share/fnm/node-versions/*/installation",
+  ".fnm/node-versions/*/installation",
+]
+path = "{{match}}/bin/node"
+prefix = "{{match}}"
+version = { from = "command", args = ["--version"] }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "volta"
+kind = "volta"
+base = "home"
+patterns = [".volta/tools/image/node/*"]
+path = "{{match}}/bin/node"
+prefix = "{{match}}"
+name = "Volta {{match_name}}"
+version = { from = "name" }
+
+[[toolchains.locators]]
+locate = "shared"
+id = "mise-node"
+uses = "mise"
+params = { tool = "node", binary = "bin/node" }
+
+[[toolchains.locators]]
+locate = "shared"
+id = "asdf-node"
+uses = "asdf"
+params = { tool = "nodejs", binary = "bin/node" }
+
+[[toolchains.locators]]
+locate = "command"
+id = "system-node"
+kind = "system"
+program = "which"
+args = ["-a", "node"]
+output = { format = "lines" }
+name = "{{match}}"
+version = { from = "command", args = ["--version"] }
+
+[[toolchains.hints]]
+file = ".nvmrc"
+format = "version_text"
+
+[[toolchains.hints]]
+file = ".node-version"
+format = "version_text"
+
+[[toolchains.hints]]
+file = "package.json"
+format = "package_json_engine"
+engine = "node"
+
+[[toolchains.hints]]
+file = ".tool-versions"
+format = "tool_versions"
+tool = "nodejs"
+
+[[toolchains.activation]]
+script = ["export PATH={{toolchain.dir | quote}}:\"$PATH\""]
+
+[[toolchains.entered]]
+id = "entered-node-install"
+kind = "entered"
+base = "entered"
+patterns = ["bin/node"]
+prefix = "{{entered}}"
+name = "{{entered}}"
+version = { from = "command", args = ["--version"] }
+
+[[toolchains.entered]]
+id = "entered-node"
+kind = "entered"
+base = "entered"
+patterns = [""]
+name = "{{entered}}"
+version = { from = "command", args = ["--version"] }
+
+[[toolchains]]
+id = "go"
+name = "Go"
+languages = ["go"]
+markers = ["go.mod", "go.work"]
+priority = ["goenv", "gvm", "sdk", "mise", "asdf", "system"]
+kinds = [
+  { id = "goenv", label = "goenv" },
+  { id = "gvm", label = "gvm" },
+  { id = "sdk", label = "Go SDK" },
+  { id = "mise", label = "mise" },
+  { id = "asdf", label = "asdf" },
+  { id = "system", label = "System" },
+  { id = "entered", label = "Entered path" },
+]
+
+[[toolchains.locators]]
+locate = "command"
+id = "go-env"
+kind = "system"
+program = "go"
+args = ["env", "GOROOT"]
+output = { format = "lines" }
+path = "{{match}}/bin/go"
+prefix = "{{match}}"
+version = { from = "command", args = ["version"], after = "go version go" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "go-sdk"
+kind = "sdk"
+base = "home"
+patterns = ["sdk/go*"]
+path = "{{match}}/bin/go"
+prefix = "{{match}}"
+version = { from = "name" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "goenv"
+kind = "goenv"
+base = "home"
+patterns = [".goenv/versions/*"]
+path = "{{match}}/bin/go"
+prefix = "{{match}}"
+version = { from = "name" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "gvm"
+kind = "gvm"
+base = "home"
+patterns = [".gvm/gos/go*"]
+path = "{{match}}/bin/go"
+prefix = "{{match}}"
+version = { from = "name" }
+
+[[toolchains.locators]]
+locate = "shared"
+id = "mise-go"
+uses = "mise"
+params = { tool = "go", binary = "bin/go" }
+
+[[toolchains.locators]]
+locate = "shared"
+id = "asdf-go"
+uses = "asdf"
+params = { tool = "golang", binary = "go/bin/go" }
+
+[[toolchains.hints]]
+file = ".go-version"
+format = "version_text"
+
+[[toolchains.hints]]
+file = ".tool-versions"
+format = "tool_versions"
+tool = "golang"
+
+[[toolchains.activation]]
+script = ["export PATH={{toolchain.dir | quote}}:\"$PATH\""]
+
+[[toolchains.entered]]
+id = "entered-go-root"
+kind = "entered"
+base = "entered"
+patterns = ["bin/go"]
+prefix = "{{entered}}"
+name = "{{entered}}"
+version = { from = "command", args = ["version"], after = "go version go" }
+
+[[toolchains.entered]]
+id = "entered-go"
+kind = "entered"
+base = "entered"
+patterns = [""]
+name = "{{entered}}"
+version = { from = "command", args = ["version"], after = "go version go" }
+
+[[toolchains]]
+id = "java"
+name = "Java"
+languages = ["java", "kotlin", "scala"]
+markers = [
+  "pom.xml",
+  "build.gradle",
+  "build.gradle.kts",
+  "settings.gradle",
+  "settings.gradle.kts",
+  "build.sbt",
+]
+priority = ["java-home", "sdkman", "mise", "asdf", "jvm", "system"]
+kinds = [
+  { id = "java-home", label = "JAVA_HOME" },
+  { id = "sdkman", label = "SDKMAN!" },
+  { id = "mise", label = "mise" },
+  { id = "asdf", label = "asdf" },
+  { id = "jvm", label = "Installed JDK" },
+  { id = "system", label = "System" },
+  { id = "entered", label = "Entered path" },
+]
+
+[[toolchains.locators]]
+locate = "env"
+id = "java-home"
+kind = "java-home"
+var = "JAVA_HOME"
+path = "{{match}}/bin/java"
+name = "JAVA_HOME"
+version = { from = "command", args = ["-version"], after = "version" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "sdkman-java"
+kind = "sdkman"
+base = "home"
+patterns = [".sdkman/candidates/java/*"]
+path = "{{match}}/bin/java"
+prefix = "{{match}}"
+version = { from = "name" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "linux-jvm"
+kind = "jvm"
+base = "absolute"
+patterns = ["usr/lib/jvm/*"]
+path = "{{match}}/bin/java"
+prefix = "{{match}}"
+version = { from = "name" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "mac-jvm"
+kind = "jvm"
+base = "absolute"
+patterns = ["Library/Java/JavaVirtualMachines/*/Contents/Home"]
+path = "{{match}}/bin/java"
+prefix = "{{match}}"
+version = { from = "command", args = ["-version"], after = "version" }
+
+[[toolchains.locators]]
+locate = "shared"
+id = "mise-java"
+uses = "mise"
+params = { tool = "java", binary = "bin/java" }
+
+[[toolchains.locators]]
+locate = "shared"
+id = "asdf-java"
+uses = "asdf"
+params = { tool = "java", binary = "bin/java" }
+
+[[toolchains.hints]]
+file = ".java-version"
+format = "version_text"
+
+[[toolchains.hints]]
+file = ".tool-versions"
+format = "tool_versions"
+tool = "java"
+
+[[toolchains.activation]]
+script = [
+  "export JAVA_HOME={{toolchain.prefix | quote}}",
+  "export PATH={{toolchain.dir | quote}}:\"$PATH\"",
+]
+
+[[toolchains.entered]]
+id = "entered-java-home"
+kind = "entered"
+base = "entered"
+patterns = ["bin/java", "Contents/Home/bin/java"]
+prefix = "{{match_dir}}/.."
+name = "{{entered}}"
+version = { from = "command", args = ["-version"], after = "version" }
+
+[[toolchains.entered]]
+id = "entered-java"
+kind = "entered"
+base = "entered"
+patterns = [""]
+name = "{{entered}}"
+version = { from = "command", args = ["-version"], after = "version" }
+
+[[toolchains]]
+id = "rust"
+name = "Rust"
+languages = ["rust"]
+markers = ["Cargo.toml"]
+priority = ["rustup", "mise", "asdf", "system"]
+kinds = [
+  { id = "rustup", label = "rustup" },
+  { id = "mise", label = "mise" },
+  { id = "asdf", label = "asdf" },
+  { id = "system", label = "System" },
+  { id = "entered", label = "Entered path" },
+]
+
+[[toolchains.locators]]
+locate = "glob"
+id = "rustup"
+kind = "rustup"
+base = "home"
+patterns = [".rustup/toolchains/*"]
+path = "{{match}}/bin/cargo"
+prefix = "{{match}}"
+name = "{{match_name}}"
+version = { from = "command", program = "{{match}}/bin/rustc", args = [
+  "--version",
+], after = "rustc" }
+
+[[toolchains.locators]]
+locate = "shared"
+id = "mise-rust"
+uses = "mise"
+params = { tool = "rust", binary = "bin/cargo" }
+
+[[toolchains.locators]]
+locate = "command"
+id = "system-cargo"
+kind = "system"
+program = "which"
+args = ["-a", "cargo"]
+output = { format = "lines" }
+name = "{{match}}"
+version = { from = "command", args = ["--version"], after = "cargo" }
+
+[[toolchains.hints]]
+file = "rust-toolchain.toml"
+format = "rust_toolchain"
+
+[[toolchains.hints]]
+file = "rust-toolchain"
+format = "rust_toolchain"
+
+[[toolchains.activation]]
+script = ["export PATH={{toolchain.dir | quote}}:\"$PATH\""]
+
+[[toolchains.entered]]
+id = "entered-rust-toolchain"
+kind = "entered"
+base = "entered"
+patterns = ["bin/cargo"]
+prefix = "{{entered}}"
+name = "{{entered}}"
+version = { from = "command", args = ["--version"], after = "cargo" }
+
+[[toolchains.entered]]
+id = "entered-rust"
+kind = "entered"
+base = "entered"
+patterns = [""]
+name = "{{entered}}"
+version = { from = "command", args = ["--version"], after = "cargo" }
+
+[[toolchains]]
+id = "ruby"
+name = "Ruby"
+languages = ["ruby"]
+markers = ["Gemfile", ".ruby-version"]
+priority = ["rbenv", "rvm", "chruby", "mise", "asdf", "system"]
+kinds = [
+  { id = "rbenv", label = "rbenv" },
+  { id = "rvm", label = "RVM" },
+  { id = "chruby", label = "chruby" },
+  { id = "mise", label = "mise" },
+  { id = "asdf", label = "asdf" },
+  { id = "system", label = "System" },
+  { id = "entered", label = "Entered path" },
+]
+
+[[toolchains.locators]]
+locate = "glob"
+id = "rbenv"
+kind = "rbenv"
+base = "home"
+patterns = [".rbenv/versions/*"]
+path = "{{match}}/bin/ruby"
+prefix = "{{match}}"
+version = { from = "name" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "rvm"
+kind = "rvm"
+base = "home"
+patterns = [".rvm/rubies/*"]
+path = "{{match}}/bin/ruby"
+prefix = "{{match}}"
+version = { from = "name" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "chruby-home"
+kind = "chruby"
+base = "home"
+patterns = [".rubies/*"]
+path = "{{match}}/bin/ruby"
+prefix = "{{match}}"
+version = { from = "name" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "chruby-opt"
+kind = "chruby"
+base = "absolute"
+patterns = ["opt/rubies/*"]
+path = "{{match}}/bin/ruby"
+prefix = "{{match}}"
+version = { from = "name" }
+
+[[toolchains.locators]]
+locate = "shared"
+id = "mise-ruby"
+uses = "mise"
+params = { tool = "ruby", binary = "bin/ruby" }
+
+[[toolchains.locators]]
+locate = "shared"
+id = "asdf-ruby"
+uses = "asdf"
+params = { tool = "ruby", binary = "bin/ruby" }
+
+[[toolchains.locators]]
+locate = "command"
+id = "system-ruby"
+kind = "system"
+program = "which"
+args = ["-a", "ruby"]
+output = { format = "lines" }
+name = "{{match}}"
+version = { from = "command", args = ["--version"], after = "ruby" }
+
+[[toolchains.hints]]
+file = ".ruby-version"
+format = "version_text"
+
+[[toolchains.hints]]
+file = ".tool-versions"
+format = "tool_versions"
+tool = "ruby"
+
+[[toolchains.activation]]
+script = ["export PATH={{toolchain.dir | quote}}:\"$PATH\""]
+
+[[toolchains.entered]]
+id = "entered-ruby-install"
+kind = "entered"
+base = "entered"
+patterns = ["bin/ruby"]
+prefix = "{{entered}}"
+name = "{{entered}}"
+version = { from = "command", args = ["--version"], after = "ruby" }
+
+[[toolchains.entered]]
+id = "entered-ruby"
+kind = "entered"
+base = "entered"
+patterns = [""]
+name = "{{entered}}"
+version = { from = "command", args = ["--version"], after = "ruby" }

@@ -5,9 +5,9 @@ use krad_domain::{
     McpFileError, McpProjectFile, McpProjectTrust, McpServer, McpServerStart, McpTransport,
     PROJECT_MCP_FILE,
 };
+use krad_host::HostLink;
 use krad_store::find_mcp_secret;
 use std::collections::HashMap;
-use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use super::EnvironmentShell;
@@ -28,12 +28,12 @@ pub(super) struct McpLaunch {
     pub(super) problems: Vec<String>,
 }
 
-pub(super) fn read_project_mcp(folder: &Path) -> Result<McpProjectFile, String> {
-    match std::fs::read_to_string(folder.join(PROJECT_MCP_FILE)) {
+pub(super) fn read_project_mcp(link: &HostLink, folder: &Path) -> Result<McpProjectFile, String> {
+    match link.read_to_string(&folder.join(PROJECT_MCP_FILE)) {
         Ok(text) => text
             .parse()
             .map_err(|error: McpFileError| error.to_string()),
-        Err(error) if error.kind() == ErrorKind::NotFound => Ok(McpProjectFile::default()),
+        Err(error) if error.is_not_found() => Ok(McpProjectFile::default()),
         Err(error) => Err(error.to_string()),
     }
 }
@@ -89,10 +89,11 @@ fn with_secrets(servers: Vec<McpServer>) -> McpLaunch {
 
 impl EnvironmentShell {
     pub(super) fn load_project_mcp(
+        link: HostLink,
         folder: PathBuf,
         cx: &mut Context<Self>,
     ) -> Task<Result<McpProjectFile, String>> {
-        cx.background_spawn(async move { read_project_mcp(&folder) })
+        cx.background_spawn(async move { read_project_mcp(&link, &folder) })
     }
 
     pub(super) fn mcp_trust_for(&self, folder: &Path, file: McpProjectFile) -> McpTrust {
@@ -188,6 +189,9 @@ mod tests {
     #[test]
     fn a_folder_without_a_project_file_offers_nothing() {
         let folder = std::env::temp_dir().join(format!("krad-mcp-none-{}", std::process::id()));
-        assert_eq!(read_project_mcp(&folder), Ok(McpProjectFile::default()));
+        assert_eq!(
+            read_project_mcp(&HostLink::Local, &folder),
+            Ok(McpProjectFile::default())
+        );
     }
 }

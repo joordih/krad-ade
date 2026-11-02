@@ -64,6 +64,7 @@ mod tests {
             name: "api".to_owned(),
             root: PathBuf::from("/w/api"),
             worktree: None,
+            activation: crate::toolchain::GroupActivation::Inherit,
         });
         env.enter_sessions();
         env

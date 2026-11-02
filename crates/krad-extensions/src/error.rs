@@ -1,4 +1,4 @@
-use krad_domain::ToolchainId;
+use krad_domain::ServerRuntimeId;
 use std::io;
 
 #[derive(Debug, thiserror::Error)]
@@ -15,6 +15,12 @@ pub enum ExtensionError {
     Digest { url: String },
     #[error("`{0}` failed")]
     Tool(String),
+    #[error("`{program}` failed{}: {output}", exit_text(*.status))]
+    ToolFailed {
+        program: String,
+        status: Option<i32>,
+        output: String,
+    },
     #[error("{0} was not found after installing it")]
     Missing(String),
     #[error("no build for this platform")]
@@ -23,10 +29,16 @@ pub enum ExtensionError {
     Unsupported,
     #[error("template `{0}` could not be filled")]
     Template(String),
-    #[error("no toolchain installs `{0}` packages")]
+    #[error("no server runtime installs `{0}` packages")]
     UnknownKind(String),
     #[error("the package registry has no `{0}`")]
     UnknownPackage(String),
     #[error("{0} is needed but was not found")]
-    MissingToolchain(ToolchainId),
+    MissingServerRuntime(ServerRuntimeId),
+    #[error(transparent)]
+    Host(#[from] krad_host::HostError),
+}
+
+fn exit_text(status: Option<i32>) -> String {
+    status.map_or_else(String::new, |code| format!(" with exit code {code}"))
 }

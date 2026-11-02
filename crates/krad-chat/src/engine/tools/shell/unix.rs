@@ -8,6 +8,10 @@ const KILL_PROGRAM: &str = "kill";
 const KILL_SIGNAL: &str = "-KILL";
 const OWN_GROUP: i32 = 0;
 
+pub(super) fn own_group(command: &mut Command) {
+    command.process_group(OWN_GROUP);
+}
+
 pub(super) fn command(line: &str) -> Command {
     let shell = std::env::var(SHELL_VAR)
         .ok()

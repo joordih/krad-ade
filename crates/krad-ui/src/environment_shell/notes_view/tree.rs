@@ -148,7 +148,7 @@ impl EnvironmentShell {
                     .on_drop(
                         cx.listener(|this: &mut Self, dragged: &DraggedFile, _, cx| {
                             if let Some(vault) = this.vault_file("") {
-                                Self::move_file(dragged.path.clone(), vault, cx);
+                                this.move_file(dragged.path.clone(), vault, cx);
                             }
                         }),
                     )
@@ -460,10 +460,10 @@ impl EnvironmentShell {
             row.drag_over::<DraggedFile>(|style, _, _, cx| style.bg(palette(cx).bg_selected))
         })
         .on_drop(
-            cx.listener(move |_: &mut Self, dragged: &DraggedFile, _, cx| {
+            cx.listener(move |this: &mut Self, dragged: &DraggedFile, _, cx| {
                 cx.stop_propagation();
                 if let Some(dir) = drop_dir.clone() {
-                    Self::move_file(dragged.path.clone(), dir, cx);
+                    this.move_file(dragged.path.clone(), dir, cx);
                 }
             }),
         )

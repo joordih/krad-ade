@@ -1,7 +1,11 @@
-use krad_domain::{parse_wsl_path, wsl_unc_path, WslPath, WSL_LOGIN_SHELL_SCRIPT};
-use std::ffi::OsString;
+use krad_domain::{
+    parse_wsl_path, wsl_unc_path, WslPath, POSIX_SHELL, POSIX_SHELL_COMMAND_FLAG,
+    WSL_LOGIN_SHELL_SCRIPT,
+};
+use krad_host::{remote_path, HostCommand, HostLink};
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
 use crate::RepoError;
 
@@ -17,8 +21,8 @@ const WSL_DISTRO_FLAG: &str = "--distribution";
 const WSL_CD_FLAG: &str = "--cd";
 const WSL_EXEC_FLAG: &str = "--exec";
 const ENV_PROGRAM: &str = "env";
-const SH_PROGRAM: &str = "sh";
-const SH_COMMAND_FLAG: &str = "-c";
+const GIT_DIR_FLAG: &str = "-C";
+const GIT_CONFIG_FLAG: &str = "-c";
 const PRINT_HOME: &str = r#"printf %s "$HOME""#;
 const LINUX_ROOT: char = '/';
 const READLINK_PROGRAM: &str = "readlink";
@@ -26,12 +30,33 @@ const CANONICALIZE_FLAG: &str = "-f";
 const ARG_SEPARATOR: &str = " ";
 const PRINT_FOUND_PROGRAMS: &str = r#"for program in "$@"; do command -v "$program" >/dev/null 2>&1 && printf '%s\n' "$program"; done; :"#;
 
-pub(crate) fn git_command(repo: &Path) -> Command {
+pub(crate) fn git_output<S: AsRef<OsStr>>(
+    host: &HostLink,
+    repo: &Path,
+    args: &[S],
+) -> Result<Output, RepoError> {
+    if host.is_local() {
+        let mut command = local_git_command(repo);
+        command.args(args);
+        return Ok(command.output()?);
+    }
+    let mut command = HostCommand::new(GIT_PROGRAM);
+    command
+        .arg(GIT_DIR_FLAG)
+        .arg(remote_path(repo))
+        .args([GIT_CONFIG_FLAG, QUOTE_PATH_DISABLED])
+        .args(args)
+        .env(OPTIONAL_LOCKS_VAR, OPTIONAL_LOCKS_DISABLED)
+        .env(TERMINAL_PROMPT_VAR, TERMINAL_PROMPT_DISABLED);
+    Ok(host.output(&command)?)
+}
+
+fn local_git_command(repo: &Path) -> Command {
     let mut command = parse_wsl_path(repo).map_or_else(
         || {
             let mut command = Command::new(GIT_PROGRAM);
             command
-                .arg("-C")
+                .arg(GIT_DIR_FLAG)
                 .arg(repo)
                 .env(OPTIONAL_LOCKS_VAR, OPTIONAL_LOCKS_DISABLED)
                 .env(TERMINAL_PROMPT_VAR, TERMINAL_PROMPT_DISABLED);
@@ -59,14 +84,20 @@ pub(crate) fn git_command(repo: &Path) -> Command {
     command
 }
 
-pub(crate) fn git_path(repo: &Path, path: &Path) -> OsString {
+pub(crate) fn git_path(host: &HostLink, repo: &Path, path: &Path) -> OsString {
+    if !host.is_local() {
+        return OsString::from(remote_path(path));
+    }
     match (parse_wsl_path(repo), parse_wsl_path(path)) {
         (Some(_), Some(inside)) => OsString::from(inside.linux),
         _ => path.as_os_str().to_owned(),
     }
 }
 
-pub(crate) fn host_path(repo: &Path, printed: &str) -> PathBuf {
+pub(crate) fn host_path(host: &HostLink, repo: &Path, printed: &str) -> PathBuf {
+    if !host.is_local() {
+        return PathBuf::from(printed);
+    }
     match parse_wsl_path(repo) {
         Some(WslPath { distro, .. }) => wsl_unc_path(&distro, printed),
         None => PathBuf::from(printed),
@@ -75,7 +106,7 @@ pub(crate) fn host_path(repo: &Path, printed: &str) -> PathBuf {
 
 /// # Errors
 pub fn wsl_home(distro: &str) -> Result<String, RepoError> {
-    let args = [SH_PROGRAM, SH_COMMAND_FLAG, PRINT_HOME];
+    let args = [POSIX_SHELL, POSIX_SHELL_COMMAND_FLAG, PRINT_HOME];
     let home = String::from_utf8_lossy(&run_in_wsl(distro, &args)?).into_owned();
     if home.starts_with(LINUX_ROOT) {
         return Ok(home);
@@ -86,10 +117,10 @@ pub fn wsl_home(distro: &str) -> Result<String, RepoError> {
 /// # Errors
 pub fn wsl_programs<'a>(distro: &str, programs: &[&'a str]) -> Result<Vec<&'a str>, RepoError> {
     let mut args = vec![
-        SH_PROGRAM,
-        SH_COMMAND_FLAG,
+        POSIX_SHELL,
+        POSIX_SHELL_COMMAND_FLAG,
         WSL_LOGIN_SHELL_SCRIPT,
-        SH_PROGRAM,
+        POSIX_SHELL,
         PRINT_FOUND_PROGRAMS,
     ];
     args.extend_from_slice(programs);
@@ -98,6 +129,19 @@ pub fn wsl_programs<'a>(distro: &str, programs: &[&'a str]) -> Result<Vec<&'a st
         .iter()
         .copied()
         .filter(|program| output.lines().any(|line| line.trim() == *program))
+        .collect())
+}
+
+/// # Errors
+pub fn host_programs<'a>(host: &HostLink, programs: &[&'a str]) -> Result<Vec<&'a str>, RepoError> {
+    let mut command = HostCommand::posix_shell(PRINT_FOUND_PROGRAMS);
+    command.args(programs).in_login_shell();
+    let output = host.output(&command)?;
+    let printed = String::from_utf8_lossy(&output.stdout);
+    Ok(programs
+        .iter()
+        .copied()
+        .filter(|program| printed.lines().any(|line| line.trim() == *program))
         .collect())
 }
 

@@ -23,28 +23,40 @@ The work mode for editing code: open files take the work area, an agent's chat s
 _Avoid_: IDE, code mode, Zed mode
 
 **Language server**:
-Program that understands one language of a group's files and gives their file tabs diagnostics, completion, hover, go to definition, references, rename, formatting and quick fixes. One runs per group and language; the app installs it after asking, the first time a file of that language opens.
+Program that understands one language of a group's files and gives their file tabs diagnostics, completion, hover, go to definition, references, rename, formatting and quick fixes. One runs per project folder, language and toolchain on the environment's host; the app installs it after asking, the first time a file of that language opens.
 _Avoid_: LSP, plugin, extension
 
 **Language manifest**:
-Data that defines a language for the app: its file extensions, comment marker and highlighter grammar, its default language server from the package registry, how that server starts and which toolchains it needs. Adding a language is writing one, never code.
+Data that defines a language for the app: its file extensions, comment marker and highlighter grammar, its default language server from the package registry, how that server starts, which server runtime it needs and how the project's toolchains are found and handed to it. Adding a language is writing one, never code.
 _Avoid_: language config, language plugin
 
 **Toolchain**:
-The SDK or runtime a language server or a language's projects need, such as Rust's cargo, Node.js, Go, a JDK or Python. It is found in the folder the user chose, then on the system, then in the copy the app installed; when missing, the user installs it or points to its folder.
-_Avoid_: SDK (in code), runtime, dependency
+The interpreter, SDK or version a project's code runs with, such as a Python virtual environment, a conda environment, the project's own TypeScript, a Node.js version or a JDK. The app finds the candidates on the environment's host and the user picks one per project folder of a group; the editor's language servers analyse the code with it, and the user may have it activated in the group's new terminals. The app never installs one.
+_Avoid_: interpreter, SDK, environment, runtime
+
+**Project folder**:
+A folder inside a group that holds its own project, marked by a file such as `pyproject.toml` or `package.json`; a file belongs to the nearest one, and the group's root is the default.
+_Avoid_: subproject, workspace, package, module
+
+**Server runtime**:
+The program a language server itself runs on, such as Node.js for a TypeScript server. It is found on the host, or the app installs a private copy in its own folder; it is never the toolchain the project's code is analysed with.
+_Avoid_: toolchain, runtime (alone), dependency
 
 **Package registry**:
 Mason's public list of language servers and tools and how to fetch each one, which the app downloads and caches.
 _Avoid_: Mason (in UI), catalogue, marketplace
 
 **Extension**:
-A folder of language and toolchain manifests the user adds from Settings, from a git address or a local folder, and can update, disable or remove.
+A folder of language, toolchain and server runtime manifests the user adds from Settings, from a git address or a local folder, and can update, disable or remove.
 _Avoid_: plugin, add-on, Zed extension
 
 **Environment**:
-Work context the user handles as one: its groups, which may come from different repositories, and their sessions.
+Work context the user handles as one: its groups, which may come from different repositories, and their sessions. It lives on one host, and everything inside it runs there.
 _Avoid_: project, profile, workspace
+
+**Host**:
+The machine an environment lives on: this computer, or a remote machine reached over SSH and named by its SSH destination. Its groups' folders, terminals, chats and agents are all on it.
+_Avoid_: server, remote, machine, connection
 
 **Tab**:
 One entry of a pane's strip of tabs: a chat, a shell, an agent or a file tab.
@@ -79,7 +91,7 @@ A ready arrangement of a session's panes (two columns, two rows, main and stack,
 _Avoid_: preset, arrangement, snap layout
 
 **Group**:
-Set of an environment's terminals bound to a root folder: they start there, and the file tree and git state come from there.
+Set of an environment's terminals bound to a root folder on the environment's host: they start there, and the file tree and git state come from there.
 _Avoid_: project, folder, workspace, tab
 
 **Worktree**:
@@ -149,7 +161,7 @@ Smallest unit of an environment: a terminal view bound to a single shell process
 _Avoid_: console, session, agent, window, panel
 
 **System terminal**:
-A terminal of the environment that belongs to no group or session and starts in the user's home folder; it lives in the utilities panel and reopens with the environment, with a new shell.
+A terminal of the environment that belongs to no group or session and starts in the user's home folder on the environment's host; it lives in the utilities panel and reopens with the environment, with a new shell.
 _Avoid_: global terminal, scratch terminal, project terminal
 
 ### Processes and agents

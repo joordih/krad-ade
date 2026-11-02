@@ -1,10 +1,12 @@
 use crate::agent::AgentPreset;
 use crate::gateway::GatewaySettings;
 use crate::gitlab::GitlabSettings;
+use crate::host_timeouts::HostTimeouts;
 use crate::hue::Hue;
 use crate::mcp::McpSettings;
 use crate::model::{lenient_model_lists, ModelId};
-use crate::toolchain::{ExtensionEntry, ToolchainPaths};
+use crate::server_runtime::{ExtensionEntry, ServerRuntimePaths};
+use crate::toolchain::ToolchainActivation;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -178,10 +180,18 @@ pub struct Settings {
     pub window_tint: WindowTint,
     #[serde(default)]
     pub app_updates: AppUpdateCheck,
-    #[serde(default, skip_serializing_if = "ToolchainPaths::is_empty")]
-    pub toolchains: ToolchainPaths,
+    #[serde(
+        default,
+        alias = "toolchains",
+        skip_serializing_if = "ServerRuntimePaths::is_empty"
+    )]
+    pub server_runtimes: ServerRuntimePaths,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extensions: Vec<ExtensionEntry>,
+    #[serde(default, skip_serializing_if = "HostTimeouts::is_default")]
+    pub host_timeouts: HostTimeouts,
+    #[serde(default, skip_serializing_if = "ToolchainActivation::is_off")]
+    pub toolchain_activation: ToolchainActivation,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]

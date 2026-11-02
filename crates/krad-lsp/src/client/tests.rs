@@ -114,6 +114,34 @@ fn diagnostics_arrive_as_events_and_configuration_is_answered() -> Result<(), Ls
 }
 
 #[test]
+fn new_settings_are_announced_and_answer_later_questions() -> Result<(), LspError> {
+    let (client, _events, mut server) = connect()?;
+    client.reconfigure(ServerSettings::new(
+        json!({"python": {"pythonPath": "/srv/app/.venv/bin/python"}}),
+    ))?;
+    assert!(
+        matches!(server.next(), Some(Incoming::Notification { method, params })
+        if method == "workspace/didChangeConfiguration"
+            && params["settings"]["python"]["pythonPath"] == json!("/srv/app/.venv/bin/python"))
+    );
+    let ask = json!({"items": [{"section": "python.pythonPath"}]});
+    assert!(write_message(
+        &mut server.to_client,
+        Message::Request {
+            id: &json!(4),
+            method: "workspace/configuration",
+            params: &ask,
+        },
+    )
+    .is_ok());
+    assert!(
+        matches!(server.next(), Some(Incoming::Response { id: 4, outcome: Ok(Value::Array(items)) })
+        if items == [json!("/srv/app/.venv/bin/python")])
+    );
+    Ok(())
+}
+
+#[test]
 fn pending_requests_fail_once_the_server_stops() -> Result<(), LspError> {
     let (client, mut events, mut server) = connect()?;
     let waiting = client.request::<Shutdown>(&());

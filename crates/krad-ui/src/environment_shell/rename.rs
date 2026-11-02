@@ -215,11 +215,11 @@ impl EnvironmentShell {
                 return;
             }
             RenameTarget::File(path) => {
-                Self::rename_file(path, title, cx);
+                self.rename_file(path, title, cx);
                 return;
             }
             RenameTarget::NewEntry(dir, kind) => {
-                Self::create_file_entry(dir, kind, title, cx);
+                self.create_file_entry(dir, kind, title, cx);
                 return;
             }
         }

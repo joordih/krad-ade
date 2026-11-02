@@ -5,9 +5,24 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+python-toolchains = [
+  "dep:pet",
+  "dep:pet-conda",
+  "dep:pet-core",
+  "dep:pet-poetry",
+  "dep:pet-reporter",
+]
+
 [dependencies]
 futures.workspace = true
+pet = { workspace = true, optional = true }
+pet-conda = { workspace = true, optional = true }
+pet-core = { workspace = true, optional = true }
+pet-poetry = { workspace = true, optional = true }
+pet-reporter = { workspace = true, optional = true }
 krad-domain.workspace = true
+krad-host.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

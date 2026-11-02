@@ -168,7 +168,7 @@ impl AppServer {
             .flat_map(|value| [CONFIG_FLAG.to_owned(), value.clone()])
             .collect();
         args.extend(APP_SERVER_ARGS.iter().map(|arg| (*arg).to_owned()));
-        let mut child = harness_command(runner, cwd, &args, env)
+        let mut child = harness_command(runner, cwd, &args, env)?
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

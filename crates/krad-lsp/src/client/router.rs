@@ -2,15 +2,15 @@ use futures::channel::{mpsc, oneshot};
 use futures::executor::block_on;
 use futures::SinkExt as _;
 use lsp_types::notification::{
-    DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
-    Notification, PublishDiagnostics,
+    DidChangeConfiguration, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument,
+    DidSaveTextDocument, Notification, PublishDiagnostics,
 };
 use lsp_types::request::{ApplyWorkspaceEdit, Request as _, WorkspaceDiagnosticRefresh};
 use lsp_types::{
-    ApplyWorkspaceEditParams, ApplyWorkspaceEditResponse, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Uri,
-    VersionedTextDocumentIdentifier,
+    ApplyWorkspaceEditParams, ApplyWorkspaceEditResponse, DidChangeConfigurationParams,
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams, TextDocumentContentChangeEvent, TextDocumentIdentifier,
+    TextDocumentItem, Uri, VersionedTextDocumentIdentifier,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -36,6 +36,7 @@ pub(super) enum Routed {
         params: Value,
     },
     Document(DocumentChange),
+    Settings(ServerSettings),
     Incoming(Incoming),
     Closed,
 }
@@ -104,6 +105,15 @@ impl<W: Write> Router<W> {
             }
             Routed::Document(change) => {
                 if self.document(change).is_err() {
+                    return false;
+                }
+            }
+            Routed::Settings(settings) => {
+                self.settings = settings;
+                let changed = DidChangeConfigurationParams {
+                    settings: self.settings.all(),
+                };
+                if self.notify::<DidChangeConfiguration>(&changed).is_err() {
                     return false;
                 }
             }

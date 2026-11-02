@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use crate::process::{git_path, host_path};
+use krad_host::HostLink;
 
 use crate::git::run_git;
 use crate::RepoError;
@@ -53,9 +54,9 @@ pub fn worktree_path(repo_root: &Path, name: &str) -> PathBuf {
 }
 
 /// # Errors
-pub fn add_worktree(repo_root: &Path, name: &str) -> Result<Worktree, RepoError> {
+pub fn add_worktree(host: &HostLink, repo_root: &Path, name: &str) -> Result<Worktree, RepoError> {
     let path = worktree_path(repo_root, name);
-    let target = git_path(repo_root, &path);
+    let target = git_path(host, repo_root, &path);
     let args: [&OsStr; 7] = [
         OsStr::new("worktree"),
         OsStr::new("add"),
@@ -65,7 +66,7 @@ pub fn add_worktree(repo_root: &Path, name: &str) -> Result<Worktree, RepoError>
         &target,
         OsStr::new(START_POINT),
     ];
-    run_git(repo_root, &args)?;
+    run_git(host, repo_root, &args)?;
     Ok(Worktree {
         path,
         branch: Some(name.to_owned()),
@@ -73,24 +74,24 @@ pub fn add_worktree(repo_root: &Path, name: &str) -> Result<Worktree, RepoError>
 }
 
 /// # Errors
-pub fn remove_worktree(repo_root: &Path, path: &Path) -> Result<(), RepoError> {
-    let target = git_path(repo_root, path);
+pub fn remove_worktree(host: &HostLink, repo_root: &Path, path: &Path) -> Result<(), RepoError> {
+    let target = git_path(host, repo_root, path);
     let args: [&OsStr; 3] = [
         OsStr::new("worktree"),
         OsStr::new("remove"),
         target.as_os_str(),
     ];
-    run_git(repo_root, &args)?;
-    run_git(repo_root, &PRUNE_ARGS)?;
+    run_git(host, repo_root, &args)?;
+    run_git(host, repo_root, &PRUNE_ARGS)?;
     Ok(())
 }
 
 /// # Errors
-pub fn list_worktrees(repo: &Path) -> Result<Vec<Worktree>, RepoError> {
-    let output = run_git(repo, &LIST_ARGS)?;
+pub fn list_worktrees(host: &HostLink, repo: &Path) -> Result<Vec<Worktree>, RepoError> {
+    let output = run_git(host, repo, &LIST_ARGS)?;
     Ok(parse_worktrees(
         &String::from_utf8_lossy(&output),
-        |printed| host_path(repo, printed),
+        |printed| host_path(host, repo, printed),
     ))
 }
 

@@ -149,6 +149,7 @@ impl EnvironmentShell {
         };
         self.side_search.results = SearchResults::Searching;
         let generation = self.side_search.generation;
+        let link = self.active_link();
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(SEARCH_DELAY).await;
             let current = this
@@ -158,7 +159,7 @@ impl EnvironmentShell {
                 return;
             }
             let found = cx
-                .background_spawn(async move { search_text(&root, &query, SEARCH_LIMIT) })
+                .background_spawn(async move { search_text(&link, &root, &query, SEARCH_LIMIT) })
                 .await;
             this.update(cx, |shell, cx| {
                 if shell.side_search.generation != generation {

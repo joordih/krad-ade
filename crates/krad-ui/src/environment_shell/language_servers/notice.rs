@@ -1,6 +1,6 @@
 use gpui_kit::{div, px, rgb, AnyElement, Context, IntoElement, ParentElement, Styled};
 use krad_domain::TerminalId;
-use krad_extensions::MissingToolchain;
+use krad_extensions::MissingServerRuntime;
 use std::path::Path;
 
 use super::super::{EnvironmentShell, LiveEnv};
@@ -11,15 +11,15 @@ use crate::theme::{palette, LINE_SM, SPACE_1, SPACE_2, TEXT_SM};
 const BTN_INSTALL: &str = "language-server-install";
 const BTN_NOT_NOW: &str = "language-server-not-now";
 const BTN_RETRY: &str = "language-server-retry";
-const BTN_CHOOSE: &str = "toolchain-choose";
-const BTN_INSTALL_TOOLCHAIN: &str = "toolchain-install";
+const BTN_CHOOSE: &str = "server_runtime-choose";
+const BTN_INSTALL_SERVER_RUNTIME: &str = "server_runtime-install";
 const INSTALL_LABEL: &str = "Install";
 const NOT_NOW_LABEL: &str = "Not now";
 const RETRY_LABEL: &str = "Retry";
 const CHOOSE_LABEL: &str = "Choose folder…";
 
 enum Notice {
-    Toolchain(MissingToolchain, String),
+    ServerRuntime(MissingServerRuntime, String),
     Offer(String),
     Busy(String),
     Failed(String),
@@ -28,20 +28,20 @@ enum Notice {
 fn notice(key: &ServerKey, slot: &ServerSlot, language: &str) -> Option<Notice> {
     let server = &key.plan.package;
     match slot {
-        ServerSlot::NeedsToolchain(missing) => Some(Notice::Toolchain(
+        ServerSlot::NeedsServerRuntime(missing) => Some(Notice::ServerRuntime(
             missing.clone(),
             format!(
                 "{language} needs {}, which was not found. Install it or choose the folder where you have it.",
                 missing.name
             ),
         )),
-        ServerSlot::InstallingToolchain(name) => Some(Notice::Busy(format!("Installing {name}…"))),
+        ServerSlot::InstallingServerRuntime(name) => Some(Notice::Busy(format!("Installing {name}…"))),
         ServerSlot::AwaitingConsent => Some(Notice::Offer(format!(
             "Install {server} for completions, diagnostics and go to definition in {language} files?"
         ))),
         ServerSlot::Installing => Some(Notice::Busy(format!("Installing {server}…"))),
         ServerSlot::Failed(reason) => Some(Notice::Failed(format!("{server} is not running: {reason}"))),
-        ServerSlot::Locating | ServerSlot::Starting | ServerSlot::Running(_) => None,
+        ServerSlot::Locating | ServerSlot::Starting(_) | ServerSlot::Running(_) => None,
     }
 }
 
@@ -79,34 +79,35 @@ impl EnvironmentShell {
             .line_height(px(LINE_SM));
         let bar =
             match found {
-                Notice::Toolchain(missing, text) => {
+                Notice::ServerRuntime(missing, text) => {
                     let (choose, install) = (key.clone(), key.clone());
                     let (chosen_id, install_id) = (missing.id.clone(), missing.id.clone());
                     let (chosen_name, install_name) = (missing.name.clone(), missing.name.clone());
                     let installable = missing.installable;
+                    let local = key.host.is_local();
                     bar.text_color(rgb(pal.text_default))
                         .child(div().flex_1().min_w_0().child(text))
                         .child(Self::not_now(key, cx))
-                        .child(
+                        .children(local.then(|| {
                             Button::new(BTN_CHOOSE)
                                 .label(CHOOSE_LABEL)
                                 .small()
                                 .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                                    this.choose_toolchain_folder(
+                                    this.choose_server_runtime_folder(
                                         choose.clone(),
                                         chosen_id.clone(),
                                         chosen_name.clone(),
                                         cx,
                                     );
-                                })),
-                        )
+                                }))
+                        }))
                         .children(installable.then(|| {
-                            Button::new(BTN_INSTALL_TOOLCHAIN)
+                            Button::new(BTN_INSTALL_SERVER_RUNTIME)
                                 .label(format!("{INSTALL_LABEL} {install_name}"))
                                 .small()
                                 .variant(ButtonVariant::Primary)
                                 .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                                    this.install_toolchain(
+                                    this.install_server_runtime(
                                         install.clone(),
                                         install_id.clone(),
                                         install_name.clone(),

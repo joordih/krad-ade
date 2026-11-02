@@ -3,8 +3,8 @@ mod view;
 
 use gpui_kit::{Context, FocusHandle, Window};
 use krad_domain::{
-    AgentPreset, Effort, EnvironmentData, EnvironmentName, GroupId, PermissionMode, SessionId,
-    TerminalId, WorktreeOrigin,
+    AgentPreset, Effort, EnvironmentData, EnvironmentName, GroupActivation, GroupId,
+    PermissionMode, SessionId, TerminalId, ToolchainChoice, ToolchainScope, WorktreeOrigin,
 };
 
 use super::file_tree::FileAction;
@@ -36,6 +36,7 @@ pub(super) enum MenuAction {
     File(FileAction),
     SwitchEnvironment(EnvironmentName),
     NewEnvironment,
+    NewSshEnvironment,
     DeleteEnvironment(EnvironmentName),
     RenameGroup(GroupId),
     DeleteGroup(GroupId),
@@ -46,6 +47,11 @@ pub(super) enum MenuAction {
     CreateWorktree(GroupId, String),
     NewGroup,
     OpenSettings,
+    ChooseToolchain(Box<ToolchainChoice>),
+    AutomaticToolchain(Box<ToolchainScope>),
+    EnterToolchainPath(Box<ToolchainScope>),
+    RescanToolchains(Box<ToolchainScope>),
+    SetGroupActivation(GroupId, GroupActivation),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -319,23 +325,35 @@ impl EnvironmentShell {
             MenuAction::Note(action) => self.run_note_action(action, cx),
             MenuAction::File(action) => self.run_file_action(action, window, cx),
             MenuAction::SwitchEnvironment(name) => self.switch_env(&name, cx),
-            MenuAction::NewEnvironment => self.new_environment(cx),
+            MenuAction::NewEnvironment => self.new_environment(window, cx),
+            MenuAction::NewSshEnvironment => self.open_ssh_dialog(window, cx),
             MenuAction::SelectGroup(group) => self.select_group(group, cx),
             MenuAction::OpenWorktree(path, origin) => self.open_worktree(path, origin, cx),
             MenuAction::CreateWorktree(group, name) => self.create_worktree(group, &name, cx),
-            MenuAction::NewGroup => Self::prompt_new_group(cx),
+            MenuAction::NewGroup => self.prompt_new_group(window, cx),
             MenuAction::OpenSettings => self.open_settings(window, cx),
+            MenuAction::ChooseToolchain(choice) => {
+                self.choose_toolchain(&choice.scope, choice.toolchain, cx);
+            }
+            MenuAction::AutomaticToolchain(scope) => self.automatic_toolchain(&scope, cx),
+            MenuAction::EnterToolchainPath(scope) => self.open_toolchain_entry(*scope, window, cx),
+            MenuAction::RescanToolchains(scope) => self.rescan_toolchains(&scope, cx),
+            MenuAction::SetGroupActivation(group, activation) => {
+                self.set_group_activation(group, activation, cx);
+            }
         }
         cx.notify();
     }
 
-    fn new_environment(&mut self, cx: &mut Context<Self>) {
+    fn new_environment(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let name = self.unused_env_name();
         let data = EnvironmentData::empty(name.clone());
         self.order.push(name.clone());
-        self.envs.insert(name.clone(), LiveEnv::new(data, None));
+        let link = self.link_for(&data.host);
+        self.envs
+            .insert(name.clone(), LiveEnv::new(data, None, link));
         self.switch_env(&name, cx);
-        Self::prompt_new_group(cx);
+        self.prompt_new_group(window, cx);
     }
 
     pub(super) fn sync_menu_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {

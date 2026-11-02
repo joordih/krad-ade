@@ -4,6 +4,7 @@ use gpui_kit::{
     InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Styled, Subscription, Task,
     Window,
 };
+use krad_host::HostLink;
 use krad_repo::write_note_text;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
@@ -118,6 +119,7 @@ impl EnvironmentShell {
         let Some(file) = self.vault_file(&path) else {
             return;
         };
+        let link = self.active_link();
         let editor = self
             .notes
             .editors
@@ -126,7 +128,7 @@ impl EnvironmentShell {
         match std::mem::replace(&mut editor.load, Load::Ready) {
             Load::Pending => {
                 editor.load = Load::Reading;
-                Self::read_note_file(path, file, cx);
+                Self::read_note_file(link, path, file, cx);
                 return;
             }
             Load::Read(read) => self.fill_note_editor(&path, read, window, cx),
@@ -143,12 +145,12 @@ impl EnvironmentShell {
         }
         if matches!(editor.load, Load::Ready) && editor.disk == DiskWatch::Idle {
             editor.disk = DiskWatch::Checking;
-            Self::check_note_disk(path, file, cx);
+            Self::check_note_disk(link, path, file, cx);
         }
     }
 
-    fn read_note_file(path: String, file: PathBuf, cx: &mut Context<Self>) {
-        let reading = cx.background_spawn(async move { read_file(&file) });
+    fn read_note_file(link: HostLink, path: String, file: PathBuf, cx: &mut Context<Self>) {
+        let reading = cx.background_spawn(async move { read_file(&link, &file) });
         cx.spawn(async move |this, cx| {
             let read = reading.await;
             this.update(cx, |shell, cx| {
@@ -243,8 +245,9 @@ impl EnvironmentShell {
         };
         editor.save = None;
         let (written, file, saved) = (path.to_owned(), editor.file.clone(), text.clone());
+        let link = self.active_link();
         let write = cx.background_spawn(async move {
-            write_note_text(&root, &written, &saved).map(|()| modified_at(&file))
+            write_note_text(&link, &root, &written, &saved).map(|()| modified_at(&link, &file))
         });
         let path = path.to_owned();
         cx.spawn(async move |this, cx| {
@@ -259,7 +262,7 @@ impl EnvironmentShell {
                         }
                         shell.refresh_vault(cx);
                     }
-                    Err(error) => shell.push_toast(error.to_string()),
+                    Err(error) => shell.toast_failure(&error),
                 }
                 cx.notify();
             })
@@ -268,11 +271,11 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn check_note_disk(path: String, file: PathBuf, cx: &mut Context<Self>) {
+    fn check_note_disk(link: HostLink, path: String, file: PathBuf, cx: &mut Context<Self>) {
         let timer = cx.background_executor().timer(DISK_CHECK_EVERY);
         let stat = cx.background_spawn(async move {
             timer.await;
-            modified_at(&file)
+            modified_at(&link, &file)
         });
         cx.spawn(async move |this, cx| {
             let disk = stat.await;

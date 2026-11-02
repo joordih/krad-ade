@@ -58,8 +58,10 @@ pub struct EngineConfig {
     pub permission_mode: Option<PermissionMode>,
     pub bus_vars: BusVars,
     pub mcp: Vec<McpServerStart>,
+    pub host: krad_host::HostLink,
 }
 
+const REMOTE_PLATFORM: &str = "linux";
 const MCP_FAILED_LEAD: &str = "The MCP server ";
 const MCP_FAILED_MIDDLE: &str = " did not start: ";
 const MCP_DESCRIPTION_LEAD: &str = "Tool ";
@@ -110,10 +112,16 @@ fn failure_notice(failure: &McpStartFailure) -> String {
 }
 
 fn setup(config: &EngineConfig, mcp: Arc<McpToolbox>) -> Setup {
-    let skills = skill_files(config.home.as_deref(), Some(&config.cwd));
-    let instructions = instruction_files(config.home.as_deref(), &config.cwd);
+    let skills = skill_files(&config.host, config.home.as_deref(), Some(&config.cwd));
+    let instructions = instruction_files(&config.host, config.home.as_deref(), &config.cwd);
+    let platform = if config.host.is_local() {
+        std::env::consts::OS
+    } else {
+        REMOTE_PLATFORM
+    };
     let system = system_prompt(&PromptParts {
         cwd: &config.cwd,
+        platform,
         instructions: &instructions,
         skills: &skills,
         extra: config.system_prompt.as_deref(),
@@ -123,6 +131,7 @@ fn setup(config: &EngineConfig, mcp: Arc<McpToolbox>) -> Setup {
         workspace: Workspace {
             cwd: config.cwd.clone(),
             env: config.bus_vars.0.clone(),
+            host: config.host.clone(),
         },
         system,
         vendors: config
@@ -180,7 +189,7 @@ fn open(
             return None;
         }
     };
-    let (toolbox, failures) = McpToolbox::start(&config.mcp, &config.cwd);
+    let (toolbox, failures) = McpToolbox::start(&config.mcp, &config.cwd, &config.host);
     for failure in &failures {
         sink(LiveEvent::Notice(failure_notice(failure)));
     }
@@ -203,7 +212,7 @@ fn open(
     sink(LiveEvent::Ready(catalog(&setup)));
     Some(Start {
         setup,
-        snapshots: Snapshots::new(file.snapshots.clone()),
+        snapshots: Snapshots::new(file.snapshots.clone(), config.host.clone()),
         session: file,
         messages: restored.messages,
         prompts: restored.prompts,
@@ -264,6 +273,7 @@ pub fn read_engine_transcript(
     let workspace = Workspace {
         cwd: cwd.to_path_buf(),
         env: Vec::new(),
+        host: krad_host::HostLink::Local,
     };
     Ok(history::transcript(records, &workspace))
 }

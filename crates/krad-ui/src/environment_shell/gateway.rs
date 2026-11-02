@@ -3,8 +3,9 @@ use krad_chat::{gateway_models, GatewayModel, ModelOffer};
 use krad_domain::{
     AgentPreset, EnvironmentName, GatewayAccess, GatewayKey, GatewayUrl, ModelId, TerminalId,
 };
+use krad_host::HostLink;
 use krad_store::{delete_gateway_key, find_gateway_key, write_gateway_key, LoginPlace};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::terminal_card::home_dir;
@@ -253,7 +254,10 @@ impl EnvironmentShell {
             .get(env)
             .and_then(|live| live.data.group_of(id))
             .map(|group| group.root.clone())
-            .or_else(|| home_dir().map(PathBuf::from))
+            .or_else(|| match self.env_link(env) {
+                HostLink::Ssh(ssh) => ssh.home().map(Path::to_path_buf),
+                HostLink::Local => home_dir().map(PathBuf::from),
+            })
             .unwrap_or_default()
     }
 }

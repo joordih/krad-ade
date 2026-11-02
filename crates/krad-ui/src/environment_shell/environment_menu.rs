@@ -11,6 +11,7 @@ use crate::keymap::OPEN_SETTINGS_HINT;
 const ENVIRONMENT_LABEL: &str = "Environment";
 const SEARCH_ENVIRONMENTS: &str = "Search environments…";
 const NEW_ENVIRONMENT_LABEL: &str = "New environment";
+const NEW_SSH_ENVIRONMENT_LABEL: &str = "New SSH environment…";
 const GROUPS_LABEL: &str = "Groups";
 const SEARCH_GROUPS: &str = "Search groups…";
 const NEW_GROUP_LABEL: &str = "New group…";
@@ -98,6 +99,11 @@ impl EnvironmentShell {
                 Some(IconName::Add),
                 MenuAction::NewEnvironment,
             ),
+            MenuEntry::item(
+                NEW_SSH_ENVIRONMENT_LABEL,
+                Some(IconName::Plug),
+                MenuAction::NewSshEnvironment,
+            ),
         ]);
         MenuEntry::submenu(ENVIRONMENT_LABEL, IconName::Layers, entries)
             .searchable(SEARCH_ENVIRONMENTS)
@@ -153,8 +159,7 @@ impl EnvironmentShell {
             return submenu(vec![MenuEntry::Note(NOT_A_REPO_TEXT.to_owned())]);
         };
         let listed = self
-            .git
-            .get(&group.root)
+            .active_git(&group.root)
             .map_or(&[][..], |git| git.worktrees.as_slice());
         let entries = if listed.is_empty() {
             self.worktree_groups(&live.data, group, &repo)
@@ -212,8 +217,7 @@ impl EnvironmentShell {
             .find(|group| group.root == path)
             .or_else(|| {
                 data.groups.iter().find(|group| {
-                    self.git
-                        .get(&group.root)
+                    self.active_git(&group.root)
                         .is_some_and(|git| git.repo_root == path)
                 })
             })
@@ -228,8 +232,7 @@ impl EnvironmentShell {
     ) -> MenuEntry {
         let branch = branch
             .or_else(|| {
-                self.git
-                    .get(&group.root)
+                self.active_git(&group.root)
                     .and_then(|git| git.status.branch.clone())
             })
             .or_else(|| group.worktree.as_ref().map(|origin| origin.branch.clone()))
@@ -249,7 +252,10 @@ impl EnvironmentShell {
             .worktree
             .as_ref()
             .map(|origin| origin.repo_root.clone())
-            .or_else(|| self.git.get(&group.root).map(|git| git.repo_root.clone()))
+            .or_else(|| {
+                self.active_git(&group.root)
+                    .map(|git| git.repo_root.clone())
+            })
     }
 }
 

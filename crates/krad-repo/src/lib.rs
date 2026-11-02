@@ -7,6 +7,7 @@ mod files;
 mod git;
 mod index;
 mod notes;
+mod on_host;
 mod process;
 mod reveal;
 mod search;
@@ -25,7 +26,7 @@ pub use notes::{
     read_note, save_attachment, stamp_new_notes, vault_dir, vault_entries, vault_notes, vault_path,
     write_docs_sources, write_note, write_note_text, SourceEntry, VaultEntry, VaultEntryKind,
 };
-pub use process::{wsl_home, wsl_programs};
+pub use process::{host_programs, wsl_home, wsl_programs};
 pub use reveal::reveal_in_file_manager;
 pub use search::{search_text, TextMatch};
 pub use status::{parse_status, status, ChangeKind, FileChange, GitStatus};

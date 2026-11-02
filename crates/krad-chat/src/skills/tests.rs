@@ -1,5 +1,6 @@
 use super::*;
 use std::error::Error;
+use std::fs;
 
 fn write(path: &Path, text: &str) -> Result<(), Box<dyn Error>> {
     if let Some(parent) = path.parent() {
@@ -72,7 +73,7 @@ fn skills_come_from_the_project_the_user_and_enabled_plugins() -> Result<(), Box
         &home.join(".claude/plugins/installed_plugins.json"),
         &installed.to_string(),
     )?;
-    let skills = claude_skills(Some(&home), Some(&project));
+    let skills = claude_skills(&HostLink::Local, Some(&home), Some(&project));
     let names: Vec<&str> = skills.iter().map(|skill| skill.name.as_str()).collect();
     assert_eq!(names, ["deploy", "git:sync", "lint", "tools:audit"]);
     assert_eq!(skills[0].description, "Project deploy");
@@ -99,7 +100,7 @@ fn a_shared_skill_claude_links_to_runs_as_claudes_own() -> Result<(), Box<dyn Er
         "---\nname: lint\n---\n",
     )?;
     write(&home.join(".claude/skills/grill"), "")?;
-    let skills = claude_skills(Some(&home), None);
+    let skills = claude_skills(&HostLink::Local, Some(&home), None);
     let sources: Vec<(&str, &SkillSource)> = skills
         .iter()
         .map(|skill| (skill.name.as_str(), &skill.source))

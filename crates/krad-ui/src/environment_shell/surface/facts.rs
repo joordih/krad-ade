@@ -168,10 +168,11 @@ impl EnvironmentShell {
     }
 
     fn harness_offers(&self, harness: AgentPreset) -> Option<&[ModelOffer]> {
+        let host = self.active_link().host();
         let offers = match harness {
-            AgentPreset::Opencode => self.opencode_models(),
+            AgentPreset::Opencode => self.opencode_models_on(&host),
             AgentPreset::Gateway => self.gateway_offers(),
-            AgentPreset::ClaudeCode | AgentPreset::Codex => self.listed_models.of(harness),
+            AgentPreset::ClaudeCode | AgentPreset::Codex => self.listed_models.of(&host, harness),
             AgentPreset::Shell => &[],
         };
         (!offers.is_empty()).then_some(offers)

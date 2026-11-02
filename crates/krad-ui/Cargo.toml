@@ -17,6 +17,7 @@ krad-extensions.workspace = true
 krad-github.workspace = true
 krad-gitlab.workspace = true
 krad-lsp.workspace = true
+krad-host.workspace = true
 krad-repo.workspace = true
 krad-session.workspace = true
 krad-store.workspace = true
@@ -26,6 +27,7 @@ ratex-layout.workspace = true
 ratex-parser.workspace = true
 ratex-svg.workspace = true
 ratex-types.workspace = true
+tracing.workspace = true
 ureq.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -1,9 +1,31 @@
 use thiserror::Error;
 
+impl From<krad_host::HostError> for RepoError {
+    fn from(error: krad_host::HostError) -> Self {
+        match error {
+            krad_host::HostError::Io(error) => Self::Io(error),
+            other => Self::Host(other),
+        }
+    }
+}
+
+impl RepoError {
+    #[must_use]
+    pub fn is_not_found(&self) -> bool {
+        match self {
+            Self::Io(error) => error.kind() == std::io::ErrorKind::NotFound,
+            Self::Host(error) => error.is_not_found(),
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum RepoError {
     #[error("file system error: {0}")]
     Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Host(krad_host::HostError),
     #[error("`{command}` failed: {message}")]
     Git { command: String, message: String },
     #[error("`{command}` failed in WSL distro {distro}: {message}")]
@@ -26,4 +48,6 @@ pub enum RepoError {
     OutsideRepository(String),
     #[error("could not open the file manager: {0}")]
     Reveal(String),
+    #[error("the file manager only opens folders on this computer")]
+    NotOnThisComputer,
 }

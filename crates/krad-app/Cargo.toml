@@ -5,17 +5,32 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = ["desktop"]
+desktop = [
+  "dep:gpui-kit",
+  "dep:krad-store",
+  "dep:krad-ui",
+  "dep:tracing",
+  "dep:tracing-appender",
+  "dep:tracing-subscriber",
+]
+
 [[bin]]
 name = "krad-ade"
 path = "src/main.rs"
+required-features = ["desktop"]
 
 [[bin]]
 name = "krad-ade-agents"
 path = "src/bin/krad-ade-agents.rs"
 
 [dependencies]
-gpui-kit.workspace = true
-krad-agents.workspace = true
+gpui-kit = { workspace = true, optional = true }
+krad-agents = { workspace = true, features = ["python-toolchains"] }
 krad-domain.workspace = true
-krad-store.workspace = true
-krad-ui.workspace = true
+krad-store = { workspace = true, optional = true }
+krad-ui = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+tracing-appender = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }

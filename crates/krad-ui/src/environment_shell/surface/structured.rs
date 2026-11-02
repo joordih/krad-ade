@@ -281,7 +281,7 @@ impl EnvironmentShell {
         match event {
             LiveEvent::Ready(catalog) => {
                 let harness = structured.harness;
-                self.keep_harness_models(harness, &catalog.models);
+                self.keep_harness_models(env, harness, &catalog.models);
                 if let Some(structured) = structured_mut(self, env, id) {
                     structured.catalog = Some(catalog);
                 }

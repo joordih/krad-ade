@@ -28,8 +28,33 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  linux:
+  linux-agents:
     needs: version
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            platform: linux-x86_64
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            platform: linux-aarch64
+            target: aarch64-unknown-linux-musl
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - run: cargo build --release --locked -p krad-app --bin krad-ade-agents --no-default-features --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agents-${{ matrix.platform }}
+          path: target/${{ matrix.target }}/release/krad-ade-agents
+
+  linux:
+    needs: [version, linux-agents]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -45,11 +70,22 @@ jobs:
       - if: hashFiles('packaging/ghostty-vt/package.sh') != ''
         run: just ghostty-libs x86_64-unknown-linux-gnu
       - run: cargo build --release --locked -p krad-app
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: agents-*
+          path: target/agents
+      - name: Lay out the Linux agents CLI for SSH hosts
+        run: |
+          for folder in target/agents/agents-*; do
+            mv "$folder" "target/agents/${folder##*/agents-}"
+          done
+          chmod +x target/agents/*/krad-ade-agents
       - name: Package
         run: |
           name=krad-ade-${{ needs.version.outputs.version }}-x86_64-linux
           mkdir -p "$name/licenses"
           cp target/release/krad-ade target/release/krad-ade-agents packaging/linux/krad-ade.desktop "$name/"
+          cp -R target/agents "$name/agents"
           cp packaging/update/krad-ade.install "$name/"
           cp packaging/icon/png/krad-ade-256.png "$name/krad-ade.png"
           shopt -s nullglob
@@ -61,7 +97,7 @@ jobs:
           path: krad-ade-*-x86_64-linux.tar.gz
 
   windows:
-    needs: version
+    needs: [version, linux-agents]
     runs-on: windows-2022
     defaults:
       run:
@@ -86,6 +122,16 @@ jobs:
       - if: hashFiles('packaging/windows/LICENSE-conpty.txt') != ''
         run: just conpty
       - run: cargo build --release --locked -p krad-app
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: agents-*
+          path: target/agents
+      - name: Lay out the Linux agents CLI for SSH hosts
+        run: |
+          for folder in target/agents/agents-*; do
+            mv "$folder" "target/agents/${folder##*/agents-}"
+          done
+          chmod +x target/agents/*/krad-ade-agents
       - run: choco install innosetup --no-progress -y
       - shell: pwsh
         run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.version.outputs.version }}" installer\krad-ade.iss'
@@ -95,7 +141,7 @@ jobs:
           path: target/installer/krad-ade-*-setup.exe
 
   macos:
-    needs: version
+    needs: [version, linux-agents]
     runs-on: macos-15
     env:
       MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
@@ -112,6 +158,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: just ghostty-libs aarch64-apple-darwin
       - run: cargo build --release --locked -p krad-app
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: agents-*
+          path: target/agents
+      - name: Lay out the Linux agents CLI for SSH hosts
+        run: |
+          for folder in target/agents/agents-*; do
+            mv "$folder" "target/agents/${folder##*/agents-}"
+          done
+          chmod +x target/agents/*/krad-ade-agents
       - name: Import the Developer ID certificate
         if: env.MACOS_CERTIFICATE != ''
         run: |
@@ -133,6 +189,7 @@ jobs:
           mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/licenses"
           cp target/release/krad-ade target/release/krad-ade-agents "$app/Contents/MacOS/"
           cp packaging/macos/krad-ade.icns packaging/update/krad-ade.install "$app/Contents/Resources/"
+          cp -R target/agents "$app/Contents/Resources/agents"
           cp assets/icons/LICENSE-*.txt assets/fonts/*.txt "$app/Contents/Resources/licenses/"
           cp packaging/macos/Info.plist "$app/Contents/"
           plutil -replace CFBundleShortVersionString -string "$version" "$app/Contents/Info.plist"

@@ -8,6 +8,7 @@ mod material;
 mod mcp;
 mod page;
 mod terminal;
+mod toolchains;
 
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
@@ -282,7 +283,7 @@ impl EnvironmentShell {
             ui.pane = pane;
         }
         if pane == SettingsPane::Languages {
-            self.refresh_toolchain_statuses(cx);
+            self.refresh_server_runtime_statuses(cx);
         }
         cx.notify();
     }

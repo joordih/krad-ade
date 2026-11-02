@@ -10,8 +10,8 @@ const DRIVE_MOUNT: &str = "/mnt";
 const DISTRO_FLAG: &str = "--distribution";
 const CD_FLAG: &str = "--cd";
 const EXEC_FLAG: &str = "--exec";
-const SH_PROGRAM: &str = "sh";
-const SH_COMMAND_FLAG: &str = "-c";
+pub const POSIX_SHELL: &str = "sh";
+pub const POSIX_SHELL_COMMAND_FLAG: &str = "-c";
 const EXEC_ARGUMENTS: &str = r#"exec "$@""#;
 
 pub const WSL_PROGRAM: &str = "wsl.exe";
@@ -100,10 +100,10 @@ pub fn wsl_login_exec_args(distro: &str, linux_dir: &str) -> Vec<String> {
         CD_FLAG,
         linux_dir,
         EXEC_FLAG,
-        SH_PROGRAM,
-        SH_COMMAND_FLAG,
+        POSIX_SHELL,
+        POSIX_SHELL_COMMAND_FLAG,
         WSL_LOGIN_SHELL_SCRIPT,
-        SH_PROGRAM,
+        POSIX_SHELL,
         EXEC_ARGUMENTS,
     ]
     .map(str::to_owned)

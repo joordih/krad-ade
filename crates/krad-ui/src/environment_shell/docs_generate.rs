@@ -55,8 +55,9 @@ impl EnvironmentShell {
         self.list_harness_models(cx);
         self.ensure_opencode(cx);
         let preset = self.default_agent();
-        let picked = read_docs_sources(&root).unwrap_or_default();
-        let sources = docs_source_candidates(&root)
+        let link = self.active_link();
+        let picked = read_docs_sources(&link, &root).unwrap_or_default();
+        let sources = docs_source_candidates(&link, &root)
             .unwrap_or_default()
             .into_iter()
             .map(|entry| {
@@ -174,10 +175,12 @@ impl EnvironmentShell {
         );
         if let Some(root) = self.active_group().map(|group| group.root.clone()) {
             let saved = sources.clone();
-            let write = cx.background_spawn(async move { write_docs_sources(&root, &saved) });
+            let link = self.active_link();
+            let write =
+                cx.background_spawn(async move { write_docs_sources(&link, &root, &saved) });
             cx.spawn(async move |this, cx| {
                 if let Err(error) = write.await {
-                    this.update(cx, |shell, _| shell.push_toast(error.to_string()))
+                    this.update(cx, |shell, _| shell.toast_failure(&error))
                         .unwrap_or_default();
                 }
             })

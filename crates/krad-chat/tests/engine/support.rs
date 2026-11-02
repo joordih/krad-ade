@@ -167,6 +167,7 @@ pub(crate) fn scratch(name: &str) -> PathBuf {
 
 pub(crate) fn config(url: &str, root: &Path) -> EngineConfig {
     EngineConfig {
+        host: krad_host::HostLink::Local,
         access: GatewayAccess {
             url: url
                 .parse()

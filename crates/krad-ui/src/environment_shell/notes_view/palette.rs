@@ -107,8 +107,9 @@ impl EnvironmentShell {
             return;
         };
         let searched = vault.clone();
+        let link = self.active_link();
         let search =
-            cx.background_spawn(async move { search_text(&searched, &query, LINES_FOUND) });
+            cx.background_spawn(async move { search_text(&link, &searched, &query, LINES_FOUND) });
         self.notes.search.task = Some(cx.spawn(async move |this, cx| {
             let found = search.await;
             this.update(cx, |shell, cx| {
@@ -116,7 +117,7 @@ impl EnvironmentShell {
                     Ok(matches) => {
                         shell.notes.search.lines = note_lines(&vault, &shell.notes.index, matches);
                     }
-                    Err(error) => shell.push_toast(error.to_string()),
+                    Err(error) => shell.toast_failure(&error),
                 }
                 cx.notify();
             })

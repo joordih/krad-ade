@@ -1,12 +1,20 @@
 use krad_domain::{
-    AgentState, EnvironmentData, EnvironmentName, PersistedLayout, TerminalId, DEFAULT_ENVIRONMENT,
-    LAYOUT_SCHEMA_VERSION,
+    AgentState, EnvironmentData, EnvironmentName, PersistedLayout, SidePanelLayout, TerminalId,
+    DEFAULT_ENVIRONMENT, LAYOUT_SCHEMA_VERSION,
 };
 
 use super::{live_meta, EnvironmentShell, LiveEnv};
 
 impl EnvironmentShell {
     pub(super) fn restore_snapshot(&mut self, snapshot: PersistedLayout) {
+        self.toolchains = super::toolchains::Toolchains::with_choices(snapshot.toolchains);
+        if !snapshot.unreadable.is_empty() {
+            tracing::warn!(
+                count = snapshot.unreadable.len(),
+                "kept environments this version cannot read; they stay in the layout file"
+            );
+        }
+        self.unreadable_environments = snapshot.unreadable;
         let mut restored = 0;
         for mut data in snapshot.environments {
             let ids: Vec<TerminalId> = data.nodes.iter().map(|node| node.id).collect();
@@ -16,15 +24,18 @@ impl EnvironmentShell {
             }
             let name = data.name.clone();
             self.order.push(name.clone());
+            let link = self.link_for(&data.host);
             self.envs
-                .insert(name.clone(), LiveEnv::new(data, data_focus));
+                .insert(name.clone(), LiveEnv::new(data, data_focus, link));
             restored += self.spawn_missing_sessions(&name);
         }
         if self.order.is_empty() {
             let data = EnvironmentData::empty(EnvironmentName::new(DEFAULT_ENVIRONMENT.to_owned()));
             let name = data.name.clone();
             self.order.push(name.clone());
-            self.envs.insert(name.clone(), LiveEnv::new(data, None));
+            let link = self.link_for(&data.host);
+            self.envs
+                .insert(name.clone(), LiveEnv::new(data, None, link));
             restored += self.spawn_missing_sessions(&name);
         }
         self.work_mode = snapshot.work_mode;
@@ -43,7 +54,9 @@ impl EnvironmentShell {
     pub(super) fn restore_env(&mut self, data: EnvironmentData) {
         let name = data.name.clone();
         self.order.push(name.clone());
-        self.envs.insert(name.clone(), LiveEnv::new(data, None));
+        let link = self.link_for(&data.host);
+        self.envs
+            .insert(name.clone(), LiveEnv::new(data, None, link));
         self.active = name.clone();
         self.spawn_missing_sessions(&name);
     }
@@ -55,6 +68,7 @@ impl EnvironmentShell {
         };
         EnvironmentData {
             name: live.data.name.clone(),
+            host: live.data.host.clone(),
             nodes: live.data.nodes.clone(),
             meta,
             next_id: live.data.next_id,
@@ -64,9 +78,17 @@ impl EnvironmentShell {
             groups: live.data.groups.clone(),
             sessions: live.data.sessions.clone(),
             active_session: live.data.active_session,
-            side_panel: live.data.side_panel.clone(),
+            side_panel: self.persisted_side_panel(name, live),
             note_tabs: live.data.note_tabs.clone(),
         }
+    }
+
+    fn persisted_side_panel(&self, name: &EnvironmentName, live: &LiveEnv) -> SidePanelLayout {
+        let mut side_panel = live.data.side_panel.clone();
+        if let Some(sign_in) = self.sign_in_terminal_of(name) {
+            side_panel.remove_terminal(sign_in);
+        }
+        side_panel
     }
 
     fn snapshot(&self) -> PersistedLayout {
@@ -80,8 +102,10 @@ impl EnvironmentShell {
             version: LAYOUT_SCHEMA_VERSION,
             active: self.active.clone(),
             environments,
+            unreadable: self.unreadable_environments.clone(),
             work_mode: self.work_mode,
             sidebar_width: self.sidebar_w,
+            toolchains: self.toolchains.choices.clone(),
         }
     }
 

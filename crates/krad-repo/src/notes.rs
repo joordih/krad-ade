@@ -1,4 +1,5 @@
 use krad_domain::{Note, ATTACHMENTS_DIR, DOCS_SOURCES_FILE, NOTE_EXTENSION, VAULT_DIR};
+use krad_host::HostLink;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -64,18 +65,21 @@ fn is_note(path: &Path) -> bool {
         .is_some_and(|extension| extension.eq_ignore_ascii_case(NOTE_EXTENSION))
 }
 
-fn collect(vault: &Path, dir: &Path, entries: &mut Vec<VaultEntry>) -> Result<(), RepoError> {
-    let mut children: Vec<PathBuf> = fs::read_dir(dir)?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.file_name()
-                .is_some_and(|name| !name.to_string_lossy().starts_with(HIDDEN_PREFIX))
-        })
+fn collect(
+    host: &HostLink,
+    vault: &Path,
+    dir: &Path,
+    entries: &mut Vec<VaultEntry>,
+) -> Result<(), RepoError> {
+    let mut children: Vec<(PathBuf, bool)> = host
+        .read_dir(dir)?
+        .into_iter()
+        .filter(|entry| !entry.name.starts_with(HIDDEN_PREFIX))
+        .map(|entry| (entry.path, entry.metadata.is_dir()))
         .collect();
-    children.sort_by_key(|path| (!path.is_dir(), path.to_string_lossy().to_lowercase()));
-    for path in children {
-        let kind = if path.is_dir() {
+    children.sort_by_key(|(path, is_dir)| (!is_dir, path.to_string_lossy().to_lowercase()));
+    for (path, is_dir) in children {
+        let kind = if is_dir {
             VaultEntryKind::Folder
         } else if is_note(&path) {
             VaultEntryKind::Note
@@ -87,7 +91,7 @@ fn collect(vault: &Path, dir: &Path, entries: &mut Vec<VaultEntry>) -> Result<()
             kind,
         });
         if kind == VaultEntryKind::Folder {
-            collect(vault, &path, entries)?;
+            collect(host, vault, &path, entries)?;
         }
     }
     Ok(())
@@ -96,11 +100,14 @@ fn collect(vault: &Path, dir: &Path, entries: &mut Vec<VaultEntry>) -> Result<()
 /// # Errors
 ///
 /// Returns [`RepoError::Io`] when a folder cannot be read.
-pub fn vault_entries(root: &Path) -> Result<Vec<VaultEntry>, RepoError> {
+pub fn vault_entries(host: &HostLink, root: &Path) -> Result<Vec<VaultEntry>, RepoError> {
     let vault = vault_dir(root);
     let mut entries = Vec::new();
-    if vault.is_dir() {
-        collect(&vault, &vault, &mut entries)?;
+    if host
+        .metadata(&vault)
+        .is_ok_and(|metadata| metadata.is_dir())
+    {
+        collect(host, &vault, &vault, &mut entries)?;
     }
     entries.retain(|entry| entry.path != DOCS_SOURCES_FILE);
     Ok(entries)
@@ -110,12 +117,12 @@ pub fn vault_entries(root: &Path) -> Result<Vec<VaultEntry>, RepoError> {
 ///
 /// Returns [`RepoError::Io`] when the vault cannot be read; a note that
 /// cannot be read is left out.
-pub fn vault_notes(root: &Path) -> Result<Vec<(String, Note)>, RepoError> {
-    let notes = vault_entries(root)?
+pub fn vault_notes(host: &HostLink, root: &Path) -> Result<Vec<(String, Note)>, RepoError> {
+    let notes = vault_entries(host, root)?
         .into_iter()
         .filter(|entry| entry.kind == VaultEntryKind::Note)
         .filter_map(|entry| {
-            read_note(root, &entry.path)
+            read_note(host, root, &entry.path)
                 .ok()
                 .map(|note| (entry.path, note))
         })
@@ -127,27 +134,32 @@ pub fn vault_notes(root: &Path) -> Result<Vec<(String, Note)>, RepoError> {
 ///
 /// Returns [`RepoError::OutsideRepository`] for a path that climbs out of
 /// the vault and [`RepoError::Io`] when the note cannot be read.
-pub fn read_note(root: &Path, path: &str) -> Result<Note, RepoError> {
-    Ok(Note::parse(&fs::read_to_string(inside(root, path)?)?))
+pub fn read_note(host: &HostLink, root: &Path, path: &str) -> Result<Note, RepoError> {
+    Ok(Note::parse(&host.read_to_string(&inside(root, path)?)?))
 }
 
 /// # Errors
 ///
 /// Returns [`RepoError::OutsideRepository`] for a path that climbs out of
 /// the vault and [`RepoError::Io`] when it cannot be written.
-pub fn write_note(root: &Path, path: &str, note: &Note) -> Result<(), RepoError> {
-    write_atomically(&inside(root, path)?, &note.to_markdown())
+pub fn write_note(host: &HostLink, root: &Path, path: &str, note: &Note) -> Result<(), RepoError> {
+    write_atomically(host, &inside(root, path)?, &note.to_markdown())
 }
 
 /// # Errors
 ///
 /// Returns [`RepoError::OutsideRepository`] for a path that climbs out of
 /// the vault and [`RepoError::Io`] when it cannot be written.
-pub fn write_note_text(root: &Path, path: &str, text: &str) -> Result<(), RepoError> {
-    write_atomically(&inside(root, path)?, text)
+pub fn write_note_text(
+    host: &HostLink,
+    root: &Path,
+    path: &str,
+    text: &str,
+) -> Result<(), RepoError> {
+    write_atomically(host, &inside(root, path)?, text)
 }
 
-fn free_name(folder: &Path, stem: &str, extension: Option<&str>) -> PathBuf {
+fn free_name(host: &HostLink, folder: &Path, stem: &str, extension: Option<&str>) -> PathBuf {
     let file = |suffix: Option<usize>| {
         let stem = suffix.map_or_else(|| stem.to_owned(), |n| format!("{stem}{COPY_SEPARATOR}{n}"));
         match extension {
@@ -158,7 +170,7 @@ fn free_name(folder: &Path, stem: &str, extension: Option<&str>) -> PathBuf {
     std::iter::once(None)
         .chain((2..=MAX_COPIES).map(Some))
         .map(|suffix| folder.join(file(suffix)))
-        .find(|path| !path.exists())
+        .find(|path| !host.exists(path))
         .unwrap_or_else(|| folder.join(file(None)))
 }
 
@@ -166,15 +178,20 @@ fn free_name(folder: &Path, stem: &str, extension: Option<&str>) -> PathBuf {
 ///
 /// Returns [`RepoError::OutsideRepository`] for a folder outside the vault
 /// and [`RepoError::Io`] when the note cannot be written.
-pub fn create_note(root: &Path, folder: &str, title: &str) -> Result<String, RepoError> {
+pub fn create_note(
+    host: &HostLink,
+    root: &Path,
+    folder: &str,
+    title: &str,
+) -> Result<String, RepoError> {
     let dir = inside(root, folder)?;
-    fs::create_dir_all(&dir)?;
-    let path = free_name(&dir, title, Some(NOTE_EXTENSION));
+    host.create_dir_all(&dir)?;
+    let path = free_name(host, &dir, title, Some(NOTE_EXTENSION));
     let stem = path.file_stem().map_or_else(
         || title.to_owned(),
         |stem| stem.to_string_lossy().into_owned(),
     );
-    write_atomically(&path, &format!("# {stem}\n\n"))?;
+    write_atomically(host, &path, &format!("# {stem}\n\n"))?;
     Ok(relative(&vault_dir(root), &path))
 }
 
@@ -182,10 +199,15 @@ pub fn create_note(root: &Path, folder: &str, title: &str) -> Result<String, Rep
 ///
 /// Returns [`RepoError::OutsideRepository`] for a folder outside the vault
 /// and [`RepoError::Io`] when it cannot be created.
-pub fn create_vault_folder(root: &Path, folder: &str, name: &str) -> Result<String, RepoError> {
+pub fn create_vault_folder(
+    host: &HostLink,
+    root: &Path,
+    folder: &str,
+    name: &str,
+) -> Result<String, RepoError> {
     let dir = inside(root, folder)?;
-    let path = free_name(&dir, name, None);
-    fs::create_dir_all(&path)?;
+    let path = free_name(host, &dir, name, None);
+    host.create_dir_all(&path)?;
     Ok(relative(&vault_dir(root), &path))
 }
 
@@ -193,7 +215,7 @@ pub fn create_vault_folder(root: &Path, folder: &str, name: &str) -> Result<Stri
 ///
 /// Returns [`RepoError::InvalidName`] for a file with no name and
 /// [`RepoError::Io`] when it cannot be copied.
-pub fn add_attachment(root: &Path, file: &Path) -> Result<String, RepoError> {
+pub fn add_attachment(host: &HostLink, root: &Path, file: &Path) -> Result<String, RepoError> {
     let stem = file
         .file_stem()
         .ok_or_else(|| RepoError::InvalidName(file.display().to_string()))?
@@ -203,9 +225,13 @@ pub fn add_attachment(root: &Path, file: &Path) -> Result<String, RepoError> {
         .extension()
         .map(|ext| ext.to_string_lossy().into_owned());
     let dir = vault_dir(root).join(ATTACHMENTS_DIR);
-    fs::create_dir_all(&dir)?;
-    let target = free_name(&dir, &stem, extension.as_deref());
-    fs::copy(file, &target)?;
+    host.create_dir_all(&dir)?;
+    let target = free_name(host, &dir, &stem, extension.as_deref());
+    if host.is_local() {
+        fs::copy(file, &target)?;
+    } else {
+        host.write(&target, &fs::read(file)?)?;
+    }
     Ok(relative(&vault_dir(root), &target))
 }
 
@@ -213,15 +239,16 @@ pub fn add_attachment(root: &Path, file: &Path) -> Result<String, RepoError> {
 ///
 /// Returns [`RepoError::Io`] when it cannot be written.
 pub fn save_attachment(
+    host: &HostLink,
     root: &Path,
     stem: &str,
     extension: &str,
     bytes: &[u8],
 ) -> Result<String, RepoError> {
     let dir = vault_dir(root).join(ATTACHMENTS_DIR);
-    fs::create_dir_all(&dir)?;
-    let target = free_name(&dir, stem, Some(extension));
-    fs::write(&target, bytes)?;
+    host.create_dir_all(&dir)?;
+    let target = free_name(host, &dir, stem, Some(extension));
+    host.write(&target, bytes)?;
     Ok(relative(&vault_dir(root), &target))
 }
 
@@ -229,12 +256,12 @@ pub fn save_attachment(
 ///
 /// Returns [`RepoError::Io`] when the vault cannot be read or a note
 /// written.
-pub fn stamp_new_notes(root: &Path, now: u64) -> Result<usize, RepoError> {
+pub fn stamp_new_notes(host: &HostLink, root: &Path, now: u64) -> Result<usize, RepoError> {
     let mut stamped = 0;
-    for (path, mut note) in vault_notes(root)? {
+    for (path, mut note) in vault_notes(host, root)? {
         if note.needs_stamp() {
             note.stamp(now);
-            write_note(root, &path, &note)?;
+            write_note(host, root, &path, &note)?;
             stamped += 1;
         }
     }
@@ -257,15 +284,15 @@ mod tests {
     #[test]
     fn notes_folders_and_attachments_are_listed_created_and_read() -> Result<(), RepoError> {
         let root = temp_root("vault")?;
-        let plan = create_note(&root, "", "Plan")?;
-        let again = create_note(&root, "", "Plan")?;
-        let folder = create_vault_folder(&root, "", "Ideas")?;
-        let nested = create_note(&root, &folder, "Spark")?;
-        let image = save_attachment(&root, "Pasted image", "png", &[1, 2, 3])?;
+        let plan = create_note(&HostLink::Local, &root, "", "Plan")?;
+        let again = create_note(&HostLink::Local, &root, "", "Plan")?;
+        let folder = create_vault_folder(&HostLink::Local, &root, "", "Ideas")?;
+        let nested = create_note(&HostLink::Local, &root, &folder, "Spark")?;
+        let image = save_attachment(&HostLink::Local, &root, "Pasted image", "png", &[1, 2, 3])?;
         assert_eq!((plan.as_str(), again.as_str()), ("Plan.md", "Plan 2.md"));
         assert_eq!(nested, "Ideas/Spark.md");
         assert_eq!(image, "attachments/Pasted image.png");
-        let listed: Vec<(String, VaultEntryKind)> = vault_entries(&root)?
+        let listed: Vec<(String, VaultEntryKind)> = vault_entries(&HostLink::Local, &root)?
             .into_iter()
             .map(|entry| (entry.path, entry.kind))
             .collect();
@@ -283,9 +310,9 @@ mod tests {
                 ("Plan.md".to_owned(), VaultEntryKind::Note),
             ]
         );
-        assert_eq!(read_note(&root, &plan)?.title(""), "Plan");
-        assert!(read_note(&root, "../escape.md").is_err());
-        assert_eq!(vault_notes(&root)?.len(), 3);
+        assert_eq!(read_note(&HostLink::Local, &root, &plan)?.title(""), "Plan");
+        assert!(read_note(&HostLink::Local, &root, "../escape.md").is_err());
+        assert_eq!(vault_notes(&HostLink::Local, &root)?.len(), 3);
         fs::remove_dir_all(&root)?;
         Ok(())
     }
@@ -293,13 +320,20 @@ mod tests {
     #[test]
     fn docs_sources_round_trip() -> Result<(), RepoError> {
         let root = temp_root("sources")?;
-        assert_eq!(read_docs_sources(&root)?, None);
-        write_docs_sources(&root, &["crates".to_owned(), "AGENTS.md".to_owned()])?;
+        assert_eq!(read_docs_sources(&HostLink::Local, &root)?, None);
+        write_docs_sources(
+            &HostLink::Local,
+            &root,
+            &["crates".to_owned(), "AGENTS.md".to_owned()],
+        )?;
         assert_eq!(
-            read_docs_sources(&root)?,
+            read_docs_sources(&HostLink::Local, &root)?,
             Some(vec!["crates".to_owned(), "AGENTS.md".to_owned()])
         );
-        assert!(vault_entries(&root)?.is_empty(), "sources.toml is no note");
+        assert!(
+            vault_entries(&HostLink::Local, &root)?.is_empty(),
+            "sources.toml is no note"
+        );
         fs::remove_dir_all(&root)?;
         Ok(())
     }

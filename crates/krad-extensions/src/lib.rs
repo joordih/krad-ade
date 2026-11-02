@@ -1,14 +1,16 @@
 mod archive;
 mod error;
 mod extension;
+mod host_tools;
 mod http;
 mod manifest;
 mod package;
 mod path_lookup;
 mod platform;
 mod registry;
+mod server_runtime;
 mod template;
-mod toolchain;
+mod toolchains;
 mod tools;
 
 pub use error::ExtensionError;
@@ -17,4 +19,12 @@ pub use extension::{
 };
 pub use manifest::builtin_catalog;
 pub use registry::Registry;
-pub use tools::{LanguageTools, MissingToolchain, ServerConfig, ServerPlan, ToolchainStatus};
+pub use toolchains::{
+    activation_lines, discover, entered_toolchain, handoff, launch_with,
+    manifest as toolchain_manifest, merged_settings, project_config_present, project_folder_for,
+    Discovery, DiscoveryRequest, Handoff, HandoffApply, ServerToolchain, SharedLocatorManifest,
+    ToolchainCache, ToolchainFamilyManifest,
+};
+pub use tools::{
+    LanguageTools, MissingServerRuntime, ServerConfig, ServerPlan, ServerRuntimeStatus,
+};

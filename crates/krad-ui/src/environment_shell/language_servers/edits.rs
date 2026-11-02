@@ -2,9 +2,11 @@ use gpui_kit::component::input::{EditorState, Rope, RopeExt as _};
 use gpui_kit::{AppContext as _, Context, Entity, Window};
 use krad_lsp::lsp_types::{DocumentChanges, OneOf, TextEdit, WorkspaceEdit};
 use krad_lsp::uri_path;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use super::super::EnvironmentShell;
+use super::Document;
+use krad_domain::Host;
 
 const WRITE_FAILED_TEXT: &str = "Couldn't apply the change to";
 
@@ -64,11 +66,12 @@ pub(super) fn file_changes(edit: WorkspaceEdit) -> Vec<(PathBuf, Vec<TextEdit>)>
 }
 
 impl EnvironmentShell {
-    fn open_state(&self, path: &Path) -> Option<Entity<EditorState>> {
+    fn open_state(&self, document: &Document) -> Option<Entity<EditorState>> {
         self.envs
             .values()
+            .filter(|live| live.data.host == document.host)
             .flat_map(|live| live.editors.values())
-            .find(|editor| editor.path == path)
+            .find(|editor| editor.path == document.path)
             .and_then(|editor| editor.state.clone())
     }
 
@@ -84,10 +87,11 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn queue_workspace_edit(
         &mut self,
+        host: Host,
         edit: WorkspaceEdit,
         cx: &mut Context<Self>,
     ) {
-        self.language_servers.pending_edits.push(edit);
+        self.language_servers.pending_edits.push((host, edit));
         cx.notify();
     }
 
@@ -96,26 +100,32 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        for edit in std::mem::take(&mut self.language_servers.pending_edits) {
-            self.apply_workspace_edit(edit, window, cx);
+        for (host, edit) in std::mem::take(&mut self.language_servers.pending_edits) {
+            self.apply_workspace_edit(&host, edit, window, cx);
         }
     }
 
     fn apply_workspace_edit(
         &mut self,
+        host: &Host,
         edit: WorkspaceEdit,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let link = self.server_link(host).map(|(link, _)| link);
         for (path, edits) in file_changes(edit) {
-            if let Some(state) = self.open_state(&path) {
+            if let Some(state) = self.open_state(&Document::new(host, &path)) {
                 Self::apply_editor_edits(&state, edits, window, cx);
                 continue;
             }
+            let Some(link) = link.clone() else {
+                self.toast(&format!("{WRITE_FAILED_TEXT} {}", path.display()), cx);
+                continue;
+            };
             let written = path.clone();
             let writing = cx.background_spawn(async move {
-                let text = std::fs::read_to_string(&written)?;
-                std::fs::write(&written, apply_text_edits(&text, edits))
+                let text = link.read_to_string(&written)?;
+                link.write(&written, apply_text_edits(&text, edits).as_bytes())
             });
             cx.spawn(async move |this, cx| {
                 if let Err(error) = writing.await {

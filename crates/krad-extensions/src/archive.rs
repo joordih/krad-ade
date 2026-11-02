@@ -13,14 +13,25 @@ const ZIP_SUFFIXES: [&str; 3] = [".zip", ".sit", ".vsix"];
 const GZ_SUFFIX: &str = ".gz";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Kind {
+pub(crate) enum Kind {
     Tar,
     Zip,
     Gz,
     Plain,
 }
 
-fn kind_of(name: &str) -> Kind {
+impl Kind {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Tar => "tar",
+            Self::Zip => "zip",
+            Self::Gz => "gz",
+            Self::Plain => "plain",
+        }
+    }
+}
+
+pub(crate) fn kind_of(name: &str) -> Kind {
     let lower = name.to_ascii_lowercase();
     if TAR_SUFFIXES.iter().any(|suffix| lower.ends_with(suffix)) {
         Kind::Tar

@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod logging;
 #[cfg(windows)]
 mod rounded_corners;
 
@@ -7,21 +8,25 @@ use gpui_kit::component::command::CommandState;
 use gpui_kit::component::TitleBar;
 use gpui_kit::{application, init, open_window, AppContext, WindowDecorations, WindowOptions};
 use krad_domain::AppearanceMode;
-use krad_store::{read_layout_snapshot, read_settings, APP_NAME};
+use krad_store::{config_dir, read_layout_snapshot, read_settings, APP_NAME};
 use krad_ui::{
     apply_appearance, apply_code_look, apply_window_material, apply_window_tint, http_client,
     initial_window_bounds, install_app_menus, key_bindings, login_shell_env, match_window_frame,
     register_fonts, title_bar_options, window_background, AppAssets, Appearance, EnvironmentShell,
+    HostTools,
 };
 
 const APP_TITLE: &str = "Krad ADE";
 
 fn main() {
+    let log_guard = logging::start(config_dir().as_deref());
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "krad-ade starting");
     for (name, value) in login_shell_env() {
         std::env::set_var(name, value);
     }
     let seed = read_layout_snapshot();
     let settings = read_settings();
+    let host_tools = HostTools::discover();
     application()
         .with_assets(AppAssets)
         .with_http_client(http_client())
@@ -46,7 +51,7 @@ fn main() {
                 ..TitleBar::window_options()
             };
             match open_window(options, cx, |window, cx| {
-                let view = cx.new(|cx| EnvironmentShell::with_seed(cx, seed, settings));
+                let view = cx.new(|cx| EnvironmentShell::with_seed(cx, seed, settings, host_tools));
                 let palette = cx.new(|cx| CommandState::new(window, cx));
                 let weak = view.downgrade();
                 let veto = view.downgrade();
@@ -67,9 +72,11 @@ fn main() {
                     #[cfg(windows)]
                     rounded_corners::round_window_corners();
                 }
-                Err(_) => {
+                Err(error) => {
+                    tracing::error!(%error, "could not open the main window");
                     std::process::exit(1);
                 }
             }
         });
+    drop(log_guard);
 }

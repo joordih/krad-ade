@@ -1,6 +1,6 @@
 pub use krad_pty::{
     clear_screen_prefix, default_shell, find_program, login_shell_env, wsl_shell, wsl_shell_in,
-    GridSize, PtyInput, SharedKiller, DEFAULT_COLS, DEFAULT_ROWS, SHELL_QUOTING,
+    GridSize, PtyInput, SharedKiller, DEFAULT_COLS, DEFAULT_ROWS, SHELL_QUOTING, TERMINAL_ENV,
 };
 pub use krad_term::{
     block, AnsiPalette, Block, CellPixels, CellPoint, CellRect, CursorShape, ImageDepth,
@@ -14,7 +14,7 @@ use futures::SinkExt as _;
 use krad_domain::{AgentPreset, EnvironmentName, TerminalId};
 use krad_pty::{run_reader_loop, run_writer_loop, spawn_pty, watch_exit, SpawnRequest, SpawnedPty};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -63,6 +63,38 @@ impl SessionState {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct FirstInput(Arc<AtomicU8>);
+
+const INPUT_UNTOUCHED: u8 = 0;
+const INPUT_FROM_USER: u8 = 1;
+const INPUT_FROM_APP: u8 = 2;
+
+impl FirstInput {
+    #[must_use]
+    pub fn claim_for_app(&self) -> bool {
+        self.0
+            .compare_exchange(
+                INPUT_UNTOUCHED,
+                INPUT_FROM_APP,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_ok()
+    }
+
+    pub fn user_typed(&self) {
+        self.0
+            .compare_exchange(
+                INPUT_UNTOUCHED,
+                INPUT_FROM_USER,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .ok();
+    }
+}
+
 pub struct LiveSession {
     pub engine: VtEngine,
     pub writer_tx: Sender<PtyInput>,
@@ -76,6 +108,7 @@ pub struct LiveSession {
     pub hooked: bool,
     pub activity: Option<String>,
     pub cwd: Option<String>,
+    pub first_input: FirstInput,
 }
 
 impl LiveSession {
@@ -215,6 +248,17 @@ pub fn spawn_ticker(mut pump: PumpSender<PumpMsg>) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn whoever_types_first_owns_the_fresh_prompt() {
+        let first = FirstInput::default();
+        assert!(first.claim_for_app());
+        first.user_typed();
+        assert!(!first.claim_for_app());
+        let typed = FirstInput::default();
+        typed.user_typed();
+        assert!(!typed.claim_for_app());
+    }
+
     fn session(state: SessionState) -> LiveSession {
         let (writer_tx, _writer_rx) = std::sync::mpsc::channel();
         LiveSession {
@@ -231,6 +275,7 @@ mod tests {
             hooked: false,
             activity: None,
             cwd: None,
+            first_input: FirstInput::default(),
         }
     }
 

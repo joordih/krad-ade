@@ -1,4 +1,6 @@
 use krad_domain::{line_diff, EditLine, FileEdit, LineChange};
+use krad_host::HostLink;
+use std::io;
 use std::path::Path;
 
 use super::{Occurrence, Ran, Replacement};
@@ -87,20 +89,20 @@ fn apply_all(
     Ok((text, replaced))
 }
 
-pub(super) fn edit(path: &Path, shown: &str, replacements: &[Replacement]) -> Ran {
+pub(super) fn edit(host: &HostLink, path: &Path, shown: &str, replacements: &[Replacement]) -> Ran {
     if replacements.is_empty() {
         return Ran::failed(NO_EDITS_TEXT.to_owned());
     }
-    let text = match std::fs::read_to_string(path) {
+    let text = match host.read_to_string(path) {
         Ok(text) => text,
-        Err(error) => return Ran::failed(format!("{shown}: {error}")),
+        Err(error) => return Ran::failed(format!("{shown}: {}", io::Error::from(error))),
     };
     let (edited, replaced) = match apply_all(text, replacements, shown) {
         Ok(applied) => applied,
         Err(error) => return Ran::failed(error),
     };
-    if let Err(error) = std::fs::write(path, edited) {
-        return Ran::failed(format!("{shown}: {error}"));
+    if let Err(error) = host.write(path, edited.as_bytes()) {
+        return Ran::failed(format!("{shown}: {}", io::Error::from(error)));
     }
     Ran {
         content: format!("{EDITED_TEXT} {shown} ({replaced} replaced)"),
@@ -140,7 +142,7 @@ mod tests {
     fn a_unique_match_is_replaced_keeping_line_endings() {
         let scratch = Scratch::new();
         let path = scratch.file("a.txt", "one\r\ntwo\r\n");
-        let ran = edit(&path, "a.txt", &[once("two", "2")]);
+        let ran = edit(&HostLink::Local, &path, "a.txt", &[once("two", "2")]);
         assert!(!ran.failed, "{}", ran.content);
         assert_eq!(content(&path), "one\r\n2\r\n");
         assert_eq!(ran.edit.map(|edit| edit.path), Some("a.txt".to_owned()));
@@ -150,16 +152,16 @@ mod tests {
     fn missing_and_repeated_text_is_refused_unless_all() {
         let scratch = Scratch::new();
         let path = scratch.file("a.txt", "x x x");
-        assert!(edit(&path, "a.txt", &[once("y", "z")])
+        assert!(edit(&HostLink::Local, &path, "a.txt", &[once("y", "z")])
             .content
             .contains(NOT_FOUND_TEXT));
-        let many = edit(&path, "a.txt", &[once("x", "z")]);
+        let many = edit(&HostLink::Local, &path, "a.txt", &[once("x", "z")]);
         assert!(many.failed && many.content.contains("found 3 times"));
         assert_eq!(content(&path), "x x x");
-        assert!(!edit(&path, "a.txt", &[every("x", "z")]).failed);
+        assert!(!edit(&HostLink::Local, &path, "a.txt", &[every("x", "z")]).failed);
         assert_eq!(content(&path), "z z z");
-        assert!(edit(&path, "a.txt", &[once("", "z")]).failed);
-        assert!(edit(&path, "a.txt", &[once("z", "z")]).failed);
+        assert!(edit(&HostLink::Local, &path, "a.txt", &[once("", "z")]).failed);
+        assert!(edit(&HostLink::Local, &path, "a.txt", &[once("z", "z")]).failed);
     }
 
     #[test]
@@ -167,6 +169,7 @@ mod tests {
         let scratch = Scratch::new();
         let path = scratch.file("a.rs", "fn a() {}\nfn b() {}\n");
         let ran = edit(
+            &HostLink::Local,
             &path,
             "a.rs",
             &[
@@ -185,6 +188,7 @@ mod tests {
             1
         );
         let refused = edit(
+            &HostLink::Local,
             &path,
             "a.rs",
             &[once("fn first", "fn one"), once("missing", "x")],

@@ -43,9 +43,9 @@ impl EnvironmentShell {
             cancel: DELETE_DIALOG_CANCEL,
         };
         let target = path.clone();
-        let asked = Self::confirm_natively(&confirmation, window, cx, |_, confirmed, _, cx| {
+        let asked = Self::confirm_natively(&confirmation, window, cx, |this, confirmed, _, cx| {
             if confirmed {
-                Self::delete_file(target, cx);
+                this.delete_file(target, cx);
             }
         });
         if !asked {

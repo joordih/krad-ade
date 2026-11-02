@@ -4,6 +4,7 @@ use krad_chat::{
     Speaker, TranscriptChunk,
 };
 use krad_domain::{AgentPreset, AgentState, ChatEntry, EnvironmentName, ResumeId, TerminalId};
+use krad_host::HostLink;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -36,6 +37,7 @@ pub(in crate::environment_shell) struct TranscriptView {
 }
 
 pub(super) struct TailJob {
+    pub(super) link: HostLink,
     pub(super) resume: ResumeId,
     pub(super) root: Option<PathBuf>,
     pub(super) home: Option<PathBuf>,
@@ -75,7 +77,7 @@ impl TailJob {
             start: 0,
         };
         if read.home.is_none() {
-            match workplace_home(self.root.as_deref()) {
+            match workplace_home(&self.link, self.root.as_deref()) {
                 Ok(Some(home)) => read.home = Some(home),
                 Ok(None) => read.problem = Some(NO_HOME_TEXT.to_owned()),
                 Err(error) => read.problem = Some(error.to_string()),
@@ -85,21 +87,23 @@ impl TailJob {
             read.file = read
                 .home
                 .as_deref()
-                .and_then(|home| claude_conversation_file(home, &read.resume));
+                .and_then(|home| claude_conversation_file(&self.link, home, &read.resume));
         }
         let Some(file) = read.file.clone() else {
             return read;
         };
         if self.from == 0 {
-            read.started = started_at(&file);
+            read.started = started_at(&self.link, &file);
         }
         let chunk = if self.first_look {
-            read_claude_transcript_tail(&file, FIRST_LOOK_BYTES).map(|(chunk, start)| {
-                read.start = start;
-                chunk
-            })
+            read_claude_transcript_tail(&self.link, &file, FIRST_LOOK_BYTES).map(
+                |(chunk, start)| {
+                    read.start = start;
+                    chunk
+                },
+            )
         } else {
-            read_claude_transcript(&file, self.from)
+            read_claude_transcript(&self.link, &file, self.from)
         };
         match chunk {
             Ok(chunk) => read.chunk = chunk,
@@ -109,9 +113,12 @@ impl TailJob {
     }
 }
 
-pub(super) fn started_at(file: &Path) -> Option<SystemTime> {
-    let metadata = std::fs::metadata(file).ok()?;
-    metadata.created().or_else(|_| metadata.modified()).ok()
+pub(super) fn started_at(link: &HostLink, file: &Path) -> Option<SystemTime> {
+    if link.is_local() {
+        let metadata = std::fs::metadata(file).ok()?;
+        return metadata.created().or_else(|_| metadata.modified()).ok();
+    }
+    link.metadata(file).ok()?.modified
 }
 
 fn open_answer() -> ChatMessage {
@@ -298,6 +305,7 @@ impl EnvironmentShell {
             chat.origin = None;
         }
         Some(TailJob {
+            link: live.link.clone(),
             resume,
             root,
             home: transcript.home.clone(),

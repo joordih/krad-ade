@@ -16,6 +16,7 @@ use gpui_kit::{
     div, px, AnyElement, AppContext as _, Context, IntoElement, ParentElement, Styled, Task,
 };
 use krad_domain::{FileOpening, NoteMode, NoteTabs, VaultIndex, VAULT_DIR};
+use krad_host::HostLink;
 use krad_repo::{
     create_note, create_vault_folder, stamp_new_notes, vault_entries, vault_notes, vault_path,
     VaultEntry,
@@ -83,11 +84,11 @@ struct VaultRead {
     index: VaultIndex,
 }
 
-fn read_vault(root: &Path) -> Result<VaultRead, krad_repo::RepoError> {
-    stamp_new_notes(root, now_secs())?;
+fn read_vault(link: &HostLink, root: &Path) -> Result<VaultRead, krad_repo::RepoError> {
+    stamp_new_notes(link, root, now_secs())?;
     Ok(VaultRead {
-        entries: vault_entries(root)?,
-        index: VaultIndex::new(vault_notes(root)?),
+        entries: vault_entries(link, root)?,
+        index: VaultIndex::new(vault_notes(link, root)?),
     })
 }
 
@@ -157,14 +158,19 @@ impl EnvironmentShell {
                 let root = this
                     .update(cx, |shell, _| {
                         let showing = shell.active_view() == krad_domain::EnvironmentView::Notes;
-                        showing.then(|| shell.notes.root.clone()).flatten()
+                        showing
+                            .then(|| shell.notes.root.clone())
+                            .flatten()
+                            .map(|root| (shell.active_link(), root))
                     })
                     .ok();
                 let Some(root) = root else {
                     break;
                 };
-                if let Some(root) = root {
-                    let read = cx.background_spawn(async move { read_vault(&root) }).await;
+                if let Some((link, root)) = root {
+                    let read = cx
+                        .background_spawn(async move { read_vault(&link, &root) })
+                        .await;
                     let applied = this.update(cx, |shell, cx| shell.apply_vault(read, cx));
                     if applied.is_err() {
                         break;
@@ -177,7 +183,8 @@ impl EnvironmentShell {
 
     fn read_vault_now(&mut self, root: PathBuf, cx: &mut Context<Self>) {
         self.notes.loading = true;
-        let read = cx.background_spawn(async move { read_vault(&root) });
+        let link = self.active_link();
+        let read = cx.background_spawn(async move { read_vault(&link, &root) });
         cx.spawn(async move |this, cx| {
             let read = read.await;
             this.update(cx, |shell, cx| shell.apply_vault(read, cx))
@@ -207,7 +214,7 @@ impl EnvironmentShell {
                     cx.notify();
                 }
             }
-            Err(error) => self.push_toast(error.to_string()),
+            Err(error) => self.toast_failure(&error),
         }
     }
 
@@ -235,10 +242,12 @@ impl EnvironmentShell {
         let Some(root) = self.notes.root.clone() else {
             return;
         };
+        let link = self.active_link();
         match action {
             NoteAction::NewNote(folder) => {
-                let made =
-                    cx.background_spawn(async move { create_note(&root, &folder, NEW_NOTE_TITLE) });
+                let made = cx.background_spawn(async move {
+                    create_note(&link, &root, &folder, NEW_NOTE_TITLE)
+                });
                 cx.spawn(async move |this, cx| {
                     let made = made.await;
                     this.update(cx, |shell, cx| match made {
@@ -246,7 +255,7 @@ impl EnvironmentShell {
                             shell.refresh_vault(cx);
                             shell.open_vault_note(&path, FileOpening::Pinned, cx);
                         }
-                        Err(error) => shell.push_toast(error.to_string()),
+                        Err(error) => shell.toast_failure(&error),
                     })
                     .unwrap_or_default();
                 })
@@ -254,7 +263,7 @@ impl EnvironmentShell {
             }
             NoteAction::NewFolder(folder) => {
                 let made = cx.background_spawn(async move {
-                    create_vault_folder(&root, &folder, NEW_FOLDER_NAME)
+                    create_vault_folder(&link, &root, &folder, NEW_FOLDER_NAME)
                 });
                 cx.spawn(async move |this, cx| {
                     let made = made.await;
@@ -263,7 +272,7 @@ impl EnvironmentShell {
                             shell.notes.expanded.insert(path);
                             shell.refresh_vault(cx);
                         }
-                        Err(error) => shell.push_toast(error.to_string()),
+                        Err(error) => shell.toast_failure(&error),
                     })
                     .unwrap_or_default();
                 })
@@ -271,7 +280,8 @@ impl EnvironmentShell {
             }
             NoteAction::Open(path) => self.open_vault_note(&path, FileOpening::Pinned, cx),
             NoteAction::NewNamed(title) => {
-                let made = cx.background_spawn(async move { create_note(&root, "", &title) });
+                let made =
+                    cx.background_spawn(async move { create_note(&link, &root, "", &title) });
                 cx.spawn(async move |this, cx| {
                     let made = made.await;
                     this.update(cx, |shell, cx| match made {
@@ -279,7 +289,7 @@ impl EnvironmentShell {
                             shell.refresh_vault(cx);
                             shell.open_vault_note(&path, FileOpening::Pinned, cx);
                         }
-                        Err(error) => shell.push_toast(error.to_string()),
+                        Err(error) => shell.toast_failure(&error),
                     })
                     .unwrap_or_default();
                 })

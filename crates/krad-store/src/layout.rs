@@ -90,8 +90,10 @@ mod tests {
             version,
             active: EnvironmentName::new("main".to_owned()),
             environments: Vec::new(),
+            unreadable: Vec::new(),
             work_mode: WorkMode::default(),
             sidebar_width: SidebarWidth::default(),
+            toolchains: krad_domain::ToolchainChoices::default(),
         };
         let current = serde_json::to_vec(&layout(LAYOUT_SCHEMA_VERSION))?;
         assert_eq!(
@@ -111,8 +113,10 @@ mod tests {
             version: LAYOUT_SCHEMA_VERSION,
             active: EnvironmentName::new(name.to_owned()),
             environments: Vec::new(),
+            unreadable: Vec::new(),
             work_mode: WorkMode::default(),
             sidebar_width: SidebarWidth::default(),
+            toolchains: krad_domain::ToolchainChoices::default(),
         };
         let writer = LayoutWriter::spawn_at(path.clone());
         assert!(writer.is_some(), "a writer thread starts");

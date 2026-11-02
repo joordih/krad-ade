@@ -10,8 +10,15 @@ const PIPE: char = '|';
 const QUOTE: char = '"';
 const STRIP_PREFIX: &str = "strip_prefix";
 const GLOB: &str = "glob";
+const QUOTE_FILTER: &str = "quote";
 const WILDCARD: char = '*';
 const SEPARATOR: char = '/';
+pub(crate) const SERVER_RUNTIME_VAR: &str = "server_runtime";
+pub(crate) const SERVER_RUNTIME_DIR_VAR: &str = "server_runtime_dir";
+pub(crate) const SERVER_RUNTIME_PREFIX: &str = "server_runtime.";
+const LEGACY_SERVER_RUNTIME_VAR: &str = "toolchain";
+const LEGACY_SERVER_RUNTIME_DIR_VAR: &str = "toolchain_dir";
+const LEGACY_SERVER_RUNTIME_PREFIX: &str = "toolchain.";
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Vars {
@@ -24,12 +31,28 @@ impl Vars {
     }
 
     pub(crate) fn get(&self, name: &str) -> Option<&str> {
-        self.values.get(name).map(String::as_str)
+        self.values
+            .get(name)
+            .or_else(|| self.values.get(current_name(name).as_ref()))
+            .map(String::as_str)
     }
 
     pub(crate) fn with(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.set(name, value);
         self
+    }
+}
+
+fn current_name(name: &str) -> std::borrow::Cow<'_, str> {
+    if name == LEGACY_SERVER_RUNTIME_VAR {
+        return SERVER_RUNTIME_VAR.into();
+    }
+    if name == LEGACY_SERVER_RUNTIME_DIR_VAR {
+        return SERVER_RUNTIME_DIR_VAR.into();
+    }
+    match name.strip_prefix(LEGACY_SERVER_RUNTIME_PREFIX) {
+        Some(id) => format!("{SERVER_RUNTIME_PREFIX}{id}").into(),
+        None => name.into(),
     }
 }
 
@@ -66,6 +89,7 @@ fn expression(text: &str, vars: &Vars, dir: &Path) -> Option<String> {
                 value.strip_prefix(prefix).unwrap_or(&value).to_owned()
             }
             GLOB => glob(&value, dir)?,
+            QUOTE_FILTER => krad_host::quote(&value),
             _ => return None,
         };
     }

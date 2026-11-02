@@ -1,4 +1,5 @@
-use std::fs::{self, File};
+use krad_host::HostLink;
+use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
@@ -24,33 +25,27 @@ pub struct DirEntry {
 }
 
 /// # Errors
-pub fn list_dir(dir: &Path) -> Result<Vec<DirEntry>, RepoError> {
-    let mut entries = Vec::new();
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if name == GIT_DIR_NAME {
-            continue;
-        }
-        let path = entry.path();
-        let kind = entry_kind(&path)?;
-        entries.push(DirEntry { name, path, kind });
-    }
+pub fn list_dir(host: &HostLink, dir: &Path) -> Result<Vec<DirEntry>, RepoError> {
+    let mut entries: Vec<DirEntry> = host
+        .read_dir(dir)?
+        .into_iter()
+        .filter(|entry| entry.name != GIT_DIR_NAME)
+        .map(|entry| DirEntry {
+            kind: if entry.metadata.is_dir() {
+                EntryKind::Directory
+            } else {
+                EntryKind::File
+            },
+            name: entry.name,
+            path: entry.path,
+        })
+        .collect();
     sort_entries(&mut entries);
     Ok(entries)
 }
 
 fn sort_entries(entries: &mut [DirEntry]) {
     entries.sort_by_cached_key(|entry| (entry.kind == EntryKind::File, entry.name.to_lowercase()));
-}
-
-fn entry_kind(path: &Path) -> Result<EntryKind, RepoError> {
-    let metadata = fs::metadata(path).or_else(|_| fs::symlink_metadata(path))?;
-    Ok(if metadata.is_dir() {
-        EntryKind::Directory
-    } else {
-        EntryKind::File
-    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -60,11 +55,17 @@ pub struct TextFile {
 }
 
 /// # Errors
-pub fn read_text(path: &Path, max_bytes: u64) -> Result<TextFile, RepoError> {
-    let mut bytes = Vec::new();
-    open_following_wsl_symlinks(path)?
-        .take(max_bytes.saturating_add(1))
-        .read_to_end(&mut bytes)?;
+pub fn read_text(host: &HostLink, path: &Path, max_bytes: u64) -> Result<TextFile, RepoError> {
+    let limit = max_bytes.saturating_add(1);
+    let bytes = if host.is_local() {
+        let mut bytes = Vec::new();
+        open_following_wsl_symlinks(path)?
+            .take(limit)
+            .read_to_end(&mut bytes)?;
+        bytes
+    } else {
+        host.read(path, limit)?
+    };
     decode_text(bytes, max_bytes)
 }
 
@@ -103,6 +104,7 @@ fn open_following_wsl_symlinks(path: &Path) -> Result<File, RepoError> {
 mod tests {
     use super::*;
     use std::error::Error;
+    use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_temp_dir(label: &str) -> Result<PathBuf, Box<dyn Error>> {
@@ -123,7 +125,7 @@ mod tests {
             fs::write(dir.join(file), "")?;
         }
 
-        let listed = list_dir(&dir);
+        let listed = list_dir(&HostLink::Local, &dir);
         fs::remove_dir_all(&dir)?;
 
         let names: Vec<(String, EntryKind)> = listed?
@@ -148,8 +150,8 @@ mod tests {
         let path = dir.join("lines.txt");
         fs::write(&path, "one\ntwo\nthree\n")?;
 
-        let partial = read_text(&path, 10);
-        let whole = read_text(&path, 100);
+        let partial = read_text(&HostLink::Local, &path, 10);
+        let whole = read_text(&HostLink::Local, &path, 100);
         fs::remove_dir_all(&dir)?;
 
         assert_eq!(
@@ -175,7 +177,7 @@ mod tests {
         let path = dir.join("image.bin");
         fs::write(&path, [0x89, b'P', b'N', b'G', 0x00, 0x01])?;
 
-        let result = read_text(&path, 100);
+        let result = read_text(&HostLink::Local, &path, 100);
         fs::remove_dir_all(&dir)?;
 
         assert!(matches!(result, Err(RepoError::Binary)));

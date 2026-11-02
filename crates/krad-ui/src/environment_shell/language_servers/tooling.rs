@@ -1,6 +1,6 @@
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{AppContext as _, Context, Entity, PathPromptOptions, SharedString};
-use krad_domain::{TerminalId, ToolchainId};
+use krad_domain::{ServerRuntimeId, TerminalId};
 use krad_extensions::{manifest_folders, LanguageTools, Registry};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -89,19 +89,29 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn install_toolchain(
+    pub(super) fn install_server_runtime(
         &mut self,
         key: ServerKey,
-        id: ToolchainId,
+        id: ServerRuntimeId,
         name: String,
         cx: &mut Context<Self>,
     ) {
         let Some(tools) = self.language_servers.tools.clone() else {
             return;
         };
-        self.set_slot(key.clone(), ServerSlot::InstallingToolchain(name), cx);
-        let chosen = self.settings.toolchains.clone();
-        let installing = cx.background_spawn(async move { tools.install_toolchain(&id, &chosen) });
+        let Some((link, platform)) = self.server_link(&key.host) else {
+            self.set_slot(
+                key,
+                ServerSlot::Failed(super::lifecycle::HOST_GONE.to_owned()),
+                cx,
+            );
+            return;
+        };
+        self.set_slot(key.clone(), ServerSlot::InstallingServerRuntime(name), cx);
+        let chosen = self.settings.server_runtimes.clone();
+        let installing = cx.background_spawn(async move {
+            tools.install_server_runtime_on(&link, platform, &id, &chosen)
+        });
         cx.spawn(async move |this, cx| {
             let installed = installing.await;
             this.update(cx, |shell, cx| match installed {
@@ -113,10 +123,10 @@ impl EnvironmentShell {
         .detach();
     }
 
-    pub(super) fn choose_toolchain_folder(
+    pub(super) fn choose_server_runtime_folder(
         &mut self,
         key: ServerKey,
-        id: ToolchainId,
+        id: ServerRuntimeId,
         name: String,
         cx: &mut Context<Self>,
     ) {
@@ -129,7 +139,7 @@ impl EnvironmentShell {
             multiple: false,
             prompt: Some(SharedString::from(FOLDER_PROMPT)),
         });
-        let chosen = self.settings.toolchains.clone();
+        let chosen = self.settings.server_runtimes.clone();
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = answer.await else {
                 return;
@@ -144,7 +154,7 @@ impl EnvironmentShell {
                 .await;
             this.update(cx, |shell, cx| {
                 if accepted {
-                    shell.settings.toolchains.choose(id, folder);
+                    shell.settings.server_runtimes.choose(id, folder);
                     shell.save_settings(cx);
                     shell.retry_server(key, cx);
                 } else {

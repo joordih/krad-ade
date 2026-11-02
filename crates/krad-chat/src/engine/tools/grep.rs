@@ -8,7 +8,7 @@ use std::sync::atomic::AtomicBool;
 use super::find::{files, glob};
 use super::{Ran, Workspace};
 
-const MAX_MATCHES: usize = 500;
+pub(super) const MAX_MATCHES: usize = 500;
 const MAX_LINE_CHARS: usize = 300;
 const LINE_CUT_MARK: &str = "…";
 const NO_MATCHES_TEXT: &str = "No matches";
@@ -21,7 +21,7 @@ pub(super) struct Query<'a> {
     pub(super) ignore_case: bool,
 }
 
-fn cut(line: &str) -> String {
+pub(super) fn cut(line: &str) -> String {
     let line = line.trim_end();
     match line.char_indices().nth(MAX_LINE_CHARS) {
         Some((end, _)) => format!("{}{LINE_CUT_MARK}", &line[..end]),
@@ -76,6 +76,10 @@ pub(super) fn grep(workspace: &Workspace, root: &Path, query: &Query, cancel: &A
             break;
         }
     }
+    listed_matches(&found, more)
+}
+
+pub(super) fn listed_matches(found: &[String], more: bool) -> Ran {
     if found.is_empty() {
         return Ran::done(NO_MATCHES_TEXT.to_owned());
     }
@@ -103,6 +107,7 @@ mod tests {
         let workspace = Workspace {
             cwd: scratch.path().to_path_buf(),
             env: Vec::new(),
+            host: krad_host::HostLink::Local,
         };
         let cancel = AtomicBool::new(false);
         let query = |pattern, glob, ignore_case| Query {

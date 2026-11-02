@@ -1,4 +1,5 @@
 mod context;
+mod file_index;
 mod live;
 mod panel;
 mod suggest;
@@ -13,8 +14,6 @@ pub(super) use transcript::{fold_entry, fold_prompt, last_permission_mode};
 use gpui_kit::ScrollHandle;
 use krad_chat::{Skill, Speaker, ToolCall};
 use krad_domain::{AskOutcome, Checklist, Mention, RewindPoint};
-use krad_repo::FileIndex;
-use std::path::PathBuf;
 
 use super::EnvironmentShell;
 
@@ -87,7 +86,8 @@ fn part_lines(part: &AnswerPart) -> Vec<String> {
 pub(super) struct ChatState {
     pub(super) suggest: Option<Suggest>,
     suggest_scroll: ScrollHandle,
-    files: Option<(PathBuf, FileIndex)>,
+    files: Option<file_index::IndexedFiles>,
+    indexing: Option<file_index::IndexKey>,
     skills: Option<Vec<Skill>>,
 }
 

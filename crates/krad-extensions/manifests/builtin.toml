@@ -280,7 +280,7 @@ grammar = "diff"
 [[server]]
 package = "rust-analyzer"
 probe = ["--version"]
-toolchains = ["rust"]
+server_runtimes = ["rust"]
 settings_section = "rust-analyzer"
 
 [server.settings]
@@ -289,18 +289,58 @@ checkOnSave = true
 [server.settings.diagnostics.experimental]
 enable = true
 
+[server.toolchain]
+family = "rust"
+apply = "restart"
+path = ["{{toolchain.dir}}"]
+
 [[server]]
 package = "vtsls"
 args = ["--stdio"]
+
+[server.toolchain]
+family = "typescript"
+apply = "restart"
+
+[server.toolchain.settings]
+"typescript.tsdk" = "{{toolchain.path}}"
+
+[[server.toolchain.defaults]]
+key = "vtsls.autoUseWorkspaceTsdk"
+value = false
 
 [[server]]
 package = "basedpyright"
 bin = "basedpyright-langserver"
 args = ["--stdio"]
-toolchains = ["python"]
+server_runtimes = ["python"]
+
+[server.toolchain]
+family = "python"
+apply = "live"
+
+[server.toolchain.settings]
+"python.pythonPath" = "{{toolchain.path}}"
+
+[[server.toolchain.defaults]]
+key = "basedpyright.analysis.typeCheckingMode"
+value = "standard"
+unless_project_config = [
+  { file = "pyrightconfig.json" },
+  { file = "pyproject.toml", table = "tool.basedpyright" },
+  { file = "pyproject.toml", table = "tool.pyright" },
+]
 
 [[server]]
 package = "gopls"
+
+[server.toolchain]
+family = "go"
+apply = "restart"
+path = ["{{toolchain.dir}}"]
+
+[server.toolchain.env]
+GOROOT = "{{toolchain.prefix}}"
 
 [[server]]
 package = "clangd"
@@ -326,14 +366,14 @@ package = "kotlin-lsp"
 bin = "intellij-server"
 args = ["--stdio"]
 path_names = ["kotlin-lsp"]
-toolchains = ["java"]
+server_runtimes = ["java"]
 
 [[server]]
 package = "jdtls"
-toolchains = ["java"]
+server_runtimes = ["java"]
 path_names = []
 command = [
-  "{{toolchain.java}}",
+  "{{server_runtime.java}}",
   "-Declipse.application=org.eclipse.jdt.ls.core.id1",
   "-Dosgi.bundles.defaultStartLevel=4",
   "-Declipse.product=org.eclipse.jdt.ls.core.product",
@@ -355,13 +395,25 @@ command = [
   "{{workspace}}",
 ]
 
+[server.toolchain]
+family = "java"
+apply = "restart"
+
+[server.toolchain.env]
+JAVA_HOME = "{{toolchain.prefix}}"
+
 [[server]]
 package = "intelephense"
 args = ["--stdio"]
 
 [[server]]
 package = "ruby-lsp"
-toolchains = ["ruby"]
+server_runtimes = ["ruby"]
+
+[server.toolchain]
+family = "ruby"
+apply = "restart"
+path = ["{{toolchain.dir}}"]
 
 [[server]]
 package = "graphql-language-service-cli"
@@ -376,43 +428,43 @@ path_names = ["sourcekit-lsp"]
 package = "csharp-language-server"
 bin = "csharp-ls"
 
-[[toolchain]]
+[[server_runtime]]
 id = "node"
 name = "Node.js"
 program = "node"
 version_args = ["--version"]
 minimum_version = 22
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["darwin_arm64"]
 url = "https://nodejs.org/dist/v24.22.1/node-v24.22.1-darwin-arm64.tar.gz"
 sha256_list = "https://nodejs.org/dist/v24.22.1/SHASUMS256.txt"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["darwin_x64"]
 url = "https://nodejs.org/dist/v24.22.1/node-v24.22.1-darwin-x64.tar.gz"
 sha256_list = "https://nodejs.org/dist/v24.22.1/SHASUMS256.txt"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["linux_arm64"]
 url = "https://nodejs.org/dist/v24.22.1/node-v24.22.1-linux-arm64.tar.gz"
 sha256_list = "https://nodejs.org/dist/v24.22.1/SHASUMS256.txt"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["linux_x64"]
 url = "https://nodejs.org/dist/v24.22.1/node-v24.22.1-linux-x64.tar.gz"
 sha256_list = "https://nodejs.org/dist/v24.22.1/SHASUMS256.txt"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["win_x64"]
 url = "https://nodejs.org/dist/v24.22.1/node-v24.22.1-win-x64.zip"
 sha256_list = "https://nodejs.org/dist/v24.22.1/SHASUMS256.txt"
 
-[[toolchain.manager]]
+[[server_runtime.manager]]
 kind = "npm"
 install = [
   [
-    "{{toolchain_dir}}/npm{{cmd}}",
+    "{{server_runtime_dir}}/npm{{cmd}}",
     "install",
     "--prefix",
     "{{dir}}",
@@ -425,11 +477,11 @@ install = [
 ]
 bin = "{{dir}}/node_modules/.bin/{{bin}}{{cmd}}"
 
-[[toolchain.runner]]
+[[server_runtime.runner]]
 kind = "node"
-command = ["{{toolchain}}", "{{dir}}/{{bin}}"]
+command = ["{{server_runtime}}", "{{dir}}/{{bin}}"]
 
-[[toolchain]]
+[[server_runtime]]
 id = "java"
 name = "JDK"
 program = "java"
@@ -439,36 +491,36 @@ minimum_version = 25
 home_vars = ["JAVA_HOME"]
 launch_home_var = "JAVA_HOME"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["darwin_arm64"]
 url = "https://corretto.aws/downloads/latest/amazon-corretto-25-aarch64-macos-jdk.tar.gz"
 sha256_url = "https://corretto.aws/downloads/latest_sha256/amazon-corretto-25-aarch64-macos-jdk.tar.gz"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["darwin_x64"]
 url = "https://corretto.aws/downloads/latest/amazon-corretto-25-x64-macos-jdk.tar.gz"
 sha256_url = "https://corretto.aws/downloads/latest_sha256/amazon-corretto-25-x64-macos-jdk.tar.gz"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["linux_arm64"]
 url = "https://corretto.aws/downloads/latest/amazon-corretto-25-aarch64-linux-jdk.tar.gz"
 sha256_url = "https://corretto.aws/downloads/latest_sha256/amazon-corretto-25-aarch64-linux-jdk.tar.gz"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["linux_x64"]
 url = "https://corretto.aws/downloads/latest/amazon-corretto-25-x64-linux-jdk.tar.gz"
 sha256_url = "https://corretto.aws/downloads/latest_sha256/amazon-corretto-25-x64-linux-jdk.tar.gz"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["win_x64"]
 url = "https://corretto.aws/downloads/latest/amazon-corretto-25-x64-windows-jdk.zip"
 sha256_url = "https://corretto.aws/downloads/latest_sha256/amazon-corretto-25-x64-windows-jdk.zip"
 
-[[toolchain.runner]]
+[[server_runtime.runner]]
 kind = "java-jar"
-command = ["{{toolchain}}", "-jar", "{{dir}}/{{bin}}"]
+command = ["{{server_runtime}}", "-jar", "{{dir}}/{{bin}}"]
 
-[[toolchain]]
+[[server_runtime]]
 id = "rust"
 name = "Rust"
 program = "cargo"
@@ -476,7 +528,7 @@ version_args = ["--version"]
 home_vars = ["CARGO_HOME"]
 search = ["~/.cargo/bin"]
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["darwin_arm64"]
 url = "https://static.rust-lang.org/rustup/dist/aarch64-apple-darwin/rustup-init"
 sha256_url = "https://static.rust-lang.org/rustup/dist/aarch64-apple-darwin/rustup-init.sha256"
@@ -489,7 +541,7 @@ run = [
   "rust-src",
 ]
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["darwin_x64"]
 url = "https://static.rust-lang.org/rustup/dist/x86_64-apple-darwin/rustup-init"
 sha256_url = "https://static.rust-lang.org/rustup/dist/x86_64-apple-darwin/rustup-init.sha256"
@@ -502,7 +554,7 @@ run = [
   "rust-src",
 ]
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["linux_arm64"]
 url = "https://static.rust-lang.org/rustup/dist/aarch64-unknown-linux-gnu/rustup-init"
 sha256_url = "https://static.rust-lang.org/rustup/dist/aarch64-unknown-linux-gnu/rustup-init.sha256"
@@ -515,7 +567,7 @@ run = [
   "rust-src",
 ]
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["linux_x64"]
 url = "https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init"
 sha256_url = "https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init.sha256"
@@ -528,7 +580,7 @@ run = [
   "rust-src",
 ]
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["win_x64"]
 url = "https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe"
 sha256_url = "https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe.sha256"
@@ -541,11 +593,11 @@ run = [
   "rust-src",
 ]
 
-[[toolchain.manager]]
+[[server_runtime.manager]]
 kind = "cargo"
 install = [
   [
-    "{{toolchain}}",
+    "{{server_runtime}}",
     "install",
     "--root",
     "{{dir}}",
@@ -557,7 +609,7 @@ install = [
 ]
 install_from_repository = [
   [
-    "{{toolchain}}",
+    "{{server_runtime}}",
     "install",
     "--root",
     "{{dir}}",
@@ -570,81 +622,81 @@ install_from_repository = [
 ]
 bin = "{{dir}}/bin/{{bin}}{{exe}}"
 
-[[toolchain]]
+[[server_runtime]]
 id = "go"
 name = "Go"
 program = "go"
 version_args = ["version"]
 search = ["/usr/local/go/bin"]
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["darwin_arm64"]
 url = "https://dl.google.com/go/go1.27.3.darwin-arm64.tar.gz"
 sha256_url = "https://dl.google.com/go/go1.27.3.darwin-arm64.tar.gz.sha256"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["darwin_x64"]
 url = "https://dl.google.com/go/go1.27.3.darwin-amd64.tar.gz"
 sha256_url = "https://dl.google.com/go/go1.27.3.darwin-amd64.tar.gz.sha256"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["linux_arm64"]
 url = "https://dl.google.com/go/go1.27.3.linux-arm64.tar.gz"
 sha256_url = "https://dl.google.com/go/go1.27.3.linux-arm64.tar.gz.sha256"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["linux_x64"]
 url = "https://dl.google.com/go/go1.27.3.linux-amd64.tar.gz"
 sha256_url = "https://dl.google.com/go/go1.27.3.linux-amd64.tar.gz.sha256"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["win_x64"]
 url = "https://dl.google.com/go/go1.27.3.windows-amd64.zip"
 sha256_url = "https://dl.google.com/go/go1.27.3.windows-amd64.zip.sha256"
 
-[[toolchain.manager]]
+[[server_runtime.manager]]
 kind = "golang"
-install = [["{{toolchain}}", "install", "{{package}}@{{version}}"]]
+install = [["{{server_runtime}}", "install", "{{package}}@{{version}}"]]
 env = { GOBIN = "{{dir}}" }
 bin = "{{dir}}/{{bin}}{{exe}}"
 
-[[toolchain]]
+[[server_runtime]]
 id = "python"
 name = "Python"
 program = "python3"
 windows_program = "python"
 version_args = ["--version"]
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["darwin_arm64"]
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18+20261026-aarch64-apple-darwin-install_only.tar.gz"
 sha256_list = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/SHA256SUMS"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["darwin_x64"]
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18+20261026-x86_64-apple-darwin-install_only.tar.gz"
 sha256_list = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/SHA256SUMS"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["linux_arm64"]
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18+20261026-aarch64-unknown-linux-gnu-install_only.tar.gz"
 sha256_list = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/SHA256SUMS"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["linux_x64"]
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18+20261026-x86_64-unknown-linux-gnu-install_only.tar.gz"
 sha256_list = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/SHA256SUMS"
 
-[[toolchain.download]]
+[[server_runtime.download]]
 targets = ["win_x64"]
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18+20261026-x86_64-pc-windows-msvc-install_only.tar.gz"
 sha256_list = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/SHA256SUMS"
 
-[[toolchain.manager]]
+[[server_runtime.manager]]
 kind = "pypi"
 install = [
   [
-    "{{toolchain}}",
+    "{{server_runtime}}",
     "-m",
     "venv",
     "{{dir}}/venv",
@@ -660,7 +712,7 @@ install = [
 ]
 windows_install = [
   [
-    "{{toolchain}}",
+    "{{server_runtime}}",
     "-m",
     "venv",
     "{{dir}}/venv",
@@ -677,21 +729,21 @@ windows_install = [
 bin = "{{dir}}/venv/bin/{{bin}}"
 windows_bin = "{{dir}}/venv/Scripts/{{bin}}.exe"
 
-[[toolchain.runner]]
+[[server_runtime.runner]]
 kind = "python"
-command = ["{{toolchain}}", "{{dir}}/{{bin}}"]
+command = ["{{server_runtime}}", "{{dir}}/{{bin}}"]
 
-[[toolchain]]
+[[server_runtime]]
 id = "ruby"
 name = "Ruby"
 program = "ruby"
 version_args = ["--version"]
 
-[[toolchain.manager]]
+[[server_runtime.manager]]
 kind = "gem"
 install = [
   [
-    "{{toolchain_dir}}/gem{{cmd}}",
+    "{{server_runtime_dir}}/gem{{cmd}}",
     "install",
     "--install-dir",
     "{{dir}}",

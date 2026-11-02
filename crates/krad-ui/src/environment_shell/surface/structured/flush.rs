@@ -3,8 +3,9 @@ use krad_chat::{
     BusVars, ChatBackend, ChatEvent, EngineConfig, LiveConfig, OpencodeServer, Runner,
 };
 use krad_domain::{AgentPreset, AgentState, ChatEntry, EnvironmentName, TerminalId};
+use krad_host::HostLink;
 use krad_store::gateway_sessions_dir;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -158,7 +159,7 @@ impl EnvironmentShell {
             AgentPreset::Codex => ChatBackend::Codex(self.live_config(env, id, harness)?),
             AgentPreset::Opencode => {
                 let config = self.live_config(env, id, harness)?;
-                let server = self.opencode_for(&config.runner, harness, cx)?;
+                let server = self.opencode_for(&config.runner, &config.cwd, harness, cx)?;
                 ChatBackend::Opencode(server, config)
             }
             AgentPreset::Gateway => ChatBackend::Gateway(self.gateway_config(env, id, cx)?),
@@ -194,9 +195,15 @@ impl EnvironmentShell {
             .get(env)
             .and_then(|live| live.data.group_of(id))
             .map(|group| group.root.clone());
-        let (runner, cwd) = self.harness_runner(harness, root.as_deref())?;
-        let system_prompt = self.system_prompt(env, id, runner.in_wsl());
-        let bus_vars = BusVars(self.bus_vars(env, id));
+        let (runner, cwd) = self.harness_runner(&self.env_link(env), harness, root.as_deref())?;
+        let (system_prompt, bus_vars) = if runner.on_ssh() && self.remote_bus(env).is_none() {
+            (None, BusVars(Vec::new()))
+        } else {
+            (
+                self.system_prompt(env, id, runner.in_wsl()),
+                BusVars(self.bus_vars(env, id)),
+            )
+        };
         let structured = structured_mut(self, env, id).ok_or(StartError::Waiting)?;
         Ok(LiveConfig {
             runner,
@@ -212,11 +219,23 @@ impl EnvironmentShell {
     fn opencode_for(
         &mut self,
         runner: &Runner,
+        cwd: &Path,
         harness: AgentPreset,
         cx: &mut Context<Self>,
     ) -> Result<Arc<OpencodeServer>, StartError> {
         if runner.in_wsl() {
             return Err(StartError::NotInWsl(harness));
+        }
+        if runner.on_ssh() {
+            return match self.opencode.hosts.get(&runner.link().host()) {
+                Some(OpencodeLink::Ready { server, .. }) => Ok(Arc::clone(server)),
+                Some(OpencodeLink::Failed(error)) => Err(StartError::Opencode(error.clone())),
+                Some(OpencodeLink::Absent | OpencodeLink::Starting) => Err(StartError::Waiting),
+                None => {
+                    self.ensure_host_opencode(runner.clone(), cwd.to_path_buf(), cx);
+                    Err(StartError::Waiting)
+                }
+            };
         }
         match &self.opencode.link {
             OpencodeLink::Ready { server, .. } => Ok(Arc::clone(server)),
@@ -234,6 +253,9 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &mut Context<Self>,
     ) -> Result<EngineConfig, StartError> {
+        if !self.env_link(env).is_ready() {
+            return Err(StartError::Waiting);
+        }
         let access = match self.gateway_reach() {
             GatewayReach::Ready(access) => access,
             GatewayReach::Waiting => return Err(StartError::Waiting),
@@ -244,8 +266,26 @@ impl EnvironmentShell {
         let launch = self
             .gateway_mcp(env, id, &cwd, cx)
             .ok_or(StartError::Waiting)?;
-        let system_prompt = self.system_prompt(env, id, false);
-        let bus_vars = BusVars(self.bus_vars(env, id));
+        let host = self.env_link(env);
+        let (system_prompt, bus_vars, home) = match &host {
+            HostLink::Local => (
+                self.system_prompt(env, id, false),
+                BusVars(self.bus_vars(env, id)),
+                home_dir().map(PathBuf::from),
+            ),
+            HostLink::Ssh(ssh) => {
+                let home = ssh.home().map(Path::to_path_buf);
+                if self.remote_bus(env).is_some() {
+                    (
+                        self.system_prompt(env, id, false),
+                        BusVars(self.bus_vars(env, id)),
+                        home,
+                    )
+                } else {
+                    (None, BusVars(Vec::new()), home)
+                }
+            }
+        };
         let chosen = structured_mut(self, env, id).and_then(|chat| chat.chosen_model.clone());
         let model = self
             .gateway_model(chosen.as_ref())
@@ -257,7 +297,7 @@ impl EnvironmentShell {
         Ok(EngineConfig {
             access,
             sessions,
-            home: home_dir().map(PathBuf::from),
+            home,
             cwd,
             model: Some(model),
             models: served,
@@ -267,6 +307,7 @@ impl EnvironmentShell {
             permission_mode: structured.permission_mode,
             bus_vars,
             mcp: launch.starts,
+            host,
         })
     }
 

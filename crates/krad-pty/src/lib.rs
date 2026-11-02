@@ -43,6 +43,8 @@ const TERM_ENV: &str = "TERM";
 const TERM_VALUE: &str = "xterm-256color";
 const COLORTERM_ENV: &str = "COLORTERM";
 const COLORTERM_VALUE: &str = "truecolor";
+pub const TERMINAL_ENV: [(&str, &str); 2] =
+    [(TERM_ENV, TERM_VALUE), (COLORTERM_ENV, COLORTERM_VALUE)];
 
 pub type PlatformError = Box<dyn std::error::Error + Send + Sync>;
 

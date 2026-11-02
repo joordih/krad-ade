@@ -7,4 +7,5 @@ repository.workspace = true
 
 [dependencies]
 krad-domain.workspace = true
+krad-host.workspace = true
 thiserror.workspace = true

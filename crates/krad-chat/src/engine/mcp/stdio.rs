@@ -1,7 +1,8 @@
+use krad_host::{HostCommand, HostLink};
 use serde_json::Value;
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -38,6 +39,41 @@ pub(super) struct StdioLaunch<'a> {
     pub(super) args: &'a [String],
     pub(super) env: &'a [(String, String)],
     pub(super) cwd: &'a Path,
+    pub(super) host: &'a HostLink,
+}
+
+fn command(launch: &StdioLaunch<'_>) -> Result<(Command, Option<PathBuf>), McpError> {
+    if launch.host.is_local() {
+        let mut command = Command::new(launch.command);
+        command
+            .args(launch.args)
+            .envs(launch.env.iter().map(|(name, value)| (name, value)))
+            .current_dir(launch.cwd);
+        return Ok((command, None));
+    }
+    let mut remote = HostCommand::new(launch.command);
+    remote
+        .args(launch.args)
+        .current_dir(launch.cwd)
+        .in_login_shell();
+    let mut env_file = None;
+    if let (HostLink::Ssh(ssh), false) = (launch.host, launch.env.is_empty()) {
+        let file = ssh
+            .write_env_file(launch.env)
+            .map_err(|error| McpError::EnvOnHost(error.to_string()))?;
+        remote.source_env_file(&file);
+        env_file = Some(file);
+    }
+    let built = match remote.build(launch.host) {
+        Ok(built) => built,
+        Err(error) => {
+            if let Some(file) = &env_file {
+                launch.host.remove_file(file).ok();
+            }
+            return Err(McpError::Spawn(error.into()));
+        }
+    };
+    Ok((built, env_file))
 }
 
 fn pump(stdout: impl Read, inbox: &SyncSender<Piece>) {
@@ -66,15 +102,21 @@ fn keep_tail(stderr: impl Read, tail: &Mutex<VecDeque<String>>) {
 
 impl StdioLink {
     pub(super) fn spawn(launch: &StdioLaunch<'_>) -> Result<Self, McpError> {
-        let mut child = Command::new(launch.command)
-            .args(launch.args)
-            .envs(launch.env.iter().map(|(name, value)| (name, value)))
-            .current_dir(launch.cwd)
+        let (mut command, env_file) = command(launch)?;
+        let spawned = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .spawn()
-            .map_err(McpError::Spawn)?;
+            .spawn();
+        let mut child = match spawned {
+            Ok(child) => child,
+            Err(error) => {
+                if let Some(file) = env_file {
+                    launch.host.remove_file(&file).ok();
+                }
+                return Err(McpError::Spawn(error));
+            }
+        };
         let (sender, inbox) = sync_channel(INBOX_BOUND);
         if let Some(stdout) = child.stdout.take() {
             drop(thread::spawn(move || pump(stdout, &sender)));

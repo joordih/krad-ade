@@ -2,16 +2,66 @@ use crate::cli::{DEFAULT_READ_LINES, DEFAULT_WAIT_TIMEOUT};
 use crate::handle::Caller;
 use crate::server::Endpoint;
 use krad_domain::AgentPreset;
+use std::ffi::OsString;
 use std::time::Duration;
 
 pub const ENV_ENDPOINT: &str = "KRAD_ADE_ENDPOINT";
 pub const ENV_TOKEN: &str = "KRAD_ADE_TOKEN";
+pub const ENV_TOKEN_FILE: &str = "KRAD_ADE_TOKEN_FILE";
 pub const ENV_TERMINAL: &str = "KRAD_ADE_TERMINAL";
-pub const CLI_PROGRAM: &str = "krad-ade-agents";
+pub const CLI_PROGRAM: &str = krad_host::HOST_CLI_PROGRAM;
 const WORKER_REPORT_WAIT: Duration = Duration::from_mins(15);
 const LEAD_WAIT_TIMEOUT: Duration = Duration::from_mins(25);
 const LEAD_READ_LINES: usize = 80;
 const PROGRAM_SEPARATOR: &str = "|";
+
+pub(crate) struct BusEnv {
+    pub(crate) endpoint: String,
+    pub(crate) token: String,
+    pub(crate) terminal: String,
+}
+
+pub(crate) fn bus_env() -> Option<BusEnv> {
+    bus_env_from(|name| std::env::var_os(name))
+}
+
+fn bus_env_from(var: impl Fn(&str) -> Option<OsString>) -> Option<BusEnv> {
+    let text = |name: &str| var(name).and_then(|value| value.into_string().ok());
+    let endpoint = text(ENV_ENDPOINT)?;
+    let terminal = text(ENV_TERMINAL)?;
+    let token = text(ENV_TOKEN).or_else(|| {
+        var(ENV_TOKEN_FILE)
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .map(|token| token.trim().to_owned())
+            .filter(|token| !token.is_empty())
+    })?;
+    Some(BusEnv {
+        endpoint,
+        token,
+        terminal,
+    })
+}
+
+#[must_use]
+pub fn member_token(endpoint: &Endpoint) -> &str {
+    endpoint.token.as_str()
+}
+
+#[must_use]
+pub fn token_file_env(
+    address: &str,
+    token_file: &std::path::Path,
+    caller: &Caller,
+) -> Vec<(String, String)> {
+    [
+        (ENV_ENDPOINT, address.to_owned()),
+        (ENV_TOKEN_FILE, token_file.to_string_lossy().into_owned()),
+        (ENV_TERMINAL, caller.to_string()),
+    ]
+    .into_iter()
+    .map(|(name, value)| (name.to_owned(), value))
+    .collect()
+}
 
 #[must_use]
 pub fn terminal_env(endpoint: &Endpoint, caller: &Caller) -> Vec<(String, String)> {
@@ -119,6 +169,28 @@ fn agent_programs() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    #[test]
+    fn the_token_comes_from_its_file_when_it_is_not_in_the_environment() -> TestResult {
+        let file = std::env::temp_dir().join(format!("krad-bus-token-{}", std::process::id()));
+        std::fs::write(&file, "secret\n")?;
+        let vars: HashMap<&str, OsString> = [
+            (ENV_ENDPOINT, OsString::from("127.0.0.1:4000")),
+            (ENV_TERMINAL, OsString::from("7")),
+            (ENV_TOKEN_FILE, file.clone().into_os_string()),
+        ]
+        .into_iter()
+        .collect();
+        let env = bus_env_from(|name| vars.get(name).cloned()).ok_or("no bus env")?;
+        std::fs::remove_file(&file)?;
+        assert_eq!(env.token, "secret");
+        assert_eq!(env.endpoint, "127.0.0.1:4000");
+        assert!(bus_env_from(|name| (name == ENV_ENDPOINT).then(|| OsString::from("x"))).is_none());
+        Ok(())
+    }
 
     #[test]
     fn the_guides_name_every_agent_program_and_the_suggested_waits() {

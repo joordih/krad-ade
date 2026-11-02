@@ -1,3 +1,4 @@
+use krad_host::HostLink;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -9,7 +10,14 @@ const TEMP_SUFFIX: &str = ".tmp";
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
-pub(crate) fn write_atomically(path: &Path, text: &str) -> Result<(), RepoError> {
+pub(crate) fn write_atomically(host: &HostLink, path: &Path, text: &str) -> Result<(), RepoError> {
+    if !host.is_local() {
+        if let Some(folder) = path.parent() {
+            host.create_dir_all(folder)?;
+        }
+        host.write(path, text.as_bytes())?;
+        return Ok(());
+    }
     if let Some(folder) = path.parent() {
         fs::create_dir_all(folder)?;
     }

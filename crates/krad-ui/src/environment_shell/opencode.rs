@@ -1,7 +1,10 @@
 use gpui_kit::{AppContext as _, Context, Task};
+use krad_chat::Runner;
 use krad_chat::{opencode_models, ModelOffer, OpencodeError, OpencodeServer};
-use krad_domain::{AgentPreset, AgentState, EnvironmentName, ResumeId, TerminalId};
+use krad_domain::{AgentPreset, AgentState, EnvironmentName, Host, ResumeId, TerminalId};
+use krad_host::HostLink;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::EnvironmentShell;
@@ -29,6 +32,7 @@ enum Refresh {
 #[derive(Default)]
 pub(super) struct Opencode {
     pub(super) link: OpencodeLink,
+    pub(super) hosts: HashMap<Host, OpencodeLink>,
     refresh: Refresh,
     catalog_watch: Option<Task<()>>,
     unwatched: Vec<(EnvironmentName, TerminalId, ResumeId)>,
@@ -42,7 +46,8 @@ impl EnvironmentShell {
         if !installed || !matches!(self.opencode.link, OpencodeLink::Absent) {
             return;
         }
-        let Ok((runner, cwd)) = self.harness_runner(AgentPreset::Opencode, None) else {
+        let Ok((runner, cwd)) = self.harness_runner(&HostLink::Local, AgentPreset::Opencode, None)
+        else {
             return;
         };
         self.opencode.link = OpencodeLink::Starting;
@@ -125,6 +130,56 @@ impl EnvironmentShell {
         }
     }
 
+    pub(super) fn ensure_host_opencode(
+        &mut self,
+        runner: Runner,
+        cwd: PathBuf,
+        cx: &mut Context<Self>,
+    ) {
+        let host = runner.link().host();
+        if self.opencode.hosts.contains_key(&host) {
+            return;
+        }
+        self.opencode
+            .hosts
+            .insert(host.clone(), OpencodeLink::Starting);
+        let started = cx.background_spawn(async move {
+            let server = OpencodeServer::start(&runner, &cwd, &[])?;
+            let models = opencode_models(&server, None)?;
+            Ok::<_, OpencodeError>((server, models))
+        });
+        cx.spawn(async move |this, cx| {
+            let started = started.await;
+            this.update(cx, |shell, cx| {
+                let link = match started {
+                    Ok((server, models)) => OpencodeLink::Ready { server, models },
+                    Err(error) => OpencodeLink::Failed(error.to_string()),
+                };
+                shell.opencode.hosts.insert(host, link);
+                shell.load_waiting_histories(cx);
+                shell.flush_chats_of(AgentPreset::Opencode, cx);
+                cx.notify();
+            })
+            .unwrap_or_default();
+        })
+        .detach();
+    }
+
+    pub(super) fn opencode_link_of(&self, env: &EnvironmentName) -> Option<&OpencodeLink> {
+        let host = &self.envs.get(env)?.data.host;
+        if host.is_local() {
+            return Some(&self.opencode.link);
+        }
+        self.opencode.hosts.get(host)
+    }
+
+    pub(super) fn opencode_server_of(&self, env: &EnvironmentName) -> Option<&Arc<OpencodeServer>> {
+        match self.opencode_link_of(env)? {
+            OpencodeLink::Ready { server, .. } => Some(server),
+            OpencodeLink::Absent | OpencodeLink::Starting | OpencodeLink::Failed(_) => None,
+        }
+    }
+
     pub(super) const fn opencode_server(&self) -> Option<&Arc<OpencodeServer>> {
         match &self.opencode.link {
             OpencodeLink::Ready { server, .. } => Some(server),
@@ -132,10 +187,16 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn opencode_models(&self) -> &[ModelOffer] {
-        match &self.opencode.link {
-            OpencodeLink::Ready { models, .. } => models,
-            OpencodeLink::Absent | OpencodeLink::Starting | OpencodeLink::Failed(_) => &[],
+    pub(super) fn opencode_models_on(&self, host: &Host) -> &[ModelOffer] {
+        let link = if host.is_local() {
+            Some(&self.opencode.link)
+        } else {
+            self.opencode.hosts.get(host)
+        };
+        match link {
+            Some(OpencodeLink::Ready { models, .. }) => models,
+            Some(OpencodeLink::Absent | OpencodeLink::Starting | OpencodeLink::Failed(_))
+            | None => &[],
         }
     }
 

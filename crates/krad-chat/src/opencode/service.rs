@@ -114,7 +114,7 @@ pub(super) fn attach(
         return Ok(endpoint);
     }
     let args: Vec<String> = START_ARGS.iter().map(|arg| (*arg).to_owned()).collect();
-    let status = harness_command(runner, cwd, &args, env)
+    let status = harness_command(runner, cwd, &args, env)?
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

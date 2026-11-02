@@ -1,4 +1,4 @@
-use std::fs;
+use krad_host::HostLink;
 use std::path::{Path, PathBuf};
 
 use crate::prompt::shared_skill_message;
@@ -32,11 +32,11 @@ const HOME_INSTRUCTION_DIRS: [&str; 2] = [".agents", ".claude"];
 const GIT_DIR: &str = ".git";
 const SKILL_MARK: char = '/';
 
-fn ancestors_to_root(cwd: &Path) -> Vec<PathBuf> {
+fn ancestors_to_root(host: &HostLink, cwd: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
     for dir in cwd.ancestors() {
         found.push(dir.to_path_buf());
-        if dir.join(GIT_DIR).exists() {
+        if host.exists(&dir.join(GIT_DIR)) {
             break;
         }
     }
@@ -44,30 +44,35 @@ fn ancestors_to_root(cwd: &Path) -> Vec<PathBuf> {
     found
 }
 
-fn first_instructions(dir: &Path) -> Option<(PathBuf, String)> {
+fn first_instructions(host: &HostLink, dir: &Path) -> Option<(PathBuf, String)> {
     INSTRUCTION_FILES.iter().find_map(|name| {
         let path = dir.join(name);
-        let text = fs::read_to_string(&path).ok()?;
+        let text = host.read_to_string(&path).ok()?;
         (!text.trim().is_empty()).then_some((path, text))
     })
 }
 
-pub(crate) fn instruction_files(home: Option<&Path>, cwd: &Path) -> Vec<(PathBuf, String)> {
+pub(crate) fn instruction_files(
+    host: &HostLink,
+    home: Option<&Path>,
+    cwd: &Path,
+) -> Vec<(PathBuf, String)> {
     let home_files = home.into_iter().flat_map(|home| {
         HOME_INSTRUCTION_DIRS
             .iter()
-            .filter_map(move |dir| first_instructions(&home.join(dir)))
+            .filter_map(move |dir| first_instructions(host, &home.join(dir)))
             .take(1)
     });
-    let project_files = ancestors_to_root(cwd)
+    let project_files = ancestors_to_root(host, cwd)
         .into_iter()
         .filter(|dir| Some(dir.as_path()) != home)
-        .filter_map(|dir| first_instructions(&dir));
+        .filter_map(|dir| first_instructions(host, &dir));
     home_files.chain(project_files).collect()
 }
 
 pub(crate) struct PromptParts<'a> {
     pub(crate) cwd: &'a Path,
+    pub(crate) platform: &'a str,
     pub(crate) instructions: &'a [(PathBuf, String)],
     pub(crate) skills: &'a [SkillFile],
     pub(crate) extra: Option<&'a str>,
@@ -79,7 +84,7 @@ pub(crate) fn system_prompt(parts: &PromptParts<'_>) -> String {
         format!(
             "{HEADING_MARK}{ENVIRONMENT_HEADING}\n{WORKSPACE_LABEL}: {}\n{PLATFORM_LABEL}: {}",
             parts.cwd.display(),
-            std::env::consts::OS
+            parts.platform
         ),
     ];
     if !parts.instructions.is_empty() {
@@ -129,6 +134,7 @@ pub(crate) fn expand_skill_call(text: &str, skills: &[SkillFile]) -> Option<Stri
 mod tests {
     use super::*;
     use crate::live::new_session_id;
+    use std::fs;
 
     fn scratch() -> PathBuf {
         let dir = std::env::temp_dir()
@@ -150,7 +156,7 @@ mod tests {
         fs::write(repo.join("AGENTS.md"), "repo rules").unwrap_or_default();
         fs::write(repo.join("CLAUDE.md"), "ignored, AGENTS.md wins").unwrap_or_default();
         fs::write(crate_dir.join("CLAUDE.md"), "crate rules").unwrap_or_default();
-        let texts: Vec<String> = instruction_files(Some(&home), &crate_dir)
+        let texts: Vec<String> = instruction_files(&HostLink::Local, Some(&home), &crate_dir)
             .into_iter()
             .map(|(_, text)| text)
             .collect();
@@ -166,6 +172,7 @@ mod tests {
         }];
         let prompt = system_prompt(&PromptParts {
             cwd: Path::new("/work"),
+            platform: "linux",
             instructions: &[(PathBuf::from("/work/AGENTS.md"), "Be brief.".to_owned())],
             skills: &skills,
             extra: Some("Use the bus."),

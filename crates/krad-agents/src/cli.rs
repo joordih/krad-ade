@@ -1,5 +1,5 @@
 use crate::client::call;
-use crate::env::{guide, orchestrator_guide, CLI_PROGRAM, ENV_ENDPOINT, ENV_TERMINAL, ENV_TOKEN};
+use crate::env::{bus_env, guide, orchestrator_guide, BusEnv, CLI_PROGRAM, ENV_TERMINAL};
 use crate::handle::Caller;
 use crate::hook::{run_ask, run_hook};
 use crate::protocol::{
@@ -21,6 +21,8 @@ pub(crate) const UNKNOWN_AGENT: &str =
     "Unknown agent; use a harness program such as claude, codex or opencode";
 
 const FLAG_JSON: &str = "--json";
+const FLAG_VERSION: &str = "--version";
+const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 const FLAG_WAIT: &str = "--wait";
 const FLAG_TIMEOUT: &str = "--timeout";
 const FLAG_LINES: &str = "--lines";
@@ -145,11 +147,30 @@ struct Options {
 }
 
 #[must_use]
+pub fn run_invoked(invoked: &std::ffi::OsStr, args: &[String]) -> i32 {
+    if krad_host::mux::is_askpass_invocation(invoked) {
+        let prompt = args.first().map_or("", String::as_str);
+        return krad_host::mux::run_askpass(prompt);
+    }
+    run_cli(args)
+}
+
+#[must_use]
 pub fn run_cli(args: &[String]) -> i32 {
+    if let Some(code) = crate::host_verbs::run(args) {
+        return code;
+    }
+    if let Some(code) = crate::toolchains::run(args) {
+        return code;
+    }
     let Some((verb, rest)) = args.split_first() else {
         emit(Output::Stdout(guide(CLI_PROGRAM)));
         return EXIT_OK;
     };
+    if verb == FLAG_VERSION {
+        emit(Output::Stdout(CLI_VERSION.to_owned()));
+        return EXIT_OK;
+    }
     let verb = match verb.parse::<Verb>() {
         Ok(verb) => verb,
         Err(error) => {
@@ -192,11 +213,12 @@ fn harness_args(rest: &[String]) -> Option<(AgentPreset, &[String])> {
 }
 
 fn execute(request: &Request, json: bool) -> i32 {
-    let (Ok(endpoint), Ok(token), Ok(terminal)) = (
-        std::env::var(ENV_ENDPOINT),
-        std::env::var(ENV_TOKEN),
-        std::env::var(ENV_TERMINAL),
-    ) else {
+    let Some(BusEnv {
+        endpoint,
+        token,
+        terminal,
+    }) = bus_env()
+    else {
         emit(Output::Stderr(OUTSIDE_TERMINAL.to_owned()));
         return EXIT_BUS;
     };

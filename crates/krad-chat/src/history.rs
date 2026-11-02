@@ -1,7 +1,7 @@
 use krad_domain::{AgentPreset, ChatEntry, ChatEvent, ResumeId, RewindId, RewindPoint};
+use krad_host::HostLink;
 use serde_json::Value;
-use std::fs;
-use std::io::{self, Read as _, Seek as _, SeekFrom};
+use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::parse::{claude, permission_mode};
@@ -27,33 +27,33 @@ pub struct TranscriptChunk {
 }
 
 #[must_use]
-pub fn claude_conversation_file(home: &Path, id: &ResumeId) -> Option<PathBuf> {
-    conversation_file(&home.join(CLAUDE_DIR).join(PROJECTS_DIR), id)
+pub fn claude_conversation_file(host: &HostLink, home: &Path, id: &ResumeId) -> Option<PathBuf> {
+    conversation_file(host, &home.join(CLAUDE_DIR).join(PROJECTS_DIR), id)
 }
 
 /// # Errors
 ///
 /// Returns the I/O error when the file cannot be opened or read.
-pub fn read_claude_transcript(file: &Path, from: u64) -> io::Result<TranscriptChunk> {
-    read_lines(file, from, Sidechain::Skipped)
+pub fn read_claude_transcript(
+    host: &HostLink,
+    file: &Path,
+    from: u64,
+) -> io::Result<TranscriptChunk> {
+    read_lines(host, file, from, Sidechain::Skipped)
 }
 
 /// # Errors
 ///
 /// Returns the I/O error when the file cannot be opened or read.
 pub fn read_claude_transcript_tail(
+    host: &HostLink,
     file: &Path,
     max_bytes: u64,
 ) -> io::Result<(TranscriptChunk, u64)> {
-    let length = fs::metadata(file)?.len();
+    let length = host.metadata(file)?.len;
     let mut start = length.saturating_sub(max_bytes);
     if start > 0 {
-        let mut reader = fs::File::open(file)?;
-        reader.seek(SeekFrom::Start(start))?;
-        let mut cut = Vec::new();
-        io::Read::by_ref(&mut reader)
-            .take(max_bytes)
-            .read_to_end(&mut cut)?;
+        let cut = host.read_range(file, start, max_bytes)?;
         let Some(line_end) = cut.iter().position(|byte| *byte == LINE_END) else {
             return Ok((
                 TranscriptChunk {
@@ -65,7 +65,7 @@ pub fn read_claude_transcript_tail(
         };
         start += u64::try_from(line_end + 1).unwrap_or(u64::MAX);
     }
-    Ok((read_lines(file, start, Sidechain::Skipped)?, start))
+    Ok((read_lines(host, file, start, Sidechain::Skipped)?, start))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -75,14 +75,12 @@ pub(crate) enum Sidechain {
 }
 
 pub(crate) fn read_lines(
+    host: &HostLink,
     file: &Path,
     from: u64,
     sidechain: Sidechain,
 ) -> io::Result<TranscriptChunk> {
-    let mut reader = fs::File::open(file)?;
-    reader.seek(SeekFrom::Start(from))?;
-    let mut bytes = Vec::new();
-    reader.read_to_end(&mut bytes)?;
+    let bytes = host.read_range(file, from, u64::MAX)?;
     let Some(end) = bytes.iter().rposition(|byte| *byte == LINE_END) else {
         return Ok(TranscriptChunk {
             entries: Vec::new(),
@@ -98,9 +96,12 @@ pub(crate) fn read_lines(
 /// # Errors
 ///
 /// Returns the I/O error when the file cannot be opened or read.
-pub fn read_claude_transcript_before(file: &Path, end: u64) -> io::Result<Vec<ChatEntry>> {
-    let mut bytes = Vec::new();
-    fs::File::open(file)?.take(end).read_to_end(&mut bytes)?;
+pub fn read_claude_transcript_before(
+    host: &HostLink,
+    file: &Path,
+    end: u64,
+) -> io::Result<Vec<ChatEntry>> {
+    let bytes = host.read(file, end)?;
     Ok(entries_of_bytes(&bytes, Sidechain::Skipped))
 }
 
@@ -111,17 +112,20 @@ fn entries_of_bytes(bytes: &[u8], sidechain: Sidechain) -> Vec<ChatEntry> {
         .collect()
 }
 
-fn conversation_file(projects: &Path, id: &ResumeId) -> Option<PathBuf> {
-    fs::read_dir(projects)
+fn conversation_file(host: &HostLink, projects: &Path, id: &ResumeId) -> Option<PathBuf> {
+    host.read_dir(projects)
         .ok()?
-        .filter_map(Result::ok)
+        .into_iter()
         .map(|project| {
             project
-                .path()
+                .path
                 .join(id.as_str())
                 .with_extension(CONVERSATION_EXTENSION)
         })
-        .find(|file| file.is_file())
+        .find(|file| {
+            host.metadata(file)
+                .is_ok_and(|metadata| metadata.kind == krad_host::FileKind::File)
+        })
 }
 
 fn entries_of_line(line: &str, sidechain: Sidechain) -> Vec<ChatEntry> {
@@ -199,6 +203,7 @@ fn user_text(value: &Value) -> Option<String> {
 mod tests {
     use super::*;
     use krad_domain::{PermissionMode, ToolCall};
+    use std::fs;
 
     const CONVERSATION: &str = r#"{"type":"permission-mode","permissionMode":"auto"}
 {"type":"user","message":{"role":"user","content":"Verify the Stripe signature."}}
@@ -229,18 +234,18 @@ not json"#;
         let second = r#"{"type":"user","message":{"content":"Second question"}}"#;
         fs::write(&file, format!("{first}\n{second}\n"))?;
         let cut = u64::try_from(second.len() + 5).unwrap_or(u64::MAX);
-        let (chunk, start) = read_claude_transcript_tail(&file, cut)?;
+        let (chunk, start) = read_claude_transcript_tail(&HostLink::Local, &file, cut)?;
         assert_eq!(start, u64::try_from(first.len() + 1).unwrap_or(u64::MAX));
         assert!(matches!(
             chunk.entries.as_slice(),
             [ChatEntry::User { text, .. }] if text == "Second question"
         ));
-        let earlier = read_claude_transcript_before(&file, start)?;
+        let earlier = read_claude_transcript_before(&HostLink::Local, &file, start)?;
         assert!(matches!(
             earlier.as_slice(),
             [ChatEntry::User { text, .. }] if text == "First question"
         ));
-        let (whole, from) = read_claude_transcript_tail(&file, u64::MAX)?;
+        let (whole, from) = read_claude_transcript_tail(&HostLink::Local, &file, u64::MAX)?;
         assert_eq!((whole.entries.len(), from), (2, 0));
         fs::remove_file(file)
     }
@@ -304,11 +309,17 @@ not json"#;
             .join(id.as_str())
             .with_extension(CONVERSATION_EXTENSION);
         assert!(fs::write(&file, CONVERSATION).is_ok());
-        assert_eq!(claude_conversation_file(&home, &id), Some(file));
+        assert_eq!(
+            claude_conversation_file(&HostLink::Local, &home, &id),
+            Some(file)
+        );
         let Ok(other) = "1111".parse::<ResumeId>() else {
             unreachable!("a valid resume id");
         };
-        assert_eq!(claude_conversation_file(&home, &other), None);
+        assert_eq!(
+            claude_conversation_file(&HostLink::Local, &home, &other),
+            None
+        );
         assert!(fs::remove_dir_all(&home).is_ok());
     }
 
@@ -320,17 +331,18 @@ not json"#;
         let asked = r#"{"type":"user","message":{"role":"user","content":"Hi"}}"#;
         let half = r#"{"type":"assistant","message":{"content":[{"type":"te"#;
         assert!(fs::write(&file, format!("{asked}\n{half}")).is_ok());
-        let first = read_claude_transcript(&file, 0).unwrap_or_default();
+        let first = read_claude_transcript(&HostLink::Local, &file, 0).unwrap_or_default();
         assert_eq!(first.entries, [user("Hi")]);
         let rest = r#"xt","text":"Hello"}]}}"#;
         assert!(fs::write(&file, format!("{asked}\n{half}{rest}\n")).is_ok());
-        let second = read_claude_transcript(&file, first.next).unwrap_or_default();
+        let second =
+            read_claude_transcript(&HostLink::Local, &file, first.next).unwrap_or_default();
         assert_eq!(
             second.entries,
             [ChatEntry::Event(ChatEvent::Text("Hello".to_owned()))]
         );
         assert_eq!(
-            read_claude_transcript(&file, second.next)
+            read_claude_transcript(&HostLink::Local, &file, second.next)
                 .unwrap_or_default()
                 .entries,
             []

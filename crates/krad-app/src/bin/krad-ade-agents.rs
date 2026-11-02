@@ -1,4 +1,8 @@
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    std::process::exit(krad_agents::run_cli(&args));
+    let mut words = std::env::args_os();
+    let invoked = words.next().unwrap_or_default();
+    let args: Vec<String> = words
+        .map(|word| word.to_string_lossy().into_owned())
+        .collect();
+    std::process::exit(krad_agents::run_invoked(&invoked, &args));
 }

@@ -3,6 +3,7 @@ use futures::StreamExt as _;
 use gpui_kit::{Context, Task};
 use krad_chat::{start_chat, ChatBackend, ChatError, LiveChat, LiveEvent, LiveSession, Runner};
 use krad_domain::{parse_wsl_path, AgentPreset};
+use krad_host::HostLink;
 use krad_session::find_program;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -104,6 +105,7 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn harness_runner(
         &self,
+        link: &HostLink,
         preset: AgentPreset,
         root: Option<&Path>,
     ) -> Result<(Runner, PathBuf), StartError> {
@@ -112,6 +114,24 @@ impl EnvironmentShell {
             .launch_line(preset)
             .and_then(|line| line.split_whitespace().next().map(str::to_owned))
             .ok_or(StartError::NoProgram(preset))?;
+        if let HostLink::Ssh(ssh) = link {
+            let found = self
+                .host_agents
+                .get(&link.host())
+                .ok_or(StartError::Waiting)?;
+            if !found.contains(&preset) {
+                return Err(StartError::NoProgram(preset));
+            }
+            let cwd = root
+                .map(Path::to_path_buf)
+                .or_else(|| ssh.home().map(Path::to_path_buf))
+                .ok_or(StartError::Waiting)?;
+            let runner = Runner::Ssh {
+                link: link.clone(),
+                program,
+            };
+            return Ok((runner, cwd));
+        }
         let in_wsl = root.and_then(|root| parse_wsl_path(root).map(|inside| (root, inside)));
         if let Some((root, inside)) = in_wsl {
             let runner = Runner::Wsl {

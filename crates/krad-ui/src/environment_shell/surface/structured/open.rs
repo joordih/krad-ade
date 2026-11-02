@@ -165,7 +165,7 @@ impl EnvironmentShell {
         resume: ResumeId,
         cx: &mut Context<Self>,
     ) {
-        let Some(server) = self.opencode_server().cloned() else {
+        let Some(server) = self.opencode_server_of(&env).cloned() else {
             self.opencode.waiting_histories.push((env, id, resume));
             return;
         };
@@ -187,15 +187,16 @@ impl EnvironmentShell {
             .get(&env)
             .and_then(|live| live.data.group_of(id))
             .map(|group| group.root.clone());
-        let (runner, cwd) = match self.harness_runner(AgentPreset::Codex, root.as_deref()) {
-            Ok(found) => found,
-            Err(error) => {
-                if let Some(chat) = structured_chat(self, &env, id) {
-                    chat.problem = Some(error.to_string());
+        let (runner, cwd) =
+            match self.harness_runner(&self.env_link(&env), AgentPreset::Codex, root.as_deref()) {
+                Ok(found) => found,
+                Err(error) => {
+                    if let Some(chat) = structured_chat(self, &env, id) {
+                        chat.problem = Some(error.to_string());
+                    }
+                    return;
                 }
-                return;
-            }
-        };
+            };
         let read = cx.background_spawn(async move {
             read_codex_transcript(&runner, &cwd, &resume).map_err(|error| error.to_string())
         });
@@ -269,6 +270,7 @@ impl EnvironmentShell {
             .and_then(|live| live.data.group_of(id))
             .map(|group| group.root.clone());
         let job = TailJob {
+            link: self.env_link(&env),
             resume,
             root,
             home: None,
@@ -311,9 +313,10 @@ impl EnvironmentShell {
         else {
             return;
         };
+        let link = self.env_link(&env);
         let read = cx.background_spawn(async move {
-            let entries = read_claude_transcript_before(&earlier.file, earlier.end);
-            (entries, started_at(&earlier.file))
+            let entries = read_claude_transcript_before(&link, &earlier.file, earlier.end);
+            (entries, started_at(&link, &earlier.file))
         });
         cx.spawn(async move |this, cx| {
             let (entries, started) = read.await;

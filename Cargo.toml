@@ -61,6 +61,11 @@ libghostty-vt-sys = { git = "https://github.com/joordih/libghostty-rs", rev = "f
   "pkg-config",
 ] }
 objc2 = "0.6"
+pet = { git = "https://github.com/microsoft/python-environment-tools", rev = "02dd29e49e3c71d4ec06e1072d6331494a12e01d" }
+pet-conda = { git = "https://github.com/microsoft/python-environment-tools", rev = "02dd29e49e3c71d4ec06e1072d6331494a12e01d" }
+pet-core = { git = "https://github.com/microsoft/python-environment-tools", rev = "02dd29e49e3c71d4ec06e1072d6331494a12e01d" }
+pet-poetry = { git = "https://github.com/microsoft/python-environment-tools", rev = "02dd29e49e3c71d4ec06e1072d6331494a12e01d" }
+pet-reporter = { git = "https://github.com/microsoft/python-environment-tools", rev = "02dd29e49e3c71d4ec06e1072d6331494a12e01d" }
 objc2-app-kit = { version = "0.3", default-features = false, features = [
   "NSAccessibility",
   "NSCell",
@@ -90,6 +95,13 @@ sha2 = "0.10"
 serde_json = "1"
 thiserror = "2"
 toml = "1"
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+  "env-filter",
+  "fmt",
+  "std",
+] }
 ureq = { version = "3.5", default-features = false, features = [
   "json",
   "rustls",
@@ -100,6 +112,7 @@ krad-domain = { path = "crates/krad-domain" }
 krad-extensions = { path = "crates/krad-extensions" }
 krad-github = { path = "crates/krad-github" }
 krad-gitlab = { path = "crates/krad-gitlab" }
+krad-host = { path = "crates/krad-host" }
 krad-lsp = { path = "crates/krad-lsp" }
 krad-pty = { path = "crates/krad-pty" }
 krad-repo = { path = "crates/krad-repo" }

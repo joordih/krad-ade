@@ -21,14 +21,17 @@ per crate:
 | `krad-gitlab` | GitLab's REST API v4: OAuth sign-in (Authorization Code with PKCE through a loopback redirect, Device Authorization Grant as fallback) and token refresh, merge requests, commits, changes, discussions, notes, approvals, merge, pipelines and jobs, over `ureq`. Synchronous; the UI calls it from the background executor. |
 | `krad-github` | GitHub's REST API, with GraphQL for review threads: device-flow sign-in, pull requests, commits, changed files, conversation comments, reviews, review threads, approvals, merge, Actions runs and jobs, read into the review types of `krad-domain`, over `ureq`. Synchronous; the UI calls it from the background executor. |
 | `krad-update` | App updates from the app's own GitHub releases: the signed `latest.json` manifest (minisign, public key in `packaging/update/minisign.pub`), the verified download, and replacing the installation per platform (`installation/macos.rs`, `linux.rs`, `windows.rs`) after the install marker shows it is a release build, unpacking with the system `tar`. Synchronous; the UI calls it from the background executor. |
-| `krad-agents` | Agent coordination bus, after Orca's orchestration: the loopback endpoint the app serves, its line-JSON protocol, the mailbox, and the `krad-ade-agents` CLI agents run from their shell. |
+| `krad-host` | The machine an environment lives on: this computer or an SSH host reached through the system `ssh` (a ControlMaster per host on Unix; on Windows one long-lived session per host running the host CLI's `serve`, a multiplexer of commands, the host's `sftp-server` and port forwards, signed in through `SSH_ASKPASS`; a hand-written SFTP v3 client for files, commands built as POSIX scripts, local and reverse port forwards, files written with a mode, the Linux host check). Synchronous; the other crates take a `HostLink` instead of touching `std::fs` or spawning a process for a group's files. |
+| `krad-lsp` | Language server client over stdio: starting a server here or on the environment's host, `file://` URIs, requests, notifications and diagnostics. |
+| `krad-extensions` | Language, toolchain and server runtime manifests and the package registry: locating, installing and launching language servers and their server runtimes, and finding a project's toolchains (data-driven locators, project hints, ranking, cache) and handing the chosen one to its server, here or on an SSH host through `krad-host`. |
+| `krad-agents` | Agent coordination bus, after Orca's orchestration: the loopback endpoint the app serves, its line-JSON protocol, the mailbox, and the `krad-ade-agents` CLI agents run from their shell, which on a host also serves the multiplexed session and, on this computer, carries its commands and sign-in prompts, and detects Python environments with Microsoft's `pet` (feature `python-toolchains`, enabled by `krad-app`). |
 | `krad-ui` | All GPUI views, elements, actions, the per-platform keymap (`keymap.rs`: Cmd on macOS, Ctrl+Shift on Windows/Linux so shells keep their control keys) and the light/dark theme. |
-| `krad-app` | Binaries: `krad-ade` (bootstrap, wiring, window creation; kept thin) and the console `krad-ade-agents` CLI, which only calls `krad-agents`. |
+| `krad-app` | Binaries: `krad-ade` (bootstrap, wiring, window creation; kept thin; needs the default `desktop` feature) and the console `krad-ade-agents` CLI, which only calls `krad-agents` and also builds without `desktop` as a static musl binary for SSH hosts (`just agents-linux`). |
 
 **Dependency rules (mandatory):**
 
-- `krad-app -> krad-ui -> {krad-session -> {krad-pty, krad-term}, krad-repo, krad-store, krad-agents, krad-chat, krad-gitlab, krad-github, krad-update}`,
-  `krad-app -> krad-agents` and `krad-app -> krad-store`. Any crate may depend on `krad-domain`. No other edges, no cycles.
+- `krad-app -> krad-ui -> {krad-session -> {krad-pty, krad-term}, krad-repo, krad-store, krad-agents, krad-chat, krad-gitlab, krad-github, krad-update, krad-lsp, krad-extensions, krad-host}`,
+  `krad-app -> krad-agents` and `krad-app -> krad-store`. `krad-repo`, `krad-chat`, `krad-lsp`, `krad-extensions` and `krad-agents` may depend on `krad-host`, which depends only on `krad-domain`. Any crate may depend on `krad-domain`. No other edges, no cycles.
 - `krad-domain` depends on no workspace crate and on none of `gpui`, `libghostty-vt` or `tokio`.
 - `krad-term` must not depend on `krad-pty`; it is tested by feeding raw bytes.
 - `gpui` (published as `gpui-pre`, pulled in by `gpui-kit`) is only allowed in `krad-ui` and
@@ -36,7 +39,7 @@ per crate:
 
 Inside `krad-ui`, the root view lives in `environment_shell.rs` and each concern of it (sessions
 and their panes, chat surfaces, terminal bodies and actions, sidebar, groups, file tree, file
-tabs, notes, review, side panel, utilities panel, settings, gateway, app updates, agent bus, agent hooks, context menus,
+tabs, notes, review, side panel, utilities panel, settings, gateway, app updates, agent bus, agent hooks, hosts, context menus,
 dialogs, palette, input, terminal lifecycle, layout snapshot, window close, arcade) is a child
 module in
 `environment_shell/` with its own `impl EnvironmentShell` block. Children see the shell's private
@@ -172,8 +175,8 @@ modules widen to `pub(in crate::environment_shell)` only what the rest of the sh
 
 ### Tracing and logging
 
-- Use `tracing`, never `println!`/`eprintln!`, outside tests and the CLI's own output. `tracing` is
-  not yet a workspace dependency: ask before adding it.
+- Use `tracing`, never `println!`/`eprintln!`, outside tests and the CLI's own output. `krad-app`
+  writes it to a daily rotated file in the config folder's `logs/`, filtered by `KRAD_ADE_LOG`.
 - `#[tracing::instrument(skip_all, fields(...))]` on functions that cross a thread or process
   boundary (spawning a PTY, starting an agent, running `git`, serving a bus request), recording
   ids, never terminal contents.

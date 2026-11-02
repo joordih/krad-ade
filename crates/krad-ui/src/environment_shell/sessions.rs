@@ -1,12 +1,15 @@
-use krad_chat::{new_opencode_session_id, prepare_opencode_session, OpencodeServer};
+mod launch;
+
+pub(super) use launch::Launch;
+
+use krad_chat::{prepare_opencode_session, OpencodeServer};
 use krad_domain::{
-    attach_line, classify_agent_state, parse_wsl_path, resume_line, AgentPreset, AgentState,
-    EnvironmentName, ModelId, ResumeId, ShellQuoting, TerminalId, WslPath,
+    attach_line, classify_agent_state, AgentPreset, AgentState, EnvironmentName, ModelId, ResumeId,
+    TerminalId,
 };
 use krad_session::{
-    clear_screen_prefix, default_shell, run_spawn_job, wsl_shell_in, LiveSession, PtyInput,
-    PumpMsg, SessionState, SharedKiller, SpawnJob, VtEngine, DEFAULT_COLS, DEFAULT_ROWS,
-    SHELL_QUOTING, THREAD_IO_NAME,
+    run_spawn_job, FirstInput, LiveSession, PtyInput, PumpMsg, SessionState, SharedKiller,
+    SpawnJob, VtEngine, DEFAULT_COLS, DEFAULT_ROWS, THREAD_IO_NAME,
 };
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -14,63 +17,23 @@ use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
 use std::time::Instant;
 
+use self::launch::{LaunchShell, Placed, ResolvedLaunch};
 use super::agent_hooks::AgentRole;
+use super::shell_site::ShellSite;
 use super::EnvironmentShell;
 
 const SHELL_SUBMIT: &str = "\r";
 const ENGINE_FAILED_TEXT: &str = "The terminal could not start";
+const REMOTE_LAUNCH_FAILED_TEXT: &str = "The terminal could not start on the host";
+const HOST_NOT_READY_TEXT: &str = "Connect to the environment's host first";
 const RESTORE_MARKER: &str = "── restored session ──";
 const SCROLLBACK_CLEARED: &[u8] = b"\x1b[3J";
 
-pub(super) enum Launch {
-    Preset(AgentPreset),
-    Agent {
-        preset: AgentPreset,
-        prompt: String,
-        model: Option<ModelId>,
-    },
-    Resume {
-        preset: AgentPreset,
-        resume: Option<ResumeId>,
-    },
-    Command {
-        program: String,
-        args: Vec<String>,
-        vars: Vec<(String, String)>,
-    },
-}
-
-impl Launch {
-    const fn harness(&self) -> Option<AgentPreset> {
-        match self {
-            Self::Preset(preset) | Self::Agent { preset, .. } | Self::Resume { preset, .. }
-                if preset.is_agent() =>
-            {
-                Some(*preset)
-            }
-            Self::Preset(_) | Self::Agent { .. } | Self::Resume { .. } | Self::Command { .. } => {
-                None
-            }
-        }
-    }
-
-    fn model(&self) -> Option<ModelId> {
-        match self {
-            Self::Agent { model, .. } => model.clone(),
-            Self::Preset(_) | Self::Resume { .. } | Self::Command { .. } => None,
-        }
-    }
-}
-
-struct ResolvedLaunch {
-    program: String,
-    args: Vec<String>,
-    agent: Option<(String, Option<String>)>,
-    vars: Vec<(String, String)>,
-}
-
 impl EnvironmentShell {
     pub(super) fn spawn_missing_sessions(&mut self, env: &EnvironmentName) -> usize {
+        if !self.host_ready(env) {
+            return 0;
+        }
         let relaunches: Vec<(TerminalId, Launch, Option<PathBuf>, Vec<String>)> =
             match self.envs.get(env) {
                 Some(live) => live
@@ -115,6 +78,37 @@ impl EnvironmentShell {
         spawned
     }
 
+    fn start_agent_line(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        writer: &Sender<PtyInput>,
+        typed: TypedLine,
+        after_start: Option<String>,
+        attached: Option<&(Arc<OpencodeServer>, ResumeId)>,
+    ) {
+        type_agent_line(writer, typed, attached);
+        if let Some(prompt) = after_start {
+            self.queue_prompt(env, id, prompt);
+        }
+    }
+
+    fn place(
+        &mut self,
+        placement: Placed,
+        link: &krad_host::HostLink,
+        shell: LaunchShell,
+        in_wsl: bool,
+    ) -> Option<Placed> {
+        match placement.on(link, shell, in_wsl) {
+            Ok(placed) => Some(placed),
+            Err(error) => {
+                self.push_toast(format!("{REMOTE_LAUNCH_FAILED_TEXT}: {error}"));
+                None
+            }
+        }
+    }
+
     pub(super) fn start_session(
         &mut self,
         env: &EnvironmentName,
@@ -126,6 +120,11 @@ impl EnvironmentShell {
         let Some(pump) = self.pump_tx.clone() else {
             return;
         };
+        let signs_in = matches!(launch, Launch::SignIn { .. });
+        if !signs_in && !self.host_ready(env) {
+            self.push_toast(HOST_NOT_READY_TEXT.to_owned());
+            return;
+        }
         let mut engine = match VtEngine::new(DEFAULT_COLS.into(), DEFAULT_ROWS.into()) {
             Ok(engine) => engine,
             Err(error) => {
@@ -136,33 +135,36 @@ impl EnvironmentShell {
         engine.push_text_lines(prefill);
         let harness = launch.harness();
         let role = self.role_of(env, id);
-        let wsl = cwd.as_deref().and_then(parse_wsl_path);
+        let (link, wsl, site) = self.launch_site(env, signs_in, cwd.as_deref());
         let model = launch.model();
-        let attached = self.opencode_attach(&launch, harness, wsl.is_some());
+        let attached = self.opencode_attach(&launch, harness, site);
         let ResolvedLaunch {
             program,
             args,
             agent,
             vars: extra_vars,
-        } = self.resolve_launch(launch, wsl.as_ref(), role);
-        let cwd = if wsl.is_some() { None } else { cwd };
-        let mut vars = self.bus_vars(env, id);
-        vars.extend(extra_vars);
-        if let Some((server, _)) = &attached {
-            vars.extend(server.client_env());
-        }
+            shell,
+        } = self.resolve_launch(env, launch, wsl.as_ref(), site, role);
+        let vars = self.launch_vars(env, id, extra_vars, attached.as_ref());
+        let typed_cwd = cwd.clone();
+        let placement = Placed {
+            program,
+            args,
+            cwd,
+            vars,
+        };
+        let Some(placed) = self.place(placement, &link, shell, wsl.is_some()) else {
+            return;
+        };
         let (writer_tx, writer_rx) = channel();
+        let first_input = FirstInput::default();
+        if agent.is_none() && harness.is_none() && shell == LaunchShell::Login {
+            self.activate_toolchains(env, id, writer_tx.clone(), first_input.clone(), site);
+        }
         if let Some((agent, after_start)) = agent {
-            let typed = TypedLine {
-                agent,
-                in_wsl: wsl.is_some(),
-                cwd: cwd.clone(),
-                model,
-            };
-            type_agent_line(&writer_tx, typed, attached.as_ref());
-            if let Some(prompt) = after_start {
-                self.queue_prompt(env, id, prompt);
-            }
+            let cwd = typed_cwd.filter(|_| wsl.is_none());
+            let typed = TypedLine::new(agent, site, cwd, model);
+            self.start_agent_line(env, id, &writer_tx, typed, after_start, attached.as_ref());
         }
         let cancelled = Arc::new(AtomicBool::new(false));
         if let Some(live) = self.envs.get_mut(env) {
@@ -184,6 +186,7 @@ impl EnvironmentShell {
                     hooked: false,
                     activity: None,
                     cwd: None,
+                    first_input,
                 },
             );
             if live.focused.is_none() {
@@ -196,10 +199,10 @@ impl EnvironmentShell {
         let job = SpawnJob {
             env: env.clone(),
             id,
-            program,
-            args,
-            cwd,
-            vars,
+            program: placed.program,
+            args: placed.args,
+            cwd: placed.cwd,
+            vars: placed.vars,
             pump,
             cancelled,
             inbox: writer_rx,
@@ -233,96 +236,6 @@ impl EnvironmentShell {
             node.resume = Some(resume.clone());
         }
         self.note_opencode_terminal(env, id, resume);
-    }
-
-    fn opencode_attach(
-        &self,
-        launch: &Launch,
-        harness: Option<AgentPreset>,
-        in_wsl: bool,
-    ) -> Option<(Arc<OpencodeServer>, ResumeId)> {
-        if !harness.is_some_and(AgentPreset::attaches_to_server) || in_wsl {
-            return None;
-        }
-        let server = self.opencode_server()?.clone();
-        let resume = match launch {
-            Launch::Resume {
-                resume: Some(resume),
-                ..
-            } => resume.clone(),
-            Launch::Preset(_)
-            | Launch::Agent { .. }
-            | Launch::Resume { .. }
-            | Launch::Command { .. } => new_opencode_session_id(),
-        };
-        Some((server, resume))
-    }
-
-    fn resolve_launch(
-        &self,
-        launch: Launch,
-        wsl: Option<&WslPath>,
-        role: AgentRole,
-    ) -> ResolvedLaunch {
-        let shell = || match wsl {
-            Some(folder) => wsl_shell_in(&folder.distro, &folder.linux),
-            None => default_shell(),
-        };
-        let in_wsl = wsl.is_some();
-        match launch {
-            Launch::Preset(preset) => {
-                let (program, args) = shell();
-                ResolvedLaunch {
-                    program,
-                    args,
-                    agent: self.agent_launch_line(preset, in_wsl, "", None, role),
-                    vars: Vec::new(),
-                }
-            }
-            Launch::Agent {
-                preset,
-                prompt,
-                model,
-            } => {
-                let (program, args) = shell();
-                ResolvedLaunch {
-                    program,
-                    args,
-                    agent: self.agent_launch_line(preset, in_wsl, &prompt, model.as_ref(), role),
-                    vars: Vec::new(),
-                }
-            }
-            Launch::Resume { preset, resume } => {
-                let (program, args) = shell();
-                let quoting = if in_wsl {
-                    ShellQuoting::Posix
-                } else {
-                    SHELL_QUOTING
-                };
-                let agent = self.agent_launch_line(preset, in_wsl, "", None, role).map(
-                    |(line, after_start)| match &resume {
-                        Some(id) => (resume_line(&line, preset, id, quoting), after_start),
-                        None => (line, after_start),
-                    },
-                );
-                ResolvedLaunch {
-                    program,
-                    args,
-                    agent,
-                    vars: Vec::new(),
-                }
-            }
-            Launch::Command {
-                program,
-                args,
-                vars,
-            } => ResolvedLaunch {
-                program,
-                args,
-                agent: None,
-                vars,
-            },
-        }
     }
 
     pub(super) fn apply_pump(&mut self, msg: PumpMsg) -> bool {
@@ -379,11 +292,12 @@ impl EnvironmentShell {
     }
 
     fn apply_exit(&mut self, env: &EnvironmentName, id: TerminalId, code: Option<i32>) -> bool {
+        let signed_in = self.sign_in_ended(env, id, code);
         let Some(live) = self.envs.get_mut(env) else {
-            return false;
+            return signed_in;
         };
         let Some(session) = live.sessions.get_mut(&id) else {
-            return false;
+            return signed_in;
         };
         session.mark_exited(code);
         if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
@@ -484,9 +398,25 @@ fn contains(bytes: &[u8], needle: &[u8]) -> bool {
 
 struct TypedLine {
     agent: String,
-    in_wsl: bool,
+    site: ShellSite,
     cwd: Option<PathBuf>,
     model: Option<ModelId>,
+}
+
+impl TypedLine {
+    const fn new(
+        agent: String,
+        site: ShellSite,
+        cwd: Option<PathBuf>,
+        model: Option<ModelId>,
+    ) -> Self {
+        Self {
+            agent,
+            site,
+            cwd,
+            model,
+        }
+    }
 }
 
 fn type_agent_line(
@@ -494,7 +424,7 @@ fn type_agent_line(
     typed: TypedLine,
     attached: Option<&(Arc<OpencodeServer>, ResumeId)>,
 ) {
-    let clear = clear_screen_prefix(typed.in_wsl);
+    let clear = typed.site.clear_prefix();
     let agent = match attached {
         Some((server, resume)) => attach_line(&typed.agent, &server.url(), resume),
         None => typed.agent,

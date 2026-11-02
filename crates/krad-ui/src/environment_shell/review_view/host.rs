@@ -6,6 +6,7 @@ use krad_domain::review::{
 use krad_domain::CodeHost;
 use krad_github::{GithubClient, GithubError, GITHUB_HOST};
 use krad_gitlab::{GitlabClient, GitlabConfig, GitlabError, OAuthError};
+use krad_host::HostLink;
 use krad_repo::{resolved_remote_url, ORIGIN_REMOTE};
 use krad_store::{read_github_login, read_gitlab_login, LoginStoreError};
 use std::fmt;
@@ -65,11 +66,12 @@ fn repo_of_remote(remote: &str, gitlab: Option<GitlabConfig>) -> Option<HostRepo
 }
 
 pub(in crate::environment_shell) fn origin_repo(
+    link: &HostLink,
     root: &Path,
     gitlab: Option<GitlabConfig>,
 ) -> Option<HostRepo> {
-    let home = workplace_home(Some(root)).ok().flatten();
-    let remote = resolved_remote_url(root, ORIGIN_REMOTE, home.as_deref())
+    let home = workplace_home(link, Some(root)).ok().flatten();
+    let remote = resolved_remote_url(link, root, ORIGIN_REMOTE, home.as_deref())
         .ok()
         .flatten()?;
     repo_of_remote(&remote, gitlab)

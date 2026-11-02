@@ -1,16 +1,21 @@
+use krad_host::HostLink;
 use std::ffi::OsStr;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-use crate::process::{git_command, host_path, GIT_PROGRAM};
+use crate::process::{git_output, host_path, GIT_PROGRAM};
 use crate::RepoError;
 
 const NOT_A_REPOSITORY: &str = "not a git repository";
 const TOPLEVEL_ARGS: [&str; 2] = ["rev-parse", "--show-toplevel"];
 const ARG_SEPARATOR: &str = " ";
 
-pub(crate) fn run_git<S: AsRef<OsStr>>(repo: &Path, args: &[S]) -> Result<Vec<u8>, RepoError> {
-    let output = git_command(repo).args(args).output()?;
+pub(crate) fn run_git<S: AsRef<OsStr>>(
+    host: &HostLink,
+    repo: &Path,
+    args: &[S],
+) -> Result<Vec<u8>, RepoError> {
+    let output = git_output(host, repo, args)?;
     if output.status.success() {
         return Ok(output.stdout);
     }
@@ -28,9 +33,10 @@ fn command_line<S: AsRef<OsStr>>(args: &[S]) -> String {
 }
 
 /// # Errors
-pub fn repo_root(path: &Path) -> Result<Option<PathBuf>, RepoError> {
-    match run_git(path, &TOPLEVEL_ARGS) {
+pub fn repo_root(host: &HostLink, path: &Path) -> Result<Option<PathBuf>, RepoError> {
+    match run_git(host, path, &TOPLEVEL_ARGS) {
         Ok(stdout) => Ok(Some(host_path(
+            host,
             path,
             String::from_utf8_lossy(&stdout).trim_end(),
         ))),

@@ -1,0 +1,221 @@
+use gpui_kit::{AppContext as _, Context};
+use krad_domain::Host;
+use krad_host::HostLink;
+use krad_repo::{
+    line_counts, list_worktrees, repo_root, status, ChangeKind, GitStatus, LineCount, Worktree,
+};
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use super::super::EnvironmentShell;
+
+const LOCAL_POLL: Duration = Duration::from_secs(3);
+const REMOTE_POLL: Duration = Duration::from_secs(5);
+const SLOWEST_POLL: Duration = Duration::from_secs(20);
+const QUIET_GROWTH: u32 = 2;
+
+pub(in crate::environment_shell) type GitKey = (Host, PathBuf);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::environment_shell) struct GroupGit {
+    pub(in crate::environment_shell) repo_root: PathBuf,
+    pub(in crate::environment_shell) status: GitStatus,
+    pub(in crate::environment_shell) lines: HashMap<PathBuf, LineCount>,
+    pub(in crate::environment_shell) worktrees: Vec<Worktree>,
+}
+
+impl GroupGit {
+    pub(in crate::environment_shell) fn total_lines(&self) -> LineCount {
+        self.lines
+            .values()
+            .copied()
+            .fold(LineCount::default(), |total, count| total + count)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct PollPace {
+    fastest: Duration,
+    current: Duration,
+}
+
+impl PollPace {
+    const fn new(remote: bool) -> Self {
+        let fastest = if remote { REMOTE_POLL } else { LOCAL_POLL };
+        Self {
+            fastest,
+            current: fastest,
+        }
+    }
+
+    fn after(self, changed: bool, remote: bool) -> Self {
+        let start = Self::new(remote);
+        if changed || start.fastest != self.fastest {
+            return start;
+        }
+        Self {
+            current: self.current.saturating_mul(QUIET_GROWTH).min(SLOWEST_POLL),
+            ..self
+        }
+    }
+}
+
+fn read_root(link: &HostLink, root: &Path) -> Option<GroupGit> {
+    let repo_root = repo_root(link, root).ok().flatten()?;
+    std::thread::scope(|scope| {
+        let lines = scope.spawn(|| line_counts(link, &repo_root).unwrap_or_default());
+        let worktrees = scope.spawn(|| list_worktrees(link, root).unwrap_or_default());
+        let status = status(link, root).ok();
+        let lines = lines.join().unwrap_or_default();
+        let worktrees = worktrees.join().unwrap_or_default();
+        Some(GroupGit {
+            status: status?,
+            repo_root: repo_root.clone(),
+            lines,
+            worktrees,
+        })
+    })
+}
+
+fn read_git(link: &HostLink, roots: Vec<PathBuf>) -> HashMap<GitKey, GroupGit> {
+    if !link.is_ready() {
+        return HashMap::new();
+    }
+    let host = link.host();
+    std::thread::scope(|scope| {
+        let reads: Vec<_> = roots
+            .into_iter()
+            .map(|root| scope.spawn(move || Some((root.clone(), read_root(link, &root)?))))
+            .collect();
+        reads
+            .into_iter()
+            .filter_map(|read| read.join().ok().flatten())
+            .map(|(root, git)| ((host.clone(), root), git))
+            .collect()
+    })
+}
+
+fn changed_dirs(
+    before: &HashMap<GitKey, GroupGit>,
+    after: &HashMap<GitKey, GroupGit>,
+) -> HashSet<PathBuf> {
+    let changes = |git: &HashMap<GitKey, GroupGit>| -> HashSet<(PathBuf, ChangeKind)> {
+        git.values()
+            .flat_map(|group| {
+                group
+                    .status
+                    .changes
+                    .iter()
+                    .map(|change| (group.repo_root.join(&change.path), change.kind))
+            })
+            .collect()
+    };
+    changes(before)
+        .symmetric_difference(&changes(after))
+        .filter_map(|(path, _)| path.parent().map(Path::to_path_buf))
+        .collect()
+}
+
+impl EnvironmentShell {
+    pub(in crate::environment_shell) fn start_git_watch(&mut self, cx: &mut Context<Self>) {
+        let task = cx.spawn(async move |this, cx| {
+            let mut pace = PollPace::new(false);
+            loop {
+                let Ok((link, roots)) = this.update(cx, |shell, cx| {
+                    let (link, roots) = shell.group_roots();
+                    shell.detect_wsl_agents(&roots, cx);
+                    (link, roots)
+                }) else {
+                    break;
+                };
+                let remote = !link.is_local();
+                let git = cx
+                    .background_executor()
+                    .spawn(async move { read_git(&link, roots) })
+                    .await;
+                let Ok(changed) = this.update(cx, |shell, cx| shell.apply_git(git, cx)) else {
+                    break;
+                };
+                pace = pace.after(changed, remote);
+                cx.background_executor().timer(pace.current).await;
+            }
+        });
+        self.git_task = Some(task);
+    }
+
+    pub(in crate::environment_shell) fn refresh_git(&mut self, cx: &mut Context<Self>) {
+        let (link, roots) = self.group_roots();
+        let read = cx.background_spawn(async move { read_git(&link, roots) });
+        cx.spawn(async move |this, cx| {
+            let git = read.await;
+            this.update(cx, |shell, cx| shell.apply_git(git, cx))
+                .unwrap_or_default();
+        })
+        .detach();
+    }
+
+    fn apply_git(&mut self, git: HashMap<GitKey, GroupGit>, cx: &mut Context<Self>) -> bool {
+        if self.git == git {
+            return false;
+        }
+        let dirs = changed_dirs(&self.git, &git);
+        self.git = git;
+        self.forget_diffs();
+        self.forget_file_index();
+        self.reload_file_dirs(&dirs, cx);
+        cx.notify();
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use krad_repo::FileChange;
+
+    #[test]
+    fn a_quiet_repository_is_polled_less_often_until_it_changes() {
+        let start = PollPace::new(true);
+        assert_eq!(start.current, REMOTE_POLL);
+        let quiet = start.after(false, true).after(false, true);
+        assert_eq!(quiet.current, REMOTE_POLL * 4);
+        let slowest = (0..10).fold(quiet, |pace, _| pace.after(false, true));
+        assert_eq!(slowest.current, SLOWEST_POLL);
+        assert_eq!(slowest.after(true, true).current, REMOTE_POLL);
+        assert_eq!(slowest.after(false, false).current, LOCAL_POLL);
+    }
+
+    fn git(changes: &[&str]) -> HashMap<GitKey, GroupGit> {
+        HashMap::from([(
+            (Host::Local, PathBuf::from("/r")),
+            GroupGit {
+                repo_root: PathBuf::from("/r"),
+                status: GitStatus {
+                    changes: changes
+                        .iter()
+                        .map(|path| FileChange {
+                            path: PathBuf::from(path),
+                            kind: ChangeKind::Modified,
+                        })
+                        .collect(),
+                    ..GitStatus::default()
+                },
+                lines: HashMap::new(),
+                worktrees: Vec::new(),
+            },
+        )])
+    }
+
+    #[test]
+    fn only_folders_holding_a_changed_file_reload() {
+        let dirs = changed_dirs(
+            &git(&["src/a.rs", "README.md"]),
+            &git(&["README.md", "docs/b.md"]),
+        );
+        assert_eq!(
+            dirs,
+            HashSet::from([PathBuf::from("/r/src"), PathBuf::from("/r/docs")])
+        );
+    }
+}
