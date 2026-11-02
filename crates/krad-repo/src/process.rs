@@ -14,6 +14,9 @@ const OPTIONAL_LOCKS_VAR: &str = "GIT_OPTIONAL_LOCKS";
 const OPTIONAL_LOCKS_DISABLED: &str = "0";
 const TERMINAL_PROMPT_VAR: &str = "GIT_TERMINAL_PROMPT";
 const TERMINAL_PROMPT_DISABLED: &str = "0";
+const MESSAGES_LOCALE_VAR: &str = "LC_MESSAGES";
+const MESSAGES_LOCALE: &str = "C";
+const LANGUAGE_VAR: &str = "LANGUAGE";
 const QUOTE_PATH_DISABLED: &str = "core.quotePath=false";
 
 const WSL_PROGRAM: &str = "wsl.exe";
@@ -47,7 +50,9 @@ pub(crate) fn git_output<S: AsRef<OsStr>>(
         .args([GIT_CONFIG_FLAG, QUOTE_PATH_DISABLED])
         .args(args)
         .env(OPTIONAL_LOCKS_VAR, OPTIONAL_LOCKS_DISABLED)
-        .env(TERMINAL_PROMPT_VAR, TERMINAL_PROMPT_DISABLED);
+        .env(TERMINAL_PROMPT_VAR, TERMINAL_PROMPT_DISABLED)
+        .env(MESSAGES_LOCALE_VAR, MESSAGES_LOCALE)
+        .env(LANGUAGE_VAR, MESSAGES_LOCALE);
     Ok(host.output(&command)?)
 }
 
@@ -59,7 +64,9 @@ fn local_git_command(repo: &Path) -> Command {
                 .arg(GIT_DIR_FLAG)
                 .arg(repo)
                 .env(OPTIONAL_LOCKS_VAR, OPTIONAL_LOCKS_DISABLED)
-                .env(TERMINAL_PROMPT_VAR, TERMINAL_PROMPT_DISABLED);
+                .env(TERMINAL_PROMPT_VAR, TERMINAL_PROMPT_DISABLED)
+                .env(MESSAGES_LOCALE_VAR, MESSAGES_LOCALE)
+                .env(LANGUAGE_VAR, MESSAGES_LOCALE);
             command
         },
         |WslPath { distro, linux }| {
@@ -75,6 +82,8 @@ fn local_git_command(repo: &Path) -> Command {
                 ])
                 .arg(format!("{OPTIONAL_LOCKS_VAR}={OPTIONAL_LOCKS_DISABLED}"))
                 .arg(format!("{TERMINAL_PROMPT_VAR}={TERMINAL_PROMPT_DISABLED}"))
+                .arg(format!("{MESSAGES_LOCALE_VAR}={MESSAGES_LOCALE}"))
+                .arg(format!("{LANGUAGE_VAR}={MESSAGES_LOCALE}"))
                 .arg(GIT_PROGRAM);
             command
         },

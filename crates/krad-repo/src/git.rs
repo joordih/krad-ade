@@ -42,6 +42,23 @@ pub fn repo_root(host: &HostLink, path: &Path) -> Result<Option<PathBuf>, RepoEr
         ))),
         Err(RepoError::Io(error)) if error.kind() == ErrorKind::NotFound => Ok(None),
         Err(RepoError::Git { message, .. }) if message.contains(NOT_A_REPOSITORY) => Ok(None),
+        Err(RepoError::Git { .. }) if !host.exists(path) => Ok(None),
         Err(error) => Err(error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_missing_or_plain_folder_has_no_repository() -> Result<(), RepoError> {
+        let base = std::env::temp_dir().join(format!("krad-repo-root-{}", std::process::id()));
+        std::fs::create_dir_all(&base)?;
+        let host = HostLink::Local;
+        assert_eq!(repo_root(&host, &base.join("docs/notes"))?, None);
+        assert_eq!(repo_root(&host, &base)?, None);
+        std::fs::remove_dir_all(&base)?;
+        Ok(())
     }
 }
