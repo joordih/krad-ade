@@ -7,6 +7,7 @@ mod unix;
 use std::fmt::Write as _;
 
 pub(crate) const TOKEN_BYTES: usize = 32;
+const INSTALL_ID_BYTES: usize = 16;
 
 #[cfg(unix)]
 fn fill(buffer: &mut [u8]) {
@@ -32,6 +33,11 @@ pub(crate) fn random_hex(bytes: usize) -> String {
         })
 }
 
+#[must_use]
+pub fn new_install_id() -> Option<krad_domain::InstallId> {
+    random_hex(INSTALL_ID_BYTES).parse().ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -42,6 +48,13 @@ mod tests {
         assert_eq!(first.len(), TOKEN_BYTES * 2);
         assert!(first.bytes().all(|byte| byte.is_ascii_hexdigit()));
         assert_ne!(random_hex(TOKEN_BYTES), first);
+    }
+
+    #[test]
+    fn a_new_install_id_is_a_valid_random_id() {
+        let first = new_install_id();
+        assert!(first.is_some());
+        assert_ne!(new_install_id(), first);
     }
 
     #[test]

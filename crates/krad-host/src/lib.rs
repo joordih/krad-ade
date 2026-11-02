@@ -32,6 +32,7 @@ pub use link::{Entry, HostLink, Metadata, SshLink};
 pub use mode::FileMode;
 pub use path::remote_path;
 pub use platform::{HostPlatform, UnsupportedPlatform};
+pub use random::new_install_id;
 pub use sftp::FileKind;
 pub use ssh::{SshArgs, Transport, LOOPBACK};
 pub use ssh_config::read_ssh_config;

@@ -16,7 +16,7 @@ impl HostTools {
     #[must_use]
     pub fn discover() -> Self {
         Self {
-            install_id: krad_store::install_id(),
+            install_id: krad_store::install_id(krad_host::new_install_id),
             local_cli: local_cli(),
             host_clis: HostPlatform::ALL
                 .into_iter()
