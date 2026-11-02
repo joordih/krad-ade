@@ -30,5 +30,5 @@ pub use reveal::reveal_in_file_manager;
 pub use search::{search_text, TextMatch};
 pub use status::{parse_status, status, ChangeKind, FileChange, GitStatus};
 pub use worktree::{
-    add_worktree, remove_worktree, sanitize_worktree_name, worktree_path, Worktree,
+    add_worktree, list_worktrees, remove_worktree, sanitize_worktree_name, worktree_path, Worktree,
 };

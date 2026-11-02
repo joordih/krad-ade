@@ -260,6 +260,7 @@ mod tests {
                 ..GitStatus::default()
             },
             lines: std::collections::HashMap::new(),
+            worktrees: Vec::new(),
         };
         assert_eq!(branch_caption(&git), "main");
         git.status.ahead = 2;

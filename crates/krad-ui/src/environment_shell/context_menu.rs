@@ -4,7 +4,7 @@ mod view;
 use gpui_kit::{Context, FocusHandle, Window};
 use krad_domain::{
     AgentPreset, Effort, EnvironmentData, EnvironmentName, GroupId, PermissionMode, SessionId,
-    TerminalId,
+    TerminalId, WorktreeOrigin,
 };
 
 use super::file_tree::FileAction;
@@ -42,6 +42,7 @@ pub(super) enum MenuAction {
     CustomizeSession(SessionId),
     CloseSession(SessionId),
     SelectGroup(GroupId),
+    OpenWorktree(std::path::PathBuf, Option<WorktreeOrigin>),
     CreateWorktree(GroupId, String),
     NewGroup,
     OpenSettings,
@@ -320,6 +321,7 @@ impl EnvironmentShell {
             MenuAction::SwitchEnvironment(name) => self.switch_env(&name, cx),
             MenuAction::NewEnvironment => self.new_environment(cx),
             MenuAction::SelectGroup(group) => self.select_group(group, cx),
+            MenuAction::OpenWorktree(path, origin) => self.open_worktree(path, origin, cx),
             MenuAction::CreateWorktree(group, name) => self.create_worktree(group, &name, cx),
             MenuAction::NewGroup => Self::prompt_new_group(cx),
             MenuAction::OpenSettings => self.open_settings(window, cx),
