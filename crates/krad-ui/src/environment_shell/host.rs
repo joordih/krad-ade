@@ -4,6 +4,7 @@ mod bus;
 mod failure;
 mod folder_browser;
 mod problem;
+mod remote_pty;
 mod sign_in;
 mod ssh_dialog;
 mod state;
@@ -13,7 +14,7 @@ mod tools;
 pub(super) use folder_browser::{FolderBrowser, FolderPurpose};
 pub(super) use ssh_dialog::SshDialog;
 pub(super) use state::HostState;
-pub(super) use terminal::remote_terminal;
+pub(super) use terminal::{remote_terminal, remote_terminal_opener};
 pub use tools::HostTools;
 
 use gpui_kit::{AnyElement, AppContext as _, Context, Window};

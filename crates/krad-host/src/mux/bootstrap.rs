@@ -3,7 +3,7 @@ use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
 
 use super::MuxError;
-use crate::layout::{APP_DIR, APP_VERSION, BIN_DIR, HOST_CLI_PROGRAM};
+use crate::layout::{APP_DIR, BIN_DIR, HOST_CLI_BUILD, HOST_CLI_PROGRAM};
 use crate::platform::HostPlatform;
 
 const GREETING: &str = "KRAD-MUX";
@@ -52,7 +52,7 @@ pub(crate) fn script() -> String {
     let bad_length = BootstrapFailure::BadLength.code();
     let no_answer = BootstrapFailure::NoAnswer.code();
     format!(
-        r#"v='{APP_VERSION}'
+        r#"v='{HOST_CLI_BUILD}'
 d="$HOME/{APP_DIR}/$v/{BIN_DIR}"
 f="$d/{HOST_CLI_PROGRAM}"
 if [ -x "$f" ] && [ "$("$f" --version 2>/dev/null)" = "$v" ]; then s={READY}; else s={MISSING}; fi
@@ -159,7 +159,7 @@ mod tests {
             let cli = home.join("fake-cli");
             fs::write(
                 &cli,
-                format!("#!/bin/sh\n[ \"$1\" = --version ] && echo {APP_VERSION} && exit 0\necho served \"$1\"\n"),
+                format!("#!/bin/sh\n[ \"$1\" = --version ] && echo {HOST_CLI_BUILD} && exit 0\necho served \"$1\"\n"),
             )?;
             let mut child = Command::new(shell)
                 .args(["-c", &script()])
@@ -182,7 +182,7 @@ mod tests {
             assert!(child.wait()?.success());
             let installed = home
                 .join(APP_DIR)
-                .join(APP_VERSION)
+                .join(HOST_CLI_BUILD)
                 .join(BIN_DIR)
                 .join(HOST_CLI_PROGRAM);
             assert!(installed.is_file());

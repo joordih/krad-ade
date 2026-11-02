@@ -12,11 +12,12 @@ case "${s##*/}" in
   fish|nu|elvish|xonsh) set -- -l -c ;;
   *) set -- -l -i -c ;;
 esac
-out=$("$s" "$@" "printf %s $m; /usr/bin/env -0" </dev/null 2>/dev/null)
-case "$out" in
-  *"$m"*) printf %s "$out" ;;
-  *) /bin/sh -l -c "printf %s $m; /usr/bin/env -0" </dev/null 2>/dev/null ;;
-esac"#;
+t=$(mktemp 2>/dev/null) || t="${TMPDIR:-/tmp}/krad-login-env.$$"
+umask 077
+"$s" "$@" "printf %s $m; /usr/bin/env -0" </dev/null >"$t" 2>/dev/null
+if [ "$(head -c ${#m} "$t" 2>/dev/null)" = "$m" ]; then cat "$t"
+else /bin/sh -l -c "printf %s $m; /usr/bin/env -0" </dev/null 2>/dev/null; fi
+rm -f "$t""#;
 const NUL: char = '\0';
 const ASSIGN: char = '=';
 const VOLATILE: [&str; 10] = [
@@ -93,6 +94,40 @@ mod tests {
             ]
         );
         assert_eq!(parse("no marker here"), Vec::new());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn every_variable_survives_the_capture_under_each_posix_shell() -> std::io::Result<()> {
+        for shell in ["/bin/sh", "/bin/dash", "/bin/bash"] {
+            if !std::path::Path::new(shell).exists() {
+                continue;
+            }
+            let output = std::process::Command::new(shell)
+                .args(["-c", CAPTURE_SCRIPT, "sh", MARKER])
+                .env("SHELL", shell)
+                .env("KRAD_PROBE_ONE", "first")
+                .env("KRAD_PROBE_TWO", "second value")
+                .output()?;
+            let vars = parse(&String::from_utf8_lossy(&output.stdout));
+            let value = |wanted: &str| {
+                vars.iter()
+                    .find(|(name, _)| name == wanted)
+                    .map(|(_, value)| value.clone())
+            };
+            assert_eq!(value("KRAD_PROBE_ONE").as_deref(), Some("first"), "{shell}");
+            assert_eq!(
+                value("KRAD_PROBE_TWO").as_deref(),
+                Some("second value"),
+                "{shell}"
+            );
+            assert!(vars.len() > 3, "{shell}: {vars:?}");
+            assert!(
+                vars.iter().all(|(_, value)| !value.contains('\0')),
+                "{shell}"
+            );
+        }
+        Ok(())
     }
 
     #[cfg(unix)]

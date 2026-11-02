@@ -152,6 +152,7 @@ impl EnvironmentShell {
             args,
             cwd,
             vars,
+            opener: None,
         };
         let Some(placed) = self.place(placement, &link, shell, wsl.is_some()) else {
             return;
@@ -206,6 +207,7 @@ impl EnvironmentShell {
             pump,
             cancelled,
             inbox: writer_rx,
+            opener: placed.opener,
         };
         let spawned = std::thread::Builder::new()
             .name(THREAD_IO_NAME.to_owned())

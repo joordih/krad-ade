@@ -81,6 +81,11 @@ impl SshLink {
     }
 
     #[must_use]
+    pub fn is_multiplexed(&self) -> bool {
+        lock(&self.mux).is_some()
+    }
+
+    #[must_use]
     pub fn home(&self) -> Option<&Path> {
         self.home.get().map(PathBuf::as_path)
     }

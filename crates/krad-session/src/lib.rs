@@ -1,6 +1,7 @@
 pub use krad_pty::{
     clear_screen_prefix, default_shell, find_program, login_shell_env, wsl_shell, wsl_shell_in,
-    GridSize, PtyInput, SharedKiller, DEFAULT_COLS, DEFAULT_ROWS, SHELL_QUOTING, TERMINAL_ENV,
+    GridSize, PtyError, PtyInput, PtyKill, PtyOpener, PtyResize, PtyWait, SharedKiller,
+    SharedMaster, SpawnedPty, DEFAULT_COLS, DEFAULT_ROWS, SHELL_QUOTING, TERMINAL_ENV,
 };
 pub use krad_term::{
     block, AnsiPalette, Block, CellPixels, CellPoint, CellRect, CursorShape, ImageDepth,
@@ -12,7 +13,7 @@ use futures::channel::mpsc::{channel, Receiver as PumpReceiver, Sender as PumpSe
 use futures::executor::block_on;
 use futures::SinkExt as _;
 use krad_domain::{AgentPreset, EnvironmentName, TerminalId};
-use krad_pty::{run_reader_loop, run_writer_loop, spawn_pty, watch_exit, SpawnRequest, SpawnedPty};
+use krad_pty::{run_reader_loop, run_writer_loop, spawn_pty, watch_exit, SpawnRequest};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
@@ -151,6 +152,7 @@ pub struct SpawnJob {
     pub pump: PumpSender<PumpMsg>,
     pub cancelled: Arc<AtomicBool>,
     pub inbox: Receiver<PtyInput>,
+    pub opener: Option<PtyOpener>,
 }
 
 pub fn run_spawn_job(job: SpawnJob) {
@@ -164,6 +166,7 @@ pub fn run_spawn_job(job: SpawnJob) {
         pump,
         cancelled,
         inbox,
+        opener,
     } = job;
     let mut pump = pump;
     let cwd_text = cwd.as_ref().map(|path| path.to_string_lossy().into_owned());
@@ -175,7 +178,11 @@ pub fn run_spawn_job(job: SpawnJob) {
         cols: DEFAULT_COLS,
         rows: DEFAULT_ROWS,
     };
-    let spawned = match spawn_pty(&request) {
+    let opened = match opener {
+        Some(open) => open(request.cols, request.rows),
+        None => spawn_pty(&request),
+    };
+    let spawned = match opened {
         Ok(spawned) => spawned,
         Err(error) => {
             deliver(&mut pump, PumpMsg::SpawnFailed(env, id, error.to_string()));

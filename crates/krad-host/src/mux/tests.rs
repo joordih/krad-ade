@@ -152,3 +152,66 @@ fn connections_are_forwarded_both_ways() -> TestResult {
     listening.close();
     Ok(())
 }
+
+#[cfg(unix)]
+fn read_until(channel: &Channel, marker: &str) -> std::io::Result<String> {
+    let mut reader = channel.reader(Stream::Main);
+    let mut seen = Vec::new();
+    let mut byte = [0; 1];
+    while !String::from_utf8_lossy(&seen).contains(marker) {
+        if reader.read(&mut byte)? == 0 {
+            break;
+        }
+        seen.push(byte[0]);
+    }
+    Ok(String::from_utf8_lossy(&seen).into_owned())
+}
+
+#[cfg(unix)]
+#[test]
+fn a_terminal_is_a_real_tty_that_follows_resizes_and_reports_its_status() -> TestResult {
+    use super::wire::TerminalSize;
+
+    let (session, _) = served()?;
+    let (channel, _) = session.open(
+        OpenRequest::Pty {
+            script: "[ -t 0 ] && printf 'tty '; stty size; read line; stty size; exit 7".to_owned(),
+            size: TerminalSize {
+                cols: 100,
+                rows: 30,
+            },
+        },
+        WAIT,
+    )?;
+    let first = read_until(&channel, "30 100")?;
+    assert!(first.contains("tty"), "{first:?}");
+    channel.resize(TerminalSize {
+        cols: 120,
+        rows: 40,
+    });
+    thread::sleep(Duration::from_millis(200));
+    channel.writer(Stream::Main).write_all(b"go\n")?;
+    let second = read_until(&channel, "40 120")?;
+    assert!(second.contains("40 120"), "{second:?}");
+    assert_eq!(channel.wait_exit(Some(WAIT))?, Some(7));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn a_killed_terminal_stops_its_shell() -> TestResult {
+    use super::wire::TerminalSize;
+
+    let (session, _) = served()?;
+    let (channel, _) = session.open(
+        OpenRequest::Pty {
+            script: "echo ready; sleep 30".to_owned(),
+            size: TerminalSize { cols: 80, rows: 24 },
+        },
+        WAIT,
+    )?;
+    read_until(&channel, "ready")?;
+    channel.kill();
+    assert!(channel.wait_exit(Some(WAIT)).is_ok());
+    Ok(())
+}

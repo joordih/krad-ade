@@ -1,8 +1,8 @@
 use krad_agents::{member_token, token_file_env, Caller, Endpoint, CLI_PROGRAM};
 use krad_domain::claude_hook_settings;
 use krad_host::{
-    FileMode, HostCommand, HostError, HostLink, HostPlatform, RemoteForward, SshLink, APP_VERSION,
-    LOOPBACK,
+    FileMode, HostCommand, HostError, HostLink, HostPlatform, RemoteForward, SshLink,
+    HOST_CLI_BUILD, LOOPBACK,
 };
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -121,7 +121,8 @@ impl RemoteBusPlan {
         let mut version = HostCommand::new(cli);
         version.arg(VERSION_FLAG);
         self.link.output(&version).is_ok_and(|output| {
-            output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == APP_VERSION
+            output.status.success()
+                && String::from_utf8_lossy(&output.stdout).trim() == HOST_CLI_BUILD
         })
     }
 }

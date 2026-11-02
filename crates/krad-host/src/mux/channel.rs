@@ -4,7 +4,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use super::session::SessionShared;
-use super::wire::{Body, Frame, Stream, DATA_CHUNK_BYTES, INITIAL_WINDOW_BYTES};
+use super::wire::{Body, Frame, Stream, TerminalSize, DATA_CHUNK_BYTES, INITIAL_WINDOW_BYTES};
 use super::MuxError;
 
 mod streams;
@@ -44,6 +44,7 @@ struct State {
     exited: bool,
     code: Option<i32>,
     kill_requested: bool,
+    resizes: VecDeque<TerminalSize>,
     closed: bool,
 }
 
@@ -64,6 +65,7 @@ impl ChannelShared {
                 exited: false,
                 code: None,
                 kill_requested: false,
+                resizes: VecDeque::new(),
                 closed: false,
             }),
             changed: Condvar::new(),
@@ -119,6 +121,10 @@ impl ChannelShared {
                 state.code = code;
             }
             Body::Kill => state.kill_requested = true,
+            Body::Resize(size) => {
+                state.resizes.clear();
+                state.resizes.push_back(size);
+            }
             Body::Close => {
                 drop(state);
                 self.peer_closed();
@@ -289,6 +295,24 @@ impl Channel {
 
     pub(crate) fn kill(&self) {
         self.send(Body::Kill).ok();
+    }
+
+    pub(crate) fn resize(&self, size: TerminalSize) {
+        self.send(Body::Resize(size)).ok();
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn next_resize(&self) -> Option<TerminalSize> {
+        let mut state = self.shared.state();
+        loop {
+            if let Some(size) = state.resizes.pop_front() {
+                return Some(size);
+            }
+            if state.closed {
+                return None;
+            }
+            state = self.shared.wait(state);
+        }
     }
 
     pub(crate) fn wait_for_kill(&self) -> bool {

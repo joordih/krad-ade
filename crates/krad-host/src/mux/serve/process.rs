@@ -113,7 +113,7 @@ fn start_output_pumps(channel: &Channel, child: &mut Child) -> Vec<Option<thread
     pumps
 }
 
-fn spawn_pump(work: impl FnOnce() + Send + 'static) -> Option<thread::JoinHandle<()>> {
+pub(super) fn spawn_pump(work: impl FnOnce() + Send + 'static) -> Option<thread::JoinHandle<()>> {
     thread::Builder::new()
         .name(PUMP_THREAD.to_owned())
         .spawn(work)
@@ -134,7 +134,7 @@ fn watch_for_kill(
     })
 }
 
-fn stop_group(pid: u32) {
+pub(super) fn stop_group(pid: u32) {
     let group = format!("-{pid}");
     signal_group(TERMINATE_SIGNAL, &group);
     thread::sleep(KILL_GRACE);

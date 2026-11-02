@@ -4,6 +4,11 @@ mod process;
 #[path = "serve/unsupported.rs"]
 mod process;
 mod sftp_server;
+#[cfg(unix)]
+mod terminal;
+#[cfg(not(unix))]
+#[path = "serve/unsupported_terminal.rs"]
+mod terminal;
 
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, TcpListener, TcpStream};
@@ -57,6 +62,7 @@ pub(crate) fn run(session: &Session, incoming: &mpsc::Receiver<Incoming>) {
 fn handle(session: &Session, Incoming { channel, request }: Incoming) {
     match request {
         OpenRequest::Exec { script } => process::run(&channel, &Launch::Script(script)),
+        OpenRequest::Pty { script, size } => terminal::run(&channel, &script, size),
         OpenRequest::Sftp => match sftp_server::locate() {
             Some(server) => process::run(&channel, &Launch::Program(server.program, server.args)),
             None => channel.refuse(NO_SFTP_SERVER),

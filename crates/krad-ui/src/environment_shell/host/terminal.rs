@@ -1,4 +1,7 @@
 use krad_host::{HostCommand, HostError, HostLink};
+use krad_session::PtyOpener;
+
+use super::remote_pty::multiplexed_opener;
 use krad_session::TERMINAL_ENV;
 use std::ffi::OsStr;
 use std::path::Path;
@@ -11,6 +14,15 @@ pub(in crate::environment_shell) fn remote_terminal(
 ) -> Result<Option<(String, Vec<String>)>, HostError> {
     let built = terminal_command(given, cwd, vars).build_terminal(link)?;
     Ok(built.map(|(program, args)| (text(&program), args.iter().map(|arg| text(arg)).collect())))
+}
+
+pub(in crate::environment_shell) fn remote_terminal_opener(
+    link: &HostLink,
+    given: Option<(&str, &[String])>,
+    cwd: Option<&Path>,
+    vars: &[(String, String)],
+) -> Option<PtyOpener> {
+    multiplexed_opener(link, terminal_command(given, cwd, vars))
 }
 
 fn terminal_command(
@@ -53,6 +65,13 @@ mod tests {
             "me@devbox".parse()?,
             None,
         )))))
+    }
+
+    #[test]
+    fn only_a_multiplexed_host_opens_terminals_through_its_session() -> TestResult {
+        assert!(remote_terminal_opener(&HostLink::Local, None, None, &[]).is_none());
+        assert!(remote_terminal_opener(&ssh_link()?, None, None, &[]).is_none());
+        Ok(())
     }
 
     #[test]

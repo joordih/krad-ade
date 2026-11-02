@@ -4,12 +4,12 @@ use krad_domain::{
     WslPath,
 };
 use krad_host::{HostError, HostLink};
-use krad_session::{default_shell, wsl_shell_in};
+use krad_session::{default_shell, wsl_shell_in, PtyOpener};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::super::agent_hooks::AgentRole;
-use super::super::host::remote_terminal;
+use super::super::host::{remote_terminal, remote_terminal_opener};
 use super::super::shell_site::ShellSite;
 use super::super::EnvironmentShell;
 
@@ -81,6 +81,7 @@ pub(super) struct Placed {
     pub(super) args: Vec<String>,
     pub(super) cwd: Option<PathBuf>,
     pub(super) vars: Vec<(String, String)>,
+    pub(super) opener: Option<PtyOpener>,
 }
 
 impl Placed {
@@ -95,6 +96,14 @@ impl Placed {
         }
         let given =
             (shell == LaunchShell::Given).then_some((self.program.as_str(), self.args.as_slice()));
+        if let Some(opener) = remote_terminal_opener(link, given, self.cwd.as_deref(), &self.vars) {
+            return Ok(Self {
+                cwd: None,
+                vars: Vec::new(),
+                opener: Some(opener),
+                ..self
+            });
+        }
         Ok(
             match remote_terminal(link, given, self.cwd.as_deref(), &self.vars)? {
                 Some((program, args)) => Self {
@@ -102,6 +111,7 @@ impl Placed {
                     args,
                     cwd: None,
                     vars: Vec::new(),
+                    opener: None,
                 },
                 None if in_wsl => Self { cwd: None, ..self },
                 None => self,

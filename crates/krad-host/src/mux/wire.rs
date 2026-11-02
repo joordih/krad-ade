@@ -1,6 +1,6 @@
 use std::io::{self, Read, Write};
 
-pub(crate) const PROTOCOL_VERSION: u16 = 1;
+pub(crate) const PROTOCOL_VERSION: u16 = crate::layout::MUX_PROTOCOL_VERSION;
 pub(crate) const MAX_FRAME_BYTES: u32 = 256 * 1024;
 pub(crate) const DATA_CHUNK_BYTES: usize = 32 * 1024;
 pub(crate) const INITIAL_WINDOW_BYTES: u32 = 1024 * 1024;
@@ -40,6 +40,7 @@ wire_tags!(FrameKind {
     Exit = 8,
     Kill = 9,
     Close = 10,
+    Resize = 11,
 });
 
 wire_tags!(OpenTag {
@@ -48,6 +49,7 @@ wire_tags!(OpenTag {
     Connect = 3,
     Listen = 4,
     Accepted = 5,
+    Pty = 6,
 });
 
 wire_tags!(StreamTag {
@@ -84,9 +86,16 @@ impl Stream {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TerminalSize {
+    pub cols: u16,
+    pub rows: u16,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OpenRequest {
     Exec { script: String },
+    Pty { script: String, size: TerminalSize },
     Sftp,
     Connect { port: u16 },
     Listen,
@@ -97,6 +106,7 @@ impl OpenRequest {
     const fn tag(&self) -> u8 {
         (match self {
             Self::Exec { .. } => OpenTag::Exec,
+            Self::Pty { .. } => OpenTag::Pty,
             Self::Sftp => OpenTag::Sftp,
             Self::Connect { .. } => OpenTag::Connect,
             Self::Listen => OpenTag::Listen,
@@ -117,6 +127,7 @@ pub(crate) enum Body {
     Exit { code: Option<i32> },
     Kill,
     Close,
+    Resize(TerminalSize),
 }
 
 impl Body {
@@ -132,6 +143,7 @@ impl Body {
             Self::Exit { .. } => FrameKind::Exit,
             Self::Kill => FrameKind::Kill,
             Self::Close => FrameKind::Close,
+            Self::Resize(_) => FrameKind::Resize,
         }) as u8
     }
 }
@@ -160,6 +172,10 @@ impl Frame {
                 payload.push(request.tag());
                 match request {
                     OpenRequest::Exec { script } => put_bytes(&mut payload, script.as_bytes())?,
+                    OpenRequest::Pty { script, size } => {
+                        put_size(&mut payload, *size);
+                        put_bytes(&mut payload, script.as_bytes())?;
+                    }
                     OpenRequest::Connect { port } => payload.extend_from_slice(&port.to_be_bytes()),
                     OpenRequest::Accepted { listener } => {
                         payload.extend_from_slice(&listener.to_be_bytes());
@@ -187,6 +203,7 @@ impl Frame {
                     payload.extend_from_slice(&code.to_be_bytes());
                 }
             }
+            Body::Resize(size) => put_size(&mut payload, *size),
             Body::Kill | Body::Close => {}
         }
         let len = u32::try_from(payload.len()).map_err(|_| too_large())?;
@@ -230,6 +247,10 @@ impl Frame {
                 OpenTag::Exec => OpenRequest::Exec {
                     script: String::from_utf8(cursor.bytes()?).map_err(|_| malformed())?,
                 },
+                OpenTag::Pty => OpenRequest::Pty {
+                    size: cursor.size()?,
+                    script: String::from_utf8(cursor.bytes()?).map_err(|_| malformed())?,
+                },
                 OpenTag::Sftp => OpenRequest::Sftp,
                 OpenTag::Connect => OpenRequest::Connect {
                     port: cursor.u16()?,
@@ -269,6 +290,7 @@ impl Frame {
             },
             FrameKind::Kill => Body::Kill,
             FrameKind::Close => Body::Close,
+            FrameKind::Resize => Body::Resize(cursor.size()?),
         };
         Ok(Self { channel, body })
     }
@@ -286,6 +308,11 @@ fn read_exact_or_end(input: &mut impl Read, buf: &mut [u8]) -> io::Result<bool> 
         }
     }
     Ok(true)
+}
+
+fn put_size(payload: &mut Vec<u8>, size: TerminalSize) {
+    payload.extend_from_slice(&size.cols.to_be_bytes());
+    payload.extend_from_slice(&size.rows.to_be_bytes());
 }
 
 fn put_bytes(payload: &mut Vec<u8>, bytes: &[u8]) -> io::Result<()> {
@@ -325,6 +352,13 @@ impl Cursor<'_> {
     fn u16(&mut self) -> io::Result<u16> {
         let bytes: [u8; 2] = self.take(2)?.try_into().map_err(|_| malformed())?;
         Ok(u16::from_be_bytes(bytes))
+    }
+
+    fn size(&mut self) -> io::Result<TerminalSize> {
+        Ok(TerminalSize {
+            cols: self.u16()?,
+            rows: self.u16()?,
+        })
     }
 
     fn u32(&mut self) -> io::Result<u32> {
@@ -385,6 +419,14 @@ mod tests {
                 script: "printf 'é'".to_owned(),
             }),
             Body::Open(OpenRequest::Sftp),
+            Body::Open(OpenRequest::Pty {
+                script: "exec \"${SHELL:-sh}\" -l".to_owned(),
+                size: TerminalSize {
+                    cols: 132,
+                    rows: 43,
+                },
+            }),
+            Body::Resize(TerminalSize { cols: 80, rows: 24 }),
             Body::Open(OpenRequest::Connect { port: 4096 }),
             Body::Open(OpenRequest::Listen),
             Body::Open(OpenRequest::Accepted { listener: 7 }),

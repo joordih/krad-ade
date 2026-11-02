@@ -5,6 +5,16 @@ use crate::error::HostError;
 
 pub const APP_DIR: &str = ".krad-ade";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+macro_rules! mux_protocol_version {
+    () => {
+        2
+    };
+}
+
+pub(crate) const MUX_PROTOCOL_VERSION: u16 = mux_protocol_version!();
+pub const HOST_CLI_BUILD: &str =
+    concat!(env!("CARGO_PKG_VERSION"), "+mux", mux_protocol_version!());
 pub(crate) const BIN_DIR: &str = "bin";
 pub const HOST_CLI_PROGRAM: &str = "krad-ade-agents";
 const CLIENTS_DIR: &str = "clients";
@@ -43,7 +53,7 @@ impl HostLayout {
 
     #[must_use]
     pub fn bin_dir(&self) -> PathBuf {
-        self.app_dir().join(APP_VERSION).join(BIN_DIR)
+        self.app_dir().join(HOST_CLI_BUILD).join(BIN_DIR)
     }
 
     #[must_use]
@@ -100,7 +110,7 @@ mod tests {
         assert_eq!(
             layout.bin_dir(),
             Path::new("/home/me/.krad-ade")
-                .join(APP_VERSION)
+                .join(HOST_CLI_BUILD)
                 .join("bin")
         );
         assert_eq!(

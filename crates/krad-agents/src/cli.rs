@@ -22,7 +22,6 @@ pub(crate) const UNKNOWN_AGENT: &str =
 
 const FLAG_JSON: &str = "--json";
 const FLAG_VERSION: &str = "--version";
-const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 const FLAG_WAIT: &str = "--wait";
 const FLAG_TIMEOUT: &str = "--timeout";
 const FLAG_LINES: &str = "--lines";
@@ -168,7 +167,7 @@ pub fn run_cli(args: &[String]) -> i32 {
         return EXIT_OK;
     };
     if verb == FLAG_VERSION {
-        emit(Output::Stdout(CLI_VERSION.to_owned()));
+        emit(Output::Stdout(krad_host::HOST_CLI_BUILD.to_owned()));
         return EXIT_OK;
     }
     let verb = match verb.parse::<Verb>() {
