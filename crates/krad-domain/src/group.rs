@@ -3,6 +3,7 @@ mod lead;
 mod new_session;
 mod panes;
 mod session;
+mod session_chat;
 mod session_look;
 pub use file_tab::*;
 pub use lead::*;

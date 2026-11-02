@@ -58,6 +58,8 @@ const NO_SESSION_TEXT: &str =
     "A group starts empty. Open a session to work in it with shells, agents and a lead.";
 const EMPTY_TITLE: &str = "No tabs yet";
 const EMPTY_TEXT: &str = "Open a shell or an agent with the + button.";
+const NO_FILE_TITLE: &str = "No open files";
+const NO_FILE_TEXT: &str = "Open one from the file tree or with quick open.";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum StripPlace {
@@ -183,6 +185,12 @@ impl EnvironmentShell {
                 .child(CenteredEmpty::new(NO_SESSION_TITLE, NO_SESSION_TEXT).action(open))
                 .into_any_element();
         }
+        if self.editing() && self.shown_panes(live).is_none() {
+            return card(pal, cx)
+                .size_full()
+                .child(EmptyState::new(IconName::File, NO_FILE_TITLE, NO_FILE_TEXT))
+                .into_any_element();
+        }
         if live.session_tabs().is_empty() {
             return card(pal, cx)
                 .size_full()
@@ -194,8 +202,8 @@ impl EnvironmentShell {
 
     pub(super) fn top_bar_tabs(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let live = self.envs.get(&self.active)?;
-        let session = live.data.current_session()?;
-        let [pane] = session.panes.panes.as_slice() else {
+        let panes = self.shown_panes(live)?;
+        let [pane] = panes.panes.as_slice() else {
             return None;
         };
         let id = pane.id;
@@ -215,7 +223,7 @@ impl EnvironmentShell {
                         });
                     }),
                 )
-                .child(self.pane_strip(live, &session.panes, id, StripPlace::TopBar, cx))
+                .child(self.pane_strip(live, &panes, id, StripPlace::TopBar, cx))
                 .into_any_element(),
         )
     }
@@ -278,27 +286,9 @@ impl EnvironmentShell {
                     .overflow_hidden()
                     .children(tabs),
             )
-            .child(
-                div()
-                    .occlude()
-                    .on_mouse_down(
-                        MouseButton::Right,
-                        cx.listener(|this: &mut Self, event: &MouseDownEvent, _, cx| {
-                            cx.stop_propagation();
-                            this.open_harness_menu(event.position, MenuPlacement::Below, cx);
-                        }),
-                    )
-                    .child(
-                        Button::new((BTN_ADD_TAB, u64::from(pane.0)))
-                            .icon(IconName::Add)
-                            .small()
-                            .tooltip(ADD_TAB_TOOLTIP)
-                            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                                this.pane_target = Some(pane);
-                                this.add_chat_tab(cx);
-                            })),
-                    ),
-            )
+            .when(!self.editing(), |strip| {
+                strip.child(Self::add_tab_button(pane, cx))
+            })
             .child(
                 Button::new((BTN_ALL_TABS, u64::from(pane.0)))
                     .icon(IconName::ChevronDown)
@@ -314,6 +304,29 @@ impl EnvironmentShell {
                             );
                         }),
                     ),
+            )
+            .into_any_element()
+    }
+
+    fn add_tab_button(pane: PaneId, cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .occlude()
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this: &mut Self, event: &MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    this.open_harness_menu(event.position, MenuPlacement::Below, cx);
+                }),
+            )
+            .child(
+                Button::new((BTN_ADD_TAB, u64::from(pane.0)))
+                    .icon(IconName::Add)
+                    .small()
+                    .tooltip(ADD_TAB_TOOLTIP)
+                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                        this.pane_target = Some(pane);
+                        this.add_chat_tab(cx);
+                    })),
             )
             .into_any_element()
     }
@@ -452,7 +465,7 @@ impl EnvironmentShell {
             .and_then(|node| node.file.as_ref())
             .map(|file| file.view)
         {
-            Some(FileView::Edit) => return Self::file_tab_body(live, id, cx),
+            Some(FileView::Edit) => return self.file_tab_body(live, id, cx),
             Some(FileView::Changes) => return self.changes_tab_body(live, id, cx),
             None => {}
         }

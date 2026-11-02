@@ -93,10 +93,10 @@ impl EnvironmentShell {
             )
             .child(Self::send_control(id, chat, now, cx))
             .children(self.suggestion_menu(id, cx));
-        let (mark, mark_color) = harness_icon(chat.harness(), pal);
         let settings = div()
             .flex()
             .flex_row()
+            .flex_wrap()
             .items_center()
             .gap(px(SPACE_1))
             .px(px(SPACE_1))
@@ -115,26 +115,7 @@ impl EnvironmentShell {
                     .is_some()
                     .then(|| self.orchestrator_control(id, cx)),
             )
-            .child(div().flex_1())
-            .child(icon(mark, ICON_XS, mark_color))
-            .children(facts.account.clone().map(|account| {
-                div()
-                    .flex_none()
-                    .text_size(px(TEXT_XS))
-                    .text_color(rgb(pal.text_muted))
-                    .child(account)
-            }))
-            .child(Self::model_control(id, &facts, cx))
-            .children(Self::effort_control(id, &facts, cx))
-            .children(Self::thinking_control(id, &facts, cx))
-            .children(facts.context_window.map(|tokens| {
-                div()
-                    .flex_none()
-                    .text_size(px(TEXT_XS))
-                    .text_color(rgb(pal.text_subtle))
-                    .child(format!("({})", window_label(tokens)))
-            }))
-            .children(usage_ring(id, &facts, pal));
+            .child(Self::model_controls(id, chat, &facts, cx));
         div()
             .flex()
             .flex_col()
@@ -143,6 +124,43 @@ impl EnvironmentShell {
             .children(Self::attached_tray(id, chat, cx))
             .child(field)
             .child(settings)
+            .into_any_element()
+    }
+
+    fn model_controls(
+        id: TerminalId,
+        chat: &SurfaceChat,
+        facts: &Facts,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let pal = palette(cx);
+        let (mark, mark_color) = harness_icon(chat.harness(), pal);
+        div()
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .items_center()
+            .gap(px(SPACE_1))
+            .ml_auto()
+            .child(icon(mark, ICON_XS, mark_color))
+            .children(facts.account.clone().map(|account| {
+                div()
+                    .flex_none()
+                    .text_size(px(TEXT_XS))
+                    .text_color(rgb(pal.text_muted))
+                    .child(account)
+            }))
+            .child(Self::model_control(id, facts, cx))
+            .children(Self::effort_control(id, facts, cx))
+            .children(Self::thinking_control(id, facts, cx))
+            .children(facts.context_window.map(|tokens| {
+                div()
+                    .flex_none()
+                    .text_size(px(TEXT_XS))
+                    .text_color(rgb(pal.text_subtle))
+                    .child(format!("({})", window_label(tokens)))
+            }))
+            .children(usage_ring(id, facts, pal))
             .into_any_element()
     }
 

@@ -3701,6 +3701,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "krad-extensions"
+version = "0.1.9"
+dependencies = [
+ "krad-domain",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "toml 1.1.8+spec-1.1.0",
+ "ureq",
+]
+
+[[package]]
 name = "krad-github"
 version = "0.1.9"
 dependencies = [
@@ -3720,6 +3733,18 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "ureq",
+]
+
+[[package]]
+name = "krad-lsp"
+version = "0.1.9"
+dependencies = [
+ "futures",
+ "krad-domain",
+ "lsp-types",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3779,8 +3804,10 @@ dependencies = [
  "krad-agents",
  "krad-chat",
  "krad-domain",
+ "krad-extensions",
  "krad-github",
  "krad-gitlab",
+ "krad-lsp",
  "krad-repo",
  "krad-session",
  "krad-store",

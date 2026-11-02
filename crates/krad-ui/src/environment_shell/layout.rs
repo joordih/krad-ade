@@ -253,6 +253,7 @@ impl Render for EnvironmentShell {
         self.sync_file_tree(cx);
         self.ensure_structured_chats(window, cx);
         self.sync_file_tabs(window, cx);
+        self.flush_workspace_edits(window, cx);
         self.sync_changes_tabs(cx);
         self.sync_notes_view(view, window, cx);
         self.ensure_chat_sessions(cx);
@@ -281,7 +282,7 @@ impl Render for EnvironmentShell {
             && !self.drag.resizes_terminals();
         if settled {
             self.sync_activity_grid(window);
-            if view == EnvironmentView::Sessions {
+            if view == EnvironmentView::Sessions && !self.editing() {
                 self.sync_session_grid(window);
             }
         }

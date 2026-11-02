@@ -1,0 +1,705 @@
+[[language]]
+id = "rust"
+name = "Rust"
+extensions = ["rs"]
+line_comment = "//"
+grammar = "rust"
+syntax = "rust"
+server = "rust-analyzer"
+
+[[language]]
+id = "typescript"
+name = "TypeScript"
+extensions = ["ts", "mts", "cts"]
+line_comment = "//"
+grammar = "typescript"
+syntax = "typescript"
+server = "vtsls"
+
+[[language]]
+id = "tsx"
+name = "TypeScript"
+extensions = ["tsx"]
+line_comment = "//"
+grammar = "tsx"
+syntax = "typescript"
+lsp_id = "typescriptreact"
+server = "vtsls"
+
+[[language]]
+id = "javascript"
+name = "JavaScript"
+extensions = ["js", "jsx", "mjs", "cjs"]
+line_comment = "//"
+grammar = "javascript"
+syntax = "typescript"
+server = "vtsls"
+
+[[language]]
+id = "python"
+name = "Python"
+extensions = ["py", "pyi"]
+line_comment = "#"
+grammar = "python"
+syntax = "python"
+server = "basedpyright"
+
+[[language]]
+id = "go"
+name = "Go"
+extensions = ["go"]
+grammar = "go"
+line_comment = "//"
+syntax = "go"
+server = "gopls"
+
+[[language]]
+id = "c"
+name = "C"
+extensions = ["c", "h"]
+grammar = "c"
+line_comment = "//"
+syntax = "c_family"
+server = "clangd"
+
+[[language]]
+id = "cpp"
+name = "C++"
+extensions = ["cc", "cpp", "hpp", "cxx", "hh"]
+grammar = "cpp"
+line_comment = "//"
+syntax = "c_family"
+server = "clangd"
+
+[[language]]
+id = "csharp"
+name = "C#"
+extensions = ["cs"]
+server = "csharp-language-server"
+grammar = "csharp"
+line_comment = "//"
+syntax = "c_family"
+
+[[language]]
+id = "java"
+name = "Java"
+extensions = ["java"]
+grammar = "java"
+line_comment = "//"
+syntax = "c_family"
+server = "jdtls"
+
+[[language]]
+id = "kotlin"
+name = "Kotlin"
+extensions = ["kt", "kts"]
+grammar = "kotlin"
+line_comment = "//"
+syntax = "c_family"
+server = "kotlin-lsp"
+
+[[language]]
+id = "swift"
+name = "Swift"
+extensions = ["swift"]
+server = "sourcekit-lsp"
+grammar = "swift"
+line_comment = "//"
+syntax = "c_family"
+
+[[language]]
+id = "scala"
+name = "Scala"
+extensions = ["scala"]
+grammar = "scala"
+line_comment = "//"
+syntax = "c_family"
+
+[[language]]
+id = "css"
+name = "CSS"
+extensions = ["css"]
+grammar = "css"
+syntax = "c_family"
+
+[[language]]
+id = "scss"
+name = "SCSS"
+extensions = ["scss"]
+grammar = "scss"
+line_comment = "//"
+syntax = "c_family"
+
+[[language]]
+id = "html"
+name = "HTML"
+extensions = ["html", "htm"]
+grammar = "html"
+
+[[language]]
+id = "shellscript"
+name = "Shell"
+extensions = ["sh", "bash", "zsh", "fish"]
+line_comment = "#"
+grammar = "bash"
+syntax = "shell"
+
+[[language]]
+id = "powershell"
+name = "PowerShell"
+extensions = ["ps1"]
+line_comment = "#"
+syntax = "shell"
+
+[[language]]
+id = "toml"
+name = "TOML"
+extensions = ["toml"]
+line_comment = "#"
+grammar = "toml"
+syntax = "config"
+server = "taplo"
+
+[[language]]
+id = "yaml"
+name = "YAML"
+extensions = ["yaml", "yml"]
+line_comment = "#"
+grammar = "yaml"
+syntax = "config"
+server = "yaml-language-server"
+
+[[language]]
+id = "ini"
+name = "Config"
+extensions = ["ini", "cfg", "conf", "env"]
+line_comment = "#"
+syntax = "config"
+
+[[language]]
+id = "json"
+name = "JSON"
+extensions = ["json", "jsonc"]
+grammar = "json"
+syntax = "json"
+server = "json-lsp"
+
+[[language]]
+id = "markdown"
+name = "Markdown"
+extensions = ["md", "markdown"]
+grammar = "markdown"
+
+[[language]]
+id = "xml"
+name = "XML"
+extensions = ["xml"]
+server = "lemminx"
+
+[[language]]
+id = "lua"
+name = "Lua"
+extensions = ["lua"]
+grammar = "lua"
+line_comment = "--"
+server = "lua-language-server"
+
+[[language]]
+id = "php"
+name = "PHP"
+extensions = ["php", "phtml"]
+grammar = "php"
+line_comment = "//"
+syntax = "c_family"
+server = "intelephense"
+
+[[language]]
+id = "ruby"
+name = "Ruby"
+extensions = ["rb", "rake", "gemspec"]
+file_names = ["Gemfile", "Rakefile"]
+grammar = "ruby"
+line_comment = "#"
+syntax = "shell"
+server = "ruby-lsp"
+
+[[language]]
+id = "zig"
+name = "Zig"
+extensions = ["zig", "zon"]
+grammar = "zig"
+line_comment = "//"
+server = "zls"
+
+[[language]]
+id = "sql"
+name = "SQL"
+extensions = ["sql"]
+grammar = "sql"
+line_comment = "--"
+server = "sqls"
+
+[[language]]
+id = "cmake"
+name = "CMake"
+extensions = ["cmake"]
+file_names = ["CMakeLists.txt"]
+grammar = "cmake"
+line_comment = "#"
+server = "neocmakelsp"
+
+[[language]]
+id = "makefile"
+name = "Make"
+extensions = ["mk"]
+file_names = ["Makefile", "makefile", "GNUmakefile"]
+grammar = "make"
+line_comment = "#"
+
+[[language]]
+id = "graphql"
+name = "GraphQL"
+extensions = ["graphql", "gql"]
+grammar = "graphql"
+line_comment = "#"
+server = "graphql-language-service-cli"
+
+[[language]]
+id = "proto"
+name = "Protocol Buffers"
+extensions = ["proto"]
+grammar = "proto"
+line_comment = "//"
+
+[[language]]
+id = "diff"
+name = "Diff"
+extensions = ["diff", "patch"]
+grammar = "diff"
+
+[[server]]
+package = "rust-analyzer"
+probe = ["--version"]
+toolchains = ["rust"]
+settings_section = "rust-analyzer"
+
+[server.settings]
+checkOnSave = true
+
+[server.settings.diagnostics.experimental]
+enable = true
+
+[[server]]
+package = "vtsls"
+args = ["--stdio"]
+
+[[server]]
+package = "basedpyright"
+bin = "basedpyright-langserver"
+args = ["--stdio"]
+toolchains = ["python"]
+
+[[server]]
+package = "gopls"
+
+[[server]]
+package = "clangd"
+
+[[server]]
+package = "json-lsp"
+bin = "vscode-json-language-server"
+args = ["--stdio"]
+
+[[server]]
+package = "yaml-language-server"
+args = ["--stdio"]
+
+[[server]]
+package = "taplo"
+args = ["lsp", "stdio"]
+
+[[server]]
+package = "lemminx"
+
+[[server]]
+package = "kotlin-lsp"
+bin = "intellij-server"
+args = ["--stdio"]
+path_names = ["kotlin-lsp"]
+toolchains = ["java"]
+
+[[server]]
+package = "jdtls"
+toolchains = ["java"]
+path_names = []
+command = [
+  "{{toolchain.java}}",
+  "-Declipse.application=org.eclipse.jdt.ls.core.id1",
+  "-Dosgi.bundles.defaultStartLevel=4",
+  "-Declipse.product=org.eclipse.jdt.ls.core.product",
+  "-Dosgi.checkConfiguration=true",
+  "-Dosgi.sharedConfiguration.area={{dir}}/{{source.download.config}}",
+  "-Dosgi.sharedConfiguration.area.readOnly=true",
+  "-Dosgi.configuration.cascaded=true",
+  "-Djava.import.generatesMetadataFilesAtProjectRoot=false",
+  "-Xms1G",
+  "--add-modules=ALL-SYSTEM",
+  "--add-opens",
+  "java.base/java.util=ALL-UNNAMED",
+  "--add-opens",
+  "java.base/java.lang=ALL-UNNAMED",
+  "-jar",
+  "{{ \"plugins/org.eclipse.equinox.launcher_*.jar\" | glob }}",
+  "-nosplash",
+  "-data",
+  "{{workspace}}",
+]
+
+[[server]]
+package = "intelephense"
+args = ["--stdio"]
+
+[[server]]
+package = "ruby-lsp"
+toolchains = ["ruby"]
+
+[[server]]
+package = "graphql-language-service-cli"
+bin = "graphql-lsp"
+args = ["server", "-m", "stream"]
+
+[[server]]
+package = "sourcekit-lsp"
+path_names = ["sourcekit-lsp"]
+
+[[server]]
+package = "csharp-language-server"
+bin = "csharp-ls"
+
+[[toolchain]]
+id = "node"
+name = "Node.js"
+program = "node"
+version_args = ["--version"]
+minimum_version = 22
+
+[[toolchain.download]]
+targets = ["darwin_arm64"]
+url = "https://nodejs.org/dist/v24.22.1/node-v24.22.1-darwin-arm64.tar.gz"
+sha256_list = "https://nodejs.org/dist/v24.22.1/SHASUMS256.txt"
+
+[[toolchain.download]]
+targets = ["darwin_x64"]
+url = "https://nodejs.org/dist/v24.22.1/node-v24.22.1-darwin-x64.tar.gz"
+sha256_list = "https://nodejs.org/dist/v24.22.1/SHASUMS256.txt"
+
+[[toolchain.download]]
+targets = ["linux_arm64"]
+url = "https://nodejs.org/dist/v24.22.1/node-v24.22.1-linux-arm64.tar.gz"
+sha256_list = "https://nodejs.org/dist/v24.22.1/SHASUMS256.txt"
+
+[[toolchain.download]]
+targets = ["linux_x64"]
+url = "https://nodejs.org/dist/v24.22.1/node-v24.22.1-linux-x64.tar.gz"
+sha256_list = "https://nodejs.org/dist/v24.22.1/SHASUMS256.txt"
+
+[[toolchain.download]]
+targets = ["win_x64"]
+url = "https://nodejs.org/dist/v24.22.1/node-v24.22.1-win-x64.zip"
+sha256_list = "https://nodejs.org/dist/v24.22.1/SHASUMS256.txt"
+
+[[toolchain.manager]]
+kind = "npm"
+install = [
+  [
+    "{{toolchain_dir}}/npm{{cmd}}",
+    "install",
+    "--prefix",
+    "{{dir}}",
+    "--no-package-lock",
+    "--no-save",
+    "--no-audit",
+    "--no-fund",
+    "{{package}}@{{version}}",
+  ],
+]
+bin = "{{dir}}/node_modules/.bin/{{bin}}{{cmd}}"
+
+[[toolchain.runner]]
+kind = "node"
+command = ["{{toolchain}}", "{{dir}}/{{bin}}"]
+
+[[toolchain]]
+id = "java"
+name = "JDK"
+program = "java"
+version_args = ["-version"]
+version_after = "version \""
+minimum_version = 25
+home_vars = ["JAVA_HOME"]
+launch_home_var = "JAVA_HOME"
+
+[[toolchain.download]]
+targets = ["darwin_arm64"]
+url = "https://corretto.aws/downloads/latest/amazon-corretto-25-aarch64-macos-jdk.tar.gz"
+sha256_url = "https://corretto.aws/downloads/latest_sha256/amazon-corretto-25-aarch64-macos-jdk.tar.gz"
+
+[[toolchain.download]]
+targets = ["darwin_x64"]
+url = "https://corretto.aws/downloads/latest/amazon-corretto-25-x64-macos-jdk.tar.gz"
+sha256_url = "https://corretto.aws/downloads/latest_sha256/amazon-corretto-25-x64-macos-jdk.tar.gz"
+
+[[toolchain.download]]
+targets = ["linux_arm64"]
+url = "https://corretto.aws/downloads/latest/amazon-corretto-25-aarch64-linux-jdk.tar.gz"
+sha256_url = "https://corretto.aws/downloads/latest_sha256/amazon-corretto-25-aarch64-linux-jdk.tar.gz"
+
+[[toolchain.download]]
+targets = ["linux_x64"]
+url = "https://corretto.aws/downloads/latest/amazon-corretto-25-x64-linux-jdk.tar.gz"
+sha256_url = "https://corretto.aws/downloads/latest_sha256/amazon-corretto-25-x64-linux-jdk.tar.gz"
+
+[[toolchain.download]]
+targets = ["win_x64"]
+url = "https://corretto.aws/downloads/latest/amazon-corretto-25-x64-windows-jdk.zip"
+sha256_url = "https://corretto.aws/downloads/latest_sha256/amazon-corretto-25-x64-windows-jdk.zip"
+
+[[toolchain.runner]]
+kind = "java-jar"
+command = ["{{toolchain}}", "-jar", "{{dir}}/{{bin}}"]
+
+[[toolchain]]
+id = "rust"
+name = "Rust"
+program = "cargo"
+version_args = ["--version"]
+home_vars = ["CARGO_HOME"]
+search = ["~/.cargo/bin"]
+
+[[toolchain.download]]
+targets = ["darwin_arm64"]
+url = "https://static.rust-lang.org/rustup/dist/aarch64-apple-darwin/rustup-init"
+sha256_url = "https://static.rust-lang.org/rustup/dist/aarch64-apple-darwin/rustup-init.sha256"
+run = [
+  "-y",
+  "--no-modify-path",
+  "--profile",
+  "minimal",
+  "--component",
+  "rust-src",
+]
+
+[[toolchain.download]]
+targets = ["darwin_x64"]
+url = "https://static.rust-lang.org/rustup/dist/x86_64-apple-darwin/rustup-init"
+sha256_url = "https://static.rust-lang.org/rustup/dist/x86_64-apple-darwin/rustup-init.sha256"
+run = [
+  "-y",
+  "--no-modify-path",
+  "--profile",
+  "minimal",
+  "--component",
+  "rust-src",
+]
+
+[[toolchain.download]]
+targets = ["linux_arm64"]
+url = "https://static.rust-lang.org/rustup/dist/aarch64-unknown-linux-gnu/rustup-init"
+sha256_url = "https://static.rust-lang.org/rustup/dist/aarch64-unknown-linux-gnu/rustup-init.sha256"
+run = [
+  "-y",
+  "--no-modify-path",
+  "--profile",
+  "minimal",
+  "--component",
+  "rust-src",
+]
+
+[[toolchain.download]]
+targets = ["linux_x64"]
+url = "https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init"
+sha256_url = "https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init.sha256"
+run = [
+  "-y",
+  "--no-modify-path",
+  "--profile",
+  "minimal",
+  "--component",
+  "rust-src",
+]
+
+[[toolchain.download]]
+targets = ["win_x64"]
+url = "https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe"
+sha256_url = "https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe.sha256"
+run = [
+  "-y",
+  "--no-modify-path",
+  "--profile",
+  "minimal",
+  "--component",
+  "rust-src",
+]
+
+[[toolchain.manager]]
+kind = "cargo"
+install = [
+  [
+    "{{toolchain}}",
+    "install",
+    "--root",
+    "{{dir}}",
+    "{{package}}",
+    "--version",
+    "{{version}}",
+    "--locked",
+  ],
+]
+install_from_repository = [
+  [
+    "{{toolchain}}",
+    "install",
+    "--root",
+    "{{dir}}",
+    "--git",
+    "{{repository_url}}",
+    "--tag",
+    "{{version}}",
+    "--locked",
+  ],
+]
+bin = "{{dir}}/bin/{{bin}}{{exe}}"
+
+[[toolchain]]
+id = "go"
+name = "Go"
+program = "go"
+version_args = ["version"]
+search = ["/usr/local/go/bin"]
+
+[[toolchain.download]]
+targets = ["darwin_arm64"]
+url = "https://dl.google.com/go/go1.27.3.darwin-arm64.tar.gz"
+sha256_url = "https://dl.google.com/go/go1.27.3.darwin-arm64.tar.gz.sha256"
+
+[[toolchain.download]]
+targets = ["darwin_x64"]
+url = "https://dl.google.com/go/go1.27.3.darwin-amd64.tar.gz"
+sha256_url = "https://dl.google.com/go/go1.27.3.darwin-amd64.tar.gz.sha256"
+
+[[toolchain.download]]
+targets = ["linux_arm64"]
+url = "https://dl.google.com/go/go1.27.3.linux-arm64.tar.gz"
+sha256_url = "https://dl.google.com/go/go1.27.3.linux-arm64.tar.gz.sha256"
+
+[[toolchain.download]]
+targets = ["linux_x64"]
+url = "https://dl.google.com/go/go1.27.3.linux-amd64.tar.gz"
+sha256_url = "https://dl.google.com/go/go1.27.3.linux-amd64.tar.gz.sha256"
+
+[[toolchain.download]]
+targets = ["win_x64"]
+url = "https://dl.google.com/go/go1.27.3.windows-amd64.zip"
+sha256_url = "https://dl.google.com/go/go1.27.3.windows-amd64.zip.sha256"
+
+[[toolchain.manager]]
+kind = "golang"
+install = [["{{toolchain}}", "install", "{{package}}@{{version}}"]]
+env = { GOBIN = "{{dir}}" }
+bin = "{{dir}}/{{bin}}{{exe}}"
+
+[[toolchain]]
+id = "python"
+name = "Python"
+program = "python3"
+windows_program = "python"
+version_args = ["--version"]
+
+[[toolchain.download]]
+targets = ["darwin_arm64"]
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18+20261026-aarch64-apple-darwin-install_only.tar.gz"
+sha256_list = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/SHA256SUMS"
+
+[[toolchain.download]]
+targets = ["darwin_x64"]
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18+20261026-x86_64-apple-darwin-install_only.tar.gz"
+sha256_list = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/SHA256SUMS"
+
+[[toolchain.download]]
+targets = ["linux_arm64"]
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18+20261026-aarch64-unknown-linux-gnu-install_only.tar.gz"
+sha256_list = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/SHA256SUMS"
+
+[[toolchain.download]]
+targets = ["linux_x64"]
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18+20261026-x86_64-unknown-linux-gnu-install_only.tar.gz"
+sha256_list = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/SHA256SUMS"
+
+[[toolchain.download]]
+targets = ["win_x64"]
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18+20261026-x86_64-pc-windows-msvc-install_only.tar.gz"
+sha256_list = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/SHA256SUMS"
+
+[[toolchain.manager]]
+kind = "pypi"
+install = [
+  [
+    "{{toolchain}}",
+    "-m",
+    "venv",
+    "{{dir}}/venv",
+  ],
+  [
+    "{{dir}}/venv/bin/python",
+    "-m",
+    "pip",
+    "install",
+    "--quiet",
+    "{{package}}{{extra}}=={{version}}",
+  ],
+]
+windows_install = [
+  [
+    "{{toolchain}}",
+    "-m",
+    "venv",
+    "{{dir}}/venv",
+  ],
+  [
+    "{{dir}}/venv/Scripts/python.exe",
+    "-m",
+    "pip",
+    "install",
+    "--quiet",
+    "{{package}}{{extra}}=={{version}}",
+  ],
+]
+bin = "{{dir}}/venv/bin/{{bin}}"
+windows_bin = "{{dir}}/venv/Scripts/{{bin}}.exe"
+
+[[toolchain.runner]]
+kind = "python"
+command = ["{{toolchain}}", "{{dir}}/{{bin}}"]
+
+[[toolchain]]
+id = "ruby"
+name = "Ruby"
+program = "ruby"
+version_args = ["--version"]
+
+[[toolchain.manager]]
+kind = "gem"
+install = [
+  [
+    "{{toolchain_dir}}/gem{{cmd}}",
+    "install",
+    "--install-dir",
+    "{{dir}}",
+    "--bindir",
+    "{{dir}}/bin",
+    "--no-document",
+    "{{package}}:{{version}}",
+  ],
+]
+env = { GEM_HOME = "{{dir}}" }
+bin = "{{dir}}/bin/{{bin}}{{cmd}}"

@@ -3,11 +3,14 @@ mod environment;
 mod views;
 
 use gpui_kit::{
-    div, px, AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, Window,
+    div, px, AnyElement, Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
+    ParentElement, StatefulInteractiveElement, Styled, Window,
 };
 use std::time::Instant;
 
+use krad_domain::SidebarWidth;
+
+use super::drag::DragState;
 use super::EnvironmentShell;
 use crate::actions::ToggleSidebar;
 use crate::components::{icon, tooltip_view, Button, IconName};
@@ -29,6 +32,19 @@ const SIDEBAR_TOGGLE_LEFT: f32 = LEADING_CONTROLS_END_PX + TOGGLE_GAP;
 pub(super) const SIDEBAR_TOGGLE_END: f32 = SIDEBAR_TOGGLE_LEFT + ICON_BUTTON_SM + TOGGLE_GAP;
 
 pub(super) const SIDEBAR_WIDTH: f32 = 240.0;
+const SIDEBAR_HANDLE_W: f32 = 8.0;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct SidebarDrag {
+    mouse_start: f32,
+    width_start: f32,
+}
+
+impl SidebarDrag {
+    pub(super) const fn width_at(self, x: f32) -> SidebarWidth {
+        SidebarWidth::new(self.width_start + (x - self.mouse_start))
+    }
+}
 const FOOTER_H: f32 = 36.0;
 const SIDEBAR_RESPONSE_S: f32 = 0.35;
 const MAX_FRAME_S: f32 = 1.0 / 30.0;
@@ -155,7 +171,7 @@ impl EnvironmentShell {
                 }
             }
             Peek::Peeking => {
-                if x > WINDOW_INSET + SIDEBAR_WIDTH + PEEK_LEAVE_SLACK {
+                if x > WINDOW_INSET + self.sidebar_w.as_f32() + PEEK_LEAVE_SLACK {
                     if self.sidebar.is_open() {
                         self.sidebar.toggle(Instant::now());
                     }
@@ -234,7 +250,30 @@ impl EnvironmentShell {
     }
 
     pub(super) fn sidebar_width(&self) -> f32 {
-        (SIDEBAR_WIDTH + WINDOW_INSET) * self.sidebar.fraction()
+        (self.sidebar_w.as_f32() + WINDOW_INSET) * self.sidebar.fraction()
+    }
+
+    fn sidebar_width_handle(&self, cx: &mut Context<Self>) -> AnyElement {
+        let width = self.sidebar_w.as_f32();
+        div()
+            .absolute()
+            .top_0()
+            .bottom_0()
+            .right(px(-SIDEBAR_HANDLE_W / 2.0))
+            .w(px(SIDEBAR_HANDLE_W))
+            .cursor_col_resize()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    this.drag = DragState::ResizeSidebar(SidebarDrag {
+                        mouse_start: event.position.x.as_f32(),
+                        width_start: width,
+                    });
+                    cx.notify();
+                }),
+            )
+            .into_any_element()
     }
 
     fn terminal_list(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -250,8 +289,13 @@ impl EnvironmentShell {
     }
 
     fn sidebar_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let views = Some(self.view_list(cx));
-        let list = self.terminal_list(cx);
+        let editing = self.editing();
+        let views = (!editing).then(|| self.view_list(cx));
+        let list = if editing {
+            self.side_section(cx)
+        } else {
+            self.terminal_list(cx)
+        };
         div()
             .flex()
             .flex_col()
@@ -280,10 +324,11 @@ impl EnvironmentShell {
                     .absolute()
                     .top_0()
                     .bottom_0()
-                    .left(px(width - SIDEBAR_WIDTH - WINDOW_INSET))
-                    .w(px(SIDEBAR_WIDTH))
+                    .left(px(width - self.sidebar_w.as_f32() - WINDOW_INSET))
+                    .w(px(self.sidebar_w.as_f32()))
                     .opacity(shown)
-                    .child(self.sidebar_content(cx)),
+                    .child(self.sidebar_content(cx))
+                    .child(self.sidebar_width_handle(cx)),
             )
             .into_any_element()
     }

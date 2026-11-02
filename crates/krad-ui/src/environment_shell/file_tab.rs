@@ -11,7 +11,7 @@ use super::disk_text::{disk_change, modified_at, read_file, DiskChange, ReadErro
 use super::{EnvironmentShell, LiveEnv};
 use crate::actions::{SaveFile, FILE_TAB_KEY_CONTEXT};
 use crate::components::{Button, ButtonVariant, EmptyState, IconName};
-use crate::language::Language;
+use crate::language::editor_id;
 use crate::theme::{palette, LINE_SM, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM};
 
 const DISK_CHECK_EVERY: Duration = Duration::from_secs(2);
@@ -43,8 +43,8 @@ enum DiskWatch {
 }
 
 pub(super) struct FileEditor {
-    path: PathBuf,
-    state: Option<Entity<EditorState>>,
+    pub(super) path: PathBuf,
+    pub(super) state: Option<Entity<EditorState>>,
     load: Load,
     dirty: bool,
     disk: DiskWatch,
@@ -73,7 +73,7 @@ impl FileEditor {
 }
 
 impl LiveEnv {
-    fn shown_file(&self) -> Option<(TerminalId, PathBuf)> {
+    pub(super) fn shown_file(&self) -> Option<(TerminalId, PathBuf)> {
         let id = self.shown_tab()?;
         let file = self
             .data
@@ -143,6 +143,10 @@ impl EnvironmentShell {
             .map(|node| node.id)
             .collect();
         live.editors.retain(|id, _| files.contains(id));
+        self.close_unseen_documents();
+        let Some(live) = self.envs.get_mut(&env) else {
+            return;
+        };
         let Some((id, path)) = live.shown_file() else {
             return;
         };
@@ -171,6 +175,19 @@ impl EnvironmentShell {
                 state.update(cx, |state, cx| state.focus(window, cx));
             }
         }
+        let state = editor.state.clone();
+        let cursor = self
+            .envs
+            .get_mut(&env)
+            .and_then(|live| live.take_pending_cursor(id));
+        if let (Some(state), Some(cursor)) = (state, cursor) {
+            state.update(cx, |state, cx| {
+                state.set_cursor_position(cursor, window, cx);
+            });
+        }
+        let Some(editor) = self.editor_mut(&env, id) else {
+            return;
+        };
         if matches!(editor.load, Load::Ready) && editor.disk == DiskWatch::Idle {
             editor.disk = DiskWatch::Checking;
             Self::check_disk(env, id, path, cx);
@@ -207,6 +224,12 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let grammar = self
+            .envs
+            .get(env)
+            .and_then(|live| live.editors.get(&id))
+            .and_then(|editor| self.language_of(&editor.path))
+            .and_then(|language| editor_id(&language).map(str::to_owned));
         let Some(editor) = self.editor_mut(env, id) else {
             return;
         };
@@ -217,25 +240,32 @@ impl EnvironmentShell {
             state.update(cx, |state, cx| state.set_value(file.text, window, cx));
             return;
         }
-        let language = Language::from_path(&editor.path).and_then(Language::editor_id);
         let state = cx.new(|cx| {
             let state = EditorState::new(window, cx);
-            let state = match language {
+            let state = match grammar {
                 Some(language) => state.language(language),
                 None => state,
             };
             state.default_value(file.text)
         });
         let edited_env = env.clone();
-        let changes = cx.subscribe(&state, move |this: &mut Self, _, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Change) {
-                this.mark_edited(&edited_env, id, cx);
-            }
-        });
+        let edited_path = editor.path.clone();
+        let changes = cx.subscribe(
+            &state,
+            move |this: &mut Self, state, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    this.mark_edited(&edited_env, id, cx);
+                    this.document_edited(&edited_path, state.read(cx).value().to_string(), cx);
+                    this.show_diagnostics(&edited_path, cx);
+                }
+            },
+        );
+        let path = editor.path.clone();
         if let Some(editor) = self.editor_mut(env, id) {
-            editor.state = Some(state);
+            editor.state = Some(state.clone());
             editor.changes = Some(changes);
         }
+        self.attach_language_server(id, &path, &state, cx);
     }
 
     fn mark_edited(&mut self, env: &EnvironmentName, id: TerminalId, cx: &mut Context<Self>) {
@@ -297,6 +327,7 @@ impl EnvironmentShell {
             return;
         };
         let text = state.read(cx).value().to_string();
+        let saved = path.clone();
         let writing =
             cx.background_spawn(
                 async move { std::fs::write(&path, text).map(|()| modified_at(&path)) },
@@ -306,6 +337,7 @@ impl EnvironmentShell {
             this.update(cx, |shell, cx| {
                 match written {
                     Ok(modified) => {
+                        shell.document_saved(&saved);
                         if let Some(editor) = shell.editor_mut(&env, id) {
                             editor.dirty = false;
                             editor.disk = DiskWatch::Idle;
@@ -367,6 +399,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn file_tab_body(
+        &self,
         live: &LiveEnv,
         id: TerminalId,
         cx: &mut Context<Self>,
@@ -421,6 +454,18 @@ impl EnvironmentShell {
             .min_h_0()
             .key_context(FILE_TAB_KEY_CONTEXT)
             .on_action(cx.listener(Self::on_save_file))
+            .on_action(cx.listener(Self::on_find_references))
+            .on_action(cx.listener(Self::on_accept_completion))
+            .on_action(cx.listener(Self::on_duplicate_line))
+            .on_action(cx.listener(Self::on_delete_line))
+            .on_action(cx.listener(Self::on_move_line_up))
+            .on_action(cx.listener(Self::on_move_line_down))
+            .on_action(cx.listener(Self::on_toggle_line_comment))
+            .on_action(cx.listener(Self::on_next_problem))
+            .on_action(cx.listener(Self::on_previous_problem))
+            .on_action(cx.listener(Self::on_rename_symbol))
+            .on_action(cx.listener(Self::on_reformat))
+            .children(self.language_notice(live, id, &editor.path, cx))
             .children(conflict)
             .child(
                 div()

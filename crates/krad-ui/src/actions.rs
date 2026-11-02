@@ -14,6 +14,20 @@ actions!(
         ToggleActivity,
         ToggleSidebar,
         ToggleSidePanel,
+        ToggleWorkMode,
+        QuickOpen,
+        FindReferences,
+        AcceptCompletion,
+        DuplicateLine,
+        DeleteLine,
+        MoveLineUp,
+        MoveLineDown,
+        ToggleLineComment,
+        NextProblem,
+        PreviousProblem,
+        RenameSymbol,
+        Reformat,
+        FindInFiles,
         OpenSettings,
         TextLarger,
         TextSmaller,
@@ -41,5 +55,7 @@ pub(crate) const VIEWER_KEY_CONTEXT: &str = "KradCodeViewer";
 pub(crate) const FILE_TREE_KEY_CONTEXT: &str = "KradFileTree";
 
 pub(crate) const FILE_TAB_KEY_CONTEXT: &str = "KradFileTab";
+
+pub(crate) const EDITOR_KEY_CONTEXT: &str = "KradFileTab > Input";
 
 pub(crate) const ASK_KEY_CONTEXT: &str = "KradAsk";

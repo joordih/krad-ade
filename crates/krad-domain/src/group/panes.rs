@@ -1,3 +1,5 @@
+mod kept;
+
 use crate::ids::TerminalId;
 use crate::mosaic::UnitRect;
 use serde::{Deserialize, Serialize};

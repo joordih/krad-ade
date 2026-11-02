@@ -86,6 +86,17 @@ impl EnvironmentShell {
         self.side_search.field.is_some()
     }
 
+    pub(in crate::environment_shell) fn on_find_in_files(
+        &mut self,
+        _: &crate::actions::FindInFiles,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.side_search.field.is_none() {
+            self.toggle_side_search(window, cx);
+        }
+    }
+
     pub(in crate::environment_shell) fn toggle_side_search(
         &mut self,
         window: &mut Window,

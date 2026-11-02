@@ -52,6 +52,7 @@ image = { version = "0.25", default-features = false }
 keyring = "4.2"
 minisign-verify = "0.3"
 mermaid-rs-renderer = { version = "0.3.1", default-features = false }
+lsp-types = { version = "0.97", features = ["proposed"] }
 libghostty-vt = { git = "https://github.com/joordih/libghostty-rs", rev = "f21a9e5e9a26b8d641040b9ab4624b59aa5254d7", default-features = false, features = [
   "kitty-graphics",
   "png",
@@ -85,8 +86,10 @@ ratex-svg = { version = "0.1.15", features = ["embed-fonts"] }
 ratex-types = "0.1.15"
 raw-window-handle = "0.6"
 serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
 serde_json = "1"
 thiserror = "2"
+toml = "1"
 ureq = { version = "3.5", default-features = false, features = [
   "json",
   "rustls",
@@ -94,8 +97,10 @@ ureq = { version = "3.5", default-features = false, features = [
 krad-agents = { path = "crates/krad-agents" }
 krad-chat = { path = "crates/krad-chat" }
 krad-domain = { path = "crates/krad-domain" }
+krad-extensions = { path = "crates/krad-extensions" }
 krad-github = { path = "crates/krad-github" }
 krad-gitlab = { path = "crates/krad-gitlab" }
+krad-lsp = { path = "crates/krad-lsp" }
 krad-pty = { path = "crates/krad-pty" }
 krad-repo = { path = "crates/krad-repo" }
 krad-term = { path = "crates/krad-term" }

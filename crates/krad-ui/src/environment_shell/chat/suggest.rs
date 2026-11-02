@@ -127,7 +127,10 @@ impl EnvironmentShell {
             .map(|group| group.root.clone())
     }
 
-    fn refresh_file_index(root: Option<PathBuf>, cx: &mut Context<Self>) {
+    pub(in crate::environment_shell) fn refresh_file_index(
+        root: Option<PathBuf>,
+        cx: &mut Context<Self>,
+    ) {
         let Some(root) = root else {
             return;
         };
@@ -137,7 +140,10 @@ impl EnvironmentShell {
             let index = index.await;
             this.update(cx, |shell, cx| {
                 match index {
-                    Ok(index) => shell.chat.files = Some((root, index)),
+                    Ok(index) => {
+                        shell.chat.files = Some((root, index));
+                        shell.refind_palette_files(cx);
+                    }
                     Err(error) => shell.toast(&error.to_string(), cx),
                 }
                 cx.notify();
@@ -145,6 +151,28 @@ impl EnvironmentShell {
             .unwrap_or_default();
         })
         .detach();
+    }
+
+    pub(in crate::environment_shell) fn indexed_files(
+        &self,
+        root: &Path,
+        query: &str,
+        limit: usize,
+    ) -> Vec<PathBuf> {
+        let Some((_, index)) = self
+            .chat
+            .files
+            .as_ref()
+            .filter(|(indexed, _)| indexed == root)
+        else {
+            return Vec::new();
+        };
+        index
+            .search(query, limit)
+            .into_iter()
+            .filter(|entry| entry.kind == EntryKind::File)
+            .map(|entry| root.join(&entry.path))
+            .collect()
     }
 
     fn refresh_skills(root: Option<PathBuf>, cx: &mut Context<Self>) {

@@ -10,6 +10,7 @@ use crate::theme::{palette, LINE_BASE, LINE_SM, SPACE_2, SPACE_5, SPACE_6, TEXT_
 const DIALOG_W: f32 = 420.0;
 const RENAME_ENVIRONMENT_TITLE: &str = "Rename environment";
 const RENAME_GROUP_TITLE: &str = "Rename group";
+const RENAME_SYMBOL_TITLE: &str = "Rename symbol";
 const RENAME_CONFIRM: &str = "Rename";
 const CANCEL_LABEL: &str = "Cancel";
 const BTN_NAME_CLOSE: &str = "name-dialog-close";
@@ -41,6 +42,7 @@ impl EnvironmentShell {
         let title = match dialog.target {
             NameTarget::Environment(_) => RENAME_ENVIRONMENT_TITLE,
             NameTarget::Group(_) => RENAME_GROUP_TITLE,
+            NameTarget::Symbol { .. } => RENAME_SYMBOL_TITLE,
         };
         let sheet = sheet_panel(DIALOG_W, pal)
             .child(sheet_title(title, None, BTN_NAME_CLOSE, dismiss, cx))

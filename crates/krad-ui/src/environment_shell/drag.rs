@@ -4,6 +4,7 @@ use krad_session::{CellPoint, MouseAction};
 use super::activity::ActivityDrag;
 use super::layout::PanelDrag;
 use super::side_panel::SidePanelDrag;
+use super::sidebar::SidebarDrag;
 use super::terminal_body::BodyGeometry;
 use super::EnvironmentShell;
 use crate::actions::{NewTerminal, ToggleFps, TogglePalette};
@@ -23,6 +24,7 @@ pub(in crate::environment_shell) enum DragState {
     SelectCode,
     ResizePanel(PanelDrag),
     ResizeActivity(ActivityDrag),
+    ResizeSidebar(SidebarDrag),
     SidePanel(SidePanelDrag),
     ResizePane {
         divider: krad_domain::DividerId,
@@ -37,6 +39,7 @@ impl DragState {
             self,
             Self::ResizePanel(_)
                 | Self::ResizeActivity(_)
+                | Self::ResizeSidebar(_)
                 | Self::SidePanel(_)
                 | Self::ResizePane { .. }
         )
@@ -91,6 +94,7 @@ impl EnvironmentShell {
             | DragState::ResizeActivity(_)
             | DragState::ResizePane { .. } => return,
             DragState::ResizePanel(drag) => self.panel_widths.set(drag.panel, drag.width_at(x)),
+            DragState::ResizeSidebar(drag) => self.sidebar_w = drag.width_at(x),
             DragState::Select { id, geometry } => {
                 if let Some(session) = live.sessions.get_mut(id) {
                     session.engine.extend_selection(geometry.cell_at(x, y));
@@ -112,7 +116,7 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn end_drag(&mut self, cx: &mut Context<Self>) {
         let reshaped_layout = match self.drag {
             DragState::None => return,
-            DragState::SidePanel(_) => true,
+            DragState::SidePanel(_) | DragState::ResizeSidebar(_) => true,
             DragState::Select { .. }
             | DragState::SelectCode
             | DragState::Report { .. }

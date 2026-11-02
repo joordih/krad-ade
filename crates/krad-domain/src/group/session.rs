@@ -19,6 +19,8 @@ pub struct Session {
     pub panes: SessionPanes,
     #[serde(default, skip_serializing_if = "SessionLook::is_plain")]
     pub look: SessionLook,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_chat: Option<TerminalId>,
 }
 
 impl EnvironmentData {
@@ -120,6 +122,7 @@ impl EnvironmentData {
             return;
         };
         self.active_session = Some(session);
+        self.remember_chat(terminal);
         if let Some(tabs) = self.tabs_mut() {
             if let Some(tab) = tabs.tab_of(terminal) {
                 tabs.select(tab);
@@ -143,6 +146,7 @@ impl EnvironmentData {
             lead: None,
             panes: SessionPanes::default(),
             look: SessionLook::default(),
+            last_chat: None,
         });
         id
     }

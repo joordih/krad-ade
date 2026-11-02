@@ -3,6 +3,7 @@ mod general;
 mod github;
 mod gitlab;
 mod integrations;
+mod languages;
 mod material;
 mod mcp;
 mod page;
@@ -46,6 +47,7 @@ pub(super) enum SettingsPane {
     Integrations,
     Gateway,
     Mcp,
+    Languages,
 }
 
 impl SettingsPane {
@@ -56,6 +58,7 @@ impl SettingsPane {
             Self::Integrations => "Integrations",
             Self::Gateway => "Gateway",
             Self::Mcp => "MCP",
+            Self::Languages => "Languages",
         }
     }
 
@@ -68,6 +71,9 @@ impl SettingsPane {
                 "Chat with the models of a gateway you run, through the app's own agent."
             }
             Self::Mcp => "The MCP servers whose tools Gateway chats can use.",
+            Self::Languages => {
+                "Language servers, the SDKs they need, and extensions that add languages."
+            }
         }
     }
 
@@ -78,6 +84,7 @@ impl SettingsPane {
             Self::Integrations => IconName::Merge,
             Self::Gateway => IconName::Flow,
             Self::Mcp => IconName::Plug,
+            Self::Languages => IconName::Workflow,
         }
     }
 }
@@ -89,6 +96,7 @@ pub(super) struct SettingsUi {
     gateway: GatewayUi,
     mcp: McpUi,
     tint: material::TintUi,
+    languages: languages::LanguagesUi,
 }
 
 impl From<AppearanceMode> for Appearance {
@@ -216,6 +224,7 @@ impl EnvironmentShell {
         let gateway = self.gateway_ui(window, cx);
         let mcp = Self::mcp_ui(window, cx);
         let tint = self.tint_ui(cx);
+        let languages = Self::languages_ui(window, cx);
         self.settings_ui = Some(SettingsUi {
             pane: SettingsPane::General,
             gitlab,
@@ -223,6 +232,7 @@ impl EnvironmentShell {
             gateway,
             mcp,
             tint,
+            languages,
         });
         self.refresh_gitlab_status(cx);
         self.refresh_github_status(cx);
@@ -270,6 +280,9 @@ impl EnvironmentShell {
     pub(super) fn select_pane(&mut self, pane: SettingsPane, cx: &mut Context<Self>) {
         if let Some(ui) = &mut self.settings_ui {
             ui.pane = pane;
+        }
+        if pane == SettingsPane::Languages {
+            self.refresh_toolchain_statuses(cx);
         }
         cx.notify();
     }

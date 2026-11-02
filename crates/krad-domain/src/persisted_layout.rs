@@ -1,5 +1,7 @@
 use crate::environment::EnvironmentData;
 use crate::ids::EnvironmentName;
+use crate::sidebar_width::SidebarWidth;
+use crate::work_mode::WorkMode;
 use serde::{Deserialize, Serialize};
 
 pub const LAYOUT_SCHEMA_VERSION: u32 = 10;
@@ -11,6 +13,10 @@ pub struct PersistedLayout {
     pub version: u32,
     pub active: EnvironmentName,
     pub environments: Vec<EnvironmentData>,
+    #[serde(default)]
+    pub work_mode: WorkMode,
+    #[serde(default)]
+    pub sidebar_width: SidebarWidth,
 }
 
 #[cfg(test)]
@@ -31,6 +37,8 @@ mod tests {
             version: LAYOUT_SCHEMA_VERSION,
             active: environment.name.clone(),
             environments: vec![environment],
+            work_mode: WorkMode::Editor,
+            sidebar_width: SidebarWidth::new(320.0),
         };
         let back: PersistedLayout = serde_json::from_str(&serde_json::to_string(&snapshot)?)?;
         let Some(env) = back.environments.first() else {
@@ -38,6 +46,7 @@ mod tests {
         };
         assert_eq!(env.sessions, snapshot.environments[0].sessions);
         assert_eq!(env.active_session, Some(session));
+        assert_eq!(back.work_mode, WorkMode::Editor);
         Ok(())
     }
 }

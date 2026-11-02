@@ -82,7 +82,7 @@ impl Drop for LayoutWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_domain::EnvironmentName;
+    use krad_domain::{EnvironmentName, SidebarWidth, WorkMode};
 
     #[test]
     fn a_layout_from_a_newer_app_is_not_loaded() -> serde_json::Result<()> {
@@ -90,6 +90,8 @@ mod tests {
             version,
             active: EnvironmentName::new("main".to_owned()),
             environments: Vec::new(),
+            work_mode: WorkMode::default(),
+            sidebar_width: SidebarWidth::default(),
         };
         let current = serde_json::to_vec(&layout(LAYOUT_SCHEMA_VERSION))?;
         assert_eq!(
@@ -109,6 +111,8 @@ mod tests {
             version: LAYOUT_SCHEMA_VERSION,
             active: EnvironmentName::new(name.to_owned()),
             environments: Vec::new(),
+            work_mode: WorkMode::default(),
+            sidebar_width: SidebarWidth::default(),
         };
         let writer = LayoutWriter::spawn_at(path.clone());
         assert!(writer.is_some(), "a writer thread starts");

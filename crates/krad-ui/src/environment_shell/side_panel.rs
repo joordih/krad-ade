@@ -129,6 +129,11 @@ impl EnvironmentShell {
         }
         let frame = self.panel_frame(window)?;
         let pal = palette(cx);
+        let content = if self.editing() {
+            self.editor_chat_panel(cx)
+        } else {
+            self.side_section(cx)
+        };
         let panel = card(pal, cx).size_full().child(
             div()
                 .flex()
@@ -136,7 +141,7 @@ impl EnvironmentShell {
                 .flex_none()
                 .min_h_0()
                 .h(px(frame.files_h))
-                .child(self.side_section(cx)),
+                .child(content),
         );
         Some(
             div()
