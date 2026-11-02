@@ -136,13 +136,13 @@ fn probe_version(
             version_after(&context.run(&command)?, after.as_deref())
         }
         VersionSource::JsonFile { file, pointer } => {
-            let file = PathBuf::from(render(file, vars, program).ok()?);
+            let file = templated_path(&render(file, vars, program).ok()?);
             let bytes = context.link.read(&file, VERSION_FILE_LIMIT).ok()?;
             let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
             json.pointer(pointer)?.as_str()?.parse().ok()
         }
         VersionSource::TextFile { file } => {
-            let file = PathBuf::from(render(file, vars, program).ok()?);
+            let file = templated_path(&render(file, vars, program).ok()?);
             let bytes = context.link.read(&file, VERSION_FILE_LIMIT).ok()?;
             version_after(&String::from_utf8_lossy(&bytes), None)
         }
@@ -166,8 +166,8 @@ fn shaped(
         vars.set(NAME_VAR, name.clone());
     }
     let dir = Path::new(&found.value);
-    let path = filled(shape.path, &vars, dir).unwrap_or_else(|| found.value.clone());
-    let path = PathBuf::from(path);
+    let path = filled(shape.path, &vars, dir)
+        .map_or_else(|| PathBuf::from(&found.value), |path| templated_path(&path));
     if !context.link.exists(&path) {
         return None;
     }
@@ -188,12 +188,26 @@ fn shaped(
         name,
         version,
         prefix: filled(shape.prefix, &vars, dir)
-            .map(PathBuf::from)
+            .map(|prefix| templated_path(&prefix))
             .or_else(|| prefix_of_binary(&path)),
         location: ToolchainLocation::Path { path },
         project: None,
         locator: shape.id.clone(),
     })
+}
+
+const TEMPLATE_SEPARATOR: char = '/';
+
+pub(crate) fn templated_path(rendered: &str) -> PathBuf {
+    let mut parts = rendered.split(TEMPLATE_SEPARATOR);
+    let mut path = match parts.next() {
+        Some("") | None => PathBuf::from(ROOT),
+        Some(first) => PathBuf::from(first),
+    };
+    for part in parts.filter(|part| !part.is_empty()) {
+        path.push(part);
+    }
+    path
 }
 
 pub(crate) fn prefix_of_binary(binary: &Path) -> Option<PathBuf> {
@@ -380,6 +394,14 @@ mod tests {
 
     #[test]
     fn a_binary_in_bin_or_scripts_names_its_install_folder() {
+        assert_eq!(
+            templated_path("/opt/jdk-21/bin/java"),
+            Path::new("/opt/jdk-21").join("bin").join("java")
+        );
+        assert_eq!(
+            templated_path(r"C:\work\web\node_modules\typescript/package.json"),
+            Path::new(r"C:\work\web\node_modules\typescript").join("package.json")
+        );
         assert_eq!(
             prefix_of_binary(Path::new("/opt/jdk-21/bin/java")),
             Some(PathBuf::from("/opt/jdk-21"))
