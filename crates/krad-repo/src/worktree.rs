@@ -1,7 +1,7 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
-use crate::process::git_path;
+use crate::process::{git_path, host_path};
 
 use crate::git::run_git;
 use crate::RepoError;
@@ -13,6 +13,13 @@ const ALLOWED_NAME_PUNCTUATION: [char; 3] = ['-', '_', '.'];
 const EDGE_TRIMMED: [char; 2] = ['-', '.'];
 const PARENT_DIR_MARKER: &str = "..";
 const PRUNE_ARGS: [&str; 2] = ["worktree", "prune"];
+const LIST_ARGS: [&str; 3] = ["worktree", "list", "--porcelain"];
+const RECORD_SEPARATOR: &str = "\n\n";
+const PATH_FIELD: &str = "worktree ";
+const BRANCH_FIELD: &str = "branch ";
+const BRANCH_REF_PREFIX: &str = "refs/heads/";
+const BARE_FIELD: &str = "bare";
+const PRUNABLE_FIELD: &str = "prunable";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Worktree {
@@ -78,6 +85,43 @@ pub fn remove_worktree(repo_root: &Path, path: &Path) -> Result<(), RepoError> {
     Ok(())
 }
 
+/// # Errors
+pub fn list_worktrees(repo: &Path) -> Result<Vec<Worktree>, RepoError> {
+    let output = run_git(repo, &LIST_ARGS)?;
+    Ok(parse_worktrees(
+        &String::from_utf8_lossy(&output),
+        |printed| host_path(repo, printed),
+    ))
+}
+
+fn parse_worktrees(output: &str, path_of: impl Fn(&str) -> PathBuf) -> Vec<Worktree> {
+    output
+        .split(RECORD_SEPARATOR)
+        .filter_map(|record| {
+            let mut path = None;
+            let mut branch = None;
+            for line in record.lines() {
+                if line == BARE_FIELD || line.starts_with(PRUNABLE_FIELD) {
+                    return None;
+                }
+                if let Some(printed) = line.strip_prefix(PATH_FIELD) {
+                    path = Some(path_of(printed));
+                } else if let Some(name) = line.strip_prefix(BRANCH_FIELD) {
+                    branch = Some(
+                        name.strip_prefix(BRANCH_REF_PREFIX)
+                            .unwrap_or(name)
+                            .to_owned(),
+                    );
+                }
+            }
+            Some(Worktree {
+                path: path?,
+                branch,
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,6 +143,28 @@ mod tests {
                 "input {raw:?}"
             );
         }
+    }
+
+    #[test]
+    fn the_worktree_list_keeps_checked_out_folders_and_their_branches() {
+        let output = "worktree /src/app\nHEAD 1a2b\nbranch refs/heads/main\n\n\
+                      worktree /src/app.worktrees/fix\nHEAD 3c4d\ndetached\n\n\
+                      worktree /src/bare\nbare\n\n\
+                      worktree /gone\nHEAD 5e6f\nbranch refs/heads/old\nprunable gitdir file points to non-existent location\n";
+        let listed = parse_worktrees(output, |printed| PathBuf::from(printed));
+        assert_eq!(
+            listed,
+            [
+                Worktree {
+                    path: PathBuf::from("/src/app"),
+                    branch: Some("main".to_owned()),
+                },
+                Worktree {
+                    path: PathBuf::from("/src/app.worktrees/fix"),
+                    branch: None,
+                },
+            ]
+        );
     }
 
     #[test]

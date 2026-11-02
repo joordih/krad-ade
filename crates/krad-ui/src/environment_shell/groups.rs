@@ -3,7 +3,9 @@ use krad_domain::{
     parse_wsl_path, AgentPreset, EnvironmentName, GroupId, TerminalGroup, TerminalId,
     WorktreeOrigin,
 };
-use krad_repo::{line_counts, repo_root, status, wsl_programs, GitStatus, LineCount};
+use krad_repo::{
+    line_counts, list_worktrees, repo_root, status, wsl_programs, GitStatus, LineCount, Worktree,
+};
 use krad_session::find_program;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -20,6 +22,7 @@ pub(super) struct GroupGit {
     pub(super) repo_root: PathBuf,
     pub(super) status: GitStatus,
     pub(super) lines: HashMap<PathBuf, LineCount>,
+    pub(super) worktrees: Vec<Worktree>,
 }
 
 impl GroupGit {
@@ -38,12 +41,14 @@ fn read_git(roots: Vec<PathBuf>) -> HashMap<PathBuf, GroupGit> {
             let repo_root = repo_root(&root).ok().flatten()?;
             let status = status(&root).ok()?;
             let lines = line_counts(&repo_root).unwrap_or_default();
+            let worktrees = list_worktrees(&root).unwrap_or_default();
             Some((
                 root,
                 GroupGit {
                     repo_root,
                     status,
                     lines,
+                    worktrees,
                 },
             ))
         })
@@ -119,6 +124,25 @@ impl EnvironmentShell {
             live.selected_group = Some(id);
         }
         cx.notify();
+    }
+
+    pub(super) fn open_worktree(
+        &mut self,
+        path: PathBuf,
+        origin: Option<WorktreeOrigin>,
+        cx: &mut Context<Self>,
+    ) {
+        let open = self.envs.get(&self.active).and_then(|live| {
+            live.data
+                .groups
+                .iter()
+                .find(|group| group.root == path)
+                .map(|group| group.id)
+        });
+        match open {
+            Some(id) => self.select_group(id, cx),
+            None => self.add_group(path, origin, cx),
+        }
     }
 
     pub(super) fn prompt_new_group(cx: &mut Context<Self>) {

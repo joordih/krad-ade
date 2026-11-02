@@ -1,6 +1,7 @@
 use gpui_kit::Context;
-use krad_domain::{GroupId, TerminalGroup};
-use std::path::PathBuf;
+use krad_domain::{EnvironmentData, GroupId, TerminalGroup, WorktreeOrigin};
+use krad_repo::Worktree;
+use std::path::{Path, PathBuf};
 
 use super::context_menu::{MenuAction, MenuCreate, MenuEntry, MenuPlacement};
 use super::EnvironmentShell;
@@ -23,6 +24,14 @@ const SETTINGS_LABEL: &str = "Settings";
 const DETACHED_LABEL: &str = "detached";
 const TERMINALS_SUFFIX: &str = "terminals";
 const NEW_ACTIVITY_SUFFIX: &str = "new activity";
+
+fn worktree_origin(main: Option<&Path>, worktree: &Worktree) -> Option<WorktreeOrigin> {
+    let main = main.filter(|main| *main != worktree.path)?;
+    Some(WorktreeOrigin {
+        repo_root: main.to_path_buf(),
+        branch: worktree.branch.clone()?,
+    })
+}
 
 impl EnvironmentShell {
     pub(super) fn open_environment_menu(
@@ -143,29 +152,96 @@ impl EnvironmentShell {
         let Some(repo) = self.repo_of(group) else {
             return submenu(vec![MenuEntry::Note(NOT_A_REPO_TEXT.to_owned())]);
         };
-        let entries = live
-            .data
-            .groups
-            .iter()
-            .filter(|other| self.repo_of(other).as_ref() == Some(&repo))
-            .map(|other| {
-                let branch = self
-                    .git
-                    .get(&other.root)
-                    .and_then(|git| git.status.branch.clone())
-                    .or_else(|| other.worktree.as_ref().map(|origin| origin.branch.clone()))
-                    .unwrap_or_else(|| DETACHED_LABEL.to_owned());
-                let sessions = live.data.sessions_of(Some(other.id)).count();
-                MenuEntry::checked(
-                    other.name.clone(),
-                    other.id == group.id,
-                    MenuAction::SelectGroup(other.id),
-                )
-                .with_detail(branch)
-                .with_trailing(sessions.to_string())
-            })
-            .collect();
+        let listed = self
+            .git
+            .get(&group.root)
+            .map_or(&[][..], |git| git.worktrees.as_slice());
+        let entries = if listed.is_empty() {
+            self.worktree_groups(&live.data, group, &repo)
+        } else {
+            self.listed_worktrees(&live.data, group, listed)
+        };
         submenu(entries).creating(MenuCreate::Worktree(group.id))
+    }
+
+    fn worktree_groups(
+        &self,
+        data: &EnvironmentData,
+        group: &TerminalGroup,
+        repo: &Path,
+    ) -> Vec<MenuEntry> {
+        data.groups
+            .iter()
+            .filter(|other| self.repo_of(other).as_deref() == Some(repo))
+            .map(|other| self.worktree_group_entry(data, group, other, None))
+            .collect()
+    }
+
+    fn listed_worktrees(
+        &self,
+        data: &EnvironmentData,
+        group: &TerminalGroup,
+        listed: &[Worktree],
+    ) -> Vec<MenuEntry> {
+        let main = listed.first().map(|worktree| worktree.path.as_path());
+        listed
+            .iter()
+            .map(|worktree| {
+                let branch = worktree.branch.clone();
+                if let Some(open) = self.group_at(data, &worktree.path) {
+                    return self.worktree_group_entry(data, group, open, branch);
+                }
+                let origin = worktree_origin(main, worktree);
+                let name = worktree.path.file_name().map_or_else(
+                    || worktree.path.display().to_string(),
+                    |name| name.to_string_lossy().into_owned(),
+                );
+                MenuEntry::checked(
+                    name,
+                    false,
+                    MenuAction::OpenWorktree(worktree.path.clone(), origin),
+                )
+                .with_detail(branch.unwrap_or_else(|| DETACHED_LABEL.to_owned()))
+            })
+            .collect()
+    }
+
+    fn group_at<'a>(&self, data: &'a EnvironmentData, path: &Path) -> Option<&'a TerminalGroup> {
+        data.groups
+            .iter()
+            .find(|group| group.root == path)
+            .or_else(|| {
+                data.groups.iter().find(|group| {
+                    self.git
+                        .get(&group.root)
+                        .is_some_and(|git| git.repo_root == path)
+                })
+            })
+    }
+
+    fn worktree_group_entry(
+        &self,
+        data: &EnvironmentData,
+        selected: &TerminalGroup,
+        group: &TerminalGroup,
+        branch: Option<String>,
+    ) -> MenuEntry {
+        let branch = branch
+            .or_else(|| {
+                self.git
+                    .get(&group.root)
+                    .and_then(|git| git.status.branch.clone())
+            })
+            .or_else(|| group.worktree.as_ref().map(|origin| origin.branch.clone()))
+            .unwrap_or_else(|| DETACHED_LABEL.to_owned());
+        let sessions = data.sessions_of(Some(group.id)).count();
+        MenuEntry::checked(
+            group.name.clone(),
+            group.id == selected.id,
+            MenuAction::SelectGroup(group.id),
+        )
+        .with_detail(branch)
+        .with_trailing(sessions.to_string())
     }
 
     fn repo_of(&self, group: &TerminalGroup) -> Option<PathBuf> {
@@ -174,5 +250,42 @@ impl EnvironmentShell {
             .as_ref()
             .map(|origin| origin.repo_root.clone())
             .or_else(|| self.git.get(&group.root).map(|git| git.repo_root.clone()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn worktree(path: &str, branch: Option<&str>) -> Worktree {
+        Worktree {
+            path: PathBuf::from(path),
+            branch: branch.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn a_linked_worktree_on_a_branch_opens_as_a_worktree_of_the_main_checkout() {
+        let main = Path::new("/src/app");
+        assert_eq!(
+            worktree_origin(Some(main), &worktree("/src/app.worktrees/fix", Some("fix"))),
+            Some(WorktreeOrigin {
+                repo_root: main.to_path_buf(),
+                branch: "fix".to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn the_main_checkout_and_a_detached_worktree_open_as_plain_groups() {
+        let main = Path::new("/src/app");
+        assert_eq!(
+            worktree_origin(Some(main), &worktree("/src/app", Some("main"))),
+            None
+        );
+        assert_eq!(
+            worktree_origin(Some(main), &worktree("/src/app.worktrees/try", None)),
+            None
+        );
     }
 }
