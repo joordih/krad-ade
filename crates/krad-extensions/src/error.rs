@@ -100,6 +100,9 @@ mod tests {
         );
         assert_eq!(error.details(), Some(output));
         assert_eq!(headline("only line"), "only line");
-        assert_eq!(headline(&"x".repeat(500)).chars().count(), HEADLINE_MAX_CHARS + 1);
+        assert_eq!(
+            headline(&"x".repeat(500)).chars().count(),
+            HEADLINE_MAX_CHARS + 1
+        );
     }
 }
