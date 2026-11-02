@@ -12,8 +12,9 @@ const TOKEN_SPREAD: usize = 6;
 const TOKEN_GAP: u8 = 1;
 const PADDLE_ROW: f32 = ROWS - 2.0;
 const PADDLE_W: f32 = 12.0;
-const PADDLE_SPEED: f32 = 90.0;
-const PADDLE_NUDGE: f32 = 8.0;
+const PADDLE_SPEED: f32 = 160.0;
+const SLIDE_SPEED: f32 = 85.0;
+const PRESS_STEP: f32 = 2.0;
 const START_SPEED: f32 = 28.0;
 const LEVEL_SPEEDUP: f32 = 4.0;
 const TOP_SPEED: f32 = 60.0;
@@ -45,6 +46,7 @@ pub(super) struct Bricks {
     wall: Vec<Brick>,
     paddle: f32,
     target: f32,
+    held: Option<Heading>,
     ball: (f32, f32),
     velocity: (f32, f32),
     demo_aim: f32,
@@ -83,6 +85,7 @@ impl Bricks {
             wall,
             paddle: (COLS - PADDLE_W) / 2.0,
             target: (COLS - PADDLE_W) / 2.0,
+            held: None,
             ball: (0.0, 0.0),
             velocity: (0.0, 0.0),
             demo_aim: 0.0,
@@ -107,9 +110,17 @@ impl Bricks {
         self.velocity = (across, -(speed * speed - across * across).sqrt());
     }
 
+    fn push_paddle(&mut self, distance: f32) {
+        self.paddle = (self.paddle + distance).clamp(0.0, COLS - PADDLE_W);
+        self.target = self.paddle;
+    }
+
     fn move_paddle(&mut self, dt: f32) {
-        if self.play == Play::Demo {
-            self.target = self.ball.0 - PADDLE_W / 2.0 + self.demo_aim;
+        match (self.play, self.held) {
+            (Play::Demo, _) => self.target = self.ball.0 - PADDLE_W / 2.0 + self.demo_aim,
+            (_, Some(Heading::Left)) => return self.push_paddle(-SLIDE_SPEED * dt),
+            (_, Some(Heading::Right)) => return self.push_paddle(SLIDE_SPEED * dt),
+            _ => {}
         }
         self.target = self.target.clamp(0.0, COLS - PADDLE_W);
         let reach = PADDLE_SPEED * dt;
@@ -202,10 +213,22 @@ impl Board for Bricks {
 
     fn steer(&mut self, steer: Steer) {
         match steer {
-            Steer::Turn(Heading::Left) => self.target = self.paddle - PADDLE_NUDGE,
-            Steer::Turn(Heading::Right) => self.target = self.paddle + PADDLE_NUDGE,
+            Steer::Turn(Heading::Left) => {
+                self.held = Some(Heading::Left);
+                self.push_paddle(-PRESS_STEP);
+            }
+            Steer::Turn(Heading::Right) => {
+                self.held = Some(Heading::Right);
+                self.push_paddle(PRESS_STEP);
+            }
             Steer::Aim(column) => self.target = column - PADDLE_W / 2.0,
             Steer::Action | Steer::Turn(Heading::Up | Heading::Down) => {}
+        }
+    }
+
+    fn release(&mut self, heading: Heading) {
+        if self.held == Some(heading) {
+            self.held = None;
         }
     }
 
@@ -290,6 +313,35 @@ mod tests {
             game.step(FRAME);
         }
         assert_eq!(game.play, Play::Crashed);
+    }
+
+    #[test]
+    fn an_arrow_moves_the_paddle_at_once_and_slides_it_while_held() {
+        let mut game = bricks();
+        game.restart(Play::Playing);
+        let start = game.paddle;
+        game.steer(Steer::Turn(Heading::Right));
+        let pressed = game.paddle;
+        assert!(pressed > start);
+        game.move_paddle(FRAME.as_secs_f32());
+        game.move_paddle(FRAME.as_secs_f32());
+        let slid = game.paddle;
+        assert!(slid > pressed);
+        game.release(Heading::Right);
+        game.move_paddle(FRAME.as_secs_f32());
+        assert!((game.paddle - slid).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn releasing_the_other_arrow_keeps_the_paddle_sliding() {
+        let mut game = bricks();
+        game.restart(Play::Playing);
+        game.steer(Steer::Turn(Heading::Right));
+        game.steer(Steer::Turn(Heading::Left));
+        game.release(Heading::Right);
+        let before = game.paddle;
+        game.move_paddle(FRAME.as_secs_f32());
+        assert!(game.paddle < before);
     }
 
     #[test]

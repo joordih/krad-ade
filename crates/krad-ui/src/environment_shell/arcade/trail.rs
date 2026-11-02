@@ -91,8 +91,8 @@ impl Trail {
     }
 
     fn room_after(&self, heading: Heading, occupied: &[bool]) -> usize {
-        let start = self.head().toward(heading);
-        if !start.on_board() || occupied[start.index()] {
+        let start = self.head().toward(heading).wrapped();
+        if occupied[start.index()] {
             return 0;
         }
         let mut seen = vec![false; CELL_COUNT];
@@ -101,8 +101,8 @@ impl Trail {
         let mut room = 0;
         while let Some(at) = queue.pop_front() {
             room += 1;
-            for next in Heading::ALL.map(|heading| at.toward(heading)) {
-                if next.on_board() && !occupied[next.index()] && !seen[next.index()] {
+            for next in Heading::ALL.map(|heading| at.toward(heading).wrapped()) {
+                if !occupied[next.index()] && !seen[next.index()] {
                     seen[next.index()] = true;
                     queue.push_back(next);
                 }
@@ -123,8 +123,8 @@ impl Trail {
                 return first[at.index()];
             }
             for heading in Heading::ALL {
-                let next = at.toward(heading);
-                if !next.on_board() || occupied[next.index()] || seen[next.index()] {
+                let next = at.toward(heading).wrapped();
+                if occupied[next.index()] || seen[next.index()] {
                     continue;
                 }
                 seen[next.index()] = true;
@@ -157,8 +157,8 @@ impl Trail {
         } else if let Some(turn) = self.turns.pop_front() {
             self.heading = turn;
         }
-        let next = self.head().toward(self.heading);
-        if !next.on_board() || self.occupied()[next.index()] {
+        let next = self.head().toward(self.heading).wrapped();
+        if self.occupied()[next.index()] {
             match self.play {
                 Play::Demo => self.restart(Play::Demo),
                 Play::Playing | Play::Crashed => self.play = Play::Crashed,
@@ -257,13 +257,33 @@ mod tests {
     }
 
     #[test]
-    fn a_trail_left_on_its_heading_hits_the_edge_and_the_run_ends() {
+    fn a_trail_crossing_an_edge_comes_back_through_the_opposite_one() {
         let mut trail = trail();
         trail.restart(Play::Playing);
-        trail.token = Some(Cell::new(0, 0));
-        for _ in 0..FRAMES_PER_MINUTE {
-            trail.step(FRAME);
-        }
+        trail.token = Some(Cell::new(CELLS_X / 2, CELLS_Y - 2));
+        trail.body = VecDeque::from([Cell::new(CELLS_X - 1, START_ROW)]);
+        trail.advance();
+        assert_eq!(trail.head(), Cell::new(0, START_ROW));
+        trail.heading = Heading::Up;
+        trail.body = VecDeque::from([Cell::new(3, 0)]);
+        trail.advance();
+        assert_eq!(trail.head(), Cell::new(3, CELLS_Y - 1));
+        assert_eq!(trail.play, Play::Playing);
+    }
+
+    #[test]
+    fn a_trail_running_into_itself_ends_the_run() {
+        let mut trail = trail();
+        trail.restart(Play::Playing);
+        trail.body = VecDeque::from([
+            Cell::new(5, 5),
+            Cell::new(5, 6),
+            Cell::new(6, 6),
+            Cell::new(6, 5),
+            Cell::new(6, 4),
+        ]);
+        trail.heading = Heading::Right;
+        trail.advance();
         assert_eq!(trail.play, Play::Crashed);
     }
 

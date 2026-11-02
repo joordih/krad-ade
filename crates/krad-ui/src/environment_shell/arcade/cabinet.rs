@@ -1,7 +1,7 @@
 use krad_domain::{ArcadeGame, ArcadeScores};
 use std::time::Duration;
 
-use super::board::{Board, Dice, Dot, Play, Steer};
+use super::board::{Board, Dice, Dot, Heading, Play, Steer};
 use super::bricks::Bricks;
 use super::maze::Maze;
 use super::runner::Runner;
@@ -74,6 +74,12 @@ impl Cabinet {
         }
         self.board.restart(Play::Playing);
         self.recorded = false;
+    }
+
+    pub(super) fn release(&mut self, heading: Heading) {
+        if self.board.play() == Play::Playing {
+            self.board.release(heading);
+        }
     }
 
     pub(super) fn aim(&mut self, column: f32) {
