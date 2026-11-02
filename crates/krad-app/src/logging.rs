@@ -13,6 +13,7 @@ const DEFAULT_FILTER: &str = "info";
 #[must_use]
 pub fn start(config_dir: Option<&Path>) -> Option<WorkerGuard> {
     let dir = config_dir?.join(LOG_DIR);
+    std::fs::create_dir_all(&dir).ok()?;
     let appender = Builder::new()
         .rotation(Rotation::DAILY)
         .filename_prefix(LOG_PREFIX)
