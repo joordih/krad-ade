@@ -9,6 +9,7 @@ use crate::host_tools::{find_on_host, runs_on_host, HostServerRuntimes};
 use crate::package::{installed_version, Installing, VERSION_SEPARATOR};
 use crate::path_lookup::find_on_path;
 use crate::platform::Platform;
+use crate::runtime_requirements::RuntimeRequirements;
 use crate::server_runtime::{FindServerRuntime, SERVER_RUNTIMES_DIR};
 use crate::template::{render_all, Vars, SERVER_RUNTIME_PREFIX};
 
@@ -48,7 +49,11 @@ impl LanguageTools {
         })
     }
 
-    fn host_server_runtimes<'a>(&'a self, link: &'a HostLink) -> HostServerRuntimes<'a> {
+    fn host_server_runtimes<'a>(
+        &'a self,
+        link: &'a HostLink,
+        requirements: &'a RuntimeRequirements,
+    ) -> HostServerRuntimes<'a> {
         let managed = match link {
             HostLink::Ssh(ssh) => ssh
                 .layout()
@@ -59,6 +64,7 @@ impl LanguageTools {
             manifests: &self.manifests,
             link,
             managed,
+            requirements,
         }
     }
 
@@ -76,7 +82,7 @@ impl LanguageTools {
             return self.install_server_runtime(id, chosen);
         }
         let platform = platform.ok_or(ExtensionError::Host(krad_host::HostError::NotConnected))?;
-        self.host_server_runtimes(link)
+        self.host_server_runtimes(link, &RuntimeRequirements::new())
             .install(id, platform.into(), &self.agent)
             .map(drop)
     }
@@ -94,7 +100,8 @@ impl LanguageTools {
             return self.locate(plan, root, chosen);
         }
         let platform = platform?;
-        let finder = self.host_server_runtimes(link);
+        let requirements = self.plan_requirements(plan);
+        let finder = self.host_server_runtimes(link, &requirements);
         let site = Self::host_site(link, platform, &finder)?;
         self.locate_at(&site, plan, root)
     }
@@ -115,7 +122,8 @@ impl LanguageTools {
             return self.install(plan, root, chosen);
         }
         let platform = platform.ok_or(ExtensionError::Host(krad_host::HostError::NotConnected))?;
-        let finder = self.host_server_runtimes(link);
+        let requirements = self.plan_requirements(plan);
+        let finder = self.host_server_runtimes(link, &requirements);
         let site = Self::host_site(link, platform, &finder)
             .ok_or(ExtensionError::Host(krad_host::HostError::NotConnected))?;
         self.install_at(&site, plan, root)
@@ -133,7 +141,10 @@ impl LanguageTools {
             return self.missing_server_runtime(plan, chosen);
         }
         let platform: Platform = platform?.into();
-        let finder = self.host_server_runtimes(link);
+        let requirements = self.plan_requirements(plan);
+        let finder = self.host_server_runtimes(link, &requirements);
+        let unconstrained = RuntimeRequirements::new();
+        let any_version = self.host_server_runtimes(link, &unconstrained);
         plan.server_runtimes
             .iter()
             .find(|id| finder.find(id).is_none())
@@ -141,6 +152,8 @@ impl LanguageTools {
                 id: id.clone(),
                 name: self.server_runtime_name(id),
                 installable: finder.installable(id, platform),
+                needs: requirements.get(id).cloned(),
+                outdated: any_version.find(id).is_some(),
             })
     }
 

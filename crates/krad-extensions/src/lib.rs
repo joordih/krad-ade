@@ -8,6 +8,7 @@ mod package;
 mod path_lookup;
 mod platform;
 mod registry;
+mod runtime_requirements;
 mod server_runtime;
 mod template;
 mod toolchains;

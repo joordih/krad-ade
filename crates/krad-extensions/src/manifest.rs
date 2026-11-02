@@ -71,6 +71,22 @@ pub(crate) struct Runner {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum RuntimeMinimum {
+    Major(u64),
+    Range(krad_domain::VersionConstraint),
+}
+
+impl RuntimeMinimum {
+    pub(crate) fn constraint(&self) -> krad_domain::VersionConstraint {
+        match self {
+            Self::Major(major) => krad_domain::VersionConstraint::at_least(&[*major]),
+            Self::Range(range) => range.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct ServerRuntimeManifest {
     pub id: ServerRuntimeId,
     pub name: String,
@@ -82,7 +98,7 @@ pub struct ServerRuntimeManifest {
     #[serde(default)]
     pub(crate) version_after: Option<String>,
     #[serde(default)]
-    pub(crate) minimum_version: Option<u32>,
+    pub(crate) minimum_version: Option<RuntimeMinimum>,
     #[serde(default)]
     pub(crate) home_vars: Vec<String>,
     #[serde(default)]

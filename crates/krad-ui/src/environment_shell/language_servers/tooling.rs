@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::super::EnvironmentShell;
-use super::{ServerKey, ServerSlot};
+use super::{ServerFailure, ServerKey, ServerSlot};
 
 const FOLDER_PROMPT: &str = "Choose";
 const NOT_IN_FOLDER_TEXT: &str = "has no usable";
@@ -102,7 +102,7 @@ impl EnvironmentShell {
         let Some((link, platform)) = self.server_link(&key.host) else {
             self.set_slot(
                 key,
-                ServerSlot::Failed(super::lifecycle::HOST_GONE.to_owned()),
+                ServerSlot::Failed(ServerFailure::reason(super::lifecycle::HOST_GONE)),
                 cx,
             );
             return;
@@ -116,7 +116,7 @@ impl EnvironmentShell {
             let installed = installing.await;
             this.update(cx, |shell, cx| match installed {
                 Ok(()) => shell.retry_server(key, cx),
-                Err(error) => shell.set_slot(key, ServerSlot::Failed(error.to_string()), cx),
+                Err(error) => shell.set_slot(key, ServerSlot::Failed((&error).into()), cx),
             })
             .unwrap_or_default();
         })
@@ -159,7 +159,7 @@ impl EnvironmentShell {
                     shell.retry_server(key, cx);
                 } else {
                     let reason = format!("{} {NOT_IN_FOLDER_TEXT} {name}", folder.display());
-                    shell.set_slot(key, ServerSlot::Failed(reason), cx);
+                    shell.set_slot(key, ServerSlot::Failed(ServerFailure::reason(reason)), cx);
                 }
             })
             .unwrap_or_default();

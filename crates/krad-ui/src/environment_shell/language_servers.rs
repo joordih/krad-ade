@@ -70,7 +70,31 @@ enum ServerSlot {
     Installing,
     Starting(StartId),
     Running(Box<RunningServer>),
-    Failed(String),
+    Failed(ServerFailure),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct ServerFailure {
+    summary: String,
+    details: Option<String>,
+}
+
+impl ServerFailure {
+    pub(super) fn reason(summary: impl Into<String>) -> Self {
+        Self {
+            summary: summary.into(),
+            details: None,
+        }
+    }
+}
+
+impl From<&krad_extensions::ExtensionError> for ServerFailure {
+    fn from(error: &krad_extensions::ExtensionError) -> Self {
+        Self {
+            summary: error.to_string(),
+            details: error.details().map(str::to_owned),
+        }
+    }
 }
 
 pub(super) struct LanguageServers {
@@ -78,6 +102,7 @@ pub(super) struct LanguageServers {
     catalog: LanguageCatalog,
     slots: HashMap<ServerKey, ServerSlot>,
     declined: HashSet<String>,
+    shown_details: HashSet<ServerKey>,
     documents: HashMap<Document, ServerKey>,
     pub(super) diagnostics: diagnostics::DiagnosticStore,
     pending_edits: Vec<(Host, krad_lsp::lsp_types::WorkspaceEdit)>,
@@ -90,6 +115,7 @@ impl LanguageServers {
             tools: None,
             catalog: builtin_catalog(),
             slots: HashMap::new(),
+            shown_details: HashSet::new(),
             declined: HashSet::new(),
             documents: HashMap::new(),
             diagnostics: diagnostics::DiagnosticStore::default(),

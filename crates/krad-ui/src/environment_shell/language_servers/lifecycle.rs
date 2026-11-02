@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use super::super::EnvironmentShell;
 use super::toolchain_switch::computed_handoff;
-use super::{Document, RunningServer, ServerKey, ServerSlot, StartId};
+use super::{Document, RunningServer, ServerFailure, ServerKey, ServerSlot, StartId};
 
 pub(super) const HOST_GONE: &str = "No open environment uses this host";
 
@@ -67,6 +67,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn set_slot(&mut self, key: ServerKey, slot: ServerSlot, cx: &mut Context<Self>) {
+        self.language_servers.shown_details.remove(&key);
         self.language_servers.slots.insert(key, slot);
         cx.notify();
     }
@@ -84,7 +85,11 @@ impl EnvironmentShell {
         let chosen = self.settings.server_runtimes.clone();
         let (plan, root) = (key.plan.clone(), key.root.clone());
         let Some((link, platform)) = self.server_link(&key.host) else {
-            self.set_slot(key, ServerSlot::Failed(HOST_GONE.to_owned()), cx);
+            self.set_slot(
+                key,
+                ServerSlot::Failed(ServerFailure::reason(HOST_GONE)),
+                cx,
+            );
             return;
         };
         let fetched =
@@ -95,7 +100,7 @@ impl EnvironmentShell {
             let fetched = fetched.await;
             this.update(cx, |shell, cx| match fetched {
                 Ok(launch) => shell.start_server(key, launch, cx),
-                Err(error) => shell.set_slot(key, ServerSlot::Failed(error.to_string()), cx),
+                Err(error) => shell.set_slot(key, ServerSlot::Failed((&error).into()), cx),
             })
             .unwrap_or_default();
         })
@@ -118,7 +123,11 @@ impl EnvironmentShell {
         let options = config.options;
         let root = key.root.clone();
         let Some((link, _)) = self.server_link(&key.host) else {
-            self.set_slot(key, ServerSlot::Failed(HOST_GONE.to_owned()), cx);
+            self.set_slot(
+                key,
+                ServerSlot::Failed(ServerFailure::reason(HOST_GONE)),
+                cx,
+            );
             return;
         };
         let handing = self.handoff_inputs(&key);
@@ -142,7 +151,11 @@ impl EnvironmentShell {
                 Err(error) => {
                     this.update(cx, |shell, cx| {
                         if shell.still_starting(&key, start) {
-                            shell.set_slot(key, ServerSlot::Failed(error.to_string()), cx);
+                            shell.set_slot(
+                                key,
+                                ServerSlot::Failed(ServerFailure::reason(error.to_string())),
+                                cx,
+                            );
                         }
                     })
                     .unwrap_or_default();
@@ -158,7 +171,11 @@ impl EnvironmentShell {
                 }
                 match capabilities {
                     Ok(capabilities) => shell.server_ready(&key, server, capabilities, events, cx),
-                    Err(error) => shell.set_slot(key, ServerSlot::Failed(error.to_string()), cx),
+                    Err(error) => shell.set_slot(
+                        key,
+                        ServerSlot::Failed(ServerFailure::reason(error.to_string())),
+                        cx,
+                    ),
                 }
             })
             .unwrap_or_default();
@@ -255,7 +272,7 @@ impl EnvironmentShell {
                     .retain(|_, served| served != key);
                 self.set_slot(
                     key.clone(),
-                    ServerSlot::Failed(LspError::Stopped.to_string()),
+                    ServerSlot::Failed(ServerFailure::reason(LspError::Stopped.to_string())),
                     cx,
                 );
             }

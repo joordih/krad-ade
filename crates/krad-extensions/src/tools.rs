@@ -1,5 +1,6 @@
 use krad_domain::{
     LanguageCatalog, LanguageDef, ServerLaunch, ServerRuntimeId, ServerRuntimePaths,
+    VersionConstraint,
 };
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -11,6 +12,7 @@ use crate::manifest::{load, Manifests, ServerManifest};
 use crate::package::needed_server_runtimes;
 use crate::platform::Platform;
 use crate::registry::{self, Package, Registry};
+use crate::runtime_requirements::{RequirementCache, RuntimeRequirements};
 use crate::server_runtime::ServerRuntimes;
 
 mod project_toolchains;
@@ -30,6 +32,8 @@ pub struct MissingServerRuntime {
     pub id: ServerRuntimeId,
     pub name: String,
     pub installable: bool,
+    pub needs: Option<VersionConstraint>,
+    pub outdated: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,6 +71,7 @@ pub struct LanguageTools {
     manifests: Manifests,
     registry: Registry,
     problems: Vec<String>,
+    requirement_cache: RequirementCache,
 }
 
 fn flattened(root: &Path) -> String {
@@ -92,6 +97,7 @@ impl LanguageTools {
         let loaded = load(manifest_folders);
         Ok(Self {
             registry: registry::cached(&root),
+            requirement_cache: RequirementCache::load(&root),
             root,
             platform,
             agent: http::agent(),
@@ -128,13 +134,27 @@ impl LanguageTools {
         self
     }
 
-    fn server_runtimes<'a>(&'a self, chosen: &'a ServerRuntimePaths) -> ServerRuntimes<'a> {
+    fn server_runtimes<'a>(
+        &'a self,
+        chosen: &'a ServerRuntimePaths,
+        requirements: &'a RuntimeRequirements,
+    ) -> ServerRuntimes<'a> {
         ServerRuntimes {
             manifests: &self.manifests,
             root: &self.root,
             platform: self.platform,
             chosen,
+            requirements,
         }
+    }
+
+    pub(crate) fn plan_requirements(&self, plan: &ServerPlan) -> RuntimeRequirements {
+        self.registry
+            .package(&plan.package)
+            .map_or_else(RuntimeRequirements::new, |package| {
+                self.requirement_cache
+                    .requirements(&self.agent, &self.manifests, &package.purl)
+            })
     }
 
     fn manifest(&self, plan: &ServerPlan) -> ServerManifest {
@@ -203,7 +223,10 @@ impl LanguageTools {
         plan: &ServerPlan,
         chosen: &ServerRuntimePaths,
     ) -> Option<MissingServerRuntime> {
-        let server_runtimes = self.server_runtimes(chosen);
+        let requirements = self.plan_requirements(plan);
+        let server_runtimes = self.server_runtimes(chosen, &requirements);
+        let unconstrained = RuntimeRequirements::new();
+        let any_version = self.server_runtimes(chosen, &unconstrained);
         plan.server_runtimes
             .iter()
             .find(|id| server_runtimes.find(id).is_none())
@@ -211,6 +234,8 @@ impl LanguageTools {
                 id: id.clone(),
                 name: self.server_runtime_name(id),
                 installable: server_runtimes.installable(id),
+                needs: requirements.get(id).cloned(),
+                outdated: any_version.find(id).is_some(),
             })
     }
 
@@ -222,14 +247,15 @@ impl LanguageTools {
         id: &ServerRuntimeId,
         chosen: &ServerRuntimePaths,
     ) -> Result<(), ExtensionError> {
-        self.server_runtimes(chosen)
+        self.server_runtimes(chosen, &RuntimeRequirements::new())
             .install(id, &self.agent)
             .map(drop)
     }
 
     #[must_use]
     pub fn server_runtime_statuses(&self, chosen: &ServerRuntimePaths) -> Vec<ServerRuntimeStatus> {
-        let server_runtimes = self.server_runtimes(chosen);
+        let unconstrained = RuntimeRequirements::new();
+        let server_runtimes = self.server_runtimes(chosen, &unconstrained);
         self.manifests
             .server_runtimes
             .iter()
@@ -250,7 +276,8 @@ impl LanguageTools {
         folder: &Path,
         chosen: &ServerRuntimePaths,
     ) -> bool {
-        self.server_runtimes(chosen).accepts(id, folder)
+        self.server_runtimes(chosen, &RuntimeRequirements::new())
+            .accepts(id, folder)
     }
 
     #[must_use]
@@ -277,7 +304,8 @@ impl LanguageTools {
         root: &Path,
         chosen: &ServerRuntimePaths,
     ) -> Option<ServerLaunch> {
-        let server_runtimes = self.server_runtimes(chosen);
+        let requirements = self.plan_requirements(plan);
+        let server_runtimes = self.server_runtimes(chosen, &requirements);
         self.locate_at(&self.local_site(&server_runtimes), plan, root)
     }
 
@@ -290,7 +318,8 @@ impl LanguageTools {
         root: &Path,
         chosen: &ServerRuntimePaths,
     ) -> Result<ServerLaunch, ExtensionError> {
-        let server_runtimes = self.server_runtimes(chosen);
+        let requirements = self.plan_requirements(plan);
+        let server_runtimes = self.server_runtimes(chosen, &requirements);
         let site = self.local_site(&server_runtimes);
         self.install_at(&site, plan, root)
     }

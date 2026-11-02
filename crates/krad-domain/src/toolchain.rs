@@ -1,5 +1,6 @@
 mod activation;
 mod choice;
+mod constraint;
 mod project_folder;
 mod rank;
 mod version;
@@ -8,6 +9,7 @@ pub use activation::{GroupActivation, ToolchainActivation};
 pub use choice::{
     EffectiveToolchain, ToolchainChoice, ToolchainChoices, ToolchainScope, ToolchainSelection,
 };
+pub use constraint::{NotAConstraint, VersionConstraint};
 pub use project_folder::{NotInsideTheGroup, ProjectFolder};
 pub use rank::{rank_toolchains, DeclaredToolchain, ProjectHints, RankContext};
 pub use version::{NotAVersion, ToolchainVersion, VersionRequirement};

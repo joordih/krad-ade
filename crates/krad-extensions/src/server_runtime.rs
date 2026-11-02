@@ -1,4 +1,4 @@
-use krad_domain::{ServerRuntimeId, ServerRuntimePaths};
+use krad_domain::{ServerRuntimeId, ServerRuntimePaths, ToolchainVersion, VersionConstraint};
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -9,9 +9,10 @@ use ureq::Agent;
 use crate::archive::place;
 use crate::error::ExtensionError;
 use crate::http::{download, fetch_text, Sha256Digest};
-use crate::manifest::{Manifests, RuntimeDownload, ServerRuntimeManifest};
+use crate::manifest::{Manifests, RuntimeDownload, RuntimeMinimum, ServerRuntimeManifest};
 use crate::path_lookup::find_on_path;
 use crate::platform::{Os, Platform};
+use crate::runtime_requirements::RuntimeRequirements;
 
 pub(crate) const SERVER_RUNTIMES_DIR: &str = "toolchains";
 pub(crate) const BIN: &str = "bin";
@@ -21,15 +22,6 @@ const TILDE: &str = "~/";
 const PATH_VARIABLE: &str = "PATH";
 const URL_SEPARATOR: char = '/';
 pub(crate) const SEARCH_DEPTH: usize = 5;
-
-fn first_number(text: &str) -> Option<u32> {
-    let start = text.find(|character: char| character.is_ascii_digit())?;
-    let digits: String = text[start..]
-        .chars()
-        .take_while(char::is_ascii_digit)
-        .collect();
-    digits.parse().ok()
-}
 
 pub(crate) trait FindServerRuntime {
     fn find(&self, id: &ServerRuntimeId) -> Option<PathBuf>;
@@ -46,15 +38,32 @@ impl FindServerRuntime for ServerRuntimes<'_> {
     }
 }
 
+pub(crate) fn wanted_version(
+    server_runtime: &ServerRuntimeManifest,
+    required: Option<&VersionConstraint>,
+) -> Option<VersionConstraint> {
+    let minimum = server_runtime
+        .minimum_version
+        .as_ref()
+        .map(RuntimeMinimum::constraint);
+    match (minimum, required) {
+        (Some(minimum), Some(required)) => Some(minimum.and(required)),
+        (Some(minimum), None) => Some(minimum),
+        (None, Some(required)) => Some(required.clone()),
+        (None, None) => None,
+    }
+}
+
 pub(crate) fn meets_minimum(
     server_runtime: &ServerRuntimeManifest,
+    required: Option<&VersionConstraint>,
     success: bool,
     text: &str,
 ) -> bool {
-    match server_runtime.minimum_version {
+    match wanted_version(server_runtime, required) {
         None => success,
-        Some(minimum) => version_of(text, server_runtime.version_after.as_deref())
-            .is_some_and(|found| found >= minimum),
+        Some(wanted) => version_of(text, server_runtime.version_after.as_deref())
+            .is_some_and(|found| wanted.matches(&found)),
     }
 }
 
@@ -75,12 +84,13 @@ pub(crate) fn home_vars(
     vars
 }
 
-fn version_of(output: &str, after: Option<&str>) -> Option<u32> {
+fn version_of(output: &str, after: Option<&str>) -> Option<ToolchainVersion> {
     let text = match after {
         Some(marker) => &output[output.find(marker)? + marker.len()..],
         None => output,
     };
-    first_number(text)
+    let start = text.find(|character: char| character.is_ascii_digit())?;
+    text[start..].split_whitespace().next()?.parse().ok()
 }
 
 fn home() -> Option<PathBuf> {
@@ -102,6 +112,7 @@ pub(crate) struct ServerRuntimes<'a> {
     pub(crate) root: &'a Path,
     pub(crate) platform: Platform,
     pub(crate) chosen: &'a ServerRuntimePaths,
+    pub(crate) requirements: &'a RuntimeRequirements,
 }
 
 impl ServerRuntimes<'_> {
@@ -116,7 +127,7 @@ impl ServerRuntimes<'_> {
         format!("{base}{}", self.platform.exe())
     }
 
-    fn usable(server_runtime: &ServerRuntimeManifest, program: &Path) -> bool {
+    fn usable(&self, server_runtime: &ServerRuntimeManifest, program: &Path) -> bool {
         let Ok(output) = Command::new(program)
             .args(&server_runtime.version_args)
             .stdin(Stdio::null())
@@ -129,7 +140,12 @@ impl ServerRuntimes<'_> {
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        meets_minimum(server_runtime, output.status.success(), &text)
+        meets_minimum(
+            server_runtime,
+            self.requirements.get(&server_runtime.id),
+            output.status.success(),
+            &text,
+        )
     }
 
     fn in_folder_of(
@@ -147,7 +163,7 @@ impl ServerRuntimes<'_> {
             mac_home.join(BIN).join(&name),
         ]
         .into_iter()
-        .find(|candidate| candidate.is_file() && Self::usable(server_runtime, candidate))
+        .find(|candidate| candidate.is_file() && self.usable(server_runtime, candidate))
     }
 
     fn walk(
@@ -178,7 +194,7 @@ impl ServerRuntimes<'_> {
         from_vars
             .or_else(|| {
                 find_on_path(&server_runtime.program)
-                    .filter(|found| Self::usable(server_runtime, found))
+                    .filter(|found| self.usable(server_runtime, found))
             })
             .or_else(|| {
                 server_runtime
@@ -323,15 +339,19 @@ mod tests {
 
     #[test]
     fn versions_read_after_their_marker() {
+        let parts = |output: &str, after: Option<&str>| {
+            version_of(output, after).map(|version| version.parts().to_vec())
+        };
         assert_eq!(
-            version_of("openjdk version \"25.0.1\" 2025", Some("version \"")),
-            Some(25)
+            parts("openjdk version \"25.0.1\" 2025", Some("version \"")),
+            Some(vec![25, 0, 1])
         );
-        assert_eq!(version_of("v24.22.1", None), Some(24));
-        assert_eq!(version_of("no digits", None), None);
+        assert_eq!(parts("v24.22.1", None), Some(vec![24, 22, 1]));
+        assert_eq!(parts("Python 3.9.6", None), Some(vec![3, 9, 6]));
+        assert_eq!(parts("no digits", None), None);
         assert_eq!(
-            version_of("1.8 then version \"21\"", Some("version \"")),
-            Some(21)
+            parts("1.8 then version \"21\"", Some("version \"")),
+            Some(vec![21])
         );
     }
 }

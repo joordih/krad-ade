@@ -9,6 +9,7 @@ use crate::error::ExtensionError;
 use crate::manifest::{Manifests, ServerRuntimeManifest};
 use crate::package::{fetch_to, output, Download};
 use crate::platform::Platform;
+use crate::runtime_requirements::RuntimeRequirements;
 use crate::server_runtime::{
     download_for, download_name, home_vars, meets_minimum, source_digest, FindServerRuntime, BIN,
     SEARCH_DEPTH,
@@ -44,6 +45,7 @@ pub(crate) struct HostServerRuntimes<'a> {
     pub(crate) manifests: &'a Manifests,
     pub(crate) link: &'a HostLink,
     pub(crate) managed: Option<PathBuf>,
+    pub(crate) requirements: &'a RuntimeRequirements,
 }
 
 impl HostServerRuntimes<'_> {
@@ -58,7 +60,12 @@ impl HostServerRuntimes<'_> {
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        meets_minimum(server_runtime, output.status.success(), &text)
+        meets_minimum(
+            server_runtime,
+            self.requirements.get(&server_runtime.id),
+            output.status.success(),
+            &text,
+        )
     }
 
     fn in_folder(
