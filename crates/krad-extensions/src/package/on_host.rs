@@ -129,6 +129,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_wrong_checksum_is_refused_and_leaves_nothing_behind() -> TestResult {
         let dir = scratch("digest")?;

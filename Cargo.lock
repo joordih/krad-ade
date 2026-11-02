@@ -3900,6 +3900,7 @@ name = "krad-host"
 version = "0.2.0"
 dependencies = [
  "krad-domain",
+ "portable-pty",
  "thiserror 2.0.21",
  "tracing",
 ]
