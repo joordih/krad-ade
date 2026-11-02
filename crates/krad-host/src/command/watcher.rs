@@ -1,10 +1,11 @@
 use super::quote;
 
-const WATCHER_SCRIPT: &str = r#"exec 3>&2 2>/dev/null
-if command -v setsid >/dev/null 2>&1; then setsid sh -c "$1" </dev/null 2>&3 3>&- & else sh -c "$1" </dev/null 2>&3 3>&- & fi
+const WATCHER_SCRIPT: &str = r#"exec 3>&2 2>/dev/null 4<&0
+if command -v setsid >/dev/null 2>&1; then setsid sh -c "$1" </dev/null 2>&3 3>&- 4<&- & else sh -c "$1" </dev/null 2>&3 3>&- 4<&- & fi
 c=$!
 k() { for p in $(cat /proc/"$1"/task/*/children 2>/dev/null || pgrep -P "$1" 2>/dev/null); do k "$p"; done; kill -TERM "$1" 2>/dev/null; }
-{ cat >/dev/null; kill -TERM -"$c" 2>/dev/null; k "$c"; } & w=$!
+{ cat <&4 >/dev/null 4<&-; kill -TERM -"$c" 2>/dev/null; k "$c"; } & w=$!
+exec 4<&-
 wait "$c"; s=$?; k "$w"; exit "$s""#;
 const WATCHER_SHELL: &str = "exec sh -c";
 const WATCHER_NAME: &str = "sh";
@@ -57,6 +58,25 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(800));
             assert!(!marker.exists(), "{shell}: a child kept running");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn a_slow_command_runs_to_the_end_while_stdin_stays_open() -> TestResult {
+        for shell in shells() {
+            let mut child = Command::new(shell)
+                .arg("-c")
+                .arg(bound_to_stdin("sleep 0.3; printf late; exit 4"))
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()?;
+            let open_stdin = child.stdin.take();
+            let output = child.wait_with_output()?;
+            drop(open_stdin);
+            assert_eq!(output.stdout, b"late", "{shell}");
+            assert_eq!(output.status.code(), Some(4), "{shell}");
         }
         Ok(())
     }
