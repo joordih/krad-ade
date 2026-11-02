@@ -20,10 +20,11 @@ use super::settings_view::segmented_track;
 use super::EnvironmentShell;
 use crate::components::{card, chip, icon, Button, IconName};
 use crate::highlight::{highlight_lines, Span, Syntax};
-use crate::language::Language;
+use crate::language::is_markdown;
 use crate::theme::{
     palette, Palette, CARD_HEADER_H, ICON_SM, LINE_SM, LINE_XS, SPACE_2, SPACE_3, TEXT_SM, TEXT_XS,
 };
+use krad_domain::LanguageDef;
 use selection::CodeSelection;
 
 const BTN_CLOSE_VIEWER: &str = "close-viewer";
@@ -77,12 +78,12 @@ struct ViewerText {
     markdown: Option<SharedString>,
 }
 
-fn load(path: &Path) -> ViewerContent {
+fn load(path: &Path, language: Option<&LanguageDef>) -> ViewerContent {
     match krad_repo::read_text(path, MAX_VIEW_BYTES) {
         Ok(file) => {
             let text = file.text.replace('\t', TAB_AS_SPACES);
-            let spans = highlight_lines(&text, Syntax::from(Language::from_path(path)));
-            let markdown = is_markdown(path).then(|| SharedString::from(text.clone()));
+            let spans = highlight_lines(&text, Syntax::from(language));
+            let markdown = is_markdown(language).then(|| SharedString::from(text.clone()));
             let lines: Vec<SharedString> = text
                 .lines()
                 .map(|line| SharedString::from(line.to_owned()))
@@ -108,10 +109,6 @@ fn widest_line(lines: &[SharedString]) -> usize {
         .map_or(0, |(index, _)| index)
 }
 
-fn is_markdown(path: &Path) -> bool {
-    Language::from_path(path) == Some(Language::Markdown)
-}
-
 impl EnvironmentShell {
     pub(super) fn open_file(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         let label = self
@@ -130,9 +127,10 @@ impl EnvironmentShell {
             focus: cx.focus_handle(),
         });
         cx.notify();
+        let language = self.language_of(&path);
         let loading = cx.background_spawn({
             let path = path.clone();
-            async move { load(&path) }
+            async move { load(&path, language.as_ref()) }
         });
         cx.spawn(async move |this, cx| {
             let content = loading.await;
@@ -231,7 +229,10 @@ impl EnvironmentShell {
                 )
             })
             .children(mode_toggle)
-            .children(Language::from_path(&viewer.path).map(|language| chip(language.name(), pal)))
+            .children(
+                self.language_of(&viewer.path)
+                    .map(|language| chip(language.name, pal)),
+            )
             .child(
                 Button::new(BTN_CLOSE_VIEWER)
                     .icon(IconName::Close)
@@ -355,13 +356,5 @@ mod tests {
         let lines = ["short", "ñññññññ", "longer"].map(SharedString::from);
         assert_eq!(widest_line(&lines), 1);
         assert_eq!(widest_line(&[]), 0);
-    }
-
-    #[test]
-    fn only_markdown_files_can_render_in_any_case() {
-        assert!(is_markdown(Path::new("docs/README.md")));
-        assert!(is_markdown(Path::new("NOTES.Markdown")));
-        assert!(!is_markdown(Path::new("src/main.rs")));
-        assert!(!is_markdown(Path::new("md")));
     }
 }

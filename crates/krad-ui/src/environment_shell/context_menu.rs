@@ -26,6 +26,8 @@ pub(super) enum MenuAction {
     CloseTerminal(TerminalId),
     SwitchSurface(TerminalId),
     ShowSessionTab(TerminalId),
+    ShowEditorChat(TerminalId),
+    OpenLocation(std::path::PathBuf, krad_lsp::lsp_types::Position),
     DismissLead(SessionId),
     SetEffort(TerminalId, Effort),
     SetPermissionMode(TerminalId, PermissionMode),
@@ -303,6 +305,8 @@ impl EnvironmentShell {
             MenuAction::CloseTerminal(id) => self.close_terminal(id, cx),
             MenuAction::SwitchSurface(id) => self.switch_surface(id, window, cx),
             MenuAction::ShowSessionTab(id) => self.show_terminal_tab(id, window, cx),
+            MenuAction::ShowEditorChat(id) => self.show_editor_chat(id, cx),
+            MenuAction::OpenLocation(path, at) => self.open_file_at(&path, Some(at), cx),
             MenuAction::DismissLead(id) => self.dismiss_lead(id, cx),
             MenuAction::SetEffort(id, effort) => {
                 self.command_surface(id, SurfaceCommand::Effort(effort), cx);

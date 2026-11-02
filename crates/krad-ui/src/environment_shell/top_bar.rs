@@ -38,6 +38,7 @@ impl EnvironmentShell {
                     .gap(px(SPACE_2))
                     .child(self.top_bar_middle(cx))
                     .children(self.app_update_pill(cx))
+                    .child(self.work_mode_switch(cx))
                     .child(self.panel_toggles(cx)),
             )
     }
@@ -111,6 +112,9 @@ impl EnvironmentShell {
     }
 
     pub(super) fn active_view(&self) -> EnvironmentView {
+        if self.editing() {
+            return EnvironmentView::Sessions;
+        }
         self.envs
             .get(&self.active)
             .map_or(EnvironmentView::Sessions, |live| live.data.view)

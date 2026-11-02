@@ -4,6 +4,7 @@ use crate::gitlab::GitlabSettings;
 use crate::hue::Hue;
 use crate::mcp::McpSettings;
 use crate::model::{lenient_model_lists, ModelId};
+use crate::toolchain::{ExtensionEntry, ToolchainPaths};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -177,6 +178,10 @@ pub struct Settings {
     pub window_tint: WindowTint,
     #[serde(default)]
     pub app_updates: AppUpdateCheck,
+    #[serde(default, skip_serializing_if = "ToolchainPaths::is_empty")]
+    pub toolchains: ToolchainPaths,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extensions: Vec<ExtensionEntry>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]

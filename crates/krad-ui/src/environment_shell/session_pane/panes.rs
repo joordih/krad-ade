@@ -223,8 +223,8 @@ impl EnvironmentShell {
         let split = self
             .envs
             .get(&self.active)
-            .and_then(|live| live.data.current_session())
-            .is_some_and(|session| session.panes.panes.len() > 1);
+            .and_then(|live| self.shown_panes(live))
+            .is_some_and(|panes| panes.panes.len() > 1);
         if split {
             PANE_STRIP_H
         } else {
@@ -268,18 +268,16 @@ impl EnvironmentShell {
         live: &LiveEnv,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let Some(session) = live.data.current_session() else {
+        let Some(shown) = self.shown_panes(live) else {
             return div().into_any_element();
         };
         let size = self.canvas_px;
-        let panes: Vec<AnyElement> = session
-            .panes
+        let panes: Vec<AnyElement> = shown
             .layout()
             .into_iter()
-            .map(|(id, rect)| self.pane_card(live, &session.panes, id, rect, size, cx))
+            .map(|(id, rect)| self.pane_card(live, &shown, id, rect, size, cx))
             .collect();
-        let dividers: Vec<AnyElement> = session
-            .panes
+        let dividers: Vec<AnyElement> = shown
             .dividers()
             .into_iter()
             .map(|(divider, axis, ratio, frame)| {
@@ -544,14 +542,14 @@ impl EnvironmentShell {
     }
 
     fn zone_under(&self, ux: f32, uy: f32, height: f32) -> (Option<DropTarget>, Option<UnitRect>) {
-        let Some(session) = self
+        let Some(panes) = self
             .envs
             .get(&self.active)
-            .and_then(|live| live.data.current_session())
+            .and_then(|live| self.shown_panes(live))
         else {
             return (None, None);
         };
-        let hit = session.panes.layout().into_iter().find(|(_, rect)| {
+        let hit = panes.layout().into_iter().find(|(_, rect)| {
             ux >= rect.x && ux <= rect.x + rect.w && uy >= rect.y && uy <= rect.y + rect.h
         });
         let Some((pane, rect)) = hit else {

@@ -1,11 +1,16 @@
+use gpui_kit::component::input::{
+    GoToDefinition, Redo, Replace, ShowCompletions, ToggleCodeActions,
+};
 use gpui_kit::KeyBinding;
 
 use crate::actions::{
-    AskConfirm, AskDeny, CopySelection, NewAgent, NewTerminal, OpenSettings, PasteClipboard,
-    RenameFile, SaveFile, SearchTerminal, SendBackTab, SendTab, SplitTerminal, TextLarger,
-    TextReset, TextSmaller, ToggleActivity, ToggleFps, TogglePalette, ToggleSidePanel,
-    ToggleSidebar, ASK_KEY_CONTEXT, FILE_TAB_KEY_CONTEXT, FILE_TREE_KEY_CONTEXT, SHELL_KEY_CONTEXT,
-    VIEWER_KEY_CONTEXT,
+    AcceptCompletion, AskConfirm, AskDeny, CopySelection, DeleteLine, DuplicateLine, FindInFiles,
+    FindReferences, MoveLineDown, MoveLineUp, NewAgent, NewTerminal, NextProblem, OpenSettings,
+    PasteClipboard, PreviousProblem, QuickOpen, Reformat, RenameFile, RenameSymbol, SaveFile,
+    SearchTerminal, SendBackTab, SendTab, SplitTerminal, TextLarger, TextReset, TextSmaller,
+    ToggleActivity, ToggleFps, ToggleLineComment, TogglePalette, ToggleSidePanel, ToggleSidebar,
+    ToggleWorkMode, ASK_KEY_CONTEXT, EDITOR_KEY_CONTEXT, FILE_TAB_KEY_CONTEXT,
+    FILE_TREE_KEY_CONTEXT, SHELL_KEY_CONTEXT, VIEWER_KEY_CONTEXT,
 };
 #[cfg(target_os = "macos")]
 use crate::actions::{HideApp, HideOtherApps, MinimizeWindow, Quit};
@@ -26,6 +31,16 @@ mod keys {
     pub(super) const TOGGLE_ACTIVITY: &str = "cmd-shift-e";
     pub(super) const TOGGLE_SIDEBAR: &str = "cmd-ctrl-s";
     pub(super) const TOGGLE_SIDE_PANEL: &str = "cmd-alt-b";
+    pub(super) const TOGGLE_WORK_MODE: &str = "cmd-alt-e";
+    pub(super) const QUICK_OPEN: &str = "cmd-shift-o";
+    pub(super) const REFORMAT: &str = "cmd-alt-l";
+    pub(super) const FIND_IN_FILES: &str = "cmd-shift-f";
+    pub(super) const GO_TO_DEFINITION: &str = "cmd-b";
+    pub(super) const REPLACE: &str = "cmd-r";
+    pub(super) const DUPLICATE_LINE: &str = "cmd-d";
+    pub(super) const DELETE_LINE: &str = "cmd-backspace";
+    pub(super) const TOGGLE_LINE_COMMENT: &str = "cmd-/";
+    pub(super) const REDO: &str = "cmd-shift-z";
     pub(super) const SAVE_FILE: &str = "cmd-s";
     pub(super) const OPEN_SETTINGS: &str = "cmd-,";
     pub(super) const TEXT_LARGER: &str = "cmd-alt-=";
@@ -69,6 +84,16 @@ mod keys {
     pub(super) const TOGGLE_ACTIVITY: &str = "ctrl-shift-e";
     pub(super) const TOGGLE_SIDEBAR: &str = "ctrl-shift-b";
     pub(super) const TOGGLE_SIDE_PANEL: &str = "ctrl-alt-b";
+    pub(super) const TOGGLE_WORK_MODE: &str = "ctrl-alt-e";
+    pub(super) const QUICK_OPEN: &str = "ctrl-shift-n";
+    pub(super) const REFORMAT: &str = "ctrl-alt-l";
+    pub(super) const FIND_IN_FILES: &str = "ctrl-shift-f";
+    pub(super) const GO_TO_DEFINITION: &str = "ctrl-b";
+    pub(super) const REPLACE: &str = "ctrl-r";
+    pub(super) const DUPLICATE_LINE: &str = "ctrl-d";
+    pub(super) const DELETE_LINE: &str = "ctrl-y";
+    pub(super) const TOGGLE_LINE_COMMENT: &str = "ctrl-/";
+    pub(super) const REDO: &str = "ctrl-shift-z";
     pub(super) const SAVE_FILE: &str = "ctrl-s";
     pub(super) const OPEN_SETTINGS: &str = "ctrl-,";
     pub(super) const TEXT_LARGER: &str = "ctrl-alt-=";
@@ -80,6 +105,15 @@ mod keys {
 const SEND_TAB: &str = "tab";
 const SEND_BACK_TAB: &str = "shift-tab";
 const RENAME_FILE: &str = "f2";
+const FIND_REFERENCES: &str = "alt-f7";
+const ACCEPT_COMPLETION: &str = "tab";
+const SHOW_COMPLETIONS: &str = "ctrl-space";
+const CODE_ACTIONS: &str = "alt-enter";
+const MOVE_LINE_UP: &str = "alt-shift-up";
+const MOVE_LINE_DOWN: &str = "alt-shift-down";
+const NEXT_PROBLEM: &str = "f2";
+const PREVIOUS_PROBLEM: &str = "shift-f2";
+const RENAME_SYMBOL: &str = "shift-f6";
 const ASK_CONFIRM: &str = "enter";
 const ASK_DENY: &str = "escape";
 
@@ -102,6 +136,8 @@ pub fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new(keys::TOGGLE_ACTIVITY, ToggleActivity, scope),
         KeyBinding::new(keys::TOGGLE_SIDEBAR, ToggleSidebar, scope),
         KeyBinding::new(keys::TOGGLE_SIDE_PANEL, ToggleSidePanel, scope),
+        KeyBinding::new(keys::TOGGLE_WORK_MODE, ToggleWorkMode, scope),
+        KeyBinding::new(keys::QUICK_OPEN, QuickOpen, scope),
         KeyBinding::new(keys::OPEN_SETTINGS, OpenSettings, scope),
         KeyBinding::new(keys::TEXT_LARGER, TextLarger, scope),
         KeyBinding::new(keys::TEXT_SMALLER, TextSmaller, scope),
@@ -115,5 +151,30 @@ pub fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new(ASK_CONFIRM, AskConfirm, Some(ASK_KEY_CONTEXT)),
         KeyBinding::new(ASK_DENY, AskDeny, Some(ASK_KEY_CONTEXT)),
     ]);
+    bindings.extend(editor_bindings());
     bindings
+}
+
+fn editor_bindings() -> Vec<KeyBinding> {
+    let editor = Some(EDITOR_KEY_CONTEXT);
+    vec![
+        KeyBinding::new(ACCEPT_COMPLETION, AcceptCompletion, editor),
+        KeyBinding::new(SHOW_COMPLETIONS, ShowCompletions, editor),
+        KeyBinding::new(keys::GO_TO_DEFINITION, GoToDefinition, editor),
+        KeyBinding::new(FIND_REFERENCES, FindReferences, editor),
+        KeyBinding::new(CODE_ACTIONS, ToggleCodeActions, editor),
+        KeyBinding::new(keys::REPLACE, Replace, editor),
+        KeyBinding::new(keys::REDO, Redo, editor),
+        KeyBinding::new(keys::DUPLICATE_LINE, DuplicateLine, editor),
+        KeyBinding::new(keys::DELETE_LINE, DeleteLine, editor),
+        KeyBinding::new(MOVE_LINE_UP, MoveLineUp, editor),
+        KeyBinding::new(MOVE_LINE_DOWN, MoveLineDown, editor),
+        KeyBinding::new(keys::TOGGLE_LINE_COMMENT, ToggleLineComment, editor),
+        KeyBinding::new(NEXT_PROBLEM, NextProblem, editor),
+        KeyBinding::new(PREVIOUS_PROBLEM, PreviousProblem, editor),
+        KeyBinding::new(RENAME_SYMBOL, RenameSymbol, editor),
+        KeyBinding::new(keys::REFORMAT, Reformat, editor),
+        KeyBinding::new(keys::FIND_IN_FILES, FindInFiles, editor),
+        KeyBinding::new(keys::FIND_IN_FILES, FindInFiles, Some(SHELL_KEY_CONTEXT)),
+    ]
 }

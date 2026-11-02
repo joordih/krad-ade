@@ -8,7 +8,39 @@ Desktop ADE to run many coding agents at once, as chats or terminals, organised 
 
 **ADE**:
 Agentic development environment to drive many terminals at once.
-_Avoid_: IDE, editor, terminal
+_Avoid_: IDE, terminal
+
+**Work mode**:
+How the whole window is laid out for the work at hand: ADE mode or Editor mode. Switching it closes nothing and loses no session, tab or open file.
+_Avoid_: layout, view, perspective
+
+**ADE mode**:
+The default work mode: sessions and their chats and terminals take the work area, with the views Sessions, Notes and Review.
+_Avoid_: agent mode, chat mode
+
+**Editor mode**:
+The work mode for editing code: open files take the work area, an agent's chat sits in the side panel and terminals in the utilities panel, the same ones ADE mode shows.
+_Avoid_: IDE, code mode, Zed mode
+
+**Language server**:
+Program that understands one language of a group's files and gives their file tabs diagnostics, completion, hover, go to definition, references, rename, formatting and quick fixes. One runs per group and language; the app installs it after asking, the first time a file of that language opens.
+_Avoid_: LSP, plugin, extension
+
+**Language manifest**:
+Data that defines a language for the app: its file extensions, comment marker and highlighter grammar, its default language server from the package registry, how that server starts and which toolchains it needs. Adding a language is writing one, never code.
+_Avoid_: language config, language plugin
+
+**Toolchain**:
+The SDK or runtime a language server or a language's projects need, such as Rust's cargo, Node.js, Go, a JDK or Python. It is found in the folder the user chose, then on the system, then in the copy the app installed; when missing, the user installs it or points to its folder.
+_Avoid_: SDK (in code), runtime, dependency
+
+**Package registry**:
+Mason's public list of language servers and tools and how to fetch each one, which the app downloads and caches.
+_Avoid_: Mason (in UI), catalogue, marketplace
+
+**Extension**:
+A folder of language and toolchain manifests the user adds from Settings, from a git address or a local folder, and can update, disable or remove.
+_Avoid_: plugin, add-on, Zed extension
 
 **Environment**:
 Work context the user handles as one: its groups, which may come from different repositories, and their sessions.

@@ -8,6 +8,7 @@ use krad_domain::{relative_age, Visibility};
 use std::collections::VecDeque;
 use std::time::Instant;
 
+mod problems;
 mod tabs;
 
 pub(super) use tabs::{TerminalsTab, UtilityTab};
@@ -254,6 +255,7 @@ impl EnvironmentShell {
         let empty = rows.is_empty();
         let height = self.activity_log.height;
         let docked = self.activity_terminal();
+        let problems = self.utility_tab() == UtilityTab::Problems;
         let panel = card(pal, cx)
             .id(PANEL_ID)
             .relative()
@@ -298,7 +300,10 @@ impl EnvironmentShell {
             .when_some(docked, |panel, id| {
                 panel.child(self.utility_terminal_view(id, cx))
             })
-            .when(docked.is_none(), |panel| {
+            .when(docked.is_none() && problems, |panel| {
+                panel.child(self.problems_body(cx))
+            })
+            .when(docked.is_none() && !problems, |panel| {
                 panel.child(
                     div()
                         .id(LIST_ID)

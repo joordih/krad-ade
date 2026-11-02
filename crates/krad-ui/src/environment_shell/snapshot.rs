@@ -27,6 +27,8 @@ impl EnvironmentShell {
             self.envs.insert(name.clone(), LiveEnv::new(data, None));
             restored += self.spawn_missing_sessions(&name);
         }
+        self.work_mode = snapshot.work_mode;
+        self.sidebar_w = snapshot.sidebar_width;
         let active = snapshot.active;
         if self.envs.contains_key(&active) {
             self.active = active;
@@ -78,6 +80,8 @@ impl EnvironmentShell {
             version: LAYOUT_SCHEMA_VERSION,
             active: self.active.clone(),
             environments,
+            work_mode: self.work_mode,
+            sidebar_width: self.sidebar_w,
         }
     }
 

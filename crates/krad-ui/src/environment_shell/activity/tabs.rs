@@ -48,11 +48,12 @@ pub(in crate::environment_shell) enum UtilityTab {
     #[default]
     Log,
     Terminals,
+    Problems,
     Docked(TerminalId),
 }
 
 impl EnvironmentShell {
-    fn utility_tab(&self) -> UtilityTab {
+    pub(super) fn utility_tab(&self) -> UtilityTab {
         let Some(live) = self.envs.get(&self.active) else {
             return UtilityTab::Log;
         };
@@ -68,7 +69,7 @@ impl EnvironmentShell {
         }
     }
 
-    fn set_utility_tab(&mut self, tab: UtilityTab, cx: &mut Context<Self>) {
+    pub(super) fn set_utility_tab(&mut self, tab: UtilityTab, cx: &mut Context<Self>) {
         let env = self.active.clone();
         if let Some(live) = self.envs.get_mut(&env) {
             live.utility_tab = tab;
@@ -128,7 +129,7 @@ impl EnvironmentShell {
 
     pub(super) fn activity_terminal(&self) -> Option<TerminalId> {
         match self.utility_tab() {
-            UtilityTab::Log => None,
+            UtilityTab::Log | UtilityTab::Problems => None,
             UtilityTab::Terminals => self.shown_system_terminal(),
             UtilityTab::Docked(id) => Some(id),
         }
@@ -169,6 +170,7 @@ impl EnvironmentShell {
             .child(icon(IconName::PanelBottom, ICON_SM, pal.text_muted))
             .child(div().font_weight(FontWeight::MEDIUM).child(LOG_LABEL))
             .into_any_element();
+        let problems = self.problems_tab(shown, cx);
         let offered = self
             .envs
             .get(&self.active)
@@ -225,6 +227,7 @@ impl EnvironmentShell {
             .min_w_0()
             .overflow_hidden()
             .child(log)
+            .child(problems)
             .children(terminals)
             .children(tabs)
             .into_any_element()

@@ -43,7 +43,7 @@ impl EnvironmentShell {
             .map_or_else(SidePanelSection::default, |layout| layout.section)
     }
 
-    pub(super) fn side_section(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(in crate::environment_shell) fn side_section(&self, cx: &mut Context<Self>) -> AnyElement {
         let shown = self.side_section_shown();
         let body = match shown {
             SidePanelSection::Explorer => self.side_files(cx),
@@ -72,21 +72,23 @@ impl EnvironmentShell {
         div()
             .flex()
             .flex_row()
+            .flex_wrap()
             .flex_none()
             .items_center()
             .gap(px(SPACE_0_5))
-            .h(px(HEADER_H))
+            .min_h(px(HEADER_H))
             .px(px(SPACE_1_5))
+            .py(px(SPACE_1))
             .border_b(px(RULE_H))
             .border_color(pal.divider)
             .children(tabs)
-            .child(div().flex_1())
             .when_some(totals, |header, totals| {
                 header.child(
                     div()
                         .flex()
                         .flex_row()
                         .flex_none()
+                        .ml_auto()
                         .gap(px(SPACE_1))
                         .pr(px(SPACE_1))
                         .text_size(px(TEXT_XS))

@@ -4,16 +4,20 @@ use gpui_kit::{
     div, px, Action, AnyElement, App, Context, InteractiveElement, IntoElement, MouseButton,
     ParentElement, Styled, WeakEntity, Window,
 };
-use krad_domain::{AgentPreset, EnvironmentName};
+use krad_domain::{AgentPreset, EnvironmentName, FileOpening};
+use std::path::PathBuf;
 
+mod files;
 mod row;
 
+use files::file_group;
 use row::{command_row, palette_footer, Glyph};
 
 use super::notes_view::{note_line_label, NoteLine};
 use super::EnvironmentShell;
 use crate::actions::{
     NewAgent, OpenSettings, ToggleActivity, ToggleFps, ToggleSidePanel, ToggleSidebar,
+    ToggleWorkMode,
 };
 use crate::components::{harness_icon, IconName};
 use crate::theme::{floating_shadow, scrim_fill, Palette, RADIUS_LG};
@@ -21,12 +25,13 @@ use crate::theme::{floating_shadow, scrim_fill, Palette, RADIUS_LG};
 const PALETTE_W: f32 = 620.0;
 const PALETTE_TOP: f32 = 120.0;
 
-const PALETTE_SECTION_NEW: usize = 0;
-const PALETTE_SECTION_ENV: usize = 1;
-const PALETTE_SECTION_GROUPS: usize = 2;
-const PALETTE_SECTION_VIEW: usize = 3;
-const PALETTE_SECTION_NOTES: usize = 4;
-const PALETTE_SECTION_NOTE_LINES: usize = 5;
+const PALETTE_SECTION_FILES: usize = 0;
+const PALETTE_SECTION_NEW: usize = 1;
+const PALETTE_SECTION_ENV: usize = 2;
+const PALETTE_SECTION_GROUPS: usize = 3;
+const PALETTE_SECTION_VIEW: usize = 4;
+const PALETTE_SECTION_NOTES: usize = 5;
+const PALETTE_SECTION_NOTE_LINES: usize = 6;
 const PALETTE_GROUP_NEW: &str = "New terminal in the selected group";
 const PALETTE_GROUP_ENV: &str = "Environments";
 const PALETTE_GROUP_GROUPS: &str = "Groups and git";
@@ -34,7 +39,7 @@ const PALETTE_GROUP_VIEW: &str = "View";
 const PALETTE_GROUP_NOTES: &str = "Notes";
 const PALETTE_GROUP_NOTE_LINES: &str = "In notes";
 const NOTE_SUFFIX: &str = ".md";
-const PALETTE_PLACEHOLDER: &str = "Search commands, notes and environments…";
+const PALETTE_PLACEHOLDER: &str = "Search files, commands, notes and environments…";
 const NOTE_GLYPH: Glyph = (IconName::Note, None);
 const NOTE_LINE_GLYPH: Glyph = (IconName::Search, None);
 
@@ -46,7 +51,8 @@ const PALETTE_GROUPS: [(&str, PaletteCmd); 5] = [
     ("Close file viewer", PaletteCmd::CloseViewer),
 ];
 
-const PALETTE_VIEW: [(&str, PaletteCmd); 13] = [
+const PALETTE_VIEW: [(&str, PaletteCmd); 14] = [
+    ("Switch work mode", PaletteCmd::ToggleWorkMode),
     ("Settings…", PaletteCmd::OpenSettings),
     ("Check for updates", PaletteCmd::CheckForUpdates),
     ("New agent with a prompt…", PaletteCmd::NewAgent),
@@ -74,6 +80,7 @@ enum PaletteCmd {
     ToggleActivity,
     ToggleSidebar,
     ToggleSidePanel,
+    ToggleWorkMode,
     CloseFocused,
     CloseEnv,
     NewGroup,
@@ -85,9 +92,11 @@ enum PaletteCmd {
     CheckForUpdates,
     NewAgent,
     OpenNote(String, Option<u32>),
+    OpenFile(PathBuf),
 }
 
 struct PaletteRows {
+    files: Vec<PathBuf>,
     agents: Vec<AgentPreset>,
     envs: Vec<EnvironmentName>,
     notes: Vec<String>,
@@ -105,6 +114,8 @@ impl PaletteCmd {
             Self::ToggleActivity => IconName::PanelBottom,
             Self::ToggleSidebar => IconName::SidebarLeft,
             Self::ToggleSidePanel => IconName::SidebarRight,
+            Self::ToggleWorkMode => IconName::Layers,
+            Self::OpenFile(_) => IconName::File,
             Self::NewGroup => IconName::FolderAdd,
             Self::RemoveGroup | Self::RemoveWorktree => IconName::Minus,
             Self::NewWorktree => IconName::GitBranch,
@@ -122,6 +133,7 @@ impl PaletteCmd {
             Self::ToggleActivity => Box::new(ToggleActivity),
             Self::ToggleSidebar => Box::new(ToggleSidebar),
             Self::ToggleSidePanel => Box::new(ToggleSidePanel),
+            Self::ToggleWorkMode => Box::new(ToggleWorkMode),
             Self::OpenSettings => Box::new(OpenSettings),
             Self::NewAgent => Box::new(NewAgent),
             _ => return None,
@@ -135,11 +147,17 @@ impl PaletteCmd {
 
     fn from_path(path: &IndexPath, rows: &PaletteRows) -> Option<Self> {
         let PaletteRows {
+            files,
             agents,
             envs,
             notes,
             note_lines,
         } = rows;
+        for (index, file) in files.iter().enumerate() {
+            if path.eq_row(IndexPath::new(index).section(PALETTE_SECTION_FILES)) {
+                return Some(Self::OpenFile(file.clone()));
+            }
+        }
         for (index, note) in notes.iter().enumerate() {
             if path.eq_row(IndexPath::new(index).section(PALETTE_SECTION_NOTES)) {
                 return Some(Self::OpenNote(note.clone(), None));
@@ -178,6 +196,8 @@ impl EnvironmentShell {
     pub(super) fn toggle_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.palette_open = !self.palette_open;
         if self.palette_open {
+            self.palette_files.clear();
+            self.index_palette_files(cx);
             if let Some(palette) = &self.palette {
                 palette.update(cx, |state, cx| {
                     state.set_query("", window, cx);
@@ -215,6 +235,8 @@ impl EnvironmentShell {
             PaletteCmd::ToggleActivity => self.toggle_activity(cx),
             PaletteCmd::ToggleSidebar => self.toggle_sidebar(cx),
             PaletteCmd::ToggleSidePanel => self.toggle_side_panel(cx),
+            PaletteCmd::ToggleWorkMode => self.toggle_work_mode(cx),
+            PaletteCmd::OpenFile(path) => self.open_file_tab(&path, FileOpening::Pinned, cx),
             PaletteCmd::CloseFocused => self.close_focused(cx),
             PaletteCmd::CloseEnv => {
                 let active = self.active.clone();
@@ -253,7 +275,9 @@ impl EnvironmentShell {
             return div().into_any_element();
         }
         let query = state.read(cx).query(cx).to_string();
+        let root = self.palette_root();
         let rows = PaletteRows {
+            files: self.palette_files.clone(),
             agents: self.installed_agents().to_vec(),
             envs: self.order.clone(),
             notes: self.palette_notes(&query),
@@ -265,6 +289,7 @@ impl EnvironmentShell {
         let left = ((vp_w - PALETTE_W) / 2.0).max(0.0);
         let command =
             Command::new(&state)
+                .group(file_group(&rows.files, root.as_deref(), &query))
                 .group(
                     CommandGroup::new()
                         .label(PALETTE_GROUP_NEW)
@@ -298,7 +323,10 @@ impl EnvironmentShell {
                 .footer(|_, _, cx| palette_footer(cx))
                 .on_query(move |query: &str, _: &mut Window, cx: &mut App| {
                     weak_query
-                        .update(cx, |shell, cx| shell.search_notes(query, cx))
+                        .update(cx, |shell, cx| {
+                            shell.find_palette_files(query);
+                            shell.search_notes(query, cx);
+                        })
                         .unwrap_or_default();
                 })
                 .on_confirm(move |path: IndexPath, window: &mut Window, cx: &mut App| {
@@ -316,32 +344,7 @@ impl EnvironmentShell {
                 .on_cancel(move |window: &mut Window, cx: &mut App| {
                     dismiss(&weak_cancel, window, cx);
                 });
-        div()
-            .absolute()
-            .inset_0()
-            .child(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .bg(scrim_fill(pal, cx))
-                    .occlude()
-                    .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                        dismiss(&weak_backdrop, window, cx);
-                    }),
-            )
-            .child(
-                div()
-                    .absolute()
-                    .left(px(left))
-                    .top(px(PALETTE_TOP))
-                    .w(px(PALETTE_W))
-                    .rounded(px(RADIUS_LG))
-                    .overflow_hidden()
-                    .shadow(floating_shadow(pal))
-                    .occlude()
-                    .child(command),
-            )
-            .into_any_element()
+        palette_frame(command, left, pal, weak_backdrop, cx)
     }
 }
 
@@ -364,6 +367,41 @@ fn note_lines_group(lines: &[NoteLine], query: &str) -> CommandGroup {
         .items(lines.iter().map(|line| {
             command_row(note_line_label(line), NOTE_LINE_GLYPH, None).keywords([query.to_owned()])
         }))
+}
+
+fn palette_frame(
+    command: Command,
+    left: f32,
+    pal: &Palette,
+    backdrop: WeakEntity<EnvironmentShell>,
+    cx: &App,
+) -> AnyElement {
+    div()
+        .absolute()
+        .inset_0()
+        .child(
+            div()
+                .absolute()
+                .inset_0()
+                .bg(scrim_fill(pal, cx))
+                .occlude()
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                    dismiss(&backdrop, window, cx);
+                }),
+        )
+        .child(
+            div()
+                .absolute()
+                .left(px(left))
+                .top(px(PALETTE_TOP))
+                .w(px(PALETTE_W))
+                .rounded(px(RADIUS_LG))
+                .overflow_hidden()
+                .shadow(floating_shadow(pal))
+                .occlude()
+                .child(command),
+        )
+        .into_any_element()
 }
 
 fn dismiss(shell: &WeakEntity<EnvironmentShell>, window: &mut Window, cx: &mut App) {

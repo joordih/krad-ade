@@ -4,6 +4,8 @@ mod sheets;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{AppContext as _, Context, Entity, Subscription, Window};
 use krad_domain::{EnvironmentName, GroupId, SessionId};
+use krad_lsp::lsp_types::Position;
+use std::path::PathBuf;
 
 use super::native_alert::Confirmation;
 use super::EnvironmentShell;
@@ -20,6 +22,11 @@ const DELETE_CANCEL: &str = "Cancel";
 pub(super) enum NameTarget {
     Environment(EnvironmentName),
     Group(GroupId),
+    Symbol {
+        path: PathBuf,
+        at: Position,
+        word: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -99,6 +106,7 @@ impl EnvironmentShell {
                 .get(&self.active)
                 .and_then(|live| live.data.group(*id))
                 .map(|group| group.name.clone()),
+            NameTarget::Symbol { word, .. } => Some(word.clone()),
         }
     }
 
@@ -123,6 +131,10 @@ impl EnvironmentShell {
                     {
                         group.name = typed;
                     }
+                }
+                NameTarget::Symbol { path, at, .. } => {
+                    self.rename_symbol(&path, at, typed, cx);
+                    return;
                 }
             }
             self.store();

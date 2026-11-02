@@ -14,6 +14,7 @@ mod dialog_parts;
 mod disk_text;
 mod docs_generate;
 mod drag;
+mod editor_keys;
 mod environment_menu;
 mod environment_order;
 mod file_tab;
@@ -22,6 +23,7 @@ mod gateway;
 mod groups;
 mod harness_models;
 mod input;
+mod language_servers;
 mod layout;
 mod markdown_images;
 mod mcp;
@@ -53,6 +55,7 @@ mod terminal_status;
 mod terminal_text;
 mod top_bar;
 mod window_close;
+mod work_mode;
 mod worktrees;
 
 use futures::channel::mpsc::{Receiver as PumpReceiver, Sender as PumpSender};
@@ -64,8 +67,8 @@ use gpui_kit::{
 };
 use krad_domain::{
     AgentPreset, EnvironmentData, EnvironmentName, EnvironmentView, GroupId, PersistedLayout,
-    Prompt, Settings, TerminalId, TerminalMeta, Visibility, DEFAULT_ENVIRONMENT,
-    SCROLLBACK_PERSIST_LINES,
+    Prompt, Settings, SidebarWidth, TerminalId, TerminalMeta, Visibility, WorkMode,
+    DEFAULT_ENVIRONMENT, SCROLLBACK_PERSIST_LINES,
 };
 use krad_store::LayoutWriter;
 use std::collections::{HashMap, HashSet};
@@ -105,6 +108,7 @@ struct LiveEnv {
     activity_docked: Vec<TerminalId>,
     utility_tab: activity::UtilityTab,
     terminals_tab: activity::TerminalsTab,
+    pending_cursors: HashMap<TerminalId, krad_lsp::lsp_types::Position>,
 }
 
 impl LiveEnv {
@@ -137,6 +141,7 @@ impl LiveEnv {
             activity_docked: Vec::new(),
             utility_tab: activity::UtilityTab::Log,
             terminals_tab: activity::TerminalsTab::Hidden,
+            pending_cursors: HashMap::new(),
         }
     }
 }
@@ -166,6 +171,8 @@ pub struct EnvironmentShell {
     window_background: Option<(WindowBackgroundAppearance, bool)>,
     material_watch: Option<Subscription>,
     palette_open: bool,
+    palette_files: Vec<PathBuf>,
+    language_servers: language_servers::LanguageServers,
     pub palette: Option<Entity<CommandState>>,
     pub self_ref: Option<WeakEntity<Self>>,
     pump_task: Option<Task<()>>,
@@ -188,6 +195,8 @@ pub struct EnvironmentShell {
     sidebar_peek: sidebar::Peek,
     chat_landings: HashMap<TerminalId, PanelReveal>,
     side_panel_view: EnvironmentView,
+    work_mode: WorkMode,
+    sidebar_w: SidebarWidth,
     side_reveal: PanelReveal,
     side_search: side_panel::SideSearch,
     changes_expanded: HashSet<PathBuf>,
@@ -266,6 +275,8 @@ impl EnvironmentShell {
             window_background: None,
             material_watch: None,
             palette_open: false,
+            palette_files: Vec::new(),
+            language_servers: language_servers::LanguageServers::new(),
             palette: None,
             self_ref: None,
             pump_task: None,
@@ -288,6 +299,8 @@ impl EnvironmentShell {
             sidebar_peek: sidebar::Peek::Off,
             chat_landings: HashMap::new(),
             side_panel_view: EnvironmentView::Sessions,
+            work_mode: WorkMode::default(),
+            sidebar_w: SidebarWidth::default(),
             side_reveal: PanelReveal::new(false),
             side_search: side_panel::SideSearch::default(),
             changes_expanded: HashSet::new(),
@@ -332,6 +345,7 @@ impl EnvironmentShell {
         shell.pump_task = Some(Self::start_pump(pump_rx, cx));
         Self::detect_agents(cx);
         shell.start_git_watch(cx);
+        shell.load_language_tools(cx);
         shell
     }
 
