@@ -30,28 +30,9 @@ jobs:
 
   linux-agents:
     needs: version
-    strategy:
-      matrix:
-        include:
-          - runner: ubuntu-22.04
-            platform: linux-x86_64
-            target: x86_64-unknown-linux-musl
-          - runner: ubuntu-24.04-arm
-            platform: linux-aarch64
-            target: aarch64-unknown-linux-musl
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - run: rustup target add ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
-      - run: cargo build --release --locked -p krad-app --bin krad-ade-agents --no-default-features --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: agents-${{ matrix.platform }}
-          path: target/${{ matrix.target }}/release/krad-ade-agents
+    uses: ./.github/workflows/linux-agents.yml
+    with:
+      upload: true
 
   linux:
     needs: [version, linux-agents]
