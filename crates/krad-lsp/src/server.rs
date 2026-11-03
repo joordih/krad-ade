@@ -64,13 +64,7 @@ impl LanguageServer {
             .iter()
             .map(|folder| workspace_folder(folder))
             .collect::<Result<Vec<_>, _>>()?;
-        let params = InitializeParams {
-            process_id: link.is_local().then(std::process::id),
-            workspace_folders: Some(folders),
-            capabilities: client_capabilities(),
-            initialization_options: options,
-            ..InitializeParams::default()
-        };
+        let params = initialize_params(link, folders, options);
         let result = client.request::<Initialize>(&params).await?;
         client.notify::<Initialized>(&InitializedParams {})?;
         Ok(result.capabilities)
@@ -87,6 +81,22 @@ impl Drop for LanguageServer {
     fn drop(&mut self) {
         self.stop();
         self.child.kill().unwrap_or_default();
+    }
+}
+
+#[allow(deprecated)]
+fn initialize_params(
+    link: &HostLink,
+    folders: Vec<lsp_types::WorkspaceFolder>,
+    options: Option<Value>,
+) -> InitializeParams {
+    InitializeParams {
+        process_id: link.is_local().then(std::process::id),
+        root_uri: folders.first().map(|folder| folder.uri.clone()),
+        workspace_folders: Some(folders),
+        capabilities: client_capabilities(),
+        initialization_options: options,
+        ..InitializeParams::default()
     }
 }
 
@@ -185,5 +195,23 @@ fn client_capabilities() -> ClientCapabilities {
             ..WorkspaceClientCapabilities::default()
         }),
         ..ClientCapabilities::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[allow(deprecated)]
+    fn the_first_workspace_folder_is_also_the_root_older_servers_read() -> Result<(), LspError> {
+        let folder = workspace_folder(Path::new("/work/loader"))?;
+        let params = initialize_params(&HostLink::Local, vec![folder.clone()], None);
+        assert_eq!(params.root_uri, Some(folder.uri));
+        assert_eq!(
+            params.workspace_folders.map(|folders| folders.len()),
+            Some(1)
+        );
+        Ok(())
     }
 }
