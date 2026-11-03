@@ -8,7 +8,9 @@ use ureq::Agent;
 
 use crate::error::ExtensionError;
 use crate::http;
-use crate::manifest::{load, Manifests, ProjectCheck, ServerManifest, ServerScope};
+use crate::manifest::{
+    load_with, BundledManifest, Manifests, ProjectCheck, ServerManifest, ServerScope,
+};
 use crate::package::needed_server_runtimes;
 use crate::platform::Platform;
 use crate::registry::{self, Package, Registry};
@@ -94,9 +96,20 @@ impl LanguageTools {
     ///
     /// Returns [`ExtensionError::Unsupported`] on a platform the engine does not know.
     pub fn load(config_dir: &Path, manifest_folders: &[PathBuf]) -> Result<Self, ExtensionError> {
+        Self::load_with(config_dir, manifest_folders, &[])
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`ExtensionError::Unsupported`] on a platform without builds.
+    pub fn load_with(
+        config_dir: &Path,
+        manifest_folders: &[PathBuf],
+        bundled: &[BundledManifest],
+    ) -> Result<Self, ExtensionError> {
         let platform = Platform::current().ok_or(ExtensionError::Unsupported)?;
         let root = config_dir.join(LANGUAGES_DIR);
-        let loaded = load(manifest_folders);
+        let loaded = load_with(manifest_folders, bundled);
         Ok(Self {
             registry: registry::cached(&root).with_manifest_sources(&loaded.manifests.servers),
             requirement_cache: RequirementCache::load(&root),

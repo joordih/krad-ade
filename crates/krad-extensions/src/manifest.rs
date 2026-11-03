@@ -11,8 +11,23 @@ const BUILTIN: &str = include_str!("../manifests/builtin.toml");
 const BUILTIN_NAME: &str = "builtin.toml";
 const TOOLCHAINS: &str = include_str!("../manifests/toolchains.toml");
 const TOOLCHAINS_NAME: &str = "toolchains.toml";
+const INTELLIJ_JAVA: &str = include_str!("../manifests/intellij-java.toml");
+const INTELLIJ_JAVA_NAME: &str = "intellij-java.toml";
 const MANIFEST_EXTENSION: &str = "toml";
 const EXTENSION_FILE: &str = "extension.toml";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BundledManifest {
+    IntellijJava,
+}
+
+impl BundledManifest {
+    const fn source(self) -> (&'static str, &'static str) {
+        match self {
+            Self::IntellijJava => (INTELLIJ_JAVA, INTELLIJ_JAVA_NAME),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -268,10 +283,13 @@ pub(crate) struct Loaded {
     pub(crate) problems: Vec<ExtensionError>,
 }
 
-pub(crate) fn load(folders: &[PathBuf]) -> Loaded {
+pub(crate) fn load_with(folders: &[PathBuf], bundled: &[BundledManifest]) -> Loaded {
     let mut manifests = Manifests::default();
     let mut problems = Vec::new();
-    for (text, name) in [(BUILTIN, BUILTIN_NAME), (TOOLCHAINS, TOOLCHAINS_NAME)] {
+    let sources = [(BUILTIN, BUILTIN_NAME), (TOOLCHAINS, TOOLCHAINS_NAME)]
+        .into_iter()
+        .chain(bundled.iter().map(|manifest| manifest.source()));
+    for (text, name) in sources {
         match parse(text, name) {
             Ok(file) => manifests.merge(file),
             Err(error) => problems.push(error),
@@ -298,8 +316,34 @@ mod tests {
     use krad_domain::LanguageId;
 
     #[test]
+    fn the_bundled_intellij_manifest_moves_java_to_krad_java_server() {
+        let stable = load_with(&[], &[]).manifests;
+        let java = LanguageId::new("java");
+        assert_eq!(
+            stable
+                .languages
+                .get(&java)
+                .and_then(|java| java.server.as_deref()),
+            Some("jdtls")
+        );
+        let loaded = load_with(&[], &[BundledManifest::IntellijJava]);
+        assert!(loaded.problems.is_empty(), "{:?}", loaded.problems);
+        let unstable = loaded.manifests;
+        let language = unstable.languages.get(&java);
+        assert_eq!(
+            language.and_then(|java| java.server.as_deref()),
+            Some("krad-java-server")
+        );
+        assert_eq!(
+            language.and_then(|java| java.source_folder.as_deref()),
+            Some("java")
+        );
+        assert!(unstable.server("krad-java-server").is_some());
+    }
+
+    #[test]
     fn the_builtin_manifest_reads_and_names_a_server_for_rust() {
-        let loaded = load(&[]);
+        let loaded = load_with(&[], &[]);
         assert!(loaded.problems.is_empty(), "{:?}", loaded.problems);
         let manifests = loaded.manifests;
         let rust = manifests.languages.get(&LanguageId::new("rust"));
@@ -322,7 +366,7 @@ mod tests {
     fn every_toolchain_family_and_hand_off_is_complete() -> Result<(), String> {
         use crate::toolchains::manifest::LocatorSpec;
 
-        let loaded = load(&[]);
+        let loaded = load_with(&[], &[]);
         assert!(loaded.problems.is_empty(), "{:?}", loaded.problems);
         let manifests = loaded.manifests;
         for id in ["python", "typescript", "node", "go", "java", "rust", "ruby"] {
@@ -386,7 +430,7 @@ mod tests {
             folder.join("zig.toml"),
             "[[language]]\nid = \"zig\"\nname = \"Zig\"\nextensions = [\"zig\"]\nserver = \"zls\"\n\n[[server]]\npackage = \"rust-analyzer\"\nargs = [\"--log\"]\n",
         )?;
-        let manifests = load(std::slice::from_ref(&folder)).manifests;
+        let manifests = load_with(std::slice::from_ref(&folder), &[]).manifests;
         assert!(manifests
             .languages
             .for_path(Path::new("main.zig"))

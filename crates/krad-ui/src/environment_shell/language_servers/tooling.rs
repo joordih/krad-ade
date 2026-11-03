@@ -1,7 +1,8 @@
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{AppContext as _, Context, Entity, PathPromptOptions, SharedString};
+use krad_domain::JavaEngine;
 use krad_domain::{ServerRuntimeId, TerminalId};
-use krad_extensions::{manifest_folders, LanguageTools, Registry};
+use krad_extensions::{manifest_folders, BundledManifest, LanguageTools, Registry};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -18,7 +19,9 @@ impl EnvironmentShell {
             return;
         };
         let folders = manifest_folders(&config, &self.settings.extensions);
-        let loading = cx.background_spawn(async move { LanguageTools::load(&config, &folders) });
+        let bundled = self.bundled_manifests();
+        let loading = cx
+            .background_spawn(async move { LanguageTools::load_with(&config, &folders, &bundled) });
         cx.spawn(async move |this, cx| {
             let Ok(tools) = loading.await else {
                 return;
@@ -27,6 +30,30 @@ impl EnvironmentShell {
                 .unwrap_or_default();
         })
         .detach();
+    }
+
+    fn bundled_manifests(&self) -> Vec<BundledManifest> {
+        match self.settings.java_engine {
+            JavaEngine::IntelliJ => vec![BundledManifest::IntellijJava],
+            JavaEngine::Jdtls => Vec::new(),
+        }
+    }
+
+    pub(in crate::environment_shell) fn restart_language_servers(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) {
+        let open: Vec<super::Document> = self.language_servers.documents.keys().cloned().collect();
+        let servers = &mut self.language_servers;
+        servers.slots.clear();
+        servers.documents.clear();
+        servers.folders.clear();
+        servers.project = super::project_check::ProjectChecks::default();
+        servers.diagnostics = super::diagnostics::DiagnosticStore::default();
+        for document in &open {
+            self.show_diagnostics(document, cx);
+        }
+        self.load_language_tools(cx);
     }
 
     fn use_language_tools(
@@ -59,10 +86,11 @@ impl EnvironmentShell {
             return;
         };
         let folders = manifest_folders(&config, &self.settings.extensions);
+        let bundled = self.bundled_manifests();
         let fetching = cx.background_spawn(async move {
             let registry: Registry = tools.refreshed_registry()?;
             Ok::<_, krad_extensions::ExtensionError>(
-                LanguageTools::load(&config, &folders)?.with_registry(registry),
+                LanguageTools::load_with(&config, &folders, &bundled)?.with_registry(registry),
             )
         });
         cx.spawn(async move |this, cx| {

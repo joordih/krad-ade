@@ -1,0 +1,19 @@
+[[language]]
+id = "java"
+name = "Java"
+extensions = ["java"]
+grammar = "java"
+line_comment = "//"
+syntax = "c_family"
+server = "krad-java-server"
+source_folder = "java"
+
+[[server]]
+package = "krad-java-server"
+path_names = ["krad-java-server"]
+scope = "workspace"
+toolchains = ["java"]
+
+[server.settings]
+idleMinutes = 30
+disabledInspections = []

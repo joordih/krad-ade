@@ -38,6 +38,10 @@ _Avoid_: error lens, inline diagnostic, virtual text
 The group's installed language servers looking at all of its files, not only the open ones, so their problems show in Problems and the file tree. It skips what git ignores and stops at a limit of files, saying the check is incomplete.
 _Avoid_: index, indexing, scan, analysis
 
+**File template**:
+A kind of file the user can create in a folder of the file tree, such as a Java class, interface or package, or a React component, offered by the language server serving that folder or, when it offers none, by the language's manifest.
+_Avoid_: new item, scaffold, snippet
+
 **Minimap**:
 A narrow, scaled-down picture of a file tab's whole text beside it, showing where the visible part sits; dragging or clicking it scrolls the file tab.
 _Avoid_: overview, code map

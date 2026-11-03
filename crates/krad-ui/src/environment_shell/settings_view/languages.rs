@@ -42,6 +42,7 @@ const REMOVE_PREFIX: &str = "extension-remove";
 pub(in crate::environment_shell) struct LanguagesUi {
     url: Entity<InputState>,
     statuses: Vec<ServerRuntimeStatus>,
+    pub(super) confirming_unstable: bool,
 }
 
 impl EnvironmentShell {
@@ -49,6 +50,7 @@ impl EnvironmentShell {
         LanguagesUi {
             url: cx.new(|cx| InputState::new(window, cx).placeholder(URL_PLACEHOLDER)),
             statuses: Vec::new(),
+            confirming_unstable: false,
         }
     }
 
@@ -387,6 +389,7 @@ impl EnvironmentShell {
             .flex()
             .flex_col()
             .gap(px(SPACE_3))
+            .child(self.java_engine_card(ui.confirming_unstable, cx))
             .child(self.toolchain_activation_card(cx))
             .child(hint(SERVER_RUNTIMES_HINT, pal))
             .child(panel_card(server_runtimes, pal))

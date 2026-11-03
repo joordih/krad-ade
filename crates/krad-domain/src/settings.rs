@@ -4,6 +4,7 @@ use crate::gateway::GatewaySettings;
 use crate::gitlab::GitlabSettings;
 use crate::host_timeouts::HostTimeouts;
 use crate::hue::Hue;
+use crate::java_engine::JavaEngine;
 use crate::mcp::McpSettings;
 use crate::model::{lenient_model_lists, ModelId};
 use crate::problem::EditorSettings;
@@ -208,6 +209,8 @@ pub struct Settings {
     pub editor: EditorSettings,
     #[serde(default, skip_serializing_if = "FileIconColors::is_default")]
     pub file_icon_colors: FileIconColors,
+    #[serde(default, skip_serializing_if = "JavaEngine::is_default")]
+    pub java_engine: JavaEngine,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]

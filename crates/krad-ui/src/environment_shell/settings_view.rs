@@ -4,6 +4,7 @@ mod general;
 mod github;
 mod gitlab;
 mod integrations;
+mod java_engine;
 mod languages;
 mod material;
 mod mcp;
