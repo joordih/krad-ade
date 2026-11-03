@@ -15,6 +15,7 @@ mod disk_text;
 mod docs_generate;
 mod drag;
 mod editor_keys;
+mod editor_popovers;
 mod environment_menu;
 mod environment_order;
 mod file_tab;
@@ -107,6 +108,7 @@ pub struct EnvironmentShell {
     palette_files: Vec<PathBuf>,
     language_servers: language_servers::LanguageServers,
     file_icons: Option<crate::file_icons::FileIcons>,
+    editor_popover: Option<editor_popovers::EditorPopover>,
     pub palette: Option<Entity<CommandState>>,
     pub self_ref: Option<WeakEntity<Self>>,
     pump_task: Option<Task<()>>,
@@ -219,6 +221,7 @@ impl EnvironmentShell {
             palette_files: Vec::new(),
             language_servers: language_servers::LanguageServers::new(),
             file_icons: crate::file_icons::FileIcons::load(),
+            editor_popover: None,
             palette: None,
             self_ref: None,
             pump_task: None,

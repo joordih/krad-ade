@@ -7,7 +7,7 @@ use gpui_kit::{
 };
 use krad_domain::ProblemSeverity;
 
-use super::super::language_servers::editor_severity;
+use super::problem_list::ProblemList;
 use crate::theme::palette;
 
 const MARK_HEIGHT_PX: f32 = 3.0;
@@ -25,29 +25,28 @@ pub(super) fn mark_top(line: usize, lines: usize, track: Bounds<Pixels>) -> Pixe
     track.top() + room * fraction.clamp(0.0, 1.0)
 }
 
-fn error_lines(state: &EditorState) -> Vec<usize> {
-    let Some(set) = state.diagnostics() else {
-        return Vec::new();
-    };
-    let text = state.text();
-    let mut lines: Vec<usize> = set
+fn error_lines(problems: &ProblemList) -> Vec<usize> {
+    let mut lines: Vec<usize> = problems
+        .problems
         .iter()
-        .filter(|entry| editor_severity(entry.severity) == ProblemSeverity::Error)
-        .map(|entry| text.offset_to_point(entry.range.start).row)
+        .filter(|problem| problem.severity == ProblemSeverity::Error)
+        .map(|problem| problem.line)
         .collect();
+    lines.sort_unstable();
     lines.dedup();
     lines
 }
 
 fn place_marks(
     state: &Entity<EditorState>,
+    problems: &Entity<ProblemList>,
     track: Bounds<Pixels>,
     window: &mut Window,
     cx: &App,
 ) -> Vec<Mark> {
     let editor = state.read(cx);
     let lines = editor.text().lines_len();
-    error_lines(editor)
+    error_lines(problems.read(cx))
         .into_iter()
         .filter_map(|line| {
             let bounds = Bounds::new(
@@ -91,10 +90,13 @@ fn paint_marks(state: &Entity<EditorState>, marks: Vec<Mark>, window: &mut Windo
     });
 }
 
-pub(super) fn problem_marks(state: Entity<EditorState>) -> AnyElement {
+pub(super) fn problem_marks(
+    state: Entity<EditorState>,
+    problems: Entity<ProblemList>,
+) -> AnyElement {
     let painted = state.clone();
     canvas(
-        move |track, window, cx| place_marks(&state, track, window, cx),
+        move |track, window, cx| place_marks(&state, &problems, track, window, cx),
         move |_, marks, window, cx| paint_marks(&painted, marks, window, cx),
     )
     .absolute()

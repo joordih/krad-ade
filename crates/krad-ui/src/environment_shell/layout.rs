@@ -317,6 +317,7 @@ impl Render for EnvironmentShell {
             .children(self.agent_composer_sheet(cx))
             .children(self.docs_generate_sheet(cx))
             .children(self.delete_file_dialog(cx))
+            .children(self.editor_popover_overlay(window, cx))
             .children(self.context_menu_overlay(window, cx))
             .children(self.model_picker_overlay(window, cx))
             .children(self.name_dialog_sheet(cx))

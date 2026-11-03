@@ -1,4 +1,3 @@
-use gpui_kit::component::highlighter::DiagnosticEntry;
 use gpui_kit::component::input::{EditorState, RopeExt as _};
 use gpui_kit::component::scroll::Scrollbar;
 use gpui_kit::{
@@ -8,7 +7,7 @@ use gpui_kit::{
 use krad_domain::{ProblemLens, ProblemSeverity};
 use std::collections::BTreeMap;
 
-use super::super::language_servers::editor_severity;
+use super::problem_list::ProblemList;
 use crate::theme::{palette, Palette, TEXT_SM};
 
 const LENS_GAP_PX: f32 = 24.0;
@@ -73,27 +72,23 @@ fn severity_color(severity: ProblemSeverity, pal: &Palette) -> Hsla {
     Hsla::from(rgb(color)).opacity(LENS_ALPHA)
 }
 
-fn visible_lens_lines(state: &EditorState, lens: ProblemLens) -> Vec<LensLine> {
-    let (Some(rows), Some(set)) = (state.visible_row_range(), state.diagnostics()) else {
+fn visible_lens_lines(
+    state: &EditorState,
+    problems: &ProblemList,
+    lens: ProblemLens,
+) -> Vec<LensLine> {
+    let Some(rows) = state.visible_row_range() else {
         return Vec::new();
     };
-    let text = state.text();
-    let Some(last) = rows.end.checked_sub(1) else {
-        return Vec::new();
-    };
-    let range = text.line_start_offset(rows.start)..text.line_end_offset(last);
-    let problems = set.range(range).map(|entry: &DiagnosticEntry| {
-        (
-            text.offset_to_point(entry.range.start).row,
-            editor_severity(entry.severity),
-            &entry.message,
-        )
-    });
-    lens_lines(problems, lens)
+    let shown = problems
+        .in_lines(rows)
+        .map(|problem| (problem.line, problem.severity, &problem.message));
+    lens_lines(shown, lens)
 }
 
 fn paint_lens(
     state: &Entity<EditorState>,
+    problems: &Entity<ProblemList>,
     lens: ProblemLens,
     area: Bounds<Pixels>,
     window: &mut Window,
@@ -104,15 +99,16 @@ fn paint_lens(
         return;
     };
     let right = editor.input_bounds().right().min(area.right()) - Scrollbar::width();
-    let shown: Vec<(LensLine, Bounds<Pixels>)> = visible_lens_lines(editor, lens)
-        .into_iter()
-        .filter_map(|lensed| {
-            let end = editor.text().line_end_offset(lensed.line);
-            editor
-                .range_to_bounds(&(end..end))
-                .map(|bounds| (lensed, bounds))
-        })
-        .collect();
+    let shown: Vec<(LensLine, Bounds<Pixels>)> =
+        visible_lens_lines(editor, problems.read(cx), lens)
+            .into_iter()
+            .filter_map(|lensed| {
+                let end = editor.text().line_end_offset(lensed.line);
+                editor
+                    .range_to_bounds(&(end..end))
+                    .map(|bounds| (lensed, bounds))
+            })
+            .collect();
     let pal = palette(cx);
     let style = window.text_style();
     let font = style.font();
@@ -153,12 +149,16 @@ fn paint_lens(
     }
 }
 
-pub(super) fn problem_lens(state: Entity<EditorState>, lens: ProblemLens) -> AnyElement {
+pub(super) fn problem_lens(
+    state: Entity<EditorState>,
+    problems: Entity<ProblemList>,
+    lens: ProblemLens,
+) -> AnyElement {
     canvas(
         |_, _, _| (),
         move |bounds, (), window, cx| {
             window.with_content_mask(Some(gpui_kit::ContentMask { bounds }), |window| {
-                paint_lens(&state, lens, bounds, window, cx);
+                paint_lens(&state, &problems, lens, bounds, window, cx);
             });
         },
     )

@@ -1,7 +1,9 @@
 mod disk;
 mod minimap;
 mod problem_lens;
+pub(super) mod problem_list;
 mod problem_marks;
+mod problem_underlines;
 
 use gpui_kit::component::input::{Editor, EditorState, InputEvent};
 use gpui_kit::{
@@ -23,7 +25,9 @@ use crate::language::editor_id;
 use crate::theme::{palette, LINE_SM, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM};
 use minimap::{minimap, new_minimap, Minimap};
 use problem_lens::problem_lens;
+use problem_list::ProblemList;
 use problem_marks::problem_marks;
+use problem_underlines::problem_underlines;
 
 const OPEN_FAILED_TITLE: &str = "Can't open this file";
 const CHANGED_ON_DISK_TEXT: &str = "This file changed on disk.";
@@ -51,6 +55,7 @@ pub(super) struct FileEditor {
     pub(super) path: PathBuf,
     pub(super) state: Option<Entity<EditorState>>,
     minimap: Option<Entity<Minimap>>,
+    pub(super) problems: Option<Entity<ProblemList>>,
     load: Load,
     dirty: bool,
     edits: EditCount,
@@ -66,6 +71,7 @@ impl FileEditor {
             path,
             state: None,
             minimap: None,
+            problems: None,
             load: Load::Pending,
             dirty: false,
             edits: EditCount::default(),
@@ -305,6 +311,7 @@ impl EnvironmentShell {
                 if matches!(event, InputEvent::Change) {
                     let text = state.read(cx).value().to_string();
                     rebuilt.update(cx, |minimap, cx| minimap.rebuild(text.clone(), syntax, cx));
+                    this.close_editor_popovers(cx);
                     this.mark_edited(&edited_env, id, cx);
                     this.document_edited(&edited, text, cx);
                     this.show_diagnostics(&edited, cx);
@@ -315,6 +322,7 @@ impl EnvironmentShell {
         if let Some(editor) = self.editor_mut(env, id) {
             editor.state = Some(state.clone());
             editor.minimap = Some(shown_minimap);
+            editor.problems = Some(cx.new(|_| ProblemList::default()));
             editor.changes = Some(changes);
         }
         self.attach_language_server(id, &path, &state, cx);
@@ -333,6 +341,50 @@ impl EnvironmentShell {
             self.store();
         }
         cx.notify();
+    }
+
+    fn editor_area(
+        &self,
+        live: &LiveEnv,
+        editor: &FileEditor,
+        state: &Entity<EditorState>,
+        settings: krad_domain::EditorSettings,
+    ) -> gpui_kit::Div {
+        let overlays = editor.problems.clone().map(|problems| {
+            [
+                problem_underlines(state.clone(), problems.clone()),
+                problem_lens(state.clone(), problems.clone(), settings.problem_lens),
+                problem_marks(state.clone(), problems),
+            ]
+        });
+        let library = self.is_library_document(&Document::new(&live.data.host, &editor.path));
+        div()
+            .flex()
+            .flex_row()
+            .flex_1()
+            .min_h_0()
+            .child(
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .pl(px(SPACE_1_5))
+                    .child(
+                        Editor::new(state)
+                            .bordered(false)
+                            .readonly(library)
+                            .h_full(),
+                    )
+                    .children(overlays.into_iter().flatten()),
+            )
+            .children(
+                editor
+                    .minimap
+                    .clone()
+                    .filter(|_| settings.minimap.is_shown())
+                    .map(|shown| minimap(shown, state.clone())),
+            )
     }
 
     pub(super) fn file_tab_body(
@@ -405,39 +457,7 @@ impl EnvironmentShell {
             .on_action(cx.listener(Self::on_reformat))
             .children(self.language_notice(live, id, &editor.path, cx))
             .children(conflict)
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .flex_1()
-                    .min_h_0()
-                    .child(
-                        div()
-                            .relative()
-                            .flex_1()
-                            .min_w_0()
-                            .h_full()
-                            .pl(px(SPACE_1_5))
-                            .child(
-                                Editor::new(state)
-                                    .bordered(false)
-                                    .readonly(self.is_library_document(&Document::new(
-                                        &live.data.host,
-                                        &editor.path,
-                                    )))
-                                    .h_full(),
-                            )
-                            .child(problem_lens(state.clone(), editor_settings.problem_lens))
-                            .child(problem_marks(state.clone())),
-                    )
-                    .children(
-                        editor
-                            .minimap
-                            .clone()
-                            .filter(|_| editor_settings.minimap.is_shown())
-                            .map(|shown| minimap(shown, state.clone())),
-                    ),
-            )
+            .child(self.editor_area(live, editor, state, editor_settings))
             .children(self.toolchain_status(live, &editor.path, cx))
             .into_any_element()
     }

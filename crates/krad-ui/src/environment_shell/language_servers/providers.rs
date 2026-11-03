@@ -160,7 +160,14 @@ impl HoverProvider for ServerDocument {
             work_done_progress_params: WorkDoneProgressParams::default(),
         };
         let answer = self.client.request::<HoverRequest>(&params);
-        cx.background_spawn(async move { Ok(answer.await?) })
+        let (shell, document) = (self.shell.clone(), self.document.clone());
+        cx.spawn(async move |cx| {
+            let hover = answer.await.ok().flatten();
+            shell.update(cx, |shell, cx| {
+                shell.show_hover(&document, offset, hover, cx);
+            })?;
+            Ok(None)
+        })
     }
 }
 

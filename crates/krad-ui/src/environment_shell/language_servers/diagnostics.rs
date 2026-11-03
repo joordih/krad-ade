@@ -1,5 +1,4 @@
-use gpui_kit::component::highlighter::{self, Diagnostic};
-use gpui_kit::component::input::{EditorState, RopeExt as _};
+use gpui_kit::component::input::EditorState;
 use gpui_kit::{Context, Entity, Task};
 use krad_domain::ProblemSeverity;
 use krad_lsp::file_uri;
@@ -12,6 +11,7 @@ use krad_lsp::lsp_types::{
 use std::collections::HashMap;
 use std::time::Duration;
 
+use super::super::file_tab::problem_list::ProblemList;
 use super::super::EnvironmentShell;
 use super::Document;
 
@@ -170,29 +170,6 @@ pub(in crate::environment_shell) fn problem_severity(
     }
 }
 
-pub(in crate::environment_shell) const fn editor_severity(
-    severity: highlighter::DiagnosticSeverity,
-) -> ProblemSeverity {
-    match severity {
-        highlighter::DiagnosticSeverity::Error => ProblemSeverity::Error,
-        highlighter::DiagnosticSeverity::Warning => ProblemSeverity::Warning,
-        highlighter::DiagnosticSeverity::Info => ProblemSeverity::Info,
-        highlighter::DiagnosticSeverity::Hint => ProblemSeverity::Hint,
-    }
-}
-
-fn editor_diagnostic(diagnostic: &lsp_types::Diagnostic) -> Diagnostic {
-    let found = Diagnostic::new(
-        diagnostic.range.start..diagnostic.range.end,
-        diagnostic.message.clone(),
-    )
-    .with_severity(severity_of(diagnostic));
-    match &diagnostic.source {
-        Some(source) => found.with_source(source.clone()),
-        None => found,
-    }
-}
-
 fn report_items(report: DocumentDiagnosticReportResult) -> Option<Vec<lsp_types::Diagnostic>> {
     match report {
         DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) => {
@@ -271,25 +248,23 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let known = self.language_servers.diagnostics.of(document);
-        let states: Vec<Entity<EditorState>> = self
+        let editors: Vec<(Entity<EditorState>, Entity<ProblemList>)> = self
             .envs
             .values()
             .filter(|live| live.data.host == document.host)
             .flat_map(|live| live.editors.values())
             .filter(|editor| editor.path == document.path)
-            .filter_map(|editor| editor.state.clone())
+            .filter_map(|editor| Some((editor.state.clone()?, editor.problems.clone()?)))
             .collect();
-        for state in states {
+        for (state, problems) in editors {
+            let found = ProblemList::from_diagnostics(&known, state.read(cx).text());
+            problems.update(cx, |problems, cx| {
+                *problems = found;
+                cx.notify();
+            });
             state.update(cx, |state, cx| {
-                let lines = state.text().lines_len();
-                let found: Vec<Diagnostic> = known
-                    .iter()
-                    .filter(|diagnostic| (diagnostic.range.end.line as usize) < lines)
-                    .map(editor_diagnostic)
-                    .collect();
                 if let Some(set) = state.diagnostics_mut() {
                     set.clear();
-                    set.extend(found);
                 }
                 cx.notify();
             });

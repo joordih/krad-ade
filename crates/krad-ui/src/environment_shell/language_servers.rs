@@ -33,7 +33,7 @@ use std::sync::Arc;
 use super::{EnvironmentShell, LiveEnv};
 pub(super) use choice::ChoiceAnswer;
 pub(super) use code_tools::CodeCaller;
-pub(super) use diagnostics::{editor_severity, severity_of};
+pub(super) use diagnostics::{problem_severity, severity_of};
 pub(super) use project_check::DiskChange;
 use providers::ServerDocument;
 
