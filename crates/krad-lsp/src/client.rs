@@ -2,7 +2,7 @@ mod choice;
 mod progress;
 mod router;
 
-pub use choice::{ChoiceId, ServerChoice};
+pub use choice::{ChoiceId, InputField, ServerChoice, ServerInput};
 pub use progress::{Progress, ProgressState};
 
 use futures::channel::{mpsc, oneshot};
@@ -37,6 +37,7 @@ pub enum ServerEvent {
     DiagnosticsRefresh,
     Progress(Progress),
     Choice(ServerChoice),
+    Input(ServerInput),
     Stopped,
 }
 
@@ -163,6 +164,21 @@ impl LspClient {
                 .collect::<Result<_, _>>()?,
         };
         self.notify::<DidChangeWorkspaceFolders>(&DidChangeWorkspaceFoldersParams { event })
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`LspError::Stopped`] or [`LspError::Busy`] when the server cannot take it.
+    pub fn answer_input(
+        &self,
+        id: ChoiceId,
+        values: Option<&std::collections::BTreeMap<String, String>>,
+    ) -> Result<(), LspError> {
+        let result = values.map_or(
+            Value::Null,
+            |values| serde_json::json!({ "values": values }),
+        );
+        self.route(Routed::Answer { id: id.0, result })
     }
 
     /// # Errors

@@ -6,8 +6,8 @@ mod server;
 mod uri;
 
 pub use client::{
-    ChoiceId, DocumentChange, LspClient, Progress, ProgressState, ServerChoice, ServerEvent,
-    ServerSettings,
+    ChoiceId, DocumentChange, InputField, LspClient, Progress, ProgressState, ServerChoice,
+    ServerEvent, ServerInput, ServerSettings,
 };
 pub use error::LspError;
 pub use lsp_types;

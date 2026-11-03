@@ -25,3 +25,33 @@ impl ServerChoice {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct InputField {
+    pub id: String,
+    pub label: String,
+    pub value: String,
+}
+
+#[derive(serde::Deserialize)]
+pub(crate) struct InputParams {
+    pub(crate) title: String,
+    pub(crate) fields: Vec<InputField>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ServerInput {
+    pub id: ChoiceId,
+    pub title: String,
+    pub fields: Vec<InputField>,
+}
+
+impl ServerInput {
+    pub(crate) fn new(id: Value, params: InputParams) -> Self {
+        Self {
+            id: ChoiceId(id),
+            title: params.title,
+            fields: params.fields,
+        }
+    }
+}

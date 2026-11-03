@@ -284,6 +284,7 @@ impl EnvironmentShell {
                 }
             }
             ServerEvent::Choice(choice) => self.queue_choice(key, choice, cx),
+            ServerEvent::Input(input) => self.queue_input(key, input, cx),
             ServerEvent::Stopped => {
                 self.language_servers
                     .documents

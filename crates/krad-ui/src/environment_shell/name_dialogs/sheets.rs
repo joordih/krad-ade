@@ -1,5 +1,7 @@
 use gpui_kit::component::input::Input;
-use gpui_kit::{div, px, rgb, AnyElement, Context, FontWeight, ParentElement, Styled, Window};
+use gpui_kit::{
+    div, px, rgb, AnyElement, Context, FontWeight, ParentElement, SharedString, Styled, Window,
+};
 
 use super::super::dialog_parts::{sheet_footer, sheet_overlay, sheet_panel, sheet_title};
 use super::super::EnvironmentShell;
@@ -39,10 +41,11 @@ impl EnvironmentShell {
 
     fn rename_sheet(dialog: &NameDialog, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let title = match dialog.target {
-            NameTarget::Environment(_) => RENAME_ENVIRONMENT_TITLE,
-            NameTarget::Group(_) => RENAME_GROUP_TITLE,
-            NameTarget::Symbol { .. } => RENAME_SYMBOL_TITLE,
+        let title: SharedString = match &dialog.target {
+            NameTarget::Environment(_) => RENAME_ENVIRONMENT_TITLE.into(),
+            NameTarget::Group(_) => RENAME_GROUP_TITLE.into(),
+            NameTarget::Symbol { .. } => RENAME_SYMBOL_TITLE.into(),
+            NameTarget::ServerInput { title, .. } => title.clone().into(),
         };
         let sheet = sheet_panel(DIALOG_W, pal)
             .child(sheet_title(title, None, BTN_NAME_CLOSE, dismiss, cx))

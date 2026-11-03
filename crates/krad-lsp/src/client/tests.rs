@@ -223,3 +223,33 @@ fn a_server_choice_waits_for_the_answer() -> Result<(), LspError> {
     );
     Ok(())
 }
+
+#[test]
+fn a_server_input_answers_with_the_typed_values() -> Result<(), LspError> {
+    let (client, mut events, mut server) = connect()?;
+    let asking = json!({
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "krad/refactorInput",
+        "params": {"title": "Move class to package", "fields": [{"id": "package", "label": "Package", "value": "sample.core"}]},
+    });
+    let frame = serde_json::to_vec(&asking)?;
+    write!(server.to_client, "Content-Length: {}\r\n\r\n", frame.len())?;
+    std::io::Write::write_all(&mut server.to_client, &frame)?;
+    server.to_client.flush()?;
+    let Some(ServerEvent::Input(input)) = block_on(events.next()) else {
+        return Err(LspError::Stopped);
+    };
+    assert_eq!(input.fields[0].value, "sample.core");
+    let values =
+        std::collections::BTreeMap::from([("package".to_owned(), "sample.text".to_owned())]);
+    client.answer_input(input.id, Some(&values))?;
+    let Some(Incoming::Response { outcome, .. }) = server.next() else {
+        return Err(LspError::Stopped);
+    };
+    assert_eq!(
+        outcome.ok(),
+        Some(json!({"values": {"package": "sample.text"}}))
+    );
+    Ok(())
+}

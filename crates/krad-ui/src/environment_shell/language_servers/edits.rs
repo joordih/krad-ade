@@ -13,7 +13,6 @@ use super::Document;
 use krad_domain::Host;
 
 const WRITE_FAILED_TEXT: &str = "Couldn't apply the change to";
-const MOVE_UNSUPPORTED_TEXT: &str = "The language server asked to move a file to another folder:";
 
 pub(super) fn descending(mut edits: Vec<TextEdit>) -> Vec<TextEdit> {
     edits
@@ -154,6 +153,7 @@ impl EnvironmentShell {
             self.start_rename_at(&Document::new(&host, &path), at, window, cx);
         }
         self.show_pending_choice(window, cx);
+        self.ask_pending_input(window, cx);
     }
 
     fn apply_workspace_edit(
@@ -233,12 +233,8 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn rename_to(&mut self, from: &Path, to: &Path, cx: &mut Context<Self>) {
-        let (Some(name), true) = (to.file_name(), from.parent() == to.parent()) else {
-            self.toast(&format!("{MOVE_UNSUPPORTED_TEXT} {}", from.display()), cx);
-            return;
-        };
-        self.rename_file(from.to_path_buf(), &name.to_string_lossy(), cx);
+    fn rename_to(&self, from: &Path, to: &Path, cx: &mut Context<Self>) {
+        self.relocate_file(from.to_path_buf(), to.to_path_buf(), cx);
     }
 }
 

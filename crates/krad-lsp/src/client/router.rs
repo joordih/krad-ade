@@ -20,12 +20,14 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::sync::mpsc::Receiver;
 
-use super::{DocumentChange, ServerChoice, ServerEvent, ServerSettings};
+use super::choice::InputParams;
+use super::{DocumentChange, ServerChoice, ServerEvent, ServerInput, ServerSettings};
 use crate::error::LspError;
 use crate::rpc::{write_message, Incoming, Message};
 use crate::uri::file_uri;
 
 const FIRST_VERSION: i32 = 0;
+const REFACTOR_INPUT_METHOD: &str = "krad/refactorInput";
 
 pub(super) enum Routed {
     Request {
@@ -207,6 +209,14 @@ impl<W: Write> Router<W> {
                 reply.send(outcome).unwrap_or_default();
             }
             Incoming::Request { id, method, params } => {
+                if method == REFACTOR_INPUT_METHOD {
+                    if let Ok(asked) = serde_json::from_value::<InputParams>(params) {
+                        self.emit(ServerEvent::Input(ServerInput::new(id, asked)));
+                        return;
+                    }
+                    self.answer(&id, &Value::Null);
+                    return;
+                }
                 if method == ShowMessageRequest::METHOD {
                     if let Ok(asked) = serde_json::from_value::<ShowMessageRequestParams>(params) {
                         self.emit(ServerEvent::Choice(ServerChoice::new(id, asked)));

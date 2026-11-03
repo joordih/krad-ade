@@ -40,6 +40,23 @@ pub fn move_entry(host: &HostLink, path: &Path, dest_dir: &Path) -> Result<PathB
 }
 
 /// # Errors
+/// Returns [`RepoError::MoveIntoItself`] when `target` lies inside `path`,
+/// [`RepoError::AlreadyExists`] when `target` is taken, and [`RepoError::Io`] when a folder
+/// cannot be created or the move fails.
+pub fn relocate_entry(host: &HostLink, path: &Path, target: &Path) -> Result<PathBuf, RepoError> {
+    if target == path {
+        return Ok(target.to_path_buf());
+    }
+    if target.starts_with(path) {
+        return Err(RepoError::MoveIntoItself);
+    }
+    if let Some(parent) = target.parent() {
+        host.create_dir_all(parent)?;
+    }
+    move_to(host, path, target.to_path_buf())
+}
+
+/// # Errors
 /// Returns [`RepoError::Io`] when the entry cannot be read or removed.
 pub fn delete_entry(host: &HostLink, path: &Path) -> Result<(), RepoError> {
     if host.symlink_metadata(path)?.is_dir() {
@@ -142,6 +159,21 @@ mod tests {
         ));
         fs::create_dir_all(&dir)?;
         Ok(dir)
+    }
+
+    #[test]
+    fn relocating_creates_the_missing_folders() -> Result<(), Box<dyn Error>> {
+        let dir = unique_temp_dir("relocate")?;
+        let source = dir.join("core").join("Names.java");
+        fs::create_dir_all(dir.join("core"))?;
+        fs::write(&source, "class Names {}")?;
+        let target = dir.join("text").join("deep").join("Names.java");
+        let moved = relocate_entry(&HostLink::Local, &source, &target)?;
+        assert_eq!(moved, target);
+        assert!(!source.exists());
+        assert_eq!(fs::read_to_string(&target)?, "class Names {}");
+        fs::remove_dir_all(&dir)?;
+        Ok(())
     }
 
     #[test]
