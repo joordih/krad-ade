@@ -75,7 +75,6 @@ pub(super) fn status_line(
         .into_any_element()
 }
 
-const CENTRED_LIFT: f32 = 0.38;
 const QUESTION_TEXT: f32 = 22.0;
 const QUESTION_LINE: f32 = 30.0;
 const BANNER_GAP: f32 = 28.0;
@@ -233,7 +232,7 @@ impl EnvironmentShell {
                         ),
                 ),
             )
-            .child(div().flex_none().h(relative(CENTRED_LIFT * (1.0 - landed))))
+            .child(div().flex_1().min_h_0().flex_grow(1.0 - landed))
             .into_any_element()
     }
 
