@@ -295,7 +295,7 @@ impl EnvironmentShell {
         }
         let shown_minimap = new_minimap(&file.text, syntax, cx);
         let state = cx.new(|cx| {
-            let state = EditorState::new(window, cx);
+            let state = EditorState::new(window, cx).soft_wrap(false);
             let state = match grammar {
                 Some(language) => state.language(language),
                 None => state,
