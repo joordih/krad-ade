@@ -6,6 +6,7 @@ use krad_domain::{
 };
 
 use super::super::agent_hooks::{WorkerOf, WorkerOrder};
+use super::super::language_servers::CodeCaller;
 use super::super::EnvironmentShell;
 use super::requests::CLOSED_TERMINAL;
 
@@ -30,6 +31,10 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let response = match request {
+            Request::Code(code) => {
+                self.answer_code(environment, &CodeCaller::Group(group), code, reply, cx);
+                return;
+            }
             Request::List => Response::Agents(self.agent_infos(environment, None)),
             Request::Send { to, body } => self.submit_from_chat(environment, to, &body, cx),
             Request::Wait { target, .. } => {

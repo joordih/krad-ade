@@ -146,10 +146,20 @@ pub enum AppUpdateCheck {
     Manual,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CodeTools {
+    #[default]
+    On,
+    Off,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
     pub appearance: AppearanceMode,
+    #[serde(default)]
+    pub code_tools: CodeTools,
     #[serde(default)]
     pub terminal_theme: TerminalTheme,
     #[serde(default)]

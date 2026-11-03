@@ -1,4 +1,5 @@
 mod choice;
+mod code_tools;
 mod diagnostics;
 mod edits;
 mod input;
@@ -29,6 +30,7 @@ use std::sync::Arc;
 
 use super::{EnvironmentShell, LiveEnv};
 pub(super) use choice::ChoiceAnswer;
+pub(super) use code_tools::CodeCaller;
 pub(super) use diagnostics::severity_of;
 use providers::ServerDocument;
 
