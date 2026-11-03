@@ -26,6 +26,22 @@ _Avoid_: IDE, code mode, Zed mode
 Program that understands one language of a group's files and gives their file tabs diagnostics, completion, hover, go to definition, references, rename, formatting and quick fixes. One runs per project folder, language and toolchain on the environment's host; the app installs it after asking, the first time a file of that language opens.
 _Avoid_: LSP, plugin, extension
 
+**Problem**:
+An error, warning, info or hint a language server reports about a place in one file of a group, whether or not the file is open.
+_Avoid_: diagnostic, issue, lint
+
+**Problem lens**:
+The message of a line's most severe problem, written after the end of that line in its file tab.
+_Avoid_: error lens, inline diagnostic, virtual text
+
+**Project check**:
+The group's installed language servers looking at all of its files, not only the open ones, so their problems show in Problems and the file tree. It skips what git ignores and stops at a limit of files, saying the check is incomplete.
+_Avoid_: index, indexing, scan, analysis
+
+**Minimap**:
+A narrow, scaled-down picture of a file tab's whole text beside it, showing where the visible part sits; dragging or clicking it scrolls the file tab.
+_Avoid_: overview, code map
+
 **Language manifest**:
 Data that defines a language for the app: its file extensions, comment marker and highlighter grammar, its default language server from the package registry, how that server starts, which server runtime it needs and how the project's toolchains are found and handed to it. Adding a language is writing one, never code.
 _Avoid_: language config, language plugin
@@ -99,7 +115,7 @@ Separate git checkout of the group's repository on its own branch, opened as a n
 _Avoid_: clone, copy, sandbox
 
 **File tree**:
-Folders and files under the selected group's root, with their git changes; the user can create, rename, move and delete them there. It sits in the side panel and can climb above the group's root to any folder of the disk, showing git changes only inside a repository.
+Folders and files under the selected group's root, with their git changes and problems; the user can create, rename, move and delete them there. It sits in the side panel and can climb above the group's root to any folder of the disk, showing git changes only inside a repository.
 _Avoid_: explorer, navigator, browser
 
 **Side panel**:

@@ -14,6 +14,7 @@ actions!(
         ToggleActivity,
         ToggleSidebar,
         ToggleSidePanel,
+        ToggleMinimap,
         ToggleWorkMode,
         QuickOpen,
         FindReferences,

@@ -1,4 +1,7 @@
 mod disk;
+mod minimap;
+mod problem_lens;
+mod problem_marks;
 
 use gpui_kit::component::input::{Editor, EditorState, InputEvent};
 use gpui_kit::{
@@ -15,8 +18,12 @@ use super::language_servers::Document;
 use super::{EnvironmentShell, LiveEnv};
 use crate::actions::FILE_TAB_KEY_CONTEXT;
 use crate::components::{Button, ButtonVariant, EmptyState, IconName};
+use crate::highlight::Syntax;
 use crate::language::editor_id;
 use crate::theme::{palette, LINE_SM, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM};
+use minimap::{minimap, new_minimap, Minimap};
+use problem_lens::problem_lens;
+use problem_marks::problem_marks;
 
 const OPEN_FAILED_TITLE: &str = "Can't open this file";
 const CHANGED_ON_DISK_TEXT: &str = "This file changed on disk.";
@@ -43,6 +50,7 @@ enum DiskWatch {
 pub(super) struct FileEditor {
     pub(super) path: PathBuf,
     pub(super) state: Option<Entity<EditorState>>,
+    minimap: Option<Entity<Minimap>>,
     load: Load,
     dirty: bool,
     edits: EditCount,
@@ -57,6 +65,7 @@ impl FileEditor {
         Self {
             path,
             state: None,
+            minimap: None,
             load: Load::Pending,
             dirty: false,
             edits: EditCount::default(),
@@ -251,12 +260,15 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let grammar = self
+        let language = self
             .envs
             .get(env)
             .and_then(|live| live.editors.get(&id))
-            .and_then(|editor| self.language_of(&editor.path))
-            .and_then(|language| editor_id(&language).map(str::to_owned));
+            .and_then(|editor| self.language_of(&editor.path));
+        let syntax = Syntax::from(language.as_ref());
+        let grammar = language
+            .as_ref()
+            .and_then(|language| editor_id(language).map(str::to_owned));
         let host = self
             .envs
             .get(env)
@@ -268,9 +280,14 @@ impl EnvironmentShell {
         editor.dirty = false;
         editor.disk = DiskWatch::Idle;
         if let Some(state) = editor.state.clone() {
+            if let Some(minimap) = editor.minimap.clone() {
+                let text = file.text.clone();
+                minimap.update(cx, |minimap, cx| minimap.rebuild(text, syntax, cx));
+            }
             state.update(cx, |state, cx| state.set_value(file.text, window, cx));
             return;
         }
+        let shown_minimap = new_minimap(&file.text, syntax, cx);
         let state = cx.new(|cx| {
             let state = EditorState::new(window, cx);
             let state = match grammar {
@@ -281,12 +298,15 @@ impl EnvironmentShell {
         });
         let edited_env = env.clone();
         let edited = Document::new(&host, &editor.path);
+        let rebuilt = shown_minimap.clone();
         let changes = cx.subscribe(
             &state,
             move |this: &mut Self, state, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
+                    let text = state.read(cx).value().to_string();
+                    rebuilt.update(cx, |minimap, cx| minimap.rebuild(text.clone(), syntax, cx));
                     this.mark_edited(&edited_env, id, cx);
-                    this.document_edited(&edited, state.read(cx).value().to_string(), cx);
+                    this.document_edited(&edited, text, cx);
                     this.show_diagnostics(&edited, cx);
                 }
             },
@@ -294,6 +314,7 @@ impl EnvironmentShell {
         let path = editor.path.clone();
         if let Some(editor) = self.editor_mut(env, id) {
             editor.state = Some(state.clone());
+            editor.minimap = Some(shown_minimap);
             editor.changes = Some(changes);
         }
         self.attach_language_server(id, &path, &state, cx);
@@ -331,6 +352,7 @@ impl EnvironmentShell {
         let Some(state) = &editor.state else {
             return div().flex_1().into_any_element();
         };
+        let editor_settings = self.settings.editor;
         let conflict = (editor.disk == DiskWatch::Conflict).then(|| {
             div()
                 .flex()
@@ -385,10 +407,28 @@ impl EnvironmentShell {
             .children(conflict)
             .child(
                 div()
+                    .flex()
+                    .flex_row()
                     .flex_1()
                     .min_h_0()
-                    .pl(px(SPACE_1_5))
-                    .child(Editor::new(state).bordered(false).h_full()),
+                    .child(
+                        div()
+                            .relative()
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .pl(px(SPACE_1_5))
+                            .child(Editor::new(state).bordered(false).h_full())
+                            .child(problem_lens(state.clone(), editor_settings.problem_lens))
+                            .child(problem_marks(state.clone())),
+                    )
+                    .children(
+                        editor
+                            .minimap
+                            .clone()
+                            .filter(|_| editor_settings.minimap.is_shown())
+                            .map(|shown| minimap(shown, state.clone())),
+                    ),
             )
             .children(self.toolchain_status(live, &editor.path, cx))
             .into_any_element()

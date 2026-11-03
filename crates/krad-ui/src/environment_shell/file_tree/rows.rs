@@ -5,7 +5,7 @@ use gpui_kit::{
     FontWeight, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement,
     Stateful, StatefulInteractiveElement, Styled, Window,
 };
-use krad_domain::FileOpening;
+use krad_domain::{FileOpening, ProblemSeverity};
 use krad_repo::{ChangeKind, DirEntry, EntryKind};
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
@@ -272,6 +272,9 @@ impl EnvironmentShell {
         let highlighted = open || self.file_tree.selected.as_ref() == Some(&entry.path);
         let change = marks.files.get(&entry.path).copied();
         let folder_changed = is_dir && marks.folders.contains(&entry.path);
+        let problem = self
+            .worst_problem_at(&entry.path)
+            .and_then(|severity| problem_color(severity, pal));
         let label = self
             .file_rename_label(&entry.path)
             .unwrap_or_else(|| entry.name.clone());
@@ -328,7 +331,7 @@ impl EnvironmentShell {
                     .children(chevron),
             )
             .child(icon(glyph, ICON_SM, glyph_color))
-            .child(div().flex_1().min_w_0().truncate().child(label))
+            .child(entry_name(label, problem))
             .when_some(change, |row, kind| {
                 row.child(
                     div()
@@ -350,6 +353,27 @@ impl EnvironmentShell {
                 )
             })
             .into_any_element()
+    }
+}
+
+fn entry_name(label: impl IntoElement, problem: Option<u32>) -> Div {
+    div()
+        .flex_1()
+        .min_w_0()
+        .truncate()
+        .when_some(problem, |name, color| {
+            name.text_decoration_1()
+                .text_decoration_wavy()
+                .text_decoration_color(rgb(color))
+        })
+        .child(label)
+}
+
+const fn problem_color(severity: ProblemSeverity, pal: &Palette) -> Option<u32> {
+    match severity {
+        ProblemSeverity::Error => Some(pal.error_fg),
+        ProblemSeverity::Warning => Some(pal.warning_fg),
+        ProblemSeverity::Info | ProblemSeverity::Hint => None,
     }
 }
 

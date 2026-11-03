@@ -114,6 +114,7 @@ impl EnvironmentShell {
             .on_action(cx.listener(Self::on_toggle_activity))
             .on_action(cx.listener(Self::on_toggle_sidebar))
             .on_action(cx.listener(Self::on_toggle_side_panel))
+            .on_action(cx.listener(Self::on_toggle_minimap))
             .on_action(cx.listener(Self::on_toggle_work_mode))
             .on_action(cx.listener(Self::on_quick_open))
             .on_action(cx.listener(Self::on_find_in_files))

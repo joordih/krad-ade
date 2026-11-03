@@ -1,3 +1,4 @@
+mod editor;
 mod gateway;
 mod general;
 mod github;
@@ -45,6 +46,7 @@ const SETTINGS_NOT_SAVED: &str = "Couldn't save the settings";
 pub(super) enum SettingsPane {
     General,
     Terminal,
+    Editor,
     Integrations,
     Gateway,
     Mcp,
@@ -56,6 +58,7 @@ impl SettingsPane {
         match self {
             Self::General => "General",
             Self::Terminal => "Terminal",
+            Self::Editor => "Editor",
             Self::Integrations => "Integrations",
             Self::Gateway => "Gateway",
             Self::Mcp => "MCP",
@@ -67,6 +70,7 @@ impl SettingsPane {
         match self {
             Self::General => "How the app looks and how you work in it.",
             Self::Terminal => "The font, copy and paste, and the colours of terminals.",
+            Self::Editor => "How file tabs show their problems and the minimap.",
             Self::Integrations => "The code hosts reviews and merge requests come from.",
             Self::Gateway => {
                 "Chat with the models of a gateway you run, through the app's own agent."
@@ -82,6 +86,7 @@ impl SettingsPane {
         match self {
             Self::General => IconName::Settings,
             Self::Terminal => IconName::Terminal,
+            Self::Editor => IconName::File,
             Self::Integrations => IconName::Merge,
             Self::Gateway => IconName::Flow,
             Self::Mcp => IconName::Plug,

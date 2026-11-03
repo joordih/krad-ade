@@ -5,6 +5,7 @@ use crate::host_timeouts::HostTimeouts;
 use crate::hue::Hue;
 use crate::mcp::McpSettings;
 use crate::model::{lenient_model_lists, ModelId};
+use crate::problem::EditorSettings;
 use crate::server_runtime::{ExtensionEntry, ServerRuntimePaths};
 use crate::toolchain::ToolchainActivation;
 use serde::{Deserialize, Serialize};
@@ -192,6 +193,8 @@ pub struct Settings {
     pub host_timeouts: HostTimeouts,
     #[serde(default, skip_serializing_if = "ToolchainActivation::is_off")]
     pub toolchain_activation: ToolchainActivation,
+    #[serde(default, skip_serializing_if = "EditorSettings::is_default")]
+    pub editor: EditorSettings,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]

@@ -11,7 +11,8 @@ mod tooling;
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{Context, Entity, Task};
 use krad_domain::{
-    EnvironmentName, Host, LanguageCatalog, LanguageDef, TerminalId, ToolchainLocation,
+    EnvironmentName, Host, LanguageCatalog, LanguageDef, ProblemSeverity, TerminalId,
+    ToolchainLocation,
 };
 use krad_extensions::{builtin_catalog, LanguageTools, MissingServerRuntime, ServerPlan};
 use krad_lsp::lsp_types::ServerCapabilities;
@@ -21,7 +22,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::{EnvironmentShell, LiveEnv};
-pub(super) use diagnostics::severity_of;
+pub(super) use diagnostics::{editor_severity, severity_of};
 use providers::ServerDocument;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -138,6 +139,12 @@ impl LanguageServers {
 }
 
 impl EnvironmentShell {
+    pub(super) fn worst_problem_at(&self, path: &Path) -> Option<ProblemSeverity> {
+        self.language_servers
+            .diagnostics
+            .worst_at(&self.active_document(path))
+    }
+
     pub(super) fn language_tools(&self) -> Option<Arc<LanguageTools>> {
         self.language_servers.tools.clone()
     }

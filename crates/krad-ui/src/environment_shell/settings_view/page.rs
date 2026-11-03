@@ -32,7 +32,14 @@ const PAGE_TOP: f32 = 20.0;
 const PAGE_GAP: f32 = 24.0;
 
 const GROUPS: [(&str, &[SettingsPane]); 2] = [
-    ("App", &[SettingsPane::General, SettingsPane::Terminal]),
+    (
+        "App",
+        &[
+            SettingsPane::General,
+            SettingsPane::Terminal,
+            SettingsPane::Editor,
+        ],
+    ),
     (
         "Workspace",
         &[
@@ -53,6 +60,7 @@ impl EnvironmentShell {
         let content = match ui.pane {
             SettingsPane::General => self.general_pane(cx),
             SettingsPane::Terminal => self.terminal_pane(cx),
+            SettingsPane::Editor => self.editor_pane(cx),
             SettingsPane::Integrations => self.integrations_pane(ui, cx),
             SettingsPane::Gateway => self.gateway_pane(&ui.gateway, cx),
             SettingsPane::Mcp => self.mcp_pane(&ui.mcp, cx),

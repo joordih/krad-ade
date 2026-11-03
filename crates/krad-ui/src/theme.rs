@@ -19,6 +19,7 @@ use gpui_kit::{
 use krad_domain::{TerminalFont, WindowMaterial};
 use krad_session::AnsiPalette;
 
+use crate::highlight::TokenKind;
 use crate::window_frame::{match_window_frame, usable_material};
 
 use self::palettes::{DARK, LIGHT};
@@ -179,6 +180,18 @@ pub(crate) struct SyntaxColors {
     pub(crate) comment: u32,
     pub(crate) number: u32,
     pub(crate) type_name: u32,
+}
+
+impl SyntaxColors {
+    pub(crate) const fn of(&self, kind: TokenKind) -> u32 {
+        match kind {
+            TokenKind::Keyword => self.keyword,
+            TokenKind::String => self.string,
+            TokenKind::Comment => self.comment,
+            TokenKind::Number => self.number,
+            TokenKind::TypeName => self.type_name,
+        }
+    }
 }
 
 pub(crate) fn palette(cx: &App) -> &'static Palette {

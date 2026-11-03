@@ -16,8 +16,8 @@ use row::{command_row, palette_footer, Glyph};
 use super::notes_view::{note_line_label, NoteLine};
 use super::EnvironmentShell;
 use crate::actions::{
-    NewAgent, OpenSettings, ToggleActivity, ToggleFps, ToggleSidePanel, ToggleSidebar,
-    ToggleWorkMode,
+    NewAgent, OpenSettings, ToggleActivity, ToggleFps, ToggleMinimap, ToggleSidePanel,
+    ToggleSidebar, ToggleWorkMode,
 };
 use crate::components::{harness_icon, IconName};
 use crate::theme::{floating_shadow, scrim_fill, Palette, RADIUS_LG};
@@ -51,7 +51,7 @@ const PALETTE_GROUPS: [(&str, PaletteCmd); 5] = [
     ("Close file viewer", PaletteCmd::CloseViewer),
 ];
 
-const PALETTE_VIEW: [(&str, PaletteCmd); 15] = [
+const PALETTE_VIEW: [(&str, PaletteCmd); 16] = [
     ("Switch work mode", PaletteCmd::ToggleWorkMode),
     ("Select toolchain…", PaletteCmd::SelectToolchain),
     ("Settings…", PaletteCmd::OpenSettings),
@@ -67,6 +67,7 @@ const PALETTE_VIEW: [(&str, PaletteCmd); 15] = [
     ("Toggle utilities panel", PaletteCmd::ToggleActivity),
     ("Toggle sidebar", PaletteCmd::ToggleSidebar),
     ("Toggle side panel", PaletteCmd::ToggleSidePanel),
+    ("Toggle minimap", PaletteCmd::ToggleMinimap),
 ];
 
 #[derive(Clone, Debug)]
@@ -81,6 +82,7 @@ enum PaletteCmd {
     ToggleActivity,
     ToggleSidebar,
     ToggleSidePanel,
+    ToggleMinimap,
     ToggleWorkMode,
     CloseFocused,
     CloseEnv,
@@ -116,6 +118,7 @@ impl PaletteCmd {
             Self::ToggleActivity => IconName::PanelBottom,
             Self::ToggleSidebar => IconName::SidebarLeft,
             Self::ToggleSidePanel => IconName::SidebarRight,
+            Self::ToggleMinimap => IconName::ListView,
             Self::ToggleWorkMode | Self::SelectToolchain => IconName::Layers,
             Self::OpenFile(_) => IconName::File,
             Self::NewGroup => IconName::FolderAdd,
@@ -135,6 +138,7 @@ impl PaletteCmd {
             Self::ToggleActivity => Box::new(ToggleActivity),
             Self::ToggleSidebar => Box::new(ToggleSidebar),
             Self::ToggleSidePanel => Box::new(ToggleSidePanel),
+            Self::ToggleMinimap => Box::new(ToggleMinimap),
             Self::ToggleWorkMode => Box::new(ToggleWorkMode),
             Self::OpenSettings => Box::new(OpenSettings),
             Self::NewAgent => Box::new(NewAgent),
@@ -237,6 +241,7 @@ impl EnvironmentShell {
             PaletteCmd::ToggleActivity => self.toggle_activity(cx),
             PaletteCmd::ToggleSidebar => self.toggle_sidebar(cx),
             PaletteCmd::ToggleSidePanel => self.toggle_side_panel(cx),
+            PaletteCmd::ToggleMinimap => self.toggle_minimap(cx),
             PaletteCmd::ToggleWorkMode => self.toggle_work_mode(cx),
             PaletteCmd::OpenFile(path) => self.open_file_tab(&path, FileOpening::Pinned, cx),
             PaletteCmd::CloseFocused => self.close_focused(cx),

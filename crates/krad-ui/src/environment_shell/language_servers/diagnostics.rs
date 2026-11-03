@@ -1,6 +1,7 @@
-use gpui_kit::component::highlighter::Diagnostic;
+use gpui_kit::component::highlighter::{self, Diagnostic};
 use gpui_kit::component::input::{EditorState, RopeExt as _};
 use gpui_kit::{Context, Entity, Task};
+use krad_domain::ProblemSeverity;
 use krad_lsp::file_uri;
 use krad_lsp::lsp_types::request::DocumentDiagnosticRequest;
 use krad_lsp::lsp_types::{
@@ -23,21 +24,44 @@ pub(in crate::environment_shell) struct DiagnosticStore {
     pushed: HashMap<Document, Vec<lsp_types::Diagnostic>>,
     pulled: HashMap<Document, Vec<lsp_types::Diagnostic>>,
     pulls: HashMap<Document, Task<()>>,
+    worst: HashMap<Document, ProblemSeverity>,
 }
 
 impl DiagnosticStore {
     pub(super) fn pushed(&mut self, document: Document, diagnostics: Vec<lsp_types::Diagnostic>) {
         self.pushed.insert(document, diagnostics);
+        self.refresh_worst();
     }
 
     fn pulled(&mut self, document: Document, diagnostics: Vec<lsp_types::Diagnostic>) {
         self.pulled.insert(document, diagnostics);
+        self.refresh_worst();
     }
 
     pub(super) fn forget(&mut self, document: &Document) {
         self.pushed.remove(document);
         self.pulled.remove(document);
         self.pulls.remove(document);
+        self.refresh_worst();
+    }
+
+    pub(in crate::environment_shell) fn worst_at(
+        &self,
+        place: &Document,
+    ) -> Option<ProblemSeverity> {
+        self.worst.get(place).copied()
+    }
+
+    fn refresh_worst(&mut self) {
+        let files: Vec<(Document, Option<ProblemSeverity>)> = self
+            .files()
+            .into_iter()
+            .map(|document| {
+                let worst = self.of(&document).iter().map(problem_severity).min();
+                (document, worst)
+            })
+            .collect();
+        self.worst = worst_problems(files);
     }
 
     pub(in crate::environment_shell) fn of(
@@ -74,10 +98,50 @@ impl DiagnosticStore {
     }
 }
 
+fn worst_problems(
+    files: impl IntoIterator<Item = (Document, Option<ProblemSeverity>)>,
+) -> HashMap<Document, ProblemSeverity> {
+    let mut worst: HashMap<Document, ProblemSeverity> = HashMap::new();
+    for (document, severity) in files {
+        let Some(severity) = severity else {
+            continue;
+        };
+        for place in document.path.ancestors() {
+            let shown = worst
+                .entry(Document::new(&document.host, place))
+                .or_insert(severity);
+            *shown = (*shown).min(severity);
+        }
+    }
+    worst
+}
+
 pub(in crate::environment_shell) fn severity_of(
     diagnostic: &lsp_types::Diagnostic,
 ) -> DiagnosticSeverity {
     diagnostic.severity.unwrap_or(DiagnosticSeverity::ERROR)
+}
+
+pub(in crate::environment_shell) fn problem_severity(
+    diagnostic: &lsp_types::Diagnostic,
+) -> ProblemSeverity {
+    match severity_of(diagnostic) {
+        DiagnosticSeverity::WARNING => ProblemSeverity::Warning,
+        DiagnosticSeverity::INFORMATION => ProblemSeverity::Info,
+        DiagnosticSeverity::HINT => ProblemSeverity::Hint,
+        _ => ProblemSeverity::Error,
+    }
+}
+
+pub(in crate::environment_shell) const fn editor_severity(
+    severity: highlighter::DiagnosticSeverity,
+) -> ProblemSeverity {
+    match severity {
+        highlighter::DiagnosticSeverity::Error => ProblemSeverity::Error,
+        highlighter::DiagnosticSeverity::Warning => ProblemSeverity::Warning,
+        highlighter::DiagnosticSeverity::Info => ProblemSeverity::Info,
+        highlighter::DiagnosticSeverity::Hint => ProblemSeverity::Hint,
+    }
 }
 
 fn editor_diagnostic(diagnostic: &lsp_types::Diagnostic) -> Diagnostic {
@@ -231,5 +295,22 @@ mod tests {
         assert_eq!(store.files(), std::slice::from_ref(&file));
         store.forget(&file);
         assert_eq!(store.files(), Vec::<Document>::new());
+    }
+
+    #[test]
+    fn folders_take_the_worst_problem_of_the_files_inside_them() {
+        let host = krad_domain::Host::Local;
+        let place = |path: &str| Document::new(&host, std::path::Path::new(path));
+        let worst = worst_problems([
+            (place("/repo/src/a.rs"), Some(ProblemSeverity::Warning)),
+            (place("/repo/src/b.rs"), Some(ProblemSeverity::Error)),
+            (place("/repo/docs/c.rs"), Some(ProblemSeverity::Hint)),
+            (place("/repo/clean.rs"), None),
+        ]);
+        assert_eq!(worst[&place("/repo/src/a.rs")], ProblemSeverity::Warning);
+        assert_eq!(worst[&place("/repo/src")], ProblemSeverity::Error);
+        assert_eq!(worst[&place("/repo/docs")], ProblemSeverity::Hint);
+        assert_eq!(worst[&place("/repo")], ProblemSeverity::Error);
+        assert!(!worst.contains_key(&place("/repo/clean.rs")));
     }
 }
