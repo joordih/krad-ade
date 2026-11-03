@@ -1,6 +1,7 @@
 mod choice;
 mod diagnostics;
 mod edits;
+mod library_documents;
 mod lifecycle;
 mod notice;
 mod progress;
@@ -127,6 +128,7 @@ pub(super) struct LanguageServers {
     shown_details: HashSet<ServerKey>,
     documents: HashMap<Document, ServerKey>,
     folders: HashMap<ServerKey, BTreeSet<PathBuf>>,
+    library: HashMap<Document, library_documents::LibraryDocument>,
     pub(super) diagnostics: diagnostics::DiagnosticStore,
     pending_edits: Vec<(Host, krad_lsp::lsp_types::WorkspaceEdit)>,
     pending_rename: Option<(Host, PathBuf, krad_lsp::lsp_types::Position)>,
@@ -144,6 +146,7 @@ impl LanguageServers {
             declined: HashSet::new(),
             documents: HashMap::new(),
             folders: HashMap::new(),
+            library: HashMap::new(),
             diagnostics: diagnostics::DiagnosticStore::default(),
             pending_edits: Vec::new(),
             pending_rename: None,
@@ -233,6 +236,10 @@ impl EnvironmentShell {
             return;
         };
         let document = Document::new(&host, path);
+        if let Some(library) = self.language_servers.library.get(&document).cloned() {
+            self.open_document(&library.key, path, state, cx);
+            return;
+        }
         if self.toolchains_unresolved(&document) {
             self.resolve_toolchains(document, cx);
             return;
@@ -271,14 +278,23 @@ impl EnvironmentShell {
             return;
         };
         let opened_document = Document::new(&key.host, path);
+        let library = self
+            .language_servers
+            .library
+            .get(&opened_document)
+            .map(|library| library.uri.clone());
         let document = ServerDocument::new(
             running.server.client.clone(),
             &opened_document,
+            library.clone(),
             &running.capabilities,
             cx.entity().downgrade(),
         );
         if let Some(document) = document {
             state.update(cx, |state, _| document.install(state.lsp_mut()));
+        }
+        if library.is_some() {
+            return;
         }
         if self
             .language_servers

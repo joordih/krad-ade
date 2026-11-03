@@ -384,11 +384,14 @@ impl EnvironmentShell {
             .children(self.language_notice(live, id, &editor.path, cx))
             .children(conflict)
             .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .pl(px(SPACE_1_5))
-                    .child(Editor::new(state).bordered(false).h_full()),
+                div().flex_1().min_h_0().pl(px(SPACE_1_5)).child(
+                    Editor::new(state)
+                        .bordered(false)
+                        .readonly(self.is_library_document(
+                            &super::language_servers::Document::new(&live.data.host, &editor.path),
+                        ))
+                        .h_full(),
+                ),
             )
             .children(self.toolchain_status(live, &editor.path, cx))
             .into_any_element()
