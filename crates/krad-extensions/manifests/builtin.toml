@@ -88,6 +88,7 @@ grammar = "java"
 line_comment = "//"
 syntax = "c_family"
 server = "jdtls"
+source_folder = "java"
 
 [[language]]
 id = "kotlin"
@@ -97,6 +98,7 @@ grammar = "kotlin"
 line_comment = "//"
 syntax = "c_family"
 server = "kotlin-lsp"
+source_folder = "kotlin"
 
 [[language]]
 id = "swift"
@@ -114,6 +116,7 @@ extensions = ["scala"]
 grammar = "scala"
 line_comment = "//"
 syntax = "c_family"
+source_folder = "scala"
 
 [[language]]
 id = "css"

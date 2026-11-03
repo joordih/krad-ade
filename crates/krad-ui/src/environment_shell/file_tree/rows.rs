@@ -70,7 +70,7 @@ impl EnvironmentShell {
         let draft = self
             .new_entry_draft()
             .map(|(dir, kind, label)| NewEntryRow { dir, kind, label });
-        self.file_tree.rows(draft.as_ref())
+        self.file_tree.rows(draft.as_ref(), self.language_catalog())
     }
 
     pub(in crate::environment_shell) fn file_tree_list(
@@ -91,9 +91,12 @@ impl EnvironmentShell {
                     .map(|row| match row {
                         TreeRow::Entry {
                             entry,
+                            label,
                             depth,
                             expanded,
-                        } => this.file_row(entry, *depth, *expanded, &marks, cx),
+                        } => {
+                            this.file_row(entry, label.as_deref(), (*depth, *expanded), &marks, cx)
+                        }
                         TreeRow::Draft { kind, label, depth } => {
                             Self::draft_row(*kind, label, *depth, cx)
                         }
@@ -255,8 +258,8 @@ impl EnvironmentShell {
     pub(super) fn file_row(
         &self,
         entry: &DirEntry,
-        depth: usize,
-        expanded: bool,
+        compacted: Option<&str>,
+        (depth, expanded): (usize, bool),
         marks: &ChangeMarks,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -277,7 +280,7 @@ impl EnvironmentShell {
             .and_then(|severity| problem_color(severity, pal));
         let label = self
             .file_rename_label(&entry.path)
-            .unwrap_or_else(|| entry.name.clone());
+            .unwrap_or_else(|| compacted.map_or_else(|| entry.name.clone(), str::to_owned));
         let name_color = match change {
             Some(kind) => change_color(kind, pal),
             None if open => pal.text_strong,

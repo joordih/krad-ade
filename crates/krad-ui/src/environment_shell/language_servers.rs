@@ -161,6 +161,10 @@ impl EnvironmentShell {
         Document::new(&host, path)
     }
 
+    pub(super) const fn language_catalog(&self) -> &LanguageCatalog {
+        &self.language_servers.catalog
+    }
+
     pub(super) fn language_of(&self, path: &Path) -> Option<LanguageDef> {
         self.language_servers.catalog.for_path(path).cloned()
     }

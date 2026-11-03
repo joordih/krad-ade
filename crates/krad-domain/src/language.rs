@@ -47,6 +47,8 @@ pub struct LanguageDef {
     pub server: Option<String>,
     #[serde(default, alias = "toolchains")]
     pub server_runtimes: Vec<ServerRuntimeId>,
+    #[serde(default)]
+    pub source_folder: Option<String>,
 }
 
 impl LanguageDef {
@@ -77,7 +79,28 @@ pub struct LanguageCatalog {
     languages: Vec<LanguageDef>,
 }
 
+const SOURCE_SETS_PARENT: &str = "src";
+
 impl LanguageCatalog {
+    #[must_use]
+    pub fn in_packages(&self, folder: &Path) -> bool {
+        folder.ancestors().skip(1).any(|ancestor| {
+            let named = |path: Option<&Path>| {
+                path.and_then(Path::file_name)
+                    .map(|name| name.to_string_lossy().into_owned())
+            };
+            let Some(name) = named(Some(ancestor)) else {
+                return false;
+            };
+            let sets = ancestor.parent().and_then(Path::parent);
+            named(sets).as_deref() == Some(SOURCE_SETS_PARENT)
+                && self
+                    .languages
+                    .iter()
+                    .any(|language| language.source_folder.as_deref() == Some(name.as_str()))
+        })
+    }
+
     #[must_use]
     pub fn new(languages: impl IntoIterator<Item = LanguageDef>) -> Self {
         let mut catalog = Self::default();
@@ -142,7 +165,22 @@ mod tests {
             lsp_id: None,
             server: None,
             server_runtimes: Vec::new(),
+            source_folder: None,
         }
+    }
+
+    #[test]
+    fn folders_below_a_languages_source_folder_hold_packages() {
+        let java = LanguageDef {
+            source_folder: Some("java".to_owned()),
+            ..language("java", &["java"])
+        };
+        let catalog = LanguageCatalog::new([java]);
+        assert!(catalog.in_packages(Path::new("/p/loader/src/main/java/dev")));
+        assert!(catalog.in_packages(Path::new("/p/src/test/java/dev/neuralabs")));
+        assert!(!catalog.in_packages(Path::new("/p/loader/src/main/java")));
+        assert!(!catalog.in_packages(Path::new("/p/docs/java/dev")));
+        assert!(!catalog.in_packages(Path::new("/p/src/main/kotlin/dev")));
     }
 
     #[test]
