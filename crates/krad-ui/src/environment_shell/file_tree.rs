@@ -48,7 +48,6 @@ enum TreeRow {
     },
     Draft {
         kind: EntryKind,
-        label: String,
         depth: usize,
     },
 }
@@ -56,7 +55,6 @@ enum TreeRow {
 struct NewEntryRow<'a> {
     dir: &'a Path,
     kind: EntryKind,
-    label: String,
 }
 
 impl FileTree {
@@ -104,7 +102,6 @@ impl FileTree {
         if let Some(draft) = draft.filter(|draft| draft.dir == dir) {
             rows.push(TreeRow::Draft {
                 kind: draft.kind,
-                label: draft.label.clone(),
                 depth,
             });
         }
@@ -144,10 +141,12 @@ fn followed_root(
 mod tests {
     use super::*;
 
+    const DRAFT_NAME: &str = "new entry";
+
     fn name(row: &TreeRow) -> (String, usize) {
         match row {
             TreeRow::Entry { entry, depth, .. } => (entry.name.clone(), *depth),
-            TreeRow::Draft { label, depth, .. } => (label.clone(), *depth),
+            TreeRow::Draft { depth, .. } => (DRAFT_NAME.to_owned(), *depth),
         }
     }
 
@@ -222,7 +221,6 @@ mod tests {
         let draft = NewEntryRow {
             dir: Path::new("/r/src"),
             kind: EntryKind::File,
-            label: "lib.rs".to_owned(),
         };
         let rows: Vec<(String, usize)> = tree
             .rows(Some(&draft), &LanguageCatalog::default())
@@ -233,7 +231,7 @@ mod tests {
             rows,
             [
                 ("src".to_owned(), 0),
-                ("lib.rs".to_owned(), 1),
+                (DRAFT_NAME.to_owned(), 1),
                 ("main.rs".to_owned(), 1),
                 ("README.md".to_owned(), 0)
             ]
@@ -293,7 +291,7 @@ mod tests {
                     depth,
                     ..
                 } => (label.clone().unwrap_or_else(|| entry.name.clone()), *depth),
-                TreeRow::Draft { label, depth, .. } => (label.clone(), *depth),
+                TreeRow::Draft { depth, .. } => (DRAFT_NAME.to_owned(), *depth),
             })
             .collect();
         assert_eq!(

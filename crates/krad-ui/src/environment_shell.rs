@@ -16,6 +16,7 @@ mod docs_generate;
 mod drag;
 mod editor_keys;
 mod editor_popovers;
+mod entry_input;
 mod environment_menu;
 mod environment_order;
 mod file_tab;
@@ -109,6 +110,7 @@ pub struct EnvironmentShell {
     language_servers: language_servers::LanguageServers,
     file_icons: Option<crate::file_icons::FileIcons>,
     editor_popover: Option<editor_popovers::EditorPopover>,
+    entry_input: Option<entry_input::EntryInput>,
     pub palette: Option<Entity<CommandState>>,
     pub self_ref: Option<WeakEntity<Self>>,
     pump_task: Option<Task<()>>,
@@ -222,6 +224,7 @@ impl EnvironmentShell {
             language_servers: language_servers::LanguageServers::new(),
             file_icons: crate::file_icons::FileIcons::load(),
             editor_popover: None,
+            entry_input: None,
             palette: None,
             self_ref: None,
             pump_task: None,

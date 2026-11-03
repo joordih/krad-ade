@@ -1,7 +1,5 @@
 use gpui_kit::Context;
 use krad_domain::{EnvironmentName, GroupId, TerminalId};
-use krad_repo::EntryKind;
-use std::path::{Path, PathBuf};
 
 use super::EnvironmentShell;
 
@@ -15,8 +13,6 @@ enum RenameTarget {
     Terminal(TerminalId),
     Environment(EnvironmentName),
     Worktree(GroupId),
-    File(PathBuf),
-    NewEntry(PathBuf, EntryKind),
 }
 
 pub(super) struct RenameDraft {
@@ -71,57 +67,6 @@ impl EnvironmentShell {
 
     pub(super) fn worktree_draft_label(&self, group: GroupId) -> Option<String> {
         self.draft_label(&RenameTarget::Worktree(group))
-    }
-
-    pub(super) fn start_file_rename(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        let Some(name) = path.file_name() else {
-            return;
-        };
-        self.rename = Some(RenameDraft {
-            text: name.to_string_lossy().into_owned(),
-            target: RenameTarget::File(path),
-            seeded: true,
-        });
-        cx.notify();
-    }
-
-    pub(super) fn start_new_entry(
-        &mut self,
-        dir: PathBuf,
-        kind: EntryKind,
-        cx: &mut Context<Self>,
-    ) {
-        self.rename = Some(RenameDraft {
-            target: RenameTarget::NewEntry(dir, kind),
-            text: String::new(),
-            seeded: false,
-        });
-        cx.notify();
-    }
-
-    pub(super) fn file_rename_label(&self, path: &Path) -> Option<String> {
-        self.rename
-            .as_ref()
-            .filter(|draft| matches!(&draft.target, RenameTarget::File(target) if target == path))
-            .map(RenameDraft::label)
-    }
-
-    pub(super) fn cancel_new_entry(&mut self) {
-        if self
-            .rename
-            .as_ref()
-            .is_some_and(|draft| matches!(draft.target, RenameTarget::NewEntry(..)))
-        {
-            self.rename = None;
-        }
-    }
-
-    pub(super) fn new_entry_draft(&self) -> Option<(&Path, EntryKind, String)> {
-        let draft = self.rename.as_ref()?;
-        match &draft.target {
-            RenameTarget::NewEntry(dir, kind) => Some((dir.as_path(), *kind, draft.label())),
-            _ => None,
-        }
     }
 
     pub(super) fn start_rename_focused(&mut self, cx: &mut Context<Self>) {
@@ -212,14 +157,6 @@ impl EnvironmentShell {
             }
             RenameTarget::Worktree(group) => {
                 self.create_worktree(group, title, cx);
-                return;
-            }
-            RenameTarget::File(path) => {
-                self.rename_file(path, title, cx);
-                return;
-            }
-            RenameTarget::NewEntry(dir, kind) => {
-                self.create_file_entry(dir, kind, title, cx);
                 return;
             }
         }

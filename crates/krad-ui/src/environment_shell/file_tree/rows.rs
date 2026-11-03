@@ -11,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
+use super::super::entry_input::EntryEdit;
 use super::super::EnvironmentShell;
 use super::{
     ChangeMarks, NewEntryRow, TreeRow, DRAFT_ROW_ID, FILE_ROW_H, FILE_ROW_PREFIX, FILE_TREE_ID,
@@ -69,7 +70,7 @@ impl EnvironmentShell {
     pub(super) fn tree_rows(&self) -> Vec<TreeRow> {
         let draft = self
             .new_entry_draft()
-            .map(|(dir, kind, label)| NewEntryRow { dir, kind, label });
+            .map(|(dir, kind)| NewEntryRow { dir, kind });
         self.file_tree.rows(draft.as_ref(), self.language_catalog())
     }
 
@@ -97,9 +98,7 @@ impl EnvironmentShell {
                         } => {
                             this.file_row(entry, label.as_deref(), (*depth, *expanded), &marks, cx)
                         }
-                        TreeRow::Draft { kind, label, depth } => {
-                            Self::draft_row(*kind, label, *depth, cx)
-                        }
+                        TreeRow::Draft { kind, depth } => this.draft_row(*kind, *depth, cx),
                     })
                     .collect::<Vec<_>>()
             }),
@@ -150,14 +149,13 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         if let Some(path) = self.file_tree.selected.clone() {
-            window.focus(&self.focus, cx);
-            self.start_file_rename(path, cx);
+            self.begin_entry_input(EntryEdit::Rename(path), window, cx);
         }
     }
 
     pub(super) fn draft_row(
+        &self,
         kind: EntryKind,
-        label: &str,
         depth: usize,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -184,7 +182,7 @@ impl EnvironmentShell {
             .text_color(rgb(pal.text_strong))
             .child(div().flex_none().size(px(ICON_SM)))
             .child(icon(glyph, ICON_SM, pal.text_muted))
-            .child(div().flex_1().min_w_0().truncate().child(label.to_owned()))
+            .children(self.entry_input_field(cx))
             .into_any_element()
     }
 
@@ -303,9 +301,8 @@ impl EnvironmentShell {
         let problem = self
             .worst_problem_at(&entry.path)
             .and_then(|severity| problem_color(severity, pal));
-        let label = self
-            .file_rename_label(&entry.path)
-            .unwrap_or_else(|| compacted.map_or_else(|| entry.name.clone(), str::to_owned));
+        let label = compacted.map_or_else(|| entry.name.clone(), str::to_owned);
+        let renaming = self.is_renaming(&entry.path);
         let name_color = match change {
             Some(kind) => change_color(kind, pal),
             None if open => pal.text_strong,
@@ -355,7 +352,8 @@ impl EnvironmentShell {
                     .children(chevron),
             )
             .child(glyph)
-            .child(entry_name(label, problem))
+            .children(renaming.then(|| self.entry_input_field(cx)).flatten())
+            .when(!renaming, |row| row.child(entry_name(label, problem)))
             .when_some(change, |row, kind| {
                 row.child(
                     div()

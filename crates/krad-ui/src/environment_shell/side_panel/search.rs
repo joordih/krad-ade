@@ -106,7 +106,7 @@ impl EnvironmentShell {
             self.close_side_search(cx);
             return;
         }
-        self.cancel_new_entry();
+        self.cancel_entry_input(cx);
         let field = cx.new(|cx| InputState::new(window, cx).placeholder(PLACEHOLDER));
         let focus_target = field.clone();
         cx.defer_in(window, move |_, window, cx| {

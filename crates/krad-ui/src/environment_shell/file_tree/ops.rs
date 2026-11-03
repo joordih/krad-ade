@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::components::IconName;
 use crate::environment_shell::context_menu::{MenuAction, MenuEntry};
+use crate::environment_shell::entry_input::EntryEdit;
 use crate::environment_shell::EnvironmentShell;
 
 const NEW_FILE_LABEL: &str = "New file";
@@ -101,8 +102,7 @@ impl EnvironmentShell {
                 self.begin_new_entry(dir, EntryKind::Directory, window, cx);
             }
             FileAction::Rename(path) => {
-                window.focus(&self.focus, cx);
-                self.start_file_rename(path, cx);
+                self.begin_entry_input(EntryEdit::Rename(path), window, cx);
             }
             FileAction::CopyPath(path) => {
                 cx.write_to_clipboard(ClipboardItem::new_string(path.display().to_string()));
@@ -131,8 +131,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         self.expand_dir(dir.clone(), cx);
-        window.focus(&self.focus, cx);
-        self.start_new_entry(dir, kind, cx);
+        self.begin_entry_input(EntryEdit::Create { dir, kind }, window, cx);
     }
 
     pub(in crate::environment_shell) fn relative_to_root<'a>(&self, path: &'a Path) -> &'a Path {
