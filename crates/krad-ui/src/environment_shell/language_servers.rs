@@ -2,6 +2,7 @@ mod diagnostics;
 mod edits;
 mod lifecycle;
 mod notice;
+mod project_check;
 mod providers;
 mod refactor;
 mod references;
@@ -23,6 +24,7 @@ use std::sync::Arc;
 
 use super::{EnvironmentShell, LiveEnv};
 pub(super) use diagnostics::{editor_severity, severity_of};
+pub(super) use project_check::DiskChange;
 use providers::ServerDocument;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -106,6 +108,7 @@ pub(super) struct LanguageServers {
     shown_details: HashSet<ServerKey>,
     documents: HashMap<Document, ServerKey>,
     pub(super) diagnostics: diagnostics::DiagnosticStore,
+    project: project_check::ProjectChecks,
     pending_edits: Vec<(Host, krad_lsp::lsp_types::WorkspaceEdit)>,
     last_start: StartId,
 }
@@ -120,6 +123,7 @@ impl LanguageServers {
             declined: HashSet::new(),
             documents: HashMap::new(),
             diagnostics: diagnostics::DiagnosticStore::default(),
+            project: project_check::ProjectChecks::default(),
             pending_edits: Vec::new(),
             last_start: StartId::default(),
         }
@@ -300,6 +304,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn close_unseen_documents(&mut self) {
+        let project = &self.language_servers.project;
         let open: HashSet<Document> = self
             .envs
             .values()
@@ -308,6 +313,8 @@ impl EnvironmentShell {
                     .values()
                     .map(|editor| Document::new(&live.data.host, &editor.path))
             })
+            .chain(project.background.iter().cloned())
+            .chain(project.representatives.iter().cloned())
             .collect();
         self.toolchains.keep_documents(&open);
         let closed: Vec<Document> = self
@@ -318,6 +325,9 @@ impl EnvironmentShell {
             .cloned()
             .collect();
         for document in closed {
+            if self.keeps_for_project_check(&document) {
+                continue;
+            }
             if let Some(client) = self.language_servers.client_of(&document) {
                 client
                     .document(DocumentChange::Closed {

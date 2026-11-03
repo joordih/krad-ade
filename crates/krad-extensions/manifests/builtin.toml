@@ -282,6 +282,7 @@ package = "rust-analyzer"
 probe = ["--version"]
 server_runtimes = ["rust"]
 settings_section = "rust-analyzer"
+project_check = "pushed"
 
 [server.settings]
 checkOnSave = true
@@ -333,6 +334,7 @@ unless_project_config = [
 
 [[server]]
 package = "gopls"
+project_check = "pushed"
 
 [server.toolchain]
 family = "go"
@@ -370,6 +372,7 @@ server_runtimes = ["java"]
 
 [[server]]
 package = "jdtls"
+project_check = "pushed"
 server_runtimes = ["java"]
 path_names = []
 command = [

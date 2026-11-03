@@ -20,7 +20,10 @@ const PROBLEMS_LIST_ID: &str = "utilities-problems";
 const FILE_ROW_PREFIX: &str = "problems-file";
 const PROBLEM_ROW_PREFIX: &str = "problems-row";
 const PROBLEMS_LABEL: &str = "Problems";
-const NO_PROBLEMS_TEXT: &str = "No problems in the open files";
+const NO_PROBLEMS_TEXT: &str = "No problems found";
+const INCOMPLETE_PREFIX: &str = "Project check incomplete:";
+const INCOMPLETE_OF: &str = "of";
+const INCOMPLETE_FILES: &str = "files checked";
 const ROW_H: f32 = 24.0;
 const PROBLEM_INDENT: f32 = 20.0;
 const LINE_BASE: u32 = 1;
@@ -119,13 +122,18 @@ impl EnvironmentShell {
             .overflow_y_scroll()
             .text_size(px(TEXT_SM))
             .line_height(px(LINE_SM));
+        let incomplete = self.incomplete_notices(pal);
         if files.is_empty() {
             return list
-                .text_color(rgb(pal.text_muted))
-                .child(NO_PROBLEMS_TEXT)
+                .children(incomplete)
+                .child(
+                    div()
+                        .text_color(rgb(pal.text_muted))
+                        .child(NO_PROBLEMS_TEXT),
+                )
                 .into_any_element();
         }
-        let mut rows = Vec::new();
+        let mut rows = incomplete;
         let mut index = 0;
         for (file_index, file) in files.into_iter().enumerate() {
             rows.push(Self::problem_file_row(file_index, &file, cx));
@@ -135,6 +143,24 @@ impl EnvironmentShell {
             }
         }
         list.children(rows).into_any_element()
+    }
+
+    fn incomplete_notices(&self, pal: &Palette) -> Vec<AnyElement> {
+        let Some(host) = self.envs.get(&self.active).map(|live| &live.data.host) else {
+            return Vec::new();
+        };
+        self.incomplete_checks(host)
+            .into_iter()
+            .map(|incomplete| {
+                div()
+                    .text_color(rgb(pal.warning_fg))
+                    .child(format!(
+                        "{INCOMPLETE_PREFIX} {} {} {INCOMPLETE_OF} {} {INCOMPLETE_FILES}",
+                        incomplete.language, incomplete.checked, incomplete.total
+                    ))
+                    .into_any_element()
+            })
+            .collect()
     }
 
     fn problem_file_row(index: usize, file: &FileProblems, cx: &mut Context<Self>) -> AnyElement {

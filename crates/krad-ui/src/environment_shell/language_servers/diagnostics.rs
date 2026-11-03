@@ -24,44 +24,99 @@ pub(in crate::environment_shell) struct DiagnosticStore {
     pushed: HashMap<Document, Vec<lsp_types::Diagnostic>>,
     pulled: HashMap<Document, Vec<lsp_types::Diagnostic>>,
     pulls: HashMap<Document, Task<()>>,
-    worst: HashMap<Document, ProblemSeverity>,
+    file_worst: HashMap<Document, ProblemSeverity>,
+    places: HashMap<Document, SeverityCounts>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct SeverityCounts([u32; 4]);
+
+impl SeverityCounts {
+    const ORDER: [ProblemSeverity; 4] = [
+        ProblemSeverity::Error,
+        ProblemSeverity::Warning,
+        ProblemSeverity::Info,
+        ProblemSeverity::Hint,
+    ];
+
+    const fn slot(severity: ProblemSeverity) -> usize {
+        match severity {
+            ProblemSeverity::Error => 0,
+            ProblemSeverity::Warning => 1,
+            ProblemSeverity::Info => 2,
+            ProblemSeverity::Hint => 3,
+        }
+    }
+
+    fn add(&mut self, severity: ProblemSeverity) {
+        self.0[Self::slot(severity)] += 1;
+    }
+
+    fn remove(&mut self, severity: ProblemSeverity) {
+        let count = &mut self.0[Self::slot(severity)];
+        *count = count.saturating_sub(1);
+    }
+
+    fn worst(self) -> Option<ProblemSeverity> {
+        Self::ORDER
+            .into_iter()
+            .find(|severity| self.0[Self::slot(*severity)] > 0)
+    }
 }
 
 impl DiagnosticStore {
-    pub(super) fn pushed(&mut self, document: Document, diagnostics: Vec<lsp_types::Diagnostic>) {
-        self.pushed.insert(document, diagnostics);
-        self.refresh_worst();
+    pub(super) fn pushed(&mut self, document: &Document, diagnostics: Vec<lsp_types::Diagnostic>) {
+        self.pushed.insert(document.clone(), diagnostics);
+        self.settle(document);
     }
 
-    fn pulled(&mut self, document: Document, diagnostics: Vec<lsp_types::Diagnostic>) {
-        self.pulled.insert(document, diagnostics);
-        self.refresh_worst();
+    pub(super) fn pulled(&mut self, document: &Document, diagnostics: Vec<lsp_types::Diagnostic>) {
+        self.pulled.insert(document.clone(), diagnostics);
+        self.settle(document);
     }
 
     pub(super) fn forget(&mut self, document: &Document) {
         self.pushed.remove(document);
         self.pulled.remove(document);
         self.pulls.remove(document);
-        self.refresh_worst();
+        self.settle(document);
+    }
+
+    pub(super) fn forget_pulled(&mut self, document: &Document) {
+        self.pulled.remove(document);
+        self.pulls.remove(document);
+        self.settle(document);
     }
 
     pub(in crate::environment_shell) fn worst_at(
         &self,
         place: &Document,
     ) -> Option<ProblemSeverity> {
-        self.worst.get(place).copied()
+        self.places.get(place).and_then(|counts| counts.worst())
     }
 
-    fn refresh_worst(&mut self) {
-        let files: Vec<(Document, Option<ProblemSeverity>)> = self
-            .files()
-            .into_iter()
-            .map(|document| {
-                let worst = self.of(&document).iter().map(problem_severity).min();
-                (document, worst)
-            })
-            .collect();
-        self.worst = worst_problems(files);
+    fn settle(&mut self, document: &Document) {
+        let now = self.of(document).iter().map(problem_severity).min();
+        let before = match now {
+            Some(severity) => self.file_worst.insert(document.clone(), severity),
+            None => self.file_worst.remove(document),
+        };
+        if before == now {
+            return;
+        }
+        for place in document.path.ancestors() {
+            let place = Document::new(&document.host, place);
+            let counts = self.places.entry(place.clone()).or_default();
+            if let Some(before) = before {
+                counts.remove(before);
+            }
+            if let Some(now) = now {
+                counts.add(now);
+            }
+            if counts.worst().is_none() {
+                self.places.remove(&place);
+            }
+        }
     }
 
     pub(in crate::environment_shell) fn of(
@@ -96,24 +151,6 @@ impl DiagnosticStore {
         files.dedup();
         files
     }
-}
-
-fn worst_problems(
-    files: impl IntoIterator<Item = (Document, Option<ProblemSeverity>)>,
-) -> HashMap<Document, ProblemSeverity> {
-    let mut worst: HashMap<Document, ProblemSeverity> = HashMap::new();
-    for (document, severity) in files {
-        let Some(severity) = severity else {
-            continue;
-        };
-        for place in document.path.ancestors() {
-            let shown = worst
-                .entry(Document::new(&document.host, place))
-                .or_insert(severity);
-            *shown = (*shown).min(severity);
-        }
-    }
-    worst
 }
 
 pub(in crate::environment_shell) fn severity_of(
@@ -217,10 +254,7 @@ impl EnvironmentShell {
                 return;
             };
             this.update(cx, |shell, cx| {
-                shell
-                    .language_servers
-                    .diagnostics
-                    .pulled(pulled.clone(), items);
+                shell.language_servers.diagnostics.pulled(&pulled, items);
                 shell.show_diagnostics(&pulled, cx);
             })
             .unwrap_or_default();
@@ -284,8 +318,8 @@ mod tests {
             &krad_domain::Host::Local,
             std::path::Path::new("/work/main.rs"),
         );
-        store.pushed(file.clone(), vec![at(4, "from check"), at(1, "both")]);
-        store.pulled(file.clone(), vec![at(1, "both"), at(2, "live")]);
+        store.pushed(&file, vec![at(4, "from check"), at(1, "both")]);
+        store.pulled(&file, vec![at(1, "both"), at(2, "live")]);
         let messages: Vec<String> = store
             .of(&file)
             .into_iter()
@@ -298,19 +332,51 @@ mod tests {
     }
 
     #[test]
-    fn folders_take_the_worst_problem_of_the_files_inside_them() {
-        let host = krad_domain::Host::Local;
-        let place = |path: &str| Document::new(&host, std::path::Path::new(path));
-        let worst = worst_problems([
-            (place("/repo/src/a.rs"), Some(ProblemSeverity::Warning)),
-            (place("/repo/src/b.rs"), Some(ProblemSeverity::Error)),
-            (place("/repo/docs/c.rs"), Some(ProblemSeverity::Hint)),
-            (place("/repo/clean.rs"), None),
-        ]);
-        assert_eq!(worst[&place("/repo/src/a.rs")], ProblemSeverity::Warning);
-        assert_eq!(worst[&place("/repo/src")], ProblemSeverity::Error);
-        assert_eq!(worst[&place("/repo/docs")], ProblemSeverity::Hint);
-        assert_eq!(worst[&place("/repo")], ProblemSeverity::Error);
-        assert!(!worst.contains_key(&place("/repo/clean.rs")));
+    fn folders_take_the_worst_problem_of_the_files_inside_them_as_problems_change() {
+        let mut store = DiagnosticStore::default();
+        let place =
+            |path: &str| Document::new(&krad_domain::Host::Local, std::path::Path::new(path));
+        let with = |severity: DiagnosticSeverity| lsp_types::Diagnostic {
+            severity: Some(severity),
+            ..at(0, "problem")
+        };
+        store.pushed(
+            &place("/repo/src/a.rs"),
+            vec![with(DiagnosticSeverity::WARNING)],
+        );
+        store.pushed(
+            &place("/repo/src/b.rs"),
+            vec![with(DiagnosticSeverity::ERROR)],
+        );
+        store.pushed(
+            &place("/repo/docs/c.rs"),
+            vec![with(DiagnosticSeverity::HINT)],
+        );
+        store.pushed(&place("/repo/clean.rs"), Vec::new());
+        assert_eq!(
+            store.worst_at(&place("/repo/src/a.rs")),
+            Some(ProblemSeverity::Warning)
+        );
+        assert_eq!(
+            store.worst_at(&place("/repo/src")),
+            Some(ProblemSeverity::Error)
+        );
+        assert_eq!(
+            store.worst_at(&place("/repo/docs")),
+            Some(ProblemSeverity::Hint)
+        );
+        assert_eq!(
+            store.worst_at(&place("/repo")),
+            Some(ProblemSeverity::Error)
+        );
+        assert_eq!(store.worst_at(&place("/repo/clean.rs")), None);
+        store.pushed(&place("/repo/src/b.rs"), Vec::new());
+        assert_eq!(
+            store.worst_at(&place("/repo/src")),
+            Some(ProblemSeverity::Warning)
+        );
+        store.forget(&place("/repo/src/a.rs"));
+        assert_eq!(store.worst_at(&place("/repo/src")), None);
+        assert_eq!(store.worst_at(&place("/repo")), Some(ProblemSeverity::Hint));
     }
 }

@@ -58,6 +58,12 @@ impl EnvironmentShell {
             let located = located.await;
             this.update(cx, |shell, cx| match located {
                 Ok(Some(launch)) => shell.start_server(key, launch, cx),
+                Ok(None) | Err(_) if shell.only_the_project_check_needs(&key) => {
+                    shell.language_servers.slots.remove(&key);
+                    tracing::debug!(
+                        "the project check skips a language server that is not installed"
+                    );
+                }
                 Ok(None) => shell.set_slot(key, ServerSlot::AwaitingConsent, cx),
                 Err(missing) => shell.set_slot(key, ServerSlot::NeedsServerRuntime(missing), cx),
             })
@@ -199,7 +205,8 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let open = self.documents_for(key);
-        if open.is_empty() {
+        let checked = self.language_servers.project.wants(key);
+        if open.is_empty() && !checked {
             self.language_servers.slots.remove(key);
             tracing::debug!("dropped a language server no open file needs any more");
             cx.notify();
@@ -225,7 +232,14 @@ impl EnvironmentShell {
         for (path, state) in open {
             self.open_document(key, &path, &state, cx);
         }
+        if checked {
+            self.check_project(key, cx);
+        }
         cx.notify();
+    }
+
+    fn only_the_project_check_needs(&self, key: &ServerKey) -> bool {
+        self.language_servers.project.wants(key) && self.documents_for(key).is_empty()
     }
 
     fn documents_for(&self, key: &ServerKey) -> Vec<(PathBuf, Entity<EditorState>)> {
@@ -248,9 +262,10 @@ impl EnvironmentShell {
                     return;
                 };
                 let document = Document::new(&key.host, &path);
+                self.language_servers.project.published(key, &document);
                 self.language_servers
                     .diagnostics
-                    .pushed(document.clone(), published.diagnostics);
+                    .pushed(&document, published.diagnostics);
                 self.show_diagnostics(&document, cx);
             }
             ServerEvent::ApplyEdit(edit) => self.queue_workspace_edit(key.host.clone(), edit, cx),
@@ -267,6 +282,7 @@ impl EnvironmentShell {
                 }
             }
             ServerEvent::Stopped => {
+                self.forget_server_check(key);
                 self.language_servers
                     .documents
                     .retain(|_, served| served != key);

@@ -14,6 +14,15 @@ const TOOLCHAINS_NAME: &str = "toolchains.toml";
 const MANIFEST_EXTENSION: &str = "toml";
 const EXTENSION_FILE: &str = "extension.toml";
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectCheck {
+    #[default]
+    OpenFiles,
+    Pushed,
+    WorkspacePull,
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct ServerManifest {
     pub package: String,
@@ -35,6 +44,8 @@ pub struct ServerManifest {
     pub command: Option<Vec<String>>,
     #[serde(default)]
     pub toolchain: Option<ServerToolchain>,
+    #[serde(default)]
+    pub project_check: ProjectCheck,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -276,6 +287,9 @@ mod tests {
         assert!(manifests
             .server("jdtls")
             .is_some_and(|jdtls| jdtls.command.is_some()));
+        let check = |package: &str| manifests.server(package).map(|server| server.project_check);
+        assert_eq!(check("rust-analyzer"), Some(ProjectCheck::Pushed));
+        assert_eq!(check("clangd"), Some(ProjectCheck::OpenFiles));
         assert!(manifests
             .server_runtime(&ServerRuntimeId::new("node"))
             .is_some());

@@ -8,7 +8,7 @@ use ureq::Agent;
 
 use crate::error::ExtensionError;
 use crate::http;
-use crate::manifest::{load, Manifests, ServerManifest};
+use crate::manifest::{load, Manifests, ProjectCheck, ServerManifest};
 use crate::package::needed_server_runtimes;
 use crate::platform::Platform;
 use crate::registry::{self, Package, Registry};
@@ -49,6 +49,7 @@ pub struct ServerRuntimeStatus {
 pub struct ServerConfig {
     pub section: Option<String>,
     pub options: Option<Value>,
+    pub project_check: ProjectCheck,
 }
 
 impl ServerConfig {
@@ -284,6 +285,7 @@ impl LanguageTools {
     pub fn config(&self, plan: &ServerPlan) -> ServerConfig {
         let manifest = self.manifest(plan);
         ServerConfig {
+            project_check: manifest.project_check,
             section: manifest.settings_section,
             options: manifest
                 .settings
