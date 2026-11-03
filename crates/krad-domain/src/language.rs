@@ -1,3 +1,7 @@
+mod template;
+
+pub use template::{LanguageTemplate, RenderedTemplate};
+
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::fmt;
@@ -49,9 +53,31 @@ pub struct LanguageDef {
     pub server_runtimes: Vec<ServerRuntimeId>,
     #[serde(default)]
     pub source_folder: Option<String>,
+    #[serde(default)]
+    pub templates: Vec<LanguageTemplate>,
 }
 
 impl LanguageDef {
+    #[must_use]
+    pub fn package_in(&self, folder: &Path) -> Option<String> {
+        let source = self.source_folder.as_deref()?;
+        let root = folder.ancestors().find(|ancestor| {
+            ancestor.file_name().is_some_and(|name| name == source)
+                && ancestor
+                    .parent()
+                    .and_then(Path::parent)
+                    .and_then(Path::file_name)
+                    .is_some_and(|name| name == SOURCE_SETS_PARENT)
+        })?;
+        let parts: Vec<String> = folder
+            .strip_prefix(root)
+            .ok()?
+            .components()
+            .map(|part| part.as_os_str().to_string_lossy().into_owned())
+            .collect();
+        Some(parts.join("."))
+    }
+
     #[must_use]
     pub fn lsp_id(&self) -> &str {
         self.lsp_id.as_deref().unwrap_or_else(|| self.id.as_str())
@@ -166,7 +192,25 @@ mod tests {
             server: None,
             server_runtimes: Vec::new(),
             source_folder: None,
+            templates: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_folder_inside_a_source_folder_names_its_package() {
+        let java = LanguageDef {
+            source_folder: Some("java".to_owned()),
+            ..language("java", &["java"])
+        };
+        assert_eq!(
+            java.package_in(Path::new("/p/src/main/java/dev/neuralabs")),
+            Some("dev.neuralabs".to_owned())
+        );
+        assert_eq!(
+            java.package_in(Path::new("/p/src/main/java")),
+            Some(String::new())
+        );
+        assert_eq!(java.package_in(Path::new("/p/docs/java/dev")), None);
     }
 
     #[test]

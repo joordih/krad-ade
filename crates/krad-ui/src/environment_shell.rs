@@ -25,6 +25,7 @@ mod gateway;
 mod groups;
 mod harness_models;
 mod host;
+mod template_popup;
 pub use host::HostTools;
 mod input;
 mod language_servers;
@@ -111,6 +112,7 @@ pub struct EnvironmentShell {
     file_icons: Option<crate::file_icons::FileIcons>,
     editor_popover: Option<editor_popovers::EditorPopover>,
     entry_input: Option<entry_input::EntryInput>,
+    template_popup: Option<template_popup::TemplatePopup>,
     pub palette: Option<Entity<CommandState>>,
     pub self_ref: Option<WeakEntity<Self>>,
     pump_task: Option<Task<()>>,
@@ -225,6 +227,7 @@ impl EnvironmentShell {
             file_icons: crate::file_icons::FileIcons::load(),
             editor_popover: None,
             entry_input: None,
+            template_popup: None,
             palette: None,
             self_ref: None,
             pump_task: None,

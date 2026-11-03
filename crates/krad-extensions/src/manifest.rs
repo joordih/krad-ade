@@ -357,6 +357,16 @@ mod tests {
         let check = |package: &str| manifests.server(package).map(|server| server.project_check);
         assert_eq!(check("rust-analyzer"), Some(ProjectCheck::Pushed));
         assert_eq!(check("clangd"), Some(ProjectCheck::OpenFiles));
+        let templates = |id: &str| {
+            manifests
+                .languages
+                .get(&LanguageId::new(id))
+                .map_or(0, |language| language.templates.len())
+        };
+        assert_eq!(
+            [templates("java"), templates("kotlin"), templates("tsx")],
+            [5, 5, 1]
+        );
         assert!(manifests
             .server_runtime(&ServerRuntimeId::new("node"))
             .is_some());

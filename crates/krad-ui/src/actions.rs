@@ -37,6 +37,7 @@ actions!(
         SendTab,
         SendBackTab,
         RenameFile,
+        NewFromTemplate,
         SaveFile,
         AskConfirm,
         AskDeny,

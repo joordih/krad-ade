@@ -2,6 +2,7 @@ mod choice;
 mod code_tools;
 mod diagnostics;
 mod edits;
+mod file_templates;
 mod input;
 mod library_documents;
 mod lifecycle;
@@ -34,6 +35,7 @@ use super::{EnvironmentShell, LiveEnv};
 pub(super) use choice::ChoiceAnswer;
 pub(super) use code_tools::CodeCaller;
 pub(super) use diagnostics::{problem_severity, severity_of};
+pub(super) use file_templates::{ServerTemplates, TemplateOutput};
 pub(super) use project_check::DiskChange;
 use providers::ServerDocument;
 

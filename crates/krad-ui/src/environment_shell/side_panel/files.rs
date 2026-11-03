@@ -22,6 +22,7 @@ const BTN_NEW_ENTRY: &str = "side-files-new-entry";
 const TOOLTIP_NEW_ENTRY: &str = "New file or folder";
 const NEW_FILE_LABEL: &str = "New file";
 const NEW_FOLDER_LABEL: &str = "New folder";
+const NEW_FROM_TEMPLATE_LABEL: &str = "New from template…";
 const HEADER_H: f32 = NAV_ROW_H + SPACE_1_5;
 const TOOLTIP_COLLAPSE: &str = "Collapse all folders";
 const TOOLTIP_SEARCH: &str = "Search in files";
@@ -123,7 +124,12 @@ impl EnvironmentShell {
                             MenuEntry::item(
                                 NEW_FOLDER_LABEL,
                                 Some(IconName::FolderAdd),
-                                MenuAction::File(FileAction::NewFolder(dir)),
+                                MenuAction::File(FileAction::NewFolder(dir.clone())),
+                            ),
+                            MenuEntry::item(
+                                NEW_FROM_TEMPLATE_LABEL,
+                                Some(IconName::Magic),
+                                MenuAction::File(FileAction::NewFromTemplate(dir)),
                             ),
                         ];
                         this.open_menu(

@@ -5,11 +5,11 @@ use gpui_kit::KeyBinding;
 
 use crate::actions::{
     AcceptCompletion, AskConfirm, AskDeny, CopySelection, DeleteLine, DuplicateLine, FindInFiles,
-    FindReferences, MoveLineDown, MoveLineUp, NewAgent, NewTerminal, NextProblem, OpenSettings,
-    PasteClipboard, PreviousProblem, QuickOpen, Reformat, RenameFile, RenameSymbol, SaveFile,
-    SearchTerminal, SendBackTab, SendTab, SplitTerminal, TextLarger, TextReset, TextSmaller,
-    ToggleActivity, ToggleFps, ToggleLineComment, TogglePalette, ToggleSidePanel, ToggleSidebar,
-    ToggleWorkMode, ASK_KEY_CONTEXT, EDITOR_KEY_CONTEXT, FILE_TAB_KEY_CONTEXT,
+    FindReferences, MoveLineDown, MoveLineUp, NewAgent, NewFromTemplate, NewTerminal, NextProblem,
+    OpenSettings, PasteClipboard, PreviousProblem, QuickOpen, Reformat, RenameFile, RenameSymbol,
+    SaveFile, SearchTerminal, SendBackTab, SendTab, SplitTerminal, TextLarger, TextReset,
+    TextSmaller, ToggleActivity, ToggleFps, ToggleLineComment, TogglePalette, ToggleSidePanel,
+    ToggleSidebar, ToggleWorkMode, ASK_KEY_CONTEXT, EDITOR_KEY_CONTEXT, FILE_TAB_KEY_CONTEXT,
     FILE_TREE_KEY_CONTEXT, SHELL_KEY_CONTEXT, VIEWER_KEY_CONTEXT,
 };
 #[cfg(target_os = "macos")]
@@ -21,6 +21,7 @@ mod keys {
     pub(super) const PALETTE: &str = "cmd-k";
     pub(super) const OPEN_SETTINGS_HINT: &str = "⌘,";
     pub(super) const NEW_TERMINAL: &str = "cmd-t";
+    pub(super) const NEW_FROM_TEMPLATE: &str = "cmd-n";
     pub(super) const SPLIT_TERMINAL: &str = "cmd-d";
     pub(super) const COPY: &str = "cmd-c";
     pub(super) const VIEWER_COPY: &str = "cmd-c";
@@ -74,6 +75,7 @@ mod keys {
     pub(super) const PALETTE: &str = "ctrl-shift-p";
     pub(super) const OPEN_SETTINGS_HINT: &str = "Ctrl+,";
     pub(super) const NEW_TERMINAL: &str = "ctrl-shift-t";
+    pub(super) const NEW_FROM_TEMPLATE: &str = "ctrl-shift-n";
     pub(super) const SPLIT_TERMINAL: &str = "ctrl-shift-d";
     pub(super) const COPY: &str = "ctrl-shift-c";
     pub(super) const VIEWER_COPY: &str = "ctrl-c";
@@ -147,6 +149,11 @@ pub fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new(SEND_BACK_TAB, SendBackTab, scope),
         KeyBinding::new(keys::VIEWER_COPY, CopySelection, Some(VIEWER_KEY_CONTEXT)),
         KeyBinding::new(RENAME_FILE, RenameFile, Some(FILE_TREE_KEY_CONTEXT)),
+        KeyBinding::new(
+            keys::NEW_FROM_TEMPLATE,
+            NewFromTemplate,
+            Some(FILE_TREE_KEY_CONTEXT),
+        ),
         KeyBinding::new(keys::SAVE_FILE, SaveFile, Some(FILE_TAB_KEY_CONTEXT)),
         KeyBinding::new(ASK_CONFIRM, AskConfirm, Some(ASK_KEY_CONTEXT)),
         KeyBinding::new(ASK_DENY, AskDeny, Some(ASK_KEY_CONTEXT)),

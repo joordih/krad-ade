@@ -17,7 +17,7 @@ use super::{
     ChangeMarks, NewEntryRow, TreeRow, DRAFT_ROW_ID, FILE_ROW_H, FILE_ROW_PREFIX, FILE_TREE_ID,
     INDENT, MARK_ADDED, MARK_CONFLICTED, MARK_DELETED, MARK_MODIFIED, MARK_RENAMED, MARK_UNTRACKED,
 };
-use crate::actions::{RenameFile, FILE_TREE_KEY_CONTEXT};
+use crate::actions::{NewFromTemplate, RenameFile, FILE_TREE_KEY_CONTEXT};
 use crate::components::{icon, IconName};
 use crate::theme::{
     appearance, palette, row_fill, row_shadow, Appearance, Palette, ICON_SM, LINE_SM, LINE_XS,
@@ -114,6 +114,7 @@ impl EnvironmentShell {
             .key_context(FILE_TREE_KEY_CONTEXT)
             .when(editable, |tree| {
                 tree.on_action(cx.listener(Self::on_rename_file))
+                    .on_action(cx.listener(Self::on_new_from_template))
                     .on_mouse_down(
                         MouseButton::Right,
                         cx.listener(|this: &mut Self, event: &MouseDownEvent, _, cx| {
@@ -140,6 +141,17 @@ impl EnvironmentShell {
             .children(self.upload_bar(cx))
             .child(list)
             .into_any_element()
+    }
+
+    fn on_new_from_template(
+        &mut self,
+        _: &NewFromTemplate,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(dir) = self.new_entry_folder() {
+            self.open_template_popup(dir, window, cx);
+        }
     }
 
     pub(super) fn on_rename_file(

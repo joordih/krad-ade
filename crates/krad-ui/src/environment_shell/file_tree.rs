@@ -252,6 +252,7 @@ mod tests {
             server: None,
             server_runtimes: Vec::new(),
             source_folder: Some("java".to_owned()),
+            templates: Vec::new(),
         };
         let catalog = LanguageCatalog::new([java]);
         let mut tree = FileTree {

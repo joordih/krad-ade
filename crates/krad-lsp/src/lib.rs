@@ -11,6 +11,10 @@ pub use client::{
 };
 pub use error::LspError;
 pub use lsp_types;
-pub use requests::{DocumentContent, DocumentContentParams, DocumentContentRequest};
+pub use requests::{
+    offers_file_templates, CreateFromTemplateParams, CreateFromTemplateRequest, DocumentContent,
+    DocumentContentParams, DocumentContentRequest, FileTemplate, FileTemplatesParams,
+    FileTemplatesRequest, TemplateCreation, FILE_TEMPLATES_CAPABILITY,
+};
 pub use server::LanguageServer;
 pub use uri::{file_uri, uri_path};

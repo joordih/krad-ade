@@ -4,7 +4,8 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
     canvas, div, px, rgb, AnyElement, App, Bounds, Context, DispatchPhase, ElementId, Entity,
     FontWeight, HighlightStyle, InteractiveElement, IntoElement, MouseMoveEvent, ParentElement,
-    Pixels, SharedString, StatefulInteractiveElement, Styled, StyledText, WeakEntity, Window,
+    Pixels, Point, SharedString, StatefulInteractiveElement, Styled, StyledText, WeakEntity,
+    Window,
 };
 use krad_domain::{LanguageId, ProblemSeverity};
 use krad_lsp::lsp_types::Hover;
@@ -32,6 +33,7 @@ const KEEP_MARGIN_PX: f32 = 6.0;
 pub(in crate::environment_shell) struct HoverCard {
     pub(super) tab: krad_domain::TerminalId,
     anchor: Range<usize>,
+    scrolled_at: Point<Pixels>,
     blocks: Vec<HoverBlock>,
     problems: Vec<EditorProblem>,
     syntax: Syntax,
@@ -162,9 +164,11 @@ impl EnvironmentShell {
             .or_else(|| problems.first().map(|problem| problem.range.clone()))
             .unwrap_or_else(|| word_around(text, offset));
         let syntax = Syntax::from(self.language_of(&document.path).as_ref());
+        let scrolled_at = state.read(cx).scroll_offset();
         self.editor_popover = Some(EditorPopover::Hover(HoverCard {
             tab,
             anchor,
+            scrolled_at,
             blocks,
             problems,
             syntax,
@@ -253,6 +257,9 @@ impl EnvironmentShell {
         root: (f32, f32),
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
+        if state.read(cx).scroll_offset() != card.scrolled_at {
+            return None;
+        }
         let anchor = Self::anchor_bounds(state, &card.anchor, cx)?;
         let pal = palette(cx);
         let placement = place(anchor, self.frame_inset, root, (HOVER_W, HOVER_MAX_H));
