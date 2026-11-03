@@ -71,7 +71,9 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let root = self.server_key(live, id, &path).map(|key| key.root);
+        let root = self
+            .server_key(live, id, &path)
+            .and_then(|key| key.root.folder().map(Path::to_path_buf));
         let params = ReferenceParams {
             text_document_position: TextDocumentPositionParams {
                 text_document: TextDocumentIdentifier::new(uri),

@@ -12,7 +12,7 @@ use lsp_types::{
     WorkspaceClientCapabilities, WorkspaceEditClientCapabilities,
 };
 use std::io::BufReader;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
 use krad_host::{HostCommand, HostLink};
@@ -57,13 +57,16 @@ impl LanguageServer {
     pub async fn initialize(
         client: LspClient,
         link: &HostLink,
-        root: &Path,
+        folders: &[PathBuf],
         options: Option<Value>,
     ) -> Result<ServerCapabilities, LspError> {
-        let folder = workspace_folder(root)?;
+        let folders = folders
+            .iter()
+            .map(|folder| workspace_folder(folder))
+            .collect::<Result<Vec<_>, _>>()?;
         let params = InitializeParams {
             process_id: link.is_local().then(std::process::id),
-            workspace_folders: Some(vec![folder]),
+            workspace_folders: Some(folders),
             capabilities: client_capabilities(),
             initialization_options: options,
             ..InitializeParams::default()

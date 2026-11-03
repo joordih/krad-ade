@@ -8,7 +8,7 @@ use ureq::Agent;
 
 use crate::error::ExtensionError;
 use crate::http;
-use crate::manifest::{load, Manifests, ServerManifest};
+use crate::manifest::{load, Manifests, ServerManifest, ServerScope};
 use crate::package::needed_server_runtimes;
 use crate::platform::Platform;
 use crate::registry::{self, Package, Registry};
@@ -25,6 +25,7 @@ pub struct ServerPlan {
     pub package: String,
     bin: String,
     pub server_runtimes: Vec<ServerRuntimeId>,
+    pub scope: ServerScope,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -206,6 +207,7 @@ impl LanguageTools {
             package: package_name,
             bin,
             server_runtimes,
+            scope: manifest.scope,
         })
     }
 

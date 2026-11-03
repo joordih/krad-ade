@@ -11,7 +11,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use super::super::EnvironmentShell;
-use super::{Document, ServerKey, ServerSlot};
+use super::{Document, ServerKey, ServerRoot, ServerSlot};
 
 pub(super) struct HandoffInputs {
     server: ServerToolchain,
@@ -54,7 +54,7 @@ impl EnvironmentShell {
         let effective = self.toolchains.effective(scope)?;
         Some(ServerKey {
             host: document.host.clone(),
-            root: scope.folder(),
+            root: ServerRoot::Folder(scope.folder()),
             plan,
             toolchain: effective
                 .toolchain()
@@ -65,15 +65,16 @@ impl EnvironmentShell {
     pub(super) fn handoff_inputs(&self, key: &ServerKey) -> Option<HandoffInputs> {
         let server = self.server_toolchain_of(&key.plan)?;
         let (link, _) = self.server_link(&key.host)?;
+        let folder = key.root.folder()?.to_path_buf();
         let toolchain = self
             .toolchains
-            .served_toolchain(&key.host, &key.root, &server.family)
+            .served_toolchain(&key.host, &folder, &server.family)
             .filter(|toolchain| key.toolchain.as_ref() == Some(&toolchain.location));
         Some(HandoffInputs {
             server,
             toolchain,
             link,
-            folder: key.root.clone(),
+            folder,
         })
     }
 

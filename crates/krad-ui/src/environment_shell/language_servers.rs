@@ -8,16 +8,19 @@ mod refactor;
 mod references;
 mod toolchain_switch;
 mod tooling;
+mod workspace_folders;
 
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{Context, Entity, Task};
 use krad_domain::{
     EnvironmentName, Host, LanguageCatalog, LanguageDef, TerminalId, ToolchainLocation,
 };
-use krad_extensions::{builtin_catalog, LanguageTools, MissingServerRuntime, ServerPlan};
+use krad_extensions::{
+    builtin_catalog, LanguageTools, MissingServerRuntime, ServerPlan, ServerScope,
+};
 use krad_lsp::lsp_types::ServerCapabilities;
 use krad_lsp::{DocumentChange, LanguageServer, LspClient};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -43,9 +46,24 @@ impl Document {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(super) struct ServerKey {
     host: krad_domain::Host,
-    root: PathBuf,
+    root: ServerRoot,
     plan: ServerPlan,
     toolchain: Option<ToolchainLocation>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(super) enum ServerRoot {
+    Folder(PathBuf),
+    Host,
+}
+
+impl ServerRoot {
+    pub(super) fn folder(&self) -> Option<&Path> {
+        match self {
+            Self::Folder(folder) => Some(folder),
+            Self::Host => None,
+        }
+    }
 }
 
 pub(super) struct RunningServer {
@@ -106,6 +124,7 @@ pub(super) struct LanguageServers {
     declined: HashSet<String>,
     shown_details: HashSet<ServerKey>,
     documents: HashMap<Document, ServerKey>,
+    folders: HashMap<ServerKey, BTreeSet<PathBuf>>,
     pub(super) diagnostics: diagnostics::DiagnosticStore,
     pending_edits: Vec<(Host, krad_lsp::lsp_types::WorkspaceEdit)>,
     last_start: StartId,
@@ -120,6 +139,7 @@ impl LanguageServers {
             shown_details: HashSet::new(),
             declined: HashSet::new(),
             documents: HashMap::new(),
+            folders: HashMap::new(),
             diagnostics: diagnostics::DiagnosticStore::default(),
             pending_edits: Vec::new(),
             last_start: StartId::default(),
@@ -169,14 +189,13 @@ impl EnvironmentShell {
     ) -> Option<ServerKey> {
         let tools = self.language_servers.tools.as_ref()?;
         let plan = tools.plan(self.language_servers.catalog.for_path(path)?)?;
-        if tools.server_toolchain(&plan).is_some() {
-            return self.toolchain_server_key(&Document::new(&live.data.host, path), plan);
-        }
-        let root = live
-            .data
-            .group_of(id)
-            .map(|group| group.root.clone())
-            .or_else(|| path.parent().map(Path::to_path_buf))?;
+        let root = match plan.scope {
+            ServerScope::Workspace => ServerRoot::Host,
+            ServerScope::Folder if tools.server_toolchain(&plan).is_some() => {
+                return self.toolchain_server_key(&Document::new(&live.data.host, path), plan);
+            }
+            ServerScope::Folder => ServerRoot::Folder(Self::document_folder(live, id, path)?),
+        };
         Some(ServerKey {
             host: live.data.host.clone(),
             root,
@@ -219,6 +238,15 @@ impl EnvironmentShell {
         else {
             return;
         };
+        if key.root == ServerRoot::Host {
+            if let Some(folder) = self
+                .envs
+                .get(env)
+                .and_then(|live| Self::document_folder(live, id, path))
+            {
+                self.register_folder(&key, folder);
+            }
+        }
         if self.language_servers.running(&key).is_some() {
             self.open_document(&key, path, state, cx);
             return;

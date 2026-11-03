@@ -37,6 +37,16 @@ pub struct ServerManifest {
     pub toolchain: Option<ServerToolchain>,
     #[serde(default)]
     pub source: Option<PackageSource>,
+    #[serde(default)]
+    pub scope: ServerScope,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum ServerScope {
+    #[default]
+    Folder,
+    Workspace,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
