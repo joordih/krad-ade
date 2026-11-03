@@ -70,7 +70,7 @@ impl SettingsPane {
         match self {
             Self::General => "How the app looks and how you work in it.",
             Self::Terminal => "The font, copy and paste, and the colours of terminals.",
-            Self::Editor => "How file tabs show their problems and the minimap.",
+            Self::Editor => "How files look, show their problems and the minimap.",
             Self::Integrations => "The code hosts reviews and merge requests come from.",
             Self::Gateway => {
                 "Chat with the models of a gateway you run, through the app's own agent."

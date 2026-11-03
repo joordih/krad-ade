@@ -5,6 +5,7 @@ mod appkit;
 mod assets;
 mod components;
 mod environment_shell;
+mod file_icons;
 mod highlight;
 mod http;
 mod keymap;

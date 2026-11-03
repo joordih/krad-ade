@@ -1,7 +1,7 @@
 use gpui_kit::{
     div, px, AnyElement, Context, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
 };
-use krad_domain::{EditorSettings, Minimap, ProblemLens, ProjectCheckLimit};
+use krad_domain::{EditorSettings, FileIconColors, Minimap, ProblemLens, ProjectCheckLimit};
 
 use super::super::dialog_parts::{segment, SegmentSize};
 use super::{form_row, panel_card, segmented_track, EnvironmentShell};
@@ -18,6 +18,10 @@ const MINIMAP_PREFIX: &str = "editor-minimap";
 const LIMIT_LABEL: &str = "Project check limit";
 const LIMIT_HINT: &str = "The most files of one language a group's project check opens for language servers that only check open files. Past it, Problems says the check is incomplete.";
 const LIMIT_PREFIX: &str = "editor-project-check-limit";
+const ICONS_LABEL: &str = "File icon colors";
+const ICONS_HINT: &str =
+    "The colors of the file tree's icons; Automatic follows the app's light or dark look.";
+const ICONS_PREFIX: &str = "editor-file-icon-colors";
 
 impl EnvironmentShell {
     fn edit_editor_settings(
@@ -75,6 +79,22 @@ impl EnvironmentShell {
                 this.edit_editor_settings(cx, |editor| editor.project_check_limit = limit);
             }))
         });
+        let icon_colors = FileIconColors::ALL.map(|colors| {
+            segment(
+                (ICONS_PREFIX, colors as u64),
+                colors.display_name(),
+                None,
+                self.settings.file_icon_colors == colors,
+                SegmentSize::Compact,
+                pal,
+                cx,
+            )
+            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                this.settings.file_icon_colors = colors;
+                this.save_settings(cx);
+                cx.notify();
+            }))
+        });
         let rows = vec![
             form_row(
                 LENS_LABEL,
@@ -86,6 +106,14 @@ impl EnvironmentShell {
                 MINIMAP_LABEL,
                 Some(MINIMAP_HINT),
                 segmented_track(pal).children(minimaps).into_any_element(),
+                pal,
+            ),
+            form_row(
+                ICONS_LABEL,
+                Some(ICONS_HINT),
+                segmented_track(pal)
+                    .children(icon_colors)
+                    .into_any_element(),
                 pal,
             ),
             form_row(

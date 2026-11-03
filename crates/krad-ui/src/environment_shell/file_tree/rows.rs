@@ -1,11 +1,11 @@
 use gpui_kit::component::InteractiveElementExt as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, uniform_list, AnyElement, AppContext as _, Context, Div, ExternalPaths,
+    div, px, rgb, uniform_list, AnyElement, App, AppContext as _, Context, Div, ExternalPaths,
     FontWeight, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement,
     Stateful, StatefulInteractiveElement, Styled, Window,
 };
-use krad_domain::{FileOpening, ProblemSeverity};
+use krad_domain::{FileOpening, FolderKind, ProblemSeverity};
 use krad_repo::{ChangeKind, DirEntry, EntryKind};
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
@@ -19,8 +19,8 @@ use super::{
 use crate::actions::{RenameFile, FILE_TREE_KEY_CONTEXT};
 use crate::components::{icon, IconName};
 use crate::theme::{
-    palette, row_fill, row_shadow, Palette, ICON_SM, LINE_SM, LINE_XS, RADIUS_XS, SPACE_1_5,
-    SPACE_2, TEXT_SM, TEXT_XS,
+    appearance, palette, row_fill, row_shadow, Appearance, Palette, ICON_SM, LINE_SM, LINE_XS,
+    RADIUS_XS, SPACE_1_5, SPACE_2, TEXT_SM, TEXT_XS,
 };
 
 pub(in crate::environment_shell) const fn change_mark(kind: ChangeKind) -> &'static str {
@@ -255,6 +255,31 @@ impl EnvironmentShell {
         })
     }
 
+    fn entry_icon(&self, entry: &DirEntry, expanded: bool, cx: &App) -> AnyElement {
+        let is_dir = entry.kind == EntryKind::Directory;
+        let dark = appearance(cx) == Appearance::Dark;
+        let colors = self.settings.file_icon_colors.palette(dark);
+        let colored = self.file_icons.as_ref().and_then(|icons| {
+            if !is_dir {
+                return icons.file(&entry.name, colors, ICON_SM);
+            }
+            let kind = if self.language_catalog().in_packages(&entry.path) {
+                FolderKind::Package
+            } else {
+                FolderKind::Plain
+            };
+            icons.folder(&entry.name, (kind, expanded), colors, ICON_SM)
+        });
+        colored.unwrap_or_else(|| {
+            let glyph = if is_dir {
+                IconName::Folder
+            } else {
+                IconName::File
+            };
+            icon(glyph, ICON_SM, palette(cx).text_muted).into_any_element()
+        })
+    }
+
     pub(super) fn file_row(
         &self,
         entry: &DirEntry,
@@ -286,11 +311,7 @@ impl EnvironmentShell {
             None if open => pal.text_strong,
             None => pal.text_default,
         };
-        let (glyph, glyph_color) = if is_dir {
-            (IconName::Folder, pal.text_muted)
-        } else {
-            (IconName::File, pal.text_muted)
-        };
+        let glyph = self.entry_icon(entry, expanded, cx);
         let chevron = is_dir.then(|| {
             icon(
                 if expanded {
@@ -333,7 +354,7 @@ impl EnvironmentShell {
                     .size(px(ICON_SM))
                     .children(chevron),
             )
-            .child(icon(glyph, ICON_SM, glyph_color))
+            .child(glyph)
             .child(entry_name(label, problem))
             .when_some(change, |row, kind| {
                 row.child(

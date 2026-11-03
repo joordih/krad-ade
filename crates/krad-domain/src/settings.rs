@@ -1,4 +1,5 @@
 use crate::agent::AgentPreset;
+use crate::file_icon::FileIconColors;
 use crate::gateway::GatewaySettings;
 use crate::gitlab::GitlabSettings;
 use crate::host_timeouts::HostTimeouts;
@@ -195,6 +196,8 @@ pub struct Settings {
     pub toolchain_activation: ToolchainActivation,
     #[serde(default, skip_serializing_if = "EditorSettings::is_default")]
     pub editor: EditorSettings,
+    #[serde(default, skip_serializing_if = "FileIconColors::is_default")]
+    pub file_icon_colors: FileIconColors,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
