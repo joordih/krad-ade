@@ -27,7 +27,7 @@ impl EnvironmentShell {
         for key in keys {
             let mine: Vec<(PathBuf, DiskChange)> = changed
                 .iter()
-                .filter(|(path, _)| path.starts_with(&key.root))
+                .filter(|(path, _)| key.root.folder().is_none_or(|root| path.starts_with(root)))
                 .cloned()
                 .collect();
             if !mine.is_empty() {

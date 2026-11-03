@@ -1,8 +1,12 @@
 use gpui_kit::component::input::{EditorState, Rope, RopeExt as _};
 use gpui_kit::{AppContext as _, Context, Entity, Window};
-use krad_lsp::lsp_types::{DocumentChanges, OneOf, TextEdit, WorkspaceEdit};
+use krad_host::HostLink;
+use krad_lsp::lsp_types::{
+    DocumentChangeOperation, DocumentChanges, OneOf, ResourceOp, TextDocumentEdit, TextEdit,
+    WorkspaceEdit,
+};
 use krad_lsp::uri_path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::super::EnvironmentShell;
 use super::Document;
@@ -26,47 +30,89 @@ pub(super) fn apply_text_edits(text: &str, edits: Vec<TextEdit>) -> String {
     rope.to_string()
 }
 
-pub(super) fn file_changes(edit: WorkspaceEdit) -> Vec<(PathBuf, Vec<TextEdit>)> {
-    let mut found: Vec<(PathBuf, Vec<TextEdit>)> = Vec::new();
-    let mut add = |path: Option<PathBuf>, edits: Vec<TextEdit>| {
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(super) struct WorkspaceChanges {
+    pub(super) created: Vec<PathBuf>,
+    pub(super) edited: Vec<(PathBuf, Vec<TextEdit>)>,
+    pub(super) renamed: Vec<(PathBuf, PathBuf)>,
+    pub(super) deleted: Vec<PathBuf>,
+}
+
+impl WorkspaceChanges {
+    fn edit(&mut self, path: Option<PathBuf>, edits: Vec<TextEdit>) {
         let Some(path) = path else {
             return;
         };
-        match found.iter_mut().find(|(known, _)| *known == path) {
+        match self.edited.iter_mut().find(|(known, _)| *known == path) {
             Some((_, known)) => known.extend(edits),
-            None => found.push((path, edits)),
+            None => self.edited.push((path, edits)),
         }
-    };
+    }
+
+    fn operation(&mut self, operation: ResourceOp) {
+        match operation {
+            ResourceOp::Create(create) => self.created.extend(uri_path(&create.uri)),
+            ResourceOp::Rename(rename) => {
+                if let (Some(from), Some(to)) =
+                    (uri_path(&rename.old_uri), uri_path(&rename.new_uri))
+                {
+                    self.renamed.push((from, to));
+                }
+            }
+            ResourceOp::Delete(delete) => self.deleted.extend(uri_path(&delete.uri)),
+        }
+    }
+
+    fn renamed_to(&self, path: &Path) -> Option<&Path> {
+        self.renamed
+            .iter()
+            .find(|(from, _)| from == path)
+            .map(|(_, to)| to.as_path())
+    }
+}
+
+fn document_edits(document: TextDocumentEdit) -> (Option<PathBuf>, Vec<TextEdit>) {
+    let edits = document
+        .edits
+        .into_iter()
+        .map(|edit| match edit {
+            OneOf::Left(edit) => edit,
+            OneOf::Right(annotated) => annotated.text_edit,
+        })
+        .collect();
+    (uri_path(&document.text_document.uri), edits)
+}
+
+pub(super) fn workspace_changes(edit: WorkspaceEdit) -> WorkspaceChanges {
+    let mut changes = WorkspaceChanges::default();
     for (uri, edits) in edit.changes.unwrap_or_default() {
-        add(uri_path(&uri), edits);
+        changes.edit(uri_path(&uri), edits);
     }
-    let documents = match edit.document_changes {
-        Some(DocumentChanges::Edits(edits)) => edits,
-        Some(DocumentChanges::Operations(operations)) => operations
-            .into_iter()
-            .filter_map(|operation| match operation {
-                krad_lsp::lsp_types::DocumentChangeOperation::Edit(edit) => Some(edit),
-                krad_lsp::lsp_types::DocumentChangeOperation::Op(_) => None,
-            })
-            .collect(),
-        None => Vec::new(),
-    };
-    for document in documents {
-        let edits = document
-            .edits
-            .into_iter()
-            .map(|edit| match edit {
-                OneOf::Left(edit) => edit,
-                OneOf::Right(annotated) => annotated.text_edit,
-            })
-            .collect();
-        add(uri_path(&document.text_document.uri), edits);
+    match edit.document_changes {
+        Some(DocumentChanges::Edits(documents)) => {
+            for document in documents {
+                let (path, edits) = document_edits(document);
+                changes.edit(path, edits);
+            }
+        }
+        Some(DocumentChanges::Operations(operations)) => {
+            for operation in operations {
+                match operation {
+                    DocumentChangeOperation::Edit(document) => {
+                        let (path, edits) = document_edits(document);
+                        changes.edit(path, edits);
+                    }
+                    DocumentChangeOperation::Op(operation) => changes.operation(operation),
+                }
+            }
+        }
+        None => {}
     }
-    found
+    changes
 }
 
 impl EnvironmentShell {
-    fn open_state(&self, document: &Document) -> Option<Entity<EditorState>> {
+    pub(super) fn open_state(&self, document: &Document) -> Option<Entity<EditorState>> {
         self.envs
             .values()
             .filter(|live| live.data.host == document.host)
@@ -103,6 +149,12 @@ impl EnvironmentShell {
         for (host, edit) in std::mem::take(&mut self.language_servers.pending_edits) {
             self.apply_workspace_edit(&host, edit, window, cx);
         }
+        if let Some((host, path, at)) = self.language_servers.pending_rename.take() {
+            self.start_rename_at(&Document::new(&host, &path), at, window, cx);
+        }
+        self.show_pending_choice(window, cx);
+        self.show_pending_conflicts(window, cx);
+        self.ask_pending_input(window, cx);
     }
 
     fn apply_workspace_edit(
@@ -112,34 +164,78 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let changes = workspace_changes(edit);
         let link = self.server_link(host).map(|(link, _)| link);
-        for (path, edits) in file_changes(edit) {
-            if let Some(state) = self.open_state(&Document::new(host, &path)) {
-                Self::apply_editor_edits(&state, edits, window, cx);
+        let mut renamed_after_write = Vec::new();
+        for (path, edits) in &changes.edited {
+            if let Some(state) = self.open_state(&Document::new(host, path)) {
+                Self::apply_editor_edits(&state, edits.clone(), window, cx);
                 continue;
             }
             let Some(link) = link.clone() else {
                 self.toast(&format!("{WRITE_FAILED_TEXT} {}", path.display()), cx);
                 continue;
             };
-            let written = path.clone();
-            let writing = cx.background_spawn(async move {
-                let text = link.read_to_string(&written)?;
-                link.write(&written, apply_text_edits(&text, edits).as_bytes())
-            });
-            cx.spawn(async move |this, cx| {
-                if let Err(error) = writing.await {
-                    this.update(cx, |shell, cx| {
-                        shell.toast(
-                            &format!("{WRITE_FAILED_TEXT} {}: {error}", path.display()),
-                            cx,
-                        );
-                    })
-                    .unwrap_or_default();
-                }
-            })
-            .detach();
+            let rename = changes.renamed_to(path).map(Path::to_path_buf);
+            if rename.is_some() {
+                renamed_after_write.push(path.clone());
+            }
+            Self::write_edited(
+                link,
+                path.clone(),
+                edits.clone(),
+                changes.created.contains(path),
+                rename,
+                cx,
+            );
         }
+        for (from, to) in &changes.renamed {
+            if !renamed_after_write.contains(from) {
+                self.rename_to(from, to, cx);
+            }
+        }
+        for path in changes.deleted {
+            self.delete_file(path, cx);
+        }
+    }
+
+    fn write_edited(
+        link: HostLink,
+        path: PathBuf,
+        edits: Vec<TextEdit>,
+        created: bool,
+        rename: Option<PathBuf>,
+        cx: &mut Context<Self>,
+    ) {
+        let written = path.clone();
+        let writing = cx.background_spawn(async move {
+            let text = if created && !link.exists(&written) {
+                String::new()
+            } else {
+                link.read_to_string(&written)?
+            };
+            link.write(&written, apply_text_edits(&text, edits).as_bytes())
+        });
+        cx.spawn(async move |this, cx| {
+            let written = writing.await;
+            this.update(cx, |shell, cx| match written {
+                Ok(()) => {
+                    if let Some(to) = rename {
+                        shell.rename_to(&path, &to, cx);
+                    }
+                }
+                Err(error) => shell.toast(
+                    &format!("{WRITE_FAILED_TEXT} {}: {error}", path.display()),
+                    cx,
+                ),
+            })
+            .unwrap_or_default();
+        })
+        .detach();
+    }
+
+    fn rename_to(&self, from: &Path, to: &Path, cx: &mut Context<Self>) {
+        self.relocate_file(from.to_path_buf(), to.to_path_buf(), cx);
     }
 }
 
@@ -173,9 +269,48 @@ mod tests {
             changes: Some(HashMap::from([(uri, vec![replace(0, 0, 1, "x")])])),
             ..WorkspaceEdit::default()
         };
-        let found = file_changes(edit);
+        let found = workspace_changes(edit).edited;
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].0, PathBuf::from("/work/lib.rs"));
         assert_eq!(found[0].1.len(), 1);
+    }
+
+    #[test]
+    fn file_operations_keep_apart_from_text_edits() {
+        let uri = |path: &str| {
+            Uri::from_str(&format!("file://{path}"))
+                .unwrap_or_else(|_| unreachable!("a literal file URI parses"))
+        };
+        let edit = WorkspaceEdit {
+            document_changes: Some(DocumentChanges::Operations(vec![
+                DocumentChangeOperation::Edit(TextDocumentEdit {
+                    text_document: krad_lsp::lsp_types::OptionalVersionedTextDocumentIdentifier {
+                        uri: uri("/work/Names.java"),
+                        version: None,
+                    },
+                    edits: vec![OneOf::Left(replace(0, 0, 5, "Labels"))],
+                }),
+                DocumentChangeOperation::Op(ResourceOp::Rename(krad_lsp::lsp_types::RenameFile {
+                    old_uri: uri("/work/Names.java"),
+                    new_uri: uri("/work/Labels.java"),
+                    options: None,
+                    annotation_id: None,
+                })),
+            ])),
+            ..WorkspaceEdit::default()
+        };
+        let changes = workspace_changes(edit);
+        assert_eq!(changes.edited.len(), 1);
+        assert_eq!(
+            changes.renamed,
+            vec![(
+                PathBuf::from("/work/Names.java"),
+                PathBuf::from("/work/Labels.java")
+            )]
+        );
+        assert_eq!(
+            changes.renamed_to(Path::new("/work/Names.java")),
+            Some(Path::new("/work/Labels.java"))
+        );
     }
 }

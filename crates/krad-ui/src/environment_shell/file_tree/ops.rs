@@ -1,8 +1,8 @@
 use gpui_kit::{AppContext as _, ClipboardItem, Context, Window};
 use krad_host::HostLink;
 use krad_repo::{
-    create_dir, create_file, delete_entry, move_entry, rename_entry, reveal_in_file_manager,
-    DirEntry, EntryKind, RepoError,
+    create_dir, create_file, delete_entry, move_entry, relocate_entry, rename_entry,
+    reveal_in_file_manager, DirEntry, EntryKind, RepoError,
 };
 use std::path::{Path, PathBuf};
 
@@ -157,6 +157,20 @@ impl EnvironmentShell {
         );
     }
 
+    pub(in crate::environment_shell) fn relocate_file(
+        &self,
+        path: PathBuf,
+        target: PathBuf,
+        cx: &mut Context<Self>,
+    ) {
+        let source = path.clone();
+        self.run_file_op(
+            move |link| relocate_entry(link, &source, &target),
+            move |this, moved, cx| this.relocate(&path, Some(&moved), cx),
+            cx,
+        );
+    }
+
     pub(in crate::environment_shell) fn create_file_entry(
         &self,
         dir: PathBuf,
@@ -205,7 +219,7 @@ impl EnvironmentShell {
         self.delete_file(path, cx);
     }
 
-    pub(super) fn delete_file(&self, path: PathBuf, cx: &mut Context<Self>) {
+    pub(in crate::environment_shell) fn delete_file(&self, path: PathBuf, cx: &mut Context<Self>) {
         cx.notify();
         let target = path.clone();
         self.run_file_op(

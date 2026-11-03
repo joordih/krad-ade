@@ -52,6 +52,7 @@ impl ServerDocument {
     pub(super) fn new(
         client: LspClient,
         document: &Document,
+        uri: Option<Uri>,
         capabilities: &ServerCapabilities,
         shell: WeakEntity<EnvironmentShell>,
     ) -> Option<Self> {
@@ -62,7 +63,10 @@ impl ServerDocument {
             .unwrap_or_default();
         Some(Self {
             client,
-            uri: file_uri(&document.path).ok()?,
+            uri: match uri {
+                Some(uri) => uri,
+                None => file_uri(&document.path).ok()?,
+            },
             document: document.clone(),
             triggers: triggers.into(),
             acts: capabilities.code_action_provider.is_some(),
@@ -85,18 +89,23 @@ impl ServerDocument {
         lsp.code_action_providers = if self.acts { vec![shared] } else { Vec::new() };
         let shell = self.shell.clone();
         let own = self.uri.clone();
+        let document = self.document.clone();
         lsp.show_document = Some(Rc::new(
             move |params: &ShowDocumentParams, _: &mut Window, cx: &mut App| {
                 if params.uri == own {
                     return false;
                 }
-                let Some(path) = uri_path(&params.uri) else {
-                    return false;
-                };
                 let at = params.selection.map(|range| range.start);
-                shell
-                    .update(cx, |shell, cx| shell.open_file_at(&path, at, cx))
-                    .is_ok()
+                match uri_path(&params.uri) {
+                    Some(path) => shell
+                        .update(cx, |shell, cx| shell.open_file_at(&path, at, cx))
+                        .is_ok(),
+                    None => shell
+                        .update(cx, |shell, cx| {
+                            shell.open_library_document(&document, params.uri.clone(), at, cx);
+                        })
+                        .is_ok(),
+                }
             },
         ));
     }

@@ -1,13 +1,19 @@
+mod choice;
+mod code_tools;
 mod diagnostics;
 mod edits;
+mod input;
+mod library_documents;
 mod lifecycle;
 mod notice;
+mod progress;
 mod project_check;
 mod providers;
 mod refactor;
 mod references;
 mod toolchain_switch;
 mod tooling;
+mod workspace_folders;
 
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{Context, Entity, Task};
@@ -15,14 +21,18 @@ use krad_domain::{
     EnvironmentName, Host, LanguageCatalog, LanguageDef, ProblemSeverity, TerminalId,
     ToolchainLocation,
 };
-use krad_extensions::{builtin_catalog, LanguageTools, MissingServerRuntime, ServerPlan};
+use krad_extensions::{
+    builtin_catalog, LanguageTools, MissingServerRuntime, ServerPlan, ServerScope,
+};
 use krad_lsp::lsp_types::ServerCapabilities;
 use krad_lsp::{DocumentChange, LanguageServer, LspClient};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::{EnvironmentShell, LiveEnv};
+pub(super) use choice::ChoiceAnswer;
+pub(super) use code_tools::CodeCaller;
 pub(super) use diagnostics::{editor_severity, severity_of};
 pub(super) use project_check::DiskChange;
 use providers::ServerDocument;
@@ -45,14 +55,30 @@ impl Document {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(super) struct ServerKey {
     host: krad_domain::Host,
-    root: PathBuf,
+    root: ServerRoot,
     plan: ServerPlan,
     toolchain: Option<ToolchainLocation>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(super) enum ServerRoot {
+    Folder(PathBuf),
+    Host,
+}
+
+impl ServerRoot {
+    pub(super) fn folder(&self) -> Option<&Path> {
+        match self {
+            Self::Folder(folder) => Some(folder),
+            Self::Host => None,
+        }
+    }
 }
 
 pub(super) struct RunningServer {
     server: LanguageServer,
     pub(super) capabilities: ServerCapabilities,
+    progress: progress::ServerProgress,
     _events: Task<()>,
 }
 
@@ -107,9 +133,15 @@ pub(super) struct LanguageServers {
     declined: HashSet<String>,
     shown_details: HashSet<ServerKey>,
     documents: HashMap<Document, ServerKey>,
+    folders: HashMap<ServerKey, BTreeSet<PathBuf>>,
+    library: HashMap<Document, library_documents::LibraryDocument>,
     pub(super) diagnostics: diagnostics::DiagnosticStore,
     project: project_check::ProjectChecks,
     pending_edits: Vec<(Host, krad_lsp::lsp_types::WorkspaceEdit)>,
+    pending_rename: Option<(Host, PathBuf, krad_lsp::lsp_types::Position)>,
+    pending_choice: Option<(ServerKey, krad_lsp::ServerChoice)>,
+    pending_input: Option<input::PendingInput>,
+    pending_conflicts: Option<(ServerKey, krad_lsp::ServerConflicts)>,
     last_start: StartId,
 }
 
@@ -122,9 +154,15 @@ impl LanguageServers {
             shown_details: HashSet::new(),
             declined: HashSet::new(),
             documents: HashMap::new(),
+            folders: HashMap::new(),
+            library: HashMap::new(),
             diagnostics: diagnostics::DiagnosticStore::default(),
             project: project_check::ProjectChecks::default(),
             pending_edits: Vec::new(),
+            pending_rename: None,
+            pending_choice: None,
+            pending_input: None,
+            pending_conflicts: None,
             last_start: StartId::default(),
         }
     }
@@ -134,6 +172,11 @@ impl LanguageServers {
             ServerSlot::Running(running) => Some(running),
             _ => None,
         }
+    }
+
+    pub(super) fn progress_label(&self, document: &Document) -> Option<String> {
+        let key = self.documents.get(document)?;
+        self.running(key)?.progress.label()
     }
 
     pub(super) fn client_of(&self, document: &Document) -> Option<&LspClient> {
@@ -177,14 +220,13 @@ impl EnvironmentShell {
     ) -> Option<ServerKey> {
         let tools = self.language_servers.tools.as_ref()?;
         let plan = tools.plan(self.language_servers.catalog.for_path(path)?)?;
-        if tools.server_toolchain(&plan).is_some() {
-            return self.toolchain_server_key(&Document::new(&live.data.host, path), plan);
-        }
-        let root = live
-            .data
-            .group_of(id)
-            .map(|group| group.root.clone())
-            .or_else(|| path.parent().map(Path::to_path_buf))?;
+        let root = match plan.scope {
+            ServerScope::Workspace => ServerRoot::Host,
+            ServerScope::Folder if tools.server_toolchain(&plan).is_some() => {
+                return self.toolchain_server_key(&Document::new(&live.data.host, path), plan);
+            }
+            ServerScope::Folder => ServerRoot::Folder(Self::document_folder(live, id, path)?),
+        };
         Some(ServerKey {
             host: live.data.host.clone(),
             root,
@@ -216,6 +258,10 @@ impl EnvironmentShell {
             return;
         };
         let document = Document::new(&host, path);
+        if let Some(library) = self.language_servers.library.get(&document).cloned() {
+            self.open_document(&library.key, path, state, cx);
+            return;
+        }
         if self.toolchains_unresolved(&document) {
             self.resolve_toolchains(document, cx);
             return;
@@ -227,6 +273,15 @@ impl EnvironmentShell {
         else {
             return;
         };
+        if key.root == ServerRoot::Host {
+            if let Some(folder) = self
+                .envs
+                .get(env)
+                .and_then(|live| Self::document_folder(live, id, path))
+            {
+                self.register_folder(&key, folder);
+            }
+        }
         if self.language_servers.running(&key).is_some() {
             self.open_document(&key, path, state, cx);
             return;
@@ -245,14 +300,23 @@ impl EnvironmentShell {
             return;
         };
         let opened_document = Document::new(&key.host, path);
+        let library = self
+            .language_servers
+            .library
+            .get(&opened_document)
+            .map(|library| library.uri.clone());
         let document = ServerDocument::new(
             running.server.client.clone(),
             &opened_document,
+            library.clone(),
             &running.capabilities,
             cx.entity().downgrade(),
         );
         if let Some(document) = document {
             state.update(cx, |state, _| document.install(state.lsp_mut()));
+        }
+        if library.is_some() {
+            return;
         }
         if self
             .language_servers

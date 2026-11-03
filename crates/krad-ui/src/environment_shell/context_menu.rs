@@ -52,6 +52,7 @@ pub(super) enum MenuAction {
     EnterToolchainPath(Box<ToolchainScope>),
     RescanToolchains(Box<ToolchainScope>),
     SetGroupActivation(GroupId, GroupActivation),
+    AnswerChoice(Box<super::language_servers::ChoiceAnswer>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -314,6 +315,7 @@ impl EnvironmentShell {
             MenuAction::ShowSessionTab(id) => self.show_terminal_tab(id, window, cx),
             MenuAction::ShowEditorChat(id) => self.show_editor_chat(id, cx),
             MenuAction::OpenLocation(path, at) => self.open_file_at(&path, Some(at), cx),
+            MenuAction::AnswerChoice(answer) => self.answer_choice(*answer),
             MenuAction::DismissLead(id) => self.dismiss_lead(id, cx),
             MenuAction::SetEffort(id, effort) => {
                 self.command_surface(id, SurfaceCommand::Effort(effort), cx);

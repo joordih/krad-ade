@@ -17,7 +17,9 @@ mod worktree;
 pub use branch::{diff_between, remote_url, resolved_remote_url, ORIGIN_REMOTE};
 pub use changes::{line_counts, working_diff, LineCount};
 pub use error::RepoError;
-pub use file_ops::{create_dir, create_file, delete_entry, move_entry, rename_entry};
+pub use file_ops::{
+    create_dir, create_file, delete_entry, move_entry, relocate_entry, rename_entry,
+};
 pub use files::{list_dir, read_text, DirEntry, EntryKind, TextFile};
 pub use git::repo_root;
 pub use index::{index_files, FileIndex, IndexEntry};

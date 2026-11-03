@@ -2,7 +2,8 @@ mod tray;
 
 use gpui_kit::{AppContext as _, Context, Task};
 use krad_domain::{
-    McpFileError, McpProjectFile, McpProjectTrust, McpServer, McpServerStart, McpTransport,
+    CodeTools, EnvironmentName, McpFileError, McpProjectFile, McpProjectTrust, McpServer,
+    McpServerStart, McpServerState, McpTransport, McpValue, McpVariable, TerminalId,
     PROJECT_MCP_FILE,
 };
 use krad_host::HostLink;
@@ -13,6 +14,8 @@ use std::path::{Path, PathBuf};
 use super::EnvironmentShell;
 
 const ARGUMENT_JOINER: &str = " ";
+const CODE_TOOLS_SERVER: &str = "krad_code";
+const CODE_TOOLS_VERB: &str = "mcp";
 const SECRET_PROBLEM_SEPARATOR: &str = ": ";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -115,6 +118,35 @@ impl EnvironmentShell {
         self.settings.mcp.forget_project(folder);
         self.save_settings(cx);
         cx.notify();
+    }
+
+    pub(super) fn code_tools_server(
+        &self,
+        env: &EnvironmentName,
+        id: TerminalId,
+    ) -> Option<McpServer> {
+        if self.settings.code_tools != CodeTools::On || self.agent_bus.is_none() {
+            return None;
+        }
+        let env = self
+            .bus_vars(env, id)
+            .into_iter()
+            .filter_map(|(name, value)| {
+                Some(McpVariable {
+                    name: name.parse().ok()?,
+                    value: McpValue::Plain(value),
+                })
+            })
+            .collect();
+        Some(McpServer {
+            name: CODE_TOOLS_SERVER.parse().ok()?,
+            transport: McpTransport::Stdio {
+                command: krad_agents::CLI_PROGRAM.to_owned(),
+                args: vec![CODE_TOOLS_VERB.to_owned()],
+                env,
+            },
+            state: McpServerState::Enabled,
+        })
     }
 
     pub(super) fn mcp_launch(

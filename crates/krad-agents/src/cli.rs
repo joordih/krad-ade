@@ -1,4 +1,5 @@
 use crate::client::call;
+use crate::code::{CodeRequest, CodeTool};
 use crate::env::{bus_env, guide, orchestrator_guide, BusEnv, CLI_PROGRAM, ENV_TERMINAL};
 use crate::handle::Caller;
 use crate::hook::{run_ask, run_hook};
@@ -28,6 +29,7 @@ const FLAG_LINES: &str = "--lines";
 const FLAG_AGENT: &str = "--agent";
 const FLAG_WORKTREE: &str = "--worktree";
 const TERMINAL_ID: &str = "terminal id";
+const CODE_USAGE: &str = "Usage: krad-ade-agents code <diagnostics|definition|references|hover|rename> FILE[:LINE:COLUMN] [NEW_NAME]";
 
 const NO_AGENTS: &str = "No agents";
 const NO_MESSAGES: &str = "No new messages";
@@ -47,16 +49,19 @@ enum Verb {
     Hook,
     Ask,
     StatusLine,
+    Code,
+    Mcp,
 }
 
 impl Verb {
-    const USAGE_ORDER: [Self; 7] = [
+    const USAGE_ORDER: [Self; 8] = [
         Self::List,
         Self::Send,
         Self::Check,
         Self::Wait,
         Self::Read,
         Self::Spawn,
+        Self::Code,
         Self::Help,
     ];
 }
@@ -74,6 +79,8 @@ impl std::fmt::Display for Verb {
             Self::Hook => "hook",
             Self::Ask => "ask",
             Self::StatusLine => "statusline",
+            Self::Code => "code",
+            Self::Mcp => "mcp",
         })
     }
 }
@@ -93,6 +100,8 @@ impl FromStr for Verb {
             "hook" => Self::Hook,
             "ask" => Self::Ask,
             "statusline" => Self::StatusLine,
+            "code" => Self::Code,
+            "mcp" => Self::Mcp,
             _ => return Err(CliError::UnknownCommand(text.to_owned())),
         })
     }
@@ -127,6 +136,8 @@ enum CliError {
     InvalidValue { what: String, text: String },
     #[error("{0} needs a value")]
     FlagNeedsValue(String),
+    #[error("{0}")]
+    Code(String),
 }
 
 enum Output {
@@ -186,6 +197,9 @@ pub fn run_cli(args: &[String]) -> i32 {
             Verb::StatusLine => run_status_line(harness, args),
             _ => run_hook(harness, args),
         };
+    }
+    if verb == Verb::Mcp {
+        return crate::mcp::run_mcp();
     }
     if verb == Verb::Help && rest.first().map(String::as_str) == Some(LEAD_TOPIC) {
         emit(Output::Stdout(orchestrator_guide(CLI_PROGRAM)));
@@ -259,7 +273,24 @@ fn report(request: &Request, response: &Response, json: bool) -> i32 {
 
 fn build_request(verb: Verb, options: &Options) -> Result<Option<Request>, CliError> {
     let request = match verb {
-        Verb::Help | Verb::Hook | Verb::Ask | Verb::StatusLine => return Ok(None),
+        Verb::Help | Verb::Hook | Verb::Ask | Verb::StatusLine | Verb::Mcp => return Ok(None),
+        Verb::Code => {
+            let (tool, rest) = options
+                .positional
+                .split_first()
+                .ok_or_else(|| CliError::Code(CODE_USAGE.to_owned()))?;
+            let (target, name) = rest
+                .split_first()
+                .ok_or_else(|| CliError::Code(CODE_USAGE.to_owned()))?;
+            let tool = tool
+                .parse::<CodeTool>()
+                .map_err(|error| CliError::Code(error.to_string()))?;
+            let new_name = (!name.is_empty()).then(|| name.join(" "));
+            Request::Code(
+                CodeRequest::new(tool, target, new_name)
+                    .map_err(|error| CliError::Code(error.to_string()))?,
+            )
+        }
         Verb::List => Request::List,
         Verb::Send => {
             let (to, words) = options
@@ -366,6 +397,7 @@ fn render(request: &Request, response: &Response) -> String {
         Response::Noted | Response::Decided(_) => String::new(),
         Response::Spawned { terminal } => format!("Started worker in terminal {terminal}"),
         Response::Submitted { terminal } => format!("Typed the message into terminal {terminal}"),
+        Response::Code(answer) => answer.render(),
         Response::Error(message) => message.clone(),
     }
 }
@@ -435,7 +467,7 @@ mod tests {
         }
         assert_eq!(
             usage(),
-            "Usage: krad-ade-agents <list|send|check|wait|read|spawn|help> [args] [--json]"
+            "Usage: krad-ade-agents <list|send|check|wait|read|spawn|code|help> [args] [--json]"
         );
         assert_eq!("send".parse::<Verb>(), Ok(Verb::Send));
         Ok(())

@@ -8,7 +8,7 @@ use ureq::Agent;
 
 use crate::error::ExtensionError;
 use crate::http;
-use crate::manifest::{load, Manifests, ProjectCheck, ServerManifest};
+use crate::manifest::{load, Manifests, ProjectCheck, ServerManifest, ServerScope};
 use crate::package::needed_server_runtimes;
 use crate::platform::Platform;
 use crate::registry::{self, Package, Registry};
@@ -25,6 +25,7 @@ pub struct ServerPlan {
     pub package: String,
     bin: String,
     pub server_runtimes: Vec<ServerRuntimeId>,
+    pub scope: ServerScope,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,7 +98,7 @@ impl LanguageTools {
         let root = config_dir.join(LANGUAGES_DIR);
         let loaded = load(manifest_folders);
         Ok(Self {
-            registry: registry::cached(&root),
+            registry: registry::cached(&root).with_manifest_sources(&loaded.manifests.servers),
             requirement_cache: RequirementCache::load(&root),
             root,
             platform,
@@ -131,7 +132,7 @@ impl LanguageTools {
 
     #[must_use]
     pub fn with_registry(mut self, registry: Registry) -> Self {
-        self.registry = registry;
+        self.registry = registry.with_manifest_sources(&self.manifests.servers);
         self
     }
 
@@ -207,6 +208,7 @@ impl LanguageTools {
             package: package_name,
             bin,
             server_runtimes,
+            scope: manifest.scope,
         })
     }
 

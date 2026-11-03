@@ -1,7 +1,7 @@
 use gpui_kit::{
     div, px, AnyElement, Context, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
 };
-use krad_domain::{AppUpdateCheck, AppearanceMode};
+use krad_domain::{AppUpdateCheck, AppearanceMode, CodeTools};
 
 use super::super::dialog_parts::{segment, SegmentSize};
 use super::{form_row, panel_card, segmented_track, EnvironmentShell, SWATCH_GAP};
@@ -21,6 +21,12 @@ const LABEL_UPDATES_AUTOMATIC: &str = "Automatic";
 const LABEL_UPDATES_MANUAL: &str = "Manual";
 const UPDATES_LABEL: &str = "Check for updates";
 const UPDATES_HINT: &str = "Automatic downloads new releases in the background and asks you to restart; Manual only checks from the command palette.";
+const BTN_CODE_TOOLS_ON: &str = "code-tools-on";
+const BTN_CODE_TOOLS_OFF: &str = "code-tools-off";
+const LABEL_CODE_TOOLS_ON: &str = "On";
+const LABEL_CODE_TOOLS_OFF: &str = "Off";
+const CODE_TOOLS_LABEL: &str = "Code tools for agents";
+const CODE_TOOLS_HINT: &str = "Agents the app starts can ask the editor's language servers for diagnostics, definitions, references and renames. Applies to agents started after the change.";
 
 impl EnvironmentShell {
     pub(super) fn general_pane(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -62,13 +68,49 @@ impl EnvironmentShell {
         appearance_rows.extend(self.tint_rows(cx));
         let appearance_card = panel_card(appearance_rows, pal);
         let updates_card = panel_card(vec![self.app_updates_row(cx)], pal);
+        let code_tools_card = panel_card(vec![self.code_tools_row(cx)], pal);
         div()
             .flex()
             .flex_col()
             .gap(px(SWATCH_GAP))
             .child(appearance_card)
             .child(updates_card)
+            .child(code_tools_card)
             .into_any_element()
+    }
+
+    fn code_tools_row(&self, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
+        let current = self.settings.code_tools;
+        let option = |id: &'static str, label: &'static str, choice: CodeTools| {
+            segment(
+                id,
+                label,
+                None,
+                current == choice,
+                SegmentSize::Compact,
+                pal,
+                cx,
+            )
+            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                this.settings.code_tools = choice;
+                this.save_settings(cx);
+                cx.notify();
+            }))
+        };
+        let segmented = segmented_track(pal)
+            .child(option(
+                BTN_CODE_TOOLS_ON,
+                LABEL_CODE_TOOLS_ON,
+                CodeTools::On,
+            ))
+            .child(option(
+                BTN_CODE_TOOLS_OFF,
+                LABEL_CODE_TOOLS_OFF,
+                CodeTools::Off,
+            ))
+            .into_any_element();
+        form_row(CODE_TOOLS_LABEL, Some(CODE_TOOLS_HINT), segmented, pal)
     }
 
     fn app_updates_row(&self, cx: &mut Context<Self>) -> AnyElement {

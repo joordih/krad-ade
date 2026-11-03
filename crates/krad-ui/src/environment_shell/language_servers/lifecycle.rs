@@ -41,7 +41,10 @@ impl EnvironmentShell {
             return;
         };
         let chosen = self.settings.server_runtimes.clone();
-        let (plan, root) = (key.plan.clone(), key.root.clone());
+        let plan = key.plan.clone();
+        let Some(root) = self.server_directory(&key) else {
+            return;
+        };
         let Some((link, platform)) = self.server_link(&key.host) else {
             return;
         };
@@ -89,8 +92,10 @@ impl EnvironmentShell {
         };
         self.set_slot(key.clone(), ServerSlot::Installing, cx);
         let chosen = self.settings.server_runtimes.clone();
-        let (plan, root) = (key.plan.clone(), key.root.clone());
-        let Some((link, platform)) = self.server_link(&key.host) else {
+        let plan = key.plan.clone();
+        let (Some(root), Some((link, platform))) =
+            (self.server_directory(&key), self.server_link(&key.host))
+        else {
             self.set_slot(
                 key,
                 ServerSlot::Failed(ServerFailure::reason(HOST_GONE)),
@@ -127,8 +132,9 @@ impl EnvironmentShell {
         let config = self.server_config(&key);
         let sections = config.sections();
         let options = config.options;
-        let root = key.root.clone();
-        let Some((link, _)) = self.server_link(&key.host) else {
+        let folders = self.server_folders(&key);
+        let (Some(root), Some((link, _))) = (folders.first().cloned(), self.server_link(&key.host))
+        else {
             self.set_slot(
                 key,
                 ServerSlot::Failed(ServerFailure::reason(HOST_GONE)),
@@ -169,14 +175,17 @@ impl EnvironmentShell {
                 }
             };
             let capabilities =
-                LanguageServer::initialize(server.client.clone(), &link, &key.root, options).await;
+                LanguageServer::initialize(server.client.clone(), &link, &folders, options).await;
             this.update(cx, |shell, cx| {
                 if !shell.still_starting(&key, start) {
                     tracing::debug!("dropped a language server whose start was superseded");
                     return;
                 }
                 match capabilities {
-                    Ok(capabilities) => shell.server_ready(&key, server, capabilities, events, cx),
+                    Ok(capabilities) => {
+                        shell.server_ready(&key, server, capabilities, events, cx);
+                        shell.announce_late_folders(&key, &folders);
+                    }
                     Err(error) => shell.set_slot(
                         key,
                         ServerSlot::Failed(ServerFailure::reason(error.to_string())),
@@ -226,6 +235,7 @@ impl EnvironmentShell {
             ServerSlot::Running(Box::new(RunningServer {
                 server,
                 capabilities,
+                progress: super::progress::ServerProgress::default(),
                 _events: listening,
             })),
         );
@@ -281,6 +291,16 @@ impl EnvironmentShell {
                     self.pull_diagnostics(&document, cx);
                 }
             }
+            ServerEvent::Progress(progress) => {
+                if let Some(ServerSlot::Running(running)) = self.language_servers.slots.get_mut(key)
+                {
+                    running.progress.apply(progress);
+                    cx.notify();
+                }
+            }
+            ServerEvent::Choice(choice) => self.queue_choice(key, choice, cx),
+            ServerEvent::Input(input) => self.queue_input(key, input, cx),
+            ServerEvent::Conflicts(conflicts) => self.queue_conflicts(key, conflicts, cx),
             ServerEvent::Stopped => {
                 self.forget_server_check(key);
                 self.language_servers

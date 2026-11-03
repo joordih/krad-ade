@@ -1,11 +1,13 @@
 mod cli;
 mod client;
+mod code;
 mod env;
 mod error;
 mod handle;
 mod hook;
 mod host_verbs;
 mod mailbox;
+mod mcp;
 mod protocol;
 mod server;
 mod statusline;
@@ -14,6 +16,7 @@ mod toolchains;
 
 pub use cli::{run_cli, run_invoked};
 pub use client::call;
+pub use code::{CodeAnswer, CodeError, CodeLine, CodePosition, CodeRequest, CodeTool};
 pub use env::{
     guide, member_token, orchestrator_guide, terminal_env, token_file_env, CLI_PROGRAM,
     ENV_ENDPOINT, ENV_TERMINAL, ENV_TOKEN, ENV_TOKEN_FILE,

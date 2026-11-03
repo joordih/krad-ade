@@ -23,6 +23,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use super::agent_hooks::{HookReport, PendingPrompt};
+use super::language_servers::CodeCaller;
 use super::EnvironmentShell;
 
 const BUS_CAPACITY: usize = 64;
@@ -256,6 +257,11 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let response = match request {
+            Request::Code(code) => {
+                let caller = CodeCaller::Terminal(TerminalId(from.terminal));
+                self.answer_code(&from.environment, &caller, code, reply, cx);
+                return;
+            }
             Request::List => Some(Response::Agents(
                 self.agent_infos(&from.environment, Some(from.terminal)),
             )),

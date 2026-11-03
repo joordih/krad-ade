@@ -1,13 +1,13 @@
 use gpui_kit::{AppContext as _, Context, Task};
 use krad_domain::{Host, LanguageId};
-use krad_extensions::ProjectCheck;
+use krad_extensions::{ProjectCheck, ServerScope};
 use krad_host::HostLink;
 use krad_lsp::lsp_types::FileChangeType;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use super::super::EnvironmentShell;
-use super::{Document, ServerKey};
+use super::{Document, ServerKey, ServerRoot};
 
 mod disk;
 mod opening;
@@ -213,10 +213,20 @@ impl EnvironmentShell {
         let tools = self.language_servers.tools.clone()?;
         let plan = tools.plan(self.language_servers.catalog.for_path(first)?)?;
         let document = Document::new(&group.0, first);
+        if plan.scope == ServerScope::Workspace {
+            let key = ServerKey {
+                host: group.0.clone(),
+                root: ServerRoot::Host,
+                plan,
+                toolchain: None,
+            };
+            self.register_folder(&key, group.1.clone());
+            return Some(key);
+        }
         if tools.server_toolchain(&plan).is_none() {
             return Some(ServerKey {
                 host: group.0.clone(),
-                root: group.1.clone(),
+                root: ServerRoot::Folder(group.1.clone()),
                 plan,
                 toolchain: None,
             });

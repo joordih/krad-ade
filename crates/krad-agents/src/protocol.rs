@@ -2,6 +2,7 @@ mod harness_name;
 
 pub(crate) use harness_name::preset_by_display_name;
 
+use crate::code::{CodeAnswer, CodeRequest};
 use crate::handle::Caller;
 use krad_domain::{AgentPreset, AgentState, ToolDecision, UnknownAgentState, ASK_WAIT};
 use serde::{Deserialize, Serialize};
@@ -14,6 +15,7 @@ const EXITED: &str = "exited";
 const BLOCKING_MARGIN: Duration = Duration::from_secs(1);
 const DEFAULT_DEADLINE: Duration = Duration::from_secs(10);
 const SPAWN_DEADLINE: Duration = Duration::from_mins(1);
+const CODE_DEADLINE: Duration = Duration::from_mins(2);
 const NOT_THE_LEAD: &str =
     "Only the session's lead can start or direct workers: ask the user in the lead chat";
 
@@ -68,6 +70,7 @@ pub enum Request {
         worktree: Option<String>,
         task: String,
     },
+    Code(CodeRequest),
 }
 
 impl Request {
@@ -88,6 +91,7 @@ impl Request {
             | Self::Hook { .. }
             | Self::Status(_) => DEFAULT_DEADLINE,
             Self::Spawn { .. } => SPAWN_DEADLINE,
+            Self::Code(_) => CODE_DEADLINE,
         }
     }
 
@@ -202,6 +206,7 @@ pub enum Response {
     Spawned { terminal: u64 },
     Submitted { terminal: u64 },
     Decided(ToolDecision),
+    Code(CodeAnswer),
     Error(String),
 }
 

@@ -8,18 +8,18 @@ use lsp_types::{
     DiagnosticWorkspaceClientCapabilities, GotoCapability, HoverClientCapabilities,
     InitializeParams, InitializedParams, MarkupKind, PublishDiagnosticsClientCapabilities,
     ReferenceClientCapabilities, RenameClientCapabilities, ServerCapabilities,
-    TextDocumentClientCapabilities, TextDocumentSyncClientCapabilities,
-    WorkspaceClientCapabilities, WorkspaceEditClientCapabilities, WorkspaceFolder,
+    TextDocumentClientCapabilities, TextDocumentSyncClientCapabilities, WindowClientCapabilities,
+    WorkspaceClientCapabilities, WorkspaceEditClientCapabilities,
 };
 use std::io::BufReader;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
 use krad_host::{HostCommand, HostLink};
 
 use crate::client::{LspClient, ServerEvent, ServerSettings};
 use crate::error::LspError;
-use crate::uri::file_uri;
+use crate::uri::workspace_folder;
 use krad_domain::ServerLaunch;
 use serde_json::Value;
 
@@ -57,18 +57,16 @@ impl LanguageServer {
     pub async fn initialize(
         client: LspClient,
         link: &HostLink,
-        root: &Path,
+        folders: &[PathBuf],
         options: Option<Value>,
     ) -> Result<ServerCapabilities, LspError> {
-        let folder = WorkspaceFolder {
-            uri: file_uri(root)?,
-            name: root
-                .file_name()
-                .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
-        };
+        let folders = folders
+            .iter()
+            .map(|folder| workspace_folder(folder))
+            .collect::<Result<Vec<_>, _>>()?;
         let params = InitializeParams {
             process_id: link.is_local().then(std::process::id),
-            workspace_folders: Some(vec![folder]),
+            workspace_folders: Some(folders),
             capabilities: client_capabilities(),
             initialization_options: options,
             ..InitializeParams::default()
@@ -168,6 +166,10 @@ fn client_capabilities() -> ClientCapabilities {
             publish_diagnostics: Some(PublishDiagnosticsClientCapabilities::default()),
             diagnostic: Some(DiagnosticClientCapabilities::default()),
             ..TextDocumentClientCapabilities::default()
+        }),
+        window: Some(WindowClientCapabilities {
+            work_done_progress: Some(true),
+            ..WindowClientCapabilities::default()
         }),
         workspace: Some(WorkspaceClientCapabilities {
             apply_edit: Some(true),

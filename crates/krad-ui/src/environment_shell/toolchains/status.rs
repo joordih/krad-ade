@@ -70,10 +70,25 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let document = Document::new(&live.data.host, path);
-        let items = self.toolchains.statuses.get(&document)?;
+        let progress = self.language_servers.progress_label(&document);
+        let statuses = self.toolchains.statuses.get(&document);
+        if progress.is_none() && statuses.is_none() {
+            return None;
+        }
         let pal = palette(cx);
-        let items: Vec<AnyElement> = items
-            .iter()
+        let progress = progress.map(|label| {
+            div()
+                .px(px(SPACE_1))
+                .py(px(SPACE_0_5))
+                .text_size(px(TEXT_XS))
+                .line_height(px(LINE_XS))
+                .text_color(rgb(pal.text_muted))
+                .child(label)
+                .into_any_element()
+        });
+        let items: Vec<AnyElement> = statuses
+            .into_iter()
+            .flatten()
             .enumerate()
             .map(|(index, status)| {
                 let tooltip = status.tooltip.clone();
@@ -120,6 +135,7 @@ impl EnvironmentShell {
                 .py(px(SPACE_0_5))
                 .border_t_1()
                 .border_color(pal.divider)
+                .children(progress)
                 .children(items)
                 .into_any_element(),
         )

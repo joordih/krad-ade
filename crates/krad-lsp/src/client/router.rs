@@ -2,32 +2,36 @@ use futures::channel::{mpsc, oneshot};
 use futures::executor::block_on;
 use futures::SinkExt as _;
 use lsp_types::notification::{
-    DidChangeConfiguration, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument,
-    DidSaveTextDocument, Notification, PublishDiagnostics,
+    DidChangeConfiguration, DidChangeTextDocument, DidChangeWorkspaceFolders, DidCloseTextDocument,
+    DidOpenTextDocument, DidSaveTextDocument, Notification, Progress, PublishDiagnostics,
 };
 use lsp_types::request::{
-    ApplyWorkspaceEdit, Initialize, Request as _, WorkspaceDiagnosticRefresh,
+    ApplyWorkspaceEdit, Initialize, Request as _, ShowMessageRequest, WorkspaceDiagnosticRefresh,
     WorkspaceFoldersRequest,
 };
 use lsp_types::{
     ApplyWorkspaceEditParams, ApplyWorkspaceEditResponse, DidChangeConfigurationParams,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, TextDocumentContentChangeEvent, TextDocumentIdentifier,
-    TextDocumentItem, Uri, VersionedTextDocumentIdentifier,
+    DidSaveTextDocumentParams, ProgressParams, ShowMessageRequestParams,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Uri,
+    VersionedTextDocumentIdentifier,
 };
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::Write;
 use std::sync::mpsc::Receiver;
 
-use super::{DocumentChange, ServerEvent, ServerSettings};
+use super::choice::{ConflictsParams, InputParams};
+use super::{
+    DocumentChange, ServerChoice, ServerConflicts, ServerEvent, ServerInput, ServerSettings,
+};
 use crate::error::LspError;
 use crate::rpc::{write_message, Incoming, Message};
 use crate::uri::file_uri;
 
 const FIRST_VERSION: i32 = 0;
-
-const WORKSPACE_FOLDERS_FIELD: &str = "workspaceFolders";
+const REFACTOR_INPUT_METHOD: &str = "krad/refactorInput";
+const SHOW_CONFLICTS_METHOD: &str = "krad/showConflicts";
 
 pub(super) enum Routed {
     Request {
@@ -42,6 +46,10 @@ pub(super) enum Routed {
     },
     Document(DocumentChange),
     Settings(ServerSettings),
+    Answer {
+        id: Value,
+        result: Value,
+    },
     Incoming(Incoming),
     Closed,
 }
@@ -52,7 +60,7 @@ pub(super) struct Router<W: Write> {
     pending: HashMap<i64, oneshot::Sender<Result<Value, LspError>>>,
     versions: HashMap<Uri, i32>,
     settings: ServerSettings,
-    folders: Value,
+    folders: Vec<lsp_types::WorkspaceFolder>,
 }
 
 impl<W: Write> Router<W> {
@@ -67,7 +75,7 @@ impl<W: Write> Router<W> {
             pending: HashMap::new(),
             versions: HashMap::new(),
             settings,
-            folders: Value::Null,
+            folders: Vec::new(),
         }
     }
 
@@ -92,10 +100,11 @@ impl<W: Write> Router<W> {
                 reply,
             } => {
                 if method == Initialize::METHOD {
-                    self.folders = params
-                        .get(WORKSPACE_FOLDERS_FIELD)
-                        .cloned()
-                        .unwrap_or(Value::Null);
+                    self.folders =
+                        serde_json::from_value::<lsp_types::InitializeParams>(params.clone())
+                            .ok()
+                            .and_then(|asked| asked.workspace_folders)
+                            .unwrap_or_default();
                 }
                 let sent = write_message(
                     &mut self.input,
@@ -112,6 +121,9 @@ impl<W: Write> Router<W> {
                 self.pending.insert(id, reply);
             }
             Routed::Notify { method, params } => {
+                if method == DidChangeWorkspaceFolders::METHOD {
+                    self.follow_folders(&params);
+                }
                 if self.send(method, &params).is_err() {
                     return false;
                 }
@@ -130,10 +142,17 @@ impl<W: Write> Router<W> {
                     return false;
                 }
             }
+            Routed::Answer { id, result } => self.answer(&id, &result),
             Routed::Incoming(message) => self.receive(message),
             Routed::Closed => return false,
         }
         true
+    }
+
+    fn answer(&mut self, id: &Value, result: &Value) {
+        if write_message(&mut self.input, Message::Reply { id, result }).is_err() {
+            self.emit(ServerEvent::Stopped);
+        }
     }
 
     fn send(&mut self, method: &str, params: &Value) -> Result<(), LspError> {
@@ -206,36 +225,55 @@ impl<W: Write> Router<W> {
                 reply.send(outcome).unwrap_or_default();
             }
             Incoming::Request { id, method, params } => {
+                if method == SHOW_CONFLICTS_METHOD {
+                    if let Ok(asked) = serde_json::from_value::<ConflictsParams>(params) {
+                        self.emit(ServerEvent::Conflicts(ServerConflicts::new(id, asked)));
+                        return;
+                    }
+                    self.answer(&id, &Value::Null);
+                    return;
+                }
+                if method == REFACTOR_INPUT_METHOD {
+                    if let Ok(asked) = serde_json::from_value::<InputParams>(params) {
+                        self.emit(ServerEvent::Input(ServerInput::new(id, asked)));
+                        return;
+                    }
+                    self.answer(&id, &Value::Null);
+                    return;
+                }
+                if method == ShowMessageRequest::METHOD {
+                    if let Ok(asked) = serde_json::from_value::<ShowMessageRequestParams>(params) {
+                        self.emit(ServerEvent::Choice(ServerChoice::new(id, asked)));
+                        return;
+                    }
+                    self.answer(&id, &Value::Null);
+                    return;
+                }
                 let result = if method == ApplyWorkspaceEdit::METHOD {
                     self.apply_edit(params)
                 } else if method == WorkspaceFoldersRequest::METHOD {
-                    self.folders.clone()
+                    serde_json::to_value(&self.folders).unwrap_or(Value::Null)
                 } else if method == WorkspaceDiagnosticRefresh::METHOD {
                     self.emit(ServerEvent::DiagnosticsRefresh);
                     Value::Null
                 } else {
                     self.settings.reply(&method, params)
                 };
-                if write_message(
-                    &mut self.input,
-                    Message::Reply {
-                        id: &id,
-                        result: &result,
-                    },
-                )
-                .is_err()
-                {
-                    self.emit(ServerEvent::Stopped);
-                }
+                self.answer(&id, &result);
             }
-            Incoming::Notification { method, params } => {
-                if method != PublishDiagnostics::METHOD {
-                    return;
+            Incoming::Notification { method, params } => match method.as_str() {
+                PublishDiagnostics::METHOD => {
+                    if let Ok(diagnostics) = serde_json::from_value(params) {
+                        self.emit(ServerEvent::Diagnostics(diagnostics));
+                    }
                 }
-                if let Ok(diagnostics) = serde_json::from_value(params) {
-                    self.emit(ServerEvent::Diagnostics(diagnostics));
+                Progress::METHOD => {
+                    if let Ok(progress) = serde_json::from_value::<ProgressParams>(params) {
+                        self.emit(ServerEvent::Progress(progress.into()));
+                    }
                 }
-            }
+                _ => {}
+            },
         }
     }
 
@@ -250,6 +288,17 @@ impl<W: Write> Router<W> {
             failed_change: None,
         })
         .unwrap_or(Value::Null)
+    }
+
+    fn follow_folders(&mut self, params: &Value) {
+        let Ok(changed) =
+            serde_json::from_value::<lsp_types::DidChangeWorkspaceFoldersParams>(params.clone())
+        else {
+            return;
+        };
+        self.folders
+            .retain(|folder| !changed.event.removed.contains(folder));
+        self.folders.extend(changed.event.added);
     }
 
     fn emit(&mut self, event: ServerEvent) {

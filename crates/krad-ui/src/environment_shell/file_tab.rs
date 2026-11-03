@@ -418,7 +418,15 @@ impl EnvironmentShell {
                             .min_w_0()
                             .h_full()
                             .pl(px(SPACE_1_5))
-                            .child(Editor::new(state).bordered(false).h_full())
+                            .child(
+                                Editor::new(state)
+                                    .bordered(false)
+                                    .readonly(self.is_library_document(&Document::new(
+                                        &live.data.host,
+                                        &editor.path,
+                                    )))
+                                    .h_full(),
+                            )
                             .child(problem_lens(state.clone(), editor_settings.problem_lens))
                             .child(problem_marks(state.clone())),
                     )

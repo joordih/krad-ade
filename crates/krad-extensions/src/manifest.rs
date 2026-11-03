@@ -46,6 +46,29 @@ pub struct ServerManifest {
     pub toolchain: Option<ServerToolchain>,
     #[serde(default)]
     pub project_check: ProjectCheck,
+    #[serde(default)]
+    pub source: Option<PackageSource>,
+    #[serde(default)]
+    pub scope: ServerScope,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum ServerScope {
+    #[default]
+    Folder,
+    Workspace,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct PackageSource {
+    pub id: String,
+    #[serde(default)]
+    pub asset: Vec<toml::Table>,
+    #[serde(default)]
+    pub download: Vec<toml::Table>,
+    #[serde(default)]
+    pub bins: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

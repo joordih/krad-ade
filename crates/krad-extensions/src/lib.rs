@@ -18,7 +18,7 @@ pub use error::ExtensionError;
 pub use extension::{
     add_folder, add_git, folder_of, manifest_folders, remove, update, user_manifests_dir,
 };
-pub use manifest::{builtin_catalog, ProjectCheck};
+pub use manifest::{builtin_catalog, ProjectCheck, ServerScope};
 pub use registry::Registry;
 pub use toolchains::{
     activation_lines, discover, entered_toolchain, handoff, launch_with,
