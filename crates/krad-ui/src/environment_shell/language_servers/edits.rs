@@ -153,6 +153,7 @@ impl EnvironmentShell {
             self.start_rename_at(&Document::new(&host, &path), at, window, cx);
         }
         self.show_pending_choice(window, cx);
+        self.show_pending_conflicts(window, cx);
         self.ask_pending_input(window, cx);
     }
 

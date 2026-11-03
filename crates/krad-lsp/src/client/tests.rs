@@ -253,3 +253,29 @@ fn a_server_input_answers_with_the_typed_values() -> Result<(), LspError> {
     );
     Ok(())
 }
+
+#[test]
+fn server_conflicts_answer_whether_to_proceed() -> Result<(), LspError> {
+    let (client, mut events, mut server) = connect()?;
+    let asking = json!({
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "krad/showConflicts",
+        "params": {"title": "Move class to package", "conflicts": [{"message": "sample.app already has a class named Names"}]},
+    });
+    let frame = serde_json::to_vec(&asking)?;
+    write!(server.to_client, "Content-Length: {}\r\n\r\n", frame.len())?;
+    std::io::Write::write_all(&mut server.to_client, &frame)?;
+    server.to_client.flush()?;
+    let Some(ServerEvent::Conflicts(conflicts)) = block_on(events.next()) else {
+        return Err(LspError::Stopped);
+    };
+    assert_eq!(conflicts.conflicts.len(), 1);
+    assert!(conflicts.conflicts[0].location.is_none());
+    client.answer_conflicts(conflicts.id, false)?;
+    let Some(Incoming::Response { outcome, .. }) = server.next() else {
+        return Err(LspError::Stopped);
+    };
+    assert_eq!(outcome.ok(), Some(json!({"proceed": false})));
+    Ok(())
+}

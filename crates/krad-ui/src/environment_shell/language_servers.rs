@@ -135,6 +135,7 @@ pub(super) struct LanguageServers {
     pending_rename: Option<(Host, PathBuf, krad_lsp::lsp_types::Position)>,
     pending_choice: Option<(ServerKey, krad_lsp::ServerChoice)>,
     pending_input: Option<input::PendingInput>,
+    pending_conflicts: Option<(ServerKey, krad_lsp::ServerConflicts)>,
     last_start: StartId,
 }
 
@@ -154,6 +155,7 @@ impl LanguageServers {
             pending_rename: None,
             pending_choice: None,
             pending_input: None,
+            pending_conflicts: None,
             last_start: StartId::default(),
         }
     }

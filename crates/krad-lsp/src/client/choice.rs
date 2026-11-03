@@ -55,3 +55,33 @@ impl ServerInput {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct Conflict {
+    pub message: String,
+    #[serde(default)]
+    pub location: Option<lsp_types::Location>,
+}
+
+#[derive(serde::Deserialize)]
+pub(crate) struct ConflictsParams {
+    pub(crate) title: String,
+    pub(crate) conflicts: Vec<Conflict>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ServerConflicts {
+    pub id: ChoiceId,
+    pub title: String,
+    pub conflicts: Vec<Conflict>,
+}
+
+impl ServerConflicts {
+    pub(crate) fn new(id: Value, params: ConflictsParams) -> Self {
+        Self {
+            id: ChoiceId(id),
+            title: params.title,
+            conflicts: params.conflicts,
+        }
+    }
+}
