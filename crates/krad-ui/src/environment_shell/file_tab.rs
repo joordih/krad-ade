@@ -1,11 +1,12 @@
 mod disk;
+mod editor_area;
 mod minimap;
 mod problem_lens;
 pub(super) mod problem_list;
 mod problem_marks;
 mod problem_underlines;
 
-use gpui_kit::component::input::{Editor, EditorState, InputEvent};
+use gpui_kit::component::input::{EditorState, InputEvent};
 use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, Entity, InteractiveElement, IntoElement,
     ParentElement, Styled, Subscription, Window,
@@ -22,12 +23,9 @@ use crate::actions::FILE_TAB_KEY_CONTEXT;
 use crate::components::{Button, ButtonVariant, EmptyState, IconName};
 use crate::highlight::Syntax;
 use crate::language::editor_id;
-use crate::theme::{palette, LINE_SM, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM};
-use minimap::{minimap, new_minimap, Minimap};
-use problem_lens::problem_lens;
+use crate::theme::{palette, LINE_SM, SPACE_1, SPACE_2, TEXT_SM};
+use minimap::{new_minimap, Minimap};
 use problem_list::ProblemList;
-use problem_marks::problem_marks;
-use problem_underlines::problem_underlines;
 
 const OPEN_FAILED_TITLE: &str = "Can't open this file";
 const CHANGED_ON_DISK_TEXT: &str = "This file changed on disk.";
@@ -311,7 +309,8 @@ impl EnvironmentShell {
                 if matches!(event, InputEvent::Change) {
                     let text = state.read(cx).value().to_string();
                     rebuilt.update(cx, |minimap, cx| minimap.rebuild(text.clone(), syntax, cx));
-                    this.close_editor_popovers(cx);
+                    this.editor_text_changed(&state, cx);
+                    this.signature_typed(&edited, &state, cx);
                     this.mark_edited(&edited_env, id, cx);
                     this.document_edited(&edited, text, cx);
                     this.show_diagnostics(&edited, cx);
@@ -341,50 +340,6 @@ impl EnvironmentShell {
             self.store();
         }
         cx.notify();
-    }
-
-    fn editor_area(
-        &self,
-        live: &LiveEnv,
-        editor: &FileEditor,
-        state: &Entity<EditorState>,
-        settings: krad_domain::EditorSettings,
-    ) -> gpui_kit::Div {
-        let overlays = editor.problems.clone().map(|problems| {
-            [
-                problem_underlines(state.clone(), problems.clone()),
-                problem_lens(state.clone(), problems.clone(), settings.problem_lens),
-                problem_marks(state.clone(), problems),
-            ]
-        });
-        let library = self.is_library_document(&Document::new(&live.data.host, &editor.path));
-        div()
-            .flex()
-            .flex_row()
-            .flex_1()
-            .min_h_0()
-            .child(
-                div()
-                    .relative()
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .pl(px(SPACE_1_5))
-                    .child(
-                        Editor::new(state)
-                            .bordered(false)
-                            .readonly(library)
-                            .h_full(),
-                    )
-                    .children(overlays.into_iter().flatten()),
-            )
-            .children(
-                editor
-                    .minimap
-                    .clone()
-                    .filter(|_| settings.minimap.is_shown())
-                    .map(|shown| minimap(shown, state.clone())),
-            )
     }
 
     pub(super) fn file_tab_body(
@@ -443,6 +398,7 @@ impl EnvironmentShell {
             .flex_1()
             .min_h_0()
             .key_context(FILE_TAB_KEY_CONTEXT)
+            .capture_key_down(cx.listener(Self::on_completion_key))
             .on_action(cx.listener(Self::on_save_file))
             .on_action(cx.listener(Self::on_find_references))
             .on_action(cx.listener(Self::on_accept_completion))

@@ -1,6 +1,9 @@
 mod code_actions;
+mod completion;
 mod content;
 mod hover;
+mod signature;
+mod snippet;
 
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{px, AnyElement, App, Bounds, Context, Div, Entity, Pixels, Styled, Window};
@@ -12,6 +15,7 @@ use super::EnvironmentShell;
 use crate::theme::{popover_fill, popover_shadow, Palette, SPACE_1_5};
 pub(super) use code_actions::ActionMenu;
 pub(super) use hover::HoverCard;
+pub(super) use signature::SignatureCard;
 
 const POPOVER_RADIUS: f32 = 12.0;
 const POPOVER_GAP: f32 = 4.0;
@@ -20,6 +24,7 @@ const EDGE_MARGIN: f32 = 8.0;
 pub(super) enum EditorPopover {
     Hover(HoverCard),
     Actions(ActionMenu),
+    Completion(completion::CompletionMenu),
 }
 
 impl EditorPopover {
@@ -27,6 +32,7 @@ impl EditorPopover {
         match self {
             Self::Hover(card) => card.tab,
             Self::Actions(menu) => menu.tab,
+            Self::Completion(menu) => menu.tab,
         }
     }
 }
@@ -81,6 +87,25 @@ fn place(
             max_height: room_above.min(height).max(0.0),
         }
     }
+}
+
+fn place_above(
+    anchor: Bounds<Pixels>,
+    inset: (f32, f32),
+    root: (f32, f32),
+    wanted: (f32, f32),
+) -> Placement {
+    let below = place(anchor, inset, root, wanted);
+    let above = anchor.top().as_f32() - inset.1 - POPOVER_GAP;
+    if above - EDGE_MARGIN >= wanted.1 || below.top.is_none() {
+        return Placement {
+            top: None,
+            bottom: Some(root.1 - above),
+            max_height: (above - EDGE_MARGIN).min(wanted.1).max(0.0),
+            ..below
+        };
+    }
+    below
 }
 
 fn placed(panel: Div, placement: Placement) -> Div {
@@ -145,6 +170,7 @@ impl EnvironmentShell {
         match popover {
             EditorPopover::Hover(card) => self.hover_overlay(card, &state, root, cx),
             EditorPopover::Actions(menu) => self.actions_overlay(menu, &state, root, cx),
+            EditorPopover::Completion(menu) => self.completion_overlay(menu, &state, root, cx),
         }
     }
 }

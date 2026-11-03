@@ -3,12 +3,14 @@ use gpui_kit::component::input::{
 };
 use gpui_kit::http_client::Result;
 use gpui_kit::{App, AppContext as _, Task, WeakEntity, Window};
-use krad_lsp::lsp_types::request::{Completion, GotoDefinition, HoverRequest};
+use krad_lsp::lsp_types::request::{
+    Completion, GotoDefinition, HoverRequest, SignatureHelpRequest,
+};
 use krad_lsp::lsp_types::{
     CompletionContext, CompletionParams, CompletionResponse, GotoDefinitionParams,
     GotoDefinitionResponse, Hover, HoverParams, Location, LocationLink, PartialResultParams,
-    ServerCapabilities, ShowDocumentParams, TextDocumentIdentifier, TextDocumentPositionParams,
-    Uri, WorkDoneProgressParams,
+    ServerCapabilities, ShowDocumentParams, SignatureHelp, SignatureHelpParams,
+    TextDocumentIdentifier, TextDocumentPositionParams, Uri, WorkDoneProgressParams,
 };
 use krad_lsp::{file_uri, uri_path, LspClient};
 use std::rc::Rc;
@@ -127,10 +129,17 @@ impl CompletionProvider for ServerDocument {
             context: Some(trigger),
         };
         let answer = self.client.request::<Completion>(&params);
-        cx.background_spawn(async move {
-            Ok(answer
-                .await?
-                .unwrap_or_else(|| CompletionResponse::Array(Vec::new())))
+        let (shell, document) = (self.shell.clone(), self.document.clone());
+        cx.spawn(async move |cx| {
+            let items = match answer.await? {
+                Some(CompletionResponse::Array(items)) => items,
+                Some(CompletionResponse::List(list)) => list.items,
+                None => Vec::new(),
+            };
+            shell.update(cx, |shell, cx| {
+                shell.show_completions(&document, offset, items, cx);
+            })?;
+            Ok(CompletionResponse::Array(Vec::new()))
         })
     }
 
@@ -186,6 +195,62 @@ impl DefinitionProvider for ServerDocument {
         };
         let answer = self.client.request::<GotoDefinition>(&params);
         cx.background_spawn(async move { Ok(links(answer.await?)) })
+    }
+}
+
+impl EnvironmentShell {
+    pub(in crate::environment_shell) fn signature_triggers(
+        &self,
+        document: &Document,
+    ) -> Vec<char> {
+        let Some(running) = self
+            .language_servers
+            .documents
+            .get(document)
+            .and_then(|key| self.language_servers.running(key))
+        else {
+            return Vec::new();
+        };
+        running
+            .capabilities
+            .signature_help_provider
+            .as_ref()
+            .map_or_else(Vec::new, |provider| {
+                provider
+                    .trigger_characters
+                    .iter()
+                    .chain(provider.retrigger_characters.iter())
+                    .flatten()
+                    .filter_map(|trigger| trigger.chars().next())
+                    .collect()
+            })
+    }
+
+    pub(in crate::environment_shell) fn request_signature_help(
+        &self,
+        document: &Document,
+        position: krad_lsp::lsp_types::Position,
+        cx: &mut gpui_kit::Context<Self>,
+    ) -> Option<Task<Option<SignatureHelp>>> {
+        let running = self
+            .language_servers
+            .documents
+            .get(document)
+            .and_then(|key| self.language_servers.running(key))?;
+        running.capabilities.signature_help_provider.as_ref()?;
+        let params = SignatureHelpParams {
+            context: None,
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier::new(file_uri(&document.path).ok()?),
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+        let answer = running
+            .server
+            .client
+            .request::<SignatureHelpRequest>(&params);
+        Some(cx.background_spawn(async move { answer.await.ok().flatten() }))
     }
 }
 
