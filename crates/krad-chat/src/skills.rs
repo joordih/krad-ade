@@ -1,8 +1,8 @@
 use krad_domain::{parse_wsl_path, wsl_unc_path, WslPath};
+use krad_host::HostLink;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::ffi::OsString;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 pub(crate) const CLAUDE_DIR: &str = ".claude";
@@ -51,19 +51,19 @@ struct Found {
     shared: bool,
 }
 
-fn found_skills(home: Option<&Path>, project: Option<&Path>) -> Vec<Found> {
+fn found_skills(host: &HostLink, home: Option<&Path>, project: Option<&Path>) -> Vec<Found> {
     let bases: Vec<&Path> = project.into_iter().chain(home).collect();
     let linked: HashSet<OsString> = bases
         .iter()
-        .flat_map(|base| entry_names(&base.join(CLAUDE_DIR).join(SKILLS_DIR)))
+        .flat_map(|base| entry_names(host, &base.join(CLAUDE_DIR).join(SKILLS_DIR)))
         .collect();
     let mut found = Vec::new();
     for base in bases {
-        found.extend(skills_in(&base.join(CLAUDE_DIR), None));
-        found.extend(shared_skills(&base.join(AGENTS_DIR), &linked));
+        found.extend(skills_in(host, &base.join(CLAUDE_DIR), None));
+        found.extend(shared_skills(host, &base.join(AGENTS_DIR), &linked));
     }
-    for (plugin, root) in home.map_or_default(enabled_plugins) {
-        found.extend(skills_in(&root, Some(&plugin)));
+    for (plugin, root) in home.map_or_default(|home| enabled_plugins(host, home)) {
+        found.extend(skills_in(host, &root, Some(&plugin)));
     }
     let mut seen = HashSet::new();
     found.retain(|found| seen.insert(found.skill.name.clone()));
@@ -72,8 +72,8 @@ fn found_skills(home: Option<&Path>, project: Option<&Path>) -> Vec<Found> {
 }
 
 #[must_use]
-pub fn claude_skills(home: Option<&Path>, project: Option<&Path>) -> Vec<Skill> {
-    found_skills(home, project)
+pub fn claude_skills(host: &HostLink, home: Option<&Path>, project: Option<&Path>) -> Vec<Skill> {
+    found_skills(host, home, project)
         .into_iter()
         .map(|Found { skill, shared }| Skill {
             name: skill.name,
@@ -87,8 +87,12 @@ pub fn claude_skills(home: Option<&Path>, project: Option<&Path>) -> Vec<Skill> 
         .collect()
 }
 
-pub(crate) fn skill_files(home: Option<&Path>, project: Option<&Path>) -> Vec<SkillFile> {
-    found_skills(home, project)
+pub(crate) fn skill_files(
+    host: &HostLink,
+    home: Option<&Path>,
+    project: Option<&Path>,
+) -> Vec<SkillFile> {
+    found_skills(host, home, project)
         .into_iter()
         .map(|found| found.skill)
         .collect()
@@ -113,12 +117,12 @@ pub fn search_skills<'a>(skills: &'a [Skill], query: &str, limit: usize) -> Vec<
         .collect()
 }
 
-fn skills_in(root: &Path, plugin: Option<&str>) -> Vec<Found> {
+fn skills_in(host: &HostLink, root: &Path, plugin: Option<&str>) -> Vec<Found> {
     let named = |name: String| match plugin {
         Some(plugin) => format!("{plugin}{NAMESPACE_SEPARATOR}{name}"),
         None => name,
     };
-    let mut found: Vec<Found> = documents_in(root)
+    let mut found: Vec<Found> = documents_in(host, root)
         .into_iter()
         .map(|(name, description, file)| Found {
             skill: SkillFile {
@@ -130,9 +134,9 @@ fn skills_in(root: &Path, plugin: Option<&str>) -> Vec<Found> {
         })
         .collect();
     let mut commands = Vec::new();
-    command_files(&root.join(COMMANDS_DIR), &[], &mut commands);
+    command_files(host, &root.join(COMMANDS_DIR), &[], &mut commands);
     found.extend(commands.into_iter().filter_map(|(path, segments)| {
-        let text = fs::read_to_string(&path).ok()?;
+        let text = host.read_to_string(&path).ok()?;
         Some(Found {
             skill: SkillFile {
                 name: named(segments.join(NAMESPACE_SEPARATOR)),
@@ -147,8 +151,8 @@ fn skills_in(root: &Path, plugin: Option<&str>) -> Vec<Found> {
     found
 }
 
-fn shared_skills(root: &Path, linked: &HashSet<OsString>) -> Vec<Found> {
-    documents_in(root)
+fn shared_skills(host: &HostLink, root: &Path, linked: &HashSet<OsString>) -> Vec<Found> {
+    documents_in(host, root)
         .into_iter()
         .map(|(name, description, file)| {
             let folder = file.parent().and_then(Path::file_name);
@@ -165,19 +169,24 @@ fn shared_skills(root: &Path, linked: &HashSet<OsString>) -> Vec<Found> {
         .collect()
 }
 
-fn entry_names(dir: &Path) -> Vec<OsString> {
-    fs::read_dir(dir).map_or_else(
+fn entry_names(host: &HostLink, dir: &Path) -> Vec<OsString> {
+    host.read_dir(dir).map_or_else(
         |_| Vec::new(),
-        |entries| entries.flatten().map(|entry| entry.file_name()).collect(),
+        |entries| {
+            entries
+                .into_iter()
+                .map(|entry| OsString::from(entry.name))
+                .collect()
+        },
     )
 }
 
-fn documents_in(root: &Path) -> Vec<(String, String, PathBuf)> {
-    subfolders(&root.join(SKILLS_DIR))
+fn documents_in(host: &HostLink, root: &Path) -> Vec<(String, String, PathBuf)> {
+    subfolders(host, &root.join(SKILLS_DIR))
         .into_iter()
         .filter_map(|folder| {
             let file = folder.join(SKILL_FILE);
-            let front = FrontMatter::parse(&fs::read_to_string(&file).ok()?);
+            let front = FrontMatter::parse(&host.read_to_string(&file).ok()?);
             let name = front
                 .name
                 .or_else(|| Some(folder.file_name()?.to_string_lossy().into_owned()))?;
@@ -186,31 +195,37 @@ fn documents_in(root: &Path) -> Vec<(String, String, PathBuf)> {
         .collect()
 }
 
-fn subfolders(dir: &Path) -> Vec<PathBuf> {
-    fs::read_dir(dir).map_or_else(
+fn subfolders(host: &HostLink, dir: &Path) -> Vec<PathBuf> {
+    host.read_dir(dir).map_or_else(
         |_| Vec::new(),
         |entries| {
             entries
-                .flatten()
-                .map(|entry| entry.path())
-                .filter(|path| path.is_dir())
+                .into_iter()
+                .filter(|entry| entry.metadata.is_dir())
+                .map(|entry| entry.path)
                 .collect()
         },
     )
 }
 
-fn command_files(dir: &Path, prefix: &[String], found: &mut Vec<(PathBuf, Vec<String>)>) {
-    let Ok(entries) = fs::read_dir(dir) else {
+fn command_files(
+    host: &HostLink,
+    dir: &Path,
+    prefix: &[String],
+    found: &mut Vec<(PathBuf, Vec<String>)>,
+) {
+    let Ok(entries) = host.read_dir(dir) else {
         return;
     };
-    for path in entries.flatten().map(|entry| entry.path()) {
+    for entry in entries {
+        let path = entry.path;
         let mut segments = prefix.to_vec();
-        if path.is_dir() {
+        if entry.metadata.is_dir() {
             let Some(name) = path.file_name() else {
                 continue;
             };
             segments.push(name.to_string_lossy().into_owned());
-            command_files(&path, &segments, found);
+            command_files(host, &path, &segments, found);
         } else if path
             .extension()
             .is_some_and(|extension| extension == COMMAND_EXTENSION)
@@ -224,10 +239,10 @@ fn command_files(dir: &Path, prefix: &[String], found: &mut Vec<(PathBuf, Vec<St
     }
 }
 
-fn enabled_plugins(home: &Path) -> Vec<(String, PathBuf)> {
+fn enabled_plugins(host: &HostLink, home: &Path) -> Vec<(String, PathBuf)> {
     let claude = home.join(CLAUDE_DIR);
     let read = |path: PathBuf| -> Option<Value> {
-        serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
+        serde_json::from_str(&host.read_to_string(&path).ok()?).ok()
     };
     let Some(settings) = read(claude.join(SETTINGS_FILE)) else {
         return Vec::new();

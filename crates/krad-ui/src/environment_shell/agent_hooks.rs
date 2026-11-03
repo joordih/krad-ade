@@ -3,15 +3,15 @@ use gpui_kit::{AppContext as _, Context};
 use krad_agents::{AgentStatus, Response, TerminalHandle};
 use krad_domain::{
     hook_launch_args, launch_with_prompt, quote_for_shell, worker_brief, AgentPreset, AgentState,
-    EnvironmentName, GroupId, ModelDelivery, ModelId, ResumeId, SessionId, ShellQuoting,
-    TerminalGroup, TerminalId, WorkerSurface, WorktreeOrigin,
+    EnvironmentName, GroupId, ModelDelivery, ModelId, ResumeId, SessionId, TerminalGroup,
+    TerminalId, WorkerSurface, WorktreeOrigin,
 };
 use krad_repo::{add_worktree, sanitize_worktree_name};
-use krad_session::SHELL_QUOTING;
 use std::time::{Duration, Instant};
 
 use super::agent_bus::{cli_name, BUS_HINT};
 use super::sessions::Launch;
+use super::shell_site::ShellSite;
 use super::surface::AccountUsage;
 use super::EnvironmentShell;
 
@@ -69,8 +69,9 @@ pub(super) const LEAD_HINT: &str = "You lead this Krad ADE session: you split th
 impl EnvironmentShell {
     pub(super) fn agent_launch_line(
         &self,
+        env: &EnvironmentName,
         preset: AgentPreset,
-        in_wsl: bool,
+        site: ShellSite,
         prompt: &str,
         model: Option<&ModelId>,
         role: AgentRole,
@@ -79,19 +80,20 @@ impl EnvironmentShell {
         if let (Some(model), Some(ModelDelivery::Flag(flag))) = (model, preset.model_delivery()) {
             line = format!("{line} {flag} {model}");
         }
-        let quoting = if in_wsl {
-            ShellQuoting::Posix
-        } else {
-            SHELL_QUOTING
-        };
-        let cli = cli_name(in_wsl);
-        if self.agent_bus.is_some() {
-            let settings = self
-                .agent_bus
-                .as_ref()
-                .and_then(|bus| bus.claude_settings.as_ref())
-                .filter(|_| !in_wsl)
-                .map(|path| path.to_string_lossy().into_owned());
+        let quoting = site.quoting();
+        let cli = cli_name(site.is_wsl());
+        let remote = self.remote_bus(env).filter(|_| site == ShellSite::Ssh);
+        let reaches = site.reaches_bus() || remote.is_some();
+        if self.agent_bus.is_some() && reaches {
+            let settings = match remote {
+                Some(remote) => Some(remote.claude_settings.to_string_lossy().into_owned()),
+                None => self
+                    .agent_bus
+                    .as_ref()
+                    .and_then(|bus| bus.claude_settings.as_ref())
+                    .filter(|_| site.reads_local_files())
+                    .map(|path| path.to_string_lossy().into_owned()),
+            };
             if let Some(args) = hook_launch_args(preset, cli, quoting, settings.as_deref()) {
                 line = format!("{line} {args}");
             }
@@ -232,7 +234,10 @@ impl EnvironmentShell {
             reply.send(response).unwrap_or_default();
             return;
         };
-        let Some(repo_root) = self.git.get(&group.root).map(|git| git.repo_root.clone()) else {
+        let Some(repo_root) = self
+            .git_at(&env, &group.root)
+            .map(|git| git.repo_root.clone())
+        else {
             reply
                 .send(Response::Error(NOT_A_REPO.to_owned()))
                 .unwrap_or_default();
@@ -244,9 +249,10 @@ impl EnvironmentShell {
                 .unwrap_or_default();
             return;
         };
+        let link = self.env_link(&env);
         let create = cx.background_spawn({
             let repo_root = repo_root.clone();
-            async move { add_worktree(&repo_root, &name) }
+            async move { add_worktree(&link, &repo_root, &name) }
         });
         cx.spawn(async move |this, cx| {
             let created = create.await;

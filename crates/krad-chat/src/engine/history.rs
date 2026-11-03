@@ -78,6 +78,7 @@ mod tests {
         let workspace = Workspace {
             cwd: PathBuf::from("/work"),
             env: Vec::new(),
+            host: krad_host::HostLink::Local,
         };
         let records = vec![
             Record::Model {
@@ -130,6 +131,7 @@ mod tests {
         let workspace = Workspace {
             cwd: PathBuf::from("/work"),
             env: Vec::new(),
+            host: krad_host::HostLink::Local,
         };
         let call = |id: &str, name: &str, arguments: serde_json::Value| {
             Block::Call(Call {
@@ -190,6 +192,7 @@ mod tests {
         let workspace = Workspace {
             cwd: PathBuf::from("/work"),
             env: Vec::new(),
+            host: krad_host::HostLink::Local,
         };
         let records = vec![Record::Message(Message::Assistant {
             blocks: vec![Block::Call(Call {

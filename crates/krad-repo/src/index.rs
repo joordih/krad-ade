@@ -1,9 +1,10 @@
+use krad_host::HostLink;
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::files::EntryKind;
 use crate::git::{repo_root, run_git};
+use crate::on_host;
 use crate::RepoError;
 
 const LS_FILES_ARGS: [&str; 5] = [
@@ -92,13 +93,20 @@ impl FileIndex {
 /// # Errors
 ///
 /// Returns [`RepoError`] when git fails or the folder cannot be read.
-pub fn index_files(root: &Path) -> Result<FileIndex, RepoError> {
-    if repo_root(root)?.is_none() {
+pub fn index_files(host: &HostLink, root: &Path) -> Result<FileIndex, RepoError> {
+    if repo_root(host, root)?.is_none() {
+        if !host.is_local() {
+            return Ok(FileIndex::new(on_host::list_files(
+                host,
+                root,
+                MAX_WALKED_FILES,
+            )?));
+        }
         let mut files = Vec::new();
-        walk(root, Path::new(""), &mut files)?;
+        walk(host, root, Path::new(""), &mut files)?;
         return Ok(FileIndex::new(files));
     }
-    let output = run_git(root, &LS_FILES_ARGS)?;
+    let output = run_git(host, root, &LS_FILES_ARGS)?;
     Ok(FileIndex::new(
         output
             .split(|&byte| byte == RECORD_SEPARATOR)
@@ -108,22 +116,21 @@ pub fn index_files(root: &Path) -> Result<FileIndex, RepoError> {
 }
 
 pub(crate) fn walk(
+    host: &HostLink,
     root: &Path,
     relative: &Path,
     files: &mut Vec<PathBuf>,
 ) -> Result<(), RepoError> {
-    for entry in fs::read_dir(root.join(relative))? {
+    for entry in host.read_dir(&root.join(relative))? {
         if files.len() >= MAX_WALKED_FILES {
             return Ok(());
         }
-        let entry = entry?;
-        let name = entry.file_name();
-        if name.to_string_lossy().starts_with(HIDDEN_PREFIX) {
+        if entry.name.starts_with(HIDDEN_PREFIX) {
             continue;
         }
-        let path = relative.join(&name);
-        if entry.file_type()?.is_dir() {
-            walk(root, &path, files)?;
+        let path = relative.join(&entry.name);
+        if entry.metadata.is_dir() && !entry.symlink {
+            walk(host, root, &path, files)?;
         } else {
             files.push(path);
         }

@@ -138,11 +138,12 @@ impl Background {
         if registry.processes.len() >= MAX_PROCESSES {
             return Ran::failed(TOO_MANY_TEXT.to_owned());
         }
-        let mut command = platform::command(line);
+        let mut command = match workspace.shell_command(line) {
+            Ok(command) => command,
+            Err(error) => return Ran::failed(format!("{NOT_STARTED_TEXT}: {error}")),
+        };
         command
-            .current_dir(&workspace.cwd)
-            .envs(workspace.env.iter().map(|(name, value)| (name, value)))
-            .stdin(Stdio::null())
+            .stdin(workspace.shell_stdin())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let mut child = match command.spawn() {
@@ -203,6 +204,7 @@ mod tests {
         Workspace {
             cwd: scratch.path().to_path_buf(),
             env: vec![("KRAD_BG_VALUE".to_owned(), "from-env".to_owned())],
+            host: krad_host::HostLink::Local,
         }
     }
 

@@ -196,8 +196,9 @@ fn a_live_claude_rewinds_to_an_edited_last_prompt() {
     }) else {
         unreachable!("the cut copy reports its session: {edited:?}");
     };
-    let file = std::env::var_os(HOME_VAR)
-        .and_then(|home| claude_conversation_file(Path::new(&home), &copy));
+    let file = std::env::var_os(HOME_VAR).and_then(|home| {
+        claude_conversation_file(&krad_host::HostLink::Local, Path::new(&home), &copy)
+    });
     let kept = file
         .and_then(|file| std::fs::read_to_string(file).ok())
         .unwrap_or_default();

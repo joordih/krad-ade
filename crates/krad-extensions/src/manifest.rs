@@ -1,13 +1,16 @@
-use krad_domain::{LanguageCatalog, LanguageDef, ToolchainId};
+use krad_domain::{LanguageCatalog, LanguageDef, ServerRuntimeId, ToolchainFamilyId};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::ExtensionError;
+use crate::toolchains::{ServerToolchain, SharedLocatorManifest, ToolchainFamilyManifest};
 
 const BUILTIN: &str = include_str!("../manifests/builtin.toml");
 const BUILTIN_NAME: &str = "builtin.toml";
+const TOOLCHAINS: &str = include_str!("../manifests/toolchains.toml");
+const TOOLCHAINS_NAME: &str = "toolchains.toml";
 const MANIFEST_EXTENSION: &str = "toml";
 const EXTENSION_FILE: &str = "extension.toml";
 
@@ -22,18 +25,20 @@ pub struct ServerManifest {
     pub probe: Vec<String>,
     #[serde(default)]
     pub path_names: Option<Vec<String>>,
-    #[serde(default)]
-    pub toolchains: Vec<ToolchainId>,
+    #[serde(default, alias = "toolchains")]
+    pub server_runtimes: Vec<ServerRuntimeId>,
     #[serde(default)]
     pub settings_section: Option<String>,
     #[serde(default)]
     pub settings: Option<toml::Table>,
     #[serde(default)]
     pub command: Option<Vec<String>>,
+    #[serde(default)]
+    pub toolchain: Option<ServerToolchain>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
-pub(crate) struct ToolchainDownload {
+pub(crate) struct RuntimeDownload {
     pub(crate) targets: Vec<String>,
     pub(crate) url: String,
     #[serde(default)]
@@ -66,8 +71,24 @@ pub(crate) struct Runner {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct ToolchainManifest {
-    pub id: ToolchainId,
+#[serde(untagged)]
+pub(crate) enum RuntimeMinimum {
+    Major(u64),
+    Range(krad_domain::VersionConstraint),
+}
+
+impl RuntimeMinimum {
+    pub(crate) fn constraint(&self) -> krad_domain::VersionConstraint {
+        match self {
+            Self::Major(major) => krad_domain::VersionConstraint::at_least(&[*major]),
+            Self::Range(range) => range.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ServerRuntimeManifest {
+    pub id: ServerRuntimeId,
     pub name: String,
     pub(crate) program: String,
     #[serde(default)]
@@ -77,7 +98,7 @@ pub struct ToolchainManifest {
     #[serde(default)]
     pub(crate) version_after: Option<String>,
     #[serde(default)]
-    pub(crate) minimum_version: Option<u32>,
+    pub(crate) minimum_version: Option<RuntimeMinimum>,
     #[serde(default)]
     pub(crate) home_vars: Vec<String>,
     #[serde(default)]
@@ -85,7 +106,7 @@ pub struct ToolchainManifest {
     #[serde(default)]
     pub(crate) search: Vec<String>,
     #[serde(default)]
-    pub(crate) download: Vec<ToolchainDownload>,
+    pub(crate) download: Vec<RuntimeDownload>,
     #[serde(default)]
     pub(crate) manager: Vec<PackageManager>,
     #[serde(default)]
@@ -98,15 +119,21 @@ struct ManifestFile {
     languages: Vec<LanguageDef>,
     #[serde(default, rename = "server")]
     servers: Vec<ServerManifest>,
-    #[serde(default, rename = "toolchain")]
-    toolchains: Vec<ToolchainManifest>,
+    #[serde(default, rename = "server_runtime", alias = "toolchain")]
+    server_runtimes: Vec<ServerRuntimeManifest>,
+    #[serde(default, rename = "toolchains")]
+    toolchain_families: Vec<ToolchainFamilyManifest>,
+    #[serde(default, rename = "locator")]
+    shared_locators: Vec<SharedLocatorManifest>,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Manifests {
     pub languages: LanguageCatalog,
     pub servers: Vec<ServerManifest>,
-    pub toolchains: Vec<ToolchainManifest>,
+    pub server_runtimes: Vec<ServerRuntimeManifest>,
+    pub toolchain_families: Vec<ToolchainFamilyManifest>,
+    pub shared_locators: Vec<SharedLocatorManifest>,
 }
 
 impl Manifests {
@@ -118,10 +145,36 @@ impl Manifests {
             self.servers.retain(|known| known.package != server.package);
             self.servers.push(server);
         }
-        for toolchain in file.toolchains {
-            self.toolchains.retain(|known| known.id != toolchain.id);
-            self.toolchains.push(toolchain);
+        for server_runtime in file.server_runtimes {
+            self.server_runtimes
+                .retain(|known| known.id != server_runtime.id);
+            self.server_runtimes.push(server_runtime);
         }
+        for family in file.toolchain_families {
+            self.toolchain_families
+                .retain(|known| known.id != family.id);
+            self.toolchain_families.push(family);
+        }
+        for locator in file.shared_locators {
+            self.shared_locators
+                .retain(|known| known.id() != locator.id());
+            self.shared_locators.push(locator);
+        }
+    }
+
+    #[must_use]
+    pub fn toolchain_family(&self, id: &ToolchainFamilyId) -> Option<&ToolchainFamilyManifest> {
+        self.toolchain_families
+            .iter()
+            .find(|family| family.id == *id)
+    }
+
+    #[must_use]
+    pub fn toolchain_families_of(&self, language: &str) -> Vec<&ToolchainFamilyManifest> {
+        self.toolchain_families
+            .iter()
+            .filter(|family| family.covers(language))
+            .collect()
     }
 
     #[must_use]
@@ -130,8 +183,10 @@ impl Manifests {
     }
 
     #[must_use]
-    pub fn toolchain(&self, id: &ToolchainId) -> Option<&ToolchainManifest> {
-        self.toolchains.iter().find(|toolchain| toolchain.id == *id)
+    pub fn server_runtime(&self, id: &ServerRuntimeId) -> Option<&ServerRuntimeManifest> {
+        self.server_runtimes
+            .iter()
+            .find(|server_runtime| server_runtime.id == *id)
     }
 }
 
@@ -182,9 +237,11 @@ pub(crate) struct Loaded {
 pub(crate) fn load(folders: &[PathBuf]) -> Loaded {
     let mut manifests = Manifests::default();
     let mut problems = Vec::new();
-    match parse(BUILTIN, BUILTIN_NAME) {
-        Ok(file) => manifests.merge(file),
-        Err(error) => problems.push(error),
+    for (text, name) in [(BUILTIN, BUILTIN_NAME), (TOOLCHAINS, TOOLCHAINS_NAME)] {
+        match parse(text, name) {
+            Ok(file) => manifests.merge(file),
+            Err(error) => problems.push(error),
+        }
     }
     for path in folders.iter().flat_map(|folder| manifest_files(folder)) {
         let read = fs::read_to_string(&path)
@@ -219,7 +276,69 @@ mod tests {
         assert!(manifests
             .server("jdtls")
             .is_some_and(|jdtls| jdtls.command.is_some()));
-        assert!(manifests.toolchain(&ToolchainId::new("node")).is_some());
+        assert!(manifests
+            .server_runtime(&ServerRuntimeId::new("node"))
+            .is_some());
+    }
+
+    #[test]
+    fn every_toolchain_family_and_hand_off_is_complete() -> Result<(), String> {
+        use crate::toolchains::manifest::LocatorSpec;
+
+        let loaded = load(&[]);
+        assert!(loaded.problems.is_empty(), "{:?}", loaded.problems);
+        let manifests = loaded.manifests;
+        for id in ["python", "typescript", "node", "go", "java", "rust", "ruby"] {
+            let family = manifests
+                .toolchain_family(&ToolchainFamilyId::new(id))
+                .ok_or(format!("no {id} toolchain family"))?;
+            assert!(!family.locators.is_empty(), "{id} has no locators");
+            assert!(!family.markers.is_empty(), "{id} has no project markers");
+            for locator in &family.locators {
+                if let LocatorSpec::Shared(shared) = locator {
+                    assert!(
+                        manifests
+                            .shared_locators
+                            .iter()
+                            .any(|known| *known.id() == shared.uses),
+                        "{id} uses an unknown shared locator {}",
+                        shared.uses
+                    );
+                }
+            }
+        }
+        assert_eq!(manifests.toolchain_families_of("tsx").len(), 2);
+        for server in &manifests.servers {
+            if let Some(toolchain) = &server.toolchain {
+                assert!(
+                    manifests.toolchain_family(&toolchain.family).is_some(),
+                    "{} hands off to an unknown family",
+                    server.package
+                );
+            }
+        }
+        assert!(manifests
+            .server("basedpyright")
+            .and_then(|server| server.toolchain.as_ref())
+            .is_some_and(|toolchain| toolchain.settings.contains_key("python.pythonPath")));
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_toolchain_keys_still_describe_server_runtimes() -> Result<(), ExtensionError> {
+        let legacy = "[[server]]\npackage = \"zls\"\ntoolchains = [\"zig\"]\n\n[[toolchain]]\nid = \"zig\"\nname = \"Zig\"\nprogram = \"zig\"\n";
+        let mut manifests = Manifests::default();
+        manifests.merge(parse(legacy, "legacy.toml")?);
+        assert_eq!(
+            manifests
+                .server("zls")
+                .map(|server| server.server_runtimes.clone()),
+            Some(vec![ServerRuntimeId::new("zig")])
+        );
+        assert!(manifests
+            .server_runtime(&ServerRuntimeId::new("zig"))
+            .is_some());
+        Ok(())
     }
 
     #[test]

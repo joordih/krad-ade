@@ -70,6 +70,7 @@ impl EnvironmentShell {
             .gap(px(SPACE_1_5))
             .pb(px(SPACE_2))
             .child(pill)
+            .children(self.host_badge(cx))
             .into_any_element()
     }
 }

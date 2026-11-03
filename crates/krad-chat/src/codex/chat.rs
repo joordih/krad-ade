@@ -15,7 +15,7 @@ use super::rpc::{AppServer, CodexError, Pushed};
 use crate::control::{LiveEvent, Responder};
 use crate::live::LiveConfig;
 use crate::live::{LiveHarness, LiveSession, Order};
-use crate::mention::served_path;
+use crate::mention::{served_image, served_path};
 use crate::refused::ResumeRefused;
 use crate::rewind::ResumeCut;
 
@@ -388,10 +388,10 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
     fn deliver(&mut self, server: &AppServer, prompt: &Prompt) -> Result<(), CodexError> {
         let runner = &self.config.runner;
         let text = prompt.text_with_paths(|path| served_path(runner, path));
-        let images: Vec<String> = prompt
+        let images = prompt
             .images()
-            .map(|image| served_path(runner, &image.path))
-            .collect();
+            .map(|image| served_image(runner, image))
+            .collect::<Result<Vec<String>, _>>()?;
         let input = inputs(&text, &self.listing.skills, &images);
         if let Some(turn) = self.translator.turn.as_deref() {
             return server

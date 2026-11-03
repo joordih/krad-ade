@@ -1,3 +1,4 @@
+use krad_host::HostLink;
 use std::path::Path;
 use std::process::Command;
 
@@ -41,9 +42,12 @@ fn reveal_command(path: &Path) -> Command {
 const STATUS_IS_MEANINGFUL: bool = !cfg!(windows);
 
 /// # Errors
-/// Returns [`RepoError::Io`] when the launcher cannot run and [`RepoError::Reveal`] when it
-/// reports a failure.
-pub fn reveal_in_file_manager(path: &Path) -> Result<(), RepoError> {
+/// Returns [`RepoError::Io`] when the launcher cannot run, [`RepoError::Reveal`] when it
+/// reports a failure, and [`RepoError::NotOnThisComputer`] for a path on a remote host.
+pub fn reveal_in_file_manager(host: &HostLink, path: &Path) -> Result<(), RepoError> {
+    if !host.is_local() {
+        return Err(RepoError::NotOnThisComputer);
+    }
     let status = reveal_command(path).status()?;
     if STATUS_IS_MEANINGFUL && !status.success() {
         return Err(RepoError::Reveal(status.to_string()));

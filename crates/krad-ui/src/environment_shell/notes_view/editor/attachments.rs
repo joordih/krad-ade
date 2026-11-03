@@ -31,10 +31,11 @@ impl EnvironmentShell {
         let Some(root) = self.notes.root.clone() else {
             return;
         };
+        let link = self.active_link();
         let copy = cx.background_spawn(async move {
             files
                 .iter()
-                .map(|file| add_attachment(&root, file))
+                .map(|file| add_attachment(&link, &root, file))
                 .collect::<Result<Vec<_>, _>>()
         });
         let path = path.to_owned();
@@ -44,7 +45,7 @@ impl EnvironmentShell {
             cx.update_window(window_handle, |_, window, cx| {
                 this.update(cx, |shell, cx| match copied {
                     Ok(links) => shell.insert_links(&path, &links, window, cx),
-                    Err(error) => shell.push_toast(error.to_string()),
+                    Err(error) => shell.toast_failure(&error),
                 })
                 .unwrap_or_default();
             })
@@ -96,8 +97,9 @@ impl EnvironmentShell {
         };
         let extension = image.format.extension().to_owned();
         let bytes = image.bytes.clone();
+        let link = self.active_link();
         let save = cx.background_spawn(async move {
-            save_attachment(&root, PASTED_IMAGE_STEM, &extension, &bytes)
+            save_attachment(&link, &root, PASTED_IMAGE_STEM, &extension, &bytes)
         });
         let path = path.to_owned();
         let window_handle = window.window_handle();
@@ -106,7 +108,7 @@ impl EnvironmentShell {
             cx.update_window(window_handle, |_, window, cx| {
                 this.update(cx, |shell, cx| match saved {
                     Ok(link) => shell.insert_links(&path, &[link], window, cx),
-                    Err(error) => shell.push_toast(error.to_string()),
+                    Err(error) => shell.toast_failure(&error),
                 })
                 .unwrap_or_default();
             })

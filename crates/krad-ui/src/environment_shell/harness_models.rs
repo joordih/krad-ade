@@ -1,6 +1,7 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_chat::{claude_models, codex_models, ModelOffer, Runner};
-use krad_domain::AgentPreset;
+use krad_domain::{AgentPreset, EnvironmentName, Host};
+use krad_host::HostLink;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -31,20 +32,22 @@ impl Listing {
 
 #[derive(Default)]
 pub(super) struct ListedModels {
-    listed: HashMap<AgentPreset, Vec<ModelOffer>>,
-    asked: Vec<AgentPreset>,
+    listed: HashMap<(Host, AgentPreset), Vec<ModelOffer>>,
+    asked: Vec<(Host, AgentPreset)>,
 }
 
 impl ListedModels {
-    pub(super) fn of(&self, harness: AgentPreset) -> &[ModelOffer] {
-        self.listed.get(&harness).map_or(&[], Vec::as_slice)
+    pub(super) fn of(&self, host: &Host, harness: AgentPreset) -> &[ModelOffer] {
+        self.listed
+            .get(&(host.clone(), harness))
+            .map_or(&[], Vec::as_slice)
     }
 
-    fn keep(&mut self, harness: AgentPreset, models: Vec<ModelOffer>) {
+    fn keep(&mut self, host: Host, harness: AgentPreset, models: Vec<ModelOffer>) {
         if models.is_empty() || Listing::of(harness).is_none() {
             return;
         }
-        self.listed.insert(harness, models);
+        self.listed.insert((host, harness), models);
     }
 }
 
@@ -52,26 +55,47 @@ impl EnvironmentShell {
     pub(super) fn list_harness_models(&mut self, cx: &mut Context<Self>) {
         for harness in AgentPreset::all() {
             if let Some(listing) = Listing::of(harness) {
-                self.list_models_of(harness, listing, cx);
+                if self.native_agents.contains(&harness) {
+                    self.list_models_of(&HostLink::Local, harness, listing, cx);
+                }
             }
         }
     }
 
-    fn list_models_of(&mut self, harness: AgentPreset, listing: Listing, cx: &mut Context<Self>) {
-        let installed = self.native_agents.contains(&harness);
-        if !installed || self.listed_models.asked.contains(&harness) {
-            return;
-        }
-        let Ok((runner, cwd)) = self.harness_runner(harness, None) else {
+    pub(super) fn list_host_models(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
+        let link = self.env_link(env);
+        let Some(found) = self.host_agents.get(&link.host()).cloned() else {
             return;
         };
-        self.listed_models.asked.push(harness);
+        for harness in found {
+            if let Some(listing) = Listing::of(harness) {
+                self.list_models_of(&link, harness, listing, cx);
+            }
+        }
+    }
+
+    fn list_models_of(
+        &mut self,
+        link: &HostLink,
+        harness: AgentPreset,
+        listing: Listing,
+        cx: &mut Context<Self>,
+    ) {
+        let host = link.host();
+        let asked = (host.clone(), harness);
+        if self.listed_models.asked.contains(&asked) {
+            return;
+        }
+        let Ok((runner, cwd)) = self.harness_runner(link, harness, None) else {
+            return;
+        };
+        self.listed_models.asked.push(asked);
         let listed = cx.background_spawn(async move { listing.run(&runner, &cwd) });
         cx.spawn(async move |this, cx| {
             let listed = listed.await;
             this.update(cx, |shell, cx| {
                 match listed {
-                    Ok(models) => shell.listed_models.keep(harness, models),
+                    Ok(models) => shell.listed_models.keep(host, harness, models),
                     Err(error) => shell.toast(&error, cx),
                 }
                 cx.notify();
@@ -81,7 +105,13 @@ impl EnvironmentShell {
         .detach();
     }
 
-    pub(super) fn keep_harness_models(&mut self, harness: AgentPreset, models: &[ModelOffer]) {
-        self.listed_models.keep(harness, models.to_vec());
+    pub(super) fn keep_harness_models(
+        &mut self,
+        env: &EnvironmentName,
+        harness: AgentPreset,
+        models: &[ModelOffer],
+    ) {
+        let host = self.env_link(env).host();
+        self.listed_models.keep(host, harness, models.to_vec());
     }
 }

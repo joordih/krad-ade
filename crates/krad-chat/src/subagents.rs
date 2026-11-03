@@ -1,6 +1,6 @@
 use krad_domain::ToolUseId;
+use krad_host::HostLink;
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -31,14 +31,14 @@ pub struct SubagentFiles {
 }
 
 #[must_use]
-pub fn claude_subagents(conversation: &Path) -> Vec<SubagentFiles> {
+pub fn claude_subagents(host: &HostLink, conversation: &Path) -> Vec<SubagentFiles> {
     let folder = conversation.with_extension("").join(SUBAGENTS_DIR);
-    let Ok(entries) = fs::read_dir(&folder) else {
+    let Ok(entries) = host.read_dir(&folder) else {
         return Vec::new();
     };
     entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
+        .into_iter()
+        .map(|entry| entry.path)
         .filter(|path| {
             path.extension()
                 .is_some_and(|extension| extension == RECORD_EXTENSION)
@@ -57,22 +57,27 @@ pub fn claude_subagents(conversation: &Path) -> Vec<SubagentFiles> {
 /// # Errors
 ///
 /// Fails when the note cannot be read or is not the note Claude Code writes.
-pub fn read_subagent_meta(file: &Path) -> Result<SubagentMeta, ChatError> {
-    let text = fs::read_to_string(file)?;
+pub fn read_subagent_meta(host: &HostLink, file: &Path) -> Result<SubagentMeta, ChatError> {
+    let text = host.read_to_string(file).map_err(io::Error::from)?;
     serde_json::from_str(&text).map_err(|error| ChatError::Io(io::Error::other(error)))
 }
 
 /// # Errors
 ///
 /// Returns the I/O error when the record cannot be opened or read.
-pub fn read_subagent_record(file: &Path, from: u64) -> io::Result<TranscriptChunk> {
-    read_lines(file, from, Sidechain::Kept)
+pub fn read_subagent_record(
+    host: &HostLink,
+    file: &Path,
+    from: u64,
+) -> io::Result<TranscriptChunk> {
+    read_lines(host, file, from, Sidechain::Kept)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use krad_domain::{ChatEntry, ChatEvent};
+    use std::fs;
 
     fn folder(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!("krad-subagents-{name}-{}", std::process::id()))
@@ -100,13 +105,13 @@ mod tests {
             r#"{"agentType":"Explore","description":"Map the UI","toolUseId":"toolu_1","finished":true}"#,
         )?;
         fs::write(subagents.join("notes.txt"), "not a subagent")?;
-        let found = claude_subagents(&conversation);
+        let found = claude_subagents(&HostLink::Local, &conversation);
         assert_eq!(found.len(), 1);
-        let meta = read_subagent_meta(&found[0].meta)?;
+        let meta = read_subagent_meta(&HostLink::Local, &found[0].meta)?;
         assert_eq!(meta.tool_use_id, ToolUseId::from("toolu_1"));
         assert_eq!(meta.agent_type.as_deref(), Some("Explore"));
         assert!(meta.finished);
-        let chunk = read_subagent_record(&found[0].record, 0)?;
+        let chunk = read_subagent_record(&HostLink::Local, &found[0].record, 0)?;
         assert!(matches!(&chunk.entries[0], ChatEntry::User { text, .. } if text == "Map the UI"));
         assert!(matches!(
             &chunk.entries[1],
@@ -119,7 +124,7 @@ mod tests {
     #[test]
     fn a_conversation_without_subagents_has_none() {
         assert_eq!(
-            claude_subagents(&folder("none").join("x.jsonl")),
+            claude_subagents(&HostLink::Local, &folder("none").join("x.jsonl")),
             Vec::new()
         );
     }

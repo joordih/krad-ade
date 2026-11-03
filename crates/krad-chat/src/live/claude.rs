@@ -1,5 +1,4 @@
 use krad_domain::{ChatEvent, Prompt, ResumeId, RewindId, RewindPoint};
-use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -63,6 +62,7 @@ pub(super) struct ClaudeProcess {
     next_request: AtomicU64,
     session: KnownSession,
     awaited: AwaitedReply,
+    host: krad_host::HostLink,
 }
 
 impl ClaudeProcess {
@@ -102,6 +102,7 @@ impl ClaudeProcess {
             request_id: self.request_id(),
             outbox: self.outbox.clone(),
             awaited: Arc::clone(&self.awaited),
+            host: self.host.clone(),
         };
         let events = self.events.clone();
         thread::spawn(move || {
@@ -150,6 +151,7 @@ struct RewindJob {
     request_id: String,
     outbox: Sender<Outbound>,
     awaited: AwaitedReply,
+    host: krad_host::HostLink,
 }
 
 impl RewindJob {
@@ -159,8 +161,13 @@ impl RewindJob {
         };
         let session = self.session.clone().ok_or(RewindError::NoSession)?;
         let home = request.home.as_deref().ok_or(RewindError::NoHome)?;
-        let file = claude_conversation_file(home, &session).ok_or(RewindError::NoTranscript)?;
-        let cut = transcript_cut(&fs::read_to_string(file)?, prompt)?;
+        let file = claude_conversation_file(&self.host, home, &session)
+            .ok_or(RewindError::NoTranscript)?;
+        let text = self
+            .host
+            .read_to_string(&file)
+            .map_err(std::io::Error::from)?;
+        let cut = transcript_cut(&text, prompt)?;
         if request.scope.restores_files() {
             self.restore_files(prompt)?;
         }
@@ -213,7 +220,7 @@ pub(super) fn spawn_claude(
     let args = live_chat_command(config, session);
     let mut env = config.bus_vars.0.clone();
     env.push((CHECKPOINTING_VAR.to_owned(), CHECKPOINTING_ON.to_owned()));
-    let mut child = harness_command(&config.runner, &config.cwd, &args, &env)
+    let mut child = harness_command(&config.runner, &config.cwd, &args, &env)?
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -246,6 +253,7 @@ pub(super) fn spawn_claude(
         next_request: AtomicU64::new(0),
         session: Arc::new(Mutex::new(known_session(session).cloned())),
         awaited: Arc::default(),
+        host: config.runner.link(),
     };
     let routing = Routing {
         init_id: claude.request_id(),

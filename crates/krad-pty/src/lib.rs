@@ -1,18 +1,20 @@
 use krad_domain::INHERITED_SESSION_VARS;
-use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
-use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use thiserror::Error;
 
+mod handles;
 #[cfg(not(windows))]
 mod unix;
 #[cfg(windows)]
 mod windows;
 mod wsl;
+
+pub use handles::{resize_master, PtyKill, PtyResize, PtyWait, SharedKiller, SharedMaster};
 
 #[cfg(not(windows))]
 pub use unix::{clear_screen_prefix, default_shell, login_shell_env, SHELL_QUOTING};
@@ -43,6 +45,8 @@ const TERM_ENV: &str = "TERM";
 const TERM_VALUE: &str = "xterm-256color";
 const COLORTERM_ENV: &str = "COLORTERM";
 const COLORTERM_VALUE: &str = "truecolor";
+pub const TERMINAL_ENV: [(&str, &str); 2] =
+    [(TERM_ENV, TERM_VALUE), (COLORTERM_ENV, COLORTERM_VALUE)];
 
 pub type PlatformError = Box<dyn std::error::Error + Send + Sync>;
 
@@ -55,7 +59,7 @@ pub enum PtyError {
 }
 
 impl PtyError {
-    fn platform(error: impl Into<PlatformError>) -> Self {
+    pub(crate) fn platform(error: impl Into<PlatformError>) -> Self {
         Self::Spawn(error.into())
     }
 }
@@ -69,62 +73,15 @@ pub struct SpawnRequest {
     pub rows: u16,
 }
 
+pub type PtyOpener = Box<dyn FnOnce(u16, u16) -> Result<SpawnedPty, PtyError> + Send>;
+
 pub struct SpawnedPty {
     pub reader: Box<dyn Read + Send>,
     pub writer: Box<dyn Write + Send>,
     pub master: SharedMaster,
     pub killer: SharedKiller,
-    pub child: Box<dyn portable_pty::Child + Send + Sync>,
+    pub child: Box<dyn PtyWait>,
     pub pid: Option<u32>,
-}
-
-#[derive(Clone)]
-pub struct SharedMaster {
-    inner: Arc<Mutex<Option<Box<dyn MasterPty + Send>>>>,
-}
-
-impl SharedMaster {
-    fn new(master: Box<dyn MasterPty + Send>) -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(Some(master))),
-        }
-    }
-
-    /// # Errors
-    pub fn resize(&self, size: GridSize) -> Result<(), PtyError> {
-        match self.inner.lock() {
-            Ok(master) => master
-                .as_ref()
-                .map_or(Ok(()), |master| resize_master(master.as_ref(), size)),
-            Err(_) => Ok(()),
-        }
-    }
-
-    pub fn close(&self) {
-        if let Ok(mut master) = self.inner.lock() {
-            master.take();
-        }
-    }
-}
-
-pub struct SharedKiller {
-    inner: std::sync::Mutex<Box<dyn portable_pty::ChildKiller + Send + Sync>>,
-}
-
-impl SharedKiller {
-    #[must_use]
-    pub fn new(killer: Box<dyn portable_pty::ChildKiller + Send + Sync>) -> Self {
-        Self {
-            inner: std::sync::Mutex::new(killer),
-        }
-    }
-
-    pub fn kill(&self) {
-        if let Ok(killer) = self.inner.lock() {
-            let mut killer = killer;
-            drop(killer.kill());
-        }
-    }
 }
 
 /// # Errors
@@ -153,30 +110,30 @@ pub fn spawn_pty(request: &SpawnRequest) -> Result<SpawnedPty, PtyError> {
     }
     let child = pair.slave.spawn_command(cmd).map_err(PtyError::platform)?;
     let pid = child.process_id();
-    let killer = SharedKiller::new(child.clone_killer());
+    let killer = SharedKiller::new(Box::new(child.clone_killer()));
     let reader = pair.master.try_clone_reader().map_err(PtyError::platform)?;
     let writer = pair.master.take_writer().map_err(PtyError::platform)?;
     Ok(SpawnedPty {
         reader,
         writer,
-        master: SharedMaster::new(pair.master),
+        master: SharedMaster::new(Box::new(pair.master)),
         killer,
-        child,
+        child: Box::new(child),
         pid,
     })
 }
 
 /// # Errors
 pub fn watch_exit(
-    mut child: Box<dyn Child + Send + Sync>,
+    mut child: Box<dyn PtyWait>,
     master: SharedMaster,
 ) -> Result<JoinHandle<Option<i32>>, PtyError> {
     let handle = std::thread::Builder::new()
         .name(EXIT_THREAD_NAME.to_owned())
         .spawn(move || {
-            let status = child.wait().ok();
+            let code = child.wait();
             master.close();
-            status.and_then(|status| i32::try_from(status.exit_code()).ok())
+            code
         })?;
     Ok(handle)
 }
@@ -213,7 +170,7 @@ pub struct GridSize {
 }
 
 impl GridSize {
-    const fn pixels(self) -> (u16, u16) {
+    pub(crate) const fn pixels(self) -> (u16, u16) {
         (
             self.cols.saturating_mul(self.cell_width_px),
             self.rows.saturating_mul(self.cell_height_px),
@@ -225,21 +182,6 @@ impl GridSize {
 pub enum PtyInput {
     Bytes(Vec<u8>),
     Resize(GridSize),
-}
-
-/// # Errors
-pub fn resize_master(master: &(dyn MasterPty + Send), size: GridSize) -> Result<(), PtyError> {
-    master
-        .resize({
-            let (pixel_width, pixel_height) = size.pixels();
-            PtySize {
-                rows: size.rows,
-                cols: size.cols,
-                pixel_width,
-                pixel_height,
-            }
-        })
-        .map_err(PtyError::platform)
 }
 
 pub fn run_writer_loop(

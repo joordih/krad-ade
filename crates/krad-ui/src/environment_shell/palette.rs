@@ -51,8 +51,9 @@ const PALETTE_GROUPS: [(&str, PaletteCmd); 5] = [
     ("Close file viewer", PaletteCmd::CloseViewer),
 ];
 
-const PALETTE_VIEW: [(&str, PaletteCmd); 14] = [
+const PALETTE_VIEW: [(&str, PaletteCmd); 15] = [
     ("Switch work mode", PaletteCmd::ToggleWorkMode),
+    ("Select toolchain…", PaletteCmd::SelectToolchain),
     ("Settings…", PaletteCmd::OpenSettings),
     ("Check for updates", PaletteCmd::CheckForUpdates),
     ("New agent with a prompt…", PaletteCmd::NewAgent),
@@ -90,6 +91,7 @@ enum PaletteCmd {
     CloseViewer,
     OpenSettings,
     CheckForUpdates,
+    SelectToolchain,
     NewAgent,
     OpenNote(String, Option<u32>),
     OpenFile(PathBuf),
@@ -114,7 +116,7 @@ impl PaletteCmd {
             Self::ToggleActivity => IconName::PanelBottom,
             Self::ToggleSidebar => IconName::SidebarLeft,
             Self::ToggleSidePanel => IconName::SidebarRight,
-            Self::ToggleWorkMode => IconName::Layers,
+            Self::ToggleWorkMode | Self::SelectToolchain => IconName::Layers,
             Self::OpenFile(_) => IconName::File,
             Self::NewGroup => IconName::FolderAdd,
             Self::RemoveGroup | Self::RemoveWorktree => IconName::Minus,
@@ -242,13 +244,14 @@ impl EnvironmentShell {
                 let active = self.active.clone();
                 self.close_env(&active, cx);
             }
-            PaletteCmd::NewGroup => Self::prompt_new_group(cx),
+            PaletteCmd::NewGroup => self.prompt_new_group(window, cx),
             PaletteCmd::RemoveGroup => self.remove_selected_group(cx),
             PaletteCmd::NewWorktree => self.start_new_worktree(cx),
             PaletteCmd::RemoveWorktree => self.remove_selected_worktree(cx),
             PaletteCmd::CloseViewer => self.close_viewer(cx),
             PaletteCmd::OpenSettings => self.open_settings(window, cx),
             PaletteCmd::CheckForUpdates => self.ask_for_app_update(cx),
+            PaletteCmd::SelectToolchain => self.select_focused_toolchain(cx),
             PaletteCmd::NewAgent => self.open_agent_composer(window, cx),
             PaletteCmd::OpenNote(path, line) => self.open_note_from_palette(&path, line, cx),
         }

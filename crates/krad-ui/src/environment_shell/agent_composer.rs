@@ -89,16 +89,17 @@ impl EnvironmentShell {
         let repo_root = composer
             .group
             .and_then(|group| self.envs.get(&env).and_then(|live| live.data.group(group)))
-            .and_then(|group| self.git.get(&group.root))
+            .and_then(|group| self.git_at(&env, &group.root))
             .map(|git| git.repo_root.clone());
         let typed_name = composer.worktree_name.read(cx).value().to_string();
         let name = sanitize_worktree_name(&typed_name).or_else(|| name_from_prompt(&prompt));
         match (composer.new_worktree, repo_root, name) {
             (true, Some(repo_root), Some(name)) => {
                 let preset = composer.preset;
+                let link = self.env_link(&env);
                 let create = cx.background_spawn({
                     let repo_root = repo_root.clone();
-                    async move { add_worktree(&repo_root, &name) }
+                    async move { add_worktree(&link, &repo_root, &name) }
                 });
                 cx.spawn(async move |this, cx| {
                     let created = create.await;

@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::git::run_git;
 use crate::RepoError;
+use krad_host::HostLink;
 
 const STATUS_ARGS: [&str; 5] = [
     "status",
@@ -35,7 +36,7 @@ const ADDED_CODE: char = 'A';
 const DELETED_CODE: char = 'D';
 const RENAMED_CODE: char = 'R';
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ChangeKind {
     Modified,
     Added,
@@ -61,8 +62,8 @@ pub struct GitStatus {
 }
 
 /// # Errors
-pub fn status(repo: &Path) -> Result<GitStatus, RepoError> {
-    run_git(repo, &STATUS_ARGS).map(|stdout| parse_status(&stdout))
+pub fn status(host: &HostLink, repo: &Path) -> Result<GitStatus, RepoError> {
+    run_git(host, repo, &STATUS_ARGS).map(|stdout| parse_status(&stdout))
 }
 
 #[must_use]

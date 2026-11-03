@@ -1,40 +1,44 @@
-use krad_domain::{LanguageCatalog, LanguageDef, ServerLaunch, ToolchainId, ToolchainPaths};
+use krad_domain::{
+    LanguageCatalog, LanguageDef, ServerLaunch, ServerRuntimeId, ServerRuntimePaths,
+    VersionConstraint,
+};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use ureq::Agent;
 
 use crate::error::ExtensionError;
 use crate::http;
 use crate::manifest::{load, Manifests, ServerManifest};
-use crate::package::{installed_version, needed_toolchains, Installing};
-use crate::path_lookup::find_on_path;
+use crate::package::needed_server_runtimes;
 use crate::platform::Platform;
 use crate::registry::{self, Package, Registry};
-use crate::template::{render_all, Vars};
-use crate::toolchain::Toolchains;
+use crate::runtime_requirements::{RequirementCache, RuntimeRequirements};
+use crate::server_runtime::ServerRuntimes;
+
+mod project_toolchains;
+mod site;
 
 const LANGUAGES_DIR: &str = "languages";
-const PACKAGES_DIR: &str = "packages";
-const WORKSPACES_DIR: &str = "workspaces";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ServerPlan {
     pub package: String,
     bin: String,
-    pub toolchains: Vec<ToolchainId>,
+    pub server_runtimes: Vec<ServerRuntimeId>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MissingToolchain {
-    pub id: ToolchainId,
+pub struct MissingServerRuntime {
+    pub id: ServerRuntimeId,
     pub name: String,
     pub installable: bool,
+    pub needs: Option<VersionConstraint>,
+    pub outdated: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ToolchainStatus {
-    pub id: ToolchainId,
+pub struct ServerRuntimeStatus {
+    pub id: ServerRuntimeId,
     pub name: String,
     pub found: Option<PathBuf>,
     pub chosen: bool,
@@ -67,6 +71,7 @@ pub struct LanguageTools {
     manifests: Manifests,
     registry: Registry,
     problems: Vec<String>,
+    requirement_cache: RequirementCache,
 }
 
 fn flattened(root: &Path) -> String {
@@ -92,6 +97,7 @@ impl LanguageTools {
         let loaded = load(manifest_folders);
         Ok(Self {
             registry: registry::cached(&root),
+            requirement_cache: RequirementCache::load(&root),
             root,
             platform,
             agent: http::agent(),
@@ -128,13 +134,27 @@ impl LanguageTools {
         self
     }
 
-    fn toolchains<'a>(&'a self, chosen: &'a ToolchainPaths) -> Toolchains<'a> {
-        Toolchains {
+    fn server_runtimes<'a>(
+        &'a self,
+        chosen: &'a ServerRuntimePaths,
+        requirements: &'a RuntimeRequirements,
+    ) -> ServerRuntimes<'a> {
+        ServerRuntimes {
             manifests: &self.manifests,
             root: &self.root,
             platform: self.platform,
             chosen,
+            requirements,
         }
+    }
+
+    pub(crate) fn plan_requirements(&self, plan: &ServerPlan) -> RuntimeRequirements {
+        self.registry
+            .package(&plan.package)
+            .map_or_else(RuntimeRequirements::new, |package| {
+                self.requirement_cache
+                    .requirements(&self.agent, &self.manifests, &package.purl)
+            })
     }
 
     fn manifest(&self, plan: &ServerPlan) -> ServerManifest {
@@ -168,81 +188,96 @@ impl LanguageTools {
                 })
                 .unwrap_or_else(|| package_name.clone())
         });
-        let mut toolchains = manifest.toolchains.clone();
+        let mut server_runtimes = manifest.server_runtimes.clone();
         let kinds = package
             .filter(|_| manifest.command.is_none())
-            .map(|package| needed_toolchains(&self.manifests, package, &bin));
+            .map(|package| needed_server_runtimes(&self.manifests, package, &bin));
         for id in language
-            .toolchains
+            .server_runtimes
             .iter()
             .cloned()
             .chain(kinds.into_iter().flatten())
         {
-            if !toolchains.contains(&id) {
-                toolchains.push(id);
+            if !server_runtimes.contains(&id) {
+                server_runtimes.push(id);
             }
         }
         Some(ServerPlan {
             package: package_name,
             bin,
-            toolchains,
+            server_runtimes,
         })
     }
 
     #[must_use]
-    pub fn toolchain_name(&self, id: &ToolchainId) -> String {
-        self.manifests
-            .toolchain(id)
-            .map_or_else(|| id.to_string(), |toolchain| toolchain.name.clone())
+    pub fn server_runtime_name(&self, id: &ServerRuntimeId) -> String {
+        self.manifests.server_runtime(id).map_or_else(
+            || id.to_string(),
+            |server_runtime| server_runtime.name.clone(),
+        )
     }
 
     #[must_use]
-    pub fn missing_toolchain(
+    pub fn missing_server_runtime(
         &self,
         plan: &ServerPlan,
-        chosen: &ToolchainPaths,
-    ) -> Option<MissingToolchain> {
-        let toolchains = self.toolchains(chosen);
-        plan.toolchains
+        chosen: &ServerRuntimePaths,
+    ) -> Option<MissingServerRuntime> {
+        let requirements = self.plan_requirements(plan);
+        let server_runtimes = self.server_runtimes(chosen, &requirements);
+        let unconstrained = RuntimeRequirements::new();
+        let any_version = self.server_runtimes(chosen, &unconstrained);
+        plan.server_runtimes
             .iter()
-            .find(|id| toolchains.find(id).is_none())
-            .map(|id| MissingToolchain {
+            .find(|id| server_runtimes.find(id).is_none())
+            .map(|id| MissingServerRuntime {
                 id: id.clone(),
-                name: self.toolchain_name(id),
-                installable: toolchains.installable(id),
+                name: self.server_runtime_name(id),
+                installable: server_runtimes.installable(id),
+                needs: requirements.get(id).cloned(),
+                outdated: any_version.find(id).is_some(),
             })
     }
 
     /// # Errors
     ///
-    /// Returns [`ExtensionError`] when the toolchain cannot be fetched, verified or set up.
-    pub fn install_toolchain(
+    /// Returns [`ExtensionError`] when the server runtime cannot be fetched, verified or set up.
+    pub fn install_server_runtime(
         &self,
-        id: &ToolchainId,
-        chosen: &ToolchainPaths,
+        id: &ServerRuntimeId,
+        chosen: &ServerRuntimePaths,
     ) -> Result<(), ExtensionError> {
-        self.toolchains(chosen).install(id, &self.agent).map(drop)
+        self.server_runtimes(chosen, &RuntimeRequirements::new())
+            .install(id, &self.agent)
+            .map(drop)
     }
 
     #[must_use]
-    pub fn toolchain_statuses(&self, chosen: &ToolchainPaths) -> Vec<ToolchainStatus> {
-        let toolchains = self.toolchains(chosen);
+    pub fn server_runtime_statuses(&self, chosen: &ServerRuntimePaths) -> Vec<ServerRuntimeStatus> {
+        let unconstrained = RuntimeRequirements::new();
+        let server_runtimes = self.server_runtimes(chosen, &unconstrained);
         self.manifests
-            .toolchains
+            .server_runtimes
             .iter()
-            .map(|toolchain| ToolchainStatus {
-                id: toolchain.id.clone(),
-                name: toolchain.name.clone(),
-                found: toolchains.find(&toolchain.id),
-                chosen: chosen.get(&toolchain.id).is_some(),
-                installable: toolchains.installable(&toolchain.id),
+            .map(|server_runtime| ServerRuntimeStatus {
+                id: server_runtime.id.clone(),
+                name: server_runtime.name.clone(),
+                found: server_runtimes.find(&server_runtime.id),
+                chosen: chosen.get(&server_runtime.id).is_some(),
+                installable: server_runtimes.installable(&server_runtime.id),
             })
             .collect()
     }
 
     #[must_use]
-    pub fn accepts_folder(&self, id: &ToolchainId, folder: &Path, chosen: &ToolchainPaths) -> bool {
-        self.toolchains(chosen).accepts(id, folder)
+    pub fn accepts_folder(
+        &self,
+        id: &ServerRuntimeId,
+        folder: &Path,
+        chosen: &ServerRuntimePaths,
+    ) -> bool {
+        self.server_runtimes(chosen, &RuntimeRequirements::new())
+            .accepts(id, folder)
     }
 
     #[must_use]
@@ -262,144 +297,31 @@ impl LanguageTools {
             .ok_or_else(|| ExtensionError::UnknownPackage(plan.package.clone()))
     }
 
-    fn package_dir(&self, plan: &ServerPlan) -> PathBuf {
-        self.root.join(PACKAGES_DIR).join(&plan.package)
-    }
-
-    fn found_toolchains(
-        &self,
-        plan: &ServerPlan,
-        chosen: &ToolchainPaths,
-    ) -> Option<Vec<(ToolchainId, PathBuf)>> {
-        let toolchains = self.toolchains(chosen);
-        plan.toolchains
-            .iter()
-            .map(|id| toolchains.find(id).map(|program| (id.clone(), program)))
-            .collect()
-    }
-
-    fn on_path(&self, plan: &ServerPlan, root: &Path) -> Option<PathBuf> {
-        let manifest = self.manifest(plan);
-        let names = manifest
-            .path_names
-            .clone()
-            .unwrap_or_else(|| vec![plan.bin.clone()]);
-        names
-            .iter()
-            .filter_map(|name| find_on_path(name))
-            .find(|program| {
-                manifest.probe.is_empty()
-                    || Command::new(program)
-                        .args(&manifest.probe)
-                        .current_dir(root)
-                        .stdin(Stdio::null())
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .status()
-                        .is_ok_and(|status| status.success())
-            })
-    }
-
-    fn launch(
-        &self,
-        plan: &ServerPlan,
-        root: &Path,
-        chosen: &ToolchainPaths,
-        found: &[(ToolchainId, PathBuf)],
-    ) -> Result<ServerLaunch, ExtensionError> {
-        let manifest = self.manifest(plan);
-        let toolchains = self.toolchains(chosen);
-        let env = toolchains.launch_env(found);
-        if let Some(program) = self.on_path(plan, root) {
-            return Ok(ServerLaunch {
-                program,
-                args: manifest.args,
-                env,
-            });
-        }
-        let package = self.package(plan)?;
-        let dir = self.package_dir(plan);
-        let installing = Installing {
-            manifests: &self.manifests,
-            toolchains: &toolchains,
-            platform: self.platform,
-            agent: &self.agent,
-        };
-        let command = if let Some(template) = &manifest.command {
-            let mut vars: Vars = installing.vars(package, &dir)?;
-            vars.set(
-                "workspace",
-                self.root
-                    .join(WORKSPACES_DIR)
-                    .join(flattened(root))
-                    .to_string_lossy(),
-            );
-            vars.set("root", root.to_string_lossy());
-            for (id, program) in found {
-                vars.set(format!("toolchain.{id}"), program.to_string_lossy());
-            }
-            render_all(template, &vars, &dir)?
-        } else {
-            let mut command = installing.command(package, &plan.bin, &dir)?;
-            command.extend(manifest.args);
-            command
-        };
-        let (program, args) = command
-            .split_first()
-            .ok_or_else(|| ExtensionError::Missing(plan.bin.clone()))?;
-        Ok(ServerLaunch {
-            program: PathBuf::from(program),
-            args: args.to_vec(),
-            env,
-        })
-    }
-
     #[must_use]
     pub fn locate(
         &self,
         plan: &ServerPlan,
         root: &Path,
-        chosen: &ToolchainPaths,
+        chosen: &ServerRuntimePaths,
     ) -> Option<ServerLaunch> {
-        let found = self.found_toolchains(plan, chosen)?;
-        if self.on_path(plan, root).is_none() {
-            let installed = installed_version(&self.package_dir(plan))?;
-            let current = self
-                .registry
-                .package(&plan.package)
-                .is_none_or(|package| package.purl.version == installed);
-            if !current {
-                return None;
-            }
-        }
-        self.launch(plan, root, chosen, &found).ok()
+        let requirements = self.plan_requirements(plan);
+        let server_runtimes = self.server_runtimes(chosen, &requirements);
+        self.locate_at(&self.local_site(&server_runtimes), plan, root)
     }
 
     /// # Errors
     ///
-    /// Returns [`ExtensionError`] when a toolchain is missing or the package cannot be installed.
+    /// Returns [`ExtensionError`] when a server runtime is missing or the package cannot be installed.
     pub fn install(
         &self,
         plan: &ServerPlan,
         root: &Path,
-        chosen: &ToolchainPaths,
+        chosen: &ServerRuntimePaths,
     ) -> Result<ServerLaunch, ExtensionError> {
-        let Some(found) = self.found_toolchains(plan, chosen) else {
-            let missing = self
-                .missing_toolchain(plan, chosen)
-                .map_or_else(|| ToolchainId::new(""), |missing| missing.id);
-            return Err(ExtensionError::MissingToolchain(missing));
-        };
-        let package = self.package(plan)?;
-        let toolchains = self.toolchains(chosen);
-        Installing {
-            manifests: &self.manifests,
-            toolchains: &toolchains,
-            platform: self.platform,
-            agent: &self.agent,
-        }
-        .install(package, &self.package_dir(plan))?;
-        self.launch(plan, root, chosen, &found)
+        let requirements = self.plan_requirements(plan);
+        let server_runtimes = self.server_runtimes(chosen, &requirements);
+        let site = self.local_site(&server_runtimes);
+        self.install_at(&site, plan, root)
     }
 }
 
@@ -409,7 +331,7 @@ mod tests {
     use krad_domain::LanguageId;
 
     #[test]
-    fn a_plan_gathers_the_toolchains_of_the_server_and_its_package_kind(
+    fn a_plan_gathers_the_server_runtimes_of_the_server_and_its_package_kind(
     ) -> Result<(), ExtensionError> {
         let config = std::env::temp_dir().join(format!("krad-tools-{}", std::process::id()));
         let registry = Registry::from_json(
@@ -425,7 +347,7 @@ mod tests {
             .ok_or(ExtensionError::NoBuild)?;
         let plan = tools.plan(&typescript).ok_or(ExtensionError::NoBuild)?;
         assert_eq!(plan.package, "vtsls");
-        assert_eq!(plan.toolchains, [ToolchainId::new("node")]);
+        assert_eq!(plan.server_runtimes, [ServerRuntimeId::new("node")]);
         Ok(())
     }
 }

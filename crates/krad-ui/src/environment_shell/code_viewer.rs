@@ -1,3 +1,4 @@
+use krad_host::HostLink;
 mod lines;
 mod selection;
 
@@ -78,8 +79,8 @@ struct ViewerText {
     markdown: Option<SharedString>,
 }
 
-fn load(path: &Path, language: Option<&LanguageDef>) -> ViewerContent {
-    match krad_repo::read_text(path, MAX_VIEW_BYTES) {
+fn load(link: &HostLink, path: &Path, language: Option<&LanguageDef>) -> ViewerContent {
+    match krad_repo::read_text(link, path, MAX_VIEW_BYTES) {
         Ok(file) => {
             let text = file.text.replace('\t', TAB_AS_SPACES);
             let spans = highlight_lines(&text, Syntax::from(language));
@@ -128,9 +129,10 @@ impl EnvironmentShell {
         });
         cx.notify();
         let language = self.language_of(&path);
+        let link = self.active_link();
         let loading = cx.background_spawn({
             let path = path.clone();
-            async move { load(&path, language.as_ref()) }
+            async move { load(&link, &path, language.as_ref()) }
         });
         cx.spawn(async move |this, cx| {
             let content = loading.await;
@@ -169,7 +171,7 @@ impl EnvironmentShell {
     fn viewer_change(&self, viewer: &CodeView) -> Option<ChangeKind> {
         let path = &viewer.path;
         let root = &self.active_group()?.root;
-        let git = self.git.get(root)?;
+        let git = self.active_git(root)?;
         let relative = path.strip_prefix(&git.repo_root).ok()?;
         git.status
             .changes

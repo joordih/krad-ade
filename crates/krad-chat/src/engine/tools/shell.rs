@@ -9,9 +9,10 @@ use unix as platform;
 #[cfg(windows)]
 use windows as platform;
 
+use krad_host::HostCommand;
 use std::fmt::Write as _;
 use std::io::Read;
-use std::process::{ChildStderr, ChildStdout, Stdio};
+use std::process::{ChildStderr, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::thread;
@@ -138,6 +139,39 @@ fn report(output: &[u8], ending: &Ending) -> Ran {
     }
 }
 
+const REMOTE_SHELL: &str = "sh";
+const REMOTE_COMMAND_FLAG: &str = "-c";
+
+impl Workspace {
+    pub(crate) fn shell_command(&self, line: &str) -> std::io::Result<Command> {
+        if self.host.is_local() {
+            let mut command = platform::command(line);
+            command
+                .current_dir(&self.cwd)
+                .envs(self.env.iter().map(|(name, value)| (name, value)));
+            return Ok(command);
+        }
+        let mut remote = HostCommand::new(REMOTE_SHELL);
+        remote
+            .args([REMOTE_COMMAND_FLAG, line])
+            .current_dir(&self.cwd)
+            .in_login_shell()
+            .path_and_env(&self.env)
+            .end_with_stdin();
+        let mut command = remote.build(&self.host)?;
+        platform::own_group(&mut command);
+        Ok(command)
+    }
+
+    pub(crate) fn shell_stdin(&self) -> Stdio {
+        if self.host.is_local() {
+            Stdio::null()
+        } else {
+            Stdio::piped()
+        }
+    }
+}
+
 pub(super) fn run(
     workspace: &Workspace,
     line: &str,
@@ -145,11 +179,12 @@ pub(super) fn run(
     cancel: &AtomicBool,
 ) -> Ran {
     let timeout = timeout.unwrap_or(DEFAULT_TIMEOUT).min(MAX_TIMEOUT);
-    let mut command = platform::command(line);
+    let mut command = match workspace.shell_command(line) {
+        Ok(command) => command,
+        Err(error) => return Ran::failed(format!("{NOT_STARTED_TEXT}: {error}")),
+    };
     command
-        .current_dir(&workspace.cwd)
-        .envs(workspace.env.iter().map(|(name, value)| (name, value)))
-        .stdin(Stdio::null())
+        .stdin(workspace.shell_stdin())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = match command.spawn() {
@@ -192,6 +227,7 @@ mod tests {
         Workspace {
             cwd: scratch.path().to_path_buf(),
             env: vec![("KRAD_TEST_VALUE".to_owned(), "from-env".to_owned())],
+            host: krad_host::HostLink::Local,
         }
     }
 

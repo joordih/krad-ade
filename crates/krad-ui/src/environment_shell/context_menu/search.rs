@@ -49,7 +49,11 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn open_submenu(&mut self, index: usize, cx: &mut Context<Self>) {
+    pub(in crate::environment_shell) fn open_submenu(
+        &mut self,
+        index: usize,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(menu) = self.context_menu.as_mut() {
             if menu.submenu != Some(index) {
                 menu.submenu = Some(index);

@@ -5,6 +5,7 @@ use krad_domain::review::{
 };
 use krad_domain::{CodeHost, GitlabSettings};
 use krad_gitlab::GitlabConfig;
+use krad_host::HostLink;
 use krad_repo::{diff_between, remote_url, ORIGIN_REMOTE};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -30,7 +31,8 @@ impl EnvironmentShell {
     pub(super) fn connect_host(&mut self, root: PathBuf, cx: &mut Context<Self>) {
         self.review.connection = Connection::Connecting;
         let settings = self.settings.gitlab.clone();
-        let sign_in = cx.background_spawn(async move { sign_in(&root, &settings) });
+        let link = self.active_link();
+        let sign_in = cx.background_spawn(async move { sign_in(&link, &root, &settings) });
         cx.spawn(async move |this, cx| {
             let connection = sign_in.await;
             this.update(cx, |shell, cx| {
@@ -86,7 +88,8 @@ impl EnvironmentShell {
             facts: HashMap::new(),
         });
         let repo = root.clone();
-        let load = cx.background_spawn(async move { list_requests(&client, &repo, query) });
+        let link = self.active_link();
+        let load = cx.background_spawn(async move { list_requests(&client, &link, &repo, query) });
         cx.spawn(async move |this, cx| {
             let requests = load.await;
             this.update(cx, |shell, cx| {
@@ -264,7 +267,8 @@ impl EnvironmentShell {
             .iter()
             .map(|file| (file.change.old_path.clone(), file.change.new_path.clone()))
             .collect();
-        let read = cx.background_spawn(async move { local_diffs(&root, &refs, &paths) });
+        let link = self.active_link();
+        let read = cx.background_spawn(async move { local_diffs(&link, &root, &refs, &paths) });
         cx.spawn(async move |this, cx| {
             let Some(diffs) = read.await else {
                 return;
@@ -434,8 +438,8 @@ fn fetch<T: Send + 'static>(
     })
 }
 
-fn sign_in(root: &Path, gitlab: &GitlabSettings) -> Connection {
-    let Some(repo) = origin_repo(root, GitlabConfig::try_from(gitlab).ok()) else {
+fn sign_in(link: &HostLink, root: &Path, gitlab: &GitlabSettings) -> Connection {
+    let Some(repo) = origin_repo(link, root, GitlabConfig::try_from(gitlab).ok()) else {
         return Connection::SignedOut(NOT_A_PROJECT.to_owned());
     };
     let client = match repo.login.client() {
@@ -461,10 +465,11 @@ fn sign_in(root: &Path, gitlab: &GitlabSettings) -> Connection {
 
 fn list_requests(
     client: &HostClient,
+    link: &HostLink,
     repo: &Path,
     query: MergeRequestQuery,
 ) -> Result<(ProjectPath, Vec<MergeRequest>), String> {
-    let url = remote_url(repo, ORIGIN_REMOTE).map_err(|error| error.to_string())?;
+    let url = remote_url(link, repo, ORIGIN_REMOTE).map_err(|error| error.to_string())?;
     let project = url
         .and_then(|url| project_on_host(&url, client.host()))
         .ok_or_else(|| NOT_A_PROJECT.to_owned())?;
@@ -487,7 +492,12 @@ fn row_facts(
     })
 }
 
-fn local_diffs(root: &Path, refs: &DiffRefs, paths: &[(String, String)]) -> Option<Vec<String>> {
+fn local_diffs(
+    link: &HostLink,
+    root: &Path,
+    refs: &DiffRefs,
+    paths: &[(String, String)],
+) -> Option<Vec<String>> {
     paths
         .iter()
         .map(|(old, new)| {
@@ -496,7 +506,7 @@ fn local_diffs(root: &Path, refs: &DiffRefs, paths: &[(String, String)]) -> Opti
             } else {
                 vec![old.as_str(), new.as_str()]
             };
-            diff_between(root, &refs.base_sha.0, &refs.head_sha.0, &paths).ok()
+            diff_between(link, root, &refs.base_sha.0, &refs.head_sha.0, &paths).ok()
         })
         .collect()
 }

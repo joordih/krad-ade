@@ -1,31 +1,29 @@
+mod disk;
+
 use gpui_kit::component::input::{Editor, EditorState, InputEvent};
 use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, Entity, InteractiveElement, IntoElement,
-    ParentElement, PromptButton, PromptLevel, Styled, Subscription, Window,
+    ParentElement, Styled, Subscription, Window,
 };
 use krad_domain::{EnvironmentName, FileOpening, FileView, TerminalId};
+use krad_host::HostLink;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
-use super::disk_text::{disk_change, modified_at, read_file, DiskChange, ReadError, ReadFile};
+use super::disk_text::{read_file, ReadError, ReadFile};
+use super::language_servers::Document;
 use super::{EnvironmentShell, LiveEnv};
-use crate::actions::{SaveFile, FILE_TAB_KEY_CONTEXT};
+use crate::actions::FILE_TAB_KEY_CONTEXT;
 use crate::components::{Button, ButtonVariant, EmptyState, IconName};
 use crate::language::editor_id;
 use crate::theme::{palette, LINE_SM, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM};
 
-const DISK_CHECK_EVERY: Duration = Duration::from_secs(2);
 const OPEN_FAILED_TITLE: &str = "Can't open this file";
 const CHANGED_ON_DISK_TEXT: &str = "This file changed on disk.";
 const BTN_RELOAD: &str = "file-tab-reload";
 const RELOAD_LABEL: &str = "Reload";
 const BTN_KEEP: &str = "file-tab-keep";
 const KEEP_LABEL: &str = "Keep mine";
-const SAVE_FAILED_TEXT: &str = "Couldn't save";
-const UNSAVED_TITLE: &str = "Close without saving?";
-const UNSAVED_DETAIL: &str = "Your changes to this file will be lost.";
-const DISCARD_LABEL: &str = "Close";
-const CANCEL_LABEL: &str = "Cancel";
 
 enum Load {
     Pending,
@@ -47,6 +45,7 @@ pub(super) struct FileEditor {
     pub(super) state: Option<Entity<EditorState>>,
     load: Load,
     dirty: bool,
+    edits: EditCount,
     disk: DiskWatch,
     modified: Option<SystemTime>,
     focus_pending: bool,
@@ -60,6 +59,7 @@ impl FileEditor {
             state: None,
             load: Load::Pending,
             dirty: false,
+            edits: EditCount::default(),
             disk: DiskWatch::Idle,
             modified: None,
             focus_pending: true,
@@ -69,6 +69,26 @@ impl FileEditor {
 
     pub(super) const fn is_dirty(&self) -> bool {
         self.dirty
+    }
+
+    const fn edited(&mut self) {
+        self.dirty = true;
+        self.edits = self.edits.next();
+    }
+
+    const fn saved(&mut self, at: EditCount) {
+        if self.edits.0 == at.0 {
+            self.dirty = false;
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct EditCount(u64);
+
+impl EditCount {
+    const fn next(self) -> Self {
+        Self(self.0.wrapping_add(1))
     }
 }
 
@@ -150,6 +170,7 @@ impl EnvironmentShell {
         let Some((id, path)) = live.shown_file() else {
             return;
         };
+        let link = live.link.clone();
         let editor = live
             .editors
             .entry(id)
@@ -160,7 +181,7 @@ impl EnvironmentShell {
         match std::mem::replace(&mut editor.load, Load::Ready) {
             Load::Pending => {
                 editor.load = Load::Reading;
-                Self::read_into_tab(env, id, path, cx);
+                Self::read_into_tab(link, env, id, path, cx);
                 return;
             }
             Load::Read(file) => self.fill_editor(&env, id, file, window, cx),
@@ -190,7 +211,7 @@ impl EnvironmentShell {
         };
         if matches!(editor.load, Load::Ready) && editor.disk == DiskWatch::Idle {
             editor.disk = DiskWatch::Checking;
-            Self::check_disk(env, id, path, cx);
+            Self::check_disk(link, env, id, path, cx);
         }
     }
 
@@ -198,8 +219,14 @@ impl EnvironmentShell {
         self.envs.get_mut(env)?.editors.get_mut(&id)
     }
 
-    fn read_into_tab(env: EnvironmentName, id: TerminalId, path: PathBuf, cx: &mut Context<Self>) {
-        let reading = cx.background_spawn(async move { read_file(&path) });
+    fn read_into_tab(
+        link: HostLink,
+        env: EnvironmentName,
+        id: TerminalId,
+        path: PathBuf,
+        cx: &mut Context<Self>,
+    ) {
+        let reading = cx.background_spawn(async move { read_file(&link, &path) });
         cx.spawn(async move |this, cx| {
             let read = reading.await;
             this.update(cx, |shell, cx| {
@@ -230,6 +257,10 @@ impl EnvironmentShell {
             .and_then(|live| live.editors.get(&id))
             .and_then(|editor| self.language_of(&editor.path))
             .and_then(|language| editor_id(&language).map(str::to_owned));
+        let host = self
+            .envs
+            .get(env)
+            .map_or_else(krad_domain::Host::default, |live| live.data.host.clone());
         let Some(editor) = self.editor_mut(env, id) else {
             return;
         };
@@ -249,14 +280,14 @@ impl EnvironmentShell {
             state.default_value(file.text)
         });
         let edited_env = env.clone();
-        let edited_path = editor.path.clone();
+        let edited = Document::new(&host, &editor.path);
         let changes = cx.subscribe(
             &state,
             move |this: &mut Self, state, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
                     this.mark_edited(&edited_env, id, cx);
-                    this.document_edited(&edited_path, state.read(cx).value().to_string(), cx);
-                    this.show_diagnostics(&edited_path, cx);
+                    this.document_edited(&edited, state.read(cx).value().to_string(), cx);
+                    this.show_diagnostics(&edited, cx);
                 }
             },
         );
@@ -273,7 +304,7 @@ impl EnvironmentShell {
             return;
         };
         if let Some(editor) = live.editors.get_mut(&id) {
-            editor.dirty = true;
+            editor.edited();
         }
         let pinned = live.data.open_file_of(id).is_some_and(|file| file.pinned);
         if !pinned {
@@ -281,121 +312,6 @@ impl EnvironmentShell {
             self.store();
         }
         cx.notify();
-    }
-
-    fn check_disk(env: EnvironmentName, id: TerminalId, path: PathBuf, cx: &mut Context<Self>) {
-        let timer = cx.background_executor().timer(DISK_CHECK_EVERY);
-        let stat = cx.background_spawn(async move {
-            timer.await;
-            modified_at(&path)
-        });
-        cx.spawn(async move |this, cx| {
-            let disk = stat.await;
-            this.update(cx, |shell, cx| {
-                let Some(editor) = shell.editor_mut(&env, id) else {
-                    return;
-                };
-                editor.disk = DiskWatch::Idle;
-                match disk_change(editor.modified, disk, editor.dirty) {
-                    DiskChange::Unchanged => {}
-                    DiskChange::Reload => editor.load = Load::Pending,
-                    DiskChange::Conflict => {
-                        editor.disk = DiskWatch::Conflict;
-                        editor.modified = disk;
-                    }
-                }
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
-    }
-
-    fn on_save_file(&mut self, _: &SaveFile, _: &mut Window, cx: &mut Context<Self>) {
-        self.save_shown_file(cx);
-    }
-
-    fn save_shown_file(&mut self, cx: &mut Context<Self>) {
-        let env = self.active.clone();
-        let Some((id, path)) = self.envs.get(&env).and_then(LiveEnv::shown_file) else {
-            return;
-        };
-        let Some(state) = self
-            .editor_mut(&env, id)
-            .and_then(|editor| editor.state.clone())
-        else {
-            return;
-        };
-        let text = state.read(cx).value().to_string();
-        let saved = path.clone();
-        let writing =
-            cx.background_spawn(
-                async move { std::fs::write(&path, text).map(|()| modified_at(&path)) },
-            );
-        cx.spawn(async move |this, cx| {
-            let written = writing.await;
-            this.update(cx, |shell, cx| {
-                match written {
-                    Ok(modified) => {
-                        shell.document_saved(&saved);
-                        if let Some(editor) = shell.editor_mut(&env, id) {
-                            editor.dirty = false;
-                            editor.disk = DiskWatch::Idle;
-                            editor.modified = modified;
-                        }
-                    }
-                    Err(error) => shell.push_toast(format!("{SAVE_FAILED_TEXT}: {error}")),
-                }
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
-    }
-
-    fn resolve_conflict(&mut self, id: TerminalId, reload: bool, cx: &mut Context<Self>) {
-        let env = self.active.clone();
-        if let Some(editor) = self.editor_mut(&env, id) {
-            editor.disk = DiskWatch::Idle;
-            if reload {
-                editor.load = Load::Pending;
-            }
-        }
-        cx.notify();
-    }
-
-    pub(super) fn request_close_tab(
-        &mut self,
-        id: TerminalId,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let dirty = self
-            .envs
-            .get(&self.active)
-            .and_then(|live| live.editors.get(&id))
-            .is_some_and(FileEditor::is_dirty);
-        if !dirty {
-            self.close_terminal(id, cx);
-            return;
-        }
-        let answer = window.prompt(
-            PromptLevel::Warning,
-            UNSAVED_TITLE,
-            Some(UNSAVED_DETAIL),
-            &[
-                PromptButton::ok(DISCARD_LABEL),
-                PromptButton::cancel(CANCEL_LABEL),
-            ],
-            cx,
-        );
-        cx.spawn_in(window, async move |this, cx| {
-            if matches!(answer.await, Ok(0)) {
-                this.update(cx, |this, cx| this.close_terminal(id, cx))
-                    .unwrap_or_default();
-            }
-        })
-        .detach();
     }
 
     pub(super) fn file_tab_body(
@@ -474,6 +390,25 @@ impl EnvironmentShell {
                     .pl(px(SPACE_1_5))
                     .child(Editor::new(state).bordered(false).h_full()),
             )
+            .children(self.toolchain_status(live, &editor.path, cx))
             .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_save_only_cleans_the_edits_it_wrote() {
+        let mut editor = FileEditor::new(PathBuf::from("/srv/app/main.py"));
+        editor.edited();
+        let saving = editor.edits;
+        editor.edited();
+        editor.saved(saving);
+        assert!(editor.is_dirty());
+        let saving = editor.edits;
+        editor.saved(saving);
+        assert!(!editor.is_dirty());
     }
 }

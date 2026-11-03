@@ -77,7 +77,11 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    fn show_utilities(&mut self, tab: UtilityTab, cx: &mut Context<Self>) {
+    pub(in crate::environment_shell) fn show_utilities(
+        &mut self,
+        tab: UtilityTab,
+        cx: &mut Context<Self>,
+    ) {
         self.set_utility_tab(tab, cx);
         self.activity = Visibility::Visible;
         self.activity_opened = ActivityOpened::Deliberately;

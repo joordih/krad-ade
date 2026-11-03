@@ -8,6 +8,7 @@ use krad_domain::{
     expand_variables, McpSecret, McpServerName, McpServerStart, McpTransport, McpValue,
     McpVariable, McpVariableName,
 };
+use krad_host::HostLink;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -57,6 +58,8 @@ pub enum McpError {
     UnknownTool(String),
     #[error("{0}")]
     ToolFailed(String),
+    #[error("could not hand the server its environment on the host: {0}")]
+    EnvOnHost(String),
     #[error("the secret {0} is not saved; add it again in Settings › MCP")]
     MissingSecret(McpVariableName),
 }
@@ -134,7 +137,7 @@ fn resolved(
 }
 
 impl Connection {
-    fn open(start: &McpServerStart, cwd: &Path) -> Result<Self, McpError> {
+    fn open(start: &McpServerStart, cwd: &Path, host: &HostLink) -> Result<Self, McpError> {
         let link = match &start.server.transport {
             McpTransport::Stdio { command, args, env } => {
                 let args: Vec<String> = args.iter().map(|arg| expanded(arg)).collect();
@@ -143,6 +146,7 @@ impl Connection {
                     args: &args,
                     env: &resolved(env, &start.secrets)?,
                     cwd,
+                    host,
                 })?)
             }
             McpTransport::Http { url, headers } => Link::Http(HttpLink::new(
@@ -195,8 +199,12 @@ impl Connection {
     }
 }
 
-fn opened(start: &McpServerStart, cwd: &Path) -> Result<(Connection, Vec<ListedTool>), McpError> {
-    let mut connection = Connection::open(start, cwd)?;
+fn opened(
+    start: &McpServerStart,
+    cwd: &Path,
+    host: &HostLink,
+) -> Result<(Connection, Vec<ListedTool>), McpError> {
+    let mut connection = Connection::open(start, cwd, host)?;
     let tools = connection.list_tools()?;
     Ok((connection, tools))
 }
@@ -259,12 +267,16 @@ fn object_schema(schema: Option<Value>) -> Value {
 
 impl McpToolbox {
     #[must_use]
-    pub fn start(starts: &[McpServerStart], cwd: &Path) -> (Self, Vec<McpStartFailure>) {
+    pub fn start(
+        starts: &[McpServerStart],
+        cwd: &Path,
+        host: &HostLink,
+    ) -> (Self, Vec<McpStartFailure>) {
         let results: Vec<Result<(Connection, Vec<ListedTool>), McpError>> =
             thread::scope(|scope| {
                 let handles: Vec<_> = starts
                     .iter()
-                    .map(|start| scope.spawn(move || opened(start, cwd)))
+                    .map(|start| scope.spawn(move || opened(start, cwd, host)))
                     .collect();
                 handles
                     .into_iter()

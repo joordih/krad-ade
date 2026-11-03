@@ -131,6 +131,13 @@ impl LspClient {
     pub fn document(&self, change: DocumentChange) -> Result<(), LspError> {
         self.route(Routed::Document(change))
     }
+
+    /// # Errors
+    ///
+    /// Returns [`LspError::Stopped`] or [`LspError::Busy`] when the server cannot take it.
+    pub fn reconfigure(&self, settings: ServerSettings) -> Result<(), LspError> {
+        self.route(Routed::Settings(settings))
+    }
 }
 
 fn read_into(mut output: impl BufRead, router: &SyncSender<Routed>) {
@@ -157,6 +164,10 @@ impl ServerSettings {
     #[must_use]
     pub fn new(sections: Value) -> Self {
         Self(sections)
+    }
+
+    pub(crate) fn all(&self) -> Value {
+        self.0.clone()
     }
 
     fn section(&self, name: Option<&str>) -> Value {

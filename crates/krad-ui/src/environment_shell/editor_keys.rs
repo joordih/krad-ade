@@ -138,7 +138,7 @@ impl EnvironmentShell {
         let starts: Vec<Position> = self
             .language_servers
             .diagnostics
-            .of(&path)
+            .of(&self.active_document(&path))
             .into_iter()
             .map(|problem| problem.range.start)
             .collect();

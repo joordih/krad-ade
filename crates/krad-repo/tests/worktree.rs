@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use krad_host::HostLink;
 use krad_repo::{add_worktree, remove_worktree, repo_root, status, ChangeKind, FileChange};
 
 const WORKTREE_NAME: &str = "fix-login";
@@ -46,11 +47,11 @@ fn exercise_repository(base: &Path) -> Result<(), Box<dyn Error>> {
     git(&repo, &["commit", "--quiet", "-m", "initial"])?;
     fs::write(repo.join("notes.txt"), "draft\n")?;
 
-    let root = repo_root(&repo)?.ok_or("repository root not found")?;
+    let root = repo_root(&HostLink::Local, &repo)?.ok_or("repository root not found")?;
     assert_eq!(fs::canonicalize(&root)?, fs::canonicalize(&repo)?);
-    assert_eq!(repo_root(base)?, None);
+    assert_eq!(repo_root(&HostLink::Local, base)?, None);
 
-    let changes = status(&root)?.changes;
+    let changes = status(&HostLink::Local, &root)?.changes;
     assert_eq!(
         changes,
         vec![FileChange {
@@ -59,7 +60,7 @@ fn exercise_repository(base: &Path) -> Result<(), Box<dyn Error>> {
         }]
     );
 
-    let added = add_worktree(&root, WORKTREE_NAME)?;
+    let added = add_worktree(&HostLink::Local, &root, WORKTREE_NAME)?;
     assert!(added.path.join("README.md").is_file());
     assert_eq!(added.branch.as_deref(), Some(WORKTREE_NAME));
     assert_eq!(
@@ -69,7 +70,7 @@ fn exercise_repository(base: &Path) -> Result<(), Box<dyn Error>> {
     let admin = root.join(".git").join("worktrees").join(WORKTREE_NAME);
     assert!(admin.is_dir());
 
-    remove_worktree(&root, &added.path)?;
+    remove_worktree(&HostLink::Local, &root, &added.path)?;
     assert!(!added.path.exists());
     assert!(!admin.exists());
     Ok(())

@@ -27,6 +27,10 @@ impl Sha256Digest {
     pub(crate) fn new(hex: &str) -> Self {
         Self(hex.trim().to_ascii_lowercase())
     }
+
+    pub(crate) fn hex(&self) -> &str {
+        &self.0
+    }
 }
 
 #[derive(Debug, Deserialize)]

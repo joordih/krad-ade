@@ -15,6 +15,8 @@ use std::io::BufReader;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 
+use krad_host::{HostCommand, HostLink};
+
 use crate::client::{LspClient, ServerEvent, ServerSettings};
 use crate::error::LspError;
 use crate::uri::file_uri;
@@ -31,14 +33,12 @@ impl LanguageServer {
     ///
     /// Returns [`LspError::Spawn`] when the server cannot be started.
     pub fn start(
+        link: &HostLink,
         launch: &ServerLaunch,
         root: &Path,
         settings: ServerSettings,
     ) -> Result<(Self, mpsc::Receiver<ServerEvent>), LspError> {
-        let mut child = Command::new(&launch.program)
-            .args(&launch.args)
-            .envs(launch.env.iter().map(|(name, value)| (name, value)))
-            .current_dir(root)
+        let mut child = server_command(link, launch, root)?
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -56,6 +56,7 @@ impl LanguageServer {
     /// Returns [`LspError`] when the server refuses to start on the folder.
     pub async fn initialize(
         client: LspClient,
+        link: &HostLink,
         root: &Path,
         options: Option<Value>,
     ) -> Result<ServerCapabilities, LspError> {
@@ -66,7 +67,7 @@ impl LanguageServer {
                 .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
         };
         let params = InitializeParams {
-            process_id: Some(std::process::id()),
+            process_id: link.is_local().then(std::process::id),
             workspace_folders: Some(vec![folder]),
             capabilities: client_capabilities(),
             initialization_options: options,
@@ -89,6 +90,32 @@ impl Drop for LanguageServer {
         self.stop();
         self.child.kill().unwrap_or_default();
     }
+}
+
+fn server_command(
+    link: &HostLink,
+    launch: &ServerLaunch,
+    root: &Path,
+) -> Result<Command, LspError> {
+    if link.is_local() {
+        let mut command = Command::new(&launch.program);
+        command
+            .args(&launch.args)
+            .envs(launch.env.iter().map(|(name, value)| (name, value)))
+            .current_dir(root);
+        return Ok(command);
+    }
+    let mut remote = HostCommand::new(&launch.program);
+    remote.args(&launch.args).current_dir(root).in_login_shell();
+    let vars: Vec<(String, String)> = launch
+        .env
+        .iter()
+        .map(|(name, value)| (name.clone(), value.to_string_lossy().into_owned()))
+        .collect();
+    remote.path_and_env(&vars);
+    remote
+        .build(link)
+        .map_err(|error| LspError::Spawn(error.into()))
 }
 
 const EDIT_PROPERTY: &str = "edit";

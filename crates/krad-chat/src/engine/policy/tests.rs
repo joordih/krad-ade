@@ -11,6 +11,7 @@ fn workspace() -> Workspace {
     Workspace {
         cwd: PathBuf::from("/work/app"),
         env: Vec::new(),
+        host: krad_host::HostLink::Local,
     }
 }
 

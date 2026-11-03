@@ -3,16 +3,18 @@ use gpui_kit::{
     div, px, AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement,
     PathPromptOptions, SharedString, Styled, Window,
 };
-use krad_domain::{ExtensionEntry, ExtensionSource, ToolchainId};
-use krad_extensions::{add_folder, add_git, remove, update, user_manifests_dir, ToolchainStatus};
+use krad_domain::{ExtensionEntry, ExtensionSource, ServerRuntimeId};
+use krad_extensions::{
+    add_folder, add_git, remove, update, user_manifests_dir, ServerRuntimeStatus,
+};
 
 use super::{form_row, hint, panel_card, EnvironmentShell};
 use crate::components::{Button, ButtonVariant};
 use crate::theme::{palette, SPACE_2, SPACE_3};
 
-const TOOLCHAINS_HINT: &str = "The SDKs and runtimes language servers need. The app looks in the folder you choose, then on your system, then in the copy it installed.";
+const SERVER_RUNTIMES_HINT: &str = "The runtimes language servers run on, such as Node.js. The app looks in the folder you choose, then on your system, then in the copy it installed. The toolchain each project is analysed with is chosen from the editor's status bar.";
 const EXTENSIONS_HINT: &str =
-    "An extension is a folder of language and toolchain manifests. Your own manifests go in";
+    "An extension is a folder of language and server runtime manifests. Your own manifests go in";
 const NOT_FOUND_TEXT: &str = "Not found";
 const CHOSEN_TEXT: &str = "chosen";
 const URL_PLACEHOLDER: &str = "Git address of an extension";
@@ -28,18 +30,18 @@ const DISABLE_LABEL: &str = "Turn off";
 const UPDATE_LABEL: &str = "Update";
 const REMOVE_LABEL: &str = "Remove";
 const FOLDER_PROMPT: &str = "Choose";
-const NOT_A_TOOLCHAIN_TEXT: &str = "That folder has no usable";
+const NOT_A_SERVER_RUNTIME_TEXT: &str = "That folder has no usable";
 const EXTENSION_FAILED_TEXT: &str = "The extension could not be added";
-const CHOOSE_PREFIX: &str = "toolchain-choose";
-const INSTALL_PREFIX: &str = "toolchain-install";
-const DETECTED_PREFIX: &str = "toolchain-detected";
+const CHOOSE_PREFIX: &str = "server_runtime-choose";
+const INSTALL_PREFIX: &str = "server_runtime-install";
+const DETECTED_PREFIX: &str = "server_runtime-detected";
 const TOGGLE_PREFIX: &str = "extension-toggle";
 const UPDATE_PREFIX: &str = "extension-update";
 const REMOVE_PREFIX: &str = "extension-remove";
 
 pub(in crate::environment_shell) struct LanguagesUi {
     url: Entity<InputState>,
-    statuses: Vec<ToolchainStatus>,
+    statuses: Vec<ServerRuntimeStatus>,
 }
 
 impl EnvironmentShell {
@@ -50,12 +52,12 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn refresh_toolchain_statuses(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn refresh_server_runtime_statuses(&mut self, cx: &mut Context<Self>) {
         let Some(tools) = self.language_tools() else {
             return;
         };
-        let chosen = self.settings.toolchains.clone();
-        let checking = cx.background_spawn(async move { tools.toolchain_statuses(&chosen) });
+        let chosen = self.settings.server_runtimes.clone();
+        let checking = cx.background_spawn(async move { tools.server_runtime_statuses(&chosen) });
         cx.spawn(async move |this, cx| {
             let statuses = checking.await;
             this.update(cx, |shell, cx| {
@@ -69,13 +71,13 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn toolchains_changed(&mut self, cx: &mut Context<Self>) {
+    fn server_runtimes_changed(&mut self, cx: &mut Context<Self>) {
         self.save_settings(cx);
-        self.refresh_toolchain_statuses(cx);
+        self.refresh_server_runtime_statuses(cx);
         self.load_language_tools(cx);
     }
 
-    fn choose_toolchain(&mut self, id: ToolchainId, name: String, cx: &mut Context<Self>) {
+    fn choose_server_runtime(&mut self, id: ServerRuntimeId, name: String, cx: &mut Context<Self>) {
         let Some(tools) = self.language_tools() else {
             return;
         };
@@ -85,7 +87,7 @@ impl EnvironmentShell {
             multiple: false,
             prompt: Some(SharedString::from(FOLDER_PROMPT)),
         });
-        let chosen = self.settings.toolchains.clone();
+        let chosen = self.settings.server_runtimes.clone();
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = answer.await else {
                 return;
@@ -99,10 +101,10 @@ impl EnvironmentShell {
                 .await;
             this.update(cx, |shell, cx| {
                 if accepted {
-                    shell.settings.toolchains.choose(id, folder);
-                    shell.toolchains_changed(cx);
+                    shell.settings.server_runtimes.choose(id, folder);
+                    shell.server_runtimes_changed(cx);
                 } else {
-                    shell.toast(&format!("{NOT_A_TOOLCHAIN_TEXT} {name}"), cx);
+                    shell.toast(&format!("{NOT_A_SERVER_RUNTIME_TEXT} {name}"), cx);
                 }
             })
             .unwrap_or_default();
@@ -110,19 +112,24 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn install_toolchain_from_settings(&mut self, id: ToolchainId, cx: &mut Context<Self>) {
+    fn install_server_runtime_from_settings(
+        &mut self,
+        id: ServerRuntimeId,
+        cx: &mut Context<Self>,
+    ) {
         let Some(tools) = self.language_tools() else {
             return;
         };
-        let chosen = self.settings.toolchains.clone();
-        let installing = cx.background_spawn(async move { tools.install_toolchain(&id, &chosen) });
+        let chosen = self.settings.server_runtimes.clone();
+        let installing =
+            cx.background_spawn(async move { tools.install_server_runtime(&id, &chosen) });
         cx.spawn(async move |this, cx| {
             let installed = installing.await;
             this.update(cx, |shell, cx| {
                 if let Err(error) = installed {
                     shell.toast(&error.to_string(), cx);
                 }
-                shell.toolchains_changed(cx);
+                shell.server_runtimes_changed(cx);
             })
             .unwrap_or_default();
         })
@@ -243,7 +250,11 @@ impl EnvironmentShell {
         }
     }
 
-    fn toolchain_row(index: usize, status: &ToolchainStatus, cx: &mut Context<Self>) -> AnyElement {
+    fn server_runtime_row(
+        index: usize,
+        status: &ServerRuntimeStatus,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let pal = palette(cx);
         let detail = status.found.as_ref().map_or_else(
             || NOT_FOUND_TEXT.to_owned(),
@@ -266,7 +277,7 @@ impl EnvironmentShell {
                     .label(CHOOSE_LABEL)
                     .small()
                     .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                        this.choose_toolchain(id.clone(), name.clone(), cx);
+                        this.choose_server_runtime(id.clone(), name.clone(), cx);
                     })),
             )
             .children(status.chosen.then(|| {
@@ -274,8 +285,8 @@ impl EnvironmentShell {
                     .label(DETECTED_LABEL)
                     .small()
                     .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                        this.settings.toolchains.forget(&forget_id);
-                        this.toolchains_changed(cx);
+                        this.settings.server_runtimes.forget(&forget_id);
+                        this.server_runtimes_changed(cx);
                     }))
             }))
             .children((status.found.is_none() && status.installable).then(|| {
@@ -284,7 +295,7 @@ impl EnvironmentShell {
                     .small()
                     .variant(ButtonVariant::Primary)
                     .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                        this.install_toolchain_from_settings(install_id.clone(), cx);
+                        this.install_server_runtime_from_settings(install_id.clone(), cx);
                     }))
             }))
             .into_any_element();
@@ -336,11 +347,11 @@ impl EnvironmentShell {
 
     pub(super) fn languages_pane(&self, ui: &LanguagesUi, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let toolchains: Vec<AnyElement> = ui
+        let server_runtimes: Vec<AnyElement> = ui
             .statuses
             .iter()
             .enumerate()
-            .map(|(index, status)| Self::toolchain_row(index, status, cx))
+            .map(|(index, status)| Self::server_runtime_row(index, status, cx))
             .collect();
         let extensions: Vec<AnyElement> = self
             .settings
@@ -376,8 +387,9 @@ impl EnvironmentShell {
             .flex()
             .flex_col()
             .gap(px(SPACE_3))
-            .child(hint(TOOLCHAINS_HINT, pal))
-            .child(panel_card(toolchains, pal))
+            .child(self.toolchain_activation_card(cx))
+            .child(hint(SERVER_RUNTIMES_HINT, pal))
+            .child(panel_card(server_runtimes, pal))
             .child(hint(&format!("{EXTENSIONS_HINT} {manifests}."), pal))
             .child(add)
             .children((!extensions.is_empty()).then(|| panel_card(extensions, pal)))

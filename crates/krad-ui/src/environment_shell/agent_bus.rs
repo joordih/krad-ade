@@ -1,25 +1,29 @@
 mod chat;
 mod lead;
+mod remote;
 mod requests;
+mod service;
+mod typing;
+
+pub(super) use remote::{bundled_cli, RemoteBus, RemoteBusPlan};
 
 use futures::channel::mpsc::{channel, Receiver};
 use futures::channel::oneshot::Sender as ReplySender;
 use futures::StreamExt as _;
 use gpui_kit::Context;
 use krad_agents::{
-    lead_refusal, notice_text, serve, terminal_env, Caller, Endpoint, Incoming, LeadHandle,
-    Request, Response, TerminalHandle, TerminalState, CLI_PROGRAM,
+    lead_refusal, serve, terminal_env, Caller, Endpoint, Incoming, LeadHandle, Request, Response,
+    TerminalHandle, TerminalState, CLI_PROGRAM,
 };
 use krad_chat::ToolAsk;
-use krad_domain::{claude_hook_settings, parse_wsl_path, AgentState, EnvironmentName, TerminalId};
-use krad_session::{find_program, PtyInput};
+use krad_domain::{claude_hook_settings, parse_wsl_path, EnvironmentName, TerminalId};
+use krad_session::find_program;
 use krad_store::config_dir;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use super::agent_hooks::{HookReport, PendingPrompt};
-use super::terminal_actions::paste_bytes;
-use super::{EnvironmentShell, LiveEnv};
+use super::EnvironmentShell;
 
 const BUS_CAPACITY: usize = 64;
 const PATH_ENV: &str = "PATH";
@@ -44,6 +48,7 @@ pub(super) struct AgentBus {
     keys_due: Vec<PendingKeys>,
     pub(super) pending_prompts: Vec<PendingPrompt>,
     pub(super) claude_settings: Option<PathBuf>,
+    pub(super) remote_unavailable_told: std::collections::HashSet<krad_domain::Host>,
 }
 
 struct PendingKeys {
@@ -80,6 +85,10 @@ impl PendingEnter {
 }
 
 impl AgentBus {
+    pub(super) const fn endpoint(&self) -> &Endpoint {
+        &self.endpoint
+    }
+
     fn is_starting(&self, target: &TerminalHandle) -> bool {
         self.pending_prompts
             .iter()
@@ -142,6 +151,7 @@ impl EnvironmentShell {
             keys_due: Vec::new(),
             pending_prompts: Vec::new(),
             claude_settings: write_claude_settings(),
+            remote_unavailable_told: std::collections::HashSet::new(),
         });
         cx.spawn(async move |this, cx| {
             let mut incoming: Receiver<Incoming> = incoming;
@@ -161,6 +171,12 @@ impl EnvironmentShell {
         let Some(bus) = &self.agent_bus else {
             return Vec::new();
         };
+        if let Some(live) = self.envs.get(env).filter(|live| !live.link.is_local()) {
+            return live
+                .remote_bus
+                .as_ref()
+                .map_or_default(|remote| remote.caller_vars(&Caller::Terminal(handle(env, id))));
+        }
         let mut vars = Self::caller_vars(bus, &Caller::Terminal(handle(env, id)));
         if self.terminal_in_wsl(env, id) {
             let shared: Vec<String> = vars
@@ -326,211 +342,6 @@ impl EnvironmentShell {
                     bus.settle_waiters.push((target, reply));
                 }
             }
-        }
-    }
-
-    pub(super) fn service_agent_bus(&mut self, now: Instant) {
-        let Some(mut bus) = self.agent_bus.take() else {
-            return;
-        };
-        bus.settle_waiters.retain(|(_, reply)| !reply.is_canceled());
-        let waiters = std::mem::take(&mut bus.settle_waiters);
-        for (target, reply) in waiters {
-            match self.settled_state(&target) {
-                Settlement::Settled(_) if bus.is_starting(&target) => {
-                    bus.settle_waiters.push((target, reply));
-                }
-                Settlement::Settled(state) => reply
-                    .send(Response::Settled {
-                        target: target.terminal,
-                        state,
-                    })
-                    .unwrap_or_default(),
-                Settlement::Working => bus.settle_waiters.push((target, reply)),
-                Settlement::Missing => reply
-                    .send(Response::Error(NO_SUCH_TERMINAL.to_owned()))
-                    .unwrap_or_default(),
-            }
-        }
-        let (keys_now, keys_later): (Vec<_>, Vec<_>) =
-            bus.keys_due.drain(..).partition(|keys| keys.due <= now);
-        bus.keys_due = keys_later;
-        for pending in keys_now {
-            self.type_into(&pending.target, pending.keys);
-        }
-        let (due, later): (Vec<_>, Vec<_>) =
-            bus.enters_due.drain(..).partition(|enter| enter.due <= now);
-        bus.enters_due = later;
-        for enter in due {
-            if enter.is_retry && !self.submit_unconfirmed(&enter.target) {
-                continue;
-            }
-            self.type_into(&enter.target, ENTER.to_vec());
-            if self.submit_unconfirmed(&enter.target) {
-                bus.enters_due.extend(enter.retry(now));
-            }
-        }
-        let (ready, waiting): (Vec<_>, Vec<_>) = bus
-            .pending_prompts
-            .drain(..)
-            .partition(|prompt| prompt.due <= now);
-        bus.pending_prompts = waiting;
-        for prompt in ready {
-            self.paste_text_into(&prompt.target, &prompt.text);
-            bus.enters_due.push(PendingEnter::new(prompt.target, now));
-        }
-        for (env, live) in &mut self.envs {
-            let settled: Vec<TerminalId> = live
-                .data
-                .nodes
-                .iter()
-                .filter(|node| node.state != AgentState::Working)
-                .filter(|node| {
-                    live.sessions
-                        .get(&node.id)
-                        .is_some_and(|session| session.is_agent && session.state.is_running())
-                })
-                .map(|node| node.id)
-                .collect();
-            for id in settled {
-                let target = handle(env, id);
-                let blocked = bus
-                    .inbox_waiters
-                    .iter()
-                    .any(|(waiter, _)| *waiter == target);
-                if blocked {
-                    continue;
-                }
-                let in_wsl = live
-                    .data
-                    .group_of(id)
-                    .is_some_and(|group| parse_wsl_path(&group.root).is_some());
-                if let Some(count) = live.mailbox.notify(id.as_u64()) {
-                    if let Some(session) = live.sessions.get(&id) {
-                        let notice = notice_text(cli_name(in_wsl), count).into_bytes();
-                        session
-                            .writer_tx
-                            .send(PtyInput::Bytes(notice))
-                            .unwrap_or_default();
-                    }
-                    bus.enters_due.push(PendingEnter::new(target, now));
-                }
-            }
-            Self::notice_free_chats(env, live, &bus);
-        }
-        self.agent_bus = Some(bus);
-    }
-
-    fn notice_free_chats(env: &EnvironmentName, live: &mut LiveEnv, bus: &AgentBus) {
-        let free: Vec<TerminalId> = live
-            .chats
-            .iter()
-            .filter(|(_, chat)| chat.takes_bus_notice())
-            .map(|(id, _)| *id)
-            .collect();
-        for id in free {
-            let target = handle(env, id);
-            if bus
-                .inbox_waiters
-                .iter()
-                .any(|(waiter, _)| *waiter == target)
-            {
-                continue;
-            }
-            let Some(count) = live.mailbox.notify(id.as_u64()) else {
-                continue;
-            };
-            let in_wsl = live
-                .data
-                .group_of(id)
-                .is_some_and(|group| parse_wsl_path(&group.root).is_some());
-            if let Some(chat) = live.chats.get_mut(&id) {
-                chat.queue_bus_notice(notice_text(cli_name(in_wsl), count));
-                live.noticed_chats.push(id);
-            }
-        }
-    }
-
-    pub(super) fn submit_text_into(&mut self, env: &EnvironmentName, id: TerminalId, text: &str) {
-        let target = handle(env, id);
-        self.paste_text_into(&target, text);
-        match &mut self.agent_bus {
-            Some(bus) => bus
-                .enters_due
-                .push(PendingEnter::new(target, Instant::now())),
-            None => self.type_into(&target, ENTER.to_vec()),
-        }
-    }
-
-    fn submit_unconfirmed(&self, target: &TerminalHandle) -> bool {
-        let Some(live) = self
-            .envs
-            .get(&EnvironmentName::new(target.environment.clone()))
-        else {
-            return false;
-        };
-        let id = TerminalId(target.terminal);
-        let hooked = live
-            .sessions
-            .get(&id)
-            .is_some_and(|session| session.hooked && session.state.is_running());
-        hooked
-            && live
-                .data
-                .nodes
-                .iter()
-                .any(|node| node.id == id && node.state != AgentState::Working)
-    }
-
-    fn paste_text_into(&self, target: &TerminalHandle, text: &str) {
-        let bracketed = self
-            .envs
-            .get(&EnvironmentName::new(target.environment.clone()))
-            .and_then(|live| live.sessions.get(&TerminalId(target.terminal)))
-            .is_some_and(|session| session.engine.bracketed_paste());
-        self.type_into(target, paste_bytes(text, bracketed));
-    }
-
-    pub(super) fn type_in_steps(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        steps: Vec<Vec<u8>>,
-    ) {
-        let target = handle(env, id);
-        let mut steps = steps.into_iter();
-        if let Some(first) = steps.next() {
-            self.type_into(&target, first);
-        }
-        let Some(bus) = &mut self.agent_bus else {
-            return;
-        };
-        let now = Instant::now();
-        let mut due = now;
-        for keys in steps {
-            due += KEY_STEP_DELAY;
-            bus.keys_due.push(PendingKeys {
-                target: target.clone(),
-                keys,
-                due,
-            });
-        }
-    }
-
-    pub(super) fn type_into_terminal(&self, env: &EnvironmentName, id: TerminalId, bytes: Vec<u8>) {
-        self.type_into(&handle(env, id), bytes);
-    }
-
-    fn type_into(&self, target: &TerminalHandle, bytes: Vec<u8>) {
-        if let Some(session) = self
-            .envs
-            .get(&EnvironmentName::new(target.environment.clone()))
-            .and_then(|live| live.sessions.get(&TerminalId(target.terminal)))
-        {
-            session
-                .writer_tx
-                .send(PtyInput::Bytes(bytes))
-                .unwrap_or_default();
         }
     }
 }

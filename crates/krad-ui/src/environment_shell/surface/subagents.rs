@@ -4,6 +4,7 @@ use krad_chat::{
     read_subagent_meta, read_subagent_record, SubagentFiles, SubagentMeta, TranscriptChunk,
 };
 use krad_domain::{AgentPreset, EnvironmentName, ResumeId, TerminalId, ToolKind, ToolUseId};
+use krad_host::HostLink;
 use krad_store::gateway_sessions_dir;
 use std::collections::HashMap;
 use std::io;
@@ -46,6 +47,7 @@ pub(super) struct Subagents {
 
 enum SubagentSource {
     Claude {
+        link: HostLink,
         root: Option<PathBuf>,
         home: Option<PathBuf>,
         conversation: Option<PathBuf>,
@@ -83,6 +85,7 @@ enum Look {
 fn updates(
     files: Vec<SubagentFiles>,
     known: &[(PathBuf, u64, bool)],
+    link: &HostLink,
     read: impl Fn(&Path, u64) -> io::Result<TranscriptChunk>,
 ) -> Vec<SubagentUpdate> {
     files
@@ -95,7 +98,7 @@ fn updates(
             if done {
                 return None;
             }
-            let meta = read_subagent_meta(&files.meta).ok()?;
+            let meta = read_subagent_meta(link, &files.meta).ok()?;
             let chunk = read(&files.record, from).ok()?;
             Some(SubagentUpdate {
                 meta,
@@ -108,7 +111,7 @@ fn updates(
 
 impl SubagentJob {
     fn run(self) -> SubagentRead {
-        let (root, home, conversation) = match self.source {
+        let (link, root, home, conversation) = match self.source {
             SubagentSource::Gateway { sessions, cwd } => {
                 return SubagentRead {
                     home: None,
@@ -116,26 +119,29 @@ impl SubagentJob {
                     updates: updates(
                         engine_subagents(&sessions, &self.resume),
                         &self.known,
+                        &HostLink::Local,
                         |record, from| read_engine_subagent(record, &cwd, from),
                     ),
                 };
             }
             SubagentSource::Claude {
+                link,
                 root,
                 home,
                 conversation,
-            } => (root, home, conversation),
+            } => (link, root, home, conversation),
         };
-        let home = home.or_else(|| workplace_home(root.as_deref()).ok().flatten());
+        let home = home.or_else(|| workplace_home(&link, root.as_deref()).ok().flatten());
         let conversation = conversation.or_else(|| {
             home.as_deref()
-                .and_then(|home| claude_conversation_file(home, &self.resume))
+                .and_then(|home| claude_conversation_file(&link, home, &self.resume))
         });
         let updates = conversation.as_deref().map_or_default(|conversation| {
             updates(
-                claude_subagents(conversation),
+                claude_subagents(&link, conversation),
                 &self.known,
-                read_subagent_record,
+                &link,
+                |record, from| read_subagent_record(&link, record, from),
             )
         });
         SubagentRead {
@@ -230,6 +236,7 @@ impl EnvironmentShell {
                 }
             }
             AgentPreset::ClaudeCode => SubagentSource::Claude {
+                link: live.link.clone(),
                 root: live.data.group_of(id).map(|group| group.root.clone()),
                 home: subagents.home.clone(),
                 conversation: subagents.conversation.clone(),

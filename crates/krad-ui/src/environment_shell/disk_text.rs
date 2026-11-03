@@ -1,3 +1,4 @@
+use krad_host::HostLink;
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -46,23 +47,27 @@ impl ReadError {
     }
 }
 
-pub(super) fn read_file(path: &Path) -> Result<ReadFile, ReadError> {
-    let metadata = std::fs::metadata(path).map_err(|error| ReadError::Io(error.to_string()))?;
-    if metadata.len() > MAX_FILE_BYTES {
+pub(super) fn read_file(link: &HostLink, path: &Path) -> Result<ReadFile, ReadError> {
+    let metadata = link
+        .metadata(path)
+        .map_err(|error| ReadError::Io(error.to_string()))?;
+    if metadata.len > MAX_FILE_BYTES {
         return Err(ReadError::TooLarge);
     }
-    let bytes = std::fs::read(path).map_err(|error| ReadError::Io(error.to_string()))?;
+    let bytes = link
+        .read_all(path)
+        .map_err(|error| ReadError::Io(error.to_string()))?;
     let text = String::from_utf8(bytes).map_err(|_| ReadError::NotText)?;
     Ok(ReadFile {
         text,
-        modified: metadata.modified().ok(),
+        modified: metadata.modified,
     })
 }
 
-pub(super) fn modified_at(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path)
-        .and_then(|metadata| metadata.modified())
+pub(super) fn modified_at(link: &HostLink, path: &Path) -> Option<SystemTime> {
+    link.metadata(path)
         .ok()
+        .and_then(|metadata| metadata.modified)
 }
 
 #[cfg(test)]

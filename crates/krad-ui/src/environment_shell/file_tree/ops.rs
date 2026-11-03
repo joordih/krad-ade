@@ -1,4 +1,5 @@
 use gpui_kit::{AppContext as _, ClipboardItem, Context, Window};
+use krad_host::HostLink;
 use krad_repo::{
     create_dir, create_file, delete_entry, move_entry, rename_entry, reveal_in_file_manager,
     DirEntry, EntryKind, RepoError,
@@ -111,7 +112,11 @@ impl EnvironmentShell {
                 cx.write_to_clipboard(ClipboardItem::new_string(relative));
             }
             FileAction::Reveal(path) => {
-                Self::run_file_op(move || reveal_in_file_manager(&path), |_, (), _| {}, cx);
+                self.run_file_op(
+                    move |link| reveal_in_file_manager(link, &path),
+                    |_, (), _| {},
+                    cx,
+                );
             }
             FileAction::Delete(path) => self.ask_to_delete(path, window, cx),
             FileAction::ShowFolder(folder) => self.navigate_file_tree(folder, cx),
@@ -139,29 +144,31 @@ impl EnvironmentShell {
     }
 
     pub(in crate::environment_shell) fn rename_file(
+        &self,
         path: PathBuf,
         name: &str,
         cx: &mut Context<Self>,
     ) {
         let (source, name) = (path.clone(), name.to_owned());
-        Self::run_file_op(
-            move || rename_entry(&source, &name),
+        self.run_file_op(
+            move |link| rename_entry(link, &source, &name),
             move |this, renamed, cx| this.relocate(&path, Some(&renamed), cx),
             cx,
         );
     }
 
     pub(in crate::environment_shell) fn create_file_entry(
+        &self,
         dir: PathBuf,
         kind: EntryKind,
         name: &str,
         cx: &mut Context<Self>,
     ) {
         let name = name.to_owned();
-        Self::run_file_op(
-            move || match kind {
-                EntryKind::File => create_file(&dir, &name),
-                EntryKind::Directory => create_dir(&dir, &name),
+        self.run_file_op(
+            move |link| match kind {
+                EntryKind::File => create_file(link, &dir, &name),
+                EntryKind::Directory => create_dir(link, &dir, &name),
             },
             move |this, created, cx| {
                 this.file_tree.selected = Some(created.clone());
@@ -175,6 +182,7 @@ impl EnvironmentShell {
     }
 
     pub(in crate::environment_shell) fn move_file(
+        &self,
         path: PathBuf,
         dest_dir: PathBuf,
         cx: &mut Context<Self>,
@@ -183,8 +191,8 @@ impl EnvironmentShell {
             return;
         }
         let source = path.clone();
-        Self::run_file_op(
-            move || move_entry(&source, &dest_dir),
+        self.run_file_op(
+            move |link| move_entry(link, &source, &dest_dir),
             move |this, moved, cx| this.relocate(&path, Some(&moved), cx),
             cx,
         );
@@ -194,14 +202,14 @@ impl EnvironmentShell {
         let Some(path) = self.file_tree.pending_delete.take() else {
             return;
         };
-        Self::delete_file(path, cx);
+        self.delete_file(path, cx);
     }
 
-    pub(super) fn delete_file(path: PathBuf, cx: &mut Context<Self>) {
+    pub(super) fn delete_file(&self, path: PathBuf, cx: &mut Context<Self>) {
         cx.notify();
         let target = path.clone();
-        Self::run_file_op(
-            move || delete_entry(&target),
+        self.run_file_op(
+            move |link| delete_entry(link, &target),
             move |this, (), cx| this.relocate(&path, None, cx),
             cx,
         );
@@ -240,17 +248,19 @@ impl EnvironmentShell {
     }
 
     fn run_file_op<T: Send + 'static>(
-        op: impl FnOnce() -> Result<T, RepoError> + Send + 'static,
+        &self,
+        op: impl FnOnce(&HostLink) -> Result<T, RepoError> + Send + 'static,
         done: impl FnOnce(&mut Self, T, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
     ) {
-        let task = cx.background_spawn(async move { op() });
+        let link = self.active_link();
+        let task = cx.background_spawn(async move { op(&link) });
         cx.spawn(async move |this, cx| {
             let result = task.await;
             this.update(cx, |shell, cx| {
                 match result {
                     Ok(value) => done(shell, value, cx),
-                    Err(error) => shell.push_toast(error.to_string()),
+                    Err(error) => shell.toast_failure(&error),
                 }
                 cx.notify();
             })

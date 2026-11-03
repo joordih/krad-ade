@@ -22,9 +22,12 @@ mod file_tree;
 mod gateway;
 mod groups;
 mod harness_models;
+mod host;
+pub use host::HostTools;
 mod input;
 mod language_servers;
 mod layout;
+mod live_env;
 mod markdown_images;
 mod mcp;
 mod menus;
@@ -41,6 +44,7 @@ mod session_pane;
 mod sessions;
 mod sessions_view;
 mod settings_view;
+mod shell_site;
 mod side_panel;
 mod sidebar;
 mod sidebar_terminals;
@@ -53,6 +57,7 @@ mod terminal_images;
 mod terminal_lifecycle;
 mod terminal_status;
 mod terminal_text;
+mod toolchains;
 mod top_bar;
 mod window_close;
 mod work_mode;
@@ -66,99 +71,27 @@ use gpui_kit::{
     WindowBackgroundAppearance,
 };
 use krad_domain::{
-    AgentPreset, EnvironmentData, EnvironmentName, EnvironmentView, GroupId, PersistedLayout,
-    Prompt, Settings, SidebarWidth, TerminalId, TerminalMeta, Visibility, WorkMode,
-    DEFAULT_ENVIRONMENT, SCROLLBACK_PERSIST_LINES,
+    AgentPreset, EnvironmentData, EnvironmentName, EnvironmentView, PersistedLayout, Prompt,
+    Settings, SidebarWidth, TerminalId, Visibility, WorkMode, DEFAULT_ENVIRONMENT,
 };
 use krad_store::LayoutWriter;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use self::chrome::Toast;
 use self::drag::DragState;
+use self::live_env::{live_meta, LiveEnv};
 use self::sidebar::PanelReveal;
 use self::window_close::CloseRequest;
-use krad_agents::{AgentStatus, Mailbox};
 use krad_session::pump_channel;
 use krad_session::spawn_ticker;
-use krad_session::LiveSession;
 use krad_session::PumpMsg;
 
 const FPS_HUD_DEFAULT: Visibility = Visibility::Hidden;
 const FULL_REFRESH_HZ: u32 = 30;
 const REDUCED_REFRESH_HZ: u32 = 15;
-
-struct LiveEnv {
-    data: EnvironmentData,
-    sessions: HashMap<TerminalId, LiveSession>,
-    chats: HashMap<TerminalId, surface::SurfaceChat>,
-    focused: Option<TerminalId>,
-    selected_group: Option<GroupId>,
-    mailbox: Mailbox,
-    working_since: HashMap<TerminalId, Instant>,
-    statuses: HashMap<TerminalId, AgentStatus>,
-    pending_chats: HashMap<TerminalId, krad_chat::LiveSession>,
-    waiting_prompts: HashMap<TerminalId, Vec<Prompt>>,
-    noticed_chats: Vec<TerminalId>,
-    images: HashMap<TerminalId, terminal_images::TerminalImages>,
-    editors: HashMap<TerminalId, file_tab::FileEditor>,
-    diffs: HashMap<TerminalId, changes_tab::FileDiff>,
-    activity_docked: Vec<TerminalId>,
-    utility_tab: activity::UtilityTab,
-    terminals_tab: activity::TerminalsTab,
-    pending_cursors: HashMap<TerminalId, krad_lsp::lsp_types::Position>,
-}
-
-impl LiveEnv {
-    fn new(mut data: EnvironmentData, focused: Option<TerminalId>) -> Self {
-        data.enter_sessions();
-        data.drop_file_tabs(true);
-        if let Some(id) = focused {
-            data.reveal_terminal(id);
-        }
-        let selected_group = focused
-            .and_then(|id| data.group_of(id))
-            .or_else(|| data.groups.first())
-            .map(|group| group.id);
-        let pending_chats = surface::restored_chats(&data.nodes);
-        Self {
-            data,
-            sessions: HashMap::new(),
-            chats: HashMap::new(),
-            focused,
-            selected_group,
-            mailbox: Mailbox::default(),
-            working_since: HashMap::new(),
-            statuses: HashMap::new(),
-            pending_chats,
-            waiting_prompts: HashMap::new(),
-            noticed_chats: Vec::new(),
-            images: HashMap::new(),
-            editors: HashMap::new(),
-            diffs: HashMap::new(),
-            activity_docked: Vec::new(),
-            utility_tab: activity::UtilityTab::Log,
-            terminals_tab: activity::TerminalsTab::Hidden,
-            pending_cursors: HashMap::new(),
-        }
-    }
-}
-
-fn live_meta(live: &LiveEnv) -> HashMap<TerminalId, TerminalMeta> {
-    let mut meta = live.data.meta.clone();
-    for (id, session) in &live.sessions {
-        meta.insert(
-            *id,
-            TerminalMeta {
-                cwd: session.cwd.clone().unwrap_or_default(),
-                scrollback: session.engine.scrollback(SCROLLBACK_PERSIST_LINES),
-            },
-        );
-    }
-    meta
-}
 
 pub struct EnvironmentShell {
     focus: FocusHandle,
@@ -203,12 +136,13 @@ pub struct EnvironmentShell {
     activity_log: activity::ActivityLog,
     close_request: CloseRequest,
     layout_writer: Option<LayoutWriter>,
-    git: HashMap<PathBuf, groups::GroupGit>,
+    git: HashMap<groups::GitKey, groups::GroupGit>,
     git_task: Option<Task<()>>,
     file_tree: file_tree::FileTree,
     viewer: Option<code_viewer::CodeView>,
     native_agents: Vec<AgentPreset>,
     wsl_agents: HashMap<String, Vec<AgentPreset>>,
+    host_agents: HashMap<krad_domain::Host, Vec<AgentPreset>>,
     settings: Settings,
     settings_ui: Option<settings_view::SettingsUi>,
     agent_bus: Option<agent_bus::AgentBus>,
@@ -225,6 +159,10 @@ pub struct EnvironmentShell {
     review: review_view::ReviewUi,
     docs_dialog: Option<docs_generate::DocsDialog>,
     name_dialogs: name_dialogs::NameDialogs,
+    hosts: host::HostUi,
+    toolchains: toolchains::Toolchains,
+    unreadable_environments: Vec<krad_domain::UnreadableEnvironment>,
+    host_tools: host::HostTools,
     arcade: arcade::Arcade,
     app_updates: app_update::AppUpdates,
 }
@@ -244,6 +182,7 @@ impl EnvironmentShell {
                         changed |= shell.apply_pump(msg);
                     }
                     shell.flush_noticed_chats(cx);
+                    shell.service_hosts(cx);
                     shell.watch_new_opencode_terminals(cx);
                     if changed {
                         cx.notify();
@@ -261,6 +200,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
         seed: Option<PersistedLayout>,
         settings: Settings,
+        host_tools: host::HostTools,
     ) -> Self {
         let (pump_tx, pump_rx) = pump_channel();
         spawn_ticker(pump_tx.clone());
@@ -313,6 +253,7 @@ impl EnvironmentShell {
             viewer: None,
             native_agents: vec![AgentPreset::Shell],
             wsl_agents: HashMap::new(),
+            host_agents: HashMap::new(),
             settings,
             settings_ui: None,
             agent_bus: None,
@@ -330,6 +271,10 @@ impl EnvironmentShell {
             docs_dialog: None,
             arcade: arcade::Arcade::new(cx.focus_handle()),
             name_dialogs: name_dialogs::NameDialogs::Closed,
+            hosts: host::HostUi::default(),
+            toolchains: toolchains::Toolchains::default(),
+            unreadable_environments: Vec::new(),
+            host_tools,
             app_updates: app_update::AppUpdates::default(),
         };
         shell.start_agent_bus(cx);
@@ -342,6 +287,8 @@ impl EnvironmentShell {
                 DEFAULT_ENVIRONMENT.to_owned(),
             ))),
         }
+        let active = shell.active.clone();
+        shell.show_host(&active, cx);
         shell.pump_task = Some(Self::start_pump(pump_rx, cx));
         Self::detect_agents(cx);
         shell.start_git_watch(cx);
@@ -374,6 +321,7 @@ impl EnvironmentShell {
             }
             self.active = name.clone();
             self.unseen.remove(name);
+            self.show_host(name, cx);
             cx.notify();
             self.store();
         }
@@ -381,6 +329,13 @@ impl EnvironmentShell {
 
     fn close_env(&mut self, name: &EnvironmentName, cx: &mut Context<Self>) {
         if let Some(live) = self.envs.remove(name) {
+            if !self
+                .envs
+                .values()
+                .any(|other| other.data.host == live.data.host)
+            {
+                host::close_link(&live.link);
+            }
             for (_, session) in live.sessions {
                 session.cancelled.store(true, Ordering::SeqCst);
                 if let Some(killer) = session.killer {
@@ -394,7 +349,9 @@ impl EnvironmentShell {
             let data = EnvironmentData::empty(EnvironmentName::new(DEFAULT_ENVIRONMENT.to_owned()));
             let fresh = data.name.clone();
             self.order.push(fresh.clone());
-            self.envs.insert(fresh.clone(), LiveEnv::new(data, None));
+            let link = self.link_for(&data.host);
+            self.envs
+                .insert(fresh.clone(), LiveEnv::new(data, None, link));
         }
         if &self.active == name {
             if let Some(first) = self.order.first().cloned() {

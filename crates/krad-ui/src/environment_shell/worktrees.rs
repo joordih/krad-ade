@@ -30,9 +30,10 @@ impl EnvironmentShell {
             self.toast(INVALID_NAME_TEXT, cx);
             return;
         };
+        let link = self.active_link();
         let create = cx.background_spawn({
             let repo_root = repo_root.clone();
-            async move { add_worktree(&repo_root, &name) }
+            async move { add_worktree(&link, &repo_root, &name) }
         });
         cx.spawn(async move |this, cx| {
             let created = create.await;
@@ -71,7 +72,9 @@ impl EnvironmentShell {
         for id in terminals {
             self.close_terminal(id, cx);
         }
-        let remove = cx.background_spawn(async move { remove_worktree(&origin.repo_root, &root) });
+        let link = self.active_link();
+        let remove =
+            cx.background_spawn(async move { remove_worktree(&link, &origin.repo_root, &root) });
         cx.spawn(async move |this, cx| {
             let removed = remove.await;
             this.update(cx, |shell, cx| match removed {
@@ -89,7 +92,7 @@ impl EnvironmentShell {
     fn group_repo_root(&self, group: GroupId) -> Option<std::path::PathBuf> {
         let live = self.envs.get(&self.active)?;
         let root = &live.data.group(group)?.root;
-        self.git.get(root).map(|git| git.repo_root.clone())
+        self.active_git(root).map(|git| git.repo_root.clone())
     }
 
     pub(super) fn toast(&mut self, text: &str, cx: &mut Context<Self>) {

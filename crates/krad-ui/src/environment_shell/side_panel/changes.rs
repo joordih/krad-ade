@@ -149,7 +149,7 @@ fn indent(depth: usize) -> f32 {
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn group_git(&self) -> Option<&GroupGit> {
         let root = &self.active_group()?.root;
-        self.git.get(root)
+        self.active_git(root)
     }
 
     fn changes_layout(&self) -> ChangesLayout {

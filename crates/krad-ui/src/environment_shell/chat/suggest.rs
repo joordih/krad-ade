@@ -3,7 +3,8 @@ use gpui_kit::component::input::TextareaState;
 use gpui_kit::{AppContext as _, Context, Entity, SharedString, Window};
 use krad_chat::{claude_skills, search_skills, shared_skill_message, Skill, SkillSource};
 use krad_domain::{parse_wsl_path, wsl_unc_path, AgentPreset, TerminalId, WslPath};
-use krad_repo::{index_files, wsl_home, EntryKind, IndexEntry, RepoError};
+use krad_host::HostLink;
+use krad_repo::{wsl_home, EntryKind, IndexEntry, RepoError};
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -101,8 +102,8 @@ impl EnvironmentShell {
         }
         let root = self.composer_root(composer);
         match opened {
-            Some(SuggestKind::Mention) => Self::refresh_file_index(root, cx),
-            Some(SuggestKind::Skill) => Self::refresh_skills(root, cx),
+            Some(SuggestKind::Mention) => self.refresh_file_index(root, cx),
+            Some(SuggestKind::Skill) => Self::refresh_skills(self.active_link(), root, cx),
             None => {}
         }
         cx.notify();
@@ -127,65 +128,17 @@ impl EnvironmentShell {
             .map(|group| group.root.clone())
     }
 
-    pub(in crate::environment_shell) fn refresh_file_index(
-        root: Option<PathBuf>,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(root) = root else {
-            return;
-        };
-        let indexed = root.clone();
-        let index = cx.background_spawn(async move { index_files(&indexed) });
-        cx.spawn(async move |this, cx| {
-            let index = index.await;
-            this.update(cx, |shell, cx| {
-                match index {
-                    Ok(index) => {
-                        shell.chat.files = Some((root, index));
-                        shell.refind_palette_files(cx);
-                    }
-                    Err(error) => shell.toast(&error.to_string(), cx),
-                }
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
-    }
-
-    pub(in crate::environment_shell) fn indexed_files(
-        &self,
-        root: &Path,
-        query: &str,
-        limit: usize,
-    ) -> Vec<PathBuf> {
-        let Some((_, index)) = self
-            .chat
-            .files
-            .as_ref()
-            .filter(|(indexed, _)| indexed == root)
-        else {
-            return Vec::new();
-        };
-        index
-            .search(query, limit)
-            .into_iter()
-            .filter(|entry| entry.kind == EntryKind::File)
-            .map(|entry| root.join(&entry.path))
-            .collect()
-    }
-
-    fn refresh_skills(root: Option<PathBuf>, cx: &mut Context<Self>) {
+    fn refresh_skills(link: HostLink, root: Option<PathBuf>, cx: &mut Context<Self>) {
         let skills = cx.background_spawn(async move {
-            let home = workplace_home(root.as_deref())?;
-            Ok::<_, RepoError>(claude_skills(home.as_deref(), root.as_deref()))
+            let home = workplace_home(&link, root.as_deref())?;
+            Ok::<_, RepoError>(claude_skills(&link, home.as_deref(), root.as_deref()))
         });
         cx.spawn(async move |this, cx| {
             let skills = skills.await;
             this.update(cx, |shell, cx| {
                 match skills {
                     Ok(skills) => shell.chat.skills = Some(skills),
-                    Err(error) => shell.toast(&error.to_string(), cx),
+                    Err(error) => shell.toast_failure(&error),
                 }
                 cx.notify();
             })
@@ -198,14 +151,8 @@ impl EnvironmentShell {
         let suggest = self.chat.suggest.as_ref()?;
         match suggest.kind {
             SuggestKind::Mention => {
-                let root = self.composer_root(suggest.composer);
-                let files = self
-                    .chat
-                    .files
-                    .as_ref()
-                    .filter(|(indexed, _)| Some(indexed) == root.as_ref())?
-                    .1
-                    .search(&suggest.query, SUGGESTION_LIMIT);
+                let root = self.composer_root(suggest.composer)?;
+                let files = self.indexed_entries(&root, &suggest.query, SUGGESTION_LIMIT)?;
                 Some(files.into_iter().cloned().map(Suggestion::Entry).collect())
             }
             SuggestKind::Skill => {
@@ -355,8 +302,12 @@ impl EnvironmentShell {
 }
 
 pub(in crate::environment_shell) fn workplace_home(
+    link: &HostLink,
     root: Option<&Path>,
 ) -> Result<Option<PathBuf>, RepoError> {
+    if let HostLink::Ssh(ssh) = link {
+        return Ok(ssh.home().map(Path::to_path_buf));
+    }
     match root.and_then(parse_wsl_path) {
         Some(WslPath { distro, .. }) => Ok(Some(wsl_unc_path(&distro, &wsl_home(&distro)?))),
         None => Ok(home_dir().map(PathBuf::from)),

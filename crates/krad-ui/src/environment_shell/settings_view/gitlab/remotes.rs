@@ -78,14 +78,15 @@ impl EnvironmentShell {
                 .map(|group| (group.name.clone(), group.root.clone()))
                 .collect()
         });
+        let link = self.active_link();
         let read = cx.background_spawn(async move {
             groups
                 .into_iter()
                 .map(|(name, root)| GroupRemote {
                     name,
                     origin: {
-                        let home = workplace_home(Some(&root)).ok().flatten();
-                        resolved_remote_url(&root, ORIGIN_REMOTE, home.as_deref())
+                        let home = workplace_home(&link, Some(&root)).ok().flatten();
+                        resolved_remote_url(&link, &root, ORIGIN_REMOTE, home.as_deref())
                             .map_err(|error| error.to_string())
                     },
                 })

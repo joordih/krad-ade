@@ -1,12 +1,10 @@
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine as _;
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::hash_map::RandomState;
-use std::collections::HashMap;
 use std::fmt;
 use std::hash::{BuildHasher, Hasher};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write as _};
 use std::path::Path;
 use std::process::{Child, ChildStdin, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,13 +12,17 @@ use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::thread;
 use std::time::Duration;
 use thiserror::Error;
-use ureq::typestate::{WithBody, WithoutBody};
 use ureq::{Agent, RequestBuilder};
 
-use super::events::{CatalogChange, ServerEvent};
 use super::service;
+
+mod requests;
+mod routes;
+
 use crate::live::keep_stderr_tail;
-use crate::process::{harness_command, Runner};
+use crate::process::{harness_command, ssh_command_reading_secret, Runner};
+use routes::{pump, Routes};
+pub(crate) use routes::{Delivery, Sink};
 
 const SERVE_ARGS: [&str; 4] = ["serve", "--stdio", "--port", "0"];
 const PASSWORD_VAR: &str = "OPENCODE_PASSWORD";
@@ -29,13 +31,13 @@ const USER: &str = "opencode";
 const BASIC: &str = "Basic ";
 const AUTHORIZATION: &str = "authorization";
 const EVENT_PATH: &str = "/api/event";
-const DATA_PREFIX: &str = "data:";
-const LOCATION_QUERY: &str = "location[directory]";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const RECONNECT_DELAY: Duration = Duration::from_secs(1);
 const PASSWORD_WORDS: usize = 4;
-const MAX_NESTING: usize = 16;
-const NOT_FOUND: u16 = 404;
+const LOCAL_URL_PREFIX: &str = "http://127.0.0.1:";
+const PORT_SEPARATOR: char = ':';
+const PATH_SEPARATOR: char = '/';
+const LINE_END: &[u8] = b"\n";
 
 #[derive(Debug, Error)]
 pub enum OpencodeError {
@@ -45,6 +47,20 @@ pub enum OpencodeError {
     NotStarted(String),
     #[error("opencode refused the request: {0}")]
     Http(#[from] ureq::Error),
+    #[error("cannot reach opencode on the host: {0}")]
+    Host(#[from] krad_host::HostError),
+}
+
+fn port_of(url: &str) -> Option<u16> {
+    url.trim_end_matches(PATH_SEPARATOR)
+        .rsplit(PORT_SEPARATOR)
+        .next()?
+        .parse()
+        .ok()
+}
+
+fn local_url(port: u16) -> String {
+    format!("{LOCAL_URL_PREFIX}{port}")
 }
 
 #[derive(Clone, PartialEq, Eq, Deserialize)]
@@ -66,68 +82,6 @@ fn new_password() -> Secret {
 #[derive(Deserialize)]
 struct Ready {
     url: String,
-}
-
-#[derive(Deserialize)]
-struct Envelope<T> {
-    data: T,
-}
-
-pub(crate) struct Delivery {
-    pub(crate) event: ServerEvent,
-    pub(crate) nested: bool,
-}
-
-pub(crate) type Sink = Box<dyn FnMut(Delivery) + Send>;
-
-type CatalogSink = Box<dyn FnMut() + Send>;
-
-#[derive(Default)]
-struct Routes {
-    sinks: HashMap<String, (u64, Sink)>,
-    parents: HashMap<String, String>,
-    catalog: Option<CatalogSink>,
-    next: u64,
-}
-
-impl Routes {
-    fn root(&self, session: &str) -> String {
-        let mut at = session;
-        for _ in 0..MAX_NESTING {
-            match self.parents.get(at) {
-                Some(parent) => at = parent,
-                None => break,
-            }
-        }
-        at.to_owned()
-    }
-
-    fn deliver(&mut self, event: ServerEvent) {
-        if let Some((child, parent)) = event.parent() {
-            self.parents.insert(child.to_owned(), parent.to_owned());
-        }
-        let session = event.session();
-        let root = self.root(session);
-        let nested = root != session;
-        if let Some((_, sink)) = self.sinks.get_mut(&root) {
-            sink(Delivery { event, nested });
-        }
-    }
-
-    fn catalog_changed(&mut self) {
-        if let Some(sink) = self.catalog.as_mut() {
-            sink();
-        }
-    }
-
-    fn route(&mut self, data: &str) {
-        if let Ok(event) = serde_json::from_str::<ServerEvent>(data) {
-            return self.deliver(event);
-        }
-        if serde_json::from_str::<CatalogChange>(data).is_ok() {
-            self.catalog_changed();
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -154,6 +108,7 @@ enum Host {
     Private {
         child: Child,
         lease: Option<ChildStdin>,
+        forward: Option<krad_host::Forward>,
     },
     Shared,
 }
@@ -196,7 +151,7 @@ impl OpencodeServer {
                 .iter()
                 .map(|(name, value)| ((*name).to_owned(), (*value).to_owned())),
         );
-        if !runner.in_wsl() {
+        if !runner.in_wsl() && !runner.on_ssh() {
             if let Ok(endpoint) = service::attach(runner, cwd, &env) {
                 return Ok(Self::serve(endpoint, Host::Shared, service::discover));
             }
@@ -210,14 +165,29 @@ impl OpencodeServer {
         mut env: Vec<(String, String)>,
     ) -> Result<Arc<Self>, OpencodeError> {
         let password = new_password();
-        env.push((PASSWORD_VAR.to_owned(), password.0.clone()));
         let args: Vec<String> = SERVE_ARGS.iter().map(|arg| (*arg).to_owned()).collect();
-        let mut child = harness_command(runner, cwd, &args, &env)
+        let mut command = match runner {
+            Runner::Ssh { link, program } => {
+                ssh_command_reading_secret(link, program, cwd, &args, &env, PASSWORD_VAR)?
+            }
+            Runner::Native(_) | Runner::Wsl { .. } => {
+                env.push((PASSWORD_VAR.to_owned(), password.0.clone()));
+                harness_command(runner, cwd, &args, &env)?
+            }
+        };
+        let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
-        let lease = child.stdin.take();
+        let mut lease = child.stdin.take();
+        if runner.on_ssh() {
+            if let Some(stdin) = lease.as_mut() {
+                stdin.write_all(password.0.as_bytes())?;
+                stdin.write_all(LINE_END)?;
+                stdin.flush()?;
+            }
+        }
         let stderr_tail = Arc::new(Mutex::new(String::new()));
         if let Some(stderr) = child.stderr.take() {
             let tail = Arc::clone(&stderr_tail);
@@ -242,8 +212,25 @@ impl OpencodeServer {
                 .to_owned();
             return Err(OpencodeError::NotStarted(tail));
         };
-        let endpoint = Endpoint::new(ready.url, Some(password));
-        Ok(Self::serve(endpoint, Host::Private { child, lease }, stay))
+        let (url, forward) = match runner {
+            Runner::Ssh {
+                link: krad_host::HostLink::Ssh(ssh),
+                ..
+            } => {
+                let remote = port_of(&ready.url)
+                    .ok_or_else(|| OpencodeError::NotStarted(ready.url.clone()))?;
+                let forward = ssh.forward_local(remote)?;
+                (local_url(forward.local_port), Some(forward))
+            }
+            _ => (ready.url, None),
+        };
+        let endpoint = Endpoint::new(url, Some(password));
+        let host = Host::Private {
+            child,
+            lease,
+            forward,
+        };
+        Ok(Self::serve(endpoint, host, stay))
     }
 
     fn serve(endpoint: Endpoint, host: Host, relocate: Relocate) -> Arc<Self> {
@@ -321,103 +308,24 @@ impl OpencodeServer {
             routes.sinks.remove(session);
         }
     }
-
-    fn url_of(&self, path: &str) -> String {
-        format!("{}{path}", self.url())
-    }
-
-    fn located<B>(request: RequestBuilder<B>, directory: Option<&str>) -> RequestBuilder<B> {
-        match directory {
-            Some(directory) => request.query(LOCATION_QUERY, directory),
-            None => request,
-        }
-    }
-
-    fn without_body(&self, request: RequestBuilder<WithoutBody>) -> RequestBuilder<WithoutBody> {
-        self.endpoint().sign(request)
-    }
-
-    fn with_body(&self, request: RequestBuilder<WithBody>) -> RequestBuilder<WithBody> {
-        self.endpoint().sign(request)
-    }
-
-    pub(crate) fn get<T: DeserializeOwned>(
-        &self,
-        path: &str,
-        directory: Option<&str>,
-    ) -> Result<T, OpencodeError> {
-        let request = Self::located(
-            self.without_body(self.agent.get(&self.url_of(path))),
-            directory,
-        );
-        let envelope: Envelope<T> = request.call()?.body_mut().read_json()?;
-        Ok(envelope.data)
-    }
-
-    pub(crate) fn read<T: DeserializeOwned>(&self, path: &str) -> Result<T, OpencodeError> {
-        let request = self.without_body(self.agent.get(&self.url_of(path)));
-        Ok(request.call()?.body_mut().read_json()?)
-    }
-
-    pub(crate) fn post<B: Serialize, T: DeserializeOwned>(
-        &self,
-        path: &str,
-        body: &B,
-    ) -> Result<T, OpencodeError> {
-        let request = self.with_body(self.agent.post(&self.url_of(path)));
-        let envelope: Envelope<T> = request.send_json(body)?.body_mut().read_json()?;
-        Ok(envelope.data)
-    }
-
-    pub(crate) fn send<B: Serialize>(&self, path: &str, body: &B) -> Result<(), OpencodeError> {
-        self.with_body(self.agent.post(&self.url_of(path)))
-            .send_json(body)?;
-        Ok(())
-    }
-
-    pub(crate) fn nudge(&self, path: &str) -> Result<(), OpencodeError> {
-        self.with_body(self.agent.post(&self.url_of(path)))
-            .send_empty()?;
-        Ok(())
-    }
-
-    pub(crate) fn delete(&self, path: &str) -> Result<(), OpencodeError> {
-        self.without_body(self.agent.delete(&self.url_of(path)))
-            .call()?;
-        Ok(())
-    }
-
-    pub(crate) fn exists(&self, path: &str) -> Result<bool, OpencodeError> {
-        match self.without_body(self.agent.get(&self.url_of(path))).call() {
-            Ok(_) => Ok(true),
-            Err(ureq::Error::StatusCode(NOT_FOUND)) => Ok(false),
-            Err(error) => Err(error.into()),
-        }
-    }
-
-    pub(crate) fn patch<B: Serialize>(&self, path: &str, body: &B) -> Result<(), OpencodeError> {
-        self.with_body(self.agent.patch(&self.url_of(path)))
-            .send_json(body)?;
-        Ok(())
-    }
-
-    pub(crate) fn put<B: Serialize>(&self, path: &str, body: &B) -> Result<(), OpencodeError> {
-        self.with_body(self.agent.put(&self.url_of(path)))
-            .send_json(body)?;
-        Ok(())
-    }
 }
 
 impl Drop for OpencodeServer {
     fn drop(&mut self) {
         self.closed.store(true, Ordering::SeqCst);
         let host = self.host.get_mut().unwrap_or_else(PoisonError::into_inner);
-        let Host::Private { child, lease } = host else {
+        let Host::Private {
+            child,
+            lease,
+            forward,
+        } = host
+        else {
             return;
         };
         lease.take();
         child.kill().unwrap_or_default();
         drop(child.wait());
+        forward.take();
     }
 }
 
@@ -446,77 +354,17 @@ fn listen(
     }
 }
 
-fn pump(reader: impl BufRead, routes: &Mutex<Routes>) {
-    for line in reader.lines().map_while(Result::ok) {
-        let Some(data) = line.strip_prefix(DATA_PREFIX) else {
-            continue;
-        };
-        routes
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .route(data.trim());
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::mpsc::channel;
 
     #[test]
-    fn events_of_a_subagent_reach_the_chat_that_started_it() {
-        let routes = Mutex::new(Routes::default());
-        let (sender, receiver) = channel();
-        routes
-            .lock()
-            .unwrap_or_else(|_| unreachable!("the fixture is valid"))
-            .sinks
-            .insert(
-                "ses_root".to_owned(),
-                (
-                    1,
-                    Box::new(move |delivery: Delivery| {
-                        sender
-                            .send(delivery.nested)
-                            .unwrap_or_else(|_| unreachable!("the fixture is valid"));
-                    }),
-                ),
-            );
-        let feed = concat!(
-            "data: {\"type\":\"session.created\",\"data\":{\"sessionID\":\"ses_child\",\"parentID\":\"ses_root\"}}\n\n",
-            ": heartbeat\n\n",
-            "data: {\"type\":\"session.execution.succeeded\",\"data\":{\"sessionID\":\"ses_child\"}}\n\n",
-            "data: {\"type\":\"session.execution.succeeded\",\"data\":{\"sessionID\":\"ses_root\"}}\n\n",
-            "data: {\"type\":\"session.execution.succeeded\",\"data\":{\"sessionID\":\"ses_other\"}}\n\n",
-            "data: {\"type\":\"websearch.updated\",\"data\":{\"sessionID\":\"ses_root\"}}\n\n",
-        );
-        pump(feed.as_bytes(), &routes);
-        let nested: Vec<bool> = receiver.try_iter().collect();
-        assert_eq!(nested, [true, true, false]);
+    fn the_port_opencode_listens_on_comes_from_its_url() {
+        assert_eq!(port_of("http://127.0.0.1:41234"), Some(41_234));
+        assert_eq!(port_of("http://127.0.0.1:41234/"), Some(41_234));
+        assert_eq!(port_of("http://localhost"), None);
+        assert_eq!(local_url(5000), "http://127.0.0.1:5000");
     }
-
-    #[test]
-    fn a_change_of_models_or_providers_tells_the_catalog_watcher() {
-        let routes = Mutex::new(Routes::default());
-        let (sender, receiver) = channel();
-        routes
-            .lock()
-            .unwrap_or_else(|_| unreachable!("the fixture is valid"))
-            .catalog = Some(Box::new(move || {
-            sender
-                .send(())
-                .unwrap_or_else(|_| unreachable!("the fixture is valid"));
-        }));
-        let feed = concat!(
-            "data: {\"type\":\"provider.updated\",\"location\":{\"directory\":\"/home\"},\"data\":{}}\n\n",
-            "data: {\"type\":\"model.updated\",\"data\":{}}\n\n",
-            "data: {\"type\":\"command.updated\",\"data\":{}}\n\n",
-            "data: {\"type\":\"session.execution.succeeded\",\"data\":{\"sessionID\":\"ses_root\"}}\n\n",
-        );
-        pump(feed.as_bytes(), &routes);
-        assert_eq!(receiver.try_iter().count(), 2);
-    }
-
     #[test]
     fn the_password_never_shows_in_debug_output() {
         let password = new_password();

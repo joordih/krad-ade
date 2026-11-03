@@ -4,16 +4,19 @@ mod env;
 mod error;
 mod handle;
 mod hook;
+mod host_verbs;
 mod mailbox;
 mod protocol;
 mod server;
 mod statusline;
 mod token;
+mod toolchains;
 
-pub use cli::run_cli;
+pub use cli::{run_cli, run_invoked};
 pub use client::call;
 pub use env::{
-    guide, orchestrator_guide, terminal_env, CLI_PROGRAM, ENV_ENDPOINT, ENV_TERMINAL, ENV_TOKEN,
+    guide, member_token, orchestrator_guide, terminal_env, token_file_env, CLI_PROGRAM,
+    ENV_ENDPOINT, ENV_TERMINAL, ENV_TOKEN, ENV_TOKEN_FILE,
 };
 pub use error::{AgentsError, HandleError};
 pub use handle::{Caller, LeadHandle, TerminalHandle};

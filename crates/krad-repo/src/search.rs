@@ -1,10 +1,12 @@
-use std::fs;
+use krad_host::HostLink;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use crate::files::read_text;
 use crate::git::repo_root;
 use crate::index::walk;
-use crate::process::git_command;
+use crate::on_host;
+use crate::process::git_output;
 use crate::RepoError;
 
 const GREP_ARGS: [&str; 9] = [
@@ -34,22 +36,39 @@ pub struct TextMatch {
 /// # Errors
 ///
 /// Returns [`RepoError`] when git fails or the folder cannot be read.
-pub fn search_text(root: &Path, query: &str, limit: usize) -> Result<Vec<TextMatch>, RepoError> {
+pub fn search_text(
+    host: &HostLink,
+    root: &Path,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<TextMatch>, RepoError> {
     if query.is_empty() || limit == 0 {
         return Ok(Vec::new());
     }
-    if repo_root(root)?.is_some() {
-        return grep(root, query, limit);
+    if repo_root(host, root)?.is_some() {
+        return grep(host, root, query, limit);
+    }
+    if !host.is_local() {
+        return Ok(on_host::search(host, root, query, limit)?
+            .into_iter()
+            .map(|found| TextMatch {
+                path: root.join(found.path),
+                line: found.line,
+                text: shown_line(&found.text),
+            })
+            .collect());
     }
     let mut files = Vec::new();
-    walk(root, Path::new(""), &mut files)?;
+    walk(host, root, Path::new(""), &mut files)?;
     let needle = query.to_lowercase();
     let mut found = Vec::new();
     for relative in files {
         let path = root.join(relative);
-        let small = fs::metadata(&path).is_ok_and(|meta| meta.len() <= MAX_SEARCHED_BYTES);
+        let small = host
+            .metadata(&path)
+            .is_ok_and(|meta| meta.len <= MAX_SEARCHED_BYTES);
         let Some(file) = small
-            .then(|| read_text(&path, MAX_SEARCHED_BYTES).ok())
+            .then(|| read_text(host, &path, MAX_SEARCHED_BYTES).ok())
             .flatten()
         else {
             continue;
@@ -71,8 +90,18 @@ pub fn search_text(root: &Path, query: &str, limit: usize) -> Result<Vec<TextMat
     Ok(found)
 }
 
-fn grep(root: &Path, query: &str, limit: usize) -> Result<Vec<TextMatch>, RepoError> {
-    let output = git_command(root).args(GREP_ARGS).arg(query).output()?;
+fn grep(
+    host: &HostLink,
+    root: &Path,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<TextMatch>, RepoError> {
+    let args: Vec<&OsStr> = GREP_ARGS
+        .iter()
+        .map(OsStr::new)
+        .chain([OsStr::new(query)])
+        .collect();
+    let output = git_output(host, root, &args)?;
     if output.status.code() == Some(GREP_NO_MATCH) {
         return Ok(Vec::new());
     }
@@ -110,6 +139,7 @@ fn shown_line(line: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn grep_output_reads_into_matches_under_the_root() {
@@ -140,14 +170,14 @@ mod tests {
         fs::create_dir_all(dir.join("src"))?;
         fs::write(dir.join("src/lib.rs"), "pub fn alpha() {}\nfn Beta() {}\n")?;
         fs::write(dir.join("notes.txt"), "nothing here\n")?;
-        let found = search_text(&dir, "beta", 10);
+        let found = search_text(&HostLink::Local, &dir, "beta", 10);
         fs::remove_dir_all(&dir)?;
         let lines: Vec<(PathBuf, u32)> = found?
             .into_iter()
             .map(|found| (found.path, found.line))
             .collect();
         assert_eq!(lines, [(dir.join("src/lib.rs"), 2)]);
-        assert_eq!(search_text(Path::new("/"), "", 10)?, []);
+        assert_eq!(search_text(&HostLink::Local, Path::new("/"), "", 10)?, []);
         Ok(())
     }
 }

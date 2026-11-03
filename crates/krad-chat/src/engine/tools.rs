@@ -3,6 +3,7 @@ mod fetch;
 mod find;
 mod grep;
 mod mcp_call;
+mod on_host;
 mod parse;
 mod read;
 #[cfg(test)]
@@ -14,6 +15,7 @@ mod specs;
 mod write;
 
 use krad_domain::{FileEdit, ToolKind};
+use krad_host::HostLink;
 use serde_json::Value;
 use std::borrow::Cow;
 use std::path::{Component, Path, PathBuf};
@@ -53,6 +55,7 @@ const SHOWN_SEPARATOR: &str = "/";
 pub(crate) struct Workspace {
     pub(crate) cwd: PathBuf,
     pub(crate) env: Vec<(String, String)>,
+    pub(crate) host: HostLink,
 }
 
 impl Workspace {
@@ -242,6 +245,7 @@ impl Action {
     pub(crate) fn preview(&self, workspace: &Workspace) -> Option<FileEdit> {
         match self {
             Self::Write { path, content } => Some(write::preview(
+                &workspace.host,
                 &workspace.resolve(path),
                 &workspace.shown(path),
                 content,
@@ -295,10 +299,21 @@ impl Action {
                 path,
                 offset,
                 limit,
-            } => read::read(&root, &workspace.shown(path), *offset, *limit),
-            Self::Write { path, content } => write::write(&root, &workspace.shown(path), content),
+            } => read::read(
+                &workspace.host,
+                &root,
+                &workspace.shown(path),
+                *offset,
+                *limit,
+            ),
+            Self::Write { path, content } => {
+                write::write(&workspace.host, &root, &workspace.shown(path), content)
+            }
             Self::Edit { path, replacements } => {
-                edit::edit(&root, &workspace.shown(path), replacements)
+                edit::edit(&workspace.host, &root, &workspace.shown(path), replacements)
+            }
+            Self::Find { pattern, .. } if !workspace.host.is_local() => {
+                on_host::find(workspace, &root, pattern)
             }
             Self::Find { pattern, .. } => find::find(workspace, &root, pattern, cancel),
             Self::Grep {
@@ -306,16 +321,18 @@ impl Action {
                 glob,
                 ignore_case,
                 ..
-            } => grep::grep(
-                workspace,
-                &root,
-                &grep::Query {
+            } => {
+                let query = grep::Query {
                     pattern,
                     glob: glob.as_deref(),
                     ignore_case: *ignore_case,
-                },
-                cancel,
-            ),
+                };
+                if workspace.host.is_local() {
+                    grep::grep(workspace, &root, &query, cancel)
+                } else {
+                    on_host::grep(workspace, &root, &query)
+                }
+            }
             Self::Shell {
                 command,
                 timeout,

@@ -74,7 +74,11 @@ impl EnvironmentShell {
     }
 
     pub fn should_close(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        self.may_close(CloseThen::RemoveWindow, window, cx)
+        let closes = self.may_close(CloseThen::RemoveWindow, window, cx);
+        if closes {
+            self.close_hosts();
+        }
+        closes
     }
 
     fn may_close(&mut self, then: CloseThen, window: &mut Window, cx: &mut Context<Self>) -> bool {
@@ -149,6 +153,7 @@ impl EnvironmentShell {
     ) {
         self.close_request = CloseRequest::Confirmed;
         self.store();
+        self.close_hosts();
         match then {
             CloseThen::RemoveWindow => window.remove_window(),
             CloseThen::Quit if self.app_update_ready() => {

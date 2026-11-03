@@ -68,6 +68,8 @@ Type: filesandordirs; Name: "{autopf}\{#LegacyAppName}"
 [Files]
 Source: "{#Release}\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Release}\{#AgentsExe}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Root}\target\agents\linux-x86_64\krad-ade-agents"; DestDir: "{app}\agents\linux-x86_64"; Flags: ignoreversion
+Source: "{#Root}\target\agents\linux-aarch64\krad-ade-agents"; DestDir: "{app}\agents\linux-aarch64"; Flags: ignoreversion
 Source: "{#Root}\assets\icons\LICENSE-hugeicons.txt"; DestDir: "{app}\licenses"; Flags: ignoreversion
 Source: "{#Root}\assets\icons\LICENSE-simple-icons.txt"; DestDir: "{app}\licenses"; Flags: ignoreversion
 Source: "{#Root}\assets\fonts\JetBrainsMono-OFL.txt"; DestDir: "{app}\licenses"; Flags: ignoreversion

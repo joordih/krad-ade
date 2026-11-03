@@ -52,20 +52,25 @@ impl EnvironmentShell {
             let group = live.data.group(live.selected_group?)?;
             Some(group.root.clone())
         });
+        let host = self
+            .envs
+            .get(&self.active)
+            .map(|live| live.data.host.clone());
         let store = &self.language_servers.diagnostics;
         store
             .files()
             .into_iter()
-            .map(|path| {
+            .filter(|document| host.as_ref() == Some(&document.host))
+            .map(|document| {
                 let shown = root
                     .as_deref()
-                    .and_then(|root| path.strip_prefix(root).ok())
-                    .unwrap_or(&path)
+                    .and_then(|root| document.path.strip_prefix(root).ok())
+                    .unwrap_or(&document.path)
                     .to_string_lossy()
                     .into_owned();
                 FileProblems {
-                    problems: store.of(&path),
-                    path,
+                    problems: store.of(&document),
+                    path: document.path,
                     shown,
                 }
             })

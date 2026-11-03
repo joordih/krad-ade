@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
 use super::super::{EnvironmentShell, LiveEnv};
+use super::Document;
 use crate::actions::FindReferences;
 
 const NO_REFERENCES_TEXT: &str = "No references found";
@@ -65,7 +66,8 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let (Some(client), Ok(uri)) = (self.language_servers.client_of(&path), file_uri(&path))
+        let document = Document::new(&live.data.host, &path);
+        let (Some(client), Ok(uri)) = (self.language_servers.client_of(&document), file_uri(&path))
         else {
             return;
         };

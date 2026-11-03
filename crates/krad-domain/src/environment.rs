@@ -1,5 +1,6 @@
 use crate::agent::{AgentPreset, AgentState};
 use crate::group::{Session, TerminalGroup};
+use crate::host::Host;
 use crate::ids::{EnvironmentName, ResumeId, SessionId, TerminalId};
 use crate::side_panel::SidePanelLayout;
 use crate::text_scale::TextScale;
@@ -61,6 +62,8 @@ pub struct TerminalMeta {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EnvironmentData {
     pub name: EnvironmentName,
+    #[serde(default, skip_serializing_if = "Host::is_local")]
+    pub host: Host,
     pub nodes: Vec<TerminalNode>,
     pub meta: HashMap<TerminalId, TerminalMeta>,
     pub next_id: u64,
@@ -96,6 +99,7 @@ impl EnvironmentData {
     pub fn empty(name: EnvironmentName) -> Self {
         Self {
             name,
+            host: Host::Local,
             nodes: Vec::new(),
             view: EnvironmentView::default(),
             focus: None,

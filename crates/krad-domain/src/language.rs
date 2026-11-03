@@ -3,7 +3,7 @@ use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use crate::toolchain::ToolchainId;
+use crate::server_runtime::ServerRuntimeId;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -45,8 +45,8 @@ pub struct LanguageDef {
     pub lsp_id: Option<String>,
     #[serde(default)]
     pub server: Option<String>,
-    #[serde(default)]
-    pub toolchains: Vec<ToolchainId>,
+    #[serde(default, alias = "toolchains")]
+    pub server_runtimes: Vec<ServerRuntimeId>,
 }
 
 impl LanguageDef {
@@ -141,7 +141,7 @@ mod tests {
             syntax: None,
             lsp_id: None,
             server: None,
-            toolchains: Vec::new(),
+            server_runtimes: Vec::new(),
         }
     }
 

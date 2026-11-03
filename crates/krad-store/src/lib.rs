@@ -4,6 +4,7 @@ mod config_dir;
 mod gateway_key;
 mod github_login;
 mod gitlab_login;
+mod install_id;
 mod layout;
 mod mcp_secret;
 mod settings;
@@ -19,6 +20,7 @@ pub use github_login::{
 pub use gitlab_login::{
     delete_gitlab_login, find_gitlab_login, read_gitlab_login, write_gitlab_login,
 };
+pub use install_id::install_id;
 pub use layout::{read_layout_snapshot, LayoutWriter};
 pub use mcp_secret::{delete_mcp_secret, find_mcp_secret, write_mcp_secret};
 pub use settings::{read_settings, write_settings};

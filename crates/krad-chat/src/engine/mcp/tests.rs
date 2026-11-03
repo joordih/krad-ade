@@ -98,7 +98,8 @@ done
             server,
             secrets: HashMap::from([(variable("GREETING"), secret("world"))]),
         };
-        let (toolbox, failures) = McpToolbox::start(&[start], Path::new("."));
+        let (toolbox, failures) =
+            McpToolbox::start(&[start], Path::new("."), &krad_host::HostLink::Local);
         assert!(failures.is_empty(), "{failures:?}");
         let names: Vec<&str> = toolbox
             .tools()
@@ -146,7 +147,11 @@ done
             server: stdio("fine", FAKE_SERVER, Vec::new()),
             secrets: HashMap::new(),
         };
-        let (toolbox, failures) = McpToolbox::start(&[dying, locked, fine], Path::new("."));
+        let (toolbox, failures) = McpToolbox::start(
+            &[dying, locked, fine],
+            Path::new("."),
+            &krad_host::HostLink::Local,
+        );
         assert_eq!(toolbox.tools().len(), 2);
         assert_eq!(failures.len(), 2);
         assert!(
@@ -280,7 +285,8 @@ fn an_http_server_keeps_its_session_and_streams_replies() -> std::io::Result<()>
         },
         secrets: HashMap::from([(variable("Authorization"), secret("Bearer token-1"))]),
     };
-    let (toolbox, failures) = McpToolbox::start(&[start], Path::new("."));
+    let (toolbox, failures) =
+        McpToolbox::start(&[start], Path::new("."), &krad_host::HostLink::Local);
     assert!(failures.is_empty(), "{failures:?}");
     assert_eq!(toolbox.tools()[0].name, "mcp__docs__search");
     assert_eq!(

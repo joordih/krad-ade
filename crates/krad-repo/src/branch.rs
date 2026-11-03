@@ -1,11 +1,10 @@
 use krad_domain::review::resolve_ssh_alias;
+use krad_host::HostLink;
 use std::path::Path;
 
 use crate::git::run_git;
 use crate::RepoError;
 
-const SSH_DIR: &str = ".ssh";
-const SSH_CONFIG: &str = "config";
 const NO_SUCH_REMOTE: &str = "No such remote";
 const DIFF_ARGS: [&str; 4] = ["diff", "--no-color", "--no-ext-diff", "--find-renames"];
 const PATHSPEC_SEPARATOR: &str = "--";
@@ -16,8 +15,8 @@ pub const ORIGIN_REMOTE: &str = "origin";
 /// # Errors
 ///
 /// Returns [`RepoError::Git`] when `repo` is not a git repository.
-pub fn remote_url(repo: &Path, remote: &str) -> Result<Option<String>, RepoError> {
-    match run_git(repo, &["remote", "get-url", remote]) {
+pub fn remote_url(host: &HostLink, repo: &Path, remote: &str) -> Result<Option<String>, RepoError> {
+    match run_git(host, repo, &["remote", "get-url", remote]) {
         Ok(stdout) => Ok(Some(String::from_utf8_lossy(&stdout).trim().to_owned())),
         Err(RepoError::Git { message, .. }) if message.contains(NO_SUCH_REMOTE) => Ok(None),
         Err(error) => Err(error),
@@ -28,16 +27,19 @@ pub fn remote_url(repo: &Path, remote: &str) -> Result<Option<String>, RepoError
 ///
 /// As [`remote_url`].
 pub fn resolved_remote_url(
+    host: &HostLink,
     repo: &Path,
     remote: &str,
-    home: Option<&Path>,
+    local_home: Option<&Path>,
 ) -> Result<Option<String>, RepoError> {
-    let Some(url) = remote_url(repo, remote)? else {
+    let Some(url) = remote_url(host, repo, remote)? else {
         return Ok(None);
     };
-    let config = home
-        .and_then(|home| std::fs::read_to_string(home.join(SSH_DIR).join(SSH_CONFIG)).ok())
-        .unwrap_or_default();
+    let home = match host {
+        HostLink::Local => local_home.map(Path::to_path_buf),
+        HostLink::Ssh(ssh) => ssh.home().map(Path::to_path_buf),
+    };
+    let config = home.map_or_else(String::new, |home| krad_host::read_ssh_config(host, &home));
     Ok(Some(resolve_ssh_alias(&url, &config).into_owned()))
 }
 
@@ -46,6 +48,7 @@ pub fn resolved_remote_url(
 /// Returns [`RepoError::Git`] when either commit is not in the local
 /// repository, as before fetching a branch pushed from elsewhere.
 pub fn diff_between(
+    host: &HostLink,
     repo: &Path,
     base: &str,
     head: &str,
@@ -54,7 +57,7 @@ pub fn diff_between(
     let mut args: Vec<&str> = DIFF_ARGS.to_vec();
     args.extend([base, head, PATHSPEC_SEPARATOR]);
     args.extend(paths);
-    let stdout = run_git(repo, &args)?;
+    let stdout = run_git(host, repo, &args)?;
     Ok(hunks_only(&String::from_utf8_lossy(&stdout)))
 }
 
@@ -113,8 +116,14 @@ mod tests {
     fn a_local_diff_holds_only_the_hunks_of_the_asked_paths() -> Result<(), Box<dyn Error>> {
         let repo = repo_with_feature_branch("diff")?;
 
-        let diff = diff_between(&repo, "main", "feature", &["src/lib.rs"]);
-        let missing = diff_between(&repo, "main", "0123456789abcdef", &["src/lib.rs"]);
+        let diff = diff_between(&HostLink::Local, &repo, "main", "feature", &["src/lib.rs"]);
+        let missing = diff_between(
+            &HostLink::Local,
+            &repo,
+            "main",
+            "0123456789abcdef",
+            &["src/lib.rs"],
+        );
         fs::remove_dir_all(&repo)?;
 
         assert_eq!(diff?, "@@ -1 +1 @@\n-main\n+feature\n");
@@ -125,7 +134,7 @@ mod tests {
     #[test]
     fn the_origin_url_is_read_and_a_missing_remote_is_none() -> Result<(), Box<dyn Error>> {
         let repo = repo_with_feature_branch("remote")?;
-        let missing = remote_url(&repo, ORIGIN_REMOTE);
+        let missing = remote_url(&HostLink::Local, &repo, ORIGIN_REMOTE);
         git(
             &repo,
             &[
@@ -135,7 +144,7 @@ mod tests {
                 "git@gitlab.example.test:team/app.git",
             ],
         )?;
-        let origin = remote_url(&repo, ORIGIN_REMOTE);
+        let origin = remote_url(&HostLink::Local, &repo, ORIGIN_REMOTE);
         fs::remove_dir_all(&repo)?;
 
         assert_eq!(missing?, None);

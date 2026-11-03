@@ -148,7 +148,7 @@ pub(super) struct ReviewUi {
     filter: ReviewFilter,
     list: Option<RequestList>,
     detail: Option<RequestDetail>,
-    offers: HashMap<PathBuf, Offer>,
+    offers: HashMap<crate::environment_shell::groups::GitKey, Offer>,
 }
 
 impl ReviewUi {

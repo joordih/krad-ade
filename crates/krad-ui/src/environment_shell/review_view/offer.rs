@@ -1,10 +1,12 @@
 use gpui_kit::{AppContext as _, Context};
-use krad_domain::{CodeHost, EnvironmentView, GitlabSettings};
+use krad_domain::{CodeHost, EnvironmentView, GitlabSettings, Host};
 use krad_gitlab::GitlabConfig;
+use krad_host::HostLink;
 use std::path::{Path, PathBuf};
 
 use super::host::origin_repo;
 
+use crate::environment_shell::groups::GitKey;
 use crate::environment_shell::EnvironmentShell;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -14,8 +16,8 @@ pub(super) enum Offer {
     Withheld,
 }
 
-fn probe(root: &Path, gitlab: &GitlabSettings) -> Option<CodeHost> {
-    let repo = origin_repo(root, GitlabConfig::try_from(gitlab).ok())?;
+fn probe(link: &HostLink, root: &Path, gitlab: &GitlabSettings) -> Option<CodeHost> {
+    let repo = origin_repo(link, root, GitlabConfig::try_from(gitlab).ok())?;
     repo.login
         .client()
         .ok()
@@ -28,38 +30,50 @@ impl EnvironmentShell {
         let Some(root) = self.active_group().map(|group| group.root.clone()) else {
             return;
         };
-        match self.review.offers.get(&root) {
+        let key = (self.active_link().host(), root);
+        match self.review.offers.get(&key) {
             Some(Offer::Withheld) => self.leave_review(cx),
             Some(Offer::Probing | Offer::On(_)) => {}
-            None => self.start_probe(root, cx),
+            None => self.start_probe(key, cx),
         }
     }
 
     pub(in crate::environment_shell) fn review_host(&self) -> Option<CodeHost> {
-        let root = self.active_group().map(|group| group.root.as_path())?;
-        match self.review.offers.get(root) {
+        let root = self.active_group().map(|group| group.root.clone())?;
+        match self.review.offers.get(&(self.active_link().host(), root)) {
             Some(Offer::On(host)) => Some(*host),
             Some(Offer::Probing | Offer::Withheld) | None => None,
         }
     }
 
-    fn start_probe(&mut self, root: PathBuf, cx: &mut Context<Self>) {
-        self.review.offers.insert(root.clone(), Offer::Probing);
+    fn start_probe(&mut self, key: GitKey, cx: &mut Context<Self>) {
+        self.review.offers.insert(key.clone(), Offer::Probing);
         let gitlab = self.settings.gitlab.clone();
+        let link = self.active_link();
         let probed = cx.background_spawn({
-            let root = root.clone();
-            async move { probe(&root, &gitlab) }
+            let root = key.1.clone();
+            async move { probe(&link, &root, &gitlab) }
         });
         cx.spawn(async move |this, cx| {
             let host = probed.await;
             this.update(cx, |shell, cx| {
                 let offer = host.map_or(Offer::Withheld, Offer::On);
-                shell.review.offers.insert(root, offer);
+                shell.review.offers.insert(key, offer);
                 cx.notify();
             })
             .unwrap_or_default();
         })
         .detach();
+    }
+
+    pub(in crate::environment_shell) fn forget_review_offers(
+        &mut self,
+        host: &Host,
+        roots: &[PathBuf],
+    ) {
+        for root in roots {
+            self.review.offers.remove(&(host.clone(), root.clone()));
+        }
     }
 
     fn leave_review(&mut self, cx: &mut Context<Self>) {

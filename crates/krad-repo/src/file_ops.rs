@@ -1,4 +1,4 @@
-use std::fs::{self, OpenOptions};
+use krad_host::HostLink;
 use std::path::{Path, PathBuf};
 
 use crate::RepoError;
@@ -10,7 +10,7 @@ const PARENT_DIR: &str = "..";
 /// Returns [`RepoError::InvalidName`] when `new_name` is empty or holds a path separator,
 /// [`RepoError::AlreadyExists`] when a sibling already has that name, and
 /// [`RepoError::Io`] when the rename fails.
-pub fn rename_entry(path: &Path, new_name: &str) -> Result<PathBuf, RepoError> {
+pub fn rename_entry(host: &HostLink, path: &Path, new_name: &str) -> Result<PathBuf, RepoError> {
     let parent = path
         .parent()
         .ok_or_else(|| RepoError::InvalidName(path.display().to_string()))?;
@@ -18,14 +18,14 @@ pub fn rename_entry(path: &Path, new_name: &str) -> Result<PathBuf, RepoError> {
     if target == path {
         return Ok(target);
     }
-    move_to(path, target)
+    move_to(host, path, target)
 }
 
 /// # Errors
 /// Returns [`RepoError::MoveIntoItself`] when `dest_dir` is `path` or lies inside it,
 /// [`RepoError::AlreadyExists`] when `dest_dir` already holds an entry with that name, and
 /// [`RepoError::Io`] when the move fails.
-pub fn move_entry(path: &Path, dest_dir: &Path) -> Result<PathBuf, RepoError> {
+pub fn move_entry(host: &HostLink, path: &Path, dest_dir: &Path) -> Result<PathBuf, RepoError> {
     if dest_dir.starts_with(path) {
         return Err(RepoError::MoveIntoItself);
     }
@@ -36,16 +36,16 @@ pub fn move_entry(path: &Path, dest_dir: &Path) -> Result<PathBuf, RepoError> {
     if target == path {
         return Ok(target);
     }
-    move_to(path, target)
+    move_to(host, path, target)
 }
 
 /// # Errors
 /// Returns [`RepoError::Io`] when the entry cannot be read or removed.
-pub fn delete_entry(path: &Path) -> Result<(), RepoError> {
-    if fs::symlink_metadata(path)?.is_dir() {
-        fs::remove_dir_all(path)?;
+pub fn delete_entry(host: &HostLink, path: &Path) -> Result<(), RepoError> {
+    if host.symlink_metadata(path)?.is_dir() {
+        host.remove_dir_all(path)?;
     } else {
-        fs::remove_file(path)?;
+        host.remove_file(path)?;
     }
     Ok(())
 }
@@ -53,49 +53,52 @@ pub fn delete_entry(path: &Path) -> Result<(), RepoError> {
 /// # Errors
 /// Returns [`RepoError::InvalidName`] for an empty name or one with a path separator,
 /// [`RepoError::AlreadyExists`] when the name is taken, and [`RepoError::Io`] otherwise.
-pub fn create_file(dir: &Path, name: &str) -> Result<PathBuf, RepoError> {
-    let path = vacant_child(dir, name)?;
-    OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&path)?;
+pub fn create_file(host: &HostLink, dir: &Path, name: &str) -> Result<PathBuf, RepoError> {
+    let path = vacant_child(host, dir, name)?;
+    host.create_new(&path)?;
     Ok(path)
 }
 
 /// # Errors
 /// Returns [`RepoError::InvalidName`] for an empty name or one with a path separator,
 /// [`RepoError::AlreadyExists`] when the name is taken, and [`RepoError::Io`] otherwise.
-pub fn create_dir(dir: &Path, name: &str) -> Result<PathBuf, RepoError> {
-    let path = vacant_child(dir, name)?;
-    fs::create_dir(&path)?;
+pub fn create_dir(host: &HostLink, dir: &Path, name: &str) -> Result<PathBuf, RepoError> {
+    let path = vacant_child(host, dir, name)?;
+    host.create_dir(&path)?;
     Ok(path)
 }
 
-fn move_to(path: &Path, target: PathBuf) -> Result<PathBuf, RepoError> {
-    if is_taken(&target, path)? {
+fn move_to(host: &HostLink, path: &Path, target: PathBuf) -> Result<PathBuf, RepoError> {
+    if is_taken(host, &target, path)? {
         return Err(already_exists(&target));
     }
-    fs::rename(path, &target)?;
+    host.rename(path, &target)?;
     Ok(target)
 }
 
-fn vacant_child(dir: &Path, name: &str) -> Result<PathBuf, RepoError> {
+fn vacant_child(host: &HostLink, dir: &Path, name: &str) -> Result<PathBuf, RepoError> {
     let path = child_path(dir, name)?;
-    if fs::symlink_metadata(&path).is_ok() {
+    if host.symlink_metadata(&path).is_ok() {
         return Err(already_exists(&path));
     }
     Ok(path)
 }
 
-fn is_taken(target: &Path, source: &Path) -> Result<bool, RepoError> {
-    if fs::symlink_metadata(target).is_err() {
+fn is_taken(host: &HostLink, target: &Path, source: &Path) -> Result<bool, RepoError> {
+    if host.symlink_metadata(target).is_err() {
         return Ok(false);
     }
-    Ok(!same_entry(target, source)?)
+    let same = if host.is_local() {
+        same_entry(target, source)?
+    } else {
+        host.canonicalize(target)? == host.canonicalize(source)?
+    };
+    Ok(!same)
 }
 
 #[cfg(unix)]
 fn same_entry(left: &Path, right: &Path) -> Result<bool, RepoError> {
+    use std::fs;
     use std::os::unix::fs::MetadataExt;
     let (left, right) = (fs::symlink_metadata(left)?, fs::symlink_metadata(right)?);
     Ok(left.dev() == right.dev() && left.ino() == right.ino())
@@ -103,6 +106,7 @@ fn same_entry(left: &Path, right: &Path) -> Result<bool, RepoError> {
 
 #[cfg(not(unix))]
 fn same_entry(left: &Path, right: &Path) -> Result<bool, RepoError> {
+    use std::fs;
     Ok(fs::canonicalize(left)? == fs::canonicalize(right)?)
 }
 
@@ -127,6 +131,7 @@ fn already_exists(path: &Path) -> RepoError {
 mod tests {
     use super::*;
     use std::error::Error;
+    use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_temp_dir(label: &str) -> Result<PathBuf, Box<dyn Error>> {
@@ -145,9 +150,9 @@ mod tests {
         fs::write(dir.join("old.txt"), "body")?;
         fs::write(dir.join("taken.txt"), "")?;
 
-        let renamed = rename_entry(&dir.join("old.txt"), " new.txt ");
-        let clash = rename_entry(&dir.join("new.txt"), "taken.txt");
-        let escape = rename_entry(&dir.join("new.txt"), "../out.txt");
+        let renamed = rename_entry(&HostLink::Local, &dir.join("old.txt"), " new.txt ");
+        let clash = rename_entry(&HostLink::Local, &dir.join("new.txt"), "taken.txt");
+        let escape = rename_entry(&HostLink::Local, &dir.join("new.txt"), "../out.txt");
         let body = fs::read_to_string(dir.join("new.txt"));
         fs::remove_dir_all(&dir)?;
 
@@ -162,11 +167,11 @@ mod tests {
     fn create_rejects_taken_and_invalid_names() -> Result<(), Box<dyn Error>> {
         let dir = unique_temp_dir("create")?;
 
-        let file = create_file(&dir, "notes.md");
-        let folder = create_dir(&dir, "src");
-        let taken = create_file(&dir, "src");
-        let empty = create_dir(&dir, "  ");
-        let parent = create_dir(&dir, "..");
+        let file = create_file(&HostLink::Local, &dir, "notes.md");
+        let folder = create_dir(&HostLink::Local, &dir, "src");
+        let taken = create_file(&HostLink::Local, &dir, "src");
+        let empty = create_dir(&HostLink::Local, &dir, "  ");
+        let parent = create_dir(&HostLink::Local, &dir, "..");
         let is_file = dir.join("notes.md").is_file();
         let is_dir = dir.join("src").is_dir();
         fs::remove_dir_all(&dir)?;
@@ -187,8 +192,8 @@ mod tests {
         fs::write(dir.join("a/inner/file.rs"), "")?;
         fs::create_dir(dir.join("b"))?;
 
-        let into_self = move_entry(&dir.join("a"), &dir.join("a/inner"));
-        let moved = move_entry(&dir.join("a"), &dir.join("b"));
+        let into_self = move_entry(&HostLink::Local, &dir.join("a"), &dir.join("a/inner"));
+        let moved = move_entry(&HostLink::Local, &dir.join("a"), &dir.join("b"));
         let carried = dir.join("b/a/inner/file.rs").is_file();
         fs::remove_dir_all(&dir)?;
 
@@ -205,8 +210,8 @@ mod tests {
         fs::write(dir.join("folder/nested/file.txt"), "")?;
         fs::write(dir.join("loose.txt"), "")?;
 
-        let folder = delete_entry(&dir.join("folder"));
-        let file = delete_entry(&dir.join("loose.txt"));
+        let folder = delete_entry(&HostLink::Local, &dir.join("folder"));
+        let file = delete_entry(&HostLink::Local, &dir.join("loose.txt"));
         let left = fs::read_dir(&dir)?.count();
         fs::remove_dir_all(&dir)?;
 

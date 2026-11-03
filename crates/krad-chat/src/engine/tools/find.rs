@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::{Ran, Workspace};
 
-const MAX_FILES: usize = 1000;
+pub(super) const MAX_FILES: usize = 1000;
 const GIT_FOLDER: &str = ".git";
 const NO_FILES_TEXT: &str = "No files found";
 const BAD_GLOB_TEXT: &str = "Invalid glob pattern";
@@ -58,6 +58,10 @@ pub(super) fn find(workspace: &Workspace, root: &Path, pattern: &str, cancel: &A
         }
         found.push(workspace.shown(&path));
     }
+    listed_files(&found, more)
+}
+
+pub(super) fn listed_files(found: &[String], more: bool) -> Ran {
     if found.is_empty() {
         return Ran::done(NO_FILES_TEXT.to_owned());
     }
@@ -88,6 +92,7 @@ mod tests {
         let workspace = Workspace {
             cwd: scratch.path().to_path_buf(),
             env: Vec::new(),
+            host: krad_host::HostLink::Local,
         };
         let cancel = AtomicBool::new(false);
         let ran = find(&workspace, scratch.path(), "*.rs", &cancel);

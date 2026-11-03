@@ -9,10 +9,10 @@ use krad_lsp::lsp_types::{
     WorkDoneProgressParams,
 };
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::super::EnvironmentShell;
+use super::Document;
 
 const PULL_DELAY: Duration = Duration::from_millis(200);
 const RETRY_DELAY: Duration = Duration::from_millis(800);
@@ -20,29 +20,32 @@ const PULL_ATTEMPTS: u32 = 5;
 
 #[derive(Default)]
 pub(in crate::environment_shell) struct DiagnosticStore {
-    pushed: HashMap<PathBuf, Vec<lsp_types::Diagnostic>>,
-    pulled: HashMap<PathBuf, Vec<lsp_types::Diagnostic>>,
-    pulls: HashMap<PathBuf, Task<()>>,
+    pushed: HashMap<Document, Vec<lsp_types::Diagnostic>>,
+    pulled: HashMap<Document, Vec<lsp_types::Diagnostic>>,
+    pulls: HashMap<Document, Task<()>>,
 }
 
 impl DiagnosticStore {
-    pub(super) fn pushed(&mut self, path: PathBuf, diagnostics: Vec<lsp_types::Diagnostic>) {
-        self.pushed.insert(path, diagnostics);
+    pub(super) fn pushed(&mut self, document: Document, diagnostics: Vec<lsp_types::Diagnostic>) {
+        self.pushed.insert(document, diagnostics);
     }
 
-    fn pulled(&mut self, path: PathBuf, diagnostics: Vec<lsp_types::Diagnostic>) {
-        self.pulled.insert(path, diagnostics);
+    fn pulled(&mut self, document: Document, diagnostics: Vec<lsp_types::Diagnostic>) {
+        self.pulled.insert(document, diagnostics);
     }
 
-    pub(super) fn forget(&mut self, path: &Path) {
-        self.pushed.remove(path);
-        self.pulled.remove(path);
-        self.pulls.remove(path);
+    pub(super) fn forget(&mut self, document: &Document) {
+        self.pushed.remove(document);
+        self.pulled.remove(document);
+        self.pulls.remove(document);
     }
 
-    pub(in crate::environment_shell) fn of(&self, path: &Path) -> Vec<lsp_types::Diagnostic> {
+    pub(in crate::environment_shell) fn of(
+        &self,
+        document: &Document,
+    ) -> Vec<lsp_types::Diagnostic> {
         let mut known: Vec<lsp_types::Diagnostic> = Vec::new();
-        let sources = [self.pushed.get(path), self.pulled.get(path)];
+        let sources = [self.pushed.get(document), self.pulled.get(document)];
         for diagnostic in sources.into_iter().flatten().flatten() {
             if !known.contains(diagnostic) {
                 known.push(diagnostic.clone());
@@ -57,15 +60,15 @@ impl DiagnosticStore {
         known
     }
 
-    pub(in crate::environment_shell) fn files(&self) -> Vec<PathBuf> {
-        let mut files: Vec<PathBuf> = self
+    pub(in crate::environment_shell) fn files(&self) -> Vec<Document> {
+        let mut files: Vec<Document> = self
             .pushed
             .keys()
             .chain(self.pulled.keys())
-            .filter(|path| !self.of(path).is_empty())
+            .filter(|document| !self.of(document).is_empty())
             .cloned()
             .collect();
-        files.sort();
+        files.sort_by(|left, right| left.path.cmp(&right.path));
         files.dedup();
         files
     }
@@ -100,19 +103,19 @@ fn report_items(report: DocumentDiagnosticReportResult) -> Option<Vec<lsp_types:
 }
 
 impl EnvironmentShell {
-    pub(super) fn pull_diagnostics(&mut self, path: &Path, cx: &mut Context<Self>) {
-        self.pull_diagnostics_after(path, PULL_DELAY, PULL_ATTEMPTS, cx);
+    pub(super) fn pull_diagnostics(&mut self, document: &Document, cx: &mut Context<Self>) {
+        self.pull_diagnostics_after(document, PULL_DELAY, PULL_ATTEMPTS, cx);
     }
 
     fn pull_diagnostics_after(
         &mut self,
-        path: &Path,
+        document: &Document,
         delay: Duration,
         attempts: u32,
         cx: &mut Context<Self>,
     ) {
         let servers = &self.language_servers;
-        let Some(key) = servers.documents.get(path) else {
+        let Some(key) = servers.documents.get(document) else {
             return;
         };
         let Some(running) = servers.running(key) else {
@@ -121,7 +124,7 @@ impl EnvironmentShell {
         if running.capabilities.diagnostic_provider.is_none() {
             return;
         }
-        let Ok(uri) = file_uri(path) else {
+        let Ok(uri) = file_uri(&document.path) else {
             return;
         };
         let client = running.server.client.clone();
@@ -132,7 +135,7 @@ impl EnvironmentShell {
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: PartialResultParams::default(),
         };
-        let pulled = path.to_path_buf();
+        let pulled = document.clone();
         let wait = cx.background_executor().timer(delay);
         let pulling = cx.spawn(async move |this, cx| {
             wait.await;
@@ -161,20 +164,21 @@ impl EnvironmentShell {
         self.language_servers
             .diagnostics
             .pulls
-            .insert(path.to_path_buf(), pulling);
+            .insert(document.clone(), pulling);
     }
 
     pub(in crate::environment_shell) fn show_diagnostics(
         &self,
-        path: &Path,
+        document: &Document,
         cx: &mut Context<Self>,
     ) {
-        let known = self.language_servers.diagnostics.of(path);
+        let known = self.language_servers.diagnostics.of(document);
         let states: Vec<Entity<EditorState>> = self
             .envs
             .values()
+            .filter(|live| live.data.host == document.host)
             .flat_map(|live| live.editors.values())
-            .filter(|editor| editor.path == path)
+            .filter(|editor| editor.path == document.path)
             .filter_map(|editor| editor.state.clone())
             .collect();
         for state in states {
@@ -212,7 +216,10 @@ mod tests {
     #[test]
     fn pushed_and_pulled_diagnostics_merge_once_in_line_order() {
         let mut store = DiagnosticStore::default();
-        let file = PathBuf::from("/work/main.rs");
+        let file = Document::new(
+            &krad_domain::Host::Local,
+            std::path::Path::new("/work/main.rs"),
+        );
         store.pushed(file.clone(), vec![at(4, "from check"), at(1, "both")]);
         store.pulled(file.clone(), vec![at(1, "both"), at(2, "live")]);
         let messages: Vec<String> = store
@@ -223,6 +230,6 @@ mod tests {
         assert_eq!(messages, ["both", "live", "from check"]);
         assert_eq!(store.files(), std::slice::from_ref(&file));
         store.forget(&file);
-        assert_eq!(store.files(), Vec::<PathBuf>::new());
+        assert_eq!(store.files(), Vec::<Document>::new());
     }
 }

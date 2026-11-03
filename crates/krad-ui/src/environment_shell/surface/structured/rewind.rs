@@ -99,7 +99,8 @@ impl EnvironmentShell {
             .get(env)
             .and_then(|live| live.data.group_of(id))
             .map(|group| group.root.clone());
-        let found = cx.background_spawn(async move { workplace_home(root.as_deref()) });
+        let link = self.env_link(env);
+        let found = cx.background_spawn(async move { workplace_home(&link, root.as_deref()) });
         let env = env.clone();
         cx.spawn(async move |this, cx| {
             let home = found.await.ok().flatten();

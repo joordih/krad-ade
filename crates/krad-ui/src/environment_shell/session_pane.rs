@@ -165,7 +165,9 @@ impl EnvironmentShell {
                 .label(NEW_GROUP_LABEL)
                 .icon(IconName::FolderAdd)
                 .variant(ButtonVariant::Primary)
-                .on_click(cx.listener(|_: &mut Self, _, _, cx| Self::prompt_new_group(cx)));
+                .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                    this.prompt_new_group(window, cx);
+                }));
             return card(pal, cx)
                 .size_full()
                 .child(CenteredEmpty::new(NO_GROUP_TITLE, NO_GROUP_TEXT).action(pick))

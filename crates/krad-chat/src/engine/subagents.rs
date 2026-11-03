@@ -82,6 +82,7 @@ pub fn read_engine_subagent(record: &Path, cwd: &Path, from: u64) -> io::Result<
     let workspace = Workspace {
         cwd: cwd.to_path_buf(),
         env: Vec::new(),
+        host: krad_host::HostLink::Local,
     };
     Ok(TranscriptChunk {
         entries: transcript(records, &workspace)

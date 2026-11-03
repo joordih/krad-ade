@@ -19,7 +19,7 @@ mod window_frame;
 pub use actions::*;
 pub use app_menu::install_app_menus;
 pub use assets::AppAssets;
-pub use environment_shell::EnvironmentShell;
+pub use environment_shell::{EnvironmentShell, HostTools};
 pub use http::http_client;
 pub use keymap::key_bindings;
 pub use krad_session::login_shell_env;

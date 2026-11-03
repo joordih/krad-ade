@@ -20,6 +20,9 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
+  linux-agents:
+    uses: ./.github/workflows/linux-agents.yml
+
   format:
     name: Format
     runs-on: ubuntu-latest

@@ -1,3 +1,4 @@
+use krad_host::HostLink;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
@@ -23,11 +24,12 @@ struct Kept {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Snapshots {
     dir: PathBuf,
+    host: HostLink,
 }
 
 impl Snapshots {
-    pub(crate) const fn new(dir: PathBuf) -> Self {
-        Self { dir }
+    pub(crate) const fn new(dir: PathBuf, host: HostLink) -> Self {
+        Self { dir, host }
     }
 
     fn turn_dir(&self, turn: usize) -> PathBuf {
@@ -56,14 +58,14 @@ impl Snapshots {
             return Ok(());
         }
         fs::create_dir_all(&dir)?;
-        let before = match fs::read(path) {
+        let before = match self.host.read_all(path) {
             Ok(bytes) => {
                 let blob = kept.len().to_string();
                 fs::write(dir.join(&blob), bytes)?;
                 Before::Saved { blob }
             }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Before::Absent,
-            Err(error) => return Err(error),
+            Err(error) if error.is_not_found() => Before::Absent,
+            Err(error) => return Err(error.into()),
         };
         let entry = Kept {
             path: path.to_path_buf(),
@@ -92,14 +94,14 @@ impl Snapshots {
             match before {
                 Before::Saved { blob } => {
                     if let Some(parent) = path.parent() {
-                        fs::create_dir_all(parent)?;
+                        self.host.create_dir_all(parent)?;
                     }
-                    fs::copy(dir.join(blob), &path)?;
+                    self.host.write(&path, &fs::read(dir.join(blob))?)?;
                 }
-                Before::Absent => match fs::remove_file(&path) {
+                Before::Absent => match self.host.remove_file(&path) {
                     Ok(()) => {}
-                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                    Err(error) => return Err(error),
+                    Err(error) if error.is_not_found() => {}
+                    Err(error) => return Err(error.into()),
                 },
             }
         }
@@ -145,7 +147,7 @@ mod tests {
     #[test]
     fn a_files_rewind_puts_back_what_each_file_held_before_the_turn() -> io::Result<()> {
         let root = scratch();
-        let snapshots = Snapshots::new(root.join("snapshots"));
+        let snapshots = Snapshots::new(root.join("snapshots"), HostLink::Local);
         let edited = root.join("edited.txt");
         let created = root.join("new").join("created.txt");
         let later = root.join("later.txt");

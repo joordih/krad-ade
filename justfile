@@ -27,6 +27,13 @@ ghostty-libs-build source:
     packaging/ghostty-vt/build.sh {{source}} target/ghostty-vt-install
     packaging/ghostty-vt/package.sh target/ghostty-vt-install dist/ghostty-vt
 
+agents-build target:
+    rustup target add {{target}}
+    cargo build --release --locked -p krad-app --bin krad-ade-agents --no-default-features --target {{target}}
+
+agents-linux:
+    for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do env CARGO_TARGET_$(echo $target | tr a-z- A-Z_)_LINKER=rust-lld just agents-build $target; done
+
 conpty:
     mkdir -p {{conpty_dir}}
     curl -fsSL -o {{conpty_dir}}/conpty.nupkg https://www.nuget.org/api/v2/package/Microsoft.Windows.Console.ConPTY/{{conpty_version}}

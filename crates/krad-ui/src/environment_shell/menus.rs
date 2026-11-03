@@ -58,6 +58,10 @@ impl EnvironmentShell {
             .and_then(|live| live.data.group(id));
         let is_worktree = group.is_some_and(|group| group.worktree.is_some());
         let mut entries = Vec::new();
+        if let Some(group) = group {
+            entries.push(self.activation_submenu(group));
+            entries.push(MenuEntry::Separator);
+        }
         if is_worktree {
             entries.push(MenuEntry::destructive(
                 REMOVE_WORKTREE_LABEL,

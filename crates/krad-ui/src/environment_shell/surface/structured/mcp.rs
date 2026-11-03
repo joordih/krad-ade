@@ -1,5 +1,6 @@
 use gpui_kit::{AnyElement, Context};
 use krad_domain::{EnvironmentName, McpProjectFile, McpProjectTrust, McpServer, TerminalId};
+use krad_host::HostLink;
 use std::path::{Path, PathBuf};
 
 use super::super::super::mcp::{McpLaunch, McpTrust};
@@ -27,12 +28,13 @@ impl EnvironmentShell {
         folder: &Path,
         cx: &mut Context<Self>,
     ) -> Option<McpLaunch> {
+        let link = self.env_link(env);
         let structured = structured_mut(self, env, id)?;
         match std::mem::take(&mut structured.mcp) {
             McpPrep::Ready(launch) => Some(launch),
             McpPrep::Unread => {
                 structured.mcp = McpPrep::Reading;
-                Self::read_project_mcp(env.clone(), id, folder.to_path_buf(), cx);
+                Self::read_project_mcp(link, env.clone(), id, folder.to_path_buf(), cx);
                 None
             }
             waiting @ (McpPrep::Reading | McpPrep::Asking(_) | McpPrep::Launching) => {
@@ -43,12 +45,13 @@ impl EnvironmentShell {
     }
 
     fn read_project_mcp(
+        link: HostLink,
         env: EnvironmentName,
         id: TerminalId,
         folder: PathBuf,
         cx: &mut Context<Self>,
     ) {
-        let read = Self::load_project_mcp(folder.clone(), cx);
+        let read = Self::load_project_mcp(link, folder.clone(), cx);
         cx.spawn(async move |this, cx| {
             let file = read.await;
             this.update(cx, |shell, cx| {

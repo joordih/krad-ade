@@ -1,0 +1,50 @@
+name: Linux agents CLI
+
+on:
+  workflow_call:
+    inputs:
+      upload:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Linux agents CLI (${{ matrix.platform }})
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            platform: linux-x86_64
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            platform: linux-aarch64
+            target: aarch64-unknown-linux-musl
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941
+        with:
+          tool: just
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          key: ${{ matrix.target }}
+      - run: just agents-build ${{ matrix.target }}
+      - name: Check the binary is static and runs
+        run: |
+          binary=target/${{ matrix.target }}/release/krad-ade-agents
+          file "$binary" | grep -Eq "statically linked|static-pie linked"
+          "$binary" --version
+      - if: inputs.upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: agents-${{ matrix.platform }}
+          path: target/${{ matrix.target }}/release/krad-ade-agents

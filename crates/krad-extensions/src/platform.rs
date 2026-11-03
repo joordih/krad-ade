@@ -72,6 +72,19 @@ impl Platform {
     }
 }
 
+impl From<krad_host::HostPlatform> for Platform {
+    fn from(platform: krad_host::HostPlatform) -> Self {
+        let arch = match platform {
+            krad_host::HostPlatform::LinuxX86_64 => Arch::X86_64,
+            krad_host::HostPlatform::LinuxAarch64 => Arch::Aarch64,
+        };
+        Self {
+            os: Os::Linux,
+            arch,
+        }
+    }
+}
+
 #[cfg(unix)]
 pub(crate) fn mark_executable(path: &Path) -> io::Result<()> {
     use std::os::unix::fs::PermissionsExt as _;

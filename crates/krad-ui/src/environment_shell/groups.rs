@@ -1,59 +1,23 @@
-use gpui_kit::{AppContext as _, Context, PathPromptOptions, SharedString};
+use gpui_kit::{AppContext as _, Context, PathPromptOptions, SharedString, Window};
 use krad_domain::{
     parse_wsl_path, AgentPreset, EnvironmentName, GroupId, TerminalGroup, TerminalId,
     WorktreeOrigin,
 };
-use krad_repo::{
-    line_counts, list_worktrees, repo_root, status, wsl_programs, GitStatus, LineCount, Worktree,
-};
+use krad_host::HostLink;
+use krad_repo::{host_programs, wsl_programs};
 use krad_session::find_program;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use super::EnvironmentShell;
 
-const GIT_POLL: Duration = Duration::from_secs(3);
+mod git_poll;
+
+pub(super) use git_poll::{GitKey, GroupGit};
+
+const SHELL_ONLY: &[AgentPreset] = &[AgentPreset::Shell];
 const FOLDER_PROMPT: &str = "Choose the group's root folder";
 const NO_GROUP_TEXT: &str = "Select a group first";
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct GroupGit {
-    pub(super) repo_root: PathBuf,
-    pub(super) status: GitStatus,
-    pub(super) lines: HashMap<PathBuf, LineCount>,
-    pub(super) worktrees: Vec<Worktree>,
-}
-
-impl GroupGit {
-    pub(super) fn total_lines(&self) -> LineCount {
-        self.lines
-            .values()
-            .copied()
-            .fold(LineCount::default(), |total, count| total + count)
-    }
-}
-
-fn read_git(roots: Vec<PathBuf>) -> HashMap<PathBuf, GroupGit> {
-    roots
-        .into_iter()
-        .filter_map(|root| {
-            let repo_root = repo_root(&root).ok().flatten()?;
-            let status = status(&root).ok()?;
-            let lines = line_counts(&repo_root).unwrap_or_default();
-            let worktrees = list_worktrees(&root).unwrap_or_default();
-            Some((
-                root,
-                GroupGit {
-                    repo_root,
-                    status,
-                    lines,
-                    worktrees,
-                },
-            ))
-        })
-        .collect()
-}
+const HOST_NOT_READY_TEXT: &str = "Connect to the environment's host before adding a group";
 
 fn presets_found(is_installed: impl Fn(&str) -> bool) -> Vec<AgentPreset> {
     AgentPreset::all()
@@ -62,21 +26,40 @@ fn presets_found(is_installed: impl Fn(&str) -> bool) -> Vec<AgentPreset> {
         .collect()
 }
 
-fn presets_in_wsl(distro: &str) -> Vec<AgentPreset> {
-    let programs: Vec<&str> = AgentPreset::all()
+fn agent_programs() -> Vec<&'static str> {
+    AgentPreset::all()
         .into_iter()
         .filter_map(AgentPreset::program)
-        .collect();
-    let found = wsl_programs(distro, &programs).unwrap_or_default();
+        .collect()
+}
+
+fn presets_on_host(link: &HostLink) -> Vec<AgentPreset> {
+    let found = host_programs(link, &agent_programs()).unwrap_or_default();
+    presets_found(|program| found.contains(&program))
+}
+
+fn presets_in_wsl(distro: &str) -> Vec<AgentPreset> {
+    let found = wsl_programs(distro, &agent_programs()).unwrap_or_default();
     presets_found(|program| found.contains(&program))
 }
 
 impl EnvironmentShell {
     pub(super) fn installed_agents(&self) -> &[AgentPreset] {
-        self.agents_for(self.active_group().map(|group| group.root.as_path()))
+        self.agents_for(
+            &self.active,
+            self.active_group().map(|group| group.root.as_path()),
+        )
     }
 
-    pub(super) fn agents_for(&self, root: Option<&Path>) -> &[AgentPreset] {
+    pub(super) fn agents_for(&self, env: &EnvironmentName, root: Option<&Path>) -> &[AgentPreset] {
+        if let Some(host) = self
+            .envs
+            .get(env)
+            .map(|live| &live.data.host)
+            .filter(|host| !host.is_local())
+        {
+            return self.host_agents.get(host).map_or(SHELL_ONLY, Vec::as_slice);
+        }
         root.and_then(parse_wsl_path)
             .and_then(|folder| self.wsl_agents.get(&folder.distro))
             .unwrap_or(&self.native_agents)
@@ -97,6 +80,29 @@ impl EnvironmentShell {
         }
     }
 
+    pub(super) fn detect_host_agents(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
+        let link = self.env_link(env);
+        if link.is_local() {
+            return;
+        }
+        let host = link.host();
+        let env = env.clone();
+        let lookup = cx.background_spawn(async move { presets_on_host(&link) });
+        cx.spawn(async move |this, cx| {
+            let installed = lookup.await;
+            this.update(cx, |shell, cx| {
+                shell.host_agents.insert(host, installed);
+                shell.list_host_models(&env, cx);
+                for harness in AgentPreset::all() {
+                    shell.flush_chats_of(harness, cx);
+                }
+                cx.notify();
+            })
+            .unwrap_or_default();
+        })
+        .detach();
+    }
+
     fn detect_agents_in(distro: String, cx: &mut Context<Self>) {
         let lookup = cx.background_spawn({
             let distro = distro.clone();
@@ -111,6 +117,14 @@ impl EnvironmentShell {
             .unwrap_or_default();
         })
         .detach();
+    }
+
+    pub(super) fn active_link(&self) -> HostLink {
+        self.env_link(&self.active)
+    }
+
+    pub(super) fn env_link(&self, env: &EnvironmentName) -> HostLink {
+        self.envs.get(env).map_or_default(|live| live.link.clone())
     }
 
     pub(super) fn active_group(&self) -> Option<&TerminalGroup> {
@@ -145,7 +159,15 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn prompt_new_group(cx: &mut Context<Self>) {
+    pub(super) fn prompt_new_group(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.active_link().is_local() {
+            if self.host_ready(&self.active) {
+                self.open_folder_browser(window, cx);
+            } else {
+                self.toast(HOST_NOT_READY_TEXT, cx);
+            }
+            return;
+        }
         let answer = cx.prompt_for_paths(PathPromptOptions {
             files: false,
             directories: true,
@@ -216,8 +238,12 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get_mut(&env) else {
             return;
         };
-        live.data.remove_group(id);
+        let removed = live.data.remove_group(id);
         live.selected_group = live.data.groups.first().map(|group| group.id);
+        let host = live.data.host.clone();
+        if let Some(removed) = removed {
+            self.forget_group_toolchains(&host, &removed.root);
+        }
         cx.notify();
         self.store();
     }
@@ -240,57 +266,27 @@ impl EnvironmentShell {
         .detach();
     }
 
-    pub(super) fn start_git_watch(&mut self, cx: &mut Context<Self>) {
-        let task = cx.spawn(async move |this, cx| loop {
-            let Ok(roots) = this.update(cx, |shell, cx| {
-                let roots = shell.group_roots();
-                shell.detect_wsl_agents(&roots, cx);
-                roots
-            }) else {
-                break;
-            };
-            let git = cx
-                .background_executor()
-                .spawn(async move { read_git(roots) })
-                .await;
-            if this
-                .update(cx, |shell, cx| shell.apply_git(git, cx))
-                .is_err()
-            {
-                break;
-            }
-            cx.background_executor().timer(GIT_POLL).await;
-        });
-        self.git_task = Some(task);
+    pub(super) fn group_roots(&self) -> (HostLink, Vec<PathBuf>) {
+        self.envs
+            .get(&self.active)
+            .map_or_else(Default::default, |live| {
+                (
+                    live.link.clone(),
+                    live.data
+                        .groups
+                        .iter()
+                        .map(|group| group.root.clone())
+                        .collect(),
+                )
+            })
     }
 
-    pub(super) fn refresh_git(&mut self, cx: &mut Context<Self>) {
-        let roots = self.group_roots();
-        let read = cx.background_spawn(async move { read_git(roots) });
-        cx.spawn(async move |this, cx| {
-            let git = read.await;
-            this.update(cx, |shell, cx| shell.apply_git(git, cx))
-                .unwrap_or_default();
-        })
-        .detach();
+    pub(super) fn git_at(&self, env: &EnvironmentName, root: &Path) -> Option<&GroupGit> {
+        let host = self.envs.get(env)?.data.host.clone();
+        self.git.get(&(host, root.to_path_buf()))
     }
 
-    fn group_roots(&self) -> Vec<PathBuf> {
-        self.envs.get(&self.active).map_or_else(Vec::new, |live| {
-            live.data
-                .groups
-                .iter()
-                .map(|group| group.root.clone())
-                .collect()
-        })
-    }
-
-    fn apply_git(&mut self, git: HashMap<PathBuf, GroupGit>, cx: &mut Context<Self>) {
-        if self.git != git {
-            self.git = git;
-            self.forget_diffs();
-            self.reload_file_tree(cx);
-            cx.notify();
-        }
+    pub(super) fn active_git(&self, root: &Path) -> Option<&GroupGit> {
+        self.git_at(&self.active, root)
     }
 }

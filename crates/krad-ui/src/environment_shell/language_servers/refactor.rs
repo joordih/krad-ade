@@ -72,7 +72,11 @@ impl CodeActionProvider for ServerDocument {
             .shell
             .upgrade()
             .map_or_else(Vec::new, |shell| {
-                shell.read(cx).language_servers.diagnostics.of(&self.path)
+                shell
+                    .read(cx)
+                    .language_servers
+                    .diagnostics
+                    .of(&self.document)
             })
             .into_iter()
             .filter(|diagnostic| overlaps(&diagnostic.range, &range))
@@ -109,6 +113,7 @@ impl CodeActionProvider for ServerDocument {
     ) -> Task<Result<()>> {
         let client = self.client.clone();
         let shell = self.shell.clone();
+        let host = self.document.host.clone();
         cx.spawn(async move |cx| {
             let action = if action.edit.is_none() && action.data.is_some() {
                 client.request::<CodeActionResolveRequest>(&action).await?
@@ -116,7 +121,7 @@ impl CodeActionProvider for ServerDocument {
                 action
             };
             if let Some(edit) = action.edit {
-                shell.update(cx, |shell, cx| shell.queue_workspace_edit(edit, cx))?;
+                shell.update(cx, |shell, cx| shell.queue_workspace_edit(host, edit, cx))?;
             }
             if let Some(command) = action.command {
                 run_command(&client, command).await?;
@@ -148,7 +153,12 @@ impl EnvironmentShell {
             let editor = state.read(cx);
             editor.text().word_at(editor.cursor())
         };
-        if word.is_empty() || self.language_servers.client_of(&path).is_none() {
+        if word.is_empty()
+            || self
+                .language_servers
+                .client_of(&self.active_document(&path))
+                .is_none()
+        {
             self.toast(NOTHING_TO_RENAME_TEXT, cx);
             return;
         }
@@ -162,10 +172,12 @@ impl EnvironmentShell {
         new_name: String,
         cx: &mut Context<Self>,
     ) {
-        let (Some(client), Ok(uri)) = (self.language_servers.client_of(path), file_uri(path))
+        let document = self.active_document(path);
+        let (Some(client), Ok(uri)) = (self.language_servers.client_of(&document), file_uri(path))
         else {
             return;
         };
+        let host = document.host;
         let params = RenameParams {
             text_document_position: TextDocumentPositionParams {
                 text_document: TextDocumentIdentifier::new(uri),
@@ -178,7 +190,7 @@ impl EnvironmentShell {
         cx.spawn(async move |this, cx| {
             let renamed = answer.await;
             this.update(cx, |shell, cx| match renamed {
-                Ok(Some(edit)) => shell.queue_workspace_edit(edit, cx),
+                Ok(Some(edit)) => shell.queue_workspace_edit(host, edit, cx),
                 Ok(None) => shell.toast(NOTHING_TO_RENAME_TEXT, cx),
                 Err(error) => shell.toast(&format!("{RENAME_FAILED_TEXT}: {error}"), cx),
             })
@@ -196,10 +208,12 @@ impl EnvironmentShell {
         let Some((path, _, _)) = self.shown_document(cx) else {
             return;
         };
-        let (Some(client), Ok(uri)) = (self.language_servers.client_of(&path), file_uri(&path))
+        let document = self.active_document(&path);
+        let (Some(client), Ok(uri)) = (self.language_servers.client_of(&document), file_uri(&path))
         else {
             return;
         };
+        let host = document.host;
         let params = DocumentFormattingParams {
             text_document: TextDocumentIdentifier::new(uri.clone()),
             options: FormattingOptions {
@@ -214,6 +228,7 @@ impl EnvironmentShell {
             let formatted = answer.await;
             this.update(cx, |shell, cx| match formatted {
                 Ok(Some(edits)) => shell.queue_workspace_edit(
+                    host,
                     WorkspaceEdit {
                         changes: Some(HashMap::from([(uri, edits)])),
                         ..WorkspaceEdit::default()

@@ -1,5 +1,5 @@
 use crate::client::call;
-use crate::env::{ENV_ENDPOINT, ENV_TERMINAL, ENV_TOKEN};
+use crate::env::{bus_env, BusEnv};
 use crate::handle::Caller;
 use crate::protocol::{BusToken, Request, Response};
 use krad_domain::{AgentPreset, ToolDecision, CLAUDE_PERMISSION_REQUEST, CLAUDE_PRE_TOOL_USE};
@@ -231,13 +231,11 @@ pub(crate) fn send(request: Request) {
 }
 
 fn ask_app(request: Request) -> Option<Response> {
-    let (Ok(endpoint), Ok(token), Ok(terminal)) = (
-        std::env::var(ENV_ENDPOINT),
-        std::env::var(ENV_TOKEN),
-        std::env::var(ENV_TERMINAL),
-    ) else {
-        return None;
-    };
+    let BusEnv {
+        endpoint,
+        token,
+        terminal,
+    } = bus_env()?;
     let from = terminal.parse::<Caller>().ok()?;
     call(&endpoint, &BusToken::from(token), &from, request).ok()
 }

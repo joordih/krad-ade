@@ -40,6 +40,7 @@ impl EnvironmentShell {
             return;
         };
         session.engine.scroll_to_bottom();
+        session.first_input.user_typed();
         cx.notify();
         if session.writer_tx.send(PtyInput::Bytes(bytes)).is_err() {
             if let Some(session) = live.sessions.get_mut(&focused) {

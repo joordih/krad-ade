@@ -32,6 +32,7 @@ const CARET_W: f32 = 1.5;
 const CARET_H: f32 = 18.0;
 const MENU_ID: &str = "context-menu";
 const SUBMENU_ID: &str = "context-submenu";
+const SUBMENU_ROWS_ID: &str = "context-submenu-rows";
 const ITEM_PREFIX: &str = "menu-item";
 const SUB_ITEM_PREFIX: &str = "submenu-item";
 const CREATE_ID: &str = "submenu-create";
@@ -329,7 +330,7 @@ impl EnvironmentShell {
     fn submenu_panel(
         submenu: &Submenu,
         query: &str,
-        (left, top): (f32, f32),
+        (left, top, rows_max): (f32, f32, f32),
         pal: &Palette,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -366,18 +367,37 @@ impl EnvironmentShell {
                     .search
                     .map(|placeholder| Self::search_row(placeholder, query, pal)),
             )
-            .children(rows)
-            .children(create)
-            .children(empty)
+            .child(
+                div()
+                    .id(SUBMENU_ROWS_ID)
+                    .flex()
+                    .flex_col()
+                    .max_h(px(rows_max))
+                    .overflow_y_scroll()
+                    .children(rows)
+                    .children(create)
+                    .children(empty),
+            )
             .into_any_element()
+    }
+
+    fn submenu_rows_height(submenu: &Submenu, query: &str) -> f32 {
+        let shown = matching(&submenu.entries, query);
+        let create = submenu.create_row(query).map_or(0.0, |_| ITEM_H);
+        let empty = if shown.is_empty() && create == 0.0 {
+            NOTE_H
+        } else {
+            0.0
+        };
+        shown.into_iter().map(entry_height).sum::<f32>() + create + empty
     }
 
     fn submenu_origin(
         menu: &ContextMenu,
-        menu_left: f32,
-        menu_top: f32,
-        root_w: f32,
-    ) -> (f32, f32) {
+        submenu: &Submenu,
+        (menu_left, menu_top): (f32, f32),
+        (root_w, root_h): (f32, f32),
+    ) -> (f32, f32, f32) {
         let index = menu.submenu.unwrap_or_default();
         let above: f32 = menu.entries.iter().take(index).map(entry_height).sum();
         let right = menu_left + MENU_W + SUBMENU_GAP;
@@ -386,7 +406,14 @@ impl EnvironmentShell {
         } else {
             (menu_left - SUBMENU_GAP - SUBMENU_W).max(EDGE_MARGIN)
         };
-        (left, menu_top + above)
+        let search = submenu.search.map_or(0.0, |_| SEARCH_H);
+        let chrome = 2.0 * PANEL_PAD + search;
+        let available = (root_h - 2.0 * EDGE_MARGIN).max(chrome);
+        let height = (chrome + Self::submenu_rows_height(submenu, &menu.query)).min(available);
+        let top = (menu_top + above)
+            .min(root_h - height - EDGE_MARGIN)
+            .max(EDGE_MARGIN);
+        (left, top, height - chrome)
     }
 
     fn options_panel(
@@ -461,7 +488,7 @@ impl EnvironmentShell {
                 _ => None,
             })
             .map(|submenu| {
-                let origin = Self::submenu_origin(menu, left, top, root_w);
+                let origin = Self::submenu_origin(menu, submenu, (left, top), (root_w, root_h));
                 Self::submenu_panel(submenu, &menu.query, origin, pal, cx)
             });
         let options = menu.options.as_ref().map(|(options, (x, y))| {

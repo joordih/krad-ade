@@ -14,6 +14,7 @@ pub use session_look::*;
 
 use crate::environment::EnvironmentData;
 use crate::ids::{GroupId, TerminalId};
+use crate::toolchain::GroupActivation;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -24,6 +25,8 @@ pub struct TerminalGroup {
     pub root: PathBuf,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<WorktreeOrigin>,
+    #[serde(default, skip_serializing_if = "GroupActivation::is_inherit")]
+    pub activation: GroupActivation,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,6 +57,7 @@ impl EnvironmentData {
             name: group_name_for(&root),
             root,
             worktree,
+            activation: GroupActivation::Inherit,
         });
         id
     }

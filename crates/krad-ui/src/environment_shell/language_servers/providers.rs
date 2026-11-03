@@ -11,10 +11,10 @@ use krad_lsp::lsp_types::{
     Uri, WorkDoneProgressParams,
 };
 use krad_lsp::{file_uri, uri_path, LspClient};
-use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use super::super::EnvironmentShell;
+use super::Document;
 
 const WORD_JOINER: char = '_';
 
@@ -22,7 +22,7 @@ const WORD_JOINER: char = '_';
 pub(super) struct ServerDocument {
     pub(super) client: LspClient,
     pub(super) uri: Uri,
-    pub(super) path: PathBuf,
+    pub(super) document: Document,
     triggers: Rc<[String]>,
     acts: bool,
     pub(super) shell: WeakEntity<EnvironmentShell>,
@@ -51,7 +51,7 @@ fn links(response: Option<GotoDefinitionResponse>) -> Vec<LocationLink> {
 impl ServerDocument {
     pub(super) fn new(
         client: LspClient,
-        path: &Path,
+        document: &Document,
         capabilities: &ServerCapabilities,
         shell: WeakEntity<EnvironmentShell>,
     ) -> Option<Self> {
@@ -62,8 +62,8 @@ impl ServerDocument {
             .unwrap_or_default();
         Some(Self {
             client,
-            uri: file_uri(path).ok()?,
-            path: path.to_path_buf(),
+            uri: file_uri(&document.path).ok()?,
+            document: document.clone(),
             triggers: triggers.into(),
             acts: capabilities.code_action_provider.is_some(),
             shell,

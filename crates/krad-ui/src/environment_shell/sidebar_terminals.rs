@@ -79,7 +79,7 @@ impl EnvironmentShell {
         let in_sessions = true;
         let mut blocks = Vec::new();
         for group in &live.data.groups {
-            let git = self.git.get(&group.root);
+            let git = self.active_git(&group.root);
             let tally = live.data.tally_of_group(Some(group.id));
             let info = HeaderInfo {
                 id: Some(group.id),

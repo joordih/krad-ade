@@ -1,4 +1,6 @@
+use krad_host::HostLink;
 use std::fmt::Write as _;
+use std::io;
 use std::path::Path;
 
 use super::Ran;
@@ -21,13 +23,19 @@ fn cut(line: &str) -> String {
     }
 }
 
-pub(super) fn read(path: &Path, shown: &str, offset: Option<usize>, limit: Option<usize>) -> Ran {
-    if path.is_dir() {
+pub(super) fn read(
+    host: &HostLink,
+    path: &Path,
+    shown: &str,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> Ran {
+    if host.metadata(path).is_ok_and(|metadata| metadata.is_dir()) {
         return Ran::failed(format!("{shown} {DIRECTORY_TEXT}"));
     }
-    let bytes = match std::fs::read(path) {
+    let bytes = match host.read_all(path) {
         Ok(bytes) => bytes,
-        Err(error) => return Ran::failed(format!("{shown}: {error}")),
+        Err(error) => return Ran::failed(format!("{shown}: {}", io::Error::from(error))),
     };
     if bytes
         .iter()
@@ -76,26 +84,29 @@ mod tests {
     fn lines_come_numbered_from_the_offset_with_a_note_to_continue() {
         let scratch = Scratch::new();
         let file = scratch.file("a.txt", "one\ntwo\nthree\nfour\n");
-        let ran = read(&file, "a.txt", Some(2), Some(2));
+        let ran = read(&HostLink::Local, &file, "a.txt", Some(2), Some(2));
         assert!(!ran.failed);
         assert_eq!(
             ran.content,
             "     2\ttwo\n     3\tthree\n[2 of 4 lines shown; continue with offset 4]\n"
         );
-        let whole = read(&file, "a.txt", None, None);
+        let whole = read(&HostLink::Local, &file, "a.txt", None, None);
         assert!(whole.content.ends_with("     4\tfour\n"));
-        assert!(read(&file, "a.txt", Some(9), None).failed);
+        assert!(read(&HostLink::Local, &file, "a.txt", Some(9), None).failed);
     }
 
     #[test]
     fn long_lines_are_cut_and_empty_files_say_so() {
         let scratch = Scratch::new();
         let long = scratch.file("long.txt", &"x".repeat(MAX_LINE_CHARS + 5));
-        assert!(read(&long, "long.txt", None, None)
+        assert!(read(&HostLink::Local, &long, "long.txt", None, None)
             .content
             .contains(LINE_CUT_MARK));
         let empty = scratch.file("empty.txt", "");
-        assert_eq!(read(&empty, "empty.txt", None, None).content, EMPTY_TEXT);
+        assert_eq!(
+            read(&HostLink::Local, &empty, "empty.txt", None, None).content,
+            EMPTY_TEXT
+        );
     }
 
     #[test]
@@ -103,10 +114,19 @@ mod tests {
         let scratch = Scratch::new();
         let binary = scratch.path().join("blob.bin");
         std::fs::write(&binary, [1, 2, NUL, 3]).unwrap_or_default();
-        let ran = read(&binary, "blob.bin", None, None);
+        let ran = read(&HostLink::Local, &binary, "blob.bin", None, None);
         assert!(ran.failed && ran.content.contains(BINARY_TEXT));
-        let folder = read(scratch.path(), "here", None, None);
+        let folder = read(&HostLink::Local, scratch.path(), "here", None, None);
         assert!(folder.failed && folder.content.contains(DIRECTORY_TEXT));
-        assert!(read(&scratch.path().join("missing"), "missing", None, None).failed);
+        assert!(
+            read(
+                &HostLink::Local,
+                &scratch.path().join("missing"),
+                "missing",
+                None,
+                None
+            )
+            .failed
+        );
     }
 }

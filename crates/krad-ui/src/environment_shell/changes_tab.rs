@@ -1,3 +1,4 @@
+use krad_host::HostLink;
 mod folds;
 
 use gpui_kit::component::ActiveTheme;
@@ -148,7 +149,8 @@ impl EnvironmentShell {
         }
         diff.load = DiffLoad::Reading;
         let change = self.change_at(&path);
-        Self::read_diff(env, id, change, cx);
+        let link = self.env_link(&env);
+        Self::read_diff(link, env, id, change, cx);
     }
 
     pub(super) fn forget_diffs(&mut self) {
@@ -160,16 +162,21 @@ impl EnvironmentShell {
     }
 
     fn change_at(&self, path: &Path) -> Option<(PathBuf, FileChange)> {
-        self.git.values().find_map(|git| {
-            git.status
-                .changes
-                .iter()
-                .find(|change| git.repo_root.join(&change.path) == path)
-                .map(|change| (git.repo_root.clone(), change.clone()))
-        })
+        let host = &self.envs.get(&self.active)?.data.host;
+        self.git
+            .iter()
+            .filter(|((owner, _), _)| owner == host)
+            .find_map(|(_, git)| {
+                git.status
+                    .changes
+                    .iter()
+                    .find(|change| git.repo_root.join(&change.path) == path)
+                    .map(|change| (git.repo_root.clone(), change.clone()))
+            })
     }
 
     fn read_diff(
+        link: HostLink,
         env: EnvironmentName,
         id: TerminalId,
         change: Option<(PathBuf, FileChange)>,
@@ -178,7 +185,9 @@ impl EnvironmentShell {
         let reading = cx.background_spawn(async move {
             change.map_or_else(
                 || Ok(Vec::new()),
-                |(repo, change)| working_diff(&repo, &change).map(|diff| numbered_lines(&diff)),
+                |(repo, change)| {
+                    working_diff(&link, &repo, &change).map(|diff| numbered_lines(&diff))
+                },
             )
         });
         cx.spawn(async move |this, cx| {

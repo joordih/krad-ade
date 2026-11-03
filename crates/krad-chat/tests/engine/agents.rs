@@ -105,7 +105,10 @@ fn all_finished(sessions: &Path, id: &ResumeId, count: usize) -> bool {
         let files = engine_subagents(sessions, id);
         let done = files
             .iter()
-            .filter(|files| read_subagent_meta(&files.meta).is_ok_and(|meta| meta.finished))
+            .filter(|files| {
+                read_subagent_meta(&krad_host::HostLink::Local, &files.meta)
+                    .is_ok_and(|meta| meta.finished)
+            })
             .count();
         if done == count {
             return true;
