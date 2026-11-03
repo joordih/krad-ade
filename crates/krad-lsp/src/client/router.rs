@@ -3,14 +3,14 @@ use futures::executor::block_on;
 use futures::SinkExt as _;
 use lsp_types::notification::{
     DidChangeConfiguration, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument,
-    DidSaveTextDocument, Notification, PublishDiagnostics,
+    DidSaveTextDocument, Notification, Progress, PublishDiagnostics,
 };
 use lsp_types::request::{ApplyWorkspaceEdit, Request as _, WorkspaceDiagnosticRefresh};
 use lsp_types::{
     ApplyWorkspaceEditParams, ApplyWorkspaceEditResponse, DidChangeConfigurationParams,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, TextDocumentContentChangeEvent, TextDocumentIdentifier,
-    TextDocumentItem, Uri, VersionedTextDocumentIdentifier,
+    DidSaveTextDocumentParams, ProgressParams, TextDocumentContentChangeEvent,
+    TextDocumentIdentifier, TextDocumentItem, Uri, VersionedTextDocumentIdentifier,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -213,14 +213,19 @@ impl<W: Write> Router<W> {
                     self.emit(ServerEvent::Stopped);
                 }
             }
-            Incoming::Notification { method, params } => {
-                if method != PublishDiagnostics::METHOD {
-                    return;
+            Incoming::Notification { method, params } => match method.as_str() {
+                PublishDiagnostics::METHOD => {
+                    if let Ok(diagnostics) = serde_json::from_value(params) {
+                        self.emit(ServerEvent::Diagnostics(diagnostics));
+                    }
                 }
-                if let Ok(diagnostics) = serde_json::from_value(params) {
-                    self.emit(ServerEvent::Diagnostics(diagnostics));
+                Progress::METHOD => {
+                    if let Ok(progress) = serde_json::from_value::<ProgressParams>(params) {
+                        self.emit(ServerEvent::Progress(progress.into()));
+                    }
                 }
-            }
+                _ => {}
+            },
         }
     }
 

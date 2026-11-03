@@ -219,6 +219,7 @@ impl EnvironmentShell {
             ServerSlot::Running(Box::new(RunningServer {
                 server,
                 capabilities,
+                progress: super::progress::ServerProgress::default(),
                 _events: listening,
             })),
         );
@@ -264,6 +265,13 @@ impl EnvironmentShell {
                     .collect();
                 for document in served {
                     self.pull_diagnostics(&document, cx);
+                }
+            }
+            ServerEvent::Progress(progress) => {
+                if let Some(ServerSlot::Running(running)) = self.language_servers.slots.get_mut(key)
+                {
+                    running.progress.apply(progress);
+                    cx.notify();
                 }
             }
             ServerEvent::Stopped => {

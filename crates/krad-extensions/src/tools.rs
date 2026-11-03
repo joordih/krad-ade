@@ -96,7 +96,7 @@ impl LanguageTools {
         let root = config_dir.join(LANGUAGES_DIR);
         let loaded = load(manifest_folders);
         Ok(Self {
-            registry: registry::cached(&root),
+            registry: registry::cached(&root).with_manifest_sources(&loaded.manifests.servers),
             requirement_cache: RequirementCache::load(&root),
             root,
             platform,
@@ -130,7 +130,7 @@ impl LanguageTools {
 
     #[must_use]
     pub fn with_registry(mut self, registry: Registry) -> Self {
-        self.registry = registry;
+        self.registry = registry.with_manifest_sources(&self.manifests.servers);
         self
     }
 

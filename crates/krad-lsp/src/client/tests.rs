@@ -151,3 +151,46 @@ fn pending_requests_fail_once_the_server_stops() -> Result<(), LspError> {
     assert_eq!(block_on(events.next()), Some(ServerEvent::Stopped));
     Ok(())
 }
+
+#[test]
+fn progress_notifications_become_progress_events() -> Result<(), LspError> {
+    let (_client, mut events, mut server) = connect()?;
+    let progress = json!({
+        "jsonrpc": "2.0",
+        "method": "$/progress",
+        "params": {"token": "indexing", "value": {"kind": "begin", "title": "Indexing", "percentage": 10}},
+    });
+    let frame = serde_json::to_vec(&progress)?;
+    write!(server.to_client, "Content-Length: {}\r\n\r\n", frame.len())?;
+    server.to_client.write_all(&frame)?;
+    server.to_client.flush()?;
+    let event = block_on(events.next());
+    assert_eq!(
+        event,
+        Some(ServerEvent::Progress(Progress {
+            token: "indexing".to_owned(),
+            state: ProgressState::Begin {
+                title: "Indexing".to_owned(),
+                message: None,
+                percentage: Some(10),
+            },
+        }))
+    );
+    Ok(())
+}
+
+#[test]
+fn folder_changes_reach_the_server() -> Result<(), LspError> {
+    let (client, _events, mut server) = connect()?;
+    client.change_workspace_folders(
+        &[PathBuf::from("/work/added")],
+        &[PathBuf::from("/work/gone")],
+    )?;
+    let Some(Incoming::Notification { method, params }) = server.next() else {
+        return Err(LspError::Stopped);
+    };
+    assert_eq!(method, "workspace/didChangeWorkspaceFolders");
+    assert_eq!(params["event"]["added"][0]["name"], "added");
+    assert_eq!(params["event"]["removed"][0]["name"], "gone");
+    Ok(())
+}

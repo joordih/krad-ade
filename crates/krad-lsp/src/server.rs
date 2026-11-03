@@ -8,8 +8,8 @@ use lsp_types::{
     DiagnosticWorkspaceClientCapabilities, GotoCapability, HoverClientCapabilities,
     InitializeParams, InitializedParams, MarkupKind, PublishDiagnosticsClientCapabilities,
     ReferenceClientCapabilities, RenameClientCapabilities, ServerCapabilities,
-    TextDocumentClientCapabilities, TextDocumentSyncClientCapabilities,
-    WorkspaceClientCapabilities, WorkspaceEditClientCapabilities, WorkspaceFolder,
+    TextDocumentClientCapabilities, TextDocumentSyncClientCapabilities, WindowClientCapabilities,
+    WorkspaceClientCapabilities, WorkspaceEditClientCapabilities,
 };
 use std::io::BufReader;
 use std::path::Path;
@@ -19,7 +19,7 @@ use krad_host::{HostCommand, HostLink};
 
 use crate::client::{LspClient, ServerEvent, ServerSettings};
 use crate::error::LspError;
-use crate::uri::file_uri;
+use crate::uri::workspace_folder;
 use krad_domain::ServerLaunch;
 use serde_json::Value;
 
@@ -60,12 +60,7 @@ impl LanguageServer {
         root: &Path,
         options: Option<Value>,
     ) -> Result<ServerCapabilities, LspError> {
-        let folder = WorkspaceFolder {
-            uri: file_uri(root)?,
-            name: root
-                .file_name()
-                .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
-        };
+        let folder = workspace_folder(root)?;
         let params = InitializeParams {
             process_id: link.is_local().then(std::process::id),
             workspace_folders: Some(vec![folder]),
@@ -169,8 +164,13 @@ fn client_capabilities() -> ClientCapabilities {
             diagnostic: Some(DiagnosticClientCapabilities::default()),
             ..TextDocumentClientCapabilities::default()
         }),
+        window: Some(WindowClientCapabilities {
+            work_done_progress: Some(true),
+            ..WindowClientCapabilities::default()
+        }),
         workspace: Some(WorkspaceClientCapabilities {
             apply_edit: Some(true),
+            workspace_folders: Some(true),
             diagnostic: Some(DiagnosticWorkspaceClientCapabilities {
                 refresh_support: Some(true),
             }),

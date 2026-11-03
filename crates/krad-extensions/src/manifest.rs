@@ -35,6 +35,19 @@ pub struct ServerManifest {
     pub command: Option<Vec<String>>,
     #[serde(default)]
     pub toolchain: Option<ServerToolchain>,
+    #[serde(default)]
+    pub source: Option<PackageSource>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct PackageSource {
+    pub id: String,
+    #[serde(default)]
+    pub asset: Vec<toml::Table>,
+    #[serde(default)]
+    pub download: Vec<toml::Table>,
+    #[serde(default)]
+    pub bins: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

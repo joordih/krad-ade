@@ -2,6 +2,7 @@ mod diagnostics;
 mod edits;
 mod lifecycle;
 mod notice;
+mod progress;
 mod providers;
 mod refactor;
 mod references;
@@ -50,6 +51,7 @@ pub(super) struct ServerKey {
 pub(super) struct RunningServer {
     server: LanguageServer,
     pub(super) capabilities: ServerCapabilities,
+    progress: progress::ServerProgress,
     _events: Task<()>,
 }
 
@@ -129,6 +131,11 @@ impl LanguageServers {
             ServerSlot::Running(running) => Some(running),
             _ => None,
         }
+    }
+
+    pub(super) fn progress_label(&self, document: &Document) -> Option<String> {
+        let key = self.documents.get(document)?;
+        self.running(key)?.progress.label()
     }
 
     pub(super) fn client_of(&self, document: &Document) -> Option<&LspClient> {
