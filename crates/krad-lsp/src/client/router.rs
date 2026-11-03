@@ -5,7 +5,10 @@ use lsp_types::notification::{
     DidChangeConfiguration, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument,
     DidSaveTextDocument, Notification, PublishDiagnostics,
 };
-use lsp_types::request::{ApplyWorkspaceEdit, Request as _, WorkspaceDiagnosticRefresh};
+use lsp_types::request::{
+    ApplyWorkspaceEdit, Initialize, Request as _, WorkspaceDiagnosticRefresh,
+    WorkspaceFoldersRequest,
+};
 use lsp_types::{
     ApplyWorkspaceEditParams, ApplyWorkspaceEditResponse, DidChangeConfigurationParams,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
@@ -23,6 +26,8 @@ use crate::rpc::{write_message, Incoming, Message};
 use crate::uri::file_uri;
 
 const FIRST_VERSION: i32 = 0;
+
+const WORKSPACE_FOLDERS_FIELD: &str = "workspaceFolders";
 
 pub(super) enum Routed {
     Request {
@@ -47,6 +52,7 @@ pub(super) struct Router<W: Write> {
     pending: HashMap<i64, oneshot::Sender<Result<Value, LspError>>>,
     versions: HashMap<Uri, i32>,
     settings: ServerSettings,
+    folders: Value,
 }
 
 impl<W: Write> Router<W> {
@@ -61,6 +67,7 @@ impl<W: Write> Router<W> {
             pending: HashMap::new(),
             versions: HashMap::new(),
             settings,
+            folders: Value::Null,
         }
     }
 
@@ -84,6 +91,12 @@ impl<W: Write> Router<W> {
                 params,
                 reply,
             } => {
+                if method == Initialize::METHOD {
+                    self.folders = params
+                        .get(WORKSPACE_FOLDERS_FIELD)
+                        .cloned()
+                        .unwrap_or(Value::Null);
+                }
                 let sent = write_message(
                     &mut self.input,
                     Message::Request {
@@ -195,6 +208,8 @@ impl<W: Write> Router<W> {
             Incoming::Request { id, method, params } => {
                 let result = if method == ApplyWorkspaceEdit::METHOD {
                     self.apply_edit(params)
+                } else if method == WorkspaceFoldersRequest::METHOD {
+                    self.folders.clone()
                 } else if method == WorkspaceDiagnosticRefresh::METHOD {
                     self.emit(ServerEvent::DiagnosticsRefresh);
                     Value::Null

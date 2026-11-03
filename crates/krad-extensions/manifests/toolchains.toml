@@ -493,13 +493,14 @@ markers = [
   "settings.gradle.kts",
   "build.sbt",
 ]
-priority = ["java-home", "sdkman", "mise", "asdf", "jvm", "system"]
+priority = ["java-home", "sdkman", "mise", "asdf", "jvm", "homebrew", "system"]
 kinds = [
   { id = "java-home", label = "JAVA_HOME" },
   { id = "sdkman", label = "SDKMAN!" },
   { id = "mise", label = "mise" },
   { id = "asdf", label = "asdf" },
   { id = "jvm", label = "Installed JDK" },
+  { id = "homebrew", label = "Homebrew" },
   { id = "system", label = "System" },
   { id = "entered", label = "Entered path" },
 ]
@@ -539,6 +540,30 @@ id = "mac-jvm"
 kind = "jvm"
 base = "absolute"
 patterns = ["Library/Java/JavaVirtualMachines/*/Contents/Home"]
+path = "{{match}}/bin/java"
+prefix = "{{match}}"
+version = { from = "command", args = ["-version"], after = "version" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "mac-user-jvm"
+kind = "jvm"
+base = "home"
+patterns = ["Library/Java/JavaVirtualMachines/*/Contents/Home"]
+path = "{{match}}/bin/java"
+prefix = "{{match}}"
+version = { from = "command", args = ["-version"], after = "version" }
+
+[[toolchains.locators]]
+locate = "glob"
+id = "homebrew-java"
+kind = "homebrew"
+base = "absolute"
+patterns = [
+  "opt/homebrew/Cellar/openjdk*/*/libexec/openjdk.jdk/Contents/Home",
+  "usr/local/Cellar/openjdk*/*/libexec/openjdk.jdk/Contents/Home",
+  "home/linuxbrew/.linuxbrew/Cellar/openjdk*/*/libexec",
+]
 path = "{{match}}/bin/java"
 prefix = "{{match}}"
 version = { from = "command", args = ["-version"], after = "version" }

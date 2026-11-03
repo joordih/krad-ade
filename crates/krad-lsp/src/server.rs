@@ -171,6 +171,7 @@ fn client_capabilities() -> ClientCapabilities {
         }),
         workspace: Some(WorkspaceClientCapabilities {
             apply_edit: Some(true),
+            workspace_folders: Some(true),
             diagnostic: Some(DiagnosticWorkspaceClientCapabilities {
                 refresh_support: Some(true),
             }),
