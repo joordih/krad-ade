@@ -205,7 +205,7 @@ impl EnvironmentShell {
         self.delete_file(path, cx);
     }
 
-    pub(super) fn delete_file(&self, path: PathBuf, cx: &mut Context<Self>) {
+    pub(in crate::environment_shell) fn delete_file(&self, path: PathBuf, cx: &mut Context<Self>) {
         cx.notify();
         let target = path.clone();
         self.run_file_op(

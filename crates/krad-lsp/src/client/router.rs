@@ -5,19 +5,22 @@ use lsp_types::notification::{
     DidChangeConfiguration, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument,
     DidSaveTextDocument, Notification, Progress, PublishDiagnostics,
 };
-use lsp_types::request::{ApplyWorkspaceEdit, Request as _, WorkspaceDiagnosticRefresh};
+use lsp_types::request::{
+    ApplyWorkspaceEdit, Request as _, ShowMessageRequest, WorkspaceDiagnosticRefresh,
+};
 use lsp_types::{
     ApplyWorkspaceEditParams, ApplyWorkspaceEditResponse, DidChangeConfigurationParams,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, ProgressParams, TextDocumentContentChangeEvent,
-    TextDocumentIdentifier, TextDocumentItem, Uri, VersionedTextDocumentIdentifier,
+    DidSaveTextDocumentParams, ProgressParams, ShowMessageRequestParams,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Uri,
+    VersionedTextDocumentIdentifier,
 };
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::Write;
 use std::sync::mpsc::Receiver;
 
-use super::{DocumentChange, ServerEvent, ServerSettings};
+use super::{DocumentChange, ServerChoice, ServerEvent, ServerSettings};
 use crate::error::LspError;
 use crate::rpc::{write_message, Incoming, Message};
 use crate::uri::file_uri;
@@ -37,6 +40,10 @@ pub(super) enum Routed {
     },
     Document(DocumentChange),
     Settings(ServerSettings),
+    Answer {
+        id: Value,
+        result: Value,
+    },
     Incoming(Incoming),
     Closed,
 }
@@ -117,10 +124,17 @@ impl<W: Write> Router<W> {
                     return false;
                 }
             }
+            Routed::Answer { id, result } => self.answer(&id, &result),
             Routed::Incoming(message) => self.receive(message),
             Routed::Closed => return false,
         }
         true
+    }
+
+    fn answer(&mut self, id: &Value, result: &Value) {
+        if write_message(&mut self.input, Message::Reply { id, result }).is_err() {
+            self.emit(ServerEvent::Stopped);
+        }
     }
 
     fn send(&mut self, method: &str, params: &Value) -> Result<(), LspError> {
@@ -193,6 +207,14 @@ impl<W: Write> Router<W> {
                 reply.send(outcome).unwrap_or_default();
             }
             Incoming::Request { id, method, params } => {
+                if method == ShowMessageRequest::METHOD {
+                    if let Ok(asked) = serde_json::from_value::<ShowMessageRequestParams>(params) {
+                        self.emit(ServerEvent::Choice(ServerChoice::new(id, asked)));
+                        return;
+                    }
+                    self.answer(&id, &Value::Null);
+                    return;
+                }
                 let result = if method == ApplyWorkspaceEdit::METHOD {
                     self.apply_edit(params)
                 } else if method == WorkspaceDiagnosticRefresh::METHOD {
@@ -201,17 +223,7 @@ impl<W: Write> Router<W> {
                 } else {
                     self.settings.reply(&method, params)
                 };
-                if write_message(
-                    &mut self.input,
-                    Message::Reply {
-                        id: &id,
-                        result: &result,
-                    },
-                )
-                .is_err()
-                {
-                    self.emit(ServerEvent::Stopped);
-                }
+                self.answer(&id, &result);
             }
             Incoming::Notification { method, params } => match method.as_str() {
                 PublishDiagnostics::METHOD => {

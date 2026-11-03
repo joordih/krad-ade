@@ -4,7 +4,10 @@ mod rpc;
 mod server;
 mod uri;
 
-pub use client::{DocumentChange, LspClient, Progress, ProgressState, ServerEvent, ServerSettings};
+pub use client::{
+    ChoiceId, DocumentChange, LspClient, Progress, ProgressState, ServerChoice, ServerEvent,
+    ServerSettings,
+};
 pub use error::LspError;
 pub use lsp_types;
 pub use server::LanguageServer;

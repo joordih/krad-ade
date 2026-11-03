@@ -194,3 +194,32 @@ fn folder_changes_reach_the_server() -> Result<(), LspError> {
     assert_eq!(params["event"]["removed"][0]["name"], "gone");
     Ok(())
 }
+
+#[test]
+fn a_server_choice_waits_for_the_answer() -> Result<(), LspError> {
+    let (client, mut events, mut server) = connect()?;
+    let asking = json!({
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "window/showMessageRequest",
+        "params": {"type": 3, "message": "Class to Import", "actions": [{"title": "java.util.List"}, {"title": "java.awt.List"}]},
+    });
+    let frame = serde_json::to_vec(&asking)?;
+    write!(server.to_client, "Content-Length: {}\r\n\r\n", frame.len())?;
+    server.to_client.flush()?;
+    std::io::Write::write_all(&mut server.to_client, &frame)?;
+    let Some(ServerEvent::Choice(choice)) = block_on(events.next()) else {
+        return Err(LspError::Stopped);
+    };
+    assert_eq!(choice.options, vec!["java.util.List", "java.awt.List"]);
+    client.answer_choice(choice.id, Some("java.awt.List"))?;
+    let Some(Incoming::Response { id, outcome }) = server.next() else {
+        return Err(LspError::Stopped);
+    };
+    assert_eq!(id, 7);
+    assert_eq!(
+        outcome.ok().and_then(|value| value.get("title").cloned()),
+        Some(json!("java.awt.List"))
+    );
+    Ok(())
+}

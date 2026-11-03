@@ -1,6 +1,8 @@
+mod choice;
 mod progress;
 mod router;
 
+pub use choice::{ChoiceId, ServerChoice};
 pub use progress::{Progress, ProgressState};
 
 use futures::channel::{mpsc, oneshot};
@@ -34,6 +36,7 @@ pub enum ServerEvent {
     ApplyEdit(WorkspaceEdit),
     DiagnosticsRefresh,
     Progress(Progress),
+    Choice(ServerChoice),
     Stopped,
 }
 
@@ -160,6 +163,14 @@ impl LspClient {
                 .collect::<Result<_, _>>()?,
         };
         self.notify::<DidChangeWorkspaceFolders>(&DidChangeWorkspaceFoldersParams { event })
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`LspError::Stopped`] or [`LspError::Busy`] when the server cannot take it.
+    pub fn answer_choice(&self, id: ChoiceId, picked: Option<&str>) -> Result<(), LspError> {
+        let result = picked.map_or(Value::Null, |title| serde_json::json!({ "title": title }));
+        self.route(Routed::Answer { id: id.0, result })
     }
 
     /// # Errors

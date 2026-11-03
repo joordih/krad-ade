@@ -283,6 +283,7 @@ impl EnvironmentShell {
                     cx.notify();
                 }
             }
+            ServerEvent::Choice(choice) => self.queue_choice(key, choice, cx),
             ServerEvent::Stopped => {
                 self.language_servers
                     .documents

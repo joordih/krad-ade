@@ -1,3 +1,4 @@
+mod choice;
 mod diagnostics;
 mod edits;
 mod lifecycle;
@@ -25,6 +26,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::{EnvironmentShell, LiveEnv};
+pub(super) use choice::ChoiceAnswer;
 pub(super) use diagnostics::severity_of;
 use providers::ServerDocument;
 
@@ -127,6 +129,8 @@ pub(super) struct LanguageServers {
     folders: HashMap<ServerKey, BTreeSet<PathBuf>>,
     pub(super) diagnostics: diagnostics::DiagnosticStore,
     pending_edits: Vec<(Host, krad_lsp::lsp_types::WorkspaceEdit)>,
+    pending_rename: Option<(Host, PathBuf, krad_lsp::lsp_types::Position)>,
+    pending_choice: Option<(ServerKey, krad_lsp::ServerChoice)>,
     last_start: StartId,
 }
 
@@ -142,6 +146,8 @@ impl LanguageServers {
             folders: HashMap::new(),
             diagnostics: diagnostics::DiagnosticStore::default(),
             pending_edits: Vec::new(),
+            pending_rename: None,
+            pending_choice: None,
             last_start: StartId::default(),
         }
     }
