@@ -3,7 +3,7 @@ use gpui_kit::{point, px, Context, Window};
 use super::super::EnvironmentShell;
 use super::{MenuAction, MenuEntry, MenuSearch};
 use crate::components::IconName;
-use crate::native_picker::{picker_host, show_picker, Picker, PickerChoice, PickerRow};
+use crate::native_picker::{picker_host, show_picker, Picker, PickerRow};
 
 const fn symbol_of(icon: IconName) -> Option<&'static str> {
     match icon {
@@ -68,12 +68,11 @@ impl EnvironmentShell {
         let origin = point(px(x - self.frame_inset.0), px(y - self.frame_inset.1));
         cx.spawn_in(window, async move |this, cx| {
             let choice = show_picker(&picker, origin, &host);
-            let action = match choice {
-                Some(PickerChoice::Row(index)) => row_actions.get(index).cloned(),
-                Some(PickerChoice::Footer(index)) => footer_actions.get(index).cloned(),
-                Some(PickerChoice::Create(query)) => create.map(|create| create.action(&query)),
-                None => None,
-            };
+            let action = choice.and_then(|choice| {
+                choice.resolve(&row_actions, &footer_actions, |query| {
+                    create.map(|create| create.action(query))
+                })
+            });
             this.update_in(cx, |this, window, cx| {
                 if let Some(action) = action {
                     this.run_menu_action(action, window, cx);

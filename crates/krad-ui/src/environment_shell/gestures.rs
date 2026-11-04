@@ -12,7 +12,7 @@ use super::rubber_band::RubberBands;
 use super::settings_swipe::SettingsSwipe;
 use super::EnvironmentShell;
 use crate::actions::{NavigateBack, NavigateForward};
-use crate::native_swipe::{watch_swipes, SwipeDirection};
+use crate::native_swipe::watch_swipes;
 
 const SWIPE_MIN_PX: f32 = 160.0;
 const JUMP_LINES: u32 = 10;
@@ -253,7 +253,7 @@ impl EnvironmentShell {
         };
         self.gestures.native = Some(cx.spawn(async move |this, cx| {
             while let Some(direction) = watch.swipes.next().await {
-                let forward = direction == SwipeDirection::Left;
+                let forward = direction.is_forward();
                 let swiped = this.update(cx, |shell, cx| {
                     let left_settings = !forward && shell.leave_settings(cx);
                     if !left_settings {

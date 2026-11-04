@@ -1,6 +1,20 @@
 use gpui_kit::{Pixels, Point, Window};
 
-use super::{Picker, PickerChoice};
+use super::Picker;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum PickerChoice {}
+
+impl PickerChoice {
+    pub(crate) fn resolve<T: Clone>(
+        self,
+        _: &[T],
+        _: &[T],
+        _: impl FnOnce(&str) -> Option<T>,
+    ) -> Option<T> {
+        match self {}
+    }
+}
 
 pub(crate) enum PickerHost {}
 

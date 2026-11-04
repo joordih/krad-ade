@@ -10,7 +10,29 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSArray, NSPoint, NSRect, NSSize, NSString};
 
-use super::{Picker, PickerChoice, PickerRow};
+use super::{Picker, PickerRow};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum PickerChoice {
+    Row(usize),
+    Footer(usize),
+    Create(String),
+}
+
+impl PickerChoice {
+    pub(crate) fn resolve<T: Clone>(
+        self,
+        rows: &[T],
+        footer: &[T],
+        create: impl FnOnce(&str) -> Option<T>,
+    ) -> Option<T> {
+        match self {
+            Self::Row(index) => rows.get(index).cloned(),
+            Self::Footer(index) => footer.get(index).cloned(),
+            Self::Create(query) => create(&query),
+        }
+    }
+}
 use crate::appkit::gpui_view;
 
 const NO_CHOICE: isize = -1;

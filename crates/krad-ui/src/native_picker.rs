@@ -23,10 +23,3 @@ pub(crate) struct Picker {
     pub(crate) footer: Vec<PickerRow>,
     pub(crate) create_label: Option<&'static str>,
 }
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PickerChoice {
-    Row(usize),
-    Footer(usize),
-    Create(String),
-}

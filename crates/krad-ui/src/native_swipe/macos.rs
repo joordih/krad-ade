@@ -6,7 +6,17 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2_app_kit::{NSEvent, NSEventMask, NSEventType};
 
-use super::SwipeDirection;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SwipeDirection {
+    Left,
+    Right,
+}
+
+impl SwipeDirection {
+    pub(crate) const fn is_forward(self) -> bool {
+        matches!(self, Self::Left)
+    }
+}
 
 pub(crate) struct SwipeWatch {
     pub(crate) swipes: UnboundedReceiver<SwipeDirection>,
