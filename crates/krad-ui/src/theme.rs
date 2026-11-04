@@ -5,8 +5,11 @@ mod tint;
 mod tokens;
 
 pub use editor::apply_code_look;
-use fonts::{app_fonts, JETBRAINS_MONO_FAMILY, MONO_FONT_FAMILY};
-pub(crate) use fonts::{SYSTEM_MONO_LABEL, UI_FONT_FAMILY};
+use fonts::{app_fonts, MONO_FONT_FAMILY};
+pub(crate) use fonts::{
+    font_features, interface_family, mono_family, BUNDLED_MONO_FAMILIES, EDITOR_FONT_SIZE,
+    SYSTEM_MONO_LABEL, TERMINAL_FONT_SIZE, UI_FONT_FAMILY,
+};
 pub use tint::apply_window_tint;
 pub(crate) use tint::hue_rgb;
 pub(crate) use tokens::*;
@@ -14,9 +17,9 @@ pub(crate) use tokens::*;
 use gpui_kit::component::theme::{Theme, ThemeMode};
 use gpui_kit::{
     linear_color_stop, linear_gradient, px, rgb, rgba, transparent_black, App, Background,
-    BoxShadow, Fill, Global, Hsla, Rgba,
+    BoxShadow, Fill, Global, Hsla, Rgba, SharedString,
 };
-use krad_domain::{TerminalFont, WindowMaterial};
+use krad_domain::{FontChoice, WindowMaterial};
 use krad_session::AnsiPalette;
 
 use crate::highlight::TokenKind;
@@ -47,13 +50,6 @@ const POPOVER_TRANSLUCENT_ALPHA: u32 = 0xc7;
 const THEMED_TERMINAL_ALPHA: u32 = 0x1a;
 const TRANSLUCENT_SCRIM_ALPHA: f32 = 0.12;
 const TRANSLUCENT_ROW_ALPHA: f32 = 0.12;
-
-pub(crate) const fn terminal_font_family(font: TerminalFont) -> &'static str {
-    match font {
-        TerminalFont::System => MONO_FONT_FAMILY,
-        TerminalFont::JetBrainsMono => JETBRAINS_MONO_FAMILY,
-    }
-}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Appearance {
@@ -209,6 +205,16 @@ pub fn register_fonts(cx: &App) -> gpui_kit::Result<()> {
     cx.text_system().add_fonts(app_fonts())
 }
 
+struct InterfaceFont(SharedString);
+
+impl Global for InterfaceFont {}
+
+pub fn apply_interface_font(choice: &FontChoice, cx: &mut App) {
+    cx.set_global(InterfaceFont(interface_family(choice)));
+    restyle_kit(cx);
+    cx.refresh_windows();
+}
+
 pub fn apply_appearance(appearance: Appearance, cx: &mut App) {
     let palette = appearance.palette();
     cx.set_global(CurrentTheme {
@@ -223,7 +229,10 @@ fn restyle_kit(cx: &mut App) {
     let material = window_material(cx);
     match_window_frame(appearance == Appearance::Dark);
     Theme::change(appearance.kit_mode(), None, cx);
-    Theme::update(cx, |theme| style_kit_theme(theme, palette));
+    let interface = cx
+        .try_global::<InterfaceFont>()
+        .map_or_else(|| UI_FONT_FAMILY.into(), |font| font.0.clone());
+    Theme::update(cx, |theme| style_kit_theme(theme, palette, interface));
     if material.is_translucent() {
         let popover = popover_fill(palette, cx).into();
         let kit = Theme::global_mut(cx);
@@ -368,9 +377,9 @@ pub(crate) fn floating_shadow(pal: &Palette) -> Vec<BoxShadow> {
     vec![pal.shadows.floating.into()]
 }
 
-fn style_kit_theme(theme: &mut Theme, pal: &Palette) {
+fn style_kit_theme(theme: &mut Theme, pal: &Palette, interface: SharedString) {
     let color = |value: u32| -> Hsla { rgb(value).into() };
-    theme.font_family = UI_FONT_FAMILY.into();
+    theme.font_family = interface;
     theme.font_size = px(TEXT_SM);
     theme.mono_font_family = MONO_FONT_FAMILY.into();
     theme.mono_font_size = px(TEXT_SM);

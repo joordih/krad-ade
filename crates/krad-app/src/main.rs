@@ -10,10 +10,10 @@ use gpui_kit::{application, init, open_window, AppContext, WindowDecorations, Wi
 use krad_domain::AppearanceMode;
 use krad_store::{config_dir, read_layout_snapshot, read_settings, APP_NAME};
 use krad_ui::{
-    apply_appearance, apply_code_look, apply_window_material, apply_window_tint, http_client,
-    initial_window_bounds, install_app_menus, key_bindings, login_shell_env, match_window_frame,
-    register_fonts, title_bar_options, window_background, AppAssets, Appearance, EnvironmentShell,
-    HostTools,
+    apply_appearance, apply_code_look, apply_interface_font, apply_window_material,
+    apply_window_tint, http_client, initial_window_bounds, install_app_menus, key_bindings,
+    login_shell_env, match_window_frame, register_fonts, title_bar_options, window_background,
+    AppAssets, Appearance, EnvironmentShell, HostTools,
 };
 
 const APP_TITLE: &str = "Krad ADE";
@@ -36,7 +36,8 @@ fn main() {
             apply_appearance(Appearance::from(settings.appearance), cx);
             apply_window_material(settings.window_material, cx);
             apply_window_tint(settings.window_tint, cx);
-            apply_code_look(settings.terminal_theme, settings.terminal_font, cx);
+            apply_code_look(settings.terminal_theme, &settings.editor_font, cx);
+            apply_interface_font(&settings.interface_font, cx);
             let dark_frame = settings.appearance == AppearanceMode::Dark;
             cx.bind_keys(key_bindings());
             install_app_menus(cx);

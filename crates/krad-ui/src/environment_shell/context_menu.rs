@@ -50,6 +50,7 @@ pub(super) enum MenuAction {
     CreateTab(krad_domain::PaneId, String),
     NewTabIn(krad_domain::PaneId),
     NewEditorChat,
+    SetFont(super::settings_view::FontZone, Option<String>),
     NewGroup,
     OpenSettings,
     ChooseToolchain(Box<ToolchainChoice>),
@@ -369,6 +370,9 @@ impl EnvironmentShell {
             MenuAction::CreateTab(pane, name) => self.create_named_terminal(pane, &name, cx),
             MenuAction::NewTabIn(pane) => self.new_tab_in(pane, cx),
             MenuAction::NewEditorChat => self.add_chat_tab(cx),
+            MenuAction::SetFont(zone, family) => {
+                self.set_font(zone, |choice| choice.family = family, cx);
+            }
             MenuAction::NewGroup => self.prompt_new_group(window, cx),
             MenuAction::OpenSettings => self.open_settings(window, cx),
             MenuAction::ChooseToolchain(choice) => {

@@ -1,4 +1,5 @@
 mod editor;
+mod fonts;
 mod gateway;
 mod general;
 mod github;
@@ -96,6 +97,8 @@ impl SettingsPane {
     }
 }
 
+pub(in crate::environment_shell) use fonts::FontZone;
+
 pub(super) struct SettingsUi {
     pane: SettingsPane,
     gitlab: GitlabUi,
@@ -104,6 +107,7 @@ pub(super) struct SettingsUi {
     mcp: McpUi,
     tint: material::TintUi,
     languages: languages::LanguagesUi,
+    fonts: crate::font_catalog::FontCatalog,
 }
 
 impl From<AppearanceMode> for Appearance {
@@ -240,6 +244,7 @@ impl EnvironmentShell {
             mcp,
             tint,
             languages,
+            fonts: crate::font_catalog::font_catalog(cx),
         });
         self.refresh_gitlab_status(cx);
         self.refresh_github_status(cx);

@@ -3,7 +3,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled,
 };
-use krad_domain::{CopyMode, Ligatures, TerminalFont, TerminalTheme};
+use krad_domain::{CopyMode, TerminalTheme};
 
 use super::super::dialog_parts::{field_label, segment, SegmentSize};
 use super::{
@@ -14,7 +14,7 @@ use crate::keymap::{COPY_HINT, PASTE_HINT};
 use crate::terminal_theme::terminal_colors;
 use crate::theme::{
     apply_code_look, focus_ring, palette, row_shadow, LINE_XS, RADIUS_MD, SPACE_1, SPACE_1_5,
-    SYSTEM_MONO_LABEL, TEXT_XS,
+    TEXT_XS,
 };
 
 const SWATCH_PREFIX: &str = "theme-swatch";
@@ -25,21 +25,6 @@ const THEME_SECTION: &str = "Terminal and editor theme";
 const THEME_HINT: &str = "Colors of the terminals and the code editor, apart from the app theme.";
 const COPY_MODE_PREFIX: &str = "copy-mode";
 const COPY_LABEL: &str = "Copy";
-const FONT_PREFIX: &str = "terminal-font";
-const FONT_LABEL: &str = "Font";
-const FONT_HINT: &str = "JetBrains Mono draws ligatures; the system font does not.";
-const JETBRAINS_MONO_LABEL: &str = "JetBrains Mono";
-
-const fn font_label(font: TerminalFont) -> &'static str {
-    match font {
-        TerminalFont::System => SYSTEM_MONO_LABEL,
-        TerminalFont::JetBrainsMono => JETBRAINS_MONO_LABEL,
-    }
-}
-const LIGATURES_PREFIX: &str = "ligatures";
-const LIGATURES_LABEL: &str = "Ligatures";
-const LIGATURES_HINT: &str =
-    "Join sequences such as => or != into one glyph, in fonts that draw them.";
 
 impl EnvironmentShell {
     pub(super) fn terminal_pane(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -55,7 +40,7 @@ impl EnvironmentShell {
             .flex_col()
             .gap(px(SWATCH_GAP))
             .child(self.copy_mode_card(cx))
-            .child(self.font_card(cx))
+            .child(self.font_card(super::FontZone::Terminal, cx))
             .child(
                 div()
                     .flex()
@@ -102,66 +87,6 @@ impl EnvironmentShell {
         .into_any_element()
     }
 
-    fn font_card(&self, cx: &mut Context<Self>) -> AnyElement {
-        let pal = palette(cx);
-        let font = self.settings.terminal_font;
-        let fonts = TerminalFont::all().map(|choice| {
-            segment(
-                (FONT_PREFIX, choice as u64),
-                font_label(choice),
-                None,
-                font == choice,
-                SegmentSize::Compact,
-                pal,
-                cx,
-            )
-            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                this.settings.terminal_font = choice;
-                apply_code_look(this.settings.terminal_theme, choice, cx);
-                this.cell_width_px = None;
-                this.save_settings(cx);
-                cx.notify();
-            }))
-        });
-        let current = self.settings.ligatures;
-        let options = Ligatures::all().map(|ligatures| {
-            segment(
-                (LIGATURES_PREFIX, ligatures as u64),
-                ligatures.display_name(),
-                None,
-                current == ligatures,
-                SegmentSize::Compact,
-                pal,
-                cx,
-            )
-            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                this.settings.ligatures = ligatures;
-                this.save_settings(cx);
-                cx.notify();
-            }))
-        });
-        panel_card(
-            [
-                (form_row(
-                    FONT_LABEL,
-                    Some(FONT_HINT),
-                    segmented_track(pal).children(fonts).into_any_element(),
-                    pal,
-                ))
-                .into_any_element(),
-                (form_row(
-                    LIGATURES_LABEL,
-                    Some(LIGATURES_HINT),
-                    segmented_track(pal).children(options).into_any_element(),
-                    pal,
-                ))
-                .into_any_element(),
-            ],
-            pal,
-        )
-        .into_any_element()
-    }
-
     fn theme_swatch(&self, theme: TerminalTheme, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let mono = cx.theme().mono_font_family.clone();
@@ -177,7 +102,7 @@ impl EnvironmentShell {
             .cursor_pointer()
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                 this.settings.terminal_theme = theme;
-                apply_code_look(theme, this.settings.terminal_font, cx);
+                apply_code_look(theme, &this.settings.editor_font, cx);
                 this.save_settings(cx);
                 cx.notify();
             }))

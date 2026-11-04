@@ -10,9 +10,8 @@ use super::problem_lens::problem_lens;
 use super::problem_marks::problem_marks;
 use super::problem_underlines::problem_underlines;
 use super::FileEditor;
-use crate::theme::SPACE_1_5;
+use crate::theme::{font_features, EDITOR_FONT_SIZE, SPACE_1_5};
 
-const EDITOR_TEXT_PX: f32 = 14.0;
 const KEY_UP: &str = "up";
 const KEY_DOWN: &str = "down";
 
@@ -32,6 +31,7 @@ impl EnvironmentShell {
                 problem_marks(state.clone(), problems),
             ]
         });
+        let font_size = self.settings.editor_font.size_or(EDITOR_FONT_SIZE).as_f32();
         let library = self.is_library_document(&Document::new(&live.data.host, &editor.path));
         div()
             .flex()
@@ -49,7 +49,8 @@ impl EnvironmentShell {
                         Editor::new(state)
                             .bordered(false)
                             .readonly(library)
-                            .text_size(px(EDITOR_TEXT_PX * scale.as_f32()))
+                            .text_size(px(font_size * scale.as_f32()))
+                            .font_features(font_features(self.settings.editor_font.ligatures))
                             .h_full(),
                     )
                     .children(overlays.into_iter().flatten()),

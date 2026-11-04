@@ -74,6 +74,7 @@ impl EnvironmentShell {
             .flex_col()
             .gap(px(SWATCH_GAP))
             .child(appearance_card)
+            .child(self.font_card(super::FontZone::Interface, cx))
             .child(updates_card)
             .child(code_tools_card)
             .into_any_element()

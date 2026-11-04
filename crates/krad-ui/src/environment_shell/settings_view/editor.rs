@@ -127,6 +127,7 @@ impl EnvironmentShell {
             .flex()
             .flex_col()
             .gap(px(SPACE_3))
+            .child(self.font_card(super::FontZone::Editor, cx))
             .child(panel_card(rows, pal))
             .into_any_element()
     }

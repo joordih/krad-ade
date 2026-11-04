@@ -15,7 +15,7 @@ use super::ActivityOpened;
 use crate::components::{icon, Button, IconName};
 use crate::terminal_theme::terminal_colors;
 use crate::theme::{
-    palette, row_fill, terminal_font_family, CARD_HEADER_H, ICON_SM, LINE_SM, NAV_ROW_H, RADIUS_LG,
+    mono_family, palette, row_fill, CARD_HEADER_H, ICON_SM, LINE_SM, NAV_ROW_H, RADIUS_LG,
     RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM, WINDOW_INSET,
 };
 
@@ -340,14 +340,15 @@ impl EnvironmentShell {
         };
         let pal = palette(cx);
         let session = live.sessions.get(&id);
-        let mono = SharedString::from(terminal_font_family(self.settings.terminal_font));
+        let mono = mono_family(&self.settings.terminal_font);
         let colors = terminal_colors(self.settings.terminal_theme, pal);
         let (origin_x, origin_y) = self.window_origin();
         let top = origin_y + self.canvas_px.1 + WINDOW_INSET;
+        let zoom = self.terminal_font_zoom();
         let geometry = BodyGeometry {
             origin: (origin_x + BODY_PAD_X, top + CARD_HEADER_H + BODY_PAD_TOP),
-            cell_w: self.cell_width_px.unwrap_or(TERMINAL_FONT_PX),
-            line_h: TERMINAL_LINE_PX,
+            cell_w: self.cell_width_px.unwrap_or(TERMINAL_FONT_PX) * zoom,
+            line_h: TERMINAL_LINE_PX * zoom,
         };
         div()
             .flex()
@@ -369,9 +370,9 @@ impl EnvironmentShell {
                 self.terminal_images(id),
                 BodyLook {
                     geometry,
-                    ligatures: self.settings.ligatures,
+                    ligatures: self.settings.terminal_font.ligatures,
                     zoom: UNZOOMED,
-                    text_zoom: UNZOOMED,
+                    text_zoom: zoom,
                     focused: live.focused == Some(id),
                     corner: RADIUS_LG,
                 },
@@ -395,6 +396,7 @@ impl EnvironmentShell {
         let listed =
             self.utility_tab() == UtilityTab::Terminals && self.utility_terminals().len() > 1;
         let cell_width = self.cell_width(window);
+        let zoom = self.terminal_font_zoom();
         let width = self.content_row_width(window) - if listed { TERMINAL_LIST_W } else { 0.0 };
         let height = self.activity_log.height;
         let env = self.active.clone();
@@ -403,13 +405,7 @@ impl EnvironmentShell {
             .get_mut(&env)
             .and_then(|live| live.sessions.get_mut(&id))
         {
-            session.resize_grid(body_grid(
-                width,
-                height,
-                CARD_HEADER_H,
-                cell_width,
-                UNZOOMED,
-            ));
+            session.resize_grid(body_grid(width, height, CARD_HEADER_H, cell_width, zoom));
         }
     }
 }

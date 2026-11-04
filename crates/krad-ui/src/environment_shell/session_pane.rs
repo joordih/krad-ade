@@ -30,8 +30,8 @@ use crate::components::{
 };
 use crate::terminal_theme::terminal_colors;
 use crate::theme::{
-    palette, row_fill, row_shadow, terminal_font_family, Palette, ICON_SM, LINE_SM, RADIUS_LG,
-    RADIUS_SM, RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM,
+    mono_family, palette, row_fill, row_shadow, Palette, ICON_SM, LINE_SM, RADIUS_LG, RADIUS_SM,
+    RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM,
 };
 
 pub(in crate::environment_shell) const TAB_H: f32 = 28.0;
@@ -474,9 +474,10 @@ impl EnvironmentShell {
         }
         let pal = palette(cx);
         let session = live.sessions.get(&id);
-        let mono = gpui_kit::SharedString::from(terminal_font_family(self.settings.terminal_font));
+        let mono = mono_family(&self.settings.terminal_font);
         let colors = terminal_colors(self.settings.terminal_theme, pal);
-        let text_zoom = node.map_or(UNZOOMED, |node| node.text_scale.as_f32());
+        let text_zoom =
+            node.map_or(UNZOOMED, |node| node.text_scale.as_f32()) * self.terminal_font_zoom();
         let (pane_x, pane_y, _, _) = pane_px(rect, self.window_origin(), self.canvas_px);
         let shift = self.activity_shift();
         let geometry = BodyGeometry {
@@ -513,7 +514,7 @@ impl EnvironmentShell {
                 self.terminal_images(id),
                 BodyLook {
                     geometry,
-                    ligatures: self.settings.ligatures,
+                    ligatures: self.settings.terminal_font.ligatures,
                     zoom: UNZOOMED,
                     text_zoom,
                     focused: true,
@@ -582,6 +583,7 @@ impl EnvironmentShell {
 
     pub(super) fn sync_session_grid(&mut self, window: &mut Window) {
         let cell_width = self.cell_width(window);
+        let font_zoom = self.terminal_font_zoom();
         let size = self.canvas_px;
         let strip_h = self.pane_strip_h();
         let env = self.active.clone();
@@ -604,7 +606,8 @@ impl EnvironmentShell {
                 .nodes
                 .iter()
                 .find(|node| node.id == id)
-                .map_or(UNZOOMED, |node| node.text_scale.as_f32());
+                .map_or(UNZOOMED, |node| node.text_scale.as_f32())
+                * font_zoom;
             if let Some(session) = live.sessions.get_mut(&id) {
                 session.resize_grid(body_grid(width, height, strip_h, cell_width, text_scale));
             }

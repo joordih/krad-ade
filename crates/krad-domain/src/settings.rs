@@ -1,5 +1,6 @@
 use crate::agent::AgentPreset;
 use crate::file_icon::FileIconColors;
+use crate::font::{stored_font, FontChoice};
 use crate::gateway::GatewaySettings;
 use crate::gitlab::GitlabSettings;
 use crate::host_timeouts::HostTimeouts;
@@ -77,13 +78,6 @@ pub enum TerminalFont {
     #[default]
     System,
     JetBrainsMono,
-}
-
-impl TerminalFont {
-    #[must_use]
-    pub const fn all() -> [Self; 2] {
-        [Self::System, Self::JetBrainsMono]
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
@@ -171,10 +165,12 @@ pub struct Settings {
     pub harness_commands: HashMap<AgentPreset, String>,
     #[serde(default)]
     pub copy_mode: CopyMode,
+    #[serde(default, deserialize_with = "stored_font")]
+    pub terminal_font: FontChoice,
     #[serde(default)]
-    pub terminal_font: TerminalFont,
+    pub editor_font: FontChoice,
     #[serde(default)]
-    pub ligatures: Ligatures,
+    pub interface_font: FontChoice,
     #[serde(
         default,
         deserialize_with = "lenient_model_lists",
@@ -349,7 +345,7 @@ mod tests {
         assert_eq!(partial.default_harness, AgentPreset::Shell);
         assert_eq!(partial.copy_mode, CopyMode::Shortcut);
         assert_eq!(
-            partial.ligatures,
+            partial.terminal_font.ligatures,
             Ligatures::On,
             "fonts join ligatures unless turned off"
         );

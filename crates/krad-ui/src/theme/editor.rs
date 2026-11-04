@@ -1,11 +1,11 @@
 use gpui_kit::component::highlighter::{HighlightTheme, HighlightThemeStyle};
 use gpui_kit::component::theme::{Theme, ThemeMode, ThemeRegistry};
-use gpui_kit::{App, Global};
-use krad_domain::{TerminalFont, TerminalTheme};
+use gpui_kit::{App, Global, SharedString};
+use krad_domain::{FontChoice, TerminalTheme};
 use krad_session::AnsiPalette;
 use std::sync::Arc;
 
-use super::{appearance, palette, terminal_fill_alpha, terminal_font_family, Appearance};
+use super::{appearance, mono_family, palette, terminal_fill_alpha, Appearance};
 use crate::terminal_theme::terminal_colors;
 
 const ALPHA_BITS: u32 = 8;
@@ -29,16 +29,19 @@ const CYAN: usize = 6;
 const BRIGHT_BLACK: usize = 8;
 const BRIGHT_BLUE: usize = 12;
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Default)]
 struct CodeLook {
     theme: TerminalTheme,
-    font: TerminalFont,
+    family: SharedString,
 }
 
 impl Global for CodeLook {}
 
-pub fn apply_code_look(theme: TerminalTheme, font: TerminalFont, cx: &mut App) {
-    cx.set_global(CodeLook { theme, font });
+pub fn apply_code_look(theme: TerminalTheme, editor: &FontChoice, cx: &mut App) {
+    cx.set_global(CodeLook {
+        theme,
+        family: mono_family(editor),
+    });
     style_editor(cx);
     cx.refresh_windows();
 }
@@ -129,7 +132,7 @@ struct Colors {
 }
 
 pub(super) fn style_editor(cx: &mut App) {
-    let look = cx.try_global::<CodeLook>().copied().unwrap_or_default();
+    let look = cx.try_global::<CodeLook>().cloned().unwrap_or_default();
     let pal = palette(cx);
     let terminal = terminal_colors(look.theme, pal);
     let colors = Colors {
@@ -148,7 +151,7 @@ pub(super) fn style_editor(cx: &mut App) {
     let name = format!("{THEME_NAME_PREFIX}-{:?}-{mode}", look.theme);
     let style = parse_highlight(&name, &highlight_json(&name, mode, &background, &colors));
     let theme = Theme::global_mut(cx);
-    theme.mono_font_family = terminal_font_family(look.font).into();
+    theme.mono_font_family = look.family;
     if let Some(style) = style {
         theme.highlight_theme = Arc::new(HighlightTheme {
             name,
