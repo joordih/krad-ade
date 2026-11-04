@@ -2,6 +2,7 @@ use gpui_kit::{AppContext as _, Context, Window};
 use krad_domain::{Host, LanguageId, LanguageTemplate};
 use krad_host::HostLink;
 use krad_lsp::lsp_types::Position;
+use krad_repo::EntryKind;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -9,12 +10,25 @@ use super::super::language_servers::{ServerKey, ServerTemplates, TemplateOutput}
 use super::super::EnvironmentShell;
 
 const TEMPLATE_FAILED_TEXT: &str = "The file could not be created";
+const PLAIN_GROUP: &str = "Other";
+const PLAIN_LABEL: &str = "Empty file";
 const ALREADY_EXISTS_TEXT: &str = "already exists";
 
 #[derive(Clone)]
 pub(in crate::environment_shell) enum ChoiceSource {
     Server { server: ServerKey, id: String },
     Manifest { language: LanguageId, id: String },
+    Plain,
+}
+
+impl ChoiceSource {
+    const fn rank(&self) -> u8 {
+        match self {
+            Self::Server { .. } => 0,
+            Self::Manifest { .. } => 1,
+            Self::Plain => 2,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -23,6 +37,29 @@ pub(in crate::environment_shell) struct TemplateChoice {
     pub(super) label: String,
     language: Option<LanguageId>,
     source: ChoiceSource,
+}
+
+impl TemplateChoice {
+    pub(super) fn plain() -> Self {
+        Self {
+            group: PLAIN_GROUP.to_owned(),
+            label: PLAIN_LABEL.to_owned(),
+            language: None,
+            source: ChoiceSource::Plain,
+        }
+    }
+
+    pub(super) const fn is_plain(&self) -> bool {
+        matches!(self.source, ChoiceSource::Plain)
+    }
+
+    fn shown_beside(&self, hidden: &HashSet<LanguageId>) -> bool {
+        !matches!(self.source, ChoiceSource::Manifest { .. })
+            || self
+                .language
+                .as_ref()
+                .is_none_or(|language| !hidden.contains(language))
+    }
 }
 
 struct MarkedTemplate {
@@ -93,40 +130,53 @@ impl EnvironmentShell {
         };
         popup.hidden.extend(hidden.iter().cloned());
         let hidden_now: HashSet<LanguageId> = popup.hidden.iter().cloned().collect();
-        popup.choices.retain(|choice| {
-            matches!(choice.source, ChoiceSource::Server { .. })
-                || choice
-                    .language
-                    .as_ref()
-                    .is_none_or(|language| !hidden_now.contains(language))
-        });
-        popup.choices.extend(added.into_iter().filter(|choice| {
-            matches!(choice.source, ChoiceSource::Server { .. })
-                || choice
-                    .language
-                    .as_ref()
-                    .is_none_or(|language| !hidden_now.contains(language))
-        }));
         popup
             .choices
-            .sort_by_key(|choice| matches!(choice.source, ChoiceSource::Manifest { .. }));
+            .retain(|choice| choice.shown_beside(&hidden_now));
+        popup.choices.extend(
+            added
+                .into_iter()
+                .filter(|choice| choice.shown_beside(&hidden_now)),
+        );
+        popup.choices.sort_by_key(|choice| choice.source.rank());
         popup.pending = popup.pending.saturating_sub(1);
         popup.selected = popup.selected.min(popup.choices.len().saturating_sub(1));
+        if popup.only_plain_left() {
+            let name = popup.field.read(cx).value().trim().to_owned();
+            let file = format!("{name}.{}", popup.extension);
+            let folder = popup.folder.clone();
+            self.close_template_popup(cx);
+            self.create_file_entry(folder, EntryKind::File, &file, cx);
+            return;
+        }
         cx.notify();
     }
 
     pub(super) fn gather_template_choices(&mut self, cx: &mut Context<Self>) {
-        let Some((host, folder)) = self
-            .template_popup
-            .as_ref()
-            .map(|popup| (popup.host.clone(), popup.folder.clone()))
+        let Some((host, folder, extension, languages)) =
+            self.template_popup.as_ref().map(|popup| {
+                (
+                    popup.host.clone(),
+                    popup.folder.clone(),
+                    popup.extension.clone(),
+                    popup.languages.clone(),
+                )
+            })
         else {
             return;
         };
         let mut placed = Vec::new();
         let mut marked = Vec::new();
-        for language in self.language_catalog().iter() {
-            for template in &language.templates {
+        for language in self
+            .language_catalog()
+            .iter()
+            .filter(|language| languages.contains(&language.id))
+        {
+            for template in language
+                .templates
+                .iter()
+                .filter(|template| template.creates(&extension))
+            {
                 if !template.markers.is_empty() {
                     marked.push(MarkedTemplate {
                         language: language.id.clone(),
@@ -145,7 +195,7 @@ impl EnvironmentShell {
                 }
             }
         }
-        let servers = self.server_templates(&host, &folder, cx);
+        let servers = self.server_templates(&host, &folder, &languages, cx);
         if let Some(popup) = &mut self.template_popup {
             popup.pending = 2 + servers.len();
         }
@@ -222,6 +272,7 @@ impl EnvironmentShell {
                 };
                 Some(asked)
             }
+            ChoiceSource::Plain => return,
             ChoiceSource::Manifest { language, id } => {
                 let catalog = self.language_catalog();
                 let Some(definition) = catalog.get(language) else {

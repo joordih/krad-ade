@@ -17,7 +17,7 @@ use super::{
     ChangeMarks, NewEntryRow, TreeRow, DRAFT_ROW_ID, FILE_ROW_H, FILE_ROW_PREFIX, FILE_TREE_ID,
     INDENT, MARK_ADDED, MARK_CONFLICTED, MARK_DELETED, MARK_MODIFIED, MARK_RENAMED, MARK_UNTRACKED,
 };
-use crate::actions::{NewFromTemplate, RenameFile, FILE_TREE_KEY_CONTEXT};
+use crate::actions::{NewTreeFile, RenameFile, FILE_TREE_KEY_CONTEXT};
 use crate::components::{icon, IconName};
 use crate::theme::{
     appearance, palette, row_fill, row_shadow, Appearance, Palette, ICON_SM, LINE_SM, LINE_XS,
@@ -114,7 +114,7 @@ impl EnvironmentShell {
             .key_context(FILE_TREE_KEY_CONTEXT)
             .when(editable, |tree| {
                 tree.on_action(cx.listener(Self::on_rename_file))
-                    .on_action(cx.listener(Self::on_new_from_template))
+                    .on_action(cx.listener(Self::on_new_tree_file))
                     .on_mouse_down(
                         MouseButton::Right,
                         cx.listener(|this: &mut Self, event: &MouseDownEvent, _, cx| {
@@ -143,14 +143,9 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    fn on_new_from_template(
-        &mut self,
-        _: &NewFromTemplate,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn on_new_tree_file(&mut self, _: &NewTreeFile, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(dir) = self.new_entry_folder() {
-            self.open_template_popup(dir, window, cx);
+            self.begin_new_entry(dir, EntryKind::File, window, cx);
         }
     }
 

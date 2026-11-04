@@ -5,11 +5,12 @@ use krad_lsp::{
     file_uri, offers_file_templates, uri_path, CreateFromTemplateParams, CreateFromTemplateRequest,
     FileTemplate, FileTemplatesParams, FileTemplatesRequest, TemplateCreation,
 };
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use super::super::EnvironmentShell;
 use super::edits::{apply_text_edits, workspace_changes};
-use super::{ServerKey, ServerRoot};
+use super::{RunningServer, ServerKey, ServerRoot};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(in crate::environment_shell) struct TemplateOutput {
@@ -56,26 +57,23 @@ impl EnvironmentShell {
         }
     }
 
-    pub(in crate::environment_shell) fn server_templates(
-        &self,
-        host: &Host,
-        folder: &Path,
-        cx: &mut Context<Self>,
-    ) -> Vec<Task<Option<ServerTemplates>>> {
-        let Ok(uri) = file_uri(folder) else {
-            return Vec::new();
-        };
+    fn template_servers<'a>(
+        &'a self,
+        host: &'a Host,
+        folder: &'a Path,
+        wanted: &'a HashSet<LanguageId>,
+    ) -> impl Iterator<Item = (&'a ServerKey, &'a RunningServer, Vec<LanguageId>)> + 'a {
         let servers = &self.language_servers;
         servers
             .slots
             .keys()
-            .filter(|key| key.host == *host && self.serves_folder(key, folder))
+            .filter(move |key| key.host == *host && self.serves_folder(key, folder))
             .filter_map(|key| {
                 let running = servers.running(key)?;
                 offers_file_templates(&running.capabilities).then_some((key, running))
             })
             .map(|(key, running)| {
-                let languages = servers
+                let languages: Vec<LanguageId> = servers
                     .catalog
                     .iter()
                     .filter(|language| {
@@ -83,16 +81,46 @@ impl EnvironmentShell {
                     })
                     .map(|language| language.id.clone())
                     .collect();
-                let asked =
-                    running
-                        .server
-                        .client
-                        .request::<FileTemplatesRequest>(&FileTemplatesParams {
+                (key, running, languages)
+            })
+            .filter(|(_, _, languages)| languages.iter().any(|language| wanted.contains(language)))
+    }
+
+    pub(in crate::environment_shell) fn offers_server_templates(
+        &self,
+        host: &Host,
+        folder: &Path,
+        wanted: &HashSet<LanguageId>,
+    ) -> bool {
+        self.template_servers(host, folder, wanted).next().is_some()
+    }
+
+    pub(in crate::environment_shell) fn server_templates(
+        &self,
+        host: &Host,
+        folder: &Path,
+        wanted: &HashSet<LanguageId>,
+        cx: &mut Context<Self>,
+    ) -> Vec<Task<Option<ServerTemplates>>> {
+        let Ok(uri) = file_uri(folder) else {
+            return Vec::new();
+        };
+        let asked: Vec<_> =
+            self.template_servers(host, folder, wanted)
+                .map(|(key, running, languages)| {
+                    let request = running.server.client.request::<FileTemplatesRequest>(
+                        &FileTemplatesParams {
                             folder: uri.clone(),
-                        });
-                let server = key.clone();
+                        },
+                    );
+                    (key.clone(), languages, request)
+                })
+                .collect();
+        asked
+            .into_iter()
+            .map(|(server, languages, request)| {
                 cx.background_spawn(async move {
-                    let templates = asked.await.ok()?;
+                    let templates = request.await.ok()?;
                     Some(ServerTemplates {
                         server,
                         languages,

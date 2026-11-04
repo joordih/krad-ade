@@ -7,8 +7,10 @@ use gpui_kit::{
     KeyDownEvent, MouseButton, ParentElement, SharedString, StatefulInteractiveElement, Styled,
     Subscription, Window,
 };
-use krad_domain::Host;
-use std::path::PathBuf;
+use krad_domain::{Host, LanguageId};
+use krad_repo::EntryKind;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 use super::entry_input::entry_name;
 use super::rename::KEY_ESCAPE;
@@ -30,19 +32,25 @@ const ROW_PREFIX: &str = "template-choice";
 const NAME_PLACEHOLDER: &str = "Name";
 const NEW_TITLE: &str = "New";
 const LOADING_TEXT: &str = "Looking for file templates…";
-const NONE_TEXT: &str = "No file templates for this folder";
 const KEY_UP: &str = "up";
 const KEY_DOWN: &str = "down";
 
 pub(super) struct TemplatePopup {
     host: Host,
     folder: PathBuf,
+    extension: String,
+    languages: HashSet<LanguageId>,
     choices: Vec<TemplateChoice>,
     hidden: Vec<krad_domain::LanguageId>,
     pending: usize,
     selected: usize,
     field: Entity<InputState>,
     _events: Subscription,
+}
+
+fn split_extension(name: &str) -> Option<(&str, &str)> {
+    let (stem, extension) = name.rsplit_once('.')?;
+    (!stem.is_empty() && !extension.is_empty() && !stem.ends_with('/')).then_some((stem, extension))
 }
 
 fn popup_title<'a>(groups: impl IntoIterator<Item = &'a str>) -> String {
@@ -69,7 +77,16 @@ const fn wrapped(selected: usize, count: usize, forward: bool) -> usize {
 
 impl TemplatePopup {
     fn title(&self) -> String {
-        popup_title(self.choices.iter().map(|choice| choice.group.as_str()))
+        popup_title(
+            self.choices
+                .iter()
+                .filter(|choice| !choice.is_plain())
+                .map(|choice| choice.group.as_str()),
+        )
+    }
+
+    fn only_plain_left(&self) -> bool {
+        self.pending == 0 && self.choices.iter().all(TemplateChoice::is_plain)
     }
 
     fn step(&mut self, forward: bool) {
@@ -78,12 +95,42 @@ impl TemplatePopup {
 }
 
 impl EnvironmentShell {
-    pub(super) fn open_template_popup(
+    fn kind_languages(&self, extension: &str) -> HashSet<LanguageId> {
+        self.language_catalog()
+            .iter()
+            .filter(|language| language.extensions.iter().any(|known| known == extension))
+            .map(|language| language.id.clone())
+            .collect()
+    }
+
+    pub(super) fn offers_file_kinds(&self, folder: &Path, name: &str) -> bool {
+        let Some((_, extension)) = split_extension(name) else {
+            return false;
+        };
+        let Some(host) = self.envs.get(&self.active).map(|live| &live.data.host) else {
+            return false;
+        };
+        let languages = self.kind_languages(extension);
+        let from_manifest = self.language_catalog().iter().any(|language| {
+            languages.contains(&language.id)
+                && language
+                    .templates
+                    .iter()
+                    .any(|template| template.creates(extension))
+        });
+        from_manifest || self.offers_server_templates(host, folder, &languages)
+    }
+
+    pub(super) fn open_file_kinds(
         &mut self,
         folder: PathBuf,
+        name: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let Some((stem, extension)) = split_extension(name) else {
+            return;
+        };
         let Some(host) = self
             .envs
             .get(&self.active)
@@ -91,7 +138,13 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let field = cx.new(|cx| InputState::new(window, cx).placeholder(NAME_PLACEHOLDER));
+        let languages = self.kind_languages(extension);
+        let stem = stem.to_owned();
+        let field = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(NAME_PLACEHOLDER)
+                .default_value(stem)
+        });
         let events = cx.subscribe_in(
             &field,
             window,
@@ -105,7 +158,9 @@ impl EnvironmentShell {
         self.template_popup = Some(TemplatePopup {
             host,
             folder,
-            choices: Vec::new(),
+            extension: extension.to_owned(),
+            languages,
+            choices: vec![TemplateChoice::plain()],
             hidden: Vec::new(),
             pending: 0,
             selected: 0,
@@ -149,6 +204,12 @@ impl EnvironmentShell {
         else {
             return;
         };
+        if choice.is_plain() {
+            let (folder, file) = (popup.folder.clone(), format!("{name}.{}", popup.extension));
+            self.close_template_popup(cx);
+            self.create_file_entry(folder, EntryKind::File, &file, cx);
+            return;
+        }
         let (name, choice, folder, host) = (
             name.to_owned(),
             choice.clone(),
@@ -200,7 +261,7 @@ impl EnvironmentShell {
         let mut rows = Vec::new();
         let mut group: Option<&str> = None;
         for (index, choice) in popup.choices.iter().enumerate() {
-            if group != Some(choice.group.as_str()) {
+            if group != Some(choice.group.as_str()) && !choice.is_plain() {
                 group = Some(choice.group.as_str());
                 rows.push(
                     div()
@@ -222,17 +283,13 @@ impl EnvironmentShell {
                 cx,
             ));
         }
-        let note = popup.choices.is_empty().then(|| {
+        let note = (popup.pending > 0).then(|| {
             div()
                 .px(px(SPACE_2))
                 .py(px(SPACE_2))
                 .text_size(px(TEXT_SM))
                 .text_color(rgb(pal.text_muted))
-                .child(if popup.pending > 0 {
-                    LOADING_TEXT
-                } else {
-                    NONE_TEXT
-                })
+                .child(LOADING_TEXT)
         });
         Some(
             div()
@@ -294,6 +351,18 @@ mod tests {
         assert_eq!(popup_title(["Java Class", "Java Class"]), "New Java Class");
         assert_eq!(popup_title(["Java Class", "Package"]), "New");
         assert_eq!(popup_title([]), "New");
+    }
+
+    #[test]
+    fn a_typed_name_splits_into_its_stem_and_extension() {
+        assert_eq!(split_extension("Cipher.java"), Some(("Cipher", "java")));
+        assert_eq!(
+            split_extension("crypto.Cipher.java"),
+            Some(("crypto.Cipher", "java"))
+        );
+        assert_eq!(split_extension("Makefile"), None);
+        assert_eq!(split_extension(".gitignore"), None);
+        assert_eq!(split_extension("notes."), None);
     }
 
     #[test]

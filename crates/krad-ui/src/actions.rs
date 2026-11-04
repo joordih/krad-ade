@@ -39,7 +39,7 @@ actions!(
         SendTab,
         SendBackTab,
         RenameFile,
-        NewFromTemplate,
+        NewTreeFile,
         SaveFile,
         AskConfirm,
         AskDeny,

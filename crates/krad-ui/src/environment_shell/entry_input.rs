@@ -43,8 +43,8 @@ impl EnvironmentShell {
         let events = cx.subscribe_in(
             &field,
             window,
-            |this: &mut Self, _, event: &InputEvent, _, cx| match event {
-                InputEvent::PressEnter { .. } => this.commit_entry_input(cx),
+            |this: &mut Self, _, event: &InputEvent, window, cx| match event {
+                InputEvent::PressEnter { .. } => this.commit_entry_input(window, cx),
                 InputEvent::Blur => this.cancel_entry_input(cx),
                 InputEvent::Change | InputEvent::Focus => {}
             },
@@ -64,7 +64,7 @@ impl EnvironmentShell {
         }
     }
 
-    fn commit_entry_input(&mut self, cx: &mut Context<Self>) {
+    fn commit_entry_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(input) = self.entry_input.take() else {
             return;
         };
@@ -74,6 +74,12 @@ impl EnvironmentShell {
             return;
         };
         match input.edit {
+            EntryEdit::Create {
+                dir,
+                kind: EntryKind::File,
+            } if self.offers_file_kinds(&dir, name) => {
+                self.open_file_kinds(dir, name, window, cx);
+            }
             EntryEdit::Create { dir, kind } => self.create_file_entry(dir, kind, name, cx),
             EntryEdit::Rename(path) => self.rename_file(path, name, cx),
         }

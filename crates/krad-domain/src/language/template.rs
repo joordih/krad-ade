@@ -43,6 +43,13 @@ fn cursor_at(text: &str, offset: usize) -> (u32, u32) {
 
 impl LanguageTemplate {
     #[must_use]
+    pub fn creates(&self, extension: &str) -> bool {
+        self.file
+            .rsplit_once('.')
+            .is_some_and(|(_, made)| made == extension)
+    }
+
+    #[must_use]
     pub fn render(&self, typed: &str, folder_package: Option<&str>) -> Option<RenderedTemplate> {
         let separator = if folder_package.is_some() {
             PACKAGE_SEPARATOR
@@ -95,6 +102,12 @@ mod tests {
             package_line: Some("package {{package}}".to_owned()),
             markers: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_template_creates_files_with_the_extension_of_its_file_pattern() {
+        assert!(kotlin_class().creates("kt"));
+        assert!(!kotlin_class().creates("java"));
     }
 
     #[test]

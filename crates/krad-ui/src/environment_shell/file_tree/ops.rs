@@ -13,7 +13,6 @@ use crate::environment_shell::EnvironmentShell;
 
 const NEW_FILE_LABEL: &str = "New file";
 const NEW_FOLDER_LABEL: &str = "New folder";
-const NEW_FROM_TEMPLATE_LABEL: &str = "New from template…";
 const RENAME_LABEL: &str = "Rename";
 const COPY_PATH_LABEL: &str = "Copy path";
 const COPY_RELATIVE_PATH_LABEL: &str = "Copy relative path";
@@ -24,7 +23,6 @@ const DELETE_LABEL: &str = "Delete";
 pub(in crate::environment_shell) enum FileAction {
     NewFile(PathBuf),
     NewFolder(PathBuf),
-    NewFromTemplate(PathBuf),
     Rename(PathBuf),
     CopyPath(PathBuf),
     CopyRelativePath(PathBuf),
@@ -58,11 +56,6 @@ impl EnvironmentShell {
                 NEW_FOLDER_LABEL,
                 Some(IconName::FolderAdd),
                 FileAction::NewFolder(dir.to_path_buf()),
-            ),
-            file_item(
-                NEW_FROM_TEMPLATE_LABEL,
-                Some(IconName::Magic),
-                FileAction::NewFromTemplate(dir.to_path_buf()),
             ),
         ]
     }
@@ -108,7 +101,6 @@ impl EnvironmentShell {
             FileAction::NewFolder(dir) => {
                 self.begin_new_entry(dir, EntryKind::Directory, window, cx);
             }
-            FileAction::NewFromTemplate(dir) => self.open_template_popup(dir, window, cx),
             FileAction::Rename(path) => {
                 self.begin_entry_input(EntryEdit::Rename(path), window, cx);
             }
@@ -131,7 +123,7 @@ impl EnvironmentShell {
         }
     }
 
-    fn begin_new_entry(
+    pub(super) fn begin_new_entry(
         &mut self,
         dir: PathBuf,
         kind: EntryKind,
