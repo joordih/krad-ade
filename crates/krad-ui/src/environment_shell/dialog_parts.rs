@@ -11,10 +11,9 @@ pub(super) use sheet::*;
 use crate::components::{icon, IconName};
 use crate::theme::{
     row_fill, row_shadow, Palette, CTA_SM_H, ICON_SM, LINE_SM, LINE_XS, NAV_ROW_H, SPACE_1_5,
-    TAB_RADIUS, TEXT_SM, TEXT_XS,
+    TEXT_SM, TEXT_XS,
 };
 
-const SEGMENT_RADIUS: f32 = 7.0;
 const SEGMENT_PAD_X: f32 = 10.0;
 
 pub(super) fn field_label(text: &str, pal: &Palette) -> AnyElement {
@@ -53,7 +52,7 @@ pub(super) fn segment(
             item.flex_1()
                 .justify_center()
                 .h(px(NAV_ROW_H))
-                .rounded(px(SEGMENT_RADIUS))
+                .rounded_full()
                 .text_size(px(TEXT_SM))
                 .line_height(px(LINE_SM))
         })
@@ -61,7 +60,7 @@ pub(super) fn segment(
             item.flex_none()
                 .h(px(CTA_SM_H))
                 .px(px(SEGMENT_PAD_X))
-                .rounded(px(TAB_RADIUS))
+                .rounded_full()
                 .text_size(px(TEXT_XS))
                 .line_height(px(LINE_XS))
         })

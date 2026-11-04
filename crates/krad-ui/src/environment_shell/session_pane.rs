@@ -30,9 +30,8 @@ use crate::components::{
 };
 use crate::terminal_theme::terminal_colors;
 use crate::theme::{
-    palette, row_fill, row_shadow, terminal_font_family, Palette, CAPSULE_PAD, CAPSULE_RADIUS,
-    ICON_SM, LINE_SM, RADIUS_LG, RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TAB_RADIUS,
-    TEXT_SM,
+    palette, row_fill, row_shadow, terminal_font_family, Palette, CAPSULE_PAD, ICON_SM, LINE_SM,
+    RADIUS_LG, RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM,
 };
 
 pub(in crate::environment_shell) const TAB_H: f32 = 28.0;
@@ -129,7 +128,7 @@ pub(super) fn tab_shell(
         .h(px(TAB_H))
         .pl(px(SPACE_1))
         .pr(px(SPACE_1))
-        .rounded(px(TAB_RADIUS))
+        .rounded_full()
         .cursor_pointer()
         .text_size(px(TEXT_SM))
         .line_height(px(LINE_SM))
@@ -167,7 +166,7 @@ pub(in crate::environment_shell) fn tab_capsule(
         .items_center()
         .h(px(TAB_H + 2.0 * CAPSULE_PAD))
         .p(px(CAPSULE_PAD))
-        .rounded(px(CAPSULE_RADIUS))
+        .rounded_full()
         .bg(pal.bg_hover)
         .overflow_hidden()
         .children(tabs)

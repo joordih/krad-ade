@@ -44,5 +44,3 @@ pub(crate) const VIEW_HEADER_H: f32 = 52.0;
 pub(crate) const CHIP_H: f32 = 18.0;
 
 pub(crate) const CAPSULE_PAD: f32 = 2.0;
-pub(crate) const CAPSULE_RADIUS: f32 = RADIUS_LG - CAPSULE_PAD;
-pub(crate) const TAB_RADIUS: f32 = CAPSULE_RADIUS - CAPSULE_PAD;
