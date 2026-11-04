@@ -30,11 +30,10 @@ use crate::components::{
 };
 use crate::terminal_theme::terminal_colors;
 use crate::theme::{
-    mono_family, palette, row_fill, row_shadow, Palette, CAPSULE_PAD, ICON_SM, LINE_SM, RADIUS_LG,
-    RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM,
+    mono_family, palette, row_fill, row_shadow, Palette, CAPSULE_H, CAPSULE_PAD, ICON_SM, LINE_SM,
+    RADIUS_LG, RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TAB_H, TAB_STRIP_MARGIN, TEXT_SM,
 };
 
-pub(in crate::environment_shell) const TAB_H: f32 = 28.0;
 const TAB_BADGE: f32 = 20.0;
 const TAB_MIN_W: f32 = 110.0;
 const TAB_DIVIDER_W: f32 = 1.0;
@@ -164,7 +163,7 @@ pub(in crate::environment_shell) fn tab_capsule(
         })
         .min_w_0()
         .items_center()
-        .h(px(TAB_H + 2.0 * CAPSULE_PAD))
+        .h(px(CAPSULE_H))
         .p(px(CAPSULE_PAD))
         .rounded_full()
         .bg(pal.bg_hover)
@@ -318,9 +317,7 @@ impl EnvironmentShell {
                 StripPlace::Pane => strip
                     .flex_none()
                     .h(px(PANE_STRIP_H))
-                    .px(px(SPACE_1_5))
-                    .border_b_1()
-                    .border_color(pal.divider),
+                    .px(px(TAB_STRIP_MARGIN)),
             })
             .child(picker)
             .child(tab_capsule(tabs, TabWidth::Fill, pal))

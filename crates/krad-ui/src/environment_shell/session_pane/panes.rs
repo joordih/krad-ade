@@ -19,7 +19,7 @@ use crate::theme::{
     SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM, WINDOW_INSET,
 };
 
-pub(super) const PANE_STRIP_H: f32 = 38.0;
+pub(super) const PANE_STRIP_H: f32 = crate::theme::TAB_STRIP_H;
 const PANES_ID: &str = "session-panes";
 const DIVIDER_PREFIX: &str = "pane-divider";
 const TEMPLATE_PREFIX: &str = "pane-template";
