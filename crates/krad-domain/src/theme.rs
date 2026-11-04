@@ -79,3 +79,11 @@ pub struct Theme {
     pub terminal: TerminalColors,
     pub syntax: SyntaxColors,
 }
+
+impl std::str::FromStr for Theme {
+    type Err = serde_json::Error;
+
+    fn from_str(json: &str) -> Result<Self, Self::Err> {
+        serde_json::from_str(json)
+    }
+}

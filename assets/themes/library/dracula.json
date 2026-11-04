@@ -1,0 +1,63 @@
+{
+  "id": "dracula",
+  "name": "Dracula",
+  "appearance": "dark",
+  "credit": {
+    "author": "Dracula Theme",
+    "license": "MIT",
+    "url": "https://github.com/dracula/visual-studio-code"
+  },
+  "interface": {
+    "background": "#21222c",
+    "surface": "#282a36",
+    "panel": "#21222c",
+    "text": "#f8f8f2",
+    "muted_text": "#6272a4",
+    "accent": "#6272a4",
+    "on_accent": "#f8f8f2",
+    "success": "#50fa7b",
+    "warning": "#8be9fd",
+    "error": "#ff5555",
+    "info": "#bd93f9"
+  },
+  "terminal": {
+    "background": "#282a36",
+    "foreground": "#f8f8f2",
+    "cursor": "#f8f8f2",
+    "selection": "#44475a",
+    "ansi": [
+      "#21222c",
+      "#ff5555",
+      "#50fa7b",
+      "#f1fa8c",
+      "#bd93f9",
+      "#ff79c6",
+      "#8be9fd",
+      "#f8f8f2",
+      "#6272a4",
+      "#ff6e6e",
+      "#69ff94",
+      "#ffffa5",
+      "#d6acff",
+      "#ff92df",
+      "#a4ffff",
+      "#ffffff"
+    ]
+  },
+  "syntax": {
+    "comment": "#6272a4",
+    "keyword": "#ff79c6",
+    "string": "#f1fa8c",
+    "escape": "#ff79c6",
+    "number": "#bd93f9",
+    "constant": "#bd93f9",
+    "attribute": "#50fa7b",
+    "type": "#8be9fd",
+    "operator": "#ff79c6",
+    "function": "#50fa7b",
+    "property": "#f8f8f2",
+    "tag": "#ff79c6",
+    "variable": "#f8f8f2",
+    "punctuation": "#f8f8f2"
+  }
+}

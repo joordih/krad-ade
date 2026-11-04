@@ -87,6 +87,7 @@ impl EnvironmentShell {
                 .child(Self::settings_nav(ui.pane, cx))
                 .child(Self::settings_main(ui.pane, content, cx))
                 .children(self.gitlab_device_dialog(cx))
+                .children(self.theme_editor_sheet(cx))
                 .into_any_element(),
         )
     }

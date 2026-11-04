@@ -1,12 +1,10 @@
 use gpui_kit::component::highlighter::{HighlightTheme, HighlightThemeStyle};
 use gpui_kit::component::theme::{Theme, ThemeMode, ThemeRegistry};
 use gpui_kit::{App, Global, SharedString};
-use krad_domain::{FontChoice, TerminalTheme};
-use krad_session::AnsiPalette;
+use krad_domain::{FontChoice, SyntaxColors};
 use std::sync::Arc;
 
-use super::{appearance, mono_family, palette, terminal_fill_alpha, Appearance};
-use crate::terminal_theme::terminal_colors;
+use super::{appearance, current_theme, mono_family, palette, terminal_fill_alpha, Appearance};
 
 const ALPHA_BITS: u32 = 8;
 const OPAQUE_ALPHA: u32 = 0xff;
@@ -20,26 +18,15 @@ const LIGHT_MODE: &str = "light";
 const ITALIC: &str = "italic";
 const BOLD_WEIGHT: u16 = 700;
 
-const RED: usize = 1;
-const GREEN: usize = 2;
-const YELLOW: usize = 3;
-const BLUE: usize = 4;
-const MAGENTA: usize = 5;
-const CYAN: usize = 6;
-const BRIGHT_BLACK: usize = 8;
-const BRIGHT_BLUE: usize = 12;
-
 #[derive(Clone, Default)]
 struct CodeLook {
-    theme: TerminalTheme,
     family: SharedString,
 }
 
 impl Global for CodeLook {}
 
-pub fn apply_code_look(theme: TerminalTheme, editor: &FontChoice, cx: &mut App) {
+pub fn apply_editor_font(editor: &FontChoice, cx: &mut App) {
     cx.set_global(CodeLook {
-        theme,
         family: mono_family(editor),
     });
     style_editor(cx);
@@ -69,48 +56,41 @@ enum Face {
 }
 
 fn highlight_json(name: &str, mode: &str, background: &str, colors: &Colors) -> String {
-    let ansi = |slot: usize| {
-        colors
-            .ansi
-            .0
-            .get(slot)
-            .copied()
-            .unwrap_or(colors.foreground)
-    };
+    let code = &colors.syntax;
     let syntax = [
-        ("comment", ansi(BRIGHT_BLACK), Face::Italic),
-        ("comment.doc", ansi(BRIGHT_BLACK), Face::Italic),
-        ("keyword", ansi(MAGENTA), Face::Plain),
-        ("preproc", ansi(MAGENTA), Face::Plain),
-        ("label", ansi(MAGENTA), Face::Plain),
-        ("string", ansi(GREEN), Face::Plain),
-        ("string.escape", ansi(CYAN), Face::Plain),
-        ("string.regex", ansi(CYAN), Face::Plain),
-        ("string.special", ansi(CYAN), Face::Plain),
-        ("number", ansi(YELLOW), Face::Plain),
-        ("boolean", ansi(YELLOW), Face::Plain),
-        ("constant", ansi(YELLOW), Face::Plain),
-        ("attribute", ansi(YELLOW), Face::Plain),
-        ("variant", ansi(YELLOW), Face::Plain),
-        ("type", ansi(CYAN), Face::Plain),
-        ("enum", ansi(CYAN), Face::Plain),
-        ("operator", ansi(CYAN), Face::Plain),
-        ("function", ansi(BLUE), Face::Plain),
-        ("constructor", ansi(BLUE), Face::Plain),
-        ("link_uri", ansi(BLUE), Face::Plain),
-        ("title", ansi(BLUE), Face::Bold),
-        ("property", ansi(BRIGHT_BLUE), Face::Plain),
-        ("tag", ansi(RED), Face::Plain),
-        ("variable.special", ansi(RED), Face::Plain),
-        ("variable", colors.foreground, Face::Plain),
-        ("punctuation", colors.foreground, Face::Plain),
+        ("comment", code.comment.0, Face::Italic),
+        ("comment.doc", code.comment.0, Face::Italic),
+        ("keyword", code.keyword.0, Face::Plain),
+        ("preproc", code.keyword.0, Face::Plain),
+        ("label", code.keyword.0, Face::Plain),
+        ("string", code.string.0, Face::Plain),
+        ("string.escape", code.escape.0, Face::Plain),
+        ("string.regex", code.escape.0, Face::Plain),
+        ("string.special", code.escape.0, Face::Plain),
+        ("number", code.number.0, Face::Plain),
+        ("boolean", code.constant.0, Face::Plain),
+        ("constant", code.constant.0, Face::Plain),
+        ("attribute", code.attribute.0, Face::Plain),
+        ("variant", code.constant.0, Face::Plain),
+        ("type", code.type_name.0, Face::Plain),
+        ("enum", code.type_name.0, Face::Plain),
+        ("operator", code.operator.0, Face::Plain),
+        ("function", code.function.0, Face::Plain),
+        ("constructor", code.function.0, Face::Plain),
+        ("link_uri", code.function.0, Face::Plain),
+        ("title", code.function.0, Face::Bold),
+        ("property", code.property.0, Face::Plain),
+        ("tag", code.tag.0, Face::Plain),
+        ("variable.special", code.tag.0, Face::Plain),
+        ("variable", code.variable.0, Face::Plain),
+        ("punctuation", code.punctuation.0, Face::Plain),
         ("embedded", colors.foreground, Face::Plain),
     ]
     .map(|(entry, color, face)| syntax_entry(entry, color, face))
     .join(",");
     let foreground = hex(colors.foreground, OPAQUE_ALPHA);
     let active = hex(colors.foreground, ACTIVE_LINE_ALPHA);
-    let line_number = hex(ansi(BRIGHT_BLACK), OPAQUE_ALPHA);
+    let line_number = hex(code.comment.0, OPAQUE_ALPHA);
     format!(
         r#"{{"name":"{THEME_SET_NAME}","themes":[{{"name":"{name}","mode":"{mode}","highlight":{{"editor.background":"{background}","editor.gutter.background":"{CLEAR_GUTTER}","editor.foreground":"{foreground}","editor.active_line.background":"{active}","editor.line_number":"{line_number}","editor.active_line_number":"{foreground}","syntax":{{{syntax}}}}}}}]}}"#
     )
@@ -128,18 +108,19 @@ fn parse_highlight(name: &str, json: &str) -> Option<HighlightThemeStyle> {
 struct Colors {
     background: u32,
     foreground: u32,
-    ansi: AnsiPalette,
+    syntax: SyntaxColors,
 }
 
 pub(super) fn style_editor(cx: &mut App) {
     let look = cx.try_global::<CodeLook>().cloned().unwrap_or_default();
     let pal = palette(cx);
-    let terminal = terminal_colors(look.theme, pal);
+    let current = current_theme(cx);
     let colors = Colors {
-        background: terminal.background,
-        foreground: terminal.foreground,
-        ansi: terminal.ansi,
+        background: current.terminal.background.0,
+        foreground: current.terminal.foreground.0,
+        syntax: current.syntax,
     };
+    let theme_id = current.id.0.clone();
     let dark = appearance(cx) == Appearance::Dark;
     let alpha = terminal_fill_alpha(colors.background, pal, cx).unwrap_or(CLEAR_ALPHA);
     let background = hex(colors.background, alpha);
@@ -148,7 +129,7 @@ pub(super) fn style_editor(cx: &mut App) {
     } else {
         (LIGHT_MODE, ThemeMode::Light)
     };
-    let name = format!("{THEME_NAME_PREFIX}-{:?}-{mode}", look.theme);
+    let name = format!("{THEME_NAME_PREFIX}-{theme_id}-{mode}");
     let style = parse_highlight(&name, &highlight_json(&name, mode, &background, &colors));
     let theme = Theme::global_mut(cx);
     theme.mono_font_family = look.family;
@@ -167,20 +148,23 @@ mod tests {
     use gpui_kit::{rgba, FontStyle, FontWeight, Hsla};
 
     const THEMED_TERMINAL_ALPHA: u32 = 0x1a;
-    const ANSI_SLOTS: usize = 16;
-    const BRIGHT_BLACK_SLOT: usize = 8;
-    const BASE_ANSI: u32 = 0x0011_2233;
     const COMMENT_GREY: u32 = 0x0044_5566;
     const COMMENT_GREY_RGBA: u32 = 0x4455_66ff;
 
+    fn current_theme_for_tests() -> krad_domain::Theme {
+        include_str!("../../../../assets/themes/library/dracula.json")
+            .parse()
+            .unwrap_or_else(|_| unreachable!())
+    }
+
     #[test]
     fn gpui_component_reads_the_highlight_theme_with_its_colors() {
-        let mut ansi = [BASE_ANSI; ANSI_SLOTS];
-        ansi[BRIGHT_BLACK_SLOT] = COMMENT_GREY;
+        let mut syntax = current_theme_for_tests().syntax;
+        syntax.comment = krad_domain::ThemeColor(COMMENT_GREY);
         let colors = Colors {
             background: 0x0019_171b,
             foreground: 0x00ed_eaf0,
-            ansi: AnsiPalette(ansi),
+            syntax,
         };
         let background = hex(0x0028_2828, THEMED_TERMINAL_ALPHA);
         let json = highlight_json("t", DARK_MODE, &background, &colors);
@@ -201,7 +185,7 @@ mod tests {
         assert_eq!(
             comment.and_then(|comment| comment.color),
             Some(Hsla::from(rgba(COMMENT_GREY_RGBA))),
-            "comments take the bright black of the terminal"
+            "comments take the theme's comment color"
         );
         assert_eq!(
             comment.and_then(|comment| comment.font_style),

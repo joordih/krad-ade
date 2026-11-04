@@ -1,6 +1,17 @@
+use krad_domain::{Theme, ThemeAppearance, ThemeColor};
 use krad_session::AnsiPalette;
 
 use super::{Palette, ShadowLayer, Shadows, SyntaxColors, Tint};
+
+const DEFAULT_TEXT_MIX: f32 = 0.12;
+const SUBTLE_TEXT_MIX: f32 = 0.3;
+const DISABLED_TEXT_MIX: f32 = 0.45;
+const BACKDROP_MIX: f32 = 0.5;
+const ROW_SELECTED_MIX: f32 = 0.1;
+const CHIP_MIX: f32 = 0.08;
+const ACCENT_SHADE: f32 = 0.15;
+const WHITE: ThemeColor = ThemeColor(0x00ff_ffff);
+const BLACK: ThemeColor = ThemeColor(0x0000_0000);
 
 const LIGHT_INK: u32 = 0x001d_1d1f;
 const DARK_INK: u32 = 0x00f5_f5f7;
@@ -193,6 +204,56 @@ pub(super) const DARK: Palette = Palette {
     },
     shadows: dark_shadows(DARK_INK),
 };
+
+pub(super) fn themed(theme: &Theme) -> Palette {
+    let ui = &theme.interface;
+    let dark = theme.appearance == ThemeAppearance::Dark;
+    let ink = ui.text.0;
+    let mix = |from: ThemeColor, to: ThemeColor, amount: f32| from.mix(to, amount).0;
+    let ansi = theme.terminal.ansi.map(|color| color.0);
+    Palette {
+        backdrop_from: ui.background.0,
+        backdrop_to: mix(ui.background, ui.surface, BACKDROP_MIX),
+        text_strong: ink,
+        text_default: mix(ui.text, ui.background, DEFAULT_TEXT_MIX),
+        text_subtle: mix(ui.text, ui.background, SUBTLE_TEXT_MIX),
+        text_muted: ui.muted_text.0,
+        text_disabled: mix(ui.muted_text, ui.background, DISABLED_TEXT_MIX),
+        bg_surface: ui.surface.0,
+        bg_row_selected: mix(ui.surface, ui.text, ROW_SELECTED_MIX),
+        bg_panel: ui.panel.0,
+        bg_hover: Tint::new(ink, WASH_HOVER),
+        bg_selected: Tint::new(ink, WASH_SELECTED),
+        border: Tint::new(ink, WASH_BORDER),
+        divider: Tint::new(ink, WASH_BORDER),
+        scrim: Tint::new(SHADOW_BLACK, if dark { DARK_SCRIM } else { LIGHT_SCRIM }),
+        attention: ui.warning.0,
+        attention_text: ui.warning.0,
+        chip_bg: mix(ui.panel, ui.text, CHIP_MIX),
+        chip_fg: ui.muted_text.0,
+        accent: ui.accent.0,
+        accent_hover: mix(ui.accent, WHITE, ACCENT_SHADE),
+        accent_pressed: mix(ui.accent, BLACK, ACCENT_SHADE),
+        on_accent: ui.on_accent.0,
+        success_fg: ui.success.0,
+        warning_fg: ui.warning.0,
+        error_fg: ui.error.0,
+        info_fg: ui.info.0,
+        ansi: AnsiPalette(ansi),
+        syntax: SyntaxColors {
+            keyword: theme.syntax.keyword.0,
+            string: theme.syntax.string.0,
+            comment: theme.syntax.comment.0,
+            number: theme.syntax.number.0,
+            type_name: theme.syntax.type_name.0,
+        },
+        shadows: if dark {
+            dark_shadows(ink)
+        } else {
+            light_shadows(ink)
+        },
+    }
+}
 
 #[cfg(test)]
 mod tests {

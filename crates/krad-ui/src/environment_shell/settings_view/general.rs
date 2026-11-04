@@ -12,6 +12,8 @@ const BTN_LIGHT: &str = "appearance-light";
 const BTN_DARK: &str = "appearance-dark";
 const LABEL_LIGHT: &str = "Light";
 const LABEL_DARK: &str = "Dark";
+const BTN_SYSTEM: &str = "appearance-system";
+const LABEL_SYSTEM: &str = "System";
 const APPEARANCE_LABEL: &str = "Appearance";
 const APPEARANCE_HINT: &str =
     "Light or dark, for the whole app, terminals and code editor included.";
@@ -60,6 +62,12 @@ impl EnvironmentShell {
                 IconName::Moon,
                 AppearanceMode::Dark,
             ))
+            .child(option(
+                BTN_SYSTEM,
+                LABEL_SYSTEM,
+                IconName::Settings,
+                AppearanceMode::System,
+            ))
             .into_any_element();
         let mut appearance_rows = vec![
             form_row(APPEARANCE_LABEL, Some(APPEARANCE_HINT), segmented, pal),
@@ -74,6 +82,7 @@ impl EnvironmentShell {
             .flex_col()
             .gap(px(SWATCH_GAP))
             .child(appearance_card)
+            .child(self.themes_section(cx))
             .child(self.font_card(super::FontZone::Interface, cx))
             .child(updates_card)
             .child(code_tools_card)

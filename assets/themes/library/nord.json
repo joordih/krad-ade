@@ -1,0 +1,63 @@
+{
+  "id": "nord",
+  "name": "Nord",
+  "appearance": "dark",
+  "credit": {
+    "author": "Sven Greb (Nord Theme)",
+    "license": "MIT",
+    "url": "https://github.com/nordtheme/visual-studio-code"
+  },
+  "interface": {
+    "background": "#2e3440",
+    "surface": "#2e3440",
+    "panel": "#2e3440",
+    "text": "#d8dee9",
+    "muted_text": "#c7cdd8",
+    "accent": "#82b7c6",
+    "on_accent": "#2e3440",
+    "success": "#a3be8c",
+    "warning": "#ebcb8b",
+    "error": "#bf616a",
+    "info": "#81a1c1"
+  },
+  "terminal": {
+    "background": "#2e3440",
+    "foreground": "#d8dee9",
+    "cursor": "#d8dee9",
+    "selection": "#3f4758",
+    "ansi": [
+      "#3b4252",
+      "#bf616a",
+      "#a3be8c",
+      "#ebcb8b",
+      "#81a1c1",
+      "#b48ead",
+      "#88c0d0",
+      "#e5e9f0",
+      "#4c566a",
+      "#bf616a",
+      "#a3be8c",
+      "#ebcb8b",
+      "#81a1c1",
+      "#b48ead",
+      "#8fbcbb",
+      "#eceff4"
+    ]
+  },
+  "syntax": {
+    "comment": "#616e88",
+    "keyword": "#81a1c1",
+    "string": "#a3be8c",
+    "escape": "#ebcb8b",
+    "number": "#b48ead",
+    "constant": "#81a1c1",
+    "attribute": "#8fbcbb",
+    "type": "#8fbcbb",
+    "operator": "#81a1c1",
+    "function": "#88c0d0",
+    "property": "#d8dee9",
+    "tag": "#81a1c1",
+    "variable": "#d8dee9",
+    "punctuation": "#eceff4"
+  }
+}

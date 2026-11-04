@@ -1,0 +1,63 @@
+{
+  "id": "tokyo-night",
+  "name": "Tokyo Night",
+  "appearance": "dark",
+  "credit": {
+    "author": "Enkia",
+    "license": "MIT",
+    "url": "https://github.com/tokyo-night/tokyo-night-vscode-theme"
+  },
+  "interface": {
+    "background": "#16161e",
+    "surface": "#1a1b26",
+    "panel": "#16161e",
+    "text": "#787c99",
+    "muted_text": "#515670",
+    "accent": "#385191",
+    "on_accent": "#ffffff",
+    "success": "#449dab",
+    "warning": "#e0af68",
+    "error": "#db4b4b",
+    "info": "#0da0ba"
+  },
+  "terminal": {
+    "background": "#16161e",
+    "foreground": "#787c99",
+    "cursor": "#c0caf5",
+    "selection": "#2b2f41",
+    "ansi": [
+      "#363b54",
+      "#f7768e",
+      "#73daca",
+      "#e0af68",
+      "#7aa2f7",
+      "#bb9af7",
+      "#7dcfff",
+      "#787c99",
+      "#363b54",
+      "#f7768e",
+      "#73daca",
+      "#e0af68",
+      "#7aa2f7",
+      "#bb9af7",
+      "#7dcfff",
+      "#acb0d0"
+    ]
+  },
+  "syntax": {
+    "comment": "#51597d",
+    "keyword": "#bb9af7",
+    "string": "#9ece6a",
+    "escape": "#89ddff",
+    "number": "#ff9e64",
+    "constant": "#ff9e64",
+    "attribute": "#bb9af7",
+    "type": "#c0caf5",
+    "operator": "#89ddff",
+    "function": "#7aa2f7",
+    "property": "#7dcfff",
+    "tag": "#f7768e",
+    "variable": "#c0caf5",
+    "punctuation": "#89ddff"
+  }
+}

@@ -338,10 +338,9 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get(&self.active) else {
             return div().into_any_element();
         };
-        let pal = palette(cx);
         let session = live.sessions.get(&id);
         let mono = mono_family(&self.settings.terminal_font);
-        let colors = terminal_colors(self.settings.terminal_theme, pal);
+        let colors = terminal_colors(cx);
         let (origin_x, origin_y) = self.window_origin();
         let top = origin_y + self.canvas_px.1 + WINDOW_INSET;
         let zoom = self.terminal_font_zoom();

@@ -1,15 +1,18 @@
 mod editor;
 mod fonts;
+mod library;
 mod palettes;
 mod tint;
 mod tokens;
 
-pub use editor::apply_code_look;
+pub use editor::apply_editor_font;
 use fonts::{app_fonts, MONO_FONT_FAMILY};
 pub(crate) use fonts::{
     font_features, interface_family, mono_family, BUNDLED_MONO_FAMILIES, EDITOR_FONT_SIZE,
     SYSTEM_MONO_LABEL, TERMINAL_FONT_SIZE, UI_FONT_FAMILY,
 };
+pub use library::install_theme_library;
+pub(crate) use library::{add_to_library, theme_library};
 pub use tint::apply_window_tint;
 pub(crate) use tint::hue_rgb;
 pub(crate) use tokens::*;
@@ -17,10 +20,11 @@ pub(crate) use tokens::*;
 use gpui_kit::component::theme::{Theme, ThemeMode};
 use gpui_kit::{
     linear_color_stop, linear_gradient, px, rgb, rgba, transparent_black, App, Background,
-    BoxShadow, Fill, Global, Hsla, Rgba, SharedString,
+    BoxShadow, Fill, Global, Hsla, Rgba, SharedString, WindowAppearance,
 };
-use krad_domain::{FontChoice, WindowMaterial};
+use krad_domain::{AppearanceMode, FontChoice, ThemeAppearance, ThemeSelection, WindowMaterial};
 use krad_session::AnsiPalette;
+use std::collections::HashMap;
 
 use crate::highlight::TokenKind;
 use crate::window_frame::{match_window_frame, usable_material};
@@ -77,7 +81,13 @@ impl Appearance {
 struct CurrentTheme {
     appearance: Appearance,
     palette: &'static Palette,
+    theme: krad_domain::Theme,
 }
+
+#[derive(Default)]
+struct PaletteCache(HashMap<krad_domain::ThemeId, (krad_domain::Theme, &'static Palette)>);
+
+impl Global for PaletteCache {}
 
 impl Global for CurrentTheme {}
 
@@ -195,6 +205,18 @@ pub(crate) fn palette(cx: &App) -> &'static Palette {
         .map_or(Appearance::default().palette(), |current| current.palette)
 }
 
+pub(crate) fn current_theme(cx: &App) -> &krad_domain::Theme {
+    static FALLBACK: std::sync::OnceLock<krad_domain::Theme> = std::sync::OnceLock::new();
+    cx.try_global::<CurrentTheme>().map_or_else(
+        || FALLBACK.get_or_init(|| library::krad_theme(&DARK, ThemeAppearance::Dark)),
+        |current| &current.theme,
+    )
+}
+
+pub fn active_appearance(cx: &App) -> Appearance {
+    appearance(cx)
+}
+
 pub(crate) fn appearance(cx: &App) -> Appearance {
     cx.try_global::<CurrentTheme>()
         .map_or(Appearance::default(), |current| current.appearance)
@@ -215,13 +237,83 @@ pub fn apply_interface_font(choice: &FontChoice, cx: &mut App) {
     cx.refresh_windows();
 }
 
-pub fn apply_appearance(appearance: Appearance, cx: &mut App) {
-    let palette = appearance.palette();
+fn interned_palette(theme: &krad_domain::Theme, cx: &mut App) -> &'static Palette {
+    if let Some(krad) = library::is_krad_theme(&theme.id) {
+        return krad;
+    }
+    let cache = cx.default_global::<PaletteCache>();
+    if let Some((known, palette)) = cache.0.get(&theme.id) {
+        if known == theme {
+            return palette;
+        }
+    }
+    let palette: &'static Palette = Box::leak(Box::new(palettes::themed(theme)));
+    cache.0.insert(theme.id.clone(), (theme.clone(), palette));
+    palette
+}
+
+pub(crate) const fn mode_appearance(mode: AppearanceMode, system_dark: bool) -> Appearance {
+    match mode {
+        AppearanceMode::Dark => Appearance::Dark,
+        AppearanceMode::System if system_dark => Appearance::Dark,
+        AppearanceMode::Light | AppearanceMode::System => Appearance::Light,
+    }
+}
+
+pub fn system_is_dark(cx: &App) -> bool {
+    matches!(
+        cx.window_appearance(),
+        WindowAppearance::Dark | WindowAppearance::VibrantDark
+    )
+}
+
+pub fn apply_settings_theme(settings: &krad_domain::Settings, cx: &mut App) {
+    let selection = settings.themes.clone().unwrap_or_default();
+    let dark = system_is_dark(cx);
+    apply_themes(&selection, settings.appearance, dark, cx);
+}
+
+pub fn apply_themes(
+    selection: &ThemeSelection,
+    mode: AppearanceMode,
+    system_dark: bool,
+    cx: &mut App,
+) {
+    let appearance = mode_appearance(mode, system_dark);
+    let slot = ThemeAppearance::from(appearance);
+    let wanted = selection.for_appearance(slot);
+    let theme = theme_library(cx)
+        .iter()
+        .find(|theme| &theme.id == wanted)
+        .cloned()
+        .unwrap_or_else(|| match appearance {
+            Appearance::Light => library::krad_theme(&LIGHT, ThemeAppearance::Light),
+            Appearance::Dark => library::krad_theme(&DARK, ThemeAppearance::Dark),
+        });
+    apply_theme(theme, cx);
+}
+
+pub(crate) fn apply_theme(theme: krad_domain::Theme, cx: &mut App) {
+    let appearance = match theme.appearance {
+        ThemeAppearance::Light => Appearance::Light,
+        ThemeAppearance::Dark => Appearance::Dark,
+    };
+    let palette = interned_palette(&theme, cx);
     cx.set_global(CurrentTheme {
         appearance,
         palette,
+        theme,
     });
     restyle_kit(cx);
+}
+
+impl From<Appearance> for ThemeAppearance {
+    fn from(appearance: Appearance) -> Self {
+        match appearance {
+            Appearance::Light => Self::Light,
+            Appearance::Dark => Self::Dark,
+        }
+    }
 }
 
 fn restyle_kit(cx: &mut App) {

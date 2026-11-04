@@ -475,7 +475,7 @@ impl EnvironmentShell {
         let pal = palette(cx);
         let session = live.sessions.get(&id);
         let mono = mono_family(&self.settings.terminal_font);
-        let colors = terminal_colors(self.settings.terminal_theme, pal);
+        let colors = terminal_colors(cx);
         let text_zoom =
             node.map_or(UNZOOMED, |node| node.text_scale.as_f32()) * self.terminal_font_zoom();
         let (pane_x, pane_y, _, _) = pane_px(rect, self.window_origin(), self.canvas_px);

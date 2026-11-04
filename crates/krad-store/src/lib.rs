@@ -8,6 +8,7 @@ mod install_id;
 mod layout;
 mod mcp_secret;
 mod settings;
+mod themes;
 mod vault;
 
 pub use arcade::{read_arcade_scores, write_arcade_scores};
@@ -24,4 +25,5 @@ pub use install_id::install_id;
 pub use layout::{read_layout_snapshot, LayoutWriter};
 pub use mcp_secret::{delete_mcp_secret, find_mcp_secret, write_mcp_secret};
 pub use settings::{read_settings, write_settings};
+pub use themes::{read_user_themes, write_user_theme};
 pub use vault::{LoginPlace, LoginStoreError};

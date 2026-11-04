@@ -1,0 +1,63 @@
+{
+  "id": "ayu-dark",
+  "name": "Ayu Dark",
+  "appearance": "dark",
+  "credit": {
+    "author": "Ike Kurghinyan (ayu-theme)",
+    "license": "MIT",
+    "url": "https://github.com/ayu-theme/vscode-ayu"
+  },
+  "interface": {
+    "background": "#0d1017",
+    "surface": "#10141c",
+    "panel": "#141821",
+    "text": "#5c657b",
+    "muted_text": "#5c657b",
+    "accent": "#e6b450",
+    "on_accent": "#765b24",
+    "success": "#70bf56",
+    "warning": "#e6b450",
+    "error": "#d95757",
+    "info": "#4fbfff"
+  },
+  "terminal": {
+    "background": "#0d1017",
+    "foreground": "#bfbdb6",
+    "cursor": "#e6b450",
+    "selection": "#193155",
+    "ansi": [
+      "#1b1f29",
+      "#f06b73",
+      "#70bf56",
+      "#fdb04c",
+      "#4fbfff",
+      "#d0a1ff",
+      "#93e2c8",
+      "#c7c7c7",
+      "#686868",
+      "#f07178",
+      "#aad94c",
+      "#ffb454",
+      "#59c2ff",
+      "#d2a6ff",
+      "#95e6cb",
+      "#ffffff"
+    ]
+  },
+  "syntax": {
+    "comment": "#5a6673",
+    "keyword": "#ff8f40",
+    "string": "#aad94c",
+    "escape": "#95e6cb",
+    "number": "#d2a6ff",
+    "constant": "#d2a6ff",
+    "attribute": "#ffb454",
+    "type": "#59c2ff",
+    "operator": "#f29668",
+    "function": "#ffb454",
+    "property": "#bfbdb6",
+    "tag": "#39bae6",
+    "variable": "#bfbdb6",
+    "punctuation": "#bfbdb6"
+  }
+}

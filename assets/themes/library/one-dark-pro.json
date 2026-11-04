@@ -1,0 +1,63 @@
+{
+  "id": "one-dark-pro",
+  "name": "One Dark Pro",
+  "appearance": "dark",
+  "credit": {
+    "author": "Binaryify",
+    "license": "MIT",
+    "url": "https://github.com/Binaryify/OneDark-Pro"
+  },
+  "interface": {
+    "background": "#21252b",
+    "surface": "#282c34",
+    "panel": "#21252b",
+    "text": "#abb2bf",
+    "muted_text": "#abb2bf",
+    "accent": "#4d78cc",
+    "on_accent": "#000000",
+    "success": "#8cc265",
+    "warning": "#d19a66",
+    "error": "#c24038",
+    "info": "#4aa5f0"
+  },
+  "terminal": {
+    "background": "#282c34",
+    "foreground": "#abb2bf",
+    "cursor": "#528bff",
+    "selection": "#41454e",
+    "ansi": [
+      "#3f4451",
+      "#e05561",
+      "#8cc265",
+      "#d18f52",
+      "#4aa5f0",
+      "#c162de",
+      "#42b3c2",
+      "#d7dae0",
+      "#4f5666",
+      "#ff616e",
+      "#a5e075",
+      "#f0a45d",
+      "#4dc4ff",
+      "#de73ff",
+      "#4cd1e0",
+      "#e6e6e6"
+    ]
+  },
+  "syntax": {
+    "comment": "#7f848e",
+    "keyword": "#c678dd",
+    "string": "#98c379",
+    "escape": "#56b6c2",
+    "number": "#d19a66",
+    "constant": "#d19a66",
+    "attribute": "#d19a66",
+    "type": "#e5c07b",
+    "operator": "#abb2bf",
+    "function": "#61afef",
+    "property": "#e06c75",
+    "tag": "#e06c75",
+    "variable": "#e06c75",
+    "punctuation": "#abb2bf"
+  }
+}

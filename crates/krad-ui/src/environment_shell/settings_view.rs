@@ -11,6 +11,8 @@ mod material;
 mod mcp;
 mod page;
 mod terminal;
+mod theme_editor;
+mod themes;
 mod toolchains;
 
 use gpui_kit::prelude::FluentBuilder;
@@ -26,8 +28,8 @@ use super::EnvironmentShell;
 use crate::actions::OpenSettings;
 use crate::components::IconName;
 use crate::theme::{
-    appearance, apply_appearance, card_shadow, Appearance, Palette, LINE_SM, LINE_XS, RADIUS_SM,
-    RADIUS_XL, SPACE_0_5, TEXT_SM, TEXT_XS,
+    appearance, apply_settings_theme, card_shadow, mode_appearance, system_is_dark, Appearance,
+    Palette, LINE_SM, LINE_XS, RADIUS_SM, RADIUS_XL, SPACE_0_5, TEXT_SM, TEXT_XS,
 };
 use gateway::GatewayUi;
 use github::GithubUi;
@@ -108,12 +110,13 @@ pub(super) struct SettingsUi {
     tint: material::TintUi,
     languages: languages::LanguagesUi,
     fonts: crate::font_catalog::FontCatalog,
+    theme_editor: Option<theme_editor::ThemeEditor>,
 }
 
 impl From<AppearanceMode> for Appearance {
     fn from(mode: AppearanceMode) -> Self {
         match mode {
-            AppearanceMode::Light => Self::Light,
+            AppearanceMode::Light | AppearanceMode::System => Self::Light,
             AppearanceMode::Dark => Self::Dark,
         }
     }
@@ -245,6 +248,7 @@ impl EnvironmentShell {
             tint,
             languages,
             fonts: crate::font_catalog::font_catalog(cx),
+            theme_editor: None,
         });
         self.refresh_gitlab_status(cx);
         self.refresh_github_status(cx);
@@ -282,9 +286,19 @@ impl EnvironmentShell {
         .detach();
     }
 
+    pub(super) fn sync_system_appearance(&mut self, cx: &mut Context<Self>) {
+        if self.settings.appearance != AppearanceMode::System {
+            return;
+        }
+        let wanted = mode_appearance(AppearanceMode::System, system_is_dark(cx));
+        if wanted != appearance(cx) {
+            apply_settings_theme(&self.settings, cx);
+        }
+    }
+
     fn set_appearance(&mut self, mode: AppearanceMode, cx: &mut Context<Self>) {
         self.settings.appearance = mode;
-        apply_appearance(mode.into(), cx);
+        apply_settings_theme(&self.settings, cx);
         self.save_settings(cx);
     }
 

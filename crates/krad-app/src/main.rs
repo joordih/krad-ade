@@ -7,13 +7,13 @@ mod rounded_corners;
 use gpui_kit::component::command::CommandState;
 use gpui_kit::component::TitleBar;
 use gpui_kit::{application, init, open_window, AppContext, WindowDecorations, WindowOptions};
-use krad_domain::AppearanceMode;
-use krad_store::{config_dir, read_layout_snapshot, read_settings, APP_NAME};
+use krad_store::{config_dir, read_layout_snapshot, read_settings, read_user_themes, APP_NAME};
 use krad_ui::{
-    apply_appearance, apply_code_look, apply_interface_font, apply_window_material,
-    apply_window_tint, http_client, initial_window_bounds, install_app_menus, key_bindings,
-    login_shell_env, match_window_frame, register_fonts, title_bar_options, window_background,
-    AppAssets, Appearance, EnvironmentShell, HostTools,
+    active_appearance, apply_editor_font, apply_interface_font, apply_settings_theme,
+    apply_window_material, apply_window_tint, http_client, initial_window_bounds,
+    install_app_menus, install_theme_library, key_bindings, login_shell_env, match_window_frame,
+    register_fonts, title_bar_options, window_background, AppAssets, Appearance, EnvironmentShell,
+    HostTools,
 };
 
 const APP_TITLE: &str = "Krad ADE";
@@ -25,7 +25,9 @@ fn main() {
         std::env::set_var(name, value);
     }
     let seed = read_layout_snapshot();
-    let settings = read_settings();
+    let mut settings = read_settings();
+    settings.migrate_themes();
+    let user_themes = read_user_themes();
     let host_tools = HostTools::discover();
     application()
         .with_assets(AppAssets)
@@ -33,12 +35,13 @@ fn main() {
         .run(move |cx| {
             init(cx);
             drop(register_fonts(cx));
-            apply_appearance(Appearance::from(settings.appearance), cx);
+            install_theme_library(user_themes, cx);
+            apply_settings_theme(&settings, cx);
             apply_window_material(settings.window_material, cx);
             apply_window_tint(settings.window_tint, cx);
-            apply_code_look(settings.terminal_theme, &settings.editor_font, cx);
+            apply_editor_font(&settings.editor_font, cx);
             apply_interface_font(&settings.interface_font, cx);
-            let dark_frame = settings.appearance == AppearanceMode::Dark;
+            let dark_frame = active_appearance(cx) == Appearance::Dark;
             cx.bind_keys(key_bindings());
             install_app_menus(cx);
             let mut titlebar = title_bar_options();

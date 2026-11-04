@@ -1,0 +1,58 @@
+{
+  "id": "xcode-light",
+  "name": "Xcode Light",
+  "appearance": "light",
+  "interface": {
+    "background": "#e8e8ed",
+    "surface": "#ffffff",
+    "panel": "#f5f5f7",
+    "text": "#1d1d1f",
+    "muted_text": "#6e6e73",
+    "accent": "#007aff",
+    "on_accent": "#ffffff",
+    "success": "#248a3d",
+    "warning": "#c26a00",
+    "error": "#d70015",
+    "info": "#007aff"
+  },
+  "terminal": {
+    "background": "#ffffff",
+    "foreground": "#262626",
+    "cursor": "#000000",
+    "selection": "#b4d8fd",
+    "ansi": [
+      "#1d1d1f",
+      "#c41a16",
+      "#248a3d",
+      "#8a6d00",
+      "#0040dd",
+      "#aa0d91",
+      "#0e7490",
+      "#8e8e93",
+      "#6e6e73",
+      "#d70015",
+      "#1f8a4c",
+      "#a07700",
+      "#0071e3",
+      "#af52de",
+      "#0071a4",
+      "#3a3a3c"
+    ]
+  },
+  "syntax": {
+    "comment": "#6e6e73",
+    "keyword": "#aa0d91",
+    "string": "#248a3d",
+    "escape": "#0e7490",
+    "number": "#8a6d00",
+    "constant": "#8a6d00",
+    "attribute": "#8a6d00",
+    "type": "#0e7490",
+    "operator": "#0e7490",
+    "function": "#0040dd",
+    "property": "#0071e3",
+    "tag": "#c41a16",
+    "variable": "#262626",
+    "punctuation": "#262626"
+  }
+}

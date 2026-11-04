@@ -27,8 +27,8 @@ pub use http::http_client;
 pub use keymap::key_bindings;
 pub use krad_session::login_shell_env;
 pub use theme::{
-    apply_appearance, apply_code_look, apply_interface_font, apply_window_material,
-    apply_window_tint, register_fonts, Appearance,
+    active_appearance, apply_editor_font, apply_interface_font, apply_settings_theme,
+    apply_window_material, apply_window_tint, install_theme_library, register_fonts, Appearance,
 };
 pub use title_bar::title_bar_options;
 pub use window_frame::{initial_window_bounds, match_window_frame, window_background};

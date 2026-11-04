@@ -10,6 +10,7 @@ use crate::mcp::McpSettings;
 use crate::model::{lenient_model_lists, ModelId};
 use crate::problem::EditorSettings;
 use crate::server_runtime::{ExtensionEntry, ServerRuntimePaths};
+use crate::theme::{ThemeAppearance, ThemeId};
 use crate::toolchain::ToolchainActivation;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -19,6 +20,42 @@ pub enum AppearanceMode {
     #[default]
     Light,
     Dark,
+    System,
+}
+
+pub const KRAD_LIGHT_THEME: &str = "krad-light";
+pub const KRAD_DARK_THEME: &str = "krad-dark";
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThemeSelection {
+    pub light: ThemeId,
+    pub dark: ThemeId,
+}
+
+impl Default for ThemeSelection {
+    fn default() -> Self {
+        Self {
+            light: ThemeId(KRAD_LIGHT_THEME.to_owned()),
+            dark: ThemeId(KRAD_DARK_THEME.to_owned()),
+        }
+    }
+}
+
+impl ThemeSelection {
+    #[must_use]
+    pub const fn for_appearance(&self, appearance: ThemeAppearance) -> &ThemeId {
+        match appearance {
+            ThemeAppearance::Light => &self.light,
+            ThemeAppearance::Dark => &self.dark,
+        }
+    }
+
+    pub fn set(&mut self, appearance: ThemeAppearance, id: ThemeId) {
+        match appearance {
+            ThemeAppearance::Light => self.light = id,
+            ThemeAppearance::Dark => self.dark = id,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
@@ -38,6 +75,31 @@ pub enum TerminalTheme {
 }
 
 impl TerminalTheme {
+    const fn library_theme(self) -> Option<(ThemeAppearance, &'static str)> {
+        match self {
+            Self::MatchApp => None,
+            Self::XcodeLight => Some((ThemeAppearance::Light, "xcode-light")),
+            Self::XcodeDark => Some((ThemeAppearance::Dark, "xcode-dark")),
+            Self::SolarizedLight => Some((ThemeAppearance::Light, "solarized-light")),
+            Self::SolarizedDark => Some((ThemeAppearance::Dark, "solarized-dark")),
+            Self::GitHubLight => Some((ThemeAppearance::Light, "github-light-default")),
+            Self::OneDark => Some((ThemeAppearance::Dark, "one-dark-pro")),
+            Self::Dracula => Some((ThemeAppearance::Dark, "dracula")),
+            Self::Nord => Some((ThemeAppearance::Dark, "nord")),
+            Self::TokyoNight => Some((ThemeAppearance::Dark, "tokyo-night")),
+            Self::GruvboxDark => Some((ThemeAppearance::Dark, "gruvbox-dark-medium")),
+        }
+    }
+
+    #[must_use]
+    pub fn as_selection(self) -> ThemeSelection {
+        let mut selection = ThemeSelection::default();
+        if let Some((appearance, id)) = self.library_theme() {
+            selection.set(appearance, ThemeId(id.to_owned()));
+        }
+        selection
+    }
+
     #[must_use]
     pub const fn all() -> [Self; 11] {
         [
@@ -157,8 +219,10 @@ pub struct Settings {
     pub appearance: AppearanceMode,
     #[serde(default)]
     pub code_tools: CodeTools,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub terminal_theme: TerminalTheme,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub themes: Option<ThemeSelection>,
     #[serde(default)]
     pub default_harness: AgentPreset,
     #[serde(default)]
@@ -207,6 +271,13 @@ pub struct Settings {
     pub file_icon_colors: FileIconColors,
     #[serde(default, skip_serializing_if = "JavaEngine::is_default")]
     pub java_engine: JavaEngine,
+}
+
+impl Settings {
+    pub fn migrate_themes(&mut self) -> &ThemeSelection {
+        let legacy = self.terminal_theme;
+        self.themes.get_or_insert_with(|| legacy.as_selection())
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
@@ -327,9 +398,21 @@ mod tests {
     }
 
     #[test]
+    fn an_old_terminal_theme_becomes_the_theme_of_its_appearance() {
+        let mut settings: Settings =
+            serde_json::from_str(r#"{"terminal_theme":"Dracula"}"#).unwrap_or_default();
+        let selection = settings.migrate_themes().clone();
+        assert_eq!(selection.dark, ThemeId("dracula".to_owned()));
+        assert_eq!(selection.light, ThemeId(KRAD_LIGHT_THEME.to_owned()));
+        let written = serde_json::to_string(&settings).unwrap_or_default();
+        assert!(!written.contains("terminal_theme"));
+        assert!(written.contains("dracula"));
+    }
+
+    #[test]
     fn settings_roundtrip_and_old_files_get_defaults() -> serde_json::Result<()> {
         let mut settings = Settings {
-            terminal_theme: TerminalTheme::Dracula,
+            themes: Some(TerminalTheme::Dracula.as_selection()),
             default_harness: AgentPreset::Codex,
             copy_mode: CopyMode::Both,
             ..Settings::default()

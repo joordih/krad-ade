@@ -9,8 +9,8 @@ use super::super::dialog_parts::{segment, SegmentSize};
 use super::{form_row, panel_card, segmented_track, EnvironmentShell};
 use crate::components::{icon, Button, IconName};
 use crate::theme::{
-    apply_code_look, apply_interface_font, palette, EDITOR_FONT_SIZE, ICON_SM, LINE_SM, RADIUS_SM,
-    SPACE_1, SPACE_2, SYSTEM_MONO_LABEL, TERMINAL_FONT_SIZE, TEXT_SM,
+    apply_editor_font, apply_interface_font, palette, EDITOR_FONT_SIZE, ICON_SM, LINE_SM,
+    RADIUS_SM, SPACE_1, SPACE_2, SYSTEM_MONO_LABEL, TERMINAL_FONT_SIZE, TEXT_SM,
 };
 
 const FAMILY_LABEL: &str = "Font";
@@ -119,7 +119,7 @@ impl EnvironmentShell {
         match zone {
             FontZone::Interface => apply_interface_font(&self.settings.interface_font, cx),
             FontZone::Editor => {
-                apply_code_look(self.settings.terminal_theme, &self.settings.editor_font, cx);
+                apply_editor_font(&self.settings.editor_font, cx);
             }
             FontZone::Terminal => self.cell_width_px = None,
         }
