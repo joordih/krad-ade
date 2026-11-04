@@ -32,6 +32,7 @@ fn repository(label: &str) -> Result<PathBuf, Box<dyn Error>> {
     ));
     fs::create_dir_all(&repo)?;
     git(&repo, &["init", "--quiet", "-b", "main"])?;
+    git(&repo, &["config", "core.autocrlf", "false"])?;
     fs::write(repo.join("a.txt"), "one\ntwo\n")?;
     fs::write(repo.join("old.txt"), "kept\n")?;
     git(&repo, &["add", "."])?;
