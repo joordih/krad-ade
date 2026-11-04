@@ -8,7 +8,7 @@ use gpui_kit::{
 };
 use std::time::Instant;
 
-use krad_domain::SidebarWidth;
+use krad_domain::{SidebarPart, SidebarWidth};
 
 use super::drag::DragState;
 use super::EnvironmentShell;
@@ -295,7 +295,8 @@ impl EnvironmentShell {
 
     fn sidebar_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let editing = self.editing();
-        let views = (!editing).then(|| self.view_list(cx));
+        let views = (!editing && self.settings.sidebar.shows(SidebarPart::Views))
+            .then(|| self.view_list(cx));
         let list = if editing {
             self.side_section(cx)
         } else {

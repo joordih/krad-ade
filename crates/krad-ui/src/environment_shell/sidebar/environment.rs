@@ -3,15 +3,20 @@ use gpui_kit::{
     StatefulInteractiveElement, Styled,
 };
 
-use super::super::context_menu::MenuPlacement;
+use krad_domain::{SidebarDensity, SidebarPart};
+
+use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
 use super::super::EnvironmentShell;
-use crate::components::{icon, IconName};
+use crate::components::{icon, Button, IconName};
 use crate::theme::{
     palette, ICON_SM, ICON_XS, LINE_BASE, RADIUS_SM, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2,
     TEXT_BASE,
 };
 
 const BTN_ENVIRONMENT: &str = "sidebar-environment";
+const BTN_SIDEBAR_OPTIONS: &str = "sidebar-options";
+const SIDEBAR_OPTIONS_TOOLTIP: &str = "Choose what the sidebar shows";
+const COMPACT_LABEL: &str = "Compact view";
 const PILL_H: f32 = 34.0;
 const BADGE: f32 = 22.0;
 
@@ -63,14 +68,75 @@ impl EnvironmentShell {
             )
             .child(icon(IconName::ChevronDown, ICON_SM, pal.text_muted))
             .child(div().flex_1());
+        let options = Button::new(BTN_SIDEBAR_OPTIONS)
+            .icon(IconName::ListView)
+            .small()
+            .tooltip(SIDEBAR_OPTIONS_TOOLTIP)
+            .on_click(
+                cx.listener(|this: &mut Self, event: &gpui_kit::ClickEvent, _, cx| {
+                    let at = event.position();
+                    let entries = this.sidebar_options();
+                    this.open_menu(
+                        (at.x.as_f32(), at.y.as_f32()),
+                        MenuPlacement::Below,
+                        entries,
+                        cx,
+                    );
+                }),
+            );
         div()
             .flex()
             .flex_col()
             .flex_none()
             .gap(px(SPACE_1_5))
             .pb(px(SPACE_2))
-            .child(pill)
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(SPACE_1))
+                    .child(div().flex_1().min_w_0().child(pill))
+                    .child(options),
+            )
             .children(self.host_badge(cx))
             .into_any_element()
+    }
+
+    fn sidebar_options(&self) -> Vec<MenuEntry> {
+        let layout = &self.settings.sidebar;
+        let mut entries: Vec<MenuEntry> = SidebarPart::ALL
+            .into_iter()
+            .map(|part| {
+                MenuEntry::checked(
+                    part.display_name(),
+                    layout.shows(part),
+                    MenuAction::ToggleSidebarPart(part),
+                )
+            })
+            .collect();
+        entries.push(MenuEntry::Separator);
+        entries.push(MenuEntry::checked(
+            COMPACT_LABEL,
+            layout.density == SidebarDensity::Compact,
+            MenuAction::ToggleSidebarDensity,
+        ));
+        entries
+    }
+
+    pub(in crate::environment_shell) fn toggle_sidebar_part(
+        &mut self,
+        part: SidebarPart,
+        cx: &mut Context<Self>,
+    ) {
+        self.settings.sidebar.toggle(part);
+        self.save_settings(cx);
+        cx.notify();
+    }
+
+    pub(in crate::environment_shell) fn toggle_sidebar_density(&mut self, cx: &mut Context<Self>) {
+        self.settings.sidebar.density = self.settings.sidebar.density.toggled();
+        self.save_settings(cx);
+        cx.notify();
     }
 }

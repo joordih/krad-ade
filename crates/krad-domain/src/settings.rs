@@ -10,6 +10,7 @@ use crate::mcp::McpSettings;
 use crate::model::{lenient_model_lists, ModelId};
 use crate::problem::EditorSettings;
 use crate::server_runtime::{ExtensionEntry, ServerRuntimePaths};
+use crate::sidebar_layout::SidebarLayout;
 use crate::theme::{ThemeAppearance, ThemeId};
 use crate::toolchain::ToolchainActivation;
 use serde::{Deserialize, Serialize};
@@ -303,6 +304,8 @@ pub struct Settings {
     pub java_engine: JavaEngine,
     #[serde(default, skip_serializing_if = "PerformanceMode::is_default")]
     pub performance_mode: PerformanceMode,
+    #[serde(default, skip_serializing_if = "SidebarLayout::is_default")]
+    pub sidebar: SidebarLayout,
 }
 
 impl Settings {

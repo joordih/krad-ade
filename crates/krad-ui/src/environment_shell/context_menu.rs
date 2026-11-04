@@ -61,6 +61,8 @@ pub(super) enum MenuAction {
     AnswerChoice(Box<super::language_servers::ChoiceAnswer>),
     HideMinimap,
     PinTab(TerminalId),
+    ToggleSidebarPart(krad_domain::SidebarPart),
+    ToggleSidebarDensity,
     CloseTabs(TerminalId, krad_domain::TabClosing),
 }
 
@@ -412,6 +414,8 @@ impl EnvironmentShell {
             }
             MenuAction::HideMinimap => self.hide_minimap(cx),
             MenuAction::PinTab(tab) => self.pin_file_tab(tab, cx),
+            MenuAction::ToggleSidebarPart(part) => self.toggle_sidebar_part(part, cx),
+            MenuAction::ToggleSidebarDensity => self.toggle_sidebar_density(cx),
             MenuAction::CloseTabs(tab, closing) => self.close_tabs(tab, closing, window, cx),
         }
         cx.notify();

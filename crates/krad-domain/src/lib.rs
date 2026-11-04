@@ -37,6 +37,7 @@ mod rewind;
 mod server_runtime;
 mod settings;
 mod side_panel;
+mod sidebar_layout;
 mod sidebar_width;
 mod tally;
 #[cfg(test)]
@@ -87,6 +88,7 @@ pub use rewind::*;
 pub use server_runtime::*;
 pub use settings::*;
 pub use side_panel::*;
+pub use sidebar_layout::*;
 pub use sidebar_width::*;
 pub use tally::*;
 pub use text_scale::*;
