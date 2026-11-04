@@ -58,7 +58,9 @@ jobs:
       - name: Lay out the Linux agents CLI for SSH hosts
         run: |
           for folder in target/agents/agents-*; do
-            mv "$folder" "target/agents/${folder##*/agents-}"
+            platform="target/agents/${folder##*/agents-}"
+            rm -rf "$platform"
+            mv "$folder" "$platform"
           done
           chmod +x target/agents/*/krad-ade-agents
       - name: Package
@@ -110,7 +112,9 @@ jobs:
       - name: Lay out the Linux agents CLI for SSH hosts
         run: |
           for folder in target/agents/agents-*; do
-            mv "$folder" "target/agents/${folder##*/agents-}"
+            platform="target/agents/${folder##*/agents-}"
+            rm -rf "$platform"
+            mv "$folder" "$platform"
           done
           chmod +x target/agents/*/krad-ade-agents
       - run: choco install innosetup --no-progress -y
@@ -146,7 +150,9 @@ jobs:
       - name: Lay out the Linux agents CLI for SSH hosts
         run: |
           for folder in target/agents/agents-*; do
-            mv "$folder" "target/agents/${folder##*/agents-}"
+            platform="target/agents/${folder##*/agents-}"
+            rm -rf "$platform"
+            mv "$folder" "$platform"
           done
           chmod +x target/agents/*/krad-ade-agents
       - name: Import the Developer ID certificate
