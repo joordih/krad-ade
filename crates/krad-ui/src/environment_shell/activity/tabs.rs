@@ -15,8 +15,8 @@ use super::ActivityOpened;
 use crate::components::{icon, Button, IconName};
 use crate::terminal_theme::terminal_colors;
 use crate::theme::{
-    palette, row_fill, terminal_font_family, CARD_HEADER_H, ICON_SM, LINE_SM, NAV_ROW_H, RADIUS_LG,
-    RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM, WINDOW_INSET,
+    palette, row_fill, terminal_font_family, ICON_SM, LINE_SM, NAV_ROW_H, RADIUS_LG, RADIUS_XS,
+    SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TAB_STRIP_H, TEXT_SM, WINDOW_INSET,
 };
 
 const LOG_TAB_ID: &str = "utilities-log-tab";
@@ -346,7 +346,7 @@ impl EnvironmentShell {
         let (origin_x, origin_y) = self.window_origin();
         let top = origin_y + self.canvas_px.1 + WINDOW_INSET;
         let geometry = BodyGeometry {
-            origin: (origin_x + BODY_PAD_X, top + CARD_HEADER_H + BODY_PAD_TOP),
+            origin: (origin_x + BODY_PAD_X, top + TAB_STRIP_H + BODY_PAD_TOP),
             cell_w: self.cell_width_px.unwrap_or(TERMINAL_FONT_PX),
             line_h: TERMINAL_LINE_PX,
         };
@@ -404,13 +404,7 @@ impl EnvironmentShell {
             .get_mut(&env)
             .and_then(|live| live.sessions.get_mut(&id))
         {
-            session.resize_grid(body_grid(
-                width,
-                height,
-                CARD_HEADER_H,
-                cell_width,
-                UNZOOMED,
-            ));
+            session.resize_grid(body_grid(width, height, TAB_STRIP_H, cell_width, UNZOOMED));
         }
     }
 }

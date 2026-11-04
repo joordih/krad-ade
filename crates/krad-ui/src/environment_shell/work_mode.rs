@@ -8,12 +8,11 @@ use krad_domain::{SessionPanes, WorkMode};
 use std::borrow::Cow;
 
 use super::dialog_parts::{segment, SegmentSize};
-use super::session_pane::TAB_H;
 use super::settings_view::segmented_track;
 use super::{EnvironmentShell, LiveEnv};
 use crate::actions::ToggleWorkMode;
 use crate::components::{tooltip_with_shortcut, IconName};
-use crate::theme::palette;
+use crate::theme::{palette, TAB_H};
 
 const SEGMENT_PREFIX: &str = "work-mode";
 const SWITCH_TOOLTIP: &str = "Switch work mode";

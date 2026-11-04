@@ -12,7 +12,7 @@ use super::super::session_pane::{
 };
 use super::super::{EnvironmentShell, LiveEnv};
 use crate::components::{Button, ButtonVariant, CenteredEmpty, IconName};
-use crate::theme::{palette, CARD_HEADER_H, LINE_SM, SPACE_0_5, SPACE_1_5, TEXT_SM};
+use crate::theme::{palette, LINE_SM, SPACE_0_5, TAB_STRIP_H, TAB_STRIP_MARGIN, TEXT_SM};
 
 const BTN_NEW_CHAT: &str = "editor-chat-new";
 const BTN_PICK_CHAT: &str = "editor-chat-pick";
@@ -87,8 +87,8 @@ impl EnvironmentShell {
             .flex_none()
             .items_center()
             .gap(px(SPACE_0_5))
-            .h(px(CARD_HEADER_H))
-            .px(px(SPACE_1_5))
+            .h(px(TAB_STRIP_H))
+            .px(px(TAB_STRIP_MARGIN))
             .text_size(px(TEXT_SM))
             .line_height(px(LINE_SM))
             .on_drop(cx.listener(|this: &mut Self, dragged: &DraggedTab, _, cx| {

@@ -7,11 +7,10 @@ use krad_domain::{AgentPreset, PaneId, TerminalId};
 use super::super::context_menu::{MenuAction, MenuCreate, MenuEntry, MenuSearch};
 use super::super::sessions::Launch;
 use super::super::{EnvironmentShell, LiveEnv};
-use super::TAB_H;
 use crate::actions::ShowTabAt;
 use crate::components::{icon, tooltip_view, IconName};
 use crate::keymap::{NEW_TERMINAL_HINT, TAB_SLOT_HINTS};
-use crate::theme::{palette, row_fill, CAPSULE_PAD, ICON_SM};
+use crate::theme::{palette, row_fill, CAPSULE_H, ICON_SM};
 
 const BTN_TAB_PICKER: &str = "session-tab-picker";
 const TAB_PICKER_TOOLTIP: &str = "Tabs";
@@ -32,7 +31,7 @@ pub(in crate::environment_shell) fn tab_picker_shell(
         .flex_none()
         .items_center()
         .justify_center()
-        .size(px(TAB_H + 2.0 * CAPSULE_PAD))
+        .size(px(CAPSULE_H))
         .rounded_full()
         .cursor_pointer()
         .bg(row_fill(pal, cx))
