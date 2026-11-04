@@ -19,6 +19,7 @@ const BEHAVIOUR_TITLE: &str = "Behaviour";
 const RUNTIMES_TITLE: &str = "Server runtimes";
 const SERVER_RUNTIMES_HINT: &str = "What language servers run on, such as Node.js. Install a missing one here, or point to your own copy. Each project's toolchain is picked from the editor's status bar.";
 const RUNTIMES_LOADING: &str = "Looking for server runtimes…";
+const RUNTIMES_NONE: &str = "No installed language needs a server runtime.";
 const EXTENSIONS_TITLE: &str = "Extensions";
 const EXTENSIONS_SECTION_HINT: &str = "Add languages from a git address or a folder of manifests.";
 const EXTENSIONS_EMPTY: &str = "No extensions yet.";
@@ -48,7 +49,7 @@ const REMOVE_PREFIX: &str = "extension-remove";
 
 pub(in crate::environment_shell) struct LanguagesUi {
     url: Entity<InputState>,
-    statuses: Vec<ServerRuntimeStatus>,
+    statuses: Option<Vec<ServerRuntimeStatus>>,
     pub(super) confirming_unstable: bool,
 }
 
@@ -56,7 +57,7 @@ impl EnvironmentShell {
     pub(super) fn languages_ui(window: &mut Window, cx: &mut Context<Self>) -> LanguagesUi {
         LanguagesUi {
             url: cx.new(|cx| InputState::new(window, cx).placeholder(URL_PLACEHOLDER)),
-            statuses: Vec::new(),
+            statuses: None,
             confirming_unstable: false,
         }
     }
@@ -71,7 +72,7 @@ impl EnvironmentShell {
             let statuses = checking.await;
             this.update(cx, |shell, cx| {
                 if let Some(ui) = shell.settings_ui.as_mut() {
-                    ui.languages.statuses = statuses;
+                    ui.languages.statuses = Some(statuses);
                 }
                 cx.notify();
             })
@@ -365,14 +366,14 @@ impl EnvironmentShell {
 
     pub(super) fn languages_pane(&self, ui: &LanguagesUi, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let server_runtimes: Vec<AnyElement> = if ui.statuses.is_empty() {
-            vec![empty_row(RUNTIMES_LOADING, pal)]
-        } else {
-            ui.statuses
+        let server_runtimes: Vec<AnyElement> = match &ui.statuses {
+            None => vec![empty_row(RUNTIMES_LOADING, pal)],
+            Some(statuses) if statuses.is_empty() => vec![empty_row(RUNTIMES_NONE, pal)],
+            Some(statuses) => statuses
                 .iter()
                 .enumerate()
                 .map(|(index, status)| Self::server_runtime_row(index, status, cx))
-                .collect()
+                .collect(),
         };
         let mut extensions: Vec<AnyElement> = self
             .settings

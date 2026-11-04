@@ -6,6 +6,7 @@ use krad_repo::EntryKind;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use super::super::entry_input::entry_name;
 use super::super::language_servers::{ServerKey, ServerTemplates, TemplateOutput};
 use super::super::EnvironmentShell;
 
@@ -142,11 +143,13 @@ impl EnvironmentShell {
         popup.pending = popup.pending.saturating_sub(1);
         popup.selected = popup.selected.min(popup.choices.len().saturating_sub(1));
         if popup.only_plain_left() {
-            let name = popup.field.read(cx).value().trim().to_owned();
-            let file = format!("{name}.{}", popup.extension);
+            let typed = popup.field.read(cx).value().to_string();
+            let file = entry_name(&typed).map(|name| format!("{name}.{}", popup.extension));
             let folder = popup.folder.clone();
             self.close_template_popup(cx);
-            self.create_file_entry(folder, EntryKind::File, &file, cx);
+            if let Some(file) = file {
+                self.create_file_entry(folder, EntryKind::File, &file, cx);
+            }
             return;
         }
         cx.notify();

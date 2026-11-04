@@ -33,11 +33,12 @@ impl EnvironmentShell {
         cx.spawn(async move |this, cx| {
             let disk = stat.await;
             this.update(cx, |shell, cx| {
-                let shown = shell
-                    .envs
-                    .get(&env)
-                    .and_then(LiveEnv::shown_file)
-                    .is_some_and(|(shown, _)| shown == id);
+                let shown = env == shell.active
+                    && shell
+                        .envs
+                        .get(&env)
+                        .and_then(LiveEnv::shown_file)
+                        .is_some_and(|(shown, _)| shown == id);
                 let Some(editor) = shell.editor_mut(&env, id) else {
                     return;
                 };
@@ -92,7 +93,9 @@ impl EnvironmentShell {
                         shell.document_saved(&saved);
                         if let Some(editor) = shell.editor_mut(&env, id) {
                             editor.saved(edits);
-                            editor.disk = DiskWatch::Idle;
+                            if editor.disk == DiskWatch::Conflict {
+                                editor.disk = DiskWatch::Idle;
+                            }
                             editor.modified = modified;
                         }
                     }

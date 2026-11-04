@@ -28,6 +28,7 @@ const RULE: f32 = 1.0;
 const GLYPH_PREFIX: &str = "session-look-icon";
 const SWATCH_PREFIX: &str = "session-look-color";
 const NO_COLOR_ID: &str = "session-look-color-none";
+const NO_ICON_ID: &str = "session-look-icon-none";
 const CLOSE_ROW_ID: &str = "session-look-close";
 const CLOSE_LABEL: &str = "Close session";
 const NAME_PLACEHOLDER: &str = "Session name";
@@ -68,6 +69,7 @@ impl EnvironmentShell {
                 .placeholder(NAME_PLACEHOLDER)
                 .default_value(name)
         });
+        field.update(cx, |field, cx| field.focus(window, cx));
         let events = cx.subscribe_in(
             &field,
             window,
@@ -188,18 +190,14 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let tone = look.color.map_or(pal.text_default, |hue| hue_rgb(hue, pal));
+        let none = Self::glyph_cell(NO_ICON_ID.into(), look.icon.is_none(), pal)
+            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                this.edit_look(session, |look| look.icon = None, cx);
+            }))
+            .child(icon(IconName::Layers, ICON, tone))
+            .into_any_element();
         let cells = SessionIcon::ALL.iter().enumerate().map(|(index, &glyph)| {
-            let selected = look.icon == Some(glyph);
-            div()
-                .id((GLYPH_PREFIX, index))
-                .flex()
-                .items_center()
-                .justify_center()
-                .size(px(GLYPH_CELL))
-                .rounded(px(RADIUS_SM))
-                .cursor_pointer()
-                .when(selected, |cell| cell.bg(pal.bg_selected))
-                .when(!selected, |cell| cell.hover(|style| style.bg(pal.bg_hover)))
+            Self::glyph_cell((GLYPH_PREFIX, index).into(), look.icon == Some(glyph), pal)
                 .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                     this.edit_look(session, |look| look.icon = Some(glyph), cx);
                 }))
@@ -211,8 +209,26 @@ impl EnvironmentShell {
             .flex_row()
             .flex_wrap()
             .gap(px(SPACE_1))
+            .child(none)
             .children(cells)
             .into_any_element()
+    }
+
+    fn glyph_cell(
+        id: gpui_kit::ElementId,
+        selected: bool,
+        pal: &Palette,
+    ) -> gpui_kit::Stateful<gpui_kit::Div> {
+        div()
+            .id(id)
+            .flex()
+            .items_center()
+            .justify_center()
+            .size(px(GLYPH_CELL))
+            .rounded(px(RADIUS_SM))
+            .cursor_pointer()
+            .when(selected, |cell| cell.bg(pal.bg_selected))
+            .when(!selected, |cell| cell.hover(|style| style.bg(pal.bg_hover)))
     }
 
     fn color_picks(
