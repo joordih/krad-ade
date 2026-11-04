@@ -1,9 +1,9 @@
-mod look_sheet;
+mod look_popover;
 mod sheets;
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{AppContext as _, Context, Entity, Subscription, Window};
-use krad_domain::{EnvironmentName, GroupId, SessionId};
+use krad_domain::{EnvironmentName, GroupId};
 use krad_lsp::lsp_types::Position;
 use std::path::PathBuf;
 
@@ -68,7 +68,7 @@ pub(super) enum NameDialogs {
     Closed,
     Name(NameDialog),
     Delete(DeleteTarget),
-    Look(SessionId),
+    Look(look_popover::LookPopover),
 }
 
 impl EnvironmentShell {
@@ -211,11 +211,6 @@ impl EnvironmentShell {
                 self.remove_selected_group(cx);
             }
         }
-        cx.notify();
-    }
-
-    pub(super) fn customize_session(&mut self, session: SessionId, cx: &mut Context<Self>) {
-        self.name_dialogs = NameDialogs::Look(session);
         cx.notify();
     }
 }

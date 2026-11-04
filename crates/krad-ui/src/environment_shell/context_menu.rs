@@ -43,8 +43,6 @@ pub(super) enum MenuAction {
     DeleteEnvironment(EnvironmentName),
     RenameGroup(GroupId),
     DeleteGroup(GroupId),
-    CustomizeSession(SessionId),
-    CloseSession(SessionId),
     SelectGroup(GroupId),
     OpenWorktree(std::path::PathBuf, Option<WorktreeOrigin>),
     CreateWorktree(GroupId, String),
@@ -355,8 +353,6 @@ impl EnvironmentShell {
             MenuAction::DeleteGroup(group) => {
                 self.ask_delete(DeleteTarget::Group(group), window, cx);
             }
-            MenuAction::CustomizeSession(session) => self.customize_session(session, cx),
-            MenuAction::CloseSession(session) => self.close_session(session, cx),
             MenuAction::RenameGroup(_) | MenuAction::RenameEnvironment(_) => {}
             MenuAction::NewTerminal(preset) => self.add_terminal(preset, cx),
             MenuAction::NewAgent => self.open_agent_composer(window, cx),

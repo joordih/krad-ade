@@ -95,7 +95,7 @@ A line of work the user opens inside a group, holding its own tabs; it opens on 
 _Avoid_: workspace, thread, PTY session
 
 **Session look**:
-A session's own colour, shown as a translucent wash behind its row in the sidebar, and its own icon, both picked by the user.
+A session's own icon and the colour it is drawn in before the session's name in the sidebar, both picked by the user from the session's right-click popover, where it is also renamed.
 _Avoid_: theme, style, label colour
 
 **Window tint**:

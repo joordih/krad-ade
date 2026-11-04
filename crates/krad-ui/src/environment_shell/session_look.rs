@@ -1,20 +1,6 @@
-use gpui_kit::Rgba;
-use krad_domain::{Hue, SessionIcon};
+use krad_domain::SessionIcon;
 
 use crate::components::IconName;
-use crate::theme::{hue_rgb, tinted, Palette};
-
-const WASH_ALPHA: u32 = 0x33;
-const ACTIVE_WASH_ALPHA: u32 = 0x59;
-
-pub(super) fn session_wash(hue: Hue, active: bool, pal: &Palette) -> Rgba {
-    let alpha = if active {
-        ACTIVE_WASH_ALPHA
-    } else {
-        WASH_ALPHA
-    };
-    tinted(hue_rgb(hue, pal), alpha)
-}
 
 pub(super) const fn session_icon(glyph: SessionIcon) -> IconName {
     match glyph {

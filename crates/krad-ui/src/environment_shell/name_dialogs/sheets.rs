@@ -29,13 +29,14 @@ fn dismiss(this: &mut EnvironmentShell, _: &mut Window, cx: &mut Context<Environ
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn name_dialog_sheet(
         &self,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         match &self.name_dialogs {
             NameDialogs::Closed => None,
             NameDialogs::Name(dialog) => Some(Self::rename_sheet(dialog, cx)),
             NameDialogs::Delete(target) => Some(self.delete_sheet(target, cx)),
-            NameDialogs::Look(session) => self.look_sheet(*session, cx),
+            NameDialogs::Look(popover) => self.look_popover(popover, window, cx),
         }
     }
 

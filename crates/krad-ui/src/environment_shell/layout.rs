@@ -327,7 +327,7 @@ impl Render for EnvironmentShell {
             .children(self.template_popup_overlay(window, cx))
             .children(self.context_menu_overlay(window, cx))
             .children(self.model_picker_overlay(window, cx))
-            .children(self.name_dialog_sheet(cx))
+            .children(self.name_dialog_sheet(window, cx))
             .children(self.host_dialog_sheet(window, cx))
             .children(self.toolchain_entry_sheet(cx))
             .child(self.close_dialog(cx));

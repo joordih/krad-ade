@@ -7,22 +7,19 @@ use krad_domain::{
     AgentState, EnvironmentView, GroupId, Session, SessionId, SessionSpec, TerminalId,
 };
 
-use super::context_menu::{MenuAction, MenuEntry};
-use super::session_look::{session_icon, session_wash};
+use super::session_look::session_icon;
 use super::terminal_status::CardStatus;
 use super::{EnvironmentShell, LiveEnv};
 use crate::components::{agent_status, icon, Button, IconName};
 use crate::theme::{
-    palette, row_fill, row_shadow, ICON_SM, LINE_SM, LINE_XS, NAV_ROW_H, RADIUS_XS, SPACE_1,
-    SPACE_1_5, SPACE_2, TEXT_SM, TEXT_XS,
+    hue_rgb, palette, row_fill, row_shadow, ICON_SM, LINE_SM, LINE_XS, NAV_ROW_H, RADIUS_XS,
+    SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM, TEXT_XS,
 };
 
 const SESSION_ROW_PREFIX: &str = "session-row";
 const SESSION_CLOSE_PREFIX: &str = "close-session-";
 const CLOSE_SESSION_TOOLTIP: &str = "Close session; its terminals move to another one";
 const TABS_SUFFIX: &str = "tabs";
-const CUSTOMIZE_LABEL: &str = "Customize…";
-const CLOSE_SESSION_LABEL: &str = "Close session";
 const SESSION_ROW_GROUP_PREFIX: &str = "session-row-hover-";
 const SESSION_ROW_PAD_LEFT: f32 = SPACE_1;
 
@@ -75,25 +72,6 @@ impl EnvironmentShell {
             .collect()
     }
 
-    fn session_menu(id: SessionId, closable: bool) -> Vec<MenuEntry> {
-        let mut entries = vec![MenuEntry::item(
-            CUSTOMIZE_LABEL,
-            Some(IconName::Magic),
-            MenuAction::CustomizeSession(id),
-        )];
-        if closable {
-            entries.extend([
-                MenuEntry::Separator,
-                MenuEntry::destructive(
-                    CLOSE_SESSION_LABEL,
-                    IconName::Close,
-                    MenuAction::CloseSession(id),
-                ),
-            ]);
-        }
-        entries
-    }
-
     fn status_of(live: &LiveEnv, session: &Session) -> CardStatus {
         session_status(session_terminals(session).filter_map(|id| {
             let node = live.data.nodes.iter().find(|node| node.id == id)?;
@@ -107,9 +85,8 @@ impl EnvironmentShell {
         let raw = id.as_u64();
         let unread = row.status == CardStatus::Agent(AgentState::WaitingForInput);
         let count = session_terminals(row.session).count();
-        let closable = row.closable;
         let look = row.session.look;
-        let wash = look.color.map(|hue| session_wash(hue, row.active, pal));
+        let tone = look.color.map_or(pal.text_muted, |hue| hue_rgb(hue, pal));
         let glyph = look.icon.map_or(IconName::Layers, session_icon);
         let quiet = matches!(
             row.status,
@@ -141,18 +118,18 @@ impl EnvironmentShell {
             .when(row.active, |row| {
                 row.bg(row_fill(pal, cx)).shadow(row_shadow(pal, cx))
             })
-            .when_some(wash, Styled::bg)
             .hover(|style| style.bg(pal.bg_hover))
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                 this.select_session(id, cx);
             }))
             .on_mouse_down(
                 MouseButton::Right,
-                cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
-                    this.open_menu_at(event, Self::session_menu(id, closable), cx);
+                cx.listener(move |this: &mut Self, event: &MouseDownEvent, window, cx| {
+                    let at = (event.position.x.as_f32(), event.position.y.as_f32());
+                    this.customize_session(id, at, window, cx);
                 }),
             )
-            .child(icon(glyph, ICON_SM, pal.text_muted))
+            .child(icon(glyph, ICON_SM, tone))
             .child(
                 div()
                     .flex_1()
