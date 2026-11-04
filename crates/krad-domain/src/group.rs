@@ -5,12 +5,14 @@ mod panes;
 mod session;
 mod session_chat;
 mod session_look;
+mod tab_closing;
 pub use file_tab::*;
 pub use lead::*;
 pub use new_session::*;
 pub use panes::*;
 pub use session::*;
 pub use session_look::*;
+pub use tab_closing::*;
 
 use crate::environment::EnvironmentData;
 use crate::ids::{GroupId, TerminalId};

@@ -1,4 +1,5 @@
 mod panes;
+mod tab_menu;
 mod tab_motion;
 mod tab_picker;
 
@@ -575,7 +576,7 @@ impl EnvironmentShell {
             ));
             entries.push(MenuEntry::Separator);
         }
-        entries.extend(Self::terminal_menu(id));
+        entries.extend(self.tab_menu(id));
         self.open_menu(position, MenuPlacement::Below, entries, cx);
     }
 

@@ -25,7 +25,6 @@ pub(super) enum MenuAction {
     RemoveGroup(GroupId),
     RenameEnvironment(EnvironmentName),
     RenameTerminal(TerminalId),
-    CloseTerminal(TerminalId),
     SwitchSurface(TerminalId),
     ShowSessionTab(TerminalId),
     ShowEditorChat(TerminalId),
@@ -61,6 +60,8 @@ pub(super) enum MenuAction {
     SetGroupActivation(GroupId, GroupActivation),
     AnswerChoice(Box<super::language_servers::ChoiceAnswer>),
     HideMinimap,
+    PinTab(TerminalId),
+    CloseTabs(TerminalId, krad_domain::TabClosing),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -368,7 +369,6 @@ impl EnvironmentShell {
                 window.focus(&self.focus, cx);
                 self.start_rename(id, cx);
             }
-            MenuAction::CloseTerminal(id) => self.close_terminal(id, cx),
             MenuAction::SwitchSurface(id) => self.switch_surface(id, window, cx),
             MenuAction::ShowSessionTab(id) => self.show_terminal_tab(id, window, cx),
             MenuAction::ShowEditorChat(id) => self.show_editor_chat(id, cx),
@@ -411,6 +411,8 @@ impl EnvironmentShell {
                 self.set_group_activation(group, activation, cx);
             }
             MenuAction::HideMinimap => self.hide_minimap(cx),
+            MenuAction::PinTab(tab) => self.pin_file_tab(tab, cx),
+            MenuAction::CloseTabs(tab, closing) => self.close_tabs(tab, closing, window, cx),
         }
         cx.notify();
     }

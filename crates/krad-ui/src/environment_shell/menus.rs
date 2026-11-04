@@ -1,12 +1,10 @@
 use gpui_kit::{Context, MouseDownEvent, Pixels, Point};
-use krad_domain::{GroupId, TerminalId};
+use krad_domain::GroupId;
 
 use super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
 use super::EnvironmentShell;
 use crate::components::IconName;
 
-const RENAME_LABEL: &str = "Rename";
-const CLOSE_TERMINAL_LABEL: &str = "Close terminal";
 const REMOVE_WORKTREE_LABEL: &str = "Remove worktree";
 const REMOVE_GROUP_LABEL: &str = "Remove group";
 const NEW_TERMINAL_HEADER: &str = "Open with";
@@ -75,17 +73,5 @@ impl EnvironmentShell {
             MenuAction::RemoveGroup(id),
         ));
         entries
-    }
-
-    pub(super) fn terminal_menu(id: TerminalId) -> Vec<MenuEntry> {
-        vec![
-            MenuEntry::item(RENAME_LABEL, None, MenuAction::RenameTerminal(id)),
-            MenuEntry::Separator,
-            MenuEntry::destructive(
-                CLOSE_TERMINAL_LABEL,
-                IconName::Close,
-                MenuAction::CloseTerminal(id),
-            ),
-        ]
     }
 }

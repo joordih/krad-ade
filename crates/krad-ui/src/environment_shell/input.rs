@@ -114,6 +114,8 @@ impl EnvironmentShell {
             .on_action(cx.listener(Self::on_paste_clipboard))
             .on_action(cx.listener(Self::on_search_terminal))
             .on_action(cx.listener(Self::on_split_terminal))
+            .on_action(cx.listener(Self::on_close_tab))
+            .on_action(cx.listener(Self::on_close_all_tabs))
             .on_action(cx.listener(Self::on_toggle_activity))
             .on_action(cx.listener(Self::on_toggle_sidebar))
             .on_action(cx.listener(Self::on_toggle_side_panel))

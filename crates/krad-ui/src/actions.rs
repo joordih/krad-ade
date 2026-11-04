@@ -8,6 +8,8 @@ actions!(
         NewTerminal,
         SplitTerminal,
         CloseWindow,
+        CloseTab,
+        CloseAllTabs,
         CopySelection,
         PasteClipboard,
         SearchTerminal,

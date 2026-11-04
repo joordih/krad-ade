@@ -4,14 +4,14 @@ use gpui_kit::component::input::{
 use gpui_kit::KeyBinding;
 
 use crate::actions::{
-    AcceptCompletion, AskConfirm, AskDeny, CopySelection, DeleteLine, DuplicateLine, FindInFiles,
-    FindReferences, MoveLineDown, MoveLineUp, NavigateBack, NavigateForward, NewAgent, NewTerminal,
-    NewTreeFile, NextProblem, OpenSettings, PasteClipboard, PreviousProblem, QuickOpen, Reformat,
-    RenameFile, RenameSymbol, SaveFile, SearchTerminal, SendBackTab, SendTab, ShowTabAt,
-    SplitTerminal, TextLarger, TextReset, TextSmaller, ToggleActivity, ToggleFps,
-    ToggleLineComment, TogglePalette, ToggleSidePanel, ToggleSidebar, ToggleWorkMode,
-    ASK_KEY_CONTEXT, EDITOR_KEY_CONTEXT, FILE_TAB_KEY_CONTEXT, FILE_TREE_KEY_CONTEXT,
-    SHELL_KEY_CONTEXT, VIEWER_KEY_CONTEXT,
+    AcceptCompletion, AskConfirm, AskDeny, CloseAllTabs, CloseTab, CopySelection, DeleteLine,
+    DuplicateLine, FindInFiles, FindReferences, MoveLineDown, MoveLineUp, NavigateBack,
+    NavigateForward, NewAgent, NewTerminal, NewTreeFile, NextProblem, OpenSettings, PasteClipboard,
+    PreviousProblem, QuickOpen, Reformat, RenameFile, RenameSymbol, SaveFile, SearchTerminal,
+    SendBackTab, SendTab, ShowTabAt, SplitTerminal, TextLarger, TextReset, TextSmaller,
+    ToggleActivity, ToggleFps, ToggleLineComment, TogglePalette, ToggleSidePanel, ToggleSidebar,
+    ToggleWorkMode, ASK_KEY_CONTEXT, EDITOR_KEY_CONTEXT, FILE_TAB_KEY_CONTEXT,
+    FILE_TREE_KEY_CONTEXT, SHELL_KEY_CONTEXT, VIEWER_KEY_CONTEXT,
 };
 #[cfg(target_os = "macos")]
 use crate::actions::{HideApp, HideOtherApps, MinimizeWindow, Quit};
@@ -32,6 +32,10 @@ mod keys {
         ["⌘1", "⌘2", "⌘3", "⌘4", "⌘5", "⌘6", "⌘7", "⌘8", "⌘9"];
     pub(super) const NEW_TREE_FILE: &str = "cmd-n";
     pub(super) const SPLIT_TERMINAL: &str = "cmd-d";
+    pub(super) const CLOSE_TAB: &str = "cmd-w";
+    pub(super) const CLOSE_TAB_HINT: &str = "⌘W";
+    pub(super) const CLOSE_ALL_TABS: &str = "cmd-shift-w";
+    pub(super) const CLOSE_ALL_TABS_HINT: &str = "⌘⇧W";
     pub(super) const COPY: &str = "cmd-c";
     pub(super) const VIEWER_COPY: &str = "cmd-c";
     pub(super) const COPY_HINT: &str = "⌘C";
@@ -95,6 +99,10 @@ mod keys {
     ];
     pub(super) const NEW_TREE_FILE: &str = "ctrl-shift-n";
     pub(super) const SPLIT_TERMINAL: &str = "ctrl-shift-d";
+    pub(super) const CLOSE_TAB: &str = "ctrl-shift-w";
+    pub(super) const CLOSE_TAB_HINT: &str = "Ctrl+Shift+W";
+    pub(super) const CLOSE_ALL_TABS: &str = "ctrl-alt-shift-w";
+    pub(super) const CLOSE_ALL_TABS_HINT: &str = "Ctrl+Alt+Shift+W";
     pub(super) const COPY: &str = "ctrl-shift-c";
     pub(super) const VIEWER_COPY: &str = "ctrl-c";
     pub(super) const COPY_HINT: &str = "Ctrl+Shift+C";
@@ -142,6 +150,8 @@ pub(crate) const NEW_TERMINAL_HINT: &str = keys::NEW_TERMINAL_HINT;
 pub(crate) const TAB_SLOT_HINTS: [&str; 9] = keys::TAB_SLOT_HINTS;
 pub(crate) const COPY_HINT: &str = keys::COPY_HINT;
 pub(crate) const PASTE_HINT: &str = keys::PASTE_HINT;
+pub(crate) const CLOSE_TAB_HINT: &str = keys::CLOSE_TAB_HINT;
+pub(crate) const CLOSE_ALL_TABS_HINT: &str = keys::CLOSE_ALL_TABS_HINT;
 
 #[must_use]
 pub fn key_bindings() -> Vec<KeyBinding> {
@@ -162,6 +172,8 @@ pub fn key_bindings() -> Vec<KeyBinding> {
     );
     bindings.extend([
         KeyBinding::new(keys::SPLIT_TERMINAL, SplitTerminal, scope),
+        KeyBinding::new(keys::CLOSE_TAB, CloseTab, scope),
+        KeyBinding::new(keys::CLOSE_ALL_TABS, CloseAllTabs, scope),
         KeyBinding::new(keys::COPY, CopySelection, scope),
         KeyBinding::new(keys::PASTE, PasteClipboard, scope),
         KeyBinding::new(keys::SEARCH, SearchTerminal, scope),
