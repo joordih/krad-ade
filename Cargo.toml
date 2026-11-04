@@ -10,6 +10,7 @@ repository = "https://github.com/joordih/krad-ade"
 
 [workspace.dependencies]
 base64 = "0.22"
+block2 = "0.6"
 futures = "0.3"
 globset = "0.4"
 grep-matcher = "0.1"
@@ -67,8 +68,10 @@ pet-core = { git = "https://github.com/microsoft/python-environment-tools", rev 
 pet-poetry = { git = "https://github.com/microsoft/python-environment-tools", rev = "02dd29e49e3c71d4ec06e1072d6331494a12e01d" }
 pet-reporter = { git = "https://github.com/microsoft/python-environment-tools", rev = "02dd29e49e3c71d4ec06e1072d6331494a12e01d" }
 objc2-app-kit = { version = "0.3", default-features = false, features = [
+  "block2",
   "NSAccessibility",
   "NSCell",
+  "NSEvent",
   "NSGlassEffectView",
   "NSGraphics",
   "NSImage",
@@ -77,6 +80,7 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
   "NSResponder",
   "NSView",
   "NSWorkspace",
+  "objc2-core-foundation",
   "std",
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = [

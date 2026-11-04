@@ -188,6 +188,9 @@ impl DefinitionProvider for ServerDocument {
         _: &mut Window,
         cx: &mut App,
     ) -> Task<Result<Vec<LocationLink>>> {
+        self.shell
+            .update(cx, |shell, cx| shell.record_navigation(cx))
+            .unwrap_or_default();
         let params = GotoDefinitionParams {
             text_document_position_params: self.position(text, offset),
             work_done_progress_params: WorkDoneProgressParams::default(),

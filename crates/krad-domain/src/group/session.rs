@@ -85,6 +85,23 @@ impl EnvironmentData {
             .map(|session| session.id)
     }
 
+    pub fn step_session(&mut self, forward: bool) -> bool {
+        let Some(current) = self.current_session() else {
+            return false;
+        };
+        let (id, group) = (current.id, current.group);
+        let ids: Vec<SessionId> = self.sessions_of(group).map(|session| session.id).collect();
+        let Some(at) = ids.iter().position(|session| *session == id) else {
+            return false;
+        };
+        let next = if forward {
+            (at + 1) % ids.len()
+        } else {
+            (at + ids.len() - 1) % ids.len()
+        };
+        next != at && self.select_session(ids[next])
+    }
+
     pub fn select_session(&mut self, id: SessionId) -> bool {
         let exists = self.session(id).is_some();
         if exists {
@@ -256,6 +273,20 @@ mod tests {
         assert_eq!(session_terminals(&environment, None), [TerminalId(3)]);
         environment.enter_sessions();
         assert_eq!(environment.sessions.len(), 2, "entering twice is a no-op");
+    }
+
+    #[test]
+    fn stepping_cycles_through_the_sessions_of_the_current_group() {
+        let (mut environment, api, _) = grouped_environment();
+        environment.enter_sessions();
+        environment.reveal_terminal(TerminalId(1));
+        let first = environment.active_session;
+        let second = environment.new_session(Some(api), SessionSpec::default());
+        assert_eq!(environment.active_session, Some(second));
+        assert!(environment.step_session(true));
+        assert_eq!(environment.active_session, first);
+        assert!(environment.step_session(false));
+        assert_eq!(environment.active_session, Some(second));
     }
 
     #[test]

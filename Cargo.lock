@@ -3969,6 +3969,7 @@ dependencies = [
 name = "krad-ui"
 version = "0.2.0"
 dependencies = [
+ "block2 0.6.2",
  "futures",
  "gpui-fps",
  "gpui-kit",

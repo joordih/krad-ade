@@ -11,7 +11,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, Entity, InteractiveElement, IntoElement,
     ParentElement, Styled, Subscription, Window,
 };
-use krad_domain::{EnvironmentName, FileOpening, FileView, TerminalId};
+use krad_domain::{EnvironmentName, FileOpening, FileView, TerminalId, TextScale};
 use krad_host::HostLink;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -118,6 +118,18 @@ impl LiveEnv {
 
 impl EnvironmentShell {
     pub(super) fn open_file_tab(
+        &mut self,
+        path: &Path,
+        opening: FileOpening,
+        cx: &mut Context<Self>,
+    ) {
+        if self.shown_file_path().as_deref() != Some(path) {
+            self.record_navigation(cx);
+        }
+        self.show_file_at_path(path, opening, cx);
+    }
+
+    pub(super) fn show_file_at_path(
         &mut self,
         path: &Path,
         opening: FileOpening,
@@ -360,6 +372,12 @@ impl EnvironmentShell {
             return div().flex_1().into_any_element();
         };
         let editor_settings = self.settings.editor;
+        let scale = live
+            .data
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .map_or_else(TextScale::default, |node| node.text_scale);
         let conflict = (editor.disk == DiskWatch::Conflict).then(|| {
             div()
                 .flex()
@@ -413,7 +431,7 @@ impl EnvironmentShell {
             .on_action(cx.listener(Self::on_reformat))
             .children(self.language_notice(live, id, &editor.path, cx))
             .children(conflict)
-            .child(self.editor_area(live, editor, state, editor_settings))
+            .child(self.editor_area(live, editor, state, editor_settings, scale))
             .children(self.toolchain_status(live, &editor.path, cx))
             .into_any_element()
     }

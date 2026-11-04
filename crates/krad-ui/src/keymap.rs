@@ -5,12 +5,13 @@ use gpui_kit::KeyBinding;
 
 use crate::actions::{
     AcceptCompletion, AskConfirm, AskDeny, CopySelection, DeleteLine, DuplicateLine, FindInFiles,
-    FindReferences, MoveLineDown, MoveLineUp, NewAgent, NewFromTemplate, NewTerminal, NextProblem,
-    OpenSettings, PasteClipboard, PreviousProblem, QuickOpen, Reformat, RenameFile, RenameSymbol,
-    SaveFile, SearchTerminal, SendBackTab, SendTab, ShowTabAt, SplitTerminal, TextLarger,
-    TextReset, TextSmaller, ToggleActivity, ToggleFps, ToggleLineComment, TogglePalette,
-    ToggleSidePanel, ToggleSidebar, ToggleWorkMode, ASK_KEY_CONTEXT, EDITOR_KEY_CONTEXT,
-    FILE_TAB_KEY_CONTEXT, FILE_TREE_KEY_CONTEXT, SHELL_KEY_CONTEXT, VIEWER_KEY_CONTEXT,
+    FindReferences, MoveLineDown, MoveLineUp, NavigateBack, NavigateForward, NewAgent,
+    NewFromTemplate, NewTerminal, NextProblem, OpenSettings, PasteClipboard, PreviousProblem,
+    QuickOpen, Reformat, RenameFile, RenameSymbol, SaveFile, SearchTerminal, SendBackTab, SendTab,
+    ShowTabAt, SplitTerminal, TextLarger, TextReset, TextSmaller, ToggleActivity, ToggleFps,
+    ToggleLineComment, TogglePalette, ToggleSidePanel, ToggleSidebar, ToggleWorkMode,
+    ASK_KEY_CONTEXT, EDITOR_KEY_CONTEXT, FILE_TAB_KEY_CONTEXT, FILE_TREE_KEY_CONTEXT,
+    SHELL_KEY_CONTEXT, VIEWER_KEY_CONTEXT,
 };
 #[cfg(target_os = "macos")]
 use crate::actions::{HideApp, HideOtherApps, MinimizeWindow, Quit};
@@ -22,6 +23,8 @@ mod keys {
     pub(super) const OPEN_SETTINGS_HINT: &str = "⌘,";
     pub(super) const NEW_TERMINAL: &str = "cmd-t";
     pub(super) const NEW_TERMINAL_HINT: &str = "⌘T";
+    pub(super) const NAVIGATE_BACK: &str = "ctrl--";
+    pub(super) const NAVIGATE_FORWARD: &str = "ctrl-shift--";
     pub(super) const TAB_SLOTS: [&str; 9] = [
         "cmd-1", "cmd-2", "cmd-3", "cmd-4", "cmd-5", "cmd-6", "cmd-7", "cmd-8", "cmd-9",
     ];
@@ -82,6 +85,8 @@ mod keys {
     pub(super) const OPEN_SETTINGS_HINT: &str = "Ctrl+,";
     pub(super) const NEW_TERMINAL: &str = "ctrl-shift-t";
     pub(super) const NEW_TERMINAL_HINT: &str = "Ctrl+Shift+T";
+    pub(super) const NAVIGATE_BACK: &str = "alt-left";
+    pub(super) const NAVIGATE_FORWARD: &str = "alt-right";
     pub(super) const TAB_SLOTS: [&str; 9] = [
         "alt-1", "alt-2", "alt-3", "alt-4", "alt-5", "alt-6", "alt-7", "alt-8", "alt-9",
     ];
@@ -146,6 +151,8 @@ pub fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new(keys::TOGGLE_FPS, ToggleFps, scope),
         KeyBinding::new(keys::PALETTE, TogglePalette, scope),
         KeyBinding::new(keys::NEW_TERMINAL, NewTerminal, scope),
+        KeyBinding::new(keys::NAVIGATE_BACK, NavigateBack, scope),
+        KeyBinding::new(keys::NAVIGATE_FORWARD, NavigateForward, scope),
     ]);
     bindings.extend(
         keys::TAB_SLOTS

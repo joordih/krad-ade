@@ -34,6 +34,8 @@ actions!(
         TextSmaller,
         TextReset,
         NewAgent,
+        NavigateBack,
+        NavigateForward,
         SendTab,
         SendBackTab,
         RenameFile,

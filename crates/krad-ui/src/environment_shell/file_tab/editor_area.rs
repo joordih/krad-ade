@@ -1,5 +1,6 @@
 use gpui_kit::component::input::{Editor, EditorState};
 use gpui_kit::{div, px, Context, Entity, KeyDownEvent, ParentElement, Styled, Window};
+use krad_domain::TextScale;
 
 use super::super::language_servers::Document;
 use super::super::rename::{KEY_ENTER, KEY_ESCAPE};
@@ -11,6 +12,7 @@ use super::problem_underlines::problem_underlines;
 use super::FileEditor;
 use crate::theme::SPACE_1_5;
 
+const EDITOR_TEXT_PX: f32 = 14.0;
 const KEY_UP: &str = "up";
 const KEY_DOWN: &str = "down";
 
@@ -21,6 +23,7 @@ impl EnvironmentShell {
         editor: &FileEditor,
         state: &Entity<EditorState>,
         settings: krad_domain::EditorSettings,
+        scale: TextScale,
     ) -> gpui_kit::Div {
         let overlays = editor.problems.clone().map(|problems| {
             [
@@ -46,6 +49,7 @@ impl EnvironmentShell {
                         Editor::new(state)
                             .bordered(false)
                             .readonly(library)
+                            .text_size(px(EDITOR_TEXT_PX * scale.as_f32()))
                             .h_full(),
                     )
                     .children(overlays.into_iter().flatten()),

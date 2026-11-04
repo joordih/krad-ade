@@ -11,6 +11,7 @@ mod http;
 mod keymap;
 mod language;
 mod motion;
+mod native_swipe;
 mod terminal_theme;
 mod theme;
 mod title_bar;

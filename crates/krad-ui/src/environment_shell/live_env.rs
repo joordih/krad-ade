@@ -28,6 +28,7 @@ pub(super) struct LiveEnv {
     pub(super) utility_tab: activity::UtilityTab,
     pub(super) terminals_tab: activity::TerminalsTab,
     pub(super) pending_cursors: HashMap<TerminalId, krad_lsp::lsp_types::Position>,
+    pub(super) navigation: HashMap<krad_domain::SessionId, krad_domain::NavigationHistory>,
 }
 
 impl LiveEnv {
@@ -68,6 +69,7 @@ impl LiveEnv {
             utility_tab: activity::UtilityTab::Log,
             terminals_tab: activity::TerminalsTab::Hidden,
             pending_cursors: HashMap::new(),
+            navigation: HashMap::new(),
         }
     }
 }

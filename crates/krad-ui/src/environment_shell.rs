@@ -23,6 +23,7 @@ mod environment_order;
 mod file_tab;
 mod file_tree;
 mod gateway;
+mod gestures;
 mod groups;
 mod harness_models;
 mod host;
@@ -143,6 +144,7 @@ pub struct EnvironmentShell {
     side_search: side_panel::SideSearch,
     changes_expanded: HashSet<PathBuf>,
     pending_discard: Option<discard::Discard>,
+    gestures: gestures::Gestures,
     history: side_panel::CommitHistory,
     activity_log: activity::ActivityLog,
     close_request: CloseRequest,
@@ -261,6 +263,7 @@ impl EnvironmentShell {
             side_search: side_panel::SideSearch::default(),
             changes_expanded: HashSet::new(),
             pending_discard: None,
+            gestures: gestures::Gestures::default(),
             history: side_panel::CommitHistory::default(),
             activity_log: activity::ActivityLog::default(),
             close_request: CloseRequest::Idle,
@@ -309,7 +312,7 @@ impl EnvironmentShell {
         shell.show_host(&active, cx);
         shell.pump_task = Some(Self::start_pump(pump_rx, cx));
         Self::detect_agents(cx);
-        shell.start_git_watch(cx);
+        shell.start_watches(cx);
         shell.load_language_tools(cx);
         shell
     }
