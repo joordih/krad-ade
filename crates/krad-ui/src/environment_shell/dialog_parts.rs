@@ -1,7 +1,7 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, Div, ElementId, FontWeight, InteractiveElement, IntoElement,
-    ParentElement, SharedString, Stateful, Styled,
+    div, px, rgb, transparent_black, AnyElement, Div, ElementId, FontWeight, InteractiveElement,
+    IntoElement, ParentElement, SharedString, Stateful, Styled,
 };
 
 mod sheet;
@@ -10,8 +10,8 @@ pub(super) use sheet::*;
 
 use crate::components::{icon, IconName};
 use crate::theme::{
-    row_fill, row_shadow, Palette, CTA_SM_H, ICON_SM, LINE_SM, LINE_XS, NAV_ROW_H, RADIUS_XS,
-    SPACE_1_5, TEXT_SM, TEXT_XS,
+    row_fill, row_shadow, Palette, CTA_SM_H, ICON_SM, LINE_SM, LINE_XS, NAV_ROW_H, SPACE_1_5,
+    TAB_RADIUS, TEXT_SM, TEXT_XS,
 };
 
 const SEGMENT_RADIUS: f32 = 7.0;
@@ -61,7 +61,7 @@ pub(super) fn segment(
             item.flex_none()
                 .h(px(CTA_SM_H))
                 .px(px(SEGMENT_PAD_X))
-                .rounded(px(RADIUS_XS))
+                .rounded(px(TAB_RADIUS))
                 .text_size(px(TEXT_XS))
                 .line_height(px(LINE_XS))
         })
@@ -71,8 +71,11 @@ pub(super) fn segment(
         } else {
             pal.text_default
         }))
+        .border_1()
+        .border_color(transparent_black())
         .when(selected, |item| {
             item.bg(row_fill(pal, cx))
+                .border_color(pal.divider)
                 .shadow(row_shadow(pal, cx))
                 .font_weight(FontWeight::MEDIUM)
         })

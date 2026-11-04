@@ -6,7 +6,7 @@ use krad_lsp::lsp_types::{Diagnostic, DiagnosticSeverity};
 use std::path::{Path, PathBuf};
 
 use super::super::language_servers::severity_of;
-use super::super::session_pane::tab_shell;
+use super::super::session_pane::{tab_shell, TabWidth};
 use super::super::EnvironmentShell;
 use super::tabs::UtilityTab;
 use crate::components::{icon, IconName};
@@ -87,25 +87,31 @@ impl EnvironmentShell {
             .iter()
             .map(|file| count_of(&file.problems, DiagnosticSeverity::ERROR))
             .sum();
-        tab_shell(PROBLEMS_TAB_ID, shown == UtilityTab::Problems, pal, cx)
-            .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                this.set_utility_tab(UtilityTab::Problems, cx);
-            }))
-            .pr(px(SPACE_2))
-            .child(icon(IconName::CancelCircle, ICON_SM, pal.text_muted))
-            .child(div().font_weight(FontWeight::MEDIUM).child(PROBLEMS_LABEL))
-            .child(
-                div()
-                    .text_size(px(TEXT_XS))
-                    .line_height(px(LINE_XS))
-                    .text_color(rgb(if errors > 0 {
-                        pal.error_fg
-                    } else {
-                        pal.text_muted
-                    }))
-                    .child(errors.to_string()),
-            )
-            .into_any_element()
+        tab_shell(
+            PROBLEMS_TAB_ID,
+            shown == UtilityTab::Problems,
+            TabWidth::Fit,
+            pal,
+            cx,
+        )
+        .on_click(cx.listener(|this: &mut Self, _, _, cx| {
+            this.set_utility_tab(UtilityTab::Problems, cx);
+        }))
+        .pr(px(SPACE_2))
+        .child(icon(IconName::CancelCircle, ICON_SM, pal.text_muted))
+        .child(div().font_weight(FontWeight::MEDIUM).child(PROBLEMS_LABEL))
+        .child(
+            div()
+                .text_size(px(TEXT_XS))
+                .line_height(px(LINE_XS))
+                .text_color(rgb(if errors > 0 {
+                    pal.error_fg
+                } else {
+                    pal.text_muted
+                }))
+                .child(errors.to_string()),
+        )
+        .into_any_element()
     }
 
     pub(super) fn problems_body(&self, cx: &mut Context<Self>) -> AnyElement {

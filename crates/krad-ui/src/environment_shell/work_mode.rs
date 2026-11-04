@@ -1,13 +1,14 @@
 mod chat_panel;
 
 use gpui_kit::{
-    AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
+    px, AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::{SessionPanes, WorkMode};
 use std::borrow::Cow;
 
 use super::dialog_parts::{segment, SegmentSize};
+use super::session_pane::TAB_H;
 use super::settings_view::segmented_track;
 use super::{EnvironmentShell, LiveEnv};
 use crate::actions::ToggleWorkMode;
@@ -76,6 +77,7 @@ impl EnvironmentShell {
                     pal,
                     cx,
                 )
+                .h(px(TAB_H))
                 .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                     this.set_work_mode(mode, cx);
                 }))

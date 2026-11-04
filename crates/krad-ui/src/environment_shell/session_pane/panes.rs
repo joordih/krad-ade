@@ -368,33 +368,39 @@ impl EnvironmentShell {
             cx.entity().downgrade(),
         );
         Some(
-            tab_shell((GUEST_TAB_PREFIX, id.as_u64()), shown, pal, cx)
-                .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
-                .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
-                    this.show_terminal_tab(id, window, cx);
-                }))
-                .child(super::tab_badge(
-                    icon(IconName::Terminal, ICON_SM, pal.text_muted),
-                    pal,
-                ))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .truncate()
-                        .child(terminal.title.clone()),
-                )
-                .child(
-                    Button::new((GUEST_BACK_PREFIX, id.as_u64()))
-                        .icon(IconName::SidebarRight)
-                        .small()
-                        .tooltip(GUEST_BACK_TOOLTIP)
-                        .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                            cx.stop_propagation();
-                            this.edit_panes(cx, |panes| panes.release(id));
-                        })),
-                )
-                .into_any_element(),
+            tab_shell(
+                (GUEST_TAB_PREFIX, id.as_u64()),
+                shown,
+                super::TabWidth::Fill,
+                pal,
+                cx,
+            )
+            .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
+            .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                this.show_terminal_tab(id, window, cx);
+            }))
+            .child(super::tab_badge(
+                icon(IconName::Terminal, ICON_SM, pal.text_muted),
+                pal,
+            ))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .child(terminal.title.clone()),
+            )
+            .child(
+                Button::new((GUEST_BACK_PREFIX, id.as_u64()))
+                    .icon(IconName::SidebarRight)
+                    .small()
+                    .tooltip(GUEST_BACK_TOOLTIP)
+                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                        cx.stop_propagation();
+                        this.edit_panes(cx, |panes| panes.release(id));
+                    })),
+            )
+            .into_any_element(),
         )
     }
 

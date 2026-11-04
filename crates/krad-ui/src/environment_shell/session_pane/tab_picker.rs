@@ -7,18 +7,17 @@ use krad_domain::{AgentPreset, PaneId, TerminalId};
 use super::super::context_menu::{MenuAction, MenuCreate, MenuEntry, MenuSearch};
 use super::super::sessions::Launch;
 use super::super::{EnvironmentShell, LiveEnv};
-use super::{CAPSULE_PAD, TAB_H};
+use super::TAB_H;
 use crate::actions::ShowTabAt;
 use crate::components::{icon, tooltip_view, IconName};
 use crate::keymap::{NEW_TERMINAL_HINT, TAB_SLOT_HINTS};
-use crate::theme::{palette, row_fill, ICON_SM};
+use crate::theme::{palette, row_fill, CAPSULE_PAD, CAPSULE_RADIUS, ICON_SM};
 
 const BTN_TAB_PICKER: &str = "session-tab-picker";
 const TAB_PICKER_TOOLTIP: &str = "Tabs";
 const FILTER_PLACEHOLDER: &str = "Filter or create…";
 const FILTER_FILES_PLACEHOLDER: &str = "Filter…";
 const NEW_TAB_LABEL: &str = "New tab";
-const PICKER_RADIUS: f32 = 12.0;
 const NEW_TAB_KEY: char = 't';
 const TAB_SLOT_KEYS: [char; 9] = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
@@ -34,7 +33,7 @@ pub(in crate::environment_shell) fn tab_picker_shell(
         .items_center()
         .justify_center()
         .size(px(TAB_H + 2.0 * CAPSULE_PAD))
-        .rounded(px(PICKER_RADIUS))
+        .rounded(px(CAPSULE_RADIUS))
         .cursor_pointer()
         .bg(row_fill(pal, cx))
         .border_1()

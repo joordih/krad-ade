@@ -30,15 +30,14 @@ use crate::components::{
 };
 use crate::terminal_theme::terminal_colors;
 use crate::theme::{
-    palette, row_fill, row_shadow, terminal_font_family, Palette, ICON_SM, LINE_SM, RADIUS_LG,
-    RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, TEXT_SM,
+    palette, row_fill, row_shadow, terminal_font_family, Palette, CAPSULE_PAD, CAPSULE_RADIUS,
+    ICON_SM, LINE_SM, RADIUS_LG, RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TAB_RADIUS,
+    TEXT_SM,
 };
 
 pub(in crate::environment_shell) const TAB_H: f32 = 28.0;
 const TAB_BADGE: f32 = 20.0;
 const TAB_MIN_W: f32 = 110.0;
-const TAB_RADIUS: f32 = 14.0;
-pub(in crate::environment_shell) const CAPSULE_PAD: f32 = 2.0;
 const TAB_DIVIDER_W: f32 = 1.0;
 const TAB_DIVIDER_H: f32 = 14.0;
 const CLOSE_BUTTON: f32 = 18.0;
@@ -104,9 +103,16 @@ impl LiveEnv {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in crate::environment_shell) enum TabWidth {
+    Fill,
+    Fit,
+}
+
 pub(super) fn tab_shell(
     id: impl Into<gpui_kit::ElementId>,
     shown: bool,
+    width: TabWidth,
     pal: &Palette,
     cx: &gpui_kit::App,
 ) -> gpui_kit::Stateful<gpui_kit::Div> {
@@ -114,8 +120,10 @@ pub(super) fn tab_shell(
         .id(id)
         .flex()
         .flex_row()
-        .flex_1()
-        .min_w(px(TAB_MIN_W))
+        .map(|tab| match width {
+            TabWidth::Fill => tab.flex_1().min_w(px(TAB_MIN_W)),
+            TabWidth::Fit => tab.flex_none().pr(px(SPACE_2)),
+        })
         .items_center()
         .gap(px(SPACE_1_5))
         .h(px(TAB_H))
@@ -145,17 +153,21 @@ pub(super) fn tab_shell(
 
 pub(in crate::environment_shell) fn tab_capsule(
     tabs: Vec<AnyElement>,
+    width: TabWidth,
     pal: &Palette,
 ) -> gpui_kit::Div {
     div()
         .flex()
         .flex_row()
-        .flex_1()
+        .map(|capsule| match width {
+            TabWidth::Fill => capsule.flex_1(),
+            TabWidth::Fit => capsule.flex_none().max_w_full(),
+        })
         .min_w_0()
         .items_center()
         .h(px(TAB_H + 2.0 * CAPSULE_PAD))
         .p(px(CAPSULE_PAD))
-        .rounded(px(TAB_RADIUS + CAPSULE_PAD))
+        .rounded(px(CAPSULE_RADIUS))
         .bg(pal.bg_hover)
         .overflow_hidden()
         .children(tabs)
@@ -312,7 +324,7 @@ impl EnvironmentShell {
                     .border_color(pal.divider),
             })
             .child(picker)
-            .child(tab_capsule(tabs, pal))
+            .child(tab_capsule(tabs, TabWidth::Fill, pal))
             .when(!self.editing(), |strip| {
                 strip.child(Self::add_tab_button(pane, cx))
             })
@@ -381,63 +393,69 @@ impl EnvironmentShell {
         let title = self.title_label(id, &node.title);
         let dragged = DraggedTab::new(id, title.clone(), mark, mark_color, cx.entity().downgrade());
         Some(
-            tab_shell((TERMINAL_TAB_PREFIX, id.as_u64()), shown, pal, cx)
-                .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
-                .on_mouse_up(
-                    MouseButton::Middle,
-                    cx.listener(move |this: &mut Self, _: &MouseUpEvent, window, cx| {
-                        this.request_close_tab(id, window, cx);
-                    }),
-                )
-                .on_click(
-                    cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
-                        if is_file {
-                            this.show_file_tab(id, cx);
-                        } else if this.editing() {
-                            this.show_editor_chat(id, cx);
-                        } else if shown {
-                            this.open_terminal_tab_menu(id, position_of(event), cx);
-                        } else {
-                            this.show_terminal_tab(id, window, cx);
-                        }
-                    }),
-                )
-                .when(preview, |tab| {
-                    tab.on_double_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                        this.pin_file_tab(id, cx);
-                    }))
-                })
-                .on_mouse_down(
-                    MouseButton::Right,
-                    cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
-                        cx.stop_propagation();
-                        let position = (event.position.x.as_f32(), event.position.y.as_f32());
-                        this.open_terminal_tab_menu(id, position, cx);
-                    }),
-                )
-                .child(tab_badge(leading, pal))
-                .child(
+            tab_shell(
+                (TERMINAL_TAB_PREFIX, id.as_u64()),
+                shown,
+                TabWidth::Fill,
+                pal,
+                cx,
+            )
+            .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
+            .on_mouse_up(
+                MouseButton::Middle,
+                cx.listener(move |this: &mut Self, _: &MouseUpEvent, window, cx| {
+                    this.request_close_tab(id, window, cx);
+                }),
+            )
+            .on_click(
+                cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
+                    if is_file {
+                        this.show_file_tab(id, cx);
+                    } else if this.editing() {
+                        this.show_editor_chat(id, cx);
+                    } else if shown {
+                        this.open_terminal_tab_menu(id, position_of(event), cx);
+                    } else {
+                        this.show_terminal_tab(id, window, cx);
+                    }
+                }),
+            )
+            .when(preview, |tab| {
+                tab.on_double_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                    this.pin_file_tab(id, cx);
+                }))
+            })
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    let position = (event.position.x.as_f32(), event.position.y.as_f32());
+                    this.open_terminal_tab_menu(id, position, cx);
+                }),
+            )
+            .child(tab_badge(leading, pal))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .when(preview, Styled::italic)
+                    .child(title),
+            )
+            .when(dirty, |tab| {
+                tab.child(
                     div()
-                        .flex_1()
-                        .min_w_0()
-                        .truncate()
-                        .when(preview, Styled::italic)
-                        .child(title),
+                        .flex_none()
+                        .size(px(DIRTY_DOT))
+                        .rounded_full()
+                        .bg(rgb(pal.text_default)),
                 )
-                .when(dirty, |tab| {
-                    tab.child(
-                        div()
-                            .flex_none()
-                            .size(px(DIRTY_DOT))
-                            .rounded_full()
-                            .bg(rgb(pal.text_default)),
-                    )
-                })
-                .when(on_chat, |tab| {
-                    tab.child(icon(IconName::Chat, STATUS_ICON, pal.text_muted))
-                })
-                .when(shown, |tab| tab.child(Self::close_tab_button(id, cx)))
-                .into_any_element(),
+            })
+            .when(on_chat, |tab| {
+                tab.child(icon(IconName::Chat, STATUS_ICON, pal.text_muted))
+            })
+            .when(shown, |tab| tab.child(Self::close_tab_button(id, cx)))
+            .into_any_element(),
         )
     }
 
