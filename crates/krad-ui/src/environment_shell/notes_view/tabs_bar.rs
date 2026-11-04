@@ -7,7 +7,7 @@ use gpui_kit::{
 use krad_domain::{NoteMode, NoteTab};
 
 use super::super::dialog_parts::{segment, SegmentSize};
-use super::super::session_pane::tab_shell;
+use super::super::session_pane::{tab_capsule, tab_shell, TabWidth};
 use super::super::EnvironmentShell;
 use super::NoteEditor;
 use crate::components::{icon, tooltip_view, Button, IconName};
@@ -26,7 +26,6 @@ const CONTINUE_TOOLTIP: &str = "Ask an agent to write the next section of this n
 const INSPECTOR_TOOLTIP: &str = "Show or hide the inspector";
 const DIRTY_MARK: &str = "•";
 const CLOSE_BUTTON: f32 = 18.0;
-const TAB_TITLE_MAX_W: f32 = 160.0;
 const CLOSE_ICON: f32 = 12.0;
 const PATH_SEPARATOR: char = '/';
 const NOTE_SUFFIX: &str = ".md";
@@ -76,17 +75,7 @@ impl EnvironmentShell {
             .items_center()
             .gap(px(SPACE_0_5))
             .occlude()
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .flex_1()
-                    .min_w_0()
-                    .items_center()
-                    .gap(px(SPACE_0_5))
-                    .overflow_hidden()
-                    .children(items),
-            )
+            .child(tab_capsule(items, TabWidth::Fill, palette(cx)))
             .children(controls)
             .into_any_element();
         Some(strip)
@@ -94,7 +83,7 @@ impl EnvironmentShell {
 
     fn graph_tab(shown: bool, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        tab_shell(GRAPH_TAB_ID, shown, pal, cx)
+        tab_shell(GRAPH_TAB_ID, shown, TabWidth::Fill, pal, cx)
             .on_click(cx.listener(|this: &mut Self, _, _, cx| {
                 this.notes.graph.showing = true;
                 cx.notify();
@@ -128,7 +117,7 @@ impl EnvironmentShell {
             .get(&tab.path)
             .is_some_and(NoteEditor::is_dirty);
         let closed = tab.path.clone();
-        tab_shell((TAB_PREFIX, index), shown, pal, cx)
+        tab_shell((TAB_PREFIX, index), shown, TabWidth::Fill, pal, cx)
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                 this.notes.graph.showing = false;
                 this.show_note_tab(index, cx);
@@ -139,7 +128,8 @@ impl EnvironmentShell {
             .child(icon(IconName::Note, ICON_SM, pal.text_muted))
             .child(
                 div()
-                    .max_w(px(TAB_TITLE_MAX_W))
+                    .flex_1()
+                    .min_w_0()
                     .truncate()
                     .when(!tab.pinned, Styled::italic)
                     .child(note_name(&tab.path).to_owned()),

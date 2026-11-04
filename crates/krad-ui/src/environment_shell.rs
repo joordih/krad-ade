@@ -44,6 +44,7 @@ mod opencode;
 mod palette;
 mod rename;
 mod review_view;
+mod rubber_band;
 mod session_look;
 mod session_pane;
 mod sessions;

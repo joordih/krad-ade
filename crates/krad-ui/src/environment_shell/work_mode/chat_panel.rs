@@ -7,7 +7,9 @@ use krad_domain::TerminalId;
 use std::rc::Rc;
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuSearch};
-use super::super::session_pane::{divides, tab_capsule, tab_divider, tab_picker_shell, DraggedTab};
+use super::super::session_pane::{
+    divides, tab_capsule, tab_divider, tab_picker_shell, DraggedTab, TabWidth,
+};
 use super::super::{EnvironmentShell, LiveEnv};
 use crate::components::{Button, ButtonVariant, CenteredEmpty, IconName};
 use crate::theme::{palette, CARD_HEADER_H, LINE_SM, SPACE_0_5, SPACE_1_5, TEXT_SM};
@@ -104,7 +106,7 @@ impl EnvironmentShell {
                     );
                 },
             )))
-            .child(tab_capsule(tabs, pal))
+            .child(tab_capsule(tabs, TabWidth::Fill, pal))
             .child(
                 Button::new(BTN_NEW_CHAT)
                     .icon(IconName::Add)

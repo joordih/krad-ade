@@ -19,8 +19,8 @@ use super::EnvironmentShell;
 use crate::actions::ToggleActivity;
 use crate::components::{card, icon, tooltip_view, Button, IconName};
 use crate::theme::{
-    palette, CARD_HEADER_H, ICON_XS, LINE_SM, LINE_XS, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2,
-    TEXT_SM, TEXT_XS, WINDOW_INSET,
+    palette, CAPSULE_PAD, CARD_HEADER_H, ICON_XS, LINE_SM, LINE_XS, RADIUS_XS, SPACE_1, SPACE_1_5,
+    SPACE_2, TEXT_SM, TEXT_XS, WINDOW_INSET,
 };
 
 const ACTIVITY_PANEL_H: f32 = 168.0;
@@ -271,7 +271,8 @@ impl EnvironmentShell {
                     .items_center()
                     .gap(px(SPACE_2))
                     .h(px(CARD_HEADER_H))
-                    .px(px(HEADER_PAD_X))
+                    .pl(px(CAPSULE_PAD))
+                    .pr(px(HEADER_PAD_X))
                     .child(self.activity_tabs(cx))
                     .child(div().flex_1())
                     .children(self.add_terminal_button(cx))

@@ -276,7 +276,7 @@ impl Render for EnvironmentShell {
             | self.sync_chat_landings(now)
             | self.glide_chats(now)
             | self.tick_arcade(now, cx)
-            | self.advance_settings_swipe(now, window, cx)
+            | self.advance_gestures(now, window, cx)
         {
             window.request_animation_frame();
         }

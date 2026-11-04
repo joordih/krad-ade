@@ -8,6 +8,7 @@ use krad_domain::{FileOpening, NavigationPlace, NavigationStep, TerminalId, Text
 use krad_lsp::lsp_types::Position;
 use std::collections::HashMap;
 
+use super::rubber_band::RubberBands;
 use super::settings_swipe::SettingsSwipe;
 use super::EnvironmentShell;
 use crate::actions::{NavigateBack, NavigateForward};
@@ -24,6 +25,7 @@ pub(super) struct Gestures {
     native: Option<Task<()>>,
     cursor_lines: HashMap<TerminalId, u32>,
     pub(super) settings: SettingsSwipe,
+    pub(super) bands: RubberBands,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -229,6 +231,15 @@ impl EnvironmentShell {
                 this.on_swipe_scroll(event, cx);
             },
         ))
+    }
+
+    pub(super) fn advance_gestures(
+        &mut self,
+        now: std::time::Instant,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        self.advance_settings_swipe(now, window, cx) | self.gestures.bands.advance(now)
     }
 
     pub(super) fn start_watches(&mut self, cx: &mut Context<Self>) {

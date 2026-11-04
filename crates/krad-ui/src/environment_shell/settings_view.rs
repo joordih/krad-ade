@@ -29,7 +29,7 @@ use crate::actions::OpenSettings;
 use crate::components::IconName;
 use crate::theme::{
     appearance, apply_settings_theme, card_shadow, mode_appearance, system_is_dark, Appearance,
-    Palette, LINE_SM, LINE_XS, RADIUS_SM, RADIUS_XL, SPACE_0_5, TEXT_SM, TEXT_XS,
+    Palette, CAPSULE_PAD, CAPSULE_RADIUS, LINE_SM, LINE_XS, RADIUS_XL, SPACE_0_5, TEXT_SM, TEXT_XS,
 };
 use gateway::GatewayUi;
 use github::GithubUi;
@@ -112,6 +112,7 @@ pub(super) struct SettingsUi {
     languages: languages::LanguagesUi,
     fonts: crate::font_catalog::FontCatalog,
     theme_editor: Option<theme_editor::ThemeEditor>,
+    scroll: gpui_kit::ScrollHandle,
 }
 
 impl From<AppearanceMode> for Appearance {
@@ -150,8 +151,8 @@ pub(super) fn segmented_track(pal: &Palette) -> Div {
         .flex()
         .flex_row()
         .gap(px(SPACE_0_5))
-        .p(px(SPACE_0_5))
-        .rounded(px(RADIUS_SM))
+        .p(px(CAPSULE_PAD))
+        .rounded(px(CAPSULE_RADIUS))
         .bg(pal.bg_hover)
 }
 
@@ -231,6 +232,7 @@ impl EnvironmentShell {
             languages,
             fonts: crate::font_catalog::font_catalog(cx),
             theme_editor: None,
+            scroll: gpui_kit::ScrollHandle::new(),
         });
         self.refresh_gitlab_status(cx);
         self.refresh_github_status(cx);

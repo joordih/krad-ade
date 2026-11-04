@@ -6,7 +6,7 @@ use gpui_kit::{
 };
 use krad_domain::{SystemTerminal, TerminalId, Visibility};
 
-use super::super::session_pane::{tab_shell, DraggedTab};
+use super::super::session_pane::{tab_capsule, tab_shell, DraggedTab, TabWidth};
 use super::super::terminal_body::{
     body_grid, BodyGeometry, BodyLook, BODY_PAD_TOP, BODY_PAD_X, TERMINAL_FONT_PX, TERMINAL_LINE_PX,
 };
@@ -166,11 +166,10 @@ impl EnvironmentShell {
             .envs
             .get(&self.active)
             .map_or_default(|live| live.activity_docked.clone());
-        let log = tab_shell(LOG_TAB_ID, shown == UtilityTab::Log, pal, cx)
+        let log = tab_shell(LOG_TAB_ID, shown == UtilityTab::Log, TabWidth::Fit, pal, cx)
             .on_click(cx.listener(|this: &mut Self, _, _, cx| {
                 this.set_utility_tab(UtilityTab::Log, cx);
             }))
-            .pr(px(SPACE_2))
             .child(icon(IconName::PanelBottom, ICON_SM, pal.text_muted))
             .child(div().font_weight(FontWeight::MEDIUM).child(LOG_LABEL))
             .into_any_element();
@@ -180,14 +179,19 @@ impl EnvironmentShell {
             .get(&self.active)
             .is_some_and(|live| live.terminals_tab == TerminalsTab::Shown);
         let terminals = (offered && !self.utility_terminals().is_empty()).then(|| {
-            tab_shell(TERMINALS_TAB_ID, shown == UtilityTab::Terminals, pal, cx)
-                .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                    this.set_utility_tab(UtilityTab::Terminals, cx);
-                }))
-                .pr(px(SPACE_2))
-                .child(icon(IconName::Terminal, ICON_SM, pal.text_muted))
-                .child(div().font_weight(FontWeight::MEDIUM).child(TERMINALS_LABEL))
-                .into_any_element()
+            tab_shell(
+                TERMINALS_TAB_ID,
+                shown == UtilityTab::Terminals,
+                TabWidth::Fit,
+                pal,
+                cx,
+            )
+            .on_click(cx.listener(|this: &mut Self, _, _, cx| {
+                this.set_utility_tab(UtilityTab::Terminals, cx);
+            }))
+            .child(icon(IconName::Terminal, ICON_SM, pal.text_muted))
+            .child(div().font_weight(FontWeight::MEDIUM).child(TERMINALS_LABEL))
+            .into_any_element()
         });
         let tabs = docked.into_iter().map(|id| {
             let title = SharedString::from(self.docked_title(id));
@@ -201,6 +205,7 @@ impl EnvironmentShell {
             tab_shell(
                 (DOCKED_TAB_PREFIX, id.as_u64()),
                 shown == UtilityTab::Docked(id),
+                TabWidth::Fit,
                 pal,
                 cx,
             )
@@ -223,17 +228,13 @@ impl EnvironmentShell {
             )
             .into_any_element()
         });
-        div()
-            .flex()
-            .flex_row()
-            .items_center()
+        let tabs: Vec<AnyElement> = [log, problems]
+            .into_iter()
+            .chain(terminals)
+            .chain(tabs)
+            .collect();
+        tab_capsule(tabs, TabWidth::Fit, pal)
             .gap(px(SPACE_0_5))
-            .min_w_0()
-            .overflow_hidden()
-            .child(log)
-            .child(problems)
-            .children(terminals)
-            .children(tabs)
             .into_any_element()
     }
 
