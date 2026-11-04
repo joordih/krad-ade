@@ -29,7 +29,7 @@ use crate::actions::OpenSettings;
 use crate::components::IconName;
 use crate::theme::{
     appearance, apply_settings_theme, card_shadow, mode_appearance, system_is_dark, Appearance,
-    Palette, CAPSULE_PAD, CAPSULE_RADIUS, LINE_SM, LINE_XS, RADIUS_XL, SPACE_0_5, TEXT_SM, TEXT_XS,
+    Palette, CAPSULE_PAD, LINE_SM, LINE_XS, RADIUS_XL, SPACE_0_5, TEXT_SM, TEXT_XS,
 };
 use gateway::GatewayUi;
 use github::GithubUi;
@@ -152,7 +152,7 @@ pub(super) fn segmented_track(pal: &Palette) -> Div {
         .flex_row()
         .gap(px(SPACE_0_5))
         .p(px(CAPSULE_PAD))
-        .rounded(px(CAPSULE_RADIUS))
+        .rounded_full()
         .bg(pal.bg_hover)
 }
 
