@@ -48,6 +48,7 @@ mod session_look;
 mod session_pane;
 mod sessions;
 mod sessions_view;
+mod settings_swipe;
 mod settings_view;
 mod shell_site;
 mod side_panel;

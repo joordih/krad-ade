@@ -275,6 +275,7 @@ impl Render for EnvironmentShell {
             | self.sync_chat_landings(now)
             | self.glide_chats(now)
             | self.tick_arcade(now, cx)
+            | self.advance_settings_swipe(now, window, cx)
         {
             window.request_animation_frame();
         }
@@ -312,6 +313,10 @@ impl Render for EnvironmentShell {
             .text_color(rgb(pal.text_default))
             .child(TextSelectionLayer)
             .child(match self.settings_page(cx) {
+                Some(settings) if self.gestures.settings.offset() > 0.0 => {
+                    let behind = self.workspace_row(view, window, cx);
+                    self.sliding_settings(settings, behind, cx)
+                }
                 Some(settings) => settings,
                 None => self.workspace_row(view, window, cx),
             })

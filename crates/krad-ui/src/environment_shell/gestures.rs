@@ -8,6 +8,7 @@ use krad_domain::{FileOpening, NavigationPlace, NavigationStep, TerminalId, Text
 use krad_lsp::lsp_types::Position;
 use std::collections::HashMap;
 
+use super::settings_swipe::SettingsSwipe;
 use super::EnvironmentShell;
 use crate::actions::{NavigateBack, NavigateForward};
 use crate::native_swipe::{watch_swipes, SwipeDirection};
@@ -22,6 +23,7 @@ pub(super) struct Gestures {
     swipe: (f32, f32),
     native: Option<Task<()>>,
     cursor_lines: HashMap<TerminalId, u32>,
+    pub(super) settings: SettingsSwipe,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -151,7 +153,7 @@ impl EnvironmentShell {
     }
 
     fn navigate(&mut self, step: NavigationStep, cx: &mut Context<Self>) {
-        if step == NavigationStep::Back && self.dismiss_settings(cx) {
+        if step == NavigationStep::Back && self.leave_settings(cx) {
             return;
         }
         let current = self.current_place(cx);
@@ -242,7 +244,7 @@ impl EnvironmentShell {
             while let Some(direction) = watch.swipes.next().await {
                 let forward = direction == SwipeDirection::Left;
                 let swiped = this.update(cx, |shell, cx| {
-                    let left_settings = !forward && shell.dismiss_settings(cx);
+                    let left_settings = !forward && shell.leave_settings(cx);
                     if !left_settings {
                         shell.step_session(forward, cx);
                     }
@@ -267,6 +269,9 @@ impl EnvironmentShell {
     }
 
     pub(super) fn on_swipe_scroll(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
+        if !event.modifiers.alt && self.drag_settings(event, cx) {
+            return;
+        }
         let ScrollDelta::Pixels(delta) = event.delta else {
             return;
         };
@@ -280,7 +285,7 @@ impl EnvironmentShell {
                 let swiped = swipe_of(std::mem::take(&mut self.gestures.swipe));
                 match (swiped, event.modifiers.alt) {
                     (Some(Swipe::Right), true) => {
-                        if !self.dismiss_settings(cx) {
+                        if !self.leave_settings(cx) {
                             self.step_session(false, cx);
                         }
                     }
