@@ -1,5 +1,6 @@
 mod disk;
 mod editor_area;
+mod line_numbers;
 mod minimap;
 mod problem_lens;
 pub(super) mod problem_list;
@@ -305,7 +306,9 @@ impl EnvironmentShell {
         }
         let shown_minimap = new_minimap(&file.text, syntax, cx);
         let state = cx.new(|cx| {
-            let state = EditorState::new(window, cx).soft_wrap(false);
+            let state = EditorState::new(window, cx)
+                .soft_wrap(false)
+                .line_number(false);
             let state = match grammar {
                 Some(language) => state.language(language),
                 None => state,
@@ -431,7 +434,7 @@ impl EnvironmentShell {
             .on_action(cx.listener(Self::on_reformat))
             .children(self.language_notice(live, id, &editor.path, cx))
             .children(conflict)
-            .child(self.editor_area(live, editor, state, editor_settings, scale))
+            .child(self.editor_area(live, editor, state, editor_settings, scale, cx))
             .children(self.toolchain_status(live, &editor.path, cx))
             .into_any_element()
     }
