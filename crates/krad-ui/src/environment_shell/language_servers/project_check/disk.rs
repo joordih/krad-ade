@@ -18,12 +18,17 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let keys: Vec<ServerKey> = self
-            .project_checks()
-            .servers
+            .language_servers
+            .slots
             .keys()
-            .filter(|key| key.host == *host)
+            .filter(|key| key.host == *host && self.language_servers.running(key).is_some())
             .cloned()
             .collect();
+        for (path, change) in changed {
+            if *change == DiskChange::Deleted {
+                self.forget_deleted(&Document::new(host, path));
+            }
+        }
         for key in keys {
             let mine: Vec<(PathBuf, DiskChange)> = changed
                 .iter()
@@ -124,6 +129,55 @@ impl EnvironmentShell {
                     }
                 }
                 shell.open_in_background(&served, fresh, cx);
+            })
+            .unwrap_or_default();
+        })
+        .detach();
+    }
+
+    fn forget_deleted(&mut self, document: &Document) {
+        if self.language_servers.project.background.contains(document) {
+            self.close_background(document);
+        }
+        self.language_servers.diagnostics.forget(document);
+        self.language_servers
+            .project
+            .published
+            .values_mut()
+            .for_each(|published| {
+                published.remove(document);
+            });
+    }
+
+    pub(in crate::environment_shell) fn forget_missing_problems(&mut self, cx: &mut Context<Self>) {
+        let link = self.active_link();
+        let host = link.host();
+        let paths: Vec<PathBuf> = self
+            .language_servers
+            .diagnostics
+            .files()
+            .into_iter()
+            .filter(|document| document.host == host)
+            .map(|document| document.path)
+            .collect();
+        if paths.is_empty() {
+            return;
+        }
+        let checking = cx.background_spawn(async move {
+            paths
+                .into_iter()
+                .filter(|path| !link.exists(path))
+                .map(|path| (path, DiskChange::Deleted))
+                .collect::<Vec<_>>()
+        });
+        cx.spawn(async move |this, cx| {
+            let gone = checking.await;
+            if gone.is_empty() {
+                return;
+            }
+            this.update(cx, |shell, cx| {
+                shell.project_files_changed(&host, &gone, cx);
+                cx.notify();
             })
             .unwrap_or_default();
         })

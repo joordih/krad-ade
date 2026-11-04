@@ -51,7 +51,7 @@ const PALETTE_GROUPS: [(&str, PaletteCmd); 5] = [
     ("Close file viewer", PaletteCmd::CloseViewer),
 ];
 
-const PALETTE_VIEW: [(&str, PaletteCmd); 16] = [
+const PALETTE_VIEW: [(&str, PaletteCmd); 17] = [
     ("Switch work mode", PaletteCmd::ToggleWorkMode),
     ("Select toolchain…", PaletteCmd::SelectToolchain),
     ("Settings…", PaletteCmd::OpenSettings),
@@ -68,6 +68,7 @@ const PALETTE_VIEW: [(&str, PaletteCmd); 16] = [
     ("Toggle sidebar", PaletteCmd::ToggleSidebar),
     ("Toggle side panel", PaletteCmd::ToggleSidePanel),
     ("Toggle minimap", PaletteCmd::ToggleMinimap),
+    ("Reload workspace", PaletteCmd::ReloadWorkspace),
 ];
 
 #[derive(Clone, Debug)]
@@ -83,6 +84,7 @@ enum PaletteCmd {
     ToggleSidebar,
     ToggleSidePanel,
     ToggleMinimap,
+    ReloadWorkspace,
     ToggleWorkMode,
     CloseFocused,
     CloseEnv,
@@ -125,7 +127,7 @@ impl PaletteCmd {
             Self::RemoveGroup | Self::RemoveWorktree => IconName::Minus,
             Self::NewWorktree => IconName::GitBranch,
             Self::OpenSettings => IconName::Settings,
-            Self::CheckForUpdates => IconName::Refresh,
+            Self::CheckForUpdates | Self::ReloadWorkspace => IconName::Refresh,
             Self::NewAgent => IconName::Magic,
             Self::RenameFocused | Self::RenameEnv | Self::OpenNote(_, None) => IconName::Note,
             Self::OpenNote(_, Some(_)) => IconName::Search,
@@ -242,6 +244,7 @@ impl EnvironmentShell {
             PaletteCmd::ToggleSidebar => self.toggle_sidebar(cx),
             PaletteCmd::ToggleSidePanel => self.toggle_side_panel(cx),
             PaletteCmd::ToggleMinimap => self.toggle_minimap(cx),
+            PaletteCmd::ReloadWorkspace => self.reload_workspace(cx),
             PaletteCmd::ToggleWorkMode => self.toggle_work_mode(cx),
             PaletteCmd::OpenFile(path) => self.open_file_tab(&path, FileOpening::Pinned, cx),
             PaletteCmd::CloseFocused => self.close_focused(cx),

@@ -4,6 +4,7 @@ mod loading;
 mod ops;
 mod rows;
 mod upload;
+mod workspace_reload;
 
 use krad_domain::LanguageCatalog;
 use krad_repo::{ChangeKind, DirEntry, EntryKind};

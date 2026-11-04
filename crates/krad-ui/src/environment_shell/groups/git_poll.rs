@@ -141,6 +141,20 @@ const fn disk_change(before: Option<FileState>, after: Option<FileState>) -> Dis
     }
 }
 
+const fn may_have_vanished(before: Option<FileState>, after: Option<FileState>) -> bool {
+    matches!(
+        (before, after),
+        (Some((ChangeKind::Untracked | ChangeKind::Added, _)), None)
+    )
+}
+
+fn any_vanished(before: &HashMap<GitKey, GroupGit>, after: &HashMap<GitKey, GroupGit>) -> bool {
+    let after = file_states(after);
+    file_states(before)
+        .into_iter()
+        .any(|(place, was)| may_have_vanished(Some(was), after.get(&place).copied()))
+}
+
 fn changed_files(
     before: &HashMap<GitKey, GroupGit>,
     after: &HashMap<GitKey, GroupGit>,
@@ -203,6 +217,7 @@ impl EnvironmentShell {
         }
         let dirs = changed_dirs(&self.git, &git);
         let files = changed_files(&self.git, &git);
+        let vanished = any_vanished(&self.git, &git);
         self.git = git;
         let mut by_host: HashMap<Host, Vec<(PathBuf, DiskChange)>> = HashMap::new();
         for (host, path, change) in files {
@@ -210,6 +225,9 @@ impl EnvironmentShell {
         }
         for (host, changed) in by_host {
             self.project_files_changed(&host, &changed, cx);
+        }
+        if vanished {
+            self.forget_missing_problems(cx);
         }
         self.forget_diffs();
         self.forget_file_index();
@@ -285,6 +303,16 @@ mod tests {
             ]
         );
         assert_eq!(changed_files(&before, &before), Vec::new());
+    }
+
+    #[test]
+    fn an_untracked_file_leaving_the_status_may_have_been_deleted() {
+        let mut before = git(&["src/new.rs", "README.md"]);
+        if let Some(group) = before.values_mut().next() {
+            group.status.changes[0].kind = ChangeKind::Untracked;
+        }
+        assert!(any_vanished(&before, &git(&["README.md"])));
+        assert!(!any_vanished(&git(&["src/a.rs"]), &git(&[])));
     }
 
     #[test]
