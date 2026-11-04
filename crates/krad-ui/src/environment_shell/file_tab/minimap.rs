@@ -4,13 +4,13 @@ use gpui_kit::{
     canvas, fill, font, point, px, rgb, size, AnyElement, App, AppContext as _, Bounds,
     ContentMask, Context, DispatchPhase, Entity, FontWeight, Hitbox, HitboxBehavior, IntoElement,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, SharedString, Styled, Task,
-    TextAlign, TextRun, Window,
+    TextAlign, TextRun, WeakEntity, Window,
 };
 use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::super::context_menu::{MenuAction, MenuEntry};
+use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
 use super::super::EnvironmentShell;
 use crate::actions::ToggleMinimap;
 use crate::components::IconName;
@@ -250,11 +250,26 @@ fn paint_slider(
 fn listen(
     minimap: &Entity<Minimap>,
     editor: &Entity<EditorState>,
+    shell: &WeakEntity<EnvironmentShell>,
     painted: &Painted,
     bounds: Bounds<Pixels>,
     window: &mut Window,
 ) {
     let (hitbox, view, visible) = (painted.hitbox.clone(), painted.view, painted.visible);
+    let (menu_hitbox, menu_shell) = (hitbox.clone(), shell.clone());
+    window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
+        if phase != DispatchPhase::Bubble
+            || event.button != MouseButton::Right
+            || !menu_hitbox.is_hovered(window)
+        {
+            return;
+        }
+        cx.stop_propagation();
+        let at = (event.position.x.as_f32(), event.position.y.as_f32());
+        menu_shell
+            .update(cx, |shell, cx| shell.minimap_menu(at, cx))
+            .unwrap_or_default();
+    });
     let (down_minimap, down_editor) = (minimap.clone(), editor.clone());
     let down_hitbox = hitbox.clone();
     window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
@@ -316,6 +331,7 @@ fn listen(
 fn paint(
     minimap: &Entity<Minimap>,
     editor: &Entity<EditorState>,
+    shell: &WeakEntity<EnvironmentShell>,
     painted: Option<Painted>,
     bounds: Bounds<Pixels>,
     window: &mut Window,
@@ -332,10 +348,14 @@ fn paint(
             paint_slider(painted.view, dragging, bounds, window, cx);
         }
     });
-    listen(minimap, editor, &painted, bounds, window);
+    listen(minimap, editor, shell, &painted, bounds, window);
 }
 
-pub(super) fn minimap(minimap: Entity<Minimap>, editor: Entity<EditorState>) -> AnyElement {
+pub(super) fn minimap(
+    minimap: Entity<Minimap>,
+    editor: Entity<EditorState>,
+    shell: WeakEntity<EnvironmentShell>,
+) -> AnyElement {
     let (painted_minimap, painted_editor) = (minimap.clone(), editor.clone());
     canvas(
         move |bounds, window, cx| prepare(&minimap, &editor, bounds, window, cx),
@@ -343,6 +363,7 @@ pub(super) fn minimap(minimap: Entity<Minimap>, editor: Entity<EditorState>) -> 
             paint(
                 &painted_minimap,
                 &painted_editor,
+                &shell,
                 painted,
                 bounds,
                 window,
@@ -379,7 +400,7 @@ impl EnvironmentShell {
         self.toggle_minimap(cx);
     }
 
-    pub(super) fn minimap_menu(&mut self, event: &MouseDownEvent, cx: &mut Context<Self>) {
+    fn minimap_menu(&mut self, at: (f32, f32), cx: &mut Context<Self>) {
         let entries = vec![
             MenuEntry::item(
                 HIDE_MINIMAP_LABEL,
@@ -388,7 +409,7 @@ impl EnvironmentShell {
             ),
             MenuEntry::Note(SHOW_AGAIN_NOTE.to_owned()),
         ];
-        self.open_menu_at(event, entries, cx);
+        self.open_menu(at, MenuPlacement::Below, entries, cx);
     }
 
     pub(in crate::environment_shell) fn on_toggle_minimap(
