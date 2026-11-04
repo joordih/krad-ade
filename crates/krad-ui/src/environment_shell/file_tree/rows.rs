@@ -7,9 +7,9 @@ use gpui_kit::{
 };
 use krad_domain::{FileOpening, FolderKind, ProblemSeverity};
 use krad_repo::{ChangeKind, DirEntry, EntryKind};
-use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use super::super::entry_input::EntryEdit;
 use super::super::EnvironmentShell;
@@ -44,11 +44,28 @@ pub(in crate::environment_shell) const fn change_color(kind: ChangeKind, pal: &P
 }
 
 impl EnvironmentShell {
-    pub(super) fn change_marks(&self) -> ChangeMarks {
-        let mut marks = ChangeMarks {
-            files: HashMap::new(),
-            folders: HashSet::new(),
-        };
+    pub(in crate::environment_shell) fn forget_change_marks(&mut self) {
+        self.file_tree.marks = None;
+    }
+
+    fn cached_change_marks(&mut self) -> Rc<ChangeMarks> {
+        let host = self
+            .envs
+            .get(&self.active)
+            .map_or_else(krad_domain::Host::default, |live| live.data.host.clone());
+        let root = (host, self.file_tree.group_root.clone().unwrap_or_default());
+        if let Some((marked, marks)) = &self.file_tree.marks {
+            if *marked == root {
+                return Rc::clone(marks);
+            }
+        }
+        let marks = Rc::new(self.change_marks());
+        self.file_tree.marks = Some((root, Rc::clone(&marks)));
+        marks
+    }
+
+    fn change_marks(&self) -> ChangeMarks {
+        let mut marks = ChangeMarks::default();
         let Some(git) = self
             .file_tree
             .group_root
@@ -85,7 +102,7 @@ impl EnvironmentShell {
             count,
             cx.processor(|this: &mut Self, range: Range<usize>, _: &mut Window, cx| {
                 let rows = this.tree_rows();
-                let marks = this.change_marks();
+                let marks = this.cached_change_marks();
                 rows.get(range)
                     .unwrap_or_default()
                     .iter()

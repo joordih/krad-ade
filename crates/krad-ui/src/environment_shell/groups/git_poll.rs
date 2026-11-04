@@ -230,6 +230,7 @@ impl EnvironmentShell {
             self.forget_missing_problems(cx);
         }
         self.forget_diffs();
+        self.forget_change_marks();
         self.forget_file_index();
         self.reload_file_dirs(&dirs, cx);
         cx.notify();

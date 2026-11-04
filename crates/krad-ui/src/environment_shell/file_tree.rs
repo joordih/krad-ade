@@ -10,6 +10,7 @@ use krad_domain::LanguageCatalog;
 use krad_repo::{ChangeKind, DirEntry, EntryKind};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 const FILE_TREE_ID: &str = "file-tree";
 const FILE_ROW_PREFIX: &str = "file-row";
@@ -37,6 +38,7 @@ pub(super) struct FileTree {
     selected: Option<PathBuf>,
     pending_delete: Option<PathBuf>,
     upload: Option<upload::UploadJob>,
+    marks: Option<((krad_domain::Host, PathBuf), Rc<ChangeMarks>)>,
 }
 
 #[derive(Clone)]
@@ -122,6 +124,7 @@ impl FileTree {
     }
 }
 
+#[derive(Default)]
 struct ChangeMarks {
     files: HashMap<PathBuf, ChangeKind>,
     folders: HashSet<PathBuf>,
