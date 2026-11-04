@@ -2,13 +2,14 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, relative, rgb, AnyElement, Context, ElementId, ExternalPaths, FontWeight,
-    InteractiveElement, IntoElement, ListState, ParentElement, ScrollHandle, SharedString,
-    StatefulInteractiveElement, Styled,
+    InteractiveElement, IntoElement, ListState, ParentElement, ScrollHandle, ScrollWheelEvent,
+    SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_domain::{AgentState, TerminalId};
 use std::time::Instant;
 
 use super::super::ask::{tray, tray_button};
+use super::super::rubber_band::{BandKey, ScrollEdges};
 use super::super::sidebar::PanelReveal;
 use super::super::EnvironmentShell;
 use super::dot_field::dot_field;
@@ -209,7 +210,7 @@ impl EnvironmentShell {
                     .flex_1()
                     .min_h_0()
                     .opacity(landed)
-                    .child(Self::surface_thread(id, chat, now, cx))
+                    .child(self.bouncing_thread(id, chat, now, cx))
                     .when(!following, |area| {
                         area.child(Self::jump_down(id, chat.thread.clone(), cx))
                     }),
@@ -243,6 +244,33 @@ impl EnvironmentShell {
                 ),
             )
             .child(div().flex_1().min_h_0().flex_grow(1.0 - landed))
+            .into_any_element()
+    }
+
+    fn bouncing_thread(
+        &self,
+        id: TerminalId,
+        chat: &SurfaceChat,
+        now: AgentNow,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let bounce = chat.thread.clone();
+        div()
+            .relative()
+            .size_full()
+            .top(px(self.gestures.bands.offset(BandKey::Chat(id))))
+            .on_scroll_wheel(cx.listener(
+                move |this: &mut Self, event: &ScrollWheelEvent, _, cx| {
+                    let edges = ScrollEdges {
+                        offset: -bounce.scroll_px_offset_for_scrollbar().y.as_f32(),
+                        max: bounce.max_offset_for_scrollbar().y.as_f32(),
+                    };
+                    if this.gestures.bands.wheel(BandKey::Chat(id), event, edges) {
+                        cx.notify();
+                    }
+                },
+            ))
+            .child(Self::surface_thread(id, chat, now, cx))
             .into_any_element()
     }
 

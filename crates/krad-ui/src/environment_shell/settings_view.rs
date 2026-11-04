@@ -104,6 +104,7 @@ pub(super) struct SettingsUi {
     mcp: McpUi,
     tint: material::TintUi,
     languages: languages::LanguagesUi,
+    scroll: gpui_kit::ScrollHandle,
 }
 
 impl From<AppearanceMode> for Appearance {
@@ -240,6 +241,7 @@ impl EnvironmentShell {
             mcp,
             tint,
             languages,
+            scroll: gpui_kit::ScrollHandle::new(),
         });
         self.refresh_gitlab_status(cx);
         self.refresh_github_status(cx);
