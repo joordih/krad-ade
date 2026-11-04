@@ -217,6 +217,8 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let viewer_width = self.viewer_width(self.content_row_width(window));
         let viewer = self.code_viewer(viewer_width, cx);
+        let viewer_extent = viewer.as_ref().map_or(0.0, |_| viewer_width + WINDOW_INSET);
+        let beside_pane = viewer_extent + self.side_panel_extent();
         let view = self.view_card(view, window, cx);
         let pane = self.main_pane(view, cx);
         div()
@@ -241,7 +243,7 @@ impl EnvironmentShell {
                     .children(self.side_panel(window, cx)),
             )
             .children(self.activity_panel(cx))
-            .child(self.activity_handle(cx))
+            .child(self.activity_handle(beside_pane, cx))
             .into_any_element()
     }
 }

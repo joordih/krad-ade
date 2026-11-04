@@ -172,7 +172,7 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    pub(super) fn activity_handle(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn activity_handle(&self, beside_pane: f32, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let (glyph, tooltip) = match (self.activity.is_visible(), self.activity_opened) {
             (false, _) => (IconName::ChevronUp, TOOLTIP_OPEN),
@@ -183,7 +183,7 @@ impl EnvironmentShell {
             .absolute()
             .bottom_0()
             .left_0()
-            .right_0()
+            .right(px(beside_pane))
             .flex()
             .justify_center()
             .child(
