@@ -1,6 +1,8 @@
 mod panes;
+mod tab_motion;
 mod tab_picker;
 
+pub(in crate::environment_shell) use tab_motion::entering_tab;
 pub(in crate::environment_shell) use tab_picker::tab_picker_shell;
 
 use panes::{pane_px, PANE_STRIP_H};
@@ -304,7 +306,7 @@ impl EnvironmentShell {
             let tab = self
                 .terminal_tab(live, id, shown == Some(id), cx)
                 .or_else(|| Self::guest_tab(live, id, shown == Some(id), cx));
-            tabs.extend(tab);
+            tabs.extend(tab.map(|tab| entering_tab(id, tab)));
         }
         let picker = self.tab_picker_button(live, pane, &ids, shown, cx);
         div()

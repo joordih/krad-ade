@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuSearch};
 use super::super::session_pane::{
-    divides, tab_capsule, tab_divider, tab_picker_shell, DraggedTab, TabWidth,
+    divides, entering_tab, tab_capsule, tab_divider, tab_picker_shell, DraggedTab, TabWidth,
 };
 use super::super::{EnvironmentShell, LiveEnv};
 use crate::components::{Button, ButtonVariant, CenteredEmpty, IconName};
@@ -64,7 +64,10 @@ impl EnvironmentShell {
             if index > 0 && divides(index - 1, shown_index) {
                 tabs.push(tab_divider(pal));
             }
-            tabs.extend(self.terminal_tab(live, id, shown == Some(id), cx));
+            tabs.extend(
+                self.terminal_tab(live, id, shown == Some(id), cx)
+                    .map(|tab| entering_tab(id, tab)),
+            );
         }
         let entries = Rc::new(self.chat_picker_entries(live));
         let footer = vec![
