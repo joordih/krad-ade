@@ -91,7 +91,7 @@ impl EnvironmentShell {
 
     fn history_shown(&self) -> bool {
         self.side_layout().is_some_and(|layout| {
-            layout.open && layout.history_open && layout.section == SidePanelSection::Changes
+            layout.history_open && layout.section == SidePanelSection::Changes
         })
     }
 
