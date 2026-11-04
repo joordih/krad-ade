@@ -62,6 +62,7 @@ pub(super) enum MenuAction {
     RescanToolchains(Box<ToolchainScope>),
     SetGroupActivation(GroupId, GroupActivation),
     AnswerChoice(Box<super::language_servers::ChoiceAnswer>),
+    HideMinimap,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -413,6 +414,7 @@ impl EnvironmentShell {
             MenuAction::SetGroupActivation(group, activation) => {
                 self.set_group_activation(group, activation, cx);
             }
+            MenuAction::HideMinimap => self.hide_minimap(cx),
         }
         cx.notify();
     }

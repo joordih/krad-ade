@@ -1,6 +1,9 @@
 use gpui_kit::component::input::{Editor, EditorState, RopeExt as _};
 use gpui_kit::component::ActiveTheme as _;
-use gpui_kit::{div, px, Context, Entity, KeyDownEvent, ParentElement, Styled, Window};
+use gpui_kit::{
+    div, px, Context, Entity, InteractiveElement as _, KeyDownEvent, MouseButton, MouseDownEvent,
+    ParentElement, Styled, Window,
+};
 use krad_domain::TextScale;
 
 use super::super::language_servers::Document;
@@ -25,7 +28,7 @@ impl EnvironmentShell {
         state: &Entity<EditorState>,
         settings: krad_domain::EditorSettings,
         scale: TextScale,
-        cx: &gpui_kit::App,
+        cx: &Context<Self>,
     ) -> gpui_kit::Div {
         let overlays = editor.problems.clone().map(|problems| {
             [
@@ -74,7 +77,19 @@ impl EnvironmentShell {
                     .minimap
                     .clone()
                     .filter(|_| settings.minimap.is_shown())
-                    .map(|shown| minimap(shown, state.clone())),
+                    .map(|shown| {
+                        div()
+                            .flex_none()
+                            .h_full()
+                            .on_mouse_down(
+                                MouseButton::Right,
+                                cx.listener(|this: &mut Self, event: &MouseDownEvent, _, cx| {
+                                    cx.stop_propagation();
+                                    this.minimap_menu(event, cx);
+                                }),
+                            )
+                            .child(minimap(shown, state.clone()))
+                    }),
             )
     }
 

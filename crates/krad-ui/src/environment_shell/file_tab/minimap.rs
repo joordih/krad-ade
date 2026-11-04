@@ -10,8 +10,10 @@ use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
 
+use super::super::context_menu::{MenuAction, MenuEntry};
 use super::super::EnvironmentShell;
 use crate::actions::ToggleMinimap;
+use crate::components::IconName;
 use crate::highlight::{highlight_lines, Syntax, TokenKind};
 use crate::theme::{palette, tinted, Palette};
 use view::{minimap_view, MinimapView, LINE_PX};
@@ -19,6 +21,8 @@ use view::{minimap_view, MinimapView, LINE_PX};
 mod view;
 
 const MINIMAP_WIDTH_PX: f32 = 96.0;
+const HIDE_MINIMAP_LABEL: &str = "Hide minimap";
+const SHOW_AGAIN_NOTE: &str = "Turn it back on in Settings \u{203a} Editor or from the palette.";
 const FONT_PX: f32 = 2.0;
 const LEFT_PAD_PX: f32 = 6.0;
 const MAX_COLUMNS: usize = 120;
@@ -361,6 +365,25 @@ impl EnvironmentShell {
         self.settings.editor.minimap = self.settings.editor.minimap.toggled();
         self.save_settings(cx);
         cx.notify();
+    }
+
+    pub(in crate::environment_shell) fn hide_minimap(&mut self, cx: &mut Context<Self>) {
+        if !self.settings.editor.minimap.is_shown() {
+            return;
+        }
+        self.toggle_minimap(cx);
+    }
+
+    pub(super) fn minimap_menu(&mut self, event: &MouseDownEvent, cx: &mut Context<Self>) {
+        let entries = vec![
+            MenuEntry::item(
+                HIDE_MINIMAP_LABEL,
+                Some(IconName::ListView),
+                MenuAction::HideMinimap,
+            ),
+            MenuEntry::Note(SHOW_AGAIN_NOTE.to_owned()),
+        ];
+        self.open_menu_at(event, entries, cx);
     }
 
     pub(in crate::environment_shell) fn on_toggle_minimap(
