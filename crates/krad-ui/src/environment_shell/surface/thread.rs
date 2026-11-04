@@ -126,6 +126,7 @@ fn question_row(
                 ElementId::Name(bubble.into()),
                 &message.text,
                 false,
+                chat.text_scale.get(),
                 pal,
             ))
         })

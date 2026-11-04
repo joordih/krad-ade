@@ -6,12 +6,14 @@ use gpui_kit::{
 };
 use krad_domain::{FileOpening, NavigationPlace, NavigationStep, TerminalId, TextScale};
 use krad_lsp::lsp_types::Position;
+use std::collections::HashMap;
 
 use super::EnvironmentShell;
 use crate::actions::{NavigateBack, NavigateForward};
 use crate::native_swipe::{watch_swipes, SwipeDirection};
 
 const SWIPE_MIN_PX: f32 = 160.0;
+const JUMP_LINES: u32 = 10;
 const SWIPE_DOMINANCE: f32 = 2.5;
 
 #[derive(Default)]
@@ -19,6 +21,7 @@ pub(super) struct Gestures {
     pinch: Option<(TerminalId, TextScale)>,
     swipe: (f32, f32),
     native: Option<Task<()>>,
+    cursor_lines: HashMap<TerminalId, u32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -98,6 +101,42 @@ impl EnvironmentShell {
         })
     }
 
+    pub(super) fn track_cursor_jumps(&mut self, cx: &App) {
+        let Some(live) = self.envs.get(&self.active) else {
+            return;
+        };
+        let Some((id, path)) = live.shown_file() else {
+            return;
+        };
+        let Some(state) = live
+            .editors
+            .get(&id)
+            .and_then(|editor| editor.state.as_ref())
+        else {
+            return;
+        };
+        let state = state.read(cx);
+        let cursor_line = state.text().offset_to_position(state.cursor()).line;
+        let session = live.data.active_session;
+        let Some(before) = self.gestures.cursor_lines.insert(id, cursor_line) else {
+            return;
+        };
+        if before.abs_diff(cursor_line) <= JUMP_LINES {
+            return;
+        }
+        let (Some(session), Some(live)) = (session, self.envs.get_mut(&self.active)) else {
+            return;
+        };
+        live.navigation
+            .entry(session)
+            .or_default()
+            .record(NavigationPlace {
+                path,
+                line: before,
+                column: 0,
+            });
+    }
+
     pub(super) fn record_navigation(&mut self, cx: &App) {
         let Some(place) = self.current_place(cx) else {
             return;
@@ -138,6 +177,7 @@ impl EnvironmentShell {
         if let Some(id) = live.focused {
             live.pending_cursors
                 .insert(id, Position::new(place.line, place.column));
+            self.gestures.cursor_lines.insert(id, place.line);
         }
         cx.notify();
     }

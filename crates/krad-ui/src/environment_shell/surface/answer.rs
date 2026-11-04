@@ -124,8 +124,8 @@ impl EnvironmentShell {
                     )));
                     parts.push(
                         div()
-                            .text_size(px(TEXT_BASE))
-                            .line_height(px(ANSWER_LINE_H))
+                            .text_size(px(TEXT_BASE * chat.text_scale.get()))
+                            .line_height(px(ANSWER_LINE_H * chat.text_scale.get()))
                             .text_color(rgb(pal.text_strong))
                             .child(
                                 TextView::markdown(answer_id, text.clone())

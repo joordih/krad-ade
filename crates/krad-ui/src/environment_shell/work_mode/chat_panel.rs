@@ -1,6 +1,7 @@
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     div, px, AnyElement, ClickEvent, Context, InteractiveElement, IntoElement, ParentElement,
-    Pixels, Point, StatefulInteractiveElement, Styled,
+    PinchEvent, Pixels, Point, StatefulInteractiveElement, Styled,
 };
 use krad_domain::TerminalId;
 use std::rc::Rc;
@@ -170,11 +171,19 @@ impl EnvironmentShell {
             Self::no_editor_chat(cx)
         };
         let header = self.editor_chat_strip(live, cx);
+        let pinched = shown.map(|(id, _)| id);
         div()
             .flex()
             .flex_col()
             .flex_1()
             .min_h_0()
+            .when_some(pinched, |panel, id| {
+                panel.on_pinch(
+                    cx.listener(move |this: &mut Self, event: &PinchEvent, _, cx| {
+                        this.pinch_tab(id, event, cx);
+                    }),
+                )
+            })
             .child(header)
             .child(div().flex().flex_col().flex_1().min_h_0().child(body))
             .into_any_element()

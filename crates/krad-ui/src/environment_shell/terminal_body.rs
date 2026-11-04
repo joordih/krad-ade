@@ -288,6 +288,10 @@ impl EnvironmentShell {
             .on_scroll_wheel(cx.listener(
                 move |this: &mut Self, event: &ScrollWheelEvent, _, cx| {
                     cx.stop_propagation();
+                    if event.modifiers.alt {
+                        this.on_swipe_scroll(event, cx);
+                        return;
+                    }
                     let delta = event.delta.pixel_delta(px(geometry.line_h));
                     if event.modifiers.secondary() {
                         this.step_text_scale(id, delta.y.as_f32() < 0.0, cx);

@@ -149,6 +149,16 @@ impl EnvironmentShell {
         if let Some(tool) = chat.subagents.trail.last() {
             return Self::subagent_view(id, tool, chat, cx);
         }
+        let scale = self
+            .envs
+            .get(&self.active)
+            .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
+            .map_or(krad_domain::TextScale::DEFAULT, |node| {
+                node.text_scale.as_f32()
+            });
+        if chat.text_scale.replace(scale).to_bits() != scale.to_bits() {
+            chat.thread.remeasure();
+        }
         let now = self.agent_now(id);
         if now != AgentNow::Working {
             chat.working_since.set(None);
