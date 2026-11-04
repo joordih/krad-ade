@@ -53,6 +53,7 @@ pub(super) enum MenuAction {
     NewEditorChat,
     SetFont(super::settings_view::FontZone, Option<String>),
     RebaseTheme(krad_domain::ThemeId),
+    ChooseTheme(krad_domain::ThemeAppearance, krad_domain::ThemeId),
     NewGroup,
     OpenSettings,
     ChooseToolchain(Box<ToolchainChoice>),
@@ -397,6 +398,7 @@ impl EnvironmentShell {
             MenuAction::NewTabIn(pane) => self.new_tab_in(pane, cx),
             MenuAction::NewEditorChat => self.add_chat_tab(cx),
             MenuAction::RebaseTheme(base) => self.rebase_theme_draft(&base, window, cx),
+            MenuAction::ChooseTheme(appearance, id) => self.choose_theme(appearance, id, cx),
             MenuAction::SetFont(zone, family) => {
                 self.set_font(zone, |choice| choice.family = family, cx);
             }

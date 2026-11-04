@@ -21,7 +21,7 @@ use crate::theme::{
     add_to_library, current_theme, palette, theme_library, ICON_SM, LINE_SM, RADIUS_SM, SPACE_1,
     SPACE_2, SPACE_3, SPACE_5, SPACE_6, TEXT_SM,
 };
-use preview::theme_preview;
+pub(super) use preview::theme_preview;
 use slots::{ColorGroup, ColorSlot};
 
 const TITLE: &str = "Create theme";

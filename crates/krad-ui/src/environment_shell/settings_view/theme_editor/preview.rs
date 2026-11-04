@@ -46,7 +46,10 @@ fn code_lines(theme: &Theme) -> Vec<AnyElement> {
     ]
 }
 
-pub(super) fn theme_preview(theme: &Theme, mono: SharedString) -> AnyElement {
+pub(in crate::environment_shell::settings_view) fn theme_preview(
+    theme: &Theme,
+    mono: SharedString,
+) -> AnyElement {
     let ui = &theme.interface;
     let term = &theme.terminal;
     let statuses = [ui.success, ui.warning, ui.error, ui.info];

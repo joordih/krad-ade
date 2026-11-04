@@ -37,10 +37,7 @@ pub(super) use gitlab::gitlab_token_saver;
 use gitlab::GitlabUi;
 use mcp::McpUi;
 
-const SWATCH_COLUMNS: usize = 3;
 const SWATCH_GAP: f32 = 10.0;
-const SWATCH_PREVIEW_H: f32 = 64.0;
-const SWATCH_PAD: f32 = 10.0;
 const CHOICE_PAD: f32 = 14.0;
 const CHOICE_GAP: f32 = 10.0;
 const CHOICE_RING: f32 = 1.5;
@@ -49,6 +46,7 @@ const SETTINGS_NOT_SAVED: &str = "Couldn't save the settings";
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsPane {
     General,
+    Appearance,
     Terminal,
     Editor,
     Integrations,
@@ -61,6 +59,7 @@ impl SettingsPane {
     const fn title(self) -> &'static str {
         match self {
             Self::General => "General",
+            Self::Appearance => "Appearance",
             Self::Terminal => "Terminal",
             Self::Editor => "Editor",
             Self::Integrations => "Integrations",
@@ -72,7 +71,8 @@ impl SettingsPane {
 
     const fn description(self) -> &'static str {
         match self {
-            Self::General => "How the app looks and how you work in it.",
+            Self::General => "App updates and the tools agents get.",
+            Self::Appearance => "Light and dark themes, the window and the interface font.",
             Self::Terminal => "The font, copy and paste, and the colours of terminals.",
             Self::Editor => "How files look, show their problems and the minimap.",
             Self::Integrations => "The code hosts reviews and merge requests come from.",
@@ -89,6 +89,7 @@ impl SettingsPane {
     const fn icon(self) -> IconName {
         match self {
             Self::General => IconName::Settings,
+            Self::Appearance => IconName::Sun,
             Self::Terminal => IconName::Terminal,
             Self::Editor => IconName::File,
             Self::Integrations => IconName::Merge,
@@ -152,25 +153,6 @@ pub(super) fn segmented_track(pal: &Palette) -> Div {
         .p(px(SPACE_0_5))
         .rounded(px(RADIUS_SM))
         .bg(pal.bg_hover)
-}
-
-fn swatch_grid(swatches: Vec<AnyElement>) -> Vec<AnyElement> {
-    let mut swatches = swatches.into_iter().peekable();
-    let mut grid = Vec::new();
-    while swatches.peek().is_some() {
-        let row: Vec<AnyElement> = swatches.by_ref().take(SWATCH_COLUMNS).collect();
-        let missing = SWATCH_COLUMNS - row.len();
-        grid.push(
-            div()
-                .flex()
-                .flex_row()
-                .gap(px(SWATCH_GAP))
-                .children(row)
-                .children((0..missing).map(|_| div().flex_1()))
-                .into_any_element(),
-        );
-    }
-    grid
 }
 
 fn choice_card(

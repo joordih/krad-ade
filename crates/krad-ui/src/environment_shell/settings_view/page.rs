@@ -36,6 +36,7 @@ const GROUPS: [(&str, &[SettingsPane]); 2] = [
         "App",
         &[
             SettingsPane::General,
+            SettingsPane::Appearance,
             SettingsPane::Terminal,
             SettingsPane::Editor,
         ],
@@ -59,6 +60,7 @@ impl EnvironmentShell {
         let ui = self.settings_ui.as_ref()?;
         let content = match ui.pane {
             SettingsPane::General => self.general_pane(cx),
+            SettingsPane::Appearance => self.appearance_pane(cx),
             SettingsPane::Terminal => self.terminal_pane(cx),
             SettingsPane::Editor => self.editor_pane(cx),
             SettingsPane::Integrations => self.integrations_pane(ui, cx),

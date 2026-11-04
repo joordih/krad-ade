@@ -33,6 +33,19 @@ const CODE_TOOLS_HINT: &str = "Agents the app starts can ask the editor's langua
 impl EnvironmentShell {
     pub(super) fn general_pane(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
+        let updates_card = panel_card(vec![self.app_updates_row(cx)], pal);
+        let code_tools_card = panel_card(vec![self.code_tools_row(cx)], pal);
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(SWATCH_GAP))
+            .child(updates_card)
+            .child(code_tools_card)
+            .into_any_element()
+    }
+
+    pub(super) fn appearance_mode_row(&self, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
         let current = self.settings.appearance;
         let option =
             |id: &'static str, label: &'static str, glyph: IconName, mode: AppearanceMode| {
@@ -69,24 +82,7 @@ impl EnvironmentShell {
                 AppearanceMode::System,
             ))
             .into_any_element();
-        let mut appearance_rows = vec![
-            form_row(APPEARANCE_LABEL, Some(APPEARANCE_HINT), segmented, pal),
-            self.material_row(cx),
-        ];
-        appearance_rows.extend(self.tint_rows(cx));
-        let appearance_card = panel_card(appearance_rows, pal);
-        let updates_card = panel_card(vec![self.app_updates_row(cx)], pal);
-        let code_tools_card = panel_card(vec![self.code_tools_row(cx)], pal);
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(SWATCH_GAP))
-            .child(appearance_card)
-            .child(self.themes_section(cx))
-            .child(self.font_card(super::FontZone::Interface, cx))
-            .child(updates_card)
-            .child(code_tools_card)
-            .into_any_element()
+        form_row(APPEARANCE_LABEL, Some(APPEARANCE_HINT), segmented, pal)
     }
 
     fn code_tools_row(&self, cx: &mut Context<Self>) -> AnyElement {

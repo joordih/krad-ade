@@ -1,32 +1,31 @@
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
-    div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled,
+    div, px, rgb, AnyElement, ClickEvent, Context, InteractiveElement, IntoElement, ParentElement,
+    Pixels, Point, StatefulInteractiveElement, Styled,
 };
-use krad_domain::{Theme, ThemeAppearance};
+use krad_domain::{Theme, ThemeAppearance, ThemeId, ThemeSelection};
 
-use super::super::dialog_parts::field_label;
-use super::{hint, swatch_grid, EnvironmentShell, SWATCH_GAP, SWATCH_PAD, SWATCH_PREVIEW_H};
-use crate::components::{Button, ButtonVariant, IconName};
+use super::super::context_menu::{MenuAction, MenuEntry, MenuSearch};
+use super::theme_editor::theme_preview;
+use super::{form_row, panel_card, EnvironmentShell, FontZone, SWATCH_GAP};
+use crate::components::{icon, Button, ButtonVariant, IconName};
 use crate::theme::{
-    apply_settings_theme, focus_ring, palette, row_shadow, theme_library, LINE_XS, RADIUS_MD,
-    SPACE_1, SPACE_1_5, TEXT_XS,
+    apply_settings_theme, palette, theme_library, ICON_SM, LINE_SM, LINE_XS, RADIUS_SM, SPACE_2,
+    TEXT_SM, TEXT_XS,
 };
 
-const SWATCH_PREFIX: &str = "theme-swatch";
-const SWATCH_DOT: f32 = 8.0;
-const SWATCH_SAMPLE: &str = "fn main() {}";
-const SWATCH_ANSI: std::ops::RangeInclusive<usize> = 1..=6;
-const LIGHT_SECTION: &str = "Light theme";
-const DARK_SECTION: &str = "Dark theme";
-const LIGHT_HINT: &str =
-    "Used while the app looks light. It colors the interface, terminals and editor.";
-const DARK_HINT: &str =
-    "Used while the app looks dark. It colors the interface, terminals and editor.";
+const LIGHT_LABEL: &str = "Light theme";
+const DARK_LABEL: &str = "Dark theme";
+const LIGHT_HINT: &str = "Colors the interface, terminals and editor while the app looks light.";
+const DARK_HINT: &str = "Colors the interface, terminals and editor while the app looks dark.";
+const FILTER_PLACEHOLDER: &str = "Filter themes…";
 const CREDIT_SEPARATOR: &str = " · ";
 const OWN_THEME: &str = "Krad";
+const PICKER_PREFIX: &str = "theme-picker";
 const BTN_CREATE_THEME: &str = "theme-create";
 const CREATE_THEME_LABEL: &str = "Create theme…";
+const PICKER_W: f32 = 260.0;
+const PICKER_H: f32 = 40.0;
 
 fn credit_line(theme: &Theme) -> String {
     theme.credit.as_ref().map_or_else(
@@ -35,130 +34,175 @@ fn credit_line(theme: &Theme) -> String {
     )
 }
 
+const fn slot_key(appearance: ThemeAppearance) -> u64 {
+    match appearance {
+        ThemeAppearance::Light => 0,
+        ThemeAppearance::Dark => 1,
+    }
+}
+
 impl EnvironmentShell {
+    fn selection(&self) -> ThemeSelection {
+        self.settings.themes.clone().unwrap_or_default()
+    }
+
     pub(super) fn select_theme(&mut self, theme: &Theme, cx: &mut Context<Self>) {
+        self.choose_theme(theme.appearance, theme.id.clone(), cx);
+    }
+
+    pub(in crate::environment_shell) fn choose_theme(
+        &mut self,
+        appearance: ThemeAppearance,
+        id: ThemeId,
+        cx: &mut Context<Self>,
+    ) {
         self.settings
             .themes
             .get_or_insert_with(Default::default)
-            .set(theme.appearance, theme.id.clone());
+            .set(appearance, id);
         apply_settings_theme(&self.settings, cx);
         self.save_settings(cx);
         cx.notify();
     }
 
-    fn theme_swatch(&self, index: usize, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn theme_entries(&self, appearance: ThemeAppearance, cx: &gpui_kit::App) -> Vec<MenuEntry> {
+        let selection = self.selection();
+        let current = selection.for_appearance(appearance);
+        theme_library(cx)
+            .iter()
+            .filter(|theme| theme.appearance == appearance)
+            .map(|theme| {
+                MenuEntry::checked(
+                    theme.name.clone(),
+                    &theme.id == current,
+                    MenuAction::ChooseTheme(appearance, theme.id.clone()),
+                )
+                .with_detail(credit_line(theme))
+            })
+            .collect()
+    }
+
+    fn theme_picker(&self, appearance: ThemeAppearance, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let mono = cx.theme().mono_font_family.clone();
-        let selected = self
-            .settings
-            .themes
-            .clone()
-            .unwrap_or_default()
-            .for_appearance(theme.appearance)
-            == &theme.id;
-        let chosen = theme.clone();
-        let terminal = theme.terminal;
+        let selection = self.selection();
+        let current = selection.for_appearance(appearance);
+        let (name, credit) = theme_library(cx)
+            .iter()
+            .find(|theme| &theme.id == current)
+            .map_or_else(
+                || (current.0.clone(), String::new()),
+                |theme| (theme.name.clone(), credit_line(theme)),
+            );
         div()
-            .id((SWATCH_PREFIX, u64::try_from(index).unwrap_or(u64::MAX)))
+            .id((PICKER_PREFIX, slot_key(appearance)))
             .flex()
-            .flex_col()
-            .flex_1()
-            .min_w_0()
-            .gap(px(SPACE_1_5))
+            .flex_row()
+            .items_center()
+            .gap(px(SPACE_2))
+            .w(px(PICKER_W))
+            .h(px(PICKER_H))
+            .px(px(SPACE_2))
+            .rounded(px(RADIUS_SM))
+            .border_1()
+            .border_color(pal.border)
+            .bg(pal.bg_hover)
             .cursor_pointer()
-            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                this.select_theme(&chosen, cx);
-            }))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .justify_between()
-                    .h(px(SWATCH_PREVIEW_H))
-                    .p(px(SWATCH_PAD))
-                    .rounded(px(RADIUS_MD))
-                    .bg(rgb(theme.interface.surface.0))
-                    .shadow(if selected {
-                        focus_ring(pal)
-                    } else {
-                        row_shadow(pal, cx)
-                    })
-                    .font_family(mono)
-                    .text_size(px(TEXT_XS))
-                    .line_height(px(LINE_XS))
-                    .text_color(rgb(theme.syntax.keyword.0))
-                    .child(SWATCH_SAMPLE)
-                    .child(div().flex().flex_row().gap(px(SPACE_1)).children(
-                        terminal.ansi[SWATCH_ANSI].iter().map(|color| {
-                            div().size(px(SWATCH_DOT)).rounded_full().bg(rgb(color.0))
-                        }),
-                    )),
+            .on_click(
+                cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
+                    let Point { x, y }: Point<Pixels> = event.position();
+                    let entries = this.theme_entries(appearance, cx);
+                    this.open_searchable_menu(
+                        (x.as_f32(), y.as_f32()),
+                        entries,
+                        MenuSearch {
+                            placeholder: FILTER_PLACEHOLDER,
+                            create: None,
+                            footer: Vec::new(),
+                        },
+                        window,
+                        cx,
+                    );
+                }),
             )
             .child(
                 div()
                     .flex()
                     .flex_col()
+                    .flex_1()
                     .min_w_0()
-                    .text_size(px(TEXT_XS))
-                    .line_height(px(LINE_XS))
                     .child(
                         div()
                             .truncate()
-                            .font_weight(if selected {
-                                FontWeight::MEDIUM
-                            } else {
-                                FontWeight::NORMAL
-                            })
+                            .text_size(px(TEXT_SM))
+                            .line_height(px(LINE_SM))
                             .text_color(rgb(pal.text_strong))
-                            .child(theme.name.clone()),
+                            .child(name),
                     )
                     .child(
                         div()
                             .truncate()
+                            .text_size(px(TEXT_XS))
+                            .line_height(px(LINE_XS))
                             .text_color(rgb(pal.text_muted))
-                            .child(credit_line(theme)),
+                            .child(credit),
                     ),
             )
+            .child(icon(IconName::ChevronDown, ICON_SM, pal.text_muted))
             .into_any_element()
     }
 
-    fn theme_group(&self, appearance: ThemeAppearance, cx: &mut Context<Self>) -> AnyElement {
+    fn chosen_previews(&self, cx: &mut Context<Self>) -> AnyElement {
+        let mono = cx.theme().mono_font_family.clone();
+        let selection = self.selection();
+        let previews: Vec<AnyElement> = [ThemeAppearance::Light, ThemeAppearance::Dark]
+            .into_iter()
+            .filter_map(|appearance| {
+                let id = selection.for_appearance(appearance);
+                theme_library(cx)
+                    .iter()
+                    .find(|theme| &theme.id == id)
+                    .map(|theme| {
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(theme_preview(theme, mono.clone()))
+                            .into_any_element()
+                    })
+            })
+            .collect();
+        div()
+            .flex()
+            .flex_row()
+            .gap(px(SWATCH_GAP))
+            .children(previews)
+            .into_any_element()
+    }
+
+    pub(super) fn appearance_pane(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let (title, detail) = match appearance {
-            ThemeAppearance::Light => (LIGHT_SECTION, LIGHT_HINT),
-            ThemeAppearance::Dark => (DARK_SECTION, DARK_HINT),
-        };
-        let themes: Vec<(usize, Theme)> = theme_library(cx)
-            .iter()
-            .enumerate()
-            .filter(|(_, theme)| theme.appearance == appearance)
-            .map(|(index, theme)| (index, theme.clone()))
-            .collect();
-        let swatches = themes
-            .iter()
-            .map(|(index, theme)| self.theme_swatch(*index, theme, cx))
-            .collect();
+        let mut rows = vec![
+            self.appearance_mode_row(cx),
+            form_row(
+                LIGHT_LABEL,
+                Some(LIGHT_HINT),
+                self.theme_picker(ThemeAppearance::Light, cx),
+                pal,
+            ),
+            form_row(
+                DARK_LABEL,
+                Some(DARK_HINT),
+                self.theme_picker(ThemeAppearance::Dark, cx),
+                pal,
+            ),
+            self.material_row(cx),
+        ];
+        rows.extend(self.tint_rows(cx));
         div()
             .flex()
             .flex_col()
             .gap(px(SWATCH_GAP))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(SPACE_1))
-                    .child(field_label(title, pal))
-                    .child(hint(detail, pal)),
-            )
-            .children(swatch_grid(swatches))
-            .into_any_element()
-    }
-
-    pub(super) fn themes_section(&self, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(SWATCH_GAP))
+            .child(panel_card(rows, pal))
+            .child(self.chosen_previews(cx))
             .child(
                 div().flex().flex_row().justify_end().child(
                     Button::new(BTN_CREATE_THEME)
@@ -170,8 +214,7 @@ impl EnvironmentShell {
                         })),
                 ),
             )
-            .child(self.theme_group(ThemeAppearance::Light, cx))
-            .child(self.theme_group(ThemeAppearance::Dark, cx))
+            .child(self.font_card(FontZone::Interface, cx))
             .into_any_element()
     }
 }

@@ -134,7 +134,6 @@ impl EnvironmentShell {
             .family
             .clone()
             .unwrap_or_else(|| zone.default_label().to_owned());
-        let entries = self.font_entries(zone);
         div()
             .id((PICKER_PREFIX, zone.key()))
             .flex()
@@ -154,9 +153,10 @@ impl EnvironmentShell {
             .on_click(
                 cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
                     let Point { x, y }: Point<Pixels> = event.position();
+                    let entries = this.font_entries(zone);
                     this.open_searchable_menu(
                         (x.as_f32(), y.as_f32()),
-                        entries.clone(),
+                        entries,
                         MenuSearch {
                             placeholder: FILTER_PLACEHOLDER,
                             create: None,
