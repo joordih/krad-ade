@@ -4,6 +4,7 @@ mod search;
 mod sections;
 mod terminals;
 
+pub(super) use changes::{ChangesAction, CommitHistory};
 pub(super) use search::SideSearch;
 
 use gpui_kit::{
@@ -25,6 +26,7 @@ const WIDTH_HANDLE_W: f32 = 6.0;
 #[derive(Clone, Copy)]
 pub(super) enum SidePanelDrag {
     Width { mouse_start: f32, width_start: f32 },
+    History { mouse_start: f32, height_start: f32 },
 }
 
 #[derive(Clone, Copy)]
@@ -188,7 +190,7 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    pub(super) fn drag_side_panel(&mut self, x: f32, _y: f32, cx: &mut Context<Self>) -> bool {
+    pub(super) fn drag_side_panel(&mut self, x: f32, y: f32, cx: &mut Context<Self>) -> bool {
         let DragState::SidePanel(drag) = self.drag else {
             return false;
         };
@@ -200,6 +202,10 @@ impl EnvironmentShell {
                     mouse_start,
                     width_start,
                 } => layout.set_width(width_start + (mouse_start - x)),
+                SidePanelDrag::History {
+                    mouse_start,
+                    height_start,
+                } => layout.set_history_height(height_start + (mouse_start - y)),
             }
         }
         cx.notify();

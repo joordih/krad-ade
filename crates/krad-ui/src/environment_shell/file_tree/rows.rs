@@ -1,26 +1,27 @@
 use gpui_kit::component::InteractiveElementExt as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, uniform_list, AnyElement, AppContext as _, Context, Div, ExternalPaths,
+    div, px, rgb, uniform_list, AnyElement, App, AppContext as _, Context, Div, ExternalPaths,
     FontWeight, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement,
     Stateful, StatefulInteractiveElement, Styled, Window,
 };
-use krad_domain::FileOpening;
+use krad_domain::{FileOpening, FolderKind, ProblemSeverity};
 use krad_repo::{ChangeKind, DirEntry, EntryKind};
-use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
+use super::super::entry_input::EntryEdit;
 use super::super::EnvironmentShell;
 use super::{
     ChangeMarks, NewEntryRow, TreeRow, DRAFT_ROW_ID, FILE_ROW_H, FILE_ROW_PREFIX, FILE_TREE_ID,
     INDENT, MARK_ADDED, MARK_CONFLICTED, MARK_DELETED, MARK_MODIFIED, MARK_RENAMED, MARK_UNTRACKED,
 };
-use crate::actions::{RenameFile, FILE_TREE_KEY_CONTEXT};
+use crate::actions::{NewTreeFile, RenameFile, FILE_TREE_KEY_CONTEXT};
 use crate::components::{icon, IconName};
 use crate::theme::{
-    palette, row_fill, row_shadow, Palette, ICON_SM, LINE_SM, LINE_XS, RADIUS_XS, SPACE_1_5,
-    SPACE_2, TEXT_SM, TEXT_XS,
+    appearance, palette, row_fill, row_shadow, Appearance, Palette, ICON_SM, LINE_SM, LINE_XS,
+    RADIUS_XS, SPACE_1_5, SPACE_2, TEXT_SM, TEXT_XS,
 };
 
 pub(in crate::environment_shell) const fn change_mark(kind: ChangeKind) -> &'static str {
@@ -43,11 +44,28 @@ pub(in crate::environment_shell) const fn change_color(kind: ChangeKind, pal: &P
 }
 
 impl EnvironmentShell {
-    pub(super) fn change_marks(&self) -> ChangeMarks {
-        let mut marks = ChangeMarks {
-            files: HashMap::new(),
-            folders: HashSet::new(),
-        };
+    pub(in crate::environment_shell) fn forget_change_marks(&mut self) {
+        self.file_tree.marks = None;
+    }
+
+    fn cached_change_marks(&mut self) -> Rc<ChangeMarks> {
+        let host = self
+            .envs
+            .get(&self.active)
+            .map_or_else(krad_domain::Host::default, |live| live.data.host.clone());
+        let root = (host, self.file_tree.group_root.clone().unwrap_or_default());
+        if let Some((marked, marks)) = &self.file_tree.marks {
+            if *marked == root {
+                return Rc::clone(marks);
+            }
+        }
+        let marks = Rc::new(self.change_marks());
+        self.file_tree.marks = Some((root, Rc::clone(&marks)));
+        marks
+    }
+
+    fn change_marks(&self) -> ChangeMarks {
+        let mut marks = ChangeMarks::default();
         let Some(git) = self
             .file_tree
             .group_root
@@ -69,8 +87,8 @@ impl EnvironmentShell {
     pub(super) fn tree_rows(&self) -> Vec<TreeRow> {
         let draft = self
             .new_entry_draft()
-            .map(|(dir, kind, label)| NewEntryRow { dir, kind, label });
-        self.file_tree.rows(draft.as_ref())
+            .map(|(dir, kind)| NewEntryRow { dir, kind });
+        self.file_tree.rows(draft.as_ref(), self.language_catalog())
     }
 
     pub(in crate::environment_shell) fn file_tree_list(
@@ -84,19 +102,20 @@ impl EnvironmentShell {
             count,
             cx.processor(|this: &mut Self, range: Range<usize>, _: &mut Window, cx| {
                 let rows = this.tree_rows();
-                let marks = this.change_marks();
+                let marks = this.cached_change_marks();
                 rows.get(range)
                     .unwrap_or_default()
                     .iter()
                     .map(|row| match row {
                         TreeRow::Entry {
                             entry,
+                            label,
                             depth,
                             expanded,
-                        } => this.file_row(entry, *depth, *expanded, &marks, cx),
-                        TreeRow::Draft { kind, label, depth } => {
-                            Self::draft_row(*kind, label, *depth, cx)
+                        } => {
+                            this.file_row(entry, label.as_deref(), (*depth, *expanded), &marks, cx)
                         }
+                        TreeRow::Draft { kind, depth } => this.draft_row(*kind, *depth, cx),
                     })
                     .collect::<Vec<_>>()
             }),
@@ -112,6 +131,7 @@ impl EnvironmentShell {
             .key_context(FILE_TREE_KEY_CONTEXT)
             .when(editable, |tree| {
                 tree.on_action(cx.listener(Self::on_rename_file))
+                    .on_action(cx.listener(Self::on_new_tree_file))
                     .on_mouse_down(
                         MouseButton::Right,
                         cx.listener(|this: &mut Self, event: &MouseDownEvent, _, cx| {
@@ -140,6 +160,12 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
+    fn on_new_tree_file(&mut self, _: &NewTreeFile, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(dir) = self.new_entry_folder() {
+            self.begin_new_entry(dir, EntryKind::File, window, cx);
+        }
+    }
+
     pub(super) fn on_rename_file(
         &mut self,
         _: &RenameFile,
@@ -147,14 +173,13 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         if let Some(path) = self.file_tree.selected.clone() {
-            window.focus(&self.focus, cx);
-            self.start_file_rename(path, cx);
+            self.begin_entry_input(EntryEdit::Rename(path), window, cx);
         }
     }
 
     pub(super) fn draft_row(
+        &self,
         kind: EntryKind,
-        label: &str,
         depth: usize,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -181,7 +206,7 @@ impl EnvironmentShell {
             .text_color(rgb(pal.text_strong))
             .child(div().flex_none().size(px(ICON_SM)))
             .child(icon(glyph, ICON_SM, pal.text_muted))
-            .child(div().flex_1().min_w_0().truncate().child(label.to_owned()))
+            .children(self.entry_input_field(cx))
             .into_any_element()
     }
 
@@ -252,11 +277,36 @@ impl EnvironmentShell {
         })
     }
 
+    fn entry_icon(&self, entry: &DirEntry, expanded: bool, cx: &App) -> AnyElement {
+        let is_dir = entry.kind == EntryKind::Directory;
+        let dark = appearance(cx) == Appearance::Dark;
+        let colors = self.settings.file_icon_colors.palette(dark);
+        let colored = self.file_icons.as_ref().and_then(|icons| {
+            if !is_dir {
+                return icons.file(&entry.name, colors, ICON_SM);
+            }
+            let kind = if self.language_catalog().in_packages(&entry.path) {
+                FolderKind::Package
+            } else {
+                FolderKind::Plain
+            };
+            icons.folder(&entry.name, (kind, expanded), colors, ICON_SM)
+        });
+        colored.unwrap_or_else(|| {
+            let glyph = if is_dir {
+                IconName::Folder
+            } else {
+                IconName::File
+            };
+            icon(glyph, ICON_SM, palette(cx).text_muted).into_any_element()
+        })
+    }
+
     pub(super) fn file_row(
         &self,
         entry: &DirEntry,
-        depth: usize,
-        expanded: bool,
+        compacted: Option<&str>,
+        (depth, expanded): (usize, bool),
         marks: &ChangeMarks,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -272,19 +322,17 @@ impl EnvironmentShell {
         let highlighted = open || self.file_tree.selected.as_ref() == Some(&entry.path);
         let change = marks.files.get(&entry.path).copied();
         let folder_changed = is_dir && marks.folders.contains(&entry.path);
-        let label = self
-            .file_rename_label(&entry.path)
-            .unwrap_or_else(|| entry.name.clone());
+        let problem = self
+            .worst_problem_at(&entry.path)
+            .and_then(|severity| problem_color(severity, pal));
+        let label = compacted.map_or_else(|| entry.name.clone(), str::to_owned);
+        let renaming = self.is_renaming(&entry.path);
         let name_color = match change {
             Some(kind) => change_color(kind, pal),
             None if open => pal.text_strong,
             None => pal.text_default,
         };
-        let (glyph, glyph_color) = if is_dir {
-            (IconName::Folder, pal.text_muted)
-        } else {
-            (IconName::File, pal.text_muted)
-        };
+        let glyph = self.entry_icon(entry, expanded, cx);
         let chevron = is_dir.then(|| {
             icon(
                 if expanded {
@@ -327,8 +375,9 @@ impl EnvironmentShell {
                     .size(px(ICON_SM))
                     .children(chevron),
             )
-            .child(icon(glyph, ICON_SM, glyph_color))
-            .child(div().flex_1().min_w_0().truncate().child(label))
+            .child(glyph)
+            .children(renaming.then(|| self.entry_input_field(cx)).flatten())
+            .when(!renaming, |row| row.child(entry_name(label, problem)))
             .when_some(change, |row, kind| {
                 row.child(
                     div()
@@ -350,6 +399,27 @@ impl EnvironmentShell {
                 )
             })
             .into_any_element()
+    }
+}
+
+fn entry_name(label: impl IntoElement, problem: Option<u32>) -> Div {
+    div()
+        .flex_1()
+        .min_w_0()
+        .truncate()
+        .when_some(problem, |name, color| {
+            name.text_decoration_1()
+                .text_decoration_wavy()
+                .text_decoration_color(rgb(color))
+        })
+        .child(label)
+}
+
+const fn problem_color(severity: ProblemSeverity, pal: &Palette) -> Option<u32> {
+    match severity {
+        ProblemSeverity::Error => Some(pal.error_fg),
+        ProblemSeverity::Warning => Some(pal.warning_fg),
+        ProblemSeverity::Info | ProblemSeverity::Hint => None,
     }
 }
 

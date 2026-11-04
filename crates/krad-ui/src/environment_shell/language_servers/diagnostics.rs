@@ -1,6 +1,6 @@
-use gpui_kit::component::highlighter::Diagnostic;
-use gpui_kit::component::input::{EditorState, RopeExt as _};
+use gpui_kit::component::input::EditorState;
 use gpui_kit::{Context, Entity, Task};
+use krad_domain::ProblemSeverity;
 use krad_lsp::file_uri;
 use krad_lsp::lsp_types::request::DocumentDiagnosticRequest;
 use krad_lsp::lsp_types::{
@@ -11,6 +11,7 @@ use krad_lsp::lsp_types::{
 use std::collections::HashMap;
 use std::time::Duration;
 
+use super::super::file_tab::problem_list::ProblemList;
 use super::super::EnvironmentShell;
 use super::Document;
 
@@ -23,21 +24,99 @@ pub(in crate::environment_shell) struct DiagnosticStore {
     pushed: HashMap<Document, Vec<lsp_types::Diagnostic>>,
     pulled: HashMap<Document, Vec<lsp_types::Diagnostic>>,
     pulls: HashMap<Document, Task<()>>,
+    file_worst: HashMap<Document, ProblemSeverity>,
+    places: HashMap<Document, SeverityCounts>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct SeverityCounts([u32; 4]);
+
+impl SeverityCounts {
+    const ORDER: [ProblemSeverity; 4] = [
+        ProblemSeverity::Error,
+        ProblemSeverity::Warning,
+        ProblemSeverity::Info,
+        ProblemSeverity::Hint,
+    ];
+
+    const fn slot(severity: ProblemSeverity) -> usize {
+        match severity {
+            ProblemSeverity::Error => 0,
+            ProblemSeverity::Warning => 1,
+            ProblemSeverity::Info => 2,
+            ProblemSeverity::Hint => 3,
+        }
+    }
+
+    fn add(&mut self, severity: ProblemSeverity) {
+        self.0[Self::slot(severity)] += 1;
+    }
+
+    fn remove(&mut self, severity: ProblemSeverity) {
+        let count = &mut self.0[Self::slot(severity)];
+        *count = count.saturating_sub(1);
+    }
+
+    fn worst(self) -> Option<ProblemSeverity> {
+        Self::ORDER
+            .into_iter()
+            .find(|severity| self.0[Self::slot(*severity)] > 0)
+    }
 }
 
 impl DiagnosticStore {
-    pub(super) fn pushed(&mut self, document: Document, diagnostics: Vec<lsp_types::Diagnostic>) {
-        self.pushed.insert(document, diagnostics);
+    pub(super) fn pushed(&mut self, document: &Document, diagnostics: Vec<lsp_types::Diagnostic>) {
+        self.pushed.insert(document.clone(), diagnostics);
+        self.settle(document);
     }
 
-    fn pulled(&mut self, document: Document, diagnostics: Vec<lsp_types::Diagnostic>) {
-        self.pulled.insert(document, diagnostics);
+    pub(super) fn pulled(&mut self, document: &Document, diagnostics: Vec<lsp_types::Diagnostic>) {
+        self.pulled.insert(document.clone(), diagnostics);
+        self.settle(document);
     }
 
     pub(super) fn forget(&mut self, document: &Document) {
         self.pushed.remove(document);
         self.pulled.remove(document);
         self.pulls.remove(document);
+        self.settle(document);
+    }
+
+    pub(super) fn forget_pulled(&mut self, document: &Document) {
+        self.pulled.remove(document);
+        self.pulls.remove(document);
+        self.settle(document);
+    }
+
+    pub(in crate::environment_shell) fn worst_at(
+        &self,
+        place: &Document,
+    ) -> Option<ProblemSeverity> {
+        self.places.get(place).and_then(|counts| counts.worst())
+    }
+
+    fn settle(&mut self, document: &Document) {
+        let now = self.of(document).iter().map(problem_severity).min();
+        let before = match now {
+            Some(severity) => self.file_worst.insert(document.clone(), severity),
+            None => self.file_worst.remove(document),
+        };
+        if before == now {
+            return;
+        }
+        for place in document.path.ancestors() {
+            let place = Document::new(&document.host, place);
+            let counts = self.places.entry(place.clone()).or_default();
+            if let Some(before) = before {
+                counts.remove(before);
+            }
+            if let Some(now) = now {
+                counts.add(now);
+            }
+            if counts.worst().is_none() {
+                self.places.remove(&place);
+            }
+        }
     }
 
     pub(in crate::environment_shell) fn of(
@@ -80,15 +159,14 @@ pub(in crate::environment_shell) fn severity_of(
     diagnostic.severity.unwrap_or(DiagnosticSeverity::ERROR)
 }
 
-fn editor_diagnostic(diagnostic: &lsp_types::Diagnostic) -> Diagnostic {
-    let found = Diagnostic::new(
-        diagnostic.range.start..diagnostic.range.end,
-        diagnostic.message.clone(),
-    )
-    .with_severity(severity_of(diagnostic));
-    match &diagnostic.source {
-        Some(source) => found.with_source(source.clone()),
-        None => found,
+pub(in crate::environment_shell) fn problem_severity(
+    diagnostic: &lsp_types::Diagnostic,
+) -> ProblemSeverity {
+    match severity_of(diagnostic) {
+        DiagnosticSeverity::WARNING => ProblemSeverity::Warning,
+        DiagnosticSeverity::INFORMATION => ProblemSeverity::Info,
+        DiagnosticSeverity::HINT => ProblemSeverity::Hint,
+        _ => ProblemSeverity::Error,
     }
 }
 
@@ -153,10 +231,7 @@ impl EnvironmentShell {
                 return;
             };
             this.update(cx, |shell, cx| {
-                shell
-                    .language_servers
-                    .diagnostics
-                    .pulled(pulled.clone(), items);
+                shell.language_servers.diagnostics.pulled(&pulled, items);
                 shell.show_diagnostics(&pulled, cx);
             })
             .unwrap_or_default();
@@ -173,25 +248,23 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let known = self.language_servers.diagnostics.of(document);
-        let states: Vec<Entity<EditorState>> = self
+        let editors: Vec<(Entity<EditorState>, Entity<ProblemList>)> = self
             .envs
             .values()
             .filter(|live| live.data.host == document.host)
             .flat_map(|live| live.editors.values())
             .filter(|editor| editor.path == document.path)
-            .filter_map(|editor| editor.state.clone())
+            .filter_map(|editor| Some((editor.state.clone()?, editor.problems.clone()?)))
             .collect();
-        for state in states {
+        for (state, problems) in editors {
+            let found = ProblemList::from_diagnostics(&known, state.read(cx).text());
+            problems.update(cx, |problems, cx| {
+                *problems = found;
+                cx.notify();
+            });
             state.update(cx, |state, cx| {
-                let lines = state.text().lines_len();
-                let found: Vec<Diagnostic> = known
-                    .iter()
-                    .filter(|diagnostic| (diagnostic.range.end.line as usize) < lines)
-                    .map(editor_diagnostic)
-                    .collect();
                 if let Some(set) = state.diagnostics_mut() {
                     set.clear();
-                    set.extend(found);
                 }
                 cx.notify();
             });
@@ -220,8 +293,8 @@ mod tests {
             &krad_domain::Host::Local,
             std::path::Path::new("/work/main.rs"),
         );
-        store.pushed(file.clone(), vec![at(4, "from check"), at(1, "both")]);
-        store.pulled(file.clone(), vec![at(1, "both"), at(2, "live")]);
+        store.pushed(&file, vec![at(4, "from check"), at(1, "both")]);
+        store.pulled(&file, vec![at(1, "both"), at(2, "live")]);
         let messages: Vec<String> = store
             .of(&file)
             .into_iter()
@@ -231,5 +304,54 @@ mod tests {
         assert_eq!(store.files(), std::slice::from_ref(&file));
         store.forget(&file);
         assert_eq!(store.files(), Vec::<Document>::new());
+    }
+
+    #[test]
+    fn folders_take_the_worst_problem_of_the_files_inside_them_as_problems_change() {
+        let mut store = DiagnosticStore::default();
+        let place =
+            |path: &str| Document::new(&krad_domain::Host::Local, std::path::Path::new(path));
+        let with = |severity: DiagnosticSeverity| lsp_types::Diagnostic {
+            severity: Some(severity),
+            ..at(0, "problem")
+        };
+        store.pushed(
+            &place("/repo/src/a.rs"),
+            vec![with(DiagnosticSeverity::WARNING)],
+        );
+        store.pushed(
+            &place("/repo/src/b.rs"),
+            vec![with(DiagnosticSeverity::ERROR)],
+        );
+        store.pushed(
+            &place("/repo/docs/c.rs"),
+            vec![with(DiagnosticSeverity::HINT)],
+        );
+        store.pushed(&place("/repo/clean.rs"), Vec::new());
+        assert_eq!(
+            store.worst_at(&place("/repo/src/a.rs")),
+            Some(ProblemSeverity::Warning)
+        );
+        assert_eq!(
+            store.worst_at(&place("/repo/src")),
+            Some(ProblemSeverity::Error)
+        );
+        assert_eq!(
+            store.worst_at(&place("/repo/docs")),
+            Some(ProblemSeverity::Hint)
+        );
+        assert_eq!(
+            store.worst_at(&place("/repo")),
+            Some(ProblemSeverity::Error)
+        );
+        assert_eq!(store.worst_at(&place("/repo/clean.rs")), None);
+        store.pushed(&place("/repo/src/b.rs"), Vec::new());
+        assert_eq!(
+            store.worst_at(&place("/repo/src")),
+            Some(ProblemSeverity::Warning)
+        );
+        store.forget(&place("/repo/src/a.rs"));
+        assert_eq!(store.worst_at(&place("/repo/src")), None);
+        assert_eq!(store.worst_at(&place("/repo")), Some(ProblemSeverity::Hint));
     }
 }

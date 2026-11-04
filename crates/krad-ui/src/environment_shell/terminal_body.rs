@@ -1,15 +1,13 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, font, px, rgb, AnyElement, Context, Div, Font, FontFeatures, InteractiveElement,
-    IntoElement, MouseButton, MouseDownEvent, ParentElement, ScrollWheelEvent, SharedString,
-    Styled, Window,
+    div, font, px, rgb, AnyElement, Context, Div, Font, InteractiveElement, IntoElement,
+    MouseButton, MouseDownEvent, ParentElement, ScrollWheelEvent, SharedString, Styled, Window,
 };
 use krad_domain::{Ligatures, TerminalId};
 use krad_session::{
     CellPoint, CursorShape, GridSize, ImageDepth, LiveSession, MouseAction, PtyInput, TermCursor,
     WheelInput,
 };
-use std::sync::Arc;
 use std::time::Duration;
 
 use super::drag::DragState;
@@ -18,7 +16,9 @@ use super::terminal_text::{terminal_text, TextLook};
 use super::EnvironmentShell;
 use crate::components::thinking_indicator;
 use crate::terminal_theme::TerminalColors;
-use crate::theme::{palette, terminal_fill, terminal_font_family, tinted};
+use crate::theme::{
+    font_features, mono_family, palette, terminal_fill, tinted, TERMINAL_FONT_SIZE,
+};
 
 pub(super) const TERMINAL_FONT_PX: f32 = crate::theme::TEXT_XS;
 pub(super) const TERMINAL_LINE_PX: f32 = 18.0;
@@ -26,9 +26,6 @@ pub(super) const BODY_PAD_X: f32 = 12.0;
 pub(super) const BODY_PAD_TOP: f32 = crate::theme::SPACE_1;
 const BODY_PAD_BOTTOM: f32 = crate::theme::SPACE_3;
 const GRID_PROBE_CHAR: char = 'm';
-const LIGATURE_FEATURES: [&str; 2] = ["calt", "liga"];
-const FEATURE_ON: u32 = 1;
-const FEATURE_OFF: u32 = 0;
 const CARD_STARTING_TEXT: &str = "starting…";
 const AGENT_STARTING_PREFIX: &str = "Starting";
 const AGENT_STARTING_SUFFIX: &str = "…";
@@ -215,19 +212,6 @@ fn count_px(count: usize) -> f32 {
     u16::try_from(count).map_or(f32::from(u16::MAX), f32::from)
 }
 
-fn font_features(ligatures: Ligatures) -> FontFeatures {
-    let value = match ligatures {
-        Ligatures::On => FEATURE_ON,
-        Ligatures::Off => FEATURE_OFF,
-    };
-    FontFeatures(Arc::new(
-        LIGATURE_FEATURES
-            .iter()
-            .map(|feature| ((*feature).to_owned(), value))
-            .collect(),
-    ))
-}
-
 #[derive(Clone, Copy)]
 pub(super) struct BodyLook {
     pub(super) geometry: BodyGeometry,
@@ -288,6 +272,10 @@ impl EnvironmentShell {
             .on_scroll_wheel(cx.listener(
                 move |this: &mut Self, event: &ScrollWheelEvent, _, cx| {
                     cx.stop_propagation();
+                    if event.modifiers.alt {
+                        this.on_swipe_scroll(event, cx);
+                        return;
+                    }
                     let delta = event.delta.pixel_delta(px(geometry.line_h));
                     if event.modifiers.secondary() {
                         this.step_text_scale(id, delta.y.as_f32() < 0.0, cx);
@@ -391,9 +379,17 @@ impl EnvironmentShell {
         cx.notify();
     }
 
+    pub(super) fn terminal_font_zoom(&self) -> f32 {
+        self.settings
+            .terminal_font
+            .size_or(TERMINAL_FONT_SIZE)
+            .as_f32()
+            / TERMINAL_FONT_SIZE.as_f32()
+    }
+
     pub(super) fn cell_width(&mut self, window: &mut Window) -> f32 {
         *self.cell_width_px.get_or_insert_with(|| {
-            let mono = font(terminal_font_family(self.settings.terminal_font));
+            let mono = font(mono_family(&self.settings.terminal_font));
             let font_id = window.text_system().resolve_font(&mono);
             window
                 .text_system()

@@ -110,9 +110,63 @@ pub fn hook_launch_args(
     }
 }
 
+const CODE_TOOLS_SERVER: &str = "krad_code";
+const CODE_TOOLS_VERB: &str = "mcp";
+
+#[must_use]
+pub fn code_tools_launch_args(
+    preset: AgentPreset,
+    cli: &str,
+    quoting: ShellQuoting,
+) -> Option<String> {
+    match preset {
+        AgentPreset::ClaudeCode => {
+            let config = serde_json::json!({
+                "mcpServers": {CODE_TOOLS_SERVER: {"command": cli, "args": [CODE_TOOLS_VERB]}},
+            })
+            .to_string();
+            Some(format!(
+                "--mcp-config {}",
+                quote_for_shell(&config, quoting)
+            ))
+        }
+        AgentPreset::Codex => {
+            let command = format!("mcp_servers.{CODE_TOOLS_SERVER}.command='{cli}'");
+            let args = format!("mcp_servers.{CODE_TOOLS_SERVER}.args=['{CODE_TOOLS_VERB}']");
+            Some(format!(
+                "-c {} -c {}",
+                quote_for_shell(&command, quoting),
+                quote_for_shell(&args, quoting)
+            ))
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn code_tools_register_the_agents_cli_as_an_mcp_server() {
+        let claude = code_tools_launch_args(
+            AgentPreset::ClaudeCode,
+            "krad-ade-agents",
+            ShellQuoting::Posix,
+        );
+        assert!(claude
+            .as_deref()
+            .is_some_and(|args| args.starts_with("--mcp-config") && args.contains("krad_code")));
+        let codex =
+            code_tools_launch_args(AgentPreset::Codex, "krad-ade-agents", ShellQuoting::Posix);
+        assert!(codex.as_deref().is_some_and(
+            |args| args.contains("mcp_servers.krad_code.args=") && args.contains("mcp")
+        ));
+        assert_eq!(
+            code_tools_launch_args(AgentPreset::Shell, "krad-ade-agents", ShellQuoting::Posix),
+            None
+        );
+    }
 
     #[test]
     fn powershell_launch_lines_carry_no_double_quote() -> serde_json::Result<()> {

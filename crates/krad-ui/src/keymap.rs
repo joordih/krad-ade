@@ -4,10 +4,11 @@ use gpui_kit::component::input::{
 use gpui_kit::KeyBinding;
 
 use crate::actions::{
-    AcceptCompletion, AskConfirm, AskDeny, CopySelection, DeleteLine, DuplicateLine, FindInFiles,
-    FindReferences, MoveLineDown, MoveLineUp, NewAgent, NewTerminal, NextProblem, OpenSettings,
-    PasteClipboard, PreviousProblem, QuickOpen, Reformat, RenameFile, RenameSymbol, SaveFile,
-    SearchTerminal, SendBackTab, SendTab, SplitTerminal, TextLarger, TextReset, TextSmaller,
+    AcceptCompletion, AskConfirm, AskDeny, CloseAllTabs, CloseTab, CopySelection, DeleteLine,
+    DuplicateLine, FindInFiles, FindReferences, MoveLineDown, MoveLineUp, NavigateBack,
+    NavigateForward, NewAgent, NewTerminal, NewTreeFile, NextProblem, OpenSettings, PasteClipboard,
+    PreviousProblem, QuickOpen, Reformat, RenameFile, RenameSymbol, SaveFile, SearchTerminal,
+    SendBackTab, SendTab, ShowTabAt, SplitTerminal, TextLarger, TextReset, TextSmaller,
     ToggleActivity, ToggleFps, ToggleLineComment, TogglePalette, ToggleSidePanel, ToggleSidebar,
     ToggleWorkMode, ASK_KEY_CONTEXT, EDITOR_KEY_CONTEXT, FILE_TAB_KEY_CONTEXT,
     FILE_TREE_KEY_CONTEXT, SHELL_KEY_CONTEXT, VIEWER_KEY_CONTEXT,
@@ -21,7 +22,20 @@ mod keys {
     pub(super) const PALETTE: &str = "cmd-k";
     pub(super) const OPEN_SETTINGS_HINT: &str = "⌘,";
     pub(super) const NEW_TERMINAL: &str = "cmd-t";
+    pub(super) const NEW_TERMINAL_HINT: &str = "⌘T";
+    pub(super) const NAVIGATE_BACK: &str = "ctrl--";
+    pub(super) const NAVIGATE_FORWARD: &str = "ctrl-shift--";
+    pub(super) const TAB_SLOTS: [&str; 9] = [
+        "cmd-1", "cmd-2", "cmd-3", "cmd-4", "cmd-5", "cmd-6", "cmd-7", "cmd-8", "cmd-9",
+    ];
+    pub(super) const TAB_SLOT_HINTS: [&str; 9] =
+        ["⌘1", "⌘2", "⌘3", "⌘4", "⌘5", "⌘6", "⌘7", "⌘8", "⌘9"];
+    pub(super) const NEW_TREE_FILE: &str = "cmd-n";
     pub(super) const SPLIT_TERMINAL: &str = "cmd-d";
+    pub(super) const CLOSE_TAB: &str = "cmd-w";
+    pub(super) const CLOSE_TAB_HINT: &str = "⌘W";
+    pub(super) const CLOSE_ALL_TABS: &str = "cmd-shift-w";
+    pub(super) const CLOSE_ALL_TABS_HINT: &str = "⌘⇧W";
     pub(super) const COPY: &str = "cmd-c";
     pub(super) const VIEWER_COPY: &str = "cmd-c";
     pub(super) const COPY_HINT: &str = "⌘C";
@@ -74,7 +88,21 @@ mod keys {
     pub(super) const PALETTE: &str = "ctrl-shift-p";
     pub(super) const OPEN_SETTINGS_HINT: &str = "Ctrl+,";
     pub(super) const NEW_TERMINAL: &str = "ctrl-shift-t";
+    pub(super) const NEW_TERMINAL_HINT: &str = "Ctrl+Shift+T";
+    pub(super) const NAVIGATE_BACK: &str = "alt-left";
+    pub(super) const NAVIGATE_FORWARD: &str = "alt-right";
+    pub(super) const TAB_SLOTS: [&str; 9] = [
+        "alt-1", "alt-2", "alt-3", "alt-4", "alt-5", "alt-6", "alt-7", "alt-8", "alt-9",
+    ];
+    pub(super) const TAB_SLOT_HINTS: [&str; 9] = [
+        "Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8", "Alt+9",
+    ];
+    pub(super) const NEW_TREE_FILE: &str = "ctrl-shift-n";
     pub(super) const SPLIT_TERMINAL: &str = "ctrl-shift-d";
+    pub(super) const CLOSE_TAB: &str = "ctrl-shift-w";
+    pub(super) const CLOSE_TAB_HINT: &str = "Ctrl+Shift+W";
+    pub(super) const CLOSE_ALL_TABS: &str = "ctrl-alt-shift-w";
+    pub(super) const CLOSE_ALL_TABS_HINT: &str = "Ctrl+Alt+Shift+W";
     pub(super) const COPY: &str = "ctrl-shift-c";
     pub(super) const VIEWER_COPY: &str = "ctrl-c";
     pub(super) const COPY_HINT: &str = "Ctrl+Shift+C";
@@ -118,8 +146,12 @@ const ASK_CONFIRM: &str = "enter";
 const ASK_DENY: &str = "escape";
 
 pub(crate) const OPEN_SETTINGS_HINT: &str = keys::OPEN_SETTINGS_HINT;
+pub(crate) const NEW_TERMINAL_HINT: &str = keys::NEW_TERMINAL_HINT;
+pub(crate) const TAB_SLOT_HINTS: [&str; 9] = keys::TAB_SLOT_HINTS;
 pub(crate) const COPY_HINT: &str = keys::COPY_HINT;
 pub(crate) const PASTE_HINT: &str = keys::PASTE_HINT;
+pub(crate) const CLOSE_TAB_HINT: &str = keys::CLOSE_TAB_HINT;
+pub(crate) const CLOSE_ALL_TABS_HINT: &str = keys::CLOSE_ALL_TABS_HINT;
 
 #[must_use]
 pub fn key_bindings() -> Vec<KeyBinding> {
@@ -129,7 +161,19 @@ pub fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new(keys::TOGGLE_FPS, ToggleFps, scope),
         KeyBinding::new(keys::PALETTE, TogglePalette, scope),
         KeyBinding::new(keys::NEW_TERMINAL, NewTerminal, scope),
+        KeyBinding::new(keys::NAVIGATE_BACK, NavigateBack, scope),
+        KeyBinding::new(keys::NAVIGATE_FORWARD, NavigateForward, scope),
+    ]);
+    bindings.extend(
+        keys::TAB_SLOTS
+            .iter()
+            .enumerate()
+            .map(|(slot, key)| KeyBinding::new(key, ShowTabAt { slot }, scope)),
+    );
+    bindings.extend([
         KeyBinding::new(keys::SPLIT_TERMINAL, SplitTerminal, scope),
+        KeyBinding::new(keys::CLOSE_TAB, CloseTab, scope),
+        KeyBinding::new(keys::CLOSE_ALL_TABS, CloseAllTabs, scope),
         KeyBinding::new(keys::COPY, CopySelection, scope),
         KeyBinding::new(keys::PASTE, PasteClipboard, scope),
         KeyBinding::new(keys::SEARCH, SearchTerminal, scope),
@@ -147,6 +191,11 @@ pub fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new(SEND_BACK_TAB, SendBackTab, scope),
         KeyBinding::new(keys::VIEWER_COPY, CopySelection, Some(VIEWER_KEY_CONTEXT)),
         KeyBinding::new(RENAME_FILE, RenameFile, Some(FILE_TREE_KEY_CONTEXT)),
+        KeyBinding::new(
+            keys::NEW_TREE_FILE,
+            NewTreeFile,
+            Some(FILE_TREE_KEY_CONTEXT),
+        ),
         KeyBinding::new(keys::SAVE_FILE, SaveFile, Some(FILE_TAB_KEY_CONTEXT)),
         KeyBinding::new(ASK_CONFIRM, AskConfirm, Some(ASK_KEY_CONTEXT)),
         KeyBinding::new(ASK_DENY, AskDeny, Some(ASK_KEY_CONTEXT)),

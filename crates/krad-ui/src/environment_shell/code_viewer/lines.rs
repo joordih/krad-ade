@@ -14,7 +14,7 @@ use super::super::EnvironmentShell;
 use super::selection::{CodeSelection, TextPoint};
 use super::{CodeView, ViewerContent, ViewerText};
 use crate::actions::{CopySelection, VIEWER_KEY_CONTEXT};
-use crate::highlight::{Span, TokenKind};
+use crate::highlight::Span;
 use crate::theme::{palette, tinted, Palette, SPACE_1, SPACE_3, TEXT_SM};
 
 const VIEWER_LIST_ID: &str = "code-viewer-lines";
@@ -23,16 +23,6 @@ const CODE_LINE_PX: f32 = 20.0;
 const SELECTION_ALPHA: u32 = 0x40;
 const GUTTER_DIGIT_PX: f32 = 8.0;
 const GUTTER_PAD_PX: f32 = 16.0;
-
-const fn token_color(kind: TokenKind, pal: &Palette) -> u32 {
-    match kind {
-        TokenKind::Keyword => pal.syntax.keyword,
-        TokenKind::String => pal.syntax.string,
-        TokenKind::Comment => pal.syntax.comment,
-        TokenKind::Number => pal.syntax.number,
-        TokenKind::TypeName => pal.syntax.type_name,
-    }
-}
 
 #[allow(clippy::cast_precision_loss)]
 fn gutter_width(line_count: usize) -> f32 {
@@ -182,7 +172,7 @@ fn syntax_highlights(spans: &[Span], pal: &Palette) -> Vec<(Range<usize>, Highli
             (
                 span.range.clone(),
                 HighlightStyle {
-                    color: Some(rgb(token_color(span.kind, pal)).into()),
+                    color: Some(rgb(pal.syntax.of(span.kind)).into()),
                     ..HighlightStyle::default()
                 },
             )

@@ -2,9 +2,9 @@ use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::{AppContext as _, Context};
 use krad_agents::{AgentStatus, Response, TerminalHandle};
 use krad_domain::{
-    hook_launch_args, launch_with_prompt, quote_for_shell, worker_brief, AgentPreset, AgentState,
-    EnvironmentName, GroupId, ModelDelivery, ModelId, ResumeId, SessionId, TerminalGroup,
-    TerminalId, WorkerSurface, WorktreeOrigin,
+    code_tools_launch_args, hook_launch_args, launch_with_prompt, quote_for_shell, worker_brief,
+    AgentPreset, AgentState, CodeTools, EnvironmentName, GroupId, ModelDelivery, ModelId, ResumeId,
+    SessionId, TerminalGroup, TerminalId, WorkerSurface, WorktreeOrigin,
 };
 use krad_repo::{add_worktree, sanitize_worktree_name};
 use std::time::{Duration, Instant};
@@ -96,6 +96,11 @@ impl EnvironmentShell {
             };
             if let Some(args) = hook_launch_args(preset, cli, quoting, settings.as_deref()) {
                 line = format!("{line} {args}");
+            }
+            if self.settings.code_tools == CodeTools::On {
+                if let Some(args) = code_tools_launch_args(preset, cli, quoting) {
+                    line = format!("{line} {args}");
+                }
             }
             if let Some(flag) = preset.system_prompt_flag() {
                 let hint = role.hint().replace(krad_agents::CLI_PROGRAM, cli);

@@ -11,18 +11,23 @@ mod chrome;
 mod code_viewer;
 mod context_menu;
 mod dialog_parts;
+mod discard;
 mod disk_text;
 mod docs_generate;
 mod drag;
 mod editor_keys;
+mod editor_popovers;
+mod entry_input;
 mod environment_menu;
 mod environment_order;
 mod file_tab;
 mod file_tree;
 mod gateway;
+mod gestures;
 mod groups;
 mod harness_models;
 mod host;
+mod template_popup;
 pub use host::HostTools;
 mod input;
 mod language_servers;
@@ -37,12 +42,15 @@ mod native_alert;
 mod notes_view;
 mod opencode;
 mod palette;
+mod performance;
 mod rename;
 mod review_view;
+mod rubber_band;
 mod session_look;
 mod session_pane;
 mod sessions;
 mod sessions_view;
+mod settings_swipe;
 mod settings_view;
 mod shell_site;
 mod side_panel;
@@ -102,10 +110,15 @@ pub struct EnvironmentShell {
     drag: DragState,
     fps_hud: Visibility,
     window_background: Option<(WindowBackgroundAppearance, bool)>,
-    material_watch: Option<Subscription>,
+    activation_watch: Option<Subscription>,
     palette_open: bool,
     palette_files: Vec<PathBuf>,
     language_servers: language_servers::LanguageServers,
+    file_icons: Option<crate::file_icons::FileIcons>,
+    editor_popover: Option<editor_popovers::EditorPopover>,
+    signature: Option<editor_popovers::SignatureCard>,
+    entry_input: Option<entry_input::EntryInput>,
+    template_popup: Option<template_popup::TemplatePopup>,
     pub palette: Option<Entity<CommandState>>,
     pub self_ref: Option<WeakEntity<Self>>,
     pump_task: Option<Task<()>>,
@@ -133,6 +146,9 @@ pub struct EnvironmentShell {
     side_reveal: PanelReveal,
     side_search: side_panel::SideSearch,
     changes_expanded: HashSet<PathBuf>,
+    pending_discard: Option<discard::Discard>,
+    gestures: gestures::Gestures,
+    history: side_panel::CommitHistory,
     activity_log: activity::ActivityLog,
     close_request: CloseRequest,
     layout_writer: Option<LayoutWriter>,
@@ -213,10 +229,15 @@ impl EnvironmentShell {
             drag: DragState::None,
             fps_hud: FPS_HUD_DEFAULT,
             window_background: None,
-            material_watch: None,
+            activation_watch: None,
             palette_open: false,
             palette_files: Vec::new(),
             language_servers: language_servers::LanguageServers::new(),
+            file_icons: crate::file_icons::FileIcons::load(),
+            editor_popover: None,
+            signature: None,
+            entry_input: None,
+            template_popup: None,
             palette: None,
             self_ref: None,
             pump_task: None,
@@ -244,6 +265,9 @@ impl EnvironmentShell {
             side_reveal: PanelReveal::new(false),
             side_search: side_panel::SideSearch::default(),
             changes_expanded: HashSet::new(),
+            pending_discard: None,
+            gestures: gestures::Gestures::default(),
+            history: side_panel::CommitHistory::default(),
             activity_log: activity::ActivityLog::default(),
             close_request: CloseRequest::Idle,
             layout_writer: LayoutWriter::spawn(),
@@ -291,7 +315,7 @@ impl EnvironmentShell {
         shell.show_host(&active, cx);
         shell.pump_task = Some(Self::start_pump(pump_rx, cx));
         Self::detect_agents(cx);
-        shell.start_git_watch(cx);
+        shell.start_watches(cx);
         shell.load_language_tools(cx);
         shell
     }

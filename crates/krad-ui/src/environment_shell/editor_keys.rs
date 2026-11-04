@@ -44,6 +44,9 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.accept_completion(window, cx) {
+            return;
+        }
         let menu_open = self
             .shown_editor()
             .is_some_and(|(_, state)| state.read(cx).completion_menu_state().open);

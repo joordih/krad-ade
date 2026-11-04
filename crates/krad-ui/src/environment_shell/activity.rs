@@ -19,8 +19,8 @@ use super::EnvironmentShell;
 use crate::actions::ToggleActivity;
 use crate::components::{card, icon, tooltip_view, Button, IconName};
 use crate::theme::{
-    palette, CARD_HEADER_H, ICON_XS, LINE_SM, LINE_XS, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2,
-    TEXT_SM, TEXT_XS, WINDOW_INSET,
+    palette, ICON_XS, LINE_SM, LINE_XS, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2, TAB_STRIP_H,
+    TAB_STRIP_MARGIN, TEXT_SM, TEXT_XS, WINDOW_INSET,
 };
 
 const ACTIVITY_PANEL_H: f32 = 168.0;
@@ -32,7 +32,6 @@ const LIST_ID: &str = "activity-list";
 const PANEL_ID: &str = "activity-panel";
 const HANDLE_ID: &str = "activity-handle";
 const TOOLTIP_OPEN: &str = "Utilities";
-const HEADER_PAD_X: f32 = SPACE_1_5;
 const LOG_PAD_X: f32 = SPACE_1_5 + SPACE_2;
 const TOOLTIP_KEEP_OPEN: &str = "Keep the utilities open";
 const LEAVE_SLACK: f32 = 24.0;
@@ -173,7 +172,7 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    pub(super) fn activity_handle(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn activity_handle(&self, beside_pane: f32, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let (glyph, tooltip) = match (self.activity.is_visible(), self.activity_opened) {
             (false, _) => (IconName::ChevronUp, TOOLTIP_OPEN),
@@ -184,7 +183,7 @@ impl EnvironmentShell {
             .absolute()
             .bottom_0()
             .left_0()
-            .right_0()
+            .right(px(beside_pane))
             .flex()
             .justify_center()
             .child(
@@ -270,8 +269,8 @@ impl EnvironmentShell {
                     .flex_none()
                     .items_center()
                     .gap(px(SPACE_2))
-                    .h(px(CARD_HEADER_H))
-                    .px(px(HEADER_PAD_X))
+                    .h(px(TAB_STRIP_H))
+                    .px(px(TAB_STRIP_MARGIN))
                     .child(self.activity_tabs(cx))
                     .child(div().flex_1())
                     .children(self.add_terminal_button(cx))

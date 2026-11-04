@@ -1,4 +1,10 @@
 mod panes;
+mod tab_menu;
+mod tab_motion;
+mod tab_picker;
+
+pub(in crate::environment_shell) use tab_motion::entering_tab;
+pub(in crate::environment_shell) use tab_picker::tab_picker_shell;
 
 use panes::{pane_px, PANE_STRIP_H};
 pub(super) use panes::{DraggedTab, PaneDrag};
@@ -6,9 +12,9 @@ pub(super) use panes::{DraggedTab, PaneDrag};
 use gpui_kit::component::InteractiveElementExt as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, AppContext as _, ClickEvent, Context, FontWeight, InteractiveElement,
-    IntoElement, MouseButton, MouseDownEvent, MouseUpEvent, ParentElement, Pixels, Point,
-    StatefulInteractiveElement, Styled, Window,
+    div, px, rgb, transparent_black, AnyElement, AppContext as _, ClickEvent, Context, FontWeight,
+    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseUpEvent, ParentElement,
+    Pixels, Point, StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::{AgentPreset, FileView, PaneId, SessionPanes, TerminalId, UnitRect};
 use krad_session::SessionState;
@@ -27,12 +33,12 @@ use crate::components::{
 };
 use crate::terminal_theme::terminal_colors;
 use crate::theme::{
-    palette, row_fill, row_shadow, terminal_font_family, Palette, ICON_SM, LINE_SM, RADIUS_LG,
-    RADIUS_SM, RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM,
+    mono_family, palette, row_fill, row_shadow, Palette, CAPSULE_H, CAPSULE_PAD, ICON_SM, LINE_SM,
+    RADIUS_LG, RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TAB_H, TAB_STRIP_MARGIN, TEXT_SM,
 };
 
-const TAB_H: f32 = 28.0;
-const TAB_LABEL_MAX_W: f32 = 150.0;
+const TAB_BADGE: f32 = 20.0;
+const TAB_MIN_W: f32 = 110.0;
 const TAB_DIVIDER_W: f32 = 1.0;
 const TAB_DIVIDER_H: f32 = 14.0;
 const CLOSE_BUTTON: f32 = 18.0;
@@ -42,9 +48,7 @@ const UNZOOMED: f32 = 1.0;
 const TERMINAL_TAB_PREFIX: &str = "session-tab";
 const TAB_CLOSE_PREFIX: &str = "session-tab-close";
 const BTN_ADD_TAB: &str = "session-add-tab";
-const BTN_ALL_TABS: &str = "session-all-tabs";
 const ADD_TAB_TOOLTIP: &str = "New chat (right-click for a terminal)";
-const ALL_TABS_TOOLTIP: &str = "All tabs";
 const CLOSE_TAB_TOOLTIP: &str = "Close tab";
 const REMOVE_LEAD_LABEL: &str = "Remove lead";
 const BTN_NEW_SESSION: &str = "session-pane-new-session";
@@ -100,9 +104,16 @@ impl LiveEnv {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in crate::environment_shell) enum TabWidth {
+    Fill,
+    Fit,
+}
+
 pub(super) fn tab_shell(
     id: impl Into<gpui_kit::ElementId>,
     shown: bool,
+    width: TabWidth,
     pal: &Palette,
     cx: &gpui_kit::App,
 ) -> gpui_kit::Stateful<gpui_kit::Div> {
@@ -110,13 +121,16 @@ pub(super) fn tab_shell(
         .id(id)
         .flex()
         .flex_row()
-        .flex_none()
+        .map(|tab| match width {
+            TabWidth::Fill => tab.flex_1().min_w(px(TAB_MIN_W)),
+            TabWidth::Fit => tab.flex_none().pr(px(SPACE_2)),
+        })
         .items_center()
         .gap(px(SPACE_1_5))
         .h(px(TAB_H))
-        .pl(px(SPACE_2))
-        .pr(px(if shown { SPACE_1 } else { SPACE_2 }))
-        .rounded(px(RADIUS_SM))
+        .pl(px(SPACE_1))
+        .pr(px(SPACE_1))
+        .rounded_full()
         .cursor_pointer()
         .text_size(px(TEXT_SM))
         .line_height(px(LINE_SM))
@@ -125,9 +139,12 @@ pub(super) fn tab_shell(
         } else {
             pal.text_muted
         }))
+        .border_1()
+        .border_color(transparent_black())
         .when(shown, |tab| {
             tab.font_weight(FontWeight::MEDIUM)
                 .bg(row_fill(pal, cx))
+                .border_color(pal.divider)
                 .shadow(row_shadow(pal, cx))
         })
         .when(!shown, |tab| {
@@ -135,7 +152,47 @@ pub(super) fn tab_shell(
         })
 }
 
-fn tab_divider(pal: &Palette) -> AnyElement {
+pub(in crate::environment_shell) fn tab_capsule(
+    tabs: Vec<AnyElement>,
+    width: TabWidth,
+    pal: &Palette,
+) -> gpui_kit::Div {
+    div()
+        .flex()
+        .flex_row()
+        .map(|capsule| match width {
+            TabWidth::Fill => capsule.flex_1(),
+            TabWidth::Fit => capsule.flex_none().max_w_full(),
+        })
+        .min_w_0()
+        .items_center()
+        .h(px(CAPSULE_H))
+        .p(px(CAPSULE_PAD))
+        .rounded_full()
+        .bg(pal.bg_hover)
+        .overflow_hidden()
+        .children(tabs)
+}
+
+pub(in crate::environment_shell) fn tab_badge(
+    glyph: impl IntoElement,
+    pal: &Palette,
+) -> AnyElement {
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .size(px(TAB_BADGE))
+        .rounded(px(RADIUS_XS))
+        .bg(rgb(pal.chip_bg))
+        .border_1()
+        .border_color(pal.divider)
+        .child(glyph)
+        .into_any_element()
+}
+
+pub(in crate::environment_shell) fn tab_divider(pal: &Palette) -> AnyElement {
     div()
         .flex_none()
         .w(px(TAB_DIVIDER_W))
@@ -145,7 +202,7 @@ fn tab_divider(pal: &Palette) -> AnyElement {
         .into_any_element()
 }
 
-fn divides(index: usize, shown: Option<usize>) -> bool {
+pub(in crate::environment_shell) fn divides(index: usize, shown: Option<usize>) -> bool {
     shown.is_none_or(|shown| shown != index && shown != index + 1)
 }
 
@@ -250,20 +307,9 @@ impl EnvironmentShell {
             let tab = self
                 .terminal_tab(live, id, shown == Some(id), cx)
                 .or_else(|| Self::guest_tab(live, id, shown == Some(id), cx));
-            tabs.extend(tab);
+            tabs.extend(tab.map(|tab| entering_tab(id, tab)));
         }
-        let listed: Vec<MenuEntry> = ids
-            .iter()
-            .filter_map(|id| {
-                let node = live.data.nodes.iter().find(|node| node.id == *id)?;
-                Some(MenuEntry::checked(
-                    self.title_label(*id, &node.title),
-                    shown == Some(*id),
-                    MenuAction::ShowSessionTab(*id),
-                ))
-            })
-            .collect();
-        let listed = std::rc::Rc::new(listed);
+        let picker = self.tab_picker_button(live, pane, &ids, shown, cx);
         div()
             .flex()
             .flex_row()
@@ -274,39 +320,13 @@ impl EnvironmentShell {
                 StripPlace::Pane => strip
                     .flex_none()
                     .h(px(PANE_STRIP_H))
-                    .px(px(SPACE_1_5))
-                    .border_b_1()
-                    .border_color(pal.divider),
+                    .px(px(TAB_STRIP_MARGIN)),
             })
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .min_w_0()
-                    .h_full()
-                    .overflow_hidden()
-                    .children(tabs),
-            )
+            .child(picker)
+            .child(tab_capsule(tabs, TabWidth::Fill, pal))
             .when(!self.editing(), |strip| {
                 strip.child(Self::add_tab_button(pane, cx))
             })
-            .child(
-                Button::new((BTN_ALL_TABS, u64::from(pane.0)))
-                    .icon(IconName::ChevronDown)
-                    .small()
-                    .tooltip(ALL_TABS_TOOLTIP)
-                    .on_click(
-                        cx.listener(move |this: &mut Self, event: &ClickEvent, _, cx| {
-                            this.open_menu(
-                                position_of(event),
-                                MenuPlacement::Below,
-                                listed.to_vec(),
-                                cx,
-                            );
-                        }),
-                    ),
-            )
             .into_any_element()
     }
 
@@ -333,7 +353,7 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    fn terminal_tab(
+    pub(in crate::environment_shell) fn terminal_tab(
         &self,
         live: &LiveEnv,
         id: TerminalId,
@@ -372,60 +392,69 @@ impl EnvironmentShell {
         let title = self.title_label(id, &node.title);
         let dragged = DraggedTab::new(id, title.clone(), mark, mark_color, cx.entity().downgrade());
         Some(
-            tab_shell((TERMINAL_TAB_PREFIX, id.as_u64()), shown, pal, cx)
-                .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
-                .on_mouse_up(
-                    MouseButton::Middle,
-                    cx.listener(move |this: &mut Self, _: &MouseUpEvent, window, cx| {
-                        this.request_close_tab(id, window, cx);
-                    }),
-                )
-                .on_click(
-                    cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
-                        if is_file {
-                            this.show_file_tab(id, cx);
-                        } else if shown {
-                            this.open_terminal_tab_menu(id, position_of(event), cx);
-                        } else {
-                            this.show_terminal_tab(id, window, cx);
-                        }
-                    }),
-                )
-                .when(preview, |tab| {
-                    tab.on_double_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                        this.pin_file_tab(id, cx);
-                    }))
-                })
-                .on_mouse_down(
-                    MouseButton::Right,
-                    cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
-                        cx.stop_propagation();
-                        let position = (event.position.x.as_f32(), event.position.y.as_f32());
-                        this.open_terminal_tab_menu(id, position, cx);
-                    }),
-                )
-                .child(leading)
-                .child(
+            tab_shell(
+                (TERMINAL_TAB_PREFIX, id.as_u64()),
+                shown,
+                TabWidth::Fill,
+                pal,
+                cx,
+            )
+            .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
+            .on_mouse_up(
+                MouseButton::Middle,
+                cx.listener(move |this: &mut Self, _: &MouseUpEvent, window, cx| {
+                    this.request_close_tab(id, window, cx);
+                }),
+            )
+            .on_click(
+                cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
+                    if is_file {
+                        this.show_file_tab(id, cx);
+                    } else if this.editing() {
+                        this.show_editor_chat(id, cx);
+                    } else if shown {
+                        this.open_terminal_tab_menu(id, position_of(event), cx);
+                    } else {
+                        this.show_terminal_tab(id, window, cx);
+                    }
+                }),
+            )
+            .when(preview, |tab| {
+                tab.on_double_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                    this.pin_file_tab(id, cx);
+                }))
+            })
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    let position = (event.position.x.as_f32(), event.position.y.as_f32());
+                    this.open_terminal_tab_menu(id, position, cx);
+                }),
+            )
+            .child(tab_badge(leading, pal))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .when(preview, Styled::italic)
+                    .child(title),
+            )
+            .when(dirty, |tab| {
+                tab.child(
                     div()
-                        .max_w(px(TAB_LABEL_MAX_W))
-                        .truncate()
-                        .when(preview, Styled::italic)
-                        .child(title),
+                        .flex_none()
+                        .size(px(DIRTY_DOT))
+                        .rounded_full()
+                        .bg(rgb(pal.text_default)),
                 )
-                .when(dirty, |tab| {
-                    tab.child(
-                        div()
-                            .flex_none()
-                            .size(px(DIRTY_DOT))
-                            .rounded_full()
-                            .bg(rgb(pal.text_default)),
-                    )
-                })
-                .when(on_chat, |tab| {
-                    tab.child(icon(IconName::Chat, STATUS_ICON, pal.text_muted))
-                })
-                .when(shown, |tab| tab.child(Self::close_tab_button(id, cx)))
-                .into_any_element(),
+            })
+            .when(on_chat, |tab| {
+                tab.child(icon(IconName::Chat, STATUS_ICON, pal.text_muted))
+            })
+            .when(shown, |tab| tab.child(Self::close_tab_button(id, cx)))
+            .into_any_element(),
         )
     }
 
@@ -465,17 +494,20 @@ impl EnvironmentShell {
         }
         match node
             .and_then(|node| node.file.as_ref())
-            .map(|file| file.view)
+            .map(|file| &file.view)
         {
             Some(FileView::Edit) => return self.file_tab_body(live, id, cx),
-            Some(FileView::Changes) => return self.changes_tab_body(live, id, cx),
+            Some(FileView::Changes | FileView::Commit(_)) => {
+                return self.changes_tab_body(live, id, cx);
+            }
             None => {}
         }
         let pal = palette(cx);
         let session = live.sessions.get(&id);
-        let mono = gpui_kit::SharedString::from(terminal_font_family(self.settings.terminal_font));
-        let colors = terminal_colors(self.settings.terminal_theme, pal);
-        let text_zoom = node.map_or(UNZOOMED, |node| node.text_scale.as_f32());
+        let mono = mono_family(&self.settings.terminal_font);
+        let colors = terminal_colors(cx);
+        let text_zoom =
+            node.map_or(UNZOOMED, |node| node.text_scale.as_f32()) * self.terminal_font_zoom();
         let (pane_x, pane_y, _, _) = pane_px(rect, self.window_origin(), self.canvas_px);
         let shift = self.activity_shift();
         let geometry = BodyGeometry {
@@ -512,7 +544,7 @@ impl EnvironmentShell {
                 self.terminal_images(id),
                 BodyLook {
                     geometry,
-                    ligatures: self.settings.ligatures,
+                    ligatures: self.settings.terminal_font.ligatures,
                     zoom: UNZOOMED,
                     text_zoom,
                     focused: true,
@@ -544,7 +576,7 @@ impl EnvironmentShell {
             ));
             entries.push(MenuEntry::Separator);
         }
-        entries.extend(Self::terminal_menu(id));
+        entries.extend(self.tab_menu(id));
         self.open_menu(position, MenuPlacement::Below, entries, cx);
     }
 
@@ -581,6 +613,7 @@ impl EnvironmentShell {
 
     pub(super) fn sync_session_grid(&mut self, window: &mut Window) {
         let cell_width = self.cell_width(window);
+        let font_zoom = self.terminal_font_zoom();
         let size = self.canvas_px;
         let strip_h = self.pane_strip_h();
         let env = self.active.clone();
@@ -603,7 +636,8 @@ impl EnvironmentShell {
                 .nodes
                 .iter()
                 .find(|node| node.id == id)
-                .map_or(UNZOOMED, |node| node.text_scale.as_f32());
+                .map_or(UNZOOMED, |node| node.text_scale.as_f32())
+                * font_zoom;
             if let Some(session) = live.sessions.get_mut(&id) {
                 session.resize_grid(body_grid(width, height, strip_h, cell_width, text_scale));
             }

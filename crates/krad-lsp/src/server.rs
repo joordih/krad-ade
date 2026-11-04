@@ -8,18 +8,18 @@ use lsp_types::{
     DiagnosticWorkspaceClientCapabilities, GotoCapability, HoverClientCapabilities,
     InitializeParams, InitializedParams, MarkupKind, PublishDiagnosticsClientCapabilities,
     ReferenceClientCapabilities, RenameClientCapabilities, ServerCapabilities,
-    TextDocumentClientCapabilities, TextDocumentSyncClientCapabilities,
-    WorkspaceClientCapabilities, WorkspaceEditClientCapabilities, WorkspaceFolder,
+    TextDocumentClientCapabilities, TextDocumentSyncClientCapabilities, WindowClientCapabilities,
+    WorkspaceClientCapabilities, WorkspaceEditClientCapabilities,
 };
 use std::io::BufReader;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
 use krad_host::{HostCommand, HostLink};
 
 use crate::client::{LspClient, ServerEvent, ServerSettings};
 use crate::error::LspError;
-use crate::uri::file_uri;
+use crate::uri::workspace_folder;
 use krad_domain::ServerLaunch;
 use serde_json::Value;
 
@@ -57,22 +57,14 @@ impl LanguageServer {
     pub async fn initialize(
         client: LspClient,
         link: &HostLink,
-        root: &Path,
+        folders: &[PathBuf],
         options: Option<Value>,
     ) -> Result<ServerCapabilities, LspError> {
-        let folder = WorkspaceFolder {
-            uri: file_uri(root)?,
-            name: root
-                .file_name()
-                .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
-        };
-        let params = InitializeParams {
-            process_id: link.is_local().then(std::process::id),
-            workspace_folders: Some(vec![folder]),
-            capabilities: client_capabilities(),
-            initialization_options: options,
-            ..InitializeParams::default()
-        };
+        let folders = folders
+            .iter()
+            .map(|folder| workspace_folder(folder))
+            .collect::<Result<Vec<_>, _>>()?;
+        let params = initialize_params(link, folders, options);
         let result = client.request::<Initialize>(&params).await?;
         client.notify::<Initialized>(&InitializedParams {})?;
         Ok(result.capabilities)
@@ -89,6 +81,22 @@ impl Drop for LanguageServer {
     fn drop(&mut self) {
         self.stop();
         self.child.kill().unwrap_or_default();
+    }
+}
+
+#[allow(deprecated)]
+fn initialize_params(
+    link: &HostLink,
+    folders: Vec<lsp_types::WorkspaceFolder>,
+    options: Option<Value>,
+) -> InitializeParams {
+    InitializeParams {
+        process_id: link.is_local().then(std::process::id),
+        root_uri: folders.first().map(|folder| folder.uri.clone()),
+        workspace_folders: Some(folders),
+        capabilities: client_capabilities(),
+        initialization_options: options,
+        ..InitializeParams::default()
     }
 }
 
@@ -169,8 +177,13 @@ fn client_capabilities() -> ClientCapabilities {
             diagnostic: Some(DiagnosticClientCapabilities::default()),
             ..TextDocumentClientCapabilities::default()
         }),
+        window: Some(WindowClientCapabilities {
+            work_done_progress: Some(true),
+            ..WindowClientCapabilities::default()
+        }),
         workspace: Some(WorkspaceClientCapabilities {
             apply_edit: Some(true),
+            workspace_folders: Some(true),
             diagnostic: Some(DiagnosticWorkspaceClientCapabilities {
                 refresh_support: Some(true),
             }),
@@ -182,5 +195,23 @@ fn client_capabilities() -> ClientCapabilities {
             ..WorkspaceClientCapabilities::default()
         }),
         ..ClientCapabilities::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[allow(deprecated)]
+    fn the_first_workspace_folder_is_also_the_root_older_servers_read() -> Result<(), LspError> {
+        let folder = workspace_folder(Path::new("/work/loader"))?;
+        let params = initialize_params(&HostLink::Local, vec![folder.clone()], None);
+        assert_eq!(params.root_uri, Some(folder.uri));
+        assert_eq!(
+            params.workspace_folders.map(|folders| folders.len()),
+            Some(1)
+        );
+        Ok(())
     }
 }

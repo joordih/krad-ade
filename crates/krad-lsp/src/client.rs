@@ -1,9 +1,17 @@
+mod choice;
+mod progress;
 mod router;
 
+pub use choice::{ChoiceId, Conflict, InputField, ServerChoice, ServerConflicts, ServerInput};
+pub use progress::{Progress, ProgressState};
+
 use futures::channel::{mpsc, oneshot};
-use lsp_types::notification::Notification;
+use lsp_types::notification::{DidChangeWorkspaceFolders, Notification};
 use lsp_types::request::{Request, WorkspaceConfiguration};
-use lsp_types::{ConfigurationParams, PublishDiagnosticsParams, WorkspaceEdit};
+use lsp_types::{
+    ConfigurationParams, DidChangeWorkspaceFoldersParams, PublishDiagnosticsParams, WorkspaceEdit,
+    WorkspaceFoldersChangeEvent,
+};
 use serde_json::Value;
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
@@ -14,6 +22,7 @@ use std::thread;
 
 use crate::error::LspError;
 use crate::rpc::read_message;
+use crate::uri::workspace_folder;
 use router::{Routed, Router};
 
 const ROUTER_QUEUE: usize = 256;
@@ -26,6 +35,10 @@ pub enum ServerEvent {
     Diagnostics(PublishDiagnosticsParams),
     ApplyEdit(WorkspaceEdit),
     DiagnosticsRefresh,
+    Progress(Progress),
+    Choice(ServerChoice),
+    Input(ServerInput),
+    Conflicts(ServerConflicts),
     Stopped,
 }
 
@@ -130,6 +143,61 @@ impl LspClient {
     /// Returns [`LspError::Stopped`] or [`LspError::Busy`] when the server cannot take it.
     pub fn document(&self, change: DocumentChange) -> Result<(), LspError> {
         self.route(Routed::Document(change))
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`LspError::Stopped`] or [`LspError::Busy`] when the server cannot take it, and
+    /// [`LspError::Uri`] when a folder has no `file://` address.
+    pub fn change_workspace_folders(
+        &self,
+        added: &[PathBuf],
+        removed: &[PathBuf],
+    ) -> Result<(), LspError> {
+        let event = WorkspaceFoldersChangeEvent {
+            added: added
+                .iter()
+                .map(|folder| workspace_folder(folder))
+                .collect::<Result<_, _>>()?,
+            removed: removed
+                .iter()
+                .map(|folder| workspace_folder(folder))
+                .collect::<Result<_, _>>()?,
+        };
+        self.notify::<DidChangeWorkspaceFolders>(&DidChangeWorkspaceFoldersParams { event })
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`LspError::Stopped`] or [`LspError::Busy`] when the server cannot take it.
+    pub fn answer_conflicts(&self, id: ChoiceId, proceed: bool) -> Result<(), LspError> {
+        self.route(Routed::Answer {
+            id: id.0,
+            result: serde_json::json!({ "proceed": proceed }),
+        })
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`LspError::Stopped`] or [`LspError::Busy`] when the server cannot take it.
+    pub fn answer_input(
+        &self,
+        id: ChoiceId,
+        values: Option<&std::collections::BTreeMap<String, String>>,
+    ) -> Result<(), LspError> {
+        let result = values.map_or(
+            Value::Null,
+            |values| serde_json::json!({ "values": values }),
+        );
+        self.route(Routed::Answer { id: id.0, result })
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`LspError::Stopped`] or [`LspError::Busy`] when the server cannot take it.
+    pub fn answer_choice(&self, id: ChoiceId, picked: Option<&str>) -> Result<(), LspError> {
+        let result = picked.map_or(Value::Null, |title| serde_json::json!({ "title": title }));
+        self.route(Routed::Answer { id: id.0, result })
     }
 
     /// # Errors

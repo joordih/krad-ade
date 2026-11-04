@@ -1,4 +1,4 @@
-use gpui_kit::actions;
+use gpui_kit::{actions, Action};
 
 actions!(
     krad,
@@ -8,12 +8,15 @@ actions!(
         NewTerminal,
         SplitTerminal,
         CloseWindow,
+        CloseTab,
+        CloseAllTabs,
         CopySelection,
         PasteClipboard,
         SearchTerminal,
         ToggleActivity,
         ToggleSidebar,
         ToggleSidePanel,
+        ToggleMinimap,
         ToggleWorkMode,
         QuickOpen,
         FindReferences,
@@ -33,9 +36,12 @@ actions!(
         TextSmaller,
         TextReset,
         NewAgent,
+        NavigateBack,
+        NavigateForward,
         SendTab,
         SendBackTab,
         RenameFile,
+        NewTreeFile,
         SaveFile,
         AskConfirm,
         AskDeny,
@@ -47,6 +53,12 @@ actions!(
         ZoomWindow
     ]
 );
+
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = krad, no_json)]
+pub(crate) struct ShowTabAt {
+    pub(crate) slot: usize,
+}
 
 pub(crate) const SHELL_KEY_CONTEXT: &str = "KradShell";
 

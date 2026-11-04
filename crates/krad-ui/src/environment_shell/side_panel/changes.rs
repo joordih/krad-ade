@@ -1,11 +1,14 @@
+mod actions;
+mod history;
+
 use gpui_kit::component::InteractiveElementExt as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, uniform_list, AnyElement, Context, FontWeight, InteractiveElement, IntoElement,
-    ParentElement, StatefulInteractiveElement, Styled, Window,
+    MouseButton, MouseDownEvent, ParentElement, StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::{ChangesLayout, FileOpening};
-use krad_repo::FileChange;
+use krad_repo::{FileChange, LineCount};
 use std::collections::{BTreeMap, HashSet};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -15,9 +18,12 @@ use super::super::groups::GroupGit;
 use super::super::EnvironmentShell;
 use crate::components::{icon, Button, EmptyState, IconName};
 use crate::theme::{
-    palette, row_fill, ICON_SM, LINE_SM, LINE_XS, NAV_ROW_H, RADIUS_XS, SPACE_0_5, SPACE_1,
-    SPACE_1_5, SPACE_2, TEXT_SM, TEXT_XS,
+    palette, row_fill, Palette, ICON_SM, LINE_SM, LINE_XS, NAV_ROW_H, RADIUS_XS, SPACE_0_5,
+    SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM, TEXT_XS,
 };
+pub(in crate::environment_shell) use actions::ChangesAction;
+use actions::{change_menu, ROW_GROUP};
+pub(in crate::environment_shell) use history::CommitHistory;
 
 const CHANGES_ID: &str = "side-changes";
 const CHANGE_ROW_PREFIX: &str = "side-change-row";
@@ -141,6 +147,24 @@ fn change_rows(
     }
 }
 
+fn line_count_chips(lines: LineCount, pal: &Palette) -> Vec<AnyElement> {
+    [
+        (lines.added, ADDED_SIGN, pal.success_fg),
+        (lines.removed, REMOVED_SIGN, pal.error_fg),
+    ]
+    .into_iter()
+    .filter(|(count, _, _)| *count > 0)
+    .map(|(count, sign, color)| {
+        div()
+            .flex_none()
+            .text_size(px(TEXT_XS))
+            .text_color(rgb(color))
+            .child(format!("{sign}{count}"))
+            .into_any_element()
+    })
+    .collect()
+}
+
 #[allow(clippy::cast_precision_loss)]
 fn indent(depth: usize) -> f32 {
     depth as f32 * INDENT
@@ -201,6 +225,7 @@ impl EnvironmentShell {
             .p(px(SPACE_1))
             .child(self.changes_toolbar(count, cx))
             .child(body)
+            .child(self.history_section(cx))
             .into_any_element()
     }
 
@@ -347,8 +372,11 @@ impl EnvironmentShell {
         let color = change_color(change.kind, pal);
         let opened = path.clone();
         let pinned = path.clone();
+        let menu = change_menu(&git.repo_root, change);
+        let discard = Self::discard_button(git.repo_root.clone(), change, cx);
         div()
             .id((CHANGE_ROW_PREFIX, row_key(&path)))
+            .group(ROW_GROUP)
             .flex()
             .flex_row()
             .w_full()
@@ -369,6 +397,13 @@ impl EnvironmentShell {
             .on_double_click(cx.listener(move |this: &mut Self, _, _, cx| {
                 this.open_changes_tab(&pinned, FileOpening::Pinned, cx);
             }))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    this.open_menu_at(event, menu.clone(), cx);
+                }),
+            )
             .child(icon(IconName::File, ICON_SM, pal.text_muted))
             .child(
                 div()
@@ -387,24 +422,8 @@ impl EnvironmentShell {
                     .text_color(rgb(pal.text_muted))
                     .children(folder),
             )
-            .when(lines.added > 0, |row| {
-                row.child(
-                    div()
-                        .flex_none()
-                        .text_size(px(TEXT_XS))
-                        .text_color(rgb(pal.success_fg))
-                        .child(format!("{ADDED_SIGN}{}", lines.added)),
-                )
-            })
-            .when(lines.removed > 0, |row| {
-                row.child(
-                    div()
-                        .flex_none()
-                        .text_size(px(TEXT_XS))
-                        .text_color(rgb(pal.error_fg))
-                        .child(format!("{REMOVED_SIGN}{}", lines.removed)),
-                )
-            })
+            .children(line_count_chips(lines, pal))
+            .child(discard)
             .child(
                 div()
                     .flex_none()
@@ -436,6 +455,7 @@ mod tests {
             .map(|path| FileChange {
                 path: PathBuf::from(path),
                 kind: ChangeKind::Modified,
+                origin: None,
             })
             .collect()
     }

@@ -9,6 +9,7 @@ use ureq::Agent;
 use crate::archive::place;
 use crate::error::ExtensionError;
 use crate::http::{download, latest_release};
+use crate::manifest::ServerManifest;
 use crate::platform::Platform;
 
 const REPOSITORY: &str = "mason-org/mason-registry";
@@ -191,6 +192,28 @@ impl Package {
         })
     }
 
+    fn from_manifest(server: &ServerManifest) -> Option<Self> {
+        let source = server.source.as_ref()?;
+        let mut rest = BTreeMap::new();
+        rest.insert(
+            ASSET_KEY.to_owned(),
+            serde_json::to_value(&source.asset).ok()?,
+        );
+        rest.insert(
+            DOWNLOAD_KEY.to_owned(),
+            serde_json::to_value(&source.download).ok()?,
+        );
+        Self::from_raw(RawPackage {
+            name: server.package.clone(),
+            languages: Vec::new(),
+            source: RawSource {
+                id: source.id.clone(),
+                rest,
+            },
+            bin: source.bins.clone(),
+        })
+    }
+
     pub(crate) fn entry_for(&self, platform: Platform) -> Option<&Entry> {
         self.entries
             .iter()
@@ -208,6 +231,14 @@ pub struct Registry {
 }
 
 impl Registry {
+    #[must_use]
+    pub(crate) fn with_manifest_sources(mut self, servers: &[ServerManifest]) -> Self {
+        for package in servers.iter().filter_map(Package::from_manifest) {
+            self.packages.insert(package.name.clone(), package);
+        }
+        self
+    }
+
     pub(crate) fn from_json(text: &str) -> Result<Self, ExtensionError> {
         let raw: Vec<RawPackage> = serde_json::from_str(text)?;
         let packages = raw
@@ -297,6 +328,42 @@ mod tests {
             Some("all".to_owned())
         );
         assert!(Purl::parse("github/x").is_none());
+    }
+
+    #[test]
+    fn a_server_manifest_source_overrides_the_registry_package(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let manifest: toml::Table = toml::from_str(
+            r#"
+            package = "krad-java-server"
+            [source]
+            id = "pkg:github/joordih/krad-java-server@v0.1.0"
+            [[source.asset]]
+            target = ["darwin_arm64", "linux_x64"]
+            file = "krad-java-server.tar.gz"
+            [source.bins]
+            krad-java-server = "bin/krad-java-server"
+            "#,
+        )?;
+        let server: ServerManifest = manifest.try_into()?;
+        let registry = Registry::from_json(
+            r#"[{"name":"krad-java-server","source":{"id":"pkg:npm/other@1.0.0"}}]"#,
+        )?
+        .with_manifest_sources(std::slice::from_ref(&server));
+        let package = registry
+            .package("krad-java-server")
+            .ok_or(ExtensionError::NoBuild)?;
+        assert_eq!(package.purl.kind, "github");
+        assert_eq!(package.purl.version, "v0.1.0");
+        assert_eq!(
+            package.entries.first().map(|entry| entry.targets.len()),
+            Some(2)
+        );
+        assert_eq!(
+            package.bins.get("krad-java-server").map(String::as_str),
+            Some("bin/krad-java-server")
+        );
+        Ok(())
     }
 
     #[test]

@@ -247,7 +247,9 @@ Licensed under either of
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
 
 at your option. Icons from [Hugeicons](https://hugeicons.com/) (MIT) and
-[Simple Icons](https://simpleicons.org/) (CC0); see [`assets/icons`](assets/icons). Fonts are
+[Simple Icons](https://simpleicons.org/) (CC0); see [`assets/icons`](assets/icons). File tree icons
+from [Charmed Icons](https://github.com/littensy/charmed-icons) (MIT), through the
+[aaa-lt fork](https://github.com/aaa-lt/charmed-icons); see [`assets/file-icons`](assets/file-icons). Fonts are
 [Inter](https://rsms.me/inter/) and [JetBrains Mono](https://www.jetbrains.com/lp/mono/), both under
 the SIL Open Font License; on macOS the app uses the system's own SF fonts instead.
 

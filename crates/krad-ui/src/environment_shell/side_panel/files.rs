@@ -17,6 +17,8 @@ use crate::theme::{
 const ROOT_HEADER_ID: &str = "side-files-root";
 const BTN_GROUP_ROOT: &str = "side-files-group-root";
 const BTN_COLLAPSE: &str = "side-files-collapse";
+const BTN_RELOAD: &str = "side-files-reload";
+const TOOLTIP_RELOAD: &str = "Reload the files from disk";
 const BTN_SEARCH: &str = "side-files-search";
 const BTN_NEW_ENTRY: &str = "side-files-new-entry";
 const TOOLTIP_NEW_ENTRY: &str = "New file or folder";
@@ -101,6 +103,10 @@ impl EnvironmentShell {
                     .on_click(cx.listener(|this: &mut Self, _, window, cx| {
                         this.toggle_side_search(window, cx);
                     })),
+            )
+            .child(
+                tool(BTN_RELOAD, IconName::Refresh, TOOLTIP_RELOAD)
+                    .on_click(cx.listener(|this: &mut Self, _, _, cx| this.reload_workspace(cx))),
             )
             .child(
                 tool(BTN_COLLAPSE, IconName::CollapseAll, TOOLTIP_COLLAPSE)

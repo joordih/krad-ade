@@ -25,18 +25,30 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let timer = cx.background_executor().timer(DISK_CHECK_EVERY);
+        let (statted, watched) = (link.clone(), path.clone());
         let stat = cx.background_spawn(async move {
             timer.await;
-            modified_at(&link, &path)
+            modified_at(&statted, &watched)
         });
         cx.spawn(async move |this, cx| {
             let disk = stat.await;
             this.update(cx, |shell, cx| {
+                let shown = env == shell.active
+                    && shell
+                        .envs
+                        .get(&env)
+                        .and_then(LiveEnv::shown_file)
+                        .is_some_and(|(shown, _)| shown == id);
                 let Some(editor) = shell.editor_mut(&env, id) else {
                     return;
                 };
                 editor.disk = DiskWatch::Idle;
                 match disk_change(editor.modified, disk, editor.dirty) {
+                    DiskChange::Unchanged if shown => {
+                        editor.disk = DiskWatch::Checking;
+                        Self::check_disk(link, env, id, path, cx);
+                        return;
+                    }
                     DiskChange::Unchanged => {}
                     DiskChange::Reload => editor.load = Load::Pending,
                     DiskChange::Conflict => {
@@ -81,7 +93,9 @@ impl EnvironmentShell {
                         shell.document_saved(&saved);
                         if let Some(editor) = shell.editor_mut(&env, id) {
                             editor.saved(edits);
-                            editor.disk = DiskWatch::Idle;
+                            if editor.disk == DiskWatch::Conflict {
+                                editor.disk = DiskWatch::Idle;
+                            }
                             editor.modified = modified;
                         }
                     }

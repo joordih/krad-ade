@@ -1,22 +1,25 @@
 mod models;
 
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, AppContext as _, Context, Entity, FontWeight, IntoElement,
-    ParentElement, Styled, Subscription, Window,
+    div, px, AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement, Styled,
+    Subscription, Window,
 };
 use krad_domain::{GatewayKey, GatewayUrl, HttpUrlError, EXAMPLE_GATEWAY_URL};
 use krad_store::LoginPlace;
 
-use super::gitlab::page::{field_row, section_heading, status_detail, status_mark, KEYRING_NOTE};
-use super::{hint, EnvironmentShell, CHOICE_PAD};
-use crate::components::{icon, Button, ButtonVariant, IconName};
+use super::sections::{
+    account_row, card_field, footnote, pane_column, settings_section, AccountRow,
+};
+use super::{hint, panel_card, EnvironmentShell};
+use crate::components::{Button, ButtonVariant, IconName};
 use crate::environment_shell::gateway::GatewayLink;
-use crate::theme::{palette, ICON_SM, LINE_SM, RADIUS_XL, SPACE_0_5, SPACE_2, SPACE_3, TEXT_SM};
+use crate::theme::{palette, SPACE_1, SPACE_2};
 
 const KEY_PLACEHOLDER: &str = "An API key the gateway accepts";
-const INTRO: &str = "Connect a gateway you run, such as CLIProxyAPI, to chat with the models of your accounts through the app's own agent. The app only connects to it; start it and add accounts with its own tools.";
+const GATEWAY_NAME: &str = "Gateway";
+const CONNECTION_HINT: &str = "A gateway you run, such as CLIProxyAPI, that serves the models of your accounts. Start it with its own tools, then add its address and a key here.";
+const KEY_NOTE: &str = "The key is kept in the system keyring. Without one, as under WSL, it goes in the config folder, readable only by you.";
 const CONNECTION_TITLE: &str = "Connection";
 const URL_LABEL: &str = "Address";
 const KEY_LABEL: &str = "Key";
@@ -35,8 +38,6 @@ const MODELS_SUFFIX: &str = "models";
 const BTN_SAVE_KEY: &str = "gateway-save-key";
 const BTN_CHECK: &str = "gateway-check";
 const BTN_FORGET: &str = "gateway-forget";
-const SECTION_GAP: f32 = 20.0;
-const FIELD_GAP: f32 = 10.0;
 
 pub(in crate::environment_shell) struct GatewayUi {
     url: Entity<InputState>,
@@ -124,10 +125,10 @@ impl EnvironmentShell {
         self.save_gateway_key(key, cx);
     }
 
-    fn gateway_status_card(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn gateway_status(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let configured = self.settings.gateway.url.is_some();
-        let (mark, success, title, detail) = match &self.gateway.link {
+        let (mark, connected, state, detail) = match &self.gateway.link {
             GatewayLink::Unset => (
                 IconName::Key,
                 false,
@@ -164,64 +165,43 @@ impl EnvironmentShell {
                     ..
                 }
         );
-        let actions = div()
-            .flex()
-            .flex_row()
-            .flex_none()
-            .gap(px(SPACE_2))
-            .when(configured, |actions| {
-                actions.child(
-                    Button::new(BTN_CHECK)
-                        .label(CHECK_LABEL)
-                        .small()
-                        .variant(ButtonVariant::Secondary)
-                        .on_click(cx.listener(|this: &mut Self, _, _, cx| this.check_gateway(cx))),
-                )
-            })
-            .when(has_key, |actions| {
-                actions.child(
-                    Button::new(BTN_FORGET)
-                        .label(FORGET_LABEL)
-                        .small()
-                        .variant(ButtonVariant::Secondary)
-                        .on_click(
-                            cx.listener(|this: &mut Self, _, _, cx| this.forget_gateway_key(cx)),
-                        ),
-                )
-            });
-        div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(SPACE_3))
-            .p(px(CHOICE_PAD))
-            .rounded(px(RADIUS_XL))
-            .bg(rgb(pal.bg_panel))
-            .child(status_mark(mark, success, pal, cx))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .gap(px(SPACE_0_5))
-                    .child(
-                        div()
-                            .text_size(px(TEXT_SM))
-                            .line_height(px(LINE_SM))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(pal.text_strong))
-                            .child(title),
-                    )
-                    .when(!detail.is_empty(), |text| {
-                        text.child(status_detail(&detail, success, pal))
-                    }),
-            )
-            .child(actions)
-            .into_any_element()
+        let mut actions = Vec::new();
+        if configured {
+            actions.push(
+                Button::new(BTN_CHECK)
+                    .label(CHECK_LABEL)
+                    .small()
+                    .variant(ButtonVariant::Secondary)
+                    .on_click(cx.listener(|this: &mut Self, _, _, cx| this.check_gateway(cx)))
+                    .into_any_element(),
+            );
+        }
+        if has_key {
+            actions.push(
+                Button::new(BTN_FORGET)
+                    .label(FORGET_LABEL)
+                    .small()
+                    .variant(ButtonVariant::Secondary)
+                    .on_click(cx.listener(|this: &mut Self, _, _, cx| this.forget_gateway_key(cx)))
+                    .into_any_element(),
+            );
+        }
+        account_row(
+            AccountRow {
+                mark,
+                name: GATEWAY_NAME,
+                state,
+                detail,
+                connected,
+                actions,
+                below: None,
+            },
+            pal,
+            cx,
+        )
     }
 
-    fn gateway_connection(ui: &GatewayUi, cx: &mut Context<Self>) -> AnyElement {
+    fn gateway_connection(&self, ui: &GatewayUi, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let key = div()
             .flex()
@@ -244,40 +224,33 @@ impl EnvironmentShell {
                     })),
             )
             .into_any_element();
-        div()
+        let address = div()
             .flex()
             .flex_col()
-            .gap(px(FIELD_GAP))
-            .child(section_heading(CONNECTION_TITLE, None, pal))
-            .child(field_row(
-                URL_LABEL,
-                Input::new(&ui.url).into_any_element(),
-                pal,
-            ))
+            .gap(px(SPACE_1))
+            .child(Input::new(&ui.url))
             .children(ui.url_error.map(|error| hint(&error.to_string(), pal)))
-            .child(field_row(KEY_LABEL, key, pal))
-            .into_any_element()
+            .into_any_element();
+        let rows = [
+            self.gateway_status(cx),
+            card_field(URL_LABEL, address, pal),
+            card_field(KEY_LABEL, key, pal),
+        ];
+        settings_section(
+            CONNECTION_TITLE,
+            Some(CONNECTION_HINT),
+            [panel_card(rows, pal)],
+            pal,
+        )
     }
 
     pub(super) fn gateway_pane(&self, ui: &GatewayUi, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(SECTION_GAP))
-            .child(hint(INTRO, pal))
-            .child(self.gateway_status_card(cx))
-            .child(Self::gateway_connection(ui, cx))
-            .child(self.gateway_models_card(cx))
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .gap(px(SPACE_3))
-                    .child(icon(IconName::Lock, ICON_SM, pal.text_muted))
-                    .child(div().flex_1().min_w_0().child(hint(KEYRING_NOTE, pal))),
-            )
-            .into_any_element()
+        pane_column([
+            self.gateway_connection(ui, cx),
+            self.gateway_models_card(cx),
+            footnote(KEY_NOTE, pal),
+        ])
     }
 }
 

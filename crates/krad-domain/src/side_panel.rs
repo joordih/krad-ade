@@ -5,6 +5,9 @@ pub const SIDE_PANEL_DEFAULT_W: f32 = 300.0;
 pub const SIDE_PANEL_MIN_W: f32 = 220.0;
 pub const SIDE_PANEL_MAX_W: f32 = 640.0;
 pub const SIDE_PANEL_DEFAULT_SPLIT: f32 = 0.6;
+pub const HISTORY_DEFAULT_H: f32 = 240.0;
+pub const HISTORY_MIN_H: f32 = 96.0;
+pub const HISTORY_MAX_H: f32 = 720.0;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SystemTerminal {
@@ -56,6 +59,14 @@ pub struct SidePanelLayout {
     pub section: SidePanelSection,
     #[serde(default)]
     pub changes_layout: ChangesLayout,
+    #[serde(default)]
+    pub history_open: bool,
+    #[serde(default = "default_history_height")]
+    pub history_height: f32,
+}
+
+const fn default_history_height() -> f32 {
+    HISTORY_DEFAULT_H
 }
 
 const fn default_width() -> f32 {
@@ -77,6 +88,8 @@ impl Default for SidePanelLayout {
             terminals_open: false,
             section: SidePanelSection::default(),
             changes_layout: ChangesLayout::default(),
+            history_open: false,
+            history_height: HISTORY_DEFAULT_H,
         }
     }
 }
@@ -84,6 +97,10 @@ impl Default for SidePanelLayout {
 impl SidePanelLayout {
     pub fn set_width(&mut self, width: f32) {
         self.width = width.clamp(SIDE_PANEL_MIN_W, SIDE_PANEL_MAX_W);
+    }
+
+    pub fn set_history_height(&mut self, height: f32) {
+        self.history_height = height.clamp(HISTORY_MIN_H, HISTORY_MAX_H);
     }
 
     #[must_use]

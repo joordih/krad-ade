@@ -8,7 +8,7 @@ use gpui_kit::{
 };
 use std::time::Instant;
 
-use krad_domain::SidebarWidth;
+use krad_domain::{SidebarPart, SidebarWidth};
 
 use super::drag::DragState;
 use super::EnvironmentShell;
@@ -117,6 +117,11 @@ impl PanelReveal {
         self.state = self.state.toggled();
         self.spring.set_target(self.state.fraction());
         self.last_frame = Some(now);
+    }
+
+    pub(super) fn settle(&mut self) {
+        self.spring.settle();
+        self.last_frame = None;
     }
 
     pub(super) fn advance(&mut self, now: Instant) -> bool {
@@ -290,7 +295,8 @@ impl EnvironmentShell {
 
     fn sidebar_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let editing = self.editing();
-        let views = (!editing).then(|| self.view_list(cx));
+        let views = (!editing && self.settings.sidebar.shows(SidebarPart::Views))
+            .then(|| self.view_list(cx));
         let list = if editing {
             self.side_section(cx)
         } else {

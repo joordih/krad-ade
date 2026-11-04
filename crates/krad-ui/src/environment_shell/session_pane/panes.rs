@@ -1,8 +1,8 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, DragMoveEvent, FontWeight,
-    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, WeakEntity, Window,
+    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, PinchEvent,
+    Render, SharedString, StatefulInteractiveElement, Styled, WeakEntity, Window,
 };
 use krad_domain::{
     Axis, DividerId, LayoutTemplate, PaneId, SessionPanes, SnapZone, TerminalId, UnitRect,
@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use super::super::drag::DragState;
 use super::super::{EnvironmentShell, LiveEnv};
-use super::{tab_shell, StripPlace, TAB_LABEL_MAX_W};
+use super::{tab_shell, StripPlace};
 use crate::components::{card, icon, Button, IconName};
 use crate::motion::Spring;
 use crate::theme::{
@@ -19,7 +19,7 @@ use crate::theme::{
     SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM, WINDOW_INSET,
 };
 
-pub(super) const PANE_STRIP_H: f32 = 38.0;
+pub(super) const PANE_STRIP_H: f32 = crate::theme::TAB_STRIP_H;
 const PANES_ID: &str = "session-panes";
 const DIVIDER_PREFIX: &str = "pane-divider";
 const TEMPLATE_PREFIX: &str = "pane-template";
@@ -333,6 +333,13 @@ impl EnvironmentShell {
             .flex()
             .flex_col()
             .overflow_hidden()
+            .when_some(shown, |card, tab| {
+                card.on_pinch(
+                    cx.listener(move |this: &mut Self, event: &PinchEvent, _, cx| {
+                        this.pinch_tab(tab, event, cx);
+                    }),
+                )
+            })
             .when(several, |card| {
                 card.child(self.pane_strip(live, panes, id, StripPlace::Pane, cx))
             })
@@ -361,29 +368,39 @@ impl EnvironmentShell {
             cx.entity().downgrade(),
         );
         Some(
-            tab_shell((GUEST_TAB_PREFIX, id.as_u64()), shown, pal, cx)
-                .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
-                .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
-                    this.show_terminal_tab(id, window, cx);
-                }))
-                .child(icon(IconName::Terminal, ICON_SM, pal.text_muted))
-                .child(
-                    div()
-                        .max_w(px(TAB_LABEL_MAX_W))
-                        .truncate()
-                        .child(terminal.title.clone()),
-                )
-                .child(
-                    Button::new((GUEST_BACK_PREFIX, id.as_u64()))
-                        .icon(IconName::SidebarRight)
-                        .small()
-                        .tooltip(GUEST_BACK_TOOLTIP)
-                        .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                            cx.stop_propagation();
-                            this.edit_panes(cx, |panes| panes.release(id));
-                        })),
-                )
-                .into_any_element(),
+            tab_shell(
+                (GUEST_TAB_PREFIX, id.as_u64()),
+                shown,
+                super::TabWidth::Fill,
+                pal,
+                cx,
+            )
+            .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
+            .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                this.show_terminal_tab(id, window, cx);
+            }))
+            .child(super::tab_badge(
+                icon(IconName::Terminal, ICON_SM, pal.text_muted),
+                pal,
+            ))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .child(terminal.title.clone()),
+            )
+            .child(
+                Button::new((GUEST_BACK_PREFIX, id.as_u64()))
+                    .icon(IconName::SidebarRight)
+                    .small()
+                    .tooltip(GUEST_BACK_TOOLTIP)
+                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                        cx.stop_propagation();
+                        this.edit_panes(cx, |panes| panes.release(id));
+                    })),
+            )
+            .into_any_element(),
         )
     }
 

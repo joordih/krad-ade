@@ -6,7 +6,7 @@ use gpui_kit::{
 };
 use krad_domain::{SystemTerminal, TerminalId, Visibility};
 
-use super::super::session_pane::{tab_shell, DraggedTab};
+use super::super::session_pane::{tab_capsule, tab_shell, DraggedTab, TabWidth};
 use super::super::terminal_body::{
     body_grid, BodyGeometry, BodyLook, BODY_PAD_TOP, BODY_PAD_X, TERMINAL_FONT_PX, TERMINAL_LINE_PX,
 };
@@ -15,8 +15,8 @@ use super::ActivityOpened;
 use crate::components::{icon, Button, IconName};
 use crate::terminal_theme::terminal_colors;
 use crate::theme::{
-    palette, row_fill, terminal_font_family, CARD_HEADER_H, ICON_SM, LINE_SM, NAV_ROW_H, RADIUS_LG,
-    RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM, WINDOW_INSET,
+    mono_family, palette, row_fill, ICON_SM, LINE_SM, NAV_ROW_H, RADIUS_LG, RADIUS_XS, SPACE_0_5,
+    SPACE_1, SPACE_1_5, SPACE_2, TAB_STRIP_H, TEXT_SM, WINDOW_INSET,
 };
 
 const LOG_TAB_ID: &str = "utilities-log-tab";
@@ -166,11 +166,10 @@ impl EnvironmentShell {
             .envs
             .get(&self.active)
             .map_or_default(|live| live.activity_docked.clone());
-        let log = tab_shell(LOG_TAB_ID, shown == UtilityTab::Log, pal, cx)
+        let log = tab_shell(LOG_TAB_ID, shown == UtilityTab::Log, TabWidth::Fit, pal, cx)
             .on_click(cx.listener(|this: &mut Self, _, _, cx| {
                 this.set_utility_tab(UtilityTab::Log, cx);
             }))
-            .pr(px(SPACE_2))
             .child(icon(IconName::PanelBottom, ICON_SM, pal.text_muted))
             .child(div().font_weight(FontWeight::MEDIUM).child(LOG_LABEL))
             .into_any_element();
@@ -180,14 +179,19 @@ impl EnvironmentShell {
             .get(&self.active)
             .is_some_and(|live| live.terminals_tab == TerminalsTab::Shown);
         let terminals = (offered && !self.utility_terminals().is_empty()).then(|| {
-            tab_shell(TERMINALS_TAB_ID, shown == UtilityTab::Terminals, pal, cx)
-                .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                    this.set_utility_tab(UtilityTab::Terminals, cx);
-                }))
-                .pr(px(SPACE_2))
-                .child(icon(IconName::Terminal, ICON_SM, pal.text_muted))
-                .child(div().font_weight(FontWeight::MEDIUM).child(TERMINALS_LABEL))
-                .into_any_element()
+            tab_shell(
+                TERMINALS_TAB_ID,
+                shown == UtilityTab::Terminals,
+                TabWidth::Fit,
+                pal,
+                cx,
+            )
+            .on_click(cx.listener(|this: &mut Self, _, _, cx| {
+                this.set_utility_tab(UtilityTab::Terminals, cx);
+            }))
+            .child(icon(IconName::Terminal, ICON_SM, pal.text_muted))
+            .child(div().font_weight(FontWeight::MEDIUM).child(TERMINALS_LABEL))
+            .into_any_element()
         });
         let tabs = docked.into_iter().map(|id| {
             let title = SharedString::from(self.docked_title(id));
@@ -201,6 +205,7 @@ impl EnvironmentShell {
             tab_shell(
                 (DOCKED_TAB_PREFIX, id.as_u64()),
                 shown == UtilityTab::Docked(id),
+                TabWidth::Fit,
                 pal,
                 cx,
             )
@@ -223,17 +228,13 @@ impl EnvironmentShell {
             )
             .into_any_element()
         });
-        div()
-            .flex()
-            .flex_row()
-            .items_center()
+        let tabs: Vec<AnyElement> = [log, problems]
+            .into_iter()
+            .chain(terminals)
+            .chain(tabs)
+            .collect();
+        tab_capsule(tabs, TabWidth::Fit, pal)
             .gap(px(SPACE_0_5))
-            .min_w_0()
-            .overflow_hidden()
-            .child(log)
-            .child(problems)
-            .children(terminals)
-            .children(tabs)
             .into_any_element()
     }
 
@@ -338,16 +339,16 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get(&self.active) else {
             return div().into_any_element();
         };
-        let pal = palette(cx);
         let session = live.sessions.get(&id);
-        let mono = SharedString::from(terminal_font_family(self.settings.terminal_font));
-        let colors = terminal_colors(self.settings.terminal_theme, pal);
+        let mono = mono_family(&self.settings.terminal_font);
+        let colors = terminal_colors(cx);
         let (origin_x, origin_y) = self.window_origin();
         let top = origin_y + self.canvas_px.1 + WINDOW_INSET;
+        let zoom = self.terminal_font_zoom();
         let geometry = BodyGeometry {
-            origin: (origin_x + BODY_PAD_X, top + CARD_HEADER_H + BODY_PAD_TOP),
-            cell_w: self.cell_width_px.unwrap_or(TERMINAL_FONT_PX),
-            line_h: TERMINAL_LINE_PX,
+            origin: (origin_x + BODY_PAD_X, top + TAB_STRIP_H + BODY_PAD_TOP),
+            cell_w: self.cell_width_px.unwrap_or(TERMINAL_FONT_PX) * zoom,
+            line_h: TERMINAL_LINE_PX * zoom,
         };
         div()
             .flex()
@@ -369,9 +370,9 @@ impl EnvironmentShell {
                 self.terminal_images(id),
                 BodyLook {
                     geometry,
-                    ligatures: self.settings.ligatures,
+                    ligatures: self.settings.terminal_font.ligatures,
                     zoom: UNZOOMED,
-                    text_zoom: UNZOOMED,
+                    text_zoom: zoom,
                     focused: live.focused == Some(id),
                     corner: RADIUS_LG,
                 },
@@ -395,6 +396,7 @@ impl EnvironmentShell {
         let listed =
             self.utility_tab() == UtilityTab::Terminals && self.utility_terminals().len() > 1;
         let cell_width = self.cell_width(window);
+        let zoom = self.terminal_font_zoom();
         let width = self.content_row_width(window) - if listed { TERMINAL_LIST_W } else { 0.0 };
         let height = self.activity_log.height;
         let env = self.active.clone();
@@ -403,13 +405,7 @@ impl EnvironmentShell {
             .get_mut(&env)
             .and_then(|live| live.sessions.get_mut(&id))
         {
-            session.resize_grid(body_grid(
-                width,
-                height,
-                CARD_HEADER_H,
-                cell_width,
-                UNZOOMED,
-            ));
+            session.resize_grid(body_grid(width, height, TAB_STRIP_H, cell_width, zoom));
         }
     }
 }

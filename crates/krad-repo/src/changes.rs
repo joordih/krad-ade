@@ -10,7 +10,7 @@ use krad_host::HostLink;
 
 const HEAD: &str = "HEAD";
 const PATHSPEC_SEPARATOR: &str = "--";
-const WHOLE_FILE_CONTEXT: &str = "--unified=1000000";
+pub(crate) const WHOLE_FILE_CONTEXT: &str = "--unified=1000000";
 const DIFF_ARGS: [&str; 5] = [
     "diff",
     "--no-color",
@@ -51,7 +51,7 @@ pub fn line_counts(host: &HostLink, repo: &Path) -> Result<HashMap<PathBuf, Line
     run_git(host, repo, &NUMSTAT_ARGS).map(|stdout| parse_numstat(&stdout))
 }
 
-fn parse_numstat(output: &[u8]) -> HashMap<PathBuf, LineCount> {
+pub(crate) fn parse_numstat(output: &[u8]) -> HashMap<PathBuf, LineCount> {
     let mut counts = HashMap::new();
     let mut records = output
         .split(|&byte| byte == RECORD_SEPARATOR)

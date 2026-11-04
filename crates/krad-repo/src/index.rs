@@ -61,6 +61,13 @@ impl FileIndex {
         Self { entries }
     }
 
+    pub fn files(&self) -> impl Iterator<Item = &Path> {
+        self.entries
+            .iter()
+            .filter(|entry| entry.kind == EntryKind::File)
+            .map(|entry| entry.path.as_path())
+    }
+
     #[must_use]
     pub fn search(&self, query: &str, limit: usize) -> Vec<&IndexEntry> {
         let query = query.to_lowercase();
@@ -152,6 +159,14 @@ mod tests {
             ]
             .map(PathBuf::from),
         )
+    }
+
+    #[test]
+    fn only_files_are_listed_as_files() {
+        let index = index();
+        let files: Vec<&Path> = index.files().collect();
+        assert_eq!(files.len(), 4);
+        assert!(!files.contains(&Path::new("src")));
     }
 
     fn paths(found: &[&IndexEntry]) -> Vec<String> {

@@ -4,27 +4,27 @@ use gpui_kit::{
     MouseDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_domain::{
-    AgentState, EnvironmentView, GroupId, Session, SessionId, SessionSpec, TerminalId,
+    AgentPreset, AgentState, EnvironmentView, GroupId, Session, SessionId, SessionSpec,
+    SidebarDensity, TerminalId,
 };
 
-use super::context_menu::{MenuAction, MenuEntry};
-use super::session_look::{session_icon, session_wash};
+use super::session_look::session_icon;
 use super::terminal_status::CardStatus;
 use super::{EnvironmentShell, LiveEnv};
 use crate::components::{agent_status, icon, Button, IconName};
 use crate::theme::{
-    palette, row_fill, row_shadow, ICON_SM, LINE_SM, LINE_XS, NAV_ROW_H, RADIUS_XS, SPACE_1,
-    SPACE_1_5, SPACE_2, TEXT_SM, TEXT_XS,
+    hue_rgb, palette, row_fill, row_shadow, ICON_SM, LINE_SM, LINE_XS, NAV_ROW_H, RADIUS_XS,
+    SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM, TEXT_XS,
 };
 
 const SESSION_ROW_PREFIX: &str = "session-row";
 const SESSION_CLOSE_PREFIX: &str = "close-session-";
 const CLOSE_SESSION_TOOLTIP: &str = "Close session; its terminals move to another one";
 const TABS_SUFFIX: &str = "tabs";
-const CUSTOMIZE_LABEL: &str = "Customize…";
-const CLOSE_SESSION_LABEL: &str = "Close session";
 const SESSION_ROW_GROUP_PREFIX: &str = "session-row-hover-";
 const SESSION_ROW_PAD_LEFT: f32 = SPACE_1;
+const NORMAL_ROW_H: f32 = 44.0;
+const CAPTION_SEPARATOR: &str = " · ";
 
 pub(super) fn session_terminals(session: &Session) -> impl Iterator<Item = TerminalId> + '_ {
     session
@@ -69,29 +69,23 @@ impl EnvironmentShell {
                     status: Self::status_of(live, session),
                     active: live.data.active_session == Some(session.id),
                     closable: live.data.can_close_session(session.id),
+                    harness: Self::harness_of(live, session),
+                    density: self.settings.sidebar.density,
                 };
                 Self::session_row(&row, cx)
             })
             .collect()
     }
 
-    fn session_menu(id: SessionId, closable: bool) -> Vec<MenuEntry> {
-        let mut entries = vec![MenuEntry::item(
-            CUSTOMIZE_LABEL,
-            Some(IconName::Magic),
-            MenuAction::CustomizeSession(id),
-        )];
-        if closable {
-            entries.extend([
-                MenuEntry::Separator,
-                MenuEntry::destructive(
-                    CLOSE_SESSION_LABEL,
-                    IconName::Close,
-                    MenuAction::CloseSession(id),
-                ),
-            ]);
-        }
-        entries
+    fn harness_of(live: &LiveEnv, session: &Session) -> Option<AgentPreset> {
+        session_terminals(session).find_map(|id| {
+            live.data
+                .nodes
+                .iter()
+                .find(|node| node.id == id)
+                .and_then(|node| node.harness)
+                .filter(|harness| *harness != AgentPreset::Shell)
+        })
     }
 
     fn status_of(live: &LiveEnv, session: &Session) -> CardStatus {
@@ -107,14 +101,15 @@ impl EnvironmentShell {
         let raw = id.as_u64();
         let unread = row.status == CardStatus::Agent(AgentState::WaitingForInput);
         let count = session_terminals(row.session).count();
-        let closable = row.closable;
         let look = row.session.look;
-        let wash = look.color.map(|hue| session_wash(hue, row.active, pal));
+        let tone = look.color.map_or(pal.text_muted, |hue| hue_rgb(hue, pal));
         let glyph = look.icon.map_or(IconName::Layers, session_icon);
         let quiet = matches!(
             row.status,
             CardStatus::Agent(AgentState::Idle) | CardStatus::Exited
         );
+        let normal = row.density == SidebarDensity::Normal;
+        let tabs = format!("{count} {TABS_SUFFIX}");
         let hover_group = SharedString::from(format!("{SESSION_ROW_GROUP_PREFIX}{raw}"));
         let reveal = hover_group.clone();
         div()
@@ -125,7 +120,7 @@ impl EnvironmentShell {
             .flex_none()
             .items_center()
             .gap(px(SPACE_1_5))
-            .h(px(NAV_ROW_H))
+            .h(px(if normal { NORMAL_ROW_H } else { NAV_ROW_H }))
             .pl(px(SESSION_ROW_PAD_LEFT))
             .pr(px(SPACE_2))
             .rounded(px(RADIUS_XS))
@@ -141,57 +136,91 @@ impl EnvironmentShell {
             .when(row.active, |row| {
                 row.bg(row_fill(pal, cx)).shadow(row_shadow(pal, cx))
             })
-            .when_some(wash, Styled::bg)
             .hover(|style| style.bg(pal.bg_hover))
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                 this.select_session(id, cx);
             }))
             .on_mouse_down(
                 MouseButton::Right,
-                cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
-                    this.open_menu_at(event, Self::session_menu(id, closable), cx);
+                cx.listener(move |this: &mut Self, event: &MouseDownEvent, window, cx| {
+                    let at = (event.position.x.as_f32(), event.position.y.as_f32());
+                    this.customize_session(id, at, window, cx);
                 }),
             )
-            .child(icon(glyph, ICON_SM, pal.text_muted))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .child(row.session.name.clone()),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .flex_none()
-                    .items_center()
-                    .gap(px(SPACE_1_5))
-                    .invisible()
-                    .group_hover(reveal, Styled::visible)
-                    .child(
-                        div()
-                            .text_size(px(TEXT_XS))
-                            .line_height(px(LINE_XS))
-                            .font_weight(FontWeight::NORMAL)
-                            .text_color(rgb(pal.text_muted))
-                            .child(format!("{count} {TABS_SUFFIX}")),
-                    )
-                    .when(row.closable && row.active, |element| {
-                        element.child(
-                            Button::new(SharedString::from(format!("{SESSION_CLOSE_PREFIX}{raw}")))
-                                .icon(IconName::Close)
-                                .small()
-                                .tooltip(CLOSE_SESSION_TOOLTIP)
-                                .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                                    cx.stop_propagation();
-                                    this.close_session(id, cx);
-                                })),
-                        )
-                    }),
-            )
+            .child(icon(glyph, ICON_SM, tone))
+            .child(Self::session_title(row, &tabs, cx))
+            .child(Self::session_hover_tools(row, tabs, reveal, cx))
             .when(!quiet, |element| {
                 element.child(agent_status(row.status.kind(), ICON_SM, pal))
+            })
+            .into_any_element()
+    }
+
+    fn session_title(row: &SessionRow<'_>, tabs: &str, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
+        let normal = row.density == SidebarDensity::Normal;
+        let caption = match row.harness {
+            Some(harness) => format!("{}{CAPTION_SEPARATOR}{tabs}", harness.display_name()),
+            None => tabs.to_owned(),
+        };
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w_0()
+            .child(div().truncate().child(row.session.name.clone()))
+            .when(normal, |text| {
+                text.child(
+                    div()
+                        .truncate()
+                        .text_size(px(TEXT_XS))
+                        .line_height(px(LINE_XS))
+                        .font_weight(FontWeight::NORMAL)
+                        .text_color(rgb(pal.text_muted))
+                        .child(caption),
+                )
+            })
+            .into_any_element()
+    }
+
+    fn session_hover_tools(
+        row: &SessionRow<'_>,
+        tabs: String,
+        reveal: SharedString,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let pal = palette(cx);
+        let id = row.session.id;
+        let raw = id.as_u64();
+        div()
+            .flex()
+            .flex_row()
+            .flex_none()
+            .items_center()
+            .gap(px(SPACE_1_5))
+            .invisible()
+            .group_hover(reveal, Styled::visible)
+            .when(row.density == SidebarDensity::Compact, |element| {
+                element.child(
+                    div()
+                        .text_size(px(TEXT_XS))
+                        .line_height(px(LINE_XS))
+                        .font_weight(FontWeight::NORMAL)
+                        .text_color(rgb(pal.text_muted))
+                        .child(tabs),
+                )
+            })
+            .when(row.closable && row.active, |element| {
+                element.child(
+                    Button::new(SharedString::from(format!("{SESSION_CLOSE_PREFIX}{raw}")))
+                        .icon(IconName::Close)
+                        .small()
+                        .tooltip(CLOSE_SESSION_TOOLTIP)
+                        .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                            cx.stop_propagation();
+                            this.close_session(id, cx);
+                        })),
+                )
             })
             .into_any_element()
     }
@@ -248,6 +277,8 @@ struct SessionRow<'a> {
     status: CardStatus,
     active: bool,
     closable: bool,
+    harness: Option<AgentPreset>,
+    density: SidebarDensity,
 }
 
 fn show_current_session(live: &mut LiveEnv) {

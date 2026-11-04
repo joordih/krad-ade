@@ -1,0 +1,63 @@
+{
+  "id": "github-dark-default",
+  "name": "GitHub Dark Default",
+  "appearance": "dark",
+  "credit": {
+    "author": "GitHub (Primer)",
+    "license": "MIT",
+    "url": "https://github.com/primer/github-vscode-theme"
+  },
+  "interface": {
+    "background": "#010409",
+    "surface": "#0d1117",
+    "panel": "#161b22",
+    "text": "#e6edf3",
+    "muted_text": "#7d8590",
+    "accent": "#1f6feb",
+    "on_accent": "#ffffff",
+    "success": "#3fb950",
+    "warning": "#d29922",
+    "error": "#ff7b72",
+    "info": "#58a6ff"
+  },
+  "terminal": {
+    "background": "#0d1117",
+    "foreground": "#e6edf3",
+    "cursor": "#2f81f7",
+    "selection": "#343941",
+    "ansi": [
+      "#484f58",
+      "#ff7b72",
+      "#3fb950",
+      "#d29922",
+      "#58a6ff",
+      "#bc8cff",
+      "#39c5cf",
+      "#b1bac4",
+      "#6e7681",
+      "#ffa198",
+      "#56d364",
+      "#e3b341",
+      "#79c0ff",
+      "#d2a8ff",
+      "#56d4dd",
+      "#ffffff"
+    ]
+  },
+  "syntax": {
+    "comment": "#8b949e",
+    "keyword": "#ff7b72",
+    "string": "#a5d6ff",
+    "escape": "#ff7b72",
+    "number": "#79c0ff",
+    "constant": "#79c0ff",
+    "attribute": "#79c0ff",
+    "type": "#ffa657",
+    "operator": "#ff7b72",
+    "function": "#d2a8ff",
+    "property": "#e6edf3",
+    "tag": "#7ee787",
+    "variable": "#ffa657",
+    "punctuation": "#e6edf3"
+  }
+}

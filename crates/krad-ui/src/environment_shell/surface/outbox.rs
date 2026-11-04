@@ -3,7 +3,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, Context, ElementId, InteractiveElement, IntoElement, ParentElement,
     SharedString, StatefulInteractiveElement, Styled,
 };
-use krad_domain::{Prompt, TerminalId};
+use krad_domain::{Prompt, TerminalId, TextScale};
 use std::time::{Duration, Instant};
 
 use super::super::chat::question_bubble;
@@ -132,6 +132,7 @@ impl EnvironmentShell {
                     ),
                     &outgoing.prompt.text,
                     false,
+                    TextScale::DEFAULT,
                     pal,
                 ))
             })

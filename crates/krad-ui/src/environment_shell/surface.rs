@@ -40,6 +40,7 @@ use super::EnvironmentShell;
 use checklist::ChecklistView;
 use edit_message::MessageEditor;
 use glide::Glide;
+pub(super) use origin::age_label;
 use origin::Origin;
 use outbox::Outbox;
 use subagents::Subagents;
@@ -95,6 +96,7 @@ pub(super) struct SurfaceChat {
     pub(super) tool_groups: HashMap<(usize, usize), bool>,
     pub(super) thread: ListState,
     pub(super) measured_tail: Cell<u64>,
+    pub(super) text_scale: Cell<f32>,
     pub(super) pins_latest: bool,
     pub(super) runway: Cell<f32>,
     pub(super) lead: Cell<Option<f32>>,
@@ -130,6 +132,7 @@ impl SurfaceChat {
             tool_groups: HashMap::new(),
             thread: new_thread(),
             measured_tail: Cell::new(0),
+            text_scale: Cell::new(krad_domain::TextScale::DEFAULT),
             pins_latest: false,
             runway: Cell::new(0.0),
             lead: Cell::new(None),

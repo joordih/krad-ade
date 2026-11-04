@@ -147,7 +147,7 @@ impl EnvironmentShell {
             })
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                 if section != shown {
-                    this.cancel_new_entry();
+                    this.cancel_entry_input(cx);
                 }
                 this.edit_side_layout(cx, |layout| layout.section = section);
             }))

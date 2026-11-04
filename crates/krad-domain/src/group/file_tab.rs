@@ -2,24 +2,22 @@ use super::DEFAULT_SESSION_NAME;
 use crate::agent::AgentState;
 use crate::environment::{EnvironmentData, NodeKind, TerminalNode};
 use crate::ids::{GroupId, SessionId, TerminalId};
+use crate::review::CommitSha;
 use crate::text_scale::TextScale;
 use crate::view::EnvironmentView;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileView {
     #[default]
     Edit,
     Changes,
+    Commit(CommitSha),
 }
 
 impl FileView {
-    #[expect(
-        clippy::trivially_copy_pass_by_ref,
-        reason = "serde's skip_serializing_if hands over a reference"
-    )]
     const fn is_edit(&self) -> bool {
         matches!(self, Self::Edit)
     }
@@ -41,7 +39,7 @@ pub enum FileOpening {
 
 const CHANGES_TITLE_SUFFIX: &str = " (changes)";
 
-fn file_title(path: &Path, view: FileView) -> String {
+fn file_title(path: &Path, view: &FileView) -> String {
     let name = path.file_name().map_or_else(
         || path.to_string_lossy().into_owned(),
         |name| name.to_string_lossy().into_owned(),
@@ -49,6 +47,7 @@ fn file_title(path: &Path, view: FileView) -> String {
     match view {
         FileView::Edit => name,
         FileView::Changes => format!("{name}{CHANGES_TITLE_SUFFIX}"),
+        FileView::Commit(sha) => format!("{name} ({})", sha.short()),
     }
 }
 
@@ -98,7 +97,7 @@ impl EnvironmentData {
             .find(|id| self.open_file_of(*id).is_some_and(|file| !file.pinned));
         if let (Some(id), false) = (preview, pinned) {
             if let Some(node) = self.nodes.iter_mut().find(|node| node.id == id) {
-                node.title = file_title(path, view);
+                node.title = file_title(path, &view);
                 node.file = Some(OpenFile {
                     path: path.to_path_buf(),
                     pinned: false,
@@ -112,7 +111,7 @@ impl EnvironmentData {
         self.next_id += 1;
         self.nodes.push(TerminalNode {
             id,
-            title: file_title(path, view),
+            title: file_title(path, &view),
             state: AgentState::Idle,
             harness: None,
             resume: None,

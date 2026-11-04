@@ -1,5 +1,6 @@
 use gpui_fps::fps_monitor;
 use gpui_kit::base::TextSelectionLayer;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     canvas, div, px, rgb, AnyElement, Context, DispatchPhase, InteractiveElement, IntoElement,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Render, Styled,
@@ -216,6 +217,8 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let viewer_width = self.viewer_width(self.content_row_width(window));
         let viewer = self.code_viewer(viewer_width, cx);
+        let viewer_extent = viewer.as_ref().map_or(0.0, |_| viewer_width + WINDOW_INSET);
+        let beside_pane = viewer_extent + self.side_panel_extent();
         let view = self.view_card(view, window, cx);
         let pane = self.main_pane(view, cx);
         div()
@@ -240,7 +243,7 @@ impl EnvironmentShell {
                     .children(self.side_panel(window, cx)),
             )
             .children(self.activity_panel(cx))
-            .child(self.activity_handle(cx))
+            .child(self.activity_handle(beside_pane, cx))
             .into_any_element()
     }
 }
@@ -255,6 +258,9 @@ impl Render for EnvironmentShell {
         self.sync_file_tabs(window, cx);
         self.flush_workspace_edits(window, cx);
         self.sync_changes_tabs(cx);
+        self.sync_system_appearance(cx);
+        self.track_cursor_jumps(cx);
+        self.sync_history(cx);
         self.sync_notes_view(view, window, cx);
         self.ensure_chat_sessions(cx);
         self.sync_session_panes();
@@ -265,14 +271,7 @@ impl Render for EnvironmentShell {
         self.probe_review(cx);
         self.sync_window_background(window, cx);
         let now = Instant::now();
-        if self.sidebar.advance(now)
-            | self.sync_side_panel(now)
-            | self.sync_activity(now)
-            | self.pane_drag.advance(now)
-            | self.sync_chat_landings(now)
-            | self.glide_chats(now)
-            | self.tick_arcade(now, cx)
-        {
+        if self.advance_motion(now, window, cx) {
             window.request_animation_frame();
         }
         self.canvas_px = self.canvas_size(window);
@@ -293,6 +292,7 @@ impl Render for EnvironmentShell {
             .on_action(|_: &MinimizeWindow, window, _| window.minimize_window())
             .on_action(|_: &ZoomWindow, window, _| window.zoom_window())
             .on_mouse_move(cx.listener(Self::on_root_mouse_move))
+            .map(|root| Self::with_gestures(root, cx))
             .child(Self::pointer_watch(cx))
             .on_mouse_up(
                 MouseButton::Left,
@@ -308,6 +308,10 @@ impl Render for EnvironmentShell {
             .text_color(rgb(pal.text_default))
             .child(TextSelectionLayer)
             .child(match self.settings_page(cx) {
+                Some(settings) if self.gestures.settings.offset() > 0.0 => {
+                    let behind = self.workspace_row(view, window, cx);
+                    self.sliding_settings(settings, behind, cx)
+                }
                 Some(settings) => settings,
                 None => self.workspace_row(view, window, cx),
             })
@@ -317,9 +321,13 @@ impl Render for EnvironmentShell {
             .children(self.agent_composer_sheet(cx))
             .children(self.docs_generate_sheet(cx))
             .children(self.delete_file_dialog(cx))
+            .children(self.discard_dialog(cx))
+            .children(self.signature_overlay(window, cx))
+            .children(self.editor_popover_overlay(window, cx))
+            .children(self.template_popup_overlay(window, cx))
             .children(self.context_menu_overlay(window, cx))
             .children(self.model_picker_overlay(window, cx))
-            .children(self.name_dialog_sheet(cx))
+            .children(self.name_dialog_sheet(window, cx))
             .children(self.host_dialog_sheet(window, cx))
             .children(self.toolchain_entry_sheet(cx))
             .child(self.close_dialog(cx));

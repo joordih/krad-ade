@@ -1,0 +1,63 @@
+{
+  "id": "catppuccin-latte",
+  "name": "Catppuccin Latte",
+  "appearance": "light",
+  "credit": {
+    "author": "Catppuccin",
+    "license": "MIT",
+    "url": "https://github.com/catppuccin/vscode"
+  },
+  "interface": {
+    "background": "#e6e9ef",
+    "surface": "#eff1f5",
+    "panel": "#e6e9ef",
+    "text": "#4c4f69",
+    "muted_text": "#4c4f69",
+    "accent": "#8839ef",
+    "on_accent": "#dce0e8",
+    "success": "#40a02b",
+    "warning": "#fe640b",
+    "error": "#d20f39",
+    "info": "#1e66f5"
+  },
+  "terminal": {
+    "background": "#eff1f5",
+    "foreground": "#4c4f69",
+    "cursor": "#dc8a78",
+    "selection": "#acb0be",
+    "ansi": [
+      "#5c5f77",
+      "#d20f39",
+      "#40a02b",
+      "#df8e1d",
+      "#1e66f5",
+      "#ea76cb",
+      "#179299",
+      "#acb0be",
+      "#6c6f85",
+      "#de293e",
+      "#49af3d",
+      "#eea02d",
+      "#456eff",
+      "#fe85d8",
+      "#2d9fa8",
+      "#bcc0cc"
+    ]
+  },
+  "syntax": {
+    "comment": "#7c7f93",
+    "keyword": "#8839ef",
+    "string": "#40a02b",
+    "escape": "#ea76cb",
+    "number": "#fe640b",
+    "constant": "#d20f39",
+    "attribute": "#df8e1d",
+    "type": "#df8e1d",
+    "operator": "#179299",
+    "function": "#1e66f5",
+    "property": "#df8e1d",
+    "tag": "#1e66f5",
+    "variable": "#4c4f69",
+    "punctuation": "#7c7f93"
+  }
+}

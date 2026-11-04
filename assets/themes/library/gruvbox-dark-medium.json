@@ -1,0 +1,63 @@
+{
+  "id": "gruvbox-dark-medium",
+  "name": "Gruvbox Dark Medium",
+  "appearance": "dark",
+  "credit": {
+    "author": "JD (jdinhify)",
+    "license": "MIT",
+    "url": "https://github.com/jdinhify/vscode-theme-gruvbox"
+  },
+  "interface": {
+    "background": "#282828",
+    "surface": "#282828",
+    "panel": "#282828",
+    "text": "#ebdbb2",
+    "muted_text": "#665c54",
+    "accent": "#458588",
+    "on_accent": "#ebdbb2",
+    "success": "#ebdbb2",
+    "warning": "#d79921",
+    "error": "#cc241d",
+    "info": "#458588"
+  },
+  "terminal": {
+    "background": "#282828",
+    "foreground": "#ebdbb2",
+    "cursor": "#ebdbb2",
+    "selection": "#384539",
+    "ansi": [
+      "#3c3836",
+      "#cc241d",
+      "#98971a",
+      "#d79921",
+      "#458588",
+      "#b16286",
+      "#689d6a",
+      "#a89984",
+      "#928374",
+      "#fb4934",
+      "#b8bb26",
+      "#fabd2f",
+      "#83a598",
+      "#d3869b",
+      "#8ec07c",
+      "#ebdbb2"
+    ]
+  },
+  "syntax": {
+    "comment": "#928374",
+    "keyword": "#fb4934",
+    "string": "#b8bb26",
+    "escape": "#d3869b",
+    "number": "#d3869b",
+    "constant": "#d3869b",
+    "attribute": "#fabd2f",
+    "type": "#fabd2f",
+    "operator": "#8ec07c",
+    "function": "#fabd2f",
+    "property": "#83a598",
+    "tag": "#8ec07c",
+    "variable": "#83a598",
+    "punctuation": "#a89984"
+  }
+}

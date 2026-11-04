@@ -4,7 +4,7 @@ use gpui_kit::{
     ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_chat::{Speaker, ToolCall};
-use krad_domain::{AgentState, TerminalId, ToolUseId};
+use krad_domain::{AgentState, TerminalId, TextScale, ToolUseId};
 use std::time::Instant;
 
 use super::super::chat::{question_bubble, AnswerPart};
@@ -168,7 +168,13 @@ impl EnvironmentShell {
             thread.push(match message.speaker {
                 Speaker::User => {
                     let bubble = format!("{SUBAGENT_BUBBLE_PREFIX}-{}-{index}", tool.as_str());
-                    question_bubble(ElementId::Name(bubble.into()), &message.text, false, pal)
+                    question_bubble(
+                        ElementId::Name(bubble.into()),
+                        &message.text,
+                        false,
+                        TextScale::DEFAULT,
+                        pal,
+                    )
                 }
                 Speaker::Assistant => Self::surface_answer(id, index, message, chat, cx),
             });

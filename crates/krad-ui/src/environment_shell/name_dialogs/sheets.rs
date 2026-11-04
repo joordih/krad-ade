@@ -1,5 +1,7 @@
 use gpui_kit::component::input::Input;
-use gpui_kit::{div, px, rgb, AnyElement, Context, FontWeight, ParentElement, Styled, Window};
+use gpui_kit::{
+    div, px, rgb, AnyElement, Context, FontWeight, ParentElement, SharedString, Styled, Window,
+};
 
 use super::super::dialog_parts::{sheet_footer, sheet_overlay, sheet_panel, sheet_title};
 use super::super::EnvironmentShell;
@@ -27,22 +29,24 @@ fn dismiss(this: &mut EnvironmentShell, _: &mut Window, cx: &mut Context<Environ
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn name_dialog_sheet(
         &self,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         match &self.name_dialogs {
             NameDialogs::Closed => None,
             NameDialogs::Name(dialog) => Some(Self::rename_sheet(dialog, cx)),
             NameDialogs::Delete(target) => Some(self.delete_sheet(target, cx)),
-            NameDialogs::Look(session) => self.look_sheet(*session, cx),
+            NameDialogs::Look(popover) => self.look_popover(popover, window, cx),
         }
     }
 
     fn rename_sheet(dialog: &NameDialog, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let title = match dialog.target {
-            NameTarget::Environment(_) => RENAME_ENVIRONMENT_TITLE,
-            NameTarget::Group(_) => RENAME_GROUP_TITLE,
-            NameTarget::Symbol { .. } => RENAME_SYMBOL_TITLE,
+        let title: SharedString = match &dialog.target {
+            NameTarget::Environment(_) => RENAME_ENVIRONMENT_TITLE.into(),
+            NameTarget::Group(_) => RENAME_GROUP_TITLE.into(),
+            NameTarget::Symbol { .. } => RENAME_SYMBOL_TITLE.into(),
+            NameTarget::ServerInput { title, .. } => title.clone().into(),
         };
         let sheet = sheet_panel(DIALOG_W, pal)
             .child(sheet_title(title, None, BTN_NAME_CLOSE, dismiss, cx))

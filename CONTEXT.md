@@ -26,6 +26,26 @@ _Avoid_: IDE, code mode, Zed mode
 Program that understands one language of a group's files and gives their file tabs diagnostics, completion, hover, go to definition, references, rename, formatting and quick fixes. One runs per project folder, language and toolchain on the environment's host; the app installs it after asking, the first time a file of that language opens.
 _Avoid_: LSP, plugin, extension
 
+**Problem**:
+An error, warning, info or hint a language server reports about a place in one file of a group, whether or not the file is open.
+_Avoid_: diagnostic, issue, lint
+
+**Problem lens**:
+The message of a line's most severe problem, written after the end of that line in its file tab.
+_Avoid_: error lens, inline diagnostic, virtual text
+
+**Project check**:
+The group's installed language servers looking at all of its files, not only the open ones, so their problems show in Problems and the file tree. It skips what git ignores and stops at a limit of files, saying the check is incomplete.
+_Avoid_: index, indexing, scan, analysis
+
+**File template**:
+A kind of file the user can create in a folder of the file tree, such as a Java class, interface or package, or a React component, offered by the language server serving that folder or, when it offers none, by the language's manifest.
+_Avoid_: new item, scaffold, snippet
+
+**Minimap**:
+A narrow, scaled-down picture of a file tab's whole text beside it, showing where the visible part sits; dragging or clicking it scrolls the file tab.
+_Avoid_: overview, code map
+
 **Language manifest**:
 Data that defines a language for the app: its file extensions, comment marker and highlighter grammar, its default language server from the package registry, how that server starts, which server runtime it needs and how the project's toolchains are found and handed to it. Adding a language is writing one, never code.
 _Avoid_: language config, language plugin
@@ -62,12 +82,20 @@ _Avoid_: server, remote, machine, connection
 One entry of a pane's strip of tabs: a chat, a shell, an agent or a file tab.
 _Avoid_: workspace, group, desktop
 
+**Tab picker**:
+Searchable list of a strip's tabs opened from the button at its start, with each tab's shortcut; typing a name no tab has creates one.
+_Avoid_: overflow menu, tab switcher, all tabs
+
+**Navigation history**:
+The places in files the user jumped between in a session (a definition, a reference, a problem, a search result, a newly opened file), walked back and forward with a two-finger swipe, the mouse's back and forward buttons or their shortcuts.
+_Avoid_: jump list, breadcrumbs, undo
+
 **Session**:
 A line of work the user opens inside a group, holding its own tabs; it opens on a chat. Every group keeps at least one, and removing a group removes its sessions.
 _Avoid_: workspace, thread, PTY session
 
 **Session look**:
-A session's own colour, shown as a translucent wash behind its row in the sidebar, and its own icon, both picked by the user.
+A session's own icon and the colour it is drawn in before the session's name in the sidebar, both picked by the user from the session's right-click popover, where it is also renamed.
 _Avoid_: theme, style, label colour
 
 **Window tint**:
@@ -99,12 +127,20 @@ Separate git checkout of the group's repository on its own branch, opened as a n
 _Avoid_: clone, copy, sandbox
 
 **File tree**:
-Folders and files under the selected group's root, with their git changes; the user can create, rename, move and delete them there. It sits in the side panel and can climb above the group's root to any folder of the disk, showing git changes only inside a repository.
+Folders and files under the selected group's root, with their git changes and problems; the user can create, rename, move and delete them there. It sits in the side panel and can climb above the group's root to any folder of the disk, showing git changes only inside a repository.
 _Avoid_: explorer, navigator, browser
 
 **Side panel**:
 The panel on the right of the window with the file tree and the group's git changes.
 _Avoid_: explorer, inspector, right sidebar
+
+**Discard**:
+Throwing away a file's uncommitted changes so it matches the last commit again; a file git does not track yet is deleted. A single block of changed lines can be reverted the same way from its diff.
+_Avoid_: reset, undo, rollback
+
+**History**:
+The commits of the group's branch and its upstream, newest first, drawn as a graph of lanes under the git changes. A commit opens to list the files it changed, each shown as a diff against its first parent.
+_Avoid_: log, timeline, graph
 
 **File tab**:
 A tab of the active session that edits one file with syntax highlighting. One click on a file opens it as the session's preview tab; a double click on the file or on the tab pins it. Pinned file tabs reopen with the session; the preview tab does not.
@@ -246,9 +282,13 @@ _Avoid_: orchestrator, chat, MCP
 Observable situation of an agent: idle, working, waiting-for-input or done (finished its turn and not yet seen).
 _Avoid_: status, presence, activity
 
-**Terminal theme**:
-Colors of the terminals and the code editor; "Match app" takes the app's own palette. It does not change how translucent the window is.
-_Avoid_: skin, color scheme, appearance
+**Theme**:
+The colors of the whole app in one set: the interface, the terminals' ANSI colors and the code editor's syntax. The user picks one theme for light appearance and one for dark, and the system appearance can choose between them. It does not change how translucent the window is.
+_Avoid_: skin, color scheme, terminal theme
+
+**Theme library**:
+The themes the user can pick from: the app's own, well-known editor themes shipped with the app under their authors' licenses and credited to them, and the user's themes made from one of those in the app.
+_Avoid_: theme store, marketplace, gallery
 
 ### Interaction
 

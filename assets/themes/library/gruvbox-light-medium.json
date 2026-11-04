@@ -1,0 +1,63 @@
+{
+  "id": "gruvbox-light-medium",
+  "name": "Gruvbox Light Medium",
+  "appearance": "light",
+  "credit": {
+    "author": "JD (jdinhify)",
+    "license": "MIT",
+    "url": "https://github.com/jdinhify/vscode-theme-gruvbox"
+  },
+  "interface": {
+    "background": "#fbf1c7",
+    "surface": "#fbf1c7",
+    "panel": "#fbf1c7",
+    "text": "#3c3836",
+    "muted_text": "#bdae93",
+    "accent": "#458588",
+    "on_accent": "#000000",
+    "success": "#3c3836",
+    "warning": "#d79921",
+    "error": "#cc241d",
+    "info": "#458588"
+  },
+  "terminal": {
+    "background": "#fbf1c7",
+    "foreground": "#3c3836",
+    "cursor": "#3c3836",
+    "selection": "#d6dcb0",
+    "ansi": [
+      "#ebdbb2",
+      "#cc241d",
+      "#98971a",
+      "#d79921",
+      "#458588",
+      "#b16286",
+      "#689d6a",
+      "#7c6f64",
+      "#928374",
+      "#9d0006",
+      "#79740e",
+      "#b57614",
+      "#076678",
+      "#8f3f71",
+      "#427b58",
+      "#3c3836"
+    ]
+  },
+  "syntax": {
+    "comment": "#928374",
+    "keyword": "#9d0006",
+    "string": "#79740e",
+    "escape": "#8f3f71",
+    "number": "#8f3f71",
+    "constant": "#8f3f71",
+    "attribute": "#b57614",
+    "type": "#b57614",
+    "operator": "#427b58",
+    "function": "#b57614",
+    "property": "#076678",
+    "tag": "#427b58",
+    "variable": "#076678",
+    "punctuation": "#7c6f64"
+  }
+}

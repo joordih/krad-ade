@@ -1,5 +1,4 @@
 use gpui_kit::component::ActiveTheme as _;
-use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, ClipboardItem, Context, FontWeight, IntoElement,
     ParentElement, Styled,
@@ -7,11 +6,12 @@ use gpui_kit::{
 use krad_github::{DeviceLogin, GithubClient, GithubError, GithubToken};
 use krad_store::{delete_github_login, find_github_login, write_github_login, LoginPlace};
 
-use super::gitlab::page::{status_detail, status_mark};
-use super::{EnvironmentShell, CHOICE_PAD};
+use super::sections::{account_row, AccountRow};
+use super::EnvironmentShell;
 use crate::components::{Button, ButtonVariant, IconName};
-use crate::theme::{palette, LINE_SM, RADIUS_XL, SPACE_0_5, SPACE_2, SPACE_3, TEXT_SM};
+use crate::theme::palette;
 
+const GITHUB_NAME: &str = "GitHub";
 const CHECKING_TITLE: &str = "Checking the GitHub login…";
 const SIGNED_OUT_TITLE: &str = "Not signed in";
 const SIGNED_OUT_DETAIL: &str = "Sign in to list pull requests and review them here.";
@@ -192,98 +192,55 @@ impl EnvironmentShell {
         .detach();
     }
 
-    pub(super) fn github_status_card(status: &GithubStatus, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn github_account(status: &GithubStatus, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let (mark, title, detail) = match status {
-            GithubStatus::Checking => (IconName::Loading, CHECKING_TITLE.to_owned(), String::new()),
-            GithubStatus::SignedOut => (
-                IconName::Key,
-                SIGNED_OUT_TITLE.to_owned(),
-                SIGNED_OUT_DETAIL.to_owned(),
-            ),
+        let connected = matches!(status, GithubStatus::SignedIn(..));
+        let (state, detail) = match status {
+            GithubStatus::Checking => (CHECKING_TITLE.to_owned(), String::new()),
+            GithubStatus::SignedOut => (SIGNED_OUT_TITLE.to_owned(), SIGNED_OUT_DETAIL.to_owned()),
             GithubStatus::SignedIn(Some(username), place) => (
-                IconName::CheckCircle,
                 format!("Connected as @{username}"),
                 place_text(*place).to_owned(),
             ),
             GithubStatus::SignedIn(None, place) => (
-                IconName::CheckCircle,
                 UNREACHABLE_TITLE.to_owned(),
                 format!(
                     "{}{DETAIL_SEPARATOR}{UNREACHABLE_DETAIL}",
                     place_text(*place)
                 ),
             ),
-            GithubStatus::WaitingForCode { page, .. } => {
-                (IconName::Loading, CODE_TITLE.to_owned(), page.clone())
-            }
+            GithubStatus::WaitingForCode { page, .. } => (CODE_TITLE.to_owned(), page.clone()),
         };
-        let actions = Self::github_actions(status, cx);
-        let code = match status {
-            GithubStatus::WaitingForCode { user_code, .. } => Some(user_code.clone()),
-            _ => None,
-        };
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(SPACE_3))
-            .p(px(CHOICE_PAD))
-            .rounded(px(RADIUS_XL))
-            .bg(rgb(pal.bg_panel))
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(SPACE_3))
-                    .child(status_mark(
-                        mark,
-                        matches!(status, GithubStatus::SignedIn(..)),
-                        pal,
-                        cx,
-                    ))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .min_w_0()
-                            .gap(px(SPACE_0_5))
-                            .child(
-                                div()
-                                    .text_size(px(TEXT_SM))
-                                    .line_height(px(LINE_SM))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(rgb(pal.text_strong))
-                                    .child(title),
-                            )
-                            .when(!detail.is_empty(), |text| {
-                                text.child(status_detail(
-                                    &detail,
-                                    matches!(status, GithubStatus::SignedIn(..)),
-                                    pal,
-                                ))
-                            }),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_none()
-                            .flex_row()
-                            .gap(px(SPACE_2))
-                            .children(actions),
-                    ),
-            )
-            .children(code.map(|code| {
+        let below = match status {
+            GithubStatus::WaitingForCode { user_code, .. } => Some(
                 div()
                     .font_family(cx.theme().mono_font_family.clone())
                     .text_size(px(CODE_TEXT))
                     .line_height(px(CODE_LINE))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(rgb(pal.text_strong))
-                    .child(code)
-            }))
-            .into_any_element()
+                    .child(user_code.clone())
+                    .into_any_element(),
+            ),
+            _ => None,
+        };
+        let mark = match status {
+            GithubStatus::Checking | GithubStatus::WaitingForCode { .. } => IconName::Loading,
+            GithubStatus::SignedOut | GithubStatus::SignedIn(..) => IconName::PullRequest,
+        };
+        account_row(
+            AccountRow {
+                mark,
+                name: GITHUB_NAME,
+                state,
+                detail,
+                connected,
+                actions: Self::github_actions(status, cx),
+                below,
+            },
+            pal,
+            cx,
+        )
     }
 
     fn github_actions(status: &GithubStatus, cx: &mut Context<Self>) -> Vec<AnyElement> {

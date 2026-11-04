@@ -1,4 +1,4 @@
-use lsp_types::Uri;
+use lsp_types::{Uri, WorkspaceFolder};
 use std::path::{Path, PathBuf, MAIN_SEPARATOR};
 use std::str::FromStr;
 
@@ -92,6 +92,15 @@ fn path_text(after_scheme: &str, separator: char) -> Option<String> {
 pub fn file_uri(path: &Path) -> Result<Uri, LspError> {
     Uri::from_str(&uri_text(&path.to_string_lossy()))
         .map_err(|_| LspError::NotAPath(path.to_string_lossy().into_owned()))
+}
+
+pub(crate) fn workspace_folder(root: &Path) -> Result<WorkspaceFolder, LspError> {
+    Ok(WorkspaceFolder {
+        uri: file_uri(root)?,
+        name: root
+            .file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
+    })
 }
 
 #[must_use]

@@ -8,7 +8,9 @@ use ureq::Agent;
 
 use crate::error::ExtensionError;
 use crate::http;
-use crate::manifest::{load, Manifests, ServerManifest};
+use crate::manifest::{
+    load_with, BundledManifest, Manifests, ProjectCheck, ServerManifest, ServerScope,
+};
 use crate::package::needed_server_runtimes;
 use crate::platform::Platform;
 use crate::registry::{self, Package, Registry};
@@ -25,6 +27,7 @@ pub struct ServerPlan {
     pub package: String,
     bin: String,
     pub server_runtimes: Vec<ServerRuntimeId>,
+    pub scope: ServerScope,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,6 +52,7 @@ pub struct ServerRuntimeStatus {
 pub struct ServerConfig {
     pub section: Option<String>,
     pub options: Option<Value>,
+    pub project_check: ProjectCheck,
 }
 
 impl ServerConfig {
@@ -92,11 +96,22 @@ impl LanguageTools {
     ///
     /// Returns [`ExtensionError::Unsupported`] on a platform the engine does not know.
     pub fn load(config_dir: &Path, manifest_folders: &[PathBuf]) -> Result<Self, ExtensionError> {
+        Self::load_with(config_dir, manifest_folders, &[])
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`ExtensionError::Unsupported`] on a platform without builds.
+    pub fn load_with(
+        config_dir: &Path,
+        manifest_folders: &[PathBuf],
+        bundled: &[BundledManifest],
+    ) -> Result<Self, ExtensionError> {
         let platform = Platform::current().ok_or(ExtensionError::Unsupported)?;
         let root = config_dir.join(LANGUAGES_DIR);
-        let loaded = load(manifest_folders);
+        let loaded = load_with(manifest_folders, bundled);
         Ok(Self {
-            registry: registry::cached(&root),
+            registry: registry::cached(&root).with_manifest_sources(&loaded.manifests.servers),
             requirement_cache: RequirementCache::load(&root),
             root,
             platform,
@@ -130,7 +145,7 @@ impl LanguageTools {
 
     #[must_use]
     pub fn with_registry(mut self, registry: Registry) -> Self {
-        self.registry = registry;
+        self.registry = registry.with_manifest_sources(&self.manifests.servers);
         self
     }
 
@@ -206,6 +221,7 @@ impl LanguageTools {
             package: package_name,
             bin,
             server_runtimes,
+            scope: manifest.scope,
         })
     }
 
@@ -284,6 +300,7 @@ impl LanguageTools {
     pub fn config(&self, plan: &ServerPlan) -> ServerConfig {
         let manifest = self.manifest(plan);
         ServerConfig {
+            project_check: manifest.project_check,
             section: manifest.settings_section,
             options: manifest
                 .settings

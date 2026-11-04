@@ -4,10 +4,13 @@ mod loading;
 mod ops;
 mod rows;
 mod upload;
+mod workspace_reload;
 
+use krad_domain::LanguageCatalog;
 use krad_repo::{ChangeKind, DirEntry, EntryKind};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 const FILE_TREE_ID: &str = "file-tree";
 const FILE_ROW_PREFIX: &str = "file-row";
@@ -20,6 +23,7 @@ const MARK_DELETED: &str = "D";
 const MARK_RENAMED: &str = "R";
 const MARK_UNTRACKED: &str = "U";
 const MARK_CONFLICTED: &str = "!";
+const PACKAGE_SEPARATOR: &str = ".";
 
 pub(super) use drag::DraggedFile;
 pub(super) use ops::FileAction;
@@ -34,18 +38,19 @@ pub(super) struct FileTree {
     selected: Option<PathBuf>,
     pending_delete: Option<PathBuf>,
     upload: Option<upload::UploadJob>,
+    marks: Option<((krad_domain::Host, PathBuf), Rc<ChangeMarks>)>,
 }
 
 #[derive(Clone)]
 enum TreeRow {
     Entry {
         entry: DirEntry,
+        label: Option<String>,
         depth: usize,
         expanded: bool,
     },
     Draft {
         kind: EntryKind,
-        label: String,
         depth: usize,
     },
 }
@@ -53,16 +58,40 @@ enum TreeRow {
 struct NewEntryRow<'a> {
     dir: &'a Path,
     kind: EntryKind,
-    label: String,
 }
 
 impl FileTree {
-    fn rows(&self, draft: Option<&NewEntryRow<'_>>) -> Vec<TreeRow> {
+    fn rows(&self, draft: Option<&NewEntryRow<'_>>, catalog: &LanguageCatalog) -> Vec<TreeRow> {
         let mut rows = Vec::new();
         if let Some(root) = &self.root {
-            self.push_rows(root, 0, draft, &mut rows);
+            self.push_rows(root, 0, draft, catalog, &mut rows);
         }
         rows
+    }
+
+    fn only_folder_in(&self, dir: &Path) -> Option<&DirEntry> {
+        match self.children.get(dir).map(Vec::as_slice) {
+            Some([only]) if only.kind == EntryKind::Directory => Some(only),
+            _ => None,
+        }
+    }
+
+    fn compacted<'a>(
+        &'a self,
+        entry: &'a DirEntry,
+        catalog: &LanguageCatalog,
+    ) -> (&'a DirEntry, Option<String>) {
+        if entry.kind != EntryKind::Directory || !catalog.in_packages(&entry.path) {
+            return (entry, None);
+        }
+        let mut names = vec![entry.name.as_str()];
+        let mut last = entry;
+        while let Some(only) = self.only_folder_in(&last.path) {
+            names.push(only.name.as_str());
+            last = only;
+        }
+        let label = (names.len() > 1).then(|| names.join(PACKAGE_SEPARATOR));
+        (last, label)
     }
 
     fn push_rows(
@@ -70,29 +99,32 @@ impl FileTree {
         dir: &Path,
         depth: usize,
         draft: Option<&NewEntryRow<'_>>,
+        catalog: &LanguageCatalog,
         rows: &mut Vec<TreeRow>,
     ) {
         if let Some(draft) = draft.filter(|draft| draft.dir == dir) {
             rows.push(TreeRow::Draft {
                 kind: draft.kind,
-                label: draft.label.clone(),
                 depth,
             });
         }
         for entry in self.children.get(dir).into_iter().flatten() {
+            let (entry, label) = self.compacted(entry, catalog);
             let expanded = self.expanded.contains(&entry.path);
             rows.push(TreeRow::Entry {
                 entry: entry.clone(),
+                label,
                 depth,
                 expanded,
             });
             if expanded {
-                self.push_rows(&entry.path, depth + 1, draft, rows);
+                self.push_rows(&entry.path, depth + 1, draft, catalog, rows);
             }
         }
     }
 }
 
+#[derive(Default)]
 struct ChangeMarks {
     files: HashMap<PathBuf, ChangeKind>,
     folders: HashSet<PathBuf>,
@@ -113,10 +145,12 @@ fn followed_root(
 mod tests {
     use super::*;
 
+    const DRAFT_NAME: &str = "new entry";
+
     fn name(row: &TreeRow) -> (String, usize) {
         match row {
             TreeRow::Entry { entry, depth, .. } => (entry.name.clone(), *depth),
-            TreeRow::Draft { label, depth, .. } => (label.clone(), *depth),
+            TreeRow::Draft { depth, .. } => (DRAFT_NAME.to_owned(), *depth),
         }
     }
 
@@ -148,10 +182,18 @@ mod tests {
             PathBuf::from("/r/src"),
             vec![entry("/r/src/main.rs", EntryKind::File)],
         );
-        let collapsed: Vec<String> = tree.rows(None).iter().map(|row| name(row).0).collect();
+        let collapsed: Vec<String> = tree
+            .rows(None, &LanguageCatalog::default())
+            .iter()
+            .map(|row| name(row).0)
+            .collect();
         assert_eq!(collapsed, ["src", "README.md"]);
         tree.expanded.insert(PathBuf::from("/r/src"));
-        let expanded: Vec<(String, usize)> = tree.rows(None).iter().map(name).collect();
+        let expanded: Vec<(String, usize)> = tree
+            .rows(None, &LanguageCatalog::default())
+            .iter()
+            .map(name)
+            .collect();
         assert_eq!(
             expanded,
             [
@@ -183,18 +225,94 @@ mod tests {
         let draft = NewEntryRow {
             dir: Path::new("/r/src"),
             kind: EntryKind::File,
-            label: "lib.rs".to_owned(),
         };
-        let rows: Vec<(String, usize)> = tree.rows(Some(&draft)).iter().map(name).collect();
+        let rows: Vec<(String, usize)> = tree
+            .rows(Some(&draft), &LanguageCatalog::default())
+            .iter()
+            .map(name)
+            .collect();
         assert_eq!(
             rows,
             [
                 ("src".to_owned(), 0),
-                ("lib.rs".to_owned(), 1),
+                (DRAFT_NAME.to_owned(), 1),
                 ("main.rs".to_owned(), 1),
                 ("README.md".to_owned(), 0)
             ]
         );
+    }
+
+    #[test]
+    fn a_package_holding_only_one_package_shares_its_row_with_it() {
+        let java = krad_domain::LanguageDef {
+            id: krad_domain::LanguageId::new("java"),
+            name: "Java".to_owned(),
+            extensions: vec!["java".to_owned()],
+            file_names: Vec::new(),
+            line_comment: None,
+            grammar: None,
+            syntax: None,
+            lsp_id: None,
+            server: None,
+            server_runtimes: Vec::new(),
+            source_folder: Some("java".to_owned()),
+            templates: Vec::new(),
+        };
+        let catalog = LanguageCatalog::new([java]);
+        let mut tree = FileTree {
+            root: Some(PathBuf::from("/r/src/main/java")),
+            ..FileTree::default()
+        };
+        tree.children.insert(
+            PathBuf::from("/r/src/main/java"),
+            vec![entry("/r/src/main/java/dev", EntryKind::Directory)],
+        );
+        tree.children.insert(
+            PathBuf::from("/r/src/main/java/dev"),
+            vec![entry(
+                "/r/src/main/java/dev/neuralabs",
+                EntryKind::Directory,
+            )],
+        );
+        tree.children.insert(
+            PathBuf::from("/r/src/main/java/dev/neuralabs"),
+            vec![
+                entry(
+                    "/r/src/main/java/dev/neuralabs/crypto",
+                    EntryKind::Directory,
+                ),
+                entry("/r/src/main/java/dev/neuralabs/Main.java", EntryKind::File),
+            ],
+        );
+        tree.expanded
+            .insert(PathBuf::from("/r/src/main/java/dev/neuralabs"));
+        let rows: Vec<(String, usize)> = tree
+            .rows(None, &catalog)
+            .iter()
+            .map(|row| match row {
+                TreeRow::Entry {
+                    entry,
+                    label,
+                    depth,
+                    ..
+                } => (label.clone().unwrap_or_else(|| entry.name.clone()), *depth),
+                TreeRow::Draft { depth, .. } => (DRAFT_NAME.to_owned(), *depth),
+            })
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                ("dev.neuralabs".to_owned(), 0),
+                ("crypto".to_owned(), 1),
+                ("Main.java".to_owned(), 1)
+            ]
+        );
+        let plain: Vec<String> = tree
+            .rows(None, &LanguageCatalog::default())
+            .iter()
+            .map(|row| name(row).0)
+            .collect();
+        assert_eq!(plain, ["dev"]);
     }
 
     #[test]

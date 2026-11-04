@@ -3,8 +3,8 @@ use gpui_kit::{App, Menu, MenuItem, OsAction, SystemMenuType};
 use crate::actions::{
     CloseWindow, CopySelection, HideApp, HideOtherApps, MinimizeWindow, NewAgent, NewTerminal,
     OpenSettings, PasteClipboard, Quit, SearchTerminal, ShowAllApps, SplitTerminal, TextLarger,
-    TextReset, TextSmaller, ToggleActivity, ToggleFps, TogglePalette, ToggleSidePanel,
-    ToggleSidebar, ZoomWindow,
+    TextReset, TextSmaller, ToggleActivity, ToggleFps, ToggleMinimap, TogglePalette,
+    ToggleSidePanel, ToggleSidebar, ZoomWindow,
 };
 
 const APP_MENU: &str = "Krad ADE";
@@ -14,6 +14,7 @@ const VIEW_MENU: &str = "View";
 const WINDOW_MENU: &str = "Window";
 
 const SETTINGS_ITEM: &str = "Settings…";
+const MINIMAP_ITEM: &str = "Minimap";
 const SERVICES_ITEM: &str = "Services";
 const HIDE_ITEM: &str = "Hide Krad ADE";
 const HIDE_OTHERS_ITEM: &str = "Hide Others";
@@ -92,6 +93,7 @@ fn menus() -> Vec<Menu> {
                 MenuItem::action(SIDEBAR_ITEM, ToggleSidebar),
                 MenuItem::action(SIDE_PANEL_ITEM, ToggleSidePanel),
                 MenuItem::action(ACTIVITY_ITEM, ToggleActivity),
+                MenuItem::action(MINIMAP_ITEM, ToggleMinimap),
                 MenuItem::separator(),
                 MenuItem::action(TEXT_LARGER_ITEM, TextLarger),
                 MenuItem::action(TEXT_SMALLER_ITEM, TextSmaller),

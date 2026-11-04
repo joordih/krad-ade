@@ -81,6 +81,70 @@ fn edits_raise_the_document_version() -> Result<(), LspError> {
 }
 
 #[test]
+fn the_workspace_folders_sent_at_initialize_and_changed_later_answer_the_server(
+) -> Result<(), LspError> {
+    use lsp_types::request::Initialize;
+    use lsp_types::{InitializeParams, WorkspaceFolder};
+
+    let (client, _events, mut server) = connect()?;
+    let folder = WorkspaceFolder {
+        uri: crate::uri::file_uri(std::path::Path::new("/work/loader"))?,
+        name: "loader".to_owned(),
+    };
+    let params = InitializeParams {
+        workspace_folders: Some(vec![folder]),
+        ..InitializeParams::default()
+    };
+    let initializing = thread::spawn(move || {
+        let answer = block_on(client.request::<Initialize>(&params));
+        (client, answer)
+    });
+    let Some(Incoming::Request { id, .. }) = server.next() else {
+        return Err(LspError::Stopped);
+    };
+    assert!(write_message(
+        &mut server.to_client,
+        Message::Request {
+            id: &json!(9),
+            method: "workspace/workspaceFolders",
+            params: &Value::Null,
+        },
+    )
+    .is_ok());
+    assert!(
+        matches!(server.next(), Some(Incoming::Response { id: 9, outcome: Ok(Value::Array(folders)) })
+        if folders[0]["name"] == json!("loader"))
+    );
+    server.answer(&id, &json!({"capabilities": {}}));
+    let client = initializing
+        .join()
+        .map_err(|_| LspError::Stopped)
+        .and_then(|(client, answer)| answer.map(|_| client))?;
+    client.change_workspace_folders(
+        &[PathBuf::from("/work/protector")],
+        &[PathBuf::from("/work/loader")],
+    )?;
+    assert!(
+        matches!(server.next(), Some(Incoming::Notification { method, .. })
+        if method == "workspace/didChangeWorkspaceFolders")
+    );
+    assert!(write_message(
+        &mut server.to_client,
+        Message::Request {
+            id: &json!(10),
+            method: "workspace/workspaceFolders",
+            params: &Value::Null,
+        },
+    )
+    .is_ok());
+    assert!(
+        matches!(server.next(), Some(Incoming::Response { id: 10, outcome: Ok(Value::Array(folders)) })
+        if folders.len() == 1 && folders[0]["name"] == json!("protector"))
+    );
+    Ok(())
+}
+
+#[test]
 fn diagnostics_arrive_as_events_and_configuration_is_answered() -> Result<(), LspError> {
     let (_client, mut events, mut server) = connect()?;
     let ask = json!({"items": [{"section": "rust-analyzer.checkOnSave"}, {"section": "other"}]});
@@ -149,5 +213,133 @@ fn pending_requests_fail_once_the_server_stops() -> Result<(), LspError> {
     drop(server);
     assert!(matches!(block_on(waiting), Err(LspError::Stopped)));
     assert_eq!(block_on(events.next()), Some(ServerEvent::Stopped));
+    Ok(())
+}
+
+#[test]
+fn progress_notifications_become_progress_events() -> Result<(), LspError> {
+    let (_client, mut events, mut server) = connect()?;
+    let progress = json!({
+        "jsonrpc": "2.0",
+        "method": "$/progress",
+        "params": {"token": "indexing", "value": {"kind": "begin", "title": "Indexing", "percentage": 10}},
+    });
+    let frame = serde_json::to_vec(&progress)?;
+    write!(server.to_client, "Content-Length: {}\r\n\r\n", frame.len())?;
+    server.to_client.write_all(&frame)?;
+    server.to_client.flush()?;
+    let event = block_on(events.next());
+    assert_eq!(
+        event,
+        Some(ServerEvent::Progress(Progress {
+            token: "indexing".to_owned(),
+            state: ProgressState::Begin {
+                title: "Indexing".to_owned(),
+                message: None,
+                percentage: Some(10),
+            },
+        }))
+    );
+    Ok(())
+}
+
+#[test]
+fn folder_changes_reach_the_server() -> Result<(), LspError> {
+    let (client, _events, mut server) = connect()?;
+    client.change_workspace_folders(
+        &[PathBuf::from("/work/added")],
+        &[PathBuf::from("/work/gone")],
+    )?;
+    let Some(Incoming::Notification { method, params }) = server.next() else {
+        return Err(LspError::Stopped);
+    };
+    assert_eq!(method, "workspace/didChangeWorkspaceFolders");
+    assert_eq!(params["event"]["added"][0]["name"], "added");
+    assert_eq!(params["event"]["removed"][0]["name"], "gone");
+    Ok(())
+}
+
+#[test]
+fn a_server_choice_waits_for_the_answer() -> Result<(), LspError> {
+    let (client, mut events, mut server) = connect()?;
+    let asking = json!({
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "window/showMessageRequest",
+        "params": {"type": 3, "message": "Class to Import", "actions": [{"title": "java.util.List"}, {"title": "java.awt.List"}]},
+    });
+    let frame = serde_json::to_vec(&asking)?;
+    write!(server.to_client, "Content-Length: {}\r\n\r\n", frame.len())?;
+    server.to_client.flush()?;
+    std::io::Write::write_all(&mut server.to_client, &frame)?;
+    let Some(ServerEvent::Choice(choice)) = block_on(events.next()) else {
+        return Err(LspError::Stopped);
+    };
+    assert_eq!(choice.options, vec!["java.util.List", "java.awt.List"]);
+    client.answer_choice(choice.id, Some("java.awt.List"))?;
+    let Some(Incoming::Response { id, outcome }) = server.next() else {
+        return Err(LspError::Stopped);
+    };
+    assert_eq!(id, 7);
+    assert_eq!(
+        outcome.ok().and_then(|value| value.get("title").cloned()),
+        Some(json!("java.awt.List"))
+    );
+    Ok(())
+}
+
+#[test]
+fn a_server_input_answers_with_the_typed_values() -> Result<(), LspError> {
+    let (client, mut events, mut server) = connect()?;
+    let asking = json!({
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "krad/refactorInput",
+        "params": {"title": "Move class to package", "fields": [{"id": "package", "label": "Package", "value": "sample.core"}]},
+    });
+    let frame = serde_json::to_vec(&asking)?;
+    write!(server.to_client, "Content-Length: {}\r\n\r\n", frame.len())?;
+    std::io::Write::write_all(&mut server.to_client, &frame)?;
+    server.to_client.flush()?;
+    let Some(ServerEvent::Input(input)) = block_on(events.next()) else {
+        return Err(LspError::Stopped);
+    };
+    assert_eq!(input.fields[0].value, "sample.core");
+    let values =
+        std::collections::BTreeMap::from([("package".to_owned(), "sample.text".to_owned())]);
+    client.answer_input(input.id, Some(&values))?;
+    let Some(Incoming::Response { outcome, .. }) = server.next() else {
+        return Err(LspError::Stopped);
+    };
+    assert_eq!(
+        outcome.ok(),
+        Some(json!({"values": {"package": "sample.text"}}))
+    );
+    Ok(())
+}
+
+#[test]
+fn server_conflicts_answer_whether_to_proceed() -> Result<(), LspError> {
+    let (client, mut events, mut server) = connect()?;
+    let asking = json!({
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "krad/showConflicts",
+        "params": {"title": "Move class to package", "conflicts": [{"message": "sample.app already has a class named Names"}]},
+    });
+    let frame = serde_json::to_vec(&asking)?;
+    write!(server.to_client, "Content-Length: {}\r\n\r\n", frame.len())?;
+    std::io::Write::write_all(&mut server.to_client, &frame)?;
+    server.to_client.flush()?;
+    let Some(ServerEvent::Conflicts(conflicts)) = block_on(events.next()) else {
+        return Err(LspError::Stopped);
+    };
+    assert_eq!(conflicts.conflicts.len(), 1);
+    assert!(conflicts.conflicts[0].location.is_none());
+    client.answer_conflicts(conflicts.id, false)?;
+    let Some(Incoming::Response { outcome, .. }) = server.next() else {
+        return Err(LspError::Stopped);
+    };
+    assert_eq!(outcome.ok(), Some(json!({"proceed": false})));
     Ok(())
 }

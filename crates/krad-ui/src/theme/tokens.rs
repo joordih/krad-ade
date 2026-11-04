@@ -42,3 +42,12 @@ pub(crate) const WINDOW_INSET: f32 = 8.0;
 pub(crate) const CARD_HEADER_H: f32 = 36.0;
 pub(crate) const VIEW_HEADER_H: f32 = 52.0;
 pub(crate) const CHIP_H: f32 = 18.0;
+
+pub(crate) const CAPSULE_PAD: f32 = 2.0;
+pub(crate) const TAB_H: f32 = 28.0;
+pub(crate) const CAPSULE_H: f32 = TAB_H + 2.0 * CAPSULE_PAD;
+pub(crate) const TAB_STRIP_MARGIN: f32 = SPACE_2;
+pub(crate) const TAB_STRIP_H: f32 = CAPSULE_H + 2.0 * TAB_STRIP_MARGIN;
+
+pub(crate) const MOTION_SPRING: gpui_kit::SpringConfig =
+    gpui_kit::SpringConfig::new(420.0, 41.0, 1.0);

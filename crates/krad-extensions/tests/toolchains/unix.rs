@@ -190,3 +190,39 @@ fn an_entered_windows_style_venv_is_accepted() -> TestResult {
     );
     Ok(())
 }
+
+#[test]
+fn a_jdk_downloaded_into_the_users_library_is_found() -> TestResult {
+    let root = scratch("user-jdk")?;
+    let home = root.0.join("home");
+    let repo = root.0.join("repo");
+    std::fs::create_dir_all(&repo)?;
+    std::fs::write(repo.join("pom.xml"), "<project/>\n")?;
+    let jdk = home.join("Library/Java/JavaVirtualMachines/temurin-21/Contents/Home");
+    fake_binary(
+        &jdk.join("bin/java"),
+        "openjdk version \"21.0.4\" 2024-07-16",
+    )?;
+
+    let tools = tools(&root.0.join("config"))?;
+    let family = tools
+        .toolchain_family(&ToolchainFamilyId::new("java"))
+        .ok_or("no java family")?;
+    let found = discover(
+        family,
+        tools.shared_locators(),
+        &DiscoveryRequest {
+            link: &HostLink::Local,
+            group_root: &repo,
+            project_folder: &ProjectFolder::root(),
+            home: Some(&home),
+            host_cli: None,
+            timeout: TIMEOUT,
+        },
+    );
+    assert!(found
+        .candidates
+        .iter()
+        .any(|toolchain| toolchain.prefix.as_deref() == Some(jdk.as_path())));
+    Ok(())
+}

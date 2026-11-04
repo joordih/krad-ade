@@ -1,7 +1,8 @@
+use crate::environment_shell::rubber_band::{BandKey, ScrollEdges};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, KeyDownEvent,
-    ParentElement, StatefulInteractiveElement, Styled,
+    ParentElement, ScrollHandle, ScrollWheelEvent, StatefulInteractiveElement, Styled,
 };
 
 use super::super::sidebar::SIDEBAR_WIDTH;
@@ -32,7 +33,15 @@ const PAGE_TOP: f32 = 20.0;
 const PAGE_GAP: f32 = 24.0;
 
 const GROUPS: [(&str, &[SettingsPane]); 2] = [
-    ("App", &[SettingsPane::General, SettingsPane::Terminal]),
+    (
+        "App",
+        &[
+            SettingsPane::General,
+            SettingsPane::Appearance,
+            SettingsPane::Terminal,
+            SettingsPane::Editor,
+        ],
+    ),
     (
         "Workspace",
         &[
@@ -52,7 +61,9 @@ impl EnvironmentShell {
         let ui = self.settings_ui.as_ref()?;
         let content = match ui.pane {
             SettingsPane::General => self.general_pane(cx),
+            SettingsPane::Appearance => self.appearance_pane(cx),
             SettingsPane::Terminal => self.terminal_pane(cx),
+            SettingsPane::Editor => self.editor_pane(cx),
             SettingsPane::Integrations => self.integrations_pane(ui, cx),
             SettingsPane::Gateway => self.gateway_pane(&ui.gateway, cx),
             SettingsPane::Mcp => self.mcp_pane(&ui.mcp, cx),
@@ -77,8 +88,17 @@ impl EnvironmentShell {
                     }),
                 )
                 .child(Self::settings_nav(ui.pane, cx))
-                .child(Self::settings_main(ui.pane, content, cx))
+                .child(Self::settings_main(
+                    ui.pane,
+                    content,
+                    (
+                        ui.scroll.clone(),
+                        self.gestures.bands.offset(BandKey::Settings),
+                    ),
+                    cx,
+                ))
                 .children(self.gitlab_device_dialog(cx))
+                .children(self.theme_editor_sheet(cx))
                 .into_any_element(),
         )
     }
@@ -162,9 +182,11 @@ impl EnvironmentShell {
     fn settings_main(
         pane: SettingsPane,
         content: AnyElement,
+        (scroll, bounce): (ScrollHandle, f32),
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
+        let edges_of = scroll.clone();
         card(pal, cx)
             .flex()
             .flex_col()
@@ -201,10 +223,24 @@ impl EnvironmentShell {
                     .min_h_0()
                     .items_center()
                     .overflow_y_scroll()
+                    .track_scroll(&scroll)
+                    .on_scroll_wheel(cx.listener(
+                        move |this: &mut Self, event: &ScrollWheelEvent, _, cx| {
+                            let edges = ScrollEdges {
+                                offset: -edges_of.offset().y.as_f32(),
+                                max: edges_of.max_offset().y.as_f32(),
+                            };
+                            if this.gestures.bands.wheel(BandKey::Settings, event, edges) {
+                                cx.notify();
+                            }
+                        },
+                    ))
                     .px(px(SPACE_6))
                     .pb(px(SPACE_6))
                     .child(
                         div()
+                            .relative()
+                            .top(px(bounce))
                             .flex()
                             .flex_col()
                             .w_full()

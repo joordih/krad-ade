@@ -1,0 +1,63 @@
+{
+  "id": "solarized-dark",
+  "name": "Solarized Dark",
+  "appearance": "dark",
+  "credit": {
+    "author": "Microsoft (after Ethan Schoonover's Solarized)",
+    "license": "MIT",
+    "url": "https://github.com/microsoft/vscode/tree/main/extensions/theme-solarized-dark"
+  },
+  "interface": {
+    "background": "#00212b",
+    "surface": "#002b36",
+    "panel": "#00212b",
+    "text": "#839496",
+    "muted_text": "#586e75",
+    "accent": "#197271",
+    "on_accent": "#ffffff",
+    "success": "#859900",
+    "warning": "#b58900",
+    "error": "#dc322f",
+    "info": "#268bd2"
+  },
+  "terminal": {
+    "background": "#002b36",
+    "foreground": "#839496",
+    "cursor": "#d30102",
+    "selection": "#274642",
+    "ansi": [
+      "#073642",
+      "#dc322f",
+      "#859900",
+      "#b58900",
+      "#268bd2",
+      "#d33682",
+      "#2aa198",
+      "#eee8d5",
+      "#002b36",
+      "#cb4b16",
+      "#586e75",
+      "#657b83",
+      "#839496",
+      "#6c71c4",
+      "#93a1a1",
+      "#fdf6e3"
+    ]
+  },
+  "syntax": {
+    "comment": "#586e75",
+    "keyword": "#859900",
+    "string": "#2aa198",
+    "escape": "#cb4b16",
+    "number": "#d33682",
+    "constant": "#b58900",
+    "attribute": "#93a1a1",
+    "type": "#cb4b16",
+    "operator": "#859900",
+    "function": "#268bd2",
+    "property": "#268bd2",
+    "tag": "#268bd2",
+    "variable": "#268bd2",
+    "punctuation": "#839496"
+  }
+}

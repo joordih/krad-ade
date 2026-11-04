@@ -16,6 +16,22 @@ grammar = "typescript"
 syntax = "typescript"
 server = "vtsls"
 
+[[language.templates]]
+id = "module"
+label = "Module"
+group = "TypeScript"
+file = "{{name}}.ts"
+body = "$0\n"
+markers = ["package.json", "tsconfig.json"]
+
+[[language.templates]]
+id = "test"
+label = "Test"
+group = "TypeScript"
+file = "{{name}}.test.ts"
+body = "describe(\"{{name}}\", () => {\n  it(\"works\", () => {\n    $0\n  });\n});\n"
+markers = ["package.json", "tsconfig.json"]
+
 [[language]]
 id = "tsx"
 name = "TypeScript"
@@ -26,6 +42,14 @@ syntax = "typescript"
 lsp_id = "typescriptreact"
 server = "vtsls"
 
+[[language.templates]]
+id = "component"
+label = "React component"
+group = "TypeScript"
+file = "{{name}}.tsx"
+body = "export function {{name}}() {\n  return <div>$0</div>;\n}\n"
+markers = ["package.json", "tsconfig.json"]
+
 [[language]]
 id = "javascript"
 name = "JavaScript"
@@ -34,6 +58,30 @@ line_comment = "//"
 grammar = "javascript"
 syntax = "typescript"
 server = "vtsls"
+
+[[language.templates]]
+id = "module"
+label = "Module"
+group = "JavaScript"
+file = "{{name}}.js"
+body = "$0\n"
+markers = ["package.json"]
+
+[[language.templates]]
+id = "component"
+label = "React component"
+group = "JavaScript"
+file = "{{name}}.jsx"
+body = "export function {{name}}() {\n  return <div>$0</div>;\n}\n"
+markers = ["package.json"]
+
+[[language.templates]]
+id = "test"
+label = "Test"
+group = "JavaScript"
+file = "{{name}}.test.js"
+body = "describe(\"{{name}}\", () => {\n  it(\"works\", () => {\n    $0\n  });\n});\n"
+markers = ["package.json"]
 
 [[language]]
 id = "python"
@@ -88,6 +136,47 @@ grammar = "java"
 line_comment = "//"
 syntax = "c_family"
 server = "jdtls"
+source_folder = "java"
+
+[[language.templates]]
+id = "class"
+label = "Class"
+group = "Java Class"
+file = "{{name}}.java"
+body = "public class {{name}} {\n    $0\n}\n"
+package_line = "package {{package}};"
+
+[[language.templates]]
+id = "interface"
+label = "Interface"
+group = "Java Class"
+file = "{{name}}.java"
+body = "public interface {{name}} {\n    $0\n}\n"
+package_line = "package {{package}};"
+
+[[language.templates]]
+id = "record"
+label = "Record"
+group = "Java Class"
+file = "{{name}}.java"
+body = "public record {{name}}($0) {\n}\n"
+package_line = "package {{package}};"
+
+[[language.templates]]
+id = "enum"
+label = "Enum"
+group = "Java Class"
+file = "{{name}}.java"
+body = "public enum {{name}} {\n    $0\n}\n"
+package_line = "package {{package}};"
+
+[[language.templates]]
+id = "annotation"
+label = "Annotation"
+group = "Java Class"
+file = "{{name}}.java"
+body = "public @interface {{name}} {\n    $0\n}\n"
+package_line = "package {{package}};"
 
 [[language]]
 id = "kotlin"
@@ -97,6 +186,47 @@ grammar = "kotlin"
 line_comment = "//"
 syntax = "c_family"
 server = "kotlin-lsp"
+source_folder = "kotlin"
+
+[[language.templates]]
+id = "class"
+label = "Class"
+group = "Kotlin Class"
+file = "{{name}}.kt"
+body = "class {{name}} {\n    $0\n}\n"
+package_line = "package {{package}}"
+
+[[language.templates]]
+id = "interface"
+label = "Interface"
+group = "Kotlin Class"
+file = "{{name}}.kt"
+body = "interface {{name}} {\n    $0\n}\n"
+package_line = "package {{package}}"
+
+[[language.templates]]
+id = "object"
+label = "Object"
+group = "Kotlin Class"
+file = "{{name}}.kt"
+body = "object {{name}} {\n    $0\n}\n"
+package_line = "package {{package}}"
+
+[[language.templates]]
+id = "enum"
+label = "Enum"
+group = "Kotlin Class"
+file = "{{name}}.kt"
+body = "enum class {{name}} {\n    $0\n}\n"
+package_line = "package {{package}}"
+
+[[language.templates]]
+id = "data-class"
+label = "Data class"
+group = "Kotlin Class"
+file = "{{name}}.kt"
+body = "data class {{name}}($0)\n"
+package_line = "package {{package}}"
 
 [[language]]
 id = "swift"
@@ -114,6 +244,7 @@ extensions = ["scala"]
 grammar = "scala"
 line_comment = "//"
 syntax = "c_family"
+source_folder = "scala"
 
 [[language]]
 id = "css"
@@ -282,6 +413,7 @@ package = "rust-analyzer"
 probe = ["--version"]
 server_runtimes = ["rust"]
 settings_section = "rust-analyzer"
+project_check = "pushed"
 
 [server.settings]
 checkOnSave = true
@@ -333,6 +465,7 @@ unless_project_config = [
 
 [[server]]
 package = "gopls"
+project_check = "pushed"
 
 [server.toolchain]
 family = "go"
@@ -370,6 +503,7 @@ server_runtimes = ["java"]
 
 [[server]]
 package = "jdtls"
+project_check = "pushed"
 server_runtimes = ["java"]
 path_names = []
 command = [

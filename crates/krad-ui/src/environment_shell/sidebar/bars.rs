@@ -4,6 +4,8 @@ use gpui_kit::{
     ParentElement, StatefulInteractiveElement, Styled, Window,
 };
 
+use krad_domain::SidebarPart;
+
 use super::super::EnvironmentShell;
 use super::{FOOTER_H, SIDEBAR_TOGGLE_END};
 use crate::actions::OpenSettings;
@@ -96,6 +98,7 @@ impl EnvironmentShell {
         let tally = self
             .envs
             .get(&self.active)
+            .filter(|_| self.settings.sidebar.shows(SidebarPart::AgentCounts))
             .map_or_default(|live| live.data.tally());
         let counts = tally.active_counts().into_iter().map(|(state, count)| {
             div()

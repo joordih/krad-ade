@@ -1,13 +1,19 @@
+mod editor;
+mod fonts;
 mod gateway;
 mod general;
 mod github;
 mod gitlab;
 mod integrations;
+mod java_engine;
 mod languages;
 mod material;
 mod mcp;
 mod page;
+mod sections;
 mod terminal;
+mod theme_editor;
+mod themes;
 mod toolchains;
 
 use gpui_kit::prelude::FluentBuilder;
@@ -23,8 +29,8 @@ use super::EnvironmentShell;
 use crate::actions::OpenSettings;
 use crate::components::IconName;
 use crate::theme::{
-    appearance, apply_appearance, card_shadow, Appearance, Palette, LINE_SM, LINE_XS, RADIUS_SM,
-    RADIUS_XL, SPACE_0_5, TEXT_SM, TEXT_XS,
+    appearance, apply_settings_theme, card_shadow, mode_appearance, system_is_dark, Appearance,
+    Palette, CAPSULE_PAD, LINE_SM, LINE_XS, RADIUS_XL, SPACE_0_5, TEXT_SM, TEXT_XS,
 };
 use gateway::GatewayUi;
 use github::GithubUi;
@@ -32,10 +38,7 @@ pub(super) use gitlab::gitlab_token_saver;
 use gitlab::GitlabUi;
 use mcp::McpUi;
 
-const SWATCH_COLUMNS: usize = 3;
 const SWATCH_GAP: f32 = 10.0;
-const SWATCH_PREVIEW_H: f32 = 64.0;
-const SWATCH_PAD: f32 = 10.0;
 const CHOICE_PAD: f32 = 14.0;
 const CHOICE_GAP: f32 = 10.0;
 const CHOICE_RING: f32 = 1.5;
@@ -44,7 +47,9 @@ const SETTINGS_NOT_SAVED: &str = "Couldn't save the settings";
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsPane {
     General,
+    Appearance,
     Terminal,
+    Editor,
     Integrations,
     Gateway,
     Mcp,
@@ -55,7 +60,9 @@ impl SettingsPane {
     const fn title(self) -> &'static str {
         match self {
             Self::General => "General",
+            Self::Appearance => "Appearance",
             Self::Terminal => "Terminal",
+            Self::Editor => "Editor",
             Self::Integrations => "Integrations",
             Self::Gateway => "Gateway",
             Self::Mcp => "MCP",
@@ -65,8 +72,10 @@ impl SettingsPane {
 
     const fn description(self) -> &'static str {
         match self {
-            Self::General => "How the app looks and how you work in it.",
+            Self::General => "App updates and the tools agents get.",
+            Self::Appearance => "Light and dark themes, the window and the interface font.",
             Self::Terminal => "The font, copy and paste, and the colours of terminals.",
+            Self::Editor => "How files look, show their problems and the minimap.",
             Self::Integrations => "The code hosts reviews and merge requests come from.",
             Self::Gateway => {
                 "Chat with the models of a gateway you run, through the app's own agent."
@@ -81,7 +90,9 @@ impl SettingsPane {
     const fn icon(self) -> IconName {
         match self {
             Self::General => IconName::Settings,
+            Self::Appearance => IconName::Sun,
             Self::Terminal => IconName::Terminal,
+            Self::Editor => IconName::File,
             Self::Integrations => IconName::Merge,
             Self::Gateway => IconName::Flow,
             Self::Mcp => IconName::Plug,
@@ -89,6 +100,8 @@ impl SettingsPane {
         }
     }
 }
+
+pub(in crate::environment_shell) use fonts::FontZone;
 
 pub(super) struct SettingsUi {
     pane: SettingsPane,
@@ -98,12 +111,15 @@ pub(super) struct SettingsUi {
     mcp: McpUi,
     tint: material::TintUi,
     languages: languages::LanguagesUi,
+    fonts: crate::font_catalog::FontCatalog,
+    theme_editor: Option<theme_editor::ThemeEditor>,
+    scroll: gpui_kit::ScrollHandle,
 }
 
 impl From<AppearanceMode> for Appearance {
     fn from(mode: AppearanceMode) -> Self {
         match mode {
-            AppearanceMode::Light => Self::Light,
+            AppearanceMode::Light | AppearanceMode::System => Self::Light,
             AppearanceMode::Dark => Self::Dark,
         }
     }
@@ -136,28 +152,9 @@ pub(super) fn segmented_track(pal: &Palette) -> Div {
         .flex()
         .flex_row()
         .gap(px(SPACE_0_5))
-        .p(px(SPACE_0_5))
-        .rounded(px(RADIUS_SM))
+        .p(px(CAPSULE_PAD))
+        .rounded_full()
         .bg(pal.bg_hover)
-}
-
-fn swatch_grid(swatches: Vec<AnyElement>) -> Vec<AnyElement> {
-    let mut swatches = swatches.into_iter().peekable();
-    let mut grid = Vec::new();
-    while swatches.peek().is_some() {
-        let row: Vec<AnyElement> = swatches.by_ref().take(SWATCH_COLUMNS).collect();
-        let missing = SWATCH_COLUMNS - row.len();
-        grid.push(
-            div()
-                .flex()
-                .flex_row()
-                .gap(px(SWATCH_GAP))
-                .children(row)
-                .children((0..missing).map(|_| div().flex_1()))
-                .into_any_element(),
-        );
-    }
-    grid
 }
 
 fn choice_card(
@@ -234,6 +231,9 @@ impl EnvironmentShell {
             mcp,
             tint,
             languages,
+            fonts: crate::font_catalog::font_catalog(cx),
+            theme_editor: None,
+            scroll: gpui_kit::ScrollHandle::new(),
         });
         self.refresh_gitlab_status(cx);
         self.refresh_github_status(cx);
@@ -242,10 +242,17 @@ impl EnvironmentShell {
     }
 
     pub(super) fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.settings_ui = None;
-        self.review.forget_login();
+        self.dismiss_settings(cx);
         window.focus(&self.focus, cx);
+    }
+
+    pub(super) fn dismiss_settings(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.settings_ui.take().is_none() {
+            return false;
+        }
+        self.review.forget_login();
         cx.notify();
+        true
     }
 
     pub(super) fn save_settings(&self, cx: &mut Context<Self>) {
@@ -264,9 +271,19 @@ impl EnvironmentShell {
         .detach();
     }
 
+    pub(super) fn sync_system_appearance(&mut self, cx: &mut Context<Self>) {
+        if self.settings.appearance != AppearanceMode::System {
+            return;
+        }
+        let wanted = mode_appearance(AppearanceMode::System, system_is_dark(cx));
+        if wanted != appearance(cx) {
+            apply_settings_theme(&self.settings, cx);
+        }
+    }
+
     fn set_appearance(&mut self, mode: AppearanceMode, cx: &mut Context<Self>) {
         self.settings.appearance = mode;
-        apply_appearance(mode.into(), cx);
+        apply_settings_theme(&self.settings, cx);
         self.save_settings(cx);
     }
 

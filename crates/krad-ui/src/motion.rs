@@ -40,6 +40,12 @@ impl Spring {
         self.resting
     }
 
+    pub(crate) fn settle(&mut self) {
+        self.value = self.target;
+        self.velocity = 0.0;
+        self.resting = true;
+    }
+
     pub(crate) fn step(&mut self, elapsed: f32) {
         let mut remaining = elapsed.max(0.0);
         while remaining > 0.0 {

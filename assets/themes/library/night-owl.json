@@ -1,0 +1,63 @@
+{
+  "id": "night-owl",
+  "name": "Night Owl",
+  "appearance": "dark",
+  "credit": {
+    "author": "Sarah Drasner",
+    "license": "MIT",
+    "url": "https://github.com/sdras/night-owl-vscode-theme"
+  },
+  "interface": {
+    "background": "#011627",
+    "surface": "#011627",
+    "panel": "#021320",
+    "text": "#d6deeb",
+    "muted_text": "#4b6479",
+    "accent": "#654aa3",
+    "on_accent": "#ccd0d4",
+    "success": "#22da6e",
+    "warning": "#b39554",
+    "error": "#ef5350",
+    "info": "#82aaff"
+  },
+  "terminal": {
+    "background": "#011627",
+    "foreground": "#d6deeb",
+    "cursor": "#80a4c2",
+    "selection": "#093b5e",
+    "ansi": [
+      "#011627",
+      "#ef5350",
+      "#22da6e",
+      "#c5e478",
+      "#82aaff",
+      "#c792ea",
+      "#21c7a8",
+      "#ffffff",
+      "#575656",
+      "#ef5350",
+      "#22da6e",
+      "#ffeb95",
+      "#82aaff",
+      "#c792ea",
+      "#7fdbca",
+      "#ffffff"
+    ]
+  },
+  "syntax": {
+    "comment": "#637777",
+    "keyword": "#c792ea",
+    "string": "#ecc48d",
+    "escape": "#f78c6c",
+    "number": "#f78c6c",
+    "constant": "#82aaff",
+    "attribute": "#c5e478",
+    "type": "#c5e478",
+    "operator": "#7fdbca",
+    "function": "#82aaff",
+    "property": "#baebe2",
+    "tag": "#caece6",
+    "variable": "#c5e478",
+    "punctuation": "#d6deeb"
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "id": "tokyo-night-light",
+  "name": "Tokyo Night Light",
+  "appearance": "light",
+  "credit": {
+    "author": "Enkia",
+    "license": "MIT",
+    "url": "https://github.com/tokyo-night/tokyo-night-vscode-theme"
+  },
+  "interface": {
+    "background": "#d6d8df",
+    "surface": "#e6e7ed",
+    "panel": "#d6d8df",
+    "text": "#363c4d",
+    "muted_text": "#707280",
+    "accent": "#426cb3",
+    "on_accent": "#ffffff",
+    "success": "#166775",
+    "warning": "#8f5e15",
+    "error": "#bd4040",
+    "info": "#0da0ba"
+  },
+  "terminal": {
+    "background": "#d6d8df",
+    "foreground": "#343b58",
+    "cursor": "#707280",
+    "selection": "#d7d9e1",
+    "ansi": [
+      "#343b58",
+      "#8c4351",
+      "#33635c",
+      "#8f5e15",
+      "#2959aa",
+      "#7b43ba",
+      "#006c86",
+      "#707280",
+      "#343b58",
+      "#8c4351",
+      "#33635c",
+      "#8f5e15",
+      "#2959aa",
+      "#7b43ba",
+      "#006c86",
+      "#707280"
+    ]
+  },
+  "syntax": {
+    "comment": "#888b94",
+    "keyword": "#65359d",
+    "string": "#385f0d",
+    "escape": "#363c4d",
+    "number": "#965027",
+    "constant": "#965027",
+    "attribute": "#65359d",
+    "type": "#343b58",
+    "operator": "#006c86",
+    "function": "#2959aa",
+    "property": "#0f4b6e",
+    "tag": "#8c4351",
+    "variable": "#343b58",
+    "punctuation": "#006c86"
+  }
+}

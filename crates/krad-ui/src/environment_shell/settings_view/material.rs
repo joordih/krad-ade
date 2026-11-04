@@ -61,11 +61,12 @@ impl EnvironmentShell {
         }
     }
 
-    pub fn follow_system_material(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.material_watch = Some(cx.observe_window_activation(window, |this, window, cx| {
+    pub fn follow_window_activation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.activation_watch = Some(cx.observe_window_activation(window, |this, window, cx| {
             if !window.is_window_active() {
                 return;
             }
+            this.reload_workspace(cx);
             let material = this.settings.window_material;
             if usable_material(material) == window_material(cx) {
                 return;

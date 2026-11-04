@@ -119,7 +119,8 @@ impl EnvironmentShell {
             this.update(cx, |shell, cx| {
                 match listing {
                     Ok(entries) => {
-                        shell.file_tree.children.insert(dir, entries);
+                        shell.file_tree.children.insert(dir.clone(), entries);
+                        shell.load_package_chain(&dir, cx);
                     }
                     Err(error) => shell.toast_failure(&error),
                 }
@@ -128,6 +129,25 @@ impl EnvironmentShell {
             .unwrap_or_default();
         })
         .detach();
+    }
+
+    fn load_package_chain(&mut self, dir: &Path, cx: &mut Context<Self>) {
+        let Some(only) = self
+            .file_tree
+            .only_folder_in(dir)
+            .map(|only| only.path.clone())
+        else {
+            return;
+        };
+        if !self.language_catalog().in_packages(&only) {
+            return;
+        }
+        if self.language_catalog().in_packages(dir) && self.file_tree.expanded.remove(dir) {
+            self.file_tree.expanded.insert(only.clone());
+        }
+        if !self.file_tree.children.contains_key(&only) {
+            self.load_dir(only, cx);
+        }
     }
 
     pub(super) fn expand_dir(&mut self, dir: PathBuf, cx: &mut Context<Self>) {

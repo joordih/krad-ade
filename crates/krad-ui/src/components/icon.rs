@@ -95,6 +95,7 @@ icons! {
     Crown => "crown",
     Key => "key-01",
     Copy => "copy-01",
+    Undo => "arrow-turn-backward",
     Pencil => "pencil-edit-01",
     Lock => "square-lock-02",
     BrandClaude => "brand-claude",

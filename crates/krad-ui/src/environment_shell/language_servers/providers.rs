@@ -3,12 +3,14 @@ use gpui_kit::component::input::{
 };
 use gpui_kit::http_client::Result;
 use gpui_kit::{App, AppContext as _, Task, WeakEntity, Window};
-use krad_lsp::lsp_types::request::{Completion, GotoDefinition, HoverRequest};
+use krad_lsp::lsp_types::request::{
+    Completion, GotoDefinition, HoverRequest, SignatureHelpRequest,
+};
 use krad_lsp::lsp_types::{
     CompletionContext, CompletionParams, CompletionResponse, GotoDefinitionParams,
     GotoDefinitionResponse, Hover, HoverParams, Location, LocationLink, PartialResultParams,
-    ServerCapabilities, ShowDocumentParams, TextDocumentIdentifier, TextDocumentPositionParams,
-    Uri, WorkDoneProgressParams,
+    ServerCapabilities, ShowDocumentParams, SignatureHelp, SignatureHelpParams,
+    TextDocumentIdentifier, TextDocumentPositionParams, Uri, WorkDoneProgressParams,
 };
 use krad_lsp::{file_uri, uri_path, LspClient};
 use std::rc::Rc;
@@ -52,6 +54,7 @@ impl ServerDocument {
     pub(super) fn new(
         client: LspClient,
         document: &Document,
+        uri: Option<Uri>,
         capabilities: &ServerCapabilities,
         shell: WeakEntity<EnvironmentShell>,
     ) -> Option<Self> {
@@ -62,7 +65,10 @@ impl ServerDocument {
             .unwrap_or_default();
         Some(Self {
             client,
-            uri: file_uri(&document.path).ok()?,
+            uri: match uri {
+                Some(uri) => uri,
+                None => file_uri(&document.path).ok()?,
+            },
             document: document.clone(),
             triggers: triggers.into(),
             acts: capabilities.code_action_provider.is_some(),
@@ -85,18 +91,23 @@ impl ServerDocument {
         lsp.code_action_providers = if self.acts { vec![shared] } else { Vec::new() };
         let shell = self.shell.clone();
         let own = self.uri.clone();
+        let document = self.document.clone();
         lsp.show_document = Some(Rc::new(
             move |params: &ShowDocumentParams, _: &mut Window, cx: &mut App| {
                 if params.uri == own {
                     return false;
                 }
-                let Some(path) = uri_path(&params.uri) else {
-                    return false;
-                };
                 let at = params.selection.map(|range| range.start);
-                shell
-                    .update(cx, |shell, cx| shell.open_file_at(&path, at, cx))
-                    .is_ok()
+                match uri_path(&params.uri) {
+                    Some(path) => shell
+                        .update(cx, |shell, cx| shell.open_file_at(&path, at, cx))
+                        .is_ok(),
+                    None => shell
+                        .update(cx, |shell, cx| {
+                            shell.open_library_document(&document, params.uri.clone(), at, cx);
+                        })
+                        .is_ok(),
+                }
             },
         ));
     }
@@ -118,10 +129,17 @@ impl CompletionProvider for ServerDocument {
             context: Some(trigger),
         };
         let answer = self.client.request::<Completion>(&params);
-        cx.background_spawn(async move {
-            Ok(answer
-                .await?
-                .unwrap_or_else(|| CompletionResponse::Array(Vec::new())))
+        let (shell, document) = (self.shell.clone(), self.document.clone());
+        cx.spawn(async move |cx| {
+            let items = match answer.await? {
+                Some(CompletionResponse::Array(items)) => items,
+                Some(CompletionResponse::List(list)) => list.items,
+                None => Vec::new(),
+            };
+            shell.update(cx, |shell, cx| {
+                shell.show_completions(&document, offset, items, cx);
+            })?;
+            Ok(CompletionResponse::Array(Vec::new()))
         })
     }
 
@@ -151,7 +169,14 @@ impl HoverProvider for ServerDocument {
             work_done_progress_params: WorkDoneProgressParams::default(),
         };
         let answer = self.client.request::<HoverRequest>(&params);
-        cx.background_spawn(async move { Ok(answer.await?) })
+        let (shell, document) = (self.shell.clone(), self.document.clone());
+        cx.spawn(async move |cx| {
+            let hover = answer.await.ok().flatten();
+            shell.update(cx, |shell, cx| {
+                shell.show_hover(&document, offset, hover, cx);
+            })?;
+            Ok(None)
+        })
     }
 }
 
@@ -163,6 +188,9 @@ impl DefinitionProvider for ServerDocument {
         _: &mut Window,
         cx: &mut App,
     ) -> Task<Result<Vec<LocationLink>>> {
+        self.shell
+            .update(cx, |shell, cx| shell.record_navigation(cx))
+            .unwrap_or_default();
         let params = GotoDefinitionParams {
             text_document_position_params: self.position(text, offset),
             work_done_progress_params: WorkDoneProgressParams::default(),
@@ -170,6 +198,62 @@ impl DefinitionProvider for ServerDocument {
         };
         let answer = self.client.request::<GotoDefinition>(&params);
         cx.background_spawn(async move { Ok(links(answer.await?)) })
+    }
+}
+
+impl EnvironmentShell {
+    pub(in crate::environment_shell) fn signature_triggers(
+        &self,
+        document: &Document,
+    ) -> Vec<char> {
+        let Some(running) = self
+            .language_servers
+            .documents
+            .get(document)
+            .and_then(|key| self.language_servers.running(key))
+        else {
+            return Vec::new();
+        };
+        running
+            .capabilities
+            .signature_help_provider
+            .as_ref()
+            .map_or_else(Vec::new, |provider| {
+                provider
+                    .trigger_characters
+                    .iter()
+                    .chain(provider.retrigger_characters.iter())
+                    .flatten()
+                    .filter_map(|trigger| trigger.chars().next())
+                    .collect()
+            })
+    }
+
+    pub(in crate::environment_shell) fn request_signature_help(
+        &self,
+        document: &Document,
+        position: krad_lsp::lsp_types::Position,
+        cx: &mut gpui_kit::Context<Self>,
+    ) -> Option<Task<Option<SignatureHelp>>> {
+        let running = self
+            .language_servers
+            .documents
+            .get(document)
+            .and_then(|key| self.language_servers.running(key))?;
+        running.capabilities.signature_help_provider.as_ref()?;
+        let params = SignatureHelpParams {
+            context: None,
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier::new(file_uri(&document.path).ok()?),
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+        let answer = running
+            .server
+            .client
+            .request::<SignatureHelpRequest>(&params);
+        Some(cx.background_spawn(async move { answer.await.ok().flatten() }))
     }
 }
 

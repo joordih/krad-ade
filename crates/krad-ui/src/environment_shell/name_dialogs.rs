@@ -1,9 +1,9 @@
-mod look_sheet;
+mod look_popover;
 mod sheets;
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{AppContext as _, Context, Entity, Subscription, Window};
-use krad_domain::{EnvironmentName, GroupId, SessionId};
+use krad_domain::{EnvironmentName, GroupId};
 use krad_lsp::lsp_types::Position;
 use std::path::PathBuf;
 
@@ -26,6 +26,11 @@ pub(super) enum NameTarget {
         path: PathBuf,
         at: Position,
         word: String,
+    },
+    ServerInput {
+        field: String,
+        value: String,
+        title: String,
     },
 }
 
@@ -63,7 +68,7 @@ pub(super) enum NameDialogs {
     Closed,
     Name(NameDialog),
     Delete(DeleteTarget),
-    Look(SessionId),
+    Look(look_popover::LookPopover),
 }
 
 impl EnvironmentShell {
@@ -107,6 +112,7 @@ impl EnvironmentShell {
                 .and_then(|live| live.data.group(*id))
                 .map(|group| group.name.clone()),
             NameTarget::Symbol { word, .. } => Some(word.clone()),
+            NameTarget::ServerInput { value, .. } => Some(value.clone()),
         }
     }
 
@@ -115,6 +121,11 @@ impl EnvironmentShell {
             return;
         };
         let typed = dialog.field.read(cx).value().trim().to_owned();
+        if let NameTarget::ServerInput { .. } = dialog.target {
+            self.input_answered(Some(typed), cx);
+            cx.notify();
+            return;
+        }
         if !typed.is_empty() {
             match dialog.target {
                 NameTarget::Environment(name) => {
@@ -136,6 +147,7 @@ impl EnvironmentShell {
                     self.rename_symbol(&path, at, typed, cx);
                     return;
                 }
+                NameTarget::ServerInput { .. } => return,
             }
             self.store();
         }
@@ -145,7 +157,14 @@ impl EnvironmentShell {
     }
 
     fn close_name_dialog(&mut self, cx: &mut Context<Self>) {
-        self.name_dialogs = NameDialogs::Closed;
+        let closed = std::mem::take(&mut self.name_dialogs);
+        if let NameDialogs::Name(NameDialog {
+            target: NameTarget::ServerInput { .. },
+            ..
+        }) = closed
+        {
+            self.input_answered(None, cx);
+        }
         cx.notify();
     }
 
@@ -192,11 +211,6 @@ impl EnvironmentShell {
                 self.remove_selected_group(cx);
             }
         }
-        cx.notify();
-    }
-
-    pub(super) fn customize_session(&mut self, session: SessionId, cx: &mut Context<Self>) {
-        self.name_dialogs = NameDialogs::Look(session);
         cx.notify();
     }
 }

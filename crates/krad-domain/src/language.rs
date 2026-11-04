@@ -1,3 +1,7 @@
+mod template;
+
+pub use template::{LanguageTemplate, RenderedTemplate};
+
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::fmt;
@@ -47,9 +51,33 @@ pub struct LanguageDef {
     pub server: Option<String>,
     #[serde(default, alias = "toolchains")]
     pub server_runtimes: Vec<ServerRuntimeId>,
+    #[serde(default)]
+    pub source_folder: Option<String>,
+    #[serde(default)]
+    pub templates: Vec<LanguageTemplate>,
 }
 
 impl LanguageDef {
+    #[must_use]
+    pub fn package_in(&self, folder: &Path) -> Option<String> {
+        let source = self.source_folder.as_deref()?;
+        let root = folder.ancestors().find(|ancestor| {
+            ancestor.file_name().is_some_and(|name| name == source)
+                && ancestor
+                    .parent()
+                    .and_then(Path::parent)
+                    .and_then(Path::file_name)
+                    .is_some_and(|name| name == SOURCE_SETS_PARENT)
+        })?;
+        let parts: Vec<String> = folder
+            .strip_prefix(root)
+            .ok()?
+            .components()
+            .map(|part| part.as_os_str().to_string_lossy().into_owned())
+            .collect();
+        Some(parts.join("."))
+    }
+
     #[must_use]
     pub fn lsp_id(&self) -> &str {
         self.lsp_id.as_deref().unwrap_or_else(|| self.id.as_str())
@@ -77,7 +105,28 @@ pub struct LanguageCatalog {
     languages: Vec<LanguageDef>,
 }
 
+const SOURCE_SETS_PARENT: &str = "src";
+
 impl LanguageCatalog {
+    #[must_use]
+    pub fn in_packages(&self, folder: &Path) -> bool {
+        folder.ancestors().skip(1).any(|ancestor| {
+            let named = |path: Option<&Path>| {
+                path.and_then(Path::file_name)
+                    .map(|name| name.to_string_lossy().into_owned())
+            };
+            let Some(name) = named(Some(ancestor)) else {
+                return false;
+            };
+            let sets = ancestor.parent().and_then(Path::parent);
+            named(sets).as_deref() == Some(SOURCE_SETS_PARENT)
+                && self
+                    .languages
+                    .iter()
+                    .any(|language| language.source_folder.as_deref() == Some(name.as_str()))
+        })
+    }
+
     #[must_use]
     pub fn new(languages: impl IntoIterator<Item = LanguageDef>) -> Self {
         let mut catalog = Self::default();
@@ -142,7 +191,40 @@ mod tests {
             lsp_id: None,
             server: None,
             server_runtimes: Vec::new(),
+            source_folder: None,
+            templates: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_folder_inside_a_source_folder_names_its_package() {
+        let java = LanguageDef {
+            source_folder: Some("java".to_owned()),
+            ..language("java", &["java"])
+        };
+        assert_eq!(
+            java.package_in(Path::new("/p/src/main/java/dev/neuralabs")),
+            Some("dev.neuralabs".to_owned())
+        );
+        assert_eq!(
+            java.package_in(Path::new("/p/src/main/java")),
+            Some(String::new())
+        );
+        assert_eq!(java.package_in(Path::new("/p/docs/java/dev")), None);
+    }
+
+    #[test]
+    fn folders_below_a_languages_source_folder_hold_packages() {
+        let java = LanguageDef {
+            source_folder: Some("java".to_owned()),
+            ..language("java", &["java"])
+        };
+        let catalog = LanguageCatalog::new([java]);
+        assert!(catalog.in_packages(Path::new("/p/loader/src/main/java/dev")));
+        assert!(catalog.in_packages(Path::new("/p/src/test/java/dev/neuralabs")));
+        assert!(!catalog.in_packages(Path::new("/p/loader/src/main/java")));
+        assert!(!catalog.in_packages(Path::new("/p/docs/java/dev")));
+        assert!(!catalog.in_packages(Path::new("/p/src/main/kotlin/dev")));
     }
 
     #[test]

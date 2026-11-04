@@ -329,15 +329,13 @@ impl EnvironmentShell {
         entries
     }
 
-    fn vault_row_label(&self, entry: &VaultEntry) -> String {
+    fn vault_row_label(entry: &VaultEntry) -> String {
         let name = name_of(&entry.path);
         let shown = match entry.kind {
             VaultEntryKind::Note => name.strip_suffix(NOTE_SUFFIX).unwrap_or(name),
             _ => name,
         };
-        self.vault_file(&entry.path)
-            .and_then(|file| self.file_rename_label(&file))
-            .unwrap_or_else(|| shown.to_owned())
+        shown.to_owned()
     }
 
     fn vault_row(&self, row: &TreeRow<'_>, cx: &mut Context<Self>) -> AnyElement {
@@ -351,7 +349,10 @@ impl EnvironmentShell {
             .and_then(|tabs| tabs.active_tab())
             .is_some_and(|tab| tab.path == entry.path);
         let highlighted = open || self.notes.selected.as_deref() == Some(entry.path.as_str());
-        let label = self.vault_row_label(entry);
+        let label = Self::vault_row_label(entry);
+        let renaming = self
+            .vault_file(&entry.path)
+            .is_some_and(|file| self.is_renaming(&file));
         let glyph = entry_glyph(entry.kind);
         let chevron = is_folder.then(|| {
             icon(
@@ -432,7 +433,10 @@ impl EnvironmentShell {
                     .children(chevron),
             )
             .child(icon(glyph, ICON_SM, pal.text_muted))
-            .child(div().flex_1().min_w_0().truncate().child(label))
+            .children(renaming.then(|| self.entry_input_field(cx)).flatten())
+            .when(!renaming, |row| {
+                row.child(div().flex_1().min_w_0().truncate().child(label))
+            })
             .into_any_element()
     }
 }

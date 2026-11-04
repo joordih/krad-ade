@@ -1,6 +1,7 @@
 use gpui_kit::component::input::{CodeActionProvider, EditorState, Rope, RopeExt as _};
 use gpui_kit::http_client::Result;
-use gpui_kit::{App, AppContext as _, Context, Entity, SharedString, Task, Window};
+use gpui_kit::{App, Context, Entity, SharedString, Task, Window};
+use krad_domain::Host;
 use krad_lsp::lsp_types::request::{
     CodeActionRequest, CodeActionResolveRequest, ExecuteCommand, Formatting, Rename,
 };
@@ -10,20 +11,25 @@ use krad_lsp::lsp_types::{
     PartialResultParams, Position, Range, RenameParams, TextDocumentIdentifier,
     TextDocumentPositionParams, WorkDoneProgressParams, WorkspaceEdit,
 };
-use krad_lsp::{file_uri, LspClient};
+use krad_lsp::{file_uri, uri_path, LspClient};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use super::super::name_dialogs::NameTarget;
 use super::super::EnvironmentShell;
 use super::providers::ServerDocument;
+use super::Document;
 use crate::actions::{Reformat, RenameSymbol};
 
 const PROVIDER_ID: &str = "krad-language-server";
+const START_RENAME_COMMAND: &str = "krad.startRename";
+const LINE_KEY: &str = "line";
+const CHARACTER_KEY: &str = "character";
 const TAB_SIZE: u32 = 4;
 const NOTHING_TO_RENAME_TEXT: &str = "Nothing to rename here";
 const RENAME_FAILED_TEXT: &str = "Rename failed";
 const FORMAT_FAILED_TEXT: &str = "Formatting failed";
+const CODE_ACTION_FAILED_TEXT: &str = "The code action failed";
 
 fn as_action(item: CodeActionOrCommand) -> CodeAction {
     match item {
@@ -39,6 +45,16 @@ fn as_action(item: CodeActionOrCommand) -> CodeAction {
 fn overlaps(range: &Range, with: &Range) -> bool {
     let key = |at: &Position| (at.line, at.character);
     key(&range.start) <= key(&with.end) && key(&with.start) <= key(&range.end)
+}
+
+fn rename_target(command: &Command) -> Option<(PathBuf, Position)> {
+    let arguments = command.arguments.as_deref()?;
+    let uri = arguments.first()?.as_str()?.parse().ok()?;
+    let position = arguments.get(1)?;
+    let line = u32::try_from(position.get(LINE_KEY)?.as_u64()?).ok()?;
+    let character = u32::try_from(position.get(CHARACTER_KEY)?.as_u64()?).ok()?;
+    let at = Position::new(line, character);
+    Some((uri_path(&uri)?, at))
 }
 
 async fn run_command(client: &LspClient, command: Command) -> Result<()> {
@@ -60,9 +76,10 @@ impl CodeActionProvider for ServerDocument {
         &self,
         state: Entity<EditorState>,
         range: std::ops::Range<usize>,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut App,
     ) -> Task<Result<Vec<CodeAction>>> {
+        let at = range.start;
         let text: &Rope = state.read(cx).text();
         let range = Range::new(
             text.offset_to_position(range.start),
@@ -93,13 +110,18 @@ impl CodeActionProvider for ServerDocument {
             partial_result_params: PartialResultParams::default(),
         };
         let answer = self.client.request::<CodeActionRequest>(&params);
-        cx.background_spawn(async move {
-            Ok(answer
+        let (shell, document) = (self.shell.clone(), self.document.clone());
+        window.spawn(cx, async move |cx| {
+            let actions: Vec<CodeAction> = answer
                 .await?
                 .unwrap_or_default()
                 .into_iter()
                 .map(as_action)
-                .collect())
+                .collect();
+            shell.update_in(cx, |shell, window, cx| {
+                shell.show_code_actions(&document, at, actions, window, cx);
+            })?;
+            Ok(Vec::new())
         })
     }
 
@@ -121,10 +143,20 @@ impl CodeActionProvider for ServerDocument {
                 action
             };
             if let Some(edit) = action.edit {
-                shell.update(cx, |shell, cx| shell.queue_workspace_edit(host, edit, cx))?;
+                let edit_host = host.clone();
+                shell.update(cx, |shell, cx| {
+                    shell.queue_workspace_edit(edit_host, edit, cx);
+                })?;
             }
             if let Some(command) = action.command {
-                run_command(&client, command).await?;
+                if command.command == START_RENAME_COMMAND {
+                    if let Some((path, at)) = rename_target(&command) {
+                        shell
+                            .update(cx, |shell, cx| shell.queue_start_rename(host, path, at, cx))?;
+                    }
+                } else {
+                    run_command(&client, command).await?;
+                }
             }
             Ok(())
         })
@@ -132,6 +164,43 @@ impl CodeActionProvider for ServerDocument {
 }
 
 impl EnvironmentShell {
+    pub(in crate::environment_shell) fn run_code_action(
+        &self,
+        document: &Document,
+        state: Entity<EditorState>,
+        action: CodeAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(running) = self
+            .language_servers
+            .documents
+            .get(document)
+            .and_then(|key| self.language_servers.running(key))
+        else {
+            return;
+        };
+        let Some(server) = ServerDocument::new(
+            running.server.client.clone(),
+            document,
+            None,
+            &running.capabilities,
+            cx.entity().downgrade(),
+        ) else {
+            return;
+        };
+        let performing = server.perform_code_action(state, action, true, window, cx);
+        cx.spawn(async move |this, cx| {
+            if let Err(error) = performing.await {
+                this.update(cx, |shell, _| {
+                    shell.push_toast(format!("{CODE_ACTION_FAILED_TEXT}: {error}"));
+                })
+                .unwrap_or_default();
+            }
+        })
+        .detach();
+    }
+
     fn shown_document(&self, cx: &App) -> Option<(PathBuf, Entity<EditorState>, Position)> {
         let live = self.envs.get(&self.active)?;
         let (id, path) = live.shown_file()?;
@@ -163,6 +232,46 @@ impl EnvironmentShell {
             return;
         }
         self.ask_name(NameTarget::Symbol { path, at, word }, window, cx);
+    }
+
+    fn queue_start_rename(
+        &mut self,
+        host: Host,
+        path: PathBuf,
+        at: Position,
+        cx: &mut Context<Self>,
+    ) {
+        self.language_servers.pending_rename = Some((host, path, at));
+        cx.notify();
+    }
+
+    pub(super) fn start_rename_at(
+        &mut self,
+        document: &super::Document,
+        at: Position,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(state) = self.open_state(document) else {
+            return;
+        };
+        let word = {
+            let editor = state.read(cx);
+            let text = editor.text();
+            text.word_at(text.position_to_offset(&at))
+        };
+        if word.is_empty() {
+            return;
+        }
+        self.ask_name(
+            NameTarget::Symbol {
+                path: document.path.clone(),
+                at,
+                word,
+            },
+            window,
+            cx,
+        );
     }
 
     pub(in crate::environment_shell) fn rename_symbol(

@@ -1,24 +1,28 @@
-use krad_host::HostLink;
 mod folds;
+mod load;
+mod revert;
 
 use gpui_kit::component::ActiveTheme;
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, uniform_list, AnyElement, AppContext as _, Context, FontWeight,
-    InteractiveElement, IntoElement, ListHorizontalSizingBehavior, ParentElement,
-    StatefulInteractiveElement, Styled, Window,
+    div, px, rgb, uniform_list, AnyElement, Context, FontWeight, InteractiveElement, IntoElement,
+    ListHorizontalSizingBehavior, ParentElement, StatefulInteractiveElement, Styled, Window,
 };
-use krad_domain::{EnvironmentName, FileOpening, FileView, TerminalId};
-use krad_repo::{working_diff, FileChange};
+use krad_domain::{FileOpening, FileView, TerminalId};
 use std::collections::HashSet;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use folds::{diff_rows, widest_row, DiffRow};
+pub(super) use revert::reverted_block;
 
-use super::review_view::{diff_row, numbered_lines, DiffLine, LineKind};
+use super::discard::Discard;
+use super::review_view::{diff_row, DiffLine, LineKind};
 use super::{EnvironmentShell, LiveEnv};
-use crate::components::{icon, Button, EmptyState, IconName};
-use crate::theme::{palette, ICON_XS, LINE_XS, SPACE_1_5, SPACE_2, SPACE_3, TEXT_XS, TOOLBAR_H};
+use crate::components::{icon, tooltip_view, Button, EmptyState, IconName};
+use crate::theme::{
+    palette, ICON_XS, LINE_XS, RADIUS_XS, SPACE_1_5, SPACE_2, SPACE_3, TEXT_XS, TOOLBAR_H,
+};
 
 const DIFF_LIST_ID: &str = "changes-tab-diff";
 const DIFF_LINE_H: f32 = 20.0;
@@ -27,12 +31,16 @@ const REMOVED_SIGN: &str = "−";
 const LOADING_TEXT: &str = "Loading…";
 const NO_CHANGES_TITLE: &str = "No changes";
 const NO_CHANGES_TEXT: &str = "This file matches its last commit.";
+const COMMIT_SEPARATOR: &str = " · ";
 const DIFF_FAILED_TITLE: &str = "Can't show the changes";
 const FOLD_ROW_PREFIX: &str = "changes-tab-fold";
 const BTN_UNFOLD_ALL: &str = "changes-tab-unfold-all";
 const TOOLTIP_UNFOLD_ALL: &str = "Show the whole file";
 const TOOLTIP_FOLD: &str = "Fold the unchanged lines";
 const FOLD_INDENT: f32 = 96.0;
+const REVERT_INSET: f32 = 2.0;
+const BTN_REVERT_PREFIX: &str = "changes-tab-revert";
+const TOOLTIP_REVERT: &str = "Revert this block";
 
 const FOLD_LINE: &str = "unchanged line";
 const FOLD_LINES: &str = "unchanged lines";
@@ -44,6 +52,7 @@ fn fold_label(hidden: usize) -> String {
 
 struct ReadDiff {
     lines: Vec<DiffLine>,
+    blocks: Vec<usize>,
     rows: Vec<DiffRow>,
     widest: usize,
 }
@@ -57,15 +66,17 @@ enum DiffLoad {
 
 pub(super) struct FileDiff {
     path: PathBuf,
+    view: FileView,
     load: DiffLoad,
     unfolded: HashSet<usize>,
     unfold_all: bool,
 }
 
 impl FileDiff {
-    fn new(path: PathBuf) -> Self {
+    fn new(path: PathBuf, view: FileView) -> Self {
         Self {
             path,
+            view,
             load: DiffLoad::Pending,
             unfolded: HashSet::new(),
             unfold_all: false,
@@ -81,13 +92,25 @@ impl FileDiff {
 }
 
 impl LiveEnv {
-    fn shown_changes(&self) -> Option<(TerminalId, PathBuf)> {
+    pub(super) fn diff_path(&self, tab: TerminalId) -> Option<&Path> {
+        self.diffs.get(&tab).map(|diff| diff.path.as_path())
+    }
+
+    pub(super) fn diff_lines(&self, tab: TerminalId) -> Option<(PathBuf, Vec<DiffLine>)> {
+        let diff = self.diffs.get(&tab)?;
+        match &diff.load {
+            DiffLoad::Ready(read) => Some((diff.path.clone(), read.lines.clone())),
+            _ => None,
+        }
+    }
+
+    fn shown_diff(&self) -> Option<(TerminalId, PathBuf, FileView)> {
         let id = self.shown_tab()?;
         let file = self
             .data
             .open_file_of(id)
-            .filter(|file| file.view == FileView::Changes)?;
-        Some((id, file.path.clone()))
+            .filter(|file| file.view != FileView::Edit)?;
+        Some((id, file.path.clone(), file.view.clone()))
     }
 }
 
@@ -117,102 +140,9 @@ impl EnvironmentShell {
     pub(super) fn shown_changes_path(&self) -> Option<PathBuf> {
         self.envs
             .get(&self.active)
-            .and_then(LiveEnv::shown_changes)
-            .map(|(_, path)| path)
-    }
-
-    pub(super) fn sync_changes_tabs(&mut self, cx: &mut Context<Self>) {
-        let env = self.active.clone();
-        let Some(live) = self.envs.get_mut(&env) else {
-            return;
-        };
-        let open: Vec<TerminalId> = live
-            .data
-            .nodes
-            .iter()
-            .filter(|node| node.file.is_some())
-            .map(|node| node.id)
-            .collect();
-        live.diffs.retain(|id, _| open.contains(id));
-        let Some((id, path)) = live.shown_changes() else {
-            return;
-        };
-        let diff = live
-            .diffs
-            .entry(id)
-            .or_insert_with(|| FileDiff::new(path.clone()));
-        if diff.path != path {
-            *diff = FileDiff::new(path.clone());
-        }
-        if !matches!(diff.load, DiffLoad::Pending) {
-            return;
-        }
-        diff.load = DiffLoad::Reading;
-        let change = self.change_at(&path);
-        let link = self.env_link(&env);
-        Self::read_diff(link, env, id, change, cx);
-    }
-
-    pub(super) fn forget_diffs(&mut self) {
-        for live in self.envs.values_mut() {
-            for diff in live.diffs.values_mut() {
-                diff.load = DiffLoad::Pending;
-            }
-        }
-    }
-
-    fn change_at(&self, path: &Path) -> Option<(PathBuf, FileChange)> {
-        let host = &self.envs.get(&self.active)?.data.host;
-        self.git
-            .iter()
-            .filter(|((owner, _), _)| owner == host)
-            .find_map(|(_, git)| {
-                git.status
-                    .changes
-                    .iter()
-                    .find(|change| git.repo_root.join(&change.path) == path)
-                    .map(|change| (git.repo_root.clone(), change.clone()))
-            })
-    }
-
-    fn read_diff(
-        link: HostLink,
-        env: EnvironmentName,
-        id: TerminalId,
-        change: Option<(PathBuf, FileChange)>,
-        cx: &mut Context<Self>,
-    ) {
-        let reading = cx.background_spawn(async move {
-            change.map_or_else(
-                || Ok(Vec::new()),
-                |(repo, change)| {
-                    working_diff(&link, &repo, &change).map(|diff| numbered_lines(&diff))
-                },
-            )
-        });
-        cx.spawn(async move |this, cx| {
-            let read = reading.await;
-            this.update(cx, |shell, cx| {
-                if let Some(diff) = shell
-                    .envs
-                    .get_mut(&env)
-                    .and_then(|live| live.diffs.get_mut(&id))
-                {
-                    diff.load = match read {
-                        Ok(lines) => DiffLoad::Ready(ReadDiff {
-                            lines,
-                            rows: Vec::new(),
-                            widest: 0,
-                        }),
-                        Err(error) => DiffLoad::Failed(error.to_string()),
-                    };
-                    diff.refold();
-                }
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+            .and_then(LiveEnv::shown_diff)
+            .filter(|(_, _, view)| *view == FileView::Changes)
+            .map(|(_, path, _)| path)
     }
 
     fn toggle_fold(&mut self, id: TerminalId, first: Option<usize>, cx: &mut Context<Self>) {
@@ -261,7 +191,11 @@ impl EnvironmentShell {
                 .into_any_element();
         }
         let mono = cx.theme().mono_font_family.clone();
-        let shown_path = self.relative_to_root(&diff.path).display().to_string();
+        let relative = self.relative_to_root(&diff.path).display().to_string();
+        let shown_path = match &diff.view {
+            FileView::Commit(sha) => format!("{}{COMMIT_SEPARATOR}{relative}", sha.short()),
+            FileView::Edit | FileView::Changes => relative,
+        };
         let list = Self::diff_list(id, read, cx);
         let unfold_all = diff.unfold_all;
         div()
@@ -378,9 +312,14 @@ impl EnvironmentShell {
                             DiffRow::Line(index) => read.lines.get(*index).map_or_else(
                                 || div().into_any_element(),
                                 |line| {
+                                    let starts_block = read.blocks.contains(index);
                                     div()
+                                        .relative()
                                         .h(px(DIFF_LINE_H))
                                         .child(diff_row(line, pal))
+                                        .when(starts_block, |row| {
+                                            row.child(Self::revert_button(id, *index, cx))
+                                        })
                                         .into_any_element()
                                 },
                             ),
@@ -397,6 +336,29 @@ impl EnvironmentShell {
         .flex_1()
         .min_h_0()
         .into_any_element()
+    }
+
+    fn revert_button(id: TerminalId, start: usize, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
+        div()
+            .id((BTN_REVERT_PREFIX, start))
+            .absolute()
+            .left(px(REVERT_INSET))
+            .top(px(REVERT_INSET))
+            .size(px(DIFF_LINE_H - 2.0 * REVERT_INSET))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(RADIUS_XS))
+            .bg(rgb(pal.bg_panel))
+            .cursor_pointer()
+            .hover(|style| style.bg(pal.bg_selected))
+            .tooltip(|_, cx| tooltip_view(TOOLTIP_REVERT.into(), cx))
+            .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                this.ask_discard(Discard::Block { tab: id, start }, window, cx);
+            }))
+            .child(icon(IconName::Undo, ICON_XS, pal.text_muted))
+            .into_any_element()
     }
 
     fn fold_row(id: TerminalId, first: usize, hidden: usize, cx: &mut Context<Self>) -> AnyElement {

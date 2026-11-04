@@ -1,3 +1,4 @@
+mod native;
 mod search;
 mod view;
 
@@ -14,6 +15,7 @@ use super::{EnvironmentShell, LiveEnv};
 use crate::components::IconName;
 
 const CREATE_WORKTREE_LABEL: &str = "Create worktree";
+const CREATE_TAB_LABEL: &str = "New terminal";
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum MenuAction {
@@ -23,7 +25,6 @@ pub(super) enum MenuAction {
     RemoveGroup(GroupId),
     RenameEnvironment(EnvironmentName),
     RenameTerminal(TerminalId),
-    CloseTerminal(TerminalId),
     SwitchSurface(TerminalId),
     ShowSessionTab(TerminalId),
     ShowEditorChat(TerminalId),
@@ -34,17 +35,22 @@ pub(super) enum MenuAction {
     ContinueInTerminal(TerminalId),
     Note(super::notes_view::NoteAction),
     File(FileAction),
+    Changes(super::side_panel::ChangesAction),
     SwitchEnvironment(EnvironmentName),
     NewEnvironment,
     NewSshEnvironment,
     DeleteEnvironment(EnvironmentName),
     RenameGroup(GroupId),
     DeleteGroup(GroupId),
-    CustomizeSession(SessionId),
-    CloseSession(SessionId),
     SelectGroup(GroupId),
     OpenWorktree(std::path::PathBuf, Option<WorktreeOrigin>),
     CreateWorktree(GroupId, String),
+    CreateTab(krad_domain::PaneId, String),
+    NewTabIn(krad_domain::PaneId),
+    NewEditorChat,
+    SetFont(super::settings_view::FontZone, Option<String>),
+    RebaseTheme(krad_domain::ThemeId),
+    ChooseTheme(krad_domain::ThemeAppearance, krad_domain::ThemeId),
     NewGroup,
     OpenSettings,
     ChooseToolchain(Box<ToolchainChoice>),
@@ -52,25 +58,45 @@ pub(super) enum MenuAction {
     EnterToolchainPath(Box<ToolchainScope>),
     RescanToolchains(Box<ToolchainScope>),
     SetGroupActivation(GroupId, GroupActivation),
+    AnswerChoice(Box<super::language_servers::ChoiceAnswer>),
+    HideMinimap,
+    PinTab(TerminalId),
+    ToggleSidebarPart(krad_domain::SidebarPart),
+    ToggleSidebarDensity,
+    CloseTabs(TerminalId, krad_domain::TabClosing),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum MenuCreate {
     Worktree(GroupId),
+    Tab(krad_domain::PaneId),
 }
 
 impl MenuCreate {
-    fn label(self, query: &str) -> String {
+    const fn verb(self) -> &'static str {
         match self {
-            Self::Worktree(_) => format!("{CREATE_WORKTREE_LABEL} \u{201c}{query}\u{201d}"),
+            Self::Worktree(_) => CREATE_WORKTREE_LABEL,
+            Self::Tab(_) => CREATE_TAB_LABEL,
         }
+    }
+
+    fn label(self, query: &str) -> String {
+        format!("{} \u{201c}{query}\u{201d}", self.verb())
     }
 
     fn action(self, query: &str) -> MenuAction {
         match self {
             Self::Worktree(group) => MenuAction::CreateWorktree(group, query.to_owned()),
+            Self::Tab(pane) => MenuAction::CreateTab(pane, query.to_owned()),
         }
     }
+}
+
+#[derive(Clone)]
+pub(super) struct MenuSearch {
+    pub(super) placeholder: &'static str,
+    pub(super) create: Option<MenuCreate>,
+    pub(super) footer: Vec<MenuEntry>,
 }
 
 #[derive(Clone)]
@@ -92,6 +118,7 @@ pub(super) enum MenuEntry {
         destructive: bool,
         detail: Option<String>,
         trailing: Option<String>,
+        key: Option<char>,
         options: Vec<MenuEntry>,
     },
     Submenu(Submenu),
@@ -114,6 +141,7 @@ impl MenuEntry {
             destructive: false,
             detail: None,
             trailing: None,
+            key: None,
             options: Vec::new(),
         }
     }
@@ -127,6 +155,7 @@ impl MenuEntry {
             destructive: false,
             detail: None,
             trailing: None,
+            key: None,
             options: Vec::new(),
         }
     }
@@ -144,6 +173,7 @@ impl MenuEntry {
             destructive: true,
             detail: None,
             trailing: None,
+            key: None,
             options: Vec::new(),
         }
     }
@@ -194,6 +224,14 @@ impl MenuEntry {
     }
 
     #[must_use]
+    pub(super) fn with_key(mut self, shortcut: char) -> Self {
+        if let Self::Item { key, .. } = &mut self {
+            *key = Some(shortcut);
+        }
+        self
+    }
+
+    #[must_use]
     pub(super) fn with_trailing(mut self, text: impl Into<String>) -> Self {
         if let Self::Item { trailing, .. } = &mut self {
             *trailing = Some(text.into());
@@ -214,7 +252,9 @@ pub(super) struct ContextMenu {
     entries: Vec<MenuEntry>,
     submenu: Option<usize>,
     options: Option<(Vec<MenuEntry>, (f32, f32))>,
+    search: Option<MenuSearch>,
     query: String,
+    chosen: usize,
     focus: FocusHandle,
     focus_pending: bool,
 }
@@ -233,11 +273,30 @@ impl EnvironmentShell {
             entries,
             submenu: None,
             options: None,
+            search: None,
             query: String::new(),
+            chosen: 0,
             focus: cx.focus_handle(),
             focus_pending: true,
         });
         cx.notify();
+    }
+
+    pub(super) fn open_searchable_menu(
+        &mut self,
+        origin: (f32, f32),
+        entries: Vec<MenuEntry>,
+        search: MenuSearch,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.open_native_picker(origin, &entries, &search, window, cx) {
+            return;
+        }
+        self.open_menu(origin, MenuPlacement::Below, entries, cx);
+        if let Some(menu) = &mut self.context_menu {
+            menu.search = Some(search);
+        }
     }
 
     fn close_menu(&mut self, cx: &mut Context<Self>) {
@@ -270,7 +329,12 @@ impl EnvironmentShell {
         }
     }
 
-    fn run_menu_action(&mut self, action: MenuAction, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn run_menu_action(
+        &mut self,
+        action: MenuAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match action {
             MenuAction::RenameEnvironment(name) => {
                 self.close_menu_options();
@@ -292,8 +356,6 @@ impl EnvironmentShell {
             MenuAction::DeleteGroup(group) => {
                 self.ask_delete(DeleteTarget::Group(group), window, cx);
             }
-            MenuAction::CustomizeSession(session) => self.customize_session(session, cx),
-            MenuAction::CloseSession(session) => self.close_session(session, cx),
             MenuAction::RenameGroup(_) | MenuAction::RenameEnvironment(_) => {}
             MenuAction::NewTerminal(preset) => self.add_terminal(preset, cx),
             MenuAction::NewAgent => self.open_agent_composer(window, cx),
@@ -309,11 +371,11 @@ impl EnvironmentShell {
                 window.focus(&self.focus, cx);
                 self.start_rename(id, cx);
             }
-            MenuAction::CloseTerminal(id) => self.close_terminal(id, cx),
             MenuAction::SwitchSurface(id) => self.switch_surface(id, window, cx),
             MenuAction::ShowSessionTab(id) => self.show_terminal_tab(id, window, cx),
             MenuAction::ShowEditorChat(id) => self.show_editor_chat(id, cx),
             MenuAction::OpenLocation(path, at) => self.open_file_at(&path, Some(at), cx),
+            MenuAction::AnswerChoice(answer) => self.answer_choice(*answer),
             MenuAction::DismissLead(id) => self.dismiss_lead(id, cx),
             MenuAction::SetEffort(id, effort) => {
                 self.command_surface(id, SurfaceCommand::Effort(effort), cx);
@@ -324,12 +386,21 @@ impl EnvironmentShell {
             MenuAction::ContinueInTerminal(id) => self.continue_in_terminal(id, cx),
             MenuAction::Note(action) => self.run_note_action(action, cx),
             MenuAction::File(action) => self.run_file_action(action, window, cx),
+            MenuAction::Changes(action) => self.run_changes_action(action, window, cx),
             MenuAction::SwitchEnvironment(name) => self.switch_env(&name, cx),
             MenuAction::NewEnvironment => self.new_environment(window, cx),
             MenuAction::NewSshEnvironment => self.open_ssh_dialog(window, cx),
             MenuAction::SelectGroup(group) => self.select_group(group, cx),
             MenuAction::OpenWorktree(path, origin) => self.open_worktree(path, origin, cx),
             MenuAction::CreateWorktree(group, name) => self.create_worktree(group, &name, cx),
+            MenuAction::CreateTab(pane, name) => self.create_named_terminal(pane, &name, cx),
+            MenuAction::NewTabIn(pane) => self.new_tab_in(pane, cx),
+            MenuAction::NewEditorChat => self.add_chat_tab(cx),
+            MenuAction::RebaseTheme(base) => self.rebase_theme_draft(&base, window, cx),
+            MenuAction::ChooseTheme(appearance, id) => self.choose_theme(appearance, id, cx),
+            MenuAction::SetFont(zone, family) => {
+                self.set_font(zone, |choice| choice.family = family, cx);
+            }
             MenuAction::NewGroup => self.prompt_new_group(window, cx),
             MenuAction::OpenSettings => self.open_settings(window, cx),
             MenuAction::ChooseToolchain(choice) => {
@@ -341,6 +412,11 @@ impl EnvironmentShell {
             MenuAction::SetGroupActivation(group, activation) => {
                 self.set_group_activation(group, activation, cx);
             }
+            MenuAction::HideMinimap => self.hide_minimap(cx),
+            MenuAction::PinTab(tab) => self.pin_file_tab(tab, cx),
+            MenuAction::ToggleSidebarPart(part) => self.toggle_sidebar_part(part, cx),
+            MenuAction::ToggleSidebarDensity => self.toggle_sidebar_density(cx),
+            MenuAction::CloseTabs(tab, closing) => self.close_tabs(tab, closing, window, cx),
         }
         cx.notify();
     }
