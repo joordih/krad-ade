@@ -95,9 +95,9 @@ pub(super) struct Minimap {
 }
 
 impl Minimap {
-    pub(super) fn new(text: &str, syntax: Syntax) -> Self {
+    fn empty(syntax: Syntax) -> Self {
         Self {
-            text: Arc::new(minimap_text(text, syntax)),
+            text: Arc::new(minimap_text("", syntax)),
             building: None,
             grab: None,
             hovered: false,
@@ -357,7 +357,12 @@ pub(super) fn minimap(minimap: Entity<Minimap>, editor: Entity<EditorState>) -> 
 }
 
 pub(super) fn new_minimap(text: &str, syntax: Syntax, cx: &mut App) -> Entity<Minimap> {
-    cx.new(|_| Minimap::new(text, syntax))
+    let text = text.to_owned();
+    cx.new(|cx| {
+        let mut minimap = Minimap::empty(syntax);
+        minimap.rebuild(text, syntax, cx);
+        minimap
+    })
 }
 
 impl EnvironmentShell {

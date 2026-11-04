@@ -297,11 +297,18 @@ impl EnvironmentShell {
         editor.dirty = false;
         editor.disk = DiskWatch::Idle;
         if let Some(state) = editor.state.clone() {
+            if state.read(cx).value().as_ref() == file.text.as_str() {
+                return;
+            }
             if let Some(minimap) = editor.minimap.clone() {
                 let text = file.text.clone();
                 minimap.update(cx, |minimap, cx| minimap.rebuild(text, syntax, cx));
             }
-            state.update(cx, |state, cx| state.set_value(file.text, window, cx));
+            state.update(cx, |state, cx| {
+                let scroll = state.scroll_offset();
+                state.set_value(file.text, window, cx);
+                state.set_scroll_offset(scroll, cx);
+            });
             return;
         }
         let shown_minimap = new_minimap(&file.text, syntax, cx);

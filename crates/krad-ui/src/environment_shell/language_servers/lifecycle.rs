@@ -294,8 +294,11 @@ impl EnvironmentShell {
             ServerEvent::Progress(progress) => {
                 if let Some(ServerSlot::Running(running)) = self.language_servers.slots.get_mut(key)
                 {
+                    let before = running.progress.label();
                     running.progress.apply(progress);
-                    cx.notify();
+                    if running.progress.label() != before {
+                        cx.notify();
+                    }
                 }
             }
             ServerEvent::Choice(choice) => self.queue_choice(key, choice, cx),
