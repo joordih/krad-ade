@@ -465,10 +465,12 @@ impl EnvironmentShell {
         }
         match node
             .and_then(|node| node.file.as_ref())
-            .map(|file| file.view)
+            .map(|file| &file.view)
         {
             Some(FileView::Edit) => return self.file_tab_body(live, id, cx),
-            Some(FileView::Changes) => return self.changes_tab_body(live, id, cx),
+            Some(FileView::Changes | FileView::Commit(_)) => {
+                return self.changes_tab_body(live, id, cx);
+            }
             None => {}
         }
         let pal = palette(cx);

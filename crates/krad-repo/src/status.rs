@@ -25,6 +25,8 @@ const ORDINARY_FIELDS: usize = 9;
 const RENAMED_FIELDS: usize = 10;
 const UNMERGED_FIELDS: usize = 11;
 
+const BRANCH_OID: &str = "branch.oid";
+const INITIAL_OID: &str = "(initial)";
 const BRANCH_HEAD: &str = "branch.head";
 const BRANCH_UPSTREAM: &str = "branch.upstream";
 const BRANCH_AHEAD_BEHIND: &str = "branch.ab";
@@ -50,10 +52,12 @@ pub enum ChangeKind {
 pub struct FileChange {
     pub path: PathBuf,
     pub kind: ChangeKind,
+    pub origin: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GitStatus {
+    pub head: Option<String>,
     pub branch: Option<String>,
     pub upstream: Option<String>,
     pub ahead: u32,
@@ -81,7 +85,10 @@ pub fn parse_status(output: &[u8]) -> GitStatus {
             ORDINARY_TAG => push_change(&mut status, &record, ORDINARY_FIELDS, change_kind),
             RENAMED_TAG => {
                 push_change(&mut status, &record, RENAMED_FIELDS, change_kind);
-                records.next();
+                let origin = records.next().map(|origin| PathBuf::from(origin.as_ref()));
+                if let Some(renamed) = status.changes.last_mut() {
+                    renamed.origin = origin;
+                }
             }
             UNMERGED_TAG => {
                 push_change(&mut status, &record, UNMERGED_FIELDS, |_| {
@@ -91,6 +98,7 @@ pub fn parse_status(output: &[u8]) -> GitStatus {
             UNTRACKED_TAG => status.changes.push(FileChange {
                 path: PathBuf::from(rest),
                 kind: ChangeKind::Untracked,
+                origin: None,
             }),
             _ => {}
         }
@@ -103,6 +111,7 @@ fn apply_header(status: &mut GitStatus, header: &str) {
         return;
     };
     match key {
+        BRANCH_OID => status.head = (value != INITIAL_OID).then(|| value.to_owned()),
         BRANCH_HEAD => status.branch = (value != DETACHED_HEAD).then(|| value.to_owned()),
         BRANCH_UPSTREAM => status.upstream = Some(value.to_owned()),
         BRANCH_AHEAD_BEHIND => {
@@ -134,6 +143,7 @@ fn push_change(
     status.changes.push(FileChange {
         path: PathBuf::from(path),
         kind: kind_of(xy),
+        origin: None,
     });
 }
 
@@ -157,6 +167,7 @@ mod tests {
         FileChange {
             path: PathBuf::from(path),
             kind,
+            origin: None,
         }
     }
 
@@ -183,6 +194,7 @@ mod tests {
         assert_eq!(
             status,
             GitStatus {
+                head: Some("1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d".to_owned()),
                 branch: Some("main".to_owned()),
                 upstream: Some("origin/main".to_owned()),
                 ahead: 2,
@@ -190,7 +202,10 @@ mod tests {
                 changes: vec![
                     change("src/main.rs", ChangeKind::Modified),
                     change("docs/new file.md", ChangeKind::Added),
-                    change("src/renamed.rs", ChangeKind::Renamed),
+                    FileChange {
+                        origin: Some(PathBuf::from("src/original.rs")),
+                        ..change("src/renamed.rs", ChangeKind::Renamed)
+                    },
                     change("Cargo.toml", ChangeKind::Conflicted),
                     change("notes/todo.txt", ChangeKind::Untracked),
                 ],

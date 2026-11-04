@@ -40,6 +40,7 @@ use super::EnvironmentShell;
 use checklist::ChecklistView;
 use edit_message::MessageEditor;
 use glide::Glide;
+pub(super) use origin::age_label;
 use origin::Origin;
 use outbox::Outbox;
 use subagents::Subagents;

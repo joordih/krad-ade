@@ -247,6 +247,7 @@ mod tests {
                         .map(|path| FileChange {
                             path: PathBuf::from(path),
                             kind: ChangeKind::Modified,
+                            origin: None,
                         })
                         .collect(),
                     ..GitStatus::default()

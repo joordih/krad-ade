@@ -65,8 +65,18 @@ impl AsRef<str> for ProjectPath {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
 pub struct CommitSha(pub String);
+
+const SHORT_SHA_LEN: usize = 7;
+
+impl CommitSha {
+    #[must_use]
+    pub fn short(&self) -> &str {
+        self.0.get(..SHORT_SHA_LEN).unwrap_or(&self.0)
+    }
+}
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct DiscussionId(pub String);

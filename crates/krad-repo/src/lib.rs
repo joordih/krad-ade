@@ -1,10 +1,12 @@
 mod atomic;
 mod branch;
 mod changes;
+mod discard;
 mod error;
 mod file_ops;
 mod files;
 mod git;
+mod history;
 mod index;
 mod notes;
 mod on_host;
@@ -16,12 +18,14 @@ mod worktree;
 
 pub use branch::{diff_between, remote_url, resolved_remote_url, ORIGIN_REMOTE};
 pub use changes::{line_counts, working_diff, LineCount};
+pub use discard::discard_change;
 pub use error::RepoError;
 pub use file_ops::{
     create_dir, create_file, delete_entry, move_entry, relocate_entry, rename_entry,
 };
 pub use files::{list_dir, read_text, DirEntry, EntryKind, TextFile};
 pub use git::repo_root;
+pub use history::{commit_diff, commit_files, commit_log, CommitFile};
 pub use index::{index_files, FileIndex, IndexEntry};
 pub use notes::{
     add_attachment, create_note, create_vault_folder, docs_source_candidates, read_docs_sources,

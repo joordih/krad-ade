@@ -126,6 +126,14 @@ _Avoid_: explorer, navigator, browser
 The panel on the right of the window with the file tree and the group's git changes.
 _Avoid_: explorer, inspector, right sidebar
 
+**Discard**:
+Throwing away a file's uncommitted changes so it matches the last commit again; a file git does not track yet is deleted. A single block of changed lines can be reverted the same way from its diff.
+_Avoid_: reset, undo, rollback
+
+**History**:
+The commits of the group's branch and its upstream, newest first, drawn as a graph of lanes under the git changes. A commit opens to list the files it changed, each shown as a diff against its first parent.
+_Avoid_: log, timeline, graph
+
 **File tab**:
 A tab of the active session that edits one file with syntax highlighting. One click on a file opens it as the session's preview tab; a double click on the file or on the tab pins it. Pinned file tabs reopen with the session; the preview tab does not.
 _Avoid_: editor window, buffer, document

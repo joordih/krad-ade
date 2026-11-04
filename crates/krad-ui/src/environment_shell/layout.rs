@@ -255,6 +255,7 @@ impl Render for EnvironmentShell {
         self.sync_file_tabs(window, cx);
         self.flush_workspace_edits(window, cx);
         self.sync_changes_tabs(cx);
+        self.sync_history(cx);
         self.sync_notes_view(view, window, cx);
         self.ensure_chat_sessions(cx);
         self.sync_session_panes();
@@ -317,6 +318,7 @@ impl Render for EnvironmentShell {
             .children(self.agent_composer_sheet(cx))
             .children(self.docs_generate_sheet(cx))
             .children(self.delete_file_dialog(cx))
+            .children(self.discard_dialog(cx))
             .children(self.signature_overlay(window, cx))
             .children(self.editor_popover_overlay(window, cx))
             .children(self.template_popup_overlay(window, cx))

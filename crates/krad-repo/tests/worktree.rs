@@ -57,6 +57,7 @@ fn exercise_repository(base: &Path) -> Result<(), Box<dyn Error>> {
         vec![FileChange {
             path: PathBuf::from("notes.txt"),
             kind: ChangeKind::Untracked,
+            origin: None,
         }]
     );
 

@@ -8,10 +8,14 @@ use crate::theme::{Palette, ICON_XS, LINE_XS, SPACE_1_5, TEXT_XS};
 const MINUTE: Duration = Duration::from_mins(1);
 const HOUR: Duration = Duration::from_hours(1);
 const DAY: Duration = Duration::from_hours(24);
+const MONTH: Duration = Duration::from_hours(24 * 30);
+const YEAR: Duration = Duration::from_hours(24 * 365);
 const JUST_NOW: &str = "just now";
 const MINUTES_UNIT: &str = "min";
 const HOURS_UNIT: &str = "h";
 const DAYS_UNIT: &str = "d";
+const MONTHS_UNIT: &str = "mo";
+const YEARS_UNIT: &str = "y";
 const AGO: &str = "ago";
 const FROM_LEAD: &str = "From Lead";
 const FROM_USER: &str = "From you";
@@ -61,7 +65,7 @@ impl Origin {
     }
 }
 
-pub(super) fn age_label(elapsed: Duration) -> String {
+pub(in crate::environment_shell) fn age_label(elapsed: Duration) -> String {
     if elapsed < MINUTE {
         return JUST_NOW.to_owned();
     }
@@ -69,8 +73,12 @@ pub(super) fn age_label(elapsed: Duration) -> String {
         (MINUTE, MINUTES_UNIT)
     } else if elapsed < DAY {
         (HOUR, HOURS_UNIT)
-    } else {
+    } else if elapsed < MONTH {
         (DAY, DAYS_UNIT)
+    } else if elapsed < YEAR {
+        (MONTH, MONTHS_UNIT)
+    } else {
+        (YEAR, YEARS_UNIT)
     };
     format!("{} {name} {AGO}", elapsed.as_secs() / unit.as_secs())
 }
@@ -102,6 +110,8 @@ mod tests {
         assert_eq!(age_label(6 * MINUTE + Duration::from_secs(30)), "6 min ago");
         assert_eq!(age_label(3 * HOUR), "3 h ago");
         assert_eq!(age_label(2 * DAY), "2 d ago");
+        assert_eq!(age_label(70 * DAY), "2 mo ago");
+        assert_eq!(age_label(800 * DAY), "2 y ago");
     }
 
     #[test]

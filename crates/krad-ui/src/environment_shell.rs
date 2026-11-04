@@ -11,6 +11,7 @@ mod chrome;
 mod code_viewer;
 mod context_menu;
 mod dialog_parts;
+mod discard;
 mod disk_text;
 mod docs_generate;
 mod drag;
@@ -141,6 +142,8 @@ pub struct EnvironmentShell {
     side_reveal: PanelReveal,
     side_search: side_panel::SideSearch,
     changes_expanded: HashSet<PathBuf>,
+    pending_discard: Option<discard::Discard>,
+    history: side_panel::CommitHistory,
     activity_log: activity::ActivityLog,
     close_request: CloseRequest,
     layout_writer: Option<LayoutWriter>,
@@ -257,6 +260,8 @@ impl EnvironmentShell {
             side_reveal: PanelReveal::new(false),
             side_search: side_panel::SideSearch::default(),
             changes_expanded: HashSet::new(),
+            pending_discard: None,
+            history: side_panel::CommitHistory::default(),
             activity_log: activity::ActivityLog::default(),
             close_request: CloseRequest::Idle,
             layout_writer: LayoutWriter::spawn(),
