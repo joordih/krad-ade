@@ -213,6 +213,36 @@ pub enum CodeTools {
     Off,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PerformanceMode {
+    #[default]
+    Off,
+    On,
+}
+
+impl PerformanceMode {
+    pub const ALL: [Self; 2] = [Self::Off, Self::On];
+
+    #[must_use]
+    pub const fn display_name(self) -> &'static str {
+        match self {
+            Self::Off => "Off",
+            Self::On => "On",
+        }
+    }
+
+    #[must_use]
+    pub const fn reduces_motion(self) -> bool {
+        matches!(self, Self::On)
+    }
+
+    #[must_use]
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
@@ -271,6 +301,8 @@ pub struct Settings {
     pub file_icon_colors: FileIconColors,
     #[serde(default, skip_serializing_if = "JavaEngine::is_default")]
     pub java_engine: JavaEngine,
+    #[serde(default, skip_serializing_if = "PerformanceMode::is_default")]
+    pub performance_mode: PerformanceMode,
 }
 
 impl Settings {
@@ -371,6 +403,17 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn performance_mode_is_off_by_default_and_stays_out_of_the_file() -> serde_json::Result<()> {
+        let settings = Settings::default();
+        assert_eq!(settings.performance_mode, PerformanceMode::Off);
+        assert!(!settings.performance_mode.reduces_motion());
+        assert!(!serde_json::to_string(&settings)?.contains("performance_mode"));
+        let read: Settings = serde_json::from_str(r#"{"performance_mode":"on"}"#)?;
+        assert!(read.performance_mode.reduces_motion());
+        Ok(())
+    }
 
     #[test]
     fn custom_harness_command_replaces_the_bare_program() {

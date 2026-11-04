@@ -42,6 +42,7 @@ mod native_alert;
 mod notes_view;
 mod opencode;
 mod palette;
+mod performance;
 mod rename;
 mod review_view;
 mod rubber_band;

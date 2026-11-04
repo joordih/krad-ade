@@ -1,7 +1,7 @@
 use gpui_kit::{
     div, px, AnyElement, Context, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
 };
-use krad_domain::{AppUpdateCheck, AppearanceMode, CodeTools};
+use krad_domain::{AppUpdateCheck, AppearanceMode, CodeTools, PerformanceMode};
 
 use super::super::dialog_parts::{segment, SegmentSize};
 use super::{form_row, panel_card, segmented_track, EnvironmentShell, SWATCH_GAP};
@@ -28,6 +28,9 @@ const BTN_CODE_TOOLS_OFF: &str = "code-tools-off";
 const LABEL_CODE_TOOLS_ON: &str = "On";
 const LABEL_CODE_TOOLS_OFF: &str = "Off";
 const CODE_TOOLS_LABEL: &str = "Code tools for agents";
+const PERFORMANCE_PREFIX: &str = "performance-mode";
+const PERFORMANCE_LABEL: &str = "Performance mode";
+const PERFORMANCE_HINT: &str = "Skips animations: panels, tabs and switches jump straight to where they end. Helps on slower machines or with many agents running.";
 const CODE_TOOLS_HINT: &str = "Agents the app starts can ask the editor's language servers for diagnostics, definitions, references and renames. Applies to agents started after the change.";
 
 impl EnvironmentShell {
@@ -35,12 +38,14 @@ impl EnvironmentShell {
         let pal = palette(cx);
         let updates_card = panel_card(vec![self.app_updates_row(cx)], pal);
         let code_tools_card = panel_card(vec![self.code_tools_row(cx)], pal);
+        let performance_card = panel_card(vec![self.performance_row(cx)], pal);
         div()
             .flex()
             .flex_col()
             .gap(px(SWATCH_GAP))
             .child(updates_card)
             .child(code_tools_card)
+            .child(performance_card)
             .into_any_element()
     }
 
@@ -117,6 +122,27 @@ impl EnvironmentShell {
             ))
             .into_any_element();
         form_row(CODE_TOOLS_LABEL, Some(CODE_TOOLS_HINT), segmented, pal)
+    }
+
+    fn performance_row(&self, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
+        let current = self.settings.performance_mode;
+        let segments = PerformanceMode::ALL.map(|mode| {
+            segment(
+                (PERFORMANCE_PREFIX, mode as u64),
+                mode.display_name(),
+                None,
+                current == mode,
+                SegmentSize::Compact,
+                pal,
+                cx,
+            )
+            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                this.set_performance_mode(mode, cx);
+            }))
+        });
+        let segmented = segmented_track(pal).children(segments).into_any_element();
+        form_row(PERFORMANCE_LABEL, Some(PERFORMANCE_HINT), segmented, pal)
     }
 
     fn app_updates_row(&self, cx: &mut Context<Self>) -> AnyElement {

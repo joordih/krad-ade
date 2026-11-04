@@ -64,6 +64,7 @@ fn main() {
                     shell.self_ref = Some(weak);
                     shell.focus_canvas(window, cx);
                     shell.follow_window_activation(window, cx);
+                    shell.apply_performance_mode(cx);
                 });
                 window.on_window_should_close(cx, move |window, cx| {
                     veto.update(cx, |shell, cx| shell.should_close(window, cx))

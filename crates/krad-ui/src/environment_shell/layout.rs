@@ -271,15 +271,7 @@ impl Render for EnvironmentShell {
         self.probe_review(cx);
         self.sync_window_background(window, cx);
         let now = Instant::now();
-        if self.sidebar.advance(now)
-            | self.sync_side_panel(now)
-            | self.sync_activity(now)
-            | self.pane_drag.advance(now)
-            | self.sync_chat_landings(now)
-            | self.glide_chats(now)
-            | self.tick_arcade(now, cx)
-            | self.advance_gestures(now, window, cx)
-        {
+        if self.advance_motion(now, window, cx) {
             window.request_animation_frame();
         }
         self.canvas_px = self.canvas_size(window);

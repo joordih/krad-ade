@@ -119,6 +119,11 @@ impl PanelReveal {
         self.last_frame = Some(now);
     }
 
+    pub(super) fn settle(&mut self) {
+        self.spring.settle();
+        self.last_frame = None;
+    }
+
     pub(super) fn advance(&mut self, now: Instant) -> bool {
         let Some(last) = self.last_frame else {
             return false;
