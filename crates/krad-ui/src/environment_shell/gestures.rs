@@ -1,8 +1,8 @@
 use futures::StreamExt as _;
 use gpui_kit::component::input::RopeExt as _;
 use gpui_kit::{
-    App, Context, MouseButton, MouseDownEvent, NavigationDirection, PinchEvent, ScrollDelta,
-    ScrollWheelEvent, Task, TouchPhase, Window,
+    App, Context, Div, InteractiveElement, MouseButton, MouseDownEvent, NavigationDirection,
+    PinchEvent, ScrollDelta, ScrollWheelEvent, Task, TouchPhase, Window,
 };
 use krad_domain::{FileOpening, NavigationPlace, NavigationStep, TerminalId, TextScale};
 use krad_lsp::lsp_types::Position;
@@ -112,6 +112,9 @@ impl EnvironmentShell {
     }
 
     fn navigate(&mut self, step: NavigationStep, cx: &mut Context<Self>) {
+        if step == NavigationStep::Back && self.dismiss_settings(cx) {
+            return;
+        }
         let current = self.current_place(cx);
         let env = self.active.clone();
         let Some(live) = self.envs.get_mut(&env) else {
@@ -166,6 +169,26 @@ impl EnvironmentShell {
         self.navigate(step, cx);
     }
 
+    pub(super) fn with_gestures(root: Div, cx: &mut Context<Self>) -> Div {
+        root.on_mouse_down(
+            MouseButton::Navigate(NavigationDirection::Back),
+            cx.listener(|this: &mut Self, event: &MouseDownEvent, _, cx| {
+                this.on_navigation_button(event, cx);
+            }),
+        )
+        .on_mouse_down(
+            MouseButton::Navigate(NavigationDirection::Forward),
+            cx.listener(|this: &mut Self, event: &MouseDownEvent, _, cx| {
+                this.on_navigation_button(event, cx);
+            }),
+        )
+        .on_scroll_wheel(cx.listener(
+            |this: &mut Self, event: &ScrollWheelEvent, _, cx| {
+                this.on_swipe_scroll(event, cx);
+            },
+        ))
+    }
+
     pub(super) fn start_watches(&mut self, cx: &mut Context<Self>) {
         self.start_git_watch(cx);
         self.start_swipe_watch(cx);
@@ -178,10 +201,13 @@ impl EnvironmentShell {
         self.gestures.native = Some(cx.spawn(async move |this, cx| {
             while let Some(direction) = watch.swipes.next().await {
                 let forward = direction == SwipeDirection::Left;
-                if this
-                    .update(cx, |shell, cx| shell.step_session(forward, cx))
-                    .is_err()
-                {
+                let swiped = this.update(cx, |shell, cx| {
+                    let left_settings = !forward && shell.dismiss_settings(cx);
+                    if !left_settings {
+                        shell.step_session(forward, cx);
+                    }
+                });
+                if swiped.is_err() {
                     break;
                 }
             }
@@ -213,7 +239,11 @@ impl EnvironmentShell {
             TouchPhase::Ended => {
                 let swiped = swipe_of(std::mem::take(&mut self.gestures.swipe));
                 match (swiped, event.modifiers.alt) {
-                    (Some(Swipe::Right), true) => self.step_session(false, cx),
+                    (Some(Swipe::Right), true) => {
+                        if !self.dismiss_settings(cx) {
+                            self.step_session(false, cx);
+                        }
+                    }
                     (Some(Swipe::Left), true) => self.step_session(true, cx),
                     (Some(Swipe::Right), false) => self.navigate(NavigationStep::Back, cx),
                     (Some(Swipe::Left), false) => self.navigate(NavigationStep::Forward, cx),

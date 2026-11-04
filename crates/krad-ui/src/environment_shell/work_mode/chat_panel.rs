@@ -1,12 +1,12 @@
 use gpui_kit::{
     div, px, AnyElement, ClickEvent, Context, InteractiveElement, IntoElement, ParentElement,
-    Pixels, Point, Styled,
+    Pixels, Point, StatefulInteractiveElement, Styled,
 };
 use krad_domain::TerminalId;
 use std::rc::Rc;
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuSearch};
-use super::super::session_pane::{divides, tab_divider, DraggedTab};
+use super::super::session_pane::{divides, tab_divider, tab_picker_shell, DraggedTab};
 use super::super::{EnvironmentShell, LiveEnv};
 use crate::components::{Button, ButtonVariant, CenteredEmpty, IconName};
 use crate::keymap::TAB_SLOT_HINTS;
@@ -18,7 +18,6 @@ const PICK_PLACEHOLDER: &str = "Filter chats…";
 const STRIP_ID: &str = "editor-chat-strip";
 const BTN_EMPTY_NEW_CHAT: &str = "editor-chat-empty-new";
 const NEW_CHAT_TOOLTIP: &str = "New chat";
-const PICK_CHAT_TOOLTIP: &str = "Chats of this session";
 const NEW_CHAT_LABEL: &str = "New chat";
 const EMPTY_TITLE: &str = "No chat in this session";
 const EMPTY_TEXT: &str = "Start one to talk with an agent beside your files.";
@@ -97,23 +96,17 @@ impl EnvironmentShell {
             .on_drop(cx.listener(|this: &mut Self, dragged: &DraggedTab, _, cx| {
                 this.move_chat_to_end(dragged.id, cx);
             }))
-            .child(
-                Button::new(BTN_PICK_CHAT)
-                    .icon(IconName::Layers)
-                    .small()
-                    .tooltip(PICK_CHAT_TOOLTIP)
-                    .on_click(
-                        cx.listener(move |this: &mut Self, event: &ClickEvent, _, cx| {
-                            let Point { x, y }: Point<Pixels> = event.position();
-                            this.open_searchable_menu(
-                                (x.as_f32(), y.as_f32()),
-                                entries.to_vec(),
-                                (*search).clone(),
-                                cx,
-                            );
-                        }),
-                    ),
-            )
+            .child(tab_picker_shell(BTN_PICK_CHAT, cx).on_click(cx.listener(
+                move |this: &mut Self, event: &ClickEvent, _, cx| {
+                    let Point { x, y }: Point<Pixels> = event.position();
+                    this.open_searchable_menu(
+                        (x.as_f32(), y.as_f32()),
+                        entries.to_vec(),
+                        (*search).clone(),
+                        cx,
+                    );
+                },
+            )))
             .child(
                 div()
                     .flex()

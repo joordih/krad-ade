@@ -1,7 +1,6 @@
 use gpui_kit::{
     div, AnyElement, Context, InteractiveElement, IntoElement, KeyDownEvent, Modifiers,
-    MouseButton, MouseDownEvent, NavigationDirection, ParentElement, ScrollWheelEvent, Styled,
-    Window,
+    ParentElement, Styled, Window,
 };
 use krad_session::{KeyModifiers, LiveSession, PtyInput, SessionState};
 
@@ -111,23 +110,6 @@ impl EnvironmentShell {
             .on_action(cx.listener(Self::on_show_tab_at))
             .on_action(cx.listener(Self::on_navigate_back))
             .on_action(cx.listener(Self::on_navigate_forward))
-            .on_mouse_down(
-                MouseButton::Navigate(NavigationDirection::Back),
-                cx.listener(|this: &mut Self, event: &MouseDownEvent, _, cx| {
-                    this.on_navigation_button(event, cx);
-                }),
-            )
-            .on_mouse_down(
-                MouseButton::Navigate(NavigationDirection::Forward),
-                cx.listener(|this: &mut Self, event: &MouseDownEvent, _, cx| {
-                    this.on_navigation_button(event, cx);
-                }),
-            )
-            .on_scroll_wheel(
-                cx.listener(|this: &mut Self, event: &ScrollWheelEvent, _, cx| {
-                    this.on_swipe_scroll(event, cx);
-                }),
-            )
             .on_action(cx.listener(Self::on_copy_selection))
             .on_action(cx.listener(Self::on_paste_clipboard))
             .on_action(cx.listener(Self::on_search_terminal))

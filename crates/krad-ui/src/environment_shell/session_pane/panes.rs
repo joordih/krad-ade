@@ -373,7 +373,10 @@ impl EnvironmentShell {
                 .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
                     this.show_terminal_tab(id, window, cx);
                 }))
-                .child(icon(IconName::Terminal, ICON_SM, pal.text_muted))
+                .child(super::tab_badge(
+                    icon(IconName::Terminal, ICON_SM, pal.text_muted),
+                    pal,
+                ))
                 .child(
                     div()
                         .max_w(px(TAB_LABEL_MAX_W))

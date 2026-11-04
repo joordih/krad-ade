@@ -233,6 +233,7 @@ pub(super) struct ContextMenu {
     options: Option<(Vec<MenuEntry>, (f32, f32))>,
     search: Option<MenuSearch>,
     query: String,
+    chosen: usize,
     focus: FocusHandle,
     focus_pending: bool,
 }
@@ -253,6 +254,7 @@ impl EnvironmentShell {
             options: None,
             search: None,
             query: String::new(),
+            chosen: 0,
             focus: cx.focus_handle(),
             focus_pending: true,
         });

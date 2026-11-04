@@ -248,10 +248,17 @@ impl EnvironmentShell {
     }
 
     pub(super) fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.settings_ui = None;
-        self.review.forget_login();
+        self.dismiss_settings(cx);
         window.focus(&self.focus, cx);
+    }
+
+    pub(super) fn dismiss_settings(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.settings_ui.take().is_none() {
+            return false;
+        }
+        self.review.forget_login();
         cx.notify();
+        true
     }
 
     pub(super) fn save_settings(&self, cx: &mut Context<Self>) {

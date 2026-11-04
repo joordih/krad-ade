@@ -1,5 +1,6 @@
 use gpui_fps::fps_monitor;
 use gpui_kit::base::TextSelectionLayer;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     canvas, div, px, rgb, AnyElement, Context, DispatchPhase, InteractiveElement, IntoElement,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Render, Styled,
@@ -294,6 +295,7 @@ impl Render for EnvironmentShell {
             .on_action(|_: &MinimizeWindow, window, _| window.minimize_window())
             .on_action(|_: &ZoomWindow, window, _| window.zoom_window())
             .on_mouse_move(cx.listener(Self::on_root_mouse_move))
+            .map(|root| Self::with_gestures(root, cx))
             .child(Self::pointer_watch(cx))
             .on_mouse_up(
                 MouseButton::Left,

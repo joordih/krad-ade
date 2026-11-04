@@ -6,6 +6,8 @@ use super::{MenuAction, MenuCreate, MenuEntry, MenuSearch, Submenu};
 const KEY_ESCAPE: &str = "escape";
 const KEY_BACKSPACE: &str = "backspace";
 const KEY_ENTER: &str = "enter";
+const KEY_UP: &str = "up";
+const KEY_DOWN: &str = "down";
 
 pub(super) fn matching<'a>(entries: &'a [MenuEntry], query: &str) -> Vec<&'a MenuEntry> {
     let query = query.trim().to_lowercase();
@@ -42,18 +44,24 @@ fn create_row(
     (!query.is_empty() && !taken).then(|| (create.label(query), create.action(query)))
 }
 
-fn first_choice(
-    entries: &[MenuEntry],
-    create: Option<MenuCreate>,
-    query: &str,
-) -> Option<MenuAction> {
+fn choices(entries: &[MenuEntry], create: Option<MenuCreate>, query: &str) -> Vec<MenuAction> {
     matching(entries, query)
         .into_iter()
-        .find_map(|entry| match entry {
+        .filter_map(|entry| match entry {
             MenuEntry::Item { action, .. } => Some(action.clone()),
             _ => None,
         })
-        .or_else(|| create_row(create, entries, query).map(|(_, action)| action))
+        .chain(create_row(create, entries, query).map(|(_, action)| action))
+        .collect()
+}
+
+fn choice_at(
+    entries: &[MenuEntry],
+    create: Option<MenuCreate>,
+    query: &str,
+    chosen: usize,
+) -> Option<MenuAction> {
+    choices(entries, create, query).into_iter().nth(chosen)
 }
 
 impl Submenu {
@@ -90,6 +98,7 @@ impl EnvironmentShell {
             if menu.submenu != Some(index) {
                 menu.submenu = Some(index);
                 menu.query.clear();
+                menu.chosen = 0;
                 cx.notify();
             }
         }
@@ -100,6 +109,7 @@ impl EnvironmentShell {
             if menu.submenu.is_some() {
                 menu.submenu = None;
                 menu.query.clear();
+                menu.chosen = 0;
                 cx.notify();
             }
         }
@@ -137,15 +147,26 @@ impl EnvironmentShell {
             return;
         };
         if key == KEY_ENTER {
-            if let Some(action) = first_choice(entries, create, &menu.query) {
+            if let Some(action) = choice_at(entries, create, &menu.query, menu.chosen) {
                 self.run_menu_action(action, window, cx);
             }
             return;
         }
+        let count = choices(entries, create, &menu.query).len();
         let modifiers = event.keystroke.modifiers;
         let Some(menu) = self.context_menu.as_mut() else {
             return;
         };
+        if count > 0 && (key == KEY_DOWN || key == KEY_UP) {
+            menu.chosen = if key == KEY_DOWN {
+                (menu.chosen + 1) % count
+            } else {
+                (menu.chosen + count - 1) % count
+            };
+            cx.notify();
+            return;
+        }
+        menu.chosen = 0;
         if key == KEY_BACKSPACE {
             menu.query.pop();
         } else if let Some(typed) = event
@@ -221,12 +242,13 @@ mod tests {
         let tabs = vec![item("zsh", "")];
         assert!(search.create_row(&tabs, "ZSH").is_none());
         assert_eq!(
-            first_choice(&tabs, search.create, "build"),
+            choice_at(&tabs, search.create, "build", 0),
             Some(MenuAction::CreateTab(pane, "build".to_owned()))
         );
         assert_eq!(
-            first_choice(&tabs, search.create, "zs"),
+            choice_at(&tabs, search.create, "zs", 0),
             Some(MenuAction::NewGroup)
         );
+        assert_eq!(choice_at(&tabs, search.create, "zs", 1), None);
     }
 }

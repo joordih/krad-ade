@@ -1,15 +1,17 @@
 mod panes;
 mod tab_picker;
 
+pub(in crate::environment_shell) use tab_picker::tab_picker_shell;
+
 use panes::{pane_px, PANE_STRIP_H};
 pub(super) use panes::{DraggedTab, PaneDrag};
 
 use gpui_kit::component::InteractiveElementExt as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, AppContext as _, ClickEvent, Context, FontWeight, InteractiveElement,
-    IntoElement, MouseButton, MouseDownEvent, MouseUpEvent, ParentElement, Pixels, Point,
-    StatefulInteractiveElement, Styled, Window,
+    div, px, rgb, transparent_black, AnyElement, AppContext as _, ClickEvent, Context, FontWeight,
+    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseUpEvent, ParentElement,
+    Pixels, Point, StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::{AgentPreset, FileView, PaneId, SessionPanes, TerminalId, UnitRect};
 use krad_session::SessionState;
@@ -32,7 +34,8 @@ use crate::theme::{
     RADIUS_SM, RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM,
 };
 
-const TAB_H: f32 = 28.0;
+pub(in crate::environment_shell) const TAB_H: f32 = 28.0;
+const TAB_BADGE: f32 = 20.0;
 const TAB_LABEL_MAX_W: f32 = 150.0;
 const TAB_DIVIDER_W: f32 = 1.0;
 const TAB_DIVIDER_H: f32 = 14.0;
@@ -113,7 +116,7 @@ pub(super) fn tab_shell(
         .items_center()
         .gap(px(SPACE_1_5))
         .h(px(TAB_H))
-        .pl(px(SPACE_2))
+        .pl(px(SPACE_1))
         .pr(px(if shown { SPACE_1 } else { SPACE_2 }))
         .rounded(px(RADIUS_SM))
         .cursor_pointer()
@@ -124,14 +127,35 @@ pub(super) fn tab_shell(
         } else {
             pal.text_muted
         }))
+        .border_1()
+        .border_color(transparent_black())
         .when(shown, |tab| {
             tab.font_weight(FontWeight::MEDIUM)
                 .bg(row_fill(pal, cx))
+                .border_color(pal.divider)
                 .shadow(row_shadow(pal, cx))
         })
         .when(!shown, |tab| {
             tab.hover(|style| style.bg(pal.bg_hover).text_color(rgb(pal.text_default)))
         })
+}
+
+pub(in crate::environment_shell) fn tab_badge(
+    glyph: impl IntoElement,
+    pal: &Palette,
+) -> AnyElement {
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .size(px(TAB_BADGE))
+        .rounded(px(RADIUS_XS))
+        .bg(rgb(pal.chip_bg))
+        .border_1()
+        .border_color(pal.divider)
+        .child(glyph)
+        .into_any_element()
 }
 
 pub(in crate::environment_shell) fn tab_divider(pal: &Palette) -> AnyElement {
@@ -379,7 +403,7 @@ impl EnvironmentShell {
                         this.open_terminal_tab_menu(id, position, cx);
                     }),
                 )
-                .child(leading)
+                .child(tab_badge(leading, pal))
                 .child(
                     div()
                         .max_w(px(TAB_LABEL_MAX_W))

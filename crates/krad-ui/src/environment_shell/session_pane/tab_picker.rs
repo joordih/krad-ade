@@ -1,18 +1,45 @@
-use gpui_kit::{AnyElement, ClickEvent, Context, IntoElement, Pixels, Point, Window};
+use gpui_kit::{
+    div, px, AnyElement, App, ClickEvent, Context, Div, ElementId, InteractiveElement, IntoElement,
+    ParentElement, Pixels, Point, Stateful, StatefulInteractiveElement, Styled, Window,
+};
 use krad_domain::{AgentPreset, PaneId, TerminalId};
 
 use super::super::context_menu::{MenuAction, MenuCreate, MenuEntry, MenuSearch};
 use super::super::sessions::Launch;
 use super::super::{EnvironmentShell, LiveEnv};
+use super::TAB_H;
 use crate::actions::ShowTabAt;
-use crate::components::{Button, IconName};
+use crate::components::{icon, tooltip_view, IconName};
 use crate::keymap::{NEW_TERMINAL_HINT, TAB_SLOT_HINTS};
+use crate::theme::{palette, row_fill, ICON_SM, RADIUS_SM};
 
 const BTN_TAB_PICKER: &str = "session-tab-picker";
 const TAB_PICKER_TOOLTIP: &str = "Tabs";
 const FILTER_PLACEHOLDER: &str = "Filter or create…";
 const FILTER_FILES_PLACEHOLDER: &str = "Filter…";
 const NEW_TAB_LABEL: &str = "New tab";
+
+pub(in crate::environment_shell) fn tab_picker_shell(
+    id: impl Into<ElementId>,
+    cx: &App,
+) -> Stateful<Div> {
+    let pal = palette(cx);
+    div()
+        .id(id)
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .size(px(TAB_H))
+        .rounded(px(RADIUS_SM))
+        .cursor_pointer()
+        .bg(row_fill(pal, cx))
+        .border_1()
+        .border_color(pal.divider)
+        .hover(|style| style.bg(pal.bg_hover))
+        .tooltip(|_, cx| tooltip_view(TAB_PICKER_TOOLTIP.into(), cx))
+        .child(icon(IconName::Layers, ICON_SM, pal.text_default))
+}
 
 fn origin_of(event: &ClickEvent) -> (f32, f32) {
     let Point { x, y }: Point<Pixels> = event.position();
@@ -76,10 +103,7 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let entries = std::rc::Rc::new(self.picker_entries(live, ids, shown));
         let search = std::rc::Rc::new(self.picker_search(pane));
-        Button::new((BTN_TAB_PICKER, u64::from(pane.0)))
-            .icon(IconName::Layers)
-            .small()
-            .tooltip(TAB_PICKER_TOOLTIP)
+        tab_picker_shell((BTN_TAB_PICKER, u64::from(pane.0)), cx)
             .on_click(
                 cx.listener(move |this: &mut Self, event: &ClickEvent, _, cx| {
                     this.open_searchable_menu(
