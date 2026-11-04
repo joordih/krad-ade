@@ -1,7 +1,7 @@
 use gpui_kit::component::highlighter::{HighlightTheme, HighlightThemeStyle};
 use gpui_kit::component::theme::{Theme, ThemeMode, ThemeRegistry};
 use gpui_kit::{App, Global, SharedString};
-use krad_domain::{FontChoice, SyntaxColors};
+use krad_domain::{FontChoice, SyntaxColors, ThemeColor};
 use std::sync::Arc;
 
 use super::{appearance, current_theme, mono_family, palette, terminal_fill_alpha, Appearance};
@@ -11,7 +11,6 @@ const OPAQUE_ALPHA: u32 = 0xff;
 const CLEAR_ALPHA: u32 = 0x00;
 const ACTIVE_LINE_ALPHA: u32 = 0x0d;
 const THEME_SET_NAME: &str = "krad-editor";
-const CLEAR_GUTTER: &str = "#00000000";
 const THEME_NAME_PREFIX: &str = "krad-editor";
 const DARK_MODE: &str = "dark";
 const LIGHT_MODE: &str = "light";
@@ -31,6 +30,11 @@ pub fn apply_editor_font(editor: &FontChoice, cx: &mut App) {
     });
     style_editor(cx);
     cx.refresh_windows();
+}
+
+fn alpha_fraction(alpha: u32) -> f32 {
+    let alpha = u16::try_from(alpha.min(OPAQUE_ALPHA)).unwrap_or_default();
+    f32::from(alpha) / f32::from(u16::try_from(OPAQUE_ALPHA).unwrap_or(1))
 }
 
 fn hex(color: u32, alpha: u32) -> String {
@@ -55,7 +59,12 @@ enum Face {
     Bold,
 }
 
-fn highlight_json(name: &str, mode: &str, background: &str, colors: &Colors) -> String {
+fn highlight_json(
+    name: &str,
+    mode: &str,
+    (background, gutter): (&str, &str),
+    colors: &Colors,
+) -> String {
     let code = &colors.syntax;
     let syntax = [
         ("comment", code.comment.0, Face::Italic),
@@ -92,7 +101,7 @@ fn highlight_json(name: &str, mode: &str, background: &str, colors: &Colors) -> 
     let active = hex(colors.foreground, ACTIVE_LINE_ALPHA);
     let line_number = hex(code.comment.0, OPAQUE_ALPHA);
     format!(
-        r#"{{"name":"{THEME_SET_NAME}","themes":[{{"name":"{name}","mode":"{mode}","highlight":{{"editor.background":"{background}","editor.gutter.background":"{CLEAR_GUTTER}","editor.foreground":"{foreground}","editor.active_line.background":"{active}","editor.line_number":"{line_number}","editor.active_line_number":"{foreground}","syntax":{{{syntax}}}}}}}]}}"#
+        r#"{{"name":"{THEME_SET_NAME}","themes":[{{"name":"{name}","mode":"{mode}","highlight":{{"editor.background":"{background}","editor.gutter.background":"{gutter}","editor.foreground":"{foreground}","editor.active_line.background":"{active}","editor.line_number":"{line_number}","editor.active_line_number":"{foreground}","syntax":{{{syntax}}}}}}}]}}"#
     )
 }
 
@@ -124,13 +133,23 @@ pub(super) fn style_editor(cx: &mut App) {
     let dark = appearance(cx) == Appearance::Dark;
     let alpha = terminal_fill_alpha(colors.background, pal, cx).unwrap_or(CLEAR_ALPHA);
     let background = hex(colors.background, alpha);
+    let covered = alpha_fraction(alpha);
+    let gutter = hex(
+        ThemeColor(pal.bg_surface)
+            .mix(ThemeColor(colors.background), covered)
+            .0,
+        OPAQUE_ALPHA,
+    );
     let (mode, kit_mode) = if dark {
         (DARK_MODE, ThemeMode::Dark)
     } else {
         (LIGHT_MODE, ThemeMode::Light)
     };
     let name = format!("{THEME_NAME_PREFIX}-{theme_id}-{mode}");
-    let style = parse_highlight(&name, &highlight_json(&name, mode, &background, &colors));
+    let style = parse_highlight(
+        &name,
+        &highlight_json(&name, mode, (&background, &gutter), &colors),
+    );
     let theme = Theme::global_mut(cx);
     theme.mono_font_family = look.family;
     if let Some(style) = style {
@@ -167,7 +186,8 @@ mod tests {
             syntax,
         };
         let background = hex(0x0028_2828, THEMED_TERMINAL_ALPHA);
-        let json = highlight_json("t", DARK_MODE, &background, &colors);
+        let gutter = hex(0x0028_2828, OPAQUE_ALPHA);
+        let json = highlight_json("t", DARK_MODE, (&background, &gutter), &colors);
         let style = parse_highlight("t", &json);
         let alphas = style.as_ref().map(|style| {
             (
@@ -177,8 +197,8 @@ mod tests {
         });
         assert_eq!(
             alphas,
-            Some((Some(true), Some(0.0))),
-            "the gutter adds nothing over the editor's own translucent background"
+            Some((Some(true), Some(1.0))),
+            "the gutter is opaque so scrolled text never shows under the line numbers"
         );
         let syntax = |name: &str| style.as_ref().and_then(|style| style.syntax.style(name));
         let comment = syntax("comment");
