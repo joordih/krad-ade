@@ -1,4 +1,5 @@
 use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::switch::Switch;
 use gpui_kit::{
     div, px, AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement,
     PathPromptOptions, SharedString, Styled, Window,
@@ -8,13 +9,21 @@ use krad_extensions::{
     add_folder, add_git, remove, update, user_manifests_dir, ServerRuntimeStatus,
 };
 
+use super::super::dialog_parts::sheet_row_with;
+use super::sections::{card_field, empty_row, pane_column, settings_section};
 use super::{form_row, hint, panel_card, EnvironmentShell};
-use crate::components::{Button, ButtonVariant};
-use crate::theme::{palette, SPACE_2, SPACE_3};
+use crate::components::{icon, Button, ButtonVariant, IconName};
+use crate::theme::{palette, ICON_SM, SPACE_2};
 
-const SERVER_RUNTIMES_HINT: &str = "The runtimes language servers run on, such as Node.js. The app looks in the folder you choose, then on your system, then in the copy it installed. The toolchain each project is analysed with is chosen from the editor's status bar.";
-const EXTENSIONS_HINT: &str =
-    "An extension is a folder of language and server runtime manifests. Your own manifests go in";
+const BEHAVIOUR_TITLE: &str = "Behaviour";
+const RUNTIMES_TITLE: &str = "Server runtimes";
+const SERVER_RUNTIMES_HINT: &str = "What language servers run on, such as Node.js. Install a missing one here, or point to your own copy. Each project's toolchain is picked from the editor's status bar.";
+const RUNTIMES_LOADING: &str = "Looking for server runtimes…";
+const EXTENSIONS_TITLE: &str = "Extensions";
+const EXTENSIONS_SECTION_HINT: &str = "Add languages from a git address or a folder of manifests.";
+const EXTENSIONS_EMPTY: &str = "No extensions yet.";
+const ADD_EXTENSION_LABEL: &str = "Add";
+const EXTENSIONS_HINT: &str = "Your own language and server runtime manifests go in";
 const NOT_FOUND_TEXT: &str = "Not found";
 const CHOSEN_TEXT: &str = "chosen";
 const URL_PLACEHOLDER: &str = "Git address of an extension";
@@ -25,8 +34,6 @@ const ADD_FOLDER_LABEL: &str = "Add folder…";
 const CHOOSE_LABEL: &str = "Choose folder…";
 const INSTALL_LABEL: &str = "Install";
 const DETECTED_LABEL: &str = "Use detected";
-const ENABLE_LABEL: &str = "Turn on";
-const DISABLE_LABEL: &str = "Turn off";
 const UPDATE_LABEL: &str = "Update";
 const REMOVE_LABEL: &str = "Remove";
 const FOLDER_PROMPT: &str = "Choose";
@@ -270,14 +277,29 @@ impl EnvironmentShell {
         );
         let (id, name) = (status.id.clone(), status.name.clone());
         let (install_id, forget_id) = (status.id.clone(), status.id.clone());
+        let (mark, tone) = if status.found.is_some() {
+            (IconName::CheckCircle, pal.success_fg)
+        } else {
+            (IconName::CancelCircle, pal.text_muted)
+        };
         let controls = div()
             .flex()
             .flex_row()
             .gap(px(SPACE_2))
+            .children((status.found.is_none() && status.installable).then(|| {
+                Button::new((INSTALL_PREFIX, index))
+                    .label(INSTALL_LABEL)
+                    .small()
+                    .variant(ButtonVariant::Primary)
+                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                        this.install_server_runtime_from_settings(install_id.clone(), cx);
+                    }))
+            }))
             .child(
                 Button::new((CHOOSE_PREFIX, index))
                     .label(CHOOSE_LABEL)
                     .small()
+                    .variant(ButtonVariant::Secondary)
                     .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                         this.choose_server_runtime(id.clone(), name.clone(), cx);
                     })),
@@ -291,17 +313,15 @@ impl EnvironmentShell {
                         this.server_runtimes_changed(cx);
                     }))
             }))
-            .children((status.found.is_none() && status.installable).then(|| {
-                Button::new((INSTALL_PREFIX, index))
-                    .label(INSTALL_LABEL)
-                    .small()
-                    .variant(ButtonVariant::Primary)
-                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                        this.install_server_runtime_from_settings(install_id.clone(), cx);
-                    }))
-            }))
             .into_any_element();
-        form_row(&status.name, Some(&detail), controls, pal)
+        sheet_row_with(
+            Some(icon(mark, ICON_SM, tone).into_any_element()),
+            status.name.clone(),
+            Some(SharedString::from(detail)),
+            Some(controls),
+            pal,
+        )
+        .into_any_element()
     }
 
     fn extension_row(index: usize, entry: &ExtensionEntry, cx: &mut Context<Self>) -> AnyElement {
@@ -315,15 +335,11 @@ impl EnvironmentShell {
             .flex()
             .flex_row()
             .gap(px(SPACE_2))
+            .items_center()
             .child(
-                Button::new((TOGGLE_PREFIX, index))
-                    .label(if entry.enabled {
-                        DISABLE_LABEL
-                    } else {
-                        ENABLE_LABEL
-                    })
-                    .small()
-                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                Switch::new((TOGGLE_PREFIX, index))
+                    .checked(entry.enabled)
+                    .on_click(cx.listener(move |this: &mut Self, _: &bool, _, cx| {
                         this.change_extension(&toggle, ExtensionChange::Toggle, cx);
                     })),
             )
@@ -349,27 +365,68 @@ impl EnvironmentShell {
 
     pub(super) fn languages_pane(&self, ui: &LanguagesUi, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let server_runtimes: Vec<AnyElement> = ui
-            .statuses
-            .iter()
-            .enumerate()
-            .map(|(index, status)| Self::server_runtime_row(index, status, cx))
-            .collect();
-        let extensions: Vec<AnyElement> = self
+        let server_runtimes: Vec<AnyElement> = if ui.statuses.is_empty() {
+            vec![empty_row(RUNTIMES_LOADING, pal)]
+        } else {
+            ui.statuses
+                .iter()
+                .enumerate()
+                .map(|(index, status)| Self::server_runtime_row(index, status, cx))
+                .collect()
+        };
+        let mut extensions: Vec<AnyElement> = self
             .settings
             .extensions
             .iter()
             .enumerate()
             .map(|(index, entry)| Self::extension_row(index, entry, cx))
             .collect();
+        if extensions.is_empty() {
+            extensions.push(empty_row(EXTENSIONS_EMPTY, pal));
+        }
+        extensions.push(card_field(
+            ADD_EXTENSION_LABEL,
+            Self::extension_adder(ui, cx),
+            pal,
+        ));
         let manifests = krad_store::config_dir().map_or_else(String::new, |config| {
             user_manifests_dir(&config).display().to_string()
         });
-        let add = div()
+        pane_column([
+            settings_section(
+                BEHAVIOUR_TITLE,
+                None,
+                [
+                    self.java_engine_card(ui.confirming_unstable, cx),
+                    self.toolchain_activation_card(cx),
+                ],
+                pal,
+            ),
+            settings_section(
+                RUNTIMES_TITLE,
+                Some(SERVER_RUNTIMES_HINT),
+                [panel_card(server_runtimes, pal)],
+                pal,
+            ),
+            settings_section(
+                EXTENSIONS_TITLE,
+                Some(EXTENSIONS_SECTION_HINT),
+                [
+                    panel_card(extensions, pal),
+                    hint(&format!("{EXTENSIONS_HINT} {manifests}."), pal),
+                ],
+                pal,
+            ),
+        ])
+    }
+
+    fn extension_adder(ui: &LanguagesUi, cx: &mut Context<Self>) -> AnyElement {
+        div()
             .flex()
             .flex_row()
+            .items_center()
             .gap(px(SPACE_2))
-            .child(div().flex_1().child(Input::new(&ui.url)))
+            .child(div().flex_1().min_w_0().child(Input::new(&ui.url)))
             .child(
                 Button::new(BTN_ADD_GIT)
                     .label(ADD_LABEL)
@@ -383,19 +440,9 @@ impl EnvironmentShell {
                 Button::new(BTN_ADD_FOLDER)
                     .label(ADD_FOLDER_LABEL)
                     .small()
+                    .variant(ButtonVariant::Secondary)
                     .on_click(cx.listener(|_: &mut Self, _, _, cx| Self::add_folder_extension(cx))),
-            );
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(SPACE_3))
-            .child(self.java_engine_card(ui.confirming_unstable, cx))
-            .child(self.toolchain_activation_card(cx))
-            .child(hint(SERVER_RUNTIMES_HINT, pal))
-            .child(panel_card(server_runtimes, pal))
-            .child(hint(&format!("{EXTENSIONS_HINT} {manifests}."), pal))
-            .child(add)
-            .children((!extensions.is_empty()).then(|| panel_card(extensions, pal)))
+            )
             .into_any_element()
     }
 }

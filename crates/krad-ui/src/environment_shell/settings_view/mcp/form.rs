@@ -7,14 +7,16 @@ use krad_domain::{McpSecretKey, McpServerTaken};
 use krad_store::write_mcp_secret;
 
 use super::super::super::dialog_parts::{segment, SegmentSize};
-use super::super::gitlab::page::{field_row, section_heading};
+use super::super::super::dialog_parts::{sheet_group, sheet_padded};
+use super::super::sections::{card_field, settings_section};
 use super::super::{hint, segmented_track, EnvironmentShell};
 use super::draft::{Draft, DraftVariable, McpKind, ReadyServer, ValueKind};
 use crate::components::{Button, ButtonVariant, IconName};
 use crate::theme::{palette, SPACE_2};
 
 const FORM_TITLE: &str = "Add a server";
-const FORM_HINT: &str = "A command the app starts, or the address of a streamable HTTP server. Secret values and headers are kept in the system keyring.";
+const FORM_HINT: &str =
+    "A command the app starts, such as npx, or the address of a streamable HTTP server.";
 const KIND_LABEL: &str = "Transport";
 const STDIO_LABEL: &str = "Command";
 const HTTP_LABEL: &str = "HTTP";
@@ -34,6 +36,8 @@ const ADD_VARIABLE_LABEL: &str = "Add variable";
 const ADD_SECRET_LABEL: &str = "Add secret";
 const ADD_HEADER_LABEL: &str = "Add header";
 const ADD_SERVER_LABEL: &str = "Add server";
+const CANCEL_LABEL: &str = "Cancel";
+const BTN_CANCEL_FORM: &str = "mcp-cancel-form";
 const REMOVE_ROW_TOOLTIP: &str = "Remove";
 const VARIABLE_LABEL: &str = "Variable";
 const SECRET_LABEL: &str = "Secret";
@@ -45,7 +49,6 @@ const BTN_ADD_VARIABLE: &str = "mcp-add-variable";
 const BTN_ADD_SECRET: &str = "mcp-add-secret";
 const BTN_ADD_SERVER: &str = "mcp-add-server";
 const ROW_REMOVE_PREFIX: &str = "mcp-row-remove";
-const FIELD_GAP: f32 = 10.0;
 
 struct VariableRow {
     id: u64,
@@ -63,6 +66,7 @@ pub(in crate::environment_shell) struct McpForm {
     rows: Vec<VariableRow>,
     next_row: u64,
     error: Option<String>,
+    pub(super) open: bool,
 }
 
 fn field(
@@ -88,6 +92,7 @@ impl McpForm {
             rows: Vec::new(),
             next_row: 0,
             error: None,
+            open: false,
         }
     }
 
@@ -123,6 +128,14 @@ const fn row_label(form: McpKind, kind: ValueKind) -> &'static str {
 impl EnvironmentShell {
     fn mcp_form(&mut self) -> Option<&mut McpForm> {
         self.settings_ui.as_mut().map(|ui| &mut ui.mcp.form)
+    }
+
+    pub(super) fn show_mcp_form(&mut self, open: bool, cx: &mut Context<Self>) {
+        if let Some(form) = self.mcp_form() {
+            form.open = open;
+            form.error = None;
+        }
+        cx.notify();
     }
 
     fn set_mcp_kind(&mut self, kind: McpKind, cx: &mut Context<Self>) {
@@ -211,6 +224,7 @@ impl EnvironmentShell {
         };
         form.rows.clear();
         form.error = None;
+        form.open = false;
         let fields = [
             form.name.clone(),
             form.command.clone(),
@@ -273,24 +287,24 @@ impl EnvironmentShell {
             .child(option(BTN_HTTP, HTTP_LABEL, McpKind::Http))
             .into_any_element();
         let mut fields = vec![
-            field_row(KIND_LABEL, kinds, pal),
-            field_row(NAME_LABEL, Input::new(&form.name).into_any_element(), pal),
+            card_field(KIND_LABEL, kinds, pal),
+            card_field(NAME_LABEL, Input::new(&form.name).into_any_element(), pal),
         ];
         match kind {
             McpKind::Stdio => {
-                fields.push(field_row(
+                fields.push(card_field(
                     COMMAND_LABEL,
                     Input::new(&form.command).into_any_element(),
                     pal,
                 ));
-                fields.push(field_row(
+                fields.push(card_field(
                     ARGS_LABEL,
                     Input::new(&form.args).into_any_element(),
                     pal,
                 ));
             }
             McpKind::Http => {
-                fields.push(field_row(
+                fields.push(card_field(
                     URL_LABEL,
                     Input::new(&form.url).into_any_element(),
                     pal,
@@ -298,15 +312,13 @@ impl EnvironmentShell {
             }
         }
         fields.extend(form.rows.iter().map(|row| Self::mcp_row(kind, row, cx)));
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(FIELD_GAP))
-            .child(section_heading(FORM_TITLE, Some(FORM_HINT), pal))
-            .children(fields)
-            .children(form.error.as_deref().map(|error| hint(error, pal)))
-            .child(Self::mcp_form_buttons(kind, cx))
-            .into_any_element()
+        fields.extend(
+            form.error
+                .as_deref()
+                .map(|error| sheet_padded(hint(error, pal)).into_any_element()),
+        );
+        fields.push(sheet_padded(Self::mcp_form_buttons(kind, cx)).into_any_element());
+        settings_section(FORM_TITLE, Some(FORM_HINT), [sheet_group(fields, pal)], pal)
     }
 
     fn mcp_row(form: McpKind, row: &VariableRow, cx: &mut Context<Self>) -> AnyElement {
@@ -334,7 +346,7 @@ impl EnvironmentShell {
                     })),
             )
             .into_any_element();
-        field_row(row_label(form, row.kind), control, pal)
+        card_field(row_label(form, row.kind), control, pal)
     }
 
     fn mcp_form_buttons(kind: McpKind, cx: &mut Context<Self>) -> AnyElement {
@@ -358,6 +370,15 @@ impl EnvironmentShell {
         };
         buttons
             .child(div().flex_1())
+            .child(
+                Button::new(BTN_CANCEL_FORM)
+                    .label(CANCEL_LABEL)
+                    .small()
+                    .variant(ButtonVariant::Ghost)
+                    .on_click(cx.listener(|this: &mut Self, _, _, cx| {
+                        this.show_mcp_form(false, cx);
+                    })),
+            )
             .child(
                 Button::new(BTN_ADD_SERVER)
                     .label(ADD_SERVER_LABEL)

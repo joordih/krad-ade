@@ -1,19 +1,18 @@
 use gpui_kit::component::switch::Switch;
-use gpui_kit::{div, px, AnyElement, Context, IntoElement, ParentElement, Styled};
+use gpui_kit::{AnyElement, Context, IntoElement};
 use krad_chat::{GatewayModel, ModelSource};
 use krad_domain::ModelId;
 
-use super::super::gitlab::page::section_heading;
-use super::super::{form_row, hint, panel_card, EnvironmentShell};
+use super::super::sections::{empty_row, settings_section};
+use super::super::{form_row, panel_card, EnvironmentShell};
 use crate::theme::{palette, Palette};
 
-const MODELS_TITLE: &str = "Models in the picker";
+const MODELS_TITLE: &str = "Models";
 const MODELS_HINT: &str =
-    "Pick the Gateway models routed chats can use; the first one is the default.";
-const MODELS_EMPTY: &str = "Connect to the Gateway to list its models.";
+    "Turn on the models you want in the chat picker. The first one is the default.";
+const MODELS_EMPTY: &str = "Its models show up here once the Gateway is connected.";
 const NOT_SERVED: &str = "not served now";
 const MODEL_SWITCH_PREFIX: &str = "gateway-model";
-const FIELD_GAP: f32 = 10.0;
 
 struct ModelRow {
     id: ModelId,
@@ -69,20 +68,19 @@ impl EnvironmentShell {
         let pal = palette(cx);
         let rows = model_rows(self.gateway_served(), &self.settings.gateway.models);
         let shown: Vec<AnyElement> = if rows.is_empty() {
-            vec![hint(MODELS_EMPTY, pal)]
+            vec![empty_row(MODELS_EMPTY, pal)]
         } else {
             rows.into_iter()
                 .enumerate()
                 .map(|(index, row)| Self::gateway_model_row(index, &row, pal, cx))
                 .collect()
         };
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(FIELD_GAP))
-            .child(section_heading(MODELS_TITLE, Some(MODELS_HINT), pal))
-            .child(panel_card(shown, pal))
-            .into_any_element()
+        settings_section(
+            MODELS_TITLE,
+            Some(MODELS_HINT),
+            [panel_card(shown, pal)],
+            pal,
+        )
     }
 
     fn gateway_model_row(

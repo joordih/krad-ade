@@ -10,6 +10,7 @@ mod languages;
 mod material;
 mod mcp;
 mod page;
+mod sections;
 mod terminal;
 mod theme_editor;
 mod themes;

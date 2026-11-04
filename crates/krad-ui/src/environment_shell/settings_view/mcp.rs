@@ -10,20 +10,21 @@ use krad_store::delete_mcp_secret;
 use std::path::{Path, PathBuf};
 
 use super::super::mcp::server_summary;
-use super::gitlab::page::{section_heading, KEYRING_NOTE};
-use super::{form_row, hint, panel_card, EnvironmentShell};
-use crate::components::{icon, Button, ButtonVariant, IconName};
-use crate::theme::{palette, Palette, ICON_SM, SPACE_2, SPACE_3};
+use super::sections::{empty_row, footnote, pane_column, settings_section};
+use super::{form_row, panel_card, EnvironmentShell};
+use crate::components::{Button, ButtonVariant, IconName};
+use crate::theme::{palette, Palette, SPACE_2};
 use form::McpForm;
 
-const INTRO: &str = "Tools from MCP servers for Gateway chats. Each tool call is judged by the chat's permission mode, like a shell command.";
+const SECRETS_NOTE: &str = "Secret values and headers are kept in the system keyring. Without one, as under WSL, they go in the config folder, readable only by you.";
+const ADD_SERVER_LABEL: &str = "Add server";
+const BTN_OPEN_FORM: &str = "mcp-open-form";
 const SERVERS_TITLE: &str = "Servers";
-const SERVERS_HINT: &str = "Enabled servers start with every Gateway chat.";
-const SERVERS_EMPTY: &str = "No servers yet. Add one below.";
+const SERVERS_HINT: &str = "Servers that are on start with every Gateway chat. Each tool call goes through the chat's permission mode, like a shell command.";
+const SERVERS_EMPTY: &str = "No servers yet.";
 const PROJECTS_TITLE: &str = "Project servers";
 const PROJECTS_HINT: &str =
     "Folders whose .mcp.json you trusted or ignored. Forget a choice to be asked again.";
-const PROJECTS_EMPTY: &str = "No project has been asked about yet.";
 const TRUSTED_DETAIL: &str = "Trusted";
 const IGNORED_DETAIL: &str = "Ignored";
 const REMOVE_LABEL: &str = "Remove";
@@ -33,8 +34,6 @@ const SERVER_SWITCH_PREFIX: &str = "mcp-server-switch";
 const SERVER_REMOVE_PREFIX: &str = "mcp-server-remove";
 const PROJECT_SWITCH_PREFIX: &str = "mcp-project-switch";
 const PROJECT_FORGET_PREFIX: &str = "mcp-project-forget";
-const SECTION_GAP: f32 = 20.0;
-const FIELD_GAP: f32 = 10.0;
 
 pub(in crate::environment_shell) struct McpUi {
     form: McpForm,
@@ -132,10 +131,10 @@ impl EnvironmentShell {
         )
     }
 
-    fn mcp_servers_card(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn mcp_servers_card(&self, form_open: bool, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let rows: Vec<AnyElement> = if self.settings.mcp.servers.is_empty() {
-            vec![hint(SERVERS_EMPTY, pal)]
+            vec![empty_row(SERVERS_EMPTY, pal)]
         } else {
             self.settings
                 .mcp
@@ -145,13 +144,29 @@ impl EnvironmentShell {
                 .map(|(index, server)| Self::mcp_server_row(index, server, pal, cx))
                 .collect()
         };
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(FIELD_GAP))
-            .child(section_heading(SERVERS_TITLE, Some(SERVERS_HINT), pal))
-            .child(panel_card(rows, pal))
-            .into_any_element()
+        let add = (!form_open).then(|| {
+            div()
+                .flex()
+                .flex_row()
+                .justify_end()
+                .child(
+                    Button::new(BTN_OPEN_FORM)
+                        .label(ADD_SERVER_LABEL)
+                        .icon(IconName::Add)
+                        .small()
+                        .variant(ButtonVariant::Secondary)
+                        .on_click(cx.listener(|this: &mut Self, _, _, cx| {
+                            this.show_mcp_form(true, cx);
+                        })),
+                )
+                .into_any_element()
+        });
+        settings_section(
+            SERVERS_TITLE,
+            Some(SERVERS_HINT),
+            std::iter::once(panel_card(rows, pal)).chain(add),
+            pal,
+        )
     }
 
     fn mcp_project_row(
@@ -195,46 +210,33 @@ impl EnvironmentShell {
 
     fn mcp_projects_card(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let rows: Vec<AnyElement> = if self.settings.mcp.projects.is_empty() {
-            vec![hint(PROJECTS_EMPTY, pal)]
-        } else {
-            self.settings
-                .mcp
-                .projects
-                .iter()
-                .enumerate()
-                .map(|(index, (folder, trust))| {
-                    Self::mcp_project_row(index, folder, *trust, pal, cx)
-                })
-                .collect()
-        };
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(FIELD_GAP))
-            .child(section_heading(PROJECTS_TITLE, Some(PROJECTS_HINT), pal))
-            .child(panel_card(rows, pal))
-            .into_any_element()
+        let rows: Vec<AnyElement> = self
+            .settings
+            .mcp
+            .projects
+            .iter()
+            .enumerate()
+            .map(|(index, (folder, trust))| Self::mcp_project_row(index, folder, *trust, pal, cx))
+            .collect();
+        settings_section(
+            PROJECTS_TITLE,
+            Some(PROJECTS_HINT),
+            [panel_card(rows, pal)],
+            pal,
+        )
     }
 
     pub(super) fn mcp_pane(&self, ui: &McpUi, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(SECTION_GAP))
-            .child(hint(INTRO, pal))
-            .child(self.mcp_servers_card(cx))
-            .child(Self::mcp_form_section(&ui.form, cx))
-            .child(self.mcp_projects_card(cx))
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .gap(px(SPACE_3))
-                    .child(icon(IconName::Lock, ICON_SM, pal.text_muted))
-                    .child(div().flex_1().min_w_0().child(hint(KEYRING_NOTE, pal))),
-            )
-            .into_any_element()
+        let open = ui.form.open;
+        let mut sections = vec![self.mcp_servers_card(open, cx)];
+        if open {
+            sections.push(Self::mcp_form_section(&ui.form, cx));
+        }
+        if !self.settings.mcp.projects.is_empty() {
+            sections.push(self.mcp_projects_card(cx));
+        }
+        sections.push(footnote(SECRETS_NOTE, pal));
+        pane_column(sections)
     }
 }

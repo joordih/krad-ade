@@ -190,6 +190,10 @@ pub(in crate::environment_shell) fn sheet_group(
         .into_any_element()
 }
 
+pub(in crate::environment_shell) fn sheet_padded(content: impl IntoElement) -> Div {
+    div().px(px(ROW_PAD_X)).py(px(ROW_PAD_Y)).child(content)
+}
+
 pub(in crate::environment_shell) fn sheet_row(
     title: impl Into<SharedString>,
     detail: Option<SharedString>,

@@ -10,14 +10,16 @@ use krad_gitlab::{REDIRECT_URI, SCOPE};
 use krad_store::LoginPlace;
 use std::time::Duration;
 
-use super::super::{choice_card, hint, CHOICE_GAP, CHOICE_PAD};
+use super::super::super::dialog_parts::{sheet_group, sheet_row_with};
+use super::super::sections::{account_row, card_field, empty_row, settings_section, AccountRow};
+use super::super::{choice_card, hint, CHOICE_GAP};
 use super::remotes::RemoteMatch;
 use super::{Connected, GitlabStatus, GitlabUi};
 use crate::components::{chip, icon, Button, ButtonVariant, IconName};
 use crate::environment_shell::EnvironmentShell;
 use crate::theme::{
     palette, row_shadow, tinted, Palette, ICON, ICON_SM, INPUT_H, LINE_SM, LINE_XS, RADIUS_SM,
-    RADIUS_XL, SPACE_0_5, SPACE_1, SPACE_2, SPACE_3, TEXT_SM, TEXT_XS,
+    SPACE_0_5, SPACE_1, SPACE_2, TEXT_SM, TEXT_XS,
 };
 
 const CHECKING_TITLE: &str = "Checking the GitLab login…";
@@ -50,7 +52,7 @@ const BROWSER_METHOD_DETAIL: &str =
     "Opens GitLab in your browser and returns to the app through the loopback redirect.";
 const DEVICE_METHOD: &str = "Device code";
 const DEVICE_METHOD_DETAIL: &str = "Type a short code on GitLab from any browser. For WSL or when the browser cannot reach the app. GitLab 17.9 or newer.";
-const PROJECTS_TITLE: &str = "Projects found from git remote";
+const GITLAB_NAME: &str = "GitLab";
 const PROJECTS_LOADING: &str = "Reading the groups' remotes…";
 const PROJECTS_EMPTY: &str = "No groups in this environment.";
 pub(in crate::environment_shell::settings_view) const KEYRING_NOTE: &str = "Without a keyring, as under WSL with no Secret Service, tokens are kept in the config folder, readable only by you.";
@@ -64,9 +66,6 @@ const METHOD_PREFIX: &str = "gitlab-method";
 const STATUS_ICON_BOX: f32 = 32.0;
 const STATUS_TINT_ALPHA: u32 = 0x24;
 const FIELD_LABEL_W: f32 = 134.0;
-const PROJECT_NAME_W: f32 = 118.0;
-const PROJECT_ROW_H: f32 = 32.0;
-const PROJECT_GAP: f32 = 10.0;
 const FIELD_GAP: f32 = 10.0;
 
 const fn method_title(method: GitlabSignIn) -> &'static str {
@@ -103,7 +102,6 @@ struct StatusCopy {
     success: bool,
     title: String,
     detail: String,
-    lock: bool,
 }
 
 fn status_copy(status: &GitlabStatus) -> StatusCopy {
@@ -112,7 +110,6 @@ fn status_copy(status: &GitlabStatus) -> StatusCopy {
         success: false,
         title: title.to_owned(),
         detail: detail.to_owned(),
-        lock: false,
     };
     match status {
         GitlabStatus::Checking => waiting(CHECKING_TITLE, ""),
@@ -123,7 +120,6 @@ fn status_copy(status: &GitlabStatus) -> StatusCopy {
             success: false,
             title: SIGNED_OUT_TITLE.to_owned(),
             detail: SIGNED_OUT_DETAIL.to_owned(),
-            lock: false,
         },
         GitlabStatus::SignedIn(connected) => connected_copy(connected),
     }
@@ -149,18 +145,16 @@ fn connected_copy(connected: &Connected) -> StatusCopy {
         success: true,
         title,
         detail,
-        lock: true,
     }
 }
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell::settings_view) fn status_card(
+    pub(in crate::environment_shell::settings_view) fn gitlab_account(
         status: &GitlabStatus,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
         let copy = status_copy(status);
-        let icon_box = status_mark(copy.icon, copy.success, pal, cx);
         let action = match status {
             GitlabStatus::Checking => None,
             GitlabStatus::SignedOut => Some(
@@ -189,36 +183,26 @@ impl EnvironmentShell {
                     })),
             ),
         };
-        div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(SPACE_3))
-            .p(px(CHOICE_PAD))
-            .rounded(px(RADIUS_XL))
-            .bg(rgb(pal.bg_panel))
-            .child(icon_box)
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .gap(px(SPACE_0_5))
-                    .child(
-                        div()
-                            .text_size(px(TEXT_SM))
-                            .line_height(px(LINE_SM))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(pal.text_strong))
-                            .child(copy.title),
-                    )
-                    .when(!copy.detail.is_empty(), |text| {
-                        text.child(status_detail(&copy.detail, copy.lock, pal))
-                    }),
-            )
-            .children(action.map(|action| div().flex_none().child(action)))
-            .into_any_element()
+        account_row(
+            AccountRow {
+                mark: if copy.icon == IconName::Loading {
+                    IconName::Loading
+                } else {
+                    IconName::Merge
+                },
+                name: GITLAB_NAME,
+                state: copy.title,
+                detail: copy.detail,
+                connected: copy.success,
+                actions: action
+                    .into_iter()
+                    .map(IntoElement::into_any_element)
+                    .collect(),
+                below: None,
+            },
+            pal,
+            cx,
+        )
     }
 
     pub(in crate::environment_shell::settings_view) fn oauth_section(
@@ -250,16 +234,20 @@ impl EnvironmentShell {
             .child(chip(SCOPE, pal).font_family(mono))
             .child(hint(SCOPE_NOTE, pal))
             .into_any_element();
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(FIELD_GAP))
-            .child(section_heading(OAUTH_TITLE, Some(OAUTH_HINT), pal))
-            .child(field_row(HOST_LABEL, input(&gitlab.host), pal))
-            .child(field_row(CLIENT_ID_LABEL, input(&gitlab.client_id), pal))
-            .child(field_row(REDIRECT_LABEL, redirect, pal))
-            .child(field_row(SCOPE_LABEL, scope, pal))
-            .into_any_element()
+        settings_section(
+            OAUTH_TITLE,
+            Some(OAUTH_HINT),
+            [sheet_group(
+                [
+                    card_field(HOST_LABEL, input(&gitlab.host), pal),
+                    card_field(CLIENT_ID_LABEL, input(&gitlab.client_id), pal),
+                    card_field(REDIRECT_LABEL, redirect, pal),
+                    card_field(SCOPE_LABEL, scope, pal),
+                ],
+                pal,
+            )],
+            pal,
+        )
     }
 
     pub(in crate::environment_shell::settings_view) fn method_section(
@@ -282,13 +270,17 @@ impl EnvironmentShell {
                 this.set_gitlab_sign_in(method, cx);
             }))
         });
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(FIELD_GAP))
-            .child(section_heading(METHOD_TITLE, None, pal))
-            .child(div().flex().flex_row().gap(px(CHOICE_GAP)).children(cards))
-            .into_any_element()
+        settings_section(
+            METHOD_TITLE,
+            None,
+            [div()
+                .flex()
+                .flex_row()
+                .gap(px(CHOICE_GAP))
+                .children(cards)
+                .into_any_element()],
+            pal,
+        )
     }
 
     pub(in crate::environment_shell::settings_view) fn projects_card(
@@ -299,60 +291,29 @@ impl EnvironmentShell {
         let pal = palette(cx);
         let host = &self.settings.gitlab.host;
         let rows: Vec<AnyElement> = match &gitlab.remotes {
-            None => vec![hint(PROJECTS_LOADING, pal)],
-            Some(remotes) if remotes.is_empty() => vec![hint(PROJECTS_EMPTY, pal)],
+            None => vec![empty_row(PROJECTS_LOADING, pal)],
+            Some(remotes) if remotes.is_empty() => vec![empty_row(PROJECTS_EMPTY, pal)],
             Some(remotes) => remotes
                 .iter()
                 .map(|remote| {
                     let found = RemoteMatch::of(&remote.origin, host);
-                    let is_project = found.is_project();
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(PROJECT_GAP))
-                        .min_h(px(PROJECT_ROW_H))
-                        .text_size(px(TEXT_SM))
-                        .line_height(px(LINE_SM))
-                        .child(icon(IconName::Folder, ICON_SM, pal.text_muted))
-                        .child(
-                            div()
-                                .w(px(PROJECT_NAME_W))
-                                .flex_none()
-                                .truncate()
-                                .text_color(rgb(pal.text_strong))
-                                .child(remote.name.clone()),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .truncate()
-                                .when(is_project, |text| text.text_color(rgb(pal.text_default)))
-                                .when(!is_project, |text| text.text_color(rgb(pal.text_subtle)))
-                                .child(found.to_string()),
-                        )
-                        .into_any_element()
+                    let (mark, tone) = if found.is_project() {
+                        (IconName::CheckCircle, pal.success_fg)
+                    } else {
+                        (IconName::Folder, pal.text_muted)
+                    };
+                    sheet_row_with(
+                        Some(icon(mark, ICON_SM, tone).into_any_element()),
+                        remote.name.clone(),
+                        Some(SharedString::from(found.to_string())),
+                        None,
+                        pal,
+                    )
+                    .into_any_element()
                 })
                 .collect(),
         };
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(SPACE_1))
-            .p(px(CHOICE_PAD))
-            .rounded(px(RADIUS_XL))
-            .bg(rgb(pal.bg_panel))
-            .child(
-                div()
-                    .pb(px(SPACE_1))
-                    .text_size(px(TEXT_SM))
-                    .line_height(px(LINE_SM))
-                    .text_color(rgb(pal.text_default))
-                    .child(PROJECTS_TITLE),
-            )
-            .children(rows)
-            .into_any_element()
+        sheet_group(rows, pal)
     }
 
     pub(in crate::environment_shell::settings_view) fn copy_to_clipboard(
