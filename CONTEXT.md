@@ -82,6 +82,14 @@ _Avoid_: server, remote, machine, connection
 One entry of a pane's strip of tabs: a chat, a shell, an agent or a file tab.
 _Avoid_: workspace, group, desktop
 
+**Tab picker**:
+Searchable list of a strip's tabs opened from the button at its start, with each tab's shortcut; typing a name no tab has creates one.
+_Avoid_: overflow menu, tab switcher, all tabs
+
+**Navigation history**:
+The places in files the user jumped between in a session (a definition, a reference, a problem, a search result, a newly opened file), walked back and forward with a two-finger swipe, the mouse's back and forward buttons or their shortcuts.
+_Avoid_: jump list, breadcrumbs, undo
+
 **Session**:
 A line of work the user opens inside a group, holding its own tabs; it opens on a chat. Every group keeps at least one, and removing a group removes its sessions.
 _Avoid_: workspace, thread, PTY session
@@ -274,9 +282,13 @@ _Avoid_: orchestrator, chat, MCP
 Observable situation of an agent: idle, working, waiting-for-input or done (finished its turn and not yet seen).
 _Avoid_: status, presence, activity
 
-**Terminal theme**:
-Colors of the terminals and the code editor; "Match app" takes the app's own palette. It does not change how translucent the window is.
-_Avoid_: skin, color scheme, appearance
+**Theme**:
+The colors of the whole app in one set: the interface, the terminals' ANSI colors and the code editor's syntax. The user picks one theme for light appearance and one for dark, and the system appearance can choose between them. It does not change how translucent the window is.
+_Avoid_: skin, color scheme, terminal theme
+
+**Theme library**:
+The themes the user can pick from: the app's own, well-known editor themes shipped with the app under their authors' licenses and credited to them, and the user's themes made from one of those in the app.
+_Avoid_: theme store, marketplace, gallery
 
 ### Interaction
 

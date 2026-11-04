@@ -7,10 +7,10 @@ use crate::actions::{
     AcceptCompletion, AskConfirm, AskDeny, CopySelection, DeleteLine, DuplicateLine, FindInFiles,
     FindReferences, MoveLineDown, MoveLineUp, NewAgent, NewFromTemplate, NewTerminal, NextProblem,
     OpenSettings, PasteClipboard, PreviousProblem, QuickOpen, Reformat, RenameFile, RenameSymbol,
-    SaveFile, SearchTerminal, SendBackTab, SendTab, SplitTerminal, TextLarger, TextReset,
-    TextSmaller, ToggleActivity, ToggleFps, ToggleLineComment, TogglePalette, ToggleSidePanel,
-    ToggleSidebar, ToggleWorkMode, ASK_KEY_CONTEXT, EDITOR_KEY_CONTEXT, FILE_TAB_KEY_CONTEXT,
-    FILE_TREE_KEY_CONTEXT, SHELL_KEY_CONTEXT, VIEWER_KEY_CONTEXT,
+    SaveFile, SearchTerminal, SendBackTab, SendTab, ShowTabAt, SplitTerminal, TextLarger,
+    TextReset, TextSmaller, ToggleActivity, ToggleFps, ToggleLineComment, TogglePalette,
+    ToggleSidePanel, ToggleSidebar, ToggleWorkMode, ASK_KEY_CONTEXT, EDITOR_KEY_CONTEXT,
+    FILE_TAB_KEY_CONTEXT, FILE_TREE_KEY_CONTEXT, SHELL_KEY_CONTEXT, VIEWER_KEY_CONTEXT,
 };
 #[cfg(target_os = "macos")]
 use crate::actions::{HideApp, HideOtherApps, MinimizeWindow, Quit};
@@ -21,6 +21,12 @@ mod keys {
     pub(super) const PALETTE: &str = "cmd-k";
     pub(super) const OPEN_SETTINGS_HINT: &str = "⌘,";
     pub(super) const NEW_TERMINAL: &str = "cmd-t";
+    pub(super) const NEW_TERMINAL_HINT: &str = "⌘T";
+    pub(super) const TAB_SLOTS: [&str; 9] = [
+        "cmd-1", "cmd-2", "cmd-3", "cmd-4", "cmd-5", "cmd-6", "cmd-7", "cmd-8", "cmd-9",
+    ];
+    pub(super) const TAB_SLOT_HINTS: [&str; 9] =
+        ["⌘1", "⌘2", "⌘3", "⌘4", "⌘5", "⌘6", "⌘7", "⌘8", "⌘9"];
     pub(super) const NEW_FROM_TEMPLATE: &str = "cmd-n";
     pub(super) const SPLIT_TERMINAL: &str = "cmd-d";
     pub(super) const COPY: &str = "cmd-c";
@@ -75,6 +81,13 @@ mod keys {
     pub(super) const PALETTE: &str = "ctrl-shift-p";
     pub(super) const OPEN_SETTINGS_HINT: &str = "Ctrl+,";
     pub(super) const NEW_TERMINAL: &str = "ctrl-shift-t";
+    pub(super) const NEW_TERMINAL_HINT: &str = "Ctrl+Shift+T";
+    pub(super) const TAB_SLOTS: [&str; 9] = [
+        "alt-1", "alt-2", "alt-3", "alt-4", "alt-5", "alt-6", "alt-7", "alt-8", "alt-9",
+    ];
+    pub(super) const TAB_SLOT_HINTS: [&str; 9] = [
+        "Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8", "Alt+9",
+    ];
     pub(super) const NEW_FROM_TEMPLATE: &str = "ctrl-shift-n";
     pub(super) const SPLIT_TERMINAL: &str = "ctrl-shift-d";
     pub(super) const COPY: &str = "ctrl-shift-c";
@@ -120,6 +133,8 @@ const ASK_CONFIRM: &str = "enter";
 const ASK_DENY: &str = "escape";
 
 pub(crate) const OPEN_SETTINGS_HINT: &str = keys::OPEN_SETTINGS_HINT;
+pub(crate) const NEW_TERMINAL_HINT: &str = keys::NEW_TERMINAL_HINT;
+pub(crate) const TAB_SLOT_HINTS: [&str; 9] = keys::TAB_SLOT_HINTS;
 pub(crate) const COPY_HINT: &str = keys::COPY_HINT;
 pub(crate) const PASTE_HINT: &str = keys::PASTE_HINT;
 
@@ -131,6 +146,14 @@ pub fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new(keys::TOGGLE_FPS, ToggleFps, scope),
         KeyBinding::new(keys::PALETTE, TogglePalette, scope),
         KeyBinding::new(keys::NEW_TERMINAL, NewTerminal, scope),
+    ]);
+    bindings.extend(
+        keys::TAB_SLOTS
+            .iter()
+            .enumerate()
+            .map(|(slot, key)| KeyBinding::new(key, ShowTabAt { slot }, scope)),
+    );
+    bindings.extend([
         KeyBinding::new(keys::SPLIT_TERMINAL, SplitTerminal, scope),
         KeyBinding::new(keys::COPY, CopySelection, scope),
         KeyBinding::new(keys::PASTE, PasteClipboard, scope),

@@ -7,7 +7,7 @@ use gpui_kit::{
 
 use super::super::EnvironmentShell;
 use super::search::matching;
-use super::{ContextMenu, MenuEntry, MenuPlacement, Submenu};
+use super::{ContextMenu, MenuEntry, MenuPlacement, MenuSearch, Submenu};
 use crate::components::{icon, IconName};
 use crate::theme::{
     palette, popover_fill, popover_shadow, Palette, ICON, ICON_SM, LINE_BASE, LINE_SM, LINE_XS,
@@ -452,6 +452,73 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
+    fn root_rows_height(menu: &ContextMenu) -> f32 {
+        let Some(search) = &menu.search else {
+            return menu.entries.iter().map(entry_height).sum();
+        };
+        let shown: f32 = matching(&menu.entries, &menu.query)
+            .into_iter()
+            .map(entry_height)
+            .sum();
+        let create = search
+            .create_row(&menu.entries, &menu.query)
+            .map_or(0.0, |_| ITEM_H);
+        let empty = if shown == 0.0 && create == 0.0 {
+            NOTE_H
+        } else {
+            0.0
+        };
+        let footer: f32 = search.footer.iter().map(entry_height).sum();
+        SEARCH_H + PANEL_PAD + shown + create + empty + footer
+    }
+
+    fn searched_rows(
+        menu: &ContextMenu,
+        search: &MenuSearch,
+        pal: &Palette,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let shown = matching(&menu.entries, &menu.query);
+        let create = search
+            .create_row(&menu.entries, &menu.query)
+            .map(|(label, action)| {
+                let entry = MenuEntry::item(label, Some(IconName::Add), action.clone());
+                row_shell(CREATE_ID.into(), ITEM_H, shown.is_empty(), pal)
+                    .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                        this.run_menu_action(action.clone(), window, cx);
+                    }))
+                    .children(item_body(&entry, pal))
+                    .into_any_element()
+            });
+        let empty = (shown.is_empty() && create.is_none()).then(|| {
+            div()
+                .px(px(SPACE_2))
+                .py(px(SPACE_2))
+                .text_size(px(TEXT_SM))
+                .text_color(rgb(pal.text_muted))
+                .child(NO_MATCHES_TEXT)
+                .into_any_element()
+        });
+        let listed = shown.len();
+        let mut rows = vec![Self::search_row(search.placeholder, &menu.query, pal)];
+        rows.extend(
+            shown
+                .into_iter()
+                .enumerate()
+                .map(|(index, entry)| Self::menu_row(index, entry, false, pal, cx)),
+        );
+        rows.extend(create);
+        rows.extend(empty);
+        rows.extend(
+            search
+                .footer
+                .iter()
+                .enumerate()
+                .map(|(index, entry)| Self::menu_row(listed + 1 + index, entry, false, pal, cx)),
+        );
+        rows
+    }
+
     pub(in crate::environment_shell) fn context_menu_overlay(
         &self,
         window: &Window,
@@ -461,8 +528,7 @@ impl EnvironmentShell {
         let pal = palette(cx);
         let (root_w, root_h) = self.root_size(window);
         let max_height = root_h - 2.0 * EDGE_MARGIN;
-        let height =
-            (menu.entries.iter().map(entry_height).sum::<f32>() + 2.0 * PANEL_PAD).min(max_height);
+        let height = (Self::root_rows_height(menu) + 2.0 * PANEL_PAD).min(max_height);
         let (x, y) = (
             menu.origin.0 - self.frame_inset.0,
             menu.origin.1 - self.frame_inset.1,
@@ -473,14 +539,17 @@ impl EnvironmentShell {
         };
         let left = x.min(root_w - MENU_W - EDGE_MARGIN).max(EDGE_MARGIN);
         let top = top.min(root_h - height - EDGE_MARGIN).max(EDGE_MARGIN);
-        let rows: Vec<AnyElement> = menu
-            .entries
-            .iter()
-            .enumerate()
-            .map(|(index, entry)| {
-                Self::menu_row(index, entry, menu.submenu == Some(index), pal, cx)
-            })
-            .collect();
+        let rows = match &menu.search {
+            Some(search) => Self::searched_rows(menu, search, pal, cx),
+            None => menu
+                .entries
+                .iter()
+                .enumerate()
+                .map(|(index, entry)| {
+                    Self::menu_row(index, entry, menu.submenu == Some(index), pal, cx)
+                })
+                .collect(),
+        };
         let submenu = menu
             .submenu
             .and_then(|index| match menu.entries.get(index) {

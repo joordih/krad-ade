@@ -107,6 +107,7 @@ impl EnvironmentShell {
             .on_action(cx.listener(Self::on_toggle_fps))
             .on_action(cx.listener(Self::on_toggle_palette))
             .on_action(cx.listener(Self::on_new_terminal))
+            .on_action(cx.listener(Self::on_show_tab_at))
             .on_action(cx.listener(Self::on_copy_selection))
             .on_action(cx.listener(Self::on_paste_clipboard))
             .on_action(cx.listener(Self::on_search_terminal))

@@ -1,4 +1,4 @@
-use gpui_kit::actions;
+use gpui_kit::{actions, Action};
 
 actions!(
     krad,
@@ -49,6 +49,12 @@ actions!(
         ZoomWindow
     ]
 );
+
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = krad, no_json)]
+pub(crate) struct ShowTabAt {
+    pub(crate) slot: usize,
+}
 
 pub(crate) const SHELL_KEY_CONTEXT: &str = "KradShell";
 

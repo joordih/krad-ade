@@ -1,4 +1,5 @@
 mod panes;
+mod tab_picker;
 
 use panes::{pane_px, PANE_STRIP_H};
 pub(super) use panes::{DraggedTab, PaneDrag};
@@ -42,9 +43,7 @@ const UNZOOMED: f32 = 1.0;
 const TERMINAL_TAB_PREFIX: &str = "session-tab";
 const TAB_CLOSE_PREFIX: &str = "session-tab-close";
 const BTN_ADD_TAB: &str = "session-add-tab";
-const BTN_ALL_TABS: &str = "session-all-tabs";
 const ADD_TAB_TOOLTIP: &str = "New chat (right-click for a terminal)";
-const ALL_TABS_TOOLTIP: &str = "All tabs";
 const CLOSE_TAB_TOOLTIP: &str = "Close tab";
 const REMOVE_LEAD_LABEL: &str = "Remove lead";
 const BTN_NEW_SESSION: &str = "session-pane-new-session";
@@ -135,7 +134,7 @@ pub(super) fn tab_shell(
         })
 }
 
-fn tab_divider(pal: &Palette) -> AnyElement {
+pub(in crate::environment_shell) fn tab_divider(pal: &Palette) -> AnyElement {
     div()
         .flex_none()
         .w(px(TAB_DIVIDER_W))
@@ -145,7 +144,7 @@ fn tab_divider(pal: &Palette) -> AnyElement {
         .into_any_element()
 }
 
-fn divides(index: usize, shown: Option<usize>) -> bool {
+pub(in crate::environment_shell) fn divides(index: usize, shown: Option<usize>) -> bool {
     shown.is_none_or(|shown| shown != index && shown != index + 1)
 }
 
@@ -252,18 +251,7 @@ impl EnvironmentShell {
                 .or_else(|| Self::guest_tab(live, id, shown == Some(id), cx));
             tabs.extend(tab);
         }
-        let listed: Vec<MenuEntry> = ids
-            .iter()
-            .filter_map(|id| {
-                let node = live.data.nodes.iter().find(|node| node.id == *id)?;
-                Some(MenuEntry::checked(
-                    self.title_label(*id, &node.title),
-                    shown == Some(*id),
-                    MenuAction::ShowSessionTab(*id),
-                ))
-            })
-            .collect();
-        let listed = std::rc::Rc::new(listed);
+        let picker = self.tab_picker_button(live, pane, &ids, shown, cx);
         div()
             .flex()
             .flex_row()
@@ -278,6 +266,7 @@ impl EnvironmentShell {
                     .border_b_1()
                     .border_color(pal.divider),
             })
+            .child(picker)
             .child(
                 div()
                     .flex()
@@ -291,22 +280,6 @@ impl EnvironmentShell {
             .when(!self.editing(), |strip| {
                 strip.child(Self::add_tab_button(pane, cx))
             })
-            .child(
-                Button::new((BTN_ALL_TABS, u64::from(pane.0)))
-                    .icon(IconName::ChevronDown)
-                    .small()
-                    .tooltip(ALL_TABS_TOOLTIP)
-                    .on_click(
-                        cx.listener(move |this: &mut Self, event: &ClickEvent, _, cx| {
-                            this.open_menu(
-                                position_of(event),
-                                MenuPlacement::Below,
-                                listed.to_vec(),
-                                cx,
-                            );
-                        }),
-                    ),
-            )
             .into_any_element()
     }
 
@@ -333,7 +306,7 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    fn terminal_tab(
+    pub(in crate::environment_shell) fn terminal_tab(
         &self,
         live: &LiveEnv,
         id: TerminalId,
@@ -384,6 +357,8 @@ impl EnvironmentShell {
                     cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
                         if is_file {
                             this.show_file_tab(id, cx);
+                        } else if this.editing() {
+                            this.show_editor_chat(id, cx);
                         } else if shown {
                             this.open_terminal_tab_menu(id, position_of(event), cx);
                         } else {

@@ -1,7 +1,7 @@
 use gpui_kit::{Context, KeyDownEvent, Window};
 
 use super::super::EnvironmentShell;
-use super::{MenuAction, MenuEntry, Submenu};
+use super::{MenuAction, MenuCreate, MenuEntry, MenuSearch, Submenu};
 
 const KEY_ESCAPE: &str = "escape";
 const KEY_BACKSPACE: &str = "backspace";
@@ -29,14 +29,46 @@ pub(super) fn matching<'a>(entries: &'a [MenuEntry], query: &str) -> Vec<&'a Men
         .collect()
 }
 
+fn create_row(
+    create: Option<MenuCreate>,
+    entries: &[MenuEntry],
+    query: &str,
+) -> Option<(String, MenuAction)> {
+    let create = create?;
+    let query = query.trim();
+    let taken = entries.iter().any(
+        |entry| matches!(entry, MenuEntry::Item { label, .. } if label.eq_ignore_ascii_case(query)),
+    );
+    (!query.is_empty() && !taken).then(|| (create.label(query), create.action(query)))
+}
+
+fn first_choice(
+    entries: &[MenuEntry],
+    create: Option<MenuCreate>,
+    query: &str,
+) -> Option<MenuAction> {
+    matching(entries, query)
+        .into_iter()
+        .find_map(|entry| match entry {
+            MenuEntry::Item { action, .. } => Some(action.clone()),
+            _ => None,
+        })
+        .or_else(|| create_row(create, entries, query).map(|(_, action)| action))
+}
+
 impl Submenu {
     pub(super) fn create_row(&self, query: &str) -> Option<(String, MenuAction)> {
-        let create = self.create?;
-        let query = query.trim();
-        let taken = self.entries.iter().any(|entry| {
-            matches!(entry, MenuEntry::Item { label, .. } if label.eq_ignore_ascii_case(query))
-        });
-        (!query.is_empty() && !taken).then(|| (create.label(query), create.action(query)))
+        create_row(self.create, &self.entries, query)
+    }
+}
+
+impl MenuSearch {
+    pub(super) fn create_row(
+        &self,
+        entries: &[MenuEntry],
+        query: &str,
+    ) -> Option<(String, MenuAction)> {
+        create_row(self.create, entries, query)
     }
 }
 
@@ -89,25 +121,23 @@ impl EnvironmentShell {
             }
             return;
         }
-        let Some(submenu) = self
-            .open_submenu_of()
-            .filter(|submenu| submenu.search.is_some())
-        else {
+        let Some(menu) = self.context_menu.as_ref() else {
             return;
         };
-        let query = self
-            .context_menu
-            .as_ref()
-            .map_or_default(|menu| menu.query.clone());
+        let target = match self.open_submenu_of() {
+            Some(submenu) => submenu
+                .search
+                .map(|_| (submenu.entries.as_slice(), submenu.create)),
+            None => menu
+                .search
+                .as_ref()
+                .map(|search| (menu.entries.as_slice(), search.create)),
+        };
+        let Some((entries, create)) = target else {
+            return;
+        };
         if key == KEY_ENTER {
-            let first = matching(&submenu.entries, &query)
-                .into_iter()
-                .find_map(|entry| match entry {
-                    MenuEntry::Item { action, .. } => Some(action.clone()),
-                    _ => None,
-                })
-                .or_else(|| submenu.create_row(&query).map(|(_, action)| action));
-            if let Some(action) = first {
+            if let Some(action) = first_choice(entries, create, &menu.query) {
                 self.run_menu_action(action, window, cx);
             }
             return;
@@ -177,6 +207,26 @@ mod tests {
         assert_eq!(
             submenu.create_row("login").map(|(_, action)| action),
             Some(MenuAction::CreateWorktree(GroupId(1), "login".to_owned()))
+        );
+    }
+
+    #[test]
+    fn the_tab_picker_creates_a_terminal_only_for_a_new_name() {
+        let pane = krad_domain::PaneId(2);
+        let search = MenuSearch {
+            placeholder: "",
+            create: Some(MenuCreate::Tab(pane)),
+            footer: Vec::new(),
+        };
+        let tabs = vec![item("zsh", "")];
+        assert!(search.create_row(&tabs, "ZSH").is_none());
+        assert_eq!(
+            first_choice(&tabs, search.create, "build"),
+            Some(MenuAction::CreateTab(pane, "build".to_owned()))
+        );
+        assert_eq!(
+            first_choice(&tabs, search.create, "zs"),
+            Some(MenuAction::NewGroup)
         );
     }
 }

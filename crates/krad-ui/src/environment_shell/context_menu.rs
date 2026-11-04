@@ -14,6 +14,7 @@ use super::{EnvironmentShell, LiveEnv};
 use crate::components::IconName;
 
 const CREATE_WORKTREE_LABEL: &str = "Create worktree";
+const CREATE_TAB_LABEL: &str = "New terminal";
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum MenuAction {
@@ -46,6 +47,9 @@ pub(super) enum MenuAction {
     SelectGroup(GroupId),
     OpenWorktree(std::path::PathBuf, Option<WorktreeOrigin>),
     CreateWorktree(GroupId, String),
+    CreateTab(krad_domain::PaneId, String),
+    NewTabIn(krad_domain::PaneId),
+    NewEditorChat,
     NewGroup,
     OpenSettings,
     ChooseToolchain(Box<ToolchainChoice>),
@@ -59,20 +63,31 @@ pub(super) enum MenuAction {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum MenuCreate {
     Worktree(GroupId),
+    Tab(krad_domain::PaneId),
 }
 
 impl MenuCreate {
     fn label(self, query: &str) -> String {
-        match self {
-            Self::Worktree(_) => format!("{CREATE_WORKTREE_LABEL} \u{201c}{query}\u{201d}"),
-        }
+        let verb = match self {
+            Self::Worktree(_) => CREATE_WORKTREE_LABEL,
+            Self::Tab(_) => CREATE_TAB_LABEL,
+        };
+        format!("{verb} \u{201c}{query}\u{201d}")
     }
 
     fn action(self, query: &str) -> MenuAction {
         match self {
             Self::Worktree(group) => MenuAction::CreateWorktree(group, query.to_owned()),
+            Self::Tab(pane) => MenuAction::CreateTab(pane, query.to_owned()),
         }
     }
+}
+
+#[derive(Clone)]
+pub(super) struct MenuSearch {
+    pub(super) placeholder: &'static str,
+    pub(super) create: Option<MenuCreate>,
+    pub(super) footer: Vec<MenuEntry>,
 }
 
 #[derive(Clone)]
@@ -216,6 +231,7 @@ pub(super) struct ContextMenu {
     entries: Vec<MenuEntry>,
     submenu: Option<usize>,
     options: Option<(Vec<MenuEntry>, (f32, f32))>,
+    search: Option<MenuSearch>,
     query: String,
     focus: FocusHandle,
     focus_pending: bool,
@@ -235,11 +251,25 @@ impl EnvironmentShell {
             entries,
             submenu: None,
             options: None,
+            search: None,
             query: String::new(),
             focus: cx.focus_handle(),
             focus_pending: true,
         });
         cx.notify();
+    }
+
+    pub(super) fn open_searchable_menu(
+        &mut self,
+        origin: (f32, f32),
+        entries: Vec<MenuEntry>,
+        search: MenuSearch,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_menu(origin, MenuPlacement::Below, entries, cx);
+        if let Some(menu) = &mut self.context_menu {
+            menu.search = Some(search);
+        }
     }
 
     fn close_menu(&mut self, cx: &mut Context<Self>) {
@@ -334,6 +364,9 @@ impl EnvironmentShell {
             MenuAction::SelectGroup(group) => self.select_group(group, cx),
             MenuAction::OpenWorktree(path, origin) => self.open_worktree(path, origin, cx),
             MenuAction::CreateWorktree(group, name) => self.create_worktree(group, &name, cx),
+            MenuAction::CreateTab(pane, name) => self.create_named_terminal(pane, &name, cx),
+            MenuAction::NewTabIn(pane) => self.new_tab_in(pane, cx),
+            MenuAction::NewEditorChat => self.add_chat_tab(cx),
             MenuAction::NewGroup => self.prompt_new_group(window, cx),
             MenuAction::OpenSettings => self.open_settings(window, cx),
             MenuAction::ChooseToolchain(choice) => {
