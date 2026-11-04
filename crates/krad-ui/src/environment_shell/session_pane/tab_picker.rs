@@ -7,17 +7,20 @@ use krad_domain::{AgentPreset, PaneId, TerminalId};
 use super::super::context_menu::{MenuAction, MenuCreate, MenuEntry, MenuSearch};
 use super::super::sessions::Launch;
 use super::super::{EnvironmentShell, LiveEnv};
-use super::TAB_H;
+use super::{CAPSULE_PAD, TAB_H};
 use crate::actions::ShowTabAt;
 use crate::components::{icon, tooltip_view, IconName};
 use crate::keymap::{NEW_TERMINAL_HINT, TAB_SLOT_HINTS};
-use crate::theme::{palette, row_fill, ICON_SM, RADIUS_SM};
+use crate::theme::{palette, row_fill, ICON_SM};
 
 const BTN_TAB_PICKER: &str = "session-tab-picker";
 const TAB_PICKER_TOOLTIP: &str = "Tabs";
 const FILTER_PLACEHOLDER: &str = "Filter or create…";
 const FILTER_FILES_PLACEHOLDER: &str = "Filter…";
 const NEW_TAB_LABEL: &str = "New tab";
+const PICKER_RADIUS: f32 = 12.0;
+const NEW_TAB_KEY: char = 't';
+const TAB_SLOT_KEYS: [char; 9] = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
 pub(in crate::environment_shell) fn tab_picker_shell(
     id: impl Into<ElementId>,
@@ -30,8 +33,8 @@ pub(in crate::environment_shell) fn tab_picker_shell(
         .flex_none()
         .items_center()
         .justify_center()
-        .size(px(TAB_H))
-        .rounded(px(RADIUS_SM))
+        .size(px(TAB_H + 2.0 * CAPSULE_PAD))
+        .rounded(px(PICKER_RADIUS))
         .cursor_pointer()
         .bg(row_fill(pal, cx))
         .border_1()
@@ -62,10 +65,12 @@ impl EnvironmentShell {
                     shown == Some(*id),
                     MenuAction::ShowSessionTab(*id),
                 );
-                Some(match TAB_SLOT_HINTS.get(index) {
-                    Some(hint) => entry.with_trailing(*hint),
-                    None => entry,
-                })
+                Some(
+                    match TAB_SLOT_HINTS.get(index).zip(TAB_SLOT_KEYS.get(index)) {
+                        Some((hint, key)) => entry.with_trailing(*hint).with_key(*key),
+                        None => entry,
+                    },
+                )
             })
             .collect()
     }
@@ -88,7 +93,8 @@ impl EnvironmentShell {
                     Some(IconName::Add),
                     MenuAction::NewTabIn(pane),
                 )
-                .with_trailing(NEW_TERMINAL_HINT),
+                .with_trailing(NEW_TERMINAL_HINT)
+                .with_key(NEW_TAB_KEY),
             ],
         }
     }
@@ -105,11 +111,12 @@ impl EnvironmentShell {
         let search = std::rc::Rc::new(self.picker_search(pane));
         tab_picker_shell((BTN_TAB_PICKER, u64::from(pane.0)), cx)
             .on_click(
-                cx.listener(move |this: &mut Self, event: &ClickEvent, _, cx| {
+                cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
                     this.open_searchable_menu(
                         origin_of(event),
                         entries.to_vec(),
                         (*search).clone(),
+                        window,
                         cx,
                     );
                 }),

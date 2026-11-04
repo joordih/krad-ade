@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use super::super::drag::DragState;
 use super::super::{EnvironmentShell, LiveEnv};
-use super::{tab_shell, StripPlace, TAB_LABEL_MAX_W};
+use super::{tab_shell, StripPlace};
 use crate::components::{card, icon, Button, IconName};
 use crate::motion::Spring;
 use crate::theme::{
@@ -379,7 +379,8 @@ impl EnvironmentShell {
                 ))
                 .child(
                     div()
-                        .max_w(px(TAB_LABEL_MAX_W))
+                        .flex_1()
+                        .min_w_0()
                         .truncate()
                         .child(terminal.title.clone()),
                 )

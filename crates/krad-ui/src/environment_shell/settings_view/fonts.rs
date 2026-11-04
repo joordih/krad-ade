@@ -152,7 +152,7 @@ impl EnvironmentShell {
             .text_size(px(TEXT_SM))
             .line_height(px(LINE_SM))
             .on_click(
-                cx.listener(move |this: &mut Self, event: &ClickEvent, _, cx| {
+                cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
                     let Point { x, y }: Point<Pixels> = event.position();
                     this.open_searchable_menu(
                         (x.as_f32(), y.as_f32()),
@@ -162,6 +162,7 @@ impl EnvironmentShell {
                             create: None,
                             footer: Vec::new(),
                         },
+                        window,
                         cx,
                     );
                 }),
