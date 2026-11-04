@@ -7,10 +7,9 @@ use krad_domain::TerminalId;
 use std::rc::Rc;
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuSearch};
-use super::super::session_pane::{divides, tab_divider, tab_picker_shell, DraggedTab};
+use super::super::session_pane::{divides, tab_capsule, tab_divider, tab_picker_shell, DraggedTab};
 use super::super::{EnvironmentShell, LiveEnv};
 use crate::components::{Button, ButtonVariant, CenteredEmpty, IconName};
-use crate::keymap::TAB_SLOT_HINTS;
 use crate::theme::{palette, CARD_HEADER_H, LINE_SM, SPACE_0_5, SPACE_1_5, TEXT_SM};
 
 const BTN_NEW_CHAT: &str = "editor-chat-new";
@@ -41,18 +40,14 @@ impl EnvironmentShell {
         live.data
             .session_chats()
             .into_iter()
-            .enumerate()
-            .filter_map(|(index, id)| {
+            .filter_map(|id| {
                 let node = live.data.nodes.iter().find(|node| node.id == id)?;
                 let entry = MenuEntry::checked(
                     self.title_label(id, &node.title),
                     shown == Some(id),
                     MenuAction::ShowEditorChat(id),
                 );
-                Some(match TAB_SLOT_HINTS.get(index) {
-                    Some(hint) => entry.with_trailing(*hint),
-                    None => entry,
-                })
+                Some(entry)
             })
             .collect()
     }
@@ -98,27 +93,18 @@ impl EnvironmentShell {
                 this.move_chat_to_end(dragged.id, cx);
             }))
             .child(tab_picker_shell(BTN_PICK_CHAT, cx).on_click(cx.listener(
-                move |this: &mut Self, event: &ClickEvent, _, cx| {
+                move |this: &mut Self, event: &ClickEvent, window, cx| {
                     let Point { x, y }: Point<Pixels> = event.position();
                     this.open_searchable_menu(
                         (x.as_f32(), y.as_f32()),
                         entries.to_vec(),
                         (*search).clone(),
+                        window,
                         cx,
                     );
                 },
             )))
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .flex_1()
-                    .items_center()
-                    .min_w_0()
-                    .h_full()
-                    .overflow_hidden()
-                    .children(tabs),
-            )
+            .child(tab_capsule(tabs, pal))
             .child(
                 Button::new(BTN_NEW_CHAT)
                     .icon(IconName::Add)

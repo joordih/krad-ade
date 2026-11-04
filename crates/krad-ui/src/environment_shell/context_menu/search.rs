@@ -249,6 +249,10 @@ mod tests {
             choice_at(&tabs, search.create, "zs", 0),
             Some(MenuAction::NewGroup)
         );
-        assert_eq!(choice_at(&tabs, search.create, "zs", 1), None);
+        assert_eq!(
+            choice_at(&tabs, search.create, "zs", 1),
+            Some(MenuAction::CreateTab(pane, "zs".to_owned()))
+        );
+        assert_eq!(choice_at(&tabs, search.create, "zs", 2), None);
     }
 }

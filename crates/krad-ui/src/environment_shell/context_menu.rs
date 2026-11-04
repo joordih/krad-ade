@@ -1,3 +1,4 @@
+mod native;
 mod search;
 mod view;
 
@@ -67,12 +68,15 @@ pub(super) enum MenuCreate {
 }
 
 impl MenuCreate {
-    fn label(self, query: &str) -> String {
-        let verb = match self {
+    const fn verb(self) -> &'static str {
+        match self {
             Self::Worktree(_) => CREATE_WORKTREE_LABEL,
             Self::Tab(_) => CREATE_TAB_LABEL,
-        };
-        format!("{verb} \u{201c}{query}\u{201d}")
+        }
+    }
+
+    fn label(self, query: &str) -> String {
+        format!("{} \u{201c}{query}\u{201d}", self.verb())
     }
 
     fn action(self, query: &str) -> MenuAction {
@@ -109,6 +113,7 @@ pub(super) enum MenuEntry {
         destructive: bool,
         detail: Option<String>,
         trailing: Option<String>,
+        key: Option<char>,
         options: Vec<MenuEntry>,
     },
     Submenu(Submenu),
@@ -131,6 +136,7 @@ impl MenuEntry {
             destructive: false,
             detail: None,
             trailing: None,
+            key: None,
             options: Vec::new(),
         }
     }
@@ -144,6 +150,7 @@ impl MenuEntry {
             destructive: false,
             detail: None,
             trailing: None,
+            key: None,
             options: Vec::new(),
         }
     }
@@ -161,6 +168,7 @@ impl MenuEntry {
             destructive: true,
             detail: None,
             trailing: None,
+            key: None,
             options: Vec::new(),
         }
     }
@@ -206,6 +214,14 @@ impl MenuEntry {
     pub(super) fn with_detail(mut self, text: impl Into<String>) -> Self {
         if let Self::Item { detail, .. } = &mut self {
             *detail = Some(text.into());
+        }
+        self
+    }
+
+    #[must_use]
+    pub(super) fn with_key(mut self, shortcut: char) -> Self {
+        if let Self::Item { key, .. } = &mut self {
+            *key = Some(shortcut);
         }
         self
     }
@@ -266,8 +282,12 @@ impl EnvironmentShell {
         origin: (f32, f32),
         entries: Vec<MenuEntry>,
         search: MenuSearch,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.open_native_picker(origin, &entries, &search, window, cx) {
+            return;
+        }
         self.open_menu(origin, MenuPlacement::Below, entries, cx);
         if let Some(menu) = &mut self.context_menu {
             menu.search = Some(search);
@@ -304,7 +324,12 @@ impl EnvironmentShell {
         }
     }
 
-    fn run_menu_action(&mut self, action: MenuAction, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn run_menu_action(
+        &mut self,
+        action: MenuAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match action {
             MenuAction::RenameEnvironment(name) => {
                 self.close_menu_options();

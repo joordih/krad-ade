@@ -31,12 +31,14 @@ use crate::components::{
 use crate::terminal_theme::terminal_colors;
 use crate::theme::{
     palette, row_fill, row_shadow, terminal_font_family, Palette, ICON_SM, LINE_SM, RADIUS_LG,
-    RADIUS_SM, RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM,
+    RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, TEXT_SM,
 };
 
 pub(in crate::environment_shell) const TAB_H: f32 = 28.0;
 const TAB_BADGE: f32 = 20.0;
-const TAB_LABEL_MAX_W: f32 = 150.0;
+const TAB_MIN_W: f32 = 110.0;
+const TAB_RADIUS: f32 = 14.0;
+pub(in crate::environment_shell) const CAPSULE_PAD: f32 = 2.0;
 const TAB_DIVIDER_W: f32 = 1.0;
 const TAB_DIVIDER_H: f32 = 14.0;
 const CLOSE_BUTTON: f32 = 18.0;
@@ -112,13 +114,14 @@ pub(super) fn tab_shell(
         .id(id)
         .flex()
         .flex_row()
-        .flex_none()
+        .flex_1()
+        .min_w(px(TAB_MIN_W))
         .items_center()
         .gap(px(SPACE_1_5))
         .h(px(TAB_H))
         .pl(px(SPACE_1))
-        .pr(px(if shown { SPACE_1 } else { SPACE_2 }))
-        .rounded(px(RADIUS_SM))
+        .pr(px(SPACE_1))
+        .rounded(px(TAB_RADIUS))
         .cursor_pointer()
         .text_size(px(TEXT_SM))
         .line_height(px(LINE_SM))
@@ -138,6 +141,24 @@ pub(super) fn tab_shell(
         .when(!shown, |tab| {
             tab.hover(|style| style.bg(pal.bg_hover).text_color(rgb(pal.text_default)))
         })
+}
+
+pub(in crate::environment_shell) fn tab_capsule(
+    tabs: Vec<AnyElement>,
+    pal: &Palette,
+) -> gpui_kit::Div {
+    div()
+        .flex()
+        .flex_row()
+        .flex_1()
+        .min_w_0()
+        .items_center()
+        .h(px(TAB_H + 2.0 * CAPSULE_PAD))
+        .p(px(CAPSULE_PAD))
+        .rounded(px(TAB_RADIUS + CAPSULE_PAD))
+        .bg(pal.bg_hover)
+        .overflow_hidden()
+        .children(tabs)
 }
 
 pub(in crate::environment_shell) fn tab_badge(
@@ -291,16 +312,7 @@ impl EnvironmentShell {
                     .border_color(pal.divider),
             })
             .child(picker)
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .min_w_0()
-                    .h_full()
-                    .overflow_hidden()
-                    .children(tabs),
-            )
+            .child(tab_capsule(tabs, pal))
             .when(!self.editing(), |strip| {
                 strip.child(Self::add_tab_button(pane, cx))
             })
@@ -406,7 +418,8 @@ impl EnvironmentShell {
                 .child(tab_badge(leading, pal))
                 .child(
                     div()
-                        .max_w(px(TAB_LABEL_MAX_W))
+                        .flex_1()
+                        .min_w_0()
                         .truncate()
                         .when(preview, Styled::italic)
                         .child(title),
