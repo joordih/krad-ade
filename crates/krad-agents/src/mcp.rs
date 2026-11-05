@@ -5,8 +5,10 @@ use std::io::{self, BufRead as _, Write as _};
 use crate::client::call;
 use crate::code::{CodePosition, CodeRequest, CodeTool};
 use crate::env::bus_env;
+use crate::extension_tools::{is_extension_tool, mcp_schema, ExtensionToolOutcome, ToolCatalog};
 use crate::handle::Caller;
 use crate::protocol::{BusToken, Request, Response};
+use krad_domain::CodeTools;
 
 const SERVER_NAME: &str = "krad-code";
 const DEFAULT_PROTOCOL: &str = "2025-06-18";
@@ -29,7 +31,7 @@ struct Incoming {
 struct CallParams {
     name: String,
     #[serde(default)]
-    arguments: CallArguments,
+    arguments: Value,
 }
 
 #[derive(Default, Deserialize)]
@@ -70,14 +72,35 @@ fn tool_schema(tool: CodeTool) -> Value {
     })
 }
 
-fn request_of(params: CallParams) -> Result<CodeRequest, String> {
-    let tool = params
-        .name
+pub(crate) trait Bus {
+    fn ask(&self, request: Request) -> Result<Response, String>;
+}
+
+struct EnvBus;
+
+impl Bus for EnvBus {
+    fn ask(&self, request: Request) -> Result<Response, String> {
+        let env = bus_env().ok_or_else(|| OUTSIDE_KRAD.to_owned())?;
+        let from = env
+            .terminal
+            .parse::<Caller>()
+            .map_err(|_| OUTSIDE_KRAD.to_owned())?;
+        call(&env.endpoint, &BusToken::from(env.token), &from, request)
+            .map_err(|error| error.to_string())
+    }
+}
+
+fn code_request(name: &str, arguments: Value) -> Result<CodeRequest, String> {
+    let tool = name
         .strip_prefix(TOOL_PREFIX)
-        .ok_or_else(|| format!("Unknown tool {}", params.name))?
+        .ok_or_else(|| format!("Unknown tool {name}"))?
         .parse::<CodeTool>()
         .map_err(|error| error.to_string())?;
-    let arguments = params.arguments;
+    let arguments: CallArguments = if arguments.is_null() {
+        CallArguments::default()
+    } else {
+        serde_json::from_value(arguments).map_err(|error| error.to_string())?
+    };
     let position = match (arguments.line, arguments.column) {
         (Some(line), Some(column)) if line > 0 && column > 0 => Some(CodePosition {
             line: line - 1,
@@ -99,27 +122,51 @@ fn request_of(params: CallParams) -> Result<CodeRequest, String> {
     })
 }
 
-fn run_tool(request: CodeRequest) -> (String, bool) {
-    let Some(env) = bus_env() else {
-        return (OUTSIDE_KRAD.to_owned(), true);
-    };
-    let Ok(from) = env.terminal.parse::<Caller>() else {
-        return (OUTSIDE_KRAD.to_owned(), true);
-    };
-    match call(
-        &env.endpoint,
-        &BusToken::from(env.token),
-        &from,
-        Request::Code(request),
-    ) {
+fn run_code(bus: &impl Bus, request: CodeRequest) -> (String, bool) {
+    match bus.ask(Request::Code(request)) {
         Ok(Response::Code(answer)) => (answer.render(), false),
-        Ok(Response::Error(message)) => (message, true),
+        Ok(Response::Error(message)) | Err(message) => (message, true),
         Ok(_) => (OUTSIDE_KRAD.to_owned(), true),
-        Err(error) => (error.to_string(), true),
     }
 }
 
-fn answer(incoming: Incoming) -> Option<Value> {
+fn run_extension_tool(bus: &impl Bus, name: String, arguments: Value) -> (String, bool) {
+    match bus.ask(Request::ExtensionTool { name, arguments }) {
+        Ok(Response::ExtensionTool(answer)) => {
+            (answer.text, answer.outcome == ExtensionToolOutcome::Failed)
+        }
+        Ok(Response::Error(message)) | Err(message) => (message, true),
+        Ok(_) => (OUTSIDE_KRAD.to_owned(), true),
+    }
+}
+
+fn listed_tools(bus: &impl Bus) -> Vec<Value> {
+    let catalog = match bus.ask(Request::Tools) {
+        Ok(Response::Tools(catalog)) => catalog,
+        _ => ToolCatalog::default(),
+    };
+    let code = (catalog.code_tools == CodeTools::On)
+        .then(|| CodeTool::ALL.map(tool_schema))
+        .into_iter()
+        .flatten();
+    code.chain(catalog.extension_tools.iter().map(mcp_schema))
+        .collect()
+}
+
+fn call_tool(bus: &impl Bus, params: Value) -> Result<Value, (i64, String)> {
+    let params = serde_json::from_value::<CallParams>(params)
+        .map_err(|error| (INVALID_PARAMS, error.to_string()))?;
+    let (text, failed) = if is_extension_tool(&params.name) {
+        run_extension_tool(bus, params.name, params.arguments)
+    } else {
+        let request = code_request(&params.name, params.arguments)
+            .map_err(|message| (INVALID_PARAMS, message))?;
+        run_code(bus, request)
+    };
+    Ok(json!({"content": [{"type": "text", "text": text}], "isError": failed}))
+}
+
+fn answer(incoming: Incoming, bus: &impl Bus) -> Option<Value> {
     let id = incoming.id?;
     let result = match incoming.method.as_str() {
         "initialize" => Ok(json!({
@@ -128,17 +175,8 @@ fn answer(incoming: Incoming) -> Option<Value> {
             "serverInfo": {"name": SERVER_NAME, "version": krad_host::HOST_CLI_BUILD},
         })),
         "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({"tools": CodeTool::ALL.map(tool_schema)})),
-        "tools/call" => match serde_json::from_value::<CallParams>(incoming.params)
-            .map_err(|error| error.to_string())
-            .and_then(request_of)
-        {
-            Ok(request) => {
-                let (text, failed) = run_tool(request);
-                Ok(json!({"content": [{"type": "text", "text": text}], "isError": failed}))
-            }
-            Err(message) => Err((INVALID_PARAMS, message)),
-        },
+        "tools/list" => Ok(json!({"tools": listed_tools(bus)})),
+        "tools/call" => call_tool(bus, incoming.params),
         other => Err((METHOD_NOT_FOUND, format!("Unknown method {other}"))),
     };
     Some(match result {
@@ -156,7 +194,7 @@ pub(crate) fn run_mcp() -> i32 {
         let Ok(incoming) = serde_json::from_str::<Incoming>(&line) else {
             continue;
         };
-        let Some(reply) = answer(incoming) else {
+        let Some(reply) = answer(incoming, &EnvBus) else {
             continue;
         };
         if writeln!(stdout, "{reply}")
@@ -170,52 +208,4 @@ pub(crate) fn run_mcp() -> i32 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn ask(method: &str, params: &Value) -> Option<Value> {
-        answer(
-            serde_json::from_value(
-                json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}),
-            )
-            .ok()?,
-        )
-    }
-
-    #[test]
-    fn every_code_tool_is_listed_with_its_schema() {
-        let listed = ask("tools/list", &json!({})).unwrap_or_default();
-        let tools = listed["result"]["tools"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default();
-        assert_eq!(tools.len(), CodeTool::ALL.len());
-        let rename = tools
-            .iter()
-            .find(|tool| tool["name"] == "code_rename")
-            .cloned()
-            .unwrap_or_default();
-        assert_eq!(rename["annotations"]["destructiveHint"], json!(true));
-        assert!(rename["inputSchema"]["required"]
-            .as_array()
-            .is_some_and(|required| required.contains(&json!("newName"))));
-    }
-
-    #[test]
-    fn a_call_without_a_position_is_refused_before_reaching_the_bus() {
-        let refused = ask(
-            "tools/call",
-            &json!({"name": "code_definition", "arguments": {"path": "Main.java"}}),
-        )
-        .unwrap_or_default();
-        assert_eq!(refused["error"]["code"], json!(INVALID_PARAMS));
-    }
-
-    #[test]
-    fn notifications_get_no_answer() {
-        let notification = serde_json::from_value::<Incoming>(
-            json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
-        );
-        assert!(notification.is_ok_and(|incoming| answer(incoming).is_none()));
-    }
-}
+mod tests;

@@ -214,6 +214,14 @@ pub enum CodeTools {
     Off,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExtensionTools {
+    #[default]
+    On,
+    Off,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PerformanceMode {
@@ -250,6 +258,8 @@ pub struct Settings {
     pub appearance: AppearanceMode,
     #[serde(default)]
     pub code_tools: CodeTools,
+    #[serde(default)]
+    pub extension_tools: ExtensionTools,
     #[serde(default, skip_serializing)]
     pub terminal_theme: TerminalTheme,
     #[serde(default, skip_serializing_if = "Option::is_none")]

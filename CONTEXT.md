@@ -82,6 +82,10 @@ _Avoid_: webview, panel, extension UI
 A kind of machine an environment can live on besides this computer and SSH hosts, added by an extension, such as a Docker container. Its extension lists the machines and opens a channel to one; the app does everything else there as on an SSH host.
 _Avoid_: provider, remote type, connector
 
+**Extension tool**:
+A tool a trusted extension offers to every agent the app starts, beside the code tools, named after its extension and approved by each agent's permission mode when it changes something.
+_Avoid_: plugin tool, extension command
+
 **Environment**:
 Work context the user handles as one: its groups, which may come from different repositories, and their sessions. It lives on one host, and everything inside it runs there.
 _Avoid_: project, profile, workspace

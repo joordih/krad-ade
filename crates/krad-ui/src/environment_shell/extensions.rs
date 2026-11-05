@@ -6,6 +6,7 @@ mod keys;
 mod lifecycle;
 mod matching;
 mod prompts;
+mod tools;
 mod trust;
 mod views;
 
@@ -83,6 +84,7 @@ pub(in crate::environment_shell) enum Deferred {
         Option<krad_extensions::api::protocol::CommandTarget>,
     ),
     Render(OpenViewId),
+    Tool(tools::ToolCall),
 }
 
 pub(in crate::environment_shell) struct Running {
