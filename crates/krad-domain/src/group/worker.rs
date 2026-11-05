@@ -100,6 +100,12 @@ impl EnvironmentData {
         })
     }
 
+    #[must_use]
+    pub fn workers_closing_with(&self, terminal: TerminalId) -> Vec<TerminalId> {
+        self.session_led_by(terminal)
+            .map_or_else(Vec::new, |lead| self.open_workers(lead))
+    }
+
     pub fn retire_worker(&mut self, terminal: TerminalId) -> bool {
         let reopen = self
             .nodes
@@ -258,6 +264,31 @@ mod tests {
                 .worker(worker)
                 .and_then(|(_, worker)| worker.session),
             reopened
+        );
+    }
+
+    #[test]
+    fn closing_the_leads_tab_closes_its_open_workers() {
+        let (mut environment, lead, worker) = led_environment();
+        let lead_tab = environment.nodes[0].id;
+        if let Some(lead) = environment
+            .sessions
+            .iter_mut()
+            .find(|session| session.id == lead)
+            .and_then(|session| session.lead.as_mut())
+        {
+            lead.terminal = Some(lead_tab);
+        }
+        environment.open_worker_session(worker, spawn(lead));
+        assert_eq!(environment.workers_closing_with(lead_tab), vec![worker]);
+        assert_eq!(
+            environment.workers_closing_with(worker),
+            Vec::<TerminalId>::new()
+        );
+        environment.retire_worker(worker);
+        assert_eq!(
+            environment.workers_closing_with(lead_tab),
+            Vec::<TerminalId>::new()
         );
     }
 

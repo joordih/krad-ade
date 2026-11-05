@@ -20,12 +20,15 @@ const DIALOG_W: f32 = 420.0;
 pub(in crate::environment_shell) enum LeadEnding {
     Dismiss(SessionId),
     CloseSession(SessionId),
+    CloseTab { session: SessionId, tab: TerminalId },
 }
 
 impl LeadEnding {
     const fn session(self) -> SessionId {
         match self {
-            Self::Dismiss(session) | Self::CloseSession(session) => session,
+            Self::Dismiss(session)
+            | Self::CloseSession(session)
+            | Self::CloseTab { session, .. } => session,
         }
     }
 }
@@ -57,6 +60,22 @@ impl EnvironmentShell {
                     node.state != AgentState::Idle && node.state != AgentState::Done
                 })
         })
+    }
+
+    pub(in crate::environment_shell) fn close_tab_asking(
+        &mut self,
+        tab: TerminalId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let led = self
+            .envs
+            .get(&self.active)
+            .and_then(|live| live.data.session_led_by(tab));
+        match led {
+            Some(session) => self.ask_end_lead(LeadEnding::CloseTab { session, tab }, window, cx),
+            None => self.close_terminal(tab, cx),
+        }
     }
 
     pub(in crate::environment_shell) fn ask_end_lead(
@@ -98,6 +117,7 @@ impl EnvironmentShell {
         match ending {
             LeadEnding::Dismiss(session) => self.dismiss_lead(session, cx),
             LeadEnding::CloseSession(session) => self.close_session(session, cx),
+            LeadEnding::CloseTab { tab, .. } => self.close_terminal_in(&env, tab, cx),
         }
     }
 

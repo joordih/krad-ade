@@ -284,6 +284,13 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         self.end_worker_launch(env, id);
+        let workers = self
+            .envs
+            .get(env)
+            .map_or_else(Vec::new, |live| live.data.workers_closing_with(id));
+        for worker in workers {
+            self.close_terminal_in(env, worker, cx);
+        }
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
