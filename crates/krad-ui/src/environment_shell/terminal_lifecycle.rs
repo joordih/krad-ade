@@ -268,6 +268,7 @@ impl EnvironmentShell {
                 .map_or_else(TextScale::default, |node| node.text_scale),
             kind: spec.kind,
             file: None,
+            extension: None,
         });
         Some((cwd, anchor_node.map(|node| node.id)))
     }

@@ -563,6 +563,9 @@ impl EnvironmentShell {
         if node.is_none() && !live.data.side_panel.holds(id) {
             return div().into_any_element();
         }
+        if node.is_some_and(|node| node.kind == krad_domain::NodeKind::Extension) {
+            return self.extension_tab_body(id, cx);
+        }
         match node
             .and_then(|node| node.file.as_ref())
             .map(|file| &file.view)

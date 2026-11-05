@@ -18,11 +18,15 @@ impl EnvironmentShell {
     pub(super) fn view_list(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let current = self.active_view();
+        let extension_shown = self
+            .envs
+            .get(&self.active)
+            .is_some_and(|live| live.extension_sidebar.is_some());
         let rows =
             offered_views(self.review_host().is_some())
                 .into_iter()
                 .map(|(view, glyph, label)| {
-                    let selected = view == current;
+                    let selected = view == current && !extension_shown;
                     div()
                         .id(ElementId::from(format!("{VIEW_ROW_PREFIX}{label}")))
                         .flex()
@@ -44,6 +48,7 @@ impl EnvironmentShell {
                         })
                         .when(!selected, |row| row.hover(|style| style.bg(pal.bg_hover)))
                         .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                            this.hide_extension_main_view();
                             this.set_view(view, cx);
                         }))
                         .child(icon(glyph, ICON_SM, pal.text_default))
@@ -59,6 +64,7 @@ impl EnvironmentShell {
             .border_b_1()
             .border_color(pal.divider)
             .children(rows)
+            .children(self.extension_sidebar_rows(cx))
             .into_any_element()
     }
 }

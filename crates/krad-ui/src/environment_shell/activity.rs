@@ -248,6 +248,10 @@ impl EnvironmentShell {
         let height = self.activity_log.height;
         let docked = self.activity_terminal();
         let problems = self.utility_tab() == UtilityTab::Problems;
+        let extension = match self.utility_tab() {
+            UtilityTab::Extension(id) => Some(id),
+            _ => None,
+        };
         let panel = card(pal, cx)
             .id(PANEL_ID)
             .relative()
@@ -295,30 +299,36 @@ impl EnvironmentShell {
             .when(docked.is_none() && problems, |panel| {
                 panel.child(self.problems_body(cx))
             })
-            .when(docked.is_none() && !problems, |panel| {
-                let rows: Vec<AnyElement> = self
-                    .activity_log
-                    .entries
-                    .iter()
-                    .enumerate()
-                    .map(|(index, entry)| Self::activity_row(index, entry, now, cx))
-                    .collect();
-                panel.child(
-                    div()
-                        .id(LIST_ID)
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_h_0()
-                        .px(px(LOG_PAD_X))
-                        .pb(px(SPACE_2))
-                        .overflow_y_scroll()
-                        .children(rows)
-                        .when(empty, |list| {
-                            list.text_color(rgb(pal.text_muted)).child(ACTIVITY_EMPTY)
-                        }),
-                )
+            .when_some(extension.filter(|_| docked.is_none()), |panel, id| {
+                panel.child(self.extension_view_body(id, cx))
             })
+            .when(
+                docked.is_none() && !problems && extension.is_none(),
+                |panel| {
+                    let rows: Vec<AnyElement> = self
+                        .activity_log
+                        .entries
+                        .iter()
+                        .enumerate()
+                        .map(|(index, entry)| Self::activity_row(index, entry, now, cx))
+                        .collect();
+                    panel.child(
+                        div()
+                            .id(LIST_ID)
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_h_0()
+                            .px(px(LOG_PAD_X))
+                            .pb(px(SPACE_2))
+                            .overflow_y_scroll()
+                            .children(rows)
+                            .when(empty, |list| {
+                                list.text_color(rgb(pal.text_muted)).child(ACTIVITY_EMPTY)
+                            }),
+                    )
+                },
+            )
             .child(Self::height_handle(height, cx))
             .on_drop(cx.listener(|this: &mut Self, dragged: &DraggedTab, _, cx| {
                 cx.stop_propagation();

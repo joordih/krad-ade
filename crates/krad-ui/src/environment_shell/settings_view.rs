@@ -1,4 +1,5 @@
 mod editor;
+mod extensions;
 mod fonts;
 mod gateway;
 mod general;
@@ -54,6 +55,7 @@ pub(super) enum SettingsPane {
     Gateway,
     Mcp,
     Languages,
+    Extensions,
 }
 
 impl SettingsPane {
@@ -67,6 +69,7 @@ impl SettingsPane {
             Self::Gateway => "Gateway",
             Self::Mcp => "MCP",
             Self::Languages => "Languages",
+            Self::Extensions => "Extensions",
         }
     }
 
@@ -81,8 +84,9 @@ impl SettingsPane {
                 "Chat with the models of a gateway you run, through the app's own agent."
             }
             Self::Mcp => "The MCP servers whose tools Gateway chats can use.",
-            Self::Languages => {
-                "Language servers, the SDKs they need, and extensions that add languages."
+            Self::Languages => "Language servers and the SDKs they need.",
+            Self::Extensions => {
+                "Extensions that add languages, commands, views and tools, and their settings."
             }
         }
     }
@@ -97,6 +101,7 @@ impl SettingsPane {
             Self::Gateway => IconName::Flow,
             Self::Mcp => IconName::Plug,
             Self::Languages => IconName::Workflow,
+            Self::Extensions => IconName::Layers,
         }
     }
 }
@@ -111,6 +116,7 @@ pub(super) struct SettingsUi {
     mcp: McpUi,
     tint: material::TintUi,
     languages: languages::LanguagesUi,
+    extensions: extensions::ExtensionsUi,
     fonts: crate::font_catalog::FontCatalog,
     theme_editor: Option<theme_editor::ThemeEditor>,
     scroll: gpui_kit::ScrollHandle,
@@ -231,6 +237,7 @@ impl EnvironmentShell {
             mcp,
             tint,
             languages,
+            extensions: extensions::ExtensionsUi::default(),
             fonts: crate::font_catalog::font_catalog(cx),
             theme_editor: None,
             scroll: gpui_kit::ScrollHandle::new(),

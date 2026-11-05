@@ -21,7 +21,7 @@ const STDERR_THREAD: &str = "krad-extension-stderr";
 pub struct ProgramLog(Arc<Mutex<VecDeque<String>>>);
 
 impl ProgramLog {
-    fn push(&self, line: String) {
+    pub fn push(&self, line: String) {
         let mut lines = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         if lines.len() == MAX_LOG_LINES {
             lines.pop_front();

@@ -13,6 +13,7 @@ mod row;
 use files::file_group;
 use row::{command_row, palette_footer, Glyph};
 
+use super::extensions::{ExtensionPick, PaletteEntry};
 use super::notes_view::{note_line_label, NoteLine};
 use super::EnvironmentShell;
 use crate::actions::{
@@ -32,6 +33,8 @@ const PALETTE_SECTION_GROUPS: usize = 3;
 const PALETTE_SECTION_VIEW: usize = 4;
 const PALETTE_SECTION_NOTES: usize = 5;
 const PALETTE_SECTION_NOTE_LINES: usize = 6;
+const PALETTE_SECTION_EXTENSIONS: usize = 7;
+const PALETTE_GROUP_EXTENSIONS: &str = "Extensions";
 const PALETTE_GROUP_NEW: &str = "New terminal in the selected group";
 const PALETTE_GROUP_ENV: &str = "Environments";
 const PALETTE_GROUP_GROUPS: &str = "Groups and git";
@@ -99,6 +102,7 @@ enum PaletteCmd {
     NewAgent,
     OpenNote(String, Option<u32>),
     OpenFile(PathBuf),
+    Extension(ExtensionPick),
 }
 
 struct PaletteRows {
@@ -107,6 +111,7 @@ struct PaletteRows {
     envs: Vec<EnvironmentName>,
     notes: Vec<String>,
     note_lines: Vec<NoteLine>,
+    extensions: Vec<PaletteEntry>,
 }
 
 impl PaletteCmd {
@@ -131,6 +136,7 @@ impl PaletteCmd {
             Self::NewAgent => IconName::Magic,
             Self::RenameFocused | Self::RenameEnv | Self::OpenNote(_, None) => IconName::Note,
             Self::OpenNote(_, Some(_)) => IconName::Search,
+            Self::Extension(_) => IconName::Plug,
         }
     }
 
@@ -160,7 +166,13 @@ impl PaletteCmd {
             envs,
             notes,
             note_lines,
+            extensions,
         } = rows;
+        for (index, entry) in extensions.iter().enumerate() {
+            if path.eq_row(IndexPath::new(index).section(PALETTE_SECTION_EXTENSIONS)) {
+                return Some(Self::Extension(entry.pick.clone()));
+            }
+        }
         for (index, file) in files.iter().enumerate() {
             if path.eq_row(IndexPath::new(index).section(PALETTE_SECTION_FILES)) {
                 return Some(Self::OpenFile(file.clone()));
@@ -262,6 +274,7 @@ impl EnvironmentShell {
             PaletteCmd::SelectToolchain => self.select_focused_toolchain(cx),
             PaletteCmd::NewAgent => self.open_agent_composer(window, cx),
             PaletteCmd::OpenNote(path, line) => self.open_note_from_palette(&path, line, cx),
+            PaletteCmd::Extension(pick) => self.apply_extension_pick(pick, cx),
         }
     }
 
@@ -293,6 +306,7 @@ impl EnvironmentShell {
             envs: self.order.clone(),
             notes: self.palette_notes(&query),
             note_lines: self.palette_note_lines().to_vec(),
+            extensions: self.extension_palette_entries(),
         };
         let weak_cancel = weak.clone();
         let weak_query = weak.clone();
@@ -330,6 +344,7 @@ impl EnvironmentShell {
                 )
                 .group(note_group(&rows.notes, &query))
                 .group(note_lines_group(&rows.note_lines, &query))
+                .group(extension_group(&rows.extensions))
                 .placeholder(PALETTE_PLACEHOLDER)
                 .footer(|_, _, cx| palette_footer(cx))
                 .on_query(move |query: &str, _: &mut Window, cx: &mut App| {
@@ -357,6 +372,14 @@ impl EnvironmentShell {
                 });
         palette_frame(command, left, pal, weak_backdrop, cx)
     }
+}
+
+fn extension_group(entries: &[PaletteEntry]) -> CommandGroup {
+    CommandGroup::new().label(PALETTE_GROUP_EXTENSIONS).items(
+        entries
+            .iter()
+            .map(|entry| command_row(entry.label.clone(), (entry.icon, None), entry.shortcut())),
+    )
 }
 
 fn note_group(notes: &[String], query: &str) -> CommandGroup {

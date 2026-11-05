@@ -66,6 +66,7 @@ pub(super) enum MenuAction {
     ToggleSidebarPart(krad_domain::SidebarPart),
     ToggleSidebarDensity,
     CloseTabs(TerminalId, krad_domain::TabClosing),
+    Extension(Box<super::extensions::ExtensionMenu>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -433,6 +434,7 @@ impl EnvironmentShell {
             MenuAction::ToggleSidebarPart(part) => self.toggle_sidebar_part(part, cx),
             MenuAction::ToggleSidebarDensity => self.toggle_sidebar_density(cx),
             MenuAction::CloseTabs(tab, closing) => self.close_tabs(tab, closing, window, cx),
+            MenuAction::Extension(menu) => self.run_extension_menu(*menu, window, cx),
         }
         cx.notify();
     }

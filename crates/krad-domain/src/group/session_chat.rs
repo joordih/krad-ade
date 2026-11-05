@@ -83,6 +83,7 @@ mod tests {
             text_scale: TextScale::default(),
             kind: NodeKind::Chat,
             file: None,
+            extension: None,
         });
         env.place_terminal(id, None);
         id

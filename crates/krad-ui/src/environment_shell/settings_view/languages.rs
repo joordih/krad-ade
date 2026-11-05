@@ -10,8 +10,8 @@ use krad_extensions::{
 };
 
 use super::super::dialog_parts::sheet_row_with;
-use super::sections::{card_field, empty_row, pane_column, settings_section};
-use super::{form_row, hint, panel_card, EnvironmentShell};
+use super::sections::{empty_row, pane_column, settings_section};
+use super::{form_row, panel_card, EnvironmentShell};
 use crate::components::{icon, Button, ButtonVariant, IconName};
 use crate::theme::{palette, ICON_SM, SPACE_2};
 
@@ -20,10 +20,6 @@ const RUNTIMES_TITLE: &str = "Server runtimes";
 const SERVER_RUNTIMES_HINT: &str = "What language servers run on, such as Node.js. Install a missing one here, or point to your own copy. Each project's toolchain is picked from the editor's status bar.";
 const RUNTIMES_LOADING: &str = "Looking for server runtimes…";
 const RUNTIMES_NONE: &str = "No installed language needs a server runtime.";
-const EXTENSIONS_TITLE: &str = "Extensions";
-const EXTENSIONS_SECTION_HINT: &str = "Add languages from a git address or a folder of manifests.";
-const EXTENSIONS_EMPTY: &str = "No extensions yet.";
-const ADD_EXTENSION_LABEL: &str = "Add";
 const EXTENSIONS_HINT: &str = "Your own language and server runtime manifests go in";
 const NOT_FOUND_TEXT: &str = "Not found";
 const CHOSEN_TEXT: &str = "chosen";
@@ -149,6 +145,7 @@ impl EnvironmentShell {
     fn extensions_changed(&mut self, cx: &mut Context<Self>) {
         self.save_settings(cx);
         self.load_language_tools(cx);
+        self.load_extensions(cx);
         cx.notify();
     }
 
@@ -325,7 +322,12 @@ impl EnvironmentShell {
         .into_any_element()
     }
 
-    fn extension_row(index: usize, entry: &ExtensionEntry, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn extension_row(
+        &self,
+        index: usize,
+        entry: &ExtensionEntry,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let pal = palette(cx);
         let source = match &entry.source {
             ExtensionSource::Git(url) => url.clone(),
@@ -375,24 +377,6 @@ impl EnvironmentShell {
                 .map(|(index, status)| Self::server_runtime_row(index, status, cx))
                 .collect(),
         };
-        let mut extensions: Vec<AnyElement> = self
-            .settings
-            .extensions
-            .iter()
-            .enumerate()
-            .map(|(index, entry)| Self::extension_row(index, entry, cx))
-            .collect();
-        if extensions.is_empty() {
-            extensions.push(empty_row(EXTENSIONS_EMPTY, pal));
-        }
-        extensions.push(card_field(
-            ADD_EXTENSION_LABEL,
-            Self::extension_adder(ui, cx),
-            pal,
-        ));
-        let manifests = krad_store::config_dir().map_or_else(String::new, |config| {
-            user_manifests_dir(&config).display().to_string()
-        });
         pane_column([
             settings_section(
                 BEHAVIOUR_TITLE,
@@ -409,19 +393,17 @@ impl EnvironmentShell {
                 [panel_card(server_runtimes, pal)],
                 pal,
             ),
-            settings_section(
-                EXTENSIONS_TITLE,
-                Some(EXTENSIONS_SECTION_HINT),
-                [
-                    panel_card(extensions, pal),
-                    hint(&format!("{EXTENSIONS_HINT} {manifests}."), pal),
-                ],
-                pal,
-            ),
         ])
     }
 
-    fn extension_adder(ui: &LanguagesUi, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn manifests_hint(&self) -> String {
+        let manifests = krad_store::config_dir().map_or_else(String::new, |config| {
+            user_manifests_dir(&config).display().to_string()
+        });
+        format!("{EXTENSIONS_HINT} {manifests}.")
+    }
+
+    pub(super) fn extension_adder(ui: &LanguagesUi, cx: &mut Context<Self>) -> AnyElement {
         div()
             .flex()
             .flex_row()

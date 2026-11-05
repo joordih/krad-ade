@@ -29,6 +29,8 @@ pub struct TerminalNode {
     pub kind: NodeKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file: Option<crate::group::OpenFile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<crate::group::ExtensionTab>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,6 +39,7 @@ pub enum NodeKind {
     Terminal,
     Chat,
     File,
+    Extension,
 }
 
 impl NodeKind {
@@ -149,6 +152,7 @@ pub(crate) fn seed_terminals() -> (Vec<TerminalNode>, u64) {
             text_scale: TextScale::default(),
             kind: NodeKind::default(),
             file: None,
+            extension: None,
         })
         .collect();
     (terminals, SEED_NEXT_ID)

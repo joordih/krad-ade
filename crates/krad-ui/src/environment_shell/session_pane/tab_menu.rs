@@ -50,6 +50,20 @@ impl EnvironmentShell {
             closing_item(CLOSE_LEFT_LABEL, tab, TabClosing::ToTheLeft),
             closing_item(CLOSE_ALL_LABEL, tab, TabClosing::All).with_trailing(CLOSE_ALL_TABS_HINT),
         ]);
+        let title = self
+            .envs
+            .get(&self.active)
+            .and_then(|live| live.data.nodes.iter().find(|node| node.id == tab))
+            .map(|node| node.title.clone())
+            .unwrap_or_default();
+        entries.extend(self.extension_menu_entries(
+            krad_extensions::api::manifest::MenuTarget::Tab,
+            None,
+            &krad_extensions::api::protocol::CommandTarget::Tab {
+                title,
+                terminal: None,
+            },
+        ));
         entries
     }
 

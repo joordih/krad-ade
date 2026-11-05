@@ -72,6 +72,7 @@ impl EnvironmentShell {
             .slots
             .retain(|_, slot| matches!(slot, ServerSlot::Running(_)));
         self.attach_open_editors(cx);
+        self.resume_extension_starts(cx);
         if stale && may_refresh {
             self.refresh_registry(cx);
         }

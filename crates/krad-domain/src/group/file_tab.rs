@@ -123,6 +123,7 @@ impl EnvironmentData {
                 pinned,
                 view,
             }),
+            extension: None,
         });
         self.place_terminal(id, None);
         self.reveal_terminal(id);
@@ -170,7 +171,7 @@ impl EnvironmentData {
             .collect()
     }
 
-    fn session_for(&mut self, group: Option<GroupId>) -> SessionId {
+    pub(super) fn session_for(&mut self, group: Option<GroupId>) -> SessionId {
         let on_screen = self
             .current_session()
             .filter(|session| session.group == group)

@@ -49,6 +49,7 @@ const GROUPS: [(&str, &[SettingsPane]); 2] = [
             SettingsPane::Gateway,
             SettingsPane::Mcp,
             SettingsPane::Languages,
+            SettingsPane::Extensions,
         ],
     ),
 ];
@@ -68,6 +69,7 @@ impl EnvironmentShell {
             SettingsPane::Gateway => self.gateway_pane(&ui.gateway, cx),
             SettingsPane::Mcp => self.mcp_pane(&ui.mcp, cx),
             SettingsPane::Languages => self.languages_pane(&ui.languages, cx),
+            SettingsPane::Extensions => self.extensions_pane(cx),
         };
         Some(
             div()
