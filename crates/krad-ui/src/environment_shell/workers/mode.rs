@@ -8,7 +8,7 @@ pub(in crate::environment_shell) const fn worker_mode(
         return None;
     };
     match (worker, mode) {
-        (AgentPreset::Shell, _) => None,
+        (AgentPreset::Shell | AgentPreset::Acp(_), _) => None,
         (AgentPreset::Codex, PermissionMode::DontAsk)
         | (AgentPreset::Opencode, PermissionMode::DontAsk | PermissionMode::BypassPermissions) => {
             Some(PermissionMode::Auto)
@@ -43,6 +43,18 @@ mod tests {
             worker_mode(Some(PermissionMode::Auto), AgentPreset::Shell),
             None
         );
+    }
+
+    #[test]
+    fn an_acp_worker_keeps_the_agent_s_own_modes() {
+        let gemini = AgentPreset::Acp(
+            "gemini"
+                .parse()
+                .unwrap_or_else(|_| unreachable!("gemini is a valid ACP agent id")),
+        );
+        for mode in OFFERED_MODES {
+            assert_eq!(worker_mode(Some(mode), gemini), None);
+        }
     }
 
     #[test]

@@ -199,6 +199,7 @@ impl EnvironmentShell {
                                 .w_full()
                                 .children(
                                     self.ask_tray(id, cx)
+                                        .or_else(|| self.acp_sign_in_tray(id, chat, cx))
                                         .or_else(|| self.mcp_tray(id, chat, cx))
                                         .or_else(|| self.agent_notice(id, chat, cx))
                                         .or_else(|| Self::checklist_tray(id, chat, cx))
@@ -259,7 +260,10 @@ impl EnvironmentShell {
         }
         let text = match now {
             AgentNow::Waiting if waits_unseen => {
-                format!("{} {WAITING_TEXT}", chat.harness().display_name())
+                format!(
+                    "{} {WAITING_TEXT}",
+                    self.settings.acp.harness_name(chat.harness())
+                )
             }
             AgentNow::Exited => EXITED_TEXT.to_owned(),
             AgentNow::Waiting | AgentNow::Idle | AgentNow::Working => return None,

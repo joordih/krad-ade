@@ -10,7 +10,7 @@ use krad_domain::{
 
 use super::file_tree::FileAction;
 use super::name_dialogs::{DeleteTarget, NameTarget};
-use super::surface::SurfaceCommand;
+use super::surface::{AcpChoice, SurfaceCommand};
 use super::workers::LeadEnding;
 use super::{EnvironmentShell, LiveEnv};
 use crate::components::IconName;
@@ -33,6 +33,7 @@ pub(super) enum MenuAction {
     DismissLead(SessionId),
     SetEffort(TerminalId, Effort),
     SetPermissionMode(TerminalId, PermissionMode),
+    ChooseAcp(TerminalId, AcpChoice),
     ContinueInTerminal(TerminalId),
     Note(super::notes_view::NoteAction),
     File(FileAction),
@@ -400,6 +401,7 @@ impl EnvironmentShell {
             MenuAction::SetPermissionMode(owner, mode) => {
                 self.set_permission_mode(owner, mode, cx);
             }
+            MenuAction::ChooseAcp(owner, choice) => self.choose_acp(owner, choice, cx),
             MenuAction::ContinueInTerminal(id) => self.continue_in_terminal(id, cx),
             MenuAction::Note(action) => self.run_note_action(action, cx),
             MenuAction::File(action) => self.run_file_action(action, window, cx),

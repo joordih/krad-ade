@@ -320,7 +320,11 @@ impl EnvironmentShell {
                         .label(PALETTE_GROUP_NEW)
                         .items(rows.agents.iter().map(|preset| {
                             let (glyph, color) = harness_icon(*preset, pal);
-                            command_row(preset.display_name(), (glyph, Some(color)), None)
+                            command_row(
+                                self.settings.acp.harness_name(*preset),
+                                (glyph, Some(color)),
+                                None,
+                            )
                         })),
                 )
                 .group(CommandGroup::new().label(PALETTE_GROUP_ENV).items(

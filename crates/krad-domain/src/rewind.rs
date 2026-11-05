@@ -50,7 +50,15 @@ impl AgentPreset {
     pub const fn restores_files(self) -> bool {
         match self {
             Self::ClaudeCode | Self::Opencode | Self::Gateway => true,
-            Self::Shell | Self::Codex => false,
+            Self::Shell | Self::Codex | Self::Acp(_) => false,
+        }
+    }
+
+    #[must_use]
+    pub const fn rewinds(self) -> bool {
+        match self {
+            Self::ClaudeCode | Self::Codex | Self::Opencode | Self::Gateway => true,
+            Self::Shell | Self::Acp(_) => false,
         }
     }
 
@@ -58,7 +66,7 @@ impl AgentPreset {
     pub const fn rewinds_from_home(self) -> bool {
         match self {
             Self::ClaudeCode => true,
-            Self::Shell | Self::Codex | Self::Opencode | Self::Gateway => false,
+            Self::Shell | Self::Codex | Self::Opencode | Self::Gateway | Self::Acp(_) => false,
         }
     }
 }
@@ -66,15 +74,18 @@ impl AgentPreset {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::acp::built_in_acp_agents;
 
     #[test]
-    fn codex_rewinds_without_its_files_and_only_claude_code_reads_them_from_home() {
-        for preset in AgentPreset::all() {
-            let (restores, from_home) = match preset {
-                AgentPreset::ClaudeCode => (true, true),
-                AgentPreset::Opencode | AgentPreset::Gateway => (true, false),
-                AgentPreset::Shell | AgentPreset::Codex => (false, false),
+    fn codex_rewinds_without_its_files_and_acp_agents_do_not_rewind() {
+        for preset in AgentPreset::listed(&built_in_acp_agents()) {
+            let (rewinds, restores, from_home) = match preset {
+                AgentPreset::ClaudeCode => (true, true, true),
+                AgentPreset::Opencode | AgentPreset::Gateway => (true, true, false),
+                AgentPreset::Codex => (true, false, false),
+                AgentPreset::Shell | AgentPreset::Acp(_) => (false, false, false),
             };
+            assert_eq!(preset.rewinds(), rewinds, "{preset:?}");
             assert_eq!(preset.restores_files(), restores, "{preset:?}");
             assert_eq!(preset.rewinds_from_home(), from_home, "{preset:?}");
         }

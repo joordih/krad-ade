@@ -267,7 +267,10 @@ impl EnvironmentShell {
                 home: subagents.home.clone(),
                 conversation: subagents.conversation.clone(),
             },
-            AgentPreset::Codex | AgentPreset::Opencode | AgentPreset::Shell => return Look::Idle,
+            AgentPreset::Codex
+            | AgentPreset::Opencode
+            | AgentPreset::Shell
+            | AgentPreset::Acp(_) => return Look::Idle,
         };
         Look::Read(SubagentJob {
             resume,
@@ -386,7 +389,7 @@ mod tests {
             name: name.to_owned(),
             kind: ToolKind::of_claude_code(name),
             summary: String::new(),
-            edit: None,
+            edits: Vec::new(),
         }))
     }
 
@@ -433,7 +436,7 @@ mod tests {
                     name: (*name).to_owned(),
                     kind: ToolKind::of_claude_code(name),
                     summary: String::new(),
-                    edit: None,
+                    edits: Vec::new(),
                 })),
             );
         }

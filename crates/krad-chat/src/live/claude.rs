@@ -126,6 +126,7 @@ impl LiveHarness for ClaudeProcess {
                 }
             }
             Order::Rewind(request) => self.rewind(request),
+            Order::Acp(_) => {}
         }
     }
 

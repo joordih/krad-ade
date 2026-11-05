@@ -22,7 +22,10 @@ fn plan_keys(keys: PlanDialogKeys, answer: &AskAnswer) -> Vec<Vec<u8>> {
             message.as_bytes().to_vec(),
             ENTER.to_vec(),
         ],
-        AskAnswer::Allow | AskAnswer::AllowAlways | AskAnswer::Answers(_) => Vec::new(),
+        AskAnswer::Allow
+        | AskAnswer::AllowAlways
+        | AskAnswer::Answers(_)
+        | AskAnswer::Chosen(_) => Vec::new(),
     }
 }
 

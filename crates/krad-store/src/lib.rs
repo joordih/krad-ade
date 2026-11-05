@@ -1,3 +1,5 @@
+mod acp_secret;
+mod acp_transcript;
 mod arcade;
 mod chat_images;
 mod config_dir;
@@ -13,6 +15,8 @@ mod settings;
 mod themes;
 mod vault;
 
+pub use acp_secret::{delete_acp_secret, find_acp_secret, write_acp_secret};
+pub use acp_transcript::{acp_transcript_file, read_acp_transcript, AcpTranscript, AcpTranscripts};
 pub use arcade::{read_arcade_scores, write_arcade_scores};
 pub use chat_images::{chat_images_dir, delete_chat_images, save_pasted_image, ChatImageError};
 pub use config_dir::{config_dir, gateway_sessions_dir, APP_NAME};

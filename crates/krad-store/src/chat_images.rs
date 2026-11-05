@@ -20,7 +20,7 @@ pub enum ChatImageError {
     Delete(io::Error),
 }
 
-fn environment_folder(env: &EnvironmentName) -> String {
+pub(crate) fn environment_folder(env: &EnvironmentName) -> String {
     env.as_str()
         .bytes()
         .fold(String::new(), |mut folder, byte| {

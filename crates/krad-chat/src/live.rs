@@ -1,6 +1,9 @@
 mod claude;
 
-use krad_domain::{Effort, ModelId, PermissionMode, Prompt, ResumeId};
+use krad_domain::{
+    AcpAuthMethodId, AcpConfigOptionId, AcpConfigValue, AcpModeId, AcpModelId, Effort, ModelId,
+    PermissionMode, Prompt, ResumeId,
+};
 use std::collections::hash_map::RandomState;
 use std::fmt;
 use std::hash::{BuildHasher, Hash, Hasher};
@@ -9,6 +12,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::acp::{spawn_acp, AcpConfig};
 use crate::codex::spawn_codex;
 use crate::control::{AskAnswer, LiveEvent, ToolAsk};
 use crate::engine::{spawn_engine, EngineConfig};
@@ -101,6 +105,15 @@ pub(crate) enum Order {
     Mode(PermissionMode),
     Answer(Box<ToolAsk>, AskAnswer),
     Rewind(RewindRequest),
+    Acp(AcpOrder),
+}
+
+#[derive(Debug)]
+pub(crate) enum AcpOrder {
+    Mode(AcpModeId),
+    Model(AcpModelId),
+    Option(AcpConfigOptionId, AcpConfigValue),
+    SignIn(AcpAuthMethodId),
 }
 
 pub(crate) trait LiveHarness: Send {
@@ -141,6 +154,23 @@ impl LiveChat {
         self.harness.order(Order::Mode(mode));
     }
 
+    pub fn set_acp_mode(&self, mode: AcpModeId) {
+        self.harness.order(Order::Acp(AcpOrder::Mode(mode)));
+    }
+
+    pub fn set_acp_model(&self, model: AcpModelId) {
+        self.harness.order(Order::Acp(AcpOrder::Model(model)));
+    }
+
+    pub fn set_acp_option(&self, option: AcpConfigOptionId, value: AcpConfigValue) {
+        self.harness
+            .order(Order::Acp(AcpOrder::Option(option, value)));
+    }
+
+    pub fn sign_in(&self, method: AcpAuthMethodId) {
+        self.harness.order(Order::Acp(AcpOrder::SignIn(method)));
+    }
+
     pub fn run(&self, command: &SlashCommand) {
         self.harness.run(command);
     }
@@ -174,6 +204,7 @@ pub enum ChatBackend {
     Codex(LiveConfig),
     Opencode(Arc<OpencodeServer>, LiveConfig),
     Gateway(EngineConfig),
+    Acp(AcpConfig),
 }
 
 /// # Errors
@@ -191,6 +222,7 @@ pub fn start_chat(
             Box::new(spawn_opencode(server, config, session, sink))
         }
         ChatBackend::Gateway(config) => Box::new(spawn_engine(config, session, sink)),
+        ChatBackend::Acp(config) => Box::new(spawn_acp(config, session, sink)),
     };
     Ok(LiveChat { harness })
 }

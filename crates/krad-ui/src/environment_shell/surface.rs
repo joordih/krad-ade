@@ -1,3 +1,4 @@
+mod acp;
 mod anchor;
 mod answer;
 mod bookmarks;
@@ -21,6 +22,7 @@ mod switch;
 mod thread;
 mod timeline;
 mod tool_group;
+mod tool_output;
 mod transcript;
 mod view;
 
@@ -52,9 +54,10 @@ use subagents::Subagents;
 use timeline::Timeline;
 use transcript::{TranscriptView, TRANSCRIPT_HARNESS};
 
+pub(super) use acp::AcpChoice;
 pub(super) use answer::tool_question;
 pub(super) use bus::ChatPresence;
-pub(super) use edit_diff::edit_diff;
+pub(super) use edit_diff::edit_diffs;
 pub(super) use facts::AccountUsage;
 pub(super) use status_line::elapsed_label;
 pub(super) use structured::restored_chats;
@@ -350,7 +353,21 @@ impl EnvironmentShell {
         if !messages.is_empty() || !structured.is_fresh() {
             return HarnessChange::Refused;
         }
-        structured.switch_harness(*harness);
+        let transcript = self.acp_transcript(env, id, *harness);
+        let Some(SurfaceChat {
+            backend: Backend::Structured(structured),
+            ..
+        }) = self
+            .envs
+            .get_mut(env)
+            .and_then(|live| live.chats.get_mut(&id))
+        else {
+            return HarnessChange::Kept;
+        };
+        structured.switch_harness(*harness, transcript);
+        let Some(live) = self.envs.get_mut(env) else {
+            return HarnessChange::Kept;
+        };
         if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
             node.harness = Some(*harness);
         }

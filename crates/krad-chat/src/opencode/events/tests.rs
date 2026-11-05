@@ -15,7 +15,8 @@ fn chat(events: Vec<LiveEvent>) -> Vec<ChatEvent> {
             | LiveEvent::Usage(_)
             | LiveEvent::Notice(_)
             | LiveEvent::Rewound(_)
-            | LiveEvent::Refused(_) => None,
+            | LiveEvent::Refused(_)
+            | LiveEvent::Acp(_) => None,
         })
         .collect()
 }
@@ -48,7 +49,7 @@ fn a_turn_becomes_text_tools_usage_and_its_end() {
                 name: "Bash".to_owned(),
                 kind: krad_domain::ToolKind::Shell,
                 summary: "git status".to_owned(),
-                edit: None,
+                edits: Vec::new(),
             }),
             ChatEvent::Text("Clean tree.".to_owned()),
             ChatEvent::ContextTokens(10_210),

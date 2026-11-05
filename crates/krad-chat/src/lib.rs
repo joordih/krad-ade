@@ -1,3 +1,4 @@
+pub mod acp;
 mod checklist;
 mod codex;
 mod command;
@@ -21,10 +22,11 @@ mod rewind;
 mod skills;
 mod subagents;
 
+pub use acp::{acp_agent_env, AcpConfig, MissingSecret};
 pub use codex::{codex_models, read_codex_transcript, CodexError};
 pub use control::{
-    AskAnswer, AskKind, Catalog, CommandOffer, LiveEvent, ModelOffer, ModelSource, PickedAnswer,
-    PlanUsage, Question, QuestionOption, SourceRank, ToolAsk,
+    AcpEvent, AskAnswer, AskKind, Catalog, CommandOffer, LiveEvent, ModelOffer, ModelSource,
+    PickedAnswer, PlanUsage, Question, QuestionOption, SourceRank, ToolAsk,
 };
 pub use engine::{engine_subagents, read_engine_subagent, read_engine_transcript, EngineConfig};
 pub use error::ChatError;

@@ -48,7 +48,8 @@ impl EnvironmentShell {
     }
 
     pub(super) fn add_terminal(&mut self, preset: AgentPreset, cx: &mut Context<Self>) {
-        self.spawn_terminal(preset.display_name(), Launch::Preset(preset), None, cx);
+        let label = self.settings.acp.harness_name(preset);
+        self.spawn_terminal(&label, Launch::Preset(preset), None, cx);
     }
 
     pub(super) fn add_new_tab(&mut self, cx: &mut Context<Self>) {
@@ -207,7 +208,7 @@ impl EnvironmentShell {
         let spec = NodeSpec {
             kind: NodeKind::Chat,
             harness: Some(preset),
-            label: preset.display_name(),
+            label: &self.settings.acp.harness_name(preset),
             group: NodeGroup::OrSelected(group),
         };
         self.push_node(env, id, &spec, None)?;
@@ -225,7 +226,7 @@ impl EnvironmentShell {
     }
 
     fn default_chat_harness(&self) -> AgentPreset {
-        AgentPreset::chat_harnesses()
+        AgentPreset::chat_harnesses(&self.settings.acp.all_agents())
             .into_iter()
             .find(|preset| self.chats_on(*preset))
             .unwrap_or(DEFAULT_CHAT_HARNESS)
@@ -335,6 +336,7 @@ impl EnvironmentShell {
         }
         if chat.is_some_and(|chat| chat.structured().is_some()) {
             Self::forget_chat_images(env, id, cx);
+            self.forget_acp_transcript(env, id);
         }
         cx.notify();
         self.store();

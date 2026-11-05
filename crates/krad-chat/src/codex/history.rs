@@ -156,7 +156,7 @@ mod tests {
                     name: "Read".to_owned(),
                     kind: krad_domain::ToolKind::Read,
                     summary: "/p/notes.txt".to_owned(),
-                    edit: None,
+                    edits: Vec::new(),
                 })),
                 ChatEntry::Event(ChatEvent::Text("They say hello.".to_owned())),
             ]

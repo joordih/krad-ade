@@ -295,6 +295,7 @@ impl EnvironmentShell {
 
     fn apply_exit(&mut self, env: &EnvironmentName, id: TerminalId, code: Option<i32>) -> bool {
         let signed_in = self.sign_in_ended(env, id, code);
+        self.acp_sign_in_ended(env, id);
         let Some(live) = self.envs.get_mut(env) else {
             return signed_in;
         };

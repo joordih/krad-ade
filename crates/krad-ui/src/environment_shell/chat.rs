@@ -3,17 +3,20 @@ mod file_index;
 mod live;
 mod panel;
 mod suggest;
+mod tool_output;
 mod transcript;
 
 pub(super) use live::{LiveProcess, StartError};
 pub(super) use panel::question_bubble;
 pub(super) use suggest::workplace_home;
 use suggest::Suggest;
+pub(super) use tool_output::ShownOutput;
 pub(super) use transcript::{fold_entry, fold_prompt, last_permission_mode};
 
 use gpui_kit::ScrollHandle;
 use krad_chat::{Skill, Speaker, ToolCall};
-use krad_domain::{AskOutcome, Checklist, Mention, RewindPoint};
+use krad_domain::{AskOutcome, Checklist, Mention, RewindPoint, ToolUseId};
+use std::collections::HashMap;
 
 use super::EnvironmentShell;
 
@@ -34,6 +37,7 @@ pub(super) struct ChatMessage {
     pub(super) mentions: Vec<Mention>,
     pub(super) checklist: Option<Checklist>,
     pub(super) rewind: Option<RewindPoint>,
+    pub(super) tool_outputs: HashMap<ToolUseId, ShownOutput>,
 }
 
 impl ChatMessage {
@@ -106,6 +110,7 @@ mod tests {
             mentions: Vec::new(),
             checklist: None,
             rewind: None,
+            tool_outputs: HashMap::new(),
         }
     }
 
@@ -116,7 +121,7 @@ mod tests {
             name: "bash".to_owned(),
             kind: ToolKind::Shell,
             summary: "cargo test".to_owned(),
-            edit: None,
+            edits: Vec::new(),
         };
         let mut answer = message(
             Speaker::Assistant,

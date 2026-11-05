@@ -41,7 +41,7 @@ impl EnvironmentShell {
         ];
         entries.extend(self.installed_agents().iter().map(|preset| {
             MenuEntry::checked(
-                preset.display_name(),
+                self.settings.acp.harness_name(*preset),
                 *preset == self.settings.default_harness,
                 MenuAction::NewTerminal(*preset),
             )

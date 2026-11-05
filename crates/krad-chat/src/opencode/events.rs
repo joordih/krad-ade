@@ -243,7 +243,7 @@ pub(crate) fn tool_call(id: &str, tool: &str, input: &Value) -> ToolCall {
         name: name.to_owned(),
         kind,
         summary: tool_summary(Some(input)),
-        edit: opencode_edit(tool, input),
+        edits: opencode_edit(tool, input).into_iter().collect(),
     }
 }
 

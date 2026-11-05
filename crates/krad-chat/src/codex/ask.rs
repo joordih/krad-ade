@@ -161,7 +161,7 @@ pub(crate) fn server_ask(
                     .collect::<Vec<_>>()
                     .join(PATH_SEPARATOR),
                 title: asked.reason,
-                edit: tools.iter().find_map(|tool| tool.edit.clone()),
+                edit: tools.iter().find_map(|tool| tool.edits.first().cloned()),
             };
             Some(ask(id, kind, CodexAsk::FileChange))
         }
@@ -265,10 +265,10 @@ pub(crate) fn reply(codex: &CodexAsk, answer: &AskAnswer) -> Option<Value> {
         (CodexAsk::Command { .. } | CodexAsk::FileChange, AskAnswer::AllowAlways) => {
             decision(ACCEPT_FOR_SESSION)
         }
-        (CodexAsk::Command { declinable, .. }, AskAnswer::Deny { .. }) => {
+        (CodexAsk::Command { declinable, .. }, AskAnswer::Deny { .. } | AskAnswer::Chosen(_)) => {
             decision(if *declinable { DECLINE } else { CANCEL })
         }
-        (CodexAsk::FileChange, AskAnswer::Deny { .. }) => decision(DECLINE),
+        (CodexAsk::FileChange, AskAnswer::Deny { .. } | AskAnswer::Chosen(_)) => decision(DECLINE),
         (
             CodexAsk::Command { .. } | CodexAsk::FileChange,
             AskAnswer::Allow | AskAnswer::ApprovePlan { .. } | AskAnswer::Answers(_),
@@ -363,7 +363,7 @@ mod tests {
             name: "Write".to_owned(),
             kind: ToolKind::Edit,
             summary: "out.txt".to_owned(),
-            edit: None,
+            edits: Vec::new(),
         };
         let changes = HashMap::from([("item_1".to_owned(), vec![tool])]);
         let ask = server_ask(

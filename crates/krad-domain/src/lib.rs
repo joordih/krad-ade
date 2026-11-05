@@ -1,3 +1,4 @@
+mod acp;
 mod agent;
 mod arcade;
 mod bookmark;
@@ -54,6 +55,7 @@ mod view;
 mod work_mode;
 mod wsl;
 
+pub use acp::*;
 pub use agent::*;
 pub use arcade::*;
 pub use bookmark::*;

@@ -85,6 +85,7 @@ impl<'de> Deserialize<'de> for PersistedLayout {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::AgentPreset;
     use crate::environment::DEFAULT_ENVIRONMENT;
     use crate::group::SessionSpec;
     use crate::host::Host;
@@ -223,6 +224,48 @@ mod tests {
         assert_eq!(
             back.environments[0].groups[0].activation,
             GroupActivation::Inherit
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_layout_written_before_acp_agents_keeps_its_harnesses() -> serde_json::Result<()> {
+        let older = serde_json::json!({
+            "version": 11,
+            "active": "main",
+            "environments": [{
+                "name": "main",
+                "nodes": [
+                    { "id": 1, "title": "claude", "state": "Idle", "harness": "ClaudeCode" },
+                    { "id": 2, "title": "chat", "state": "Done", "harness": "Gateway", "kind": "Chat" }
+                ],
+                "meta": {},
+                "next_id": 3
+            }]
+        });
+        let back: PersistedLayout = serde_json::from_value(older)?;
+        let harnesses: Vec<Option<AgentPreset>> = back.environments[0]
+            .nodes
+            .iter()
+            .map(|node| node.harness)
+            .collect();
+        assert_eq!(
+            harnesses,
+            [Some(AgentPreset::ClaudeCode), Some(AgentPreset::Gateway)]
+        );
+        let mut snapshot = back;
+        snapshot.environments[0].nodes[1].harness = Some(AgentPreset::Acp(
+            "codex-acp"
+                .parse()
+                .unwrap_or_else(|_| unreachable!("a valid id")),
+        ));
+        let text = serde_json::to_string(&snapshot)?;
+        assert!(text.contains(r#""harness":"ClaudeCode""#), "{text}");
+        assert!(text.contains(r#""harness":"Acp:codex-acp""#), "{text}");
+        let again: PersistedLayout = serde_json::from_str(&text)?;
+        assert_eq!(
+            again.environments[0].nodes[1].harness,
+            snapshot.environments[0].nodes[1].harness
         );
         Ok(())
     }

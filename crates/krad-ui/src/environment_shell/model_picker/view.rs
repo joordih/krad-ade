@@ -110,6 +110,7 @@ impl EnvironmentShell {
             .enumerate()
             .map(|(index, group)| {
                 let harness = group.harness;
+                let name = group.name.clone();
                 let selected = harness == choosing.harness;
                 let (glyph, color) = harness_icon(harness, pal);
                 div()
@@ -124,7 +125,7 @@ impl EnvironmentShell {
                     .when(!selected, |button| {
                         button.hover(|style| style.bg(pal.bg_hover))
                     })
-                    .tooltip(move |_, cx| tooltip_view(harness.display_name().into(), cx))
+                    .tooltip(move |_, cx| tooltip_view(name.clone(), cx))
                     .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                         this.show_picker_harness(harness, cx);
                     }))

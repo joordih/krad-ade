@@ -18,7 +18,10 @@ impl Listing {
         match harness {
             AgentPreset::ClaudeCode => Some(Self::Claude),
             AgentPreset::Codex => Some(Self::Codex),
-            AgentPreset::Shell | AgentPreset::Opencode | AgentPreset::Gateway => None,
+            AgentPreset::Shell
+            | AgentPreset::Opencode
+            | AgentPreset::Gateway
+            | AgentPreset::Acp(_) => None,
         }
     }
 
@@ -53,7 +56,7 @@ impl ListedModels {
 
 impl EnvironmentShell {
     pub(super) fn list_harness_models(&mut self, cx: &mut Context<Self>) {
-        for harness in AgentPreset::all() {
+        for harness in AgentPreset::NATIVE {
             if let Some(listing) = Listing::of(harness) {
                 if self.native_agents.contains(&harness) {
                     self.list_models_of(&HostLink::Local, harness, listing, cx);

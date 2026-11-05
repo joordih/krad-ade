@@ -20,6 +20,7 @@ const PROMPT_DELAY: Duration = Duration::from_secs(4);
 const FRESH_CONVERSATION: &str = "Fresh conversation";
 const FRESH_TOAST: &str = "could not resume its conversation and started a fresh one";
 pub(super) const NO_GROUP: &str = "Run spawn from a terminal that belongs to a group";
+const UNKNOWN_ACP_AGENT: &str = "is not an ACP agent; add it in Settings, ACP agents";
 const NOT_A_REPO: &str =
     "The caller's group is not in a git repository, so it cannot branch a worktree";
 const BAD_WORKTREE_NAME: &str = "Use letters, digits, '-', '_' or '.' for the worktree name";
@@ -244,6 +245,15 @@ impl EnvironmentShell {
             lead,
             mode,
         } = order;
+        if let Some(id) = preset
+            .acp_agent()
+            .filter(|id| self.settings.acp.agent(*id).is_none())
+        {
+            reply
+                .send(Response::Error(format!("{id} {UNKNOWN_ACP_AGENT}")))
+                .unwrap_or_default();
+            return;
+        }
         let lead_task = lead.as_ref().map(|lead| lead.task.clone());
         let spawn = WorkerSpawn {
             lead: lead.map(|lead| lead.session),

@@ -1,6 +1,6 @@
 mod harness_name;
 
-pub(crate) use harness_name::preset_by_display_name;
+pub(crate) use harness_name::{bus_name, preset_by_bus_name, preset_by_display_name};
 
 use crate::code::{CodeAnswer, CodeRequest};
 use crate::extension_tools::{ExtensionToolAnswer, ToolCatalog};
@@ -369,6 +369,37 @@ mod tests {
             let line = serde_json::to_string(&TerminalState::Running(state))?;
             assert_eq!(line, format!("\"{}\"", state.label()));
         }
+        Ok(())
+    }
+
+    #[test]
+    fn acp_agents_travel_by_their_id() -> Result<(), serde_json::Error> {
+        let gemini = AgentPreset::Acp(
+            "gemini"
+                .parse()
+                .unwrap_or_else(|_| unreachable!("a valid id")),
+        );
+        let spawn = Request::Spawn {
+            agent: gemini,
+            worktree: None,
+            task: "tests".to_owned(),
+        };
+        let spawn_line = r#"{"Spawn":{"agent":"acp:gemini","worktree":null,"task":"tests"}}"#;
+        assert_eq!(serde_json::to_string(&spawn)?, spawn_line);
+        assert_eq!(serde_json::from_str::<Request>(spawn_line)?, spawn);
+        let agent = AgentInfo {
+            terminal: 5,
+            title: "Gemini (ACP) · 5".to_owned(),
+            group: None,
+            state: TerminalState::Running(AgentState::Working),
+            harness: Some(gemini),
+            is_self: false,
+        };
+        let agent_line = r#"{"terminal":5,"title":"Gemini (ACP) · 5","group":null,"state":"working","harness":"acp:gemini","is_self":false}"#;
+        assert_eq!(serde_json::to_string(&agent)?, agent_line);
+        assert_eq!(serde_json::from_str::<AgentInfo>(agent_line)?, agent);
+        let unknown = agent_line.replace("acp:gemini", "acp:Not An Id");
+        assert!(serde_json::from_str::<AgentInfo>(&unknown).is_err());
         Ok(())
     }
 

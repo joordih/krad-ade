@@ -174,7 +174,10 @@ fn to_body(body: &impl Serialize) -> Value {
 
 pub(crate) fn reply(ask: &ToolAsk, answer: &AskAnswer) -> Option<Reply> {
     match &ask.responder {
-        Responder::ClaudeCode(_) | Responder::Engine { .. } | Responder::Codex { .. } => None,
+        Responder::ClaudeCode(_)
+        | Responder::Engine { .. }
+        | Responder::Codex { .. }
+        | Responder::Acp { .. } => None,
         Responder::OpencodePermission {
             session, request, ..
         } => {
@@ -187,6 +190,7 @@ pub(crate) fn reply(ask: &ToolAsk, answer: &AskAnswer) -> Option<Reply> {
                 AskAnswer::Allow | AskAnswer::ApprovePlan { .. } | AskAnswer::Answers(_) => {
                     (Decision::Once, None)
                 }
+                AskAnswer::Chosen(_) => (Decision::Reject, None),
             };
             Some(Reply::Post {
                 path: permission_path(session, request),
@@ -207,7 +211,8 @@ pub(crate) fn reply(ask: &ToolAsk, answer: &AskAnswer) -> Option<Reply> {
             AskAnswer::Allow
             | AskAnswer::AllowAlways
             | AskAnswer::ApprovePlan { .. }
-            | AskAnswer::Deny { .. } => Reply::Delete {
+            | AskAnswer::Deny { .. }
+            | AskAnswer::Chosen(_) => Reply::Delete {
                 path: form_path(session, form),
             },
         }),
