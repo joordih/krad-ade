@@ -239,7 +239,9 @@ impl EnvironmentShell {
         }
         match self.extensions.slot_state(&installed.manifest.id) {
             Some(Slot::Running(_)) => RUNNING.to_owned(),
-            Some(Slot::Starting(_) | Slot::WaitingForTools(_)) => STARTING.to_owned(),
+            Some(Slot::Starting(_) | Slot::Initializing(..) | Slot::WaitingForTools(_)) => {
+                STARTING.to_owned()
+            }
             Some(Slot::Failed(error)) => format!("{FAILED}: {error}"),
             Some(Slot::Unsupported) => UNSUPPORTED.to_owned(),
             None => IDLE.to_owned(),

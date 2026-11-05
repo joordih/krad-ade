@@ -298,7 +298,12 @@ impl EnvironmentShell {
                     Some(Slot::Unsupported) | None => {
                         Some((env.clone(), format!("{title} {STOPPED_TEXT}")))
                     }
-                    Some(Slot::Running(_) | Slot::Starting(_) | Slot::WaitingForTools(_)) => None,
+                    Some(
+                        Slot::Running(_)
+                        | Slot::Initializing(..)
+                        | Slot::Starting(_)
+                        | Slot::WaitingForTools(_),
+                    ) => None,
                 }
             })
             .collect();

@@ -68,7 +68,11 @@ impl EnvironmentShell {
                 self.run_deferred(&key, deferred, cx);
                 return;
             }
-            Some(Slot::Starting(waiting) | Slot::WaitingForTools(waiting)) => {
+            Some(
+                Slot::Starting(waiting)
+                | Slot::WaitingForTools(waiting)
+                | Slot::Initializing(_, waiting),
+            ) => {
                 waiting.push(deferred);
                 return;
             }
@@ -145,10 +149,7 @@ impl EnvironmentShell {
             let (process, events) =
                 ExtensionProcess::start_on(&link, &site.launch, &site.folder, log)
                     .map_err(|error| StartFailure::Other(error.to_string()))?;
-            initialize(&process.connection, &params)
-                .await
-                .map_err(|error| StartFailure::Other(error.to_string()))?;
-            Ok::<_, StartFailure>((process, events))
+            Ok::<_, StartFailure>((process, events, params))
         });
         cx.spawn(async move |this, cx| {
             let started = starting.await;
@@ -200,14 +201,21 @@ impl EnvironmentShell {
     fn program_started(
         &mut self,
         key: &SlotKey,
-        started: Result<(ExtensionProcess, mpsc::Receiver<ProgramEvent>), StartFailure>,
+        started: Result<
+            (
+                ExtensionProcess,
+                mpsc::Receiver<ProgramEvent>,
+                InitializeParams,
+            ),
+            StartFailure,
+        >,
         cx: &mut Context<Self>,
     ) {
         let Some(Slot::Starting(waiting)) = self.extensions.slots.remove(key) else {
             return;
         };
         let title = self.extensions.title_of(&key.extension);
-        let (process, mut events) = match started {
+        let (process, mut events, params) = match started {
             Ok(started) => started,
             Err(StartFailure::NoBuild) => {
                 self.toast(&format!("{title} {NO_BUILD_TEXT}"), cx);
@@ -235,7 +243,6 @@ impl EnvironmentShell {
                 return;
             }
         };
-        tracing::info!(extension = %key.extension, "extension program running");
         let listening = key.clone();
         let task = cx.spawn(async move |this, cx| {
             while let Some(event) = events.next().await {
@@ -247,13 +254,53 @@ impl EnvironmentShell {
                 }
             }
         });
+        let connection = process.connection.clone();
         self.extensions.slots.insert(
             key.clone(),
-            Slot::Running(Running {
-                process,
-                _events: task,
-            }),
+            Slot::Initializing(
+                Running {
+                    process,
+                    _events: task,
+                },
+                waiting,
+            ),
         );
+        let initializing = key.clone();
+        cx.spawn(async move |this, cx| {
+            let answered = initialize(&connection, &params).await;
+            this.update(cx, |shell, cx| {
+                shell.program_initialized(&initializing, answered.map(drop), cx);
+            })
+            .unwrap_or_default();
+        })
+        .detach();
+    }
+
+    fn program_initialized(
+        &mut self,
+        key: &SlotKey,
+        answered: Result<(), krad_extensions::program::ProgramError>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(Slot::Initializing(running, waiting)) = self.extensions.slots.remove(key) else {
+            return;
+        };
+        if let Err(error) = answered {
+            let error = error.to_string();
+            running.process.log.push(error.clone());
+            drop(running);
+            let title = self.extensions.title_of(&key.extension);
+            self.toast(&format!("{title} {COULD_NOT_START_TEXT}: {error}"), cx);
+            self.extensions
+                .slots
+                .insert(key.clone(), Slot::Failed(error));
+            self.fail_views_of(key, cx);
+            return;
+        }
+        tracing::info!(extension = %key.extension, "extension program running");
+        self.extensions
+            .slots
+            .insert(key.clone(), Slot::Running(running));
         for deferred in waiting {
             self.run_deferred(key, deferred, cx);
         }
@@ -271,8 +318,14 @@ impl EnvironmentShell {
     }
 
     fn program_stopped(&mut self, key: &SlotKey, cx: &mut Context<Self>) {
-        let Some(Slot::Running(running)) = self.extensions.slots.remove(key) else {
-            return;
+        let running = match self.extensions.slots.remove(key) {
+            Some(Slot::Running(running) | Slot::Initializing(running, _)) => running,
+            other => {
+                if let Some(slot) = other {
+                    self.extensions.slots.insert(key.clone(), slot);
+                }
+                return;
+            }
         };
         let ran_for = running.process.ran_for();
         drop(running);

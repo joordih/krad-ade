@@ -100,6 +100,7 @@ pub(in crate::environment_shell) struct Running {
 pub(in crate::environment_shell) enum Slot {
     WaitingForTools(Vec<Deferred>),
     Starting(Vec<Deferred>),
+    Initializing(Running, Vec<Deferred>),
     Running(Running),
     Failed(String),
     Unsupported,
@@ -144,7 +145,9 @@ impl Extensions {
 
     fn connection(&self, key: &SlotKey) -> Option<ProgramConnection> {
         match self.slots.get(key) {
-            Some(Slot::Running(running)) => Some(running.process.connection.clone()),
+            Some(Slot::Running(running) | Slot::Initializing(running, _)) => {
+                Some(running.process.connection.clone())
+            }
             _ => None,
         }
     }
