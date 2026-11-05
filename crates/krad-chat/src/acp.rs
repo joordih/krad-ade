@@ -1,3 +1,5 @@
+mod chat;
+mod config;
 mod connection;
 mod content;
 mod files;
@@ -11,6 +13,12 @@ mod setup;
 mod terminals;
 mod update;
 
+pub(crate) use chat::spawn_acp;
+pub use chat::AcpConfig;
+pub use config::{
+    ConfigCategory, ConfigKind, ConfigSelectEntry, ConfigSelectGroup, ConfigSelectOption,
+    SessionConfigOption, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
+};
 pub use connection::{AcpClient, AcpConnection, AcpError, AgentRequest, Pending, Responder};
 pub use content::{
     AudioContent, BlobResourceContents, ContentBlock, EmbeddedResource, EmbeddedResourceResource,
@@ -18,7 +26,8 @@ pub use content::{
 };
 pub use files::{ReadTextFileRequest, ReadTextFileResponse, WriteTextFileRequest};
 pub use ids::{
-    AuthMethodId, ModeId, ModelId, PermissionOptionId, SessionId, TerminalId, ToolCallId,
+    AuthMethodId, ConfigOptionId, ModeId, ModelId, PermissionOptionId, SessionId, TerminalId,
+    ToolCallId,
 };
 pub use permission::{
     PermissionOption, PermissionOptionKind, RequestPermissionOutcome, RequestPermissionRequest,
@@ -40,8 +49,8 @@ pub use terminals::{
     TerminalRequest,
 };
 pub use update::{
-    AvailableCommand, AvailableCommandInput, AvailableCommandsUpdate, ContentChunk,
-    CurrentModeUpdate, Diff, Plan, PlanEntry, PlanEntryPriority, PlanEntryStatus,
+    AvailableCommand, AvailableCommandInput, AvailableCommandsUpdate, ConfigOptionUpdate,
+    ContentChunk, CurrentModeUpdate, Diff, Plan, PlanEntry, PlanEntryPriority, PlanEntryStatus,
     SessionNotification, SessionUpdate, ToolCall, ToolCallContent, ToolCallLocation,
-    ToolCallStatus, ToolCallUpdate, ToolKind,
+    ToolCallStatus, ToolCallUpdate, ToolKind, UsageUpdate,
 };

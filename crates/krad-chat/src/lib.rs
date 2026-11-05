@@ -22,10 +22,11 @@ mod rewind;
 mod skills;
 mod subagents;
 
+pub use acp::AcpConfig;
 pub use codex::{codex_models, read_codex_transcript, CodexError};
 pub use control::{
-    AskAnswer, AskKind, Catalog, CommandOffer, LiveEvent, ModelOffer, ModelSource, PickedAnswer,
-    PlanUsage, Question, QuestionOption, SourceRank, ToolAsk,
+    AcpEvent, AskAnswer, AskKind, Catalog, CommandOffer, LiveEvent, ModelOffer, ModelSource,
+    PickedAnswer, PlanUsage, Question, QuestionOption, SourceRank, ToolAsk,
 };
 pub use engine::{engine_subagents, read_engine_subagent, read_engine_transcript, EngineConfig};
 pub use error::ChatError;

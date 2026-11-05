@@ -8,7 +8,7 @@ use gpui_kit::{
     ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_chat::{AskKind, Question, QuestionOption};
-use krad_domain::{AskOutcome, AskVerdict, PermissionMode, TerminalId};
+use krad_domain::{AskOutcome, AskVerdict, FileEdit, PermissionMode, TerminalId};
 use std::time::Duration;
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
@@ -188,6 +188,40 @@ fn number_key(event: &KeyDownEvent) -> Option<usize> {
         .filter(|number| NUMBER_KEYS.contains(number))
 }
 
+fn permission_detail(
+    owner: TerminalId,
+    summary: &str,
+    title: Option<&str>,
+    edit: Option<&FileEdit>,
+    mono: SharedString,
+    pal: &Palette,
+) -> AnyElement {
+    if let Some(edit) = edit {
+        return edit_diff(edit, &mono, pal);
+    }
+    div()
+        .id(owned_id(DETAIL_PREFIX, owner, 0))
+        .max_h(px(DETAIL_MAX_H))
+        .overflow_y_scroll()
+        .flex()
+        .flex_col()
+        .gap(px(SPACE_1))
+        .child(
+            div()
+                .font_family(mono)
+                .text_color(rgb(pal.text_strong))
+                .child(summary.to_owned()),
+        )
+        .children(title.map(|title| {
+            div()
+                .text_size(px(TEXT_XS))
+                .line_height(px(LINE_XS))
+                .text_color(rgb(pal.text_muted))
+                .child(title.to_owned())
+        }))
+        .into_any_element()
+}
+
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn ask_tray(
         &self,
@@ -208,33 +242,14 @@ impl EnvironmentShell {
                 summary,
                 title,
                 edit,
-            } => {
-                let detail = match edit {
-                    Some(edit) => edit_diff(edit, &mono, pal),
-                    None => div()
-                        .id(owned_id(DETAIL_PREFIX, owner, 0))
-                        .max_h(px(DETAIL_MAX_H))
-                        .overflow_y_scroll()
-                        .flex()
-                        .flex_col()
-                        .gap(px(SPACE_1))
-                        .child(
-                            div()
-                                .font_family(mono)
-                                .text_color(rgb(pal.text_strong))
-                                .child(summary.clone()),
-                        )
-                        .children(title.clone().map(|title| {
-                            div()
-                                .text_size(px(TEXT_XS))
-                                .line_height(px(LINE_XS))
-                                .text_color(rgb(pal.text_muted))
-                                .child(title)
-                        }))
-                        .into_any_element(),
-                };
-                (tool_question(tool, *kind), detail)
-            }
+            } => (
+                tool_question(tool, *kind),
+                permission_detail(owner, summary, title.as_deref(), edit.as_ref(), mono, pal),
+            ),
+            AskKind::AcpPermission { tool, .. } => (
+                tool_question(&tool.name, tool.kind),
+                permission_detail(owner, &tool.summary, None, tool.edit.as_ref(), mono, pal),
+            ),
             AskKind::Plan { plan } => (
                 PLAN_QUESTION.into(),
                 div()

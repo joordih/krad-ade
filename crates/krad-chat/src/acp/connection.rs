@@ -14,6 +14,7 @@ use tracing::debug;
 pub use pending::Pending;
 pub use responder::{AgentRequest, Responder};
 
+use super::config::{SetSessionConfigOptionRequest, SetSessionConfigOptionResponse};
 use super::methods;
 use super::prompt::{CancelNotification, PromptRequest, PromptResponse};
 use super::rpc::{EmptyResponse, OutgoingNotification, OutgoingRequest, RpcError};
@@ -99,6 +100,13 @@ impl AcpConnection {
 
     pub fn set_model(&self, request: &SetSessionModelRequest) -> Pending<EmptyResponse> {
         self.call(methods::SESSION_SET_MODEL, request)
+    }
+
+    pub fn set_config_option(
+        &self,
+        request: &SetSessionConfigOptionRequest,
+    ) -> Pending<SetSessionConfigOptionResponse> {
+        self.call(methods::SESSION_SET_CONFIG_OPTION, request)
     }
 
     pub fn cancel(&self, notification: &CancelNotification) {

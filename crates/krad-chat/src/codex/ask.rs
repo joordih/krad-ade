@@ -265,10 +265,10 @@ pub(crate) fn reply(codex: &CodexAsk, answer: &AskAnswer) -> Option<Value> {
         (CodexAsk::Command { .. } | CodexAsk::FileChange, AskAnswer::AllowAlways) => {
             decision(ACCEPT_FOR_SESSION)
         }
-        (CodexAsk::Command { declinable, .. }, AskAnswer::Deny { .. }) => {
+        (CodexAsk::Command { declinable, .. }, AskAnswer::Deny { .. } | AskAnswer::Chosen(_)) => {
             decision(if *declinable { DECLINE } else { CANCEL })
         }
-        (CodexAsk::FileChange, AskAnswer::Deny { .. }) => decision(DECLINE),
+        (CodexAsk::FileChange, AskAnswer::Deny { .. } | AskAnswer::Chosen(_)) => decision(DECLINE),
         (
             CodexAsk::Command { .. } | CodexAsk::FileChange,
             AskAnswer::Allow | AskAnswer::ApprovePlan { .. } | AskAnswer::Answers(_),

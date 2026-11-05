@@ -10,7 +10,7 @@ use super::responder::{AgentRequest, ReplyTo};
 use super::AcpClient;
 use crate::acp::methods;
 use crate::acp::rpc::{ErrorCode, Incoming, RequestId, RpcError};
-use crate::acp::update::SessionNotification;
+use crate::acp::update::{SessionNotification, SessionUpdate};
 
 const UPDATE_KIND_POINTER: &str = "/update/sessionUpdate";
 const UNKNOWN_METHOD_TEXT: &str = "Krad ADE does not handle this method";
@@ -107,6 +107,10 @@ impl<C: AcpClient> Router<C> {
             .and_then(Value::as_str)
             .map(str::to_owned);
         match serde_json::from_value::<SessionNotification>(params) {
+            Ok(SessionNotification {
+                update: SessionUpdate::Unknown,
+                ..
+            }) => debug!(?kind, "skipped an ACP session update the app does not know"),
             Ok(notification) => {
                 trace!(?kind, "ACP session update");
                 self.client.session_update(notification);

@@ -41,7 +41,7 @@ fn launch_progress(event: &LiveEvent) -> LaunchProgress {
         LiveEvent::Chat(ChatEvent::Error(error)) => LaunchProgress::Failed(error.clone()),
         LiveEvent::Refused(refused) => LaunchProgress::Failed(refused.to_string()),
         LiveEvent::Chat(_) | LiveEvent::Ready(_) | LiveEvent::Ask(_) => LaunchProgress::Started,
-        LiveEvent::Usage(_) | LiveEvent::Notice(_) | LiveEvent::Rewound(_) => {
+        LiveEvent::Usage(_) | LiveEvent::Notice(_) | LiveEvent::Rewound(_) | LiveEvent::Acp(_) => {
             LaunchProgress::Unknown
         }
     }

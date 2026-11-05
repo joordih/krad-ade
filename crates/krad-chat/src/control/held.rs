@@ -31,7 +31,7 @@ impl ToolAsk {
                 message: message.clone(),
                 interrupt: false,
             },
-            AskAnswer::ApprovePlan { .. } => ToolDecision::Pass,
+            AskAnswer::ApprovePlan { .. } | AskAnswer::Chosen(_) => ToolDecision::Pass,
         }
     }
 }

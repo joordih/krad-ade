@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
 
+use super::config::SessionConfigOption;
 use super::content::ContentBlock;
 use super::ids::{ModeId, SessionId, TerminalId, ToolCallId};
 use super::lenient::{optional_readable_items, readable_items};
@@ -24,6 +25,10 @@ pub enum SessionUpdate {
     Plan(Plan),
     AvailableCommandsUpdate(AvailableCommandsUpdate),
     CurrentModeUpdate(CurrentModeUpdate),
+    ConfigOptionUpdate(ConfigOptionUpdate),
+    UsageUpdate(UsageUpdate),
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -189,6 +194,19 @@ pub struct CurrentModeUpdate {
     pub current_mode_id: ModeId,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigOptionUpdate {
+    #[serde(deserialize_with = "readable_items")]
+    pub config_options: Vec<SessionConfigOption>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UsageUpdate {
+    pub used: u64,
+    pub size: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,6 +239,24 @@ mod tests {
             ToolCallContent::Terminal { terminal_id } if terminal_id.0 == "term_xyz789"
         ));
         assert_eq!(call.locations[0].line, Some(3));
+    }
+
+    #[test]
+    fn usage_reads_and_an_unknown_update_is_kept_as_unknown() {
+        let usage: Result<SessionUpdate, _> = serde_json::from_value(json!({
+            "sessionUpdate": "usage_update", "used": 9761, "size": 200_000,
+            "cost": {"amount": 0, "currency": "USD"}
+        }));
+        let unknown: Result<SessionUpdate, _> =
+            serde_json::from_value(json!({"sessionUpdate": "session_info_update", "title": "x"}));
+        assert_eq!(
+            usage.ok(),
+            Some(SessionUpdate::UsageUpdate(UsageUpdate {
+                used: 9761,
+                size: 200_000
+            }))
+        );
+        assert_eq!(unknown.ok(), Some(SessionUpdate::Unknown));
     }
 
     #[test]

@@ -1,3 +1,7 @@
+pub use krad_domain::{
+    AcpAuthMethodId as AuthMethodId, AcpModeId as ModeId, AcpModelId as ModelId,
+    AcpPermissionOptionId as PermissionOptionId,
+};
 use serde::{Deserialize, Serialize};
 
 macro_rules! protocol_id {
@@ -10,12 +14,4 @@ macro_rules! protocol_id {
     };
 }
 
-protocol_id!(
-    SessionId,
-    ToolCallId,
-    TerminalId,
-    PermissionOptionId,
-    ModeId,
-    ModelId,
-    AuthMethodId,
-);
+protocol_id!(SessionId, ToolCallId, TerminalId, ConfigOptionId);

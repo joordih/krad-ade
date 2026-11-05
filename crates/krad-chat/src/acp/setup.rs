@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::path::PathBuf;
 
+use super::config::SessionConfigOption;
 use super::ids::{AuthMethodId, ModeId, ModelId, SessionId};
 use super::lenient::readable_items;
 
@@ -194,6 +195,12 @@ pub struct NewSessionResponse {
     pub modes: Option<SessionModeState>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub models: Option<SessionModelState>,
+    #[serde(
+        default,
+        deserialize_with = "readable_items",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub config_options: Vec<SessionConfigOption>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -205,11 +212,18 @@ pub struct LoadSessionRequest {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LoadSessionResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub modes: Option<SessionModeState>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub models: Option<SessionModelState>,
+    #[serde(
+        default,
+        deserialize_with = "readable_items",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub config_options: Vec<SessionConfigOption>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

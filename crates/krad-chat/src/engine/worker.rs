@@ -241,6 +241,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             }
             Order::Answer(ask, answer) => self.answer(&ask, &answer),
             Order::Rewind(request) => self.rewind(&request),
+            Order::Acp(_) => {}
         }
     }
 

@@ -15,7 +15,8 @@ fn chat(events: Vec<LiveEvent>) -> Vec<ChatEvent> {
             | LiveEvent::Usage(_)
             | LiveEvent::Notice(_)
             | LiveEvent::Rewound(_)
-            | LiveEvent::Refused(_) => None,
+            | LiveEvent::Refused(_)
+            | LiveEvent::Acp(_) => None,
         })
         .collect()
 }

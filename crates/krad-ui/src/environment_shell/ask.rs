@@ -58,7 +58,7 @@ impl Choice {
 
     fn of(kind: &AskKind, can_allow_always: bool, by_keys: bool) -> Vec<Self> {
         match kind {
-            AskKind::Permission { .. } => {
+            AskKind::Permission { .. } | AskKind::AcpPermission { .. } => {
                 let always = can_allow_always.then_some(Self::AllowAlways);
                 [Self::Allow]
                     .into_iter()
@@ -145,6 +145,11 @@ fn subject(kind: &AskKind) -> String {
         AskKind::Permission { tool, summary, .. } => format!("{tool}{SUBJECT_SEPARATOR}{summary}")
             .trim()
             .to_owned(),
+        AskKind::AcpPermission { tool, .. } => {
+            format!("{}{SUBJECT_SEPARATOR}{}", tool.name, tool.summary)
+                .trim()
+                .to_owned()
+        }
         AskKind::Questions(questions) => questions
             .iter()
             .map(|question| question.text.as_str())
@@ -166,7 +171,7 @@ const fn verdict(kind: &AskKind, answer: &AskAnswer) -> AskVerdict {
         (AskAnswer::ApprovePlan { mode }, _) => AskVerdict::PlanApproved(*mode),
         (AskAnswer::Deny { .. }, AskKind::Plan { .. }) => AskVerdict::PlanRejected,
         (AskAnswer::Deny { .. }, _) => AskVerdict::Denied,
-        (AskAnswer::Answers(_), _) => AskVerdict::Answered,
+        (AskAnswer::Answers(_) | AskAnswer::Chosen(_), _) => AskVerdict::Answered,
     }
 }
 
@@ -338,7 +343,7 @@ impl EnvironmentShell {
         };
         match &waiting.ask.kind {
             AskKind::Questions(_) => self.next_question(owner, cx),
-            AskKind::Permission { .. } | AskKind::Plan { .. } => {
+            AskKind::Permission { .. } | AskKind::AcpPermission { .. } | AskKind::Plan { .. } => {
                 let first = Choice::of_waiting(waiting).first().copied();
                 if let Some(choice) = first {
                     self.choose(owner, choice, window, cx);

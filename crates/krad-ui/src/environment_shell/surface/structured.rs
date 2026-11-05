@@ -315,7 +315,7 @@ impl EnvironmentShell {
             LiveEvent::Chat(ChatEvent::ContextWindow(window)) => {
                 structured.context_window = Some(window);
             }
-            LiveEvent::Refused(_) => {}
+            LiveEvent::Refused(_) | LiveEvent::Acp(_) => {}
             LiveEvent::Chat(event @ (ChatEvent::Done | ChatEvent::Error(_))) => {
                 if let Some(batch) = refused.and_then(|refused| structured.retries(&refused)) {
                     self.hand_over_again(env, id, batch, event, cx);

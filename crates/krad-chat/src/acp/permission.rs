@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub use krad_domain::AcpPermissionKind as PermissionOptionKind;
+
 use super::ids::{PermissionOptionId, SessionId};
 use super::update::ToolCallUpdate;
 
@@ -17,15 +19,6 @@ pub struct PermissionOption {
     pub option_id: PermissionOptionId,
     pub name: String,
     pub kind: PermissionOptionKind,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PermissionOptionKind {
-    AllowOnce,
-    AllowAlways,
-    RejectOnce,
-    RejectAlways,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

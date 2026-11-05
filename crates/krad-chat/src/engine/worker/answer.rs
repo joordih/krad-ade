@@ -24,7 +24,8 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
                 AskAnswer::Allow
                 | AskAnswer::AllowAlways
                 | AskAnswer::ApprovePlan { .. }
-                | AskAnswer::Deny { .. } => questions::DISMISSED_TEXT.to_owned(),
+                | AskAnswer::Deny { .. }
+                | AskAnswer::Chosen(_) => questions::DISMISSED_TEXT.to_owned(),
             };
             batch.settle(content, false);
             return self.advance_batch();
@@ -44,7 +45,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
                 batch.deny(message);
                 self.advance_batch();
             }
-            AskAnswer::ApprovePlan { .. } | AskAnswer::Answers(_) => {
+            AskAnswer::ApprovePlan { .. } | AskAnswer::Answers(_) | AskAnswer::Chosen(_) => {
                 batch.deny("");
                 self.advance_batch();
             }
@@ -55,9 +56,10 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         let (content, mode) = match answer {
             AskAnswer::ApprovePlan { mode } => (plan::approved(*mode), Some(*mode)),
             AskAnswer::Deny { message } => (plan::rejected(message), None),
-            AskAnswer::Allow | AskAnswer::AllowAlways | AskAnswer::Answers(_) => {
-                (plan::rejected(""), None)
-            }
+            AskAnswer::Allow
+            | AskAnswer::AllowAlways
+            | AskAnswer::Answers(_)
+            | AskAnswer::Chosen(_) => (plan::rejected(""), None),
         };
         if let Some(mode) = mode {
             self.mode = mode;

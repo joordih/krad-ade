@@ -6,6 +6,7 @@ pub(super) const SESSION_PROMPT: &str = "session/prompt";
 pub(super) const SESSION_CANCEL: &str = "session/cancel";
 pub(super) const SESSION_SET_MODE: &str = "session/set_mode";
 pub(super) const SESSION_SET_MODEL: &str = "session/set_model";
+pub(super) const SESSION_SET_CONFIG_OPTION: &str = "session/set_config_option";
 pub(super) const SESSION_UPDATE: &str = "session/update";
 pub(super) const SESSION_REQUEST_PERMISSION: &str = "session/request_permission";
 pub(super) const FS_READ_TEXT_FILE: &str = "fs/read_text_file";

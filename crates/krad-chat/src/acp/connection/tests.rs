@@ -276,7 +276,7 @@ fn an_error_answer_reaches_the_caller_with_its_code() -> TestResult {
 fn unknown_updates_and_stray_lines_are_skipped_without_breaking_the_stream() -> TestResult {
     let (_connection, mut agent, events) = connect()?;
     for line in [
-        r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123def456","update":{"sessionUpdate":"usage_update","used":53000,"size":200000}}}"#,
+        r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123def456","update":{"sessionUpdate":"hologram_update","depth":3}}}"#,
         "this is not json",
         r#"{"jsonrpc":"2.0","method":"_vendor/hint","params":{}}"#,
         r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123def456","update":{"sessionUpdate":"agent_message_chunk","messageId":"m1","content":{"type":"text","text":"Still here","annotations":{"priority":1}}},"_meta":{"x":1}}}"#,

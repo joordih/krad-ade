@@ -1,4 +1,8 @@
-use krad_domain::{ChatEvent, FileEdit, ModelId, PermissionMode, RewindId, ToolKind};
+use krad_domain::{
+    AcpAuthMethod, AcpModels, AcpModes, AcpPermissionKind, AcpPermissionOption,
+    AcpPermissionOptionId, ChatEvent, FileEdit, ModelId, PermissionMode, RewindId, ToolCall,
+    ToolKind,
+};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
@@ -17,6 +21,7 @@ pub use catalog::{Catalog, CommandOffer, ModelOffer, ModelSource, SourceRank};
 
 const ANSWERS_KEY: &str = "answers";
 const LABEL_SEPARATOR: &str = ", ";
+const FOREIGN_ANSWER_TEXT: &str = "the answer does not fit this question";
 
 fn each_entry<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
@@ -47,6 +52,14 @@ pub enum LiveEvent {
     Notice(String),
     Rewound(Result<Rewound, RewindError>),
     Refused(ResumeRefused),
+    Acp(AcpEvent),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AcpEvent {
+    Modes(AcpModes),
+    Models(AcpModels),
+    SignInNeeded(Vec<AcpAuthMethod>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -92,6 +105,10 @@ pub enum AskKind {
     Plan {
         plan: String,
     },
+    AcpPermission {
+        tool: ToolCall,
+        options: Vec<AcpPermissionOption>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -134,6 +151,9 @@ pub(crate) enum Responder {
         id: RpcId,
         ask: CodexAsk,
     },
+    Acp {
+        ask: u64,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -151,6 +171,12 @@ impl ToolAsk {
             Responder::OpencodePermission { savable, .. } => *savable,
             Responder::OpencodeForm { .. } => false,
             Responder::Codex { ask, .. } => ask.can_allow_always(),
+            Responder::Acp { .. } => match &self.kind {
+                AskKind::AcpPermission { options, .. } => options
+                    .iter()
+                    .any(|option| option.kind == AcpPermissionKind::AllowAlways),
+                _ => false,
+            },
         }
     }
 }
@@ -168,6 +194,7 @@ pub enum AskAnswer {
     ApprovePlan { mode: PermissionMode },
     Deny { message: String },
     Answers(Vec<PickedAnswer>),
+    Chosen(AcpPermissionOptionId),
 }
 
 #[derive(Deserialize)]
@@ -469,6 +496,9 @@ pub(crate) fn answer_line(ask: &ClaudeAsk, answer: &AskAnswer) -> String {
             })])
         }
         AskAnswer::Deny { message } => Decision::Deny { message },
+        AskAnswer::Chosen(_) => Decision::Deny {
+            message: FOREIGN_ANSWER_TEXT,
+        },
         AskAnswer::Answers(answers) => Decision::Allow {
             updated_input: Cow::Owned(answered_input(&ask.input, answers)),
             updated_permissions: Vec::new(),
