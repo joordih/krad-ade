@@ -5,7 +5,8 @@ use krad_domain::{
 use krad_host::{remote_path, HostCommand, HostLink};
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+use std::time::Duration;
 
 use crate::RepoError;
 
@@ -31,7 +32,10 @@ const LINUX_ROOT: char = '/';
 const READLINK_PROGRAM: &str = "readlink";
 const CANONICALIZE_FLAG: &str = "-f";
 const ARG_SEPARATOR: &str = " ";
+const ENV_ASSIGN: &str = "=";
 const PRINT_FOUND_PROGRAMS: &str = r#"for program in "$@"; do command -v "$program" >/dev/null 2>&1 && printf '%s\n' "$program"; done; :"#;
+
+pub(crate) type GitEnv = [(&'static str, OsString)];
 
 pub(crate) fn git_output<S: AsRef<OsStr>>(
     host: &HostLink,
@@ -39,10 +43,29 @@ pub(crate) fn git_output<S: AsRef<OsStr>>(
     args: &[S],
 ) -> Result<Output, RepoError> {
     if host.is_local() {
-        let mut command = local_git_command(repo);
+        let mut command = local_git_command(repo, &[]);
         command.args(args);
         return Ok(command.output()?);
     }
+    Ok(host.output(&host_git_command(repo, args, &[]))?)
+}
+
+pub(crate) fn git_output_within<S: AsRef<OsStr>>(
+    host: &HostLink,
+    repo: &Path,
+    args: &[S],
+    env: &GitEnv,
+    timeout: Duration,
+) -> Result<Output, RepoError> {
+    if host.is_local() {
+        let mut command = local_git_command(repo, env);
+        command.args(args).stdin(Stdio::null());
+        return Ok(krad_host::local_output_within(command, timeout)?);
+    }
+    Ok(host.output_within(&host_git_command(repo, args, env), timeout)?)
+}
+
+fn host_git_command<S: AsRef<OsStr>>(repo: &Path, args: &[S], env: &GitEnv) -> HostCommand {
     let mut command = HostCommand::new(GIT_PROGRAM);
     command
         .arg(GIT_DIR_FLAG)
@@ -53,10 +76,13 @@ pub(crate) fn git_output<S: AsRef<OsStr>>(
         .env(TERMINAL_PROMPT_VAR, TERMINAL_PROMPT_DISABLED)
         .env(MESSAGES_LOCALE_VAR, MESSAGES_LOCALE)
         .env(LANGUAGE_VAR, MESSAGES_LOCALE);
-    Ok(host.output(&command)?)
+    for (name, value) in env {
+        command.env(name, value);
+    }
+    command
 }
 
-fn local_git_command(repo: &Path) -> Command {
+fn local_git_command(repo: &Path, env: &GitEnv) -> Command {
     let mut command = parse_wsl_path(repo).map_or_else(
         || {
             let mut command = Command::new(GIT_PROGRAM);
@@ -66,7 +92,8 @@ fn local_git_command(repo: &Path) -> Command {
                 .env(OPTIONAL_LOCKS_VAR, OPTIONAL_LOCKS_DISABLED)
                 .env(TERMINAL_PROMPT_VAR, TERMINAL_PROMPT_DISABLED)
                 .env(MESSAGES_LOCALE_VAR, MESSAGES_LOCALE)
-                .env(LANGUAGE_VAR, MESSAGES_LOCALE);
+                .env(LANGUAGE_VAR, MESSAGES_LOCALE)
+                .envs(env.iter().map(|(name, value)| (name, value)));
             command
         },
         |WslPath { distro, linux }| {
@@ -84,6 +111,12 @@ fn local_git_command(repo: &Path) -> Command {
                 .arg(format!("{TERMINAL_PROMPT_VAR}={TERMINAL_PROMPT_DISABLED}"))
                 .arg(format!("{MESSAGES_LOCALE_VAR}={MESSAGES_LOCALE}"))
                 .arg(format!("{LANGUAGE_VAR}={MESSAGES_LOCALE}"))
+                .args(env.iter().map(|(name, value)| {
+                    let mut assignment = OsString::from(name);
+                    assignment.push(ENV_ASSIGN);
+                    assignment.push(value);
+                    assignment
+                }))
                 .arg(GIT_PROGRAM);
             command
         },

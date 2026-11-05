@@ -2,8 +2,10 @@ use krad_host::HostLink;
 use std::ffi::OsStr;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::process::Output;
+use std::time::Duration;
 
-use crate::process::{git_output, host_path, GIT_PROGRAM};
+use crate::process::{git_output, git_output_within, host_path, GitEnv, GIT_PROGRAM};
 use crate::RepoError;
 
 const NOT_A_REPOSITORY: &str = "not a git repository";
@@ -15,7 +17,20 @@ pub(crate) fn run_git<S: AsRef<OsStr>>(
     repo: &Path,
     args: &[S],
 ) -> Result<Vec<u8>, RepoError> {
-    let output = git_output(host, repo, args)?;
+    checked(git_output(host, repo, args)?, args)
+}
+
+pub(crate) fn run_git_within<S: AsRef<OsStr>>(
+    host: &HostLink,
+    repo: &Path,
+    args: &[S],
+    env: &GitEnv,
+    timeout: Duration,
+) -> Result<Vec<u8>, RepoError> {
+    checked(git_output_within(host, repo, args, env, timeout)?, args)
+}
+
+fn checked<S: AsRef<OsStr>>(output: Output, args: &[S]) -> Result<Vec<u8>, RepoError> {
     if output.status.success() {
         return Ok(output.stdout);
     }

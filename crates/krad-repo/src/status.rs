@@ -37,6 +37,8 @@ const BEHIND_PREFIX: char = '-';
 const ADDED_CODE: char = 'A';
 const DELETED_CODE: char = 'D';
 const RENAMED_CODE: char = 'R';
+const COPIED_CODE: char = 'C';
+const UNMODIFIED_CODE: char = '.';
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ChangeKind {
@@ -63,6 +65,8 @@ pub struct GitStatus {
     pub ahead: u32,
     pub behind: u32,
     pub changes: Vec<FileChange>,
+    pub staged: Vec<FileChange>,
+    pub unstaged: Vec<FileChange>,
 }
 
 /// # Errors
@@ -82,24 +86,31 @@ pub fn parse_status(output: &[u8]) -> GitStatus {
         };
         match tag {
             HEADER_TAG => apply_header(&mut status, rest),
-            ORDINARY_TAG => push_change(&mut status, &record, ORDINARY_FIELDS, change_kind),
+            ORDINARY_TAG => push_change(&mut status, &record, ORDINARY_FIELDS, None),
             RENAMED_TAG => {
-                push_change(&mut status, &record, RENAMED_FIELDS, change_kind);
                 let origin = records.next().map(|origin| PathBuf::from(origin.as_ref()));
-                if let Some(renamed) = status.changes.last_mut() {
-                    renamed.origin = origin;
-                }
+                push_change(&mut status, &record, RENAMED_FIELDS, origin);
             }
             UNMERGED_TAG => {
-                push_change(&mut status, &record, UNMERGED_FIELDS, |_| {
-                    ChangeKind::Conflicted
-                });
+                if let Some((path, _)) = record_path(&record, UNMERGED_FIELDS) {
+                    let change = FileChange {
+                        path,
+                        kind: ChangeKind::Conflicted,
+                        origin: None,
+                    };
+                    status.unstaged.push(change.clone());
+                    status.changes.push(change);
+                }
             }
-            UNTRACKED_TAG => status.changes.push(FileChange {
-                path: PathBuf::from(rest),
-                kind: ChangeKind::Untracked,
-                origin: None,
-            }),
+            UNTRACKED_TAG => {
+                let change = FileChange {
+                    path: PathBuf::from(rest),
+                    kind: ChangeKind::Untracked,
+                    origin: None,
+                };
+                status.unstaged.push(change.clone());
+                status.changes.push(change);
+            }
             _ => {}
         }
     }
@@ -127,24 +138,52 @@ fn apply_header(status: &mut GitStatus, header: &str) {
     }
 }
 
-fn push_change(
-    status: &mut GitStatus,
-    record: &str,
-    field_count: usize,
-    kind_of: impl Fn(&str) -> ChangeKind,
-) {
+fn record_path(record: &str, field_count: usize) -> Option<(PathBuf, String)> {
     let fields: Vec<&str> = record.splitn(field_count, FIELD_SEPARATOR).collect();
     if fields.len() != field_count {
-        return;
+        return None;
     }
     let (Some(xy), Some(path)) = (fields.get(1), fields.last()) else {
+        return None;
+    };
+    Some((PathBuf::from(path), (*xy).to_owned()))
+}
+
+fn push_change(status: &mut GitStatus, record: &str, field_count: usize, origin: Option<PathBuf>) {
+    let Some((path, xy)) = record_path(record, field_count) else {
         return;
     };
+    let mut sides = xy.chars();
+    let (index, worktree) = (sides.next(), sides.next());
+    if let Some(kind) = index.and_then(side_kind) {
+        status.staged.push(FileChange {
+            path: path.clone(),
+            kind,
+            origin: origin.clone().filter(|_| kind == ChangeKind::Renamed),
+        });
+    }
+    if let Some(kind) = worktree.and_then(side_kind) {
+        status.unstaged.push(FileChange {
+            path: path.clone(),
+            kind,
+            origin: None,
+        });
+    }
     status.changes.push(FileChange {
-        path: PathBuf::from(path),
-        kind: kind_of(xy),
-        origin: None,
+        path,
+        kind: change_kind(&xy),
+        origin,
     });
+}
+
+fn side_kind(code: char) -> Option<ChangeKind> {
+    match code {
+        UNMODIFIED_CODE => None,
+        ADDED_CODE => Some(ChangeKind::Added),
+        DELETED_CODE => Some(ChangeKind::Deleted),
+        RENAMED_CODE | COPIED_CODE => Some(ChangeKind::Renamed),
+        _ => Some(ChangeKind::Modified),
+    }
 }
 
 fn change_kind(xy: &str) -> ChangeKind {
@@ -209,8 +248,30 @@ mod tests {
                     change("Cargo.toml", ChangeKind::Conflicted),
                     change("notes/todo.txt", ChangeKind::Untracked),
                 ],
+                staged: vec![
+                    change("docs/new file.md", ChangeKind::Added),
+                    FileChange {
+                        origin: Some(PathBuf::from("src/original.rs")),
+                        ..change("src/renamed.rs", ChangeKind::Renamed)
+                    },
+                ],
+                unstaged: vec![
+                    change("src/main.rs", ChangeKind::Modified),
+                    change("Cargo.toml", ChangeKind::Conflicted),
+                    change("notes/todo.txt", ChangeKind::Untracked),
+                ],
             }
         );
+    }
+
+    #[test]
+    fn a_file_changed_after_staging_shows_on_both_sides() {
+        let output = "1 MD N... 100644 100644 000000 aaaa bbbb src/lib.rs\0";
+
+        let status = parse_status(output.as_bytes());
+
+        assert_eq!(status.staged, [change("src/lib.rs", ChangeKind::Modified)]);
+        assert_eq!(status.unstaged, [change("src/lib.rs", ChangeKind::Deleted)]);
     }
 
     #[test]
