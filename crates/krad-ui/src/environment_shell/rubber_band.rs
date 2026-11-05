@@ -1,16 +1,23 @@
-use gpui_kit::{ScrollDelta, ScrollWheelEvent, TouchPhase};
+mod watch;
+
+use gpui_kit::TouchPhase;
 use krad_domain::TerminalId;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use crate::motion::Spring;
 
+pub(super) use watch::band_watch;
+
 const RESISTANCE: f32 = 0.55;
 const REACH: f32 = 120.0;
+const MAX_STRETCH: f32 = REACH * 0.99;
 const EDGE_SLACK: f32 = 0.5;
 const RESPONSE_S: f32 = 0.35;
 const MAX_FRAME_S: f32 = 1.0 / 30.0;
-const IDLE: Duration = Duration::from_millis(90);
+const COAST_GAP: Duration = Duration::from_millis(90);
+const MOMENTUM_GAIN: f32 = 60.0;
+const MAX_BOUNCE_SPEED: f32 = 1200.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) enum BandKey {
@@ -24,21 +31,103 @@ pub(super) struct ScrollEdges {
     pub(super) max: f32,
 }
 
-impl ScrollEdges {
-    fn at_top(self) -> bool {
-        self.offset <= EDGE_SLACK
-    }
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Overflow {
+    Inside,
+    AtEdge(f32),
+    Crossing(f32),
+}
 
-    fn at_bottom(self) -> bool {
-        self.offset >= self.max - EDGE_SLACK
+impl Overflow {
+    fn past_edge(self) -> Option<f32> {
+        match self {
+            Self::Inside => None,
+            Self::AtEdge(excess) | Self::Crossing(excess) => Some(excess),
+        }
     }
 }
 
+impl ScrollEdges {
+    fn overflow(self, dy: f32) -> Overflow {
+        let (room, excess) = if dy > 0.0 {
+            let room = self.offset.max(0.0);
+            (room, (dy - room).max(0.0))
+        } else {
+            let room = (self.max - self.offset).max(0.0);
+            (room, (dy + room).min(0.0))
+        };
+        if dy == 0.0 {
+            Overflow::Inside
+        } else if room <= EDGE_SLACK {
+            Overflow::AtEdge(dy)
+        } else if excess == 0.0 {
+            Overflow::Inside
+        } else {
+            Overflow::Crossing(excess)
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Pointer {
+    Over,
+    Away,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Wheel {
+    pub(super) dx: f32,
+    pub(super) dy: f32,
+    pub(super) phase: TouchPhase,
+    pub(super) pointer: Pointer,
+}
+
+impl Wheel {
+    fn is_vertical(self) -> bool {
+        self.dy.abs() > self.dx.abs()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum BandWheel {
+    Pass,
+    Shared,
+    Taken,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Finger {
+    #[default]
+    Up,
+    Down,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Coast {
+    #[default]
+    Fresh,
+    Spent,
+}
+
 #[derive(Clone, Copy, Debug)]
-struct Band {
-    pull: f32,
-    last: Instant,
-    release: Option<(Spring, Instant)>,
+enum Band {
+    Held { pull: f32 },
+    Settling { spring: Spring, last: Instant },
+}
+
+impl Band {
+    fn offset(self) -> f32 {
+        match self {
+            Self::Held { pull } => stretched(pull),
+            Self::Settling { spring, .. } => spring.value(),
+        }
+    }
+
+    fn released(self, now: Instant) -> Self {
+        let mut spring = Spring::at_rest(self.offset(), RESPONSE_S);
+        spring.set_target(0.0);
+        Self::Settling { spring, last: now }
+    }
 }
 
 fn stretched(pull: f32) -> f32 {
@@ -47,91 +136,140 @@ fn stretched(pull: f32) -> f32 {
     stretch.copysign(pull)
 }
 
+fn unstretched(stretch: f32) -> f32 {
+    let shown = stretch.abs().min(MAX_STRETCH);
+    (shown * REACH / ((REACH - shown) * RESISTANCE)).copysign(stretch)
+}
+
 #[derive(Default)]
 pub(super) struct RubberBands {
     bands: HashMap<BandKey, Band>,
+    finger: Finger,
+    coast: Coast,
+    last_wheel: Option<Instant>,
 }
 
 impl RubberBands {
     pub(super) fn offset(&self, key: BandKey) -> f32 {
-        self.bands.get(&key).map_or(0.0, |band| match band.release {
-            Some((spring, _)) => spring.value(),
-            None => stretched(band.pull),
-        })
+        self.bands.get(&key).map_or(0.0, |band| band.offset())
     }
 
     pub(super) fn wheel(
         &mut self,
         key: BandKey,
-        event: &ScrollWheelEvent,
+        wheel: Wheel,
         edges: ScrollEdges,
-    ) -> bool {
-        let ScrollDelta::Pixels(delta) = event.delta else {
-            return false;
-        };
-        let dy = delta.y.as_f32();
-        let now = Instant::now();
-        if event.touch_phase == TouchPhase::Ended {
-            return self.release(key, now);
+        now: Instant,
+    ) -> BandWheel {
+        let quiet = self
+            .last_wheel
+            .is_none_or(|last| now.duration_since(last) > COAST_GAP);
+        self.last_wheel = Some(now);
+        match wheel.phase {
+            TouchPhase::Ended | TouchPhase::Cancelled => self.lift(now),
+            TouchPhase::Started => {
+                self.finger = Finger::Down;
+                self.coast = Coast::Fresh;
+                let caught = wheel.pointer == Pointer::Over && self.catch(key);
+                match self.drag(key, wheel, edges) {
+                    BandWheel::Pass if caught => BandWheel::Taken,
+                    outcome => outcome,
+                }
+            }
+            TouchPhase::Moved if self.finger == Finger::Down => self.drag(key, wheel, edges),
+            TouchPhase::Moved => {
+                if quiet {
+                    self.coast = Coast::Fresh;
+                }
+                self.glide(key, wheel, edges, now)
+            }
         }
-        let band = self.bands.get(&key).copied();
-        let pulling = band.is_some_and(|band| band.release.is_none() && band.pull != 0.0);
-        let past_top = dy > 0.0 && edges.at_top();
-        let past_bottom = dy < 0.0 && edges.at_bottom();
-        if !pulling && !past_top && !past_bottom {
-            return false;
-        }
-        let pull = band
-            .filter(|band| band.release.is_none())
-            .map_or(0.0, |band| band.pull)
-            + dy;
-        let pull = if pulling && pull.signum() != band.map_or(0.0, |band| band.pull).signum() {
-            0.0
-        } else {
-            pull
-        };
-        self.bands.insert(
-            key,
-            Band {
-                pull,
-                last: now,
-                release: None,
-            },
-        );
-        true
     }
 
-    fn release(&mut self, key: BandKey, now: Instant) -> bool {
+    fn lift(&mut self, now: Instant) -> BandWheel {
+        self.finger = Finger::Up;
+        let mut released = false;
+        for band in self.bands.values_mut() {
+            if let Band::Held { .. } = band {
+                *band = band.released(now);
+                released = true;
+            }
+        }
+        self.coast = if released { Coast::Spent } else { Coast::Fresh };
+        if released {
+            BandWheel::Shared
+        } else {
+            BandWheel::Pass
+        }
+    }
+
+    fn catch(&mut self, key: BandKey) -> bool {
         let Some(band) = self.bands.get_mut(&key) else {
             return false;
         };
-        if band.release.is_some() {
+        let Band::Settling { spring, .. } = *band else {
             return false;
-        }
-        let mut spring = Spring::at_rest(stretched(band.pull), RESPONSE_S);
-        spring.set_target(0.0);
-        band.release = Some((spring, now));
+        };
+        *band = Band::Held {
+            pull: unstretched(spring.value()),
+        };
         true
     }
 
-    pub(super) fn advance(&mut self, now: Instant) -> bool {
-        let idle: Vec<BandKey> = self
-            .bands
-            .iter()
-            .filter(|(_, band)| band.release.is_none() && now.duration_since(band.last) > IDLE)
-            .map(|(key, _)| *key)
-            .collect();
-        for key in idle {
-            self.release(key, now);
+    fn drag(&mut self, key: BandKey, wheel: Wheel, edges: ScrollEdges) -> BandWheel {
+        if let Some(Band::Held { pull }) = self.bands.get(&key).copied() {
+            let next = pull + wheel.dy;
+            if next == 0.0 || next.signum() != pull.signum() {
+                self.bands.remove(&key);
+            } else {
+                self.bands.insert(key, Band::Held { pull: next });
+            }
+            return BandWheel::Taken;
         }
+        if wheel.pointer == Pointer::Away || !wheel.is_vertical() {
+            return BandWheel::Pass;
+        }
+        let (pull, outcome) = match edges.overflow(wheel.dy) {
+            Overflow::Inside => return BandWheel::Pass,
+            Overflow::AtEdge(pull) => (pull, BandWheel::Taken),
+            Overflow::Crossing(pull) => (pull, BandWheel::Shared),
+        };
+        self.bands.insert(key, Band::Held { pull });
+        outcome
+    }
+
+    fn glide(&mut self, key: BandKey, wheel: Wheel, edges: ScrollEdges, now: Instant) -> BandWheel {
+        if let Some(band @ Band::Held { .. }) = self.bands.get(&key).copied() {
+            self.bands.insert(key, band.released(now));
+            self.coast = Coast::Spent;
+        }
+        if wheel.pointer == Pointer::Away || !wheel.is_vertical() {
+            return BandWheel::Pass;
+        }
+        let Some(overflow) = edges.overflow(wheel.dy).past_edge() else {
+            return BandWheel::Pass;
+        };
+        if self.bands.contains_key(&key) {
+            return BandWheel::Taken;
+        }
+        if self.coast == Coast::Spent {
+            return BandWheel::Pass;
+        }
+        self.coast = Coast::Spent;
+        let mut spring = Spring::at_rest(0.0, RESPONSE_S);
+        spring.kick((overflow * MOMENTUM_GAIN).clamp(-MAX_BOUNCE_SPEED, MAX_BOUNCE_SPEED));
+        self.bands.insert(key, Band::Settling { spring, last: now });
+        BandWheel::Shared
+    }
+
+    pub(super) fn advance(&mut self, now: Instant) -> bool {
         let mut moving = false;
         self.bands.retain(|_, band| {
-            let Some((mut spring, last)) = band.release else {
-                moving = true;
+            let Band::Settling { spring, last } = band else {
                 return true;
             };
-            spring.step(now.duration_since(last).as_secs_f32().min(MAX_FRAME_S));
-            band.release = Some((spring, now));
+            spring.step(now.duration_since(*last).as_secs_f32().min(MAX_FRAME_S));
+            *last = now;
             let settled = spring.is_settled();
             moving |= !settled;
             !settled
@@ -141,16 +279,4 @@ impl RubberBands {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_stretch_resists_more_the_further_it_is_pulled_and_keeps_its_direction() {
-        let small = stretched(20.0);
-        let large = stretched(400.0);
-        assert!(small > 0.0 && small < 20.0);
-        assert!(large < REACH);
-        assert!(large - stretched(300.0) < stretched(100.0) - small);
-        assert!(stretched(-50.0) < 0.0);
-    }
-}
+mod tests;

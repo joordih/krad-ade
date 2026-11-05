@@ -250,6 +250,7 @@ impl EnvironmentShell {
             }
         }
         let lead = chat.lead.get().unwrap_or(THREAD_PAD_TOP);
+        chat.note_landing(question, lead);
         let below: Option<f32> = (question..runway)
             .map(|index| {
                 thread

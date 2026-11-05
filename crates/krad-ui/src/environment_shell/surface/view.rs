@@ -9,7 +9,7 @@ use krad_domain::{AgentState, TerminalId};
 use std::time::Instant;
 
 use super::super::ask::{tray, tray_button};
-use super::super::rubber_band::{BandKey, ScrollEdges};
+use super::super::rubber_band::{band_watch, BandKey, ScrollEdges};
 use super::super::sidebar::PanelReveal;
 use super::super::EnvironmentShell;
 use super::dot_field::dot_field;
@@ -211,9 +211,7 @@ impl EnvironmentShell {
                     .min_h_0()
                     .opacity(landed)
                     .child(self.bouncing_thread(id, chat, now, cx))
-                    .when(!following, |area| {
-                        area.child(Self::jump_down(id, chat.thread.clone(), cx))
-                    }),
+                    .when(!following, |area| area.child(Self::jump_down(id, cx))),
             )
             .child(
                 div().flex().flex_col().flex_none().items_center().child(
@@ -255,22 +253,21 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let bounce = chat.thread.clone();
+        let edges = move || ScrollEdges {
+            offset: -bounce.scroll_px_offset_for_scrollbar().y.as_f32(),
+            max: bounce.max_offset_for_scrollbar().y.as_f32(),
+        };
         div()
             .relative()
             .size_full()
             .top(px(self.gestures.bands.offset(BandKey::Chat(id))))
-            .on_scroll_wheel(cx.listener(
-                move |this: &mut Self, event: &ScrollWheelEvent, _, cx| {
-                    let edges = ScrollEdges {
-                        offset: -bounce.scroll_px_offset_for_scrollbar().y.as_f32(),
-                        max: bounce.max_offset_for_scrollbar().y.as_f32(),
-                    };
-                    if this.gestures.bands.wheel(BandKey::Chat(id), event, edges) {
-                        cx.notify();
-                    }
-                },
-            ))
+            .on_scroll_wheel(
+                cx.listener(move |this: &mut Self, _: &ScrollWheelEvent, _, _| {
+                    this.scrolled_by_hand(id);
+                }),
+            )
             .child(Self::surface_thread(id, chat, now, cx))
+            .child(band_watch(BandKey::Chat(id), edges, cx))
             .into_any_element()
     }
 
@@ -323,7 +320,7 @@ impl EnvironmentShell {
         )
     }
 
-    fn jump_down(id: TerminalId, thread: ListState, cx: &mut Context<Self>) -> AnyElement {
+    fn jump_down(id: TerminalId, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         div()
             .absolute()
@@ -344,8 +341,8 @@ impl EnvironmentShell {
                     .bg(rgb(pal.bg_surface))
                     .shadow(floating_shadow(pal))
                     .tooltip(|_, cx| tooltip_view(TOOLTIP_DOWN.into(), cx))
-                    .on_click(cx.listener(move |_: &mut Self, _, _, cx| {
-                        thread.scroll_to_end();
+                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                        this.jump_to_latest(id);
                         cx.notify();
                     }))
                     .child(icon(IconName::ChevronDown, ICON, pal.text_default)),

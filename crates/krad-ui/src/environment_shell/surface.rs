@@ -1,3 +1,4 @@
+mod anchor;
 mod answer;
 mod bus;
 mod checklist;
@@ -37,6 +38,7 @@ use std::time::Instant;
 use super::ask::AskQueue;
 use super::chat::ChatMessage;
 use super::EnvironmentShell;
+use anchor::Anchor;
 use checklist::ChecklistView;
 use edit_message::MessageEditor;
 use glide::Glide;
@@ -100,6 +102,8 @@ pub(super) struct SurfaceChat {
     pub(super) pins_latest: bool,
     pub(super) runway: Cell<f32>,
     pub(super) lead: Cell<Option<f32>>,
+    anchor: Anchor,
+    landing: Cell<Option<f32>>,
     glide: Option<Glide>,
     pub(super) working_since: Cell<Option<Instant>>,
     outbox: Outbox,
@@ -136,6 +140,8 @@ impl SurfaceChat {
             pins_latest: false,
             runway: Cell::new(0.0),
             lead: Cell::new(None),
+            anchor: Anchor::Tail,
+            landing: Cell::new(None),
             glide: None,
             working_since: Cell::new(None),
             outbox: Outbox::default(),
