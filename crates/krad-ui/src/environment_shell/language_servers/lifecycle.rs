@@ -273,10 +273,13 @@ impl EnvironmentShell {
                 };
                 let document = Document::new(&key.host, &path);
                 self.language_servers.project.published(key, &document);
-                self.language_servers
+                if self
+                    .language_servers
                     .diagnostics
-                    .pushed(&document, published.diagnostics);
-                self.show_diagnostics(&document, cx);
+                    .pushed(&document, published.diagnostics)
+                {
+                    self.show_diagnostics(&document, cx);
+                }
             }
             ServerEvent::ApplyEdit(edit) => self.queue_workspace_edit(key.host.clone(), edit, cx),
             ServerEvent::DiagnosticsRefresh => {
