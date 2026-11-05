@@ -1,33 +1,19 @@
-use gpui_kit::{
-    div, px, relative, rgb, AnyElement, Context, InteractiveElement, IntoElement, ListOffset,
-    ParentElement, SharedString, StatefulInteractiveElement, Styled,
-};
+use gpui_kit::{px, ListOffset, SharedString};
 use krad_chat::Speaker;
-use krad_domain::{Bookmark, ChatBookmarks, TerminalId};
+use krad_domain::{Bookmark, ChatBookmarks};
 use std::cell::Ref;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
 
 use super::super::chat::{AnswerPart, ChatMessage};
-use super::super::EnvironmentShell;
 use super::bookmarks::bookmarks_of;
 use super::thread::first_message_row;
 use super::SurfaceChat;
-use crate::components::tooltip_view;
-use crate::theme::{palette, Palette, SPACE_1, SPACE_2};
 
-const MIN_QUESTIONS: usize = 2;
+mod strip;
+
 const LABEL_CHARS: usize = 80;
 const ELLIPSIS: char = '…';
-const STRIP_W: f32 = 14.0;
-const STRIP_INSET: f32 = SPACE_1;
-const STRIP_PAD_Y: f32 = SPACE_2;
-const TICK_HIT_H: f32 = 8.0;
-const TICK_H: f32 = 2.0;
-const QUESTION_TICK_W: f32 = 8.0;
-const BOOKMARK_TICK_W: f32 = 12.0;
-const TIMELINE_PREFIX: &str = "surface-timeline";
-const BOOKMARK_LABEL: &str = "Bookmark: ";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum TickKind {
@@ -38,7 +24,6 @@ pub(super) enum TickKind {
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Tick {
     pub(super) kind: TickKind,
-    pub(super) at: f32,
     pub(super) row: usize,
     pub(super) target: usize,
     pub(super) label: SharedString,
@@ -58,6 +43,7 @@ pub(super) struct Timeline {
     ticks: Rc<[Tick]>,
     marks_print: u64,
     marks: Vec<Option<Bookmark>>,
+    open: bool,
 }
 
 fn label(text: &str) -> SharedString {
@@ -70,15 +56,7 @@ fn label(text: &str) -> SharedString {
     cut.into()
 }
 
-#[allow(clippy::cast_precision_loss)]
-fn position(row: usize, rows: usize) -> f32 {
-    if rows == 0 {
-        return 0.0;
-    }
-    (row as f32 / rows as f32).clamp(0.0, 1.0)
-}
-
-pub(super) fn ticks<'a>(turns: impl IntoIterator<Item = TurnRow<'a>>, rows: usize) -> Vec<Tick> {
+pub(super) fn ticks<'a>(turns: impl IntoIterator<Item = TurnRow<'a>>) -> Vec<Tick> {
     let mut ticks = Vec::new();
     let mut unanswered: Option<usize> = None;
     for turn in turns {
@@ -87,7 +65,6 @@ pub(super) fn ticks<'a>(turns: impl IntoIterator<Item = TurnRow<'a>>, rows: usiz
                 unanswered = Some(ticks.len());
                 ticks.push(Tick {
                     kind: TickKind::Question,
-                    at: position(turn.row, rows),
                     row: turn.row,
                     target: turn.row,
                     label: label(turn.text),
@@ -102,10 +79,9 @@ pub(super) fn ticks<'a>(turns: impl IntoIterator<Item = TurnRow<'a>>, rows: usiz
         if turn.bookmarked {
             ticks.push(Tick {
                 kind: TickKind::Bookmark,
-                at: position(turn.row, rows),
                 row: turn.row,
                 target: turn.row,
-                label: format!("{BOOKMARK_LABEL}{}", label(turn.text)).into(),
+                label: label(turn.text),
             });
         }
     }
@@ -172,7 +148,7 @@ fn chat_ticks(
                 .flatten()
                 .is_some_and(|bookmark| bookmarks.contains(&bookmark)),
         });
-    ticks(turns, chat.thread.item_count())
+    ticks(turns)
 }
 
 impl SurfaceChat {
@@ -210,90 +186,6 @@ impl SurfaceChat {
     }
 }
 
-fn tick_color(kind: TickKind, current: bool, pal: &Palette) -> u32 {
-    match kind {
-        TickKind::Bookmark => pal.attention,
-        TickKind::Question if current => pal.accent,
-        TickKind::Question => pal.text_disabled,
-    }
-}
-
-impl EnvironmentShell {
-    pub(super) fn timeline_strip(
-        &self,
-        id: TerminalId,
-        chat: &SurfaceChat,
-        cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
-        let empty = ChatBookmarks::default();
-        let bookmarks = self.chat_bookmarks(id).unwrap_or(&empty);
-        let ticks = chat.timeline_ticks(bookmarks);
-        let questions = ticks
-            .iter()
-            .filter(|tick| tick.kind == TickKind::Question)
-            .count();
-        if questions < MIN_QUESTIONS {
-            return None;
-        }
-        let current = current_question(&ticks, chat.thread.logical_scroll_top().item_ix);
-        let pal = palette(cx);
-        let marks = ticks.iter().enumerate().map(|(index, tick)| {
-            let target = tick.target;
-            let tooltip = tick.label.clone();
-            let width = match tick.kind {
-                TickKind::Question => QUESTION_TICK_W,
-                TickKind::Bookmark => BOOKMARK_TICK_W,
-            };
-            let color = tick_color(tick.kind, current == Some(index), pal);
-            div()
-                .id(index)
-                .absolute()
-                .right_0()
-                .top(relative(tick.at))
-                .mt(px(-TICK_HIT_H / 2.0))
-                .h(px(TICK_HIT_H))
-                .w(px(STRIP_W))
-                .flex()
-                .items_center()
-                .justify_end()
-                .cursor_pointer()
-                .tooltip(move |_, cx| tooltip_view(tooltip.clone(), cx))
-                .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                    this.jump_on_timeline(id, target);
-                    cx.notify();
-                }))
-                .child(
-                    div()
-                        .h(px(TICK_H))
-                        .w(px(width))
-                        .rounded_full()
-                        .bg(rgb(color)),
-                )
-        });
-        Some(
-            div()
-                .id((TIMELINE_PREFIX, id.as_u64()))
-                .absolute()
-                .top(px(STRIP_PAD_Y))
-                .bottom(px(STRIP_PAD_Y))
-                .right(px(STRIP_INSET))
-                .w(px(STRIP_W))
-                .children(marks)
-                .into_any_element(),
-        )
-    }
-
-    fn jump_on_timeline(&mut self, id: TerminalId, row: usize) {
-        if let Some(chat) = self
-            .envs
-            .get_mut(&self.active)
-            .and_then(|live| live.chats.get_mut(&id))
-        {
-            chat.jump_to_row(row);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,26 +209,18 @@ mod tests {
     }
 
     #[test]
-    fn each_question_gets_a_tick_where_its_turn_sits_in_the_transcript() {
-        let ticks = ticks(conversation(), 8);
-        let questions: Vec<(usize, f32)> = ticks
+    fn each_question_gets_a_tick_in_the_order_it_was_asked() {
+        let rows: Vec<usize> = ticks(conversation())
             .iter()
             .filter(|tick| tick.kind == TickKind::Question)
-            .map(|tick| (tick.row, tick.at))
+            .map(|tick| tick.row)
             .collect();
-        assert_eq!(questions, vec![(1, 0.125), (3, 0.375)]);
-    }
-
-    #[test]
-    fn ticks_move_up_as_the_transcript_grows() {
-        let short = ticks(conversation(), 8);
-        let longer = ticks(conversation(), 16);
-        assert!(longer[1].at < short[1].at);
+        assert_eq!(rows, vec![1, 3]);
     }
 
     #[test]
     fn a_question_tick_lands_on_its_answer() {
-        let ticks = ticks(conversation(), 8);
+        let ticks = ticks(conversation());
         let targets: Vec<usize> = ticks
             .iter()
             .filter(|tick| tick.kind == TickKind::Question)
@@ -347,21 +231,18 @@ mod tests {
 
     #[test]
     fn a_question_still_unanswered_lands_on_itself() {
-        let ticks = ticks([turn(5, Speaker::User, "Anything else?", false)], 6);
+        let ticks = ticks([turn(5, Speaker::User, "Anything else?", false)]);
         assert_eq!(ticks[0].target, 5);
     }
 
     #[test]
     fn a_bookmark_gets_its_own_tick_on_its_message() {
-        let ticks = ticks(conversation(), 8);
+        let ticks = ticks(conversation());
         let bookmark = ticks
             .iter()
             .find(|tick| tick.kind == TickKind::Bookmark)
             .map(|tick| (tick.row, tick.target, tick.label.to_string()));
-        assert_eq!(
-            bookmark,
-            Some((4, 4, format!("{BOOKMARK_LABEL}They pass too.")))
-        );
+        assert_eq!(bookmark, Some((4, 4, "They pass too.".to_owned())));
     }
 
     #[test]
@@ -375,7 +256,7 @@ mod tests {
 
     #[test]
     fn the_turn_in_view_is_the_last_question_at_or_above_the_top() {
-        let ticks = ticks(conversation(), 8);
+        let ticks = ticks(conversation());
         assert_eq!(current_question(&ticks, 0), None);
         assert_eq!(current_question(&ticks, 2), Some(0));
         assert_eq!(current_question(&ticks, 4), Some(1));
