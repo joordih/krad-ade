@@ -122,7 +122,7 @@ fn permission_ask(row: &ToolCall) -> AskKind {
         kind: row.kind,
         summary: row.summary.clone(),
         title: None,
-        edit: row.edit.clone(),
+        edit: row.edits.first().cloned(),
     }
 }
 
@@ -185,7 +185,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
     fn use_tool(&mut self, call: &Call, row: ToolCall, action: Action) -> bool {
         let workspace = &self.setup.workspace;
         let row = ToolCall {
-            edit: action.preview(workspace),
+            edits: action.preview(workspace).into_iter().collect(),
             ..row
         };
         let decided = verdict(&action, self.mode, workspace, &self.allowed);

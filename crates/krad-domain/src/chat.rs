@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::agent::AgentPreset;
 use crate::checklist::Checklist;
@@ -34,8 +34,39 @@ pub struct ToolCall {
     pub name: String,
     pub kind: ToolKind,
     pub summary: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub edit: Option<FileEdit>,
+    #[serde(
+        default,
+        alias = "edit",
+        deserialize_with = "one_or_many_edits",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub edits: Vec<FileEdit>,
+}
+
+impl ToolCall {
+    pub fn place_edit(&mut self, edit: FileEdit) {
+        match self.edits.iter_mut().find(|shown| shown.path == edit.path) {
+            Some(shown) => *shown = edit,
+            None => self.edits.push(edit),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum SavedEdits {
+    Many(Vec<FileEdit>),
+    One(FileEdit),
+}
+
+fn one_or_many_edits<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<FileEdit>, D::Error> {
+    Ok(match Option::<SavedEdits>::deserialize(deserializer)? {
+        Some(SavedEdits::Many(edits)) => edits,
+        Some(SavedEdits::One(edit)) => vec![edit],
+        None => Vec::new(),
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +80,7 @@ pub enum ChatEvent {
     ContextTokens(u64),
     ContextWindow(u64),
     Tool(ToolCall),
+    ToolUpdated(ToolCall),
     Edited { tool: ToolUseId, edit: FileEdit },
     Checklist(Checklist),
     Prompted(RewindPoint),
@@ -114,7 +146,7 @@ mod tests {
                 name: "Read".to_owned(),
                 kind: ToolKind::Read,
                 summary: "a.rs".to_owned(),
-                edit: None,
+                edits: Vec::new(),
             })),
             ChatEntry::Event(ChatEvent::Checklist(Checklist {
                 items: vec![crate::checklist::ChecklistItem {
@@ -137,5 +169,43 @@ mod tests {
             serde_json::from_str::<ChatEntry>(line),
             Ok(ChatEntry::User { images, .. }) if images.is_empty()
         ));
+    }
+
+    #[test]
+    fn a_tool_saved_with_one_edit_loads_with_it_as_its_only_edit() {
+        let line = r#"{"Event":{"Tool":{"name":"Edit","kind":"Edit","summary":"a.rs","edit":{"path":"a.rs","lines":[]}}}}"#;
+        let edits = match serde_json::from_str::<ChatEntry>(line) {
+            Ok(ChatEntry::Event(ChatEvent::Tool(call))) => call.edits,
+            _ => Vec::new(),
+        };
+        assert_eq!(
+            edits,
+            [FileEdit {
+                path: "a.rs".to_owned(),
+                lines: Vec::new()
+            }]
+        );
+    }
+
+    #[test]
+    fn placing_an_edit_replaces_the_one_for_its_path_and_adds_new_paths() {
+        let edit = |path: &str, lines: Vec<crate::file_edit::EditLine>| FileEdit {
+            path: path.to_owned(),
+            lines,
+        };
+        let mut call = ToolCall {
+            id: None,
+            name: "Edit".to_owned(),
+            kind: ToolKind::Edit,
+            summary: String::new(),
+            edits: vec![edit("a.rs", Vec::new())],
+        };
+        let changed = crate::line_diff("x", "y");
+        call.place_edit(edit("a.rs", changed.clone()));
+        call.place_edit(edit("b.rs", Vec::new()));
+        assert_eq!(
+            call.edits,
+            [edit("a.rs", changed), edit("b.rs", Vec::new())]
+        );
     }
 }

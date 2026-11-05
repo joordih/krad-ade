@@ -8,7 +8,8 @@ use gpui_kit::{AppContext as _, Context, Entity, Focusable as _, Subscription, W
 use krad_agents::Response;
 use krad_chat::{AskAnswer, AskKind, LiveChat, Question};
 use krad_domain::{
-    AgentState, AskOutcome, AskVerdict, ChatEntry, PermissionMode, TerminalId, ToolDecision,
+    AcpPermissionKind, AcpPermissionOption, AgentState, AskOutcome, AskVerdict, ChatEntry,
+    PermissionMode, TerminalId, ToolDecision,
 };
 
 use super::chat::fold_entry;
@@ -29,6 +30,27 @@ const ESCAPE: &[u8] = b"\x1b";
 const SUBJECT_SEPARATOR: &str = " ";
 const QUESTIONS_SEPARATOR: &str = "; ";
 
+const ACP_PERMISSION_ORDER: [AcpPermissionKind; 4] = [
+    AcpPermissionKind::AllowOnce,
+    AcpPermissionKind::AllowAlways,
+    AcpPermissionKind::RejectOnce,
+    AcpPermissionKind::RejectAlways,
+];
+
+fn acp_rank(kind: AcpPermissionKind) -> usize {
+    ACP_PERMISSION_ORDER
+        .iter()
+        .position(|ordered| *ordered == kind)
+        .unwrap_or(ACP_PERMISSION_ORDER.len())
+}
+
+fn acp_option(kind: &AskKind, index: usize) -> Option<&AcpPermissionOption> {
+    match kind {
+        AskKind::AcpPermission { options, .. } => options.get(index),
+        AskKind::Permission { .. } | AskKind::Questions(_) | AskKind::Plan { .. } => None,
+    }
+}
+
 pub(super) const OFFERED_MODES: [PermissionMode; 4] = [
     PermissionMode::Manual,
     PermissionMode::AcceptEdits,
@@ -45,6 +67,7 @@ enum Choice {
     ApproveAuto,
     ApproveManually,
     KeepPlanning,
+    AcpOption(usize),
 }
 
 impl Choice {
@@ -58,7 +81,16 @@ impl Choice {
 
     fn of(kind: &AskKind, can_allow_always: bool, by_keys: bool) -> Vec<Self> {
         match kind {
-            AskKind::Permission { .. } | AskKind::AcpPermission { .. } => {
+            AskKind::AcpPermission { options, .. } => {
+                let mut ranked: Vec<(usize, &AcpPermissionOption)> =
+                    options.iter().enumerate().collect();
+                ranked.sort_by_key(|(_, option)| acp_rank(option.kind));
+                ranked
+                    .into_iter()
+                    .map(|(index, _)| Self::AcpOption(index))
+                    .collect()
+            }
+            AskKind::Permission { .. } => {
                 let always = can_allow_always.then_some(Self::AllowAlways);
                 [Self::Allow]
                     .into_iter()
@@ -87,12 +119,14 @@ impl Choice {
             | Self::AllowAlways
             | Self::ApproveAcceptingEdits
             | Self::ApproveAuto
-            | Self::ApproveManually => None,
+            | Self::ApproveManually
+            | Self::AcpOption(_) => None,
         }
     }
 
-    const fn answer(self) -> Option<AskAnswer> {
+    fn answer(self, kind: &AskKind) -> Option<AskAnswer> {
         Some(match self {
+            Self::AcpOption(index) => AskAnswer::Chosen(acp_option(kind, index)?.id.clone()),
             Self::Allow => AskAnswer::Allow,
             Self::AllowAlways => AskAnswer::AllowAlways,
             Self::ApproveAcceptingEdits => AskAnswer::ApprovePlan {
@@ -164,7 +198,22 @@ fn subject(kind: &AskKind) -> String {
     }
 }
 
-const fn verdict(kind: &AskKind, answer: &AskAnswer) -> AskVerdict {
+fn chosen_verdict(kind: &AskKind, answer: &AskAnswer) -> Option<AskVerdict> {
+    let (AskAnswer::Chosen(id), AskKind::AcpPermission { options, .. }) = (answer, kind) else {
+        return None;
+    };
+    let chosen = options.iter().find(|option| &option.id == id)?;
+    Some(match chosen.kind {
+        AcpPermissionKind::AllowOnce => AskVerdict::Allowed,
+        AcpPermissionKind::AllowAlways => AskVerdict::AllowedAlways,
+        AcpPermissionKind::RejectOnce | AcpPermissionKind::RejectAlways => AskVerdict::Denied,
+    })
+}
+
+fn verdict(kind: &AskKind, answer: &AskAnswer) -> AskVerdict {
+    if let Some(verdict) = chosen_verdict(kind, answer) {
+        return verdict;
+    }
     match (answer, kind) {
         (AskAnswer::Allow, _) => AskVerdict::Allowed,
         (AskAnswer::AllowAlways, _) => AskVerdict::AllowedAlways,
@@ -284,7 +333,11 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(answer) = choice.answer() {
+        let answer = self
+            .ask_queue(owner)
+            .and_then(AskQueue::front)
+            .and_then(|waiting| choice.answer(&waiting.ask.kind));
+        if let Some(answer) = answer {
             self.answer_ask(owner, &answer, cx);
         } else if let Some(purpose) = choice.note() {
             self.open_note(owner, purpose, window, cx);
@@ -640,13 +693,63 @@ mod tests {
         assert_eq!(
             Choice::of(&plan, false, false)
                 .first()
-                .copied()
-                .and_then(Choice::answer),
+                .and_then(|choice| choice.answer(&plan)),
             Some(AskAnswer::ApprovePlan {
                 mode: PermissionMode::AcceptEdits,
             }),
             "Enter approves and accepts edits, as in Claude Code"
         );
-        assert_eq!(Choice::KeepPlanning.answer(), None, "it takes a note first");
+        assert_eq!(
+            Choice::KeepPlanning.answer(&plan),
+            None,
+            "it takes a note first"
+        );
+    }
+
+    fn acp_permission() -> AskKind {
+        let option = |id: &str, kind| AcpPermissionOption {
+            id: krad_domain::AcpPermissionOptionId(id.to_owned()),
+            name: id.to_owned(),
+            kind,
+        };
+        AskKind::AcpPermission {
+            tool: krad_domain::ToolCall {
+                id: None,
+                name: "cargo test".to_owned(),
+                kind: krad_domain::ToolKind::Shell,
+                summary: String::new(),
+                edits: Vec::new(),
+            },
+            options: vec![
+                option("never", AcpPermissionKind::RejectAlways),
+                option("no", AcpPermissionKind::RejectOnce),
+                option("always", AcpPermissionKind::AllowAlways),
+                option("yes", AcpPermissionKind::AllowOnce),
+            ],
+        }
+    }
+
+    #[test]
+    fn acp_options_are_offered_allowing_first_and_answer_with_their_id() {
+        let ask = acp_permission();
+        let choices = Choice::of(&ask, false, false);
+        assert_eq!(
+            choices,
+            [
+                Choice::AcpOption(3),
+                Choice::AcpOption(2),
+                Choice::AcpOption(1),
+                Choice::AcpOption(0)
+            ]
+        );
+        let chosen = choices.first().and_then(|choice| choice.answer(&ask));
+        assert_eq!(
+            chosen,
+            Some(AskAnswer::Chosen(krad_domain::AcpPermissionOptionId(
+                "yes".to_owned()
+            )))
+        );
+        let never = AskAnswer::Chosen(krad_domain::AcpPermissionOptionId("never".to_owned()));
+        assert_eq!(verdict(&ask, &never), AskVerdict::Denied);
     }
 }

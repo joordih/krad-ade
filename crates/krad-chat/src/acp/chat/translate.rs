@@ -20,13 +20,13 @@ struct ToolState {
     kind: ToolKind,
     status: ToolCallStatus,
     summary: String,
-    edit: Option<FileEdit>,
+    edits: Vec<FileEdit>,
     shown: bool,
 }
 
 impl ToolState {
     fn worth_showing(&self) -> bool {
-        self.status != ToolCallStatus::Pending || !self.summary.is_empty() || self.edit.is_some()
+        self.status != ToolCallStatus::Pending || !self.summary.is_empty() || !self.edits.is_empty()
     }
 }
 
@@ -73,10 +73,30 @@ fn diff_edit(diff: &Diff) -> FileEdit {
     }
 }
 
-fn first_edit(content: &[ToolCallContent]) -> Option<FileEdit> {
-    content.iter().find_map(|content| match content {
-        ToolCallContent::Diff(diff) => Some(diff_edit(diff)),
-        ToolCallContent::Content { .. } | ToolCallContent::Terminal { .. } => None,
+fn diff_edits(content: &[ToolCallContent]) -> Vec<FileEdit> {
+    content
+        .iter()
+        .filter_map(|content| match content {
+            ToolCallContent::Diff(diff) => Some(diff_edit(diff)),
+            ToolCallContent::Content { .. } | ToolCallContent::Terminal { .. } => None,
+        })
+        .collect()
+}
+
+fn changed_edits(before: &ToolCall, after: &ToolCall) -> Option<Vec<FileEdit>> {
+    let same_row =
+        before.name == after.name && before.kind == after.kind && before.summary == after.summary;
+    let keeps_paths = before
+        .edits
+        .iter()
+        .all(|kept| after.edits.iter().any(|edit| edit.path == kept.path));
+    (same_row && keeps_paths).then(|| {
+        after
+            .edits
+            .iter()
+            .filter(|edit| !before.edits.contains(edit))
+            .cloned()
+            .collect()
     })
 }
 
@@ -169,7 +189,7 @@ impl Translator {
             kind: call.kind,
             status: call.status,
             summary,
-            edit: first_edit(&call.content),
+            edits: diff_edits(&call.content),
             shown: false,
         };
         let worth_showing = state.worth_showing();
@@ -181,26 +201,32 @@ impl Translator {
     }
 
     fn updated(&mut self, update: &ToolCallUpdate) -> Vec<LiveEvent> {
-        let had_edit = self
-            .tools
-            .get(&update.tool_call_id)
-            .and_then(|state| state.edit.clone());
+        let id = &update.tool_call_id;
+        let before = self.tools.get(id).map(|state| tool_call(id, state));
         let state = self.merged(update);
-        let (shown, worth_showing, edit) = (state.shown, state.worth_showing(), state.edit.clone());
-        if !shown {
+        let (shown, worth_showing) = (state.shown, state.worth_showing());
+        let after = tool_call(id, state);
+        let Some(before) = before.filter(|_| shown) else {
             if !worth_showing {
                 return Vec::new();
             }
-            return self.shown(&update.tool_call_id).into_iter().collect();
+            return self.shown(id).into_iter().collect();
+        };
+        if before == after {
+            return Vec::new();
         }
-        match edit {
-            Some(edit) if had_edit.as_ref() != Some(&edit) => {
-                vec![LiveEvent::Chat(ChatEvent::Edited {
-                    tool: ToolUseId::from(update.tool_call_id.0.as_str()),
-                    edit,
-                })]
-            }
-            _ => Vec::new(),
+        let tool = ToolUseId::from(id.0.as_str());
+        match changed_edits(&before, &after) {
+            Some(edits) => edits
+                .into_iter()
+                .map(|edit| {
+                    LiveEvent::Chat(ChatEvent::Edited {
+                        tool: tool.clone(),
+                        edit,
+                    })
+                })
+                .collect(),
+            None => vec![LiveEvent::Chat(ChatEvent::ToolUpdated(after))],
         }
     }
 
@@ -224,8 +250,11 @@ impl Translator {
         } else if state.summary.is_empty() {
             state.summary = tool_summary(update.raw_input.as_ref());
         }
-        if let Some(edit) = update.content.as_deref().and_then(first_edit) {
-            state.edit = Some(edit);
+        if let Some(content) = &update.content {
+            let edits = diff_edits(content);
+            if !edits.is_empty() {
+                state.edits = edits;
+            }
         }
         state
     }
@@ -243,7 +272,7 @@ fn tool_call(id: &ToolCallId, state: &ToolState) -> ToolCall {
         name: state.title.clone(),
         kind: shown_kind(state.kind),
         summary: state.summary.clone(),
-        edit: state.edit.clone(),
+        edits: state.edits.clone(),
     }
 }
 

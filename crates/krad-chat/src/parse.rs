@@ -124,7 +124,10 @@ fn tool_use_events(block: &Value) -> Vec<ChatEvent> {
         name: name.unwrap_or(UNKNOWN_TOOL).to_owned(),
         kind,
         summary: tool_summary(input),
-        edit: name.and_then(|name| file_edit(name, input)),
+        edits: name
+            .and_then(|name| file_edit(name, input))
+            .into_iter()
+            .collect(),
     });
     let checklist = (kind == ToolKind::Checklist)
         .then(|| input.and_then(todos))
@@ -188,7 +191,7 @@ mod tests {
             name: name.to_owned(),
             kind: ToolKind::of_claude_code(name),
             summary: summary.to_owned(),
-            edit: None,
+            edits: Vec::new(),
         })
     }
 

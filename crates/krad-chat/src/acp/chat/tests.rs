@@ -2,8 +2,9 @@ mod fake;
 mod live;
 
 use krad_domain::{
-    AcpAuthMethodId, AcpModeId, AcpPermissionKind, AcpPermissionOptionId, AcpSignIn, ChatEvent,
-    Checklist, ChecklistStatus, Prompt, ResumeId, ToolKind,
+    AcpAuthMethodId, AcpConfigOptionId, AcpConfigValue, AcpModeId, AcpPermissionKind,
+    AcpPermissionOptionId, AcpSignIn, ChatEvent, Checklist, ChecklistStatus, Prompt, ResumeId,
+    ToolKind,
 };
 use serde_json::json;
 
@@ -110,7 +111,7 @@ fn a_prompt_streams_thoughts_text_tools_edits_and_the_plan_until_done() {
     assert_eq!(chat[1], ChatEvent::TextDelta("On ".to_owned()));
     assert_eq!(chat[2], ChatEvent::TextDelta("it.".to_owned()));
     assert!(matches!(&chat[3], ChatEvent::Tool(call)
-        if call.kind == ToolKind::Edit && call.summary == "/work/a.txt" && call.edit.is_none()));
+        if call.kind == ToolKind::Edit && call.summary == "/work/a.txt" && call.edits.is_empty()));
     assert!(matches!(&chat[4], ChatEvent::Edited { tool, edit }
         if tool.as_str() == "t1" && edit.counts() == (1, 1)));
     assert!(matches!(&chat[5], ChatEvent::Checklist(Checklist { items })
@@ -230,6 +231,44 @@ fn a_mode_is_switched_through_set_mode_or_through_its_config_option() {
     assert!(
         matches!(events.last(), Some(LiveEvent::Acp(AcpEvent::Modes(modes))) if modes.current.0 == "plan")
     );
+}
+
+#[test]
+fn other_config_options_are_offered_and_set_through_set_config_option() {
+    let mut started = start(&fresh());
+    let effort = |current: &str| {
+        json!([{"id": "effort", "name": "Thought level", "category": "thought_level", "type": "select",
+            "currentValue": current, "options": [{"value": "low", "name": "Low"}, {"value": "high", "name": "High"}]}])
+    };
+    let events = opened(
+        &mut started,
+        &json!({"sessionId": SESSION, "configOptions": effort("low")}),
+    );
+    assert!(events.iter().any(|event| matches!(
+        event,
+        LiveEvent::Acp(AcpEvent::Options(options))
+            if options.len() == 1 && options[0].current.0 == "low"
+    )));
+    order(
+        &started,
+        Order::Acp(AcpOrder::Option(
+            AcpConfigOptionId("effort".to_owned()),
+            AcpConfigValue("high".to_owned()),
+        )),
+    );
+    let set = started.agent.expect("session/set_config_option");
+    assert_eq!(
+        set["params"],
+        json!({"sessionId": SESSION, "configId": "effort", "value": "high"})
+    );
+    started
+        .agent
+        .reply(&set, &json!({"configOptions": effort("high")}));
+    let events = started.until(|event| matches!(event, LiveEvent::Acp(AcpEvent::Options(_))));
+    assert!(matches!(
+        events.last(),
+        Some(LiveEvent::Acp(AcpEvent::Options(options))) if options[0].current.0 == "high"
+    ));
 }
 
 #[test]

@@ -173,7 +173,7 @@ mod tests {
                     name: "Glob".to_owned(),
                     kind: krad_domain::ToolKind::Search,
                     summary: "*.rs".to_owned(),
-                    edit: None,
+                    edits: Vec::new(),
                 })),
                 ChatEntry::Event(ChatEvent::Text("Two files.".to_owned())),
             ]

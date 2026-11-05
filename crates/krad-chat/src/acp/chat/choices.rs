@@ -1,4 +1,7 @@
-use krad_domain::{AcpMode, AcpModeId, AcpModel, AcpModelId, AcpModels, AcpModes};
+use krad_domain::{
+    AcpConfigChoice, AcpConfigOption, AcpConfigValue, AcpMode, AcpModeId, AcpModel, AcpModelId,
+    AcpModels, AcpModes,
+};
 
 use crate::acp::config::{ConfigCategory, ConfigKind, SessionConfigOption};
 use crate::acp::ids::ConfigOptionId;
@@ -20,6 +23,7 @@ pub(super) struct Offered<T> {
 pub(super) struct Choices {
     pub(super) modes: Option<Offered<AcpModes>>,
     pub(super) models: Option<Offered<AcpModels>>,
+    pub(super) others: Vec<AcpConfigOption>,
 }
 
 impl From<SessionModeState> for AcpModes {
@@ -84,6 +88,23 @@ fn configured_models(option: &SessionConfigOption) -> AcpModels {
     }
 }
 
+fn other_option(option: &SessionConfigOption) -> AcpConfigOption {
+    AcpConfigOption {
+        id: option.id.clone(),
+        name: option.name.clone(),
+        description: option.description.clone(),
+        current: AcpConfigValue(option.current_value.clone()),
+        choices: option
+            .choices()
+            .map(|choice| AcpConfigChoice {
+                value: AcpConfigValue(choice.value.clone()),
+                name: choice.name.clone(),
+                description: choice.description.clone(),
+            })
+            .collect(),
+    }
+}
+
 fn selected(
     options: &[SessionConfigOption],
     category: &ConfigCategory,
@@ -111,19 +132,33 @@ impl Choices {
                 offer: state.into(),
                 setter: Setter::Method,
             }),
+            others: Vec::new(),
         };
         choices.configure(config);
         choices
     }
 
     pub(super) fn configure(&mut self, config: &[SessionConfigOption]) {
-        if let Some(option) = selected(config, &ConfigCategory::Mode) {
+        let mode = selected(config, &ConfigCategory::Mode);
+        let model = selected(config, &ConfigCategory::Model);
+        let taken = |option: &SessionConfigOption| {
+            [&mode, &model]
+                .into_iter()
+                .flatten()
+                .any(|taken| taken.id == option.id)
+        };
+        self.others = config
+            .iter()
+            .filter(|option| option.kind == ConfigKind::Select && !taken(option))
+            .map(other_option)
+            .collect();
+        if let Some(option) = mode {
             self.modes = Some(Offered {
                 offer: configured_modes(&option),
                 setter: Setter::Config(option.id),
             });
         }
-        if let Some(option) = selected(config, &ConfigCategory::Model) {
+        if let Some(option) = model {
             self.models = Some(Offered {
                 offer: configured_models(&option),
                 setter: Setter::Config(option.id),
@@ -135,6 +170,12 @@ impl Choices {
         let modes = &mut self.modes.as_mut()?.offer;
         modes.current = current;
         Some(modes)
+    }
+
+    pub(super) fn offers_other(&self, id: &ConfigOptionId, value: &AcpConfigValue) -> bool {
+        self.others
+            .iter()
+            .any(|option| &option.id == id && option.offers(value))
     }
 
     pub(super) fn model_is(&mut self, current: AcpModelId) -> Option<&AcpModels> {
@@ -165,9 +206,25 @@ mod tests {
              "currentValue": "build",
              "options": [{"value": "build", "name": "Build"}, {"value": "plan", "name": "Plan"}]},
             {"id": "model", "name": "Model", "category": "model", "type": "select",
-             "currentValue": "big-pickle", "options": [{"value": "big-pickle", "name": "Big Pickle"}]}
+             "currentValue": "big-pickle", "options": [{"value": "big-pickle", "name": "Big Pickle"}]},
+            {"id": "effort", "name": "Thought level", "category": "thought_level", "type": "select",
+             "currentValue": "high", "options": [{"value": "low", "name": "Low"}, {"value": "high", "name": "High"}]}
         ]));
         let choices = Choices::reported(modes, None, &options);
+        let others: Vec<(&str, &str)> = choices
+            .others
+            .iter()
+            .map(|option| (option.id.0.as_str(), option.current.0.as_str()))
+            .collect();
+        assert_eq!(others, [("effort", "high")]);
+        assert!(choices.offers_other(
+            &ConfigOptionId("effort".to_owned()),
+            &AcpConfigValue("low".to_owned())
+        ));
+        assert!(!choices.offers_other(
+            &ConfigOptionId("mode".to_owned()),
+            &AcpConfigValue("build".to_owned())
+        ));
         let modes = choices
             .modes
             .as_ref()

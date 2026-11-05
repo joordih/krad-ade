@@ -1,4 +1,4 @@
-use krad_domain::{AcpPermissionKind, AcpPermissionOption, ToolCall};
+use krad_domain::{AcpPermissionOption, ToolCall};
 use std::collections::HashMap;
 use tracing::debug;
 
@@ -22,15 +22,6 @@ fn option(offered: PermissionOption) -> AcpPermissionOption {
     }
 }
 
-fn first_of(options: &[AcpPermissionOption], kind: AcpPermissionKind) -> RequestPermissionOutcome {
-    options.iter().find(|option| option.kind == kind).map_or(
-        RequestPermissionOutcome::Cancelled,
-        |option| RequestPermissionOutcome::Selected {
-            option_id: option.id.clone(),
-        },
-    )
-}
-
 fn outcome(kind: &AskKind, answer: &AskAnswer) -> RequestPermissionOutcome {
     let AskKind::AcpPermission { options, .. } = kind else {
         return RequestPermissionOutcome::Cancelled;
@@ -41,12 +32,12 @@ fn outcome(kind: &AskKind, answer: &AskAnswer) -> RequestPermissionOutcome {
                 option_id: id.clone(),
             }
         }
-        AskAnswer::Allow => first_of(options, AcpPermissionKind::AllowOnce),
-        AskAnswer::AllowAlways => first_of(options, AcpPermissionKind::AllowAlways),
-        AskAnswer::Deny { .. } => first_of(options, AcpPermissionKind::RejectOnce),
-        AskAnswer::Chosen(_) | AskAnswer::ApprovePlan { .. } | AskAnswer::Answers(_) => {
-            RequestPermissionOutcome::Cancelled
-        }
+        AskAnswer::Chosen(_)
+        | AskAnswer::Allow
+        | AskAnswer::AllowAlways
+        | AskAnswer::Deny { .. }
+        | AskAnswer::ApprovePlan { .. }
+        | AskAnswer::Answers(_) => RequestPermissionOutcome::Cancelled,
     }
 }
 
@@ -97,7 +88,7 @@ impl Asks {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_domain::AcpPermissionOptionId;
+    use krad_domain::{AcpPermissionKind, AcpPermissionOptionId};
 
     fn options() -> Vec<AcpPermissionOption> {
         [
@@ -121,7 +112,7 @@ mod tests {
                 name: "write".to_owned(),
                 kind: krad_domain::ToolKind::Edit,
                 summary: String::new(),
-                edit: None,
+                edits: Vec::new(),
             },
             options: options(),
         }
@@ -134,19 +125,20 @@ mod tests {
     }
 
     #[test]
-    fn a_chosen_option_is_sent_back_and_the_usual_answers_pick_the_matching_kind() {
+    fn a_chosen_option_is_sent_back_and_answers_that_name_no_option_cancel() {
         let chosen = AskAnswer::Chosen(AcpPermissionOptionId("always".to_owned()));
         assert_eq!(outcome(&kind(), &chosen), selected("always"));
-        assert_eq!(outcome(&kind(), &AskAnswer::Allow), selected("once"));
-        assert_eq!(
-            outcome(
-                &kind(),
-                &AskAnswer::Deny {
-                    message: String::new()
-                }
-            ),
-            selected("no")
-        );
+        for unnamed in [
+            AskAnswer::Allow,
+            AskAnswer::Deny {
+                message: String::new(),
+            },
+        ] {
+            assert_eq!(
+                outcome(&kind(), &unnamed),
+                RequestPermissionOutcome::Cancelled
+            );
+        }
     }
 
     #[test]

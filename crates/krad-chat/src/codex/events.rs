@@ -120,7 +120,7 @@ fn call(
         name: name.to_owned(),
         kind,
         summary,
-        edit,
+        edits: edit.into_iter().collect(),
     }
 }
 

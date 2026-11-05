@@ -1,5 +1,5 @@
 use krad_domain::{
-    AcpAuthMethod, AcpModels, AcpModes, AcpPermissionKind, AcpPermissionOption,
+    AcpAuthMethod, AcpConfigOption, AcpModels, AcpModes, AcpPermissionKind, AcpPermissionOption,
     AcpPermissionOptionId, ChatEvent, FileEdit, ModelId, PermissionMode, RewindId, ToolCall,
     ToolKind,
 };
@@ -59,6 +59,7 @@ pub enum LiveEvent {
 pub enum AcpEvent {
     Modes(AcpModes),
     Models(AcpModels),
+    Options(Vec<AcpConfigOption>),
     SignInNeeded(Vec<AcpAuthMethod>),
 }
 

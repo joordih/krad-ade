@@ -7,8 +7,8 @@ mod rewind;
 
 use gpui_kit::Context;
 use krad_chat::{
-    new_session_id, Catalog, ChatEvent, LiveChat, LiveEvent, LiveSession, PlanUsage, ResumeRefused,
-    SlashCommand,
+    new_session_id, AcpEvent, Catalog, ChatEvent, LiveChat, LiveEvent, LiveSession, PlanUsage,
+    ResumeRefused, SlashCommand,
 };
 use krad_domain::{
     AgentPreset, AgentState, ChatEntry, Effort, EnvironmentName, ModelId, PermissionMode, Prompt,
@@ -19,6 +19,7 @@ use std::time::Instant;
 use super::super::ask::{AskQueue, Waiting};
 use super::super::chat::{fold_entry, LiveProcess};
 use super::super::EnvironmentShell;
+use super::acp::AcpOffers;
 use super::outbox::Outbox;
 use super::{view, Backend, SurfaceChat, SurfaceCommand};
 
@@ -76,6 +77,7 @@ pub(in crate::environment_shell) struct StructuredChat {
     mcp: McpPrep,
     notices: Vec<String>,
     rewinding: Option<Rewinding>,
+    pub(in crate::environment_shell) acp: AcpOffers,
 }
 
 impl StructuredChat {
@@ -103,6 +105,7 @@ impl StructuredChat {
             mcp: McpPrep::default(),
             notices: Vec::new(),
             rewinding: None,
+            acp: AcpOffers::default(),
         }
     }
 
@@ -121,6 +124,7 @@ impl StructuredChat {
         self.effort = None;
         self.context_tokens = None;
         self.context_window = None;
+        self.acp = AcpOffers::default();
         self.session = LiveSession::Start(new_session_id());
     }
 
@@ -287,6 +291,7 @@ impl EnvironmentShell {
                 self.keep_harness_models(env, harness, &catalog.models);
                 if let Some(structured) = structured_mut(self, env, id) {
                     structured.catalog = Some(catalog);
+                    structured.acp.opened();
                 }
                 return self.flush_structured(env, id, cx);
             }
@@ -315,7 +320,13 @@ impl EnvironmentShell {
             LiveEvent::Chat(ChatEvent::ContextWindow(window)) => {
                 structured.context_window = Some(window);
             }
-            LiveEvent::Refused(_) | LiveEvent::Acp(_) => {}
+            LiveEvent::Acp(event) => {
+                if matches!(event, AcpEvent::SignInNeeded(_)) {
+                    state = Some(AgentState::WaitingForInput);
+                }
+                structured.acp.reported(event);
+            }
+            LiveEvent::Refused(_) => {}
             LiveEvent::Chat(event @ (ChatEvent::Done | ChatEvent::Error(_))) => {
                 if let Some(batch) = refused.and_then(|refused| structured.retries(&refused)) {
                     self.hand_over_again(env, id, batch, event, cx);

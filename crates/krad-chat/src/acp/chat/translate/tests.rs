@@ -70,3 +70,46 @@ fn commands_reach_the_catalog() {
         [LiveEvent::Ready(catalog)] if catalog.commands[0].name == "review"
     ));
 }
+
+#[test]
+fn every_diff_of_a_tool_call_shows_and_a_later_one_is_placed_as_an_edit() {
+    let mut translator = Translator::default();
+    let called = translator.translate(update(json!({
+        "sessionUpdate": "tool_call", "toolCallId": "c3", "title": "edit", "kind": "edit", "status": "in_progress",
+        "content": [
+            {"type": "diff", "path": "/w/a.rs", "oldText": "a\n", "newText": "b\n"},
+            {"type": "diff", "path": "/w/b.rs", "newText": "c\n"}
+        ]
+    })));
+    let paths: Vec<&str> = tools(&called)
+        .iter()
+        .flat_map(|call| call.edits.iter().map(|edit| edit.path.as_str()))
+        .collect();
+    assert_eq!(paths, ["/w/a.rs", "/w/b.rs"]);
+    let more = translator.translate(update(json!({
+        "sessionUpdate": "tool_call_update", "toolCallId": "c3",
+        "content": [
+            {"type": "diff", "path": "/w/a.rs", "oldText": "a\n", "newText": "b\n"},
+            {"type": "diff", "path": "/w/b.rs", "newText": "c\n"},
+            {"type": "diff", "path": "/w/c.rs", "newText": "d\n"}
+        ]
+    })));
+    assert!(matches!(more.as_slice(),
+        [LiveEvent::Chat(ChatEvent::Edited { tool, edit })]
+            if tool.as_str() == "c3" && edit.path == "/w/c.rs"));
+}
+
+#[test]
+fn a_new_title_updates_the_shown_tool_under_its_id() {
+    let mut translator = Translator::default();
+    let called = translator.translate(update(json!({
+        "sessionUpdate": "tool_call", "toolCallId": "c4", "title": "Read", "kind": "read", "status": "in_progress"
+    })));
+    assert_eq!(tools(&called).len(), 1);
+    let retitled = translator.translate(update(json!({
+        "sessionUpdate": "tool_call_update", "toolCallId": "c4", "title": "Read src/main.rs"
+    })));
+    assert!(matches!(retitled.as_slice(),
+        [LiveEvent::Chat(ChatEvent::ToolUpdated(call))]
+            if call.name == "Read src/main.rs" && call.id.as_ref().map(ToolUseId::as_str) == Some("c4")));
+}

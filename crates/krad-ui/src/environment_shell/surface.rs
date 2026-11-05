@@ -1,3 +1,4 @@
+mod acp;
 mod answer;
 mod bus;
 mod checklist;
@@ -46,9 +47,10 @@ use outbox::Outbox;
 use subagents::Subagents;
 use transcript::{TranscriptView, TRANSCRIPT_HARNESS};
 
+pub(super) use acp::AcpChoice;
 pub(super) use answer::tool_question;
 pub(super) use bus::ChatPresence;
-pub(super) use edit_diff::edit_diff;
+pub(super) use edit_diff::edit_diffs;
 pub(super) use facts::AccountUsage;
 pub(super) use structured::restored_chats;
 pub(super) use structured::StructuredChat;

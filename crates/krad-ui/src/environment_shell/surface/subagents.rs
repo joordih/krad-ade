@@ -376,7 +376,7 @@ mod tests {
                     name: (*name).to_owned(),
                     kind: ToolKind::of_claude_code(name),
                     summary: String::new(),
-                    edit: None,
+                    edits: Vec::new(),
                 })),
             );
         }
