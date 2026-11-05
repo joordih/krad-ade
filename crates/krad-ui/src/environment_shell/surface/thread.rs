@@ -13,7 +13,7 @@ use super::super::chat::{question_bubble, AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
 use super::edit_message::is_edited;
 use super::mentions::sent_mentions;
-use super::message_actions::{copy_button, message_actions, message_group};
+use super::message_actions::{copy_button, message_actions, message_group, BookmarkAction};
 use super::origin::origin_line;
 use super::status_line::{status_line, TurnPhase};
 use super::view::{column, error_line, muted_line, AgentNow, LOADING_TEXT};
@@ -88,6 +88,10 @@ fn first_question(chat: &SurfaceChat, items: &[ThreadItem]) -> Option<usize> {
     })
 }
 
+pub(super) fn first_message_row(chat: &SurfaceChat) -> usize {
+    usize::from(chat.skips_history()) + usize::from(chat.origin.is_some())
+}
+
 fn question_text(text: &str) -> Option<&str> {
     Some(text.trim()).filter(|text| !text.is_empty())
 }
@@ -98,6 +102,7 @@ fn question_row(
     message: &ChatMessage,
     chat: &SurfaceChat,
     edit: Option<AnyElement>,
+    bookmark: Option<BookmarkAction>,
     pal: &Palette,
 ) -> AnyElement {
     let bubble = format!("{BUBBLE_PREFIX}-{}-{index}", id.as_u64());
@@ -106,14 +111,15 @@ fn question_row(
         .filter(|_| matches!(chat.backend, Backend::Structured(_)))
         .map(|text| {
             let key = format!("{QUESTION_COPY_PREFIX}-{}-{index}", id.as_u64());
-            let copy = copy_button(
+            copy_button(
                 ElementId::Name(key.into()),
                 text.to_owned(),
                 QUESTION_COPY_TOOLTIP,
                 pal,
-            );
-            message_actions(group.clone(), edit.into_iter().chain([copy]))
+            )
         });
+    let actions = (copy.is_some() || bookmark.is_some())
+        .then(|| message_actions(group.clone(), edit.into_iter().chain(copy), bookmark));
     div()
         .group(group)
         .flex()
@@ -131,7 +137,7 @@ fn question_row(
             ))
         })
         .children(sent_mentions(&message.mentions, pal))
-        .children(copy)
+        .children(actions)
         .into_any_element()
 }
 
@@ -286,11 +292,13 @@ impl EnvironmentShell {
                         let edit = chat
                             .offers_edit(index)
                             .then(|| Self::edit_button(id, index, pal, cx));
-                        question_row(id, index, message, chat, edit, pal)
+                        let bookmark = self.bookmark_action(id, index, &chat.messages, pal, cx);
+                        question_row(id, index, message, chat, edit, bookmark, pal)
                     }
                     Speaker::Assistant => {
                         let workers = self.worker_cards(id);
-                        Self::surface_answer(id, index, message, chat, &workers, cx)
+                        let bookmark = self.bookmark_action(id, index, &chat.messages, pal, cx);
+                        Self::surface_answer(id, index, message, chat, &workers, bookmark, cx)
                     }
                 }
             }

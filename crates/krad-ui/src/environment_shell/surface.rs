@@ -1,5 +1,6 @@
 mod anchor;
 mod answer;
+mod bookmarks;
 mod bus;
 mod checklist;
 mod composer;
@@ -18,6 +19,7 @@ mod subagent_card;
 mod subagents;
 mod switch;
 mod thread;
+mod timeline;
 mod tool_group;
 mod transcript;
 mod view;
@@ -32,7 +34,7 @@ use krad_domain::{
     DEFAULT_CHAT_HARNESS,
 };
 use krad_repo::IndexEntry;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
@@ -47,6 +49,7 @@ pub(super) use origin::age_label;
 use origin::Origin;
 use outbox::Outbox;
 use subagents::Subagents;
+use timeline::Timeline;
 use transcript::{TranscriptView, TRANSCRIPT_HARNESS};
 
 pub(super) use answer::tool_question;
@@ -105,6 +108,7 @@ pub(super) struct SurfaceChat {
     pub(super) lead: Cell<Option<f32>>,
     anchor: Anchor,
     landing: Cell<Option<f32>>,
+    timeline: RefCell<Timeline>,
     glide: Option<Glide>,
     pub(super) working_since: Cell<Option<Instant>>,
     outbox: Outbox,
@@ -143,6 +147,7 @@ impl SurfaceChat {
             lead: Cell::new(None),
             anchor: Anchor::Tail,
             landing: Cell::new(None),
+            timeline: RefCell::default(),
             glide: None,
             working_since: Cell::new(None),
             outbox: Outbox::default(),

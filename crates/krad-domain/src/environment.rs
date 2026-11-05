@@ -1,4 +1,5 @@
 use crate::agent::{AgentPreset, AgentState};
+use crate::bookmark::ChatBookmarks;
 use crate::group::{Session, TerminalGroup};
 use crate::host::Host;
 use crate::ids::{EnvironmentName, ResumeId, SessionId, TerminalId};
@@ -29,6 +30,8 @@ pub struct TerminalNode {
     pub kind: NodeKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file: Option<crate::group::OpenFile>,
+    #[serde(default, skip_serializing_if = "ChatBookmarks::is_empty")]
+    pub bookmarks: ChatBookmarks,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -149,6 +152,7 @@ pub(crate) fn seed_terminals() -> (Vec<TerminalNode>, u64) {
             text_scale: TextScale::default(),
             kind: NodeKind::default(),
             file: None,
+            bookmarks: ChatBookmarks::default(),
         })
         .collect();
     (terminals, SEED_NEXT_ID)
@@ -165,5 +169,32 @@ mod tests {
         environment.title = Some("Payments".to_owned());
         assert_eq!(environment.display_name(), "Payments");
         assert_eq!(environment.name.as_str(), DEFAULT_ENVIRONMENT);
+    }
+
+    #[test]
+    fn a_node_written_before_bookmarks_loads_without_any() -> serde_json::Result<()> {
+        let older = serde_json::json!({
+            "id": 7,
+            "title": "Chat",
+            "state": "Idle",
+            "kind": "Chat"
+        });
+        let node: TerminalNode = serde_json::from_value(older)?;
+        assert!(node.bookmarks.is_empty());
+        assert!(serde_json::to_value(&node)?.get("bookmarks").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn a_chat_keeps_its_bookmarks_across_a_restart() -> serde_json::Result<()> {
+        let (mut nodes, _) = seed_terminals();
+        let mut node = nodes.remove(0);
+        node.bookmarks.toggle(crate::Bookmark {
+            turn: crate::TurnPrint::from("Fix the build"),
+            side: crate::TurnSide::Answer,
+        });
+        let back: TerminalNode = serde_json::from_str(&serde_json::to_string(&node)?)?;
+        assert_eq!(back.bookmarks, node.bookmarks);
+        Ok(())
     }
 }

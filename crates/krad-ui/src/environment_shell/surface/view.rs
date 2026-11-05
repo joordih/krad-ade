@@ -184,6 +184,7 @@ impl EnvironmentShell {
                     .min_h_0()
                     .opacity(landed)
                     .child(self.bouncing_thread(id, chat, now, cx))
+                    .children(self.timeline_strip(id, chat, cx))
                     .when(!following, |area| area.child(Self::jump_down(id, cx))),
             )
             .child(
