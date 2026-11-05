@@ -14,7 +14,7 @@ use gpui_kit::{
 use krad_extensions::api::protocol::RowsResult;
 use krad_extensions::api::view::{Element, FieldKind, Node, Patch, Sort, ViewEvent};
 use krad_extensions::api::{NodeKey, TerminalHandle};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::theme::palette;
@@ -96,8 +96,7 @@ impl ExtensionView {
 
     fn sync_sliders(&mut self, cx: &mut Context<Self>) {
         for key in self.model.take_received_sliders() {
-            let Some(Element::Slider(spec)) =
-                model::find(&self.model.root, &key).map(|node| &node.element)
+            let Some(Element::Slider(spec)) = self.model.find_node(&key).map(|node| &node.element)
             else {
                 continue;
             };
@@ -113,13 +112,13 @@ impl ExtensionView {
     }
 
     fn prune_sliders(&mut self) {
-        let mut present = HashSet::new();
-        model::slider_keys(&self.model.root, &mut present);
+        let present = self.model.every_slider_key();
         self.sliders.retain(|key, _| present.contains(key));
     }
 
     pub(crate) fn set_rows(&mut self, node: NodeKey, rows: RowsResult, cx: &mut Context<Self>) {
         self.model.set_rows(node, rows);
+        self.sync_sliders(cx);
         cx.notify();
     }
 
