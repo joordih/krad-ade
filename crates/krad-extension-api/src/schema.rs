@@ -6,8 +6,8 @@ use crate::protocol::{
     CallTool, CloseView, Confirm, ConnectMachine, ExecuteCommand, Exit, GetSecret, GetSettings,
     Initialize, Initialized, InputBox, ListMachines, Log, Notification, OpenFile, OpenTerminal,
     OpenView, PatchView, Pick, Progress, RenderView, Request, Rows, RunCommand, SendTerminal,
-    SetSecret, SettingsChanged, Shutdown, Toast, ViewClosed, ViewEventNotification,
-    WorkspaceContext, WorkspaceEventNotification,
+    SetSecret, SetTitlebarItem, SettingsChanged, Shutdown, Toast, ViewClosed,
+    ViewEventNotification, WorkspaceContext, WorkspaceEventNotification,
 };
 use crate::version::CURRENT_API;
 
@@ -76,7 +76,8 @@ pub fn api_schema() -> Value {
         .notification::<Progress>()
         .notification::<SendTerminal>()
         .notification::<WorkspaceEventNotification>()
-        .notification::<SettingsChanged>();
+        .notification::<SettingsChanged>()
+        .notification::<SetTitlebarItem>();
     let manifest = collector.generator.subschema_for::<ExtensionManifest>();
     let definitions = collector.generator.take_definitions(true);
     sorted(json!({
@@ -140,5 +141,10 @@ mod tests {
         assert_eq!(schema["requests"]["window/pick"]["answered_by"], "app");
         assert_eq!(schema["notifications"]["view/patch"]["received_by"], "app");
         assert!(schema["$defs"]["Node"].is_object());
+        assert_eq!(
+            schema["notifications"]["titlebar/set"]["received_by"],
+            "app"
+        );
+        assert_eq!(schema["api"], CURRENT_API.to_string());
     }
 }

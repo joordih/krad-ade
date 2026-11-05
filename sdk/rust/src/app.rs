@@ -3,8 +3,9 @@ use krad_extension_api::protocol::{
     InputBox, InputBoxParams, Log, LogLevel, LogParams, Notification, OpenFile, OpenFileParams,
     OpenTerminal, OpenTerminalParams, OpenView, OpenViewParams, Party, PatchView, PatchViewParams,
     Pick, PickParams, Progress, ProgressParams, Request, RunCommand, RunCommandParams, Secret,
-    SendTerminal, SendTerminalParams, SetSecret, SetSecretParams, SettingsValues, Toast,
-    ToastParams, ViewRef, WorkspaceContext, WorkspaceContextResult,
+    SendTerminal, SendTerminalParams, SetSecret, SetSecretParams, SetTitlebarItem,
+    SetTitlebarItemParams, SettingsValues, Toast, ToastParams, ViewRef, WorkspaceContext,
+    WorkspaceContextResult,
 };
 use krad_extension_api::view::{Patch, Tone};
 use krad_extension_api::{SecretName, TerminalHandle};
@@ -255,5 +256,12 @@ impl App {
     /// Returns [`SdkError`] when the app cannot be reached.
     pub fn patch_view(&self, view: ViewRef, patches: Vec<Patch>) -> Result<(), SdkError> {
         self.notify::<PatchView>(&PatchViewParams { view, patches })
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`SdkError`] when the app cannot be reached.
+    pub fn set_titlebar_item(&self, params: &SetTitlebarItemParams) -> Result<(), SdkError> {
+        self.notify::<SetTitlebarItem>(params)
     }
 }

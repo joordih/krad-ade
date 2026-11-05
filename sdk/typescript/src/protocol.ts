@@ -69,6 +69,32 @@ export interface ViewRef {
   instance?: string | null;
 }
 
+export type ViewZone = "sidebar" | "side_panel" | "utilities" | "file_tab" | "popover";
+
+export interface ViewContribution {
+  id: string;
+  title: string;
+  zone: ViewZone;
+  icon?: Icon | null;
+}
+
+export type TitlebarSide = "left" | "right";
+
+export type TitlebarItemContribution = {
+  id: string;
+  title: string;
+  icon: Icon;
+  side?: TitlebarSide;
+} & ({ view: string; command?: never } | { command: string; view?: never });
+
+export interface SetTitlebarItemParams {
+  item: string;
+  icon?: Icon;
+  title?: string;
+  active?: boolean;
+  hidden?: boolean;
+}
+
 export type OpenViewParams = ViewRef & { title?: string | null };
 export type PatchViewParams = ViewRef & { patches: Patch[] };
 export type ViewEventParams = ViewRef & { event: ViewEvent };
@@ -242,6 +268,7 @@ export interface AppNotifications {
   "window/toast": ToastParams;
   "window/progress": ProgressParams;
   "terminal/send": SendTerminalParams;
+  "titlebar/set": SetTitlebarItemParams;
 }
 
 export const PROGRAM_REQUESTS: readonly (keyof ProgramRequests)[] = [
@@ -256,5 +283,5 @@ export const PROGRAM_NOTIFICATIONS: readonly (keyof ProgramNotifications)[] = [
   "initialized", "exit", "view/event", "view/closed", "workspace/event", "settings/changed",
 ];
 export const APP_NOTIFICATIONS: readonly (keyof AppNotifications)[] = [
-  "window/log", "view/patch", "window/toast", "window/progress", "terminal/send",
+  "window/log", "view/patch", "window/toast", "window/progress", "terminal/send", "titlebar/set",
 ];

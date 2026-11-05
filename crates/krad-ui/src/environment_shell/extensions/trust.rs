@@ -31,6 +31,7 @@ const HOST_KINDS_WARNING: &str =
     "Runs the command it chooses on this computer to reach the machines it offers";
 const COMMANDS: &str = "Commands";
 const VIEWS: &str = "Views";
+const TITLEBAR_ITEMS: &str = "Titlebar buttons";
 const MENUS: &str = "Menu entries";
 const KEYBINDINGS: &str = "Keyboard shortcuts";
 const TOOLS: &str = "Tools for agents";
@@ -113,6 +114,14 @@ fn declared_lines(manifest: Option<&ExtensionManifest>, summary: &ManifestSummar
         list(
             VIEWS,
             contributes.views.iter().map(|v| v.title.clone()).collect(),
+        );
+        list(
+            TITLEBAR_ITEMS,
+            contributes
+                .titlebar_items
+                .iter()
+                .map(|item| item.title.clone())
+                .collect(),
         );
         list(
             MENUS,

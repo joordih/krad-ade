@@ -15,7 +15,7 @@ pub struct ApiVersion {
     pub minor: u32,
 }
 
-pub const CURRENT_API: ApiVersion = ApiVersion { major: 1, minor: 0 };
+pub const CURRENT_API: ApiVersion = ApiVersion { major: 1, minor: 1 };
 
 impl ApiVersion {
     #[must_use]

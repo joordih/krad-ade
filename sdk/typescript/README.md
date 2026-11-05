@@ -58,6 +58,46 @@ const extension = createExtension({
 });
 ```
 
+### A titlebar button with a popover
+
+A `[[contributes.titlebar_item]]` puts a button next to the ADE/Editor switch (`side = "left"` or
+`"right"`, right by default). It runs a `command`, or opens a `view` whose zone is `popover`
+anchored under the button. The app tells the program when the popover opens (`view/render`) and
+closes (`view/closed`); while open, patch it like any view. Needs `api = "1.1"`.
+
+```toml
+api = "1.1"
+
+[[contributes.view]]
+id = "now-playing"
+title = "Now playing"
+zone = "popover"
+
+[[contributes.titlebar_item]]
+id = "now-playing"
+title = "Now playing"
+icon = "play"
+side = "right"
+view = "now-playing"
+```
+
+```ts
+import { createExtension, popoverView, ui } from "@krad-ade/extension";
+
+createExtension({
+  views: {
+    "now-playing": popoverView({
+      onOpen: (_view, { app }) => app.setTitlebarItem({ item: "now-playing", active: true }),
+      render: () => ui.text("track", "Track one"),
+      onClose: (_view, { app }) => app.setTitlebarItem({ item: "now-playing", active: false }),
+    }),
+  },
+});
+```
+
+`app.setTitlebarItem({ item, icon?, title?, active?, hidden? })` changes the button at any time;
+fields left out keep their value.
+
 Add the folder from Settings → Languages → Extensions → Add folder, and trust it when asked.
 
 ## Rules

@@ -10,6 +10,7 @@ mod progress;
 mod prompts;
 mod runtime_install;
 mod terminals;
+mod titlebar;
 mod tools;
 mod trust;
 mod views;
@@ -126,6 +127,7 @@ pub(in crate::environment_shell) struct Extensions {
     restarts: HashMap<SlotKey, RestartPolicy>,
     pub(in crate::environment_shell) values: ExtensionSettings,
     views: views::OpenViews,
+    titlebar: titlebar::Titlebar,
     prompts: prompts::Prompts,
     progress: progress::ProgressBoard,
     terminals: HashMap<TerminalHandle, terminals::OwnedTerminal>,
@@ -282,6 +284,7 @@ impl EnvironmentShell {
         self.extensions
             .view_terminals
             .retain(|(owner, _, _)| owner != key);
+        self.forget_titlebar_items(key);
         self.drop_views_of(key, cx);
     }
 

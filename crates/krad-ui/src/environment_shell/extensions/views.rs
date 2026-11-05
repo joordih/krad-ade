@@ -28,6 +28,7 @@ pub(super) enum ViewPlace {
     SidePanel(EnvironmentName),
     Utilities(EnvironmentName),
     FileTab(EnvironmentName, TerminalId),
+    Popover(EnvironmentName, krad_extensions::api::TitlebarItemId),
 }
 
 pub(super) enum ViewState {
@@ -78,7 +79,8 @@ const fn place_env_of(place: &ViewPlace) -> &EnvironmentName {
         ViewPlace::Sidebar(env)
         | ViewPlace::SidePanel(env)
         | ViewPlace::Utilities(env)
-        | ViewPlace::FileTab(env, _) => env,
+        | ViewPlace::FileTab(env, _)
+        | ViewPlace::Popover(env, _) => env,
     }
 }
 
@@ -125,6 +127,12 @@ impl EnvironmentShell {
             ViewZone::Sidebar => ViewPlace::Sidebar(env),
             ViewZone::SidePanel => ViewPlace::SidePanel(env),
             ViewZone::Utilities => ViewPlace::Utilities(env),
+            ViewZone::Popover => {
+                let Some(item) = self.popover_anchor(&manifest, view) else {
+                    return false;
+                };
+                ViewPlace::Popover(env, item)
+            }
             ViewZone::FileTab => {
                 let Some(live) = self.envs.get_mut(&env) else {
                     return false;

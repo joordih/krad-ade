@@ -1,6 +1,7 @@
 use super::*;
 use krad_extensions::api::manifest::{
-    CommandContribution, Contributions, HostKindContribution, Program, ViewContribution, ViewZone,
+    CommandContribution, Contributions, HostKindContribution, Program, TitlebarAction,
+    TitlebarItemContribution, TitlebarSide, ViewContribution, ViewZone,
 };
 use krad_extensions::api::{ApiVersion, IdError};
 
@@ -60,6 +61,13 @@ fn docker() -> Result<ExtensionManifest, IdError> {
                 title: "Container".to_owned(),
                 icon: None,
             }],
+            titlebar_items: vec![TitlebarItemContribution {
+                id: "status".parse()?,
+                title: "Docker status".to_owned(),
+                icon: krad_extensions::api::Icon::Layers,
+                side: TitlebarSide::Right,
+                action: TitlebarAction::Command("refresh".parse()?),
+            }],
             ..Contributions::default()
         },
     })
@@ -74,6 +82,9 @@ fn the_trust_sheet_lists_where_it_runs_what_it_may_do_and_what_it_adds() -> Resu
     assert!(lines.iter().any(|line| line == HOST_KINDS_WARNING));
     assert!(lines.iter().any(|line| line == "Commands: Docker: Refresh"));
     assert!(lines.iter().any(|line| line == "Views: Containers"));
+    assert!(lines
+        .iter()
+        .any(|line| line == &format!("{TITLEBAR_ITEMS}: Docker status")));
     assert!(
         lines
             .iter()

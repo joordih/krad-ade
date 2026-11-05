@@ -423,6 +423,13 @@
           },
           "type": "array"
         },
+        "titlebar_item": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TitlebarItemContribution"
+          },
+          "type": "array"
+        },
         "tool": {
           "default": [],
           "items": {
@@ -553,6 +560,7 @@
             "menu": [],
             "secret": [],
             "setting": [],
+            "titlebar_item": [],
             "tool": [],
             "view": []
           }
@@ -2529,6 +2537,45 @@
       ],
       "type": "object"
     },
+    "SetTitlebarItemParams": {
+      "properties": {
+        "active": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "hidden": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Icon"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "item": {
+          "$ref": "#/$defs/TitlebarItemId"
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "type": "object"
+    },
     "SettingContribution": {
       "oneOf": [
         {
@@ -2905,6 +2952,60 @@
         }
       },
       "type": "object"
+    },
+    "TitlebarItemContribution": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CommandId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "icon": {
+          "$ref": "#/$defs/Icon"
+        },
+        "id": {
+          "$ref": "#/$defs/TitlebarItemId"
+        },
+        "side": {
+          "$ref": "#/$defs/TitlebarSide",
+          "default": "right"
+        },
+        "title": {
+          "type": "string"
+        },
+        "view": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ViewId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "icon"
+      ],
+      "type": "object"
+    },
+    "TitlebarItemId": {
+      "type": "string"
+    },
+    "TitlebarSide": {
+      "enum": [
+        "left",
+        "right"
+      ],
+      "type": "string"
     },
     "ToastParams": {
       "properties": {
@@ -3370,7 +3471,8 @@
         "sidebar",
         "side_panel",
         "utilities",
-        "file_tab"
+        "file_tab",
+        "popover"
       ],
       "type": "string"
     },
@@ -3522,7 +3624,7 @@
       "type": "string"
     }
   },
-  "api": "1.0",
+  "api": "1.1",
   "manifest": {
     "$ref": "#/$defs/ExtensionManifest"
   },
@@ -3551,6 +3653,12 @@
     "terminal/send": {
       "params": {
         "$ref": "#/$defs/SendTerminalParams"
+      },
+      "received_by": "app"
+    },
+    "titlebar/set": {
+      "params": {
+        "$ref": "#/$defs/SetTitlebarItemParams"
       },
       "received_by": "app"
     },

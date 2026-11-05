@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::icon::Icon;
 use crate::id::{CommandId, HostKindId, SecretName, SettingKey, ToolName, ViewId};
+use crate::manifest::titlebar::TitlebarItemContribution;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -23,6 +24,8 @@ pub struct Contributions {
     pub tools: Vec<ToolContribution>,
     #[serde(default, rename = "host_kind")]
     pub host_kinds: Vec<HostKindContribution>,
+    #[serde(default, rename = "titlebar_item")]
+    pub titlebar_items: Vec<TitlebarItemContribution>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -71,6 +74,7 @@ pub enum ViewZone {
     SidePanel,
     Utilities,
     FileTab,
+    Popover,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

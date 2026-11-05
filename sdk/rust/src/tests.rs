@@ -1,7 +1,10 @@
 use crate::rpc::{METHOD_NOT_FOUND, REQUEST_FAILED};
 use crate::{App, Extension, HandlerError, Message, ResponseError, SdkError};
-use krad_extension_api::protocol::{Answer, ConfirmParams, Feature, RenderView};
-use krad_extension_api::view::{Tone, ViewEvent};
+use krad_extension_api::protocol::{
+    Answer, ConfirmParams, Feature, RenderView, SetTitlebarItemParams,
+};
+use krad_extension_api::view::{Element, Node, TextStyle, Tone, ViewEvent};
+use krad_extension_api::Icon;
 use serde_json::{json, Value};
 use std::io::{pipe, BufReader, PipeReader, PipeWriter};
 use std::sync::mpsc::{channel, Sender};
@@ -198,4 +201,45 @@ fn the_extension_cannot_ask_the_app_what_only_it_answers() -> TestResult {
         Err(SdkError::WrongDirection("view/render"))
     ));
     Ok(())
+}
+
+#[test]
+fn a_popover_lights_its_button_while_open_and_hears_when_it_closes() -> TestResult {
+    let (closings, closed) = channel::<String>();
+    let item: krad_extension_api::TitlebarItemId = "now-playing".parse()?;
+    let track: krad_extension_api::NodeKey = "track".parse()?;
+    let extension = Extension::new().on_popover(
+        "now-playing".parse()?,
+        move |app, _| {
+            app.set_titlebar_item(&SetTitlebarItemParams {
+                item: item.clone(),
+                icon: Some(Icon::Stop),
+                title: Some("Pause".to_owned()),
+                active: Some(true),
+                hidden: None,
+            })?;
+            Ok(Node {
+                key: track.clone(),
+                element: Element::Text {
+                    text: "Track one".to_owned(),
+                    style: TextStyle::default(),
+                },
+            })
+        },
+        move |_, view| closings.send(view.view.to_string()).unwrap_or_default(),
+    );
+    let mut app = FakeApp::start(extension)?;
+    app.request(6, "view/render", json!({"view": "now-playing"}))?;
+    let Message::Notification { method, params } = app.read()? else {
+        return Err("expected the titlebar state first".into());
+    };
+    assert_eq!(method, "titlebar/set");
+    assert_eq!(
+        params,
+        json!({"item": "now-playing", "icon": "stop", "title": "Pause", "active": true})
+    );
+    assert_eq!(result_of(app.read()?)?["type"], "text");
+    app.notify("view/closed", json!({"view": "now-playing"}))?;
+    assert_eq!(closed.recv_timeout(WAIT)?, "now-playing");
+    app.exit()
 }

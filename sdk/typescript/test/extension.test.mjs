@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createExtension, METHOD_NOT_FOUND, ui } from "../dist/index.js";
+import { createExtension, METHOD_NOT_FOUND, popoverView, ui } from "../dist/index.js";
 import { fakeApp, INIT } from "./helpers.mjs";
 
 test("initialize answers the features the extension offers", async () => {
@@ -81,4 +81,35 @@ test("a tool answering text is wrapped as tool content", async () => {
   await app.next();
   app.send({ id: 2, method: "tool/call", params: { tool: "list_containers", arguments: {} } });
   assert.deepEqual((await app.next()).result, { content: [{ type: "text", text: "web\ndb" }], outcome: "done" });
+});
+
+test("a popover hears when it opens and closes and sets its titlebar button", async () => {
+  const app = fakeApp();
+  const seen = [];
+  createExtension(
+    {
+      views: {
+        "now-playing": popoverView({
+          onOpen: (view, { app }) => {
+            seen.push(`open ${view.view}`);
+            app.setTitlebarItem({ item: "now-playing", icon: "stop", title: "Pause", active: true });
+          },
+          render: () => ui.text("track", "Track one"),
+          onClose: (view) => seen.push(`close ${view.view}`),
+        }),
+      },
+    },
+    app.io,
+  );
+  app.send({ id: 1, method: "initialize", params: INIT });
+  await app.next();
+  app.send({ id: 2, method: "view/render", params: { view: "now-playing" } });
+  const state = await app.next();
+  assert.equal(state.method, "titlebar/set");
+  assert.deepEqual(state.params, { item: "now-playing", icon: "stop", title: "Pause", active: true });
+  const reply = await app.next();
+  assert.equal(reply.result.type, "text");
+  app.send({ method: "view/closed", params: { view: "now-playing" } });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(seen, ["open now-playing", "close now-playing"]);
 });

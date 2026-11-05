@@ -3,7 +3,8 @@ use krad_extension_api::protocol::{
     InputBoxParams, Log, LogParams, Notification, OpenFile, OpenFileParams, OpenTerminal,
     OpenTerminalParams, OpenView, OpenViewParams, PatchView, PatchViewParams, Pick, PickParams,
     Progress, ProgressParams, Request, RunCommand, RunCommandParams, SendTerminal,
-    SendTerminalParams, SetSecret, SetSecretParams, Toast, ToastParams, ViewRef, WorkspaceContext,
+    SendTerminalParams, SetSecret, SetSecretParams, SetTitlebarItem, SetTitlebarItemParams, Toast,
+    ToastParams, ViewRef, WorkspaceContext,
 };
 use serde_json::Value;
 
@@ -30,6 +31,7 @@ pub enum AppNotice {
     Toast(ToastParams),
     Progress(ProgressParams),
     SendTerminal(SendTerminalParams),
+    SetTitlebarItem(SetTitlebarItemParams),
 }
 
 fn request_params<R: Request>(params: Value) -> Result<R::Params, serde_json::Error> {
@@ -69,6 +71,9 @@ impl AppNotice {
             Toast::METHOD => notice_params::<Toast>(params).map(Self::Toast),
             Progress::METHOD => notice_params::<Progress>(params).map(Self::Progress),
             SendTerminal::METHOD => notice_params::<SendTerminal>(params).map(Self::SendTerminal),
+            SetTitlebarItem::METHOD => {
+                notice_params::<SetTitlebarItem>(params).map(Self::SetTitlebarItem)
+            }
             _ => return None,
         };
         Some(notice)
@@ -108,5 +113,19 @@ mod tests {
             Some(Err(_))
         ));
         assert!(AppNotice::parse("window/unknown", json!({})).is_none());
+    }
+
+    #[test]
+    fn a_titlebar_state_reads_into_its_notice() {
+        assert!(matches!(
+            AppNotice::parse(
+                "titlebar/set",
+                json!({"item": "now-playing", "hidden": true})
+            ),
+            Some(Ok(AppNotice::SetTitlebarItem(SetTitlebarItemParams {
+                hidden: Some(true),
+                ..
+            })))
+        ));
     }
 }
