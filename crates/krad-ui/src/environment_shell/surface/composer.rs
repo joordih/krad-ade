@@ -77,7 +77,7 @@ impl EnvironmentShell {
                     let keystroke = &event.keystroke;
                     if keystroke.key == PASTE_KEY
                         && keystroke.modifiers.secondary()
-                        && this.paste_chat_image(id, cx)
+                        && this.paste_chat_attachment(id, cx)
                     {
                         cx.stop_propagation();
                     }
