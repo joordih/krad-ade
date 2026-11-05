@@ -125,8 +125,9 @@ mod tests {
             std::fs::write(&path, &generated)?;
         }
         let published = std::fs::read_to_string(&path).unwrap_or_default();
+        let published: Option<Value> = serde_json::from_str(&published).ok();
         assert!(
-            published == generated,
+            published == Some(api_schema()),
             "the schema is stale: run `{WRITE_VAR}={WRITE_VALUE} cargo test -p krad-extension-api`"
         );
         Ok(())
