@@ -15,5 +15,5 @@ pub(crate) use check::check_box;
 pub(crate) use chip::chip;
 pub(crate) use empty_state::{CenteredEmpty, EmptyState};
 pub(crate) use icon::{harness_icon, icon, IconName};
-pub(crate) use thinking::{shimmer_text, thinking_indicator};
+pub(crate) use thinking::{shimmer_text, thinking_indicator, working_dots};
 pub(crate) use tooltip::{tooltip_view, tooltip_with_shortcut};
