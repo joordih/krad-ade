@@ -316,7 +316,7 @@ impl EnvironmentShell {
         let active = shell.active.clone();
         shell.show_host(&active, cx);
         shell.pump_task = Some(Self::start_pump(pump_rx, cx));
-        Self::detect_agents(cx);
+        shell.detect_agents(cx);
         shell.start_watches(cx);
         shell.load_language_tools(cx);
         shell

@@ -4,7 +4,7 @@ const NO_PROGRAM: &str = "this harness has no program to name it on the bus";
 
 #[must_use]
 pub(crate) fn preset_by_display_name(name: &str) -> Option<AgentPreset> {
-    AgentPreset::all()
+    AgentPreset::NATIVE
         .into_iter()
         .find(|preset| preset.display_name().eq_ignore_ascii_case(name))
 }

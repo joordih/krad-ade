@@ -119,6 +119,7 @@ pub(crate) const fn harness_icon(preset: AgentPreset, pal: &Palette) -> (IconNam
         AgentPreset::Opencode => (IconName::BrandOpencode, pal.text_strong),
         AgentPreset::Gateway => (IconName::Flow, pal.accent),
         AgentPreset::Shell => (IconName::Terminal, pal.text_subtle),
+        AgentPreset::Acp(_) => (IconName::Plug, pal.text_strong),
     }
 }
 

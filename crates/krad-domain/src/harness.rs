@@ -108,7 +108,7 @@ impl AgentPreset {
         match self {
             Self::ClaudeCode | Self::Codex => PromptDelivery::Argument,
             Self::Opencode => PromptDelivery::Flag(OPENCODE_PROMPT_FLAG),
-            Self::Shell | Self::Gateway => PromptDelivery::AfterStart,
+            Self::Shell | Self::Gateway | Self::Acp(_) => PromptDelivery::AfterStart,
         }
     }
 
@@ -118,7 +118,7 @@ impl AgentPreset {
             Self::ClaudeCode => claude_signal(event, tool),
             Self::Codex => (event == CODEX_TURN_COMPLETE).then_some(HookSignal::Finished),
             Self::Opencode => opencode_signal(event),
-            _ => None,
+            Self::Shell | Self::Gateway | Self::Acp(_) => None,
         }
     }
 }
@@ -145,7 +145,7 @@ impl AgentPreset {
         match self {
             Self::ClaudeCode => Some(CLAUDE_RESUME_FLAG),
             Self::Codex => Some(CODEX_RESUME_COMMAND),
-            _ => None,
+            Self::Shell | Self::Opencode | Self::Gateway | Self::Acp(_) => None,
         }
     }
 
@@ -153,7 +153,7 @@ impl AgentPreset {
     pub const fn plan_dialog_keys(self) -> Option<PlanDialogKeys> {
         match self {
             Self::ClaudeCode => Some(CLAUDE_PLAN_DIALOG),
-            _ => None,
+            Self::Shell | Self::Codex | Self::Opencode | Self::Gateway | Self::Acp(_) => None,
         }
     }
 
@@ -161,7 +161,7 @@ impl AgentPreset {
     pub const fn fork_flag(self) -> Option<&'static str> {
         match self {
             Self::ClaudeCode => Some(CLAUDE_FORK_FLAG),
-            _ => None,
+            Self::Shell | Self::Codex | Self::Opencode | Self::Gateway | Self::Acp(_) => None,
         }
     }
 
@@ -328,6 +328,24 @@ mod tests {
         );
         assert_eq!(claude.settled_asks("PermissionRequest"), None);
         assert_eq!(AgentPreset::Codex.settled_asks("Stop"), None);
+    }
+
+    #[test]
+    fn acp_agents_take_no_flags_hooks_or_plan_dialog_and_get_the_prompt_after_start() {
+        let acp = AgentPreset::Acp(
+            "codex-acp"
+                .parse()
+                .unwrap_or_else(|_| unreachable!("a valid id")),
+        );
+        assert_eq!(acp.prompt_delivery(), PromptDelivery::AfterStart);
+        assert_eq!(acp.hook_signal("Stop", None), None);
+        assert_eq!(acp.settled_asks("Stop"), None);
+        assert_eq!(acp.resume_flag(), None);
+        assert_eq!(acp.fork_flag(), None);
+        assert_eq!(acp.plan_dialog_keys(), None);
+        assert!(!acp.started_fresh("SessionStart", Some("startup")));
+        assert!(acp.is_agent());
+        assert_eq!(acp.program(), None);
     }
 
     #[test]

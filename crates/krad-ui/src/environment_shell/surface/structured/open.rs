@@ -134,7 +134,7 @@ impl EnvironmentShell {
             AgentPreset::Opencode => self.load_opencode_history(env, id, resume, cx),
             AgentPreset::Codex => self.load_codex_history(env, id, resume, cx),
             AgentPreset::Gateway => self.load_gateway_history(env, id, resume, cx),
-            AgentPreset::Shell => {}
+            AgentPreset::Shell | AgentPreset::Acp(_) => {}
         }
     }
 

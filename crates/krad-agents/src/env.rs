@@ -162,7 +162,7 @@ How to orchestrate:
 }
 
 fn agent_programs() -> String {
-    AgentPreset::all()
+    AgentPreset::NATIVE
         .into_iter()
         .filter_map(AgentPreset::program)
         .collect::<Vec<_>>()

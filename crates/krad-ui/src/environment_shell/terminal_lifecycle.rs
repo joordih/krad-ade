@@ -206,7 +206,7 @@ impl EnvironmentShell {
     }
 
     fn default_chat_harness(&self) -> AgentPreset {
-        AgentPreset::chat_harnesses()
+        AgentPreset::chat_harnesses(&self.settings.acp.all_agents())
             .into_iter()
             .find(|preset| self.chats_on(*preset))
             .unwrap_or(DEFAULT_CHAT_HARNESS)

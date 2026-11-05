@@ -1,6 +1,6 @@
 use gpui_kit::{AppContext as _, Context, PathPromptOptions, SharedString, Window};
 use krad_domain::{
-    parse_wsl_path, AgentPreset, EnvironmentName, GroupId, TerminalGroup, TerminalId,
+    parse_wsl_path, AcpAgent, AgentPreset, EnvironmentName, GroupId, TerminalGroup, TerminalId,
     WorktreeOrigin,
 };
 use krad_host::HostLink;
@@ -19,28 +19,36 @@ const FOLDER_PROMPT: &str = "Choose the group's root folder";
 const NO_GROUP_TEXT: &str = "Select a group first";
 const HOST_NOT_READY_TEXT: &str = "Connect to the environment's host before adding a group";
 
-fn presets_found(is_installed: impl Fn(&str) -> bool) -> Vec<AgentPreset> {
-    AgentPreset::all()
+fn presets_found(acp_agents: &[AcpAgent], is_installed: impl Fn(&str) -> bool) -> Vec<AgentPreset> {
+    let native = AgentPreset::NATIVE
         .into_iter()
-        .filter(|preset| preset.program().is_none_or(&is_installed))
-        .collect()
+        .filter(|preset| preset.program().is_none_or(&is_installed));
+    let acp = acp_agents
+        .iter()
+        .filter(|agent| is_installed(&agent.program))
+        .map(|agent| AgentPreset::Acp(agent.id));
+    native.chain(acp).collect()
 }
 
-fn agent_programs() -> Vec<&'static str> {
-    AgentPreset::all()
+fn agent_programs(acp_agents: &[AcpAgent]) -> Vec<&str> {
+    let mut programs: Vec<&str> = AgentPreset::NATIVE
         .into_iter()
         .filter_map(AgentPreset::program)
-        .collect()
+        .collect();
+    programs.extend(acp_agents.iter().map(|agent| agent.program.as_str()));
+    programs.sort_unstable();
+    programs.dedup();
+    programs
 }
 
-fn presets_on_host(link: &HostLink) -> Vec<AgentPreset> {
-    let found = host_programs(link, &agent_programs()).unwrap_or_default();
-    presets_found(|program| found.contains(&program))
+fn presets_on_host(link: &HostLink, acp_agents: &[AcpAgent]) -> Vec<AgentPreset> {
+    let found = host_programs(link, &agent_programs(acp_agents)).unwrap_or_default();
+    presets_found(acp_agents, |program| found.contains(&program))
 }
 
-fn presets_in_wsl(distro: &str) -> Vec<AgentPreset> {
-    let found = wsl_programs(distro, &agent_programs()).unwrap_or_default();
-    presets_found(|program| found.contains(&program))
+fn presets_in_wsl(distro: &str, acp_agents: &[AcpAgent]) -> Vec<AgentPreset> {
+    let found = wsl_programs(distro, &agent_programs(acp_agents)).unwrap_or_default();
+    presets_found(acp_agents, |program| found.contains(&program))
 }
 
 impl EnvironmentShell {
@@ -75,7 +83,7 @@ impl EnvironmentShell {
             if !self.wsl_agents.contains_key(&distro) {
                 self.wsl_agents
                     .insert(distro.clone(), vec![AgentPreset::Shell]);
-                Self::detect_agents_in(distro, cx);
+                Self::detect_agents_in(distro, self.settings.acp.all_agents(), cx);
             }
         }
     }
@@ -87,13 +95,16 @@ impl EnvironmentShell {
         }
         let host = link.host();
         let env = env.clone();
-        let lookup = cx.background_spawn(async move { presets_on_host(&link) });
+        let acp_agents = self.settings.acp.all_agents();
+        let lookup = cx.background_spawn(async move { presets_on_host(&link, &acp_agents) });
         cx.spawn(async move |this, cx| {
             let installed = lookup.await;
             this.update(cx, |shell, cx| {
                 shell.host_agents.insert(host, installed);
                 shell.list_host_models(&env, cx);
-                for harness in AgentPreset::all() {
+                let harnesses: Vec<AgentPreset> =
+                    AgentPreset::listed(&shell.settings.acp.all_agents()).collect();
+                for harness in harnesses {
                     shell.flush_chats_of(harness, cx);
                 }
                 cx.notify();
@@ -103,10 +114,10 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn detect_agents_in(distro: String, cx: &mut Context<Self>) {
+    fn detect_agents_in(distro: String, acp_agents: Vec<AcpAgent>, cx: &mut Context<Self>) {
         let lookup = cx.background_spawn({
             let distro = distro.clone();
-            async move { presets_in_wsl(&distro) }
+            async move { presets_in_wsl(&distro, &acp_agents) }
         });
         cx.spawn(async move |this, cx| {
             let installed = lookup.await;
@@ -248,11 +259,11 @@ impl EnvironmentShell {
         self.store();
     }
 
-    pub(super) fn detect_agents(cx: &mut Context<Self>) {
-        let lookup =
-            cx.background_spawn(
-                async move { presets_found(|program| find_program(program).is_some()) },
-            );
+    pub(super) fn detect_agents(&self, cx: &mut Context<Self>) {
+        let acp_agents = self.settings.acp.all_agents();
+        let lookup = cx.background_spawn(async move {
+            presets_found(&acp_agents, |program| find_program(program).is_some())
+        });
         cx.spawn(async move |this, cx| {
             let installed = lookup.await;
             this.update(cx, |shell, cx| {
@@ -288,5 +299,36 @@ impl EnvironmentShell {
 
     pub(super) fn active_git(&self, root: &Path) -> Option<&GroupGit> {
         self.git_at(&self.active, root)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use krad_domain::built_in_acp_agents;
+
+    #[test]
+    fn acp_agents_are_listed_once_their_program_is_found() {
+        let agents = built_in_acp_agents();
+        let found = ["claude", "codex-acp", "opencode"];
+        let presets = presets_found(&agents, |program| found.contains(&program));
+        let acp: Vec<String> = presets
+            .iter()
+            .filter_map(|preset| preset.acp_agent())
+            .map(|id| id.to_string())
+            .collect();
+        assert_eq!(acp, ["codex-acp", "opencode"]);
+        assert!(presets.contains(&AgentPreset::ClaudeCode));
+        assert!(!presets.contains(&AgentPreset::Codex));
+        assert_eq!(
+            agent_programs(&agents),
+            [
+                "claude",
+                "claude-code-acp",
+                "codex",
+                "codex-acp",
+                "opencode"
+            ]
+        );
     }
 }

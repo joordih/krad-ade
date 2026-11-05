@@ -241,7 +241,10 @@ impl EnvironmentShell {
                 home: subagents.home.clone(),
                 conversation: subagents.conversation.clone(),
             },
-            AgentPreset::Codex | AgentPreset::Opencode | AgentPreset::Shell => return Look::Idle,
+            AgentPreset::Codex
+            | AgentPreset::Opencode
+            | AgentPreset::Shell
+            | AgentPreset::Acp(_) => return Look::Idle,
         };
         Look::Read(SubagentJob {
             resume,
