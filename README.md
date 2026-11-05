@@ -39,7 +39,7 @@ It is written in Rust on [GPUI](https://www.gpui.rs/), with real terminal emulat
 Electron.
 
 <p align="center">
-  <img src="assets/screenshots/chat.png" alt="A new session opening on its chat over a translucent window" width="100%">
+  <img src="assets/screenshots/chat-0.3.0.png" alt="A new session opening on its chat over a translucent window" width="100%">
 </p>
 
 ## Features
@@ -72,11 +72,11 @@ Electron.
   conversations come back when the app reopens.
 
 <p align="center">
-  <img src="assets/screenshots/palette.png" alt="The command palette opening a new terminal with any harness" width="100%">
+  <img src="assets/screenshots/palette-0.3.0.png" alt="The command palette opening a new terminal with any harness" width="100%">
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/terminal.png" alt="A shell tab beside the chat" width="100%">
+  <img src="assets/screenshots/terminal-0.3.0.png" alt="A shell tab beside the chat" width="100%">
 </p>
 
 ### An editor when you want one
@@ -93,7 +93,7 @@ Electron.
   stashes and a branch switcher; a minimap and quick open for large files.
 
 <p align="center">
-  <img src="assets/screenshots/code-viewer.png" alt="Editor mode with a Rust file and the explorer" width="100%">
+  <img src="assets/screenshots/code-viewer-0.3.0.png" alt="Editor mode with a Rust file and the explorer" width="100%">
 </p>
 
 ### Your repository beside the agents
@@ -114,7 +114,7 @@ folders, attachments, links, backlinks, tags, a graph, LaTeX, Mermaid and callou
 generate documentation into it from the folders you pick.
 
 <p align="center">
-  <img src="assets/screenshots/notes.png" alt="A note in reading mode" width="100%">
+  <img src="assets/screenshots/notes-0.3.0.png" alt="A note in reading mode" width="100%">
 </p>
 
 ### Made to be lived in
@@ -130,11 +130,11 @@ generate documentation into it from the folders you pick.
 - **An arcade** of small games on every empty chat, until the conversation starts.
 
 <p align="center">
-  <img src="assets/screenshots/settings.png" alt="Appearance settings with the light and dark previews" width="100%">
+  <img src="assets/screenshots/settings-0.3.0.png" alt="Appearance settings with the light and dark previews" width="100%">
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/light.png" alt="Editor mode in the light appearance" width="100%">
+  <img src="assets/screenshots/light-0.3.0.png" alt="Editor mode in the light appearance" width="100%">
 </p>
 
 ## Getting started
