@@ -1,0 +1,17 @@
+pub(super) const INITIALIZE: &str = "initialize";
+pub(super) const AUTHENTICATE: &str = "authenticate";
+pub(super) const SESSION_NEW: &str = "session/new";
+pub(super) const SESSION_LOAD: &str = "session/load";
+pub(super) const SESSION_PROMPT: &str = "session/prompt";
+pub(super) const SESSION_CANCEL: &str = "session/cancel";
+pub(super) const SESSION_SET_MODE: &str = "session/set_mode";
+pub(super) const SESSION_SET_MODEL: &str = "session/set_model";
+pub(super) const SESSION_UPDATE: &str = "session/update";
+pub(super) const SESSION_REQUEST_PERMISSION: &str = "session/request_permission";
+pub(super) const FS_READ_TEXT_FILE: &str = "fs/read_text_file";
+pub(super) const FS_WRITE_TEXT_FILE: &str = "fs/write_text_file";
+pub(super) const TERMINAL_CREATE: &str = "terminal/create";
+pub(super) const TERMINAL_OUTPUT: &str = "terminal/output";
+pub(super) const TERMINAL_WAIT_FOR_EXIT: &str = "terminal/wait_for_exit";
+pub(super) const TERMINAL_KILL: &str = "terminal/kill";
+pub(super) const TERMINAL_RELEASE: &str = "terminal/release";
