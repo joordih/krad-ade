@@ -21,6 +21,7 @@ const SHIMMER_BASE_ALPHA: f32 = 0.5;
 const MOTION_FPS: f32 = 30.0;
 const INDICATOR_GAP: f32 = 10.0;
 const DOTS_ID: &str = "thinking-dots";
+const WORKING_DOTS_ID: &str = "working-dots";
 const LABEL_ID: &str = "thinking-label";
 
 fn share(index: usize, count: usize) -> f32 {
@@ -82,6 +83,27 @@ fn wave_dots(key: u64, color: u32) -> impl IntoElement {
         })
 }
 
+pub(crate) fn working_dots(key: u64, color: u32) -> impl IntoElement {
+    let wave = Animation::new(WAVE_PERIOD)
+        .repeat_synced()
+        .with_max_fps(MOTION_FPS);
+    div()
+        .flex()
+        .flex_row()
+        .flex_none()
+        .items_center()
+        .gap(px(DOT_GAP))
+        .with_animation((WORKING_DOTS_ID, key), wave, move |row, phase| {
+            row.children((0..DOTS_GRID).map(|dot| {
+                div()
+                    .size(px(DOT_SIZE))
+                    .rounded_full()
+                    .bg(rgb(color))
+                    .opacity(wave_opacity(dot, dot, phase))
+            }))
+        })
+}
+
 pub(crate) fn shimmer_text(
     id: impl Into<ElementId>,
     label: SharedString,
@@ -139,6 +161,18 @@ mod tests {
         assert!((wave_opacity(1, 1, 0.0) - DOT_MIN_OPACITY).abs() < f32::EPSILON);
         let front_at_corner = f32::from(DOTS_GRID) / f32::from(DOTS_GRID + 1);
         assert!(wave_opacity(2, 2, front_at_corner) > wave_opacity(0, 0, front_at_corner));
+    }
+
+    #[test]
+    fn the_working_dots_light_up_one_after_another() {
+        let step = f32::from(DOTS_GRID) / f32::from(DOTS_GRID + 1) / f32::from(DOTS_GRID - 1);
+        for dot in 0..DOTS_GRID {
+            let reached = step * f32::from(dot);
+            let brightest = (0..DOTS_GRID).max_by(|a, b| {
+                wave_opacity(*a, *a, reached).total_cmp(&wave_opacity(*b, *b, reached))
+            });
+            assert_eq!(brightest, Some(dot));
+        }
     }
 
     #[test]

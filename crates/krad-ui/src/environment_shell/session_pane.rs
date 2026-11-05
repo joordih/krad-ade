@@ -1,6 +1,7 @@
 mod panes;
 mod tab_menu;
 mod tab_motion;
+mod tab_peek;
 mod tab_picker;
 
 pub(in crate::environment_shell) use tab_motion::entering_tab;
@@ -12,11 +13,12 @@ pub(super) use panes::{DraggedTab, PaneDrag};
 use gpui_kit::component::InteractiveElementExt as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, transparent_black, AnyElement, AppContext as _, ClickEvent, Context, FontWeight,
-    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseUpEvent, ParentElement,
-    Pixels, Point, StatefulInteractiveElement, Styled, Window,
+    div, px, rgb, transparent_black, AnyElement, AppContext as _, ClickEvent, Context, Div,
+    FontWeight, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseUpEvent,
+    ParentElement, Pixels, Point, SharedString, Stateful, StatefulInteractiveElement, Styled, Svg,
+    Window,
 };
-use krad_domain::{AgentPreset, FileView, PaneId, SessionPanes, TerminalId, UnitRect};
+use krad_domain::{AgentPreset, AgentState, FileView, PaneId, SessionPanes, TerminalId, UnitRect};
 use krad_session::SessionState;
 
 use super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
@@ -28,8 +30,8 @@ use super::terminal_card::error_line;
 use super::terminal_status::CardStatus;
 use super::{EnvironmentShell, LiveEnv};
 use crate::components::{
-    agent_status, card, harness_icon, icon, tooltip_view, Button, ButtonVariant, CenteredEmpty,
-    EmptyState, IconName,
+    agent_status, card, harness_icon, icon, tooltip_view, working_dots, Button, ButtonVariant,
+    CenteredEmpty, EmptyState, IconName,
 };
 use crate::terminal_theme::terminal_colors;
 use crate::theme::{
@@ -109,6 +111,31 @@ impl LiveEnv {
 pub(in crate::environment_shell) enum TabWidth {
     Fill,
     Fit,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum TabTrailing {
+    Close,
+    CloseOnHover,
+    Working,
+}
+
+impl TabTrailing {
+    const fn of(shown: bool, working: bool) -> Self {
+        match (working, shown) {
+            (true, _) => Self::Working,
+            (false, true) => Self::Close,
+            (false, false) => Self::CloseOnHover,
+        }
+    }
+}
+
+fn tab_leading(mark: IconName, color: u32, status: CardStatus, pal: &Palette) -> Svg {
+    if status.is_quiet() || status == CardStatus::Agent(AgentState::Working) {
+        icon(mark, ICON_SM, color)
+    } else {
+        agent_status(status.kind(), ICON_SM, pal)
+    }
 }
 
 pub(super) fn tab_shell(
@@ -385,12 +412,11 @@ impl EnvironmentShell {
         let status = CardStatus::of(node.state, session);
         let on_chat = live.chats.contains_key(&id);
         let is_file = file.is_some();
-        let leading = if status.is_quiet() {
-            icon(mark, ICON_SM, mark_color)
-        } else {
-            agent_status(status.kind(), ICON_SM, pal)
-        };
+        let working = status == CardStatus::Agent(AgentState::Working);
+        let peeks = !is_file && preset != AgentPreset::Shell;
+        let leading = tab_leading(mark, mark_color, status, pal);
         let title = self.title_label(id, &node.title);
+        let peek = peeks.then(|| SharedString::from(title.clone()));
         let dragged = DraggedTab::new(id, title.clone(), mark, mark_color, cx.entity().downgrade());
         Some(
             tab_shell(
@@ -455,16 +481,54 @@ impl EnvironmentShell {
             .when(on_chat, |tab| {
                 tab.child(icon(IconName::Chat, STATUS_ICON, pal.text_muted))
             })
-            .child(Self::close_tab_button(id, shown, cx))
+            .when_some(peek, |tab, fallback| Self::with_peek(tab, id, fallback, cx))
+            .child(Self::tab_trailing(id, TabTrailing::of(shown, working), cx))
             .into_any_element(),
         )
     }
 
-    fn close_tab_button(id: TerminalId, shown: bool, cx: &mut Context<Self>) -> AnyElement {
+    fn with_peek(
+        tab: Stateful<Div>,
+        id: TerminalId,
+        fallback: SharedString,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let shell = cx.entity().downgrade();
+        tab.tooltip(move |_, cx| {
+            tab_peek::tab_peek_view(&shell, id, cx)
+                .unwrap_or_else(|| tooltip_view(fallback.clone(), cx))
+        })
+    }
+
+    fn tab_trailing(id: TerminalId, trailing: TabTrailing, cx: &mut Context<Self>) -> AnyElement {
+        let close = Self::close_tab_button(id, trailing == TabTrailing::Close, cx);
+        if trailing != TabTrailing::Working {
+            return close;
+        }
+        let pal = palette(cx);
+        div()
+            .relative()
+            .flex_none()
+            .size(px(CLOSE_BUTTON))
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .group_hover(TAB_HOVER_GROUP, Styled::invisible)
+                    .child(working_dots(id.as_u64(), pal.text_muted)),
+            )
+            .child(div().absolute().inset_0().child(close))
+            .into_any_element()
+    }
+
+    fn close_tab_button(id: TerminalId, always: bool, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         div()
             .id((TAB_CLOSE_PREFIX, id.as_u64()))
-            .when(!shown, |button| {
+            .when(!always, |button| {
                 button
                     .invisible()
                     .group_hover(TAB_HOVER_GROUP, Styled::visible)
@@ -659,6 +723,14 @@ mod tests {
     const ONE: TerminalId = TerminalId(1);
     const TWO: TerminalId = TerminalId(2);
     const ELSEWHERE: TerminalId = TerminalId(9);
+
+    #[test]
+    fn a_working_tab_shows_its_dots_and_only_the_shown_idle_tab_keeps_its_close_button() {
+        assert_eq!(TabTrailing::of(true, true), TabTrailing::Working);
+        assert_eq!(TabTrailing::of(false, true), TabTrailing::Working);
+        assert_eq!(TabTrailing::of(true, false), TabTrailing::Close);
+        assert_eq!(TabTrailing::of(false, false), TabTrailing::CloseOnHover);
+    }
 
     #[test]
     fn the_focused_terminal_of_the_session_is_shown() {
