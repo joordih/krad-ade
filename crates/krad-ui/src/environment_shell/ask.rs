@@ -14,8 +14,9 @@ use krad_domain::{
 use super::chat::fold_entry;
 use super::surface::{StructuredChat, SurfaceChat};
 use super::EnvironmentShell;
+pub(super) use held::HeldAskReport;
 pub(super) use picks::Picks;
-pub(super) use queue::{AskQueue, AskReply, Waiting};
+pub(super) use queue::{AskQueue, AskReply, Settled, Waiting};
 pub(super) use view::{ask_line, tray, tray_button};
 
 const DENIED_TEXT: &str = "The user declined this";

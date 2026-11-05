@@ -184,8 +184,8 @@ impl EnvironmentShell {
                     cx,
                 )
             })
-            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                this.toggle_orchestrator(id, cx);
+            .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                this.toggle_orchestrator(id, window, cx);
             }))
             .child(icon(
                 IconName::Crown,

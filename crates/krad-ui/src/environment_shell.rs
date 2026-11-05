@@ -69,6 +69,7 @@ mod toolchains;
 mod top_bar;
 mod window_close;
 mod work_mode;
+mod workers;
 mod worktrees;
 
 use futures::channel::mpsc::{Receiver as PumpReceiver, Sender as PumpSender};

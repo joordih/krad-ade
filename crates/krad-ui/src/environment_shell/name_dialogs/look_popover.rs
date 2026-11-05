@@ -9,6 +9,7 @@ use krad_domain::{Hue, SessionIcon, SessionId, SessionLook};
 
 use super::super::rename::KEY_ESCAPE;
 use super::super::session_look::session_icon;
+use super::super::workers::LeadEnding;
 use super::super::EnvironmentShell;
 use super::NameDialogs;
 use crate::components::{icon, IconName};
@@ -304,9 +305,9 @@ impl EnvironmentShell {
             .line_height(px(LINE_SM))
             .text_color(rgb(pal.error_fg))
             .hover(|style| style.bg(pal.bg_hover))
-            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+            .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
                 this.close_name_dialog(cx);
-                this.close_session(session, cx);
+                this.ask_end_lead(LeadEnding::CloseSession(session), window, cx);
             }))
             .child(icon(IconName::Close, ICON_SM, pal.error_fg))
             .child(SharedString::from(CLOSE_LABEL))

@@ -11,6 +11,7 @@ use krad_domain::{
 use super::file_tree::FileAction;
 use super::name_dialogs::{DeleteTarget, NameTarget};
 use super::surface::SurfaceCommand;
+use super::workers::LeadEnding;
 use super::{EnvironmentShell, LiveEnv};
 use crate::components::IconName;
 
@@ -376,7 +377,7 @@ impl EnvironmentShell {
             MenuAction::ShowEditorChat(id) => self.show_editor_chat(id, cx),
             MenuAction::OpenLocation(path, at) => self.open_file_at(&path, Some(at), cx),
             MenuAction::AnswerChoice(answer) => self.answer_choice(*answer),
-            MenuAction::DismissLead(id) => self.dismiss_lead(id, cx),
+            MenuAction::DismissLead(id) => self.ask_end_lead(LeadEnding::Dismiss(id), window, cx),
             MenuAction::SetEffort(id, effort) => {
                 self.command_surface(id, SurfaceCommand::Effort(effort), cx);
             }

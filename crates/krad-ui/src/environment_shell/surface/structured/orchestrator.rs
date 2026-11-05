@@ -1,7 +1,8 @@
-use gpui_kit::Context;
+use gpui_kit::{Context, Window};
 use krad_chat::LiveSession;
-use krad_domain::{SessionId, SessionLead, TerminalId, DEFAULT_CHAT_HARNESS};
+use krad_domain::{EnvironmentName, SessionId, SessionLead, TerminalId, DEFAULT_CHAT_HARNESS};
 
+use super::super::super::workers::LeadEnding;
 use super::super::super::EnvironmentShell;
 use super::structured_mut;
 
@@ -15,9 +16,18 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn toggle_orchestrator(
         &mut self,
         id: TerminalId,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
+        if let Some(session) = self
+            .envs
+            .get(&env)
+            .and_then(|live| live.data.session_led_by(id))
+        {
+            self.ask_end_lead(LeadEnding::Dismiss(session), window, cx);
+            return;
+        }
         let (harness, model) = structured_mut(self, &env, id)
             .map_or((DEFAULT_CHAT_HARNESS, None), |chat| {
                 (chat.harness, chat.chosen_model.clone())
@@ -28,12 +38,6 @@ impl EnvironmentShell {
         let Some(session_id) = live.data.session_of(id) else {
             return;
         };
-        let resume = live
-            .data
-            .nodes
-            .iter()
-            .find(|node| node.id == id)
-            .and_then(|node| node.resume.clone());
         let Some(session) = live
             .data
             .sessions
@@ -42,22 +46,27 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let leads = session
-            .lead
-            .as_ref()
-            .is_some_and(|lead| lead.terminal == Some(id));
-        session.lead = (!leads).then(|| SessionLead {
+        session.lead = Some(SessionLead {
             terminal: Some(id),
             ..SessionLead::new(harness, model)
         });
-        if let Some(chat) = structured_mut(self, &env, id) {
+        self.restart_live_chat(&env, id);
+        self.store();
+        cx.notify();
+    }
+
+    fn restart_live_chat(&mut self, env: &EnvironmentName, id: TerminalId) {
+        let resume = self
+            .envs
+            .get(env)
+            .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
+            .and_then(|node| node.resume.clone());
+        if let Some(chat) = structured_mut(self, env, id) {
             if let Some(resume) = resume {
                 chat.session = LiveSession::Resume(resume);
             }
             chat.live = None;
         }
-        self.store();
-        cx.notify();
     }
 
     pub(in crate::environment_shell) fn dismiss_lead(
@@ -66,8 +75,12 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        if let Some(live) = self.envs.get_mut(&env) {
-            live.data.dismiss_lead(id);
+        let lead = self
+            .envs
+            .get_mut(&env)
+            .and_then(|live| live.data.dismiss_lead(id));
+        if let Some(terminal) = lead.and_then(|lead| lead.terminal) {
+            self.restart_live_chat(&env, terminal);
         }
         cx.notify();
         self.store();

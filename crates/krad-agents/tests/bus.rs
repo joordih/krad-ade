@@ -2,13 +2,18 @@ use futures::channel::{mpsc, oneshot};
 use futures::executor::block_on;
 use futures::StreamExt;
 use krad_agents::{
-    call, serve, AgentInfo, BusToken, Caller, LeadHandle, Request, Response, TerminalHandle,
-    TerminalState,
+    call, serve, AgentInfo, BusToken, Caller, Envelope, LeadHandle, Request, Response,
+    TerminalHandle, TerminalState,
 };
 use krad_domain::{AgentPreset, AgentState};
+use std::io::Write as _;
+use std::net::TcpStream;
 use std::thread;
+use std::time::{Duration, Instant};
 
 const CHANNEL_CAPACITY: usize = 8;
+const LEFT_CALLER_NOTICE: Duration = Duration::from_secs(5);
+const CANCEL_POLL: Duration = Duration::from_millis(20);
 
 fn agents() -> Vec<AgentInfo> {
     vec![AgentInfo {
@@ -106,5 +111,39 @@ fn a_worker_cannot_call_as_the_lead() -> Result<(), krad_agents::AgentsError> {
     assert!(matches!(posing, Response::Error(_)), "{posing:?}");
     let listed = call(&address, &endpoint.lead_token, &caller(), Request::List)?;
     assert!(matches!(listed, Response::Error(_)), "{listed:?}");
+    Ok(())
+}
+
+#[test]
+fn a_caller_that_leaves_cancels_its_waiting_request() -> Result<(), krad_agents::AgentsError> {
+    let (sender, mut receiver) = mpsc::channel(CHANNEL_CAPACITY);
+    let endpoint = serve(sender)?;
+    let envelope = Envelope {
+        token: endpoint.token.clone(),
+        from: caller(),
+        request: Request::Ask {
+            tool: "Bash".to_owned(),
+            input: serde_json::Value::Null,
+            suggestions: Vec::new(),
+            call: None,
+        },
+    };
+    let mut line = serde_json::to_string(&envelope)?;
+    line.push('\n');
+    let mut stream = TcpStream::connect(endpoint.address)?;
+    stream.write_all(line.as_bytes())?;
+    let Some(incoming) = block_on(receiver.next()) else {
+        unreachable!("the server hands the ask to the app");
+    };
+    assert!(!incoming.reply.is_canceled());
+    drop(stream);
+    let started = Instant::now();
+    while !incoming.reply.is_canceled() && started.elapsed() < LEFT_CALLER_NOTICE {
+        thread::sleep(CANCEL_POLL);
+    }
+    assert!(
+        incoming.reply.is_canceled(),
+        "the app learns the hook is gone"
+    );
     Ok(())
 }

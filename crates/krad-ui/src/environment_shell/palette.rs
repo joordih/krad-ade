@@ -247,7 +247,7 @@ impl EnvironmentShell {
             PaletteCmd::ReloadWorkspace => self.reload_workspace(cx),
             PaletteCmd::ToggleWorkMode => self.toggle_work_mode(cx),
             PaletteCmd::OpenFile(path) => self.open_file_tab(&path, FileOpening::Pinned, cx),
-            PaletteCmd::CloseFocused => self.close_focused(cx),
+            PaletteCmd::CloseFocused => self.close_focused(window, cx),
             PaletteCmd::CloseEnv => {
                 let active = self.active.clone();
                 self.close_env(&active, cx);
@@ -265,11 +265,11 @@ impl EnvironmentShell {
         }
     }
 
-    fn close_focused(&mut self, cx: &mut Context<Self>) {
+    fn close_focused(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let env = self.active.clone();
         let focused = self.envs.get(&env).and_then(|live| live.focused);
         if let Some(id) = focused {
-            self.close_terminal(id, cx);
+            self.close_tab_asking(id, window, cx);
         }
     }
 

@@ -87,7 +87,7 @@ impl EnvironmentShell {
             .into_iter()
             .partition(|closed| self.is_unsaved(*closed));
         for closed in clean {
-            self.close_terminal(closed, cx);
+            self.close_tab_asking(closed, window, cx);
         }
         match dirty.as_slice() {
             [] => {}

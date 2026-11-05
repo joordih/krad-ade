@@ -3,7 +3,7 @@ use krad_chat::{new_session_id, LiveSession};
 use krad_domain::SessionSpec;
 use krad_domain::{
     AgentPreset, AgentState, EnvironmentName, GroupId, NodeKind, Prompt, TerminalId, TerminalNode,
-    TextScale, DEFAULT_CHAT_HARNESS,
+    TextScale, WorkerSpawn, DEFAULT_CHAT_HARNESS,
 };
 use krad_session::wsl_shell;
 use std::path::PathBuf;
@@ -20,6 +20,14 @@ const WSL_LABEL: &str = "WSL";
 pub(super) enum NodeGroup {
     OrSelected(Option<GroupId>),
     Exactly(Option<GroupId>),
+}
+
+pub(super) struct WorkerChat {
+    pub(super) group: Option<GroupId>,
+    pub(super) preset: AgentPreset,
+    pub(super) spawn: WorkerSpawn,
+    pub(super) session: LiveSession,
+    pub(super) prompts: Vec<Prompt>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -166,25 +174,32 @@ impl EnvironmentShell {
         Some(id)
     }
 
-    pub(super) fn spawn_worker_chat(
+    pub(super) fn open_worker_chat(
         &mut self,
         env: &EnvironmentName,
-        group: Option<GroupId>,
-        preset: AgentPreset,
-        brief: String,
+        id: TerminalId,
+        chat: WorkerChat,
         cx: &mut Context<Self>,
     ) -> Option<TerminalId> {
+        let WorkerChat {
+            group,
+            preset,
+            spawn,
+            session,
+            prompts,
+        } = chat;
         let spec = NodeSpec {
             kind: NodeKind::Chat,
             harness: Some(preset),
             label: preset.display_name(),
             group: NodeGroup::OrSelected(group),
         };
-        let (id, _) = self.add_node(env, &spec, None)?;
-        if let Some(live) = self.envs.get_mut(env) {
-            live.pending_chats
-                .insert(id, LiveSession::Start(new_session_id()));
-            live.waiting_prompts.insert(id, vec![Prompt::from(brief)]);
+        self.push_node(env, id, &spec, None)?;
+        let live = self.envs.get_mut(env)?;
+        live.data.open_worker_session(id, spawn);
+        live.pending_chats.insert(id, session);
+        if !prompts.is_empty() {
+            live.waiting_prompts.insert(id, prompts);
         }
         self.settle_new_node(cx);
         Some(id)
@@ -209,6 +224,20 @@ impl EnvironmentShell {
         after: Option<TerminalId>,
     ) -> Option<(TerminalId, Option<PathBuf>)> {
         let id = self.alloc_terminal_id(env)?;
+        let (cwd, anchor) = self.push_node(env, id, spec, after)?;
+        let live = self.envs.get_mut(env)?;
+        live.data.place_terminal(id, anchor);
+        live.focused = Some(id);
+        Some((id, cwd))
+    }
+
+    fn push_node(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        spec: &NodeSpec<'_>,
+        after: Option<TerminalId>,
+    ) -> Option<(Option<PathBuf>, Option<TerminalId>)> {
         let title = format!("{} · {}", spec.label, id.as_u64());
         let live = self.envs.get_mut(env)?;
         let anchor_node = after.and_then(|anchor| {
@@ -240,17 +269,32 @@ impl EnvironmentShell {
             kind: spec.kind,
             file: None,
         });
-        live.data
-            .place_terminal(id, anchor_node.as_ref().map(|node| node.id));
-        live.focused = Some(id);
-        Some((id, cwd))
+        Some((cwd, anchor_node.map(|node| node.id)))
     }
 
     pub(super) fn close_terminal(&mut self, id: TerminalId, cx: &mut Context<Self>) {
         let env = self.active.clone();
-        let Some(live) = self.envs.get_mut(&env) else {
+        self.close_terminal_in(&env, id, cx);
+    }
+
+    pub(super) fn close_terminal_in(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        cx: &mut Context<Self>,
+    ) {
+        self.end_worker_launch(env, id);
+        let workers = self
+            .envs
+            .get(env)
+            .map_or_else(Vec::new, |live| live.data.workers_closing_with(id));
+        for worker in workers {
+            self.close_terminal_in(env, worker, cx);
+        }
+        let Some(live) = self.envs.get_mut(env) else {
             return;
         };
+        live.data.retire_worker(id);
         if let Some(session) = live.sessions.remove(&id) {
             session.cancelled.store(true, Ordering::SeqCst);
             if let Some(killer) = session.killer {
@@ -268,7 +312,7 @@ impl EnvironmentShell {
             live.focused = live.data.nodes.first().map(|node| node.id);
         }
         if chat.is_some_and(|chat| chat.structured().is_some()) {
-            Self::forget_chat_images(&env, id, cx);
+            Self::forget_chat_images(env, id, cx);
         }
         cx.notify();
         self.store();

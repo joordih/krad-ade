@@ -289,6 +289,7 @@ impl EnvironmentShell {
                 tool,
                 detail,
                 resume,
+                mode,
             } => {
                 let report = HookReport {
                     harness,
@@ -296,6 +297,7 @@ impl EnvironmentShell {
                     tool: tool.as_deref(),
                     detail,
                     resume: resume.as_deref(),
+                    mode,
                 };
                 Some(self.apply_hook(&from, report))
             }
@@ -304,9 +306,10 @@ impl EnvironmentShell {
                 tool,
                 input,
                 suggestions,
+                call,
             } => {
                 let ask = ToolAsk::held(tool.clone(), input, suggestions);
-                self.hold_ask(&from, ask, tool, reply);
+                self.hold_ask(&from, ask, tool, call, reply);
                 cx.notify();
                 return;
             }

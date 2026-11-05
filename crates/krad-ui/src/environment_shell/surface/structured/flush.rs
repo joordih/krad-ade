@@ -121,6 +121,7 @@ impl EnvironmentShell {
         {
             chat.problem = Some(error.to_string());
         }
+        self.fail_worker_launch(env, id, &error.to_string(), cx);
         false
     }
 
