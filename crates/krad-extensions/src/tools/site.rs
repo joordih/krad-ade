@@ -1,5 +1,5 @@
 use krad_domain::{ServerLaunch, ServerRuntimeId, ServerRuntimePaths};
-use krad_host::{FileMode, HostLink, HostPlatform};
+use krad_host::{hide_console_window, FileMode, HostLink, HostPlatform};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -207,14 +207,7 @@ impl LanguageTools {
             };
             let probed = manifest.probe.is_empty()
                 || match site.link {
-                    HostLink::Local => Command::new(&program)
-                        .args(&manifest.probe)
-                        .current_dir(root)
-                        .stdin(Stdio::null())
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .status()
-                        .is_ok_and(|status| status.success()),
+                    HostLink::Local => probes_locally(&program, &manifest.probe, root),
                     HostLink::Ssh(_) => runs_on_host(site.link, &program, &manifest.probe, root),
                 };
             probed.then_some(program)
@@ -324,4 +317,16 @@ impl LanguageTools {
         }
         Ok(launch)
     }
+}
+
+fn probes_locally(program: &Path, probe: &[String], root: &Path) -> bool {
+    let mut command = Command::new(program);
+    command
+        .args(probe)
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    hide_console_window(&mut command);
+    command.status().is_ok_and(|status| status.success())
 }

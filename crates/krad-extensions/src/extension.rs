@@ -1,4 +1,5 @@
 use krad_domain::{ExtensionEntry, ExtensionSource};
+use krad_host::hide_console_window;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -51,6 +52,7 @@ fn git(args: &[&str], dir: Option<&Path>) -> Result<(), ExtensionError> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    hide_console_window(&mut command);
     if let Some(dir) = dir {
         command.current_dir(dir);
     }

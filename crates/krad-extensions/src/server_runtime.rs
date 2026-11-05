@@ -1,4 +1,5 @@
 use krad_domain::{ServerRuntimeId, ServerRuntimePaths, ToolchainVersion, VersionConstraint};
+use krad_host::hide_console_window;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -128,11 +129,12 @@ impl ServerRuntimes<'_> {
     }
 
     fn usable(&self, server_runtime: &ServerRuntimeManifest, program: &Path) -> bool {
-        let Ok(output) = Command::new(program)
+        let mut command = Command::new(program);
+        command
             .args(&server_runtime.version_args)
-            .stdin(Stdio::null())
-            .output()
-        else {
+            .stdin(Stdio::null());
+        hide_console_window(&mut command);
+        let Ok(output) = command.output() else {
             return false;
         };
         let text = format!(
@@ -258,12 +260,14 @@ impl ServerRuntimes<'_> {
         place(&downloaded, &name, &folder, self.platform.os)?;
         fs::remove_file(&downloaded)?;
         if let Some(args) = &source.run {
-            let status = Command::new(folder.join(&name))
+            let mut command = Command::new(folder.join(&name));
+            command
                 .args(args)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()?;
+                .stderr(Stdio::null());
+            hide_console_window(&mut command);
+            let status = command.status()?;
             if !status.success() {
                 return Err(ExtensionError::Tool(name));
             }

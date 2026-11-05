@@ -2,7 +2,7 @@ use krad_domain::{
     parse_wsl_path, wsl_unc_path, WslPath, POSIX_SHELL, POSIX_SHELL_COMMAND_FLAG,
     WSL_LOGIN_SHELL_SCRIPT,
 };
-use krad_host::{remote_path, HostCommand, HostLink};
+use krad_host::{hide_console_window, remote_path, HostCommand, HostLink};
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -220,14 +220,3 @@ fn wsl_error(distro: &str, args: &[&str], message: &str) -> RepoError {
         message: message.to_owned(),
     }
 }
-
-#[cfg(windows)]
-fn hide_console_window(command: &mut Command) {
-    use std::os::windows::process::CommandExt;
-
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    command.creation_flags(CREATE_NO_WINDOW);
-}
-
-#[cfg(not(windows))]
-fn hide_console_window(_command: &mut Command) {}

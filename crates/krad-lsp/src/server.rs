@@ -15,7 +15,7 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
-use krad_host::{HostCommand, HostLink};
+use krad_host::{hide_console_window, HostCommand, HostLink};
 
 use crate::client::{LspClient, ServerEvent, ServerSettings};
 use crate::error::LspError;
@@ -111,6 +111,7 @@ fn server_command(
             .args(&launch.args)
             .envs(launch.env.iter().map(|(name, value)| (name, value)))
             .current_dir(root);
+        hide_console_window(&mut command);
         return Ok(command);
     }
     let mut remote = HostCommand::new(&launch.program);

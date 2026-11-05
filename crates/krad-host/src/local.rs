@@ -14,7 +14,7 @@ pub(crate) fn default_shell() -> OsString {
 }
 
 #[cfg(windows)]
-pub(crate) fn hide_console_window(command: &mut Command) {
+pub fn hide_console_window(command: &mut Command) {
     use std::os::windows::process::CommandExt;
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -22,7 +22,7 @@ pub(crate) fn hide_console_window(command: &mut Command) {
 }
 
 #[cfg(not(windows))]
-pub(crate) const fn hide_console_window(_command: &mut Command) {}
+pub const fn hide_console_window(_command: &mut Command) {}
 
 #[cfg(unix)]
 pub(crate) fn write_with_mode(

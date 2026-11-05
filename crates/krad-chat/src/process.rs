@@ -1,5 +1,5 @@
 use krad_domain::{parse_wsl_path, wsl_login_exec_args, INHERITED_SESSION_VARS, WSL_PROGRAM};
-use krad_host::{remote_path, HostCommand, HostLink};
+use krad_host::{hide_console_window, remote_path, HostCommand, HostLink};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -78,7 +78,7 @@ pub(crate) fn harness_command(
         command.env_remove(name);
     }
     command.envs(env.iter().map(|(name, value)| (name, value)));
-    platform::hide_console_window(&mut command);
+    hide_console_window(&mut command);
     Ok(command)
 }
 
@@ -119,14 +119,12 @@ pub(crate) fn ssh_command_reading_secret(
 
 #[cfg(windows)]
 mod platform {
-    use std::os::windows::process::CommandExt;
     use std::path::Path;
     use std::process::Command;
 
     const CMD_PROGRAM: &str = "cmd.exe";
     const CMD_ARGS: [&str; 2] = ["/D", "/C"];
     const SCRIPT_EXTENSIONS: [&str; 2] = ["cmd", "bat"];
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
     pub(super) fn command(program: &Path) -> Command {
         let is_script = program.extension().is_some_and(|extension| {
@@ -142,10 +140,6 @@ mod platform {
             Command::new(program)
         }
     }
-
-    pub(super) fn hide_console_window(command: &mut Command) {
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
 }
 
 #[cfg(not(windows))]
@@ -156,8 +150,6 @@ mod platform {
     pub(super) fn command(program: &Path) -> Command {
         Command::new(program)
     }
-
-    pub(super) fn hide_console_window(_command: &mut Command) {}
 }
 
 #[cfg(test)]

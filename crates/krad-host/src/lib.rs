@@ -29,6 +29,7 @@ pub use failure::SshFailure;
 pub use forward::{Forward, RemoteForward};
 pub use layout::{HostLayout, APP_DIR, APP_VERSION, HOST_CLI_BUILD, HOST_CLI_PROGRAM};
 pub use link::{Entry, HostLink, Metadata, SshLink};
+pub use local::hide_console_window;
 pub use mode::FileMode;
 pub use path::remote_path;
 pub use platform::{HostPlatform, UnsupportedPlatform};
