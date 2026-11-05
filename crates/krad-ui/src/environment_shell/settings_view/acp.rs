@@ -1,0 +1,235 @@
+mod admit;
+mod draft;
+mod form;
+
+use gpui_kit::{
+    div, px, AnyElement, AppContext as _, ClipboardItem, Context, IntoElement, ParentElement,
+    Styled, Window,
+};
+use krad_domain::{acp_install_command, AcpAgent, AcpAgentId, AgentPreset};
+use krad_store::delete_acp_secret;
+
+use super::sections::{empty_row, footnote, pane_column, settings_section};
+use super::{form_row, panel_card, EnvironmentShell};
+use crate::components::{Button, ButtonVariant, IconName};
+use crate::theme::{palette, Palette, SPACE_2};
+use form::AcpForm;
+
+const SECRETS_NOTE: &str = "Secret values are kept in the system keyring. Without one, as under WSL, they go in the config folder, readable only by you.";
+const BUILT_IN_TITLE: &str = "Known agents";
+const BUILT_IN_HINT: &str = "The ACP adapters of the agents the app knows, found on PATH. They show next to the native ones, with (ACP) after their name.";
+const CUSTOM_TITLE: &str = "Your agents";
+const CUSTOM_HINT: &str = "Any other agent that speaks the Agent Client Protocol, by its command line. Start one from the bus with krad-ade-agents spawn --agent <id>.";
+const CUSTOM_EMPTY: &str = "No agents yet.";
+const DETECTED_DETAIL: &str = "Found on PATH";
+const MISSING_DETAIL: &str = "Not found; install it with";
+const ADD_AGENT_LABEL: &str = "Add agent";
+const EDIT_LABEL: &str = "Edit";
+const REMOVE_LABEL: &str = "Remove";
+const COPY_TOOLTIP: &str = "Copy the install command";
+const COPIED_TOAST: &str = "Install command copied";
+const REMOVED_TOAST: &str = "ACP agent removed";
+const BTN_OPEN_FORM: &str = "acp-open-form";
+const COPY_PREFIX: &str = "acp-copy-install";
+const EDIT_PREFIX: &str = "acp-agent-edit";
+const REMOVE_PREFIX: &str = "acp-agent-remove";
+const DETAIL_SEPARATOR: &str = " · ";
+
+pub(in crate::environment_shell) struct AcpUi {
+    form: AcpForm,
+}
+
+fn element_index(index: usize) -> u64 {
+    u64::try_from(index).unwrap_or(u64::MAX)
+}
+
+fn agent_summary(agent: &AcpAgent) -> String {
+    let command_line = std::iter::once(agent.program.as_str())
+        .chain(agent.args.iter().map(String::as_str))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("{}{DETAIL_SEPARATOR}{command_line}", agent.id)
+}
+
+impl EnvironmentShell {
+    pub(in crate::environment_shell) fn acp_ui(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AcpUi {
+        AcpUi {
+            form: AcpForm::new(window, cx),
+        }
+    }
+
+    fn copy_acp_install(&mut self, command: &str, cx: &mut Context<Self>) {
+        cx.write_to_clipboard(ClipboardItem::new_string(command.to_owned()));
+        self.toast(COPIED_TOAST, cx);
+    }
+
+    fn edit_acp_agent(&mut self, id: AcpAgentId, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(agent) = self
+            .settings
+            .acp
+            .agents
+            .iter()
+            .find(|agent| agent.id == id)
+            .cloned()
+        else {
+            return;
+        };
+        self.open_acp_form(Some(&agent), window, cx);
+    }
+
+    fn remove_acp_agent(&mut self, id: AcpAgentId, cx: &mut Context<Self>) {
+        let Some(agent) = self.settings.acp.remove_agent(id) else {
+            return;
+        };
+        self.save_settings(cx);
+        cx.notify();
+        let removed = cx.background_spawn(async move {
+            agent.secret_keys().iter().try_for_each(delete_acp_secret)
+        });
+        cx.spawn(async move |this, cx| {
+            let removed = removed.await;
+            this.update(cx, |shell, cx| match removed {
+                Ok(()) => shell.toast(REMOVED_TOAST, cx),
+                Err(error) => shell.toast(&error.to_string(), cx),
+            })
+            .unwrap_or_default();
+        })
+        .detach();
+    }
+
+    fn acp_built_in_row(
+        &self,
+        index: usize,
+        agent: &AcpAgent,
+        pal: &Palette,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let detected = self.native_agents.contains(&AgentPreset::Acp(agent.id));
+        let install = acp_install_command(agent.id).filter(|_| !detected);
+        let detail = install.map_or_else(
+            || DETECTED_DETAIL.to_owned(),
+            |command| format!("{MISSING_DETAIL} {command}"),
+        );
+        let control = install.map_or_else(
+            || div().into_any_element(),
+            |command| {
+                Button::new((COPY_PREFIX, element_index(index)))
+                    .icon(IconName::Copy)
+                    .small()
+                    .variant(ButtonVariant::Secondary)
+                    .tooltip(COPY_TOOLTIP)
+                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                        this.copy_acp_install(command, cx);
+                    }))
+                    .into_any_element()
+            },
+        );
+        form_row(&agent.display_name(), Some(&detail), control, pal)
+    }
+
+    fn acp_custom_row(
+        index: usize,
+        agent: &AcpAgent,
+        pal: &Palette,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let id = agent.id;
+        let controls = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(SPACE_2))
+            .child(
+                Button::new((EDIT_PREFIX, element_index(index)))
+                    .label(EDIT_LABEL)
+                    .small()
+                    .variant(ButtonVariant::Secondary)
+                    .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                        this.edit_acp_agent(id, window, cx);
+                    })),
+            )
+            .child(
+                Button::new((REMOVE_PREFIX, element_index(index)))
+                    .label(REMOVE_LABEL)
+                    .small()
+                    .variant(ButtonVariant::Secondary)
+                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                        this.remove_acp_agent(id, cx);
+                    })),
+            )
+            .into_any_element();
+        form_row(
+            &agent.display_name(),
+            Some(&agent_summary(agent)),
+            controls,
+            pal,
+        )
+    }
+
+    fn acp_built_in_card(&self, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
+        let rows: Vec<AnyElement> = krad_domain::built_in_acp_agents()
+            .iter()
+            .enumerate()
+            .map(|(index, agent)| self.acp_built_in_row(index, agent, pal, cx))
+            .collect();
+        settings_section(
+            BUILT_IN_TITLE,
+            Some(BUILT_IN_HINT),
+            [panel_card(rows, pal)],
+            pal,
+        )
+    }
+
+    fn acp_custom_card(&self, form_open: bool, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
+        let rows: Vec<AnyElement> = if self.settings.acp.agents.is_empty() {
+            vec![empty_row(CUSTOM_EMPTY, pal)]
+        } else {
+            self.settings
+                .acp
+                .agents
+                .iter()
+                .enumerate()
+                .map(|(index, agent)| Self::acp_custom_row(index, agent, pal, cx))
+                .collect()
+        };
+        let add = (!form_open).then(|| {
+            div()
+                .flex()
+                .flex_row()
+                .justify_end()
+                .child(
+                    Button::new(BTN_OPEN_FORM)
+                        .label(ADD_AGENT_LABEL)
+                        .icon(IconName::Add)
+                        .small()
+                        .variant(ButtonVariant::Secondary)
+                        .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                            this.open_acp_form(None, window, cx);
+                        })),
+                )
+                .into_any_element()
+        });
+        settings_section(
+            CUSTOM_TITLE,
+            Some(CUSTOM_HINT),
+            std::iter::once(panel_card(rows, pal)).chain(add),
+            pal,
+        )
+    }
+
+    pub(super) fn acp_pane(&self, ui: &AcpUi, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
+        let open = ui.form.open;
+        let mut sections = vec![self.acp_built_in_card(cx), self.acp_custom_card(open, cx)];
+        if open {
+            sections.push(Self::acp_form_section(&ui.form, cx));
+        }
+        sections.push(footnote(SECRETS_NOTE, pal));
+        pane_column(sections)
+    }
+}

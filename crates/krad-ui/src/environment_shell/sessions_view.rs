@@ -8,6 +8,8 @@ use krad_domain::{
     SidebarDensity, TerminalId,
 };
 
+use std::borrow::Cow;
+
 use super::session_look::session_icon;
 use super::terminal_status::CardStatus;
 use super::workers::LeadEnding;
@@ -70,7 +72,8 @@ impl EnvironmentShell {
                     status: Self::status_of(live, session),
                     active: live.data.active_session == Some(session.id),
                     closable: live.data.can_close_session(session.id),
-                    harness: Self::harness_of(live, session),
+                    harness: Self::harness_of(live, session)
+                        .map(|harness| self.settings.acp.harness_name(harness)),
                     density: self.settings.sidebar.density,
                 };
                 Self::session_row(&row, cx)
@@ -160,8 +163,8 @@ impl EnvironmentShell {
     fn session_title(row: &SessionRow<'_>, tabs: &str, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let normal = row.density == SidebarDensity::Normal;
-        let caption = match row.harness {
-            Some(harness) => format!("{}{CAPTION_SEPARATOR}{tabs}", harness.display_name()),
+        let caption = match &row.harness {
+            Some(harness) => format!("{harness}{CAPTION_SEPARATOR}{tabs}"),
             None => tabs.to_owned(),
         };
         div()
@@ -295,7 +298,7 @@ struct SessionRow<'a> {
     status: CardStatus,
     active: bool,
     closable: bool,
-    harness: Option<AgentPreset>,
+    harness: Option<Cow<'static, str>>,
     density: SidebarDensity,
 }
 

@@ -47,6 +47,7 @@ struct BuiltInAcpAgent {
     program: &'static str,
     args: &'static [&'static str],
     terminal: &'static str,
+    install: &'static str,
 }
 
 impl BuiltInAcpAgent {
@@ -69,6 +70,7 @@ const BUILT_IN_ACP_AGENTS: [BuiltInAcpAgent; 3] = [
         program: "claude-code-acp",
         args: &[],
         terminal: "claude",
+        install: "npm i -g @zed-industries/claude-code-acp",
     },
     BuiltInAcpAgent {
         id: "codex-acp",
@@ -76,6 +78,7 @@ const BUILT_IN_ACP_AGENTS: [BuiltInAcpAgent; 3] = [
         program: "codex-acp",
         args: &[],
         terminal: "codex",
+        install: "npm i -g @zed-industries/codex-acp",
     },
     BuiltInAcpAgent {
         id: "opencode",
@@ -83,6 +86,7 @@ const BUILT_IN_ACP_AGENTS: [BuiltInAcpAgent; 3] = [
         program: "opencode",
         args: &["acp"],
         terminal: "opencode",
+        install: "curl -fsSL https://opencode.ai/install | bash",
     },
 ];
 
@@ -99,6 +103,14 @@ pub fn is_built_in_acp_agent(id: AcpAgentId) -> bool {
     BUILT_IN_ACP_AGENTS
         .iter()
         .any(|built_in| built_in.id == id.as_str())
+}
+
+#[must_use]
+pub fn acp_install_command(id: AcpAgentId) -> Option<&'static str> {
+    BUILT_IN_ACP_AGENTS
+        .iter()
+        .find(|built_in| built_in.id == id.as_str())
+        .map(|built_in| built_in.install)
 }
 
 #[cfg(test)]
@@ -149,5 +161,17 @@ mod tests {
             ]
         );
         assert!(agents.iter().all(AcpAgent::is_built_in));
+        let installs: Vec<Option<&str>> = agents
+            .iter()
+            .map(|agent| acp_install_command(agent.id))
+            .collect();
+        assert_eq!(
+            installs,
+            [
+                Some("npm i -g @zed-industries/claude-code-acp"),
+                Some("npm i -g @zed-industries/codex-acp"),
+                Some("curl -fsSL https://opencode.ai/install | bash"),
+            ]
+        );
     }
 }

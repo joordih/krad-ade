@@ -1,3 +1,4 @@
+mod acp;
 mod editor;
 mod fonts;
 mod gateway;
@@ -32,6 +33,7 @@ use crate::theme::{
     appearance, apply_settings_theme, card_shadow, mode_appearance, system_is_dark, Appearance,
     Palette, CAPSULE_PAD, LINE_SM, LINE_XS, RADIUS_XL, SPACE_0_5, TEXT_SM, TEXT_XS,
 };
+use acp::AcpUi;
 use gateway::GatewayUi;
 use github::GithubUi;
 pub(super) use gitlab::gitlab_token_saver;
@@ -53,6 +55,7 @@ pub(super) enum SettingsPane {
     Integrations,
     Gateway,
     Mcp,
+    Acp,
     Languages,
 }
 
@@ -66,6 +69,7 @@ impl SettingsPane {
             Self::Integrations => "Integrations",
             Self::Gateway => "Gateway",
             Self::Mcp => "MCP",
+            Self::Acp => "ACP agents",
             Self::Languages => "Languages",
         }
     }
@@ -81,6 +85,7 @@ impl SettingsPane {
                 "Chat with the models of a gateway you run, through the app's own agent."
             }
             Self::Mcp => "The MCP servers whose tools Gateway chats can use.",
+            Self::Acp => "Agents the app talks to over the Agent Client Protocol.",
             Self::Languages => {
                 "Language servers, the SDKs they need, and extensions that add languages."
             }
@@ -96,6 +101,7 @@ impl SettingsPane {
             Self::Integrations => IconName::Merge,
             Self::Gateway => IconName::Flow,
             Self::Mcp => IconName::Plug,
+            Self::Acp => IconName::UserGroup,
             Self::Languages => IconName::Workflow,
         }
     }
@@ -109,6 +115,7 @@ pub(super) struct SettingsUi {
     github: GithubUi,
     gateway: GatewayUi,
     mcp: McpUi,
+    acp: AcpUi,
     tint: material::TintUi,
     languages: languages::LanguagesUi,
     fonts: crate::font_catalog::FontCatalog,
@@ -221,6 +228,7 @@ impl EnvironmentShell {
         let github = Self::github_ui();
         let gateway = self.gateway_ui(window, cx);
         let mcp = Self::mcp_ui(window, cx);
+        let acp = Self::acp_ui(window, cx);
         let tint = self.tint_ui(cx);
         let languages = Self::languages_ui(window, cx);
         self.settings_ui = Some(SettingsUi {
@@ -229,6 +237,7 @@ impl EnvironmentShell {
             github,
             gateway,
             mcp,
+            acp,
             tint,
             languages,
             fonts: crate::font_catalog::font_catalog(cx),

@@ -95,7 +95,7 @@ impl EnvironmentShell {
         let name = sanitize_worktree_name(&typed_name).or_else(|| name_from_prompt(&prompt));
         match (composer.new_worktree, repo_root, name) {
             (true, Some(repo_root), Some(name)) => {
-                let preset = composer.preset;
+                let label = self.settings.acp.harness_name(composer.preset);
                 let link = self.env_link(&env);
                 let create = cx.background_spawn({
                     let repo_root = repo_root.clone();
@@ -110,14 +110,7 @@ impl EnvironmentShell {
                                 .clone()
                                 .map(|branch| WorktreeOrigin { repo_root, branch });
                             let group = shell.add_group_to(&env, worktree.path, origin, cx);
-                            shell.spawn_terminal_in(
-                                &env,
-                                group,
-                                preset.display_name(),
-                                launch,
-                                None,
-                                cx,
-                            );
+                            shell.spawn_terminal_in(&env, group, &label, launch, None, cx);
                         }
                         Err(error) => shell.toast(&error.to_string(), cx),
                     })
@@ -129,7 +122,7 @@ impl EnvironmentShell {
                 self.spawn_terminal_in(
                     &env,
                     composer.group,
-                    composer.preset.display_name(),
+                    &self.settings.acp.harness_name(composer.preset),
                     launch,
                     None,
                     cx,
