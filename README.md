@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.png" alt="Krad ADE" width="100%">
+  <img src="assets/screenshots/social-preview.png" alt="Krad ADE: many coding agents, one native workspace" width="100%">
 </p>
 
 <p align="center">
