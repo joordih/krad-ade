@@ -146,8 +146,12 @@ id = "container"
 title = "Docker container"
 "#;
 
+    static NEXT_FOLDER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
     fn record(enabled: bool, trusted: bool) -> Result<ExtensionRecord, Box<dyn std::error::Error>> {
-        let folder = std::env::temp_dir().join(format!("krad-machines-{}", std::process::id()));
+        let serial = NEXT_FOLDER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let folder =
+            std::env::temp_dir().join(format!("krad-machines-{}-{serial}", std::process::id()));
         std::fs::create_dir_all(&folder)?;
         std::fs::write(folder.join("extension.toml"), DOCKER)?;
         let installed = read_installed(&folder)?.ok_or("the folder holds an extension")?;
