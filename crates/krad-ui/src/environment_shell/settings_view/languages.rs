@@ -323,7 +323,6 @@ impl EnvironmentShell {
     }
 
     pub(super) fn extension_row(
-        &self,
         index: usize,
         entry: &ExtensionEntry,
         cx: &mut Context<Self>,
@@ -396,7 +395,7 @@ impl EnvironmentShell {
         ])
     }
 
-    pub(super) fn manifests_hint(&self) -> String {
+    pub(super) fn manifests_hint() -> String {
         let manifests = krad_store::config_dir().map_or_else(String::new, |config| {
             user_manifests_dir(&config).display().to_string()
         });

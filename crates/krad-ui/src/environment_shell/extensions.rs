@@ -108,6 +108,7 @@ pub(in crate::environment_shell) struct Extensions {
     prompts: prompts::Prompts,
     progress: Vec<(SlotKey, ProgressToken, ProgressParams)>,
     terminals: HashMap<TerminalHandle, (EnvironmentName, TerminalId)>,
+    view_terminals: Vec<(SlotKey, TerminalHandle, gpui_kit::AnyView)>,
     next_terminal: u64,
     pub(in crate::environment_shell) conflicts: Vec<KeyConflict>,
     bound: HashSet<(String, String, String)>,
@@ -124,6 +125,11 @@ impl Extensions {
         self.records
             .iter()
             .find(|record| record.manifest().is_some_and(|manifest| manifest.id == *id))
+    }
+
+    pub(in crate::environment_shell) fn title_of(&self, id: &ExtensionId) -> String {
+        self.record(id)
+            .map_or_else(String::new, ExtensionRecord::title)
     }
 
     fn connection(&self, key: &SlotKey) -> Option<ProgramConnection> {
@@ -246,6 +252,9 @@ impl EnvironmentShell {
     ) {
         self.extensions.slots.remove(key);
         self.extensions.restarts.remove(key);
+        self.extensions
+            .view_terminals
+            .retain(|(owner, _, _)| owner != key);
         self.drop_views_of(key, cx);
     }
 

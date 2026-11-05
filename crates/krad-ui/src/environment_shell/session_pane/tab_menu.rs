@@ -54,8 +54,7 @@ impl EnvironmentShell {
             .envs
             .get(&self.active)
             .and_then(|live| live.data.nodes.iter().find(|node| node.id == tab))
-            .map(|node| node.title.clone())
-            .unwrap_or_default();
+            .map_or_else(String::new, |node| node.title.clone());
         entries.extend(self.extension_menu_entries(
             krad_extensions::api::manifest::MenuTarget::Tab,
             None,

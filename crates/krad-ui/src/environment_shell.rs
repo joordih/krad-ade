@@ -320,10 +320,14 @@ impl EnvironmentShell {
         shell.show_host(&active, cx);
         shell.pump_task = Some(Self::start_pump(pump_rx, cx));
         Self::detect_agents(cx);
-        shell.start_watches(cx);
-        shell.load_language_tools(cx);
-        shell.load_extensions(cx);
+        shell.start_loading(cx);
         shell
+    }
+
+    fn start_loading(&mut self, cx: &mut Context<Self>) {
+        self.start_watches(cx);
+        self.load_language_tools(cx);
+        self.load_extensions(cx);
     }
 
     fn frame_interval(&self) -> Duration {

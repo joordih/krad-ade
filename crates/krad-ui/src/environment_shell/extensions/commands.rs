@@ -242,7 +242,7 @@ impl EnvironmentShell {
     ) {
         match menu {
             ExtensionMenu::Run(command, target) => self.run_extension_command(command, target, cx),
-            ExtensionMenu::Answer(answer) => self.answer_prompt(answer, window, cx),
+            ExtensionMenu::Answer(answer) => self.answer_prompt(&answer, window, cx),
         }
     }
 

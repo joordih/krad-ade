@@ -126,7 +126,7 @@ impl EnvironmentShell {
             }
             let groups = self.group_infos(name);
             self.broadcast(Some(name), &WorkspaceEvent::GroupsChanged { groups });
-            self.activate_on_workspace(name, roots.clone(), cx);
+            self.activate_on_workspace(name, roots, cx);
         }
         if before.active_file != now.active_file {
             let event = WorkspaceEvent::ActiveFileChanged {

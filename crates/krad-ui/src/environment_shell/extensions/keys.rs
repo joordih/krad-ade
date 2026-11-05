@@ -173,7 +173,7 @@ mod tests {
             (command("docker", "refresh")?, "cmd-p".to_owned()),
             (command("docker", "logs")?, "cmd-alt-l".to_owned()),
             (command("other", "logs")?, "cmd-alt-l".to_owned()),
-            (command("other", "broken")?, "cmd-+-".to_owned()),
+            (command("other", "broken")?, "cmd-x-y".to_owned()),
         ];
         let planned = plan(&app, &wanted);
         assert_eq!(planned.bindings.len(), 1);

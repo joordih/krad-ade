@@ -1,3 +1,4 @@
+mod terminal_link;
 mod zones;
 
 use futures::channel::mpsc;
@@ -212,7 +213,18 @@ impl EnvironmentShell {
         };
         let reference = open.view.clone();
         let (output, mut outputs) = mpsc::unbounded();
-        let entity = cx.new(|_| ExtensionView::new(root, output));
+        let folder = self
+            .extensions
+            .record(&open.key.extension)
+            .and_then(super::ExtensionRecord::installed)
+            .map(|installed| installed.folder.clone());
+        let entity = cx.new(|_| {
+            let view = ExtensionView::new(root, output);
+            match folder {
+                Some(folder) => view.with_folder(folder),
+                None => view,
+            }
+        });
         let shown = entity.downgrade();
         let task = cx.spawn(async move |_, cx| {
             while let Some(output) = outputs.next().await {
@@ -251,6 +263,13 @@ impl EnvironmentShell {
                 }
             }
         });
+        let key = open.key.clone();
+        for (owner, handle, link) in &self.extensions.view_terminals {
+            if *owner == key {
+                let link = link.clone();
+                entity.update(cx, |view, cx| view.set_terminal(*handle, link, cx));
+            }
+        }
         if let Some(open) = self.extensions.views.views.get_mut(&id) {
             open.state = ViewState::Shown {
                 entity,
@@ -263,7 +282,7 @@ impl EnvironmentShell {
     pub(super) fn patch_extension_views(
         &mut self,
         key: &SlotKey,
-        params: PatchViewParams,
+        params: &PatchViewParams,
         cx: &mut Context<Self>,
     ) {
         let targets: Vec<Entity<ExtensionView>> = self

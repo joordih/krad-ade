@@ -41,11 +41,7 @@ impl EnvironmentShell {
         deferred: Deferred,
         cx: &mut Context<Self>,
     ) {
-        let title = self
-            .extensions
-            .record(&key.extension)
-            .map(super::ExtensionRecord::title)
-            .unwrap_or_default();
+        let title = self.extensions.title_of(&key.extension);
         match self.extensions.slots.get_mut(&key) {
             Some(Slot::Running(_)) => {
                 self.run_deferred(&key, deferred, cx);
@@ -138,7 +134,7 @@ impl EnvironmentShell {
         });
         cx.spawn(async move |this, cx| {
             let started = starting.await;
-            this.update(cx, |shell, cx| shell.program_started(key, started, cx))
+            this.update(cx, |shell, cx| shell.program_started(&key, started, cx))
                 .unwrap_or_default();
         })
         .detach();
@@ -154,6 +150,12 @@ impl EnvironmentShell {
             Host::Ssh { destination } => HostInfo::Ssh {
                 destination: destination.to_string(),
             },
+            Host::Extension { machine } => HostInfo::Machine {
+                extension: machine.extension.clone(),
+                host_kind: machine.kind.clone(),
+                machine: machine.id.clone(),
+                label: machine.label.clone(),
+            },
         };
         Some(EnvironmentInfo {
             id: name.as_str().to_owned(),
@@ -164,19 +166,14 @@ impl EnvironmentShell {
 
     fn program_started(
         &mut self,
-        key: SlotKey,
+        key: &SlotKey,
         started: Result<(ExtensionProcess, mpsc::Receiver<ProgramEvent>), String>,
         cx: &mut Context<Self>,
     ) {
-        let waiting = match self.extensions.slots.remove(&key) {
-            Some(Slot::Starting(waiting)) => waiting,
-            _ => return,
+        let Some(Slot::Starting(waiting)) = self.extensions.slots.remove(key) else {
+            return;
         };
-        let title = self
-            .extensions
-            .record(&key.extension)
-            .map(super::ExtensionRecord::title)
-            .unwrap_or_default();
+        let title = self.extensions.title_of(&key.extension);
         let (process, mut events) = match started {
             Ok(started) => started,
             Err(error) => {
@@ -187,7 +184,7 @@ impl EnvironmentShell {
                 self.extensions
                     .slots
                     .insert(key.clone(), Slot::Failed(error));
-                self.fail_views_of(&key, cx);
+                self.fail_views_of(key, cx);
                 return;
             }
         };
@@ -211,9 +208,9 @@ impl EnvironmentShell {
             }),
         );
         for deferred in waiting {
-            self.run_deferred(&key, deferred, cx);
+            self.run_deferred(key, deferred, cx);
         }
-        self.render_views_of(&key, cx);
+        self.render_views_of(key, cx);
         cx.notify();
     }
 
@@ -240,11 +237,7 @@ impl EnvironmentShell {
             .or_default()
             .after_crash(ran_for);
         let Some(delay) = delay else {
-            let title = self
-                .extensions
-                .record(&key.extension)
-                .map(super::ExtensionRecord::title)
-                .unwrap_or_default();
+            let title = self.extensions.title_of(&key.extension);
             self.toast(&format!("{title} {GAVE_UP_TEXT}"), cx);
             self.extensions
                 .slots
@@ -328,11 +321,7 @@ impl EnvironmentShell {
                 let Some(connection) = self.extensions.connection(key) else {
                     return;
                 };
-                let title = self
-                    .extensions
-                    .record(&key.extension)
-                    .map(super::ExtensionRecord::title)
-                    .unwrap_or_default();
+                let title = self.extensions.title_of(&key.extension);
                 cx.spawn(async move |this, cx| {
                     let params = ExecuteCommandParams { command, target };
                     if let Err(error) = connection.request::<ExecuteCommand>(&params).await {

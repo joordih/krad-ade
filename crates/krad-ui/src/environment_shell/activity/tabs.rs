@@ -141,6 +141,16 @@ impl EnvironmentShell {
         cx.notify();
     }
 
+    pub(super) fn shown_utility_extension(&self) -> Option<super::super::extensions::OpenViewId> {
+        match self.utility_tab() {
+            UtilityTab::Extension(id) => Some(id),
+            UtilityTab::Log
+            | UtilityTab::Problems
+            | UtilityTab::Terminals
+            | UtilityTab::Docked(_) => None,
+        }
+    }
+
     pub(super) fn activity_terminal(&self) -> Option<TerminalId> {
         match self.utility_tab() {
             UtilityTab::Log | UtilityTab::Problems | UtilityTab::Extension(_) => None,

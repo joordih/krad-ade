@@ -8,7 +8,15 @@ use crate::protocol::{notification, request, Empty};
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum HostInfo {
     Local,
-    Ssh { destination: String },
+    Ssh {
+        destination: String,
+    },
+    Machine {
+        extension: String,
+        host_kind: String,
+        machine: String,
+        label: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

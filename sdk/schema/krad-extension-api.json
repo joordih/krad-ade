@@ -813,6 +813,34 @@
             "destination"
           ],
           "type": "object"
+        },
+        {
+          "properties": {
+            "extension": {
+              "type": "string"
+            },
+            "host_kind": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "machine",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "machine": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "extension",
+            "host_kind",
+            "machine",
+            "label"
+          ],
+          "type": "object"
         }
       ]
     },

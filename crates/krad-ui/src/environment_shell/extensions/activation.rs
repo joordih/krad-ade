@@ -63,7 +63,7 @@ impl EnvironmentShell {
     pub(super) fn activate_on_workspace(
         &mut self,
         name: &EnvironmentName,
-        roots: Vec<PathBuf>,
+        roots: &[PathBuf],
         cx: &mut Context<Self>,
     ) {
         let local = self
@@ -76,7 +76,7 @@ impl EnvironmentShell {
         let mut candidates = Vec::new();
         for manifest in self.usable_manifests() {
             let markers = workspace_markers(&manifest);
-            for root in &roots {
+            for root in roots {
                 let checked = (manifest.id.to_string(), root.clone());
                 if markers.is_empty() || !self.extensions.watch.checked.insert(checked) {
                     continue;

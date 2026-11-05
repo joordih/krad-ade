@@ -71,18 +71,22 @@ fn text_of(value: &SettingValue) -> String {
 
 fn wanted_fields(manifest: &ExtensionManifest) -> Vec<(FieldSlot, bool)> {
     let id = manifest.id.to_string();
-    let settings = manifest.contributes.settings.iter().filter_map(|setting| {
-        matches!(
-            setting.kind,
-            SettingKind::Text { .. } | SettingKind::Number { .. }
-        )
-        .then(|| {
+    let settings = manifest
+        .contributes
+        .settings
+        .iter()
+        .filter(|setting| {
+            matches!(
+                setting.kind,
+                SettingKind::Text { .. } | SettingKind::Number { .. }
+            )
+        })
+        .map(|setting| {
             (
                 FieldSlot::Setting(id.clone(), setting.key.to_string()),
                 false,
             )
-        })
-    });
+        });
     let secrets = manifest
         .contributes
         .secrets
@@ -127,8 +131,7 @@ impl EnvironmentShell {
                     FieldSlot::Setting(_, key) => values
                         .iter()
                         .find(|(setting, _)| setting.to_string() == *key)
-                        .map(|(_, value)| text_of(value))
-                        .unwrap_or_default(),
+                        .map_or_else(String::new, |(_, value)| text_of(value)),
                     FieldSlot::Secret(..) => String::new(),
                 };
                 let field = cx.new(|cx| {
@@ -246,7 +249,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let mut rows = vec![self.extension_row(index, &record.entry, cx)];
+        let mut rows = vec![Self::extension_row(index, &record.entry, cx)];
         let failed = record.manifest().is_some_and(|manifest| {
             matches!(
                 self.extensions.slot_state(&manifest.id),
@@ -438,7 +441,7 @@ impl EnvironmentShell {
                     .any(|record| record.entry.id == entry.id)
             })
             .map(|(index, entry)| {
-                self.extension_row(index + self.extensions.records.len(), entry, cx)
+                Self::extension_row(index + self.extensions.records.len(), entry, cx)
             })
             .collect();
         if !untracked.is_empty() {
@@ -457,7 +460,7 @@ impl EnvironmentShell {
                 pal,
             ));
         }
-        cards.push(hint(&self.manifests_hint(), pal));
+        cards.push(hint(&Self::manifests_hint(), pal));
         let mut sections = vec![settings_section(
             INSTALLED_TITLE,
             Some(INSTALLED_HINT),

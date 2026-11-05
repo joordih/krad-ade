@@ -59,7 +59,7 @@ impl EnvironmentShell {
         };
         match prompt {
             Prompt::Confirm(key, id, params) => self.show_confirm(key, id, &params, window, cx),
-            Prompt::Pick(key, id, params) => self.show_pick(key, id, params, window, cx),
+            Prompt::Pick(key, id, params) => self.show_pick(&key, &id, &params, window, cx),
             Prompt::Input(key, id, params) => {
                 self.extensions.prompts.input = Some((key, id));
                 self.ask_name(
@@ -150,9 +150,9 @@ impl EnvironmentShell {
 
     fn show_pick(
         &mut self,
-        key: SlotKey,
-        id: CallId,
-        params: PickParams,
+        key: &SlotKey,
+        id: &CallId,
+        params: &PickParams,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -193,28 +193,30 @@ impl EnvironmentShell {
 
     pub(super) fn answer_prompt(
         &mut self,
-        answer: PromptAnswer,
+        answer: &PromptAnswer,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
         match answer {
             PromptAnswer::Confirm(key, id, answer) => {
-                self.answer_call::<Confirm>(&key, id, &answer)
+                self.answer_call::<Confirm>(key, id.clone(), answer);
             }
-            PromptAnswer::Pick(key, id, picked) => self.answer_call::<Pick>(&key, id, &picked),
+            PromptAnswer::Pick(key, id, picked) => {
+                self.answer_call::<Pick>(key, id.clone(), picked);
+            }
         }
         cx.notify();
     }
 
     pub(in crate::environment_shell) fn extension_input_answered(
         &mut self,
-        value: Option<String>,
+        value: Option<&str>,
         cx: &mut Context<Self>,
     ) {
         let Some((key, id)) = self.extensions.prompts.input.take() else {
             return;
         };
-        self.answer_call::<InputBox>(&key, id, &value);
+        self.answer_call::<InputBox>(&key, id, &value.map(str::to_owned));
         cx.notify();
     }
 }

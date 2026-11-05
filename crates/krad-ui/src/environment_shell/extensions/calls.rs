@@ -56,10 +56,10 @@ impl EnvironmentShell {
     ) {
         match call {
             AppCall::Confirm(params) => {
-                self.queue_extension_prompt(Prompt::Confirm(key.clone(), id, params), cx)
+                self.queue_extension_prompt(Prompt::Confirm(key.clone(), id, params), cx);
             }
             AppCall::Pick(params) => {
-                self.queue_extension_prompt(Prompt::Pick(key.clone(), id, params), cx)
+                self.queue_extension_prompt(Prompt::Pick(key.clone(), id, params), cx);
             }
             AppCall::InputBox(params) => {
                 self.queue_extension_prompt(Prompt::Input(key.clone(), id, params), cx);
@@ -81,7 +81,7 @@ impl EnvironmentShell {
                 let values = self.extension_values(key);
                 self.answer_call::<GetSettings>(key, id, &values);
             }
-            AppCall::GetSecret(params) => self.read_extension_secret(key, id, params, cx),
+            AppCall::GetSecret(params) => self.read_extension_secret(key, id, &params, cx),
             AppCall::SetSecret(params) => self.write_extension_secret(key, id, params, cx),
             AppCall::RunCommand(params) => {
                 if self.declares_command(&params.command) {
@@ -118,18 +118,14 @@ impl EnvironmentShell {
         notice: AppNotice,
         cx: &mut Context<Self>,
     ) {
-        let title = self
-            .extensions
-            .record(&key.extension)
-            .map(super::ExtensionRecord::title)
-            .unwrap_or_default();
+        let title = self.extensions.title_of(&key.extension);
         match notice {
             AppNotice::Log(params) => {
                 if let Some(record) = self.extensions.record(&key.extension) {
                     record.log.push(params.message);
                 }
             }
-            AppNotice::PatchView(params) => self.patch_extension_views(key, params, cx),
+            AppNotice::PatchView(params) => self.patch_extension_views(key, &params, cx),
             AppNotice::Toast(params) => {
                 let text = match tone_mark(params.tone) {
                     Some(mark) => format!("{mark} {title}: {}", params.message),
@@ -139,7 +135,7 @@ impl EnvironmentShell {
             }
             AppNotice::Progress(params) => self.track_progress(key, &title, params),
             AppNotice::SendTerminal(params) => {
-                self.send_extension_terminal(params.terminal, params.text)
+                self.send_extension_terminal(params.terminal, params.text);
             }
         }
     }
@@ -194,6 +190,9 @@ impl EnvironmentShell {
         self.extensions.next_terminal += 1;
         let handle = TerminalHandle(self.extensions.next_terminal);
         self.extensions.terminals.insert(handle, (env, terminal));
+        if params.zone == TerminalZone::View {
+            self.attach_view_terminal(key, handle, terminal, params.title, cx);
+        }
         Some(handle)
     }
 
@@ -284,7 +283,7 @@ impl EnvironmentShell {
         &mut self,
         key: &SlotKey,
         id: CallId,
-        params: GetSecretParams,
+        params: &GetSecretParams,
         cx: &mut Context<Self>,
     ) {
         if !self.declares_secret(key, &params.name) {
@@ -383,10 +382,11 @@ const fn tone_mark(tone: Tone) -> Option<&'static str> {
 
 pub(in crate::environment_shell) fn default_value(kind: &SettingKind) -> SettingValue {
     match kind {
-        SettingKind::Text { default } => SettingValue::Text(default.clone()),
+        SettingKind::Text { default } | SettingKind::Choice { default, .. } => {
+            SettingValue::Text(default.clone())
+        }
         SettingKind::Toggle { default } => SettingValue::Toggle(*default),
         SettingKind::Number { default, .. } => SettingValue::Number(*default),
-        SettingKind::Choice { default, .. } => SettingValue::Text(default.clone()),
     }
 }
 
@@ -395,5 +395,40 @@ fn setting_value(value: &ExtensionSettingValue) -> SettingValue {
         ExtensionSettingValue::Toggle(on) => SettingValue::Toggle(*on),
         ExtensionSettingValue::Number(number) => SettingValue::Number(*number),
         ExtensionSettingValue::Text(text) => SettingValue::Text(text.clone()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use krad_extensions::api::manifest::SettingOption;
+
+    #[test]
+    fn declared_defaults_and_stored_values_read_as_protocol_values() {
+        let choice = SettingKind::Choice {
+            options: vec![SettingOption {
+                value: "fast".to_owned(),
+                label: "Fast".to_owned(),
+            }],
+            default: "fast".to_owned(),
+        };
+        assert_eq!(
+            default_value(&choice),
+            SettingValue::Text("fast".to_owned())
+        );
+        assert_eq!(
+            default_value(&SettingKind::Toggle { default: true }),
+            SettingValue::Toggle(true)
+        );
+        assert_eq!(
+            setting_value(&ExtensionSettingValue::Number(2.5)),
+            SettingValue::Number(2.5)
+        );
+    }
+
+    #[test]
+    fn toasts_mark_only_the_tones_that_need_attention() {
+        assert_eq!(tone_mark(Tone::Error), Some(ERROR_MARK));
+        assert_eq!(tone_mark(Tone::Neutral), None);
     }
 }

@@ -6,7 +6,10 @@ export type Feature =
   | "views" | "commands" | "window" | "terminals" | "files" | "workspace" | "settings" | "secrets"
   | "tools" | "host_kinds";
 
-export type HostInfo = { kind: "local" } | { kind: "ssh"; destination: string };
+export type HostInfo =
+  | { kind: "local" }
+  | { kind: "ssh"; destination: string }
+  | { kind: "machine"; extension: string; host_kind: string; machine: string; label: string };
 
 export interface EnvironmentInfo {
   id: string;

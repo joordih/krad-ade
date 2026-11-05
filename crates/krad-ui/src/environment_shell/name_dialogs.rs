@@ -136,7 +136,7 @@ impl EnvironmentShell {
             return;
         }
         if let NameTarget::ExtensionInput { .. } = dialog.target {
-            self.extension_input_answered(Some(typed), cx);
+            self.extension_input_answered(Some(&typed), cx);
             return;
         }
         if !typed.is_empty() {
