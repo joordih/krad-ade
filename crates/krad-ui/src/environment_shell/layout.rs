@@ -325,6 +325,7 @@ impl Render for EnvironmentShell {
             })
             .children(self.sidebar_chrome(cx))
             .child(self.toast_stack(cx))
+            .children(self.extension_progress(cx))
             .child(self.palette_overlay(viewport.width.as_f32(), pal, cx))
             .children(self.agent_composer_sheet(cx))
             .children(self.docs_generate_sheet(cx))

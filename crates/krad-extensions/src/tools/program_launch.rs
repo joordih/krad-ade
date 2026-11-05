@@ -68,27 +68,37 @@ impl LanguageTools {
         match &build.source {
             BinarySource::Bundled { path } => inside(&installed.folder, path),
             BinarySource::Download { url, sha256 } => {
-                let folder = self
-                    .root
-                    .join(PROGRAMS_DIR)
-                    .join(installed.manifest.id.as_ref())
-                    .join(sha256);
-                let target = folder.join(format!("{PROGRAM_FILE}{}", self.platform.exe()));
-                if target.is_file() {
-                    return Ok(target);
-                }
-                fs::create_dir_all(&folder)?;
-                let partial = target.with_extension(DOWNLOAD_SUFFIX);
-                download(&self.agent, url, Some(&Sha256Digest::new(sha256)), &partial)?;
-                fs::rename(&partial, &target)?;
-                mark_executable(&target)?;
-                Ok(target)
+                self.downloaded_binary(installed, url, sha256, self.platform.exe())
             }
         }
     }
+
+    pub(super) fn downloaded_binary(
+        &self,
+        installed: &InstalledExtension,
+        url: &str,
+        sha256: &str,
+        exe: &str,
+    ) -> Result<PathBuf, ExtensionError> {
+        let folder = self
+            .root
+            .join(PROGRAMS_DIR)
+            .join(installed.manifest.id.as_ref())
+            .join(sha256);
+        let target = folder.join(format!("{PROGRAM_FILE}{exe}"));
+        if target.is_file() {
+            return Ok(target);
+        }
+        fs::create_dir_all(&folder)?;
+        let partial = target.with_extension(DOWNLOAD_SUFFIX);
+        download(&self.agent, url, Some(&Sha256Digest::new(sha256)), &partial)?;
+        fs::rename(&partial, &target)?;
+        mark_executable(&target)?;
+        Ok(target)
+    }
 }
 
-fn inside(folder: &Path, relative: &Path) -> Result<PathBuf, ExtensionError> {
+pub(super) fn inside(folder: &Path, relative: &Path) -> Result<PathBuf, ExtensionError> {
     let stays_inside = relative
         .components()
         .all(|component| matches!(component, Component::Normal(_) | Component::CurDir));

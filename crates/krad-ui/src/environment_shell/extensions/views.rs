@@ -376,11 +376,13 @@ impl EnvironmentShell {
                 if let Some(live) = self.envs.get_mut(&env) {
                     live.extension_sidebar = live.extension_sidebar.filter(|shown| *shown != id);
                 }
+                self.remember_extension_views(&env);
             }
             ViewPlace::SidePanel(env) => {
                 if let Some(live) = self.envs.get_mut(&env) {
                     live.extension_side = live.extension_side.filter(|shown| *shown != id);
                 }
+                self.remember_extension_views(&env);
             }
             ViewPlace::Utilities(env) => {
                 if let Some(live) = self.envs.get_mut(&env) {

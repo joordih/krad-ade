@@ -30,5 +30,5 @@ pub use toolchains::{
     ToolchainCache, ToolchainFamilyManifest,
 };
 pub use tools::{
-    LanguageTools, MissingServerRuntime, ServerConfig, ServerPlan, ServerRuntimeStatus,
+    LanguageTools, MissingServerRuntime, ProgramSite, ServerConfig, ServerPlan, ServerRuntimeStatus,
 };

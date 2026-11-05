@@ -3,7 +3,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, Context, ElementId, FontWeight, InteractiveElement, IntoElement,
     ParentElement, StatefulInteractiveElement, Styled,
 };
-use krad_domain::TerminalId;
+use krad_domain::{EnvironmentName, ExtensionTab, ShownExtensionViews, TerminalId};
 use krad_extensions::api::manifest::ViewZone;
 
 use super::super::super::activity::UtilityTab;
@@ -36,12 +36,14 @@ impl EnvironmentShell {
                 if let Some(live) = self.envs.get_mut(&env) {
                     live.extension_sidebar = Some(id);
                 }
+                self.remember_extension_views(&env);
             }
             ViewPlace::SidePanel(env) => {
                 if let Some(live) = self.envs.get_mut(&env) {
                     live.extension_side = Some(id);
                     live.data.side_panel.open = true;
                 }
+                self.remember_extension_views(&env);
                 self.store();
             }
             ViewPlace::Utilities(_) => self.show_utilities(UtilityTab::Extension(id), cx),
@@ -104,6 +106,7 @@ impl EnvironmentShell {
         if let Some(live) = self.envs.get_mut(&env) {
             live.extension_sidebar = None;
         }
+        self.remember_extension_views(&env);
     }
 
     fn shown_title(&self, id: Option<OpenViewId>) -> Option<(String, String)> {
@@ -202,6 +205,60 @@ impl EnvironmentShell {
         let env = self.active.clone();
         if let Some(live) = self.envs.get_mut(&env) {
             live.extension_side = None;
+        }
+        self.remember_extension_views(&env);
+    }
+
+    fn shown_tab(&self, id: Option<OpenViewId>) -> Option<ExtensionTab> {
+        let open = self.extensions.views.get(id?)?;
+        Some(ExtensionTab {
+            extension: open.key.extension.to_string(),
+            view: open.view.view.to_string(),
+            instance: open.view.instance.as_ref().map(ToString::to_string),
+        })
+    }
+
+    pub(in crate::environment_shell) fn remember_extension_views(&mut self, env: &EnvironmentName) {
+        let Some(live) = self.envs.get(env) else {
+            return;
+        };
+        let shown = ShownExtensionViews {
+            sidebar: self.shown_tab(live.extension_sidebar),
+            side_panel: self.shown_tab(live.extension_side),
+        };
+        if live.data.extension_views == shown {
+            return;
+        }
+        if let Some(live) = self.envs.get_mut(env) {
+            live.data.extension_views = shown;
+        }
+        self.store();
+    }
+
+    pub(in crate::environment_shell) fn restore_extension_views(&mut self, cx: &mut Context<Self>) {
+        let env = self.active.clone();
+        if self.extensions.records.is_empty() || self.extensions.restored.contains(&env) {
+            return;
+        }
+        self.extensions.restored.insert(env.clone());
+        let Some(live) = self.envs.get(&env) else {
+            return;
+        };
+        let wanted = live.data.extension_views.clone();
+        let missing: Vec<ExtensionTab> = [
+            (wanted.sidebar, live.extension_sidebar),
+            (wanted.side_panel, live.extension_side),
+        ]
+        .into_iter()
+        .filter(|(_, shown)| shown.is_none())
+        .filter_map(|(tab, _)| tab)
+        .collect();
+        for tab in missing {
+            let (Ok(extension), Ok(view)) = (tab.extension.parse(), tab.view.parse()) else {
+                continue;
+            };
+            let instance = tab.instance.and_then(|instance| instance.parse().ok());
+            self.open_extension_view(&extension, &view, instance, None, cx);
         }
     }
 

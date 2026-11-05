@@ -1,20 +1,22 @@
 use gpui_kit::{Context, PromptButton, PromptLevel, Window};
 use krad_extensions::api::protocol::{
-    Answer, Confirm, ConfirmParams, InputBox, InputBoxParams, Pick, PickParams,
+    Answer, Confirm, ConfirmParams, InputBox, InputBoxParams, Pick, PickItem, PickMode, PickParams,
 };
 use krad_extensions::api::view::Tone;
 use krad_extensions::program::CallId;
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement, MenuSearch};
 use super::super::name_dialogs::{NameDialogs, NameTarget};
 use super::super::EnvironmentShell;
 use super::commands::{icon_of, ExtensionMenu};
+use super::runtime_install::PendingInstall;
 use super::SlotKey;
 
 const NATIVE_ALERTS: bool = cfg!(target_os = "macos");
 const CONFIRMED: usize = 0;
 const CANCEL_LABEL: &str = "Cancel";
+const DONE_LABEL: &str = "Done";
 const SEARCHABLE_FROM: usize = 8;
 const MENU_ORIGIN_X_SHARE: f32 = 0.5;
 const MENU_ORIGIN_Y_SHARE: f32 = 0.3;
@@ -22,19 +24,48 @@ const MENU_ORIGIN_Y_SHARE: f32 = 0.3;
 pub(super) enum Prompt {
     Confirm(SlotKey, CallId, ConfirmParams),
     Pick(SlotKey, CallId, PickParams),
+    Many(ManyPick),
     Input(SlotKey, CallId, InputBoxParams),
+    InstallRuntime(PendingInstall),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub(in crate::environment_shell) enum PromptAnswer {
     Confirm(SlotKey, CallId, Answer),
     Pick(SlotKey, CallId, Option<Vec<String>>),
+    Toggle(String),
+    ManyDone,
+    ManyCancelled,
+    InstallRuntime(bool),
+}
+
+pub(super) struct ManyPick {
+    key: SlotKey,
+    id: CallId,
+    params: PickParams,
+    chosen: BTreeSet<String>,
 }
 
 #[derive(Default)]
 pub(super) struct Prompts {
     queue: VecDeque<Prompt>,
     input: Option<(SlotKey, CallId)>,
+    many: Option<ManyPick>,
+    pub(super) install: Option<PendingInstall>,
+}
+
+fn toggle(chosen: &mut BTreeSet<String>, value: String) {
+    if !chosen.remove(&value) {
+        chosen.insert(value);
+    }
+}
+
+fn chosen_values(items: &[PickItem], chosen: &BTreeSet<String>) -> Vec<String> {
+    items
+        .iter()
+        .filter(|item| chosen.contains(&item.value))
+        .map(|item| item.value.clone())
+        .collect()
 }
 
 impl EnvironmentShell {
@@ -48,8 +79,10 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.restore_extension_views(cx);
         let busy = self.context_menu.is_some()
             || self.extensions.prompts.input.is_some()
+            || self.extensions.prompts.install.is_some()
             || !matches!(self.name_dialogs, NameDialogs::Closed);
         if busy {
             return;
@@ -59,7 +92,18 @@ impl EnvironmentShell {
         };
         match prompt {
             Prompt::Confirm(key, id, params) => self.show_confirm(key, id, &params, window, cx),
+            Prompt::Pick(key, id, params) if params.mode == PickMode::Many => {
+                let many = ManyPick {
+                    key,
+                    id,
+                    params,
+                    chosen: BTreeSet::new(),
+                };
+                self.show_many(many, window, cx);
+            }
             Prompt::Pick(key, id, params) => self.show_pick(&key, &id, &params, window, cx),
+            Prompt::Many(many) => self.show_many(many, window, cx),
+            Prompt::InstallRuntime(pending) => self.show_runtime_install(pending, window, cx),
             Prompt::Input(key, id, params) => {
                 self.extensions.prompts.input = Some((key, id));
                 self.ask_name(
@@ -191,6 +235,54 @@ impl EnvironmentShell {
         self.open_menu(origin, MenuPlacement::Below, entries, cx);
     }
 
+    fn show_many(&mut self, many: ManyPick, window: &mut Window, cx: &mut Context<Self>) {
+        let answer =
+            |answer: PromptAnswer| MenuAction::Extension(Box::new(ExtensionMenu::Answer(answer)));
+        let mut entries = vec![MenuEntry::Header(many.params.title.clone())];
+        entries.extend(many.params.items.iter().map(|item| {
+            let entry = MenuEntry::checked(
+                item.label.clone(),
+                many.chosen.contains(&item.value),
+                answer(PromptAnswer::Toggle(item.value.clone())),
+            );
+            match &item.detail {
+                Some(detail) => entry.with_detail(detail.clone()),
+                None => entry,
+            }
+        }));
+        entries.push(MenuEntry::Separator);
+        entries.push(MenuEntry::item(
+            DONE_LABEL,
+            None,
+            answer(PromptAnswer::ManyDone),
+        ));
+        entries.push(MenuEntry::item(
+            CANCEL_LABEL,
+            None,
+            answer(PromptAnswer::ManyCancelled),
+        ));
+        self.extensions.prompts.many = Some(many);
+        self.open_menu(Self::menu_origin(window), MenuPlacement::Below, entries, cx);
+    }
+
+    fn answer_many(&mut self, answer: &PromptAnswer, cx: &mut Context<Self>) {
+        let Some(mut many) = self.extensions.prompts.many.take() else {
+            return;
+        };
+        match answer {
+            PromptAnswer::Toggle(value) => {
+                toggle(&mut many.chosen, value.clone());
+                self.extensions.prompts.queue.push_front(Prompt::Many(many));
+            }
+            PromptAnswer::ManyDone => {
+                let picked = chosen_values(&many.params.items, &many.chosen);
+                self.answer_call::<Pick>(&many.key, many.id, &Some(picked));
+            }
+            _ => self.answer_call::<Pick>(&many.key, many.id, &None),
+        }
+        cx.notify();
+    }
+
     pub(super) fn answer_prompt(
         &mut self,
         answer: &PromptAnswer,
@@ -204,6 +296,10 @@ impl EnvironmentShell {
             PromptAnswer::Pick(key, id, picked) => {
                 self.answer_call::<Pick>(key, id.clone(), picked);
             }
+            PromptAnswer::Toggle(_) | PromptAnswer::ManyDone | PromptAnswer::ManyCancelled => {
+                self.answer_many(answer, cx);
+            }
+            PromptAnswer::InstallRuntime(install) => self.runtime_install_answered(*install, cx),
         }
         cx.notify();
     }
@@ -218,5 +314,37 @@ impl EnvironmentShell {
         };
         self.answer_call::<InputBox>(&key, id, &value.map(str::to_owned));
         cx.notify();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(value: &str) -> PickItem {
+        PickItem {
+            value: value.to_owned(),
+            label: value.to_uppercase(),
+            detail: None,
+            icon: None,
+        }
+    }
+
+    #[test]
+    fn a_many_pick_returns_what_stays_ticked_in_the_offered_order() {
+        let items = [item("web"), item("db"), item("cache")];
+        let mut chosen = BTreeSet::new();
+        for value in ["cache", "web", "db", "db"] {
+            toggle(&mut chosen, value.to_owned());
+        }
+        assert_eq!(chosen_values(&items, &chosen), ["web", "cache"]);
+    }
+
+    #[test]
+    fn a_many_pick_with_nothing_ticked_returns_an_empty_choice() {
+        assert_eq!(
+            chosen_values(&[item("web")], &BTreeSet::new()),
+            Vec::<String>::new()
+        );
     }
 }

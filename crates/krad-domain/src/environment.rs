@@ -1,5 +1,5 @@
 use crate::agent::{AgentPreset, AgentState};
-use crate::group::{Session, TerminalGroup};
+use crate::group::{Session, ShownExtensionViews, TerminalGroup};
 use crate::host::Host;
 use crate::ids::{EnvironmentName, ResumeId, SessionId, TerminalId};
 use crate::side_panel::SidePanelLayout;
@@ -86,6 +86,8 @@ pub struct EnvironmentData {
     pub side_panel: SidePanelLayout,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub note_tabs: Vec<crate::notes::NoteTabs>,
+    #[serde(default, skip_serializing_if = "ShownExtensionViews::is_empty")]
+    pub extension_views: ShownExtensionViews,
 }
 
 impl EnvironmentData {
@@ -114,6 +116,7 @@ impl EnvironmentData {
             active_session: None,
             side_panel: SidePanelLayout::default(),
             note_tabs: Vec::new(),
+            extension_views: ShownExtensionViews::default(),
         }
     }
 }

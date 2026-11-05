@@ -49,7 +49,7 @@ impl LanguageTools {
         })
     }
 
-    fn host_server_runtimes<'a>(
+    pub(super) fn host_server_runtimes<'a>(
         &'a self,
         link: &'a HostLink,
         requirements: &'a RuntimeRequirements,

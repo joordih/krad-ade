@@ -13,6 +13,21 @@ pub struct ExtensionTab {
     pub instance: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShownExtensionViews {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar: Option<ExtensionTab>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side_panel: Option<ExtensionTab>,
+}
+
+impl ShownExtensionViews {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.sidebar.is_none() && self.side_panel.is_none()
+    }
+}
+
 impl EnvironmentData {
     #[must_use]
     pub fn extension_tab_of(&self, id: TerminalId) -> Option<&ExtensionTab> {
@@ -96,6 +111,19 @@ mod tests {
         let node = back.nodes.iter().find(|node| node.id == id);
         assert_eq!(node.map(|node| node.kind), Some(NodeKind::Extension));
         assert_eq!(back.extension_tab_of(id), Some(&containers()));
+        Ok(())
+    }
+
+    #[test]
+    fn the_shown_sidebar_view_persists_and_an_empty_one_is_not_written() -> serde_json::Result<()> {
+        let mut env = EnvironmentData::empty(EnvironmentName::new("main".to_owned()));
+        let quiet = serde_json::to_value(&env)?;
+        assert!(quiet.get("extension_views").is_none());
+        env.extension_views.sidebar = Some(containers());
+        let text = serde_json::to_string(&env)?;
+        let back: EnvironmentData = serde_json::from_str(&text)?;
+        assert_eq!(back.extension_views.sidebar, Some(containers()));
+        assert_eq!(back.extension_views.side_panel, None);
         Ok(())
     }
 }

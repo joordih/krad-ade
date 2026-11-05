@@ -151,6 +151,20 @@ impl EnvironmentShell {
         Some(id)
     }
 
+    pub(super) fn open_terminal_at(
+        &mut self,
+        env: &EnvironmentName,
+        spec: &NodeSpec<'_>,
+        launch: Launch,
+        cwd: Option<PathBuf>,
+        cx: &mut Context<Self>,
+    ) -> Option<TerminalId> {
+        let (id, default_cwd) = self.add_node(env, spec, None)?;
+        self.start_session(env, id, launch, cwd.or(default_cwd), &[]);
+        self.settle_new_node(cx);
+        Some(id)
+    }
+
     pub(super) fn spawn_chat_in(
         &mut self,
         env: &EnvironmentName,

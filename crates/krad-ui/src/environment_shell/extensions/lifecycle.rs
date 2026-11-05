@@ -1,7 +1,7 @@
 use futures::channel::mpsc;
 use futures::StreamExt as _;
 use gpui_kit::{AppContext as _, Context};
-use krad_domain::Host;
+use krad_domain::{Host, ServerRuntimeId};
 use krad_extensions::api::manifest::Placement;
 use krad_extensions::api::protocol::{
     AppInfo, EnvironmentInfo, ExecuteCommand, ExecuteCommandParams, Feature, HostInfo,
@@ -9,6 +9,8 @@ use krad_extensions::api::protocol::{
 };
 use krad_extensions::api::CURRENT_API;
 use krad_extensions::program::{initialize, ExtensionProcess, ProgramEvent, RestartPolicy, Trust};
+use krad_extensions::ExtensionError;
+use krad_host::{HostLink, HostPlatform};
 use std::collections::BTreeSet;
 
 use super::super::EnvironmentShell;
@@ -31,8 +33,25 @@ const COULD_NOT_START_TEXT: &str = "could not start";
 const GAVE_UP_TEXT: &str = "stopped too often and was not restarted";
 const FAILED_TEXT: &str = "has failed; retry it from Settings";
 const COMMAND_FAILED_TEXT: &str = "command failed";
-const REMOTE_UNSUPPORTED_TEXT: &str =
-    "runs in each environment, which is not supported on SSH hosts yet";
+const NEEDS_RUNTIME_TEXT: &str = "needs";
+
+pub(super) enum StartFailure {
+    MissingRuntime(ServerRuntimeId),
+    NoBuild,
+    Other(String),
+}
+
+impl From<ExtensionError> for StartFailure {
+    fn from(error: ExtensionError) -> Self {
+        match error {
+            ExtensionError::MissingServerRuntime(runtime) => Self::MissingRuntime(runtime),
+            ExtensionError::NoBuild => Self::NoBuild,
+            other => Self::Other(other.to_string()),
+        }
+    }
+}
+const NO_BUILD_TEXT: &str = "has no build for this environment's host";
+const HOST_GONE_TEXT: &str = "cannot reach this environment's host";
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn ensure_running(
@@ -56,7 +75,7 @@ impl EnvironmentShell {
                 return;
             }
             Some(Slot::Unsupported) => {
-                self.toast(&format!("{title} {REMOTE_UNSUPPORTED_TEXT}"), cx);
+                self.toast(&format!("{title} {NO_BUILD_TEXT}"), cx);
                 return;
             }
             None => {}
@@ -81,16 +100,10 @@ impl EnvironmentShell {
             self.ask_trust(&record.entry.id, cx);
             return;
         }
-        let remote = key
-            .environment
-            .as_ref()
-            .and_then(|name| self.envs.get(name))
-            .is_some_and(|live| !matches!(live.data.host, Host::Local));
-        if remote {
-            self.extensions.slots.insert(key, Slot::Unsupported);
-            self.toast(&format!("{} {REMOTE_UNSUPPORTED_TEXT}", record.title()), cx);
+        let Some((link, platform)) = self.program_link(&key) else {
+            self.toast(&format!("{} {HOST_GONE_TEXT}", record.title()), cx);
             return;
-        }
+        };
         let Some(tools) = self.language_tools() else {
             self.extensions
                 .slots
@@ -122,15 +135,18 @@ impl EnvironmentShell {
         let chosen = self.settings.server_runtimes.clone();
         let log = record.log.clone();
         let starting = cx.background_spawn(async move {
-            let launch = tools
-                .program_launch(&installed, &chosen)
-                .map_err(|error| error.to_string())?;
-            let (process, events) = ExtensionProcess::start(&launch, &installed.folder, log)
-                .map_err(|error| error.to_string())?;
+            let mut params = params;
+            let site = tools
+                .program_site(&link, platform, &installed, &chosen)
+                .map_err(StartFailure::from)?;
+            params.extension_folder.clone_from(&site.folder);
+            let (process, events) =
+                ExtensionProcess::start_on(&link, &site.launch, &site.folder, log)
+                    .map_err(|error| StartFailure::Other(error.to_string()))?;
             initialize(&process.connection, &params)
                 .await
-                .map_err(|error| error.to_string())?;
-            Ok::<_, String>((process, events))
+                .map_err(|error| StartFailure::Other(error.to_string()))?;
+            Ok::<_, StartFailure>((process, events))
         });
         cx.spawn(async move |this, cx| {
             let started = starting.await;
@@ -164,10 +180,25 @@ impl EnvironmentShell {
         })
     }
 
+    pub(super) fn program_link(&self, key: &SlotKey) -> Option<(HostLink, Option<HostPlatform>)> {
+        let Some(name) = &key.environment else {
+            return Some((HostLink::Local, None));
+        };
+        let live = self.envs.get(name)?;
+        if matches!(live.data.host, Host::Local) {
+            return Some((HostLink::Local, None));
+        }
+        let platform = match &live.link {
+            HostLink::Local => None,
+            HostLink::Remote(remote) => remote.platform(),
+        };
+        Some((live.link.clone(), platform))
+    }
+
     fn program_started(
         &mut self,
         key: &SlotKey,
-        started: Result<(ExtensionProcess, mpsc::Receiver<ProgramEvent>), String>,
+        started: Result<(ExtensionProcess, mpsc::Receiver<ProgramEvent>), StartFailure>,
         cx: &mut Context<Self>,
     ) {
         let Some(Slot::Starting(waiting)) = self.extensions.slots.remove(key) else {
@@ -176,7 +207,21 @@ impl EnvironmentShell {
         let title = self.extensions.title_of(&key.extension);
         let (process, mut events) = match started {
             Ok(started) => started,
-            Err(error) => {
+            Err(StartFailure::NoBuild) => {
+                self.toast(&format!("{title} {NO_BUILD_TEXT}"), cx);
+                self.extensions.slots.insert(key.clone(), Slot::Unsupported);
+                self.fail_views_of(key, cx);
+                return;
+            }
+            Err(StartFailure::MissingRuntime(runtime)) => {
+                let error = format!("{title} {NEEDS_RUNTIME_TEXT} {runtime}");
+                self.extensions
+                    .slots
+                    .insert(key.clone(), Slot::Failed(error));
+                self.offer_runtime_install(key, runtime, waiting, cx);
+                return;
+            }
+            Err(StartFailure::Other(error)) => {
                 if let Some(record) = self.extensions.record(&key.extension) {
                     record.log.push(error.clone());
                 }
@@ -229,6 +274,7 @@ impl EnvironmentShell {
         };
         let ran_for = running.process.ran_for();
         drop(running);
+        self.extensions.progress.forget(key);
         tracing::info!(extension = %key.extension, "extension program stopped");
         let delay = self
             .extensions

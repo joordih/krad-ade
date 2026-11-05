@@ -3,6 +3,7 @@ use krad_domain::ServerLaunch;
 use krad_extension_api::protocol::{
     Empty, Exit, Initialize, InitializeParams, InitializeResult, Initialized,
 };
+use krad_host::{HostCommand, HostLink};
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
@@ -51,16 +52,25 @@ impl ExtensionProcess {
     /// # Errors
     ///
     /// Returns [`ProgramError::Spawn`] when the program cannot be started.
-    #[tracing::instrument(skip_all, fields(program = %launch.program.display()))]
     pub fn start(
         launch: &ServerLaunch,
         cwd: &Path,
         log: ProgramLog,
     ) -> Result<(Self, mpsc::Receiver<ProgramEvent>), ProgramError> {
-        let mut child = Command::new(&launch.program)
-            .args(&launch.args)
-            .envs(launch.env.iter().map(|(name, value)| (name, value)))
-            .current_dir(cwd)
+        Self::start_on(&HostLink::Local, launch, cwd, log)
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`ProgramError::Spawn`] when the program cannot be started here or on the host.
+    #[tracing::instrument(skip_all, fields(program = %launch.program.display(), local = link.is_local()))]
+    pub fn start_on(
+        link: &HostLink,
+        launch: &ServerLaunch,
+        cwd: &Path,
+        log: ProgramLog,
+    ) -> Result<(Self, mpsc::Receiver<ProgramEvent>), ProgramError> {
+        let mut child = program_command(link, launch, cwd)?
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -118,6 +128,36 @@ impl Drop for ExtensionProcess {
     }
 }
 
+fn program_command(
+    link: &HostLink,
+    launch: &ServerLaunch,
+    cwd: &Path,
+) -> Result<Command, ProgramError> {
+    if link.is_local() {
+        let mut command = Command::new(&launch.program);
+        command
+            .args(&launch.args)
+            .envs(launch.env.iter().map(|(name, value)| (name, value)))
+            .current_dir(cwd);
+        return Ok(command);
+    }
+    host_command(launch, cwd)
+        .build(link)
+        .map_err(|error| ProgramError::Spawn(error.into()))
+}
+
+fn host_command(launch: &ServerLaunch, cwd: &Path) -> HostCommand {
+    let mut remote = HostCommand::new(&launch.program);
+    remote.args(&launch.args).current_dir(cwd).in_login_shell();
+    let vars: Vec<(String, String)> = launch
+        .env
+        .iter()
+        .map(|(name, value)| (name.clone(), value.to_string_lossy().into_owned()))
+        .collect();
+    remote.path_and_env(&vars);
+    remote
+}
+
 fn keep_lines(errors: impl Read, log: &ProgramLog) {
     for line in BufReader::new(errors).lines() {
         match line {
@@ -130,6 +170,20 @@ fn keep_lines(errors: impl Read, log: &ProgramLog) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_host_program_is_named_after_its_runtime() {
+        let launch = ServerLaunch {
+            program: "/home/dev/.krad-ade/languages/server-runtimes/node/bin/node".into(),
+            args: vec!["dist/main.js".to_owned()],
+            env: vec![("PATH".to_owned(), "/opt/node/bin".into())],
+        };
+        let command = host_command(
+            &launch,
+            Path::new("/home/dev/.krad-ade/extensions/docker/a1/docker"),
+        );
+        assert_eq!(command.program_name(), "node");
+    }
 
     #[test]
     fn the_log_keeps_only_its_newest_lines() {

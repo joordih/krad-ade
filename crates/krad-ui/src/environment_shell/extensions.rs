@@ -5,7 +5,10 @@ mod events;
 mod keys;
 mod lifecycle;
 mod matching;
+mod progress;
 mod prompts;
+mod runtime_install;
+mod terminals;
 mod trust;
 mod views;
 
@@ -17,8 +20,7 @@ pub(in crate::environment_shell) use views::OpenViewId;
 use gpui_kit::{AppContext as _, Context, Task};
 use krad_domain::{EnvironmentName, ExtensionEntry, ExtensionSettings, TerminalId};
 use krad_extensions::api::manifest::{ExtensionManifest, Placement};
-use krad_extensions::api::protocol::ProgressParams;
-use krad_extensions::api::{ExtensionId, ProgressToken, TerminalHandle};
+use krad_extensions::api::{ExtensionId, TerminalHandle};
 use krad_extensions::folder_of;
 use krad_extensions::program::{
     read_installed, ExtensionProcess, InstalledExtension, ProgramConnection, ProgramLog,
@@ -106,7 +108,7 @@ pub(in crate::environment_shell) struct Extensions {
     pub(in crate::environment_shell) values: ExtensionSettings,
     views: views::OpenViews,
     prompts: prompts::Prompts,
-    progress: Vec<(SlotKey, ProgressToken, ProgressParams)>,
+    progress: progress::ProgressBoard,
     terminals: HashMap<TerminalHandle, (EnvironmentName, TerminalId)>,
     view_terminals: Vec<(SlotKey, TerminalHandle, gpui_kit::AnyView)>,
     next_terminal: u64,
@@ -114,6 +116,7 @@ pub(in crate::environment_shell) struct Extensions {
     bound: HashSet<(String, String, String)>,
     declined: HashSet<String>,
     trust_queue: VecDeque<String>,
+    restored: HashSet<EnvironmentName>,
     watch: activation::Watch,
 }
 

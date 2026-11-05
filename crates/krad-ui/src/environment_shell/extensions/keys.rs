@@ -1,6 +1,7 @@
 use gpui_kit::{Context, DummyKeyboardMapper, KeyBinding, KeyBindingContextPredicate};
 use krad_extensions::api::manifest::KeybindingContribution;
 use krad_extensions::api::QualifiedCommand;
+use std::collections::{BTreeSet, HashSet};
 use std::rc::Rc;
 
 use super::super::EnvironmentShell;
@@ -109,7 +110,53 @@ pub(super) fn plan(app: &[KeyBinding], wanted: &[(QualifiedCommand, String)]) ->
     }
 }
 
+const RESTART_TO_REMOVE: &str = "Restart Krad to remove the shortcuts of";
+
+fn stale_shortcuts(
+    bound: &HashSet<(String, String, String)>,
+    wanted: &[(QualifiedCommand, String)],
+) -> BTreeSet<String> {
+    bound
+        .iter()
+        .filter(|(keys, extension, command)| {
+            !wanted.iter().any(|(wanted, wanted_keys)| {
+                wanted_keys == keys
+                    && wanted.extension.as_ref() == extension.as_str()
+                    && wanted.command.as_ref() == command.as_str()
+            })
+        })
+        .map(|(_, extension, _)| extension.clone())
+        .collect()
+}
+
 impl EnvironmentShell {
+    fn forget_stale_shortcuts(
+        &mut self,
+        wanted: &[(QualifiedCommand, String)],
+        cx: &mut Context<Self>,
+    ) {
+        let stale = stale_shortcuts(&self.extensions.bound, wanted);
+        if stale.is_empty() {
+            return;
+        }
+        self.extensions
+            .bound
+            .retain(|(_, extension, _)| !stale.contains(extension));
+        for extension in stale {
+            let title = self
+                .extensions
+                .records
+                .iter()
+                .find(|record| {
+                    record
+                        .manifest()
+                        .is_some_and(|manifest| manifest.id.as_ref() == extension)
+                })
+                .map_or(extension.clone(), super::ExtensionRecord::title);
+            self.toast(&format!("{RESTART_TO_REMOVE} {title}"), cx);
+        }
+    }
+
     pub(super) fn bind_extension_keys(&mut self, cx: &mut Context<Self>) {
         let wanted: Vec<(QualifiedCommand, String)> = self
             .usable_manifests()
@@ -129,6 +176,7 @@ impl EnvironmentShell {
                     })
             })
             .collect();
+        self.forget_stale_shortcuts(&wanted, cx);
         let planned = plan(&crate::keymap::key_bindings(), &wanted);
         self.extensions.conflicts = planned.conflicts;
         let fresh: Vec<KeyBinding> = planned
@@ -204,6 +252,29 @@ mod tests {
         assert_eq!(
             platform_keys(&binding, KeyPlatform::Windows),
             Some("ctrl-shift-r")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn shortcuts_of_extensions_no_longer_wanted_are_reported_once_per_extension(
+    ) -> Result<(), IdError> {
+        let bound: HashSet<(String, String, String)> = [
+            ("cmd-alt-r", "docker", "refresh"),
+            ("cmd-alt-p", "docker", "prune"),
+            ("cmd-alt-g", "git-tools", "graph"),
+        ]
+        .into_iter()
+        .map(|(keys, extension, command)| {
+            (keys.to_owned(), extension.to_owned(), command.to_owned())
+        })
+        .collect();
+        let wanted = vec![(command("git-tools", "graph")?, "cmd-alt-g".to_owned())];
+        assert_eq!(
+            stale_shortcuts(&bound, &wanted)
+                .into_iter()
+                .collect::<Vec<_>>(),
+            ["docker"]
         );
         Ok(())
     }

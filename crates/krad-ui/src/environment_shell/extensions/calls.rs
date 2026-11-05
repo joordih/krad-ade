@@ -1,20 +1,17 @@
 use gpui_kit::{AppContext as _, Context};
-use krad_domain::{AgentPreset, ExtensionSecret, ExtensionSecretKey, ExtensionSettingValue};
+use krad_domain::{ExtensionSecret, ExtensionSecretKey, ExtensionSettingValue};
 use krad_extensions::api::manifest::SettingKind;
 use krad_extensions::api::protocol::{
     CloseView, Empty, GetSecret, GetSecretParams, GetSettings, GroupInfo, OpenFile, OpenFileParams,
-    OpenTerminal, OpenTerminalParams, OpenView, ProgressState, Request, RunCommand, Secret,
-    SetSecret, SetSecretParams, SettingValue, SettingsValues, TerminalZone, WorkspaceContext,
-    WorkspaceContextResult,
+    OpenTerminal, OpenView, Request, RunCommand, Secret, SetSecret, SetSecretParams, SettingValue,
+    SettingsValues, WorkspaceContext, WorkspaceContextResult,
 };
 use krad_extensions::api::view::Tone;
-use krad_extensions::api::{SettingKey, TerminalHandle};
+use krad_extensions::api::SettingKey;
 use krad_extensions::program::{AppCall, AppNotice, CallId};
 use krad_lsp::lsp_types::Position;
-use krad_session::PtyInput;
 use std::collections::BTreeMap;
 
-use super::super::sessions::Launch;
 use super::super::EnvironmentShell;
 use super::prompts::Prompt;
 use super::SlotKey;
@@ -22,7 +19,6 @@ use super::SlotKey;
 const NO_SUCH_COMMAND: &str = "no enabled extension declares that command";
 const NO_SUCH_VIEW: &str = "the extension declares no such view";
 const NO_SUCH_SECRET: &str = "the extension declares no such secret";
-const NO_TERMINAL: &str = "the terminal could not be opened";
 const SECRET_STORE_FAILED: &str = "the secret store failed";
 const WARNING_MARK: &str = "⚠";
 const ERROR_MARK: &str = "✕";
@@ -65,8 +61,8 @@ impl EnvironmentShell {
                 self.queue_extension_prompt(Prompt::Input(key.clone(), id, params), cx);
             }
             AppCall::OpenTerminal(params) => match self.open_extension_terminal(key, params, cx) {
-                Some(handle) => self.answer_call::<OpenTerminal>(key, id, &handle),
-                None => self.refuse_call(key, id, NO_TERMINAL),
+                Ok(handle) => self.answer_call::<OpenTerminal>(key, id, &handle),
+                Err(refusal) => self.refuse_call(key, id, refusal.reason()),
             },
             AppCall::WorkspaceContext => {
                 let context = self.workspace_context(key);
@@ -137,82 +133,6 @@ impl EnvironmentShell {
             AppNotice::SendTerminal(params) => {
                 self.send_extension_terminal(params.terminal, params.text);
             }
-        }
-    }
-
-    fn track_progress(
-        &mut self,
-        key: &SlotKey,
-        title: &str,
-        params: krad_extensions::api::protocol::ProgressParams,
-    ) {
-        let token = params.token.clone();
-        let progress = &mut self.extensions.progress;
-        progress.retain(|(owner, known, _)| !(owner == key && *known == token));
-        match &params.state {
-            ProgressState::Begin { title: what } => {
-                self.activity_log.record(format!("{title}: {what}"));
-                self.extensions.progress.push((key.clone(), token, params));
-            }
-            ProgressState::Report { .. } => {
-                let bounded = krad_extensions::api::protocol::ProgressParams {
-                    token: params.token.clone(),
-                    state: params.state.clone().bounded(),
-                };
-                self.extensions.progress.push((key.clone(), token, bounded));
-            }
-            ProgressState::End => {}
-        }
-    }
-
-    fn open_extension_terminal(
-        &mut self,
-        key: &SlotKey,
-        params: OpenTerminalParams,
-        cx: &mut Context<Self>,
-    ) -> Option<TerminalHandle> {
-        let env = key
-            .environment
-            .clone()
-            .unwrap_or_else(|| self.active.clone());
-        let launch = match params.command {
-            Some(command) => Launch::Command {
-                program: command.program,
-                args: command.args,
-                vars: command.env.into_iter().collect(),
-            },
-            None => Launch::Preset(AgentPreset::Shell),
-        };
-        let terminal = self.spawn_terminal_in(&env, None, &params.title, launch, None, cx)?;
-        if params.zone == TerminalZone::Utilities && env == self.active {
-            self.dock_in_activity(terminal, cx);
-        }
-        self.extensions.next_terminal += 1;
-        let handle = TerminalHandle(self.extensions.next_terminal);
-        self.extensions.terminals.insert(handle, (env, terminal));
-        if params.zone == TerminalZone::View {
-            self.attach_view_terminal(key, handle, terminal, params.title, cx);
-        }
-        Some(handle)
-    }
-
-    fn send_extension_terminal(&mut self, handle: TerminalHandle, text: String) {
-        let Some((env, terminal)) = self.extensions.terminals.get(&handle).cloned() else {
-            return;
-        };
-        let Some(session) = self
-            .envs
-            .get_mut(&env)
-            .and_then(|live| live.sessions.get_mut(&terminal))
-        else {
-            return;
-        };
-        if session
-            .writer_tx
-            .send(PtyInput::Bytes(text.into_bytes()))
-            .is_err()
-        {
-            tracing::debug!("extension terminal writer closed");
         }
     }
 
