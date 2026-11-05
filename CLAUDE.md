@@ -32,7 +32,7 @@ per crate:
 **Dependency rules (mandatory):**
 
 - `krad-app -> krad-ui -> {krad-session -> {krad-pty, krad-term}, krad-repo, krad-store, krad-agents, krad-chat, krad-gitlab, krad-github, krad-update, krad-lsp, krad-extensions, krad-host}`,
-  `krad-app -> krad-agents`, `krad-app -> krad-store` and `krad-extensions -> krad-extension-api`, which `krad-extensions` re-exports to `krad-ui`; `krad-extension-api` depends on no workspace crate. `krad-repo`, `krad-chat`, `krad-lsp`, `krad-extensions` and `krad-agents` may depend on `krad-host`, which depends only on `krad-domain`. Any crate may depend on `krad-domain`. No other edges, no cycles.
+  `krad-app -> krad-agents`, `krad-app -> krad-store` and `krad-extensions -> krad-extension-api`, which `krad-extensions` re-exports to `krad-ui`; `krad-extension-api` depends only on `krad-domain`, which owns the extension id. `krad-repo`, `krad-chat`, `krad-lsp`, `krad-extensions` and `krad-agents` may depend on `krad-host`, which depends only on `krad-domain`. Any crate may depend on `krad-domain`. No other edges, no cycles.
 - `krad-domain` depends on no workspace crate and on none of `gpui`, `libghostty-vt` or `tokio`.
 - `krad-term` must not depend on `krad-pty`; it is tested by feeding raw bytes.
 - `gpui` (published as `gpui-pre`, pulled in by `gpui-kit`) is only allowed in `krad-ui` and

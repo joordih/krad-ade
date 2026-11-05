@@ -67,11 +67,11 @@ Mason's public list of language servers and tools and how to fetch each one, whi
 _Avoid_: Mason (in UI), catalogue, marketplace
 
 **Extension**:
-A folder the user adds from Settings, from a git address or a local folder, and can update, disable or remove. It brings language, toolchain and server runtime manifests, and may bring its own program, which adds commands, views drawn by the app, host kinds and tools for agents.
+A folder the user adds from Settings, from a git address, the extension index or a local folder, and can update, disable or remove. It brings language, toolchain and server runtime manifests, and may bring its own program, which adds commands, views drawn by the app, host kinds and tools for agents. Nothing in it is used until the user trusts it, and any change to its files or its commit asks again.
 _Avoid_: plugin, add-on, Zed extension, VS Code extension
 
 **Extension program**:
-The program an extension brings, which the app starts when one of its commands, views, host kinds or tools is first used. It runs either once for the app on this computer or once per open environment on that environment's host, as its extension declares; the user trusts it when adding or updating the extension.
+The program an extension brings, which the app starts when one of its commands, views, host kinds or tools is first used. It runs either once for the app on this computer or once per open environment on that environment's host, as its extension declares. It may open terminals or run other extensions' commands only when its extension declares those permissions.
 _Avoid_: extension host, plugin process, extension server
 
 **Extension view**:
@@ -83,7 +83,7 @@ A kind of machine an environment can live on besides this computer and SSH hosts
 _Avoid_: provider, remote type, connector
 
 **Extension tool**:
-A tool a trusted extension offers to every agent the app starts, beside the code tools, named after its extension and approved by each agent's permission mode when it changes something.
+A tool a trusted extension offers to every agent the app starts, beside the code tools, named after its extension. It is never presented as read-only, so each agent's permission mode asks before using it unless the user allows it there.
 _Avoid_: plugin tool, extension command
 
 **Environment**:

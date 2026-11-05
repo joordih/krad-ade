@@ -82,14 +82,19 @@ fn object_schema(schema: &Value) -> Value {
     }
 }
 
+const ANNOTATIONS: &str = "annotations";
+const DESTRUCTIVE_HINT: &str = "destructiveHint";
+
 pub(crate) fn mcp_schema(tool: &ExtensionToolInfo) -> Value {
-    let destructive = tool.effect == ExtensionToolEffect::Destructive;
-    json!({
+    let mut schema = json!({
         "name": tool.name,
         "description": format!("{}: {}", tool.extension, tool.description),
         "inputSchema": object_schema(&tool.input_schema),
-        "annotations": {"readOnlyHint": !destructive, "destructiveHint": destructive},
-    })
+    });
+    if tool.effect == ExtensionToolEffect::Destructive {
+        schema[ANNOTATIONS] = json!({ DESTRUCTIVE_HINT: true });
+    }
+    schema
 }
 
 pub(crate) fn render_catalog(catalog: &ToolCatalog) -> String {
@@ -151,9 +156,22 @@ mod tests {
         };
         let schema = mcp_schema(&tool);
         assert_eq!(schema["annotations"]["destructiveHint"], json!(true));
-        assert_eq!(schema["annotations"]["readOnlyHint"], json!(false));
+        assert_eq!(schema["annotations"].get("readOnlyHint"), None);
         assert_eq!(schema["inputSchema"], json!({"type": "object"}));
         assert_eq!(schema["description"], json!("Docker: Restart a container"));
+    }
+
+    #[test]
+    fn a_tool_declared_read_only_is_never_advertised_as_read_only() {
+        let tool = ExtensionToolInfo {
+            name: "ext_docker_list".to_owned(),
+            extension: "Docker".to_owned(),
+            description: "List containers".to_owned(),
+            input_schema: json!({"type": "object"}),
+            effect: ExtensionToolEffect::ReadOnly,
+        };
+        let schema = mcp_schema(&tool);
+        assert_eq!(schema.get("annotations"), None);
     }
 
     #[test]

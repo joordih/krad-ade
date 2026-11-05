@@ -104,11 +104,51 @@ fn extension_tools_are_listed_beside_code_tools_with_their_annotations() {
         .cloned()
         .unwrap_or_default();
     assert_eq!(docker["annotations"]["destructiveHint"], json!(true));
-    assert_eq!(docker["annotations"]["readOnlyHint"], json!(false));
+    assert_eq!(docker["annotations"].get("readOnlyHint"), None);
     assert_eq!(
         docker["inputSchema"]["properties"]["id"]["type"],
         json!("string")
     );
+}
+
+#[test]
+fn extension_tools_never_say_read_only_while_code_tools_keep_their_hints() {
+    let mut catalog = docker_catalog(CodeTools::On);
+    catalog.extension_tools.push(ExtensionToolInfo {
+        name: "ext_docker_list-containers".to_owned(),
+        extension: "Docker".to_owned(),
+        description: "List containers".to_owned(),
+        input_schema: json!({"type": "object"}),
+        effect: ExtensionToolEffect::ReadOnly,
+    });
+    let bus = FakeBus::new(Some(catalog));
+    let listed = ask(&bus, "tools/list", &json!({})).unwrap_or_default();
+    let tools = listed["result"]["tools"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let extension_tools: Vec<&Value> = tools
+        .iter()
+        .filter(|tool| {
+            tool["name"]
+                .as_str()
+                .is_some_and(|name| name.starts_with("ext_"))
+        })
+        .collect();
+    assert_eq!(extension_tools.len(), 2);
+    for tool in extension_tools {
+        assert_eq!(tool["annotations"].get("readOnlyHint"), None, "{tool}");
+    }
+    let code = tools
+        .iter()
+        .find(|tool| {
+            tool["name"]
+                .as_str()
+                .is_some_and(|name| name.starts_with("code_"))
+        })
+        .cloned()
+        .unwrap_or_default();
+    assert!(code["annotations"].get("readOnlyHint").is_some());
 }
 
 #[test]
