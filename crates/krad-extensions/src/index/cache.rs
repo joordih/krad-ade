@@ -34,16 +34,19 @@ pub struct LoadedIndex {
     pub age: Duration,
 }
 
-fn cache_file(config_dir: &Path) -> PathBuf {
-    config_dir.join(INDEX_DIR).join(INDEX_FILE)
+fn cache_file(config_dir: &Path, repository: &IndexRepository) -> PathBuf {
+    config_dir
+        .join(INDEX_DIR)
+        .join(repository.to_string())
+        .join(INDEX_FILE)
 }
 
 fn index_url(repository: &IndexRepository) -> String {
     format!("{RAW_GITHUB}/{repository}/{DEFAULT_BRANCH}/{INDEX_FILE}")
 }
 
-fn cached(config_dir: &Path) -> Option<(ExtensionIndex, Duration)> {
-    let file = cache_file(config_dir);
+fn cached(config_dir: &Path, repository: &IndexRepository) -> Option<(ExtensionIndex, Duration)> {
+    let file = cache_file(config_dir, repository);
     let age = fs::metadata(&file)
         .ok()?
         .modified()
@@ -54,8 +57,8 @@ fn cached(config_dir: &Path) -> Option<(ExtensionIndex, Duration)> {
     ExtensionIndex::parse(&text).ok().map(|index| (index, age))
 }
 
-fn store(config_dir: &Path, text: &str) -> io::Result<()> {
-    let file = cache_file(config_dir);
+fn store(config_dir: &Path, repository: &IndexRepository, text: &str) -> io::Result<()> {
+    let file = cache_file(config_dir, repository);
     if let Some(folder) = file.parent() {
         fs::create_dir_all(folder)?;
     }
@@ -66,10 +69,11 @@ fn store(config_dir: &Path, text: &str) -> io::Result<()> {
 
 pub(super) fn load_with(
     config_dir: &Path,
+    repository: &IndexRepository,
     freshness: Freshness,
     fetch: impl FnOnce() -> Result<String, ExtensionError>,
 ) -> Result<LoadedIndex, ExtensionError> {
-    let kept = cached(config_dir);
+    let kept = cached(config_dir, repository);
     if let (Freshness::CachedIfFresh, Some((index, age))) = (freshness, &kept) {
         if *age < MAX_INDEX_AGE {
             return Ok(LoadedIndex {
@@ -81,7 +85,7 @@ pub(super) fn load_with(
     }
     let fetched = fetch().and_then(|text| {
         let index = ExtensionIndex::parse(&text).map_err(ExtensionError::from)?;
-        store(config_dir, &text)?;
+        store(config_dir, repository, &text)?;
         Ok(index)
     });
     match (fetched, kept) {
@@ -112,14 +116,14 @@ pub fn load_index(
     repository: &IndexRepository,
     freshness: Freshness,
 ) -> Result<LoadedIndex, ExtensionError> {
-    load_with(config_dir, freshness, || {
+    load_with(config_dir, repository, freshness, || {
         http::fetch_text(&http::agent(), &index_url(repository))
     })
 }
 
 #[must_use]
-pub fn cached_index(config_dir: &Path) -> Option<LoadedIndex> {
-    cached(config_dir).map(|(index, age)| LoadedIndex {
+pub fn cached_index(config_dir: &Path, repository: &IndexRepository) -> Option<LoadedIndex> {
+    cached(config_dir, repository).map(|(index, age)| LoadedIndex {
         index,
         origin: IndexOrigin::Cached,
         age,
@@ -146,11 +150,19 @@ mod tests {
     #[test]
     fn a_fresh_cache_answers_without_fetching() -> TestResult {
         let dir = config("fresh")?;
-        let first = load_with(&dir, Freshness::CachedIfFresh, || Ok(INDEX.to_owned()))?;
+        let first = load_with(
+            &dir,
+            &IndexRepository::default(),
+            Freshness::CachedIfFresh,
+            || Ok(INDEX.to_owned()),
+        )?;
         assert_eq!(first.origin, IndexOrigin::Fetched);
-        let second = load_with(&dir, Freshness::CachedIfFresh, || {
-            Err(ExtensionError::Missing("network".to_owned()))
-        })?;
+        let second = load_with(
+            &dir,
+            &IndexRepository::default(),
+            Freshness::CachedIfFresh,
+            || Err(ExtensionError::Missing("network".to_owned())),
+        )?;
         assert_eq!(second.origin, IndexOrigin::Cached);
         assert_eq!(second.index, first.index);
         Ok(())
@@ -159,10 +171,18 @@ mod tests {
     #[test]
     fn a_failed_refresh_falls_back_to_the_cached_copy() -> TestResult {
         let dir = config("stale")?;
-        load_with(&dir, Freshness::Refresh, || Ok(INDEX.to_owned()))?;
-        let loaded = load_with(&dir, Freshness::Refresh, || {
-            Err(ExtensionError::Missing("network".to_owned()))
-        })?;
+        load_with(
+            &dir,
+            &IndexRepository::default(),
+            Freshness::Refresh,
+            || Ok(INDEX.to_owned()),
+        )?;
+        let loaded = load_with(
+            &dir,
+            &IndexRepository::default(),
+            Freshness::Refresh,
+            || Err(ExtensionError::Missing("network".to_owned())),
+        )?;
         assert_eq!(loaded.origin, IndexOrigin::StaleCache);
         assert_eq!(loaded.index.entries.len(), 1);
         Ok(())
@@ -171,9 +191,29 @@ mod tests {
     #[test]
     fn nothing_cached_and_nothing_fetched_is_an_error() -> TestResult {
         let dir = config("empty")?;
-        let loaded = load_with(&dir, Freshness::CachedIfFresh, || Ok("not json".to_owned()));
+        let loaded = load_with(
+            &dir,
+            &IndexRepository::default(),
+            Freshness::CachedIfFresh,
+            || Ok("not json".to_owned()),
+        );
         assert!(loaded.is_err());
-        assert!(cached_index(&dir).is_none());
+        assert!(cached_index(&dir, &IndexRepository::default()).is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn each_index_repository_keeps_its_own_cache() -> TestResult {
+        let dir = config("repositories")?;
+        load_with(
+            &dir,
+            &IndexRepository::default(),
+            Freshness::Refresh,
+            || Ok(INDEX.to_owned()),
+        )?;
+        let other: IndexRepository = "acme/extensions".parse()?;
+        assert!(cached_index(&dir, &other).is_none());
+        assert!(cached_index(&dir, &IndexRepository::default()).is_some());
         Ok(())
     }
 }

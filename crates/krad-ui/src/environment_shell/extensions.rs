@@ -4,17 +4,20 @@ mod commands;
 mod events;
 mod keys;
 mod lifecycle;
+mod machines;
 mod matching;
 mod progress;
 mod prompts;
 mod runtime_install;
 mod terminals;
+mod tools;
 mod trust;
 mod views;
 
 pub(in crate::environment_shell) use calls::default_value;
 pub(in crate::environment_shell) use commands::{ExtensionMenu, ExtensionPick, PaletteEntry};
 pub(in crate::environment_shell) use keys::{ClashWith, KeyConflict};
+pub(in crate::environment_shell) use machines::{HostKindRef, MachineDialog};
 pub(in crate::environment_shell) use views::OpenViewId;
 
 use gpui_kit::{AppContext as _, Context, Task};
@@ -85,6 +88,8 @@ pub(in crate::environment_shell) enum Deferred {
         Option<krad_extensions::api::protocol::CommandTarget>,
     ),
     Render(OpenViewId),
+    Tool(tools::ToolCall),
+    Machines(machines::MachineRequest),
 }
 
 pub(in crate::environment_shell) struct Running {
@@ -118,6 +123,8 @@ pub(in crate::environment_shell) struct Extensions {
     trust_queue: VecDeque<String>,
     restored: HashSet<EnvironmentName>,
     watch: activation::Watch,
+    loaded: bool,
+    machines: machines::Machines,
 }
 
 impl Extensions {
@@ -217,6 +224,7 @@ impl EnvironmentShell {
         self.stop_changed_programs(&kept, cx);
         self.extensions.records = kept;
         self.extensions.values = values;
+        self.extensions.loaded = true;
         self.bind_extension_keys(cx);
         self.queue_trust_prompts(cx);
         self.activate_on_startup(cx);

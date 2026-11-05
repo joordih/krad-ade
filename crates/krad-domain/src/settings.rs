@@ -1,4 +1,5 @@
 use crate::agent::AgentPreset;
+use crate::extension_index::{lenient_index_repository, IndexRepository};
 use crate::file_icon::FileIconColors;
 use crate::font::{stored_font, FontChoice};
 use crate::gateway::GatewaySettings;
@@ -214,6 +215,14 @@ pub enum CodeTools {
     Off,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExtensionTools {
+    #[default]
+    On,
+    Off,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PerformanceMode {
@@ -250,6 +259,8 @@ pub struct Settings {
     pub appearance: AppearanceMode,
     #[serde(default)]
     pub code_tools: CodeTools,
+    #[serde(default)]
+    pub extension_tools: ExtensionTools,
     #[serde(default, skip_serializing)]
     pub terminal_theme: TerminalTheme,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -292,6 +303,12 @@ pub struct Settings {
     pub server_runtimes: ServerRuntimePaths,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extensions: Vec<ExtensionEntry>,
+    #[serde(
+        default,
+        deserialize_with = "lenient_index_repository",
+        skip_serializing_if = "IndexRepository::is_default"
+    )]
+    pub extension_index: IndexRepository,
     #[serde(default, skip_serializing_if = "HostTimeouts::is_default")]
     pub host_timeouts: HostTimeouts,
     #[serde(default, skip_serializing_if = "ToolchainActivation::is_off")]

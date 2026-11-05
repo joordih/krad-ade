@@ -1,7 +1,7 @@
 use gpui_kit::{
     div, px, AnyElement, Context, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
 };
-use krad_domain::{AppUpdateCheck, AppearanceMode, CodeTools, PerformanceMode};
+use krad_domain::{AppUpdateCheck, AppearanceMode, CodeTools, ExtensionTools, PerformanceMode};
 
 use super::super::dialog_parts::{segment, SegmentSize};
 use super::{form_row, panel_card, segmented_track, EnvironmentShell, SWATCH_GAP};
@@ -28,6 +28,10 @@ const BTN_CODE_TOOLS_OFF: &str = "code-tools-off";
 const LABEL_CODE_TOOLS_ON: &str = "On";
 const LABEL_CODE_TOOLS_OFF: &str = "Off";
 const CODE_TOOLS_LABEL: &str = "Code tools for agents";
+const BTN_EXTENSION_TOOLS_ON: &str = "extension-tools-on";
+const BTN_EXTENSION_TOOLS_OFF: &str = "extension-tools-off";
+const EXTENSION_TOOLS_LABEL: &str = "Extension tools for agents";
+const EXTENSION_TOOLS_HINT: &str = "Agents the app starts can use the tools that trusted extensions offer, approved by each agent's permission mode. Applies to the next tool list an agent asks for.";
 const PERFORMANCE_PREFIX: &str = "performance-mode";
 const PERFORMANCE_LABEL: &str = "Performance mode";
 const PERFORMANCE_HINT: &str = "Skips animations: panels, tabs and switches jump straight to where they end. Helps on slower machines or with many agents running.";
@@ -37,7 +41,10 @@ impl EnvironmentShell {
     pub(super) fn general_pane(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let updates_card = panel_card(vec![self.app_updates_row(cx)], pal);
-        let code_tools_card = panel_card(vec![self.code_tools_row(cx)], pal);
+        let code_tools_card = panel_card(
+            vec![self.code_tools_row(cx), self.extension_tools_row(cx)],
+            pal,
+        );
         let performance_card = panel_card(vec![self.performance_row(cx)], pal);
         div()
             .flex()
@@ -122,6 +129,45 @@ impl EnvironmentShell {
             ))
             .into_any_element();
         form_row(CODE_TOOLS_LABEL, Some(CODE_TOOLS_HINT), segmented, pal)
+    }
+
+    fn extension_tools_row(&self, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
+        let current = self.settings.extension_tools;
+        let option = |id: &'static str, label: &'static str, choice: ExtensionTools| {
+            segment(
+                id,
+                label,
+                None,
+                current == choice,
+                SegmentSize::Compact,
+                pal,
+                cx,
+            )
+            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                this.settings.extension_tools = choice;
+                this.save_settings(cx);
+                cx.notify();
+            }))
+        };
+        let segmented = segmented_track(pal)
+            .child(option(
+                BTN_EXTENSION_TOOLS_ON,
+                LABEL_CODE_TOOLS_ON,
+                ExtensionTools::On,
+            ))
+            .child(option(
+                BTN_EXTENSION_TOOLS_OFF,
+                LABEL_CODE_TOOLS_OFF,
+                ExtensionTools::Off,
+            ))
+            .into_any_element();
+        form_row(
+            EXTENSION_TOOLS_LABEL,
+            Some(EXTENSION_TOOLS_HINT),
+            segmented,
+            pal,
+        )
     }
 
     fn performance_row(&self, cx: &mut Context<Self>) -> AnyElement {

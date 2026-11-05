@@ -105,6 +105,13 @@ impl EnvironmentShell {
                 MenuAction::NewSshEnvironment,
             ),
         ]);
+        entries.extend(self.host_kind_entries().into_iter().map(|(label, kind)| {
+            MenuEntry::item(
+                label,
+                Some(IconName::Layers),
+                MenuAction::NewMachineEnvironment(Box::new(kind)),
+            )
+        }));
         MenuEntry::submenu(ENVIRONMENT_LABEL, IconName::Layers, entries)
             .searchable(SEARCH_ENVIRONMENTS)
     }

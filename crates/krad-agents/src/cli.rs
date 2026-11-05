@@ -1,6 +1,7 @@
 use crate::client::call;
 use crate::code::{CodeRequest, CodeTool};
 use crate::env::{bus_env, guide, orchestrator_guide, BusEnv, CLI_PROGRAM, ENV_TERMINAL};
+use crate::extension_tools::{render_catalog, tool_call_request, ExtensionToolOutcome};
 use crate::handle::Caller;
 use crate::hook::{run_ask, run_hook};
 use crate::protocol::{
@@ -50,11 +51,13 @@ enum Verb {
     Ask,
     StatusLine,
     Code,
+    Tools,
+    Tool,
     Mcp,
 }
 
 impl Verb {
-    const USAGE_ORDER: [Self; 8] = [
+    const USAGE_ORDER: [Self; 10] = [
         Self::List,
         Self::Send,
         Self::Check,
@@ -62,6 +65,8 @@ impl Verb {
         Self::Read,
         Self::Spawn,
         Self::Code,
+        Self::Tools,
+        Self::Tool,
         Self::Help,
     ];
 }
@@ -80,6 +85,8 @@ impl std::fmt::Display for Verb {
             Self::Ask => "ask",
             Self::StatusLine => "statusline",
             Self::Code => "code",
+            Self::Tools => "tools",
+            Self::Tool => "tool",
             Self::Mcp => "mcp",
         })
     }
@@ -101,6 +108,8 @@ impl FromStr for Verb {
             "ask" => Self::Ask,
             "statusline" => Self::StatusLine,
             "code" => Self::Code,
+            "tools" => Self::Tools,
+            "tool" => Self::Tool,
             "mcp" => Self::Mcp,
             _ => return Err(CliError::UnknownCommand(text.to_owned())),
         })
@@ -254,7 +263,11 @@ fn execute(request: &Request, json: bool) -> i32 {
 }
 
 fn report(request: &Request, response: &Response, json: bool) -> i32 {
-    let failed = matches!(response, Response::Error(_));
+    let failed = match response {
+        Response::Error(_) => true,
+        Response::ExtensionTool(answer) => answer.outcome == ExtensionToolOutcome::Failed,
+        _ => false,
+    };
     let output = if json {
         match serde_json::to_string(response) {
             Ok(line) => Output::Stdout(line),
@@ -292,6 +305,12 @@ fn build_request(verb: Verb, options: &Options) -> Result<Option<Request>, CliEr
                 CodeRequest::new(tool, target, new_name)
                     .map_err(|error| CliError::Code(error.to_string()))?,
             )
+        }
+        Verb::Tools => Request::Tools,
+        Verb::Tool => {
+            let (name, arguments) =
+                tool_call_request(&options.positional).map_err(CliError::Code)?;
+            Request::ExtensionTool { name, arguments }
         }
         Verb::List => Request::List,
         Verb::Send => {
@@ -402,6 +421,8 @@ fn render(request: &Request, response: &Response) -> String {
         }
         Response::Submitted { terminal } => format!("Typed the message into terminal {terminal}"),
         Response::Code(answer) => answer.render(),
+        Response::Tools(catalog) => render_catalog(catalog),
+        Response::ExtensionTool(answer) => answer.text.clone(),
         Response::Error(message) => message.clone(),
     }
 }
@@ -471,7 +492,7 @@ mod tests {
         }
         assert_eq!(
             usage(),
-            "Usage: krad-ade-agents <list|send|check|wait|read|spawn|code|help> [args] [--json]"
+            "Usage: krad-ade-agents <list|send|check|wait|read|spawn|code|tools|tool|help> [args] [--json]"
         );
         assert_eq!("send".parse::<Verb>(), Ok(Verb::Send));
         Ok(())

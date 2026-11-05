@@ -1,3 +1,5 @@
+mod browse;
+
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::switch::Switch;
 use gpui_kit::{
@@ -57,6 +59,7 @@ enum FieldSlot {
 
 #[derive(Default)]
 pub(in crate::environment_shell) struct ExtensionsUi {
+    browse: browse::IndexBrowser,
     fields: HashMap<FieldSlot, Entity<InputState>>,
     subscriptions: Vec<Subscription>,
 }
@@ -101,6 +104,7 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.sync_index_browser(window, cx);
         let open = self
             .settings_ui
             .as_ref()
@@ -492,6 +496,7 @@ impl EnvironmentShell {
                 pal,
             ));
         }
+        sections.extend(self.index_sections(cx));
         pane_column(sections)
     }
 }

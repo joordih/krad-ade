@@ -18,7 +18,7 @@ use super::{Deferred, Running, Slot, SlotKey};
 
 const APP_NAME: &str = krad_store::APP_NAME;
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
-const FEATURES: [Feature; 8] = [
+const FEATURES: [Feature; 10] = [
     Feature::Views,
     Feature::Commands,
     Feature::Window,
@@ -27,6 +27,8 @@ const FEATURES: [Feature; 8] = [
     Feature::Workspace,
     Feature::Settings,
     Feature::Secrets,
+    Feature::Tools,
+    Feature::HostKinds,
 ];
 const NOT_TRUSTED_TEXT: &str = "is not trusted yet";
 const COULD_NOT_START_TEXT: &str = "could not start";
@@ -380,6 +382,8 @@ impl EnvironmentShell {
                 .detach();
             }
             Deferred::Render(view) => self.render_view(view, cx),
+            Deferred::Tool(call) => self.run_tool_call(key, call, cx),
+            Deferred::Machines(request) => self.run_machine_request(key, request, cx),
         }
     }
 }
