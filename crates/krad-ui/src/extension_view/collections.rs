@@ -135,7 +135,8 @@ impl ExtensionView {
                 .variant(ButtonVariant::Ghost)
                 .small()
                 .tooltip(SharedString::from(entry.label.clone()))
-                .on_click(cx.listener(move |this, _, _, _| {
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
                     this.emit(ViewEvent::ItemAction {
                         action: action.clone(),
                         item: target.clone(),
@@ -206,8 +207,8 @@ impl ExtensionView {
         let owner = tree.clone();
         let item = row.key.clone();
         let indent = f32::from(u16::try_from(row.depth).unwrap_or(u16::MAX)) * TREE_INDENT;
-        let actions = Self::item_actions(tree, &row.key, &row.actions, pal, cx);
-        let menu = Self::item_actions(tree, &row.key, &row.menu, pal, cx);
+        let every_action: Vec<ItemAction> = row.actions.iter().chain(&row.menu).cloned().collect();
+        let actions = Self::item_actions(tree, &row.key, &every_action, pal, cx);
         div()
             .id(row_id(ROW_PREFIX, tree, &row.key))
             .h(px(NAV_ROW_H))
@@ -261,7 +262,6 @@ impl ExtensionView {
                     .map(|found| badge(&found.text, found.tone, pal)),
             )
             .children(actions)
-            .children(menu)
             .into_any_element()
     }
 }

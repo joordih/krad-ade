@@ -117,6 +117,9 @@ impl EnvironmentShell {
         if params.zone == TerminalZone::Utilities && env == self.active {
             self.dock_in_activity(terminal, cx);
         }
+        if params.zone == TerminalZone::Session {
+            self.show_sessions_for(&env, cx);
+        }
         if params.zone == TerminalZone::View {
             if env == self.active {
                 self.edit_panes(cx, |panes| panes.release(terminal));

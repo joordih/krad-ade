@@ -52,6 +52,7 @@ impl EnvironmentShell {
                     live.data.reveal_terminal(terminal);
                     live.focused = Some(terminal);
                 }
+                self.show_sessions_for(&env, cx);
             }
         }
         cx.notify();
@@ -99,6 +100,18 @@ impl EnvironmentShell {
         }
         let id = self.envs.get(&self.active)?.extension_sidebar?;
         Some(self.extension_view_body(id, cx))
+    }
+
+    pub(in crate::environment_shell) fn show_sessions_for(
+        &mut self,
+        env: &krad_domain::EnvironmentName,
+        cx: &mut gpui_kit::Context<Self>,
+    ) {
+        if *env != self.active {
+            return;
+        }
+        self.hide_extension_main_view();
+        self.set_view(krad_domain::EnvironmentView::Sessions, cx);
     }
 
     pub(in crate::environment_shell) fn hide_extension_main_view(&mut self) {
