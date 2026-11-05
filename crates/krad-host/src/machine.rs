@@ -2,7 +2,7 @@ use krad_domain::ExtensionMachine;
 use std::fmt;
 use std::sync::Mutex;
 
-use crate::ssh_link::lock;
+use crate::remote_link::lock;
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct MachineChannel {

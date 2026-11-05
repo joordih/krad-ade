@@ -17,10 +17,10 @@ fn web() -> ExtensionMachine {
     }
 }
 
-fn machine_link() -> Result<std::sync::Arc<crate::link::SshLink>, &'static str> {
+fn machine_link() -> Result<std::sync::Arc<crate::link::RemoteLink>, &'static str> {
     let host = Host::Extension { machine: web() };
     match HostLink::new(&host, &HostContext::default()) {
-        HostLink::Ssh(ssh) => Ok(ssh),
+        HostLink::Remote(ssh) => Ok(ssh),
         HostLink::Local => Err("an extension machine is a remote link"),
     }
 }
@@ -45,7 +45,7 @@ fn a_channel_never_prints_its_environment_values() {
 #[test]
 fn a_machine_link_names_its_machine_and_is_never_ready_before_it_connects() -> TestResult {
     let ssh = machine_link()?;
-    let link = HostLink::Ssh(std::sync::Arc::clone(&ssh));
+    let link = HostLink::Remote(std::sync::Arc::clone(&ssh));
     assert_eq!(link.host(), Host::Extension { machine: web() });
     assert!(!link.is_ready());
     assert_eq!(ssh.machine(), Some(&web()));
@@ -62,7 +62,7 @@ fn a_machine_without_its_channel_does_not_connect() -> TestResult {
 #[test]
 fn a_machine_never_falls_back_to_ssh() -> TestResult {
     let ssh = machine_link()?;
-    let link = HostLink::Ssh(std::sync::Arc::clone(&ssh));
+    let link = HostLink::Remote(std::sync::Arc::clone(&ssh));
     let command = HostCommand::new("ls");
     assert!(matches!(command.build(&link), Err(HostError::NotConnected)));
     assert!(matches!(

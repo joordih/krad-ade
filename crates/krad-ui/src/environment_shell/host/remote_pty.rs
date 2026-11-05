@@ -35,7 +35,7 @@ pub(in crate::environment_shell) fn multiplexed_opener(
     link: &HostLink,
     command: HostCommand,
 ) -> Option<PtyOpener> {
-    let HostLink::Ssh(ssh) = link else {
+    let HostLink::Remote(ssh) = link else {
         return None;
     };
     if !ssh.is_multiplexed() {

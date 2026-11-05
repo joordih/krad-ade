@@ -44,7 +44,7 @@ impl HostCommand {
         cols: u16,
         rows: u16,
     ) -> Result<Option<RemoteTerminal>, HostError> {
-        let HostLink::Ssh(ssh) = link else {
+        let HostLink::Remote(ssh) = link else {
             return Ok(None);
         };
         let Some(carrier) = ssh.multiplexed() else {

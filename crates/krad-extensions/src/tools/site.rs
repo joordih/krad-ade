@@ -38,7 +38,7 @@ impl LanguageTools {
         platform: HostPlatform,
         finder: &'a HostServerRuntimes<'a>,
     ) -> Option<Site<'a, HostServerRuntimes<'a>>> {
-        let HostLink::Ssh(ssh) = link else {
+        let HostLink::Remote(ssh) = link else {
             return None;
         };
         Some(Site {
@@ -55,7 +55,7 @@ impl LanguageTools {
         requirements: &'a RuntimeRequirements,
     ) -> HostServerRuntimes<'a> {
         let managed = match link {
-            HostLink::Ssh(ssh) => ssh
+            HostLink::Remote(ssh) => ssh
                 .layout()
                 .map(|layout| layout.languages_dir().join(SERVER_RUNTIMES_DIR)),
             HostLink::Local => None,
@@ -203,7 +203,7 @@ impl LanguageTools {
         names.iter().find_map(|name| {
             let program = match site.link {
                 HostLink::Local => find_on_path(name)?,
-                HostLink::Ssh(_) => find_on_host(site.link, name)?,
+                HostLink::Remote(_) => find_on_host(site.link, name)?,
             };
             let probed = manifest.probe.is_empty()
                 || match site.link {
@@ -215,7 +215,7 @@ impl LanguageTools {
                         .stderr(Stdio::null())
                         .status()
                         .is_ok_and(|status| status.success()),
-                    HostLink::Ssh(_) => runs_on_host(site.link, &program, &manifest.probe, root),
+                    HostLink::Remote(_) => runs_on_host(site.link, &program, &manifest.probe, root),
                 };
             probed.then_some(program)
         })

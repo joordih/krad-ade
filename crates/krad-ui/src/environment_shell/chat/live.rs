@@ -114,7 +114,7 @@ impl EnvironmentShell {
             .launch_line(preset)
             .and_then(|line| line.split_whitespace().next().map(str::to_owned))
             .ok_or(StartError::NoProgram(preset))?;
-        if let HostLink::Ssh(ssh) = link {
+        if let HostLink::Remote(ssh) = link {
             let found = self
                 .host_agents
                 .get(&link.host())

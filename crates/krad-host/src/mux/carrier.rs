@@ -24,8 +24,8 @@ use crate::layout::APP_VERSION;
 use crate::local::hide_console_window;
 use crate::machine::MachineChannel;
 use crate::platform::{HostPlatform, UnsupportedPlatform};
+use crate::remote_link::lock;
 use crate::ssh::SshArgs;
-use crate::ssh_link::lock;
 
 const ASKPASS_VAR: &str = "SSH_ASKPASS";
 const ASKPASS_REQUIRE_VAR: &str = "SSH_ASKPASS_REQUIRE";

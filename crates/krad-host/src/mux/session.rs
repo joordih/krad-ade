@@ -8,7 +8,7 @@ use std::time::Duration;
 use super::channel::{Channel, ChannelShared};
 use super::wire::{Body, Frame, OpenRequest, CONTROL_CHANNEL, PROTOCOL_VERSION};
 use super::MuxError;
-use crate::ssh_link::lock;
+use crate::remote_link::lock;
 
 const READER_THREAD: &str = "krad-ade-mux-reader";
 const CHANNEL_ID_STEP: u32 = 2;

@@ -2,7 +2,7 @@ use krad_agents::{member_token, token_file_env, Caller, Endpoint, ASKPASS_VERB, 
 use krad_domain::claude_hook_settings;
 use krad_host::mux::ASKPASS_PROGRAM;
 use krad_host::{
-    FileMode, HostCommand, HostError, HostLink, HostPlatform, RemoteForward, SshLink,
+    FileMode, HostCommand, HostError, HostLink, HostPlatform, RemoteForward, RemoteLink,
     HOST_CLI_BUILD, LOOPBACK,
 };
 use std::fmt;
@@ -57,7 +57,7 @@ impl From<std::io::Error> for RemoteBusError {
 }
 
 pub(in crate::environment_shell) struct RemoteBusPlan {
-    pub(in crate::environment_shell) ssh: Arc<SshLink>,
+    pub(in crate::environment_shell) ssh: Arc<RemoteLink>,
     pub(in crate::environment_shell) link: HostLink,
     pub(in crate::environment_shell) slug: String,
     pub(in crate::environment_shell) local_port: u16,
@@ -66,7 +66,7 @@ pub(in crate::environment_shell) struct RemoteBusPlan {
 
 impl RemoteBusPlan {
     pub(in crate::environment_shell) fn new(
-        ssh: Arc<SshLink>,
+        ssh: Arc<RemoteLink>,
         link: HostLink,
         environment: &str,
         endpoint: &Endpoint,

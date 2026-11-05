@@ -10,9 +10,9 @@ use std::time::{Duration, Instant};
 use crate::error::{ForwardFailure, HostError, Waited};
 use crate::local::hide_console_window;
 use crate::mux::MuxForward;
+use crate::remote_link::RemoteLink;
 use crate::run::output_within;
 use crate::ssh::{local_spec, remote_spec, Direction, ForwardRequest, SshArgs};
-use crate::ssh_link::SshLink;
 
 const TUNNEL_POLL: Duration = Duration::from_millis(50);
 const ANY_PORT: u16 = 0;
@@ -122,7 +122,7 @@ fn free_local_port() -> Result<u16, HostError> {
     Ok(listener.local_addr()?.port())
 }
 
-impl SshLink {
+impl RemoteLink {
     /// # Errors
     #[tracing::instrument(skip_all, fields(destination = %self.args.destination, remote_port))]
     pub fn forward_local(&self, remote_port: u16) -> Result<Forward, HostError> {

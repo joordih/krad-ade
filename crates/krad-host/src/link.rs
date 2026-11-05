@@ -11,10 +11,10 @@ use crate::error::{HostError, Waited};
 pub use crate::metadata::Metadata;
 use crate::mux::MuxTools;
 use crate::path::remote_path;
+pub use crate::remote_link::RemoteLink;
 use crate::removal::is_removable;
 use crate::run::output_within;
 use crate::ssh::{SshArgs, Transport};
-pub use crate::ssh_link::SshLink;
 
 const BULK_THRESHOLD_BYTES: usize = 1024 * 1024;
 const REMOVE_PROGRAM: &str = "rm";
@@ -52,14 +52,14 @@ fn machine_args(machine: &ExtensionMachine, context: &HostContext) -> SshArgs {
 pub enum HostLink {
     #[default]
     Local,
-    Ssh(Arc<SshLink>),
+    Remote(Arc<RemoteLink>),
 }
 
 impl PartialEq for HostLink {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Local, Self::Local) => true,
-            (Self::Ssh(left), Self::Ssh(right)) => {
+            (Self::Remote(left), Self::Remote(right)) => {
                 Arc::ptr_eq(left, right)
                     || (left.args == right.args && left.machine() == right.machine())
             }
@@ -79,13 +79,13 @@ impl HostLink {
                 let args = SshArgs::new(destination.clone(), context.config_dir.as_deref())
                     .with_timeouts(context.timeouts)
                     .with_transport(context.transport.unwrap_or_default());
-                Self::Ssh(Arc::new(
-                    SshLink::with_install_id(args, context.install_id.clone())
+                Self::Remote(Arc::new(
+                    RemoteLink::with_install_id(args, context.install_id.clone())
                         .with_tools(mux_tools(context)),
                 ))
             }
-            Host::Extension { machine } => Self::Ssh(Arc::new(
-                SshLink::for_machine(
+            Host::Extension { machine } => Self::Remote(Arc::new(
+                RemoteLink::for_machine(
                     machine_args(machine, context),
                     context.install_id.clone(),
                     machine.clone(),
@@ -104,7 +104,7 @@ impl HostLink {
     pub fn is_ready(&self) -> bool {
         match self {
             Self::Local => true,
-            Self::Ssh(ssh) => ssh.is_open(),
+            Self::Remote(ssh) => ssh.is_open(),
         }
     }
 
@@ -112,7 +112,7 @@ impl HostLink {
     pub fn host(&self) -> Host {
         match self {
             Self::Local => Host::Local,
-            Self::Ssh(ssh) => ssh.machine().map_or_else(
+            Self::Remote(ssh) => ssh.machine().map_or_else(
                 || Host::Ssh {
                     destination: ssh.args.destination.clone(),
                 },
@@ -127,7 +127,7 @@ impl HostLink {
     pub fn metadata(&self, path: &Path) -> Result<Metadata, HostError> {
         match self {
             Self::Local => Ok(fs::metadata(path)?.into()),
-            Self::Ssh(ssh) => ssh.with_sftp(|sftp| sftp.stat(&remote_path(path))),
+            Self::Remote(ssh) => ssh.with_sftp(|sftp| sftp.stat(&remote_path(path))),
         }
     }
 
@@ -135,7 +135,7 @@ impl HostLink {
     pub fn symlink_metadata(&self, path: &Path) -> Result<Metadata, HostError> {
         match self {
             Self::Local => Ok(fs::symlink_metadata(path)?.into()),
-            Self::Ssh(ssh) => ssh.with_sftp(|sftp| sftp.lstat(&remote_path(path))),
+            Self::Remote(ssh) => ssh.with_sftp(|sftp| sftp.lstat(&remote_path(path))),
         }
     }
 
@@ -149,7 +149,7 @@ impl HostLink {
                     .open(path)?;
                 Ok(())
             }
-            Self::Ssh(ssh) => ssh.with_sftp(|sftp| sftp.create_new(&remote_path(path))),
+            Self::Remote(ssh) => ssh.with_sftp(|sftp| sftp.create_new(&remote_path(path))),
         }
     }
 
@@ -177,7 +177,7 @@ impl HostLink {
                 }
                 Ok(entries)
             }
-            Self::Ssh(ssh) => {
+            Self::Remote(ssh) => {
                 let entries = ssh.with_sftp(|sftp| sftp.read_dir(&remote_path(dir)))?;
                 Ok(entries
                     .into_iter()
@@ -200,7 +200,7 @@ impl HostLink {
                 fs::File::open(path)?.take(limit).read_to_end(&mut bytes)?;
                 Ok(bytes)
             }
-            Self::Ssh(ssh) => ssh.with_sftp(|sftp| sftp.read(&remote_path(path), limit)),
+            Self::Remote(ssh) => ssh.with_sftp(|sftp| sftp.read(&remote_path(path), limit)),
         }
     }
 
@@ -214,7 +214,7 @@ impl HostLink {
                 file.take(limit).read_to_end(&mut bytes)?;
                 Ok(bytes)
             }
-            Self::Ssh(ssh) => {
+            Self::Remote(ssh) => {
                 ssh.with_sftp(|sftp| sftp.read_range(&remote_path(path), from, limit))
             }
         }
@@ -237,7 +237,7 @@ impl HostLink {
     pub fn write(&self, path: &Path, bytes: &[u8]) -> Result<(), HostError> {
         match self {
             Self::Local => Ok(fs::write(path, bytes)?),
-            Self::Ssh(ssh) => {
+            Self::Remote(ssh) => {
                 let target = remote_path(path);
                 let save = |sftp: &crate::sftp::Sftp| sftp.save(&target, bytes).map(drop);
                 if bytes.len() > BULK_THRESHOLD_BYTES {
@@ -253,7 +253,7 @@ impl HostLink {
     pub fn create_dir(&self, path: &Path) -> Result<(), HostError> {
         match self {
             Self::Local => Ok(fs::create_dir(path)?),
-            Self::Ssh(ssh) => ssh.with_sftp(|sftp| sftp.mkdir(&remote_path(path))),
+            Self::Remote(ssh) => ssh.with_sftp(|sftp| sftp.mkdir(&remote_path(path))),
         }
     }
 
@@ -261,7 +261,7 @@ impl HostLink {
     pub fn create_dir_all(&self, path: &Path) -> Result<(), HostError> {
         match self {
             Self::Local => Ok(fs::create_dir_all(path)?),
-            Self::Ssh(_) => {
+            Self::Remote(_) => {
                 if self.metadata(path).is_ok_and(|metadata| metadata.is_dir()) {
                     return Ok(());
                 }
@@ -280,7 +280,7 @@ impl HostLink {
     pub fn remove_file(&self, path: &Path) -> Result<(), HostError> {
         match self {
             Self::Local => Ok(fs::remove_file(path)?),
-            Self::Ssh(ssh) => ssh.with_sftp(|sftp| sftp.remove_file(&remote_path(path))),
+            Self::Remote(ssh) => ssh.with_sftp(|sftp| sftp.remove_file(&remote_path(path))),
         }
     }
 
@@ -288,7 +288,7 @@ impl HostLink {
     pub fn remove_dir_all(&self, path: &Path) -> Result<(), HostError> {
         match self {
             Self::Local => Ok(fs::remove_dir_all(path)?),
-            Self::Ssh(_) => self.remove_tree_on_host(path),
+            Self::Remote(_) => self.remove_tree_on_host(path),
         }
     }
 
@@ -296,7 +296,7 @@ impl HostLink {
     pub fn rename(&self, from: &Path, to: &Path) -> Result<(), HostError> {
         match self {
             Self::Local => Ok(fs::rename(from, to)?),
-            Self::Ssh(ssh) => {
+            Self::Remote(ssh) => {
                 ssh.with_sftp(|sftp| sftp.rename(&remote_path(from), &remote_path(to)))
             }
         }
@@ -306,7 +306,7 @@ impl HostLink {
     pub fn canonicalize(&self, path: &Path) -> Result<PathBuf, HostError> {
         match self {
             Self::Local => Ok(fs::canonicalize(path)?),
-            Self::Ssh(ssh) => ssh
+            Self::Remote(ssh) => ssh
                 .with_sftp(|sftp| sftp.realpath(&remote_path(path)))
                 .map(PathBuf::from),
         }
@@ -319,7 +319,7 @@ impl HostLink {
         built.stdin(Stdio::null());
         match self {
             Self::Local => Ok(built.output()?),
-            Self::Ssh(ssh) => SshLink::checked(output_within(
+            Self::Remote(ssh) => RemoteLink::checked(output_within(
                 built,
                 ssh.args.timeouts.command.duration(),
                 Waited::Command,
@@ -339,13 +339,13 @@ impl HostLink {
         let output = output_within(built, timeout, Waited::Command)?;
         match self {
             Self::Local => Ok(output),
-            Self::Ssh(_) => SshLink::checked(output),
+            Self::Remote(_) => RemoteLink::checked(output),
         }
     }
 
     fn remove_tree_on_host(&self, path: &Path) -> Result<(), HostError> {
         let unsafe_removal = || HostError::UnsafeRemoval(remote_path(path));
-        let Self::Ssh(ssh) = self else {
+        let Self::Remote(ssh) = self else {
             return Err(unsafe_removal());
         };
         if !is_removable(path, ssh.home()) {

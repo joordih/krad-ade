@@ -22,7 +22,7 @@ use crate::run::output_within;
 use crate::ssh::{Interaction, SshArgs, Transport};
 use channels::Carrier;
 
-pub struct SshLink {
+pub struct RemoteLink {
     pub(crate) args: SshArgs,
     install_id: Option<InstallId>,
     interactive: Mutex<Option<Carrier>>,
@@ -37,9 +37,9 @@ pub struct SshLink {
     machine: Option<MachineReach>,
 }
 
-impl fmt::Debug for SshLink {
+impl fmt::Debug for RemoteLink {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SshLink")
+        f.debug_struct("RemoteLink")
             .field("destination", &self.args.destination.to_string())
             .finish_non_exhaustive()
     }
@@ -49,7 +49,7 @@ pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-impl SshLink {
+impl RemoteLink {
     #[must_use]
     pub fn new(args: SshArgs) -> Self {
         Self::with_install_id(args, None)

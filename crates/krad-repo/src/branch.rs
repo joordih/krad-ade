@@ -37,7 +37,7 @@ pub fn resolved_remote_url(
     };
     let home = match host {
         HostLink::Local => local_home.map(Path::to_path_buf),
-        HostLink::Ssh(ssh) => ssh.home().map(Path::to_path_buf),
+        HostLink::Remote(ssh) => ssh.home().map(Path::to_path_buf),
     };
     let config = home.map_or_else(String::new, |home| krad_host::read_ssh_config(host, &home));
     Ok(Some(resolve_ssh_alias(&url, &config).into_owned()))

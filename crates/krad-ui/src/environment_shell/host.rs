@@ -112,7 +112,7 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
-        let HostLink::Ssh(ssh) = live.link.clone() else {
+        let HostLink::Remote(ssh) = live.link.clone() else {
             return;
         };
         live.host = HostState::Connecting;
@@ -231,7 +231,7 @@ impl EnvironmentShell {
 
     fn open_sign_in(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
         let sign_in = self.envs.get(env).and_then(|live| match &live.link {
-            HostLink::Ssh(ssh) => Some((ssh.sign_in_terminal(), live.data.host.to_string())),
+            HostLink::Remote(ssh) => Some((ssh.sign_in_terminal(), live.data.host.to_string())),
             HostLink::Local => None,
         });
         let Some(((program, args), destination)) = sign_in else {
@@ -363,13 +363,13 @@ impl EnvironmentShell {
     pub(super) fn env_home(&self, env: &EnvironmentName) -> Option<PathBuf> {
         match &self.envs.get(env)?.link {
             HostLink::Local => home_dir().map(PathBuf::from),
-            HostLink::Ssh(ssh) => ssh.home().map(PathBuf::from),
+            HostLink::Remote(ssh) => ssh.home().map(PathBuf::from),
         }
     }
 }
 
 pub(super) fn close_link(link: &HostLink) {
-    let HostLink::Ssh(ssh) = link.clone() else {
+    let HostLink::Remote(ssh) = link.clone() else {
         return;
     };
     let closing = std::thread::Builder::new()

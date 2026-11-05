@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::{lock, SshLink};
+use super::{lock, RemoteLink};
 use crate::command::{env_file_text, is_env_name, HostCommand};
 use crate::error::{HostError, Waited};
 use crate::mode::FileMode;
@@ -41,7 +41,7 @@ pub(crate) fn parse(output: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-impl SshLink {
+impl RemoteLink {
     pub(crate) fn login_env_file(&self) -> Option<PathBuf> {
         lock(&self.login_env).clone()
     }

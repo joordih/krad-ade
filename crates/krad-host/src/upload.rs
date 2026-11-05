@@ -162,7 +162,7 @@ impl HostLink {
             };
             match self {
                 Self::Local => replace_local(&mut source, target)?,
-                Self::Ssh(ssh) => {
+                Self::Remote(ssh) => {
                     let remote = crate::remote_path(target);
                     ssh.with_bulk(|sftp| sftp.replace_from(&remote, &mut source, mode))?;
                 }
@@ -196,7 +196,7 @@ impl HostLink {
     pub fn symlink(&self, target: &Path, link: &Path) -> Result<(), HostError> {
         match self {
             Self::Local => Ok(crate::local::symlink(target, link)?),
-            Self::Ssh(ssh) => ssh.with_sftp(|sftp| {
+            Self::Remote(ssh) => ssh.with_sftp(|sftp| {
                 sftp.symlink(&crate::remote_path(target), &crate::remote_path(link))
             }),
         }
