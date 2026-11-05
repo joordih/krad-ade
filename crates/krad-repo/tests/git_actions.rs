@@ -6,9 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use krad_host::HostLink;
 use krad_repo::{
-    check_out, commit, create_branch, create_tag, delete_tag, fetch, list_refs, pop_stash, pull,
-    push, push_tags, stage, stash_changes, status, sync, unstage, Askpass, BranchPlace, ChangeKind,
-    CommitMode, CommitScope, PushTarget,
+    add_branch_worktree, check_out, commit, create_branch, create_tag, delete_tag, fetch,
+    list_refs, pop_stash, pull, push, push_tags, stage, stash_changes, status, sync, unstage,
+    Askpass, BranchPlace, ChangeKind, CommitMode, CommitScope, PushTarget,
 };
 
 const HOST: HostLink = HostLink::Local;
@@ -149,6 +149,20 @@ fn branches_and_tags_are_listed_created_checked_out_and_deleted() -> TestResult 
             .any(|branch| branch.name == "feature" && branch.is_head));
         check_out(&HOST, repo, &main)?;
         assert_eq!(status(&HOST, repo)?.branch.as_deref(), Some("main"));
+        let feature = refs
+            .local()
+            .find(|branch| branch.name == "feature")
+            .ok_or("feature is listed")?
+            .clone();
+        let worktree = add_branch_worktree(&HOST, repo, &feature)?;
+        assert_eq!(
+            status(&HOST, &worktree.path)?.branch.as_deref(),
+            Some("feature")
+        );
+        assert!(
+            check_out(&HOST, repo, &feature).is_err(),
+            "a worktree holds it"
+        );
 
         create_tag(&HOST, repo, "v1.0")?;
         assert_eq!(list_refs(&HOST, repo)?.tags, ["v1.0"]);

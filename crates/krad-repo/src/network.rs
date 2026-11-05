@@ -24,13 +24,13 @@ const REDACTED: &str = "[REDACTED]";
 
 #[derive(Clone, Default)]
 pub struct Askpass {
-    vars: Vec<(&'static str, OsString)>,
+    vars: Vec<(String, OsString)>,
     program: Option<PathBuf>,
 }
 
 impl Askpass {
     #[must_use]
-    pub fn new(program: PathBuf, bus: Vec<(&'static str, String)>) -> Self {
+    pub fn new(program: PathBuf, bus: Vec<(String, String)>) -> Self {
         Self {
             vars: bus
                 .into_iter()
@@ -40,19 +40,22 @@ impl Askpass {
         }
     }
 
-    fn env(&self, host: &HostLink, repo: &Path) -> Vec<(&'static str, OsString)> {
+    fn env(&self, host: &HostLink, repo: &Path) -> Vec<(String, OsString)> {
         let Some(program) = &self.program else {
             return Vec::new();
         };
         let program = git_path(host, repo, program);
         let mut env = self.vars.clone();
         env.extend([
-            (GIT_ASKPASS_VAR, program.clone()),
-            (SSH_ASKPASS_VAR, program),
-            (SSH_ASKPASS_REQUIRE_VAR, SSH_ASKPASS_FORCED.into()),
+            (GIT_ASKPASS_VAR.to_owned(), program.clone()),
+            (SSH_ASKPASS_VAR.to_owned(), program),
+            (
+                SSH_ASKPASS_REQUIRE_VAR.to_owned(),
+                SSH_ASKPASS_FORCED.into(),
+            ),
         ]);
         if !host.is_local() || std::env::var_os(DISPLAY_VAR).is_none() {
-            env.push((DISPLAY_VAR, PLACEHOLDER_DISPLAY.into()));
+            env.push((DISPLAY_VAR.to_owned(), PLACEHOLDER_DISPLAY.into()));
         }
         env
     }
@@ -144,7 +147,7 @@ mod tests {
     fn the_askpass_points_git_and_ssh_at_the_program_and_never_prints() {
         let askpass = Askpass::new(
             PathBuf::from("/cfg/bin/krad-ade-askpass"),
-            vec![("KRAD_ADE_TOKEN", "secret".to_owned())],
+            vec![("KRAD_ADE_TOKEN".to_owned(), "secret".to_owned())],
         );
         let env = askpass.env(&HostLink::Local, Path::new("/src/app"));
         let value = |name: &str| {

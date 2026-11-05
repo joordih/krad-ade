@@ -35,7 +35,7 @@ const ARG_SEPARATOR: &str = " ";
 const ENV_ASSIGN: &str = "=";
 const PRINT_FOUND_PROGRAMS: &str = r#"for program in "$@"; do command -v "$program" >/dev/null 2>&1 && printf '%s\n' "$program"; done; :"#;
 
-pub(crate) type GitEnv = [(&'static str, OsString)];
+pub(crate) type GitEnv = [(String, OsString)];
 
 pub(crate) fn git_output<S: AsRef<OsStr>>(
     host: &HostLink,
@@ -112,7 +112,7 @@ fn local_git_command(repo: &Path, env: &GitEnv) -> Command {
                 .arg(format!("{MESSAGES_LOCALE_VAR}={MESSAGES_LOCALE}"))
                 .arg(format!("{LANGUAGE_VAR}={MESSAGES_LOCALE}"))
                 .args(env.iter().map(|(name, value)| {
-                    let mut assignment = OsString::from(name);
+                    let mut assignment = OsString::from(name.as_str());
                     assignment.push(ENV_ASSIGN);
                     assignment.push(value);
                     assignment
