@@ -268,6 +268,7 @@ impl Render for EnvironmentShell {
         self.sync_notes_view(view, window, cx);
         self.ensure_chat_sessions(cx);
         self.sync_session_panes();
+        self.end_hidden_anchors();
         self.sync_menu_focus(window, cx);
         self.sync_model_picker_focus(window, cx);
         self.sync_ask_focus(window, cx);

@@ -4,8 +4,8 @@ use gpui_kit::component::input::Textarea;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, BoxShadow, ClickEvent, Context, ElementId, FontWeight,
-    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ParentElement,
-    StatefulInteractiveElement, Styled,
+    InteractiveElement, IntoElement, MouseButton, ParentElement, StatefulInteractiveElement,
+    Styled,
 };
 use krad_domain::{Effort, TerminalId};
 
@@ -13,7 +13,6 @@ use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
 use super::super::model_picker::{grouped, ModelChoice, PickFor};
 use super::super::EnvironmentShell;
 use super::facts::Facts;
-use super::mentions::PASTE_KEY;
 use super::view::{AgentNow, ROUND_BUTTON};
 use super::{SurfaceChat, SurfaceCommand, THINKING_LABEL};
 use crate::components::{harness_icon, icon, tooltip_view, IconName};
@@ -71,23 +70,18 @@ impl EnvironmentShell {
             .shadow(ring)
             .text_size(px(TEXT_SM))
             .line_height(px(LINE_SM))
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .capture_key_down(
-                cx.listener(move |this: &mut Self, event: &KeyDownEvent, _, cx| {
-                    let keystroke = &event.keystroke;
-                    if keystroke.key == PASTE_KEY
-                        && keystroke.modifiers.secondary()
-                        && this.paste_chat_image(id, cx)
-                    {
-                        cx.stop_propagation();
-                    }
-                }),
-            );
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
+        let shell = cx.entity().downgrade();
         let field = Self::suggestion_keys(field, id, cx)
             .child(
                 div().flex_1().min_w_0().py(px(SPACE_1)).child(
                     Textarea::new(&chat.input)
                         .appearance(false)
+                        .on_paste(move |item, _, cx| {
+                            shell
+                                .update(cx, |shell, cx| shell.paste_chat_attachment(id, item, cx))
+                                .unwrap_or_default()
+                        })
                         .disabled(chat.asks().blocks_typing()),
                 ),
             )

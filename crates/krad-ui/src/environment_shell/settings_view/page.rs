@@ -1,8 +1,8 @@
-use crate::environment_shell::rubber_band::{BandKey, ScrollEdges};
+use crate::environment_shell::rubber_band::{band_watch, BandKey, ScrollEdges};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, KeyDownEvent,
-    ParentElement, ScrollHandle, ScrollWheelEvent, StatefulInteractiveElement, Styled,
+    ParentElement, ScrollHandle, StatefulInteractiveElement, Styled,
 };
 
 use super::super::sidebar::SIDEBAR_WIDTH;
@@ -187,6 +187,10 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let pal = palette(cx);
         let edges_of = scroll.clone();
+        let edges = move || ScrollEdges {
+            offset: -edges_of.offset().y.as_f32(),
+            max: edges_of.max_offset().y.as_f32(),
+        };
         card(pal, cx)
             .flex()
             .flex_col()
@@ -216,60 +220,58 @@ impl EnvironmentShell {
             )
             .child(
                 div()
-                    .id(SETTINGS_SCROLL_ID)
+                    .relative()
                     .flex()
                     .flex_col()
                     .flex_1()
                     .min_h_0()
-                    .items_center()
-                    .overflow_y_scroll()
-                    .track_scroll(&scroll)
-                    .on_scroll_wheel(cx.listener(
-                        move |this: &mut Self, event: &ScrollWheelEvent, _, cx| {
-                            let edges = ScrollEdges {
-                                offset: -edges_of.offset().y.as_f32(),
-                                max: edges_of.max_offset().y.as_f32(),
-                            };
-                            if this.gestures.bands.wheel(BandKey::Settings, event, edges) {
-                                cx.notify();
-                            }
-                        },
-                    ))
-                    .px(px(SPACE_6))
-                    .pb(px(SPACE_6))
                     .child(
                         div()
-                            .relative()
-                            .top(px(bounce))
+                            .id(SETTINGS_SCROLL_ID)
                             .flex()
                             .flex_col()
-                            .w_full()
-                            .max_w(px(PAGE_W))
-                            .pt(px(PAGE_TOP))
-                            .gap(px(PAGE_GAP))
+                            .flex_1()
+                            .min_h_0()
+                            .items_center()
+                            .overflow_y_scroll()
+                            .track_scroll(&scroll)
+                            .px(px(SPACE_6))
+                            .pb(px(SPACE_6))
                             .child(
                                 div()
+                                    .relative()
+                                    .top(px(bounce))
                                     .flex()
                                     .flex_col()
-                                    .gap(px(SPACE_1))
+                                    .w_full()
+                                    .max_w(px(PAGE_W))
+                                    .pt(px(PAGE_TOP))
+                                    .gap(px(PAGE_GAP))
                                     .child(
                                         div()
-                                            .text_size(px(PAGE_TITLE_TEXT))
-                                            .line_height(px(PAGE_TITLE_LINE))
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_color(rgb(pal.text_strong))
-                                            .child(pane.title()),
+                                            .flex()
+                                            .flex_col()
+                                            .gap(px(SPACE_1))
+                                            .child(
+                                                div()
+                                                    .text_size(px(PAGE_TITLE_TEXT))
+                                                    .line_height(px(PAGE_TITLE_LINE))
+                                                    .font_weight(FontWeight::SEMIBOLD)
+                                                    .text_color(rgb(pal.text_strong))
+                                                    .child(pane.title()),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(TEXT_SM))
+                                                    .line_height(px(LINE_SM))
+                                                    .text_color(rgb(pal.text_muted))
+                                                    .child(pane.description()),
+                                            ),
                                     )
-                                    .child(
-                                        div()
-                                            .text_size(px(TEXT_SM))
-                                            .line_height(px(LINE_SM))
-                                            .text_color(rgb(pal.text_muted))
-                                            .child(pane.description()),
-                                    ),
-                            )
-                            .child(content),
-                    ),
+                                    .child(content),
+                            ),
+                    )
+                    .child(band_watch(BandKey::Settings, edges, cx)),
             )
             .into_any_element()
     }

@@ -1,5 +1,6 @@
 mod agent;
 mod arcade;
+mod bookmark;
 mod chat;
 mod checklist;
 mod chrome;
@@ -53,6 +54,7 @@ mod wsl;
 
 pub use agent::*;
 pub use arcade::*;
+pub use bookmark::*;
 pub use chat::*;
 pub use checklist::*;
 pub use chrome::*;

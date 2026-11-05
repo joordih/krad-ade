@@ -11,6 +11,7 @@ use krad_session::{
 use std::time::Duration;
 
 use super::drag::DragState;
+use super::surface::elapsed_label;
 use super::terminal_images::{image_layer, ImageGrid, TerminalImages};
 use super::terminal_text::{terminal_text, TextLook};
 use super::EnvironmentShell;
@@ -58,7 +59,7 @@ fn starting_view(
         .child(thinking_indicator(
             id.as_u64(),
             label.into(),
-            session.spawned_at,
+            elapsed_label(session.spawned_at.elapsed()).into(),
             mono.clone(),
             palette(cx),
         ))

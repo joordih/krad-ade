@@ -75,6 +75,7 @@ icons! {
     Expand => "arrow-expand-01",
     Chat => "bubble-chat",
     Flag => "flag-02",
+    Bookmark => "bookmark-02",
     Book => "book-open-01",
     Note => "note-01",
     Magic => "ai-magic",

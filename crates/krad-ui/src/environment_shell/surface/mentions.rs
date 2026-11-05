@@ -15,7 +15,6 @@ use crate::theme::{
     TEXT_XS,
 };
 
-pub(super) const PASTE_KEY: &str = "v";
 const PICK_PROMPT: &str = "Attach";
 const TOOLTIP_ATTACH: &str = "Attach files, folders or images";
 const TOOLTIP_REMOVE: &str = "Remove";
@@ -34,6 +33,23 @@ fn mention_name(path: &Path) -> String {
         || path.display().to_string(),
         |name| name.to_string_lossy().into_owned(),
     )
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ClipboardAttachment {
+    Files(Vec<PathBuf>),
+    Image(ImageFormat, Vec<u8>),
+}
+
+fn clipboard_attachment(item: &ClipboardItem) -> Option<ClipboardAttachment> {
+    let files = item.entries().iter().find_map(|entry| match entry {
+        ClipboardEntry::ExternalPaths(paths) => Some(paths.paths().to_vec()),
+        ClipboardEntry::String(_) | ClipboardEntry::Image(_) => None,
+    });
+    if let Some(files) = files.filter(|files| !files.is_empty()) {
+        return Some(ClipboardAttachment::Files(files));
+    }
+    clipboard_image(item).map(|(format, bytes)| ClipboardAttachment::Image(format, bytes))
 }
 
 fn clipboard_image(item: &ClipboardItem) -> Option<(ImageFormat, Vec<u8>)> {
@@ -166,7 +182,12 @@ impl EnvironmentShell {
         .detach();
     }
 
-    pub(super) fn paste_chat_image(&mut self, id: TerminalId, cx: &mut Context<Self>) -> bool {
+    pub(super) fn paste_chat_attachment(
+        &mut self,
+        id: TerminalId,
+        item: &ClipboardItem,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let env = self.active.clone();
         let structured = self
             .envs
@@ -176,11 +197,16 @@ impl EnvironmentShell {
         if !structured {
             return false;
         }
-        let Some((format, bytes)) = cx
-            .read_from_clipboard()
-            .and_then(|item| clipboard_image(&item))
-        else {
+        let Some(attachment) = clipboard_attachment(item) else {
             return false;
+        };
+        let (format, bytes) = match attachment {
+            ClipboardAttachment::Files(files) => {
+                let mentions = files.into_iter().map(Mention::from).collect();
+                self.attach(&env, id, mentions, cx);
+                return true;
+            }
+            ClipboardAttachment::Image(format, bytes) => (format, bytes),
         };
         let owner = env.clone();
         let save =
@@ -330,6 +356,33 @@ mod tests {
                 "caption".to_owned(),
             )));
         assert_eq!(clipboard_image(&with_text), None);
+    }
+
+    #[test]
+    fn copied_files_paste_as_attachments_even_with_their_paths_as_text() {
+        let shot = PathBuf::from("/Users/me/Desktop/shot.png");
+        let item = ClipboardItem {
+            entries: vec![
+                ClipboardEntry::ExternalPaths(gpui_kit::ExternalPaths(vec![shot.clone()].into())),
+                ClipboardEntry::String(gpui_kit::ClipboardString::new(shot.display().to_string())),
+            ],
+        };
+        assert_eq!(
+            clipboard_attachment(&item),
+            Some(ClipboardAttachment::Files(vec![shot.clone()]))
+        );
+        assert!(matches!(Mention::from(shot), Mention::Image(_)));
+    }
+
+    #[test]
+    fn a_copied_image_pastes_as_an_image_attachment() {
+        assert_eq!(
+            clipboard_attachment(&image_item(ClipboardFormat::Png)),
+            Some(ClipboardAttachment::Image(
+                ImageFormat::Png,
+                b"png".to_vec()
+            ))
+        );
     }
 
     #[test]

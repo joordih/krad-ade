@@ -15,7 +15,8 @@ use std::time::Duration;
 
 use super::super::chat::{fold_entry, workplace_home, AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
-use super::view::{at_bottom, following};
+use super::anchor::follows_tail;
+use super::view::at_bottom;
 use super::SurfaceChat;
 
 const SUBAGENT_POLL: Duration = Duration::from_secs(1);
@@ -294,7 +295,10 @@ impl EnvironmentShell {
             return;
         };
         let SurfaceChat {
-            subagents, thread, ..
+            subagents,
+            thread,
+            anchor,
+            ..
         } = chat;
         subagents.home = read.home;
         subagents.conversation = read.conversation;
@@ -303,7 +307,7 @@ impl EnvironmentShell {
         }
         let in_main = subagents.trail.is_empty();
         let followed = if in_main {
-            following(thread)
+            follows_tail(*anchor, thread)
         } else {
             at_bottom(&subagents.scroll)
         };
