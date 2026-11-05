@@ -1,3 +1,4 @@
+mod askpass;
 mod cli;
 mod client;
 mod code;
@@ -14,6 +15,7 @@ mod statusline;
 mod token;
 mod toolchains;
 
+pub use askpass::ASKPASS_VERB;
 pub use cli::{run_cli, run_invoked};
 pub use client::call;
 pub use code::{CodeAnswer, CodeError, CodeLine, CodePosition, CodeRequest, CodeTool};
@@ -25,8 +27,8 @@ pub use error::{AgentsError, HandleError};
 pub use handle::{Caller, LeadHandle, TerminalHandle};
 pub use mailbox::{notice_text, Mailbox};
 pub use protocol::{
-    lead_refusal, AgentInfo, AgentStatus, BusToken, Envelope, Message, Request, Response,
-    TerminalState, MAX_WAIT,
+    lead_refusal, AgentInfo, AgentStatus, BusToken, Envelope, Message, PromptAnswer, Request,
+    Response, TerminalState, ASKPASS_WAIT, MAX_WAIT,
 };
 pub use server::{serve, Endpoint, Incoming};
 pub use token::new_token;

@@ -15,7 +15,11 @@ pub fn is_askpass_invocation(program: &OsStr) -> bool {
         .is_some_and(|stem| stem == ASKPASS_PROGRAM)
 }
 
-pub(crate) fn askpass_alias(local_cli: &Path, config_dir: Option<&Path>) -> io::Result<PathBuf> {
+/// # Errors
+///
+/// Returns an error when there is no config folder or the program cannot be
+/// linked or copied into it.
+pub fn askpass_alias(local_cli: &Path, config_dir: Option<&Path>) -> io::Result<PathBuf> {
     let dir = config_dir
         .map(|dir| dir.join(ALIAS_DIR).join(APP_VERSION))
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no config folder for askpass"))?;

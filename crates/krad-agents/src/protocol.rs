@@ -16,6 +16,8 @@ const BLOCKING_MARGIN: Duration = Duration::from_secs(1);
 const DEFAULT_DEADLINE: Duration = Duration::from_secs(10);
 const SPAWN_DEADLINE: Duration = Duration::from_mins(1);
 const CODE_DEADLINE: Duration = Duration::from_mins(2);
+pub const ASKPASS_WAIT: Duration = Duration::from_mins(5);
+const REDACTED: &str = "[REDACTED]";
 const NOT_THE_LEAD: &str =
     "Only the session's lead can start or direct workers: ask the user in the lead chat";
 
@@ -71,6 +73,9 @@ pub enum Request {
         task: String,
     },
     Code(CodeRequest),
+    Askpass {
+        prompt: String,
+    },
 }
 
 impl Request {
@@ -92,6 +97,7 @@ impl Request {
             | Self::Status(_) => DEFAULT_DEADLINE,
             Self::Spawn { .. } => SPAWN_DEADLINE,
             Self::Code(_) => CODE_DEADLINE,
+            Self::Askpass { .. } => ASKPASS_WAIT + BLOCKING_MARGIN,
         }
     }
 
@@ -131,7 +137,29 @@ impl From<&str> for BusToken {
 
 impl fmt::Debug for BusToken {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("[REDACTED]")
+        formatter.write_str(REDACTED)
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PromptAnswer(String);
+
+impl PromptAnswer {
+    #[must_use]
+    pub const fn new(text: String) -> Self {
+        Self(text)
+    }
+
+    #[must_use]
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for PromptAnswer {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(REDACTED)
     }
 }
 
@@ -207,6 +235,7 @@ pub enum Response {
     Submitted { terminal: u64 },
     Decided(ToolDecision),
     Code(CodeAnswer),
+    Answered(Option<PromptAnswer>),
     Error(String),
 }
 

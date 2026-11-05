@@ -159,8 +159,7 @@ struct Options {
 #[must_use]
 pub fn run_invoked(invoked: &std::ffi::OsStr, args: &[String]) -> i32 {
     if krad_host::mux::is_askpass_invocation(invoked) {
-        let prompt = args.first().map_or("", String::as_str);
-        return krad_host::mux::run_askpass(prompt);
+        return crate::askpass::run(args.first().map_or("", String::as_str));
     }
     run_cli(args)
 }
@@ -168,6 +167,9 @@ pub fn run_invoked(invoked: &std::ffi::OsStr, args: &[String]) -> i32 {
 #[must_use]
 pub fn run_cli(args: &[String]) -> i32 {
     if let Some(code) = crate::host_verbs::run(args) {
+        return code;
+    }
+    if let Some(code) = crate::askpass::run_verb(args) {
         return code;
     }
     if let Some(code) = crate::toolchains::run(args) {
@@ -394,7 +396,7 @@ fn render(request: &Request, response: &Response) -> String {
         Response::Settled { target, state } => format!("Terminal {target} is {state}"),
         Response::TimedOut => TIMED_OUT.to_owned(),
         Response::Screen(screen) => screen.clone(),
-        Response::Noted | Response::Decided(_) => String::new(),
+        Response::Noted | Response::Decided(_) | Response::Answered(_) => String::new(),
         Response::Spawned { terminal } => format!("Started worker in terminal {terminal}"),
         Response::Submitted { terminal } => format!("Typed the message into terminal {terminal}"),
         Response::Code(answer) => answer.render(),

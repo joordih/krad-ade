@@ -43,22 +43,25 @@ impl PromptKind {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PromptAsker {
+    Host(SshDestination),
+    Git,
+}
+
 #[derive(Debug)]
 pub struct SignInPrompt {
-    pub destination: SshDestination,
+    pub asker: PromptAsker,
     pub text: String,
     pub kind: PromptKind,
     answer: mpsc::Sender<Option<Secret>>,
 }
 
 impl SignInPrompt {
-    pub(crate) fn new(
-        destination: SshDestination,
-        text: String,
-        answer: mpsc::Sender<Option<Secret>>,
-    ) -> Self {
+    #[must_use]
+    pub fn new(asker: PromptAsker, text: String, answer: mpsc::Sender<Option<Secret>>) -> Self {
         Self {
-            destination,
+            asker,
             kind: PromptKind::of(&text),
             text,
             answer,
