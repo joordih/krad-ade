@@ -79,13 +79,30 @@ pub fn api_schema() -> Value {
         .notification::<SettingsChanged>();
     let manifest = collector.generator.subschema_for::<ExtensionManifest>();
     let definitions = collector.generator.take_definitions(true);
-    json!({
+    sorted(json!({
         "api": CURRENT_API,
         "manifest": manifest,
         "requests": collector.requests,
         "notifications": collector.notifications,
         "$defs": definitions,
-    })
+    }))
+}
+
+fn sorted(value: Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut entries: Vec<(String, Value)> = map.into_iter().collect();
+            entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+            Value::Object(
+                entries
+                    .into_iter()
+                    .map(|(key, value)| (key, sorted(value)))
+                    .collect(),
+            )
+        }
+        Value::Array(items) => Value::Array(items.into_iter().map(sorted).collect()),
+        other => other,
+    }
 }
 
 #[cfg(test)]
