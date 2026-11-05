@@ -12,10 +12,16 @@ pub use files::{FileWritten, OpenBuffers};
 pub use terminals::HostTerminals;
 
 use super::connection::{AgentRequest, Responder};
+use super::permission::{RequestPermissionRequest, RequestPermissionResponse};
 use super::rpc::{ErrorCode, RpcError};
 use files::HostFiles;
 
 const RELATIVE_PATH_TEXT: &str = "Paths must be absolute";
+
+pub type PermissionAsked = (
+    RequestPermissionRequest,
+    Responder<RequestPermissionResponse>,
+);
 
 pub struct ClientSide {
     files: Arc<HostFiles>,
@@ -37,7 +43,7 @@ impl ClientSide {
     }
 
     #[must_use]
-    pub fn serve(&self, request: AgentRequest) -> Option<AgentRequest> {
+    pub fn serve(&self, request: AgentRequest) -> Option<PermissionAsked> {
         match request {
             AgentRequest::ReadTextFile(read, responder) => {
                 let files = Arc::clone(&self.files);
@@ -68,7 +74,7 @@ impl ClientSide {
                 let terminals = self.terminals.clone();
                 thread::spawn(move || answer(responder, terminals.release(&asked.terminal_id)));
             }
-            asked @ AgentRequest::RequestPermission(..) => return Some(asked),
+            AgentRequest::RequestPermission(asked, responder) => return Some((asked, responder)),
         }
         None
     }

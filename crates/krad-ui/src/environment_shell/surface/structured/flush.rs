@@ -164,7 +164,8 @@ impl EnvironmentShell {
                 ChatBackend::Opencode(server, config)
             }
             AgentPreset::Gateway => ChatBackend::Gateway(self.gateway_config(env, id, cx)?),
-            AgentPreset::Shell | AgentPreset::Acp(_) => return Err(StartError::NoChat(harness)),
+            AgentPreset::Acp(agent) => ChatBackend::Acp(self.acp_config(env, id, agent, cx)?),
+            AgentPreset::Shell => return Err(StartError::NoChat(harness)),
         };
         let owner = env.clone();
         let apply = move |shell: &mut Self, event, cx: &mut Context<Self>| {

@@ -17,6 +17,7 @@ mod subagents;
 mod switch;
 mod thread;
 mod tool_group;
+mod tool_output;
 mod transcript;
 mod view;
 

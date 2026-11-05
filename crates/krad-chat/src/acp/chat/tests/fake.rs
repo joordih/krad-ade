@@ -1,14 +1,17 @@
+use krad_host::HostLink;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, PipeWriter, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{channel, Receiver};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
 use super::super::process::AgentProcess;
-use super::super::{spawn_worker, AcpChat, Launch};
+use super::super::{spawn_worker, AcpChat, Launch, Serving};
+use crate::acp::client_side::OpenBuffers;
 use crate::acp::connection::AcpConnection;
 use crate::control::LiveEvent;
 use crate::live::{LiveHarness, LiveSession};
@@ -18,6 +21,29 @@ pub(super) const WAIT: Duration = Duration::from_secs(5);
 pub(super) const QUIET: Duration = Duration::from_millis(200);
 pub(super) const SESSION: &str = "sess_1";
 pub(super) const CWD: &str = "/work";
+
+#[derive(Debug, Default)]
+pub(super) struct FakeBuffers {
+    pub(super) unsaved: Mutex<HashMap<PathBuf, String>>,
+    pub(super) written: Mutex<Vec<(PathBuf, String)>>,
+}
+
+impl OpenBuffers for FakeBuffers {
+    fn unsaved_text(&self, path: &Path) -> Option<String> {
+        self.unsaved
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(path)
+            .cloned()
+    }
+
+    fn written(&self, path: &Path, content: &str) {
+        self.written
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((path.to_path_buf(), content.to_owned()));
+    }
+}
 
 pub(super) struct FakeAgent {
     lines: Receiver<Value>,
@@ -88,6 +114,7 @@ pub(super) struct Started {
     pub(super) chat: AcpChat,
     pub(super) events: Receiver<LiveEvent>,
     pub(super) agent: FakeAgent,
+    pub(super) buffers: Arc<FakeBuffers>,
 }
 
 impl Started {
@@ -141,8 +168,14 @@ pub(super) fn start(session: &LiveSession) -> Started {
         agent: "Fake (ACP)".to_owned(),
         mcp: Vec::new(),
     };
+    let buffers = Arc::new(FakeBuffers::default());
+    let serving = Serving {
+        host: HostLink::Local,
+        buffers: Arc::clone(&buffers) as Arc<dyn OpenBuffers>,
+    };
     let chat = spawn_worker(
         launch,
+        serving,
         session,
         move |event| drop(sender.send(event)),
         Arc::new(AgentProcess::default()),
@@ -155,6 +188,7 @@ pub(super) fn start(session: &LiveSession) -> Started {
             lines,
             out: agent_out,
         },
+        buffers,
     }
 }
 

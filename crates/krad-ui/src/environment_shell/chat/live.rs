@@ -25,6 +25,7 @@ pub(in crate::environment_shell) enum StartError {
     Waiting,
     Opencode(String),
     Gateway(String),
+    Secret(String),
     NoConfigFolder,
     Chat(ChatError),
 }
@@ -42,7 +43,9 @@ impl fmt::Display for StartError {
                 write!(formatter, "{} {NOT_IN_WSL_TEXT}", preset.display_name())
             }
             Self::Waiting => formatter.write_str(WAITING_TEXT),
-            Self::Opencode(error) | Self::Gateway(error) => formatter.write_str(error),
+            Self::Opencode(error) | Self::Gateway(error) | Self::Secret(error) => {
+                formatter.write_str(error)
+            }
             Self::NoConfigFolder => formatter.write_str(NO_CONFIG_FOLDER_TEXT),
             Self::Chat(error) => error.fmt(formatter),
         }
@@ -114,6 +117,16 @@ impl EnvironmentShell {
             .launch_line(preset)
             .and_then(|line| line.split_whitespace().next().map(str::to_owned))
             .ok_or(StartError::NoProgram(preset))?;
+        self.program_runner(link, preset, program, root)
+    }
+
+    pub(in crate::environment_shell) fn program_runner(
+        &self,
+        link: &HostLink,
+        preset: AgentPreset,
+        program: String,
+        root: Option<&Path>,
+    ) -> Result<(Runner, PathBuf), StartError> {
         if let HostLink::Ssh(ssh) = link {
             let found = self
                 .host_agents

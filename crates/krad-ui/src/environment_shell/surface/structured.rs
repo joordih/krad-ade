@@ -1,3 +1,4 @@
+mod acp;
 mod flush;
 mod forks;
 mod mcp;
@@ -22,6 +23,7 @@ use super::super::EnvironmentShell;
 use super::outbox::Outbox;
 use super::{view, Backend, SurfaceChat, SurfaceCommand};
 
+use acp::AcpSecretsPrep;
 use mcp::McpPrep;
 pub(in crate::environment_shell) use open::restored_chats;
 use open::Earlier;
@@ -74,6 +76,7 @@ pub(in crate::environment_shell) struct StructuredChat {
     pub(super) usage: Option<PlanUsage>,
     pub(super) earlier: Option<Earlier>,
     mcp: McpPrep,
+    acp_secrets: AcpSecretsPrep,
     notices: Vec<String>,
     rewinding: Option<Rewinding>,
 }
@@ -101,6 +104,7 @@ impl StructuredChat {
             usage: None,
             earlier: None,
             mcp: McpPrep::default(),
+            acp_secrets: AcpSecretsPrep::default(),
             notices: Vec::new(),
             rewinding: None,
         }
@@ -116,6 +120,7 @@ impl StructuredChat {
         self.harness = harness;
         self.live = None;
         self.mcp = McpPrep::default();
+        self.acp_secrets = AcpSecretsPrep::default();
         self.catalog = None;
         self.model = None;
         self.effort = None;

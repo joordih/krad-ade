@@ -5,12 +5,15 @@ use gpui_kit::{
     StatefulInteractiveElement, Styled,
 };
 use krad_chat::ToolCall;
-use krad_domain::{TerminalId, ToolKind};
+use krad_domain::{TerminalId, ToolKind, ToolUseId};
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
+use super::super::chat::ShownOutput;
 use super::super::EnvironmentShell;
 use super::edit_diff::{edit_counts, edit_diff};
+use super::tool_output::tool_output;
 use crate::components::{icon, shimmer_text, IconName};
 use crate::theme::{
     palette, Palette, CHIP_H, ICON_SM, ICON_XS, LINE_SM, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2,
@@ -29,6 +32,11 @@ const ROW_GAP: f32 = 2.0;
 const ROWS_GAP_TOP: f32 = 4.0;
 const ROW_ENTER: Duration = Duration::from_millis(260);
 const ROW_ENTER_RISE: f32 = 6.0;
+
+pub(super) struct ToolRows<'a> {
+    pub(super) calls: &'a [(usize, &'a ToolCall)],
+    pub(super) outputs: &'a HashMap<ToolUseId, ShownOutput>,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ToolLook {
@@ -186,7 +194,13 @@ fn rail(last: bool, pal: &Palette) -> impl IntoElement {
         })
 }
 
-fn call_row(call: &ToolCall, last: bool, mono: &SharedString, pal: &Palette) -> gpui_kit::Div {
+fn call_row(
+    call: &ToolCall,
+    output: Option<&ShownOutput>,
+    last: bool,
+    mono: &SharedString,
+    pal: &Palette,
+) -> gpui_kit::Div {
     let kind = ToolLook::from(call.kind);
     let verb = match kind {
         ToolLook::Other => call.name.clone(),
@@ -235,19 +249,21 @@ fn call_row(call: &ToolCall, last: bool, mono: &SharedString, pal: &Palette) -> 
         .child(rail(last, pal))
         .child(line)
         .children(call.edit.as_ref().map(|edit| edit_diff(edit, mono, pal)))
+        .children(output.map(|output| tool_output(output, mono, pal)))
 }
 
 impl EnvironmentShell {
     pub(super) fn tool_group(
         id: TerminalId,
         key: (usize, usize),
-        calls: &[(usize, &ToolCall)],
+        rows: &ToolRows<'_>,
         running: bool,
         open: Option<bool>,
         mono: &SharedString,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
+        let calls = rows.calls;
         let open = open.unwrap_or(running);
         let raw = id.as_u64();
         let kind = calls
@@ -302,7 +318,8 @@ impl EnvironmentShell {
             ));
         let last = calls.len().saturating_sub(1);
         let rows = calls.iter().enumerate().map(|(position, (part, call))| {
-            let row = call_row(call, position == last, mono, pal);
+            let output = call.id.as_ref().and_then(|tool| rows.outputs.get(tool));
+            let row = call_row(call, output, position == last, mono, pal);
             if !running {
                 return row.into_any_element();
             }

@@ -290,6 +290,7 @@ mod tests {
             mentions: Vec::new(),
             checklist: None,
             rewind,
+            tool_outputs: std::collections::HashMap::new(),
         }
     }
 

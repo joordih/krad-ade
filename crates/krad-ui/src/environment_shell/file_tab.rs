@@ -1,3 +1,4 @@
+mod agent_buffers;
 mod disk;
 mod editor_area;
 mod line_numbers;

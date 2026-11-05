@@ -15,7 +15,7 @@ use super::super::chat::{AnswerPart, ChatMessage};
 use super::super::workers::{spawned_worker, WorkerCard};
 use super::super::EnvironmentShell;
 use super::message_actions::{copy_button, message_actions, message_group};
-use super::tool_group::ToolLook;
+use super::tool_group::{ToolLook, ToolRows};
 use super::view::error_line;
 use super::{SurfaceChat, THINKING_LABEL};
 use crate::components::{icon, IconName};
@@ -99,7 +99,11 @@ impl EnvironmentShell {
             };
             let key = (index, start);
             let open = chat.tool_groups.get(&key).copied();
-            parts.push(Self::tool_group(id, key, calls, running, open, &mono, cx));
+            let rows = ToolRows {
+                calls,
+                outputs: &message.tool_outputs,
+            };
+            parts.push(Self::tool_group(id, key, &rows, running, open, &mono, cx));
             calls.clear();
         };
         for (part_index, part) in message.parts.iter().enumerate() {
@@ -280,6 +284,7 @@ mod tests {
             mentions: Vec::new(),
             checklist: None,
             rewind: None,
+            tool_outputs: std::collections::HashMap::new(),
         };
         assert_eq!(answer_text(&message), "First part.\n\nSecond part.");
     }

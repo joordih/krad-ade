@@ -1,10 +1,13 @@
 use krad_domain::{AcpAgentStart, ChatEvent, Prompt};
 use std::collections::HashMap;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
+use std::sync::Arc;
 use std::time::Duration;
 
 use super::super::{spawn_acp, AcpConfig};
+use crate::acp::client_side::OpenBuffers;
 use crate::control::{AcpEvent, LiveEvent};
 use crate::live::{AcpOrder, BusVars, LiveHarness, LiveSession, Order};
 use crate::process::Runner;
@@ -13,6 +16,16 @@ const AGENT_VAR: &str = "KRAD_ACP_LIVE_AGENT";
 const DEFAULT_AGENT: &str = "opencode";
 const AGENT_ID: &str = "opencode";
 const TURN_WAIT: Duration = Duration::from_mins(3);
+
+struct NoBuffers;
+
+impl OpenBuffers for NoBuffers {
+    fn unsaved_text(&self, _: &Path) -> Option<String> {
+        None
+    }
+
+    fn written(&self, _: &Path, _: &str) {}
+}
 
 fn opencode() -> AcpAgentStart {
     let agent = krad_domain::built_in_acp_agents()
@@ -57,6 +70,7 @@ fn opencode_acp_opens_a_session_switches_mode_and_answers_a_prompt() {
             cwd,
             mcp: Vec::new(),
             bus_vars: BusVars::default(),
+            buffers: Arc::new(NoBuffers),
         },
         &LiveSession::Start(crate::live::new_session_id()),
         move |event| drop(sender.send(event)),

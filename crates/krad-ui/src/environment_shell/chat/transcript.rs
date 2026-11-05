@@ -1,9 +1,11 @@
 use krad_chat::{ChatEvent, Speaker};
 use krad_domain::{
-    AgentPreset, ChatEntry, FileEdit, Mention, PermissionMode, Prompt, ToolCall, ToolUseId,
+    AgentPreset, ChatEntry, FileEdit, Mention, PermissionMode, Prompt, ToolCall, ToolOutput,
+    ToolUseId,
 };
+use std::collections::HashMap;
 
-use super::{AnswerPart, ChatMessage};
+use super::{AnswerPart, ChatMessage, ShownOutput};
 
 const BLOCK_SEPARATOR: &str = "\n\n";
 
@@ -62,10 +64,14 @@ pub(in crate::environment_shell) fn fold_entry(messages: &mut Vec<ChatMessage>, 
                     mentions,
                     checklist: None,
                     rewind: None,
+                    tool_outputs: HashMap::new(),
                 });
             }
         }
         ChatEntry::Event(ChatEvent::Edited { tool, edit }) => place_edit(messages, tool, edit),
+        ChatEntry::Event(ChatEvent::ToolOutput { tool, output }) => {
+            place_output(messages, tool, output);
+        }
         ChatEntry::Event(ChatEvent::Prompted(point)) => {
             if let Some(asked) = messages
                 .iter_mut()
@@ -91,7 +97,8 @@ pub(in crate::environment_shell) fn fold_entry(messages: &mut Vec<ChatMessage>, 
                 | ChatEvent::ContextTokens(_)
                 | ChatEvent::ContextWindow(_)
                 | ChatEvent::Prompted(_)
-                | ChatEvent::Edited { .. } => {}
+                | ChatEvent::Edited { .. }
+                | ChatEvent::ToolOutput { .. } => {}
                 ChatEvent::Checklist(list) => answer.checklist = Some(list.clone()),
                 ChatEvent::Text(piece) | ChatEvent::TextDelta(piece) => {
                     let whole_blocks = matches!(event, ChatEvent::Text(_));
@@ -127,6 +134,19 @@ fn place_edit(messages: &mut [ChatMessage], tool: &ToolUseId, edit: &FileEdit) {
         };
         call.edit = Some(edit.clone());
         return;
+    }
+}
+
+fn place_output(messages: &mut [ChatMessage], tool: &ToolUseId, output: &ToolOutput) {
+    let ran = |part: &AnswerPart| matches!(part, AnswerPart::Tool(call) if call.id.as_ref() == Some(tool));
+    if let Some(message) = messages
+        .iter_mut()
+        .rev()
+        .find(|message| message.parts.iter().any(ran))
+    {
+        message
+            .tool_outputs
+            .insert(tool.clone(), ShownOutput::from(output));
     }
 }
 
@@ -176,6 +196,49 @@ mod tests {
         );
         assert_eq!(messages[0].mentions, [Mention::Image(shot)]);
         assert_eq!(messages[1].mentions, []);
+    }
+
+    #[test]
+    fn a_terminal_output_lands_on_its_tool_and_the_latest_one_wins() {
+        let tool = ToolUseId::from("t1");
+        let call = ToolCall {
+            id: Some(tool.clone()),
+            name: "printf".to_owned(),
+            kind: krad_domain::ToolKind::Shell,
+            summary: "printf hi".to_owned(),
+            edit: None,
+        };
+        let output = |text: &str, exit_code| {
+            event(ChatEvent::ToolOutput {
+                tool: tool.clone(),
+                output: ToolOutput {
+                    text: text.to_owned(),
+                    exit_code,
+                    ..ToolOutput::default()
+                },
+            })
+        };
+        let mut messages = Vec::new();
+        for entry in [
+            user("Run it"),
+            event(ChatEvent::Tool(call)),
+            output("h", None),
+            output("hi\n", Some(3)),
+            event(ChatEvent::ToolOutput {
+                tool: ToolUseId::from("unknown"),
+                output: ToolOutput::default(),
+            }),
+            event(ChatEvent::Done),
+        ] {
+            fold_entry(&mut messages, &entry);
+        }
+        let shown = messages[1].tool_outputs.get(&tool);
+        assert_eq!(shown.map(|shown| shown.text.as_ref()), Some("hi"));
+        assert_eq!(
+            shown.and_then(|shown| shown.failure.as_deref()),
+            Some("Exited with code 3")
+        );
+        assert_eq!(messages[1].tool_outputs.len(), 1);
     }
 
     #[test]

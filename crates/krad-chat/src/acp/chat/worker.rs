@@ -1,16 +1,16 @@
 mod choosing;
+mod watching;
 
 use krad_domain::{AcpModelId, ChatEvent, Prompt, ResumeId};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::{debug, info};
 
 use super::asks::Asks;
 use super::choices::Choices;
-use super::client_side::serve_client_side;
 use super::opening::{
     auth_methods, initialize_request, open, opening_for, OpenFailure, Opened, Opening,
     SETUP_TIMEOUT,
@@ -19,6 +19,7 @@ use super::process::AgentProcess;
 use super::prompt::prompt_blocks;
 use super::translate::Translator;
 use super::{settle_later, Answered, Inbound, Launch};
+use crate::acp::client_side::{ClientSide, FileWritten};
 use crate::acp::connection::{AcpConnection, AcpError};
 use crate::acp::ids::SessionId;
 use crate::acp::prompt::{CancelNotification, PromptRequest, PromptResponse, StopReason};
@@ -28,6 +29,7 @@ use crate::control::{AcpEvent, LiveEvent};
 use crate::live::{AcpOrder, LiveSession, Order};
 use crate::refused::ResumeRefused;
 use crate::rewind::RewindError;
+use watching::{Watched, TERMINAL_REFRESH};
 
 const SIGN_IN_TIMEOUT: Duration = Duration::from_mins(10);
 const STOPPED_TEXT: &str = "the agent stopped";
@@ -51,9 +53,12 @@ pub(super) struct Worker<S> {
     sink: S,
     launch: Launch,
     connection: AcpConnection,
+    client_side: ClientSide,
     inbound: Sender<Inbound>,
     process: Arc<AgentProcess>,
     running: Arc<AtomicBool>,
+    watched: Vec<Watched>,
+    refreshed: Instant,
     capabilities: AgentCapabilities,
     methods: Vec<AuthMethod>,
     session: Option<SessionId>,
@@ -82,6 +87,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
     pub(super) fn new(
         launch: Launch,
         connection: AcpConnection,
+        client_side: ClientSide,
         inbound: Sender<Inbound>,
         process: Arc<AgentProcess>,
         running: Arc<AtomicBool>,
@@ -91,9 +97,12 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             sink,
             launch,
             connection,
+            client_side,
             inbound,
             process,
             running,
+            watched: Vec::new(),
+            refreshed: Instant::now(),
             capabilities: AgentCapabilities::default(),
             methods: Vec::new(),
             session: None,
@@ -135,16 +144,34 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
                 Err(refused) => self.refuse(refused),
             };
             if flow == Flow::Go {
-                for inbound in inbox {
-                    if self.handle(inbound) == Flow::Stop {
-                        break;
-                    }
-                }
+                self.serve(inbox);
             }
         }
         self.asks.cancel_all();
         self.process.stop();
         info!("ACP chat ended");
+    }
+
+    fn serve(&mut self, inbox: &Receiver<Inbound>) {
+        loop {
+            let received = if self.watched.is_empty() {
+                inbox.recv().map_err(|_| RecvTimeoutError::Disconnected)
+            } else {
+                inbox.recv_timeout(TERMINAL_REFRESH.saturating_sub(self.refreshed.elapsed()))
+            };
+            match received {
+                Ok(inbound) => {
+                    if self.handle(inbound) == Flow::Stop {
+                        return;
+                    }
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => return,
+            }
+            if self.refreshed.elapsed() >= TERMINAL_REFRESH {
+                self.refresh_terminals();
+            }
+        }
     }
 
     fn initialize(&mut self) -> Flow {
@@ -247,12 +274,14 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             Inbound::Order(order) => return self.order(order),
             Inbound::Update(notification) => self.updated(notification),
             Inbound::Asked(request) => {
-                if let Some((asked, reply)) = serve_client_side(request) {
+                if let Some((asked, reply)) = self.client_side.serve(request) {
                     let tool = self.translator.asked_tool(&asked.tool_call);
+                    self.watch_new_terminals();
                     let ask = self.asks.asked(tool, asked.options, reply);
                     (self.sink)(LiveEvent::Ask(Box::new(ask)));
                 }
             }
+            Inbound::Written(written) => self.file_written(written),
             Inbound::Answered(answered) => self.answered(answered),
             Inbound::Loaded => self.replaying = false,
             Inbound::Closed => {
@@ -263,6 +292,16 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             Inbound::Stop => return Flow::Stop,
         }
         Flow::Go
+    }
+
+    fn file_written(&mut self, written: FileWritten) {
+        if self.session.as_ref() != Some(&written.session_id) {
+            debug!("skipped a file written for another ACP session");
+            return;
+        }
+        for event in self.translator.written(written.edit) {
+            (self.sink)(event);
+        }
     }
 
     fn updated(&mut self, notification: SessionNotification) {
@@ -292,6 +331,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
                 for event in self.translator.translate(update) {
                     (self.sink)(event);
                 }
+                self.watch_new_terminals();
             }
         }
     }
@@ -379,6 +419,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
     fn prompted(&mut self, outcome: Result<PromptResponse, AcpError>) {
         self.prompting = false;
         self.asks.cancel_all();
+        self.refresh_terminals();
         for event in self.translator.turn_ended() {
             (self.sink)(event);
         }

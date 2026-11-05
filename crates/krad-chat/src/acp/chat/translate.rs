@@ -1,3 +1,5 @@
+mod client_side;
+
 use krad_domain::{
     line_diff, ChatEvent, Checklist, ChecklistItem, ChecklistStatus, FileEdit, ToolCall,
     ToolKind as ShownKind, ToolUseId,
@@ -6,7 +8,7 @@ use std::collections::HashMap;
 use std::mem;
 
 use crate::acp::content::ContentBlock;
-use crate::acp::ids::ToolCallId;
+use crate::acp::ids::{TerminalId, ToolCallId};
 use crate::acp::update::{
     AvailableCommand, Diff, Plan, PlanEntryStatus, SessionUpdate, ToolCall as AgentToolCall,
     ToolCallContent, ToolCallStatus, ToolCallUpdate, ToolKind,
@@ -22,6 +24,7 @@ struct ToolState {
     summary: String,
     edit: Option<FileEdit>,
     shown: bool,
+    terminals: Vec<TerminalId>,
 }
 
 impl ToolState {
@@ -35,6 +38,8 @@ pub(super) struct Translator {
     thought: String,
     tools: HashMap<ToolCallId, ToolState>,
     catalog: Catalog,
+    watching: Vec<(ToolUseId, TerminalId)>,
+    written: u64,
 }
 
 const fn shown_kind(kind: ToolKind) -> ShownKind {
@@ -171,9 +176,11 @@ impl Translator {
             summary,
             edit: first_edit(&call.content),
             shown: false,
+            terminals: Vec::new(),
         };
         let worth_showing = state.worth_showing();
         self.tools.insert(call.tool_call_id.clone(), state);
+        self.watch_terminals(&call.tool_call_id, &call.content);
         if !worth_showing {
             return Vec::new();
         }
@@ -227,7 +234,10 @@ impl Translator {
         if let Some(edit) = update.content.as_deref().and_then(first_edit) {
             state.edit = Some(edit);
         }
-        state
+        if let Some(content) = &update.content {
+            self.watch_terminals(&update.tool_call_id, content);
+        }
+        self.tools.entry(update.tool_call_id.clone()).or_default()
     }
 
     fn shown(&mut self, id: &ToolCallId) -> Option<LiveEvent> {

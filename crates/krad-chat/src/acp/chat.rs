@@ -1,6 +1,5 @@
 mod asks;
 mod choices;
-mod client_side;
 mod opening;
 mod process;
 mod prompt;
@@ -9,15 +8,17 @@ mod translate;
 mod worker;
 
 use krad_domain::{AcpAgentStart, AcpModeId, AcpModelId, ChatEvent, McpServerStart};
+use krad_host::HostLink;
 use std::io;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 use std::thread;
 use thiserror::Error;
 use tracing::debug;
 
+use crate::acp::client_side::{ClientSide, FileWritten, OpenBuffers};
 use crate::acp::config::SetSessionConfigOptionResponse;
 use crate::acp::connection::{AcpClient, AcpConnection, AcpError, AgentRequest, Pending};
 use crate::acp::prompt::PromptResponse;
@@ -30,13 +31,14 @@ use process::AgentProcess;
 use servers::{agent_env, MissingSecret};
 use worker::Worker;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct AcpConfig {
     pub runner: Runner,
     pub agent: AcpAgentStart,
     pub cwd: PathBuf,
     pub mcp: Vec<McpServerStart>,
     pub bus_vars: BusVars,
+    pub buffers: Arc<dyn OpenBuffers>,
 }
 
 #[derive(Debug, Error)]
@@ -60,6 +62,7 @@ enum Inbound {
     Order(Order),
     Update(SessionNotification),
     Asked(AgentRequest),
+    Written(FileWritten),
     Answered(Answered),
     Loaded,
     Closed,
@@ -114,6 +117,29 @@ struct Launch {
     mcp: Vec<McpServerStart>,
 }
 
+struct Serving {
+    host: HostLink,
+    buffers: Arc<dyn OpenBuffers>,
+}
+
+impl Serving {
+    fn client_side(self, cwd: PathBuf, inbound: &Sender<Inbound>) -> ClientSide {
+        let (written, files) = channel();
+        let inbound = inbound.clone();
+        thread::spawn(move || forward_written(&files, &inbound));
+        ClientSide::new(self.host, cwd, self.buffers, written)
+    }
+}
+
+fn forward_written(files: &Receiver<FileWritten>, inbound: &Sender<Inbound>) {
+    for written in files {
+        if inbound.send(Inbound::Written(written)).is_err() {
+            debug!("the ACP chat ended before a file its agent wrote");
+            return;
+        }
+    }
+}
+
 pub(crate) struct AcpChat {
     orders: Sender<Inbound>,
     running: Arc<AtomicBool>,
@@ -166,15 +192,20 @@ pub(crate) fn spawn_acp(
         agent: config.agent.agent.display_name(),
         mcp: config.mcp.clone(),
     };
+    let serving = Serving {
+        host: config.runner.link(),
+        buffers: Arc::clone(&config.buffers),
+    };
     let process = Arc::new(AgentProcess::default());
     let launching = Arc::clone(&process);
-    spawn_worker(launch, session, sink, process, move |forward| {
+    spawn_worker(launch, serving, session, sink, process, move |forward| {
         connect(&config, &launching, forward)
     })
 }
 
 fn spawn_worker<S, C>(
     launch: Launch,
+    serving: Serving,
     session: &LiveSession,
     mut sink: S,
     process: Arc<AgentProcess>,
@@ -193,9 +224,11 @@ where
     thread::spawn(move || {
         match connect(Forward(inbound.clone())) {
             Ok(connection) => {
+                let client_side = serving.client_side(launch.cwd.clone(), &inbound);
                 Worker::new(
                     launch,
                     connection,
+                    client_side,
                     inbound,
                     working,
                     Arc::clone(&alive),

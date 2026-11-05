@@ -38,6 +38,17 @@ pub struct ToolCall {
     pub edit: Option<FileEdit>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolOutput {
+    pub text: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub truncated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signal: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ChatEvent {
     Session(ResumeId),
@@ -50,6 +61,7 @@ pub enum ChatEvent {
     ContextWindow(u64),
     Tool(ToolCall),
     Edited { tool: ToolUseId, edit: FileEdit },
+    ToolOutput { tool: ToolUseId, output: ToolOutput },
     Checklist(Checklist),
     Prompted(RewindPoint),
     Done,
@@ -122,6 +134,15 @@ mod tests {
                     status: crate::checklist::ChecklistStatus::Pending,
                 }],
             })),
+            ChatEntry::Event(ChatEvent::ToolOutput {
+                tool: ToolUseId::from("t1"),
+                output: ToolOutput {
+                    text: "ok\n".to_owned(),
+                    truncated: true,
+                    exit_code: Some(0),
+                    signal: None,
+                },
+            }),
             ChatEntry::Event(ChatEvent::Done),
         ];
         for entry in entries {

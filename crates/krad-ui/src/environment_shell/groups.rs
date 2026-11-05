@@ -114,6 +114,28 @@ impl EnvironmentShell {
         .detach();
     }
 
+    pub(super) fn redetect_after_acp_change(&mut self, cx: &mut Context<Self>) {
+        let agents = self.settings.acp.all_agents();
+        if agents == self.detected_acp {
+            return;
+        }
+        self.detect_agents(cx);
+        let distros: Vec<String> = self.wsl_agents.keys().cloned().collect();
+        for distro in distros {
+            Self::detect_agents_in(distro, agents.clone(), cx);
+        }
+        let remote: Vec<EnvironmentName> = self
+            .envs
+            .iter()
+            .filter(|(_, live)| !live.link.is_local())
+            .map(|(env, _)| env.clone())
+            .collect();
+        for env in remote {
+            self.detect_host_agents(&env, cx);
+        }
+        self.detected_acp = agents;
+    }
+
     fn detect_agents_in(distro: String, acp_agents: Vec<AcpAgent>, cx: &mut Context<Self>) {
         let lookup = cx.background_spawn({
             let distro = distro.clone();

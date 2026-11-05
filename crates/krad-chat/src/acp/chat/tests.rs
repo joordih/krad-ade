@@ -1,3 +1,4 @@
+mod client_side;
 mod fake;
 mod live;
 
@@ -166,20 +167,6 @@ fn a_permission_ask_carries_the_agents_options_and_answers_with_the_chosen_one()
         .agent
         .reply(&prompt, &json!({"stopReason": "end_turn"}));
     started.until(|event| matches!(event, LiveEvent::Chat(ChatEvent::Done)));
-}
-
-#[test]
-fn the_client_side_methods_are_refused_until_they_are_served() {
-    let mut started = start(&fresh());
-    opened(&mut started, &json!({"sessionId": SESSION}));
-    started.agent.ask(
-        "read-1",
-        "fs/read_text_file",
-        &json!({"sessionId": SESSION, "path": "/work/a.txt"}),
-    );
-    let answer = started.agent.next();
-    assert_eq!(answer["id"], "read-1");
-    assert_eq!(answer["error"]["code"], -32601);
 }
 
 #[test]
@@ -375,6 +362,7 @@ fn a_rewind_is_refused_and_the_chat_ends_when_the_agent_goes_away() {
         chat,
         events,
         agent,
+        ..
     } = started;
     drop(agent);
     let stopped = events

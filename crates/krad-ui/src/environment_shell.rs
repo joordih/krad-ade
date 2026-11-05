@@ -161,6 +161,7 @@ pub struct EnvironmentShell {
     native_agents: Vec<AgentPreset>,
     wsl_agents: HashMap<String, Vec<AgentPreset>>,
     host_agents: HashMap<krad_domain::Host, Vec<AgentPreset>>,
+    detected_acp: Vec<krad_domain::AcpAgent>,
     settings: Settings,
     settings_ui: Option<settings_view::SettingsUi>,
     agent_bus: Option<agent_bus::AgentBus>,
@@ -280,6 +281,7 @@ impl EnvironmentShell {
             native_agents: vec![AgentPreset::Shell],
             wsl_agents: HashMap::new(),
             host_agents: HashMap::new(),
+            detected_acp: settings.acp.all_agents(),
             settings,
             settings_ui: None,
             agent_bus: None,
@@ -316,10 +318,14 @@ impl EnvironmentShell {
         let active = shell.active.clone();
         shell.show_host(&active, cx);
         shell.pump_task = Some(Self::start_pump(pump_rx, cx));
-        shell.detect_agents(cx);
-        shell.start_watches(cx);
-        shell.load_language_tools(cx);
+        shell.start_background_work(cx);
         shell
+    }
+
+    fn start_background_work(&mut self, cx: &mut Context<Self>) {
+        self.detect_agents(cx);
+        self.start_watches(cx);
+        self.load_language_tools(cx);
     }
 
     fn frame_interval(&self) -> Duration {

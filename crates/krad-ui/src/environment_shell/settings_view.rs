@@ -255,7 +255,8 @@ impl EnvironmentShell {
         true
     }
 
-    pub(super) fn save_settings(&self, cx: &mut Context<Self>) {
+    pub(super) fn save_settings(&mut self, cx: &mut Context<Self>) {
+        self.redetect_after_acp_change(cx);
         let settings = self.settings.clone();
         let writing = cx.background_spawn(async move { write_settings(&settings) });
         cx.spawn(async move |this, cx| {
