@@ -9,7 +9,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use super::prompt::{PromptSender, Secret, SignInPrompt};
+use super::prompt::{PromptAsker, PromptSender, Secret, SignInPrompt};
 use super::session::{Session, Side};
 use super::{MuxError, ENV_ENDPOINT, ENV_TOKEN};
 use crate::layout::APP_VERSION;
@@ -189,7 +189,11 @@ fn ask(shared: &Shared, text: String) -> Option<Secret> {
     let prompts = shared.prompts.as_ref()?;
     let (answer, answered) = mpsc::channel();
     prompts
-        .send(SignInPrompt::new(shared.destination.clone(), text, answer))
+        .send(SignInPrompt::new(
+            PromptAsker::Host(shared.destination.clone()),
+            text,
+            answer,
+        ))
         .ok()?;
     answered.recv_timeout(SIGN_IN_WAIT).ok().flatten()
 }

@@ -13,12 +13,12 @@ mod shim;
 mod tests;
 mod wire;
 
-pub use askpass::{is_askpass_invocation, ASKPASS_PROGRAM};
+pub use askpass::{askpass_alias, is_askpass_invocation, ASKPASS_PROGRAM};
 pub use bootstrap::BootstrapFailure;
 pub(crate) use carrier::{MuxCarrier, MuxTools};
 pub(crate) use channel::Channel;
 pub(crate) use forward::MuxForward;
-pub use prompt::{PromptKind, PromptSender, Secret, SignInPrompt};
+pub use prompt::{PromptAsker, PromptKind, PromptSender, Secret, SignInPrompt};
 pub use serve::serve;
 pub use shim::{run_askpass, run_exec};
 pub(crate) use wire::OpenRequest;

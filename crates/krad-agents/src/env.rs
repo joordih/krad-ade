@@ -67,7 +67,7 @@ pub fn token_file_env(
 pub fn terminal_env(endpoint: &Endpoint, caller: &Caller) -> Vec<(String, String)> {
     let token = match caller {
         Caller::Lead(_) => &endpoint.lead_token,
-        Caller::Terminal(_) => &endpoint.token,
+        Caller::Terminal(_) | Caller::Git(_) => &endpoint.token,
     };
     [
         (ENV_ENDPOINT, endpoint.address.to_string()),

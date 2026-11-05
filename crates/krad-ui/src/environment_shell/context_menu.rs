@@ -37,6 +37,7 @@ pub(super) enum MenuAction {
     Note(super::notes_view::NoteAction),
     File(FileAction),
     Changes(super::side_panel::ChangesAction),
+    Git(super::git_actions::GitAction),
     SwitchEnvironment(EnvironmentName),
     NewEnvironment,
     NewSshEnvironment,
@@ -300,6 +301,19 @@ impl EnvironmentShell {
         }
     }
 
+    pub(super) fn open_menu_searching(
+        &mut self,
+        origin: (f32, f32),
+        entries: Vec<MenuEntry>,
+        search: MenuSearch,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_menu(origin, MenuPlacement::Below, entries, cx);
+        if let Some(menu) = &mut self.context_menu {
+            menu.search = Some(search);
+        }
+    }
+
     fn close_menu(&mut self, cx: &mut Context<Self>) {
         self.context_menu = None;
         cx.notify();
@@ -388,6 +402,7 @@ impl EnvironmentShell {
             MenuAction::Note(action) => self.run_note_action(action, cx),
             MenuAction::File(action) => self.run_file_action(action, window, cx),
             MenuAction::Changes(action) => self.run_changes_action(action, window, cx),
+            MenuAction::Git(action) => self.run_git_action(action, window, cx),
             MenuAction::SwitchEnvironment(name) => self.switch_env(&name, cx),
             MenuAction::NewEnvironment => self.new_environment(window, cx),
             MenuAction::NewSshEnvironment => self.open_ssh_dialog(window, cx),

@@ -8,13 +8,21 @@ use std::path::PathBuf;
 
 use super::super::super::context_menu::{MenuAction, MenuEntry};
 use super::super::super::discard::Discard;
+use super::super::super::git_actions::{ChangeSide, GitAction};
 use super::super::super::EnvironmentShell;
 use super::row_key;
 use crate::components::{icon, tooltip_view, IconName};
 use crate::theme::{palette, ICON_SM, ICON_XS, RADIUS_XS};
 
 pub(super) const ROW_GROUP: &str = "side-change-row-group";
+pub(super) const SECTION_GROUP: &str = "side-change-section-group";
 const BTN_DISCARD_PREFIX: &str = "side-change-discard";
+const BTN_STAGE_PREFIX: &str = "side-change-stage";
+const BTN_STAGE_ALL_PREFIX: &str = "side-change-stage-all";
+const STAGE_LABEL: &str = "Stage changes";
+const UNSTAGE_LABEL: &str = "Unstage changes";
+const STAGE_ALL_LABEL: &str = "Stage all changes";
+const UNSTAGE_ALL_LABEL: &str = "Unstage all changes";
 const OPEN_LABEL: &str = "Open changes";
 const DISCARD_LABEL: &str = "Discard changes";
 const DELETE_LABEL: &str = "Delete file";
@@ -85,7 +93,10 @@ impl EnvironmentShell {
         let tooltip = discard_label(change);
         let discarded = change.clone();
         div()
-            .id((BTN_DISCARD_PREFIX, row_key(&change.path)))
+            .id((
+                BTN_DISCARD_PREFIX,
+                row_key(ChangeSide::Unstaged, &change.path),
+            ))
             .flex_none()
             .flex()
             .items_center()
@@ -109,4 +120,54 @@ impl EnvironmentShell {
             }))
             .child(icon(IconName::Undo, ICON_XS, pal.text_muted))
     }
+}
+
+pub(super) fn side_button(
+    group: &'static str,
+    side: ChangeSide,
+    path: Option<PathBuf>,
+    cx: &mut gpui_kit::Context<EnvironmentShell>,
+) -> impl IntoElement {
+    let pal = palette(cx);
+    let (glyph, tooltip) = match (side, path.is_some()) {
+        (ChangeSide::Unstaged, true) => (IconName::Add, STAGE_LABEL),
+        (ChangeSide::Staged, true) => (IconName::Minus, UNSTAGE_LABEL),
+        (ChangeSide::Unstaged, false) => (IconName::Add, STAGE_ALL_LABEL),
+        (ChangeSide::Staged, false) => (IconName::Minus, UNSTAGE_ALL_LABEL),
+    };
+    let id = match &path {
+        Some(path) => (BTN_STAGE_PREFIX, row_key(side, path)),
+        None => (
+            BTN_STAGE_ALL_PREFIX,
+            row_key(side, std::path::Path::new("")),
+        ),
+    };
+    div()
+        .id(id)
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .size(px(ICON_SM))
+        .rounded(px(RADIUS_XS))
+        .invisible()
+        .group_hover(group, Styled::visible)
+        .hover(|style| style.bg(pal.bg_selected))
+        .tooltip(move |_, cx| tooltip_view(tooltip.into(), cx))
+        .on_click(
+            cx.listener(move |this: &mut EnvironmentShell, _, window, cx| {
+                cx.stop_propagation();
+                match (side, path.clone()) {
+                    (ChangeSide::Unstaged, Some(path)) => this.stage_paths(vec![path], cx),
+                    (ChangeSide::Staged, Some(path)) => this.unstage_paths(vec![path], cx),
+                    (ChangeSide::Unstaged, None) => {
+                        this.run_git_action(GitAction::StageAll, window, cx);
+                    }
+                    (ChangeSide::Staged, None) => {
+                        this.run_git_action(GitAction::UnstageAll, window, cx);
+                    }
+                }
+            }),
+        )
+        .child(icon(glyph, ICON_XS, pal.text_muted))
 }

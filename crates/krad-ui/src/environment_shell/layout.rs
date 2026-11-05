@@ -261,6 +261,7 @@ impl Render for EnvironmentShell {
         self.sync_system_appearance(cx);
         self.track_cursor_jumps(cx);
         self.sync_history(cx);
+        self.sync_commit_box(window, cx);
         self.sync_notes_view(view, window, cx);
         self.ensure_chat_sessions(cx);
         self.sync_session_panes();

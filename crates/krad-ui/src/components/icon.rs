@@ -36,6 +36,7 @@ icons! {
     Close => "cancel-01",
     Add => "add-01",
     Minus => "minus-sign",
+    More => "more-horizontal",
     Search => "search-01",
     Sun => "sun-03",
     Moon => "moon-02",

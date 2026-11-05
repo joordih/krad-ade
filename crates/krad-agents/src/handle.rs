@@ -5,6 +5,7 @@ use std::str::FromStr;
 
 const SEPARATOR: char = ':';
 const LEAD_PREFIX: &str = "lead-";
+const GIT_CALLER: &str = "git";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TerminalHandle {
@@ -45,6 +46,7 @@ pub struct LeadHandle {
 pub enum Caller {
     Terminal(TerminalHandle),
     Lead(LeadHandle),
+    Git(String),
 }
 
 impl fmt::Display for Caller {
@@ -56,6 +58,7 @@ impl fmt::Display for Caller {
                 "{}{SEPARATOR}{LEAD_PREFIX}{}",
                 handle.environment, handle.session
             ),
+            Self::Git(environment) => write!(f, "{environment}{SEPARATOR}{GIT_CALLER}"),
         }
     }
 }
@@ -67,6 +70,9 @@ impl FromStr for Caller {
         let (environment, last) = text
             .rsplit_once(SEPARATOR)
             .ok_or(HandleError::MissingSeparator)?;
+        if last == GIT_CALLER && !environment.is_empty() {
+            return Ok(Self::Git(environment.to_owned()));
+        }
         let Some(session) = last.strip_prefix(LEAD_PREFIX) else {
             return text.parse().map(Self::Terminal);
         };
@@ -100,6 +106,9 @@ mod tests {
         });
         assert_eq!(lead.to_string(), "main:lead-2");
         assert_eq!(lead.to_string().parse::<Caller>()?, lead);
+        let git = Caller::Git("wsl:Ubuntu".to_owned());
+        assert_eq!(git.to_string(), "wsl:Ubuntu:git");
+        assert_eq!(git.to_string().parse::<Caller>()?, git);
         assert!(matches!(
             "main:lead-x".parse::<Caller>(),
             Err(HandleError::InvalidTerminal(_))

@@ -1,5 +1,6 @@
-use krad_agents::{member_token, token_file_env, Caller, Endpoint, CLI_PROGRAM};
+use krad_agents::{member_token, token_file_env, Caller, Endpoint, ASKPASS_VERB, CLI_PROGRAM};
 use krad_domain::claude_hook_settings;
+use krad_host::mux::ASKPASS_PROGRAM;
 use krad_host::{
     FileMode, HostCommand, HostError, HostLink, HostPlatform, RemoteForward, SshLink,
     HOST_CLI_BUILD, LOOPBACK,
@@ -15,6 +16,7 @@ const MACOS_RESOURCES: [&str; 2] = ["..", "Resources"];
 const BUILD_PROFILES: [&str; 2] = ["release", "debug"];
 const PATH_VAR: &str = "PATH";
 const SLUG_ESCAPE: char = '_';
+const SCRIPT_SHEBANG: &str = "#!/bin/sh";
 
 pub(in crate::environment_shell) struct RemoteBus {
     forward: RemoteForward,
@@ -96,6 +98,11 @@ impl RemoteBusPlan {
             self.link.write(&cli, &std::fs::read(bundled)?)?;
             self.link.set_permissions(&cli, FileMode::EXECUTABLE)?;
         }
+        self.link.write_with_mode(
+            &bin_dir.join(ASKPASS_PROGRAM),
+            askpass_script().as_bytes(),
+            FileMode::EXECUTABLE,
+        )?;
         let bus_dir = layout.bus_dir()?;
         self.link
             .create_dir_with_mode(&bus_dir, FileMode::PRIVATE_DIR)?;
@@ -141,9 +148,24 @@ impl RemoteBus {
         vars
     }
 
+    pub(in crate::environment_shell) fn askpass(
+        &self,
+        caller: &Caller,
+    ) -> (PathBuf, Vec<(String, String)>) {
+        let address = format!("{LOOPBACK}:{}", self.forward.remote_port);
+        (
+            self.bin_dir.join(ASKPASS_PROGRAM),
+            token_file_env(&address, &self.token_file, caller),
+        )
+    }
+
     pub(in crate::environment_shell) fn is_alive(&mut self) -> bool {
         self.forward.is_alive()
     }
+}
+
+fn askpass_script() -> String {
+    format!("{SCRIPT_SHEBANG}\nexec \"${{0%/*}}/{CLI_PROGRAM}\" {ASKPASS_VERB} \"$@\"\n")
 }
 
 fn environment_slug(environment: &str) -> String {
@@ -195,6 +217,14 @@ fn bundle_candidates(exe_dir: &Path, platform: HostPlatform) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_askpass_script_hands_the_prompt_to_the_cli_beside_it() {
+        assert_eq!(
+            askpass_script(),
+            "#!/bin/sh\nexec \"${0%/*}/krad-ade-agents\" askpass \"$@\"\n"
+        );
+    }
 
     #[test]
     fn environment_names_become_safe_file_names() {

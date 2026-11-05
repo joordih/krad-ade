@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use crate::process::{git_path, host_path};
+use crate::refs::{Branch, BranchPlace};
 use krad_host::HostLink;
 
 use crate::git::run_git;
@@ -70,6 +71,39 @@ pub fn add_worktree(host: &HostLink, repo_root: &Path, name: &str) -> Result<Wor
     Ok(Worktree {
         path,
         branch: Some(name.to_owned()),
+    })
+}
+
+/// # Errors
+///
+/// Returns [`RepoError::InvalidName`] when the branch gives no usable
+/// folder name, and [`RepoError::Git`] when the branch is checked out
+/// elsewhere or the folder exists.
+pub fn add_branch_worktree(
+    host: &HostLink,
+    repo_root: &Path,
+    branch: &Branch,
+) -> Result<Worktree, RepoError> {
+    let name = sanitize_worktree_name(&branch.name)
+        .ok_or_else(|| RepoError::InvalidName(branch.name.clone()))?;
+    let path = worktree_path(repo_root, &name);
+    let target = git_path(host, repo_root, &path);
+    let tracked = branch.to_string();
+    let mut args: Vec<&OsStr> = vec![OsStr::new("worktree"), OsStr::new("add")];
+    match &branch.place {
+        BranchPlace::Local => args.extend([target.as_os_str(), OsStr::new(&branch.name)]),
+        BranchPlace::Remote(_) => args.extend([
+            OsStr::new("--track"),
+            OsStr::new("-b"),
+            OsStr::new(&branch.name),
+            target.as_os_str(),
+            OsStr::new(&tracked),
+        ]),
+    }
+    run_git(host, repo_root, &args)?;
+    Ok(Worktree {
+        path,
+        branch: Some(branch.name.clone()),
     })
 }
 

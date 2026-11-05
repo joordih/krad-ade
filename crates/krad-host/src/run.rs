@@ -14,6 +14,13 @@ enum Stream {
     Err(Vec<u8>),
 }
 
+/// # Errors
+///
+/// Returns [`HostError::TimedOut`] when the command is still running at `timeout`.
+pub fn local_output_within(command: Command, timeout: Duration) -> Result<Output, HostError> {
+    output_within(command, timeout, Waited::Command)
+}
+
 pub(crate) fn output_within(
     mut command: Command,
     timeout: Duration,

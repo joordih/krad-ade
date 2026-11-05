@@ -1,3 +1,4 @@
+mod askpass;
 mod chat;
 mod lead;
 mod remote;
@@ -225,6 +226,7 @@ impl EnvironmentShell {
         match from {
             Caller::Terminal(from) => self.answer_terminal(from, request, reply, cx),
             Caller::Lead(lead) => self.answer_lead(&lead, request, reply, cx),
+            Caller::Git(_) => self.answer_git(request, reply, cx),
         }
         cx.notify();
     }
@@ -321,6 +323,7 @@ impl EnvironmentShell {
                 self.spawn_worker(&from, agent, worktree, &task, reply, cx);
                 return;
             }
+            Request::Askpass { .. } => Some(Response::Error(askpass::GIT_ONLY.to_owned())),
         };
         if let Some(response) = response {
             reply.send(response).unwrap_or_default();

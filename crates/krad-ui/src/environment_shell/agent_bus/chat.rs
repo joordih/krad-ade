@@ -60,6 +60,7 @@ impl EnvironmentShell {
             Request::Hook { .. } | Request::Status(_) | Request::Ask { .. } => {
                 Response::Error(TERMINALS_ONLY.to_owned())
             }
+            Request::Askpass { .. } => Response::Error(super::askpass::GIT_ONLY.to_owned()),
         };
         reply.send(response).unwrap_or_default();
     }

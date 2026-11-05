@@ -24,6 +24,7 @@ mod file_tab;
 mod file_tree;
 mod gateway;
 mod gestures;
+mod git_actions;
 mod groups;
 mod harness_models;
 mod host;
@@ -146,7 +147,7 @@ pub struct EnvironmentShell {
     sidebar_w: SidebarWidth,
     side_reveal: PanelReveal,
     side_search: side_panel::SideSearch,
-    changes_expanded: HashSet<PathBuf>,
+    git_ui: git_actions::GitUi,
     pending_discard: Option<discard::Discard>,
     gestures: gestures::Gestures,
     history: side_panel::CommitHistory,
@@ -265,7 +266,7 @@ impl EnvironmentShell {
             sidebar_w: SidebarWidth::default(),
             side_reveal: PanelReveal::new(false),
             side_search: side_panel::SideSearch::default(),
-            changes_expanded: HashSet::new(),
+            git_ui: git_actions::GitUi::default(),
             pending_discard: None,
             gestures: gestures::Gestures::default(),
             history: side_panel::CommitHistory::default(),

@@ -142,6 +142,18 @@ _Avoid_: reset, undo, rollback
 The commits of the group's branch and its upstream, newest first, drawn as a graph of lanes under the git changes. A commit opens to list the files it changed, each shown as a diff against its first parent.
 _Avoid_: log, timeline, graph
 
+**Branch switcher**:
+The searchable list of the group's worktrees, local branches and remote branches, opened from the environment pill or the branch in the git changes. Picking a worktree opens its group; picking a branch checks it out in the selected group, a remote one through a new local branch that tracks it.
+_Avoid_: worktree window, branch picker, checkout dialog
+
+**Staged change**:
+A change the user has marked to go into the next commit; a commit with nothing staged takes every change.
+_Avoid_: index, cached change
+
+**Stash**:
+Uncommitted changes the user set aside to clean the working tree, to bring back later.
+_Avoid_: shelf, saved changes
+
 **File tab**:
 A tab of the active session that edits one file with syntax highlighting. One click on a file opens it as the session's preview tab; a double click on the file or on the tab pins it. Pinned file tabs reopen with the session; the preview tab does not.
 _Avoid_: editor window, buffer, document

@@ -32,6 +32,8 @@ pub(super) enum NameTarget {
         value: String,
         title: String,
     },
+    Branch,
+    Tag,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -113,6 +115,7 @@ impl EnvironmentShell {
                 .map(|group| group.name.clone()),
             NameTarget::Symbol { word, .. } => Some(word.clone()),
             NameTarget::ServerInput { value, .. } => Some(value.clone()),
+            NameTarget::Branch | NameTarget::Tag => Some(String::new()),
         }
     }
 
@@ -145,6 +148,14 @@ impl EnvironmentShell {
                 }
                 NameTarget::Symbol { path, at, .. } => {
                     self.rename_symbol(&path, at, typed, cx);
+                    return;
+                }
+                NameTarget::Branch => {
+                    self.create_named_branch(typed, cx);
+                    return;
+                }
+                NameTarget::Tag => {
+                    self.create_named_tag(typed, cx);
                     return;
                 }
                 NameTarget::ServerInput { .. } => return,

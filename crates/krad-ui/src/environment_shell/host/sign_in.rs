@@ -4,7 +4,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, Entity, ParentElement, Styled,
     Subscription, Window,
 };
-use krad_host::mux::{PromptKind, PromptSender, Secret, SignInPrompt};
+use krad_host::mux::{PromptAsker, PromptKind, PromptSender, Secret, SignInPrompt};
 use std::collections::VecDeque;
 use std::sync::mpsc;
 
@@ -16,7 +16,9 @@ use crate::theme::{palette, LINE_SM, SPACE_2, SPACE_5, SPACE_6, TEXT_SM};
 
 const DIALOG_W: f32 = 460.0;
 const TITLE: &str = "Sign in to";
+const GIT_TITLE: &str = "Git asks you to sign in";
 const SECRET_PLACEHOLDER: &str = "Type it here; it never leaves this computer except to ssh";
+const GIT_SECRET_PLACEHOLDER: &str = "Type it here; only git gets it and nothing keeps it";
 const SIGN_IN_LABEL: &str = "Sign in";
 const TRUST_LABEL: &str = "Trust and connect";
 const CANCEL_LABEL: &str = "Cancel";
@@ -72,7 +74,25 @@ fn dismiss(this: &mut EnvironmentShell, _: &mut Window, cx: &mut Context<Environ
     this.answer_sign_in(false, cx);
 }
 
+fn title_of(asker: &PromptAsker) -> String {
+    match asker {
+        PromptAsker::Host(destination) => format!("{TITLE} {destination}"),
+        PromptAsker::Git => GIT_TITLE.to_owned(),
+    }
+}
+
+const fn placeholder_of(asker: &PromptAsker) -> &'static str {
+    match asker {
+        PromptAsker::Host(_) => SECRET_PLACEHOLDER,
+        PromptAsker::Git => GIT_SECRET_PLACEHOLDER,
+    }
+}
+
 impl EnvironmentShell {
+    pub(in crate::environment_shell) fn prompt_sender(&self) -> PromptSender {
+        self.hosts.prompts.sender()
+    }
+
     pub(in crate::environment_shell) fn collect_sign_in_prompts(&mut self, cx: &mut Context<Self>) {
         if self.hosts.prompts.collect() {
             cx.notify();
@@ -91,9 +111,10 @@ impl EnvironmentShell {
             return;
         };
         let masked = prompt.kind == PromptKind::Secret;
+        let placeholder = placeholder_of(&prompt.asker);
         let field = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder(SECRET_PLACEHOLDER)
+                .placeholder(placeholder)
                 .masked(masked)
         });
         let focus_target = field.clone();
@@ -160,7 +181,7 @@ impl EnvironmentShell {
         };
         let sheet = sheet_panel(DIALOG_W, pal)
             .child(sheet_title(
-                format!("{TITLE} {}", prompt.destination),
+                title_of(&prompt.asker),
                 None,
                 BTN_CLOSE,
                 dismiss,
