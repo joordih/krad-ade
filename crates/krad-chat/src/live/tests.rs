@@ -61,6 +61,27 @@ fn a_closed_answer_is_no_longer_pending_and_the_count_stays_at_zero() {
 }
 
 #[test]
+fn a_turn_claude_code_opens_by_itself_is_pending_until_it_closes() {
+    let routing = Routing::new(INIT_ID, 0);
+    let init =
+        r#"{"type":"system","subtype":"init","session_id":"0b7c3a52-9f1e-4d2a-8c6b-1f2e3d4c5b6a"}"#;
+    routed(&[init], &routing);
+    assert_eq!(routing.pending.load(Ordering::SeqCst), 1);
+    routed(
+        &[r#"{"type":"result","subtype":"success","result":"Hi"}"#],
+        &routing,
+    );
+    assert_eq!(routing.pending.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn a_turn_started_for_a_sent_message_is_not_counted_twice() {
+    let routing = Routing::new(INIT_ID, 1);
+    routed(&[r#"{"type":"system","subtype":"init"}"#], &routing);
+    assert_eq!(routing.pending.load(Ordering::SeqCst), 1);
+}
+
+#[test]
 fn a_live_config_never_prints_the_bus_token() {
     let token = "s3cr3t-bus-token";
     let config = LiveConfig {

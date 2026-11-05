@@ -170,7 +170,10 @@ impl EnvironmentShell {
                     let window_h = window.viewport_size().height.as_f32();
                     moved
                         .update(cx, |shell, cx| match event.pressed_button {
-                            Some(MouseButton::Left) => shell.follow_activity_drag(y, cx),
+                            Some(MouseButton::Left) => {
+                                shell.follow_activity_drag(y, cx);
+                                shell.drag_in_terminal(x, y, cx);
+                            }
                             Some(_) => {}
                             None => {
                                 shell.follow_pointer_for_peek(x, cx);
@@ -185,7 +188,7 @@ impl EnvironmentShell {
                         return;
                     }
                     released
-                        .update(cx, EnvironmentShell::release_activity_drag)
+                        .update(cx, EnvironmentShell::release_captured_drag)
                         .unwrap_or_default();
                 });
             },
