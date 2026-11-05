@@ -15,7 +15,6 @@ use crate::theme::{
     TEXT_XS,
 };
 
-pub(super) const PASTE_KEY: &str = "v";
 const PICK_PROMPT: &str = "Attach";
 const TOOLTIP_ATTACH: &str = "Attach files, folders or images";
 const TOOLTIP_REMOVE: &str = "Remove";
@@ -183,7 +182,12 @@ impl EnvironmentShell {
         .detach();
     }
 
-    pub(super) fn paste_chat_attachment(&mut self, id: TerminalId, cx: &mut Context<Self>) -> bool {
+    pub(super) fn paste_chat_attachment(
+        &mut self,
+        id: TerminalId,
+        item: &ClipboardItem,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let env = self.active.clone();
         let structured = self
             .envs
@@ -193,10 +197,7 @@ impl EnvironmentShell {
         if !structured {
             return false;
         }
-        let Some(attachment) = cx
-            .read_from_clipboard()
-            .and_then(|item| clipboard_attachment(&item))
-        else {
+        let Some(attachment) = clipboard_attachment(item) else {
             return false;
         };
         let (format, bytes) = match attachment {

@@ -8,9 +8,10 @@ use krad_domain::{ChatBookmarks, TerminalId};
 use super::super::super::EnvironmentShell;
 use super::super::SurfaceChat;
 use super::{current_question, Tick, TickKind};
-use crate::components::{icon, solid_card, IconName};
+use crate::components::{icon, IconName};
 use crate::theme::{
-    palette, Palette, ICON_XS, LINE_SM, RADIUS_MD, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM,
+    palette, popover_fill, popover_shadow, Palette, ICON_SM, LINE_SM, NAV_ROW_H, RADIUS_MD,
+    RADIUS_XS, SPACE_1, SPACE_2, TEXT_SM,
 };
 
 const MIN_QUESTIONS: usize = 2;
@@ -24,7 +25,6 @@ const CURRENT_TICK_W: f32 = 18.0;
 const CARD_W: f32 = 300.0;
 const CARD_MAX_H: f32 = 360.0;
 const CARD_GAP: f32 = SPACE_1;
-const ROW_H: f32 = 30.0;
 const TIMELINE_PREFIX: &str = "surface-timeline";
 const TIMELINE_LIST_PREFIX: &str = "surface-timeline-list";
 const TIMELINE_ROW_PREFIX: &str = "surface-timeline-row";
@@ -120,11 +120,11 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let rows = ticks.iter().enumerate().map(|(index, tick)| {
             let target = tick.target;
-            let strong = current == Some(index) || tick.kind == TickKind::Bookmark;
-            let color = if strong {
+            let selected = current == Some(index);
+            let color = if selected {
                 pal.text_strong
             } else {
-                pal.text_muted
+                pal.text_default
             };
             div()
                 .id((TIMELINE_ROW_PREFIX, index))
@@ -132,17 +132,18 @@ impl EnvironmentShell {
                 .flex_row()
                 .flex_none()
                 .items_center()
-                .gap(px(SPACE_1_5))
-                .h(px(ROW_H))
+                .gap(px(SPACE_2))
+                .h(px(NAV_ROW_H))
                 .px(px(SPACE_2))
-                .rounded(px(RADIUS_MD))
+                .rounded(px(RADIUS_XS))
                 .cursor_pointer()
                 .text_size(px(TEXT_SM))
                 .line_height(px(LINE_SM))
                 .text_color(rgb(color))
-                .hover(|row| row.bg(rgb(pal.bg_row_selected)))
+                .when(selected, |row| row.bg(pal.bg_selected))
+                .hover(|row| row.bg(pal.bg_hover))
                 .when(tick.kind == TickKind::Bookmark, |row| {
-                    row.child(icon(IconName::Bookmark, ICON_XS, pal.attention))
+                    row.child(icon(IconName::Bookmark, ICON_SM, pal.attention))
                 })
                 .child(
                     div()
@@ -157,18 +158,21 @@ impl EnvironmentShell {
                     cx.notify();
                 }))
         });
-        solid_card(pal)
+        div()
+            .id((TIMELINE_LIST_PREFIX, id.as_u64()))
             .w(px(CARD_W))
             .max_h(px(CARD_MAX_H))
-            .child(
-                div()
-                    .id((TIMELINE_LIST_PREFIX, id.as_u64()))
-                    .flex()
-                    .flex_col()
-                    .p(px(SPACE_1_5))
-                    .overflow_y_scroll()
-                    .children(rows),
-            )
+            .overflow_y_scroll()
+            .flex()
+            .flex_col()
+            .p(px(SPACE_1))
+            .rounded(px(RADIUS_MD))
+            .bg(popover_fill(pal, cx))
+            .border_1()
+            .border_color(pal.border)
+            .shadow(popover_shadow(pal, cx))
+            .occlude()
+            .children(rows)
             .into_any_element()
     }
 
