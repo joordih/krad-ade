@@ -166,6 +166,15 @@ impl StructuredChat {
         self.session = LiveSession::Resume(resume);
     }
 
+    fn opens_turn(&mut self) -> bool {
+        if self.working || self.outstanding > 0 {
+            return false;
+        }
+        self.outstanding = 1;
+        self.working = true;
+        true
+    }
+
     fn closes_turn(&mut self, ended: bool) -> bool {
         self.outstanding = self.outstanding.saturating_sub(1);
         if ended {
@@ -317,6 +326,13 @@ impl EnvironmentShell {
                 structured.context_window = Some(window);
             }
             LiveEvent::Refused(_) => {}
+            LiveEvent::Chat(ChatEvent::TurnStarted) => {
+                if !structured.opens_turn() {
+                    return;
+                }
+                fold_entry(messages, &ChatEntry::Event(ChatEvent::TurnStarted));
+                state = Some(AgentState::Working);
+            }
             LiveEvent::Chat(event @ (ChatEvent::Done | ChatEvent::Error(_))) => {
                 if let Some(batch) = refused.and_then(|refused| structured.retries(&refused)) {
                     self.hand_over_again(env, id, batch, event, cx);

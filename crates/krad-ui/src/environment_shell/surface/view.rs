@@ -32,7 +32,7 @@ const EXITED_TEXT: &str = "The agent's terminal has closed.";
 pub(super) const LOADING_TEXT: &str = "Reading the conversation…";
 
 pub(super) fn following(thread: &ListState) -> bool {
-    thread.is_following_tail() || thread.is_scrolled_to_end().unwrap_or(true)
+    thread.is_following_tail() || thread.is_scrolled_to_end() == Some(true)
 }
 
 pub(super) fn at_bottom(scroll: &ScrollHandle) -> bool {
@@ -350,4 +350,29 @@ pub(super) fn error_line(text: &str, pal: &Palette) -> AnyElement {
         .text_color(rgb(pal.error_fg))
         .child(text.to_owned())
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui_kit::{FollowMode, ListAlignment};
+
+    fn thread() -> ListState {
+        let thread = ListState::new(3, ListAlignment::Top, px(0.0));
+        thread.set_follow_mode(FollowMode::Tail);
+        thread
+    }
+
+    #[test]
+    fn a_new_thread_follows_its_latest_message() {
+        assert!(following(&thread()));
+    }
+
+    #[test]
+    fn a_thread_scrolled_away_stays_put_while_its_messages_are_remeasured() {
+        let thread = thread();
+        thread.pause_following_tail();
+        thread.remeasure();
+        assert!(!following(&thread));
+    }
 }

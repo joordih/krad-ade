@@ -52,6 +52,7 @@ pub enum ChatEvent {
     Edited { tool: ToolUseId, edit: FileEdit },
     Checklist(Checklist),
     Prompted(RewindPoint),
+    TurnStarted,
     Done,
     Error(String),
 }
