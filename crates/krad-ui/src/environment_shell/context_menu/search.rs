@@ -2,6 +2,7 @@ use gpui_kit::{Context, KeyDownEvent, Window};
 
 use super::super::EnvironmentShell;
 use super::{MenuAction, MenuCreate, MenuEntry, MenuSearch, Submenu};
+use crate::typed_text::typed_text;
 
 const KEY_ESCAPE: &str = "escape";
 const KEY_BACKSPACE: &str = "backspace";
@@ -169,13 +170,10 @@ impl EnvironmentShell {
         menu.chosen = 0;
         if key == KEY_BACKSPACE {
             menu.query.pop();
-        } else if let Some(typed) = event
-            .keystroke
-            .key_char
-            .as_ref()
+        } else if let Some(typed) = typed_text(&event.keystroke, window.capslock())
             .filter(|_| !modifiers.platform && !modifiers.control)
         {
-            menu.query.push_str(typed);
+            menu.query.push_str(&typed);
         }
         cx.notify();
     }

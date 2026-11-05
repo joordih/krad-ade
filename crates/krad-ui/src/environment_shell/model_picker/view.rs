@@ -247,9 +247,11 @@ impl EnvironmentShell {
                 .absolute()
                 .inset_0()
                 .track_focus(&picker.focus)
-                .on_key_down(cx.listener(|this: &mut Self, event: &KeyDownEvent, _, cx| {
-                    this.on_model_picker_key(event, cx);
-                }))
+                .on_key_down(
+                    cx.listener(|this: &mut Self, event: &KeyDownEvent, window, cx| {
+                        this.on_model_picker_key(event, window.capslock(), cx);
+                    }),
+                )
                 .child(
                     div()
                         .absolute()

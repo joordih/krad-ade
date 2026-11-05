@@ -1,11 +1,12 @@
 mod view;
 
-use gpui_kit::{Context, FocusHandle, KeyDownEvent, Window};
+use gpui_kit::{Capslock, Context, FocusHandle, KeyDownEvent, Window};
 use krad_chat::ModelSource;
 use krad_domain::{AgentPreset, ModelId, TerminalId};
 
 use super::surface::SurfaceCommand;
 use super::EnvironmentShell;
+use crate::typed_text::typed_text;
 
 const KEY_ESCAPE: &str = "escape";
 const KEY_BACKSPACE: &str = "backspace";
@@ -229,7 +230,12 @@ impl EnvironmentShell {
         }
     }
 
-    fn on_model_picker_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+    fn on_model_picker_key(
+        &mut self,
+        event: &KeyDownEvent,
+        capslock: Capslock,
+        cx: &mut Context<Self>,
+    ) {
         cx.stop_propagation();
         let Some(choosing) = self
             .model_picker
@@ -252,13 +258,10 @@ impl EnvironmentShell {
             KEY_TAB => choosing.step_harness(!modifiers.shift),
             KEY_BACKSPACE => choosing.erase(),
             _ => {
-                if let Some(typed) = event
-                    .keystroke
-                    .key_char
-                    .as_ref()
+                if let Some(typed) = typed_text(&event.keystroke, capslock)
                     .filter(|_| !modifiers.platform && !modifiers.control)
                 {
-                    choosing.type_text(typed);
+                    choosing.type_text(&typed);
                 }
             }
         }
