@@ -3,7 +3,9 @@ use krad_chat::{
     claude_conversation_file, claude_subagents, engine_subagents, read_engine_subagent,
     read_subagent_meta, read_subagent_record, SubagentFiles, SubagentMeta, TranscriptChunk,
 };
-use krad_domain::{AgentPreset, EnvironmentName, ResumeId, TerminalId, ToolKind, ToolUseId};
+use krad_domain::{
+    AgentPreset, ChatEntry, ChatEvent, EnvironmentName, ResumeId, TerminalId, ToolKind, ToolUseId,
+};
 use krad_host::HostLink;
 use krad_store::gateway_sessions_dir;
 use std::collections::HashMap;
@@ -26,6 +28,29 @@ pub(super) struct SubagentRun {
 }
 
 impl SubagentRun {
+    fn take(&mut self, entries: &[ChatEntry]) {
+        for entry in entries {
+            if self.is_own_call(entry) {
+                continue;
+            }
+            if self.messages.is_empty() && !matches!(entry, ChatEntry::User { .. }) {
+                fold_entry(
+                    &mut self.messages,
+                    &ChatEntry::Event(ChatEvent::TurnStarted),
+                );
+            }
+            fold_entry(&mut self.messages, entry);
+        }
+    }
+
+    fn is_own_call(&self, entry: &ChatEntry) -> bool {
+        matches!(
+            entry,
+            ChatEntry::Event(ChatEvent::Tool(call))
+                if call.id.as_ref() == Some(&self.meta.tool_use_id)
+        )
+    }
+
     pub(super) fn tool_count(&self) -> usize {
         self.messages
             .iter()
@@ -292,10 +317,8 @@ impl EnvironmentShell {
                     record: update.record.clone(),
                     read: 0,
                 });
-            for entry in &update.chunk.entries {
-                fold_entry(&mut run.messages, entry);
-            }
             run.meta = update.meta;
+            run.take(&update.chunk.entries);
             run.read = update.chunk.next;
         }
         thread.remeasure();
@@ -351,8 +374,41 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_chat::{ChatEvent, Speaker, ToolCall};
-    use krad_domain::{AgentPreset, ChatEntry};
+    use krad_chat::{Speaker, ToolCall};
+
+    fn agent_call(id: &str, name: &str) -> ChatEntry {
+        ChatEntry::Event(ChatEvent::Tool(ToolCall {
+            id: Some(ToolUseId::from(id)),
+            name: name.to_owned(),
+            kind: ToolKind::of_claude_code(name),
+            summary: String::new(),
+            edit: None,
+        }))
+    }
+
+    #[test]
+    fn a_fork_without_a_prompt_of_its_own_shows_its_work_but_not_the_call_that_forked_it() {
+        let mut run = SubagentRun {
+            meta: SubagentMeta {
+                tool_use_id: ToolUseId::from("fork"),
+                agent_type: Some("fork".to_owned()),
+                description: Some("UI core".to_owned()),
+                finished: false,
+            },
+            messages: Vec::new(),
+            record: PathBuf::new(),
+            read: 0,
+        };
+        run.take(&[
+            agent_call("fork", "Agent"),
+            ChatEntry::Event(ChatEvent::Text("Task: build the UI core.".to_owned())),
+            agent_call("t1", "Bash"),
+        ]);
+        assert_eq!(run.messages.len(), 1);
+        assert_eq!(run.messages[0].speaker, Speaker::Assistant);
+        assert_eq!(run.messages[0].text, "Task: build the UI core.");
+        assert_eq!(run.tool_count(), 1);
+    }
 
     fn answer_with(calls: &[(&str, &str)]) -> Vec<ChatMessage> {
         let mut messages = Vec::new();
