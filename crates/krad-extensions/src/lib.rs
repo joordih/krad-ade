@@ -3,6 +3,7 @@ mod error;
 mod extension;
 mod host_tools;
 mod http;
+pub mod index;
 mod manifest;
 mod package;
 mod path_lookup;

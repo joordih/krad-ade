@@ -46,6 +46,10 @@ pub enum ExtensionError {
     OutsideFolder(std::path::PathBuf),
     #[error(transparent)]
     Program(#[from] crate::program::ProgramError),
+    #[error(transparent)]
+    Index(#[from] crate::index::IndexError),
+    #[error("{0} is pinned by the extension index and updates through it")]
+    Pinned(String),
 }
 
 const ERROR_MARKERS: [&str; 5] = ["ERROR:", "error:", "Error:", "npm ERR!", "fatal:"];
