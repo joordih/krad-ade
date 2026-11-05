@@ -29,7 +29,7 @@ pub struct EntryProblem {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexUpdate {
-    pub extension: String,
+    pub extension: krad_domain::ExtensionId,
     pub installed: GitCommit,
     pub available: GitCommit,
     pub compatibility: Compatibility,
@@ -89,7 +89,7 @@ impl ExtensionIndex {
                 let ExtensionSource::Pinned { commit, .. } = &extension.source else {
                     return None;
                 };
-                let entry = self.get(&extension.id)?;
+                let entry = self.get(extension.id.as_ref())?;
                 (entry.commit != *commit).then(|| IndexUpdate {
                     extension: extension.id.clone(),
                     installed: commit.clone(),

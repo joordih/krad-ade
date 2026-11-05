@@ -54,7 +54,7 @@ fn action_for(
         return RowAction::Working;
     }
     let compatible = entry.compatibility() == Compatibility::Supported;
-    match installed.iter().find(|known| known.id == id) {
+    match installed.iter().find(|known| known.id.as_ref() == id) {
         Some(known) => match &known.source {
             ExtensionSource::Pinned { commit, .. } if *commit != entry.commit && compatible => {
                 RowAction::Update
@@ -160,7 +160,7 @@ mod tests {
 
     fn pinned(id: &str, commit: &str) -> Result<ExtensionEntry, Box<dyn std::error::Error>> {
         Ok(ExtensionEntry {
-            id: id.to_owned(),
+            id: id.parse()?,
             source: ExtensionSource::Pinned {
                 url: format!("https://github.com/acme/{id}"),
                 commit: commit.parse::<GitCommit>()?,

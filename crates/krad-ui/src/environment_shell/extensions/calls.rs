@@ -172,7 +172,7 @@ impl EnvironmentShell {
         else {
             return BTreeMap::new();
         };
-        let stored = self.extensions.values.of(key.extension.as_ref());
+        let stored = self.extensions.values.of(&key.extension);
         manifest
             .contributes
             .settings
@@ -210,10 +210,7 @@ impl EnvironmentShell {
             self.refuse_call(key, id, NO_SUCH_SECRET);
             return;
         }
-        let secret_key = ExtensionSecretKey {
-            extension: key.extension.to_string(),
-            name: params.name.to_string(),
-        };
+        let secret_key = ExtensionSecretKey::new(&key.extension, params.name.as_ref());
         let reading = cx.background_spawn(async move {
             krad_store::find_extension_secret(&secret_key)
                 .map(|found| found.map(|(secret, _)| Secret::new(secret.expose().to_owned())))
@@ -241,10 +238,7 @@ impl EnvironmentShell {
             self.refuse_call(key, id, NO_SUCH_SECRET);
             return;
         }
-        let secret_key = ExtensionSecretKey {
-            extension: key.extension.to_string(),
-            name: params.name.to_string(),
-        };
+        let secret_key = ExtensionSecretKey::new(&key.extension, params.name.as_ref());
         let writing = cx.background_spawn(async move {
             match params.value {
                 Some(value) => krad_store::write_extension_secret(
@@ -273,9 +267,47 @@ impl EnvironmentShell {
         value: ExtensionSettingValue,
         cx: &mut Context<Self>,
     ) {
-        self.extensions
-            .values
-            .set(extension.as_ref(), key.as_ref(), value);
+        self.extensions.values.set(extension, key.as_ref(), value);
+        self.write_extension_values(cx);
+        self.announce_settings(extension);
+        cx.notify();
+    }
+
+    pub(in crate::environment_shell) fn forget_extension_data(
+        &mut self,
+        extension: &krad_extensions::api::ExtensionId,
+        cx: &mut Context<Self>,
+    ) {
+        let names: Vec<String> = self
+            .extensions
+            .record(extension)
+            .and_then(super::ExtensionRecord::manifest)
+            .map(|manifest| {
+                manifest
+                    .contributes
+                    .secrets
+                    .iter()
+                    .map(|secret| secret.name.to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let keys: Vec<ExtensionSecretKey> = names
+            .iter()
+            .map(|name| ExtensionSecretKey::new(extension, name))
+            .collect();
+        cx.background_spawn(async move {
+            for key in keys {
+                if let Err(error) = krad_store::delete_extension_secret(&key) {
+                    tracing::warn!(%error, "an extension secret could not be deleted");
+                }
+            }
+        })
+        .detach();
+        self.extensions.values.forget(extension);
+        self.write_extension_values(cx);
+    }
+
+    fn write_extension_values(&mut self, cx: &mut Context<Self>) {
         let values = self.extensions.values.clone();
         let writing =
             cx.background_spawn(async move { krad_store::write_extension_settings(&values) });
@@ -286,8 +318,6 @@ impl EnvironmentShell {
             }
         })
         .detach();
-        self.announce_settings(extension);
-        cx.notify();
     }
 }
 

@@ -97,7 +97,9 @@ impl HostServerRuntimes<'_> {
     }
 
     fn managed_folder(&self, id: &ServerRuntimeId) -> Option<PathBuf> {
-        self.managed.as_ref().map(|root| root.join(id.as_str()))
+        self.managed
+            .as_ref()
+            .and_then(|root| crate::path_lookup::segment_in(root, id.as_str()))
     }
 
     pub(crate) fn installable(&self, id: &ServerRuntimeId, platform: Platform) -> bool {

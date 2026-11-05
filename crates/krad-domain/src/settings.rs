@@ -301,7 +301,11 @@ pub struct Settings {
         skip_serializing_if = "ServerRuntimePaths::is_empty"
     )]
     pub server_runtimes: ServerRuntimePaths,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        deserialize_with = "crate::server_runtime::lenient_extensions",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub extensions: Vec<ExtensionEntry>,
     #[serde(
         default,

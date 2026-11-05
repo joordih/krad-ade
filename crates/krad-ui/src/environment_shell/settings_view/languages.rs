@@ -208,7 +208,12 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn change_extension(&mut self, id: &str, change: ExtensionChange, cx: &mut Context<Self>) {
+    fn change_extension(
+        &mut self,
+        id: &krad_domain::ExtensionId,
+        change: ExtensionChange,
+        cx: &mut Context<Self>,
+    ) {
         let Some(config) = krad_store::config_dir() else {
             return;
         };
@@ -216,7 +221,7 @@ impl EnvironmentShell {
             .settings
             .extensions
             .iter()
-            .find(|entry| entry.id == id)
+            .find(|entry| entry.id == *id)
             .cloned()
         else {
             return;
@@ -227,7 +232,7 @@ impl EnvironmentShell {
                     .settings
                     .extensions
                     .iter_mut()
-                    .find(|known| known.id == id)
+                    .find(|known| known.id == *id)
                 {
                     known.enabled = !known.enabled;
                 }
@@ -236,24 +241,14 @@ impl EnvironmentShell {
             ExtensionChange::Update if matches!(entry.source, ExtensionSource::Pinned { .. }) => {
                 self.update_pinned_extension(entry, cx);
             }
-            ExtensionChange::Update | ExtensionChange::Remove => {
-                let removing = change == ExtensionChange::Remove;
-                let working = cx.background_spawn(async move {
-                    if removing {
-                        remove(&config, &entry)
-                    } else {
-                        update(&config, &entry)
-                    }
-                });
-                let id = id.to_owned();
+            ExtensionChange::Update => {
+                let working = cx.background_spawn(async move { update(&config, &entry) });
                 cx.spawn(async move |this, cx| {
                     let done = working.await;
                     this.update(cx, |shell, cx| {
-                        if let Err(error) = done {
-                            shell.toast(&error.to_string(), cx);
-                        }
-                        if removing {
-                            shell.settings.extensions.retain(|known| known.id != id);
+                        match done {
+                            Ok(updated) => shell.replace_extension_entry(updated),
+                            Err(error) => shell.toast(&error.to_string(), cx),
                         }
                         shell.extensions_changed(cx);
                     })
@@ -261,6 +256,34 @@ impl EnvironmentShell {
                 })
                 .detach();
             }
+            ExtensionChange::Remove => {
+                self.forget_extension_data(id, cx);
+                let working = cx.background_spawn(async move { remove(&config, &entry) });
+                let id = id.clone();
+                cx.spawn(async move |this, cx| {
+                    let done = working.await;
+                    this.update(cx, |shell, cx| {
+                        if let Err(error) = done {
+                            shell.toast(&error.to_string(), cx);
+                        }
+                        shell.settings.extensions.retain(|known| known.id != id);
+                        shell.extensions_changed(cx);
+                    })
+                    .unwrap_or_default();
+                })
+                .detach();
+            }
+        }
+    }
+
+    fn replace_extension_entry(&mut self, updated: ExtensionEntry) {
+        if let Some(known) = self
+            .settings
+            .extensions
+            .iter_mut()
+            .find(|known| known.id == updated.id)
+        {
+            *known = updated;
         }
     }
 
@@ -369,7 +392,7 @@ impl EnvironmentShell {
                     })),
             )
             .into_any_element();
-        form_row(&entry.id, Some(&source), controls, pal)
+        form_row(entry.id.as_ref(), Some(&source), controls, pal)
     }
 
     pub(super) fn languages_pane(&self, ui: &LanguagesUi, cx: &mut Context<Self>) -> AnyElement {

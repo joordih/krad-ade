@@ -216,8 +216,8 @@ impl EnvironmentShell {
         let folder = self
             .extensions
             .record(&open.key.extension)
-            .and_then(super::ExtensionRecord::installed)
-            .map(|installed| installed.folder.clone());
+            .and_then(super::ExtensionRecord::program)
+            .map(|program| program.folder().to_path_buf());
         let entity = cx.new(|_| {
             let view = ExtensionView::new(root, output);
             match folder {

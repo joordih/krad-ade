@@ -1,10 +1,5 @@
-use krad_domain::{ExtensionEntry, ExtensionFingerprint};
-use krad_extension_api::manifest::{
-    Activation, Contributions, ExtensionManifest, Program, MANIFEST_FILE,
-};
-use krad_extension_api::{ApiVersion, CURRENT_API};
-use serde::Serialize;
-use sha2::{Digest, Sha256};
+use krad_extension_api::manifest::{ExtensionManifest, MANIFEST_FILE};
+use krad_extension_api::CURRENT_API;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -15,47 +10,6 @@ use crate::error::ExtensionError;
 pub struct InstalledExtension {
     pub folder: PathBuf,
     pub manifest: ExtensionManifest,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Trust {
-    NotNeeded,
-    Trusted,
-    Asked,
-}
-
-#[derive(Serialize)]
-struct Declared<'a> {
-    api: ApiVersion,
-    program: Option<&'a Program>,
-    activation: &'a [Activation],
-    contributes: &'a Contributions,
-}
-
-impl InstalledExtension {
-    #[must_use]
-    pub fn fingerprint(&self) -> ExtensionFingerprint {
-        let declared = Declared {
-            api: self.manifest.api,
-            program: self.manifest.program.as_ref(),
-            activation: &self.manifest.activation,
-            contributes: &self.manifest.contributes,
-        };
-        let bytes = serde_json::to_vec(&declared).unwrap_or_default();
-        ExtensionFingerprint(format!("{:x}", Sha256::digest(bytes)))
-    }
-
-    #[must_use]
-    pub fn trust(&self, entry: &ExtensionEntry) -> Trust {
-        if self.manifest.program.is_none() {
-            return Trust::NotNeeded;
-        }
-        if entry.trusted.as_ref() == Some(&self.fingerprint()) {
-            Trust::Trusted
-        } else {
-            Trust::Asked
-        }
-    }
 }
 
 /// # Errors
@@ -93,7 +47,6 @@ pub fn read_installed(folder: &Path) -> Result<Option<InstalledExtension>, Exten
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_domain::ExtensionSource;
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -126,33 +79,10 @@ title = "Docker: Refresh"
         Ok(folder)
     }
 
-    fn entry(trusted: Option<ExtensionFingerprint>) -> ExtensionEntry {
-        ExtensionEntry {
-            id: "docker".to_owned(),
-            source: ExtensionSource::Folder(PathBuf::from("/x")),
-            enabled: true,
-            trusted,
-        }
-    }
-
     #[test]
     fn a_folder_of_manifests_only_is_not_an_extension_program() -> TestResult {
         let folder = folder_with("plain", None)?;
         assert_eq!(read_installed(&folder)?, None);
-        Ok(())
-    }
-
-    #[test]
-    fn a_program_asks_for_trust_until_its_declarations_are_trusted() -> TestResult {
-        let folder = folder_with("trust", Some(MANIFEST))?;
-        let installed = read_installed(&folder)?.ok_or("the folder holds an extension")?;
-        assert_eq!(installed.trust(&entry(None)), Trust::Asked);
-        let trusted = entry(Some(installed.fingerprint()));
-        assert_eq!(installed.trust(&trusted), Trust::Trusted);
-        let changed = MANIFEST.replace("Docker: Refresh", "Docker: Refresh all");
-        fs::write(folder.join(MANIFEST_FILE), changed)?;
-        let updated = read_installed(&folder)?.ok_or("the folder holds an extension")?;
-        assert_eq!(updated.trust(&trusted), Trust::Asked);
         Ok(())
     }
 

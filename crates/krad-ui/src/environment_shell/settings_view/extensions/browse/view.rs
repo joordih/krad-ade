@@ -73,7 +73,9 @@ impl EnvironmentShell {
             .settings
             .extensions
             .iter()
-            .find(|entry| entry.id == id && matches!(entry.source, ExtensionSource::Pinned { .. }))
+            .find(|entry| {
+                entry.id.as_ref() == id && matches!(entry.source, ExtensionSource::Pinned { .. })
+            })
             .cloned()
         else {
             return;
@@ -149,7 +151,7 @@ impl EnvironmentShell {
                     short(update.installed.as_ref()),
                     short(update.available.as_ref())
                 );
-                let id = update.extension.clone();
+                let id = update.extension.to_string();
                 let control = if working.contains(&id) {
                     chip(WORKING_LABEL, pal).into_any_element()
                 } else if update.compatibility == Compatibility::NeedsNewerApp {
@@ -164,7 +166,7 @@ impl EnvironmentShell {
                         }))
                         .into_any_element()
                 };
-                form_row(&update.extension, Some(&detail), control, pal)
+                form_row(update.extension.as_ref(), Some(&detail), control, pal)
             })
             .collect()
     }

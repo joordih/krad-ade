@@ -1,8 +1,7 @@
+use crate::id::RuntimeId;
+use crate::manifest::values::{HttpsUrl, ProgramPath, Sha256Hex};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-
-use crate::id::RuntimeId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -14,8 +13,19 @@ pub enum Placement {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Program {
     pub placement: Placement,
+    #[serde(default)]
+    pub permissions: Vec<Permission>,
     #[serde(flatten)]
     pub launch: Launch,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Permission {
+    Terminals,
+    RunCommands,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -43,8 +53,8 @@ pub struct Binary {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum BinarySource {
-    Bundled { path: PathBuf },
-    Download { url: String, sha256: String },
+    Bundled { path: ProgramPath },
+    Download { url: HttpsUrl, sha256: Sha256Hex },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]

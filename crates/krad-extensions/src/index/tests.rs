@@ -32,9 +32,9 @@ fn ids(entries: &[&IndexEntry]) -> Vec<String> {
     entries.iter().map(|entry| entry.id.to_string()).collect()
 }
 
-fn pinned(id: &str, commit: &str) -> Result<ExtensionEntry, krad_domain::GitCommitError> {
+fn pinned(id: &str, commit: &str) -> Result<ExtensionEntry, Box<dyn std::error::Error>> {
     Ok(ExtensionEntry {
-        id: id.to_owned(),
+        id: id.parse()?,
         source: ExtensionSource::Pinned {
             url: "https://github.com/joordih/krad-docker".to_owned(),
             commit: commit.parse()?,
@@ -106,7 +106,7 @@ fn updates_list_pinned_extensions_behind_the_index_only() -> TestResult {
         pinned("dockerfile-lint", OLD)?,
         pinned("gone", OLD)?,
         ExtensionEntry {
-            id: "kube".to_owned(),
+            id: "kube".parse()?,
             source: ExtensionSource::Git("https://github.com/acme/krad-kube".to_owned()),
             enabled: true,
             trusted: None,
@@ -114,7 +114,7 @@ fn updates_list_pinned_extensions_behind_the_index_only() -> TestResult {
     ];
     let updates = index.updates(&installed);
     assert_eq!(updates.len(), 1);
-    assert_eq!(updates[0].extension, "docker");
+    assert_eq!(updates[0].extension.as_ref(), "docker");
     assert_eq!(updates[0].available.as_ref(), NEW);
     Ok(())
 }
@@ -128,7 +128,7 @@ fn an_up_to_date_or_unpinned_extension_needs_no_update() -> TestResult {
         None
     );
     let folder = ExtensionEntry {
-        id: "docker".to_owned(),
+        id: "docker".parse()?,
         source: ExtensionSource::Folder(Path::new("/x").to_path_buf()),
         enabled: true,
         trusted: None,

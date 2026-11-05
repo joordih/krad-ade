@@ -2,44 +2,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
-use thiserror::Error;
 
-const MAX_ID_LEN: usize = 64;
-const ID_PUNCTUATION: [char; 3] = ['-', '_', '.'];
-
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum IdError {
-    #[error("an id cannot be empty")]
-    Empty,
-    #[error("an id is at most {MAX_ID_LEN} characters")]
-    TooLong,
-    #[error("an id holds only lowercase letters, digits, '-', '_' and '.'")]
-    Character,
-}
-
-fn check_id(text: &str) -> Result<(), IdError> {
-    if text.is_empty() {
-        return Err(IdError::Empty);
-    }
-    if text.len() > MAX_ID_LEN {
-        return Err(IdError::TooLong);
-    }
-    let allowed =
-        |c: char| c.is_ascii_lowercase() || c.is_ascii_digit() || ID_PUNCTUATION.contains(&c);
-    if text.chars().all(allowed) {
-        Ok(())
-    } else {
-        Err(IdError::Character)
-    }
-}
-
-fn check_key(text: &str) -> Result<(), IdError> {
-    if text.is_empty() {
-        Err(IdError::Empty)
-    } else {
-        Ok(())
-    }
-}
+use krad_domain::{check_id, check_key};
+pub use krad_domain::{ExtensionId, IdError};
 
 macro_rules! string_id {
     ($name:ident, $check:ident) => {
@@ -86,7 +51,6 @@ macro_rules! string_id {
     };
 }
 
-string_id!(ExtensionId, check_id);
 string_id!(CommandId, check_id);
 string_id!(ViewId, check_id);
 string_id!(SettingKey, check_id);
@@ -102,6 +66,7 @@ string_id!(ProgressToken, check_key);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub struct QualifiedCommand {
+    #[schemars(with = "String")]
     pub extension: ExtensionId,
     pub command: CommandId,
 }
@@ -113,6 +78,7 @@ pub struct TerminalHandle(pub u64);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use krad_domain::MAX_ID_LEN;
 
     #[test]
     fn ids_accept_lowercase_words_and_refuse_the_rest() {

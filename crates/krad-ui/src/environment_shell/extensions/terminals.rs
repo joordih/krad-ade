@@ -63,8 +63,8 @@ impl EnvironmentShell {
         let folder = self
             .extensions
             .record(&key.extension)
-            .and_then(super::ExtensionRecord::installed)
-            .map(|installed| (None, installed.folder.clone()));
+            .and_then(super::ExtensionRecord::program)
+            .map(|program| (None, program.folder().to_path_buf()));
         groups.into_iter().chain(folder).collect()
     }
 

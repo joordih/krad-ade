@@ -50,6 +50,18 @@ pub enum ExtensionError {
     Index(#[from] crate::index::IndexError),
     #[error("{0} is pinned by the extension index and updates through it")]
     Pinned(String),
+    #[error("the extension is installed as {entry} but its manifest says it is {manifest}")]
+    IdMismatch { entry: String, manifest: String },
+    #[error("two extensions call themselves {0}")]
+    DuplicateId(String),
+    #[error("the extension folder is larger than an extension may be")]
+    TooLarge,
+    #[error("the extension's checkout is not the commit it was installed at")]
+    CommitMoved,
+    #[error("{0} is not a valid extension id")]
+    InvalidId(String),
+    #[error("the address {0} cannot be cloned")]
+    BadAddress(String),
 }
 
 const NOT_FOUND_STATUS: u16 = 404;

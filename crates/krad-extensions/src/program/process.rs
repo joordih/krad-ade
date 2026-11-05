@@ -51,17 +51,6 @@ pub struct ExtensionProcess {
 impl ExtensionProcess {
     /// # Errors
     ///
-    /// Returns [`ProgramError::Spawn`] when the program cannot be started.
-    pub fn start(
-        launch: &ServerLaunch,
-        cwd: &Path,
-        log: ProgramLog,
-    ) -> Result<(Self, mpsc::Receiver<ProgramEvent>), ProgramError> {
-        Self::start_on(&HostLink::Local, launch, cwd, log)
-    }
-
-    /// # Errors
-    ///
     /// Returns [`ProgramError::Spawn`] when the program cannot be started here or on the host.
     #[tracing::instrument(skip_all, fields(program = %launch.program.display(), local = link.is_local()))]
     pub fn start_on(

@@ -24,10 +24,9 @@ use gpui_kit::{AppContext as _, Context, Task};
 use krad_domain::{EnvironmentName, ExtensionEntry, ExtensionSettings, TerminalId};
 use krad_extensions::api::manifest::{ExtensionManifest, Placement};
 use krad_extensions::api::{ExtensionId, TerminalHandle};
-use krad_extensions::folder_of;
-use krad_extensions::program::{
-    read_installed, ExtensionProcess, InstalledExtension, ProgramConnection, ProgramLog,
-    RestartPolicy, Trust,
+use krad_extensions::program::{ExtensionProcess, ProgramConnection, ProgramLog, RestartPolicy};
+use krad_extensions::{
+    inspect, ExtensionError, Inspected, Trust, TrustedExtension, TrustedProgram,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -43,8 +42,7 @@ pub(in crate::environment_shell) struct SlotKey {
 
 #[derive(Clone, Debug)]
 pub(in crate::environment_shell) enum Loaded {
-    ManifestsOnly,
-    Program(Box<InstalledExtension>),
+    Ready(Box<Inspected>),
     Problem(String),
 }
 
@@ -56,29 +54,44 @@ pub(in crate::environment_shell) struct ExtensionRecord {
 }
 
 impl ExtensionRecord {
-    pub(in crate::environment_shell) fn installed(&self) -> Option<&InstalledExtension> {
+    pub(in crate::environment_shell) fn inspected(&self) -> Option<&Inspected> {
         match &self.loaded {
-            Loaded::Program(installed) => Some(installed),
-            Loaded::ManifestsOnly | Loaded::Problem(_) => None,
+            Loaded::Ready(inspected) => Some(inspected),
+            Loaded::Problem(_) => None,
         }
     }
 
     pub(in crate::environment_shell) fn manifest(&self) -> Option<&ExtensionManifest> {
-        self.installed().map(|installed| &installed.manifest)
+        self.inspected().and_then(Inspected::manifest)
     }
 
     pub(in crate::environment_shell) fn trust(&self) -> Trust {
-        self.installed()
-            .map_or(Trust::NotNeeded, |installed| installed.trust(&self.entry))
+        self.inspected().map_or(Trust::Asked, Inspected::trust)
+    }
+
+    pub(in crate::environment_shell) fn trusted(&self) -> Option<TrustedExtension> {
+        self.inspected().and_then(Inspected::trusted)
+    }
+
+    pub(in crate::environment_shell) fn program(&self) -> Option<TrustedProgram> {
+        self.trusted().and_then(|trusted| trusted.program())
     }
 
     pub(in crate::environment_shell) fn usable(&self) -> bool {
-        self.entry.enabled && self.trust() == Trust::Trusted
+        self.trusted().is_some()
+    }
+
+    pub(in crate::environment_shell) fn fingerprint(
+        &self,
+    ) -> Option<&krad_domain::ExtensionFingerprint> {
+        self.inspected().map(|inspected| &inspected.fingerprint)
     }
 
     pub(in crate::environment_shell) fn title(&self) -> String {
-        self.manifest()
-            .map_or_else(|| self.entry.id.clone(), |manifest| manifest.name.clone())
+        self.manifest().map_or_else(
+            || self.entry.id.to_string(),
+            |manifest| manifest.name.clone(),
+        )
     }
 }
 
@@ -120,8 +133,8 @@ pub(in crate::environment_shell) struct Extensions {
     next_terminal: u64,
     pub(in crate::environment_shell) conflicts: Vec<KeyConflict>,
     bound: HashSet<(String, String, String)>,
-    declined: HashSet<String>,
-    trust_queue: VecDeque<String>,
+    declined: HashMap<ExtensionId, krad_domain::ExtensionFingerprint>,
+    trust_queue: VecDeque<(ExtensionId, krad_domain::ExtensionFingerprint)>,
     restored: HashSet<EnvironmentName>,
     watch: activation::Watch,
     loaded: bool,
@@ -133,9 +146,7 @@ impl Extensions {
         &self,
         id: &ExtensionId,
     ) -> Option<&ExtensionRecord> {
-        self.records
-            .iter()
-            .find(|record| record.manifest().is_some_and(|manifest| manifest.id == *id))
+        self.records.iter().find(|record| record.entry.id == *id)
     }
 
     pub(in crate::environment_shell) fn title_of(&self, id: &ExtensionId) -> String {
@@ -161,14 +172,17 @@ impl Extensions {
 }
 
 fn read_records(config: &std::path::Path, entries: Vec<ExtensionEntry>) -> Vec<ExtensionRecord> {
+    let mut seen = HashSet::new();
     entries
         .into_iter()
         .map(|entry| {
-            let folder = folder_of(config, &entry);
-            let loaded = match read_installed(&folder) {
-                Ok(Some(installed)) => Loaded::Program(Box::new(installed)),
-                Ok(None) => Loaded::ManifestsOnly,
-                Err(error) => Loaded::Problem(error.to_string()),
+            let loaded = if seen.insert(entry.id.clone()) {
+                match inspect(config, entry.clone()) {
+                    Ok(inspected) => Loaded::Ready(Box::new(inspected)),
+                    Err(error) => Loaded::Problem(error.to_string()),
+                }
+            } else {
+                Loaded::Problem(ExtensionError::DuplicateId(entry.id.to_string()).to_string())
             };
             ExtensionRecord {
                 entry,
@@ -236,15 +250,13 @@ impl EnvironmentShell {
 
     fn stop_changed_programs(&mut self, next: &[ExtensionRecord], cx: &mut Context<Self>) {
         let still = |key: &SlotKey, previous: Option<&ExtensionRecord>| {
-            let Some(previous) = previous.and_then(ExtensionRecord::installed) else {
+            let Some(previous) = previous.and_then(ExtensionRecord::fingerprint) else {
                 return false;
             };
             next.iter().any(|record| {
                 record.usable()
-                    && record.installed().is_some_and(|installed| {
-                        installed.manifest.id == key.extension
-                            && installed.fingerprint() == previous.fingerprint()
-                    })
+                    && record.entry.id == key.extension
+                    && record.fingerprint() == Some(previous)
             })
         };
         let stopped: Vec<SlotKey> = self

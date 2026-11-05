@@ -8,8 +8,9 @@ use krad_extensions::api::protocol::{
     InitializeParams,
 };
 use krad_extensions::api::CURRENT_API;
-use krad_extensions::program::{initialize, ExtensionProcess, ProgramEvent, RestartPolicy, Trust};
+use krad_extensions::program::{initialize, ExtensionProcess, ProgramEvent, RestartPolicy};
 use krad_extensions::ExtensionError;
+use krad_extensions::Trust;
 use krad_host::{HostLink, HostPlatform};
 use std::collections::BTreeSet;
 
@@ -98,14 +99,16 @@ impl EnvironmentShell {
         let Some(record) = self.extensions.record(&key.extension).cloned() else {
             return;
         };
-        let Some(installed) = record.installed().cloned() else {
-            return;
-        };
-        if record.trust() != Trust::Trusted {
-            self.toast(&format!("{} {NOT_TRUSTED_TEXT}", record.title()), cx);
-            self.ask_trust(&record.entry.id, cx);
+        if !record.entry.enabled {
             return;
         }
+        let Some(program) = record.program() else {
+            if record.trust() != Trust::Trusted {
+                self.toast(&format!("{} {NOT_TRUSTED_TEXT}", record.title()), cx);
+                self.ask_trust(&record.entry.id, cx);
+            }
+            return;
+        };
         let Some((link, platform)) = self.program_link(&key) else {
             self.toast(&format!("{} {HOST_GONE_TEXT}", record.title()), cx);
             return;
@@ -116,11 +119,11 @@ impl EnvironmentShell {
                 .insert(key, Slot::WaitingForTools(waiting));
             return;
         };
-        let placement = installed
-            .manifest
+        let placement = program
+            .manifest()
             .program
             .as_ref()
-            .map_or(Placement::App, |program| program.placement);
+            .map_or(Placement::App, |declared| declared.placement);
         let params = InitializeParams {
             app: AppInfo {
                 name: APP_NAME.to_owned(),
@@ -128,7 +131,7 @@ impl EnvironmentShell {
             },
             api: CURRENT_API,
             placement,
-            extension_folder: installed.folder.clone(),
+            extension_folder: program.folder().to_path_buf(),
             environment: key
                 .environment
                 .as_ref()
@@ -143,7 +146,7 @@ impl EnvironmentShell {
         let starting = cx.background_spawn(async move {
             let mut params = params;
             let site = tools
-                .program_site(&link, platform, &installed, &chosen)
+                .program_site(&link, platform, &program, &chosen)
                 .map_err(StartFailure::from)?;
             params.extension_folder.clone_from(&site.folder);
             let (process, events) =

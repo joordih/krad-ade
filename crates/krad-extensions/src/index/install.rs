@@ -5,7 +5,8 @@ use std::path::Path;
 use super::entry::{Compatibility, IndexEntry};
 use super::ExtensionIndex;
 use crate::error::ExtensionError;
-use crate::extension::{clone_dir, git};
+use crate::extension::{clone_dir, git, place_staged, remove_clone_folder};
+use crate::program::read_installed;
 
 const REMOTE: &str = "origin";
 const FETCHED: &str = "FETCH_HEAD";
@@ -38,26 +39,33 @@ pub fn add_from_index(
     entry: &IndexEntry,
 ) -> Result<ExtensionEntry, ExtensionError> {
     refuse_incompatible(entry)?;
-    let id = entry.id.to_string();
-    let dir = clone_dir(config_dir, &id);
-    if dir.exists() {
-        fs::remove_dir_all(&dir)?;
+    let staging = clone_dir(config_dir, &entry.id).with_file_name(format!(
+        ".incoming-index-{}-{}",
+        std::process::id(),
+        entry.id
+    ));
+    if staging.exists() {
+        fs::remove_dir_all(&staging)?;
     }
-    fs::create_dir_all(&dir)?;
-    let installed = git(&["init", "--quiet"], Some(&dir))
+    fs::create_dir_all(&staging)?;
+    let installed = git(&["init", "--quiet"], Some(&staging))
         .and_then(|()| {
             git(
                 &["remote", "add", REMOTE, entry.repository.as_ref()],
-                Some(&dir),
+                Some(&staging),
             )
         })
-        .and_then(|()| check_out(&dir, &entry.commit));
+        .and_then(|()| check_out(&staging, &entry.commit))
+        .and_then(|()| refuse_other_id(&staging, entry))
+        .and_then(|()| place_staged(config_dir, &staging, &entry.id));
     if let Err(error) = installed {
-        fs::remove_dir_all(&dir)?;
+        if staging.exists() {
+            fs::remove_dir_all(&staging)?;
+        }
         return Err(error);
     }
     Ok(ExtensionEntry {
-        id,
+        id: entry.id.clone(),
         source: ExtensionSource::Pinned {
             url: entry.repository.to_string(),
             commit: entry.commit.clone(),
@@ -65,6 +73,16 @@ pub fn add_from_index(
         enabled: true,
         trusted: None,
     })
+}
+
+fn refuse_other_id(folder: &Path, entry: &IndexEntry) -> Result<(), ExtensionError> {
+    match read_installed(folder)? {
+        Some(installed) if installed.manifest.id != entry.id => Err(ExtensionError::IdMismatch {
+            entry: entry.id.to_string(),
+            manifest: installed.manifest.id.to_string(),
+        }),
+        _ => Ok(()),
+    }
 }
 
 /// # Errors
@@ -79,19 +97,25 @@ pub fn update_from_index(
     let ExtensionSource::Pinned { url, commit } = &installed.source else {
         return Ok(None);
     };
-    let Some(entry) = index.get(&installed.id) else {
+    let Some(entry) = index.get(installed.id.as_ref()) else {
         return Ok(None);
     };
     if entry.commit == *commit {
         return Ok(None);
     }
     refuse_incompatible(entry)?;
-    check_out(&clone_dir(config_dir, &installed.id), &entry.commit)?;
+    let dir = clone_dir(config_dir, &installed.id);
+    check_out(&dir, &entry.commit)?;
+    if let Err(error) = refuse_other_id(&dir, entry) {
+        remove_clone_folder(config_dir, &dir)?;
+        return Err(error);
+    }
     Ok(Some(ExtensionEntry {
         source: ExtensionSource::Pinned {
             url: url.clone(),
             commit: entry.commit.clone(),
         },
+        trusted: None,
         ..installed.clone()
     }))
 }

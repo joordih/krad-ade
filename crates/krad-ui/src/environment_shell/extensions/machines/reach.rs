@@ -1,6 +1,6 @@
 use krad_extensions::api::protocol::{Machine, MachineState, TerminalCommand};
 use krad_extensions::api::HostKindId;
-use krad_extensions::program::Trust;
+use krad_extensions::Trust;
 use krad_host::MachineChannel;
 
 use super::super::ExtensionRecord;
@@ -43,7 +43,7 @@ pub(super) fn reach_of(record: Option<&ExtensionRecord>, kind: &HostKindId) -> R
     if !record.entry.enabled {
         return Reach::Disabled;
     }
-    if record.trust() != Trust::Trusted {
+    if record.trust() != Trust::Trusted || !record.usable() {
         return Reach::Untrusted;
     }
     let offers = record.manifest().is_some_and(|manifest| {
@@ -123,7 +123,8 @@ pub(super) fn machine_channel(command: TerminalCommand) -> MachineChannel {
 mod tests {
     use super::*;
     use krad_domain::{ExtensionEntry, ExtensionSource};
-    use krad_extensions::program::{read_installed, ProgramLog};
+    use krad_extensions::inspect;
+    use krad_extensions::program::ProgramLog;
     use std::collections::BTreeMap;
 
     use super::super::super::Loaded;
@@ -154,16 +155,21 @@ title = "Docker container"
             std::env::temp_dir().join(format!("krad-machines-{}-{serial}", std::process::id()));
         std::fs::create_dir_all(&folder)?;
         std::fs::write(folder.join("extension.toml"), DOCKER)?;
-        let installed = read_installed(&folder)?.ok_or("the folder holds an extension")?;
-        let entry = ExtensionEntry {
-            id: "docker".to_owned(),
-            source: ExtensionSource::Folder(folder),
+        let untrusted = ExtensionEntry {
+            id: "docker".parse()?,
+            source: ExtensionSource::Folder(folder.clone()),
             enabled,
-            trusted: trusted.then(|| installed.fingerprint()),
+            trusted: None,
         };
+        let fingerprint = inspect(&folder, untrusted.clone())?.fingerprint;
+        let entry = ExtensionEntry {
+            trusted: trusted.then_some(fingerprint),
+            ..untrusted
+        };
+        let inspected = inspect(&folder, entry.clone())?;
         Ok(ExtensionRecord {
             entry,
-            loaded: Loaded::Program(Box::new(installed)),
+            loaded: Loaded::Ready(Box::new(inspected)),
             log: ProgramLog::default(),
         })
     }

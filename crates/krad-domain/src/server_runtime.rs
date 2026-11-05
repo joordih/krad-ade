@@ -1,3 +1,4 @@
+use crate::extension_id::ExtensionId;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -122,7 +123,7 @@ pub struct ExtensionFingerprint(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtensionEntry {
-    pub id: String,
+    pub id: ExtensionId,
     pub source: ExtensionSource,
     #[serde(default = "enabled_by_default")]
     pub enabled: bool,
@@ -132,6 +133,16 @@ pub struct ExtensionEntry {
 
 const fn enabled_by_default() -> bool {
     true
+}
+
+pub(crate) fn lenient_extensions<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<ExtensionEntry>, D::Error> {
+    let entries = Vec::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(entries
+        .into_iter()
+        .filter_map(|entry| serde_json::from_value(entry).ok())
+        .collect())
 }
 
 #[cfg(test)]

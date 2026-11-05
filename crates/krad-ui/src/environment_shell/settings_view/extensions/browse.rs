@@ -232,7 +232,7 @@ impl EnvironmentShell {
             .and_then(IndexBrowser::loaded)
             .map(|loaded| loaded.index.clone());
         let repository = self.settings.extension_index.clone();
-        let id = entry.id.clone();
+        let id = entry.id.to_string();
         self.set_working(&id, true);
         let updating = cx.background_spawn(async move {
             let index = known

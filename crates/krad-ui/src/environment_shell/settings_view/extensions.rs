@@ -10,7 +10,7 @@ use krad_domain::{ExtensionSecret, ExtensionSecretKey, ExtensionSettingValue};
 use krad_extensions::api::manifest::{ExtensionManifest, SettingContribution, SettingKind};
 use krad_extensions::api::protocol::SettingValue;
 use krad_extensions::api::ExtensionId;
-use krad_extensions::program::Trust;
+use krad_extensions::Trust;
 use std::collections::HashMap;
 
 use super::super::extensions::{default_value, ClashWith, ExtensionRecord, Loaded, Slot};
@@ -190,10 +190,10 @@ impl EnvironmentShell {
                 }
             }
             (FieldSlot::Secret(extension, name), InputEvent::PressEnter { .. }) => {
-                let key = ExtensionSecretKey {
-                    extension: extension.clone(),
-                    name: name.clone(),
+                let Ok(extension) = extension.parse::<ExtensionId>() else {
+                    return;
                 };
+                let key = ExtensionSecretKey::new(&extension, name);
                 let secret = ExtensionSecret::new(text);
                 state.update(cx, |field, cx| field.set_value("", window, cx));
                 let writing = cx.background_spawn(async move {
@@ -226,10 +226,9 @@ impl EnvironmentShell {
     }
 
     fn extension_state(&self, record: &ExtensionRecord) -> String {
-        let installed = match &record.loaded {
-            Loaded::ManifestsOnly => return MANIFESTS_ONLY.to_owned(),
+        let inspected = match &record.loaded {
             Loaded::Problem(problem) => return format!("{CANNOT_USE}: {problem}"),
-            Loaded::Program(installed) => installed,
+            Loaded::Ready(inspected) => inspected,
         };
         if !record.entry.enabled {
             return DISABLED.to_owned();
@@ -237,7 +236,13 @@ impl EnvironmentShell {
         if record.trust() == Trust::Asked {
             return NEEDS_TRUST.to_owned();
         }
-        match self.extensions.slot_state(&installed.manifest.id) {
+        if inspected
+            .manifest()
+            .is_none_or(|manifest| manifest.program.is_none())
+        {
+            return MANIFESTS_ONLY.to_owned();
+        }
+        match self.extensions.slot_state(&record.entry.id) {
             Some(Slot::Running(_)) => RUNNING.to_owned(),
             Some(Slot::Starting(_) | Slot::Initializing(..) | Slot::WaitingForTools(_)) => {
                 STARTING.to_owned()
@@ -263,7 +268,7 @@ impl EnvironmentShell {
             )
         });
         let trust_entry = record.entry.id.clone();
-        let retry_id = record.manifest().map(|manifest| manifest.id.clone());
+        let retry_id = Some(record.entry.id.clone());
         let controls = div()
             .flex()
             .flex_row()

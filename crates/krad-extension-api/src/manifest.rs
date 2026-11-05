@@ -1,12 +1,14 @@
 mod contributions;
 mod program;
+mod values;
 
 pub use contributions::{
     CommandContribution, Contributions, HostKindContribution, KeybindingContribution,
     MenuContribution, MenuTarget, SecretContribution, SettingContribution, SettingKind,
     SettingOption, ToolContribution, ToolEffect, ViewContribution, ViewZone,
 };
-pub use program::{Activation, Binary, BinarySource, Launch, Placement, Program};
+pub use program::{Activation, Binary, BinarySource, Launch, Permission, Placement, Program};
+pub use values::{HttpsUrl, ProgramPath, Sha256Hex, ValueError};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -21,6 +23,7 @@ pub const MANIFEST_FILE: &str = "extension.toml";
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExtensionManifest {
+    #[schemars(with = "String")]
     pub id: ExtensionId,
     pub name: String,
     pub version: String,
@@ -202,7 +205,7 @@ path = "bin/tool-macos"
 [[program.binary]]
 targets = ["linux_x64"]
 url = "https://example.com/tool-linux"
-sha256 = "abc"
+sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 "#;
         let manifest: ExtensionManifest = toml::from_str(text)?;
         let program = manifest.program.ok_or("the manifest brings a program")?;
@@ -214,7 +217,7 @@ sha256 = "abc"
         assert_eq!(
             binary.first().map(|binary| &binary.source),
             Some(&BinarySource::Bundled {
-                path: "bin/tool-macos".into()
+                path: "bin/tool-macos".parse()?
             })
         );
         assert!(matches!(
@@ -222,6 +225,26 @@ sha256 = "abc"
             Some(BinarySource::Download { .. })
         ));
         Ok(())
+    }
+
+    #[test]
+    fn binaries_that_leave_the_folder_or_skip_their_checksum_are_refused() {
+        let binary = |source: &str| {
+            format!(
+                "id = \"tool\"\nname = \"Tool\"\nversion = \"1\"\napi = \"1.0\"\n\n[program]\nplacement = \"app\"\n\n[[program.binary]]\ntargets = [\"linux_x64\"]\n{source}\n"
+            )
+        };
+        for bad in [
+            "path = \"/usr/bin/env\"",
+            "path = \"../../bin/sh\"",
+            "url = \"https://example.com/x\"\nsha256 = \"../../../../tmp/evil\"",
+            "url = \"http://example.com/x\"\nsha256 = \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"",
+        ] {
+            assert!(
+                toml::from_str::<ExtensionManifest>(&binary(bad)).is_err(),
+                "{bad}"
+            );
+        }
     }
 
     #[test]
