@@ -6,6 +6,7 @@ use crate::acp::terminals::CreateTerminalRequest;
 use krad_domain::LineChange;
 use std::collections::BTreeMap;
 use std::error::Error;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Mutex, PoisonError};
@@ -86,7 +87,7 @@ fn files() -> Files {
     let (sender, written) = channel();
     let host = HostFiles::new(
         HostLink::Local,
-        scratch.0.clone(),
+        AgentPaths::on_host(scratch.0.clone()),
         Arc::clone(&buffers) as Arc<dyn OpenBuffers>,
         sender,
     );
@@ -240,7 +241,7 @@ fn create(command: &str, cwd: Option<PathBuf>, limit: Option<u64>) -> CreateTerm
 #[test]
 fn a_relative_terminal_folder_is_invalid_params() {
     let scratch = Scratch::new();
-    let terminals = HostTerminals::new(HostLink::Local, scratch.0.clone());
+    let terminals = HostTerminals::new(HostLink::Local, AgentPaths::on_host(scratch.0.clone()));
     let refused = terminals
         .create(&create("true", Some(PathBuf::from("relative")), None))
         .err();
@@ -248,4 +249,31 @@ fn a_relative_terminal_folder_is_invalid_params() {
         refused.map(|error| error.code),
         Some(ErrorCode::INVALID_PARAMS)
     );
+}
+
+#[test]
+fn a_wsl_agent_s_terminal_runs_in_its_distro_where_it_asked() -> TestResult {
+    let runner = crate::process::Runner::Wsl {
+        distro: "Ubuntu".to_owned(),
+        program: "opencode".to_owned(),
+    };
+    let paths = AgentPaths::of(&runner, Path::new(r"\\wsl.localhost\Ubuntu\home\dev\api"));
+    let terminals = HostTerminals::new(HostLink::Local, paths);
+    let (command, _) = terminals.command(&create(
+        "cargo test",
+        Some(PathBuf::from("/home/dev/api/crates/core")),
+        None,
+    ))?;
+    let args: Vec<String> = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(command.get_program(), krad_domain::WSL_PROGRAM);
+    assert!(args
+        .windows(2)
+        .any(|pair| pair == ["--cd", "/home/dev/api/crates/core"]));
+    assert!(args.ends_with(&["sh".to_owned(), "-c".to_owned(), "cargo test".to_owned()]));
+    let relative = create("true", Some(PathBuf::from("crates/core")), None);
+    assert!(terminals.command(&relative).is_err());
+    Ok(())
 }

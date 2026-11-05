@@ -1,5 +1,10 @@
 use super::*;
 use serde_json::json;
+use std::path::{Path, PathBuf};
+
+fn translator() -> Translator {
+    Translator::new(AgentPaths::on_host(PathBuf::from("/w")))
+}
 
 fn update(value: serde_json::Value) -> SessionUpdate {
     serde_json::from_value(value).unwrap_or_else(|error| unreachable!("a valid update: {error}"))
@@ -17,7 +22,7 @@ fn tools(events: &[LiveEvent]) -> Vec<&ToolCall> {
 
 #[test]
 fn a_bare_pending_tool_waits_for_its_details_before_it_shows() {
-    let mut translator = Translator::default();
+    let mut translator = translator();
     let pending = translator.translate(update(json!({
         "sessionUpdate": "tool_call", "toolCallId": "c1", "title": "write", "kind": "edit", "status": "pending"
     })));
@@ -39,7 +44,7 @@ fn a_bare_pending_tool_waits_for_its_details_before_it_shows() {
 
 #[test]
 fn a_thought_ends_with_the_next_update_and_an_undetailed_tool_shows_when_the_turn_ends() {
-    let mut translator = Translator::default();
+    let mut translator = translator();
     for piece in ["hm", "m"] {
         let thinking = translator.translate(update(json!({
             "sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": piece}
@@ -60,7 +65,7 @@ fn a_thought_ends_with_the_next_update_and_an_undetailed_tool_shows_when_the_tur
 
 #[test]
 fn commands_reach_the_catalog() {
-    let mut translator = Translator::default();
+    let mut translator = translator();
     let events = translator.translate(update(json!({
         "sessionUpdate": "available_commands_update",
         "availableCommands": [{"name": "review", "description": "review changes"}]
@@ -73,7 +78,7 @@ fn commands_reach_the_catalog() {
 
 #[test]
 fn every_diff_of_a_tool_call_shows_and_a_later_one_is_placed_as_an_edit() {
-    let mut translator = Translator::default();
+    let mut translator = translator();
     let called = translator.translate(update(json!({
         "sessionUpdate": "tool_call", "toolCallId": "c3", "title": "edit", "kind": "edit", "status": "in_progress",
         "content": [
@@ -85,7 +90,7 @@ fn every_diff_of_a_tool_call_shows_and_a_later_one_is_placed_as_an_edit() {
         .iter()
         .flat_map(|call| call.edits.iter().map(|edit| edit.path.as_str()))
         .collect();
-    assert_eq!(paths, ["/w/a.rs", "/w/b.rs"]);
+    assert_eq!(paths, ["a.rs", "b.rs"]);
     let more = translator.translate(update(json!({
         "sessionUpdate": "tool_call_update", "toolCallId": "c3",
         "content": [
@@ -96,12 +101,12 @@ fn every_diff_of_a_tool_call_shows_and_a_later_one_is_placed_as_an_edit() {
     })));
     assert!(matches!(more.as_slice(),
         [LiveEvent::Chat(ChatEvent::Edited { tool, edit })]
-            if tool.as_str() == "c3" && edit.path == "/w/c.rs"));
+            if tool.as_str() == "c3" && edit.path == "c.rs"));
 }
 
 #[test]
 fn a_new_title_updates_the_shown_tool_under_its_id() {
-    let mut translator = Translator::default();
+    let mut translator = translator();
     let called = translator.translate(update(json!({
         "sessionUpdate": "tool_call", "toolCallId": "c4", "title": "Read", "kind": "read", "status": "in_progress"
     })));
@@ -112,4 +117,28 @@ fn a_new_title_updates_the_shown_tool_under_its_id() {
     assert!(matches!(retitled.as_slice(),
         [LiveEvent::Chat(ChatEvent::ToolUpdated(call))]
             if call.name == "Read src/main.rs" && call.id.as_ref().map(ToolUseId::as_str) == Some("c4")));
+}
+
+#[test]
+fn a_wsl_agent_s_diffs_and_locations_show_as_the_app_sees_them() {
+    let runner = crate::process::Runner::Wsl {
+        distro: "Ubuntu".to_owned(),
+        program: "opencode".to_owned(),
+    };
+    let mut translator = Translator::new(AgentPaths::of(
+        &runner,
+        Path::new(r"\\wsl.localhost\Ubuntu\home\dev\api"),
+    ));
+    let called = translator.translate(update(json!({
+        "sessionUpdate": "tool_call", "toolCallId": "w1", "title": "Edit", "kind": "edit",
+        "status": "in_progress", "locations": [{"path": "/home/dev/api/src/lib.rs"}],
+        "content": [
+            {"type": "diff", "path": "/home/dev/api/src/lib.rs", "newText": "a\n"},
+            {"type": "diff", "path": "/mnt/c/notes.md", "newText": "b\n"}
+        ]
+    })));
+    let call = tools(&called)[0];
+    assert_eq!(call.summary, "src/lib.rs");
+    let paths: Vec<&str> = call.edits.iter().map(|edit| edit.path.as_str()).collect();
+    assert_eq!(paths, ["src/lib.rs", r"C:\notes.md"]);
 }

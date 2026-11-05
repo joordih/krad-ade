@@ -198,7 +198,9 @@ mod tests {
         let Some(transcript) = transcripts.transcript(file.clone()) else {
             return Err(io::Error::other("a running writer hands out transcripts"));
         };
-        entries.iter().for_each(|entry| transcript.keep(entry));
+        for entry in &entries {
+            transcript.keep(entry);
+        }
         drop(transcripts);
         assert_eq!(read_acp_transcript(&file)?, entries);
         transcript.keep(&user("After the app stopped"));

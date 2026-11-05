@@ -49,37 +49,53 @@ pub(crate) fn harness_command(
     args: &[String],
     env: &[(String, String)],
 ) -> io::Result<Command> {
-    let mut command = match runner {
-        Runner::Ssh { link, program } => return ssh_command(link, program, cwd, args, env),
+    match runner {
+        Runner::Ssh { link, program } => ssh_command(link, program, cwd, args, env),
         Runner::Native(program) => {
             let mut command = platform::command(program);
             command.current_dir(cwd).args(args);
-            command
+            Ok(with_env(command, env))
         }
-        Runner::Wsl { distro, program } => {
-            let linux_dir = runner.served_directory(cwd);
-            let mut command = Command::new(WSL_PROGRAM);
-            command
-                .args(wsl_login_exec_args(distro, &linux_dir))
-                .arg(program)
-                .args(args);
-            let shared: Vec<String> = env
-                .iter()
-                .filter(|(name, _)| name != PATH_VAR)
-                .map(|(name, _)| name.clone())
-                .collect();
-            if !shared.is_empty() {
-                command.env(WSLENV_VAR, shared.join(WSLENV_SEPARATOR));
-            }
-            command
-        }
-    };
+        Runner::Wsl { distro, program } => Ok(wsl_command(
+            distro,
+            &runner.served_directory(cwd),
+            program,
+            args,
+            env,
+        )),
+    }
+}
+
+pub(crate) fn wsl_command(
+    distro: &str,
+    linux_dir: &str,
+    program: &str,
+    args: &[String],
+    env: &[(String, String)],
+) -> Command {
+    let mut command = Command::new(WSL_PROGRAM);
+    command
+        .args(wsl_login_exec_args(distro, linux_dir))
+        .arg(program)
+        .args(args);
+    let shared: Vec<String> = env
+        .iter()
+        .filter(|(name, _)| name != PATH_VAR)
+        .map(|(name, _)| name.clone())
+        .collect();
+    if !shared.is_empty() {
+        command.env(WSLENV_VAR, shared.join(WSLENV_SEPARATOR));
+    }
+    with_env(command, env)
+}
+
+fn with_env(mut command: Command, env: &[(String, String)]) -> Command {
     for name in INHERITED_SESSION_VARS {
         command.env_remove(name);
     }
     command.envs(env.iter().map(|(name, value)| (name, value)));
     platform::hide_console_window(&mut command);
-    Ok(command)
+    command
 }
 
 fn ssh_command(

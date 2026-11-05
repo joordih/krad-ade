@@ -3,7 +3,7 @@ mod terminals;
 
 use krad_host::HostLink;
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::thread;
@@ -12,6 +12,7 @@ pub use files::{FileWritten, OpenBuffers};
 pub use terminals::HostTerminals;
 
 use super::connection::{AgentRequest, Responder};
+use super::paths::AgentPaths;
 use super::permission::{RequestPermissionRequest, RequestPermissionResponse};
 use super::rpc::{ErrorCode, RpcError};
 use files::HostFiles;
@@ -32,13 +33,18 @@ impl ClientSide {
     #[must_use]
     pub fn new(
         host: HostLink,
-        cwd: PathBuf,
+        paths: AgentPaths,
         buffers: Arc<dyn OpenBuffers>,
         written: Sender<FileWritten>,
     ) -> Self {
         Self {
-            files: Arc::new(HostFiles::new(host.clone(), cwd.clone(), buffers, written)),
-            terminals: HostTerminals::new(host, cwd),
+            files: Arc::new(HostFiles::new(
+                host.clone(),
+                paths.clone(),
+                buffers,
+                written,
+            )),
+            terminals: HostTerminals::new(host, paths),
         }
     }
 
@@ -87,9 +93,8 @@ fn answer<R: Serialize>(responder: Responder<R>, result: Result<R, RpcError>) {
     }
 }
 
-fn absolute(host: &HostLink, path: &Path) -> Result<(), RpcError> {
-    let absolute = path.is_absolute() || (!host.is_local() && path.has_root());
-    if absolute {
+fn absolute(paths: &AgentPaths, host: &HostLink, path: &Path) -> Result<(), RpcError> {
+    if paths.is_absolute(host, path) {
         return Ok(());
     }
     Err(RpcError::new(ErrorCode::INVALID_PARAMS, RELATIVE_PATH_TEXT))

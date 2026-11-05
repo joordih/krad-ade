@@ -7,6 +7,7 @@ mod files;
 mod ids;
 mod lenient;
 mod methods;
+mod paths;
 mod permission;
 mod prompt;
 mod rpc;
@@ -31,6 +32,7 @@ pub use ids::{
     AuthMethodId, ConfigOptionId, ModeId, ModelId, PermissionOptionId, SessionId, TerminalId,
     ToolCallId,
 };
+pub use paths::AgentPaths;
 pub use permission::{
     PermissionOption, PermissionOptionKind, RequestPermissionOutcome, RequestPermissionRequest,
     RequestPermissionResponse,

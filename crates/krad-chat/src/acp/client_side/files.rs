@@ -8,11 +8,11 @@ use tracing::debug;
 use super::absolute;
 use crate::acp::files::{ReadTextFileRequest, ReadTextFileResponse, WriteTextFileRequest};
 use crate::acp::ids::SessionId;
+use crate::acp::paths::AgentPaths;
 use crate::acp::rpc::{EmptyResponse, ErrorCode, RpcError};
 
 const FIRST_LINE: u32 = 1;
 const LINE_END: char = '\n';
-const SHOWN_SEPARATOR: &str = "/";
 const READ_FAILED_TEXT: &str = "The file could not be read";
 const WRITE_FAILED_TEXT: &str = "The file could not be written";
 
@@ -30,7 +30,7 @@ pub struct FileWritten {
 
 pub(super) struct HostFiles {
     host: HostLink,
-    cwd: PathBuf,
+    paths: AgentPaths,
     buffers: Arc<dyn OpenBuffers>,
     written: Sender<FileWritten>,
 }
@@ -38,13 +38,13 @@ pub(super) struct HostFiles {
 impl HostFiles {
     pub(super) fn new(
         host: HostLink,
-        cwd: PathBuf,
+        paths: AgentPaths,
         buffers: Arc<dyn OpenBuffers>,
         written: Sender<FileWritten>,
     ) -> Self {
         Self {
             host,
-            cwd,
+            paths,
             buffers,
             written,
         }
@@ -55,9 +55,9 @@ impl HostFiles {
         &self,
         request: &ReadTextFileRequest,
     ) -> Result<ReadTextFileResponse, RpcError> {
-        absolute(&self.host, &request.path)?;
+        absolute(&self.paths, &self.host, &request.path)?;
         let text = self
-            .current_text(&request.path)
+            .current_text(&self.paths.opened(&request.path))
             .map_err(|error| failure(&error, READ_FAILED_TEXT))?;
         Ok(ReadTextFileResponse {
             content: excerpt(text, request.line, request.limit),
@@ -66,26 +66,25 @@ impl HostFiles {
 
     #[tracing::instrument(skip_all)]
     pub(super) fn write(&self, request: WriteTextFileRequest) -> Result<EmptyResponse, RpcError> {
-        absolute(&self.host, &request.path)?;
-        let previous = match self.current_text(&request.path) {
+        absolute(&self.paths, &self.host, &request.path)?;
+        let path = self.paths.opened(&request.path);
+        let previous = match self.current_text(&path) {
             Ok(text) => text,
             Err(error) if error.is_not_found() => String::new(),
             Err(error) => return Err(failure(&error, WRITE_FAILED_TEXT)),
         };
-        request
-            .path
-            .parent()
+        path.parent()
             .map_or(Ok(()), |parent| self.host.create_dir_all(parent))
-            .and_then(|()| self.host.write(&request.path, request.content.as_bytes()))
+            .and_then(|()| self.host.write(&path, request.content.as_bytes()))
             .map_err(|error| failure(&error, WRITE_FAILED_TEXT))?;
-        self.buffers.written(&request.path, &request.content);
+        self.buffers.written(&path, &request.content);
         let edit = FileEdit {
-            path: self.shown(&request.path),
+            path: self.paths.shown(&request.path),
             lines: line_diff(&previous, &request.content),
         };
         let written = FileWritten {
             session_id: request.session_id,
-            path: request.path,
+            path,
             edit,
         };
         if self.written.send(written).is_err() {
@@ -99,17 +98,6 @@ impl HostFiles {
             return Ok(text);
         }
         self.host.read_to_string(path)
-    }
-
-    fn shown(&self, path: &Path) -> String {
-        match path.strip_prefix(&self.cwd) {
-            Ok(inside) if !inside.as_os_str().is_empty() => inside
-                .components()
-                .map(|part| part.as_os_str().to_string_lossy())
-                .collect::<Vec<_>>()
-                .join(SHOWN_SEPARATOR),
-            _ => path.to_string_lossy().into_owned(),
-        }
     }
 }
 

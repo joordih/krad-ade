@@ -12,8 +12,7 @@ use windows as platform;
 use krad_host::{HostCommand, HostLink};
 use std::collections::BTreeMap;
 use std::io::Read;
-use std::path::PathBuf;
-use std::process::{Child, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
@@ -22,10 +21,12 @@ use tracing::debug;
 
 use super::absolute;
 use crate::acp::ids::TerminalId;
+use crate::acp::paths::AgentPaths;
 use crate::acp::rpc::{EmptyResponse, ErrorCode, RpcError};
 use crate::acp::terminals::{
     CreateTerminalRequest, CreateTerminalResponse, TerminalExitStatus, TerminalOutputResponse,
 };
+use crate::process::wsl_command;
 use output::Output;
 
 const ID_PREFIX: &str = "terminal-";
@@ -127,7 +128,7 @@ impl Terminal {
 #[derive(Debug)]
 struct Registry {
     host: HostLink,
-    cwd: PathBuf,
+    paths: AgentPaths,
     next: AtomicU64,
     terminals: Mutex<BTreeMap<TerminalId, Arc<Terminal>>>,
 }
@@ -155,11 +156,11 @@ pub struct HostTerminals {
 
 impl HostTerminals {
     #[must_use]
-    pub fn new(host: HostLink, cwd: PathBuf) -> Self {
+    pub fn new(host: HostLink, paths: AgentPaths) -> Self {
         Self {
             registry: Arc::new(Registry {
                 host,
-                cwd,
+                paths,
                 next: AtomicU64::new(0),
                 terminals: Mutex::new(BTreeMap::new()),
             }),
@@ -179,24 +180,7 @@ impl HostTerminals {
         &self,
         request: &CreateTerminalRequest,
     ) -> Result<CreateTerminalResponse, RpcError> {
-        let host = &self.registry.host;
-        let cwd = request.cwd.as_ref().unwrap_or(&self.registry.cwd);
-        absolute(host, cwd)?;
-        let mut command = HostCommand::new(&request.command);
-        command
-            .args(&request.args)
-            .current_dir(cwd)
-            .in_login_shell();
-        for variable in &request.env {
-            command.env(&variable.name, &variable.value);
-        }
-        let stdin = if host.is_local() {
-            Stdio::null()
-        } else {
-            command.end_with_stdin();
-            Stdio::piped()
-        };
-        let mut built = command.build(host).map_err(not_started)?;
+        let (mut built, stdin) = self.command(request)?;
         platform::own_group(&mut built);
         built
             .stdin(stdin)
@@ -229,6 +213,45 @@ impl HostTerminals {
             .insert(terminal_id.clone(), terminal);
         debug!(terminal = %terminal_id.0, "started an ACP terminal");
         Ok(CreateTerminalResponse { terminal_id })
+    }
+
+    pub(super) fn command(
+        &self,
+        request: &CreateTerminalRequest,
+    ) -> Result<(Command, Stdio), RpcError> {
+        let Registry { host, paths, .. } = &*self.registry;
+        let cwd = request.cwd.as_deref().unwrap_or(paths.agent_cwd());
+        absolute(paths, host, cwd)?;
+        if let Some(distro) = paths.wsl_distro() {
+            let env: Vec<(String, String)> = request
+                .env
+                .iter()
+                .map(|variable| (variable.name.clone(), variable.value.clone()))
+                .collect();
+            let command = wsl_command(
+                distro,
+                &cwd.to_string_lossy(),
+                &request.command,
+                &request.args,
+                &env,
+            );
+            return Ok((command, Stdio::null()));
+        }
+        let mut command = HostCommand::new(&request.command);
+        command
+            .args(&request.args)
+            .current_dir(cwd)
+            .in_login_shell();
+        for variable in &request.env {
+            command.env(&variable.name, &variable.value);
+        }
+        let stdin = if host.is_local() {
+            Stdio::null()
+        } else {
+            command.end_with_stdin();
+            Stdio::piped()
+        };
+        Ok((command.build(host).map_err(not_started)?, stdin))
     }
 
     pub(super) fn output(&self, id: &TerminalId) -> Result<TerminalOutputResponse, RpcError> {

@@ -21,6 +21,7 @@ use tracing::debug;
 use crate::acp::client_side::{ClientSide, FileWritten, OpenBuffers};
 use crate::acp::config::SetSessionConfigOptionResponse;
 use crate::acp::connection::{AcpClient, AcpConnection, AcpError, AgentRequest, Pending};
+use crate::acp::paths::AgentPaths;
 use crate::acp::prompt::PromptResponse;
 use crate::acp::rpc::EmptyResponse;
 use crate::acp::update::SessionNotification;
@@ -112,7 +113,7 @@ where
 #[derive(Clone, Debug)]
 struct Launch {
     runner: Runner,
-    cwd: PathBuf,
+    paths: AgentPaths,
     agent: String,
     mcp: Vec<McpServerStart>,
 }
@@ -123,11 +124,11 @@ struct Serving {
 }
 
 impl Serving {
-    fn client_side(self, cwd: PathBuf, inbound: &Sender<Inbound>) -> ClientSide {
+    fn client_side(self, paths: AgentPaths, inbound: &Sender<Inbound>) -> ClientSide {
         let (written, files) = channel();
         let inbound = inbound.clone();
         thread::spawn(move || forward_written(&files, &inbound));
-        ClientSide::new(self.host, cwd, self.buffers, written)
+        ClientSide::new(self.host, paths, self.buffers, written)
     }
 }
 
@@ -187,7 +188,7 @@ pub(crate) fn spawn_acp(
     sink: impl FnMut(LiveEvent) + Send + 'static,
 ) -> AcpChat {
     let launch = Launch {
-        cwd: PathBuf::from(config.runner.served_directory(&config.cwd)),
+        paths: AgentPaths::of(&config.runner, &config.cwd),
         runner: config.runner.clone(),
         agent: config.agent.agent.display_name(),
         mcp: config.mcp.clone(),
@@ -224,7 +225,7 @@ where
     thread::spawn(move || {
         match connect(Forward(inbound.clone())) {
             Ok(connection) => {
-                let client_side = serving.client_side(launch.cwd.clone(), &inbound);
+                let client_side = serving.client_side(launch.paths.clone(), &inbound);
                 Worker::new(
                     launch,
                     connection,

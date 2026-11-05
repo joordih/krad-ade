@@ -9,6 +9,7 @@ use std::mem;
 
 use crate::acp::content::ContentBlock;
 use crate::acp::ids::{TerminalId, ToolCallId};
+use crate::acp::paths::AgentPaths;
 use crate::acp::update::{
     AvailableCommand, Diff, Plan, PlanEntryStatus, SessionUpdate, ToolCall as AgentToolCall,
     ToolCallContent, ToolCallStatus, ToolCallUpdate, ToolKind,
@@ -33,8 +34,9 @@ impl ToolState {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(super) struct Translator {
+    paths: AgentPaths,
     thought: String,
     tools: HashMap<ToolCallId, ToolState>,
     catalog: Catalog,
@@ -71,18 +73,18 @@ fn checklist(plan: Plan) -> Checklist {
         .collect()
 }
 
-fn diff_edit(diff: &Diff) -> FileEdit {
+fn diff_edit(diff: &Diff, paths: &AgentPaths) -> FileEdit {
     FileEdit {
-        path: diff.path.display().to_string(),
+        path: paths.shown(&diff.path),
         lines: line_diff(diff.old_text.as_deref().unwrap_or_default(), &diff.new_text),
     }
 }
 
-fn diff_edits(content: &[ToolCallContent]) -> Vec<FileEdit> {
+fn diff_edits(content: &[ToolCallContent], paths: &AgentPaths) -> Vec<FileEdit> {
     content
         .iter()
         .filter_map(|content| match content {
-            ToolCallContent::Diff(diff) => Some(diff_edit(diff)),
+            ToolCallContent::Diff(diff) => Some(diff_edit(diff, paths)),
             ToolCallContent::Content { .. } | ToolCallContent::Terminal { .. } => None,
         })
         .collect()
@@ -113,6 +115,17 @@ fn command_offer(command: AvailableCommand) -> CommandOffer {
 }
 
 impl Translator {
+    pub(super) fn new(paths: AgentPaths) -> Self {
+        Self {
+            paths,
+            thought: String::new(),
+            tools: HashMap::new(),
+            catalog: Catalog::default(),
+            watching: Vec::new(),
+            written: 0,
+        }
+    }
+
     pub(super) const fn catalog(&self) -> &Catalog {
         &self.catalog
     }
@@ -187,14 +200,14 @@ impl Translator {
     fn called(&mut self, call: AgentToolCall) -> Vec<LiveEvent> {
         let summary = call.locations.first().map_or_else(
             || tool_summary(call.raw_input.as_ref()),
-            |location| location.path.display().to_string(),
+            |location| self.paths.shown(&location.path),
         );
         let state = ToolState {
             title: call.title,
             kind: call.kind,
             status: call.status,
             summary,
-            edits: diff_edits(&call.content),
+            edits: diff_edits(&call.content, &self.paths),
             shown: false,
             terminals: Vec::new(),
         };
@@ -238,6 +251,7 @@ impl Translator {
     }
 
     fn merged(&mut self, update: &ToolCallUpdate) -> &ToolState {
+        let paths = &self.paths;
         let state = self.tools.entry(update.tool_call_id.clone()).or_default();
         if let Some(title) = &update.title {
             state.title.clone_from(title);
@@ -253,12 +267,12 @@ impl Translator {
             .as_ref()
             .and_then(|locations| locations.first())
         {
-            state.summary = location.path.display().to_string();
+            state.summary = paths.shown(&location.path);
         } else if state.summary.is_empty() {
             state.summary = tool_summary(update.raw_input.as_ref());
         }
         if let Some(content) = &update.content {
-            let edits = diff_edits(content);
+            let edits = diff_edits(content, paths);
             if !edits.is_empty() {
                 state.edits = edits;
             }

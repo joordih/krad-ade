@@ -164,7 +164,7 @@ pub(super) fn start(session: &LiveSession) -> Started {
     let (sender, events) = channel();
     let launch = Launch {
         runner: Runner::Native(PathBuf::from("fake-agent")),
-        cwd: PathBuf::from(CWD),
+        paths: crate::acp::paths::AgentPaths::on_host(PathBuf::from(CWD)),
         agent: "Fake (ACP)".to_owned(),
         mcp: Vec::new(),
     };

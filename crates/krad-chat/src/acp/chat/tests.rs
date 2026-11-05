@@ -112,7 +112,7 @@ fn a_prompt_streams_thoughts_text_tools_edits_and_the_plan_until_done() {
     assert_eq!(chat[1], ChatEvent::TextDelta("On ".to_owned()));
     assert_eq!(chat[2], ChatEvent::TextDelta("it.".to_owned()));
     assert!(matches!(&chat[3], ChatEvent::Tool(call)
-        if call.kind == ToolKind::Edit && call.summary == "/work/a.txt" && call.edits.is_empty()));
+        if call.kind == ToolKind::Edit && call.summary == "a.txt" && call.edits.is_empty()));
     assert!(matches!(&chat[4], ChatEvent::Edited { tool, edit }
         if tool.as_str() == "t1" && edit.counts() == (1, 1)));
     assert!(matches!(&chat[5], ChatEvent::Checklist(Checklist { items })

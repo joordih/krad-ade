@@ -93,6 +93,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         running: Arc<AtomicBool>,
         sink: S,
     ) -> Self {
+        let translator = Translator::new(launch.paths.clone());
         Self {
             sink,
             launch,
@@ -108,7 +109,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             session: None,
             signing_in: None,
             choices: Choices::default(),
-            translator: Translator::default(),
+            translator,
             asks: Asks::default(),
             queue: VecDeque::new(),
             prompting: false,

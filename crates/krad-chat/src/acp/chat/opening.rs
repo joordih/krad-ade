@@ -103,7 +103,7 @@ pub(super) fn open(
     let opened = match opening {
         Opening::New => connection
             .new_session(&NewSessionRequest {
-                cwd: launch.cwd.clone(),
+                cwd: launch.paths.agent_cwd().to_path_buf(),
                 mcp_servers: handed.servers,
             })
             .wait_timeout(SETUP_TIMEOUT)
@@ -116,7 +116,7 @@ pub(super) fn open(
         Opening::Load(id) => connection
             .load_session(&LoadSessionRequest {
                 session_id: id.clone(),
-                cwd: launch.cwd.clone(),
+                cwd: launch.paths.agent_cwd().to_path_buf(),
                 mcp_servers: handed.servers,
             })
             .wait_timeout(SETUP_TIMEOUT)

@@ -11,7 +11,7 @@ use std::time::Instant;
 fn a_terminal_runs_in_its_folder_with_its_env_and_reports_its_exit() -> TestResult {
     let scratch = Scratch::new();
     scratch.file("marker.txt", "");
-    let terminals = HostTerminals::new(HostLink::Local, scratch.0.clone());
+    let terminals = HostTerminals::new(HostLink::Local, AgentPaths::on_host(scratch.0.clone()));
     let id = terminals
         .create(&create("ls; echo $KRAD_ACP_VALUE; exit 3", None, None))?
         .terminal_id;
@@ -34,7 +34,7 @@ fn a_terminal_runs_in_its_folder_with_its_env_and_reports_its_exit() -> TestResu
 #[test]
 fn output_over_the_byte_limit_keeps_its_end() -> TestResult {
     let scratch = Scratch::new();
-    let terminals = HostTerminals::new(HostLink::Local, scratch.0.clone());
+    let terminals = HostTerminals::new(HostLink::Local, AgentPaths::on_host(scratch.0.clone()));
     let id = terminals
         .create(&create(
             "printf 'start-aéb'",
@@ -52,7 +52,7 @@ fn output_over_the_byte_limit_keeps_its_end() -> TestResult {
 #[test]
 fn a_killed_terminal_exits_by_signal_and_stays_readable() -> TestResult {
     let scratch = Scratch::new();
-    let terminals = HostTerminals::new(HostLink::Local, scratch.0.clone());
+    let terminals = HostTerminals::new(HostLink::Local, AgentPaths::on_host(scratch.0.clone()));
     let id = terminals
         .create(&create("echo begun; sleep 30", None, None))?
         .terminal_id;
@@ -68,7 +68,7 @@ fn a_killed_terminal_exits_by_signal_and_stays_readable() -> TestResult {
 #[test]
 fn a_released_terminal_is_killed_and_forgotten_by_the_agent() -> TestResult {
     let scratch = Scratch::new();
-    let terminals = HostTerminals::new(HostLink::Local, scratch.0.clone());
+    let terminals = HostTerminals::new(HostLink::Local, AgentPaths::on_host(scratch.0.clone()));
     let id = terminals
         .create(&create("sleep 30", None, None))?
         .terminal_id;
@@ -110,7 +110,7 @@ fn the_agent_gets_its_answers_over_json_rpc() -> TestResult {
     let (sender, _written) = channel();
     let client = ClientSide::new(
         HostLink::Local,
-        scratch.0.clone(),
+        AgentPaths::on_host(scratch.0.clone()),
         Arc::new(FakeBuffers::default()),
         sender,
     );
