@@ -142,14 +142,18 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn extensions_changed(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn extensions_changed(&mut self, cx: &mut Context<Self>) {
         self.save_settings(cx);
         self.load_language_tools(cx);
         self.load_extensions(cx);
         cx.notify();
     }
 
-    fn add_extension(&mut self, entry: Result<ExtensionEntry, String>, cx: &mut Context<Self>) {
+    pub(super) fn add_extension(
+        &mut self,
+        entry: Result<ExtensionEntry, String>,
+        cx: &mut Context<Self>,
+    ) {
         match entry {
             Ok(entry) => {
                 self.settings
@@ -228,6 +232,9 @@ impl EnvironmentShell {
                     known.enabled = !known.enabled;
                 }
                 self.extensions_changed(cx);
+            }
+            ExtensionChange::Update if matches!(entry.source, ExtensionSource::Pinned { .. }) => {
+                self.update_pinned_extension(entry, cx);
             }
             ExtensionChange::Update | ExtensionChange::Remove => {
                 let removing = change == ExtensionChange::Remove;

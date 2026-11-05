@@ -52,6 +52,15 @@ pub enum ExtensionError {
     Pinned(String),
 }
 
+const NOT_FOUND_STATUS: u16 = 404;
+
+impl ExtensionError {
+    #[must_use]
+    pub fn is_not_found(&self) -> bool {
+        matches!(self, Self::Http(ureq::Error::StatusCode(NOT_FOUND_STATUS)))
+    }
+}
+
 const ERROR_MARKERS: [&str; 5] = ["ERROR:", "error:", "Error:", "npm ERR!", "fatal:"];
 const HEADLINE_MAX_CHARS: usize = 200;
 const ELLIPSIS: char = '…';
