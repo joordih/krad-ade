@@ -1,19 +1,18 @@
+mod attrs;
+mod status;
+
+pub(crate) use attrs::Attrs;
+pub use attrs::FileKind;
+pub(crate) use status::StatusCode;
+
 use std::io::{self, Read, Write};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub(crate) const PROTOCOL_VERSION: u32 = 3;
 pub(crate) const MAX_PACKET_BYTES: u32 = 256 * 1024;
 
-const ATTR_SIZE: u32 = 0x0000_0001;
-const ATTR_UIDGID: u32 = 0x0000_0002;
-const ATTR_PERMISSIONS: u32 = 0x0000_0004;
-const ATTR_ACMODTIME: u32 = 0x0000_0008;
-const ATTR_EXTENDED: u32 = 0x8000_0000;
-
-const FILE_TYPE_MASK: u32 = 0o170_000;
-const FILE_TYPE_DIRECTORY: u32 = 0o040_000;
-const FILE_TYPE_SYMLINK: u32 = 0o120_000;
-const PERMISSION_BITS: u32 = 0o7777;
+const LENGTH_BYTES: usize = 4;
+const KIND_BYTES: usize = 1;
+const ID_BYTES: usize = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -25,6 +24,9 @@ pub(crate) enum PacketType {
     Read = 5,
     Write = 6,
     Lstat = 7,
+    Fstat = 8,
+    Setstat = 9,
+    Fsetstat = 10,
     Opendir = 11,
     Readdir = 12,
     Remove = 13,
@@ -33,8 +35,8 @@ pub(crate) enum PacketType {
     Realpath = 16,
     Stat = 17,
     Rename = 18,
+    Readlink = 19,
     Symlink = 20,
-    Setstat = 9,
     Status = 101,
     Handle = 102,
     Data = 103,
@@ -44,17 +46,43 @@ pub(crate) enum PacketType {
 }
 
 impl PacketType {
+    const ALL: [Self; 25] = [
+        Self::Init,
+        Self::Version,
+        Self::Open,
+        Self::Close,
+        Self::Read,
+        Self::Write,
+        Self::Lstat,
+        Self::Fstat,
+        Self::Setstat,
+        Self::Fsetstat,
+        Self::Opendir,
+        Self::Readdir,
+        Self::Remove,
+        Self::Mkdir,
+        Self::Rmdir,
+        Self::Realpath,
+        Self::Stat,
+        Self::Rename,
+        Self::Readlink,
+        Self::Symlink,
+        Self::Status,
+        Self::Handle,
+        Self::Data,
+        Self::Name,
+        Self::Attrs,
+    ];
+
     pub(crate) fn from_byte(byte: u8) -> Option<Self> {
-        [
-            Self::Version,
-            Self::Status,
-            Self::Handle,
-            Self::Data,
-            Self::Name,
-            Self::Attrs,
-        ]
-        .into_iter()
-        .find(|kind| *kind as u8 == byte)
+        Self::ALL
+            .into_iter()
+            .chain([Self::Extended])
+            .find(|kind| *kind as u8 == byte)
+    }
+
+    const fn has_id(self) -> bool {
+        !matches!(self, Self::Init | Self::Version)
     }
 }
 
@@ -63,62 +91,17 @@ pub(crate) struct OpenFlags(pub(crate) u32);
 
 impl OpenFlags {
     pub(crate) const READ: Self = Self(0x01);
-    pub(crate) const WRITE_NEW: Self = Self(0x02 | 0x08 | 0x10);
-    pub(crate) const CREATE_EXCLUSIVE: Self = Self(0x02 | 0x08 | 0x20);
-}
+    pub(crate) const WRITE: Self = Self(0x02);
+    pub(crate) const APPEND: Self = Self(0x04);
+    pub(crate) const CREATE: Self = Self(0x08);
+    pub(crate) const TRUNCATE: Self = Self(0x10);
+    pub(crate) const EXCLUSIVE: Self = Self(0x20);
+    pub(crate) const WRITE_NEW: Self = Self(Self::WRITE.0 | Self::CREATE.0 | Self::TRUNCATE.0);
+    pub(crate) const CREATE_EXCLUSIVE: Self =
+        Self(Self::WRITE.0 | Self::CREATE.0 | Self::EXCLUSIVE.0);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum StatusCode {
-    Ok,
-    Eof,
-    NoSuchFile,
-    PermissionDenied,
-    Other(u32),
-}
-
-impl From<u32> for StatusCode {
-    fn from(code: u32) -> Self {
-        match code {
-            0 => Self::Ok,
-            1 => Self::Eof,
-            2 => Self::NoSuchFile,
-            3 => Self::PermissionDenied,
-            other => Self::Other(other),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FileKind {
-    Directory,
-    File,
-    Symlink,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct Attrs {
-    pub(crate) size: Option<u64>,
-    pub(crate) owner: Option<(u32, u32)>,
-    pub(crate) permissions: Option<u32>,
-    pub(crate) modified_secs: Option<u32>,
-}
-
-impl Attrs {
-    pub(crate) fn kind(&self) -> FileKind {
-        match self.permissions.map(|mode| mode & FILE_TYPE_MASK) {
-            Some(FILE_TYPE_DIRECTORY) => FileKind::Directory,
-            Some(FILE_TYPE_SYMLINK) => FileKind::Symlink,
-            _ => FileKind::File,
-        }
-    }
-
-    pub(crate) fn mode(&self) -> Option<u32> {
-        self.permissions.map(|mode| mode & PERMISSION_BITS)
-    }
-
-    pub(crate) fn modified(&self) -> Option<SystemTime> {
-        self.modified_secs
-            .map(|secs| UNIX_EPOCH + Duration::from_secs(u64::from(secs)))
+    pub(crate) const fn contains(self, flags: Self) -> bool {
+        self.0 & flags.0 == flags.0
     }
 }
 
@@ -160,17 +143,6 @@ impl Packet {
         self.bytes(value.as_bytes())
     }
 
-    pub(crate) fn empty_attrs(&mut self) -> &mut Self {
-        self.u32(0)
-    }
-
-    pub(crate) fn mode_attrs(&mut self, mode: Option<u32>) -> &mut Self {
-        match mode {
-            Some(mode) => self.u32(ATTR_PERMISSIONS).u32(mode),
-            None => self.empty_attrs(),
-        }
-    }
-
     pub(crate) fn send(&self, out: &mut impl Write) -> io::Result<()> {
         let len = u32::try_from(self.body.len()).map_err(|_| too_large())?;
         out.write_all(&len.to_be_bytes())?;
@@ -179,34 +151,39 @@ impl Packet {
     }
 }
 
-pub(crate) struct Reply {
+pub(crate) struct Message {
     pub(crate) kind: PacketType,
     pub(crate) id: u32,
     body: Vec<u8>,
     at: usize,
 }
 
-impl Reply {
+impl Message {
     pub(crate) fn receive(input: &mut impl Read) -> io::Result<Self> {
-        let mut len = [0; 4];
-        input.read_exact(&mut len)?;
-        let len = u32::from_be_bytes(len);
-        if len == 0 || len > MAX_PACKET_BYTES {
-            return Err(malformed());
-        }
-        let mut body = vec![0; usize::try_from(len).map_err(|_| malformed())?];
-        input.read_exact(&mut body)?;
-        let kind = PacketType::from_byte(body[0]).ok_or_else(malformed)?;
-        let mut reply = Self {
+        Self::parse(read_frame(input)?)
+    }
+
+    pub(crate) fn parse(body: Vec<u8>) -> io::Result<Self> {
+        let kind = body
+            .first()
+            .copied()
+            .and_then(PacketType::from_byte)
+            .ok_or_else(malformed)?;
+        let mut message = Self {
             kind,
             id: 0,
             body,
-            at: 1,
+            at: KIND_BYTES,
         };
-        if kind != PacketType::Version {
-            reply.id = reply.u32()?;
+        if kind.has_id() {
+            message.id = message.u32()?;
         }
-        Ok(reply)
+        Ok(message)
+    }
+
+    pub(crate) fn peek_id(body: &[u8]) -> Option<u32> {
+        let id = body.get(KIND_BYTES..KIND_BYTES + ID_BYTES)?;
+        id.try_into().ok().map(u32::from_be_bytes)
     }
 
     fn take(&mut self, count: usize) -> io::Result<&[u8]> {
@@ -238,31 +215,18 @@ impl Reply {
     pub(crate) fn has_more(&self) -> bool {
         self.at < self.body.len()
     }
+}
 
-    pub(crate) fn attrs(&mut self) -> io::Result<Attrs> {
-        let flags = self.u32()?;
-        let mut attrs = Attrs::default();
-        if flags & ATTR_SIZE != 0 {
-            attrs.size = Some(self.u64()?);
-        }
-        if flags & ATTR_UIDGID != 0 {
-            attrs.owner = Some((self.u32()?, self.u32()?));
-        }
-        if flags & ATTR_PERMISSIONS != 0 {
-            attrs.permissions = Some(self.u32()?);
-        }
-        if flags & ATTR_ACMODTIME != 0 {
-            self.u32()?;
-            attrs.modified_secs = Some(self.u32()?);
-        }
-        if flags & ATTR_EXTENDED != 0 {
-            for _ in 0..self.u32()? {
-                self.bytes()?;
-                self.bytes()?;
-            }
-        }
-        Ok(attrs)
+pub(crate) fn read_frame(input: &mut impl Read) -> io::Result<Vec<u8>> {
+    let mut len = [0; LENGTH_BYTES];
+    input.read_exact(&mut len)?;
+    let len = u32::from_be_bytes(len);
+    if len == 0 || len > MAX_PACKET_BYTES {
+        return Err(malformed());
     }
+    let mut body = vec![0; usize::try_from(len).map_err(|_| malformed())?];
+    input.read_exact(&mut body)?;
+    Ok(body)
 }
 
 fn malformed() -> io::Error {
@@ -277,13 +241,13 @@ fn too_large() -> io::Error {
 mod tests {
     use super::*;
 
-    fn reply_from(body: Vec<u8>) -> io::Result<Reply> {
+    fn reply_from(body: Vec<u8>) -> io::Result<Message> {
         let mut framed = u32::try_from(body.len())
             .map_err(|_| too_large())?
             .to_be_bytes()
             .to_vec();
         framed.extend(body);
-        Reply::receive(&mut framed.as_slice())
+        Message::receive(&mut framed.as_slice())
     }
 
     #[test]
@@ -300,35 +264,9 @@ mod tests {
     }
 
     #[test]
-    fn attributes_read_size_owner_kind_and_mtime_and_skip_the_rest() -> io::Result<()> {
-        let mut body = vec![PacketType::Attrs as u8];
-        body.extend(9_u32.to_be_bytes());
-        let flags = ATTR_SIZE | ATTR_UIDGID | ATTR_PERMISSIONS | ATTR_ACMODTIME | ATTR_EXTENDED;
-        body.extend(flags.to_be_bytes());
-        body.extend(42_u64.to_be_bytes());
-        body.extend([0, 0, 3, 232, 0, 0, 3, 232]);
-        body.extend((FILE_TYPE_DIRECTORY | 0o755).to_be_bytes());
-        body.extend(1_u32.to_be_bytes());
-        body.extend(1_700_000_000_u32.to_be_bytes());
-        body.extend(1_u32.to_be_bytes());
-        body.extend([0, 0, 0, 1, b'k', 0, 0, 0, 1, b'v']);
-        let mut reply = reply_from(body)?;
-        assert_eq!(reply.kind, PacketType::Attrs);
-        assert_eq!(reply.id, 9);
-        let attrs = reply.attrs()?;
-        assert_eq!(attrs.size, Some(42));
-        assert_eq!(attrs.owner, Some((1000, 1000)));
-        assert_eq!(attrs.mode(), Some(0o755));
-        assert_eq!(attrs.kind(), FileKind::Directory);
-        assert_eq!(attrs.modified_secs, Some(1_700_000_000));
-        assert!(!reply.has_more());
-        Ok(())
-    }
-
-    #[test]
     fn truncated_and_oversized_packets_are_rejected() {
         assert!(reply_from(vec![PacketType::Status as u8, 0, 0]).is_err());
         let oversized = (MAX_PACKET_BYTES + 1).to_be_bytes();
-        assert!(Reply::receive(&mut oversized.as_slice()).is_err());
+        assert!(Message::receive(&mut oversized.as_slice()).is_err());
     }
 }

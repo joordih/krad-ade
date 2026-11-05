@@ -1,3 +1,4 @@
+mod builtin_sftp;
 #[cfg(unix)]
 mod process;
 #[cfg(not(unix))]
@@ -28,7 +29,6 @@ pub(crate) use process::Launch;
 const REQUEST_THREAD: &str = "krad-ade-mux-request";
 const LISTEN_POLL: Duration = Duration::from_millis(100);
 const OPEN_WAIT: Duration = Duration::from_secs(30);
-const NO_SFTP_SERVER: &str = "the host has no sftp-server";
 const CONNECT_REFUSED: &str = "nothing listens on that port of the host";
 const LISTEN_FAILED: &str = "the host could not listen on a loopback port";
 const NOT_A_LISTENER_REQUEST: &str = "the host only accepts connections for its own listeners";
@@ -65,7 +65,7 @@ fn handle(session: &Session, Incoming { channel, request }: Incoming) {
         OpenRequest::Pty { script, size } => terminal::run(&channel, &script, size),
         OpenRequest::Sftp => match sftp_server::locate() {
             Some(server) => process::run(&channel, &Launch::Program(server.program, server.args)),
-            None => channel.refuse(NO_SFTP_SERVER),
+            None => builtin_sftp::run(&channel),
         },
         OpenRequest::Connect { port } => connect(&channel, port),
         OpenRequest::Listen => listen(session, &channel),
