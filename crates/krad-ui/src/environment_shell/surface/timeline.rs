@@ -89,10 +89,20 @@ pub(super) fn ticks<'a>(turns: impl IntoIterator<Item = TurnRow<'a>>) -> Vec<Tic
     ticks
 }
 
-pub(super) fn current_question(ticks: &[Tick], top: usize) -> Option<usize> {
-    ticks
-        .iter()
-        .rposition(|tick| tick.kind == TickKind::Question && tick.row <= top)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum View {
+    From(usize),
+    AtEnd,
+}
+
+pub(super) fn current_question(ticks: &[Tick], view: View) -> Option<usize> {
+    ticks.iter().rposition(|tick| {
+        tick.kind == TickKind::Question
+            && match view {
+                View::From(top) => tick.row <= top,
+                View::AtEnd => true,
+            }
+    })
 }
 
 fn shown_text(message: &ChatMessage) -> &str {
@@ -258,8 +268,14 @@ mod tests {
     #[test]
     fn the_turn_in_view_is_the_last_question_at_or_above_the_top() {
         let ticks = ticks(conversation());
-        assert_eq!(current_question(&ticks, 0), None);
-        assert_eq!(current_question(&ticks, 2), Some(0));
-        assert_eq!(current_question(&ticks, 4), Some(1));
+        assert_eq!(current_question(&ticks, View::From(0)), None);
+        assert_eq!(current_question(&ticks, View::From(2)), Some(0));
+        assert_eq!(current_question(&ticks, View::From(4)), Some(1));
+    }
+
+    #[test]
+    fn at_the_end_of_the_chat_the_last_question_is_in_view() {
+        let ticks = ticks(conversation());
+        assert_eq!(current_question(&ticks, View::AtEnd), Some(1));
     }
 }

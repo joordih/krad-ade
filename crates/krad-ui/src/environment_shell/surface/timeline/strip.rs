@@ -8,7 +8,7 @@ use krad_domain::{ChatBookmarks, TerminalId};
 use super::super::super::EnvironmentShell;
 use super::super::SurfaceChat;
 use super::hover::Area;
-use super::{current_question, Tick, TickKind};
+use super::{current_question, Tick, TickKind, View};
 use crate::components::{icon, IconName};
 use crate::theme::{
     palette, popover_fill, popover_shadow, Palette, ICON_SM, LINE_SM, NAV_ROW_H, RADIUS_MD,
@@ -103,7 +103,12 @@ impl EnvironmentShell {
         if questions < MIN_QUESTIONS {
             return None;
         }
-        let current = current_question(&ticks, chat.thread.logical_scroll_top().item_ix);
+        let view = if chat.thread.is_scrolled_to_end() == Some(true) {
+            View::AtEnd
+        } else {
+            View::From(chat.thread.logical_scroll_top().item_ix)
+        };
+        let current = current_question(&ticks, view);
         let (open, strip_area, card_area) = {
             let timeline = chat.timeline.borrow();
             let hover = &timeline.hover;
