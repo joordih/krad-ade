@@ -1,3 +1,4 @@
+mod client_side;
 mod connection;
 mod content;
 mod files;
@@ -11,6 +12,7 @@ mod setup;
 mod terminals;
 mod update;
 
+pub use client_side::{ClientSide, FileWritten, HostTerminals, OpenBuffers};
 pub use connection::{AcpClient, AcpConnection, AcpError, AgentRequest, Pending, Responder};
 pub use content::{
     AudioContent, BlobResourceContents, ContentBlock, EmbeddedResource, EmbeddedResourceResource,
