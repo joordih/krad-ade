@@ -123,7 +123,8 @@ ureq = { version = "3.5", default-features = false, features = [
 krad-agents = { path = "crates/krad-agents" }
 krad-chat = { path = "crates/krad-chat" }
 krad-domain = { path = "crates/krad-domain" }
-krad-extension-api = { path = "crates/krad-extension-api" }
+krad-extension-api = { path = "crates/krad-extension-api", version = "0.3.0" }
+krad-extension-id = { path = "crates/krad-extension-id", version = "0.3.0" }
 krad-extensions = { path = "crates/krad-extensions" }
 krad-github = { path = "crates/krad-github" }
 krad-gitlab = { path = "crates/krad-gitlab" }

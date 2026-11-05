@@ -1,4 +1,4 @@
-use crate::extension_id::ExtensionId;
+use krad_extension_id::ExtensionId;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;

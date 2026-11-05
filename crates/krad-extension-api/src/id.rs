@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-use krad_domain::{check_id, check_key};
-pub use krad_domain::{ExtensionId, IdError};
+use krad_extension_id::{check_id, check_key};
+pub use krad_extension_id::{ExtensionId, IdError};
 
 macro_rules! string_id {
     ($name:ident, $check:ident) => {
@@ -78,7 +78,7 @@ pub struct TerminalHandle(pub u64);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_domain::MAX_ID_LEN;
+    use krad_extension_id::MAX_ID_LEN;
 
     #[test]
     fn ids_accept_lowercase_words_and_refuse_the_rest() {

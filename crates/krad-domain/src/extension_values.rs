@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 
-use crate::extension_id::ExtensionId;
+use krad_extension_id::ExtensionId;
 
 const REDACTED: &str = "[REDACTED]";
 const SECRET_KEY_SEPARATOR: char = '/';
