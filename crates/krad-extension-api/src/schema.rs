@@ -147,4 +147,17 @@ mod tests {
         );
         assert_eq!(schema["api"], CURRENT_API.to_string());
     }
+
+    #[test]
+    fn the_slider_and_its_events_are_published_from_api_1_1() {
+        let schema = api_schema();
+        assert_eq!(schema["api"], "1.1");
+        let slider = &schema["$defs"]["Slider"];
+        assert_eq!(slider["required"], json!(["action", "value", "max"]));
+        assert!(schema["$defs"]["SliderLabels"]["enum"]
+            .as_array()
+            .is_some_and(|labels| labels.contains(&json!("elapsed_remaining"))));
+        let events = schema["$defs"]["ViewEvent"].to_string();
+        assert!(events.contains("slider_change") && events.contains("slider_commit"));
+    }
 }

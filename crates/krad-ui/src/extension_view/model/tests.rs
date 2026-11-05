@@ -229,3 +229,49 @@ fn appended_streams_are_reported_once() -> TestResult {
     assert_eq!(keys, [logs]);
     Ok(())
 }
+
+fn slider(name: &str, value: f64) -> Result<Node, IdError> {
+    Ok(Node {
+        key: key(name)?,
+        element: Element::Slider(krad_extensions::api::view::Slider {
+            action: "seek".parse()?,
+            value,
+            min: 0.0,
+            max: 100.0,
+            step: None,
+            format: krad_extensions::api::view::SliderFormat::Duration,
+            labels: krad_extensions::api::view::SliderLabels::ElapsedRemaining,
+            enabled: krad_extensions::api::view::Enabled::Yes,
+            advancing: Some(krad_extensions::api::view::Advancing { rate: 1.0 }),
+        }),
+    })
+}
+
+#[test]
+fn sliders_count_as_received_when_a_patch_sends_them_again() -> TestResult {
+    let mut model = ViewModel::new(flex(
+        "root",
+        vec![slider("seek", 10.0)?, flex("side", Vec::new())?],
+    )?);
+    assert_eq!(model.take_received_sliders(), HashSet::from([key("seek")?]));
+    model.apply(vec![Patch::Insert {
+        parent: key("side")?,
+        index: 0,
+        node: flex("volume-box", vec![slider("volume", 0.5)?])?,
+    }]);
+    assert_eq!(
+        model.take_received_sliders(),
+        HashSet::from([key("volume")?])
+    );
+    model.apply(vec![Patch::Remove { key: key("side")? }]);
+    assert!(model.take_received_sliders().is_empty());
+    model.apply(vec![Patch::Replace {
+        node: slider("seek", 10.0)?,
+    }]);
+    assert_eq!(model.take_received_sliders(), HashSet::from([key("seek")?]));
+    model.apply(vec![Patch::Replace {
+        node: slider("gone", 1.0)?,
+    }]);
+    assert!(model.take_received_sliders().is_empty());
+    Ok(())
+}

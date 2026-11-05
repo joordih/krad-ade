@@ -5,6 +5,7 @@ use thiserror::Error;
 use crate::id::NodeKey;
 use crate::view::bounds::{clamp, depth_of, fits, item_measure_of, measure, Measure};
 use crate::view::element::{Element, Node, StreamLine, TreeItem};
+use crate::view::slider::SliderError;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "op", rename_all = "snake_case")]
@@ -53,14 +54,21 @@ pub enum PatchError {
     Root,
     #[error("the view would grow past what the app draws")]
     TooLarge,
+    #[error("the slider {key} cannot be drawn")]
+    Slider {
+        key: NodeKey,
+        #[source]
+        reason: SliderError,
+    },
 }
 
 /// # Errors
 ///
 /// Returns [`PatchError::TooLarge`] when the view holds more nodes or nests deeper than the app
-/// draws. Sizes and columns are brought within their bounds.
+/// draws, and [`PatchError::Slider`] when a slider's numbers cannot be drawn. Sizes, columns and
+/// slider values are brought within their bounds.
 pub fn bounded(node: &mut Node) -> Result<(), PatchError> {
-    clamp(node);
+    clamp(node)?;
     let Measure { nodes, height } = measure(node);
     if fits(nodes, height) {
         Ok(())
@@ -98,13 +106,13 @@ fn find_ref<'a>(node: &'a Node, key: &NodeKey) -> Option<&'a Node> {
 
 /// # Errors
 ///
-/// Returns [`PatchError`] when the patch names a key the tree does not hold, or a node of another
-/// kind than the change needs.
+/// Returns [`PatchError`] when the patch names a key the tree does not hold, a node of another
+/// kind than the change needs, or a slider whose numbers cannot be drawn.
 pub fn apply(root: &mut Node, patch: Patch) -> Result<Applied, PatchError> {
     match patch {
         Patch::Replace { mut node } => {
             let key = node.key.clone();
-            clamp(&mut node);
+            clamp(&mut node)?;
             let removed = find_ref(root, &key).map_or(0, |old| measure(old).nodes);
             check_growth(root, &key, removed, measure(&node))?;
             *find(root, &key)? = node;
@@ -114,7 +122,7 @@ pub fn apply(root: &mut Node, patch: Patch) -> Result<Applied, PatchError> {
             index,
             mut node,
         } => {
-            clamp(&mut node);
+            clamp(&mut node)?;
             let added = measure(&node);
             check_growth(
                 root,
