@@ -1,12 +1,13 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled,
+    canvas, div, px, rgb, AnyElement, Context, DispatchPhase, InteractiveElement, IntoElement,
+    MouseMoveEvent, ParentElement, Pixels, Point, StatefulInteractiveElement, Styled,
 };
 use krad_domain::{ChatBookmarks, TerminalId};
 
 use super::super::super::EnvironmentShell;
 use super::super::SurfaceChat;
+use super::hover::Area;
 use super::{current_question, Tick, TickKind};
 use crate::components::{icon, IconName};
 use crate::theme::{
@@ -28,6 +29,38 @@ const CARD_GAP: f32 = SPACE_1;
 const TIMELINE_PREFIX: &str = "surface-timeline";
 const TIMELINE_LIST_PREFIX: &str = "surface-timeline-list";
 const TIMELINE_ROW_PREFIX: &str = "surface-timeline-row";
+
+fn area_watch(area: Area) -> AnyElement {
+    canvas(move |bounds, _, _| area.set(Some(bounds)), |_, (), _, _| {})
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .into_any_element()
+}
+
+fn pointer_watch(id: TerminalId, area: Area, cx: &mut Context<EnvironmentShell>) -> AnyElement {
+    let shell = cx.entity().downgrade();
+    canvas(
+        move |bounds, _, _| area.set(Some(bounds)),
+        move |_, (), window, _| {
+            let shell = shell.clone();
+            window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+                shell
+                    .update(cx, |shell, cx| shell.track_timeline(id, event.position, cx))
+                    .unwrap_or_default();
+            });
+        },
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
+    .into_any_element()
+}
 
 fn tick_color(kind: TickKind, current: bool, pal: &Palette) -> u32 {
     match kind {
@@ -71,20 +104,31 @@ impl EnvironmentShell {
             return None;
         }
         let current = current_question(&ticks, chat.thread.logical_scroll_top().item_ix);
-        let open = chat.timeline.borrow().open;
+        let (open, strip_area, card_area) = {
+            let timeline = chat.timeline.borrow();
+            let hover = &timeline.hover;
+            (hover.open, hover.strip.clone(), hover.card.clone())
+        };
         let pal = palette(cx);
         let marks = ticks
             .iter()
             .enumerate()
             .map(|(index, tick)| tick_mark(tick, current == Some(index), pal));
         let strip = div()
+            .relative()
             .flex()
             .flex_col()
             .w(px(STRIP_W))
             .py(px(SPACE_1))
             .cursor_pointer()
-            .children(marks);
-        let card = open.then(|| Self::timeline_card(id, &ticks, current, pal, cx));
+            .children(marks)
+            .child(pointer_watch(id, strip_area, cx));
+        let card = open.then(|| {
+            div()
+                .relative()
+                .child(Self::timeline_card(id, &ticks, current, pal, cx))
+                .child(area_watch(card_area))
+        });
         Some(
             div()
                 .absolute()
@@ -100,10 +144,6 @@ impl EnvironmentShell {
                         .flex_row()
                         .items_center()
                         .gap(px(CARD_GAP))
-                        .on_hover(cx.listener(move |this: &mut Self, hovered: &bool, _, cx| {
-                            this.open_timeline(id, *hovered);
-                            cx.notify();
-                        }))
                         .children(card)
                         .child(strip),
                 )
@@ -154,7 +194,7 @@ impl EnvironmentShell {
                 )
                 .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                     this.jump_on_timeline(id, target);
-                    this.open_timeline(id, false);
+                    this.close_timeline(id);
                     cx.notify();
                 }))
         });
@@ -176,14 +216,23 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    fn open_timeline(&mut self, id: TerminalId, open: bool) {
-        if let Some(chat) = self
-            .envs
-            .get_mut(&self.active)
-            .and_then(|live| live.chats.get_mut(&id))
-        {
-            chat.timeline.borrow_mut().open = open;
+    fn close_timeline(&mut self, id: TerminalId) {
+        if let Some(chat) = self.active_chat(id) {
+            chat.timeline.borrow_mut().hover.close();
         }
+    }
+
+    fn track_timeline(&mut self, id: TerminalId, point: Point<Pixels>, cx: &mut Context<Self>) {
+        let changed = self
+            .active_chat(id)
+            .is_some_and(|chat| chat.timeline.borrow_mut().hover.track(point));
+        if changed {
+            cx.notify();
+        }
+    }
+
+    fn active_chat(&self, id: TerminalId) -> Option<&SurfaceChat> {
+        self.envs.get(&self.active)?.chats.get(&id)
     }
 
     fn jump_on_timeline(&mut self, id: TerminalId, row: usize) {

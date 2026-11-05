@@ -10,6 +10,7 @@ use super::bookmarks::bookmarks_of;
 use super::thread::first_message_row;
 use super::SurfaceChat;
 
+mod hover;
 mod strip;
 
 const LABEL_CHARS: usize = 80;
@@ -43,7 +44,7 @@ pub(super) struct Timeline {
     ticks: Rc<[Tick]>,
     marks_print: u64,
     marks: Vec<Option<Bookmark>>,
-    open: bool,
+    hover: hover::Hover,
 }
 
 fn label(text: &str) -> SharedString {
