@@ -330,7 +330,7 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let pal = palette(cx);
         let source = match &entry.source {
-            ExtensionSource::Git(url) => url.clone(),
+            ExtensionSource::Git(url) | ExtensionSource::Pinned { url, .. } => url.clone(),
             ExtensionSource::Folder(folder) => folder.display().to_string(),
         };
         let (toggle, refresh, drop) = (entry.id.clone(), entry.id.clone(), entry.id.clone());

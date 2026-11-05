@@ -87,7 +87,7 @@ Work context the user handles as one: its groups, which may come from different 
 _Avoid_: project, profile, workspace
 
 **Host**:
-The machine an environment lives on: this computer, or a remote machine reached over SSH and named by its SSH destination. Its groups' folders, terminals, chats and agents are all on it.
+The machine an environment lives on: this computer, a remote machine reached over SSH and named by its SSH destination, or a machine of a host kind an extension adds, such as a Docker container. Its groups' folders, terminals, chats and agents are all on it.
 _Avoid_: server, remote, machine, connection
 
 **Tab**:

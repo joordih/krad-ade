@@ -50,6 +50,10 @@ pub enum HostError {
     InvalidEnvName(String),
     #[error("refusing to remove {0}")]
     UnsafeRemoval(String),
+    #[error("the extension that reaches this machine has not opened a channel to it")]
+    NoMachineChannel,
+    #[error("the channel to the machine closed: {0}")]
+    MachineChannel(String),
 }
 
 impl From<HostError> for io::Error {

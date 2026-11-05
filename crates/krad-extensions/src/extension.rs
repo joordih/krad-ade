@@ -16,14 +16,16 @@ pub fn user_manifests_dir(config_dir: &Path) -> PathBuf {
     config_dir.join(MANIFESTS_DIR)
 }
 
-fn clone_dir(config_dir: &Path, id: &str) -> PathBuf {
+pub(crate) fn clone_dir(config_dir: &Path, id: &str) -> PathBuf {
     config_dir.join(EXTENSIONS_DIR).join(id)
 }
 
 #[must_use]
 pub fn folder_of(config_dir: &Path, entry: &ExtensionEntry) -> PathBuf {
     match &entry.source {
-        ExtensionSource::Git(_) => clone_dir(config_dir, &entry.id),
+        ExtensionSource::Git(_) | ExtensionSource::Pinned { .. } => {
+            clone_dir(config_dir, &entry.id)
+        }
         ExtensionSource::Folder(folder) => folder.clone(),
     }
 }
@@ -44,7 +46,7 @@ fn id_from(url: &str) -> Option<String> {
     (!id.is_empty()).then(|| id.to_owned())
 }
 
-fn git(args: &[&str], dir: Option<&Path>) -> Result<(), ExtensionError> {
+pub(crate) fn git(args: &[&str], dir: Option<&Path>) -> Result<(), ExtensionError> {
     let mut command = Command::new(GIT);
     command
         .args(args)
@@ -108,13 +110,15 @@ pub fn add_folder(folder: &Path) -> Result<ExtensionEntry, ExtensionError> {
 
 /// # Errors
 ///
-/// Returns [`ExtensionError`] when git cannot pull a cloned extension.
+/// Returns [`ExtensionError`] when git cannot pull a cloned extension, or
+/// [`ExtensionError::Pinned`] for an extension the index pins, which moves through the index.
 pub fn update(config_dir: &Path, entry: &ExtensionEntry) -> Result<(), ExtensionError> {
     match entry.source {
         ExtensionSource::Git(_) => git(
             &["pull", "--ff-only"],
             Some(&clone_dir(config_dir, &entry.id)),
         ),
+        ExtensionSource::Pinned { .. } => Err(ExtensionError::Pinned(entry.id.clone())),
         ExtensionSource::Folder(_) => Ok(()),
     }
 }
@@ -124,7 +128,11 @@ pub fn update(config_dir: &Path, entry: &ExtensionEntry) -> Result<(), Extension
 /// Returns [`ExtensionError::Io`] when a cloned extension cannot be deleted.
 pub fn remove(config_dir: &Path, entry: &ExtensionEntry) -> Result<(), ExtensionError> {
     let dir = clone_dir(config_dir, &entry.id);
-    if matches!(entry.source, ExtensionSource::Git(_)) && dir.exists() {
+    let cloned = matches!(
+        entry.source,
+        ExtensionSource::Git(_) | ExtensionSource::Pinned { .. }
+    );
+    if cloned && dir.exists() {
         fs::remove_dir_all(dir)?;
     }
     Ok(())

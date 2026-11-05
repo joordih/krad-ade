@@ -1,4 +1,4 @@
-use krad_domain::Host;
+use krad_domain::{ExtensionMachine, Host, SshDestination};
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -13,7 +13,7 @@ use crate::mux::MuxTools;
 use crate::path::remote_path;
 use crate::removal::is_removable;
 use crate::run::output_within;
-use crate::ssh::SshArgs;
+use crate::ssh::{SshArgs, Transport};
 pub use crate::ssh_link::SshLink;
 
 const BULK_THRESHOLD_BYTES: usize = 1024 * 1024;
@@ -28,6 +28,26 @@ pub struct Entry {
     pub symlink: bool,
 }
 
+fn mux_tools(context: &HostContext) -> MuxTools {
+    MuxTools {
+        local_cli: context.local_cli.clone(),
+        host_clis: context.host_clis.clone(),
+        prompts: context.prompts.clone(),
+        config_dir: context.config_dir.clone(),
+    }
+}
+
+fn machine_args(machine: &ExtensionMachine, context: &HostContext) -> SshArgs {
+    let label = SshDestination {
+        user: None,
+        host: machine.id.clone(),
+        port: None,
+    };
+    SshArgs::new(label, context.config_dir.as_deref())
+        .with_timeouts(context.timeouts)
+        .with_transport(Transport::Multiplexed)
+}
+
 #[derive(Clone, Debug, Default)]
 pub enum HostLink {
     #[default]
@@ -40,7 +60,8 @@ impl PartialEq for HostLink {
         match (self, other) {
             (Self::Local, Self::Local) => true,
             (Self::Ssh(left), Self::Ssh(right)) => {
-                Arc::ptr_eq(left, right) || left.args == right.args
+                Arc::ptr_eq(left, right)
+                    || (left.args == right.args && left.machine() == right.machine())
             }
             _ => false,
         }
@@ -59,16 +80,18 @@ impl HostLink {
                     .with_timeouts(context.timeouts)
                     .with_transport(context.transport.unwrap_or_default());
                 Self::Ssh(Arc::new(
-                    SshLink::with_install_id(args, context.install_id.clone()).with_tools(
-                        MuxTools {
-                            local_cli: context.local_cli.clone(),
-                            host_clis: context.host_clis.clone(),
-                            prompts: context.prompts.clone(),
-                            config_dir: context.config_dir.clone(),
-                        },
-                    ),
+                    SshLink::with_install_id(args, context.install_id.clone())
+                        .with_tools(mux_tools(context)),
                 ))
             }
+            Host::Extension { machine } => Self::Ssh(Arc::new(
+                SshLink::for_machine(
+                    machine_args(machine, context),
+                    context.install_id.clone(),
+                    machine.clone(),
+                )
+                .with_tools(mux_tools(context)),
+            )),
         }
     }
 
@@ -89,9 +112,14 @@ impl HostLink {
     pub fn host(&self) -> Host {
         match self {
             Self::Local => Host::Local,
-            Self::Ssh(ssh) => Host::Ssh {
-                destination: ssh.args.destination.clone(),
-            },
+            Self::Ssh(ssh) => ssh.machine().map_or_else(
+                || Host::Ssh {
+                    destination: ssh.args.destination.clone(),
+                },
+                |machine| Host::Extension {
+                    machine: machine.clone(),
+                },
+            ),
         }
     }
 
