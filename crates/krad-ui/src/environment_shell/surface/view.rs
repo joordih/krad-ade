@@ -3,10 +3,9 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, relative, rgb, AnyElement, Context, ElementId, ExternalPaths, FontWeight,
     InteractiveElement, IntoElement, ListState, ParentElement, ScrollHandle, ScrollWheelEvent,
-    SharedString, StatefulInteractiveElement, Styled,
+    StatefulInteractiveElement, Styled,
 };
 use krad_domain::{AgentState, TerminalId};
-use std::time::Instant;
 
 use super::super::ask::{tray, tray_button};
 use super::super::rubber_band::{band_watch, BandKey, ScrollEdges};
@@ -14,7 +13,7 @@ use super::super::sidebar::PanelReveal;
 use super::super::EnvironmentShell;
 use super::dot_field::dot_field;
 use super::SurfaceChat;
-use crate::components::{icon, thinking_indicator, tooltip_view, IconName};
+use crate::components::{icon, tooltip_view, IconName};
 use crate::theme::{floating_shadow, palette, Palette, ICON, LINE_XS, SPACE_2, SPACE_3, TEXT_XS};
 
 const COLUMN_MAX_W: f32 = 760.0;
@@ -47,33 +46,6 @@ pub(super) enum AgentNow {
     Working,
     Waiting,
     Exited,
-}
-
-pub(super) fn status_line(
-    key: u64,
-    label: &'static str,
-    started: Instant,
-    activity: Option<&str>,
-    mono: SharedString,
-    pal: &Palette,
-) -> AnyElement {
-    div()
-        .flex()
-        .flex_row()
-        .items_center()
-        .gap(px(SPACE_2))
-        .min_w_0()
-        .child(thinking_indicator(key, label.into(), started, mono, pal))
-        .children(activity.map(|activity| {
-            div()
-                .min_w_0()
-                .truncate()
-                .text_size(px(TEXT_XS))
-                .line_height(px(LINE_XS))
-                .text_color(rgb(pal.text_muted))
-                .child(activity.to_owned())
-        }))
-        .into_any_element()
 }
 
 const QUESTION_TEXT: f32 = 22.0;
@@ -148,7 +120,8 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         if let Some(tool) = chat.subagents.trail.last() {
-            return Self::subagent_view(id, tool, chat, cx);
+            let started = self.turn_started(id, chat);
+            return Self::subagent_view(id, tool, chat, started, cx);
         }
         let scale = self
             .envs

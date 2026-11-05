@@ -12,6 +12,7 @@ mod mentions;
 mod message_actions;
 mod origin;
 mod outbox;
+mod status_line;
 mod structured;
 mod subagent_card;
 mod subagents;
@@ -52,13 +53,13 @@ pub(super) use answer::tool_question;
 pub(super) use bus::ChatPresence;
 pub(super) use edit_diff::edit_diff;
 pub(super) use facts::AccountUsage;
+pub(super) use status_line::elapsed_label;
 pub(super) use structured::restored_chats;
 pub(super) use structured::StructuredChat;
 
 const INPUT_ROWS: usize = 2;
 const INPUT_PLACEHOLDER: &str = "Ask anything…  @ for files, / for skills";
 const THINKING_LABEL: &str = "Thinking";
-const WORKING_LABEL: &str = "Working";
 const THREAD_OVERDRAW: f32 = 800.0;
 
 fn new_thread() -> ListState {

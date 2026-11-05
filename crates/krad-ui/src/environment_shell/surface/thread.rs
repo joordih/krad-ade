@@ -8,7 +8,6 @@ use krad_chat::Speaker;
 use krad_domain::TerminalId;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
-use std::time::Instant;
 
 use super::super::chat::{question_bubble, AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
@@ -16,8 +15,9 @@ use super::edit_message::is_edited;
 use super::mentions::sent_mentions;
 use super::message_actions::{copy_button, message_actions, message_group};
 use super::origin::origin_line;
-use super::view::{column, error_line, muted_line, status_line, AgentNow, LOADING_TEXT};
-use super::{Backend, Origin, SurfaceChat, THINKING_LABEL, WORKING_LABEL};
+use super::status_line::{status_line, TurnPhase};
+use super::view::{column, error_line, muted_line, AgentNow, LOADING_TEXT};
+use super::{Backend, Origin, SurfaceChat};
 use crate::components::{Button, ButtonVariant};
 use crate::theme::{palette, Palette, SPACE_0_5};
 
@@ -139,16 +139,6 @@ fn runway_height(viewport: f32, below: Option<f32>, lead: f32, previous: f32) ->
     below.map_or(previous, |below| {
         (viewport - below - lead - THREAD_PAD_BOTTOM).max(0.0)
     })
-}
-
-fn status_label(last: Option<&ChatMessage>) -> &'static str {
-    let wrote = last
-        .filter(|message| message.speaker == Speaker::Assistant)
-        .and_then(|message| message.parts.last());
-    match wrote {
-        Some(AnswerPart::Tool(_) | AnswerPart::Text(_) | AnswerPart::Ask(_)) => WORKING_LABEL,
-        Some(AnswerPart::Thinking(_)) | None => THINKING_LABEL,
-    }
 }
 
 fn volatile_start(items: &[ThreadItem]) -> usize {
@@ -314,12 +304,11 @@ impl EnvironmentShell {
                     .get(&self.active)
                     .and_then(|live| live.sessions.get(&id))
                     .and_then(|session| session.activity.as_deref());
-                let started = chat.working_since.get().unwrap_or_else(Instant::now);
-                chat.working_since.set(Some(started));
+                let started = self.turn_started(id, chat);
                 let mono = cx.theme().mono_font_family.clone();
                 status_line(
                     id.as_u64(),
-                    status_label(chat.messages.last()),
+                    TurnPhase::of(chat.messages.last()),
                     started,
                     activity,
                     mono,
