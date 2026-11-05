@@ -27,7 +27,7 @@ impl EnvironmentShell {
             .clone();
         let platform = match &link {
             HostLink::Local => None,
-            HostLink::Ssh(ssh) => ssh.platform(),
+            HostLink::Remote(ssh) => ssh.platform(),
         };
         Some((link, platform))
     }

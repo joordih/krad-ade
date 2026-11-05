@@ -1,0 +1,22 @@
+id = "hello"
+name = "Hello"
+version = "0.1.0"
+description = "Says hello from a Rust extension program"
+api = "1.0"
+
+[program]
+placement = "app"
+
+[[program.binary]]
+targets = ["darwin", "linux", "win"]
+path = "bin/hello"
+
+[[contributes.command]]
+id = "hello"
+title = "Hello: Say hello"
+
+[[contributes.view]]
+id = "hello"
+title = "Hello"
+zone = "sidebar"
+icon = "magic"

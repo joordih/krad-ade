@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{mpsc, Arc, Mutex, TryLockError};
 use std::thread;
 
-use super::{lock, ssh_command, SshLink};
+use super::{lock, ssh_command, RemoteLink};
 use crate::error::{HostError, Waited};
 use crate::mux::OpenRequest;
 use crate::mux::{Channel, Stream};
@@ -52,7 +52,7 @@ pub(crate) enum Lane {
     Bulk,
 }
 
-impl SshLink {
+impl RemoteLink {
     #[tracing::instrument(skip_all, fields(destination = %self.args.destination))]
     pub(super) fn open_carrier(&self) -> Result<Carrier, HostError> {
         if let Some(mux) = self.multiplexed() {
@@ -72,6 +72,7 @@ impl SshLink {
                 }
             };
         }
+        self.refuse_ssh()?;
         let mut child = ssh_command(&self.args.base(Interaction::Subsystem))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

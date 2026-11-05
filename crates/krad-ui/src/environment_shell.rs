@@ -20,6 +20,7 @@ mod editor_popovers;
 mod entry_input;
 mod environment_menu;
 mod environment_order;
+mod extensions;
 mod file_tab;
 mod file_tree;
 mod gateway;
@@ -183,6 +184,7 @@ pub struct EnvironmentShell {
     host_tools: host::HostTools,
     arcade: arcade::Arcade,
     app_updates: app_update::AppUpdates,
+    extensions: extensions::Extensions,
 }
 
 impl EnvironmentShell {
@@ -302,6 +304,7 @@ impl EnvironmentShell {
             unreadable_environments: Vec::new(),
             host_tools,
             app_updates: app_update::AppUpdates::default(),
+            extensions: extensions::Extensions::default(),
         };
         shell.start_agent_bus(cx);
         shell.check_gateway(cx);
@@ -317,9 +320,14 @@ impl EnvironmentShell {
         shell.show_host(&active, cx);
         shell.pump_task = Some(Self::start_pump(pump_rx, cx));
         Self::detect_agents(cx);
-        shell.start_watches(cx);
-        shell.load_language_tools(cx);
+        shell.start_loading(cx);
         shell
+    }
+
+    fn start_loading(&mut self, cx: &mut Context<Self>) {
+        self.start_watches(cx);
+        self.load_language_tools(cx);
+        self.load_extensions(cx);
     }
 
     fn frame_interval(&self) -> Duration {

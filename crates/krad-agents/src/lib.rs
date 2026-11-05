@@ -4,6 +4,7 @@ mod client;
 mod code;
 mod env;
 mod error;
+mod extension_tools;
 mod handle;
 mod hook;
 mod host_verbs;
@@ -24,6 +25,10 @@ pub use env::{
     ENV_ENDPOINT, ENV_TERMINAL, ENV_TOKEN, ENV_TOKEN_FILE,
 };
 pub use error::{AgentsError, HandleError};
+pub use extension_tools::{
+    extension_tool_name, is_extension_tool, ExtensionToolAnswer, ExtensionToolEffect,
+    ExtensionToolInfo, ExtensionToolOutcome, ToolCatalog, EXTENSION_TOOL_PREFIX,
+};
 pub use handle::{Caller, LeadHandle, TerminalHandle};
 pub use mailbox::{notice_text, Mailbox};
 pub use protocol::{

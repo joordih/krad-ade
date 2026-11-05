@@ -133,6 +133,9 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let _pal = palette(cx);
+        if let Some(extension) = self.extension_main_view(cx) {
+            return extension;
+        }
         match view {
             EnvironmentView::Sessions => self.session_pane(cx),
             EnvironmentView::Notes => self.notes_view(cx),
@@ -251,6 +254,15 @@ impl EnvironmentShell {
     }
 }
 
+impl EnvironmentShell {
+    fn sync_extensions(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.flush_extension_prompts(window, cx);
+        self.sync_extension_fields(window, cx);
+        self.sync_extension_events(cx);
+        self.sync_extension_tabs(cx);
+    }
+}
+
 impl Render for EnvironmentShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let pal = palette(cx);
@@ -260,6 +272,7 @@ impl Render for EnvironmentShell {
         self.ensure_structured_chats(window, cx);
         self.sync_file_tabs(window, cx);
         self.flush_workspace_edits(window, cx);
+        self.sync_extensions(window, cx);
         self.sync_changes_tabs(cx);
         self.sync_system_appearance(cx);
         self.track_cursor_jumps(cx);
@@ -322,6 +335,7 @@ impl Render for EnvironmentShell {
             })
             .children(self.sidebar_chrome(cx))
             .child(self.toast_stack(cx))
+            .children(self.extension_progress(cx))
             .child(self.palette_overlay(viewport.width.as_f32(), pal, cx))
             .children(self.agent_composer_sheet(cx))
             .children(self.docs_generate_sheet(cx))
@@ -334,6 +348,7 @@ impl Render for EnvironmentShell {
             .children(self.context_menu_overlay(window, cx))
             .children(self.model_picker_overlay(window, cx))
             .children(self.name_dialog_sheet(window, cx))
+            .children(self.trust_sheet(cx))
             .children(self.host_dialog_sheet(window, cx))
             .children(self.toolchain_entry_sheet(cx))
             .child(self.close_dialog(cx));

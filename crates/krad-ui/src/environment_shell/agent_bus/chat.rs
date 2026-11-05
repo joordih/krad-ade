@@ -64,6 +64,12 @@ impl EnvironmentShell {
                 Response::Error(TERMINALS_ONLY.to_owned())
             }
             Request::Askpass { .. } => Response::Error(super::askpass::GIT_ONLY.to_owned()),
+            Request::Tools => Response::Tools(self.tool_catalog()),
+            request @ Request::ExtensionTool { .. } => {
+                let caller = CodeCaller::Group(group);
+                self.answer_extension_tool(environment, &caller, request, reply, cx);
+                return;
+            }
         };
         reply.send(response).unwrap_or_default();
     }

@@ -3,8 +3,8 @@ use gpui_kit::{AppContext as _, Context};
 use krad_agents::{AgentStatus, Response, TerminalHandle};
 use krad_domain::{
     code_tools_launch_args, hook_launch_args, launch_with_prompt, quote_for_shell, worker_brief,
-    AgentPreset, AgentState, CodeTools, EnvironmentName, ModelDelivery, ModelId, PermissionMode,
-    ResumeId, SessionId, TerminalGroup, TerminalId, WorkerSpawn, WorktreeOrigin,
+    AgentPreset, AgentState, EnvironmentName, ModelDelivery, ModelId, PermissionMode, ResumeId,
+    SessionId, TerminalGroup, TerminalId, WorkerSpawn, WorktreeOrigin,
 };
 use krad_repo::{add_worktree, sanitize_worktree_name};
 use std::time::{Duration, Instant};
@@ -100,7 +100,7 @@ impl EnvironmentShell {
             if let Some(args) = hook_launch_args(preset, cli, quoting, settings.as_deref()) {
                 line = format!("{line} {args}");
             }
-            if self.settings.code_tools == CodeTools::On {
+            if self.agent_tools_offered() {
                 if let Some(args) = code_tools_launch_args(preset, cli, quoting) {
                     line = format!("{line} {args}");
                 }

@@ -64,7 +64,7 @@ pub(crate) fn served_image(runner: &Runner, image: &ChatImage) -> io::Result<Str
 }
 
 fn upload_image(link: &krad_host::HostLink, image: &Path) -> io::Result<String> {
-    let krad_host::HostLink::Ssh(ssh) = link else {
+    let krad_host::HostLink::Remote(ssh) = link else {
         return Ok(shown_path(image));
     };
     let attachments = ssh

@@ -3859,10 +3859,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "krad-extensions"
+name = "krad-extension-api"
 version = "0.2.9"
 dependencies = [
  "krad-domain",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "toml 1.1.8+spec-1.1.0",
+]
+
+[[package]]
+name = "krad-extensions"
+version = "0.2.9"
+dependencies = [
+ "futures",
+ "krad-domain",
+ "krad-extension-api",
  "krad-host",
  "serde",
  "serde_json",

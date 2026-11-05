@@ -45,9 +45,12 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn side_section(&self, cx: &mut Context<Self>) -> AnyElement {
         let shown = self.side_section_shown();
-        let body = match shown {
-            SidePanelSection::Explorer => self.side_files(cx),
-            SidePanelSection::Changes => self.side_changes(cx),
+        let body = match self.extension_side_body(cx) {
+            Some(extension) => extension,
+            None => match shown {
+                SidePanelSection::Explorer => self.side_files(cx),
+                SidePanelSection::Changes => self.side_changes(cx),
+            },
         };
         div()
             .flex()
@@ -82,6 +85,7 @@ impl EnvironmentShell {
             .border_b(px(RULE_H))
             .border_color(pal.divider)
             .children(tabs)
+            .children(self.extension_side_tabs(cx))
             .when_some(totals, |header, totals| {
                 header.child(
                     div()
@@ -117,7 +121,11 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let active = section == shown;
+        let extension_shown = self
+            .envs
+            .get(&self.active)
+            .is_some_and(|live| live.extension_side.is_some());
+        let active = section == shown && !extension_shown;
         let changed = (section == SidePanelSection::Changes)
             .then(|| self.group_git().map(|git| git.status.changes.len()))
             .flatten()
@@ -149,6 +157,7 @@ impl EnvironmentShell {
                 if section != shown {
                     this.cancel_entry_input(cx);
                 }
+                this.hide_extension_side_view();
                 this.edit_side_layout(cx, |layout| layout.section = section);
             }))
             .child(icon(

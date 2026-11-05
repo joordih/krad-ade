@@ -36,6 +36,8 @@ pub(super) struct LiveEnv {
     pub(super) navigation: HashMap<krad_domain::SessionId, krad_domain::NavigationHistory>,
     pub(super) worker_launches: HashMap<TerminalId, workers::LaunchReply>,
     pub(super) pending_lead_ending: Option<workers::LeadEnding>,
+    pub(super) extension_sidebar: Option<super::extensions::OpenViewId>,
+    pub(super) extension_side: Option<super::extensions::OpenViewId>,
 }
 
 impl LiveEnv {
@@ -80,6 +82,8 @@ impl LiveEnv {
             navigation: HashMap::new(),
             worker_launches: HashMap::new(),
             pending_lead_ending: None,
+            extension_sidebar: None,
+            extension_side: None,
         }
     }
 }

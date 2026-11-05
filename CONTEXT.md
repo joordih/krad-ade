@@ -67,15 +67,31 @@ Mason's public list of language servers and tools and how to fetch each one, whi
 _Avoid_: Mason (in UI), catalogue, marketplace
 
 **Extension**:
-A folder of language, toolchain and server runtime manifests the user adds from Settings, from a git address or a local folder, and can update, disable or remove.
-_Avoid_: plugin, add-on, Zed extension
+A folder the user adds from Settings, from a git address, the extension index or a local folder, and can update, disable or remove. It brings language, toolchain and server runtime manifests, and may bring its own program, which adds commands, views drawn by the app, host kinds and tools for agents. Nothing in it is used until the user trusts it, and any change to its files or its commit asks again.
+_Avoid_: plugin, add-on, Zed extension, VS Code extension
+
+**Extension program**:
+The program an extension brings, which the app starts when one of its commands, views, host kinds or tools is first used. It runs either once for the app on this computer or once per open environment on that environment's host, as its extension declares. It may open terminals or run other extensions' commands only when its extension declares those permissions.
+_Avoid_: extension host, plugin process, extension server
+
+**Extension view**:
+A view an extension describes and the app draws, from its own building blocks and ready-made trees, tables, forms and terminals in the theme's colors, in the sidebar, side panel, utilities panel or a file tab as the extension names. It stays closed until the user opens it, and nothing in it can make the app run code.
+_Avoid_: webview, panel, extension UI
+
+**Host kind**:
+A kind of machine an environment can live on besides this computer and SSH hosts, added by an extension, such as a Docker container. Its extension lists the machines and opens a channel to one; the app does everything else there as on an SSH host.
+_Avoid_: provider, remote type, connector
+
+**Extension tool**:
+A tool a trusted extension offers to every agent the app starts, beside the code tools, named after its extension. It is never presented as read-only, so each agent's permission mode asks before using it unless the user allows it there.
+_Avoid_: plugin tool, extension command
 
 **Environment**:
 Work context the user handles as one: its groups, which may come from different repositories, and their sessions. It lives on one host, and everything inside it runs there.
 _Avoid_: project, profile, workspace
 
 **Host**:
-The machine an environment lives on: this computer, or a remote machine reached over SSH and named by its SSH destination. Its groups' folders, terminals, chats and agents are all on it.
+The machine an environment lives on: this computer, a remote machine reached over SSH and named by its SSH destination, or a machine of a host kind an extension adds, such as a Docker container. Its groups' folders, terminals, chats and agents are all on it.
 _Avoid_: server, remote, machine, connection
 
 **Tab**:

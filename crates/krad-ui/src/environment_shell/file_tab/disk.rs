@@ -80,6 +80,7 @@ impl EnvironmentShell {
         };
         let text = state.read(cx).value().to_string();
         let saved = self.active_document(&path);
+        let announced = path.clone();
         let link = self.active_link();
         let writing = cx.background_spawn(async move {
             link.write(&path, text.as_bytes())
@@ -91,6 +92,7 @@ impl EnvironmentShell {
                 match written {
                     Ok(modified) => {
                         shell.document_saved(&saved);
+                        shell.announce_file_saved(&announced);
                         if let Some(editor) = shell.editor_mut(&env, id) {
                             editor.saved(edits);
                             if editor.disk == DiskWatch::Conflict {

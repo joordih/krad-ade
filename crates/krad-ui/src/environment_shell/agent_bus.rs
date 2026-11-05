@@ -324,6 +324,12 @@ impl EnvironmentShell {
                 return;
             }
             Request::Askpass { .. } => Some(Response::Error(askpass::GIT_ONLY.to_owned())),
+            Request::Tools => Some(Response::Tools(self.tool_catalog())),
+            request @ Request::ExtensionTool { .. } => {
+                let caller = CodeCaller::Terminal(TerminalId(from.terminal));
+                self.answer_extension_tool(&from.environment, &caller, request, reply, cx);
+                return;
+            }
         };
         if let Some(response) = response {
             reply.send(response).unwrap_or_default();

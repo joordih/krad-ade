@@ -7,7 +7,7 @@ use super::super::channel::Channel;
 use super::super::session::{Incoming, Session};
 use super::super::wire::{OpenRequest, Stream};
 use super::pending::Pending;
-use crate::ssh_link::lock;
+use crate::remote_link::lock;
 
 const RELAY_THREAD: &str = "krad-ade-mux-relay";
 const OPEN_WAIT: Duration = Duration::from_secs(30);

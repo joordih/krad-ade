@@ -2,7 +2,7 @@ mod channels;
 mod files;
 mod login_env;
 
-use krad_domain::InstallId;
+use krad_domain::{ExtensionMachine, InstallId};
 use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -15,13 +15,14 @@ use crate::error::{HostError, Waited};
 use crate::failure::SshFailure;
 use crate::layout::HostLayout;
 use crate::local::hide_console_window;
+use crate::machine::{MachineChannel, MachineReach};
 use crate::mux::{MuxCarrier, MuxTools};
 use crate::platform::{HostPlatform, UNAME_ARGS, UNAME_PROGRAM};
 use crate::run::output_within;
 use crate::ssh::{Interaction, SshArgs, Transport};
 use channels::Carrier;
 
-pub struct SshLink {
+pub struct RemoteLink {
     pub(crate) args: SshArgs,
     install_id: Option<InstallId>,
     interactive: Mutex<Option<Carrier>>,
@@ -33,11 +34,12 @@ pub struct SshLink {
     login_env: Mutex<Option<PathBuf>>,
     tools: MuxTools,
     mux: Mutex<Option<Arc<MuxCarrier>>>,
+    machine: Option<MachineReach>,
 }
 
-impl fmt::Debug for SshLink {
+impl fmt::Debug for RemoteLink {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SshLink")
+        f.debug_struct("RemoteLink")
             .field("destination", &self.args.destination.to_string())
             .finish_non_exhaustive()
     }
@@ -47,7 +49,7 @@ pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-impl SshLink {
+impl RemoteLink {
     #[must_use]
     pub fn new(args: SshArgs) -> Self {
         Self::with_install_id(args, None)
@@ -67,7 +69,38 @@ impl SshLink {
             login_env: Mutex::new(None),
             tools: MuxTools::default(),
             mux: Mutex::new(None),
+            machine: None,
         }
+    }
+
+    #[must_use]
+    pub(crate) fn for_machine(
+        args: SshArgs,
+        install_id: Option<InstallId>,
+        machine: ExtensionMachine,
+    ) -> Self {
+        Self {
+            machine: Some(MachineReach::new(machine)),
+            ..Self::with_install_id(args, install_id)
+        }
+    }
+
+    #[must_use]
+    pub fn machine(&self) -> Option<&ExtensionMachine> {
+        self.machine.as_ref().map(|reach| &reach.machine)
+    }
+
+    pub fn set_machine_channel(&self, channel: MachineChannel) {
+        if let Some(reach) = &self.machine {
+            reach.set_channel(channel);
+        }
+    }
+
+    pub(crate) fn refuse_ssh(&self) -> Result<(), HostError> {
+        if self.machine.is_some() {
+            return Err(HostError::NotConnected);
+        }
+        Ok(())
     }
 
     #[must_use]
@@ -121,6 +154,7 @@ impl SshLink {
             return Ok(platform);
         }
         let platform = match self.args.transport {
+            _ if self.machine.is_some() => self.start_multiplexed()?,
             Transport::ControlMaster => {
                 self.args.ensure_control_dir()?;
                 if !self.signed_in() {
@@ -148,7 +182,13 @@ impl SshLink {
         if let Some(previous) = lock(&self.mux).take() {
             previous.close();
         }
-        let (carrier, platform) = MuxCarrier::connect(&self.args, &self.tools)?;
+        let (carrier, platform) = match &self.machine {
+            Some(reach) => {
+                let channel = reach.channel().ok_or(HostError::NoMachineChannel)?;
+                MuxCarrier::through(&channel, &self.args, &self.tools)?
+            }
+            None => MuxCarrier::connect(&self.args, &self.tools)?,
+        };
         *lock(&self.mux) = Some(Arc::new(carrier));
         Ok(platform)
     }
@@ -187,9 +227,11 @@ impl SshLink {
         command: &HostCommand,
         waited: Waited,
     ) -> Result<Output, HostError> {
-        let mut built = match self.multiplexed() {
-            Some(mux) => mux.command(command.plain_script()),
-            None => command.over_ssh_plain(&self.args, |script| self.stage_script(script))?,
+        let mut built = if let Some(mux) = self.multiplexed() {
+            mux.command(command.plain_script())
+        } else {
+            self.refuse_ssh()?;
+            command.over_ssh_plain(&self.args, |script| self.stage_script(script))?
         };
         built.stdin(Stdio::null());
         Self::checked(output_within(
@@ -231,7 +273,7 @@ impl SshLink {
         if let Some(mux) = lock(&self.mux).take() {
             mux.close();
         }
-        if let Some(args) = self.args.sign_out_args() {
+        if let Some(args) = self.args.sign_out_args().filter(|_| self.machine.is_none()) {
             let mut exit = ssh_command(&args);
             exit.stdin(Stdio::null());
             output_within(exit, self.args.timeouts.connect.duration(), Waited::Connect).ok();

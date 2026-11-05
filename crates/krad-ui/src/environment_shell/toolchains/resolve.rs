@@ -114,7 +114,7 @@ impl EnvironmentShell {
         let link = live.link.clone();
         let host_cli = match &link {
             HostLink::Local => self.host_tools.local_cli.clone(),
-            HostLink::Ssh(ssh) => ssh
+            HostLink::Remote(ssh) => ssh
                 .layout()
                 .map(|layout| layout.bin_dir().join(HOST_CLI_PROGRAM)),
         };

@@ -1,3 +1,4 @@
+mod extension_tab;
 mod file_tab;
 mod lead;
 mod new_session;
@@ -7,6 +8,7 @@ mod session_chat;
 mod session_look;
 mod tab_closing;
 mod worker;
+pub use extension_tab::*;
 pub use file_tab::*;
 pub use lead::*;
 pub use new_session::*;

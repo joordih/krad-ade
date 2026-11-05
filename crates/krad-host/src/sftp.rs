@@ -1,12 +1,14 @@
 mod channel;
 mod names;
 mod save;
+mod server;
 mod transfer;
 mod wire;
 
 pub use names::join;
 pub(crate) use names::{file_name, parent};
 pub use save::Saved;
+pub(crate) use server::serve;
 pub use wire::FileKind;
 
 use std::io::{self, Read, Write};
@@ -15,7 +17,7 @@ use thiserror::Error;
 
 use crate::metadata::Metadata;
 use channel::Channel;
-use wire::{Attrs, OpenFlags, Packet, PacketType, Reply, StatusCode, PROTOCOL_VERSION};
+use wire::{Attrs, Message, OpenFlags, Packet, PacketType, StatusCode, PROTOCOL_VERSION};
 
 const POSIX_RENAME_EXTENSION: &str = "posix-rename@openssh.com";
 const CURRENT_DIR: &str = ".";
@@ -76,7 +78,7 @@ impl Sftp {
         Packet::new(PacketType::Init)
             .u32(PROTOCOL_VERSION)
             .send(&mut output)?;
-        let mut reply = Reply::receive(&mut input)?;
+        let mut reply = Message::receive(&mut input)?;
         if reply.kind != PacketType::Version {
             return Err(SftpError::Protocol);
         }
@@ -102,15 +104,15 @@ impl Sftp {
         &self,
         kind: PacketType,
         fill: impl FnOnce(&mut Packet) -> io::Result<()>,
-    ) -> Result<Reply, SftpError> {
+    ) -> Result<Message, SftpError> {
         self.channel.call(kind, fill)
     }
 
-    fn path_call(&self, kind: PacketType, path: &str) -> Result<Reply, SftpError> {
+    fn path_call(&self, kind: PacketType, path: &str) -> Result<Message, SftpError> {
         self.call(kind, |packet| packet.str(path).map(drop))
     }
 
-    fn expect_ok(mut reply: Reply, path: &str) -> Result<(), SftpError> {
+    fn expect_ok(mut reply: Message, path: &str) -> Result<(), SftpError> {
         if reply.kind != PacketType::Status {
             return Err(SftpError::Protocol);
         }
@@ -120,7 +122,7 @@ impl Sftp {
         }
     }
 
-    fn expect_attrs(mut reply: Reply, path: &str) -> Result<Attrs, SftpError> {
+    fn expect_attrs(mut reply: Message, path: &str) -> Result<Attrs, SftpError> {
         match reply.kind {
             PacketType::Attrs => Ok(reply.attrs()?),
             PacketType::Status => {
@@ -359,7 +361,7 @@ impl Sftp {
     }
 }
 
-fn status(reply: &mut Reply, path: &str) -> Result<StatusCode, SftpError> {
+fn status(reply: &mut Message, path: &str) -> Result<StatusCode, SftpError> {
     let code = StatusCode::from(reply.u32()?);
     let message = if reply.has_more() {
         reply.string()?
@@ -370,7 +372,10 @@ fn status(reply: &mut Reply, path: &str) -> Result<StatusCode, SftpError> {
         StatusCode::Ok | StatusCode::Eof => Ok(code),
         StatusCode::NoSuchFile => Err(SftpError::NotFound(path.to_owned())),
         StatusCode::PermissionDenied => Err(SftpError::PermissionDenied(path.to_owned())),
-        StatusCode::Other(_) => Err(SftpError::Refused {
+        StatusCode::Failure
+        | StatusCode::BadMessage
+        | StatusCode::OpUnsupported
+        | StatusCode::Other(_) => Err(SftpError::Refused {
             path: path.to_owned(),
             message,
         }),

@@ -3,7 +3,7 @@ use std::hash::{BuildHasher, Hasher};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::SshLink;
+use super::RemoteLink;
 use crate::command::{env_file_text, quote};
 use crate::error::HostError;
 use crate::mode::FileMode;
@@ -23,7 +23,7 @@ fn unique_name(prefix: &str, suffix: &str) -> String {
     format!("{prefix}{:016x}{suffix}", hasher.finish())
 }
 
-impl SshLink {
+impl RemoteLink {
     /// # Errors
     pub fn write_env_file(&self, vars: &[(String, String)]) -> Result<PathBuf, HostError> {
         let dir = self.layout().ok_or(HostError::NotConnected)?.env_dir()?;

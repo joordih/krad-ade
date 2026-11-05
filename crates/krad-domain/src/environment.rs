@@ -1,6 +1,6 @@
 use crate::agent::{AgentPreset, AgentState};
 use crate::bookmark::ChatBookmarks;
-use crate::group::{Session, TerminalGroup};
+use crate::group::{Session, ShownExtensionViews, TerminalGroup};
 use crate::host::Host;
 use crate::ids::{EnvironmentName, ResumeId, SessionId, TerminalId};
 use crate::side_panel::SidePanelLayout;
@@ -30,6 +30,8 @@ pub struct TerminalNode {
     pub kind: NodeKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file: Option<crate::group::OpenFile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<crate::group::ExtensionTab>,
     #[serde(default, skip_serializing_if = "ChatBookmarks::is_empty")]
     pub bookmarks: ChatBookmarks,
 }
@@ -40,6 +42,7 @@ pub enum NodeKind {
     Terminal,
     Chat,
     File,
+    Extension,
 }
 
 impl NodeKind {
@@ -86,6 +89,8 @@ pub struct EnvironmentData {
     pub side_panel: SidePanelLayout,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub note_tabs: Vec<crate::notes::NoteTabs>,
+    #[serde(default, skip_serializing_if = "ShownExtensionViews::is_empty")]
+    pub extension_views: ShownExtensionViews,
 }
 
 impl EnvironmentData {
@@ -114,6 +119,7 @@ impl EnvironmentData {
             active_session: None,
             side_panel: SidePanelLayout::default(),
             note_tabs: Vec::new(),
+            extension_views: ShownExtensionViews::default(),
         }
     }
 }
@@ -152,6 +158,7 @@ pub(crate) fn seed_terminals() -> (Vec<TerminalNode>, u64) {
             text_scale: TextScale::default(),
             kind: NodeKind::default(),
             file: None,
+            extension: None,
             bookmarks: ChatBookmarks::default(),
         })
         .collect();

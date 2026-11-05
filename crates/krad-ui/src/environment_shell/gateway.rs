@@ -255,7 +255,7 @@ impl EnvironmentShell {
             .and_then(|live| live.data.group_of(id))
             .map(|group| group.root.clone())
             .or_else(|| match self.env_link(env) {
-                HostLink::Ssh(ssh) => ssh.home().map(Path::to_path_buf),
+                HostLink::Remote(ssh) => ssh.home().map(Path::to_path_buf),
                 HostLink::Local => home_dir().map(PathBuf::from),
             })
             .unwrap_or_default()

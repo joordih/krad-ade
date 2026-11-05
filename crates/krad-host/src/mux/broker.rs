@@ -14,7 +14,7 @@ use super::session::{Session, Side};
 use super::{MuxError, ENV_ENDPOINT, ENV_TOKEN};
 use crate::layout::APP_VERSION;
 use crate::random::{random_hex, TOKEN_BYTES};
-use crate::ssh_link::lock;
+use crate::remote_link::lock;
 use pending::Pending;
 
 const ACCEPT_THREAD: &str = "krad-ade-mux-broker";

@@ -305,7 +305,7 @@ pub(in crate::environment_shell) fn workplace_home(
     link: &HostLink,
     root: Option<&Path>,
 ) -> Result<Option<PathBuf>, RepoError> {
-    if let HostLink::Ssh(ssh) = link {
+    if let HostLink::Remote(ssh) = link {
         return Ok(ssh.home().map(Path::to_path_buf));
     }
     match root.and_then(parse_wsl_path) {
