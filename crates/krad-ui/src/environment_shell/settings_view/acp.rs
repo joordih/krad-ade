@@ -6,7 +6,7 @@ use gpui_kit::{
     div, px, AnyElement, AppContext as _, ClipboardItem, Context, IntoElement, ParentElement,
     Styled, Window,
 };
-use krad_domain::{acp_install_command, AcpAgent, AcpAgentId, AgentPreset};
+use krad_domain::{acp_install_command, parse_wsl_path, AcpAgent, AcpAgentId, AgentPreset};
 use krad_store::delete_acp_secret;
 
 use super::sections::{empty_row, footnote, pane_column, settings_section};
@@ -22,7 +22,11 @@ const CUSTOM_TITLE: &str = "Your agents";
 const CUSTOM_HINT: &str = "Any other agent that speaks the Agent Client Protocol, by its command line. Start one from the bus with krad-ade-agents spawn --agent <id>.";
 const CUSTOM_EMPTY: &str = "No agents yet.";
 const DETECTED_DETAIL: &str = "Found on PATH";
-const MISSING_DETAIL: &str = "Not found; install it with";
+const MISSING_DETAIL: &str = "Not found";
+const INSTALL_DETAIL: &str = "install it with";
+const IN_WSL_DETAIL: &str = "in WSL";
+const ON_HOST_DETAIL: &str = "on";
+const INSTALL_SEPARATOR: &str = "; ";
 const ADD_AGENT_LABEL: &str = "Add agent";
 const EDIT_LABEL: &str = "Edit";
 const REMOVE_LABEL: &str = "Remove";
@@ -37,6 +41,36 @@ const DETAIL_SEPARATOR: &str = " · ";
 
 pub(in crate::environment_shell) struct AcpUi {
     form: AcpForm,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum DetectionPlace {
+    ThisComputer,
+    Wsl(String),
+    Ssh(String),
+}
+
+impl DetectionPlace {
+    fn suffix(&self) -> String {
+        match self {
+            Self::ThisComputer => String::new(),
+            Self::Wsl(distro) => format!(" {IN_WSL_DETAIL} {distro}"),
+            Self::Ssh(host) => format!(" {ON_HOST_DETAIL} {host}"),
+        }
+    }
+}
+
+fn detection_detail(place: &DetectionPlace, detected: bool, install: Option<&str>) -> String {
+    let suffix = place.suffix();
+    if detected {
+        return format!("{DETECTED_DETAIL}{suffix}");
+    }
+    match install {
+        Some(command) => {
+            format!("{MISSING_DETAIL}{suffix}{INSTALL_SEPARATOR}{INSTALL_DETAIL} {command}")
+        }
+        None => format!("{MISSING_DETAIL}{suffix}"),
+    }
 }
 
 fn element_index(index: usize) -> u64 {
@@ -100,19 +134,35 @@ impl EnvironmentShell {
         .detach();
     }
 
+    fn acp_detection_place(&self) -> DetectionPlace {
+        if let Some(host) = self
+            .envs
+            .get(&self.active)
+            .map(|live| &live.data.host)
+            .filter(|host| !host.is_local())
+        {
+            return DetectionPlace::Ssh(host.to_string());
+        }
+        self.active_group()
+            .and_then(|group| parse_wsl_path(&group.root))
+            .map_or(DetectionPlace::ThisComputer, |folder| {
+                DetectionPlace::Wsl(folder.distro)
+            })
+    }
+
     fn acp_built_in_row(
         &self,
         index: usize,
         agent: &AcpAgent,
+        place: &DetectionPlace,
         pal: &Palette,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let detected = self.native_agents.contains(&AgentPreset::Acp(agent.id));
+        let detected = self
+            .installed_agents()
+            .contains(&AgentPreset::Acp(agent.id));
         let install = acp_install_command(agent.id).filter(|_| !detected);
-        let detail = install.map_or_else(
-            || DETECTED_DETAIL.to_owned(),
-            |command| format!("{MISSING_DETAIL} {command}"),
-        );
+        let detail = detection_detail(place, detected, install);
         let control = install.map_or_else(
             || div().into_any_element(),
             |command| {
@@ -171,10 +221,11 @@ impl EnvironmentShell {
 
     fn acp_built_in_card(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
+        let place = self.acp_detection_place();
         let rows: Vec<AnyElement> = krad_domain::built_in_acp_agents()
             .iter()
             .enumerate()
-            .map(|(index, agent)| self.acp_built_in_row(index, agent, pal, cx))
+            .map(|(index, agent)| self.acp_built_in_row(index, agent, &place, pal, cx))
             .collect();
         settings_section(
             BUILT_IN_TITLE,
@@ -231,5 +282,31 @@ impl EnvironmentShell {
         }
         sections.push(footnote(SECRETS_NOTE, pal));
         pane_column(sections)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detection_names_the_environment_s_host() {
+        let install = Some("npm i -g codex-acp");
+        assert_eq!(
+            detection_detail(&DetectionPlace::ThisComputer, true, None),
+            "Found on PATH"
+        );
+        assert_eq!(
+            detection_detail(&DetectionPlace::Wsl("Ubuntu".to_owned()), true, None),
+            "Found on PATH in WSL Ubuntu"
+        );
+        assert_eq!(
+            detection_detail(&DetectionPlace::Ssh("dev@box".to_owned()), false, install),
+            "Not found on dev@box; install it with npm i -g codex-acp"
+        );
+        assert_eq!(
+            detection_detail(&DetectionPlace::ThisComputer, false, install),
+            "Not found; install it with npm i -g codex-acp"
+        );
     }
 }
