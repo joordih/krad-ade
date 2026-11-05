@@ -160,8 +160,11 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    pub(super) fn release_activity_drag(&mut self, cx: &mut Context<Self>) {
-        if matches!(self.drag, DragState::ResizeActivity(_)) {
+    pub(super) fn release_captured_drag(&mut self, cx: &mut Context<Self>) {
+        if matches!(
+            self.drag,
+            DragState::ResizeActivity(_) | DragState::Select { .. } | DragState::Report { .. }
+        ) {
             self.end_drag(cx);
         }
     }

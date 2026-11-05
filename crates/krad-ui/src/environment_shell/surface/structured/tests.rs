@@ -173,3 +173,24 @@ fn notices_add_up_under_the_chat_and_a_new_harness_reads_mcp_again() {
     chat.switch_harness(AgentPreset::Gateway);
     assert!(matches!(chat.mcp, McpPrep::Unread));
 }
+
+#[test]
+fn a_turn_the_harness_opens_by_itself_is_worked_until_its_result() {
+    let mut chat = resumed();
+    assert!(chat.opens_turn(), "a finished subagent woke the idle chat");
+    assert!(!chat.is_free());
+    assert!(!chat.opens_turn(), "the turn is already open");
+    assert!(chat.closes_turn(false));
+    assert!(chat.is_free());
+}
+
+#[test]
+fn the_start_of_a_sent_message_s_turn_opens_nothing_more() {
+    let mut chat = resumed();
+    chat.handed_over(Batch {
+        commands: Vec::new(),
+        message: Some(Prompt::from("Fix the race")),
+    });
+    assert!(!chat.opens_turn());
+    assert!(chat.closes_turn(false));
+}

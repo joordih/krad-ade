@@ -55,8 +55,8 @@ pub(crate) fn claude(value: &Value) -> Vec<ChatEvent> {
                 .and_then(|id| id.parse().ok())
                 .map(ChatEvent::Session);
             let model = str_at(value, "/model").map(|model| ChatEvent::Model(model.to_owned()));
-            session
-                .into_iter()
+            std::iter::once(ChatEvent::TurnStarted)
+                .chain(session)
                 .chain(model)
                 .chain(permission_mode(value))
                 .collect()
@@ -212,7 +212,13 @@ mod tests {
         let started = events(r#"{"type":"system","subtype":"init","permissionMode":"default"}"#);
         let changed =
             events(r#"{"type":"system","subtype":"status","status":null,"permissionMode":"plan"}"#);
-        assert_eq!(started, [ChatEvent::PermissionMode(PermissionMode::Manual)]);
+        assert_eq!(
+            started,
+            [
+                ChatEvent::TurnStarted,
+                ChatEvent::PermissionMode(PermissionMode::Manual)
+            ]
+        );
         assert_eq!(changed, [ChatEvent::PermissionMode(PermissionMode::Plan)]);
     }
 
@@ -242,10 +248,12 @@ mod tests {
         assert_eq!(
             events(include_str!("../tests/fixtures/claude-live.jsonl")),
             [
+                ChatEvent::TurnStarted,
                 session(id),
                 model("claude-opus"),
                 ChatEvent::Text("Two tabs rotate at once.".to_owned()),
                 ChatEvent::Done,
+                ChatEvent::TurnStarted,
                 session(id),
                 model("claude-opus"),
                 claude_tool("t1", "Edit", "server/auth/refresh.ts"),
