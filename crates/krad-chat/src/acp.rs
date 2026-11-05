@@ -1,4 +1,5 @@
 mod chat;
+mod client_side;
 mod config;
 mod connection;
 mod content;
@@ -19,6 +20,7 @@ pub use config::{
     ConfigCategory, ConfigKind, ConfigSelectEntry, ConfigSelectGroup, ConfigSelectOption,
     SessionConfigOption, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
 };
+pub use client_side::{ClientSide, FileWritten, HostTerminals, OpenBuffers};
 pub use connection::{AcpClient, AcpConnection, AcpError, AgentRequest, Pending, Responder};
 pub use content::{
     AudioContent, BlobResourceContents, ContentBlock, EmbeddedResource, EmbeddedResourceResource,
