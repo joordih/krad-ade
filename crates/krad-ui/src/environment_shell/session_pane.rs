@@ -47,6 +47,7 @@ const DIRTY_DOT: f32 = 6.0;
 const UNZOOMED: f32 = 1.0;
 const TERMINAL_TAB_PREFIX: &str = "session-tab";
 const TAB_CLOSE_PREFIX: &str = "session-tab-close";
+const TAB_HOVER_GROUP: &str = "session-tab-hover";
 const BTN_ADD_TAB: &str = "session-add-tab";
 const ADD_TAB_TOOLTIP: &str = "New chat (right-click for a terminal)";
 const CLOSE_TAB_TOOLTIP: &str = "Close tab";
@@ -399,6 +400,7 @@ impl EnvironmentShell {
                 pal,
                 cx,
             )
+            .group(TAB_HOVER_GROUP)
             .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
             .on_mouse_up(
                 MouseButton::Middle,
@@ -453,15 +455,20 @@ impl EnvironmentShell {
             .when(on_chat, |tab| {
                 tab.child(icon(IconName::Chat, STATUS_ICON, pal.text_muted))
             })
-            .when(shown, |tab| tab.child(Self::close_tab_button(id, cx)))
+            .child(Self::close_tab_button(id, shown, cx))
             .into_any_element(),
         )
     }
 
-    fn close_tab_button(id: TerminalId, cx: &mut Context<Self>) -> AnyElement {
+    fn close_tab_button(id: TerminalId, shown: bool, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         div()
             .id((TAB_CLOSE_PREFIX, id.as_u64()))
+            .when(!shown, |button| {
+                button
+                    .invisible()
+                    .group_hover(TAB_HOVER_GROUP, Styled::visible)
+            })
             .flex()
             .flex_none()
             .items_center()
