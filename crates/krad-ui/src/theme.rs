@@ -8,8 +8,8 @@ mod tokens;
 pub use editor::apply_editor_font;
 use fonts::{app_fonts, MONO_FONT_FAMILY};
 pub(crate) use fonts::{
-    font_features, interface_family, mono_family, BUNDLED_MONO_FAMILIES, EDITOR_FONT_SIZE,
-    SYSTEM_MONO_LABEL, TERMINAL_FONT_SIZE, UI_FONT_FAMILY,
+    font_features, interface_family, mono_family, tabular_digits, BUNDLED_MONO_FAMILIES,
+    EDITOR_FONT_SIZE, SYSTEM_MONO_LABEL, TERMINAL_FONT_SIZE, UI_FONT_FAMILY,
 };
 pub use library::install_theme_library;
 pub(crate) use library::{add_to_library, theme_library};

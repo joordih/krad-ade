@@ -39,6 +39,7 @@ pub(crate) struct ViewModel {
     trees: HashMap<NodeKey, Vec<TreeRow>>,
     selection: HashMap<NodeKey, Vec<NodeKey>>,
     appended: HashSet<NodeKey>,
+    received_sliders: HashSet<NodeKey>,
 }
 
 impl ViewModel {
@@ -50,7 +51,9 @@ impl ViewModel {
             trees: HashMap::new(),
             selection: HashMap::new(),
             appended: HashSet::new(),
+            received_sliders: HashSet::new(),
         };
+        slider_keys(&model.root, &mut model.received_sliders);
         model.reflatten();
         model
     }
@@ -65,9 +68,14 @@ impl ViewModel {
                 Patch::Append { key, .. } => Some(key.clone()),
                 _ => None,
             };
+            let mut sliders = HashSet::new();
+            if let Patch::Replace { node } | Patch::Insert { node, .. } = &patch {
+                slider_keys(node, &mut sliders);
+            }
             match apply(&mut self.root, patch) {
                 Ok(Applied::Changed) => {
                     self.appended.extend(appended);
+                    self.received_sliders.extend(sliders);
                 }
                 Ok(Applied::RowsInvalidated(node)) => {
                     self.rows.remove(&node);
@@ -80,6 +88,10 @@ impl ViewModel {
 
     pub(crate) fn take_appended(&mut self) -> HashSet<NodeKey> {
         std::mem::take(&mut self.appended)
+    }
+
+    pub(crate) fn take_received_sliders(&mut self) -> HashSet<NodeKey> {
+        std::mem::take(&mut self.received_sliders)
     }
 
     fn reflatten(&mut self) {
@@ -189,6 +201,15 @@ pub(crate) fn find<'a>(node: &'a Node, key: &NodeKey) -> Option<&'a Node> {
         return Some(node);
     }
     node.children().iter().find_map(|child| find(child, key))
+}
+
+pub(crate) fn slider_keys(node: &Node, keys: &mut HashSet<NodeKey>) {
+    if let Element::Slider(_) = node.element {
+        keys.insert(node.key.clone());
+    }
+    for child in node.children() {
+        slider_keys(child, keys);
+    }
 }
 
 pub(crate) fn stream_keys(node: &Node, keys: &mut Vec<NodeKey>) {

@@ -1,6 +1,7 @@
 use crate::id::NodeKey;
 use crate::limits::{MAX_VIEW_DEPTH, MAX_VIEW_NODES};
 use crate::view::element::{Column, Element, Node, TreeItem, MAX_GRID_COLUMNS, MAX_STREAM_LINES};
+use crate::view::patch::PatchError;
 use crate::view::style::Style;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,7 +75,7 @@ fn clamp_column(column: &mut Column) {
     column.width = column.width.bounded();
 }
 
-pub(crate) fn clamp(node: &mut Node) {
+pub(crate) fn clamp(node: &mut Node) -> Result<(), PatchError> {
     match &mut node.element {
         Element::Flex { style, .. }
         | Element::Stack { style, .. }
@@ -91,9 +92,16 @@ pub(crate) fn clamp(node: &mut Node) {
         }
         Element::Table { columns, .. } => columns.iter_mut().for_each(clamp_column),
         Element::Stream { max_lines, .. } => *max_lines = (*max_lines).min(MAX_STREAM_LINES),
+        Element::Slider(slider) => {
+            slider.bound().map_err(|reason| PatchError::Slider {
+                key: node.key.clone(),
+                reason,
+            })?;
+        }
         _ => {}
     }
-    if let Some(children) = node.children_mut() {
-        children.iter_mut().for_each(clamp);
-    }
+    node.children_mut()
+        .into_iter()
+        .flatten()
+        .try_for_each(clamp)
 }

@@ -60,6 +60,43 @@ const extension = createExtension({
 
 Add the folder from Settings → Languages → Extensions → Add folder, and trust it when asked.
 
+## Sliders
+
+A slider needs `api = "1.1"`. While `advancing` is set the app moves the value by itself, `rate`
+units per second from when the node arrived, and stops at `max`, so a music timeline needs no patch
+every second. Dragging sends `slider_change` (throttled) and releasing sends `slider_commit`; the
+slider then waits at the committed value until the program sends the node again.
+
+```ts
+import { createExtension, isSliderEvent, patch, ui } from "@krad-ade/extension";
+
+const timeline = (position: number, playing: boolean) =>
+  ui.slider("timeline", "seek", {
+    value: position,
+    max: 245,
+    format: "duration",
+    labels: "elapsed_remaining",
+    advancing: playing ? { rate: 1 } : null,
+  });
+
+createExtension({
+  views: {
+    player: {
+      render: () =>
+        ui.column("root", [
+          timeline(0, true),
+          ui.slider("volume", "volume", { value: 0.8, max: 1, step: 0.05, format: "percent", labels: "value" }),
+        ]),
+      onEvent: (event, view, { app }) => {
+        if (isSliderEvent(event) && event.kind === "slider_commit" && event.action === "seek") {
+          app.patchView(view, [patch.replace(timeline(event.value, true))]);
+        }
+      },
+    },
+  },
+});
+```
+
 ## Rules
 
 - stdout belongs to the protocol. Log with `app.log(level, message)` or write to stderr; Settings

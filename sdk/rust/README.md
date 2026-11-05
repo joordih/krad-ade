@@ -39,6 +39,32 @@ id = "greet"
 title = "Hello: Greet"
 ```
 
+## Sliders
+
+`slider` builds a slider node (`api = "1.1"`). With `advancing` the app moves the value by itself at
+`rate` units per second until `max`; the view receives `ViewEvent::SliderChange` while dragging and
+`ViewEvent::SliderCommit` on release or a key press.
+
+```rust
+use krad_extension_sdk::api::view::{Node, SliderFormat, SliderLabels, ViewEvent};
+use krad_extension_sdk::slider;
+
+fn timeline(position: f64) -> Result<Node, krad_extension_sdk::api::IdError> {
+    Ok(slider("timeline".parse()?, "seek".parse()?, position, 245.0)
+        .format(SliderFormat::Duration)
+        .labels(SliderLabels::ElapsedRemaining)
+        .advancing(1.0)
+        .into())
+}
+
+fn seek_to(event: &ViewEvent) -> Option<f64> {
+    match event {
+        ViewEvent::SliderCommit { value, .. } => Some(*value),
+        _ => None,
+    }
+}
+```
+
 See `examples/hello` for a command and a sidebar view.
 
 Licensed under MIT or Apache-2.0, at your option.

@@ -26,6 +26,18 @@
         }
       ]
     },
+    "Advancing": {
+      "properties": {
+        "rate": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "rate"
+      ],
+      "type": "object"
+    },
     "Align": {
       "enum": [
         "start",
@@ -1674,6 +1686,19 @@
           "type": "object"
         },
         {
+          "$ref": "#/$defs/Slider",
+          "properties": {
+            "type": {
+              "const": "slider",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
           "properties": {
             "count": {
               "format": "uint32",
@@ -2703,6 +2728,80 @@
         }
       ]
     },
+    "Slider": {
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/ActionId"
+        },
+        "advancing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Advancing"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "enabled": {
+          "$ref": "#/$defs/Enabled",
+          "default": "yes"
+        },
+        "format": {
+          "$ref": "#/$defs/SliderFormat",
+          "default": "number"
+        },
+        "labels": {
+          "$ref": "#/$defs/SliderLabels",
+          "default": "none"
+        },
+        "max": {
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "default": 0.0,
+          "format": "double",
+          "type": "number"
+        },
+        "step": {
+          "default": null,
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "value": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "action",
+        "value",
+        "max"
+      ],
+      "type": "object"
+    },
+    "SliderFormat": {
+      "enum": [
+        "number",
+        "percent",
+        "duration"
+      ],
+      "type": "string"
+    },
+    "SliderLabels": {
+      "enum": [
+        "none",
+        "value",
+        "elapsed_remaining",
+        "min_max"
+      ],
+      "type": "string"
+    },
     "Sort": {
       "properties": {
         "column": {
@@ -3197,6 +3296,48 @@
               "$ref": "#/$defs/ActionId"
             },
             "kind": {
+              "const": "slider_change",
+              "type": "string"
+            },
+            "value": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "action",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "action": {
+              "$ref": "#/$defs/ActionId"
+            },
+            "kind": {
+              "const": "slider_commit",
+              "type": "string"
+            },
+            "value": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "action",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "action": {
+              "$ref": "#/$defs/ActionId"
+            },
+            "kind": {
               "const": "form",
               "type": "string"
             },
@@ -3522,7 +3663,7 @@
       "type": "string"
     }
   },
-  "api": "1.0",
+  "api": "1.1",
   "manifest": {
     "$ref": "#/$defs/ExtensionManifest"
   },

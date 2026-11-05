@@ -225,3 +225,74 @@ fn sizes_and_grid_columns_are_clamped_when_they_arrive() -> TestResult {
     assert_eq!(style.width, Size::Fixed(MAX_FIXED_SIZE));
     Ok(())
 }
+
+fn slider_node(name: &str, json: &str) -> Result<Node, Box<dyn std::error::Error>> {
+    let mut value: serde_json::Value = serde_json::from_str(json)?;
+    let object = value.as_object_mut().ok_or("a slider is an object")?;
+    object.insert("key".to_owned(), name.into());
+    object.insert("type".to_owned(), "slider".into());
+    Ok(serde_json::from_value(value)?)
+}
+
+#[test]
+fn a_slider_node_round_trips_through_its_tagged_json() -> TestResult {
+    let node = slider_node(
+        "timeline",
+        r#"{"action":"seek","value":30,"max":245,"format":"duration","labels":"elapsed_remaining","advancing":{"rate":1}}"#,
+    )?;
+    let Element::Slider(slider) = &node.element else {
+        return Err("the node reads as a slider".into());
+    };
+    assert_eq!(slider.max, 245.0);
+    let json = serde_json::to_value(&node)?;
+    assert_eq!(json["type"], "slider");
+    assert_eq!(json["key"], "timeline");
+    assert_eq!(json["advancing"]["rate"], 1.0);
+    assert_eq!(serde_json::from_value::<Node>(json)?, node);
+    Ok(())
+}
+
+#[test]
+fn slider_values_are_clamped_and_broken_sliders_refused_when_they_arrive() -> TestResult {
+    use crate::view::slider::SliderError;
+    let mut root = column("root", vec![text("title", "x")?])?;
+    apply(
+        &mut root,
+        Patch::Insert {
+            parent: key("root")?,
+            index: 0,
+            node: slider_node("volume", r#"{"action":"volume","value":4,"max":1}"#)?,
+        },
+    )?;
+    let Element::Slider(slider) = &root.children()[0].element else {
+        return Err("the slider was inserted".into());
+    };
+    assert_eq!(slider.value, 1.0);
+    assert_eq!(
+        apply(
+            &mut root,
+            Patch::Replace {
+                node: slider_node("volume", r#"{"action":"volume","value":0,"min":1,"max":1}"#)?,
+            },
+        ),
+        Err(PatchError::Slider {
+            key: key("volume")?,
+            reason: SliderError::Range,
+        })
+    );
+    let mut broken = column(
+        "root",
+        vec![slider_node(
+            "seek",
+            r#"{"action":"seek","value":0,"max":10,"advancing":{"rate":0}}"#,
+        )?],
+    )?;
+    assert_eq!(
+        bounded(&mut broken),
+        Err(PatchError::Slider {
+            key: key("seek")?,
+            reason: SliderError::Rate,
+        })
+    );
+    Ok(())
+}
