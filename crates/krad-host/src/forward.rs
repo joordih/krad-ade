@@ -148,6 +148,7 @@ impl SshLink {
                 carrier: Carrier::Session(forward),
             });
         }
+        self.refuse_ssh()?;
         let local_port = free_local_port()?;
         let spec = local_spec(local_port, remote_port);
         let wait = self.args.timeouts.forward.duration();
@@ -191,6 +192,7 @@ impl SshLink {
                 carrier: Carrier::Session(forward),
             });
         }
+        self.refuse_ssh()?;
         let request = remote_spec(ANY_PORT, local_port);
         if let Some(open) =
             self.args

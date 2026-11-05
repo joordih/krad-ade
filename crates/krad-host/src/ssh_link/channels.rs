@@ -72,6 +72,7 @@ impl SshLink {
                 }
             };
         }
+        self.refuse_ssh()?;
         let mut child = ssh_command(&self.args.base(Interaction::Subsystem))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

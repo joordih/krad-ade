@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::ffi::OsString;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, TcpStream};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -22,6 +22,7 @@ use crate::error::{HostError, Waited};
 use crate::failure::SshFailure;
 use crate::layout::APP_VERSION;
 use crate::local::hide_console_window;
+use crate::machine::MachineChannel;
 use crate::platform::{HostPlatform, UnsupportedPlatform};
 use crate::ssh::SshArgs;
 use crate::ssh_link::lock;
@@ -42,6 +43,9 @@ const EXIT_POLL: Duration = Duration::from_millis(20);
 const HOST_KEY_NOT_TRUSTED: &str = "the host's key was not trusted";
 const UNKNOWN_LISTENER: &str = "no forward waits for that listener";
 const LOCAL_TARGET_DOWN: &str = "nothing listens on that port of this computer";
+const CHANNEL_CLOSED: &str = "it ended before the app's CLI started";
+const HEADLINE_MAX_CHARS: usize = 200;
+const LINE_END: char = '\n';
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct MuxTools {
@@ -61,6 +65,21 @@ pub(crate) struct MuxCarrier {
 
 type Booted = Result<(Session, mpsc::Receiver<Incoming>, Greeting), MuxError>;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Reached {
+    OverSsh,
+    ThroughMachine,
+}
+
+struct Spawned {
+    command: Command,
+    first_line: Option<String>,
+    broker: Broker,
+    local_cli: PathBuf,
+    handshake: Duration,
+    reached: Reached,
+}
+
 impl MuxCarrier {
     #[tracing::instrument(skip_all, fields(destination = %args.destination))]
     pub(crate) fn connect(
@@ -77,33 +96,100 @@ impl MuxCarrier {
             )))
             .env(ASKPASS_VAR, &askpass)
             .env(ASKPASS_REQUIRE_VAR, ASKPASS_FORCED)
-            .envs(broker.env())
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .envs(broker.env());
         if std::env::var_os(DISPLAY_VAR).is_none() {
             command.env(DISPLAY_VAR, PLACEHOLDER_DISPLAY);
         }
+        Self::start(
+            Spawned {
+                command,
+                first_line: None,
+                broker,
+                local_cli,
+                handshake: args.timeouts.connect.duration(),
+                reached: Reached::OverSsh,
+            },
+            tools,
+        )
+    }
+
+    #[tracing::instrument(skip_all, fields(program = %channel.program))]
+    pub(crate) fn through(
+        channel: &MachineChannel,
+        args: &SshArgs,
+        tools: &MuxTools,
+    ) -> Result<(Self, HostPlatform), HostError> {
+        let local_cli = tools.local_cli.clone().ok_or(MuxError::NoLocalCli)?;
+        let broker = Broker::start(args.destination.clone(), None)?;
+        let mut command = Command::new(&channel.program);
+        command
+            .args(&channel.args)
+            .envs(channel.env.iter().map(|(name, value)| (name, value)));
+        let script = transport::inline(&bootstrap::script()).ok_or(MuxError::Protocol)?;
+        Self::start(
+            Spawned {
+                command,
+                first_line: Some(format!("{script}{LINE_END}")),
+                broker,
+                local_cli,
+                handshake: args.timeouts.connect.duration(),
+                reached: Reached::ThroughMachine,
+            },
+            tools,
+        )
+    }
+
+    fn start(spawned: Spawned, tools: &MuxTools) -> Result<(Self, HostPlatform), HostError> {
+        let Spawned {
+            mut command,
+            first_line,
+            broker,
+            local_cli,
+            handshake,
+            reached,
+        } = spawned;
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         hide_console_window(&mut command);
         let mut child = command.spawn()?;
         let errors = collect_errors(&mut child)?;
         let pipes = child.stdin.take().zip(child.stdout.take());
         let child = Arc::new(Mutex::new(child));
-        let Some((stdin, stdout)) = pipes else {
+        let Some((mut stdin, stdout)) = pipes else {
             stop(&child);
             return Err(HostError::NotConnected);
         };
-        let booted = boot(stdin, stdout, tools.host_clis.clone(), &child, args);
+        if let Some(line) = first_line {
+            if let Err(error) = stdin
+                .write_all(line.as_bytes())
+                .and_then(|()| stdin.flush())
+            {
+                stop(&child);
+                return Err(HostError::Io(error));
+            }
+        }
+        let booted = boot(stdin, stdout, tools.host_clis.clone(), &child, handshake);
         let (session, incoming, greeting) = match booted {
             Ok(booted) => booted,
             Err(error) => {
-                let failure = exited_within(&child, BOOT_EXIT_WAIT)
+                let stream_broke = matches!(
+                    error,
+                    MuxError::Closed | MuxError::Io(_) | MuxError::Protocol
+                );
+                let failure = stream_broke
+                    .then(|| exited_within(&child, BOOT_EXIT_WAIT))
+                    .flatten()
                     .and_then(BootstrapFailure::from_exit_code);
                 stop(&child);
                 if let Some(failure) = failure {
                     return Err(MuxError::Bootstrap(failure).into());
                 }
-                return Err(boot_failure(error, &errors));
+                return Err(match reached {
+                    Reached::OverSsh => boot_failure(error, &errors),
+                    Reached::ThroughMachine => machine_failure(error, &errors),
+                });
             }
         };
         broker.attach(session.clone());
@@ -170,11 +256,10 @@ fn boot(
     stdout: ChildStdout,
     host_clis: Vec<(HostPlatform, PathBuf)>,
     child: &Arc<Mutex<Child>>,
-    args: &SshArgs,
+    handshake: Duration,
 ) -> Booted {
     let (sender, booted) = mpsc::channel();
     let killer = Arc::clone(child);
-    let handshake = args.timeouts.connect.duration();
     thread::Builder::new()
         .name(BOOT_THREAD.to_owned())
         .spawn(move || {
@@ -257,6 +342,28 @@ fn boot_failure(error: MuxError, errors: &Mutex<Vec<u8>>) -> HostError {
     }
 }
 
+fn machine_failure(error: MuxError, errors: &Mutex<Vec<u8>>) -> HostError {
+    match error {
+        MuxError::Closed | MuxError::Io(_) | MuxError::Protocol => {
+            thread::sleep(STDERR_SETTLE);
+            let stderr = String::from_utf8_lossy(&lock(errors)).into_owned();
+            let headline: String = stderr
+                .lines()
+                .map(str::trim)
+                .find(|line| !line.is_empty())
+                .unwrap_or(CHANNEL_CLOSED)
+                .chars()
+                .take(HEADLINE_MAX_CHARS)
+                .collect();
+            tracing::debug!("the channel to the machine did not start");
+            HostError::MachineChannel(headline)
+        }
+        MuxError::TimedOut => HostError::TimedOut(Waited::Connect),
+        MuxError::Unsupported(uname) => HostError::UnsupportedPlatform(UnsupportedPlatform(uname)),
+        other => HostError::Mux(other),
+    }
+}
+
 fn accept_forwarded(
     incoming: mpsc::Receiver<Incoming>,
     listeners: Arc<Mutex<HashMap<u32, u16>>>,
@@ -293,3 +400,6 @@ fn accept_forwarded(
         })?;
     Ok(())
 }
+
+#[cfg(all(test, unix))]
+mod tests;
