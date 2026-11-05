@@ -29,7 +29,10 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let live = self.envs.get(&self.active)?;
-        let destination = live.data.host.destination()?.to_string();
+        if live.data.host.is_local() {
+            return None;
+        }
+        let destination = live.data.host.to_string();
         let pal = palette(cx);
         let state = &live.host;
         let tooltip: SharedString = match state.detail() {

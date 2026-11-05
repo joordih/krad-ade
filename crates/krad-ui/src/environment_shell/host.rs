@@ -44,6 +44,7 @@ pub(super) enum HostDialog {
     NewEnvironment(SshDialog),
     Folder(FolderBrowser),
     SignIn(sign_in::SignInDialog),
+    Machines(super::extensions::MachineDialog),
 }
 
 #[derive(Default)]
@@ -52,8 +53,8 @@ pub(super) struct HostUi {
     prompts: sign_in::PromptInbox,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Attempt {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::environment_shell) enum Attempt {
     First,
     AfterSignIn,
     Retry(u32),
@@ -112,11 +113,27 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
-        let HostLink::Remote(ssh) = live.link.clone() else {
+        let HostLink::Remote(remote) = live.link.clone() else {
             return;
         };
         live.host = HostState::Connecting;
         cx.notify();
+        if remote.machine().is_some() {
+            self.connect_machine(env, attempt, cx);
+            return;
+        }
+        self.connect_link(env, attempt, cx);
+    }
+
+    pub(in crate::environment_shell) fn connect_link(
+        &mut self,
+        env: &EnvironmentName,
+        attempt: Attempt,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(HostLink::Remote(ssh)) = self.envs.get(env).map(|live| live.link.clone()) else {
+            return;
+        };
         let connect = cx.background_spawn(async move { ssh.connect() });
         let env = env.clone();
         cx.spawn(async move |this, cx| {
@@ -174,7 +191,11 @@ impl EnvironmentShell {
             )
     }
 
-    fn set_host(&mut self, env: &EnvironmentName, state: HostState) {
+    pub(in crate::environment_shell) fn set_host(
+        &mut self,
+        env: &EnvironmentName,
+        state: HostState,
+    ) {
         if let Some(live) = self.envs.get_mut(env) {
             live.host = state;
         }
@@ -231,8 +252,10 @@ impl EnvironmentShell {
 
     fn open_sign_in(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
         let sign_in = self.envs.get(env).and_then(|live| match &live.link {
-            HostLink::Remote(ssh) => Some((ssh.sign_in_terminal(), live.data.host.to_string())),
-            HostLink::Local => None,
+            HostLink::Remote(ssh) if ssh.machine().is_none() => {
+                Some((ssh.sign_in_terminal(), live.data.host.to_string()))
+            }
+            HostLink::Remote(_) | HostLink::Local => None,
         });
         let Some(((program, args), destination)) = sign_in else {
             self.set_host(env, HostState::Failed(SIGN_IN_UNAVAILABLE.to_owned()));
@@ -288,6 +311,7 @@ impl EnvironmentShell {
 
     pub(super) fn service_hosts(&mut self, cx: &mut Context<Self>) {
         self.collect_sign_in_prompts(cx);
+        self.service_machine_connections(cx);
         let signed_in: Vec<EnvironmentName> = self
             .envs
             .iter()
@@ -357,6 +381,7 @@ impl EnvironmentShell {
             HostDialog::NewEnvironment(dialog) => Some(Self::ssh_dialog_sheet(dialog, cx)),
             HostDialog::Folder(browser) => Some(Self::folder_browser_sheet(browser, cx)),
             HostDialog::SignIn(dialog) => Self::sign_in_sheet(dialog, cx),
+            HostDialog::Machines(dialog) => Some(Self::machine_dialog_sheet(dialog, cx)),
         }
     }
 

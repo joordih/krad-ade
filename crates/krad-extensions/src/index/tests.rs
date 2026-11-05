@@ -148,17 +148,3 @@ fn an_incompatible_entry_is_never_installed() -> TestResult {
     ));
     Ok(())
 }
-
-#[test]
-fn index_repositories_are_owner_slash_name() {
-    assert!("joordih/krad-extensions-index"
-        .parse::<IndexRepository>()
-        .is_ok());
-    assert_eq!(
-        IndexRepository::default().to_string(),
-        DEFAULT_INDEX_REPOSITORY
-    );
-    for bad in ["joordih", "a/b/c", "../x", "a/-x", "a /b"] {
-        assert!(bad.parse::<IndexRepository>().is_err(), "{bad}");
-    }
-}

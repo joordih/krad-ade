@@ -7,58 +7,18 @@ pub use cache::{cached_index, load_index, Freshness, IndexOrigin, LoadedIndex, M
 pub use entry::{Compatibility, EntryError, GitAddress, IndexEntry};
 pub use install::{add_from_index, update_from_index};
 
+pub use krad_domain::{IndexRepository, DEFAULT_INDEX_REPOSITORY};
+
 use krad_domain::{ExtensionEntry, ExtensionSource, GitCommit};
 use serde::Deserialize;
 use std::collections::BTreeSet;
-use std::fmt;
-use std::str::FromStr;
 
 use entry::RawEntry;
-
-pub const DEFAULT_INDEX_REPOSITORY: &str = "joordih/krad-extensions-index";
-const REPOSITORY_SEPARATOR: char = '/';
-const REPOSITORY_PUNCTUATION: [char; 3] = ['-', '_', '.'];
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IndexRepository(String);
-
-impl FromStr for IndexRepository {
-    type Err = IndexError;
-
-    fn from_str(text: &str) -> Result<Self, Self::Err> {
-        let text = text.trim();
-        let part = |part: &str| {
-            !part.is_empty()
-                && !part.starts_with(REPOSITORY_PUNCTUATION)
-                && part
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || REPOSITORY_PUNCTUATION.contains(&c))
-        };
-        match text.split_once(REPOSITORY_SEPARATOR) {
-            Some((owner, name)) if part(owner) && part(name) => Ok(Self(text.to_owned())),
-            _ => Err(IndexError::Repository(text.to_owned())),
-        }
-    }
-}
-
-impl Default for IndexRepository {
-    fn default() -> Self {
-        Self(DEFAULT_INDEX_REPOSITORY.to_owned())
-    }
-}
-
-impl fmt::Display for IndexRepository {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
 
 #[derive(Debug, thiserror::Error)]
 pub enum IndexError {
     #[error("the extension index is not valid JSON: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("{0} is not an owner/name GitHub repository")]
-    Repository(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
