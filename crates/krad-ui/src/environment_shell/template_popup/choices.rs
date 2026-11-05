@@ -17,7 +17,7 @@ const ALREADY_EXISTS_TEXT: &str = "already exists";
 
 #[derive(Clone)]
 pub(in crate::environment_shell) enum ChoiceSource {
-    Server { server: ServerKey, id: String },
+    Server { server: Box<ServerKey>, id: String },
     Manifest { language: LanguageId, id: String },
     Plain,
 }
@@ -245,7 +245,7 @@ impl EnvironmentShell {
                             label: template.label,
                             language: None,
                             source: ChoiceSource::Server {
-                                server: answer.server.clone(),
+                                server: Box::new(answer.server.clone()),
                                 id: template.id,
                             },
                         })
