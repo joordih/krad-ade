@@ -49,6 +49,7 @@ fn new_repo(path: &Path) -> TestResult {
     git(path, &["config", "user.name", "Test"])?;
     git(path, &["config", "user.email", "test@example.com"])?;
     git(path, &["config", "commit.gpgsign", "false"])?;
+    git(path, &["config", "core.autocrlf", "false"])?;
     Ok(())
 }
 
@@ -201,6 +202,7 @@ fn a_branch_is_published_pulled_and_a_remote_one_checked_out_as_a_tracking_branc
         )?;
         git(&other, &["config", "user.name", "Test"])?;
         git(&other, &["config", "user.email", "test@example.com"])?;
+        git(&other, &["config", "core.autocrlf", "false"])?;
         git(&other, &["switch", "--quiet", "-c", "topic"])?;
         fs::write(other.join("topic.txt"), "topic\n")?;
         git(&other, &["add", "topic.txt"])?;
