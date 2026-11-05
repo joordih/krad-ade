@@ -1,7 +1,7 @@
 use std::io::{BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Condvar, Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
@@ -18,7 +18,7 @@ const SIGN_IN_WAIT: Duration = Duration::from_mins(5);
 const STDERR_LIMIT_BYTES: u64 = 16 * 1024;
 const BOOT_THREAD: &str = "krad-ade-mux-boot";
 const ERRORS_THREAD: &str = "krad-ade-mux-ssh-errors";
-const STDERR_SETTLE: Duration = Duration::from_millis(100);
+const STDERR_WAIT: Duration = Duration::from_secs(2);
 const EXIT_POLL: Duration = Duration::from_millis(20);
 const HOST_KEY_NOT_TRUSTED: &str = "the host's key was not trusted";
 const CHANNEL_CLOSED: &str = "it ended before the app's CLI started";
@@ -81,28 +81,53 @@ pub(super) fn stop(child: &Mutex<Child>) {
     }
 }
 
-pub(super) fn collect_errors(child: &mut Child) -> Result<Arc<Mutex<Vec<u8>>>, HostError> {
-    let collected = Arc::new(Mutex::new(Vec::new()));
-    if let Some(stderr) = child.stderr.take() {
-        let sink = Arc::clone(&collected);
-        thread::Builder::new()
-            .name(ERRORS_THREAD.to_owned())
-            .spawn(move || {
-                let mut bytes = Vec::new();
-                let mut limited = stderr.take(STDERR_LIMIT_BYTES);
-                limited.read_to_end(&mut bytes).ok();
-                *lock(&sink) = bytes;
-                std::io::copy(&mut limited.into_inner(), &mut std::io::sink()).ok();
-            })?;
+#[derive(Default)]
+pub(super) struct CapturedErrors {
+    bytes: Mutex<Option<Vec<u8>>>,
+    finished: Condvar,
+}
+
+impl CapturedErrors {
+    fn finish(&self, bytes: Vec<u8>) {
+        *self.bytes.lock().unwrap_or_else(PoisonError::into_inner) = Some(bytes);
+        self.finished.notify_all();
     }
+
+    fn text(&self) -> String {
+        let guard = self.bytes.lock().unwrap_or_else(PoisonError::into_inner);
+        let (guard, _) = self
+            .finished
+            .wait_timeout_while(guard, STDERR_WAIT, |bytes| bytes.is_none())
+            .unwrap_or_else(PoisonError::into_inner);
+        guard.as_deref().map_or_else(String::new, |bytes| {
+            String::from_utf8_lossy(bytes).into_owned()
+        })
+    }
+}
+
+pub(super) fn collect_errors(child: &mut Child) -> Result<Arc<CapturedErrors>, HostError> {
+    let collected = Arc::new(CapturedErrors::default());
+    let Some(stderr) = child.stderr.take() else {
+        collected.finish(Vec::new());
+        return Ok(collected);
+    };
+    let sink = Arc::clone(&collected);
+    thread::Builder::new()
+        .name(ERRORS_THREAD.to_owned())
+        .spawn(move || {
+            let mut bytes = Vec::new();
+            let mut limited = stderr.take(STDERR_LIMIT_BYTES);
+            limited.read_to_end(&mut bytes).ok();
+            sink.finish(bytes);
+            std::io::copy(&mut limited.into_inner(), &mut std::io::sink()).ok();
+        })?;
     Ok(collected)
 }
 
-pub(super) fn boot_failure(error: MuxError, errors: &Mutex<Vec<u8>>) -> HostError {
+pub(super) fn boot_failure(error: MuxError, errors: &CapturedErrors) -> HostError {
     match error {
         MuxError::Closed | MuxError::Io(_) | MuxError::Protocol => {
-            thread::sleep(STDERR_SETTLE);
-            let stderr = String::from_utf8_lossy(&lock(errors)).into_owned();
+            let stderr = errors.text();
             let failure = match SshFailure::classify(&stderr) {
                 SshFailure::NeedsInteractiveSignIn => SshFailure::AuthenticationFailed,
                 SshFailure::HostKeyUnknown => SshFailure::Other(HOST_KEY_NOT_TRUSTED.to_owned()),
@@ -117,11 +142,10 @@ pub(super) fn boot_failure(error: MuxError, errors: &Mutex<Vec<u8>>) -> HostErro
     }
 }
 
-pub(super) fn machine_failure(error: MuxError, errors: &Mutex<Vec<u8>>) -> HostError {
+pub(super) fn machine_failure(error: MuxError, errors: &CapturedErrors) -> HostError {
     match error {
         MuxError::Closed | MuxError::Io(_) | MuxError::Protocol => {
-            thread::sleep(STDERR_SETTLE);
-            let stderr = String::from_utf8_lossy(&lock(errors)).into_owned();
+            let stderr = errors.text();
             let headline: String = stderr
                 .lines()
                 .map(str::trim)

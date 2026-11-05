@@ -20,7 +20,7 @@ use super::super::ask::{AskQueue, Waiting};
 use super::super::chat::{fold_entry, LiveProcess};
 use super::super::EnvironmentShell;
 use super::outbox::Outbox;
-use super::{view, Backend, SurfaceChat, SurfaceCommand};
+use super::{anchor, Backend, SurfaceChat, SurfaceCommand};
 
 use mcp::McpPrep;
 pub(in crate::environment_shell) use open::restored_chats;
@@ -276,12 +276,13 @@ impl EnvironmentShell {
             messages,
             thread,
             problem,
+            anchor,
             ..
         }) = structured_chat(self, env, id)
         else {
             return;
         };
-        let followed = view::following(thread);
+        let followed = anchor::follows_tail(*anchor, thread);
         let mut state = None;
         let (event, refused) = match event {
             LiveEvent::Refused(refused) => (

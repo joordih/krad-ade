@@ -44,6 +44,7 @@ pub(super) struct WorkerOrder {
     pub(super) worktree: Option<String>,
     pub(super) brief: String,
     pub(super) lead: Option<WorkerOf>,
+    pub(super) mode: Option<PermissionMode>,
 }
 
 pub(super) struct WorkerOf {
@@ -222,6 +223,7 @@ impl EnvironmentShell {
             worktree,
             brief,
             lead: None,
+            mode: self.chat_permission_mode(&env, caller),
         };
         self.start_worker(&env, &group, order, reply, cx);
     }
@@ -240,6 +242,7 @@ impl EnvironmentShell {
             worktree,
             brief,
             lead,
+            mode,
         } = order;
         let lead_task = lead.as_ref().map(|lead| lead.task.clone());
         let spawn = WorkerSpawn {
@@ -252,6 +255,7 @@ impl EnvironmentShell {
                 preset,
                 brief,
                 spawn,
+                mode,
             };
             self.launch_worker(&env, launch, reply, cx);
             return;
@@ -294,6 +298,7 @@ impl EnvironmentShell {
                         preset,
                         brief,
                         spawn,
+                        mode,
                     };
                     shell.launch_worker(&env, launch, reply, cx);
                 }

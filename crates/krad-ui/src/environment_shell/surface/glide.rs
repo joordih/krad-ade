@@ -14,12 +14,8 @@ pub(super) struct Glide {
 }
 
 impl SurfaceChat {
-    fn scrolled(&self) -> f32 {
-        -self.thread.scroll_px_offset_for_scrollbar().y.as_f32()
-    }
-
     pub(super) fn start_glide(&mut self, now: Instant) {
-        self.thread.pause_following_tail();
+        self.anchor_question();
         self.glide = Some(Glide {
             spring: Spring::at_rest(self.scrolled(), GLIDE_RESPONSE_S),
             last: now,
@@ -28,12 +24,11 @@ impl SurfaceChat {
 
     fn advance_glide(&mut self, now: Instant) -> bool {
         let scrolled = self.scrolled();
+        let target = self.glide_target();
         let Some(glide) = self.glide.as_mut() else {
             return false;
         };
-        glide
-            .spring
-            .set_target(self.thread.max_offset_for_scrollbar().y.as_f32());
+        glide.spring.set_target(target);
         glide.spring.step((now - glide.last).as_secs_f32());
         glide.last = now;
         self.thread.scroll_by(px(glide.spring.value() - scrolled));
@@ -41,7 +36,7 @@ impl SurfaceChat {
             return true;
         }
         self.glide = None;
-        self.thread.scroll_to_end();
+        self.thread.scroll_by(px(target - self.scrolled()));
         false
     }
 }

@@ -84,6 +84,7 @@ mod tests {
             kind: NodeKind::Chat,
             file: None,
             extension: None,
+            bookmarks: crate::bookmark::ChatBookmarks::default(),
         });
         env.place_terminal(id, None);
         id

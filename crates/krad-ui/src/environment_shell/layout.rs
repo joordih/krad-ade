@@ -254,6 +254,15 @@ impl EnvironmentShell {
     }
 }
 
+impl EnvironmentShell {
+    fn sync_extensions(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.flush_extension_prompts(window, cx);
+        self.sync_extension_fields(window, cx);
+        self.sync_extension_events(cx);
+        self.sync_extension_tabs(cx);
+    }
+}
+
 impl Render for EnvironmentShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let pal = palette(cx);
@@ -263,10 +272,7 @@ impl Render for EnvironmentShell {
         self.ensure_structured_chats(window, cx);
         self.sync_file_tabs(window, cx);
         self.flush_workspace_edits(window, cx);
-        self.flush_extension_prompts(window, cx);
-        self.sync_extension_fields(window, cx);
-        self.sync_extension_events(cx);
-        self.sync_extension_tabs(cx);
+        self.sync_extensions(window, cx);
         self.sync_changes_tabs(cx);
         self.sync_system_appearance(cx);
         self.track_cursor_jumps(cx);
@@ -275,6 +281,7 @@ impl Render for EnvironmentShell {
         self.sync_notes_view(view, window, cx);
         self.ensure_chat_sessions(cx);
         self.sync_session_panes();
+        self.end_hidden_anchors();
         self.sync_menu_focus(window, cx);
         self.sync_model_picker_focus(window, cx);
         self.sync_ask_focus(window, cx);

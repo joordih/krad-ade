@@ -68,6 +68,7 @@ impl EnvironmentData {
             kind: NodeKind::Extension,
             file: None,
             extension: Some(tab),
+            bookmarks: crate::bookmark::ChatBookmarks::default(),
         });
         self.place_terminal(id, None);
         self.reveal_terminal(id);

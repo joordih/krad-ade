@@ -8,16 +8,16 @@ use krad_chat::Speaker;
 use krad_domain::TerminalId;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
-use std::time::Instant;
 
 use super::super::chat::{question_bubble, AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
 use super::edit_message::is_edited;
 use super::mentions::sent_mentions;
-use super::message_actions::{copy_button, message_actions, message_group};
+use super::message_actions::{copy_button, message_actions, message_group, BookmarkAction};
 use super::origin::origin_line;
-use super::view::{column, error_line, muted_line, status_line, AgentNow, LOADING_TEXT};
-use super::{Backend, Origin, SurfaceChat, THINKING_LABEL, WORKING_LABEL};
+use super::status_line::{status_line, TurnPhase};
+use super::view::{column, error_line, muted_line, AgentNow, LOADING_TEXT};
+use super::{Backend, Origin, SurfaceChat};
 use crate::components::{Button, ButtonVariant};
 use crate::theme::{palette, Palette, SPACE_0_5};
 
@@ -88,6 +88,10 @@ fn first_question(chat: &SurfaceChat, items: &[ThreadItem]) -> Option<usize> {
     })
 }
 
+pub(super) fn first_message_row(chat: &SurfaceChat) -> usize {
+    usize::from(chat.skips_history()) + usize::from(chat.origin.is_some())
+}
+
 fn question_text(text: &str) -> Option<&str> {
     Some(text.trim()).filter(|text| !text.is_empty())
 }
@@ -98,6 +102,7 @@ fn question_row(
     message: &ChatMessage,
     chat: &SurfaceChat,
     edit: Option<AnyElement>,
+    bookmark: Option<BookmarkAction>,
     pal: &Palette,
 ) -> AnyElement {
     let bubble = format!("{BUBBLE_PREFIX}-{}-{index}", id.as_u64());
@@ -106,14 +111,15 @@ fn question_row(
         .filter(|_| matches!(chat.backend, Backend::Structured(_)))
         .map(|text| {
             let key = format!("{QUESTION_COPY_PREFIX}-{}-{index}", id.as_u64());
-            let copy = copy_button(
+            copy_button(
                 ElementId::Name(key.into()),
                 text.to_owned(),
                 QUESTION_COPY_TOOLTIP,
                 pal,
-            );
-            message_actions(group.clone(), edit.into_iter().chain([copy]))
+            )
         });
+    let actions = (copy.is_some() || bookmark.is_some())
+        .then(|| message_actions(group.clone(), edit.into_iter().chain(copy), bookmark));
     div()
         .group(group)
         .flex()
@@ -131,7 +137,7 @@ fn question_row(
             ))
         })
         .children(sent_mentions(&message.mentions, pal))
-        .children(copy)
+        .children(actions)
         .into_any_element()
 }
 
@@ -139,16 +145,6 @@ fn runway_height(viewport: f32, below: Option<f32>, lead: f32, previous: f32) ->
     below.map_or(previous, |below| {
         (viewport - below - lead - THREAD_PAD_BOTTOM).max(0.0)
     })
-}
-
-fn status_label(last: Option<&ChatMessage>) -> &'static str {
-    let wrote = last
-        .filter(|message| message.speaker == Speaker::Assistant)
-        .and_then(|message| message.parts.last());
-    match wrote {
-        Some(AnswerPart::Tool(_) | AnswerPart::Text(_) | AnswerPart::Ask(_)) => WORKING_LABEL,
-        Some(AnswerPart::Thinking(_)) | None => THINKING_LABEL,
-    }
 }
 
 fn volatile_start(items: &[ThreadItem]) -> usize {
@@ -250,6 +246,7 @@ impl EnvironmentShell {
             }
         }
         let lead = chat.lead.get().unwrap_or(THREAD_PAD_TOP);
+        chat.note_landing(question, lead);
         let below: Option<f32> = (question..runway)
             .map(|index| {
                 thread
@@ -295,11 +292,13 @@ impl EnvironmentShell {
                         let edit = chat
                             .offers_edit(index)
                             .then(|| Self::edit_button(id, index, pal, cx));
-                        question_row(id, index, message, chat, edit, pal)
+                        let bookmark = self.bookmark_action(id, index, chat, pal, cx);
+                        question_row(id, index, message, chat, edit, bookmark, pal)
                     }
                     Speaker::Assistant => {
                         let workers = self.worker_cards(id);
-                        Self::surface_answer(id, index, message, chat, &workers, cx)
+                        let bookmark = self.bookmark_action(id, index, chat, pal, cx);
+                        Self::surface_answer(id, index, message, chat, &workers, bookmark, cx)
                     }
                 }
             }
@@ -313,12 +312,11 @@ impl EnvironmentShell {
                     .get(&self.active)
                     .and_then(|live| live.sessions.get(&id))
                     .and_then(|session| session.activity.as_deref());
-                let started = chat.working_since.get().unwrap_or_else(Instant::now);
-                chat.working_since.set(Some(started));
+                let started = self.turn_started(id, chat);
                 let mono = cx.theme().mono_font_family.clone();
                 status_line(
                     id.as_u64(),
-                    status_label(chat.messages.last()),
+                    TurnPhase::of(chat.messages.last()),
                     started,
                     activity,
                     mono,

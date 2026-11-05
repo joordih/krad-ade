@@ -151,16 +151,15 @@ impl MuxCarrier {
             stop(&child);
             return Err(HostError::NotConnected);
         };
-        if let Some(line) = first_line {
-            if let Err(error) = stdin
+        let sent = first_line.map_or(Ok(()), |line| {
+            stdin
                 .write_all(line.as_bytes())
                 .and_then(|()| stdin.flush())
-            {
-                stop(&child);
-                return Err(HostError::Io(error));
-            }
-        }
-        let booted = boot(stdin, stdout, tools.host_clis.clone(), &child, handshake);
+        });
+        let booted = match sent {
+            Ok(()) => boot(stdin, stdout, tools.host_clis.clone(), &child, handshake),
+            Err(error) => Err(MuxError::Io(error)),
+        };
         let (session, incoming, greeting) = match booted {
             Ok(booted) => booted,
             Err(error) => {

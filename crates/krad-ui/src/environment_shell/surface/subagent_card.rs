@@ -9,9 +9,10 @@ use std::time::Instant;
 
 use super::super::chat::{question_bubble, AnswerPart};
 use super::super::EnvironmentShell;
+use super::status_line::{status_line, TurnPhase};
 use super::subagents::SubagentRun;
-use super::view::{column, muted_line, status_line};
-use super::{SurfaceChat, WORKING_LABEL};
+use super::view::{column, muted_line};
+use super::SurfaceChat;
 use crate::components::{agent_status, icon, IconName, StatusKind};
 use crate::theme::{
     palette, Palette, ICON_SM, LINE_SM, LINE_XS, RADIUS_MD, SPACE_1_5, SPACE_2, SPACE_3, TEXT_SM,
@@ -158,6 +159,7 @@ impl EnvironmentShell {
         id: TerminalId,
         tool: &ToolUseId,
         chat: &SurfaceChat,
+        started: Instant,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
@@ -176,19 +178,18 @@ impl EnvironmentShell {
                         pal,
                     )
                 }
-                Speaker::Assistant => Self::surface_answer(id, index, message, chat, &[], cx),
+                Speaker::Assistant => Self::surface_answer(id, index, message, chat, &[], None, cx),
             });
         }
         if run.is_none() {
             thread.push(muted_line(STARTING_LABEL, pal));
         }
         if !finished {
-            let started = chat.working_since.get().unwrap_or_else(Instant::now);
-            chat.working_since.set(Some(started));
             let mono = cx.theme().mono_font_family.clone();
+            let last = run.and_then(|run| run.messages.last());
             thread.push(status_line(
                 id.as_u64(),
-                WORKING_LABEL,
+                TurnPhase::of(last),
                 started,
                 None,
                 mono,
