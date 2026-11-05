@@ -5,7 +5,7 @@ use krad_extension_api::protocol::{
 };
 use krad_host::{HostCommand, HostLink};
 use std::collections::VecDeque;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufReader, Read};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -14,8 +14,11 @@ use std::time::{Duration, Instant};
 
 use crate::program::connection::{ProgramConnection, ProgramEvent, REQUEST_TIMEOUT};
 use crate::program::error::ProgramError;
+use crate::program::rpc::read_bounded_line;
+use krad_extension_api::limits::MAX_LOG_LINE_BYTES;
 
 pub const MAX_LOG_LINES: usize = 500;
+const TRUNCATED_MARK: char = '…';
 const STDERR_THREAD: &str = "krad-extension-stderr";
 
 #[derive(Debug, Clone, Default)]
@@ -148,11 +151,13 @@ fn host_command(launch: &ServerLaunch, cwd: &Path) -> HostCommand {
 }
 
 fn keep_lines(errors: impl Read, log: &ProgramLog) {
-    for line in BufReader::new(errors).lines() {
-        match line {
-            Ok(line) => log.push(line),
-            Err(_) => break,
+    let mut reader = BufReader::new(errors);
+    while let Ok(Some(line)) = read_bounded_line(&mut reader, MAX_LOG_LINE_BYTES) {
+        let mut text = String::from_utf8_lossy(&line.bytes).trim_end().to_owned();
+        if line.truncated {
+            text.push(TRUNCATED_MARK);
         }
+        log.push(text);
     }
 }
 

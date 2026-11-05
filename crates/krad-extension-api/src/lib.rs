@@ -1,5 +1,6 @@
 mod icon;
 mod id;
+pub mod limits;
 pub mod manifest;
 pub mod protocol;
 mod schema;

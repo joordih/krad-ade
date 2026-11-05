@@ -289,7 +289,7 @@ impl ManifestSummary {
             && self.locators.is_empty()
     }
 
-    fn add(&mut self, file: ManifestFile) {
+    fn add(&mut self, file: &ManifestFile) {
         self.languages.extend(
             file.languages
                 .iter()
@@ -319,7 +319,7 @@ pub(crate) fn summary_of(folder: &Path) -> Result<ManifestSummary, ExtensionErro
     let mut summary = ManifestSummary::default();
     for path in manifest_files(folder) {
         let text = fs::read_to_string(&path)?;
-        summary.add(parse(&text, &path.to_string_lossy())?);
+        summary.add(&parse(&text, &path.to_string_lossy())?);
     }
     Ok(summary)
 }

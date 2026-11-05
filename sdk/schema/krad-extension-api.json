@@ -80,7 +80,7 @@
         {
           "properties": {
             "path": {
-              "type": "string"
+              "$ref": "#/$defs/ProgramPath"
             }
           },
           "required": [
@@ -91,10 +91,10 @@
         {
           "properties": {
             "sha256": {
-              "type": "string"
+              "$ref": "#/$defs/Sha256Hex"
             },
             "url": {
-              "type": "string"
+              "$ref": "#/$defs/HttpsUrl"
             }
           },
           "required": [
@@ -531,9 +531,6 @@
       ],
       "type": "string"
     },
-    "ExtensionId": {
-      "type": "string"
-    },
     "ExtensionManifest": {
       "additionalProperties": false,
       "properties": {
@@ -568,7 +565,7 @@
           ]
         },
         "id": {
-          "$ref": "#/$defs/ExtensionId"
+          "type": "string"
         },
         "name": {
           "type": "string"
@@ -872,6 +869,9 @@
       "type": "object"
     },
     "HostKindId": {
+      "type": "string"
+    },
+    "HttpsUrl": {
       "type": "string"
     },
     "Icon": {
@@ -2112,6 +2112,13 @@
       ],
       "type": "object"
     },
+    "Permission": {
+      "enum": [
+        "terminals",
+        "run_commands"
+      ],
+      "type": "string"
+    },
     "PickItem": {
       "properties": {
         "detail": {
@@ -2231,6 +2238,13 @@
         }
       ],
       "properties": {
+        "permissions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Permission"
+          },
+          "type": "array"
+        },
         "placement": {
           "$ref": "#/$defs/Placement"
         }
@@ -2239,6 +2253,9 @@
         "placement"
       ],
       "type": "object"
+    },
+    "ProgramPath": {
+      "type": "string"
     },
     "ProgressParams": {
       "oneOf": [
@@ -2319,7 +2336,7 @@
           "$ref": "#/$defs/CommandId"
         },
         "extension": {
-          "$ref": "#/$defs/ExtensionId"
+          "type": "string"
         }
       },
       "required": [
@@ -2656,6 +2673,9 @@
           "type": "string"
         }
       ]
+    },
+    "Sha256Hex": {
+      "type": "string"
     },
     "Size": {
       "oneOf": [

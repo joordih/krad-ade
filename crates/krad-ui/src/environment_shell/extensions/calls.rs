@@ -1,5 +1,6 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_domain::{ExtensionSecret, ExtensionSecretKey, ExtensionSettingValue};
+use krad_extensions::api::limits::TOAST_INTERVAL;
 use krad_extensions::api::manifest::SettingKind;
 use krad_extensions::api::protocol::{
     CloseView, Empty, GetSecret, GetSecretParams, GetSettings, GroupInfo, OpenFile, OpenFileParams,
@@ -43,6 +44,17 @@ impl EnvironmentShell {
         }
     }
 
+    fn extension_permissions(
+        &self,
+        key: &SlotKey,
+    ) -> Vec<krad_extensions::api::manifest::Permission> {
+        self.extensions
+            .record(&key.extension)
+            .and_then(super::ExtensionRecord::program)
+            .and_then(|program| program.manifest().program.clone())
+            .map_or_else(Vec::new, |declared| declared.permissions)
+    }
+
     pub(super) fn handle_call(
         &mut self,
         key: &SlotKey,
@@ -50,6 +62,11 @@ impl EnvironmentShell {
         call: AppCall,
         cx: &mut Context<Self>,
     ) {
+        let permissions = self.extension_permissions(key);
+        if let Err(refusal) = krad_extensions::program::allowed(&permissions, &call) {
+            self.refuse_call(key, id, &refusal.to_string());
+            return;
+        }
         match call {
             AppCall::Confirm(params) => {
                 self.queue_extension_prompt(Prompt::Confirm(key.clone(), id, params), cx);
@@ -114,6 +131,11 @@ impl EnvironmentShell {
         notice: AppNotice,
         cx: &mut Context<Self>,
     ) {
+        let permissions = self.extension_permissions(key);
+        if let Err(refusal) = krad_extensions::program::allowed_notice(&permissions, &notice) {
+            tracing::debug!(extension = %key.extension, %refusal, "extension notice refused");
+            return;
+        }
         let title = self.extensions.title_of(&key.extension);
         match notice {
             AppNotice::Log(params) => {
@@ -123,6 +145,13 @@ impl EnvironmentShell {
             }
             AppNotice::PatchView(params) => self.patch_extension_views(key, &params, cx),
             AppNotice::Toast(params) => {
+                let now = std::time::Instant::now();
+                let last = self.extensions.toast_times.get(key).copied();
+                if !toast_allowed(last, now) {
+                    tracing::debug!(extension = %key.extension, "extension toast dropped");
+                    return;
+                }
+                self.extensions.toast_times.insert(key.clone(), now);
                 let text = match tone_mark(params.tone) {
                     Some(mark) => format!("{mark} {title}: {}", params.message),
                     None => format!("{title}: {}", params.message),
@@ -131,7 +160,7 @@ impl EnvironmentShell {
             }
             AppNotice::Progress(params) => self.track_progress(key, &title, params),
             AppNotice::SendTerminal(params) => {
-                self.send_extension_terminal(params.terminal, params.text);
+                self.send_extension_terminal(key, params.terminal, params.text);
             }
         }
     }
@@ -282,15 +311,14 @@ impl EnvironmentShell {
             .extensions
             .record(extension)
             .and_then(super::ExtensionRecord::manifest)
-            .map(|manifest| {
+            .map_or_else(Vec::new, |manifest| {
                 manifest
                     .contributes
                     .secrets
                     .iter()
                     .map(|secret| secret.name.to_string())
                     .collect()
-            })
-            .unwrap_or_default();
+            });
         let keys: Vec<ExtensionSecretKey> = names
             .iter()
             .map(|name| ExtensionSecretKey::new(extension, name))
@@ -319,6 +347,10 @@ impl EnvironmentShell {
         })
         .detach();
     }
+}
+
+fn toast_allowed(last: Option<std::time::Instant>, now: std::time::Instant) -> bool {
+    last.is_none_or(|last| now.saturating_duration_since(last) >= TOAST_INTERVAL)
 }
 
 const fn tone_mark(tone: Tone) -> Option<&'static str> {
@@ -352,6 +384,14 @@ fn setting_value(value: &ExtensionSettingValue) -> SettingValue {
 mod tests {
     use super::*;
     use krad_extensions::api::manifest::SettingOption;
+
+    #[test]
+    fn toasts_from_one_extension_are_spaced_out() {
+        let start = std::time::Instant::now();
+        assert!(toast_allowed(None, start));
+        assert!(!toast_allowed(Some(start), start));
+        assert!(toast_allowed(Some(start), start + TOAST_INTERVAL));
+    }
 
     #[test]
     fn declared_defaults_and_stored_values_read_as_protocol_values() {

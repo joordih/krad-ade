@@ -21,7 +21,7 @@ pub(in crate::environment_shell) use machines::{HostKindRef, MachineDialog};
 pub(in crate::environment_shell) use views::OpenViewId;
 
 use gpui_kit::{AppContext as _, Context, Task};
-use krad_domain::{EnvironmentName, ExtensionEntry, ExtensionSettings, TerminalId};
+use krad_domain::{EnvironmentName, ExtensionEntry, ExtensionSettings};
 use krad_extensions::api::manifest::{ExtensionManifest, Placement};
 use krad_extensions::api::{ExtensionId, TerminalHandle};
 use krad_extensions::program::{ExtensionProcess, ProgramConnection, ProgramLog, RestartPolicy};
@@ -128,7 +128,7 @@ pub(in crate::environment_shell) struct Extensions {
     views: views::OpenViews,
     prompts: prompts::Prompts,
     progress: progress::ProgressBoard,
-    terminals: HashMap<TerminalHandle, (EnvironmentName, TerminalId)>,
+    terminals: HashMap<TerminalHandle, terminals::OwnedTerminal>,
     view_terminals: Vec<(SlotKey, TerminalHandle, gpui_kit::AnyView)>,
     next_terminal: u64,
     pub(in crate::environment_shell) conflicts: Vec<KeyConflict>,
@@ -136,6 +136,7 @@ pub(in crate::environment_shell) struct Extensions {
     declined: HashMap<ExtensionId, krad_domain::ExtensionFingerprint>,
     trust_queue: VecDeque<(ExtensionId, krad_domain::ExtensionFingerprint)>,
     restored: HashSet<EnvironmentName>,
+    toast_times: HashMap<SlotKey, std::time::Instant>,
     watch: activation::Watch,
     loaded: bool,
     machines: machines::Machines,

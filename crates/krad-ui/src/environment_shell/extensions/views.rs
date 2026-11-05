@@ -198,9 +198,16 @@ impl EnvironmentShell {
     fn show_rendered(
         &mut self,
         id: OpenViewId,
-        root: krad_extensions::api::view::Node,
+        mut root: krad_extensions::api::view::Node,
         cx: &mut Context<Self>,
     ) {
+        if let Err(error) = krad_extensions::api::view::bounded(&mut root) {
+            if let Some(open) = self.extensions.views.views.get_mut(&id) {
+                open.state = ViewState::Failed(error.to_string());
+            }
+            cx.notify();
+            return;
+        }
         let Some(open) = self.extensions.views.views.get(&id) else {
             return;
         };

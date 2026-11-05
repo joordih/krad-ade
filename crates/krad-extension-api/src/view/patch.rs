@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::id::NodeKey;
+use crate::view::bounds::{clamp, depth_of, fits, item_measure_of, measure, Measure};
 use crate::view::element::{Element, Node, StreamLine, TreeItem};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -50,6 +51,49 @@ pub enum PatchError {
     Mismatch(NodeKey),
     #[error("the root cannot be removed")]
     Root,
+    #[error("the view would grow past what the app draws")]
+    TooLarge,
+}
+
+/// # Errors
+///
+/// Returns [`PatchError::TooLarge`] when the view holds more nodes or nests deeper than the app
+/// draws. Sizes and columns are brought within their bounds.
+pub fn bounded(node: &mut Node) -> Result<(), PatchError> {
+    clamp(node);
+    let Measure { nodes, height } = measure(node);
+    if fits(nodes, height) {
+        Ok(())
+    } else {
+        Err(PatchError::TooLarge)
+    }
+}
+
+fn check_growth(
+    root: &Node,
+    anchor: &NodeKey,
+    removed: usize,
+    added: Measure,
+) -> Result<(), PatchError> {
+    let depth = depth_of(root, anchor).ok_or_else(|| PatchError::Missing(anchor.clone()))?;
+    let total = measure(root)
+        .nodes
+        .saturating_sub(removed)
+        .saturating_add(added.nodes);
+    if fits(total, depth.saturating_add(added.height)) {
+        Ok(())
+    } else {
+        Err(PatchError::TooLarge)
+    }
+}
+
+fn find_ref<'a>(node: &'a Node, key: &NodeKey) -> Option<&'a Node> {
+    if node.key == *key {
+        return Some(node);
+    }
+    node.children()
+        .iter()
+        .find_map(|child| find_ref(child, key))
 }
 
 /// # Errors
@@ -58,15 +102,29 @@ pub enum PatchError {
 /// kind than the change needs.
 pub fn apply(root: &mut Node, patch: Patch) -> Result<Applied, PatchError> {
     match patch {
-        Patch::Replace { node } => {
+        Patch::Replace { mut node } => {
             let key = node.key.clone();
+            clamp(&mut node);
+            let removed = find_ref(root, &key).map_or(0, |old| measure(old).nodes);
+            check_growth(root, &key, removed, measure(&node))?;
             *find(root, &key)? = node;
         }
         Patch::Insert {
             parent,
             index,
-            node,
+            mut node,
         } => {
+            clamp(&mut node);
+            let added = measure(&node);
+            check_growth(
+                root,
+                &parent,
+                0,
+                Measure {
+                    nodes: added.nodes,
+                    height: added.height.saturating_add(1),
+                },
+            )?;
             let target = find(root, &parent)?;
             let children = target
                 .children_mut()
@@ -90,6 +148,14 @@ pub fn apply(root: &mut Node, patch: Patch) -> Result<Applied, PatchError> {
             };
         }
         Patch::ReplaceItem { tree, item } => {
+            let added = item_measure_of(&item);
+            let removed = find_ref(root, &tree)
+                .and_then(|node| match &node.element {
+                    Element::Tree { items } => find_item_ref(items, &item.key),
+                    _ => None,
+                })
+                .map_or(0, |old| item_measure_of(old).nodes);
+            check_growth(root, &tree, removed, added)?;
             let Element::Tree { items } = &mut find(root, &tree)?.element else {
                 return Err(PatchError::Mismatch(tree));
             };
@@ -145,6 +211,16 @@ fn remove_below(node: &mut Node, key: &NodeKey) -> bool {
         return true;
     }
     children.iter_mut().any(|child| remove_below(child, key))
+}
+
+fn find_item_ref<'a>(items: &'a [TreeItem], key: &NodeKey) -> Option<&'a TreeItem> {
+    items.iter().find_map(|item| {
+        if item.key == *key {
+            Some(item)
+        } else {
+            find_item_ref(&item.children, key)
+        }
+    })
 }
 
 fn find_item<'a>(items: &'a mut [TreeItem], key: &NodeKey) -> Option<&'a mut TreeItem> {
@@ -294,6 +370,96 @@ mod tests {
             ),
             Err(PatchError::Mismatch(key("title")?))
         );
+        Ok(())
+    }
+
+    fn nested(depth: usize) -> Result<Node, IdError> {
+        let mut node = text("leaf", "x")?;
+        for level in 0..depth {
+            node = column(&format!("level-{level}"), vec![node])?;
+        }
+        Ok(node)
+    }
+
+    #[test]
+    fn a_patch_that_nests_deeper_than_the_app_draws_is_refused() -> TestResult {
+        let mut root = column("root", Vec::new())?;
+        let deep = nested(crate::limits::MAX_VIEW_DEPTH + 1)?;
+        assert_eq!(
+            apply(
+                &mut root,
+                Patch::Insert {
+                    parent: key("root")?,
+                    index: 0,
+                    node: deep
+                }
+            ),
+            Err(PatchError::TooLarge)
+        );
+        assert_eq!(root.children().len(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn a_patch_that_floods_the_view_with_nodes_is_refused() -> TestResult {
+        let many = (0..=crate::limits::MAX_VIEW_NODES)
+            .map(|index| text(&format!("n{index}"), "x"))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut root = column("root", Vec::new())?;
+        let flood = column("flood", many)?;
+        assert_eq!(
+            apply(
+                &mut root,
+                Patch::Insert {
+                    parent: key("root")?,
+                    index: 0,
+                    node: flood
+                }
+            ),
+            Err(PatchError::TooLarge)
+        );
+        let mut big = column("root", Vec::new())?;
+        big.children_mut()
+            .ok_or("a column has children")?
+            .push(column(
+                "flood",
+                (0..=crate::limits::MAX_VIEW_NODES)
+                    .map(|index| text(&format!("n{index}"), "x"))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )?);
+        assert_eq!(bounded(&mut big), Err(PatchError::TooLarge));
+        Ok(())
+    }
+
+    #[test]
+    fn sizes_and_grid_columns_are_clamped_when_they_arrive() -> TestResult {
+        use crate::view::element::MAX_GRID_COLUMNS;
+        use crate::view::style::{Size, MAX_FIXED_SIZE};
+        let mut root = column("root", Vec::new())?;
+        let grid = Node {
+            key: key("grid")?,
+            element: Element::Grid {
+                columns: u8::MAX,
+                style: Style {
+                    width: Size::Fixed(u16::MAX),
+                    ..Style::default()
+                },
+                children: Vec::new(),
+            },
+        };
+        apply(
+            &mut root,
+            Patch::Insert {
+                parent: key("root")?,
+                index: 0,
+                node: grid,
+            },
+        )?;
+        let Element::Grid { columns, style, .. } = &root.children()[0].element else {
+            return Err("the grid was inserted".into());
+        };
+        assert_eq!(*columns, MAX_GRID_COLUMNS);
+        assert_eq!(style.width, Size::Fixed(MAX_FIXED_SIZE));
         Ok(())
     }
 }

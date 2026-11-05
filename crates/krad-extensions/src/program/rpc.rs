@@ -7,7 +7,8 @@ use crate::program::error::ProgramError;
 const CONTENT_LENGTH: &str = "Content-Length:";
 const HEADER_END: &str = "\r\n";
 const JSONRPC_VERSION: &str = "2.0";
-pub(crate) const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
+use krad_extension_api::limits::{MAX_FRAME_BYTES, MAX_HEADER_LINE_BYTES};
+const NEWLINE: u8 = b'\n';
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResponseError {
@@ -147,14 +148,55 @@ pub(crate) fn write_message(out: &mut impl Write, message: &Outgoing) -> Result<
     Ok(())
 }
 
+pub(crate) struct BoundedLine {
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) truncated: bool,
+}
+
+pub(crate) fn read_bounded_line(
+    input: &mut impl BufRead,
+    max: usize,
+) -> std::io::Result<Option<BoundedLine>> {
+    let mut line = BoundedLine {
+        bytes: Vec::new(),
+        truncated: false,
+    };
+    let mut read_any = false;
+    loop {
+        let available = input.fill_buf()?;
+        if available.is_empty() {
+            return Ok(read_any.then_some(line));
+        }
+        read_any = true;
+        let (chunk, done) = match available.iter().position(|byte| *byte == NEWLINE) {
+            Some(at) => (&available[..=at], true),
+            None => (available, false),
+        };
+        let room = max.saturating_sub(line.bytes.len());
+        if chunk.len() > room {
+            line.truncated = true;
+        }
+        line.bytes
+            .extend_from_slice(&chunk[..chunk.len().min(room)]);
+        let used = chunk.len();
+        input.consume(used);
+        if done {
+            return Ok(Some(line));
+        }
+    }
+}
+
 pub(crate) fn read_message(input: &mut impl BufRead) -> Result<Option<Incoming>, ProgramError> {
     let mut length = None;
     loop {
-        let mut line = String::new();
-        if input.read_line(&mut line)? == 0 {
+        let Some(read) = read_bounded_line(input, MAX_HEADER_LINE_BYTES)? else {
             return Ok(None);
+        };
+        if read.truncated {
+            return Err(ProgramError::Header);
         }
-        let line = line.trim_end();
+        let text = String::from_utf8_lossy(&read.bytes);
+        let line = text.trim_end();
         if line.is_empty() {
             break;
         }
@@ -249,6 +291,29 @@ mod tests {
             matches!(&read[1], Incoming::Notification { method, .. } if method == "window/toast")
         );
         assert!(matches!(&read[2], Incoming::Request { id, .. } if *id == json!("a")));
+        Ok(())
+    }
+
+    #[test]
+    fn an_endless_header_line_is_refused_without_reading_it_all() {
+        let endless = "X".repeat(MAX_HEADER_LINE_BYTES * 4);
+        let mut input = Cursor::new(endless.into_bytes());
+        assert!(matches!(
+            read_message(&mut input),
+            Err(ProgramError::Header)
+        ));
+    }
+
+    #[test]
+    fn a_bounded_line_keeps_its_head_and_says_it_was_cut() -> std::io::Result<()> {
+        let mut input = Cursor::new(b"abcdefgh\nnext\n".to_vec());
+        let first = read_bounded_line(&mut input, 3)?.ok_or(std::io::ErrorKind::UnexpectedEof)?;
+        assert_eq!(first.bytes, b"abc");
+        assert!(first.truncated);
+        let second = read_bounded_line(&mut input, 16)?.ok_or(std::io::ErrorKind::UnexpectedEof)?;
+        assert_eq!(second.bytes, b"next\n");
+        assert!(!second.truncated);
+        assert!(read_bounded_line(&mut input, 16)?.is_none());
         Ok(())
     }
 

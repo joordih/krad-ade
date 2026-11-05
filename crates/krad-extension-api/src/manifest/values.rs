@@ -75,10 +75,11 @@ fn program_path(text: String) -> Result<String, ValueError> {
     Ok(text)
 }
 
-fn sha256(text: String) -> Result<String, ValueError> {
-    let hex = text.trim().to_ascii_lowercase();
+fn sha256(mut text: String) -> Result<String, ValueError> {
+    text.make_ascii_lowercase();
+    let hex = text.trim();
     if hex.len() == SHA256_HEX_LEN && hex.chars().all(|c| c.is_ascii_hexdigit()) {
-        Ok(hex)
+        Ok(hex.to_owned())
     } else {
         Err(ValueError::Sha256)
     }

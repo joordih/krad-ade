@@ -1,3 +1,4 @@
+mod bounds;
 mod element;
 mod event;
 mod patch;
@@ -9,7 +10,7 @@ pub use element::{
     StreamLine, TableRow, TreeItem, MAX_GRID_COLUMNS, MAX_STREAM_LINES,
 };
 pub use event::{FieldValue, ViewEvent};
-pub use patch::{apply, Applied, Patch, PatchError};
+pub use patch::{apply, bounded, Applied, Patch, PatchError};
 pub use style::{
     Align, ColorToken, Direction, Font, Justify, Radius, Size, Space, Style, TextSize, TextStyle,
     Tone, Weight, Wrap, MAX_FIXED_SIZE,

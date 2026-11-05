@@ -3,6 +3,7 @@ use krad_domain::{AgentPreset, EnvironmentName, GroupId, TerminalId};
 use krad_extensions::api::protocol::{OpenTerminalParams, TerminalZone};
 use krad_extensions::api::TerminalHandle;
 use krad_session::{KeyModifiers, PtyInput};
+use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 
 use super::super::sessions::Launch;
@@ -10,10 +11,38 @@ use super::super::terminal_lifecycle::{NodeGroup, NodeSpec};
 use super::super::EnvironmentShell;
 use super::SlotKey;
 
+use krad_extensions::api::limits::MAX_TERMINALS_PER_EXTENSION;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::environment_shell) struct OwnedTerminal {
+    owner: SlotKey,
+    env: EnvironmentName,
+    terminal: TerminalId,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum TerminalRefusal {
     OutsideRoots,
     NoTerminal,
+    TooMany,
+}
+
+pub(super) fn owned_by(
+    terminals: &HashMap<TerminalHandle, OwnedTerminal>,
+    key: &SlotKey,
+    handle: TerminalHandle,
+) -> Option<(EnvironmentName, TerminalId)> {
+    terminals
+        .get(&handle)
+        .filter(|owned| owned.owner == *key)
+        .map(|owned| (owned.env.clone(), owned.terminal))
+}
+
+fn count_owned(terminals: &HashMap<TerminalHandle, OwnedTerminal>, key: &SlotKey) -> usize {
+    terminals
+        .values()
+        .filter(|owned| owned.owner == *key)
+        .count()
 }
 
 impl TerminalRefusal {
@@ -23,6 +52,7 @@ impl TerminalRefusal {
                 "the folder is outside the environment's groups and the extension"
             }
             Self::NoTerminal => "the terminal could not be opened",
+            Self::TooMany => "the extension has opened as many terminals as it may",
         }
     }
 }
@@ -74,6 +104,9 @@ impl EnvironmentShell {
         params: OpenTerminalParams,
         cx: &mut Context<Self>,
     ) -> Result<TerminalHandle, TerminalRefusal> {
+        if count_owned(&self.extensions.terminals, key) >= MAX_TERMINALS_PER_EXTENSION {
+            return Err(TerminalRefusal::TooMany);
+        }
         let env = key
             .environment
             .clone()
@@ -111,9 +144,14 @@ impl EnvironmentShell {
             .ok_or(TerminalRefusal::NoTerminal)?;
         self.extensions.next_terminal += 1;
         let handle = TerminalHandle(self.extensions.next_terminal);
-        self.extensions
-            .terminals
-            .insert(handle, (env.clone(), terminal));
+        self.extensions.terminals.insert(
+            handle,
+            OwnedTerminal {
+                owner: key.clone(),
+                env: env.clone(),
+                terminal,
+            },
+        );
         if params.zone == TerminalZone::Utilities && env == self.active {
             self.dock_in_activity(terminal, cx);
         }
@@ -129,8 +167,14 @@ impl EnvironmentShell {
         Ok(handle)
     }
 
-    pub(super) fn send_extension_terminal(&mut self, handle: TerminalHandle, text: String) {
-        let Some((env, terminal)) = self.extensions.terminals.get(&handle).cloned() else {
+    pub(super) fn send_extension_terminal(
+        &mut self,
+        key: &SlotKey,
+        handle: TerminalHandle,
+        text: String,
+    ) {
+        let Some((env, terminal)) = owned_by(&self.extensions.terminals, key, handle) else {
+            tracing::debug!(extension = %key.extension, "terminal of another extension refused");
             return;
         };
         self.write_terminal(&env, terminal, text.into_bytes());
@@ -181,6 +225,38 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn key(extension: &str) -> Result<SlotKey, krad_domain::IdError> {
+        Ok(SlotKey {
+            extension: extension.parse()?,
+            environment: None,
+        })
+    }
+
+    #[test]
+    fn an_extension_cannot_type_into_another_extensions_terminal(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let env = EnvironmentName::new("main".to_owned());
+        let mut terminals = HashMap::new();
+        let handle = TerminalHandle(1);
+        terminals.insert(
+            handle,
+            OwnedTerminal {
+                owner: key("docker")?,
+                env: env.clone(),
+                terminal: TerminalId(7),
+            },
+        );
+        assert!(owned_by(&terminals, &key("docker")?, handle).is_some());
+        assert_eq!(owned_by(&terminals, &key("evil")?, handle), None);
+        assert_eq!(
+            owned_by(&terminals, &key("docker")?, TerminalHandle(2)),
+            None
+        );
+        assert_eq!(count_owned(&terminals, &key("docker")?), 1);
+        assert_eq!(count_owned(&terminals, &key("evil")?), 0);
+        Ok(())
+    }
 
     fn roots() -> Vec<PathBuf> {
         vec![PathBuf::from("/work/shop"), PathBuf::from("/ext/docker")]

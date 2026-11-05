@@ -160,8 +160,7 @@ pub fn add_folder(folder: &Path) -> Result<ExtensionEntry, ExtensionError> {
     }
     let fallback = folder
         .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
+        .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
     Ok(ExtensionEntry {
         id: id_for(folder, &fallback)?,
         source: ExtensionSource::Folder(folder.to_path_buf()),

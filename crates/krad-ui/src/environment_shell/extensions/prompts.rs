@@ -1,4 +1,5 @@
 use gpui_kit::{Context, PromptButton, PromptLevel, Window};
+use krad_extensions::api::limits::MAX_PENDING_PROMPTS;
 use krad_extensions::api::protocol::{
     Answer, Confirm, ConfirmParams, InputBox, InputBoxParams, Pick, PickItem, PickMode, PickParams,
 };
@@ -54,6 +55,27 @@ pub(super) struct Prompts {
     pub(super) install: Option<PendingInstall>,
 }
 
+const TOO_MANY_PROMPTS: &str = "the extension is already waiting for too many answers";
+
+impl Prompt {
+    fn asker(&self) -> Option<(&SlotKey, &CallId)> {
+        match self {
+            Self::Confirm(key, id, _) | Self::Pick(key, id, _) | Self::Input(key, id, _) => {
+                Some((key, id))
+            }
+            Self::Many(many) => Some((&many.key, &many.id)),
+            Self::InstallRuntime(_) => None,
+        }
+    }
+}
+
+fn waiting_for(queue: &VecDeque<Prompt>, key: &SlotKey) -> usize {
+    queue
+        .iter()
+        .filter(|prompt| prompt.asker().is_some_and(|(asker, _)| asker == key))
+        .count()
+}
+
 fn toggle(chosen: &mut BTreeSet<String>, value: String) {
     if !chosen.remove(&value) {
         chosen.insert(value);
@@ -70,6 +92,13 @@ fn chosen_values(items: &[PickItem], chosen: &BTreeSet<String>) -> Vec<String> {
 
 impl EnvironmentShell {
     pub(super) fn queue_extension_prompt(&mut self, prompt: Prompt, cx: &mut Context<Self>) {
+        if let Some((key, id)) = prompt.asker() {
+            if waiting_for(&self.extensions.prompts.queue, key) >= MAX_PENDING_PROMPTS {
+                let (key, id) = (key.clone(), id.clone());
+                self.refuse_call(&key, id, TOO_MANY_PROMPTS);
+                return;
+            }
+        }
         self.extensions.prompts.queue.push_back(prompt);
         cx.notify();
     }
@@ -346,5 +375,65 @@ mod tests {
             chosen_values(&[item("web")], &BTreeSet::new()),
             Vec::<String>::new()
         );
+    }
+
+    fn call_ids(count: usize) -> Result<Vec<CallId>, Box<dyn std::error::Error>> {
+        use futures::StreamExt as _;
+        use krad_extensions::program::{ProgramConnection, ProgramEvent, REQUEST_TIMEOUT};
+        use std::io::{pipe, BufReader, Write as _};
+        let (app_reads, mut program_writes) = pipe()?;
+        let (_program_reads, app_writes) = pipe()?;
+        let (_connection, mut events) =
+            ProgramConnection::over(BufReader::new(app_reads), app_writes, REQUEST_TIMEOUT)?;
+        for index in 0..count {
+            let body = format!(
+                r#"{{"jsonrpc":"2.0","id":{index},"method":"window/confirm","params":{{"title":"?","confirm":"Yes"}}}}"#
+            );
+            write!(
+                program_writes,
+                "Content-Length: {}\r\n\r\n{body}",
+                body.len()
+            )?;
+        }
+        let mut ids = Vec::new();
+        while ids.len() < count {
+            match futures::executor::block_on(events.next()) {
+                Some(ProgramEvent::Call { id, .. }) => ids.push(id),
+                _ => return Err("the program stopped".into()),
+            }
+        }
+        Ok(ids)
+    }
+
+    fn confirm(key: &SlotKey, id: CallId) -> Prompt {
+        Prompt::Confirm(
+            key.clone(),
+            id,
+            ConfirmParams {
+                title: "Remove?".to_owned(),
+                detail: None,
+                confirm: "Remove".to_owned(),
+                tone: Tone::Error,
+            },
+        )
+    }
+
+    #[test]
+    fn waiting_prompts_are_counted_per_extension() -> Result<(), Box<dyn std::error::Error>> {
+        let docker = SlotKey {
+            extension: "docker".parse()?,
+            environment: None,
+        };
+        let other = SlotKey {
+            extension: "other".parse()?,
+            environment: None,
+        };
+        let mut queue = VecDeque::new();
+        for id in call_ids(MAX_PENDING_PROMPTS)? {
+            queue.push_back(confirm(&docker, id));
+        }
+        assert_eq!(waiting_for(&queue, &docker), MAX_PENDING_PROMPTS);
+        assert_eq!(waiting_for(&queue, &other), 0);
+        Ok(())
     }
 }
