@@ -1,5 +1,7 @@
 mod acp;
+mod anchor;
 mod answer;
+mod bookmarks;
 mod bus;
 mod checklist;
 mod composer;
@@ -12,11 +14,13 @@ mod mentions;
 mod message_actions;
 mod origin;
 mod outbox;
+mod status_line;
 mod structured;
 mod subagent_card;
 mod subagents;
 mod switch;
 mod thread;
+mod timeline;
 mod tool_group;
 mod tool_output;
 mod transcript;
@@ -32,13 +36,14 @@ use krad_domain::{
     DEFAULT_CHAT_HARNESS,
 };
 use krad_repo::IndexEntry;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use super::ask::AskQueue;
 use super::chat::ChatMessage;
 use super::EnvironmentShell;
+use anchor::Anchor;
 use checklist::ChecklistView;
 use edit_message::MessageEditor;
 use glide::Glide;
@@ -46,6 +51,7 @@ pub(super) use origin::age_label;
 use origin::Origin;
 use outbox::Outbox;
 use subagents::Subagents;
+use timeline::Timeline;
 use transcript::{TranscriptView, TRANSCRIPT_HARNESS};
 
 pub(super) use acp::AcpChoice;
@@ -53,13 +59,13 @@ pub(super) use answer::tool_question;
 pub(super) use bus::ChatPresence;
 pub(super) use edit_diff::edit_diffs;
 pub(super) use facts::AccountUsage;
+pub(super) use status_line::elapsed_label;
 pub(super) use structured::restored_chats;
 pub(super) use structured::StructuredChat;
 
 const INPUT_ROWS: usize = 2;
 const INPUT_PLACEHOLDER: &str = "Ask anything…  @ for files, / for skills";
 const THINKING_LABEL: &str = "Thinking";
-const WORKING_LABEL: &str = "Working";
 const THREAD_OVERDRAW: f32 = 800.0;
 
 fn new_thread() -> ListState {
@@ -103,6 +109,9 @@ pub(super) struct SurfaceChat {
     pub(super) pins_latest: bool,
     pub(super) runway: Cell<f32>,
     pub(super) lead: Cell<Option<f32>>,
+    anchor: Anchor,
+    landing: Cell<Option<f32>>,
+    timeline: RefCell<Timeline>,
     glide: Option<Glide>,
     pub(super) working_since: Cell<Option<Instant>>,
     outbox: Outbox,
@@ -139,6 +148,9 @@ impl SurfaceChat {
             pins_latest: false,
             runway: Cell::new(0.0),
             lead: Cell::new(None),
+            anchor: Anchor::Tail,
+            landing: Cell::new(None),
+            timeline: RefCell::default(),
             glide: None,
             working_since: Cell::new(None),
             outbox: Outbox::default(),

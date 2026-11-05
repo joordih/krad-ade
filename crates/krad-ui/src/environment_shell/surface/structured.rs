@@ -23,7 +23,7 @@ use super::super::chat::{fold_entry, fold_prompt, ChatMessage, LiveProcess};
 use super::super::EnvironmentShell;
 use super::acp::AcpOffers;
 use super::outbox::Outbox;
-use super::{view, Backend, SurfaceChat, SurfaceCommand};
+use super::{anchor, Backend, SurfaceChat, SurfaceCommand};
 
 pub(super) use acp::read_acp_env;
 use acp::AcpSecretsPrep;
@@ -214,6 +214,15 @@ impl StructuredChat {
         self.session = LiveSession::Resume(resume);
     }
 
+    fn opens_turn(&mut self) -> bool {
+        if self.working || self.outstanding > 0 {
+            return false;
+        }
+        self.outstanding = 1;
+        self.working = true;
+        true
+    }
+
     fn closes_turn(&mut self, ended: bool) -> bool {
         self.outstanding = self.outstanding.saturating_sub(1);
         if ended {
@@ -347,12 +356,13 @@ impl EnvironmentShell {
             messages,
             thread,
             problem,
+            anchor,
             ..
         }) = structured_chat(self, env, id)
         else {
             return;
         };
-        let followed = view::following(thread);
+        let followed = anchor::follows_tail(*anchor, thread);
         let mut state = None;
         let (event, refused) = match event {
             LiveEvent::Refused(refused) => (
@@ -403,6 +413,13 @@ impl EnvironmentShell {
                 structured.acp.reported(event);
             }
             LiveEvent::Refused(_) => {}
+            LiveEvent::Chat(ChatEvent::TurnStarted) => {
+                if !structured.opens_turn() {
+                    return;
+                }
+                structured.fold_kept(messages, &ChatEntry::Event(ChatEvent::TurnStarted));
+                state = Some(AgentState::Working);
+            }
             LiveEvent::Chat(event @ (ChatEvent::Done | ChatEvent::Error(_))) => {
                 if let Some(batch) = refused.and_then(|refused| structured.retries(&refused)) {
                     self.hand_over_again(env, id, batch, event, cx);

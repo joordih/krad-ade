@@ -1,6 +1,6 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, font, px, rgb, AnyElement, Context, Div, Font, InteractiveElement, IntoElement,
+    div, font, px, rgb, AnyElement, App, Context, Div, Font, InteractiveElement, IntoElement,
     MouseButton, MouseDownEvent, ParentElement, ScrollWheelEvent, SharedString, Styled, Window,
 };
 use krad_domain::{Ligatures, TerminalId};
@@ -11,6 +11,7 @@ use krad_session::{
 use std::time::Duration;
 
 use super::drag::DragState;
+use super::surface::elapsed_label;
 use super::terminal_images::{image_layer, ImageGrid, TerminalImages};
 use super::terminal_text::{terminal_text, TextLook};
 use super::EnvironmentShell;
@@ -58,7 +59,7 @@ fn starting_view(
         .child(thinking_indicator(
             id.as_u64(),
             label.into(),
-            session.spawned_at,
+            elapsed_label(session.spawned_at.elapsed()).into(),
             mono.clone(),
             palette(cx),
         ))
@@ -220,6 +221,35 @@ pub(super) struct BodyLook {
     pub(super) text_zoom: f32,
     pub(super) focused: bool,
     pub(super) corner: f32,
+}
+
+pub(super) fn embedded_screen(
+    session: &LiveSession,
+    look: BodyLook,
+    mono: &SharedString,
+    colors: &TerminalColors,
+    cx: &App,
+) -> AnyElement {
+    let body = div()
+        .relative()
+        .flex_1()
+        .min_h_0()
+        .overflow_hidden()
+        .px(px(BODY_PAD_X * look.zoom))
+        .pt(px(BODY_PAD_TOP * look.zoom))
+        .pb(px(BODY_PAD_BOTTOM * look.zoom))
+        .rounded(px(look.corner))
+        .when_some(
+            terminal_fill(colors.background, palette(cx), cx),
+            Styled::bg,
+        )
+        .font_family(mono.clone())
+        .font_features(font_features(look.ligatures))
+        .text_size(px(TERMINAL_FONT_PX * look.text_zoom))
+        .line_height(px(look.geometry.line_h))
+        .text_color(rgb(colors.foreground))
+        .whitespace_nowrap();
+    session_screen(body, session, None, look, mono, colors)
 }
 
 impl EnvironmentShell {

@@ -20,6 +20,7 @@ mod editor_popovers;
 mod entry_input;
 mod environment_menu;
 mod environment_order;
+mod extensions;
 mod file_tab;
 mod file_tree;
 mod gateway;
@@ -185,6 +186,7 @@ pub struct EnvironmentShell {
     host_tools: host::HostTools,
     arcade: arcade::Arcade,
     app_updates: app_update::AppUpdates,
+    extensions: extensions::Extensions,
 }
 
 impl EnvironmentShell {
@@ -306,11 +308,9 @@ impl EnvironmentShell {
             unreadable_environments: Vec::new(),
             host_tools,
             app_updates: app_update::AppUpdates::default(),
+            extensions: extensions::Extensions::default(),
         };
-        shell.start_agent_bus(cx);
-        shell.check_gateway(cx);
-        shell.start_app_updates(cx);
-        Self::load_arcade_scores(cx);
+        shell.start_services(cx);
         match seed {
             Some(snapshot) => shell.restore_snapshot(snapshot),
             None => shell.restore_env(EnvironmentData::empty(EnvironmentName::new(
@@ -320,14 +320,22 @@ impl EnvironmentShell {
         let active = shell.active.clone();
         shell.show_host(&active, cx);
         shell.pump_task = Some(Self::start_pump(pump_rx, cx));
-        shell.start_background_work(cx);
+        shell.start_loading(cx);
         shell
     }
 
-    fn start_background_work(&mut self, cx: &mut Context<Self>) {
+    fn start_services(&mut self, cx: &mut Context<Self>) {
+        self.start_agent_bus(cx);
+        self.check_gateway(cx);
+        self.start_app_updates(cx);
+        Self::load_arcade_scores(cx);
+    }
+
+    fn start_loading(&mut self, cx: &mut Context<Self>) {
         self.detect_agents(cx);
         self.start_watches(cx);
         self.load_language_tools(cx);
+        self.load_extensions(cx);
     }
 
     fn frame_interval(&self) -> Duration {

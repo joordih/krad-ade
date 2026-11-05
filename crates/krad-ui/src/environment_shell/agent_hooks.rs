@@ -3,8 +3,8 @@ use gpui_kit::{AppContext as _, Context};
 use krad_agents::{AgentStatus, Response, TerminalHandle};
 use krad_domain::{
     code_tools_launch_args, hook_launch_args, launch_with_prompt, quote_for_shell, worker_brief,
-    AgentPreset, AgentState, CodeTools, EnvironmentName, ModelDelivery, ModelId, PermissionMode,
-    ResumeId, SessionId, TerminalGroup, TerminalId, WorkerSpawn, WorktreeOrigin,
+    AgentPreset, AgentState, EnvironmentName, ModelDelivery, ModelId, PermissionMode, ResumeId,
+    SessionId, TerminalGroup, TerminalId, WorkerSpawn, WorktreeOrigin,
 };
 use krad_repo::{add_worktree, sanitize_worktree_name};
 use std::time::{Duration, Instant};
@@ -45,6 +45,7 @@ pub(super) struct WorkerOrder {
     pub(super) worktree: Option<String>,
     pub(super) brief: String,
     pub(super) lead: Option<WorkerOf>,
+    pub(super) mode: Option<PermissionMode>,
 }
 
 pub(super) struct WorkerOf {
@@ -100,7 +101,7 @@ impl EnvironmentShell {
             if let Some(args) = hook_launch_args(preset, cli, quoting, settings.as_deref()) {
                 line = format!("{line} {args}");
             }
-            if self.settings.code_tools == CodeTools::On {
+            if self.agent_tools_offered() {
                 if let Some(args) = code_tools_launch_args(preset, cli, quoting) {
                     line = format!("{line} {args}");
                 }
@@ -223,6 +224,7 @@ impl EnvironmentShell {
             worktree,
             brief,
             lead: None,
+            mode: self.chat_permission_mode(&env, caller),
         };
         self.start_worker(&env, &group, order, reply, cx);
     }
@@ -241,6 +243,7 @@ impl EnvironmentShell {
             worktree,
             brief,
             lead,
+            mode,
         } = order;
         if let Some(id) = preset
             .acp_agent()
@@ -262,6 +265,7 @@ impl EnvironmentShell {
                 preset,
                 brief,
                 spawn,
+                mode,
             };
             self.launch_worker(&env, launch, reply, cx);
             return;
@@ -304,6 +308,7 @@ impl EnvironmentShell {
                         preset,
                         brief,
                         spawn,
+                        mode,
                     };
                     shell.launch_worker(&env, launch, reply, cx);
                 }

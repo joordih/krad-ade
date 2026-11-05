@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::Duration;
 
-use super::wire::{Packet, PacketType, Reply};
+use super::wire::{Message, Packet, PacketType};
 use super::SftpError;
 
 const READER_THREAD: &str = "krad-ade-sftp";
@@ -15,7 +15,7 @@ type Writer = Box<dyn Write + Send>;
 
 pub(super) struct Channel {
     writer: Mutex<Writer>,
-    pending: Arc<Mutex<HashMap<u32, Sender<Reply>>>>,
+    pending: Arc<Mutex<HashMap<u32, Sender<Message>>>>,
     closed: Arc<AtomicBool>,
     next_id: AtomicU32,
     pub(super) timeout: Duration,
@@ -23,7 +23,7 @@ pub(super) struct Channel {
 
 pub(super) struct Pending<'a> {
     id: u32,
-    replies: Receiver<Reply>,
+    replies: Receiver<Message>,
     channel: &'a Channel,
 }
 
@@ -44,14 +44,14 @@ impl Channel {
         writer: impl Write + Send + 'static,
         timeout: Duration,
     ) -> io::Result<Self> {
-        let pending: Arc<Mutex<HashMap<u32, Sender<Reply>>>> = Arc::default();
+        let pending: Arc<Mutex<HashMap<u32, Sender<Message>>>> = Arc::default();
         let closed = Arc::new(AtomicBool::new(false));
         let reader_pending = Arc::clone(&pending);
         let reader_closed = Arc::clone(&closed);
         thread::Builder::new()
             .name(READER_THREAD.to_owned())
             .spawn(move || {
-                while let Ok(reply) = Reply::receive(&mut input) {
+                while let Ok(reply) = Message::receive(&mut input) {
                     if let Some(waiter) = lock(&reader_pending).remove(&reply.id) {
                         waiter.send(reply).ok();
                     }
@@ -102,13 +102,13 @@ impl Channel {
         &self,
         kind: PacketType,
         fill: impl FnOnce(&mut Packet) -> io::Result<()>,
-    ) -> Result<Reply, SftpError> {
+    ) -> Result<Message, SftpError> {
         self.send(kind, fill)?.wait()
     }
 }
 
 impl Pending<'_> {
-    pub(super) fn wait(self) -> Result<Reply, SftpError> {
+    pub(super) fn wait(self) -> Result<Message, SftpError> {
         match self.replies.recv_timeout(self.channel.timeout) {
             Ok(reply) => Ok(reply),
             Err(RecvTimeoutError::Timeout) => Err(SftpError::TimedOut),

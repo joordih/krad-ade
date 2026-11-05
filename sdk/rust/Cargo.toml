@@ -1,0 +1,22 @@
+[package]
+name = "krad-extension-sdk"
+description = "Write Krad ADE extension programs in Rust: JSON-RPC over stdio, typed handlers and an app client."
+keywords = ["krad-ade", "extension", "sdk", "json-rpc"]
+categories = ["development-tools", "api-bindings"]
+readme = "README.md"
+version = "0.3.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/joordih/krad-ade"
+
+[workspace]
+
+[dependencies]
+krad-extension-api = { path = "../../crates/krad-extension-api", version = "0.3.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[[example]]
+name = "hello"
+path = "examples/hello/main.rs"

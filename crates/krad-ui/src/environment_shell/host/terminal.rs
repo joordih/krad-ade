@@ -55,13 +55,13 @@ fn text(word: &OsStr) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_host::{SshArgs, SshLink};
+    use krad_host::{RemoteLink, SshArgs};
     use std::sync::Arc;
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
 
     fn ssh_link() -> Result<HostLink, krad_domain::SshDestinationError> {
-        Ok(HostLink::Ssh(Arc::new(SshLink::new(SshArgs::new(
+        Ok(HostLink::Remote(Arc::new(RemoteLink::new(SshArgs::new(
             "me@devbox".parse()?,
             None,
         )))))

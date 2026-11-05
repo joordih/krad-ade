@@ -14,7 +14,7 @@ use super::super::ask::ask_line;
 use super::super::chat::{AnswerPart, ChatMessage};
 use super::super::workers::{spawned_worker, WorkerCard};
 use super::super::EnvironmentShell;
-use super::message_actions::{copy_button, message_actions, message_group};
+use super::message_actions::{copy_button, message_actions, message_group, BookmarkAction};
 use super::tool_group::{ToolLook, ToolRows};
 use super::view::error_line;
 use super::{SurfaceChat, THINKING_LABEL};
@@ -83,6 +83,7 @@ impl EnvironmentShell {
         message: &ChatMessage,
         chat: &SurfaceChat,
         workers: &[WorkerCard],
+        bookmark: Option<BookmarkAction>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
@@ -157,10 +158,13 @@ impl EnvironmentShell {
         parts.extend(message.error.as_deref().map(|error| error_line(error, pal)));
         let said = answer_text(message);
         let group = message_group(id, index);
-        if !message.running && !said.is_empty() {
+        let copy = (!message.running && !said.is_empty()).then(|| {
             let key = format!("{MESSAGE_COPY_PREFIX}-{raw}-{index}");
-            let copy = copy_button(ElementId::Name(key.into()), said, MESSAGE_COPY_TOOLTIP, pal);
-            parts.push(message_actions(group.clone(), [copy]));
+            copy_button(ElementId::Name(key.into()), said, MESSAGE_COPY_TOOLTIP, pal)
+        });
+        let bookmark = bookmark.filter(|bookmark| bookmark.marked || copy.is_some());
+        if copy.is_some() || bookmark.is_some() {
+            parts.push(message_actions(group.clone(), copy, bookmark));
         }
         div()
             .group(group)

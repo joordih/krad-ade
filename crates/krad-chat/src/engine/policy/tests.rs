@@ -241,6 +241,25 @@ fn local_hosts_are_always_asked_unless_bypassing() {
 }
 
 #[test]
+fn extension_tools_are_never_auto_approved_as_read_only() {
+    let tool = Action::Mcp {
+        name: "mcp__krad_code__ext_docker_list-containers".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+    assert_eq!(
+        verdicts(&tool, &Allowed::default()),
+        [
+            Ask,
+            Ask,
+            Deny(PLAN_MCP_TEXT),
+            Allow,
+            Deny(DONT_ASK_TEXT),
+            Allow
+        ]
+    );
+}
+
+#[test]
 fn mcp_tools_ask_like_commands_and_remember_each_tool() {
     let mcp = |name: &str| Action::Mcp {
         name: name.to_owned(),

@@ -6,7 +6,9 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+futures.workspace = true
 krad-domain.workspace = true
+krad-extension-api.workspace = true
 krad-host.workspace = true
 serde.workspace = true
 serde_json.workspace = true

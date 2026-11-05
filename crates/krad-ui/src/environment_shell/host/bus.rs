@@ -57,7 +57,7 @@ impl EnvironmentShell {
     fn remote_bus_plan(&self, env: &EnvironmentName) -> Option<RemoteBusPlan> {
         let bus = self.agent_bus.as_ref()?;
         let live = self.envs.get(env)?;
-        let HostLink::Ssh(ssh) = &live.link else {
+        let HostLink::Remote(ssh) = &live.link else {
             return None;
         };
         Some(RemoteBusPlan::new(

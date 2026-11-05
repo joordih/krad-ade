@@ -1,13 +1,14 @@
 mod card;
 mod ending;
+mod mode;
 
 use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
 use krad_agents::Response;
 use krad_chat::{new_session_id, LiveEvent, LiveSession};
 use krad_domain::{
-    AgentPreset, ChatEvent, EnvironmentName, GroupId, Prompt, TerminalId, WorkerSpawn,
-    WorkerSurface,
+    AgentPreset, ChatEvent, EnvironmentName, GroupId, PermissionMode, Prompt, TerminalId,
+    WorkerSpawn, WorkerSurface,
 };
 
 use super::agent_hooks::NO_GROUP;
@@ -28,6 +29,7 @@ pub(super) struct WorkerLaunch {
     pub(super) preset: AgentPreset,
     pub(super) brief: String,
     pub(super) spawn: WorkerSpawn,
+    pub(super) mode: Option<PermissionMode>,
 }
 
 enum LaunchProgress {
@@ -60,6 +62,7 @@ impl EnvironmentShell {
             preset,
             brief,
             spawn,
+            mode,
         } = launch;
         if preset.worker_surface() != WorkerSurface::Chat {
             reply
@@ -73,6 +76,7 @@ impl EnvironmentShell {
             spawn,
             session: LiveSession::Start(new_session_id()),
             prompts: vec![Prompt::from(brief)],
+            mode: mode::worker_mode(mode, preset),
         };
         let opened = self
             .alloc_terminal_id(env)
@@ -153,6 +157,19 @@ impl EnvironmentShell {
         true
     }
 
+    pub(super) fn chat_permission_mode(
+        &self,
+        env: &EnvironmentName,
+        id: TerminalId,
+    ) -> Option<PermissionMode> {
+        self.envs
+            .get(env)?
+            .chats
+            .get(&id)?
+            .structured()?
+            .permission_mode
+    }
+
     pub(super) fn is_launching(&self, env: &EnvironmentName, id: TerminalId) -> bool {
         self.envs
             .get(env)
@@ -187,6 +204,7 @@ impl EnvironmentShell {
             },
             session: LiveSession::Resume(reopen.resume.clone()),
             prompts: Vec::new(),
+            mode: None,
         };
         if self.open_worker_chat(env, terminal, chat, cx).is_none() {
             return false;

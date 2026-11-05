@@ -3,7 +3,7 @@ use gpui_kit::{
     IntoElement, ParentElement, SharedString, Styled, StyledText,
 };
 use std::ops::Range;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::theme::{Palette, LINE_SM, LINE_XS, TEXT_SM, TEXT_XS};
 
@@ -126,7 +126,7 @@ pub(crate) fn shimmer_text(
 pub(crate) fn thinking_indicator(
     key: u64,
     label: SharedString,
-    started: Instant,
+    elapsed: SharedString,
     mono: SharedString,
     pal: &Palette,
 ) -> AnyElement {
@@ -146,7 +146,7 @@ pub(crate) fn thinking_indicator(
                 .text_size(px(TEXT_XS))
                 .line_height(px(LINE_XS))
                 .text_color(rgb(pal.text_muted))
-                .child(format!("{:.1}s", started.elapsed().as_secs_f32())),
+                .child(elapsed),
         )
         .into_any_element()
 }

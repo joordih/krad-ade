@@ -2,7 +2,7 @@ use gpui_kit::component::input::EditorState;
 use gpui_kit::{AppContext as _, Context, Entity, PathPromptOptions, SharedString};
 use krad_domain::JavaEngine;
 use krad_domain::{ServerRuntimeId, TerminalId};
-use krad_extensions::{manifest_folders, BundledManifest, LanguageTools, Registry};
+use krad_extensions::{trusted_manifest_folders, BundledManifest, LanguageTools, Registry};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -18,10 +18,12 @@ impl EnvironmentShell {
         let Some(config) = krad_store::config_dir() else {
             return;
         };
-        let folders = manifest_folders(&config, &self.settings.extensions);
+        let entries = self.settings.extensions.clone();
         let bundled = self.bundled_manifests();
-        let loading = cx
-            .background_spawn(async move { LanguageTools::load_with(&config, &folders, &bundled) });
+        let loading = cx.background_spawn(async move {
+            let folders = trusted_manifest_folders(&config, &entries);
+            LanguageTools::load_with(&config, &folders, &bundled)
+        });
         cx.spawn(async move |this, cx| {
             let Ok(tools) = loading.await else {
                 return;
@@ -72,6 +74,7 @@ impl EnvironmentShell {
             .slots
             .retain(|_, slot| matches!(slot, ServerSlot::Running(_)));
         self.attach_open_editors(cx);
+        self.resume_extension_starts(cx);
         if stale && may_refresh {
             self.refresh_registry(cx);
         }
@@ -85,9 +88,10 @@ impl EnvironmentShell {
         ) else {
             return;
         };
-        let folders = manifest_folders(&config, &self.settings.extensions);
+        let entries = self.settings.extensions.clone();
         let bundled = self.bundled_manifests();
         let fetching = cx.background_spawn(async move {
+            let folders = trusted_manifest_folders(&config, &entries);
             let registry: Registry = tools.refreshed_registry()?;
             Ok::<_, krad_extensions::ExtensionError>(
                 LanguageTools::load_with(&config, &folders, &bundled)?.with_registry(registry),

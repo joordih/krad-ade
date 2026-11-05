@@ -42,6 +42,7 @@ pub(super) enum MenuAction {
     SwitchEnvironment(EnvironmentName),
     NewEnvironment,
     NewSshEnvironment,
+    NewMachineEnvironment(Box<super::extensions::HostKindRef>),
     DeleteEnvironment(EnvironmentName),
     RenameGroup(GroupId),
     DeleteGroup(GroupId),
@@ -67,6 +68,7 @@ pub(super) enum MenuAction {
     ToggleSidebarPart(krad_domain::SidebarPart),
     ToggleSidebarDensity,
     CloseTabs(TerminalId, krad_domain::TabClosing),
+    Extension(Box<super::extensions::ExtensionMenu>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -408,6 +410,7 @@ impl EnvironmentShell {
             MenuAction::SwitchEnvironment(name) => self.switch_env(&name, cx),
             MenuAction::NewEnvironment => self.new_environment(window, cx),
             MenuAction::NewSshEnvironment => self.open_ssh_dialog(window, cx),
+            MenuAction::NewMachineEnvironment(kind) => self.open_machine_dialog(*kind, cx),
             MenuAction::SelectGroup(group) => self.select_group(group, cx),
             MenuAction::OpenWorktree(path, origin) => self.open_worktree(path, origin, cx),
             MenuAction::CreateWorktree(group, name) => self.create_worktree(group, &name, cx),
@@ -435,6 +438,7 @@ impl EnvironmentShell {
             MenuAction::ToggleSidebarPart(part) => self.toggle_sidebar_part(part, cx),
             MenuAction::ToggleSidebarDensity => self.toggle_sidebar_density(cx),
             MenuAction::CloseTabs(tab, closing) => self.close_tabs(tab, closing, window, cx),
+            MenuAction::Extension(menu) => self.run_extension_menu(*menu, window, cx),
         }
         cx.notify();
     }

@@ -72,6 +72,16 @@ impl EnvironmentShell {
             IconName::Close,
             MenuAction::RemoveGroup(id),
         ));
+        if let Some(group) = group {
+            entries.extend(self.extension_menu_entries(
+                krad_extensions::api::manifest::MenuTarget::Group,
+                Some(&group.root),
+                &krad_extensions::api::protocol::CommandTarget::Group {
+                    name: group.name.clone(),
+                    root: group.root.clone(),
+                },
+            ));
+        }
         entries
     }
 }

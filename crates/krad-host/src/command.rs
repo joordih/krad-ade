@@ -151,13 +151,14 @@ impl HostCommand {
     pub fn build(&self, link: &HostLink) -> Result<Command, HostError> {
         match link {
             HostLink::Local => Ok(self.local()),
-            HostLink::Ssh(ssh) => {
+            HostLink::Remote(ssh) => {
                 let login_env = ssh.login_env_file();
                 if let Some(mux) = ssh.multiplexed() {
                     return Ok(mux.command(self.script_with(ScriptContext {
                         login_env: login_env.as_deref(),
                     })));
                 }
+                ssh.refuse_ssh()?;
                 let script = self.script_with(ScriptContext {
                     login_env: login_env.as_deref(),
                 });
@@ -175,9 +176,10 @@ impl HostCommand {
         &self,
         link: &HostLink,
     ) -> Result<Option<(OsString, Vec<OsString>)>, HostError> {
-        let HostLink::Ssh(ssh) = link else {
+        let HostLink::Remote(ssh) = link else {
             return Ok(None);
         };
+        ssh.refuse_ssh()?;
         let login_env = ssh.login_env_file();
         let script = self.script_with(ScriptContext {
             login_env: login_env.as_deref(),

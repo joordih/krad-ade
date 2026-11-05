@@ -109,6 +109,7 @@ impl EnvironmentShell {
             .on_action(cx.listener(Self::on_toggle_palette))
             .on_action(cx.listener(Self::on_new_terminal))
             .on_action(cx.listener(Self::on_show_tab_at))
+            .on_action(cx.listener(Self::on_run_extension_command))
             .on_action(cx.listener(Self::on_navigate_back))
             .on_action(cx.listener(Self::on_navigate_forward))
             .on_action(cx.listener(Self::on_copy_selection))

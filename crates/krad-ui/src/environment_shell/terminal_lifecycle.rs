@@ -2,8 +2,8 @@ use gpui_kit::Context;
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::SessionSpec;
 use krad_domain::{
-    AgentPreset, AgentState, EnvironmentName, GroupId, NodeKind, Prompt, TerminalId, TerminalNode,
-    TextScale, WorkerSpawn, DEFAULT_CHAT_HARNESS,
+    AgentPreset, AgentState, EnvironmentName, GroupId, NodeKind, PermissionMode, Prompt,
+    TerminalId, TerminalNode, TextScale, WorkerSpawn, DEFAULT_CHAT_HARNESS,
 };
 use krad_session::wsl_shell;
 use std::path::PathBuf;
@@ -28,6 +28,7 @@ pub(super) struct WorkerChat {
     pub(super) spawn: WorkerSpawn,
     pub(super) session: LiveSession,
     pub(super) prompts: Vec<Prompt>,
+    pub(super) mode: Option<PermissionMode>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -152,6 +153,20 @@ impl EnvironmentShell {
         Some(id)
     }
 
+    pub(super) fn open_terminal_at(
+        &mut self,
+        env: &EnvironmentName,
+        spec: &NodeSpec<'_>,
+        launch: Launch,
+        cwd: Option<PathBuf>,
+        cx: &mut Context<Self>,
+    ) -> Option<TerminalId> {
+        let (id, default_cwd) = self.add_node(env, spec, None)?;
+        self.start_session(env, id, launch, cwd.or(default_cwd), &[]);
+        self.settle_new_node(cx);
+        Some(id)
+    }
+
     pub(super) fn spawn_chat_in(
         &mut self,
         env: &EnvironmentName,
@@ -188,6 +203,7 @@ impl EnvironmentShell {
             spawn,
             session,
             prompts,
+            mode,
         } = chat;
         let spec = NodeSpec {
             kind: NodeKind::Chat,
@@ -201,6 +217,9 @@ impl EnvironmentShell {
         live.pending_chats.insert(id, session);
         if !prompts.is_empty() {
             live.waiting_prompts.insert(id, prompts);
+        }
+        if let Some(mode) = mode {
+            live.waiting_modes.insert(id, mode);
         }
         self.settle_new_node(cx);
         Some(id)
@@ -269,6 +288,8 @@ impl EnvironmentShell {
                 .map_or_else(TextScale::default, |node| node.text_scale),
             kind: spec.kind,
             file: None,
+            extension: None,
+            bookmarks: krad_domain::ChatBookmarks::default(),
         });
         Some((cwd, anchor_node.map(|node| node.id)))
     }
@@ -305,6 +326,7 @@ impl EnvironmentShell {
         let chat = live.chats.remove(&id);
         live.pending_chats.remove(&id);
         live.waiting_prompts.remove(&id);
+        live.waiting_modes.remove(&id);
         live.data.nodes.retain(|node| node.id != id);
         live.data.meta.remove(&id);
         live.mailbox.forget(id.as_u64());

@@ -50,6 +50,7 @@ pub(in crate::environment_shell) enum UtilityTab {
     Terminals,
     Problems,
     Docked(TerminalId),
+    Extension(super::super::extensions::OpenViewId),
 }
 
 impl EnvironmentShell {
@@ -59,6 +60,7 @@ impl EnvironmentShell {
         };
         match live.utility_tab {
             UtilityTab::Docked(id) if !live.activity_docked.contains(&id) => UtilityTab::Log,
+            UtilityTab::Extension(id) if !self.extension_view_open(id) => UtilityTab::Log,
             UtilityTab::Terminals
                 if live.terminals_tab == TerminalsTab::Hidden
                     || self.utility_terminals().is_empty() =>
@@ -69,7 +71,11 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn set_utility_tab(&mut self, tab: UtilityTab, cx: &mut Context<Self>) {
+    pub(in crate::environment_shell) fn set_utility_tab(
+        &mut self,
+        tab: UtilityTab,
+        cx: &mut Context<Self>,
+    ) {
         let env = self.active.clone();
         if let Some(live) = self.envs.get_mut(&env) {
             live.utility_tab = tab;
@@ -112,7 +118,11 @@ impl EnvironmentShell {
         self.system_terminals_here()
     }
 
-    pub(super) fn dock_in_activity(&mut self, id: TerminalId, cx: &mut Context<Self>) {
+    pub(in crate::environment_shell) fn dock_in_activity(
+        &mut self,
+        id: TerminalId,
+        cx: &mut Context<Self>,
+    ) {
         self.edit_panes(cx, |panes| panes.release(id));
         let env = self.active.clone();
         if let Some(live) = self.envs.get_mut(&env) {
@@ -131,9 +141,19 @@ impl EnvironmentShell {
         cx.notify();
     }
 
+    pub(super) fn shown_utility_extension(&self) -> Option<super::super::extensions::OpenViewId> {
+        match self.utility_tab() {
+            UtilityTab::Extension(id) => Some(id),
+            UtilityTab::Log
+            | UtilityTab::Problems
+            | UtilityTab::Terminals
+            | UtilityTab::Docked(_) => None,
+        }
+    }
+
     pub(super) fn activity_terminal(&self) -> Option<TerminalId> {
         match self.utility_tab() {
-            UtilityTab::Log | UtilityTab::Problems => None,
+            UtilityTab::Log | UtilityTab::Problems | UtilityTab::Extension(_) => None,
             UtilityTab::Terminals => self.shown_system_terminal(),
             UtilityTab::Docked(id) => Some(id),
         }
@@ -228,11 +248,12 @@ impl EnvironmentShell {
             )
             .into_any_element()
         });
-        let tabs: Vec<AnyElement> = [log, problems]
+        let mut tabs: Vec<AnyElement> = [log, problems]
             .into_iter()
             .chain(terminals)
             .chain(tabs)
             .collect();
+        tabs.extend(self.extension_utility_tabs(shown, cx));
         tab_capsule(tabs, TabWidth::Fit, pal)
             .gap(px(SPACE_0_5))
             .into_any_element()

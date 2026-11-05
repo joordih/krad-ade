@@ -37,6 +37,7 @@ fn answer(receiver: &Receiver<ChatEvent>) -> String {
             | ChatEvent::ToolOutput { .. }
             | ChatEvent::Checklist(_)
             | ChatEvent::Prompted(_)
+            | ChatEvent::TurnStarted
             | ChatEvent::Thinking(_)
             | ChatEvent::Session(_)
             | ChatEvent::Model(_)

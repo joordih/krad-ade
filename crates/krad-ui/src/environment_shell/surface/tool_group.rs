@@ -23,6 +23,7 @@ use crate::theme::{
 const HEADER_PREFIX: &str = "surface-tools";
 const ROW_PREFIX: &str = "surface-tool-row";
 const SUMMARY_SEPARATOR: &str = ", ";
+const CUT_MARK: &str = "…";
 const RAIL_INSET: f32 = ICON_SM / 2.0;
 const RAIL_W: f32 = 1.0;
 const ELBOW_W: f32 = 10.0;
@@ -139,6 +140,16 @@ fn done_summary(calls: &[(usize, &ToolCall)]) -> String {
     })
 }
 
+fn one_line(summary: &str) -> String {
+    let summary = summary.trim();
+    let mut lines = summary.lines();
+    let first = lines.next().unwrap_or_default().trim_end();
+    if lines.next().is_none() {
+        return first.to_owned();
+    }
+    format!("{first}{CUT_MARK}")
+}
+
 fn file_chip(path: &str, pal: &Palette) -> AnyElement {
     let name = Path::new(path).file_name().map_or_else(
         || path.to_owned(),
@@ -215,7 +226,7 @@ fn call_row(
             .font_family(mono.clone())
             .text_size(px(TEXT_XS))
             .text_color(rgb(pal.text_muted))
-            .child(call.summary.clone())
+            .child(one_line(&call.summary))
             .into_any_element()
     };
     let line = div()
@@ -387,6 +398,16 @@ mod tests {
             summary: String::new(),
             edits: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_command_written_over_several_lines_shows_its_first_line_only() {
+        assert_eq!(
+            one_line("cd repo; python3 - <<'EOF'\np='CONTEXT.md'\nEOF\n"),
+            "cd repo; python3 - <<'EOF'…"
+        );
+        assert_eq!(one_line("  cargo test  "), "cargo test");
+        assert_eq!(one_line(""), "");
     }
 
     #[test]

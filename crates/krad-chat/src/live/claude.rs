@@ -357,6 +357,11 @@ impl Routing {
                         })
                         .unwrap_or_default();
                 }
+                ChatEvent::TurnStarted => {
+                    self.pending
+                        .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
+                        .unwrap_or_default();
+                }
                 ChatEvent::Session(id) => {
                     *self.session.lock().unwrap_or_else(PoisonError::into_inner) = Some(id.clone());
                 }

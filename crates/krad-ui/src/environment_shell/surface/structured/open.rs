@@ -95,14 +95,17 @@ impl EnvironmentShell {
             let (input, events) = Self::chat_input(id, window, cx);
             let history = session.history().cloned();
             let mut structured = StructuredChat::new(session, harness);
+            let live = self.envs.get_mut(&env);
+            let (waiting, mode) = live.map_or_else(Default::default, |live| {
+                (
+                    live.waiting_prompts.remove(&id).unwrap_or_default(),
+                    live.waiting_modes.remove(&id),
+                )
+            });
+            structured.permission_mode = mode;
             structured.transcript = self.acp_transcript(&env, id, harness);
             let mut chat =
                 SurfaceChat::new(input, events, Backend::Structured(Box::new(structured)));
-            let waiting = self
-                .envs
-                .get_mut(&env)
-                .and_then(|live| live.waiting_prompts.remove(&id))
-                .unwrap_or_default();
             let prompted = !waiting.is_empty();
             for prompt in waiting {
                 chat.outbox.push(prompt);

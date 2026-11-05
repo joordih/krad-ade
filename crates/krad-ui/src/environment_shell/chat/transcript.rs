@@ -81,6 +81,7 @@ pub(in crate::environment_shell) fn fold_entry(messages: &mut Vec<ChatMessage>, 
                 asked.rewind = Some(point.clone());
             }
         }
+        ChatEntry::Event(ChatEvent::TurnStarted) => reopen_answer(messages),
         ChatEntry::Asked(outcome) => {
             if let Some(answer) = messages.last_mut().filter(|answer| answer.running) {
                 answer.parts.push(AnswerPart::Ask(outcome.clone()));
@@ -97,6 +98,7 @@ pub(in crate::environment_shell) fn fold_entry(messages: &mut Vec<ChatMessage>, 
                 | ChatEvent::ContextTokens(_)
                 | ChatEvent::ContextWindow(_)
                 | ChatEvent::Prompted(_)
+                | ChatEvent::TurnStarted
                 | ChatEvent::Edited { .. }
                 | ChatEvent::ToolOutput { .. } => {}
                 ChatEvent::Checklist(list) => answer.checklist = Some(list.clone()),
@@ -121,6 +123,27 @@ pub(in crate::environment_shell) fn fold_entry(messages: &mut Vec<ChatMessage>, 
             }
         }
     }
+}
+
+fn reopen_answer(messages: &mut Vec<ChatMessage>) {
+    if let Some(answer) = messages
+        .last_mut()
+        .filter(|message| message.speaker == Speaker::Assistant)
+    {
+        answer.running = true;
+        return;
+    }
+    messages.push(ChatMessage {
+        speaker: Speaker::Assistant,
+        text: String::new(),
+        parts: Vec::new(),
+        error: None,
+        running: true,
+        mentions: Vec::new(),
+        checklist: None,
+        rewind: None,
+        tool_outputs: HashMap::new(),
+    });
 }
 
 fn place_edit(messages: &mut [ChatMessage], tool: &ToolUseId, edit: &FileEdit) {
@@ -412,6 +435,36 @@ mod tests {
         }
         assert_eq!(messages[1].error.as_deref(), Some("boom"));
         assert!(!messages[1].running);
+    }
+
+    #[test]
+    fn a_turn_the_harness_opens_by_itself_continues_the_closed_answer() {
+        let mut messages = Vec::new();
+        for entry in [
+            user("plan it"),
+            event(ChatEvent::Text("Waiting for the subagent.".to_owned())),
+            event(ChatEvent::Done),
+            event(ChatEvent::TurnStarted),
+            event(ChatEvent::Text("Here is the plan.".to_owned())),
+            event(ChatEvent::Done),
+        ] {
+            fold_entry(&mut messages, &entry);
+        }
+        assert_eq!(messages.len(), 2);
+        assert_eq!(
+            messages[1].text,
+            "Waiting for the subagent.\n\nHere is the plan."
+        );
+        assert!(!messages[1].running);
+    }
+
+    #[test]
+    fn a_turn_opened_before_any_answer_starts_one() {
+        let mut messages = Vec::new();
+        fold_entry(&mut messages, &event(ChatEvent::TurnStarted));
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].speaker, Speaker::Assistant);
+        assert!(messages[0].running);
     }
 
     #[test]

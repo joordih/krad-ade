@@ -102,7 +102,7 @@ impl EnvironmentShell {
     ) {
         let env = self.active.clone();
         let link = self.env_link(&env);
-        let HostLink::Ssh(ssh) = &link else {
+        let HostLink::Remote(ssh) = &link else {
             return;
         };
         let Some(home) = ssh.home().map(Path::to_path_buf) else {

@@ -96,6 +96,7 @@ pub enum ChatEvent {
     ToolOutput { tool: ToolUseId, output: ToolOutput },
     Checklist(Checklist),
     Prompted(RewindPoint),
+    TurnStarted,
     Done,
     Error(String),
 }

@@ -1,8 +1,12 @@
+mod summary;
+
 use krad_domain::{LanguageCatalog, LanguageDef, ServerRuntimeId, ToolchainFamilyId};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+pub(crate) use summary::summary_of;
+pub use summary::ManifestSummary;
 
 use crate::error::ExtensionError;
 use crate::toolchains::{ServerToolchain, SharedLocatorManifest, ToolchainFamilyManifest};

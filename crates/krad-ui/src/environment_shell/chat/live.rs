@@ -124,7 +124,7 @@ impl EnvironmentShell {
         program: String,
         root: Option<&Path>,
     ) -> Result<(Runner, PathBuf), StartError> {
-        if let HostLink::Ssh(ssh) = link {
+        if let HostLink::Remote(ssh) = link {
             let found = self
                 .host_agents
                 .get(&link.host())

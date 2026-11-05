@@ -214,7 +214,7 @@ impl OpencodeServer {
         };
         let (url, forward) = match runner {
             Runner::Ssh {
-                link: krad_host::HostLink::Ssh(ssh),
+                link: krad_host::HostLink::Remote(ssh),
                 ..
             } => {
                 let remote = port_of(&ready.url)

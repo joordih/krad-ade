@@ -60,6 +60,13 @@ pub(crate) struct ShowTabAt {
     pub(crate) slot: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = krad, no_json)]
+pub(crate) struct RunExtensionCommand {
+    pub(crate) extension: krad_extensions::api::ExtensionId,
+    pub(crate) command: krad_extensions::api::CommandId,
+}
+
 pub(crate) const SHELL_KEY_CONTEXT: &str = "KradShell";
 
 pub(crate) const VIEWER_KEY_CONTEXT: &str = "KradCodeViewer";

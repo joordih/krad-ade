@@ -136,7 +136,9 @@ impl EnvironmentShell {
                         MouseButton::Right,
                         cx.listener(|this: &mut Self, event: &MouseDownEvent, _, cx| {
                             if let Some(root) = this.file_tree.root.clone() {
-                                this.open_menu_at(event, Self::folder_menu_entries(&root), cx);
+                                let mut entries = Self::folder_menu_entries(&root);
+                                entries.extend(this.extension_entry_menu(&root, true));
+                                this.open_menu_at(event, entries, cx);
                             }
                         }),
                     )
@@ -228,7 +230,12 @@ impl EnvironmentShell {
             cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
                 cx.stop_propagation();
                 this.file_tree.selected = Some(menu_entry.path.clone());
-                this.open_menu_at(event, Self::file_menu_entries(&menu_entry), cx);
+                let mut entries = Self::file_menu_entries(&menu_entry);
+                entries.extend(this.extension_entry_menu(
+                    &menu_entry.path,
+                    menu_entry.kind == EntryKind::Directory,
+                ));
+                this.open_menu_at(event, entries, cx);
             }),
         )
         .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))

@@ -279,7 +279,7 @@ impl EnvironmentShell {
                 BusVars(self.bus_vars(env, id)),
                 home_dir().map(PathBuf::from),
             ),
-            HostLink::Ssh(ssh) => {
+            HostLink::Remote(ssh) => {
                 let home = ssh.home().map(Path::to_path_buf);
                 if self.remote_bus(env).is_some() {
                     (

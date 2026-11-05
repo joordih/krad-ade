@@ -1,5 +1,6 @@
 mod acp;
 mod editor;
+mod extensions;
 mod fonts;
 mod gateway;
 mod general;
@@ -57,6 +58,7 @@ pub(super) enum SettingsPane {
     Mcp,
     Acp,
     Languages,
+    Extensions,
 }
 
 impl SettingsPane {
@@ -71,6 +73,7 @@ impl SettingsPane {
             Self::Mcp => "MCP",
             Self::Acp => "ACP agents",
             Self::Languages => "Languages",
+            Self::Extensions => "Extensions",
         }
     }
 
@@ -86,8 +89,9 @@ impl SettingsPane {
             }
             Self::Mcp => "The MCP servers whose tools Gateway chats can use.",
             Self::Acp => "Agents the app talks to over the Agent Client Protocol.",
-            Self::Languages => {
-                "Language servers, the SDKs they need, and extensions that add languages."
+            Self::Languages => "Language servers and the SDKs they need.",
+            Self::Extensions => {
+                "Extensions that add languages, commands, views and tools, and their settings."
             }
         }
     }
@@ -103,6 +107,7 @@ impl SettingsPane {
             Self::Mcp => IconName::Plug,
             Self::Acp => IconName::UserGroup,
             Self::Languages => IconName::Workflow,
+            Self::Extensions => IconName::Layers,
         }
     }
 }
@@ -118,6 +123,7 @@ pub(super) struct SettingsUi {
     acp: AcpUi,
     tint: material::TintUi,
     languages: languages::LanguagesUi,
+    extensions: extensions::ExtensionsUi,
     fonts: crate::font_catalog::FontCatalog,
     theme_editor: Option<theme_editor::ThemeEditor>,
     scroll: gpui_kit::ScrollHandle,
@@ -240,6 +246,7 @@ impl EnvironmentShell {
             acp,
             tint,
             languages,
+            extensions: extensions::ExtensionsUi::default(),
             fonts: crate::font_catalog::font_catalog(cx),
             theme_editor: None,
             scroll: gpui_kit::ScrollHandle::new(),
