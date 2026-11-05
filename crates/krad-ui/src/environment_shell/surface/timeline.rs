@@ -56,6 +56,7 @@ pub(super) struct TurnRow<'a> {
 pub(super) struct Timeline {
     print: u64,
     ticks: Rc<[Tick]>,
+    marks_print: u64,
     marks: Vec<Option<Bookmark>>,
 }
 
@@ -131,15 +132,22 @@ fn shown_text(message: &ChatMessage) -> &str {
         .unwrap_or(&message.text)
 }
 
-fn timeline_print(chat: &SurfaceChat, bookmarks: &ChatBookmarks) -> u64 {
+fn messages_print(messages: &[ChatMessage]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    messages.len().hash(&mut hasher);
+    for message in messages {
+        message.text.len().hash(&mut hasher);
+        message.parts.len().hash(&mut hasher);
+        message.mentions.len().hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+fn timeline_print(chat: &SurfaceChat, marks_print: u64, bookmarks: &ChatBookmarks) -> u64 {
     let mut hasher = DefaultHasher::new();
     chat.thread.item_count().hash(&mut hasher);
     first_message_row(chat).hash(&mut hasher);
-    chat.messages.len().hash(&mut hasher);
-    for message in &chat.messages {
-        message.text.len().hash(&mut hasher);
-        message.parts.len().hash(&mut hasher);
-    }
+    marks_print.hash(&mut hasher);
     bookmarks.hash(&mut hasher);
     hasher.finish()
 }
@@ -168,31 +176,29 @@ fn chat_ticks(
 }
 
 impl SurfaceChat {
-    fn refreshed_timeline(&self, bookmarks: &ChatBookmarks) -> Ref<'_, Timeline> {
-        let print = timeline_print(self, bookmarks);
-        if self.timeline.borrow().print != print {
+    fn refreshed_marks(&self) -> Ref<'_, Timeline> {
+        let print = messages_print(&self.messages);
+        if self.timeline.borrow().marks_print != print {
             let mut timeline = self.timeline.borrow_mut();
             timeline.marks = bookmarks_of(&self.messages);
-            timeline.ticks = chat_ticks(self, &timeline.marks, bookmarks).into();
-            timeline.print = print;
+            timeline.marks_print = print;
         }
         self.timeline.borrow()
     }
 
     fn timeline_ticks(&self, bookmarks: &ChatBookmarks) -> Rc<[Tick]> {
-        self.refreshed_timeline(bookmarks).ticks.clone()
+        let marks_print = self.refreshed_marks().marks_print;
+        let print = timeline_print(self, marks_print, bookmarks);
+        if self.timeline.borrow().print != print {
+            let mut timeline = self.timeline.borrow_mut();
+            timeline.ticks = chat_ticks(self, &timeline.marks, bookmarks).into();
+            timeline.print = print;
+        }
+        self.timeline.borrow().ticks.clone()
     }
 
-    pub(super) fn message_bookmark(
-        &self,
-        index: usize,
-        bookmarks: &ChatBookmarks,
-    ) -> Option<Bookmark> {
-        self.refreshed_timeline(bookmarks)
-            .marks
-            .get(index)
-            .copied()
-            .flatten()
+    pub(super) fn message_bookmark(&self, index: usize) -> Option<Bookmark> {
+        self.refreshed_marks().marks.get(index).copied().flatten()
     }
 
     fn jump_to_row(&mut self, row: usize) {

@@ -80,7 +80,7 @@ impl EnvironmentShell {
     ) -> Option<BookmarkAction> {
         let empty = ChatBookmarks::default();
         let bookmarks = self.chat_bookmarks(id).unwrap_or(&empty);
-        let bookmark = chat.message_bookmark(index, bookmarks)?;
+        let bookmark = chat.message_bookmark(index)?;
         let marked = bookmarks.contains(&bookmark);
         let (tooltip, color) = if marked {
             (REMOVE_TOOLTIP, pal.attention)
