@@ -43,11 +43,13 @@ impl EnvironmentShell {
                         continue;
                     };
                     let document = Document::new(&host, &path);
-                    shell
+                    if shell
                         .language_servers
                         .diagnostics
-                        .pulled(&document, full.full_document_diagnostic_report.items);
-                    shell.show_diagnostics(&document, cx);
+                        .pulled(&document, full.full_document_diagnostic_report.items)
+                    {
+                        shell.show_diagnostics(&document, cx);
+                    }
                 }
             })
             .unwrap_or_default();

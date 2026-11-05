@@ -1,11 +1,12 @@
 use gpui_kit::{
-    div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled,
+    div, px, rgb, uniform_list, AnyElement, Context, FontWeight, InteractiveElement, IntoElement,
+    ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
 };
-use krad_lsp::lsp_types::{Diagnostic, DiagnosticSeverity};
+use krad_lsp::lsp_types::DiagnosticSeverity;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use super::super::language_servers::severity_of;
+use super::super::language_servers::{FileRow, HostProblems, ProblemLine, ProblemRow};
 use super::super::session_pane::{tab_shell, TabWidth};
 use super::super::EnvironmentShell;
 use super::tabs::UtilityTab;
@@ -26,13 +27,6 @@ const INCOMPLETE_OF: &str = "of";
 const INCOMPLETE_FILES: &str = "files checked";
 const ROW_H: f32 = 24.0;
 const PROBLEM_INDENT: f32 = 20.0;
-const LINE_BASE: u32 = 1;
-
-struct FileProblems {
-    path: PathBuf,
-    shown: String,
-    problems: Vec<Diagnostic>,
-}
 
 fn severity_look(severity: DiagnosticSeverity, pal: &Palette) -> (IconName, u32) {
     match severity {
@@ -42,51 +36,22 @@ fn severity_look(severity: DiagnosticSeverity, pal: &Palette) -> (IconName, u32)
     }
 }
 
-fn count_of(problems: &[Diagnostic], severity: DiagnosticSeverity) -> usize {
-    problems
-        .iter()
-        .filter(|problem| severity_of(problem) == severity)
-        .count()
-}
-
 impl EnvironmentShell {
-    fn file_problems(&self) -> Vec<FileProblems> {
-        let root = self.envs.get(&self.active).and_then(|live| {
-            let group = live.data.group(live.selected_group?)?;
-            Some(group.root.clone())
-        });
-        let host = self
-            .envs
-            .get(&self.active)
-            .map(|live| live.data.host.clone());
-        let store = &self.language_servers.diagnostics;
-        store
-            .files()
-            .into_iter()
-            .filter(|document| host.as_ref() == Some(&document.host))
-            .map(|document| {
-                let shown = root
-                    .as_deref()
-                    .and_then(|root| document.path.strip_prefix(root).ok())
-                    .unwrap_or(&document.path)
-                    .to_string_lossy()
-                    .into_owned();
-                FileProblems {
-                    problems: store.of(&document),
-                    path: document.path,
-                    shown,
-                }
-            })
-            .collect()
+    fn shown_problems(&self) -> Option<&HostProblems> {
+        let host = &self.envs.get(&self.active)?.data.host;
+        self.language_servers.diagnostics.rows().of(host)
     }
 
+    fn problems_root(&self) -> Option<PathBuf> {
+        let live = self.envs.get(&self.active)?;
+        let group = live.data.group(live.selected_group?)?;
+        Some(group.root.clone())
+    }
+
+    #[tracing::instrument(level = "trace", skip_all)]
     pub(super) fn problems_tab(&self, shown: UtilityTab, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let errors: usize = self
-            .file_problems()
-            .iter()
-            .map(|file| count_of(&file.problems, DiagnosticSeverity::ERROR))
-            .sum();
+        let errors = self.shown_problems().map_or(0, |problems| problems.errors);
         tab_shell(
             PROBLEMS_TAB_ID,
             shown == UtilityTab::Problems,
@@ -114,24 +79,24 @@ impl EnvironmentShell {
         .into_any_element()
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub(super) fn problems_body(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let files = self.file_problems();
-        let list = div()
-            .id(PROBLEMS_LIST_ID)
+        let count = self
+            .shown_problems()
+            .map_or(0, |problems| problems.rows.len());
+        let body = div()
             .flex()
             .flex_col()
             .flex_1()
             .min_h_0()
             .px(px(SPACE_2))
             .pb(px(SPACE_2))
-            .overflow_y_scroll()
             .text_size(px(TEXT_SM))
-            .line_height(px(LINE_SM));
-        let incomplete = self.incomplete_notices(pal);
-        if files.is_empty() {
-            return list
-                .children(incomplete)
+            .line_height(px(LINE_SM))
+            .children(self.incomplete_notices(pal));
+        if count == 0 {
+            return body
                 .child(
                     div()
                         .text_color(rgb(pal.text_muted))
@@ -139,16 +104,42 @@ impl EnvironmentShell {
                 )
                 .into_any_element();
         }
-        let mut rows = incomplete;
-        let mut index = 0;
-        for (file_index, file) in files.into_iter().enumerate() {
-            rows.push(Self::problem_file_row(file_index, &file, cx));
-            for problem in &file.problems {
-                rows.push(Self::problem_row(index, &file.path, problem, cx));
-                index += 1;
-            }
-        }
-        list.children(rows).into_any_element()
+        let list = uniform_list(
+            PROBLEMS_LIST_ID,
+            count,
+            cx.processor(|this: &mut Self, range: Range<usize>, _: &mut Window, cx| {
+                this.problem_rows_in(range, cx)
+            }),
+        )
+        .flex_1()
+        .min_h_0();
+        body.child(list).into_any_element()
+    }
+
+    fn problem_rows_in(&self, range: Range<usize>, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let Some(problems) = self.shown_problems() else {
+            return Vec::new();
+        };
+        let root = self.problems_root();
+        let rows = &problems.rows;
+        let file_path = |file: usize| match rows.get(file) {
+            Some(ProblemRow::File(found)) => Some(found.path.as_path()),
+            _ => None,
+        };
+        rows.get(range.clone())
+            .unwrap_or_default()
+            .iter()
+            .zip(range)
+            .filter_map(|(row, index)| match row {
+                ProblemRow::File(file) => {
+                    Some(Self::problem_file_row(index, file, root.as_deref(), cx))
+                }
+                ProblemRow::Problem(problem) => {
+                    let path = file_path(problem.file)?;
+                    Some(Self::problem_row(index, path, problem, cx))
+                }
+            })
+            .collect()
     }
 
     fn incomplete_notices(&self, pal: &Palette) -> Vec<AnyElement> {
@@ -169,14 +160,19 @@ impl EnvironmentShell {
             .collect()
     }
 
-    fn problem_file_row(index: usize, file: &FileProblems, cx: &mut Context<Self>) -> AnyElement {
+    fn problem_file_row(
+        index: usize,
+        file: &FileRow,
+        root: Option<&Path>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let pal = palette(cx);
-        let name = Path::new(&file.shown).file_name().map_or_else(
-            || file.shown.clone(),
-            |name| name.to_string_lossy().into_owned(),
-        );
-        let errors = count_of(&file.problems, DiagnosticSeverity::ERROR);
-        let warnings = count_of(&file.problems, DiagnosticSeverity::WARNING);
+        let shown: SharedString = root
+            .and_then(|root| file.path.strip_prefix(root).ok())
+            .unwrap_or(&file.path)
+            .to_string_lossy()
+            .into_owned()
+            .into();
         div()
             .id((FILE_ROW_PREFIX, index))
             .flex()
@@ -192,7 +188,7 @@ impl EnvironmentShell {
                     .flex_none()
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(rgb(pal.text_strong))
-                    .child(name),
+                    .child(file.name.clone()),
             )
             .child(
                 div()
@@ -200,21 +196,21 @@ impl EnvironmentShell {
                     .min_w_0()
                     .truncate()
                     .text_color(rgb(pal.text_muted))
-                    .child(file.shown.clone()),
+                    .child(shown),
             )
             .child(
                 div()
                     .flex_none()
                     .text_size(px(TEXT_XS))
                     .text_color(rgb(pal.error_fg))
-                    .child(errors.to_string()),
+                    .child(file.errors.clone()),
             )
             .child(
                 div()
                     .flex_none()
                     .text_size(px(TEXT_XS))
                     .text_color(rgb(pal.warning_fg))
-                    .child(warnings.to_string()),
+                    .child(file.warnings.clone()),
             )
             .into_any_element()
     }
@@ -222,20 +218,13 @@ impl EnvironmentShell {
     fn problem_row(
         index: usize,
         path: &Path,
-        problem: &Diagnostic,
+        problem: &ProblemLine,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let (glyph, color) = severity_look(severity_of(problem), pal);
-        let start = problem.range.start;
-        let place = format!("{}:{}", start.line + LINE_BASE, start.character + LINE_BASE);
+        let (glyph, color) = severity_look(problem.severity, pal);
+        let start = problem.start;
         let target = path.to_path_buf();
-        let message = problem
-            .message
-            .lines()
-            .next()
-            .unwrap_or_default()
-            .to_owned();
         div()
             .id((PROBLEM_ROW_PREFIX, index))
             .flex()
@@ -260,37 +249,15 @@ impl EnvironmentShell {
                     .min_w_0()
                     .truncate()
                     .text_color(rgb(pal.text_default))
-                    .child(message),
+                    .child(problem.message.clone()),
             )
             .child(
                 div()
                     .flex_none()
                     .text_size(px(TEXT_XS))
                     .text_color(rgb(pal.text_muted))
-                    .child(place),
+                    .child(problem.place.clone()),
             )
             .into_any_element()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use krad_lsp::lsp_types::{Position, Range};
-
-    #[test]
-    fn counts_split_errors_from_warnings() {
-        let with = |severity| Diagnostic {
-            range: Range::new(Position::new(0, 0), Position::new(0, 1)),
-            severity,
-            ..Diagnostic::default()
-        };
-        let problems = [
-            with(Some(DiagnosticSeverity::ERROR)),
-            with(None),
-            with(Some(DiagnosticSeverity::WARNING)),
-        ];
-        assert_eq!(count_of(&problems, DiagnosticSeverity::ERROR), 2);
-        assert_eq!(count_of(&problems, DiagnosticSeverity::WARNING), 1);
     }
 }

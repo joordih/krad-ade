@@ -142,7 +142,7 @@ impl EnvironmentShell {
             .language_servers
             .diagnostics
             .of(&self.active_document(&path))
-            .into_iter()
+            .iter()
             .map(|problem| problem.range.start)
             .collect();
         let key = |at: &Position| (at.line, at.character);

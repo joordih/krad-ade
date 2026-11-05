@@ -156,9 +156,8 @@ impl EnvironmentShell {
             .language_servers
             .diagnostics
             .files()
-            .into_iter()
             .filter(|document| document.host == host)
-            .map(|document| document.path)
+            .map(|document| document.path.clone())
             .collect();
         if paths.is_empty() {
             return;

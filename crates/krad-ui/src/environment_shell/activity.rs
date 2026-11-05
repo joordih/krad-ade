@@ -244,14 +244,7 @@ impl EnvironmentShell {
         }
         let pal = palette(cx);
         let now = Instant::now();
-        let rows: Vec<AnyElement> = self
-            .activity_log
-            .entries
-            .iter()
-            .enumerate()
-            .map(|(index, entry)| Self::activity_row(index, entry, now, cx))
-            .collect();
-        let empty = rows.is_empty();
+        let empty = self.activity_log.entries.is_empty();
         let height = self.activity_log.height;
         let docked = self.activity_terminal();
         let problems = self.utility_tab() == UtilityTab::Problems;
@@ -303,6 +296,13 @@ impl EnvironmentShell {
                 panel.child(self.problems_body(cx))
             })
             .when(docked.is_none() && !problems, |panel| {
+                let rows: Vec<AnyElement> = self
+                    .activity_log
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .map(|(index, entry)| Self::activity_row(index, entry, now, cx))
+                    .collect();
                 panel.child(
                     div()
                         .id(LIST_ID)
