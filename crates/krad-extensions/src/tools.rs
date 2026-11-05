@@ -17,6 +17,7 @@ use crate::registry::{self, Package, Registry};
 use crate::runtime_requirements::{RequirementCache, RuntimeRequirements};
 use crate::server_runtime::ServerRuntimes;
 
+mod program_launch;
 mod project_toolchains;
 mod site;
 

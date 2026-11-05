@@ -81,6 +81,7 @@ pub fn add_git(config_dir: &Path, url: &str) -> Result<ExtensionEntry, Extension
         id,
         source: ExtensionSource::Git(url.to_owned()),
         enabled: true,
+        trusted: None,
     })
 }
 
@@ -101,6 +102,7 @@ pub fn add_folder(folder: &Path) -> Result<ExtensionEntry, ExtensionError> {
         id,
         source: ExtensionSource::Folder(folder.to_path_buf()),
         enabled: true,
+        trusted: None,
     })
 }
 
@@ -153,11 +155,13 @@ mod tests {
                 id: "zig".to_owned(),
                 source: ExtensionSource::Git("https://x/zig.git".to_owned()),
                 enabled: true,
+                trusted: None,
             },
             ExtensionEntry {
                 id: "off".to_owned(),
                 source: ExtensionSource::Folder(PathBuf::from("/elsewhere")),
                 enabled: false,
+                trusted: None,
             },
         ];
         let folders = manifest_folders(config, &entries);

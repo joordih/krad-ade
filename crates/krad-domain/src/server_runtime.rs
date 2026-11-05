@@ -56,12 +56,18 @@ pub enum ExtensionSource {
     Folder(PathBuf),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ExtensionFingerprint(pub String);
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtensionEntry {
     pub id: String,
     pub source: ExtensionSource,
     #[serde(default = "enabled_by_default")]
     pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trusted: Option<ExtensionFingerprint>,
 }
 
 const fn enabled_by_default() -> bool {

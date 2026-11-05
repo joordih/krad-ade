@@ -37,6 +37,15 @@ pub enum ExtensionError {
     MissingServerRuntime(ServerRuntimeId),
     #[error(transparent)]
     Host(#[from] krad_host::HostError),
+    #[error("{extension} needs extension API {wanted}, newer than this app offers")]
+    Incompatible {
+        extension: String,
+        wanted: krad_extension_api::ApiVersion,
+    },
+    #[error("{} leaves its extension's folder", .0.display())]
+    OutsideFolder(std::path::PathBuf),
+    #[error(transparent)]
+    Program(#[from] crate::program::ProgramError),
 }
 
 const ERROR_MARKERS: [&str; 5] = ["ERROR:", "error:", "Error:", "npm ERR!", "fatal:"];

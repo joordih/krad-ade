@@ -105,6 +105,7 @@ raw-window-handle = "0.6"
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 serde_json = "1"
+schemars = "1.2"
 thiserror = "2"
 toml = "1"
 tracing = "0.1"
@@ -121,6 +122,7 @@ ureq = { version = "3.5", default-features = false, features = [
 krad-agents = { path = "crates/krad-agents" }
 krad-chat = { path = "crates/krad-chat" }
 krad-domain = { path = "crates/krad-domain" }
+krad-extension-api = { path = "crates/krad-extension-api" }
 krad-extensions = { path = "crates/krad-extensions" }
 krad-github = { path = "crates/krad-github" }
 krad-gitlab = { path = "crates/krad-gitlab" }

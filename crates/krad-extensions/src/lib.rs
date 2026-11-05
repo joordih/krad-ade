@@ -7,6 +7,7 @@ mod manifest;
 mod package;
 mod path_lookup;
 mod platform;
+pub mod program;
 mod registry;
 mod runtime_requirements;
 mod server_runtime;
@@ -18,6 +19,7 @@ pub use error::ExtensionError;
 pub use extension::{
     add_folder, add_git, folder_of, manifest_folders, remove, update, user_manifests_dir,
 };
+pub use krad_extension_api as api;
 pub use manifest::{builtin_catalog, BundledManifest, ProjectCheck, ServerScope};
 pub use registry::Registry;
 pub use toolchains::{

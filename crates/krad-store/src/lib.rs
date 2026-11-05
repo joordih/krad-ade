@@ -1,6 +1,8 @@
 mod arcade;
 mod chat_images;
 mod config_dir;
+mod extension_secret;
+mod extension_settings;
 mod gateway_key;
 mod github_login;
 mod gitlab_login;
@@ -14,6 +16,10 @@ mod vault;
 pub use arcade::{read_arcade_scores, write_arcade_scores};
 pub use chat_images::{chat_images_dir, delete_chat_images, save_pasted_image, ChatImageError};
 pub use config_dir::{config_dir, gateway_sessions_dir, APP_NAME};
+pub use extension_secret::{
+    delete_extension_secret, find_extension_secret, write_extension_secret,
+};
+pub use extension_settings::{read_extension_settings, write_extension_settings};
 pub use gateway_key::{delete_gateway_key, find_gateway_key, write_gateway_key};
 pub use github_login::{
     delete_github_login, find_github_login, read_github_login, write_github_login,
