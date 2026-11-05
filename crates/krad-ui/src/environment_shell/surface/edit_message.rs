@@ -50,7 +50,7 @@ pub(super) fn changed_files_after(messages: &[ChatMessage], index: usize) -> boo
         .iter()
         .skip(index + 1)
         .flat_map(ChatMessage::tools)
-        .any(|tool| tool.edit.is_some())
+        .any(|tool| !tool.edits.is_empty())
 }
 
 impl SurfaceChat {
@@ -322,10 +322,10 @@ mod tests {
             name: "Edit".to_owned(),
             kind: krad_domain::ToolKind::Edit,
             summary: "src/a.rs".to_owned(),
-            edit: Some(FileEdit {
+            edits: vec![FileEdit {
                 path: "src/a.rs".to_owned(),
                 lines: Vec::new(),
-            }),
+            }],
         }));
         assert!(changed_files_after(&messages, 0));
         assert!(!changed_files_after(&messages, 1));

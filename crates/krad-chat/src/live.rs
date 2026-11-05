@@ -1,7 +1,8 @@
 mod claude;
 
 use krad_domain::{
-    AcpAuthMethodId, AcpModeId, AcpModelId, Effort, ModelId, PermissionMode, Prompt, ResumeId,
+    AcpAuthMethodId, AcpConfigOptionId, AcpConfigValue, AcpModeId, AcpModelId, Effort, ModelId,
+    PermissionMode, Prompt, ResumeId,
 };
 use std::collections::hash_map::RandomState;
 use std::fmt;
@@ -111,6 +112,7 @@ pub(crate) enum Order {
 pub(crate) enum AcpOrder {
     Mode(AcpModeId),
     Model(AcpModelId),
+    Option(AcpConfigOptionId, AcpConfigValue),
     SignIn(AcpAuthMethodId),
 }
 
@@ -158,6 +160,11 @@ impl LiveChat {
 
     pub fn set_acp_model(&self, model: AcpModelId) {
         self.harness.order(Order::Acp(AcpOrder::Model(model)));
+    }
+
+    pub fn set_acp_option(&self, option: AcpConfigOptionId, value: AcpConfigValue) {
+        self.harness
+            .order(Order::Acp(AcpOrder::Option(option, value)));
     }
 
     pub fn sign_in(&self, method: AcpAuthMethodId) {

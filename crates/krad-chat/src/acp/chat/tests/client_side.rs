@@ -115,7 +115,7 @@ fn a_write_with_no_open_tool_shows_as_a_write_of_its_own() {
     let events = chat_until(&started, |event| matches!(event, ChatEvent::Tool(_)));
     assert!(matches!(events.last(), Some(ChatEvent::Tool(call))
         if call.kind == ToolKind::Edit
-            && call.edit.as_ref().is_some_and(|edit| edit.counts() == (2, 0))));
+            && call.edits.first().is_some_and(|edit| edit.counts() == (2, 0))));
 }
 
 #[cfg(unix)]

@@ -121,7 +121,7 @@ mod tests {
             name: "bash".to_owned(),
             kind: ToolKind::Shell,
             summary: "cargo test".to_owned(),
-            edit: None,
+            edits: Vec::new(),
         };
         let mut answer = message(
             Speaker::Assistant,

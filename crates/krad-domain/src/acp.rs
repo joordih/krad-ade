@@ -5,7 +5,8 @@ mod settings;
 
 pub use id::{AcpAgentId, AcpAgentIdError, MAX_ACP_AGENT_ID_LEN};
 pub use offers::{
-    AcpAuthMethod, AcpAuthMethodId, AcpMode, AcpModeId, AcpModel, AcpModelId, AcpModels, AcpModes,
+    AcpAuthMethod, AcpAuthMethodId, AcpConfigChoice, AcpConfigOption, AcpConfigOptionId,
+    AcpConfigValue, AcpMode, AcpModeId, AcpModel, AcpModelId, AcpModels, AcpModes,
     AcpPermissionKind, AcpPermissionOption, AcpPermissionOptionId, AcpSignIn,
 };
 pub use secrets::{AcpAgentStart, AcpSecretKey, EnteredEnvValue, EnteredEnvVariable, SplitEnv};

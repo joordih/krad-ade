@@ -259,6 +259,8 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         if let Some(modes) = &self.choices.modes {
             (self.sink)(LiveEvent::Acp(AcpEvent::Modes(modes.offer.clone())));
         }
+        let others = self.choices.others.clone();
+        (self.sink)(LiveEvent::Acp(AcpEvent::Options(others)));
         if let Some(models) = &self.choices.models {
             let models = models.offer.clone();
             let shown = models
@@ -346,6 +348,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             Order::Model(model) => self.choose_model(AcpModelId(model.as_str().to_owned())),
             Order::Acp(AcpOrder::Model(model)) => self.choose_model(model),
             Order::Acp(AcpOrder::Mode(mode)) => self.choose_mode(mode),
+            Order::Acp(AcpOrder::Option(option, value)) => self.choose_option(option, value),
             Order::Acp(AcpOrder::SignIn(method)) => return self.sign_in(method),
             Order::Answer(ask, answer) => self.asks.answer(&ask, &answer),
             Order::Rewind(_) => (self.sink)(LiveEvent::Rewound(Err(RewindError::Unsupported))),

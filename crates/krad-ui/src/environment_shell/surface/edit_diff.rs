@@ -13,9 +13,17 @@ const MORE_SUFFIX: &str = "more lines";
 const GAP_MARK: &str = "⋯";
 const NUMBER_W: f32 = 40.0;
 
-pub(super) fn edit_counts(edit: &FileEdit) -> String {
-    let (added, removed) = edit.counts();
-    format!("{ADDED_SIGN}{added} {REMOVED_SIGN}{removed}")
+pub(super) fn edit_counts(edits: &[FileEdit]) -> Option<String> {
+    if edits.is_empty() {
+        return None;
+    }
+    let (added, removed) = edits
+        .iter()
+        .map(FileEdit::counts)
+        .fold((0, 0), |(added, removed), (more_added, more_removed)| {
+            (added + more_added, removed + more_removed)
+        });
+    Some(format!("{ADDED_SIGN}{added} {REMOVED_SIGN}{removed}"))
 }
 
 fn line_number(line: &EditLine) -> Option<u32> {
@@ -83,11 +91,7 @@ fn edit_line(line: &EditLine, numbered: bool, pal: &Palette) -> AnyElement {
         .into_any_element()
 }
 
-pub(in crate::environment_shell) fn edit_diff(
-    edit: &FileEdit,
-    mono: &SharedString,
-    pal: &Palette,
-) -> AnyElement {
+fn edit_diff(edit: &FileEdit, mono: &SharedString, pal: &Palette) -> AnyElement {
     let hidden = edit.lines.len().saturating_sub(SHOWN_LINES);
     let numbered = edit.lines.iter().any(|line| line_number(line).is_some());
     div()
@@ -118,6 +122,41 @@ pub(in crate::environment_shell) fn edit_diff(
         .into_any_element()
 }
 
+pub(in crate::environment_shell) fn edit_diffs(
+    edits: &[FileEdit],
+    mono: &SharedString,
+    pal: &Palette,
+) -> Option<AnyElement> {
+    if let [edit] = edits {
+        return Some(edit_diff(edit, mono, pal));
+    }
+    if edits.is_empty() {
+        return None;
+    }
+    Some(
+        div()
+            .flex()
+            .flex_col()
+            .children(edits.iter().map(|edit| {
+                div()
+                    .flex()
+                    .flex_col()
+                    .mt(px(SPACE_1))
+                    .child(
+                        div()
+                            .truncate()
+                            .font_family(mono.clone())
+                            .text_size(px(TEXT_XS))
+                            .line_height(px(LINE_XS))
+                            .text_color(rgb(pal.text_muted))
+                            .child(edit.path.clone()),
+                    )
+                    .child(edit_diff(edit, mono, pal))
+            }))
+            .into_any_element(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,6 +181,15 @@ mod tests {
                 line(LineChange::Added),
             ],
         };
-        assert_eq!(edit_counts(&edit), "+2 -1");
+        assert_eq!(
+            edit_counts(std::slice::from_ref(&edit)).as_deref(),
+            Some("+2 -1")
+        );
+        let other = FileEdit {
+            path: "b".to_owned(),
+            lines: vec![line(LineChange::Added)],
+        };
+        assert_eq!(edit_counts(&[edit, other]).as_deref(), Some("+3 -1"));
+        assert_eq!(edit_counts(&[]), None);
     }
 }

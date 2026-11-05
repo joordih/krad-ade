@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use super::super::chat::ShownOutput;
 use super::super::EnvironmentShell;
-use super::edit_diff::{edit_counts, edit_diff};
+use super::edit_diff::{edit_counts, edit_diffs};
 use super::tool_output::tool_output;
 use crate::components::{icon, shimmer_text, IconName};
 use crate::theme::{
@@ -232,13 +232,13 @@ fn call_row(
                 .child(verb),
         )
         .child(target)
-        .children(call.edit.as_ref().map(|edit| {
+        .children(edit_counts(&call.edits).map(|counts| {
             div()
                 .flex_none()
                 .font_family(mono.clone())
                 .text_size(px(TEXT_XS))
                 .text_color(rgb(pal.text_muted))
-                .child(edit_counts(edit))
+                .child(counts)
         }));
     div()
         .relative()
@@ -248,7 +248,7 @@ fn call_row(
         .pl(px(ELBOW_W + SPACE_1_5))
         .child(rail(last, pal))
         .child(line)
-        .children(call.edit.as_ref().map(|edit| edit_diff(edit, mono, pal)))
+        .children(edit_diffs(&call.edits, mono, pal))
         .children(output.map(|output| tool_output(output, mono, pal)))
 }
 
@@ -385,7 +385,7 @@ mod tests {
             name: name.to_owned(),
             kind,
             summary: String::new(),
-            edit: None,
+            edits: Vec::new(),
         }
     }
 

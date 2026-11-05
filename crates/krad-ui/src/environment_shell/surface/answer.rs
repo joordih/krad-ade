@@ -275,7 +275,7 @@ mod tests {
                     name: "Bash".to_owned(),
                     kind: ToolKind::Shell,
                     summary: "ls".to_owned(),
-                    edit: None,
+                    edits: Vec::new(),
                 }),
                 AnswerPart::Text("Second part.".to_owned()),
             ],

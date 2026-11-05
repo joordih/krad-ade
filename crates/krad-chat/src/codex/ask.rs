@@ -161,7 +161,7 @@ pub(crate) fn server_ask(
                     .collect::<Vec<_>>()
                     .join(PATH_SEPARATOR),
                 title: asked.reason,
-                edit: tools.iter().find_map(|tool| tool.edit.clone()),
+                edit: tools.iter().find_map(|tool| tool.edits.first().cloned()),
             };
             Some(ask(id, kind, CodexAsk::FileChange))
         }
@@ -363,7 +363,7 @@ mod tests {
             name: "Write".to_owned(),
             kind: ToolKind::Edit,
             summary: "out.txt".to_owned(),
-            edit: None,
+            edits: Vec::new(),
         };
         let changes = HashMap::from([("item_1".to_owned(), vec![tool])]);
         let ask = server_ask(

@@ -227,6 +227,7 @@ impl EnvironmentShell {
                                 .w_full()
                                 .children(
                                     self.ask_tray(id, cx)
+                                        .or_else(|| self.acp_sign_in_tray(id, chat, cx))
                                         .or_else(|| self.mcp_tray(id, chat, cx))
                                         .or_else(|| self.agent_notice(id, chat, cx))
                                         .or_else(|| Self::checklist_tray(id, chat, cx))

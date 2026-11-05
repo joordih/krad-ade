@@ -27,7 +27,10 @@ impl Translator {
         let Some(state) = self.tools.get_mut(&id) else {
             return events;
         };
-        state.edit = Some(edit.clone());
+        match state.edits.iter_mut().find(|shown| shown.path == edit.path) {
+            Some(shown) => shown.clone_from(&edit),
+            None => state.edits.push(edit.clone()),
+        }
         if !state.shown {
             events.extend(self.shown(&id));
             return events;
@@ -68,7 +71,7 @@ impl Translator {
             name: WRITE_TITLE.to_owned(),
             kind: ShownKind::Edit,
             summary: edit.path.clone(),
-            edit: Some(edit),
+            edits: vec![edit],
         }))
     }
 }

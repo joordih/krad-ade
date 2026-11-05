@@ -112,6 +112,7 @@ pub(in crate::environment_shell) fn fold_entry(messages: &mut Vec<ChatMessage>, 
                     answer.parts.push(AnswerPart::Thinking(thought.clone()));
                 }
                 ChatEvent::Tool(call) => answer.parts.push(AnswerPart::Tool(call.clone())),
+                ChatEvent::ToolUpdated(call) => update_tool(&mut answer.parts, call),
                 ChatEvent::Done => answer.running = false,
                 ChatEvent::Error(text) => {
                     answer.running = false;
@@ -132,7 +133,7 @@ fn place_edit(messages: &mut [ChatMessage], tool: &ToolUseId, edit: &FileEdit) {
         let Some(call) = call else {
             continue;
         };
-        call.edit = Some(edit.clone());
+        call.place_edit(edit.clone());
         return;
     }
 }
@@ -147,6 +148,19 @@ fn place_output(messages: &mut [ChatMessage], tool: &ToolUseId, output: &ToolOut
         message
             .tool_outputs
             .insert(tool.clone(), ShownOutput::from(output));
+    }
+}
+
+fn update_tool(parts: &mut Vec<AnswerPart>, call: &ToolCall) {
+    let shown = call.id.as_ref().and_then(|id| {
+        parts.iter_mut().find_map(|part| match part {
+            AnswerPart::Tool(shown) if shown.id.as_ref() == Some(id) => Some(shown),
+            _ => None,
+        })
+    });
+    match shown {
+        Some(shown) => shown.clone_from(call),
+        None => parts.push(AnswerPart::Tool(call.clone())),
     }
 }
 
@@ -206,7 +220,7 @@ mod tests {
             name: "printf".to_owned(),
             kind: krad_domain::ToolKind::Shell,
             summary: "printf hi".to_owned(),
-            edit: None,
+            edits: Vec::new(),
         };
         let output = |text: &str, exit_code| {
             event(ChatEvent::ToolOutput {
@@ -249,7 +263,7 @@ mod tests {
             name: "Edit".to_owned(),
             kind: krad_domain::ToolKind::Edit,
             summary: "src/a.rs".to_owned(),
-            edit: None,
+            edits: Vec::new(),
         };
         let patch = FileEdit {
             path: "src/a.rs".to_owned(),
@@ -273,16 +287,13 @@ mod tests {
             fold_entry(&mut messages, &entry);
         }
         let placed = messages[1].parts.iter().find_map(|part| match part {
-            AnswerPart::Tool(call) => call.edit.clone(),
+            AnswerPart::Tool(call) => Some(call.edits.clone()),
             _ => None,
         });
-        assert_eq!(placed, Some(patch.clone()));
+        assert_eq!(placed, Some(vec![patch.clone()]));
         assert_eq!(
-            messages[1]
-                .tools()
-                .next()
-                .and_then(|call| call.edit.clone()),
-            Some(patch)
+            messages[1].tools().next().map(|call| call.edits.clone()),
+            Some(vec![patch])
         );
     }
 
@@ -333,13 +344,40 @@ mod tests {
     }
 
     #[test]
+    fn an_updated_tool_replaces_the_row_with_its_id_in_place() {
+        let call = |name: &str| ToolCall {
+            id: Some(ToolUseId::from("t1")),
+            name: name.to_owned(),
+            kind: krad_domain::ToolKind::Read,
+            summary: String::new(),
+            edits: Vec::new(),
+        };
+        let mut messages = Vec::new();
+        for entry in [
+            user("Read it"),
+            event(ChatEvent::Tool(call("Read"))),
+            event(ChatEvent::Text("Done.".to_owned())),
+            event(ChatEvent::ToolUpdated(call("Read src/main.rs"))),
+        ] {
+            fold_entry(&mut messages, &entry);
+        }
+        assert_eq!(
+            messages[1].parts,
+            [
+                AnswerPart::Tool(call("Read src/main.rs")),
+                AnswerPart::Text("Done.".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
     fn thinking_tools_and_text_keep_their_order() {
         let grep = ToolCall {
             id: None,
             name: "Grep".to_owned(),
             kind: krad_domain::ToolKind::Search,
             summary: "refund".to_owned(),
-            edit: None,
+            edits: Vec::new(),
         };
         let mut messages = Vec::new();
         for entry in [

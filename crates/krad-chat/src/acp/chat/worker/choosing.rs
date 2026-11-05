@@ -1,4 +1,4 @@
-use krad_domain::{AcpAuthMethodId, AcpModeId, AcpModelId, ChatEvent};
+use krad_domain::{AcpAuthMethodId, AcpConfigValue, AcpModeId, AcpModelId, ChatEvent};
 use tracing::debug;
 
 use super::{Flow, Worker, SIGN_IN_FAILED_TEXT, SIGN_IN_TIMEOUT};
@@ -65,6 +65,17 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             }
             Setter::Config(config_id) => self.configure(session, config_id, model.0),
         }
+    }
+
+    pub(super) fn choose_option(&mut self, option: ConfigOptionId, value: AcpConfigValue) {
+        let Some(session) = self.session.clone() else {
+            return;
+        };
+        if !self.choices.offers_other(&option, &value) {
+            debug!("the ACP agent does not offer that choice");
+            return;
+        }
+        self.configure(session, option, value.0);
     }
 
     fn configure(&self, session: SessionId, config_id: ConfigOptionId, value: String) {
