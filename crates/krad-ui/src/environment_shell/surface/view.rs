@@ -289,7 +289,10 @@ impl EnvironmentShell {
         }
         let text = match now {
             AgentNow::Waiting if waits_unseen => {
-                format!("{} {WAITING_TEXT}", chat.harness().display_name())
+                format!(
+                    "{} {WAITING_TEXT}",
+                    self.settings.acp.harness_name(chat.harness())
+                )
             }
             AgentNow::Exited => EXITED_TEXT.to_owned(),
             AgentNow::Waiting | AgentNow::Idle | AgentNow::Working => return None,

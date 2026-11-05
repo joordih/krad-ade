@@ -60,6 +60,12 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let dialog = self.docs_dialog.as_ref()?;
+        let harness = dialog.preset.map(|preset| {
+            (
+                preset,
+                SharedString::from(self.settings.acp.harness_name(preset)),
+            )
+        });
         let pal = palette(cx);
         let group = self
             .active_group()
@@ -72,7 +78,7 @@ impl EnvironmentShell {
                     .child(Self::docs_notes(dialog, cx))
                     .child(Self::docs_output(dialog, cx)),
             )
-            .child(Self::docs_footer(dialog, cx));
+            .child(Self::docs_footer(dialog, harness, cx));
         Some(sheet_overlay(sheet, close, cx))
     }
 
@@ -197,6 +203,7 @@ impl EnvironmentShell {
 
     fn docs_model_trigger(
         preset: AgentPreset,
+        name: SharedString,
         model: Option<&ModelId>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -220,7 +227,7 @@ impl EnvironmentShell {
             .font_weight(FontWeight::MEDIUM)
             .text_color(rgb(pal.text_strong))
             .child(icon(mark, ICON_SM, mark_color))
-            .child(preset.display_name())
+            .child(name)
             .children(model.map(|model| {
                 div()
                     .font_family(mono)
@@ -236,11 +243,15 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    fn docs_footer(dialog: &DocsDialog, cx: &mut Context<Self>) -> AnyElement {
+    fn docs_footer(
+        dialog: &DocsDialog,
+        harness: Option<(AgentPreset, SharedString)>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let pal = palette(cx);
-        let picker = dialog
-            .preset
-            .map(|preset| Self::docs_model_trigger(preset, dialog.model.as_ref(), cx));
+        let picker = harness.map(|(preset, name)| {
+            Self::docs_model_trigger(preset, name, dialog.model.as_ref(), cx)
+        });
         let ready = dialog.preset.is_some() && dialog.notes.iter().any(|(_, chosen)| *chosen);
         sheet_footer(pal)
             .children(picker)

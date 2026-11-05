@@ -165,7 +165,9 @@ impl EnvironmentShell {
             }
             AgentPreset::Gateway => ChatBackend::Gateway(self.gateway_config(env, id, cx)?),
             AgentPreset::Acp(agent) => ChatBackend::Acp(self.acp_config(env, id, agent, cx)?),
-            AgentPreset::Shell => return Err(StartError::NoChat(harness)),
+            AgentPreset::Shell => {
+                return Err(StartError::NoChat(self.settings.acp.harness_name(harness)))
+            }
         };
         let owner = env.clone();
         let apply = move |shell: &mut Self, event, cx: &mut Context<Self>| {
@@ -226,7 +228,9 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Result<Arc<OpencodeServer>, StartError> {
         if runner.in_wsl() {
-            return Err(StartError::NotInWsl(harness));
+            return Err(StartError::NotInWsl(
+                self.settings.acp.harness_name(harness),
+            ));
         }
         if runner.on_ssh() {
             return match self.opencode.hosts.get(&runner.link().host()) {

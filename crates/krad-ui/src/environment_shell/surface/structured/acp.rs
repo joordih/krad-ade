@@ -55,7 +55,7 @@ impl EnvironmentShell {
             .settings
             .acp
             .agent(agent)
-            .ok_or(StartError::NoProgram(preset))?;
+            .ok_or_else(|| StartError::NoProgram(self.settings.acp.harness_name(preset)))?;
         let root = self
             .envs
             .get(env)
