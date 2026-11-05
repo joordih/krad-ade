@@ -145,7 +145,7 @@ impl StructuredChat {
                     .iter()
                     .filter_map(|mention| match mention {
                         Mention::Image(image) => Some(image.clone()),
-                        _ => None,
+                        Mention::Path(_) => None,
                     })
                     .collect(),
             });

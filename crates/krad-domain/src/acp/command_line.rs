@@ -20,13 +20,12 @@ fn words(line: &str) -> Option<Vec<String>> {
     for letter in line.chars() {
         match quoting {
             Quoting::Inside(quote) if letter == quote => quoting = Quoting::Bare,
-            Quoting::Inside(_) => word.get_or_insert_default().push(letter),
             Quoting::Bare if letter == SINGLE_QUOTE || letter == DOUBLE_QUOTE => {
                 quoting = Quoting::Inside(letter);
                 word.get_or_insert_default();
             }
             Quoting::Bare if letter.is_whitespace() => words.extend(word.take()),
-            Quoting::Bare => word.get_or_insert_default().push(letter),
+            Quoting::Inside(_) | Quoting::Bare => word.get_or_insert_default().push(letter),
         }
     }
     if quoting != Quoting::Bare {

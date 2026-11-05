@@ -133,7 +133,7 @@ impl EnvironmentShell {
             AgentPreset::Opencode => self.load_opencode_history(env, id, resume, cx),
             AgentPreset::Codex => self.load_codex_history(env, id, resume, cx),
             AgentPreset::Gateway => self.load_gateway_history(env, id, resume, cx),
-            AgentPreset::Acp(_) => self.load_acp_history(env, id, cx),
+            AgentPreset::Acp(_) => Self::load_acp_history(env, id, cx),
             AgentPreset::Shell => {}
         }
     }
@@ -220,7 +220,7 @@ impl EnvironmentShell {
         Self::show_history_when_read(env, id, read, cx);
     }
 
-    fn load_acp_history(&mut self, env: EnvironmentName, id: TerminalId, cx: &mut Context<Self>) {
+    fn load_acp_history(env: EnvironmentName, id: TerminalId, cx: &mut Context<Self>) {
         let Some(file) = acp_transcript_file(&env, id) else {
             return;
         };

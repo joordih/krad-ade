@@ -227,7 +227,7 @@ fn a_reopened_acp_chat_that_loads_its_session_shows_what_it_showed() {
     assert_eq!(restored[1].text, "Fixed it.");
     let chat = StructuredChat::new(LiveSession::Resume(id("ses_1")), acp_harness());
     assert_eq!(chat.session.history(), Some(&id("ses_1")), "it loads ses_1");
-    assert!(chat.notices.is_empty());
+    assert_eq!(chat.notices, Vec::<String>::new());
 }
 
 #[test]
@@ -254,6 +254,6 @@ fn a_reopened_acp_chat_that_cannot_load_keeps_its_transcript_and_starts_anew() {
 fn only_acp_chats_note_a_fresh_start_on_reopen() {
     let mut chat = resumed();
     assert!(chat.retries(&missing()).is_some());
-    assert!(chat.notices.is_empty());
+    assert_eq!(chat.notices, Vec::<String>::new());
     assert!(chat.transcript.is_none());
 }

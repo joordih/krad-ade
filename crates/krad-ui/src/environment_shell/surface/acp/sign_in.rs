@@ -144,7 +144,7 @@ impl EnvironmentShell {
                         program: agent.program.clone(),
                         args,
                     };
-                    self.sign_in_with_agent_env(id, agent, command, env, retry, cx);
+                    Self::sign_in_with_agent_env(id, agent, command, env, retry, cx);
                 }
             }
         }
@@ -176,12 +176,11 @@ impl EnvironmentShell {
             return;
         };
         if let Some(command) = agent.terminal_command() {
-            self.sign_in_with_agent_env(id, agent, command, BTreeMap::new(), retry, cx);
+            Self::sign_in_with_agent_env(id, agent, command, BTreeMap::new(), retry, cx);
         }
     }
 
     fn sign_in_with_agent_env(
-        &mut self,
         id: TerminalId,
         agent: AcpAgent,
         command: CommandLine,
