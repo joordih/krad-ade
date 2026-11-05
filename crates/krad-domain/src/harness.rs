@@ -295,10 +295,10 @@ pub fn worker_brief(coordinator: u64, cli: &str, task: &str) -> String {
 #[must_use]
 pub fn chat_worker_brief(task: &str) -> String {
     format!(
-        "{WORKER_BRIEF_OPENING}the Krad ADE chat, which follows your screen. \
+        "{WORKER_BRIEF_OPENING}the lead of a Krad ADE session, which reads your conversation. \
          Do this task: {task} \
          When you finish, end with a short summary of what you did and how you checked it. \
-         If you are blocked, say why and stop; the chat will answer you."
+         If you are blocked, say why and stop; the lead will answer you."
     )
 }
 

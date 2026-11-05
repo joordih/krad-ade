@@ -395,7 +395,9 @@ fn render(request: &Request, response: &Response) -> String {
         Response::TimedOut => TIMED_OUT.to_owned(),
         Response::Screen(screen) => screen.clone(),
         Response::Noted | Response::Decided(_) => String::new(),
-        Response::Spawned { terminal } => format!("Started worker in terminal {terminal}"),
+        Response::Spawned { terminal } => {
+            format!("Started worker {terminal} in a session of its own")
+        }
         Response::Submitted { terminal } => format!("Typed the message into terminal {terminal}"),
         Response::Code(answer) => answer.render(),
         Response::Error(message) => message.clone(),

@@ -10,6 +10,7 @@ use krad_domain::{
 
 use super::session_look::session_icon;
 use super::terminal_status::CardStatus;
+use super::workers::LeadEnding;
 use super::{EnvironmentShell, LiveEnv};
 use crate::components::{agent_status, icon, Button, IconName};
 use crate::theme::{
@@ -216,9 +217,9 @@ impl EnvironmentShell {
                         .icon(IconName::Close)
                         .small()
                         .tooltip(CLOSE_SESSION_TOOLTIP)
-                        .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                        .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
                             cx.stop_propagation();
-                            this.close_session(id, cx);
+                            this.ask_end_lead(LeadEnding::CloseSession(id), window, cx);
                         })),
                 )
             })
@@ -266,6 +267,23 @@ impl EnvironmentShell {
     }
 
     pub(super) fn close_session(&mut self, id: SessionId, cx: &mut Context<Self>) {
+        let env = self.active.clone();
+        let workers: Vec<TerminalId> = self
+            .envs
+            .get(&env)
+            .and_then(|live| {
+                let session = live.data.session(id)?;
+                let held = session_terminals(session).filter(|terminal| {
+                    live.data
+                        .worker(*terminal)
+                        .is_some_and(|(_, worker)| worker.session == Some(id))
+                });
+                Some(held.collect())
+            })
+            .unwrap_or_default();
+        for terminal in workers {
+            self.close_terminal_in(&env, terminal, cx);
+        }
         self.with_sessions(cx, |live| {
             live.data.close_session(id);
         });

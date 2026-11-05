@@ -12,6 +12,7 @@ use std::borrow::Cow;
 
 use super::super::ask::ask_line;
 use super::super::chat::{AnswerPart, ChatMessage};
+use super::super::workers::{spawned_worker, WorkerCard};
 use super::super::EnvironmentShell;
 use super::message_actions::{copy_button, message_actions, message_group};
 use super::tool_group::ToolLook;
@@ -81,6 +82,7 @@ impl EnvironmentShell {
         index: usize,
         message: &ChatMessage,
         chat: &SurfaceChat,
+        workers: &[WorkerCard],
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
@@ -102,6 +104,14 @@ impl EnvironmentShell {
         };
         for (part_index, part) in message.parts.iter().enumerate() {
             if let AnswerPart::Tool(call) = part {
+                let spawned = (call.kind == ToolKind::Shell)
+                    .then(|| spawned_worker(&call.summary, workers))
+                    .flatten();
+                if let Some(card) = spawned {
+                    group(&mut calls, false, &mut parts, cx);
+                    parts.push(Self::worker_card(id, card, cx));
+                    continue;
+                }
                 match call.id.as_ref().filter(|_| call.kind == ToolKind::Subagent) {
                     Some(tool) => {
                         group(&mut calls, false, &mut parts, cx);

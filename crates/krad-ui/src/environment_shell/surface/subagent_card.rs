@@ -176,7 +176,7 @@ impl EnvironmentShell {
                         pal,
                     )
                 }
-                Speaker::Assistant => Self::surface_answer(id, index, message, chat, cx),
+                Speaker::Assistant => Self::surface_answer(id, index, message, chat, &[], cx),
             });
         }
         if run.is_none() {

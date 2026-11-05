@@ -297,7 +297,10 @@ impl EnvironmentShell {
                             .then(|| Self::edit_button(id, index, pal, cx));
                         question_row(id, index, message, chat, edit, pal)
                     }
-                    Speaker::Assistant => Self::surface_answer(id, index, message, chat, cx),
+                    Speaker::Assistant => {
+                        let workers = self.worker_cards(id);
+                        Self::surface_answer(id, index, message, chat, &workers, cx)
+                    }
                 }
             }
             ThreadItem::Loading => muted_line(LOADING_TEXT, pal),
