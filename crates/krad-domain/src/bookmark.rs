@@ -8,12 +8,24 @@ const PRINT_PRIME: u64 = 0x0100_0000_01b3;
 #[serde(transparent)]
 pub struct TurnPrint(u64);
 
+impl Default for TurnPrint {
+    fn default() -> Self {
+        Self(PRINT_OFFSET)
+    }
+}
+
+impl TurnPrint {
+    #[must_use]
+    pub fn and(self, part: &[u8]) -> Self {
+        Self(part.iter().fold(self.0, |print, byte| {
+            (print ^ u64::from(*byte)).wrapping_mul(PRINT_PRIME)
+        }))
+    }
+}
+
 impl From<&str> for TurnPrint {
     fn from(question: &str) -> Self {
-        let print = question.trim().bytes().fold(PRINT_OFFSET, |print, byte| {
-            (print ^ u64::from(byte)).wrapping_mul(PRINT_PRIME)
-        });
-        Self(print)
+        Self::default().and(question.trim().as_bytes())
     }
 }
 
@@ -26,6 +38,8 @@ pub enum TurnSide {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Bookmark {
     pub turn: TurnPrint,
+    #[serde(default)]
+    pub repeat: u32,
     pub side: TurnSide,
 }
 
@@ -58,6 +72,7 @@ mod tests {
     fn answer_to(question: &str) -> Bookmark {
         Bookmark {
             turn: TurnPrint::from(question),
+            repeat: 0,
             side: TurnSide::Answer,
         }
     }
@@ -72,6 +87,15 @@ mod tests {
             TurnPrint::from("Fix the build"),
             TurnPrint::from("Fix the tests")
         );
+    }
+
+    #[test]
+    fn a_bookmark_written_before_repeats_were_counted_points_at_the_first_ask(
+    ) -> serde_json::Result<()> {
+        let older = serde_json::json!({ "turn": 42, "side": "Answer" });
+        let bookmark: Bookmark = serde_json::from_value(older)?;
+        assert_eq!(bookmark.repeat, 0);
+        Ok(())
     }
 
     #[test]

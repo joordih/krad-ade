@@ -1,5 +1,5 @@
 use gpui_kit::{FollowMode, ListState};
-use krad_domain::TerminalId;
+use krad_domain::{MosaicState, TerminalId};
 
 use super::super::EnvironmentShell;
 use super::view::following;
@@ -14,6 +14,10 @@ pub(super) enum Anchor {
 
 pub(super) fn follows_tail(anchor: Anchor, thread: &ListState) -> bool {
     anchor == Anchor::Tail && following(thread)
+}
+
+fn ends_when_hidden(anchor: Anchor, shown: bool) -> bool {
+    anchor == Anchor::Question && !shown
 }
 
 fn glide_target(max: f32, landing: Option<f32>) -> f32 {
@@ -66,6 +70,14 @@ impl SurfaceChat {
         self.thread.scroll_to(kept);
     }
 
+    fn end_hidden_anchor(&mut self, shown: bool) {
+        if !ends_when_hidden(self.anchor, shown) {
+            return;
+        }
+        self.follow_latest();
+        self.thread.scroll_to_end();
+    }
+
     fn follow_latest(&mut self) {
         self.anchor = Anchor::Tail;
         self.glide = None;
@@ -81,6 +93,19 @@ impl EnvironmentShell {
     pub(super) fn scrolled_by_hand(&mut self, id: TerminalId) {
         if let Some(chat) = self.active_chat_mut(id) {
             chat.release_anchor();
+        }
+    }
+
+    pub(in crate::environment_shell) fn end_hidden_anchors(&mut self) {
+        let active = &self.active;
+        for (name, live) in &mut self.envs {
+            let tab = (name == active)
+                .then(|| live.data.tabs().and_then(MosaicState::active_tab))
+                .flatten();
+            for (id, chat) in &mut live.chats {
+                let shown = tab.is_some_and(|tab| tab.tiles.iter().any(|tile| tile.id == *id));
+                chat.end_hidden_anchor(shown);
+            }
         }
     }
 
@@ -115,6 +140,13 @@ mod tests {
     fn the_landing_leaves_the_lead_above_the_question() {
         let landing = landing_offset(1000.0, 350.0, 20.0);
         assert!((landing - 1330.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn leaving_a_chat_lets_go_of_its_question_so_it_reopens_at_the_end() {
+        assert!(ends_when_hidden(Anchor::Question, false));
+        assert!(!ends_when_hidden(Anchor::Question, true));
+        assert!(!ends_when_hidden(Anchor::Tail, false));
     }
 
     #[test]

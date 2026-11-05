@@ -191,6 +191,7 @@ mod tests {
         let mut node = nodes.remove(0);
         node.bookmarks.toggle(crate::Bookmark {
             turn: crate::TurnPrint::from("Fix the build"),
+            repeat: 1,
             side: crate::TurnSide::Answer,
         });
         let back: TerminalNode = serde_json::from_str(&serde_json::to_string(&node)?)?;

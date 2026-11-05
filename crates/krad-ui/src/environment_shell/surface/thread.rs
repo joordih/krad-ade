@@ -292,12 +292,12 @@ impl EnvironmentShell {
                         let edit = chat
                             .offers_edit(index)
                             .then(|| Self::edit_button(id, index, pal, cx));
-                        let bookmark = self.bookmark_action(id, index, &chat.messages, pal, cx);
+                        let bookmark = self.bookmark_action(id, index, chat, pal, cx);
                         question_row(id, index, message, chat, edit, bookmark, pal)
                     }
                     Speaker::Assistant => {
                         let workers = self.worker_cards(id);
-                        let bookmark = self.bookmark_action(id, index, &chat.messages, pal, cx);
+                        let bookmark = self.bookmark_action(id, index, chat, pal, cx);
                         Self::surface_answer(id, index, message, chat, &workers, bookmark, cx)
                     }
                 }
