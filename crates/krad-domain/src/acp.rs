@@ -1,8 +1,10 @@
+mod command_line;
 mod id;
 mod offers;
 mod secrets;
 mod settings;
 
+pub use command_line::CommandLine;
 pub use id::{AcpAgentId, AcpAgentIdError, MAX_ACP_AGENT_ID_LEN};
 pub use offers::{
     AcpAuthMethod, AcpAuthMethodId, AcpConfigChoice, AcpConfigOption, AcpConfigOptionId,
@@ -34,6 +36,11 @@ impl AcpAgent {
     #[must_use]
     pub fn display_name(&self) -> String {
         format!("{}{ACP_DISPLAY_SUFFIX}", self.name)
+    }
+
+    #[must_use]
+    pub fn terminal_command(&self) -> Option<CommandLine> {
+        CommandLine::parse(self.terminal.as_deref()?)
     }
 
     #[must_use]

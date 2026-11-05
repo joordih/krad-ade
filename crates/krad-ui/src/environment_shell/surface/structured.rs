@@ -25,6 +25,7 @@ use super::acp::AcpOffers;
 use super::outbox::Outbox;
 use super::{view, Backend, SurfaceChat, SurfaceCommand};
 
+pub(super) use acp::read_acp_env;
 use acp::AcpSecretsPrep;
 use mcp::McpPrep;
 pub(in crate::environment_shell) use open::restored_chats;

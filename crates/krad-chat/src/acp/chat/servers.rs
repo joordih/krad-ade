@@ -12,7 +12,7 @@ use crate::acp::setup::{
 
 #[derive(Debug, Error, PartialEq, Eq)]
 #[error("the secret {variable} of {owner} is not saved; add it again in Settings")]
-pub(super) struct MissingSecret {
+pub struct MissingSecret {
     owner: String,
     variable: McpVariableName,
 }
@@ -54,7 +54,10 @@ fn resolved(
         .collect()
 }
 
-pub(super) fn agent_env(start: &AcpAgentStart) -> Result<Vec<(String, String)>, MissingSecret> {
+/// # Errors
+///
+/// Fails when a secret value of the agent's env is not among its read secrets.
+pub fn acp_agent_env(start: &AcpAgentStart) -> Result<Vec<(String, String)>, MissingSecret> {
     resolved(&start.agent.name, &start.agent.env, &start.secrets)
 }
 

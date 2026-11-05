@@ -1,14 +1,16 @@
 mod tray;
 
-use gpui_kit::Context;
+use gpui_kit::{AppContext as _, Context};
 use krad_domain::{
-    AcpAuthMethod, AcpAuthMethodId, AcpSignIn, EnvironmentName, NodeKind, TerminalId,
+    AcpAgent, AcpAuthMethod, AcpAuthMethodId, AcpSignIn, CommandLine, EnvironmentName, NodeKind,
+    TerminalId,
 };
 use std::collections::BTreeMap;
 
 use super::super::super::sessions::Launch;
 use super::super::super::terminal_lifecycle::{NodeGroup, NodeSpec};
 use super::super::super::EnvironmentShell;
+use super::super::structured::read_acp_env;
 use super::super::StructuredChat;
 
 const SIGN_IN_TERMINAL_LABEL: &str = "Sign in";
@@ -90,14 +92,13 @@ impl SignInAsk {
     }
 }
 
-fn command_launch(line: &str) -> Option<Launch> {
-    let mut words = line.split_whitespace().map(str::to_owned);
-    let program = words.next()?;
-    Some(Launch::Command {
-        program,
-        args: words.collect(),
-        vars: Vec::new(),
-    })
+fn sign_in_vars(
+    mut agent_env: Vec<(String, String)>,
+    method_env: BTreeMap<String, String>,
+) -> Vec<(String, String)> {
+    agent_env.retain(|(name, _)| !method_env.contains_key(name));
+    agent_env.extend(method_env);
+    agent_env
 }
 
 impl EnvironmentShell {
@@ -134,18 +135,16 @@ impl EnvironmentShell {
                 }
             }
             SignInAction::Terminal { args, env, retry } => {
-                let program = structured
+                let agent = structured
                     .harness
                     .acp_agent()
-                    .and_then(|agent| self.settings.acp.agent(agent))
-                    .map(|agent| agent.program);
-                if let Some(program) = program {
-                    let launch = Launch::Command {
-                        program,
+                    .and_then(|agent| self.settings.acp.agent(agent));
+                if let Some(agent) = agent {
+                    let command = CommandLine {
+                        program: agent.program.clone(),
                         args,
-                        vars: env.into_iter().collect(),
                     };
-                    self.open_sign_in_terminal(id, launch, retry, cx);
+                    self.sign_in_with_agent_env(id, agent, command, env, retry, cx);
                 }
             }
         }
@@ -170,16 +169,46 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let launch = harness
+        let Some(agent) = harness
             .acp_agent()
             .and_then(|agent| self.settings.acp.agent(agent))
-            .and_then(|agent| agent.terminal)
-            .as_deref()
-            .and_then(command_launch);
-        if let Some(launch) = launch {
-            self.open_sign_in_terminal(id, launch, retry, cx);
+        else {
+            return;
+        };
+        if let Some(command) = agent.terminal_command() {
+            self.sign_in_with_agent_env(id, agent, command, BTreeMap::new(), retry, cx);
         }
-        cx.notify();
+    }
+
+    fn sign_in_with_agent_env(
+        &mut self,
+        id: TerminalId,
+        agent: AcpAgent,
+        command: CommandLine,
+        method_env: BTreeMap<String, String>,
+        retry: AcpAuthMethodId,
+        cx: &mut Context<Self>,
+    ) {
+        let reading = cx.background_spawn(async move { read_acp_env(agent) });
+        cx.spawn(async move |this, cx| {
+            let agent_env = reading.await;
+            this.update(cx, |shell, cx| {
+                match agent_env {
+                    Ok(agent_env) => {
+                        let launch = Launch::Command {
+                            program: command.program,
+                            args: command.args,
+                            vars: sign_in_vars(agent_env, method_env),
+                        };
+                        shell.open_sign_in_terminal(id, launch, retry, cx);
+                    }
+                    Err(error) => shell.push_toast(error),
+                }
+                cx.notify();
+            })
+            .unwrap_or_default();
+        })
+        .detach();
     }
 
     fn open_sign_in_terminal(
@@ -303,11 +332,18 @@ mod tests {
     }
 
     #[test]
-    fn the_agent_terminal_command_splits_into_its_program_and_args() {
-        assert!(matches!(
-            command_launch("codex login"),
-            Some(Launch::Command { program, args, .. }) if program == "codex" && args == ["login"]
-        ));
-        assert!(command_launch("  ").is_none());
+    fn the_method_s_env_wins_over_the_agent_s_own() {
+        let agent_env = vec![
+            ("API_KEY".to_owned(), "from-settings".to_owned()),
+            ("MODE".to_owned(), "agent".to_owned()),
+        ];
+        let method_env = BTreeMap::from([("MODE".to_owned(), "login".to_owned())]);
+        assert_eq!(
+            sign_in_vars(agent_env, method_env),
+            [
+                ("API_KEY".to_owned(), "from-settings".to_owned()),
+                ("MODE".to_owned(), "login".to_owned()),
+            ]
+        );
     }
 }

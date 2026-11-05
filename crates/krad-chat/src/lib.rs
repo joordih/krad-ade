@@ -22,7 +22,7 @@ mod rewind;
 mod skills;
 mod subagents;
 
-pub use acp::AcpConfig;
+pub use acp::{acp_agent_env, AcpConfig, MissingSecret};
 pub use codex::{codex_models, read_codex_transcript, CodexError};
 pub use control::{
     AcpEvent, AskAnswer, AskKind, Catalog, CommandOffer, LiveEvent, ModelOffer, ModelSource,
