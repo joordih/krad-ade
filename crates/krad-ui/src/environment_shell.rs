@@ -84,7 +84,7 @@ use krad_domain::{
     AgentPreset, EnvironmentData, EnvironmentName, EnvironmentView, PersistedLayout, Prompt,
     Settings, SidebarWidth, TerminalId, Visibility, WorkMode, DEFAULT_ENVIRONMENT,
 };
-use krad_store::LayoutWriter;
+use krad_store::{AcpTranscripts, LayoutWriter};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -154,6 +154,7 @@ pub struct EnvironmentShell {
     activity_log: activity::ActivityLog,
     close_request: CloseRequest,
     layout_writer: Option<LayoutWriter>,
+    acp_transcripts: Option<AcpTranscripts>,
     git: HashMap<groups::GitKey, groups::GroupGit>,
     git_task: Option<Task<()>>,
     file_tree: file_tree::FileTree,
@@ -274,6 +275,7 @@ impl EnvironmentShell {
             activity_log: activity::ActivityLog::default(),
             close_request: CloseRequest::Idle,
             layout_writer: LayoutWriter::spawn(),
+            acp_transcripts: AcpTranscripts::spawn(),
             git: HashMap::new(),
             git_task: None,
             file_tree: file_tree::FileTree::default(),

@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use super::super::super::agent_bus::{cli_name, BUS_HINT};
 use super::super::super::agent_hooks::LEAD_HINT;
-use super::super::super::chat::{fold_entry, fold_prompt, LiveProcess, StartError};
+use super::super::super::chat::{LiveProcess, StartError};
 use super::super::super::gateway::GatewayReach;
 use super::super::super::opencode::OpencodeLink;
 use super::super::super::terminal_card::home_dir;
@@ -46,7 +46,7 @@ impl EnvironmentShell {
         let batch = structured.take_batch(outbox, Instant::now());
         if let Some(prompt) = &batch.message {
             outbox.delivered();
-            fold_prompt(messages, prompt, structured.harness);
+            structured.fold_sent(messages, prompt);
             *problem = None;
         }
         for notice in std::mem::take(&mut structured.notices) {
@@ -75,9 +75,9 @@ impl EnvironmentShell {
         {
             structured.closes_turn(true);
             for outcome in structured.asks.cancel_all() {
-                fold_entry(messages, &ChatEntry::Asked(outcome));
+                structured.fold_kept(messages, &ChatEntry::Asked(outcome));
             }
-            fold_entry(messages, &ChatEntry::Event(failure));
+            structured.fold_kept(messages, &ChatEntry::Event(failure));
         }
         self.set_agent_state(env, id, AgentState::Idle);
     }

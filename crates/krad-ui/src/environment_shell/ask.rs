@@ -13,7 +13,7 @@ use krad_domain::{
 };
 
 use super::chat::fold_entry;
-use super::surface::{StructuredChat, SurfaceChat};
+use super::surface::{Backend, StructuredChat, SurfaceChat};
 use super::EnvironmentShell;
 pub(super) use held::HeldAskReport;
 pub(super) use picks::Picks;
@@ -293,7 +293,10 @@ impl EnvironmentShell {
             .get_mut(&env)
             .and_then(|live| live.chats.get_mut(&owner))
         {
-            fold_entry(&mut chat.messages, &entry);
+            match &chat.backend {
+                Backend::Structured(structured) => structured.fold_kept(&mut chat.messages, &entry),
+                Backend::Transcript(_) => fold_entry(&mut chat.messages, &entry),
+            }
         }
     }
 

@@ -314,6 +314,7 @@ impl EnvironmentShell {
         }
         if chat.is_some_and(|chat| chat.structured().is_some()) {
             Self::forget_chat_images(env, id, cx);
+            self.forget_acp_transcript(env, id);
         }
         cx.notify();
         self.store();

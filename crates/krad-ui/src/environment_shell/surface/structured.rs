@@ -12,13 +12,14 @@ use krad_chat::{
     ResumeRefused, SlashCommand,
 };
 use krad_domain::{
-    AgentPreset, AgentState, ChatEntry, Effort, EnvironmentName, ModelId, PermissionMode, Prompt,
-    ResumeId, TerminalId,
+    AgentPreset, AgentState, ChatEntry, Effort, EnvironmentName, Mention, ModelId, PermissionMode,
+    Prompt, ResumeId, TerminalId,
 };
+use krad_store::{acp_transcript_file, AcpTranscript};
 use std::time::Instant;
 
 use super::super::ask::{AskQueue, Waiting};
-use super::super::chat::{fold_entry, LiveProcess};
+use super::super::chat::{fold_entry, fold_prompt, ChatMessage, LiveProcess};
 use super::super::EnvironmentShell;
 use super::acp::AcpOffers;
 use super::outbox::Outbox;
@@ -81,6 +82,7 @@ pub(in crate::environment_shell) struct StructuredChat {
     notices: Vec<String>,
     rewinding: Option<Rewinding>,
     pub(in crate::environment_shell) acp: AcpOffers,
+    transcript: Option<AcpTranscript>,
 }
 
 impl StructuredChat {
@@ -110,6 +112,7 @@ impl StructuredChat {
             notices: Vec::new(),
             rewinding: None,
             acp: AcpOffers::default(),
+            transcript: None,
         }
     }
 
@@ -119,7 +122,42 @@ impl StructuredChat {
             && !self.live.as_ref().is_some_and(|live| live.confirmed)
     }
 
-    pub(super) fn switch_harness(&mut self, harness: AgentPreset) {
+    pub(in crate::environment_shell) fn fold_kept(
+        &self,
+        messages: &mut Vec<ChatMessage>,
+        entry: &ChatEntry,
+    ) {
+        if let Some(transcript) = &self.transcript {
+            transcript.keep(entry);
+        }
+        fold_entry(messages, entry);
+    }
+
+    fn fold_sent(&self, messages: &mut Vec<ChatMessage>, prompt: &Prompt) {
+        if let Some(transcript) = &self.transcript {
+            transcript.keep(&ChatEntry::User {
+                text: prompt.text.clone(),
+                preset: self.harness,
+                model: self.chosen_model.clone(),
+                images: prompt
+                    .mentions
+                    .iter()
+                    .filter_map(|mention| match mention {
+                        Mention::Image(image) => Some(image.clone()),
+                        _ => None,
+                    })
+                    .collect(),
+            });
+        }
+        fold_prompt(messages, prompt, self.harness);
+    }
+
+    pub(super) fn switch_harness(
+        &mut self,
+        harness: AgentPreset,
+        transcript: Option<AcpTranscript>,
+    ) {
+        self.transcript = transcript;
         self.harness = harness;
         self.live = None;
         self.mcp = McpPrep::default();
@@ -189,7 +227,13 @@ impl StructuredChat {
 
     fn retries(&mut self, refused: &ResumeRefused) -> Option<Batch> {
         match refused {
-            ResumeRefused::MissingConversation(_) => self.falls_back(),
+            ResumeRefused::MissingConversation(_) => {
+                let batch = self.falls_back()?;
+                if matches!(self.harness, AgentPreset::Acp(_)) {
+                    self.notices.push(refused.to_string());
+                }
+                Some(batch)
+            }
             ResumeRefused::TurnNotDropped(_) => self.drops_turn_again(),
         }
     }
@@ -261,6 +305,32 @@ fn structured_mut<'a>(
 }
 
 impl EnvironmentShell {
+    pub(super) fn acp_transcript(
+        &self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        harness: AgentPreset,
+    ) -> Option<AcpTranscript> {
+        if !matches!(harness, AgentPreset::Acp(_)) {
+            return None;
+        }
+        self.acp_transcripts
+            .as_ref()?
+            .transcript(acp_transcript_file(env, id)?)
+    }
+
+    pub(in crate::environment_shell) fn forget_acp_transcript(
+        &self,
+        env: &EnvironmentName,
+        id: TerminalId,
+    ) {
+        let (Some(transcripts), Some(file)) = (&self.acp_transcripts, acp_transcript_file(env, id))
+        else {
+            return;
+        };
+        transcripts.forget(file);
+    }
+
     fn apply_structured_event(
         &mut self,
         env: &EnvironmentName,
@@ -340,15 +410,15 @@ impl EnvironmentShell {
                 let ended = structured.live().is_none();
                 if structured.closes_turn(ended) {
                     for outcome in structured.asks.cancel_all() {
-                        fold_entry(messages, &ChatEntry::Asked(outcome));
+                        structured.fold_kept(messages, &ChatEntry::Asked(outcome));
                     }
-                    fold_entry(messages, &ChatEntry::Event(event));
+                    structured.fold_kept(messages, &ChatEntry::Event(event));
                     state = Some(AgentState::Idle);
                 } else if let ChatEvent::Error(error) = event {
                     *problem = Some(error);
                 }
             }
-            LiveEvent::Chat(event) => fold_entry(messages, &ChatEntry::Event(event)),
+            LiveEvent::Chat(event) => structured.fold_kept(messages, &ChatEntry::Event(event)),
         }
         if followed {
             thread.scroll_to_end();

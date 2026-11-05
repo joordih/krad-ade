@@ -341,7 +341,21 @@ impl EnvironmentShell {
         if !messages.is_empty() || !structured.is_fresh() {
             return HarnessChange::Refused;
         }
-        structured.switch_harness(*harness);
+        let transcript = self.acp_transcript(env, id, *harness);
+        let Some(SurfaceChat {
+            backend: Backend::Structured(structured),
+            ..
+        }) = self
+            .envs
+            .get_mut(env)
+            .and_then(|live| live.chats.get_mut(&id))
+        else {
+            return HarnessChange::Kept;
+        };
+        structured.switch_harness(*harness, transcript);
+        let Some(live) = self.envs.get_mut(env) else {
+            return HarnessChange::Kept;
+        };
         if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
             node.harness = Some(*harness);
         }
