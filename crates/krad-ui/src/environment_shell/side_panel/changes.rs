@@ -1,20 +1,23 @@
 mod actions;
 mod history;
+mod rows;
 
 use gpui_kit::component::InteractiveElementExt as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, uniform_list, AnyElement, Context, FontWeight, InteractiveElement, IntoElement,
-    MouseButton, MouseDownEvent, ParentElement, StatefulInteractiveElement, Styled, Window,
+    div, px, rgb, uniform_list, AnyElement, ClickEvent, Context, FontWeight, InteractiveElement,
+    IntoElement, MouseButton, MouseDownEvent, ParentElement, StatefulInteractiveElement, Styled,
+    Window,
 };
 use krad_domain::{ChangesLayout, FileOpening};
 use krad_repo::{FileChange, LineCount};
-use std::collections::{BTreeMap, HashSet};
 use std::ops::Range;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::super::file_tree::{change_color, change_mark};
+use super::super::git_actions::ChangeSide;
 use super::super::groups::GroupGit;
+use super::super::sidebar_terminals::branch_caption;
 use super::super::EnvironmentShell;
 use crate::components::{icon, Button, EmptyState, IconName};
 use crate::theme::{
@@ -22,22 +25,28 @@ use crate::theme::{
     SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM, TEXT_XS,
 };
 pub(in crate::environment_shell) use actions::ChangesAction;
-use actions::{change_menu, ROW_GROUP};
+use actions::{change_menu, side_button, ROW_GROUP, SECTION_GROUP};
 pub(in crate::environment_shell) use history::CommitHistory;
+use rows::{change_rows, ChangeRow, Sides};
 
 const CHANGES_ID: &str = "side-changes";
 const CHANGE_ROW_PREFIX: &str = "side-change-row";
+const SECTION_ROW_PREFIX: &str = "side-change-section";
+const BTN_BRANCH: &str = "side-changes-branch";
 const BTN_LAYOUT: &str = "side-changes-layout";
 const BTN_COLLAPSE: &str = "side-changes-collapse";
 const BTN_REFRESH: &str = "side-changes-refresh";
+const BTN_MORE: &str = "side-changes-more";
 const TOOLTIP_AS_LIST: &str = "View as list";
 const TOOLTIP_AS_TREE: &str = "View as tree";
 const TOOLTIP_COLLAPSE: &str = "Collapse all";
 const TOOLTIP_REFRESH: &str = "Refresh";
-const CHANGES_LABEL: &str = "Changes";
+const TOOLTIP_MORE: &str = "More git actions";
+const TOOLTIP_BRANCH: &str = "Switch branch";
+const STAGED_LABEL: &str = "Staged Changes";
+const UNSTAGED_LABEL: &str = "Changes";
 const ROW_H: f32 = 26.0;
 const INDENT: f32 = 14.0;
-const FOLDER_SEPARATOR: &str = "/";
 const ADDED_SIGN: &str = "+";
 const REMOVED_SIGN: &str = "−";
 const NO_REPO_TITLE: &str = "No repository";
@@ -45,105 +54,17 @@ const NO_REPO_TEXT: &str = "The selected group's folder is not a git repository.
 const CLEAN_TITLE: &str = "No changes";
 const CLEAN_TEXT: &str = "The working tree matches the last commit.";
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum ChangeRow {
-    Folder {
-        path: PathBuf,
-        label: String,
-        depth: usize,
-        collapsed: bool,
-    },
-    File {
-        change: usize,
-        depth: usize,
-    },
-}
-
-#[derive(Default)]
-struct FolderNode {
-    folders: BTreeMap<String, FolderNode>,
-    files: Vec<(String, usize)>,
-}
-
-impl FolderNode {
-    fn insert(&mut self, path: &Path, change: usize) {
-        let parts: Vec<String> = path
-            .iter()
-            .map(|part| part.to_string_lossy().into_owned())
-            .collect();
-        let Some((name, folders)) = parts.split_last() else {
-            return;
-        };
-        let mut node = self;
-        for folder in folders {
-            node = node.folders.entry(folder.clone()).or_default();
-        }
-        node.files.push((name.clone(), change));
-    }
-
-    fn push_rows(
-        &self,
-        parent: &Path,
-        depth: usize,
-        expanded: &HashSet<PathBuf>,
-        rows: &mut Vec<ChangeRow>,
-    ) {
-        for (name, folder) in &self.folders {
-            let mut label = name.clone();
-            let mut path = parent.join(name);
-            let mut node = folder;
-            while node.files.is_empty() && node.folders.len() == 1 {
-                let Some((next_name, next)) = node.folders.iter().next() else {
-                    break;
-                };
-                label = format!("{label}{FOLDER_SEPARATOR}{next_name}");
-                path = path.join(next_name);
-                node = next;
-            }
-            let shut = !expanded.contains(&path);
-            rows.push(ChangeRow::Folder {
-                path: path.clone(),
-                label,
-                depth,
-                collapsed: shut,
-            });
-            if !shut {
-                node.push_rows(&path, depth + 1, expanded, rows);
-            }
-        }
-        let mut files = self.files.clone();
-        files.sort();
-        rows.extend(
-            files
-                .into_iter()
-                .map(|(_, change)| ChangeRow::File { change, depth }),
-        );
+const fn side_label(side: ChangeSide) -> &'static str {
+    match side {
+        ChangeSide::Staged => STAGED_LABEL,
+        ChangeSide::Unstaged => UNSTAGED_LABEL,
     }
 }
 
-fn change_rows(
-    changes: &[FileChange],
-    layout: ChangesLayout,
-    expanded: &HashSet<PathBuf>,
-) -> Vec<ChangeRow> {
-    match layout {
-        ChangesLayout::List => {
-            let mut order: Vec<usize> = (0..changes.len()).collect();
-            order.sort_by(|a, b| changes[*a].path.cmp(&changes[*b].path));
-            order
-                .into_iter()
-                .map(|change| ChangeRow::File { change, depth: 0 })
-                .collect()
-        }
-        ChangesLayout::Tree => {
-            let mut root = FolderNode::default();
-            for (index, change) in changes.iter().enumerate() {
-                root.insert(&change.path, index);
-            }
-            let mut rows = Vec::new();
-            root.push_rows(Path::new(""), 0, expanded, &mut rows);
-            rows
-        }
+fn side_changes_of(git: &GroupGit, side: ChangeSide) -> &[FileChange] {
+    match side {
+        ChangeSide::Staged => &git.status.staged,
+        ChangeSide::Unstaged => &git.status.unstaged,
     }
 }
 
@@ -183,10 +104,15 @@ impl EnvironmentShell {
 
     fn change_rows(&self) -> Vec<ChangeRow> {
         self.group_git().map_or_else(Vec::new, |git| {
+            let sides = Sides {
+                staged: &git.status.staged,
+                unstaged: &git.status.unstaged,
+            };
             change_rows(
-                &git.status.changes,
+                &sides,
                 self.changes_layout(),
-                &self.changes_expanded,
+                &self.git_ui.expanded,
+                &self.git_ui.collapsed,
             )
         })
     }
@@ -196,8 +122,7 @@ impl EnvironmentShell {
             return EmptyState::new(IconName::GitBranch, NO_REPO_TITLE, NO_REPO_TEXT)
                 .into_any_element();
         };
-        let count = git.status.changes.len();
-        let body = if count == 0 {
+        let body = if git.status.changes.is_empty() {
             EmptyState::new(IconName::CheckCircle, CLEAN_TITLE, CLEAN_TEXT).into_any_element()
         } else {
             uniform_list(
@@ -216,6 +141,7 @@ impl EnvironmentShell {
             .min_h_0()
             .into_any_element()
         };
+        let toolbar = self.changes_toolbar(git, cx);
         div()
             .flex()
             .flex_col()
@@ -223,19 +149,47 @@ impl EnvironmentShell {
             .min_h_0()
             .gap(px(SPACE_0_5))
             .p(px(SPACE_1))
-            .child(self.changes_toolbar(count, cx))
+            .child(toolbar)
+            .child(self.commit_box(cx))
             .child(body)
             .child(self.history_section(cx))
             .into_any_element()
     }
 
-    fn changes_toolbar(&self, count: usize, cx: &mut Context<Self>) -> AnyElement {
+    fn changes_toolbar(&self, git: &GroupGit, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let layout = self.changes_layout();
         let (layout_icon, layout_tooltip) = match layout {
             ChangesLayout::Tree => (IconName::ListView, TOOLTIP_AS_LIST),
             ChangesLayout::List => (IconName::TreeView, TOOLTIP_AS_TREE),
         };
+        let branch = div()
+            .id(BTN_BRANCH)
+            .flex()
+            .flex_row()
+            .flex_1()
+            .min_w_0()
+            .items_center()
+            .gap(px(SPACE_1))
+            .h_full()
+            .px(px(SPACE_1))
+            .rounded(px(RADIUS_XS))
+            .cursor_pointer()
+            .hover(|style| style.bg(pal.bg_hover))
+            .tooltip(|_, cx| crate::components::tooltip_view(TOOLTIP_BRANCH.into(), cx))
+            .on_click(cx.listener(|this: &mut Self, event: &ClickEvent, _, cx| {
+                let at = event.position();
+                this.open_branch_switcher((at.x.as_f32(), at.y.as_f32()), cx);
+            }))
+            .child(icon(IconName::GitBranch, ICON_SM, pal.text_muted))
+            .child(
+                div()
+                    .min_w_0()
+                    .truncate()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(pal.text_default))
+                    .child(branch_caption(git)),
+            );
         div()
             .flex()
             .flex_row()
@@ -243,18 +197,10 @@ impl EnvironmentShell {
             .items_center()
             .gap(px(SPACE_0_5))
             .h(px(NAV_ROW_H))
-            .pl(px(SPACE_2))
+            .pl(px(SPACE_1))
             .text_size(px(TEXT_XS))
             .line_height(px(LINE_XS))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(pal.text_muted))
-                    .child(format!("{} · {count}", CHANGES_LABEL.to_uppercase())),
-            )
+            .child(branch)
             .child(
                 Button::new(BTN_LAYOUT)
                     .icon(layout_icon)
@@ -273,7 +219,7 @@ impl EnvironmentShell {
                         .small()
                         .tooltip(TOOLTIP_COLLAPSE)
                         .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                            this.changes_expanded.clear();
+                            this.git_ui.expanded.clear();
                             cx.notify();
                         })),
                 )
@@ -285,22 +231,95 @@ impl EnvironmentShell {
                     .tooltip(TOOLTIP_REFRESH)
                     .on_click(cx.listener(|this: &mut Self, _, _, cx| this.refresh_git(cx))),
             )
+            .child(
+                Button::new(BTN_MORE)
+                    .icon(IconName::More)
+                    .small()
+                    .tooltip(TOOLTIP_MORE)
+                    .on_click(cx.listener(|this: &mut Self, event: &ClickEvent, _, cx| {
+                        let at = event.position();
+                        this.open_git_menu((at.x.as_f32(), at.y.as_f32()), cx);
+                    })),
+            )
             .into_any_element()
     }
 
     fn change_row(&self, row: &ChangeRow, cx: &mut Context<Self>) -> AnyElement {
         match row {
+            ChangeRow::Section {
+                side,
+                count,
+                collapsed,
+            } => Self::change_section_row(*side, *count, *collapsed, cx),
             ChangeRow::Folder {
+                side,
                 path,
                 label,
                 depth,
                 collapsed,
-            } => Self::change_folder_row(path, label, *depth, *collapsed, cx),
-            ChangeRow::File { change, depth } => self.change_file_row(*change, *depth, cx),
+            } => Self::change_folder_row(*side, path, label, *depth, *collapsed, cx),
+            ChangeRow::File {
+                side,
+                change,
+                depth,
+            } => self.change_file_row(*side, *change, *depth, cx),
         }
     }
 
+    fn change_section_row(
+        side: ChangeSide,
+        count: usize,
+        collapsed: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let pal = palette(cx);
+        let bulk = side_button(SECTION_GROUP, side, None, cx);
+        div()
+            .id((SECTION_ROW_PREFIX, row_key(side, Path::new(""))))
+            .group(SECTION_GROUP)
+            .flex()
+            .flex_row()
+            .w_full()
+            .items_center()
+            .gap(px(SPACE_1_5))
+            .h(px(ROW_H))
+            .px(px(SPACE_2))
+            .rounded(px(RADIUS_XS))
+            .cursor_pointer()
+            .hover(|style| style.bg(pal.bg_hover))
+            .text_size(px(TEXT_XS))
+            .line_height(px(LINE_XS))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(rgb(pal.text_muted))
+            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                if !this.git_ui.collapsed.remove(&side) {
+                    this.git_ui.collapsed.insert(side);
+                }
+                cx.notify();
+            }))
+            .child(icon(
+                if collapsed {
+                    IconName::ChevronRight
+                } else {
+                    IconName::ChevronDown
+                },
+                ICON_SM,
+                pal.text_subtle,
+            ))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .child(side_label(side).to_uppercase()),
+            )
+            .child(bulk)
+            .child(div().flex_none().child(count.to_string()))
+            .into_any_element()
+    }
+
     fn change_folder_row(
+        side: ChangeSide,
         path: &Path,
         label: &str,
         depth: usize,
@@ -310,14 +329,14 @@ impl EnvironmentShell {
         let pal = palette(cx);
         let toggled = path.to_path_buf();
         div()
-            .id((CHANGE_ROW_PREFIX, row_key(path)))
+            .id((CHANGE_ROW_PREFIX, row_key(side, path)))
             .flex()
             .flex_row()
             .w_full()
             .items_center()
             .gap(px(SPACE_1_5))
             .h(px(ROW_H))
-            .pl(px(SPACE_2 + indent(depth)))
+            .pl(px(SPACE_2 + indent(depth + 1)))
             .pr(px(SPACE_2))
             .rounded(px(RADIUS_XS))
             .cursor_pointer()
@@ -326,8 +345,8 @@ impl EnvironmentShell {
             .line_height(px(LINE_SM))
             .text_color(rgb(pal.text_default))
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                if !this.changes_expanded.remove(&toggled) {
-                    this.changes_expanded.insert(toggled.clone());
+                if !this.git_ui.expanded.remove(&toggled) {
+                    this.git_ui.expanded.insert(toggled.clone());
                 }
                 cx.notify();
             }))
@@ -345,12 +364,18 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    fn change_file_row(&self, index: usize, depth: usize, cx: &mut Context<Self>) -> AnyElement {
+    fn change_file_row(
+        &self,
+        side: ChangeSide,
+        index: usize,
+        depth: usize,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let pal = palette(cx);
         let Some(git) = self.group_git() else {
             return div().into_any_element();
         };
-        let Some(change) = git.status.changes.get(index) else {
+        let Some(change) = side_changes_of(git, side).get(index) else {
             return div().into_any_element();
         };
         let path = git.repo_root.join(&change.path);
@@ -373,9 +398,11 @@ impl EnvironmentShell {
         let opened = path.clone();
         let pinned = path.clone();
         let menu = change_menu(&git.repo_root, change);
-        let discard = Self::discard_button(git.repo_root.clone(), change, cx);
+        let discard = (side == ChangeSide::Unstaged)
+            .then(|| Self::discard_button(git.repo_root.clone(), change, cx));
+        let staging = side_button(ROW_GROUP, side, Some(change.path.clone()), cx);
         div()
-            .id((CHANGE_ROW_PREFIX, row_key(&path)))
+            .id((CHANGE_ROW_PREFIX, row_key(side, &path)))
             .group(ROW_GROUP)
             .flex()
             .flex_row()
@@ -383,7 +410,7 @@ impl EnvironmentShell {
             .items_center()
             .gap(px(SPACE_1_5))
             .h(px(ROW_H))
-            .pl(px(SPACE_2 + indent(depth) + ICON_SM + SPACE_1_5))
+            .pl(px(SPACE_2 + indent(depth + 1) + ICON_SM + SPACE_1_5))
             .pr(px(SPACE_2))
             .rounded(px(RADIUS_XS))
             .cursor_pointer()
@@ -423,7 +450,8 @@ impl EnvironmentShell {
                     .children(folder),
             )
             .children(line_count_chips(lines, pal))
-            .child(discard)
+            .children(discard)
+            .child(staging)
             .child(
                 div()
                     .flex_none()
@@ -437,93 +465,10 @@ impl EnvironmentShell {
     }
 }
 
-fn row_key(path: &Path) -> u64 {
+fn row_key(side: ChangeSide, path: &Path) -> u64 {
     use std::hash::{Hash as _, Hasher as _};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    side.hash(&mut hasher);
     path.hash(&mut hasher);
     hasher.finish()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use krad_repo::ChangeKind;
-
-    fn changes(paths: &[&str]) -> Vec<FileChange> {
-        paths
-            .iter()
-            .map(|path| FileChange {
-                path: PathBuf::from(path),
-                kind: ChangeKind::Modified,
-                origin: None,
-            })
-            .collect()
-    }
-
-    fn shown(rows: &[ChangeRow], changes: &[FileChange]) -> Vec<(String, usize)> {
-        rows.iter()
-            .map(|row| match row {
-                ChangeRow::Folder { label, depth, .. } => (format!("{label}/"), *depth),
-                ChangeRow::File { change, depth } => {
-                    (changes[*change].path.to_string_lossy().into_owned(), *depth)
-                }
-            })
-            .collect()
-    }
-
-    #[test]
-    fn the_tree_puts_folders_first_and_compacts_single_folder_chains() {
-        let changes = changes(&[
-            "README.md",
-            "crates/ui/src/a.rs",
-            "crates/ui/src/b.rs",
-            "Cargo.toml",
-        ]);
-        let folded = change_rows(&changes, ChangesLayout::Tree, &HashSet::new());
-        assert_eq!(
-            shown(&folded, &changes),
-            [
-                ("crates/ui/src/".to_owned(), 0),
-                ("Cargo.toml".to_owned(), 0),
-                ("README.md".to_owned(), 0),
-            ],
-            "folders start folded"
-        );
-        let expanded: HashSet<PathBuf> = [PathBuf::from("crates/ui/src")].into();
-        let rows = change_rows(&changes, ChangesLayout::Tree, &expanded);
-        assert_eq!(
-            shown(&rows, &changes),
-            [
-                ("crates/ui/src/".to_owned(), 0),
-                ("crates/ui/src/a.rs".to_owned(), 1),
-                ("crates/ui/src/b.rs".to_owned(), 1),
-                ("Cargo.toml".to_owned(), 0),
-                ("README.md".to_owned(), 0),
-            ]
-        );
-    }
-
-    #[test]
-    fn only_opened_folders_show_their_files_and_the_list_sorts_by_path() {
-        let changes = changes(&["src/b.rs", "docs/a.md", "src/a.rs"]);
-        let expanded: HashSet<PathBuf> = [PathBuf::from("docs")].into();
-        let rows = change_rows(&changes, ChangesLayout::Tree, &expanded);
-        assert_eq!(
-            shown(&rows, &changes),
-            [
-                ("docs/".to_owned(), 0),
-                ("docs/a.md".to_owned(), 1),
-                ("src/".to_owned(), 0),
-            ]
-        );
-        let list = change_rows(&changes, ChangesLayout::List, &HashSet::new());
-        assert_eq!(
-            shown(&list, &changes),
-            [
-                ("docs/a.md".to_owned(), 0),
-                ("src/a.rs".to_owned(), 0),
-                ("src/b.rs".to_owned(), 0),
-            ]
-        );
-    }
 }

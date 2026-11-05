@@ -24,7 +24,7 @@ const BEHIND_MARK: &str = "↓";
 const BRANCH_ICON: f32 = 12.0;
 const BRANCH_GAP: f32 = 3.0;
 
-fn branch_caption(git: &GroupGit) -> String {
+pub(super) fn branch_caption(git: &GroupGit) -> String {
     let status = &git.status;
     let mut parts = vec![status
         .branch
@@ -263,6 +263,7 @@ mod tests {
             },
             lines: std::collections::HashMap::new(),
             worktrees: Vec::new(),
+            refs: krad_repo::Refs::default(),
         };
         assert_eq!(branch_caption(&git), "main");
         git.status.ahead = 2;

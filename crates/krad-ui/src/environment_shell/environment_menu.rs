@@ -4,6 +4,7 @@ use krad_repo::Worktree;
 use std::path::{Path, PathBuf};
 
 use super::context_menu::{MenuAction, MenuCreate, MenuEntry, MenuPlacement};
+use super::git_actions::{branch_entries, SEARCH_BRANCHES, WORKTREES_HEADER};
 use super::EnvironmentShell;
 use crate::components::IconName;
 use crate::keymap::OPEN_SETTINGS_HINT;
@@ -17,8 +18,7 @@ const SEARCH_GROUPS: &str = "Search groups…";
 const NEW_GROUP_LABEL: &str = "New group…";
 const RENAME_LABEL: &str = "Rename";
 const DELETE_LABEL: &str = "Delete";
-const SWITCH_WORKTREE_LABEL: &str = "Switch worktree";
-const SEARCH_WORKTREES: &str = "Search or create a worktree…";
+const SWITCH_BRANCH_LABEL: &str = "Switch branch";
 const NOT_A_REPO_TEXT: &str = "This group's folder is not a git repository.";
 const NO_GROUP_TEXT: &str = "Select a group first.";
 const SETTINGS_LABEL: &str = "Settings";
@@ -146,27 +146,38 @@ impl EnvironmentShell {
 
     fn worktree_submenu(&self, selected: Option<GroupId>) -> MenuEntry {
         let submenu = |entries| {
-            MenuEntry::submenu(SWITCH_WORKTREE_LABEL, IconName::GitBranch, entries)
-                .searchable(SEARCH_WORKTREES)
+            MenuEntry::submenu(SWITCH_BRANCH_LABEL, IconName::GitBranch, entries)
+                .searchable(SEARCH_BRANCHES)
         };
-        let Some(live) = self.envs.get(&self.active) else {
-            return submenu(Vec::new());
-        };
-        let Some(group) = selected.and_then(|id| live.data.group(id)) else {
-            return submenu(vec![MenuEntry::Note(NO_GROUP_TEXT.to_owned())]);
-        };
-        let Some(repo) = self.repo_of(group) else {
-            return submenu(vec![MenuEntry::Note(NOT_A_REPO_TEXT.to_owned())]);
-        };
-        let listed = self
-            .active_git(&group.root)
-            .map_or(&[][..], |git| git.worktrees.as_slice());
-        let entries = if listed.is_empty() {
+        match self.branch_switcher_entries(selected) {
+            Ok((group, entries)) => submenu(entries).creating(MenuCreate::Worktree(group)),
+            Err(note) => submenu(vec![MenuEntry::Note(note.to_owned())]),
+        }
+    }
+
+    pub(super) fn branch_switcher_entries(
+        &self,
+        selected: Option<GroupId>,
+    ) -> Result<(GroupId, Vec<MenuEntry>), &'static str> {
+        let live = self.envs.get(&self.active).ok_or(NO_GROUP_TEXT)?;
+        let group = selected
+            .and_then(|id| live.data.group(id))
+            .ok_or(NO_GROUP_TEXT)?;
+        let repo = self.repo_of(group).ok_or(NOT_A_REPO_TEXT)?;
+        let git = self.active_git(&group.root);
+        let listed = git.map_or(&[][..], |git| git.worktrees.as_slice());
+        let worktrees = if listed.is_empty() {
             self.worktree_groups(&live.data, group, &repo)
         } else {
             self.listed_worktrees(&live.data, group, listed)
         };
-        submenu(entries).creating(MenuCreate::Worktree(group.id))
+        let mut entries = Vec::new();
+        if !worktrees.is_empty() {
+            entries.push(MenuEntry::Header(WORKTREES_HEADER.to_owned()));
+            entries.extend(worktrees);
+        }
+        entries.extend(git.map_or_default(branch_entries));
+        Ok((group.id, entries))
     }
 
     fn worktree_groups(
@@ -178,7 +189,7 @@ impl EnvironmentShell {
         data.groups
             .iter()
             .filter(|other| self.repo_of(other).as_deref() == Some(repo))
-            .map(|other| self.worktree_group_entry(data, group, other, None))
+            .map(|other| self.worktree_group_entry(group, other, None))
             .collect()
     }
 
@@ -194,7 +205,7 @@ impl EnvironmentShell {
             .map(|worktree| {
                 let branch = worktree.branch.clone();
                 if let Some(open) = self.group_at(data, &worktree.path) {
-                    return self.worktree_group_entry(data, group, open, branch);
+                    return self.worktree_group_entry(group, open, branch);
                 }
                 let origin = worktree_origin(main, worktree);
                 let name = worktree.path.file_name().map_or_else(
@@ -206,7 +217,7 @@ impl EnvironmentShell {
                     false,
                     MenuAction::OpenWorktree(worktree.path.clone(), origin),
                 )
-                .with_detail(branch.unwrap_or_else(|| DETACHED_LABEL.to_owned()))
+                .with_trailing(branch.unwrap_or_else(|| DETACHED_LABEL.to_owned()))
             })
             .collect()
     }
@@ -225,7 +236,6 @@ impl EnvironmentShell {
 
     fn worktree_group_entry(
         &self,
-        data: &EnvironmentData,
         selected: &TerminalGroup,
         group: &TerminalGroup,
         branch: Option<String>,
@@ -237,14 +247,12 @@ impl EnvironmentShell {
             })
             .or_else(|| group.worktree.as_ref().map(|origin| origin.branch.clone()))
             .unwrap_or_else(|| DETACHED_LABEL.to_owned());
-        let sessions = data.sessions_of(Some(group.id)).count();
         MenuEntry::checked(
             group.name.clone(),
             group.id == selected.id,
             MenuAction::SelectGroup(group.id),
         )
-        .with_detail(branch)
-        .with_trailing(sessions.to_string())
+        .with_trailing(branch)
     }
 
     fn repo_of(&self, group: &TerminalGroup) -> Option<PathBuf> {

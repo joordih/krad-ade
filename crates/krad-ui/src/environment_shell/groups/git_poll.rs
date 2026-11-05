@@ -2,7 +2,8 @@ use gpui_kit::{AppContext as _, Context};
 use krad_domain::Host;
 use krad_host::HostLink;
 use krad_repo::{
-    line_counts, list_worktrees, repo_root, status, ChangeKind, GitStatus, LineCount, Worktree,
+    line_counts, list_refs, list_worktrees, repo_root, status, ChangeKind, GitStatus, LineCount,
+    Refs, Worktree,
 };
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -24,6 +25,7 @@ pub(in crate::environment_shell) struct GroupGit {
     pub(in crate::environment_shell) status: GitStatus,
     pub(in crate::environment_shell) lines: HashMap<PathBuf, LineCount>,
     pub(in crate::environment_shell) worktrees: Vec<Worktree>,
+    pub(in crate::environment_shell) refs: Refs,
 }
 
 impl GroupGit {
@@ -67,14 +69,17 @@ fn read_root(link: &HostLink, root: &Path) -> Option<GroupGit> {
     std::thread::scope(|scope| {
         let lines = scope.spawn(|| line_counts(link, &repo_root).unwrap_or_default());
         let worktrees = scope.spawn(|| list_worktrees(link, root).unwrap_or_default());
+        let refs = scope.spawn(|| list_refs(link, root).unwrap_or_default());
         let status = status(link, root).ok();
         let lines = lines.join().unwrap_or_default();
         let worktrees = worktrees.join().unwrap_or_default();
+        let refs = refs.join().unwrap_or_default();
         Some(GroupGit {
             status: status?,
             repo_root: repo_root.clone(),
             lines,
             worktrees,
+            refs,
         })
     })
 }
@@ -273,6 +278,7 @@ mod tests {
                 },
                 lines: HashMap::new(),
                 worktrees: Vec::new(),
+                refs: Refs::default(),
             },
         )])
     }

@@ -41,6 +41,7 @@ mod keys {
     pub(super) const COPY_HINT: &str = "⌘C";
     pub(super) const PASTE: &str = "cmd-v";
     pub(super) const PASTE_HINT: &str = "⌘V";
+    pub(super) const COMMIT_HINT: &str = "⌘↩";
     pub(super) const SEARCH: &str = "cmd-f";
     pub(super) const TOGGLE_ACTIVITY: &str = "cmd-shift-e";
     pub(super) const TOGGLE_SIDEBAR: &str = "cmd-ctrl-s";
@@ -108,6 +109,7 @@ mod keys {
     pub(super) const COPY_HINT: &str = "Ctrl+Shift+C";
     pub(super) const PASTE: &str = "ctrl-shift-v";
     pub(super) const PASTE_HINT: &str = "Ctrl+Shift+V";
+    pub(super) const COMMIT_HINT: &str = "Ctrl+Enter";
     pub(super) const SEARCH: &str = "ctrl-shift-f";
     pub(super) const TOGGLE_ACTIVITY: &str = "ctrl-shift-e";
     pub(super) const TOGGLE_SIDEBAR: &str = "ctrl-shift-b";
@@ -152,6 +154,7 @@ pub(crate) const COPY_HINT: &str = keys::COPY_HINT;
 pub(crate) const PASTE_HINT: &str = keys::PASTE_HINT;
 pub(crate) const CLOSE_TAB_HINT: &str = keys::CLOSE_TAB_HINT;
 pub(crate) const CLOSE_ALL_TABS_HINT: &str = keys::CLOSE_ALL_TABS_HINT;
+pub(crate) const COMMIT_HINT: &str = keys::COMMIT_HINT;
 
 #[must_use]
 pub fn key_bindings() -> Vec<KeyBinding> {

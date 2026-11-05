@@ -13,7 +13,10 @@ const DIALOG_W: f32 = 420.0;
 const RENAME_ENVIRONMENT_TITLE: &str = "Rename environment";
 const RENAME_GROUP_TITLE: &str = "Rename group";
 const RENAME_SYMBOL_TITLE: &str = "Rename symbol";
+const NEW_BRANCH_TITLE: &str = "New branch";
+const NEW_TAG_TITLE: &str = "New tag";
 const RENAME_CONFIRM: &str = "Rename";
+const CREATE_CONFIRM: &str = "Create";
 const CANCEL_LABEL: &str = "Cancel";
 const BTN_NAME_CLOSE: &str = "name-dialog-close";
 const BTN_NAME_CANCEL: &str = "name-dialog-cancel";
@@ -47,6 +50,12 @@ impl EnvironmentShell {
             NameTarget::Group(_) => RENAME_GROUP_TITLE.into(),
             NameTarget::Symbol { .. } => RENAME_SYMBOL_TITLE.into(),
             NameTarget::ServerInput { title, .. } => title.clone().into(),
+            NameTarget::Branch => NEW_BRANCH_TITLE.into(),
+            NameTarget::Tag => NEW_TAG_TITLE.into(),
+        };
+        let confirm = match dialog.target {
+            NameTarget::Branch | NameTarget::Tag => CREATE_CONFIRM,
+            _ => RENAME_CONFIRM,
         };
         let sheet = sheet_panel(DIALOG_W, pal)
             .child(sheet_title(title, None, BTN_NAME_CLOSE, dismiss, cx))
@@ -69,7 +78,7 @@ impl EnvironmentShell {
                     )
                     .child(
                         Button::new(BTN_NAME_CONFIRM)
-                            .label(RENAME_CONFIRM)
+                            .label(confirm)
                             .variant(ButtonVariant::Primary)
                             .on_click(cx.listener(|this: &mut Self, _, _, cx| {
                                 this.commit_name(cx);

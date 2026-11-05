@@ -17,12 +17,15 @@ pub(super) fn matching<'a>(entries: &'a [MenuEntry], query: &str) -> Vec<&'a Men
     entries
         .iter()
         .filter(|entry| match entry {
-            MenuEntry::Item { label, detail, .. } => {
-                label.to_lowercase().contains(&query)
-                    || detail
-                        .as_ref()
-                        .is_some_and(|detail| detail.to_lowercase().contains(&query))
-            }
+            MenuEntry::Item {
+                label,
+                detail,
+                trailing,
+                ..
+            } => [Some(label), detail.as_ref(), trailing.as_ref()]
+                .into_iter()
+                .flatten()
+                .any(|text| text.to_lowercase().contains(&query)),
             MenuEntry::Submenu(_)
             | MenuEntry::Header(_)
             | MenuEntry::Note(_)
