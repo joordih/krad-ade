@@ -7,6 +7,7 @@ use krad_session::{KeyModifiers, LiveSession, PtyInput, SessionState};
 use super::rename::KEY_ESCAPE;
 use super::EnvironmentShell;
 use crate::actions::{SendBackTab, SendTab, SHELL_KEY_CONTEXT};
+use crate::typed_text::typed_text;
 
 const WRITER_LOST_TEXT: &str = "writer lost";
 const TAB: &[u8] = b"\t";
@@ -143,12 +144,8 @@ impl EnvironmentShell {
                     if is_dead_key(event) {
                         return;
                     }
-                    this.ingest_key(
-                        &stroke.key,
-                        stroke.key_char.as_deref(),
-                        stroke.modifiers,
-                        cx,
-                    );
+                    let typed = typed_text(stroke, window.capslock());
+                    this.ingest_key(&stroke.key, typed.as_deref(), stroke.modifiers, cx);
                 }),
             )
             .child(view)

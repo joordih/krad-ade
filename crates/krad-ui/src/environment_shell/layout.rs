@@ -323,6 +323,7 @@ impl Render for EnvironmentShell {
             .children(self.docs_generate_sheet(cx))
             .children(self.delete_file_dialog(cx))
             .children(self.discard_dialog(cx))
+            .children(self.lead_ending_dialog(cx))
             .children(self.signature_overlay(window, cx))
             .children(self.editor_popover_overlay(window, cx))
             .children(self.template_popup_overlay(window, cx))

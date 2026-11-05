@@ -136,7 +136,7 @@ impl EnvironmentShell {
             .and_then(|live| live.editors.get(&id))
             .is_some_and(FileEditor::is_dirty);
         if !dirty {
-            self.close_terminal(id, cx);
+            self.close_tab_asking(id, window, cx);
             return;
         }
         let answer = window.prompt(

@@ -271,8 +271,12 @@ Report an agent CLI sends to the app at a point of its work (a prompt submitted,
 _Avoid_: callback, event, webhook
 
 **Worker**:
-Agent started through the bus by another agent, briefed to report back when done, or by the Chat, which follows its screen. It opens as a terminal running its harness's own interface, except opencode's, which opens as a structured chat on the opencode server; the bus sends it messages, waits on it and reads its conversation as it does a terminal's.
-_Avoid_: sub-agent, child, job
+Agent a lead starts through the bus to do part of the work, briefed to report back when done. It opens as a session of its own in the group, as a chat, without taking the user's place on screen; the lead owns it and its chat shows it as a Worker card. It closes when it fails to start, once it has finished and the lead has read its work (its chat is kept and reopens from the card), and when its lead is removed.
+_Avoid_: sub-agent, child, job, terminal
+
+**Worker card**:
+The preview of one Worker inside its lead's chat: its task, agent state and latest activity, kept live; clicking it goes to the Worker's session.
+_Avoid_: subagent card, worker preview, worker tab
 
 **Subagent**:
 Helper a harness starts inside its own turn, such as one Claude Code or the Gateway's agent runs through its agent tool, with a fresh context; it has no terminal and the bus does not know it. The agent's chat shows it as a card the user can go into to read its whole conversation.

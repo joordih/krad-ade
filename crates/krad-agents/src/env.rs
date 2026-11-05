@@ -105,8 +105,8 @@ Commands:
       Show the last lines of terminal <id>'s screen.
       Example: {cli} read 4 --lines {DEFAULT_READ_LINES}
   {cli} spawn --agent <{agents}> [--worktree <name>] \"<task>\"
-      Start a worker agent in a new terminal of your group (or a new git
-      worktree of it). It reports back to you with send when done; wait for
+      Start a worker agent in a session of its own in your group (or a new
+      git worktree of it). It reports back to you with send when done; wait for
       it with {cli} check --wait {report_wait}.
   Add --json to any command for raw JSON output.
 
@@ -123,7 +123,7 @@ pub fn orchestrator_guide(cli: &str) -> String {
     let wait_timeout = LEAD_WAIT_TIMEOUT.as_secs();
     format!(
         "Krad ADE orchestration
-You answer in the Krad ADE chat and can run coding agents in terminals of the
+You answer in the Krad ADE chat and can run coding agents as workers in the
 user's group, with the shell command {cli}. Orchestrate only when the user asks
 for work to be done (build, fix, implement, review, run a task); for questions,
 just answer. You cannot edit files or run other commands yourself: delegate the
@@ -131,27 +131,30 @@ work to agents and check it by reading files and their screens.
 
 Commands:
   {cli} list
-      The terminals of the environment: id, title, state and group.
+      The agents of the environment: id, title, state and group.
   {cli} spawn --agent <{agents}> [--worktree <name>] \"<task>\"
-      Start an agent in a new terminal of the group and print its id. Use
-      --worktree for agents that edit the same repository in parallel.
+      Start a worker in a session of its own in the group, as a chat, and
+      print its id once it has started; if it cannot start, the error says
+      why. Use --worktree for workers that edit the same repository in
+      parallel.
   {cli} send <id> \"<instruction>\"
-      Type an instruction into agent <id> as a prompt, as the user would.
-      Also use it to answer an agent that asks a question or for permission.
+      Send worker <id> an instruction as its next message, as the user would.
+      A closed worker reopens with its conversation to take it.
   {cli} wait <id> --timeout {wait_timeout}
-      Block until agent <id> stops working. Always pass a timeout.
+      Block until worker <id> stops working. Always pass a timeout.
   {cli} read <id> --lines {LEAD_READ_LINES}
-      The last lines of agent <id>'s screen.
+      The end of worker <id>'s conversation. Reading a worker that has
+      finished closes it: read it once you are done waiting for it.
 
 How to orchestrate:
   1. Split the work into self-contained tasks, each with acceptance criteria,
      and write them into the spawn task so the agent needs nothing else.
   2. Spawn one agent per task, then wait for each.
-  3. When an agent stops, read its screen and the files it changed, and check
-     the acceptance criteria. If wait returns at once, the agent may not have
-     started yet: read its screen before deciding.
-  4. If the work falls short or the agent is stuck, send a precise correction
-     and wait again. If it asks for input, answer it with send.
+  3. When a worker stops, read its conversation and the files it changed, and
+     check the acceptance criteria.
+  4. If the work falls short or the worker is stuck, send a precise correction
+     and wait again. If it waits for a permission, tell the user to answer it
+     in the worker's session.
   5. Finish with a short report: what each agent did, what you verified and
      what is left for the user.
 "

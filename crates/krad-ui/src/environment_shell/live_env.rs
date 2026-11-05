@@ -4,7 +4,9 @@ use krad_session::LiveSession;
 use std::collections::HashMap;
 use std::time::Instant;
 
-use super::{activity, agent_bus, changes_tab, file_tab, host, surface, terminal_images, Prompt};
+use super::{
+    activity, agent_bus, changes_tab, file_tab, host, surface, terminal_images, workers, Prompt,
+};
 
 pub(super) struct LiveEnv {
     pub(super) data: EnvironmentData,
@@ -29,6 +31,8 @@ pub(super) struct LiveEnv {
     pub(super) terminals_tab: activity::TerminalsTab,
     pub(super) pending_cursors: HashMap<TerminalId, krad_lsp::lsp_types::Position>,
     pub(super) navigation: HashMap<krad_domain::SessionId, krad_domain::NavigationHistory>,
+    pub(super) worker_launches: HashMap<TerminalId, workers::LaunchReply>,
+    pub(super) pending_lead_ending: Option<workers::LeadEnding>,
 }
 
 impl LiveEnv {
@@ -70,6 +74,8 @@ impl LiveEnv {
             terminals_tab: activity::TerminalsTab::Hidden,
             pending_cursors: HashMap::new(),
             navigation: HashMap::new(),
+            worker_launches: HashMap::new(),
+            pending_lead_ending: None,
         }
     }
 }

@@ -3,13 +3,13 @@ use krad_agents::{Response, TerminalHandle};
 use krad_chat::{AskAnswer, AskKind, ToolAsk};
 use krad_domain::{
     AgentPreset, EnvironmentName, PermissionMode, PlanDialogKeys, SettledAsks, TerminalId,
-    ToolDecision,
+    ToolDecision, ToolUseId,
 };
 
 use super::super::agent_bus::ENTER;
 use super::super::surface::Backend;
 use super::super::EnvironmentShell;
-use super::{AskReply, Waiting};
+use super::{AskReply, Settled, Waiting};
 
 fn plan_keys(keys: PlanDialogKeys, answer: &AskAnswer) -> Vec<Vec<u8>> {
     match answer {
@@ -26,12 +26,26 @@ fn plan_keys(keys: PlanDialogKeys, answer: &AskAnswer) -> Vec<Vec<u8>> {
     }
 }
 
+pub(in crate::environment_shell) struct HeldAskReport<'a> {
+    pub(in crate::environment_shell) preset: AgentPreset,
+    pub(in crate::environment_shell) event: &'a str,
+    pub(in crate::environment_shell) tool: Option<&'a str>,
+    pub(in crate::environment_shell) mode: Option<PermissionMode>,
+}
+
+impl HeldAskReport<'_> {
+    fn left_plan(&self) -> bool {
+        self.mode.is_some_and(|mode| mode != PermissionMode::Plan)
+    }
+}
+
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn hold_ask(
         &mut self,
         from: &TerminalHandle,
         ask: ToolAsk,
         tool: String,
+        call: Option<ToolUseId>,
         reply: ReplySender<Response>,
     ) {
         let env = EnvironmentName::new(from.environment.clone());
@@ -54,31 +68,33 @@ impl EnvironmentShell {
         } else {
             AskReply::Hook(reply)
         };
-        chat.asks_mut().push(Waiting::held(ask, reply, tool));
+        chat.asks_mut().push(Waiting::held(ask, reply, tool, call));
     }
 
     pub(in crate::environment_shell) fn settle_held_asks(
         &mut self,
         env: &EnvironmentName,
         id: TerminalId,
-        preset: AgentPreset,
-        event: &str,
-        tool: Option<&str>,
+        report: &HeldAskReport<'_>,
     ) {
-        let Some(settled) = preset.settled_asks(event) else {
-            return;
-        };
-        if let Some(chat) = self
+        let Some(chat) = self
             .envs
             .get_mut(env)
             .and_then(|live| live.chats.get_mut(&id))
-        {
-            let tool = match settled {
-                SettledAsks::OfTool => tool,
-                SettledAsks::All => None,
-            };
-            chat.asks_mut().settle(tool);
+        else {
+            return;
+        };
+        let asks = chat.asks_mut();
+        if report.left_plan() {
+            asks.settle(Settled::Plans);
         }
+        let settled = match (report.preset.settled_asks(report.event), report.tool) {
+            (Some(SettledAsks::All), _) => Settled::All,
+            (Some(SettledAsks::OfTool), Some(tool)) => Settled::OfTool(tool),
+            (Some(SettledAsks::PastTool), Some(tool)) => Settled::PastTool(tool),
+            (Some(SettledAsks::OfTool | SettledAsks::PastTool) | None, _) => return,
+        };
+        asks.settle(settled);
     }
 
     pub(super) fn type_plan_answer(&mut self, owner: TerminalId, answer: &AskAnswer) {

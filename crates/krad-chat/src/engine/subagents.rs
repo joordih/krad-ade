@@ -71,8 +71,8 @@ pub fn read_engine_subagent(record: &Path, cwd: &Path, from: u64) -> io::Result<
     reader.read_to_end(&mut bytes)?;
     let Some(end) = bytes.iter().rposition(|byte| *byte == LINE_END) else {
         return Ok(TranscriptChunk {
-            entries: Vec::new(),
             next: from,
+            ..TranscriptChunk::default()
         });
     };
     let records = String::from_utf8_lossy(&bytes[..end])
@@ -89,6 +89,7 @@ pub fn read_engine_subagent(record: &Path, cwd: &Path, from: u64) -> io::Result<
             .into_iter()
             .filter(|entry| !matches!(entry, ChatEntry::Event(ChatEvent::Prompted(_))))
             .collect(),
+        marks: Vec::new(),
         next: from + u64::try_from(end + 1).unwrap_or(u64::MAX),
     })
 }

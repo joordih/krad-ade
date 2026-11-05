@@ -114,8 +114,8 @@ impl AgentPreset {
     #[must_use]
     pub const fn worker_surface(self) -> WorkerSurface {
         match self {
-            Self::Opencode => WorkerSurface::Chat,
-            Self::Shell | Self::ClaudeCode | Self::Codex | Self::Gateway => WorkerSurface::Terminal,
+            Self::ClaudeCode | Self::Codex | Self::Opencode => WorkerSurface::Chat,
+            Self::Shell | Self::Gateway => WorkerSurface::Terminal,
         }
     }
 }
@@ -217,14 +217,13 @@ mod tests {
     }
 
     #[test]
-    fn only_opencode_workers_open_as_chats() {
+    fn every_agent_worker_opens_as_a_chat() {
         for preset in AgentPreset::all() {
             let surface = match preset {
-                AgentPreset::Opencode => WorkerSurface::Chat,
-                AgentPreset::Shell
-                | AgentPreset::ClaudeCode
-                | AgentPreset::Codex
-                | AgentPreset::Gateway => WorkerSurface::Terminal,
+                AgentPreset::ClaudeCode | AgentPreset::Codex | AgentPreset::Opencode => {
+                    WorkerSurface::Chat
+                }
+                AgentPreset::Shell | AgentPreset::Gateway => WorkerSurface::Terminal,
             };
             assert_eq!(preset.worker_surface(), surface, "{preset:?}");
         }

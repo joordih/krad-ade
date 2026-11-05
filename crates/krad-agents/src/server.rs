@@ -4,7 +4,7 @@ use crate::protocol::{BusToken, Envelope, Request, Response};
 use futures::channel::{mpsc, oneshot};
 use futures::executor::block_on;
 use futures::SinkExt;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -19,6 +19,7 @@ const INVALID_TOKEN: &str = "invalid token";
 const NOT_A_LEAD: &str = "only a lead the user named can call as a lead";
 const APP_GONE: &str = "the app is no longer serving agent requests";
 const REQUEST_DROPPED: &str = "the app dropped the request";
+const CALLER_LEFT: &str = "the caller closed its connection";
 
 #[derive(Clone, Debug)]
 pub struct Endpoint {
@@ -82,7 +83,7 @@ fn accept_loop(listener: &TcpListener, endpoint: &Endpoint, requests: &mpsc::Sen
 fn serve_connection(stream: &TcpStream, endpoint: &Endpoint, requests: mpsc::Sender<Incoming>) {
     let response = match read_envelope(stream) {
         Ok(envelope) => match endpoint.refusal(&envelope) {
-            None => dispatch(envelope, requests),
+            None => dispatch(stream, envelope, requests),
             Some(refusal) => Response::Error(refusal.to_owned()),
         },
         Err(message) => Response::Error(message),
@@ -104,7 +105,11 @@ fn read_envelope(stream: &TcpStream) -> Result<Envelope, String> {
     serde_json::from_str(&line).map_err(|error| error.to_string())
 }
 
-fn dispatch(envelope: Envelope, mut requests: mpsc::Sender<Incoming>) -> Response {
+fn dispatch(
+    stream: &TcpStream,
+    envelope: Envelope,
+    mut requests: mpsc::Sender<Incoming>,
+) -> Response {
     let deadline = envelope.request.deadline();
     let (reply, reply_rx) = oneshot::channel();
     let incoming = Incoming {
@@ -115,15 +120,51 @@ fn dispatch(envelope: Envelope, mut requests: mpsc::Sender<Incoming>) -> Respons
     if block_on(requests.send(incoming)).is_err() {
         return Response::Error(APP_GONE.to_owned());
     }
-    await_reply(reply_rx, deadline)
+    await_reply(stream, reply_rx, deadline)
 }
 
-fn await_reply(mut reply_rx: oneshot::Receiver<Response>, deadline: Duration) -> Response {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Peer {
+    Waiting,
+    Left,
+}
+
+fn watch_peer(stream: &TcpStream) -> Peer {
+    let mut probe = [0_u8; 1];
+    match stream.peek(&mut probe) {
+        Ok(0) => Peer::Left,
+        Ok(_) => {
+            thread::sleep(REPLY_POLL_INTERVAL);
+            Peer::Waiting
+        }
+        Err(error)
+            if matches!(
+                error.kind(),
+                ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
+            ) =>
+        {
+            Peer::Waiting
+        }
+        Err(_) => Peer::Left,
+    }
+}
+
+fn await_reply(
+    stream: &TcpStream,
+    mut reply_rx: oneshot::Receiver<Response>,
+    deadline: Duration,
+) -> Response {
+    let watched = stream.set_read_timeout(Some(REPLY_POLL_INTERVAL)).is_ok();
     let started = Instant::now();
     while started.elapsed() < deadline {
         match reply_rx.try_recv() {
             Ok(Some(response)) => return response,
-            Ok(None) => thread::sleep(REPLY_POLL_INTERVAL),
+            Ok(None) if !watched => thread::sleep(REPLY_POLL_INTERVAL),
+            Ok(None) => {
+                if watch_peer(stream) == Peer::Left {
+                    return Response::Error(CALLER_LEFT.to_owned());
+                }
+            }
             Err(oneshot::Canceled) => return Response::Error(REQUEST_DROPPED.to_owned()),
         }
     }

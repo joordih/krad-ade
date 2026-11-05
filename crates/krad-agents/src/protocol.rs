@@ -4,7 +4,9 @@ pub(crate) use harness_name::preset_by_display_name;
 
 use crate::code::{CodeAnswer, CodeRequest};
 use crate::handle::Caller;
-use krad_domain::{AgentPreset, AgentState, ToolDecision, UnknownAgentState, ASK_WAIT};
+use krad_domain::{
+    AgentPreset, AgentState, PermissionMode, ToolDecision, ToolUseId, UnknownAgentState, ASK_WAIT,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
@@ -58,6 +60,8 @@ pub enum Request {
         detail: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         resume: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mode: Option<PermissionMode>,
     },
     Status(AgentStatus),
     Ask {
@@ -65,6 +69,8 @@ pub enum Request {
         input: Value,
         #[serde(default)]
         suggestions: Vec<Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        call: Option<ToolUseId>,
     },
     Spawn {
         #[serde(with = "harness_name::program")]
@@ -300,6 +306,7 @@ mod tests {
             tool: None,
             detail: None,
             resume: None,
+            mode: None,
         };
         let hook_line = r#"{"Hook":{"harness":"claude","event":"Stop","tool":null,"detail":null}}"#;
         assert_eq!(serde_json::to_string(&hook)?, hook_line);

@@ -85,19 +85,17 @@ impl CodeActionProvider for ServerDocument {
             text.offset_to_position(range.start),
             text.offset_to_position(range.end),
         );
-        let diagnostics = self
-            .shell
-            .upgrade()
-            .map_or_else(Vec::new, |shell| {
-                shell
-                    .read(cx)
-                    .language_servers
-                    .diagnostics
-                    .of(&self.document)
-            })
-            .into_iter()
-            .filter(|diagnostic| overlaps(&diagnostic.range, &range))
-            .collect();
+        let diagnostics = self.shell.upgrade().map_or_else(Vec::new, |shell| {
+            shell
+                .read(cx)
+                .language_servers
+                .diagnostics
+                .of(&self.document)
+                .iter()
+                .filter(|diagnostic| overlaps(&diagnostic.range, &range))
+                .cloned()
+                .collect()
+        });
         let params = CodeActionParams {
             text_document: TextDocumentIdentifier::new(self.uri.clone()),
             range,

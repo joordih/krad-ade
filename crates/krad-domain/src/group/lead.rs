@@ -1,6 +1,6 @@
 use crate::agent::AgentPreset;
 use crate::environment::EnvironmentData;
-use crate::ids::{SessionId, TerminalId};
+use crate::ids::{GroupId, ResumeId, SessionId, TerminalId};
 use crate::model::{lenient_model, ModelId};
 use serde::{Deserialize, Serialize};
 
@@ -31,6 +31,18 @@ impl SessionLead {
 pub struct Worker {
     pub terminal: TerminalId,
     pub task: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<SessionId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reopen: Option<WorkerReopen>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkerReopen {
+    pub harness: AgentPreset,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<GroupId>,
+    pub resume: ResumeId,
 }
 
 impl EnvironmentData {
@@ -39,7 +51,7 @@ impl EnvironmentData {
         self.session(id)?.lead.as_ref()
     }
 
-    fn lead_mut(&mut self, id: SessionId) -> Option<&mut SessionLead> {
+    pub(super) fn lead_mut(&mut self, id: SessionId) -> Option<&mut SessionLead> {
         self.sessions
             .iter_mut()
             .find(|session| session.id == id)?
@@ -47,28 +59,11 @@ impl EnvironmentData {
             .as_mut()
     }
 
-    pub fn dismiss_lead(&mut self, id: SessionId) -> bool {
+    pub fn dismiss_lead(&mut self, id: SessionId) -> Option<SessionLead> {
         self.sessions
             .iter_mut()
             .find(|session| session.id == id)
             .and_then(|session| session.lead.take())
-            .is_some()
-    }
-
-    pub fn add_worker(&mut self, id: SessionId, terminal: TerminalId, task: String) -> bool {
-        let Some(lead) = self.lead_mut(id) else {
-            return false;
-        };
-        lead.workers.push(Worker { terminal, task });
-        if self.session_of(terminal) != Some(id) {
-            for session in &mut self.sessions {
-                session.tabs.remove_terminal(terminal);
-            }
-            if let Some(session) = self.sessions.iter_mut().find(|session| session.id == id) {
-                session.tabs.add_terminal(terminal);
-            }
-        }
-        true
     }
 
     #[must_use]
@@ -93,8 +88,9 @@ impl EnvironmentData {
             {
                 session.lead = None;
             }
-            if let Some(lead) = session.lead.as_mut() {
-                lead.workers.retain(|worker| worker.terminal != terminal);
+            let workers = session.lead.iter_mut().flat_map(|lead| &mut lead.workers);
+            for worker in workers.filter(|worker| worker.terminal == terminal) {
+                worker.session = None;
             }
         }
     }
@@ -104,6 +100,7 @@ impl EnvironmentData {
 mod tests {
     use super::*;
     use crate::environment::seed_environment;
+    use crate::group::WorkerSpawn;
 
     fn claude() -> SessionLead {
         SessionLead::new(AgentPreset::ClaudeCode, None)
@@ -126,10 +123,32 @@ mod tests {
     }
 
     #[test]
-    fn closing_a_worker_drops_it() {
+    fn closing_a_workers_tab_keeps_it_as_closed() {
         let (mut environment, id) = led_session();
-        environment.add_worker(id, TerminalId(1), "webhook".to_owned());
-        environment.remove_terminal_tiles(TerminalId(1));
-        assert_eq!(environment.lead(id), Some(&claude()));
+        let terminal = environment.nodes[0].id;
+        let spawn = WorkerSpawn {
+            lead: Some(id),
+            task: "webhook".to_owned(),
+        };
+        environment.open_worker_session(terminal, spawn);
+        environment.remove_terminal_tiles(terminal);
+        let workers = environment.lead(id).map(|lead| lead.workers.clone());
+        assert_eq!(
+            workers,
+            Some(vec![Worker {
+                terminal,
+                task: "webhook".to_owned(),
+                session: None,
+                reopen: None,
+            }])
+        );
+    }
+
+    #[test]
+    fn dismissing_a_lead_hands_back_its_workers() {
+        let (mut environment, id) = led_session();
+        let dismissed = environment.dismiss_lead(id);
+        assert_eq!(dismissed, Some(claude()));
+        assert_eq!(environment.lead(id), None);
     }
 }

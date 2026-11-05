@@ -2,7 +2,9 @@ use crate::client::call;
 use crate::env::{bus_env, BusEnv};
 use crate::handle::Caller;
 use crate::protocol::{BusToken, Request, Response};
-use krad_domain::{AgentPreset, ToolDecision, CLAUDE_PERMISSION_REQUEST, CLAUDE_PRE_TOOL_USE};
+use krad_domain::{
+    AgentPreset, ToolDecision, ToolUseId, CLAUDE_PERMISSION_REQUEST, CLAUDE_PRE_TOOL_USE,
+};
 use serde_json::{json, Value};
 use std::io::{Read as _, Write as _};
 
@@ -15,6 +17,8 @@ const CLAUDE_NOTIFICATION_KEY: &str = "notification_type";
 const CLAUDE_SOURCE_KEY: &str = "source";
 const CLAUDE_SESSION_KEY: &str = "session_id";
 const CLAUDE_INPUT_KEY: &str = "tool_input";
+const CLAUDE_CALL_KEY: &str = "tool_use_id";
+const CLAUDE_MODE_KEY: &str = "permission_mode";
 const CLAUDE_MESSAGE_KEY: &str = "message";
 const CLAUDE_SUGGESTIONS_KEY: &str = "permission_suggestions";
 const CLAUDE_ALLOW: &str = "allow";
@@ -92,6 +96,10 @@ fn claude_ask(payload: &str) -> Option<(AskHook, Request)> {
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default(),
+        call: value
+            .get(CLAUDE_CALL_KEY)
+            .and_then(Value::as_str)
+            .map(ToolUseId::from),
     };
     Some((hook, request))
 }
@@ -180,12 +188,17 @@ fn claude_request(payload: &str) -> Option<Request> {
         .get(CLAUDE_SESSION_KEY)
         .and_then(Value::as_str)
         .map(str::to_owned);
+    let mode = value
+        .get(CLAUDE_MODE_KEY)
+        .cloned()
+        .and_then(|mode| serde_json::from_value(mode).ok());
     Some(Request::Hook {
         harness: AgentPreset::ClaudeCode,
         event,
         tool,
         detail,
         resume,
+        mode,
     })
 }
 
@@ -204,6 +217,7 @@ fn codex_request(payload: &str) -> Option<Request> {
             .get(CODEX_THREAD_KEY)
             .and_then(Value::as_str)
             .map(str::to_owned),
+        mode: None,
     })
 }
 
@@ -223,6 +237,7 @@ fn opencode_request(args: &[String]) -> Option<Request> {
         tool: None,
         detail: None,
         resume: None,
+        mode: None,
     })
 }
 
@@ -319,6 +334,7 @@ mod tests {
                 tool: Some("Bash".to_owned()),
                 detail: Some("cargo test --workspace".to_owned()),
                 resume: None,
+                mode: None,
             })
         );
         assert_eq!(claude_request("not json"), None);
@@ -348,6 +364,30 @@ mod tests {
         assert!(matches!(
             opencode_request(&args),
             Some(Request::Hook { event, .. }) if event == "session.idle"
+        ));
+    }
+
+    #[test]
+    fn claude_reports_carry_the_permission_mode_and_asks_their_tool_call() {
+        let approved = r#"{"hook_event_name":"PostToolUse","tool_name":"Read",
+            "permission_mode":"acceptEdits"}"#;
+        assert!(matches!(
+            claude_request(approved),
+            Some(Request::Hook {
+                mode: Some(krad_domain::PermissionMode::AcceptEdits),
+                ..
+            })
+        ));
+        let unknown = r#"{"hook_event_name":"Stop","permission_mode":"someday"}"#;
+        assert!(matches!(
+            claude_request(unknown),
+            Some(Request::Hook { mode: None, .. })
+        ));
+        let ask = r#"{"hook_event_name":"PermissionRequest","tool_name":"ExitPlanMode",
+            "tool_use_id":"toolu_1","tool_input":{"plan":"Fix"}}"#;
+        assert!(matches!(
+            claude_ask(ask),
+            Some((_, Request::Ask { call: Some(call), .. })) if call.as_str() == "toolu_1"
         ));
     }
 }

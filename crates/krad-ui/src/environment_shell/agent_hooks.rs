@@ -3,16 +3,17 @@ use gpui_kit::{AppContext as _, Context};
 use krad_agents::{AgentStatus, Response, TerminalHandle};
 use krad_domain::{
     code_tools_launch_args, hook_launch_args, launch_with_prompt, quote_for_shell, worker_brief,
-    AgentPreset, AgentState, CodeTools, EnvironmentName, GroupId, ModelDelivery, ModelId, ResumeId,
-    SessionId, TerminalGroup, TerminalId, WorkerSurface, WorktreeOrigin,
+    AgentPreset, AgentState, CodeTools, EnvironmentName, ModelDelivery, ModelId, PermissionMode,
+    ResumeId, SessionId, TerminalGroup, TerminalId, WorkerSpawn, WorktreeOrigin,
 };
 use krad_repo::{add_worktree, sanitize_worktree_name};
 use std::time::{Duration, Instant};
 
 use super::agent_bus::{cli_name, BUS_HINT};
-use super::sessions::Launch;
+use super::ask::HeldAskReport;
 use super::shell_site::ShellSite;
 use super::surface::AccountUsage;
+use super::workers::WorkerLaunch;
 use super::EnvironmentShell;
 
 const PROMPT_DELAY: Duration = Duration::from_secs(4);
@@ -29,6 +30,7 @@ pub(super) struct HookReport<'a> {
     pub(super) tool: Option<&'a str>,
     pub(super) detail: Option<String>,
     pub(super) resume: Option<&'a str>,
+    pub(super) mode: Option<PermissionMode>,
 }
 
 pub(super) struct PendingPrompt {
@@ -147,7 +149,13 @@ impl EnvironmentShell {
                 session.activity = report.detail;
             }
         }
-        self.settle_held_asks(&env, id, preset, report.event, report.tool);
+        let held = HeldAskReport {
+            preset,
+            event: report.event,
+            tool: report.tool,
+            mode: report.mode,
+        };
+        self.settle_held_asks(&env, id, &held);
         let resume = report.resume.and_then(|raw| raw.parse::<ResumeId>().ok());
         let fresh = preset.started_fresh(report.event, report.tool);
         self.note_resume_id(&env, id, preset, resume, fresh);
@@ -233,10 +241,19 @@ impl EnvironmentShell {
             brief,
             lead,
         } = order;
+        let lead_task = lead.as_ref().map(|lead| lead.task.clone());
+        let spawn = WorkerSpawn {
+            lead: lead.map(|lead| lead.session),
+            task: lead_task.unwrap_or_default(),
+        };
         let Some(name) = worktree else {
-            let started = self.open_worker(&env, Some(group.id), preset, brief, cx);
-            let response = self.worker_started(&env, lead, started);
-            reply.send(response).unwrap_or_default();
+            let launch = WorkerLaunch {
+                group: Some(group.id),
+                preset,
+                brief,
+                spawn,
+            };
+            self.launch_worker(&env, launch, reply, cx);
             return;
         };
         let Some(repo_root) = self
@@ -261,67 +278,32 @@ impl EnvironmentShell {
         });
         cx.spawn(async move |this, cx| {
             let created = create.await;
-            this.update(cx, |shell, cx| {
-                let response = match created {
-                    Ok(worktree) => {
-                        let origin = worktree
-                            .branch
-                            .clone()
-                            .map(|branch| WorktreeOrigin { repo_root, branch });
-                        let group = shell.add_group_to(&env, worktree.path, origin, cx);
-                        let started = shell.open_worker(&env, group, preset, brief, cx);
-                        shell.worker_started(&env, lead, started)
+            this.update(cx, |shell, cx| match created {
+                Ok(worktree) => {
+                    let origin = worktree
+                        .branch
+                        .clone()
+                        .map(|branch| WorktreeOrigin { repo_root, branch });
+                    let selected = shell.envs.get(&env).and_then(|live| live.selected_group);
+                    let group = shell.add_group_to(&env, worktree.path, origin, cx);
+                    if let Some(live) = shell.envs.get_mut(&env) {
+                        live.selected_group = selected;
                     }
-                    Err(error) => Response::Error(error.to_string()),
-                };
-                reply.send(response).unwrap_or_default();
+                    let launch = WorkerLaunch {
+                        group,
+                        preset,
+                        brief,
+                        spawn,
+                    };
+                    shell.launch_worker(&env, launch, reply, cx);
+                }
+                Err(error) => reply
+                    .send(Response::Error(error.to_string()))
+                    .unwrap_or_default(),
             })
             .unwrap_or_default();
         })
         .detach();
-    }
-
-    fn open_worker(
-        &mut self,
-        env: &EnvironmentName,
-        group: Option<GroupId>,
-        preset: AgentPreset,
-        brief: String,
-        cx: &mut Context<Self>,
-    ) -> Option<TerminalId> {
-        match preset.worker_surface() {
-            WorkerSurface::Chat => self.spawn_worker_chat(env, group, preset, brief, cx),
-            WorkerSurface::Terminal => self.spawn_terminal_in(
-                env,
-                group,
-                preset.display_name(),
-                Launch::Agent {
-                    preset,
-                    prompt: brief,
-                    model: None,
-                },
-                None,
-                cx,
-            ),
-        }
-    }
-
-    fn worker_started(
-        &mut self,
-        env: &EnvironmentName,
-        lead: Option<WorkerOf>,
-        started: Option<TerminalId>,
-    ) -> Response {
-        let Some(terminal) = started else {
-            return Response::Error(NO_GROUP.to_owned());
-        };
-        if let Some((lead, live)) = lead.zip(self.envs.get_mut(env)) {
-            live.data.add_worker(lead.session, terminal, lead.task);
-            self.store();
-        }
-        Response::Spawned {
-            terminal: terminal.as_u64(),
-        }
     }
 }
 

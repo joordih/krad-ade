@@ -1,14 +1,17 @@
 use gpui_kit::{Context, Task, Window};
 use krad_chat::{
     claude_conversation_file, read_claude_transcript, read_claude_transcript_tail, SlashCommand,
-    Speaker, TranscriptChunk,
+    Speaker, TranscriptChunk, TranscriptMark,
 };
-use krad_domain::{AgentPreset, AgentState, ChatEntry, EnvironmentName, ResumeId, TerminalId};
+use krad_domain::{
+    AgentPreset, AgentState, ChatEntry, ChatEvent, EnvironmentName, ResumeId, TerminalId, ToolUseId,
+};
 use krad_host::HostLink;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
-use super::super::ask::AskQueue;
+use super::super::ask::{AskQueue, Settled};
 use super::super::chat::{fold_entry, workplace_home, ChatMessage};
 use super::super::EnvironmentShell;
 use super::{view, Backend, Origin, SurfaceChat, SurfaceCommand};
@@ -28,6 +31,32 @@ struct Transcript {
     read: u64,
     skipped: bool,
     whole: bool,
+    calls: HashMap<ToolUseId, String>,
+}
+
+impl Transcript {
+    fn settle_marked(&mut self, chunk: &TranscriptChunk, asks: &mut AskQueue, live: bool) -> bool {
+        let named = chunk.entries.iter().filter_map(|entry| match entry {
+            ChatEntry::Event(ChatEvent::Tool(call)) => {
+                call.id.clone().map(|id| (id, call.name.clone()))
+            }
+            _ => None,
+        });
+        self.calls.extend(named);
+        chunk.marks.iter().fold(false, |changed, mark| {
+            let settled = match mark {
+                TranscriptMark::Interrupted => live && asks.settle(Settled::All),
+                TranscriptMark::ToolFinished(call) => {
+                    let tool = self.calls.remove(call);
+                    live && asks.settle(Settled::Call {
+                        call,
+                        tool: tool.as_deref(),
+                    })
+                }
+            };
+            changed || settled
+        })
+    }
 }
 
 pub(in crate::environment_shell) struct TranscriptView {
@@ -69,8 +98,8 @@ impl TailJob {
             home: self.home,
             file: self.file,
             chunk: TranscriptChunk {
-                entries: Vec::new(),
                 next: self.from,
+                ..TranscriptChunk::default()
             },
             started: None,
             problem: None,
@@ -299,6 +328,7 @@ impl EnvironmentShell {
             transcript.resume = Some(resume.clone());
             transcript.file = None;
             transcript.read = 0;
+            transcript.calls.clear();
             chat.messages.clear();
             chat.opened_thoughts.clear();
             chat.thread.remeasure();
@@ -335,6 +365,12 @@ impl EnvironmentShell {
         let transcript = &mut view.transcript;
         if transcript.resume.as_ref() != Some(&read.resume) {
             return;
+        }
+        let live = transcript.read > 0;
+        let mut asks_changed = view.asks.drop_left_callers();
+        asks_changed |= transcript.settle_marked(&read.chunk, &mut view.asks, live);
+        if asks_changed {
+            cx.notify();
         }
         transcript.home.clone_from(&read.home);
         transcript.file.clone_from(&read.file);

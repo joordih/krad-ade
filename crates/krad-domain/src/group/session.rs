@@ -179,7 +179,7 @@ impl EnvironmentData {
             .map(|session| session.id)
     }
 
-    fn ensure_sessions(&mut self) {
+    pub(super) fn ensure_sessions(&mut self) {
         let known: Vec<GroupId> = self.groups.iter().map(|group| group.id).collect();
         self.sessions
             .retain(|session| session.group.is_none_or(|group| known.contains(&group)));
@@ -200,7 +200,7 @@ impl EnvironmentData {
         }
     }
 
-    fn assign_terminals(&mut self) {
+    pub(super) fn assign_terminals(&mut self) {
         let mut assigned: HashMap<SessionId, Vec<TerminalId>> = HashMap::new();
         for node in &self.nodes {
             let home = self.home_of(node);

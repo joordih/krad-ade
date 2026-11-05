@@ -259,6 +259,9 @@ impl EnvironmentShell {
         event: LiveEvent,
         cx: &mut Context<Self>,
     ) {
+        if self.follow_worker_launch(env, id, &event, cx) {
+            return;
+        }
         let Some(SurfaceChat {
             backend: Backend::Structured(structured),
             messages,

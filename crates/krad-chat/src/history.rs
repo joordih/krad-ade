@@ -1,4 +1,4 @@
-use krad_domain::{AgentPreset, ChatEntry, ChatEvent, ResumeId, RewindId, RewindPoint};
+use krad_domain::{AgentPreset, ChatEntry, ChatEvent, ResumeId, RewindId, RewindPoint, ToolUseId};
 use krad_host::HostLink;
 use serde_json::Value;
 use std::io;
@@ -19,10 +19,19 @@ const PERMISSION_MODE_LINE: &str = "permission-mode";
 const TAGGED_TEXT_START: char = '<';
 const USER_LINE: &str = "user";
 const UUID_KEY: &str = "uuid";
+const TOOL_USE_ID_KEY: &str = "tool_use_id";
+const INTERRUPT_MARKER: &str = "[Request interrupted by user";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TranscriptMark {
+    ToolFinished(ToolUseId),
+    Interrupted,
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TranscriptChunk {
     pub entries: Vec<ChatEntry>,
+    pub marks: Vec<TranscriptMark>,
     pub next: u64,
 }
 
@@ -57,8 +66,8 @@ pub fn read_claude_transcript_tail(
         let Some(line_end) = cut.iter().position(|byte| *byte == LINE_END) else {
             return Ok((
                 TranscriptChunk {
-                    entries: Vec::new(),
                     next: start,
+                    ..TranscriptChunk::default()
                 },
                 start,
             ));
@@ -83,14 +92,13 @@ pub(crate) fn read_lines(
     let bytes = host.read_range(file, from, u64::MAX)?;
     let Some(end) = bytes.iter().rposition(|byte| *byte == LINE_END) else {
         return Ok(TranscriptChunk {
-            entries: Vec::new(),
             next: from,
+            ..TranscriptChunk::default()
         });
     };
-    Ok(TranscriptChunk {
-        entries: entries_of_bytes(&bytes[..end], sidechain),
-        next: from + u64::try_from(end + 1).unwrap_or(u64::MAX),
-    })
+    let mut chunk = chunk_of_bytes(&bytes[..end], sidechain);
+    chunk.next = from + u64::try_from(end + 1).unwrap_or(u64::MAX);
+    Ok(chunk)
 }
 
 /// # Errors
@@ -102,14 +110,40 @@ pub fn read_claude_transcript_before(
     end: u64,
 ) -> io::Result<Vec<ChatEntry>> {
     let bytes = host.read(file, end)?;
-    Ok(entries_of_bytes(&bytes, Sidechain::Skipped))
+    Ok(chunk_of_bytes(&bytes, Sidechain::Skipped).entries)
 }
 
-fn entries_of_bytes(bytes: &[u8], sidechain: Sidechain) -> Vec<ChatEntry> {
-    String::from_utf8_lossy(bytes)
-        .lines()
-        .flat_map(|line| entries_of_line(line, sidechain))
-        .collect()
+fn chunk_of_bytes(bytes: &[u8], sidechain: Sidechain) -> TranscriptChunk {
+    let mut chunk = TranscriptChunk::default();
+    for line in String::from_utf8_lossy(bytes).lines() {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        chunk.marks.extend(marks_of(&value));
+        chunk.entries.extend(entries_of(&value, sidechain));
+    }
+    chunk
+}
+
+fn marks_of(value: &Value) -> Vec<TranscriptMark> {
+    let flagged = |flag: &str| value.pointer(flag).and_then(Value::as_bool) == Some(true);
+    if flagged(META_FLAG) || value.get("type").and_then(Value::as_str) != Some(USER_LINE) {
+        return Vec::new();
+    }
+    if user_text(value).is_some_and(|text| text.starts_with(INTERRUPT_MARKER)) {
+        return vec![TranscriptMark::Interrupted];
+    }
+    value
+        .pointer("/message/content")
+        .and_then(Value::as_array)
+        .map_or_default(|blocks| {
+            blocks
+                .iter()
+                .filter(|block| block_type(block) == Some(TOOL_RESULT_BLOCK))
+                .filter_map(|block| block.get(TOOL_USE_ID_KEY).and_then(Value::as_str))
+                .map(|id| TranscriptMark::ToolFinished(ToolUseId::from(id)))
+                .collect()
+        })
 }
 
 fn conversation_file(host: &HostLink, projects: &Path, id: &ResumeId) -> Option<PathBuf> {
@@ -128,28 +162,25 @@ fn conversation_file(host: &HostLink, projects: &Path, id: &ResumeId) -> Option<
         })
 }
 
-fn entries_of_line(line: &str, sidechain: Sidechain) -> Vec<ChatEntry> {
-    let Ok(value) = serde_json::from_str::<Value>(line) else {
-        return Vec::new();
-    };
+fn entries_of(value: &Value, sidechain: Sidechain) -> Vec<ChatEntry> {
     let flagged = |flag: &str| value.pointer(flag).and_then(Value::as_bool) == Some(true);
     if flagged(META_FLAG) || (sidechain == Sidechain::Skipped && flagged(SIDECHAIN_FLAG)) {
         return Vec::new();
     }
     match value.get("type").and_then(Value::as_str) {
-        Some(USER_LINE) => match user_text(&value) {
+        Some(USER_LINE) => match user_text(value) {
             Some(text) => std::iter::once(ChatEntry::User {
                 text,
                 preset: AgentPreset::ClaudeCode,
                 model: None,
                 images: Vec::new(),
             })
-            .chain(prompted(&value))
+            .chain(prompted(value))
             .collect(),
-            None => claude(&value).into_iter().map(ChatEntry::Event).collect(),
+            None => claude(value).into_iter().map(ChatEntry::Event).collect(),
         },
-        Some("assistant") => claude(&value).into_iter().map(ChatEntry::Event).collect(),
-        Some(PERMISSION_MODE_LINE) => permission_mode(&value)
+        Some("assistant") => claude(value).into_iter().map(ChatEntry::Event).collect(),
+        Some(PERMISSION_MODE_LINE) => permission_mode(value)
             .into_iter()
             .map(ChatEntry::Event)
             .collect(),
@@ -217,6 +248,10 @@ mod tests {
 {"type":"user","message":{"role":"user","content":[{"type":"text","text":"Thanks"}]}}
 {"type":"user","message":{"role":"user","content":[{"type":"text","text":"Look [Image #1]"},{"type":"image","source":{}}]}}
 not json"#;
+
+    fn entries_of_line(line: &str, sidechain: Sidechain) -> Vec<ChatEntry> {
+        chunk_of_bytes(line.as_bytes(), sidechain).entries
+    }
 
     fn user(text: &str) -> ChatEntry {
         ChatEntry::User {
@@ -348,5 +383,36 @@ not json"#;
             []
         );
         assert!(fs::remove_dir_all(&dir).is_ok());
+    }
+
+    #[test]
+    fn a_plan_answered_in_the_terminal_leaves_its_result_and_the_interrupt() {
+        let chunk = chunk_of_bytes(
+            include_bytes!("../tests/fixtures/claude-plan-answered-in-terminal.jsonl"),
+            Sidechain::Skipped,
+        );
+        assert_eq!(
+            chunk.marks,
+            [
+                TranscriptMark::ToolFinished(ToolUseId::from("toolu_plan_1")),
+                TranscriptMark::Interrupted,
+                TranscriptMark::ToolFinished(ToolUseId::from("toolu_plan_2")),
+            ]
+        );
+        let plans: Vec<Option<&ToolUseId>> = chunk
+            .entries
+            .iter()
+            .filter_map(|entry| match entry {
+                ChatEntry::Event(ChatEvent::Tool(call)) => Some(call.id.as_ref()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            plans,
+            [
+                Some(&ToolUseId::from("toolu_plan_1")),
+                Some(&ToolUseId::from("toolu_plan_2")),
+            ]
+        );
     }
 }
