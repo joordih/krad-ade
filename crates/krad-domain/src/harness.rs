@@ -24,6 +24,7 @@ pub enum ShellQuoting {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettledAsks {
+    PastTool,
     OfTool,
     All,
 }
@@ -129,6 +130,7 @@ impl AgentPreset {
             return None;
         }
         match event {
+            CLAUDE_PRE_TOOL_USE => Some(SettledAsks::PastTool),
             CLAUDE_POST_TOOL_USE | CLAUDE_POST_TOOL_USE_FAILURE => Some(SettledAsks::OfTool),
             CLAUDE_STOP
             | CLAUDE_STOP_FAILURE
@@ -319,6 +321,11 @@ mod tests {
             Some(SettledAsks::OfTool)
         );
         assert_eq!(claude.settled_asks("Stop"), Some(SettledAsks::All));
+        assert_eq!(
+            claude.settled_asks("PreToolUse"),
+            Some(SettledAsks::PastTool),
+            "a tool about to run means a dialog answered in the terminal is behind"
+        );
         assert_eq!(claude.settled_asks("PermissionRequest"), None);
         assert_eq!(AgentPreset::Codex.settled_asks("Stop"), None);
     }

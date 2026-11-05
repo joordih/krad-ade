@@ -3,13 +3,14 @@ use gpui_kit::{AppContext as _, Context};
 use krad_agents::{AgentStatus, Response, TerminalHandle};
 use krad_domain::{
     code_tools_launch_args, hook_launch_args, launch_with_prompt, quote_for_shell, worker_brief,
-    AgentPreset, AgentState, CodeTools, EnvironmentName, ModelDelivery, ModelId, ResumeId,
-    SessionId, TerminalGroup, TerminalId, WorkerSpawn, WorktreeOrigin,
+    AgentPreset, AgentState, CodeTools, EnvironmentName, ModelDelivery, ModelId, PermissionMode,
+    ResumeId, SessionId, TerminalGroup, TerminalId, WorkerSpawn, WorktreeOrigin,
 };
 use krad_repo::{add_worktree, sanitize_worktree_name};
 use std::time::{Duration, Instant};
 
 use super::agent_bus::{cli_name, BUS_HINT};
+use super::ask::HeldAskReport;
 use super::shell_site::ShellSite;
 use super::surface::AccountUsage;
 use super::workers::WorkerLaunch;
@@ -29,6 +30,7 @@ pub(super) struct HookReport<'a> {
     pub(super) tool: Option<&'a str>,
     pub(super) detail: Option<String>,
     pub(super) resume: Option<&'a str>,
+    pub(super) mode: Option<PermissionMode>,
 }
 
 pub(super) struct PendingPrompt {
@@ -147,7 +149,13 @@ impl EnvironmentShell {
                 session.activity = report.detail;
             }
         }
-        self.settle_held_asks(&env, id, preset, report.event, report.tool);
+        let held = HeldAskReport {
+            preset,
+            event: report.event,
+            tool: report.tool,
+            mode: report.mode,
+        };
+        self.settle_held_asks(&env, id, &held);
         let resume = report.resume.and_then(|raw| raw.parse::<ResumeId>().ok());
         let fresh = preset.started_fresh(report.event, report.tool);
         self.note_resume_id(&env, id, preset, resume, fresh);

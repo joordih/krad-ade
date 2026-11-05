@@ -1,0 +1,7 @@
+{"type":"user","uuid":"u1","message":{"role":"user","content":"Plan the parser fix"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_plan_1","name":"ExitPlanMode","input":{"plan":"# Fix the parser\n\n1. Read it"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_plan_1","is_error":true,"content":"The user doesn't want to proceed with this tool use. The tool use was rejected."}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user for tool use]"}]}}
+{"type":"user","uuid":"u2","message":{"role":"user","content":"Split it in two steps"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_plan_2","name":"ExitPlanMode","input":{"plan":"# Fix the parser\n\n1. Read it\n2. Fix it"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_plan_2","content":"User has approved your plan. You can now start coding."}]}}
