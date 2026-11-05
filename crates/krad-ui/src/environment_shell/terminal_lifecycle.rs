@@ -47,7 +47,8 @@ impl EnvironmentShell {
     }
 
     pub(super) fn add_terminal(&mut self, preset: AgentPreset, cx: &mut Context<Self>) {
-        self.spawn_terminal(preset.display_name(), Launch::Preset(preset), None, cx);
+        let label = self.settings.acp.harness_name(preset);
+        self.spawn_terminal(&label, Launch::Preset(preset), None, cx);
     }
 
     pub(super) fn add_new_tab(&mut self, cx: &mut Context<Self>) {
@@ -191,7 +192,7 @@ impl EnvironmentShell {
         let spec = NodeSpec {
             kind: NodeKind::Chat,
             harness: Some(preset),
-            label: preset.display_name(),
+            label: &self.settings.acp.harness_name(preset),
             group: NodeGroup::OrSelected(group),
         };
         self.push_node(env, id, &spec, None)?;

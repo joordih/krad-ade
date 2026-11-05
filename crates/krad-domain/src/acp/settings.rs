@@ -1,6 +1,8 @@
 use super::{built_in_acp_agents, is_built_in_acp_agent, AcpAgent, AcpAgentId};
+use crate::agent::AgentPreset;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
+use std::borrow::Cow;
 use std::fmt;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -93,6 +95,16 @@ impl AcpSettings {
     }
 
     #[must_use]
+    pub fn harness_name(&self, preset: AgentPreset) -> Cow<'static, str> {
+        preset
+            .acp_agent()
+            .and_then(|id| self.agent(id))
+            .map_or(Cow::Borrowed(preset.display_name()), |agent| {
+                Cow::Owned(agent.display_name())
+            })
+    }
+
+    #[must_use]
     pub fn all_agents(&self) -> Vec<AcpAgent> {
         built_in_acp_agents()
             .into_iter()
@@ -145,6 +157,14 @@ mod tests {
             .map(|agent| agent.id.to_string())
             .collect();
         assert_eq!(ids, ["claude-code-acp", "codex-acp", "opencode", "gemini"]);
+        let names = [
+            AgentPreset::Codex,
+            AgentPreset::Acp(agent("gemini").id),
+            AgentPreset::Acp(agent("codex-acp").id),
+            AgentPreset::Acp(agent("gone").id),
+        ]
+        .map(|preset| settings.harness_name(preset));
+        assert_eq!(names, ["Codex", "Gemini (ACP)", "Codex (ACP)", "ACP agent"]);
         assert_eq!(
             settings.remove_agent(agent("gemini").id),
             Some(agent("gemini"))
