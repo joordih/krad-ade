@@ -16,7 +16,7 @@ mod terminals;
 mod update;
 
 pub(crate) use chat::spawn_acp;
-pub use chat::{acp_agent_env, AcpConfig, MissingSecret};
+pub use chat::{acp_agent_env, AcpConfig, MissingSecret, Variables};
 pub use client_side::{ClientSide, FileWritten, HostTerminals, OpenBuffers, PermissionAsked};
 pub use config::{
     ConfigCategory, ConfigKind, ConfigSelectEntry, ConfigSelectGroup, ConfigSelectOption,
