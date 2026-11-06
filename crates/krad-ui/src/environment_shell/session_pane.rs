@@ -245,7 +245,7 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get(&self.active) else {
             return div().into_any_element();
         };
-        if live.data.groups.is_empty() {
+        if live.data.groups.is_empty() && live.data.current_session().is_none() {
             let pick = Button::new(BTN_NEW_GROUP)
                 .label(NEW_GROUP_LABEL)
                 .icon(IconName::FolderAdd)
@@ -562,6 +562,9 @@ impl EnvironmentShell {
         let node = live.data.nodes.iter().find(|node| node.id == id);
         if node.is_none() && !live.data.side_panel.holds(id) {
             return div().into_any_element();
+        }
+        if node.is_some_and(|node| node.kind == krad_domain::NodeKind::Extension) {
+            return self.extension_tab_body(id, cx);
         }
         match node
             .and_then(|node| node.file.as_ref())

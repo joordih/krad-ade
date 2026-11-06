@@ -1,6 +1,6 @@
 mod view;
 
-use gpui_kit::{Capslock, Context, FocusHandle, KeyDownEvent, Window};
+use gpui_kit::{Capslock, Context, FocusHandle, KeyDownEvent, SharedString, Window};
 use krad_chat::ModelSource;
 use krad_domain::{AgentPreset, ModelId, TerminalId};
 
@@ -28,6 +28,7 @@ pub(super) struct ModelChoice {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct HarnessModels {
     pub(super) harness: AgentPreset,
+    pub(super) name: SharedString,
     pub(super) models: Vec<ModelChoice>,
 }
 
@@ -40,6 +41,7 @@ pub(super) fn grouped(
             Some(group) => group.models.push(choice),
             None => groups.push(HarnessModels {
                 harness,
+                name: harness.display_name().into(),
                 models: vec![choice],
             }),
         }
@@ -170,9 +172,12 @@ impl EnvironmentShell {
         &mut self,
         target: PickFor,
         origin: (f32, f32),
-        groups: Vec<HarnessModels>,
+        mut groups: Vec<HarnessModels>,
         cx: &mut Context<Self>,
     ) {
+        for group in &mut groups {
+            group.name = self.settings.acp.harness_name(group.harness).into();
+        }
         if groups
             .iter()
             .any(|group| group.harness == AgentPreset::Opencode)

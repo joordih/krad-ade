@@ -21,6 +21,17 @@ pub enum Host {
     Ssh {
         destination: SshDestination,
     },
+    Extension {
+        machine: ExtensionMachine,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ExtensionMachine {
+    pub extension: String,
+    pub kind: String,
+    pub id: String,
+    pub label: String,
 }
 
 impl Host {
@@ -32,8 +43,16 @@ impl Host {
     #[must_use]
     pub const fn destination(&self) -> Option<&SshDestination> {
         match self {
-            Self::Local => None,
+            Self::Local | Self::Extension { .. } => None,
             Self::Ssh { destination } => Some(destination),
+        }
+    }
+
+    #[must_use]
+    pub const fn machine(&self) -> Option<&ExtensionMachine> {
+        match self {
+            Self::Extension { machine } => Some(machine),
+            Self::Local | Self::Ssh { .. } => None,
         }
     }
 }
@@ -43,6 +62,7 @@ impl fmt::Display for Host {
         match self {
             Self::Local => f.write_str(LOCAL_LABEL),
             Self::Ssh { destination } => destination.fmt(f),
+            Self::Extension { machine } => f.write_str(&machine.label),
         }
     }
 }
@@ -310,6 +330,32 @@ mod tests {
         assert_eq!(json, r#"{"kind":"ssh","destination":"jordi@devbox:2200"}"#);
         assert_eq!(serde_json::from_str::<Host>(&json)?, host);
         assert!(serde_json::from_str::<Host>(r#"{"kind":"ssh","destination":"-x"}"#).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn an_extension_machine_roundtrips_and_shows_its_label() -> TestResult {
+        let host = Host::Extension {
+            machine: ExtensionMachine {
+                extension: "docker".to_owned(),
+                kind: "container".to_owned(),
+                id: "4f2a9c".to_owned(),
+                label: "web".to_owned(),
+            },
+        };
+        let json = serde_json::to_string(&host)?;
+        assert_eq!(
+            json,
+            r#"{"kind":"extension","machine":{"extension":"docker","kind":"container","id":"4f2a9c","label":"web"}}"#
+        );
+        assert_eq!(serde_json::from_str::<Host>(&json)?, host);
+        assert_eq!(host.to_string(), "web");
+        assert!(!host.is_local());
+        assert_eq!(host.destination(), None);
+        assert_eq!(
+            host.machine().map(|machine| machine.id.as_str()),
+            Some("4f2a9c")
+        );
         Ok(())
     }
 

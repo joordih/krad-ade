@@ -163,7 +163,7 @@ impl EnvironmentShell {
             AgentPreset::ClaudeCode | AgentPreset::Codex | AgentPreset::Opencode => {
                 self.native_agents.contains(&harness)
             }
-            AgentPreset::Shell => false,
+            AgentPreset::Shell | AgentPreset::Acp(_) => false,
         }
     }
 
@@ -173,7 +173,7 @@ impl EnvironmentShell {
             AgentPreset::Opencode => self.opencode_models_on(&host),
             AgentPreset::Gateway => self.gateway_offers(),
             AgentPreset::ClaudeCode | AgentPreset::Codex => self.listed_models.of(&host, harness),
-            AgentPreset::Shell => &[],
+            AgentPreset::Shell | AgentPreset::Acp(_) => &[],
         };
         (!offers.is_empty()).then_some(offers)
     }
@@ -232,7 +232,7 @@ impl EnvironmentShell {
                 let harness = structured.harness;
                 let fresh = chat.messages.is_empty() && structured.is_fresh();
                 let others = if fresh {
-                    AgentPreset::chat_harnesses()
+                    AgentPreset::chat_harnesses(&self.settings.acp.all_agents())
                         .into_iter()
                         .filter(|other| *other != harness && self.chats_on(*other))
                         .flat_map(|other| self.harness_picks(other, None))

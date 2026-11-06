@@ -42,6 +42,8 @@ pub enum RewindError {
     MissingPrompt,
     #[error("the chat is still answering")]
     Busy,
+    #[error("this agent cannot rewind its conversation")]
+    Unsupported,
     #[error("this harness cannot restore files")]
     KeepsFiles,
     #[error("the harness did not answer the rewind in time")]

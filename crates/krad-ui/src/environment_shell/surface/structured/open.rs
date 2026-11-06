@@ -7,7 +7,7 @@ use krad_domain::{
     AgentPreset, ChatEntry, EnvironmentName, NodeKind, ResumeId, TerminalId, TerminalNode,
     DEFAULT_CHAT_HARNESS,
 };
-use krad_store::gateway_sessions_dir;
+use krad_store::{acp_transcript_file, gateway_sessions_dir, read_acp_transcript};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -94,16 +94,18 @@ impl EnvironmentShell {
         for (id, session, harness) in pending {
             let (input, events) = Self::chat_input(id, window, cx);
             let history = session.history().cloned();
-            let mut chat = SurfaceChat::new(
-                input,
-                events,
-                Backend::Structured(Box::new(StructuredChat::new(session, harness))),
-            );
-            let waiting = self
-                .envs
-                .get_mut(&env)
-                .and_then(|live| live.waiting_prompts.remove(&id))
-                .unwrap_or_default();
+            let mut structured = StructuredChat::new(session, harness);
+            let live = self.envs.get_mut(&env);
+            let (waiting, mode) = live.map_or_else(Default::default, |live| {
+                (
+                    live.waiting_prompts.remove(&id).unwrap_or_default(),
+                    live.waiting_modes.remove(&id),
+                )
+            });
+            structured.permission_mode = mode;
+            structured.transcript = self.acp_transcript(&env, id, harness);
+            let mut chat =
+                SurfaceChat::new(input, events, Backend::Structured(Box::new(structured)));
             let prompted = !waiting.is_empty();
             for prompt in waiting {
                 chat.outbox.push(prompt);
@@ -134,6 +136,7 @@ impl EnvironmentShell {
             AgentPreset::Opencode => self.load_opencode_history(env, id, resume, cx),
             AgentPreset::Codex => self.load_codex_history(env, id, resume, cx),
             AgentPreset::Gateway => self.load_gateway_history(env, id, resume, cx),
+            AgentPreset::Acp(_) => Self::load_acp_history(env, id, cx),
             AgentPreset::Shell => {}
         }
     }
@@ -216,6 +219,16 @@ impl EnvironmentShell {
         let cwd = self.chat_folder(&env, id);
         let read = cx.background_spawn(async move {
             read_engine_transcript(&sessions, &cwd, &resume).map_err(|error| error.to_string())
+        });
+        Self::show_history_when_read(env, id, read, cx);
+    }
+
+    fn load_acp_history(env: EnvironmentName, id: TerminalId, cx: &mut Context<Self>) {
+        let Some(file) = acp_transcript_file(&env, id) else {
+            return;
+        };
+        let read = cx.background_spawn(async move {
+            read_acp_transcript(&file).map_err(|error| error.to_string())
         });
         Self::show_history_when_read(env, id, read, cx);
     }

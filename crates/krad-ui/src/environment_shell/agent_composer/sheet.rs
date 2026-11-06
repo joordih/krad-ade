@@ -70,10 +70,11 @@ impl EnvironmentShell {
             .iter()
             .copied()
             .filter(|preset| preset.is_agent())
-            .map(|preset| {
+            .enumerate()
+            .map(|(index, preset)| {
                 let (mark, mark_color) = harness_icon(preset, pal);
                 chip(composer.preset == preset, pal, cx)
-                    .id((AGENT_CHIP_PREFIX, preset as u64))
+                    .id((AGENT_CHIP_PREFIX, index))
                     .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                         if let Some(composer) = &mut this.agent_composer {
                             composer.preset = preset;
@@ -81,7 +82,7 @@ impl EnvironmentShell {
                         cx.notify();
                     }))
                     .child(icon(mark, ICON_SM, mark_color))
-                    .child(preset.display_name())
+                    .child(self.settings.acp.harness_name(preset))
                     .into_any_element()
             })
             .collect()

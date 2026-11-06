@@ -12,7 +12,7 @@ pub(super) enum ShellSite {
 impl ShellSite {
     pub(super) const fn of(link: &HostLink, in_wsl: bool) -> Self {
         match link {
-            HostLink::Ssh(_) => Self::Ssh,
+            HostLink::Remote(_) => Self::Ssh,
             HostLink::Local if in_wsl => Self::Wsl,
             HostLink::Local => Self::Native,
         }

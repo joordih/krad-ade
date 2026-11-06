@@ -4,8 +4,8 @@ use gpui_kit::component::input::Textarea;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, BoxShadow, ClickEvent, Context, ElementId, FontWeight,
-    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ParentElement,
-    StatefulInteractiveElement, Styled,
+    InteractiveElement, IntoElement, MouseButton, ParentElement, StatefulInteractiveElement,
+    Styled,
 };
 use krad_domain::{Effort, TerminalId};
 
@@ -13,7 +13,6 @@ use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
 use super::super::model_picker::{grouped, ModelChoice, PickFor};
 use super::super::EnvironmentShell;
 use super::facts::Facts;
-use super::mentions::PASTE_KEY;
 use super::view::{AgentNow, ROUND_BUTTON};
 use super::{SurfaceChat, SurfaceCommand, THINKING_LABEL};
 use crate::components::{harness_icon, icon, tooltip_view, IconName};
@@ -71,23 +70,18 @@ impl EnvironmentShell {
             .shadow(ring)
             .text_size(px(TEXT_SM))
             .line_height(px(LINE_SM))
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .capture_key_down(
-                cx.listener(move |this: &mut Self, event: &KeyDownEvent, _, cx| {
-                    let keystroke = &event.keystroke;
-                    if keystroke.key == PASTE_KEY
-                        && keystroke.modifiers.secondary()
-                        && this.paste_chat_image(id, cx)
-                    {
-                        cx.stop_propagation();
-                    }
-                }),
-            );
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
+        let shell = cx.entity().downgrade();
         let field = Self::suggestion_keys(field, id, cx)
             .child(
                 div().flex_1().min_w_0().py(px(SPACE_1)).child(
                     Textarea::new(&chat.input)
                         .appearance(false)
+                        .on_paste(move |item, _, cx| {
+                            shell
+                                .update(cx, |shell, cx| shell.paste_chat_attachment(id, item, cx))
+                                .unwrap_or_default()
+                        })
                         .disabled(chat.asks().blocks_typing()),
                 ),
             )
@@ -105,11 +99,7 @@ impl EnvironmentShell {
                     .is_some()
                     .then(|| Self::attach_control(id, cx)),
             )
-            .children(
-                chat.structured()
-                    .is_some()
-                    .then(|| self.mode_control(id, cx)),
-            )
+            .children(self.chat_mode_control(id, chat, cx))
             .children(
                 chat.structured()
                     .is_some()
@@ -150,7 +140,8 @@ impl EnvironmentShell {
                     .text_color(rgb(pal.text_muted))
                     .child(account)
             }))
-            .child(Self::model_control(id, facts, cx))
+            .children(Self::chat_model_control(id, chat, facts, cx))
+            .children(Self::acp_option_controls(id, chat, cx))
             .children(Self::effort_control(id, facts, cx))
             .children(Self::thinking_control(id, facts, cx))
             .children(facts.context_window.map(|tokens| {
@@ -162,6 +153,37 @@ impl EnvironmentShell {
             }))
             .children(usage_ring(id, facts, pal))
             .into_any_element()
+    }
+
+    fn chat_mode_control(
+        &self,
+        id: TerminalId,
+        chat: &SurfaceChat,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let structured = chat.structured()?;
+        if structured.harness.acp_agent().is_some() {
+            return Self::acp_mode_control(id, chat, cx);
+        }
+        Some(self.mode_control(id, cx))
+    }
+
+    fn chat_model_control(
+        id: TerminalId,
+        chat: &SurfaceChat,
+        facts: &Facts,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let Some(structured) = chat
+            .structured()
+            .filter(|structured| structured.harness.acp_agent().is_some())
+        else {
+            return Some(Self::model_control(id, facts, cx));
+        };
+        if structured.acp.has_models() {
+            return Self::acp_model_control(id, chat, cx);
+        }
+        (!facts.models.is_empty()).then(|| Self::model_control(id, facts, cx))
     }
 
     fn orchestrator_control(&self, id: TerminalId, cx: &mut Context<Self>) -> AnyElement {
@@ -257,7 +279,7 @@ impl EnvironmentShell {
         )
     }
 
-    fn open_menu_above(
+    pub(super) fn open_menu_above(
         &mut self,
         event: &ClickEvent,
         entries: Vec<MenuEntry>,
@@ -356,7 +378,10 @@ impl EnvironmentShell {
     }
 }
 
-fn control_pill(id: impl Into<ElementId>, pal: &Palette) -> gpui_kit::Stateful<gpui_kit::Div> {
+pub(super) fn control_pill(
+    id: impl Into<ElementId>,
+    pal: &Palette,
+) -> gpui_kit::Stateful<gpui_kit::Div> {
     div()
         .id(id)
         .flex()

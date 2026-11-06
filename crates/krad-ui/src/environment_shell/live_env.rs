@@ -1,5 +1,7 @@
 use krad_agents::{AgentStatus, Mailbox};
-use krad_domain::{EnvironmentData, GroupId, TerminalId, TerminalMeta, SCROLLBACK_PERSIST_LINES};
+use krad_domain::{
+    EnvironmentData, GroupId, PermissionMode, TerminalId, TerminalMeta, SCROLLBACK_PERSIST_LINES,
+};
 use krad_session::LiveSession;
 use std::collections::HashMap;
 use std::time::Instant;
@@ -22,6 +24,7 @@ pub(super) struct LiveEnv {
     pub(super) statuses: HashMap<TerminalId, AgentStatus>,
     pub(super) pending_chats: HashMap<TerminalId, krad_chat::LiveSession>,
     pub(super) waiting_prompts: HashMap<TerminalId, Vec<Prompt>>,
+    pub(super) waiting_modes: HashMap<TerminalId, PermissionMode>,
     pub(super) noticed_chats: Vec<TerminalId>,
     pub(super) images: HashMap<TerminalId, terminal_images::TerminalImages>,
     pub(super) editors: HashMap<TerminalId, file_tab::FileEditor>,
@@ -33,6 +36,8 @@ pub(super) struct LiveEnv {
     pub(super) navigation: HashMap<krad_domain::SessionId, krad_domain::NavigationHistory>,
     pub(super) worker_launches: HashMap<TerminalId, workers::LaunchReply>,
     pub(super) pending_lead_ending: Option<workers::LeadEnding>,
+    pub(super) extension_sidebar: Option<super::extensions::OpenViewId>,
+    pub(super) extension_side: Option<super::extensions::OpenViewId>,
 }
 
 impl LiveEnv {
@@ -65,6 +70,7 @@ impl LiveEnv {
             statuses: HashMap::new(),
             pending_chats,
             waiting_prompts: HashMap::new(),
+            waiting_modes: HashMap::new(),
             noticed_chats: Vec::new(),
             images: HashMap::new(),
             editors: HashMap::new(),
@@ -76,6 +82,8 @@ impl LiveEnv {
             navigation: HashMap::new(),
             worker_launches: HashMap::new(),
             pending_lead_ending: None,
+            extension_sidebar: None,
+            extension_side: None,
         }
     }
 }

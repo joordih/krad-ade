@@ -4,7 +4,7 @@ use crate::error::HostError;
 use crate::link::HostLink;
 use crate::local;
 use crate::path::remote_path;
-use crate::ssh_link::SshLink;
+use crate::remote_link::RemoteLink;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FileMode(pub u32);
@@ -15,7 +15,7 @@ impl FileMode {
     pub const EXECUTABLE: Self = Self(0o755);
 }
 
-impl SshLink {
+impl RemoteLink {
     pub(crate) fn write_with_mode(
         &self,
         path: &Path,
@@ -81,7 +81,7 @@ impl HostLink {
     ) -> Result<(), HostError> {
         match self {
             Self::Local => Ok(local::write_with_mode(path, bytes, mode.0)?),
-            Self::Ssh(ssh) => ssh.write_with_mode(path, bytes, mode),
+            Self::Remote(ssh) => ssh.write_with_mode(path, bytes, mode),
         }
     }
 
@@ -100,7 +100,7 @@ impl HostLink {
                 }
                 Ok(local::set_permissions(path, mode.0)?)
             }
-            Self::Ssh(ssh) => ssh.create_dir_with_mode(path, mode),
+            Self::Remote(ssh) => ssh.create_dir_with_mode(path, mode),
         }
     }
 
@@ -108,7 +108,7 @@ impl HostLink {
     pub fn set_permissions(&self, path: &Path, mode: FileMode) -> Result<(), HostError> {
         match self {
             Self::Local => Ok(local::set_permissions(path, mode.0)?),
-            Self::Ssh(ssh) => {
+            Self::Remote(ssh) => {
                 ssh.with_sftp(|sftp| sftp.set_permissions(&remote_path(path), mode.0))
             }
         }

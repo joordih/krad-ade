@@ -150,7 +150,7 @@ fn a_new_chat_can_move_to_another_harness_until_its_conversation_exists() {
     );
     chat.effort = Some(Effort::Max);
     assert!(chat.is_fresh());
-    chat.switch_harness(AgentPreset::Opencode);
+    chat.switch_harness(AgentPreset::Opencode, None);
     assert_eq!(chat.harness, AgentPreset::Opencode);
     assert_eq!(chat.effort, None);
     assert!(matches!(chat.session, LiveSession::Start(_)));
@@ -170,6 +170,111 @@ fn notices_add_up_under_the_chat_and_a_new_harness_reads_mcp_again() {
     );
     let mut chat = resumed();
     chat.mcp = McpPrep::Launching;
-    chat.switch_harness(AgentPreset::Gateway);
+    chat.switch_harness(AgentPreset::Gateway, None);
     assert!(matches!(chat.mcp, McpPrep::Unread));
+}
+
+fn acp_harness() -> AgentPreset {
+    AgentPreset::Acp(
+        "opencode"
+            .parse()
+            .unwrap_or_else(|_| unreachable!("opencode is a valid ACP agent id")),
+    )
+}
+
+fn shown(messages: &[ChatMessage]) -> Vec<(krad_chat::Speaker, String)> {
+    messages
+        .iter()
+        .map(|message| (message.speaker, message.text.clone()))
+        .collect()
+}
+
+fn reopened(file: &std::path::Path) -> Vec<ChatMessage> {
+    let mut messages = Vec::new();
+    for entry in krad_store::read_acp_transcript(file).unwrap_or_default() {
+        fold_entry(&mut messages, &entry);
+    }
+    messages
+}
+
+fn acp_chat_with_a_kept_turn(name: &str) -> (std::path::PathBuf, Vec<ChatMessage>) {
+    let file = std::env::temp_dir()
+        .join(format!("krad-acp-reopen-{name}-{}", std::process::id()))
+        .join("1.jsonl");
+    std::fs::remove_file(&file).unwrap_or_default();
+    let transcripts = krad_store::AcpTranscripts::spawn()
+        .unwrap_or_else(|| unreachable!("the writer thread starts"));
+    let mut chat = StructuredChat::new(LiveSession::Start(id("ses_1")), acp_harness());
+    chat.transcript = transcripts.transcript(file.clone());
+    let mut messages = Vec::new();
+    chat.fold_sent(&mut messages, &Prompt::from("Fix the race"));
+    for event in [
+        ChatEvent::TextDelta("Fixed ".to_owned()),
+        ChatEvent::TextDelta("it.".to_owned()),
+        ChatEvent::Done,
+    ] {
+        chat.fold_kept(&mut messages, &ChatEntry::Event(event));
+    }
+    drop(transcripts);
+    (file, messages)
+}
+
+#[test]
+fn a_reopened_acp_chat_that_loads_its_session_shows_what_it_showed() {
+    let (file, messages) = acp_chat_with_a_kept_turn("load");
+    let restored = reopened(&file);
+    assert_eq!(shown(&restored), shown(&messages));
+    assert_eq!(restored[1].text, "Fixed it.");
+    let chat = StructuredChat::new(LiveSession::Resume(id("ses_1")), acp_harness());
+    assert_eq!(chat.session.history(), Some(&id("ses_1")), "it loads ses_1");
+    assert_eq!(chat.notices, Vec::<String>::new());
+}
+
+#[test]
+fn a_reopened_acp_chat_that_cannot_load_keeps_its_transcript_and_starts_anew() {
+    let (file, messages) = acp_chat_with_a_kept_turn("fresh");
+    let restored = reopened(&file);
+    assert_eq!(shown(&restored), shown(&messages));
+    let mut chat = StructuredChat::new(LiveSession::Resume(id("ses_1")), acp_harness());
+    let batch = Batch {
+        commands: Vec::new(),
+        message: Some(Prompt::from("And the docs")),
+    };
+    chat.handed_over(batch.clone());
+    let refused = ResumeRefused::MissingConversation(
+        "opencode (ACP) cannot reopen its saved sessions, so this message starts a new one"
+            .to_owned(),
+    );
+    assert_eq!(chat.retries(&refused), Some(batch));
+    assert!(matches!(chat.session, LiveSession::Start(_)));
+    assert_eq!(chat.notices, [refused.to_string()]);
+}
+
+#[test]
+fn only_acp_chats_note_a_fresh_start_on_reopen() {
+    let mut chat = resumed();
+    assert!(chat.retries(&missing()).is_some());
+    assert_eq!(chat.notices, Vec::<String>::new());
+    assert!(chat.transcript.is_none());
+}
+
+#[test]
+fn a_turn_the_harness_opens_by_itself_is_worked_until_its_result() {
+    let mut chat = resumed();
+    assert!(chat.opens_turn(), "a finished subagent woke the idle chat");
+    assert!(!chat.is_free());
+    assert!(!chat.opens_turn(), "the turn is already open");
+    assert!(chat.closes_turn(false));
+    assert!(chat.is_free());
+}
+
+#[test]
+fn the_start_of_a_sent_message_s_turn_opens_nothing_more() {
+    let mut chat = resumed();
+    chat.handed_over(Batch {
+        commands: Vec::new(),
+        message: Some(Prompt::from("Fix the race")),
+    });
+    assert!(!chat.opens_turn());
+    assert!(chat.closes_turn(false));
 }

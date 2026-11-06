@@ -83,34 +83,51 @@ impl EnvironmentShell {
         if matches!(self.drag, DragState::None) || self.drag_panel_edges(x, y, cx) {
             return;
         }
-        let env = self.active.clone();
-        let Some(live) = self.envs.get_mut(&env) else {
-            return;
-        };
         match &self.drag {
             DragState::None
             | DragState::SelectCode
             | DragState::SidePanel(_)
             | DragState::ResizeActivity(_)
+            | DragState::Select { .. }
+            | DragState::Report { .. }
             | DragState::ResizePane { .. } => return,
             DragState::ResizePanel(drag) => self.panel_widths.set(drag.panel, drag.width_at(x)),
             DragState::ResizeSidebar(drag) => self.sidebar_w = drag.width_at(x),
-            DragState::Select { id, geometry } => {
-                if let Some(session) = live.sessions.get_mut(id) {
-                    session.engine.extend_selection(geometry.cell_at(x, y));
-                }
-            }
-            DragState::Report { id, geometry, cell } => {
-                let (id, geometry, last) = (*id, *geometry, *cell);
-                let cell = geometry.cell_at(x, y);
-                if cell != last {
-                    self.report_click(id, MouseAction::Drag, cell);
-                    self.drag = DragState::Report { id, geometry, cell };
-                }
-                return;
-            }
         }
         cx.notify();
+    }
+
+    pub(in crate::environment_shell) fn drag_in_terminal(
+        &mut self,
+        x: f32,
+        y: f32,
+        cx: &mut Context<Self>,
+    ) {
+        match self.drag {
+            DragState::Select { id, geometry } => {
+                let env = self.active.clone();
+                if let Some(session) = self
+                    .envs
+                    .get_mut(&env)
+                    .and_then(|live| live.sessions.get_mut(&id))
+                {
+                    session.engine.extend_selection(geometry.cell_at(x, y));
+                }
+                cx.notify();
+            }
+            DragState::Report { id, geometry, cell } => {
+                let moved = geometry.cell_at(x, y);
+                if moved != cell {
+                    self.report_click(id, MouseAction::Drag, moved);
+                    self.drag = DragState::Report {
+                        id,
+                        geometry,
+                        cell: moved,
+                    };
+                }
+            }
+            _ => {}
+        }
     }
 
     pub(in crate::environment_shell) fn end_drag(&mut self, cx: &mut Context<Self>) {

@@ -1,3 +1,6 @@
+mod stored;
+
+use crate::acp::{AcpAgent, AcpAgentId};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -56,7 +59,7 @@ pub enum ModelDelivery {
     AttachedSession,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub enum AgentPreset {
     #[default]
     Shell,
@@ -64,18 +67,32 @@ pub enum AgentPreset {
     Codex,
     Opencode,
     Gateway,
+    Acp(AcpAgentId),
 }
 
+pub const ACP_AGENT_LABEL: &str = "ACP agent";
+
 impl AgentPreset {
+    pub const NATIVE: [Self; 5] = [
+        Self::Shell,
+        Self::ClaudeCode,
+        Self::Codex,
+        Self::Opencode,
+        Self::Gateway,
+    ];
+
+    pub fn listed(acp_agents: &[AcpAgent]) -> impl Iterator<Item = Self> + '_ {
+        Self::NATIVE
+            .into_iter()
+            .chain(acp_agents.iter().map(|agent| Self::Acp(agent.id)))
+    }
+
     #[must_use]
-    pub const fn all() -> [Self; 5] {
-        [
-            Self::Shell,
-            Self::ClaudeCode,
-            Self::Codex,
-            Self::Opencode,
-            Self::Gateway,
-        ]
+    pub const fn acp_agent(self) -> Option<AcpAgentId> {
+        match self {
+            Self::Acp(id) => Some(id),
+            Self::Shell | Self::ClaudeCode | Self::Codex | Self::Opencode | Self::Gateway => None,
+        }
     }
 
     #[must_use]
@@ -86,13 +103,14 @@ impl AgentPreset {
             Self::Codex => "Codex",
             Self::Opencode => "opencode",
             Self::Gateway => "Gateway",
+            Self::Acp(_) => ACP_AGENT_LABEL,
         }
     }
 
     #[must_use]
     pub const fn program(self) -> Option<&'static str> {
         match self {
-            Self::Shell | Self::Gateway => None,
+            Self::Shell | Self::Gateway | Self::Acp(_) => None,
             Self::ClaudeCode => Some("claude"),
             Self::Codex => Some("codex"),
             Self::Opencode => Some("opencode"),
@@ -103,7 +121,7 @@ impl AgentPreset {
     pub const fn system_prompt_flag(self) -> Option<&'static str> {
         match self {
             Self::ClaudeCode => Some(CLAUDE_SYSTEM_PROMPT_FLAG),
-            Self::Shell | Self::Codex | Self::Opencode | Self::Gateway => None,
+            Self::Shell | Self::Codex | Self::Opencode | Self::Gateway | Self::Acp(_) => None,
         }
     }
 
@@ -113,13 +131,16 @@ impl AgentPreset {
             Self::ClaudeCode => Some(ModelDelivery::Flag(CLAUDE_MODEL_FLAG)),
             Self::Codex => Some(ModelDelivery::Flag(CODEX_MODEL_FLAG)),
             Self::Opencode => Some(ModelDelivery::AttachedSession),
-            Self::Shell | Self::Gateway => None,
+            Self::Shell | Self::Gateway | Self::Acp(_) => None,
         }
     }
 
     #[must_use]
     pub const fn is_agent(self) -> bool {
-        self.program().is_some()
+        match self {
+            Self::ClaudeCode | Self::Codex | Self::Opencode | Self::Acp(_) => true,
+            Self::Shell | Self::Gateway => false,
+        }
     }
 }
 
@@ -138,7 +159,7 @@ impl std::str::FromStr for AgentPreset {
     type Err = UnknownHarness;
 
     fn from_str(program: &str) -> Result<Self, Self::Err> {
-        Self::all()
+        Self::NATIVE
             .into_iter()
             .find(|preset| preset.program() == Some(program))
             .ok_or(UnknownHarness)
@@ -167,7 +188,7 @@ mod tests {
 
     #[test]
     fn every_agent_has_its_own_program() {
-        let programs: Vec<&str> = AgentPreset::all()
+        let programs: Vec<&str> = AgentPreset::NATIVE
             .iter()
             .filter_map(|preset| preset.program())
             .collect();
@@ -177,7 +198,7 @@ mod tests {
 
     #[test]
     fn harnesses_parse_from_their_program_and_states_from_their_label() {
-        for preset in AgentPreset::all() {
+        for preset in AgentPreset::NATIVE {
             let parsed = preset.program().map(str::parse::<AgentPreset>);
             assert_eq!(parsed, preset.program().map(|_| Ok(preset)), "{preset:?}");
         }

@@ -1,9 +1,10 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
+exclude = ["sdk/rust"]
 
 [workspace.package]
-version = "0.2.8"
+version = "0.3.2"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/joordih/krad-ade"
@@ -105,6 +106,7 @@ raw-window-handle = "0.6"
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 serde_json = "1"
+schemars = "1.2"
 thiserror = "2"
 toml = "1"
 tracing = "0.1"
@@ -121,6 +123,8 @@ ureq = { version = "3.5", default-features = false, features = [
 krad-agents = { path = "crates/krad-agents" }
 krad-chat = { path = "crates/krad-chat" }
 krad-domain = { path = "crates/krad-domain" }
+krad-extension-api = { path = "crates/krad-extension-api", version = "0.4.0" }
+krad-extension-id = { path = "crates/krad-extension-id", version = "0.3.0" }
 krad-extensions = { path = "crates/krad-extensions" }
 krad-github = { path = "crates/krad-github" }
 krad-gitlab = { path = "crates/krad-gitlab" }

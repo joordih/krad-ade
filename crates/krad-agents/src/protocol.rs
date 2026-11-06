@@ -1,8 +1,9 @@
 mod harness_name;
 
-pub(crate) use harness_name::preset_by_display_name;
+pub(crate) use harness_name::{bus_name, preset_by_bus_name, preset_by_display_name};
 
 use crate::code::{CodeAnswer, CodeRequest};
+use crate::extension_tools::{ExtensionToolAnswer, ToolCatalog};
 use crate::handle::Caller;
 use krad_domain::{
     AgentPreset, AgentState, PermissionMode, ToolDecision, ToolUseId, UnknownAgentState, ASK_WAIT,
@@ -18,6 +19,7 @@ const BLOCKING_MARGIN: Duration = Duration::from_secs(1);
 const DEFAULT_DEADLINE: Duration = Duration::from_secs(10);
 const SPAWN_DEADLINE: Duration = Duration::from_mins(1);
 const CODE_DEADLINE: Duration = Duration::from_mins(2);
+const EXTENSION_TOOL_DEADLINE: Duration = Duration::from_mins(2);
 pub const ASKPASS_WAIT: Duration = Duration::from_mins(5);
 const REDACTED: &str = "[REDACTED]";
 const NOT_THE_LEAD: &str =
@@ -82,6 +84,11 @@ pub enum Request {
     Askpass {
         prompt: String,
     },
+    Tools,
+    ExtensionTool {
+        name: String,
+        arguments: Value,
+    },
 }
 
 impl Request {
@@ -100,9 +107,11 @@ impl Request {
             | Self::Check { wait_secs: None }
             | Self::Read { .. }
             | Self::Hook { .. }
-            | Self::Status(_) => DEFAULT_DEADLINE,
+            | Self::Status(_)
+            | Self::Tools => DEFAULT_DEADLINE,
             Self::Spawn { .. } => SPAWN_DEADLINE,
             Self::Code(_) => CODE_DEADLINE,
+            Self::ExtensionTool { .. } => EXTENSION_TOOL_DEADLINE,
             Self::Askpass { .. } => ASKPASS_WAIT + BLOCKING_MARGIN,
         }
     }
@@ -241,6 +250,8 @@ pub enum Response {
     Submitted { terminal: u64 },
     Decided(ToolDecision),
     Code(CodeAnswer),
+    Tools(ToolCatalog),
+    ExtensionTool(ExtensionToolAnswer),
     Answered(Option<PromptAnswer>),
     Error(String),
 }
@@ -358,6 +369,71 @@ mod tests {
             let line = serde_json::to_string(&TerminalState::Running(state))?;
             assert_eq!(line, format!("\"{}\"", state.label()));
         }
+        Ok(())
+    }
+
+    #[test]
+    fn acp_agents_travel_by_their_id() -> Result<(), serde_json::Error> {
+        let gemini = AgentPreset::Acp(
+            "gemini"
+                .parse()
+                .unwrap_or_else(|_| unreachable!("a valid id")),
+        );
+        let spawn = Request::Spawn {
+            agent: gemini,
+            worktree: None,
+            task: "tests".to_owned(),
+        };
+        let spawn_line = r#"{"Spawn":{"agent":"acp:gemini","worktree":null,"task":"tests"}}"#;
+        assert_eq!(serde_json::to_string(&spawn)?, spawn_line);
+        assert_eq!(serde_json::from_str::<Request>(spawn_line)?, spawn);
+        let agent = AgentInfo {
+            terminal: 5,
+            title: "Gemini (ACP) · 5".to_owned(),
+            group: None,
+            state: TerminalState::Running(AgentState::Working),
+            harness: Some(gemini),
+            is_self: false,
+        };
+        let agent_line = r#"{"terminal":5,"title":"Gemini (ACP) · 5","group":null,"state":"working","harness":"acp:gemini","is_self":false}"#;
+        assert_eq!(serde_json::to_string(&agent)?, agent_line);
+        assert_eq!(serde_json::from_str::<AgentInfo>(agent_line)?, agent);
+        let unknown = agent_line.replace("acp:gemini", "acp:Not An Id");
+        assert!(serde_json::from_str::<AgentInfo>(&unknown).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn extension_tool_requests_and_answers_roundtrip() -> Result<(), serde_json::Error> {
+        use crate::extension_tools::{
+            ExtensionToolEffect, ExtensionToolInfo, ExtensionToolOutcome,
+        };
+        let call = Request::ExtensionTool {
+            name: "ext_docker_restart".to_owned(),
+            arguments: serde_json::json!({"id": "web"}),
+        };
+        let line = serde_json::to_string(&call)?;
+        assert_eq!(serde_json::from_str::<Request>(&line)?, call);
+        assert_eq!(serde_json::to_string(&Request::Tools)?, r#""Tools""#);
+        let catalog = Response::Tools(ToolCatalog {
+            code_tools: krad_domain::CodeTools::Off,
+            extension_tools: vec![ExtensionToolInfo {
+                name: "ext_docker_restart".to_owned(),
+                extension: "Docker".to_owned(),
+                description: "Restart a container".to_owned(),
+                input_schema: serde_json::json!({"type": "object"}),
+                effect: ExtensionToolEffect::Destructive,
+            }],
+        });
+        let line = serde_json::to_string(&catalog)?;
+        assert_eq!(serde_json::from_str::<Response>(&line)?, catalog);
+        let answer = Response::ExtensionTool(ExtensionToolAnswer {
+            text: "restarted".to_owned(),
+            outcome: ExtensionToolOutcome::Done,
+        });
+        let line = serde_json::to_string(&answer)?;
+        assert_eq!(serde_json::from_str::<Response>(&line)?, answer);
+        assert!(call.deadline() > Request::Tools.deadline());
         Ok(())
     }
 

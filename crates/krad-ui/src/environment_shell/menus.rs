@@ -41,7 +41,7 @@ impl EnvironmentShell {
         ];
         entries.extend(self.installed_agents().iter().map(|preset| {
             MenuEntry::checked(
-                preset.display_name(),
+                self.settings.acp.harness_name(*preset),
                 *preset == self.settings.default_harness,
                 MenuAction::NewTerminal(*preset),
             )
@@ -72,6 +72,16 @@ impl EnvironmentShell {
             IconName::Close,
             MenuAction::RemoveGroup(id),
         ));
+        if let Some(group) = group {
+            entries.extend(self.extension_menu_entries(
+                krad_extensions::api::manifest::MenuTarget::Group,
+                Some(&group.root),
+                &krad_extensions::api::protocol::CommandTarget::Group {
+                    name: group.name.clone(),
+                    root: group.root.clone(),
+                },
+            ));
+        }
         entries
     }
 }

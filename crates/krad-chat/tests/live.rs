@@ -32,9 +32,12 @@ fn answer(receiver: &Receiver<ChatEvent>) -> String {
         match event {
             ChatEvent::Text(text) | ChatEvent::TextDelta(text) => answer.push_str(&text),
             ChatEvent::Tool(_)
+            | ChatEvent::ToolUpdated(_)
             | ChatEvent::Edited { .. }
+            | ChatEvent::ToolOutput { .. }
             | ChatEvent::Checklist(_)
             | ChatEvent::Prompted(_)
+            | ChatEvent::TurnStarted
             | ChatEvent::Thinking(_)
             | ChatEvent::Session(_)
             | ChatEvent::Model(_)

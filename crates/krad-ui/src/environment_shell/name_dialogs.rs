@@ -32,6 +32,10 @@ pub(super) enum NameTarget {
         value: String,
         title: String,
     },
+    ExtensionInput {
+        title: String,
+        value: String,
+    },
     Branch,
     Tag,
 }
@@ -114,7 +118,9 @@ impl EnvironmentShell {
                 .and_then(|live| live.data.group(*id))
                 .map(|group| group.name.clone()),
             NameTarget::Symbol { word, .. } => Some(word.clone()),
-            NameTarget::ServerInput { value, .. } => Some(value.clone()),
+            NameTarget::ServerInput { value, .. } | NameTarget::ExtensionInput { value, .. } => {
+                Some(value.clone())
+            }
             NameTarget::Branch | NameTarget::Tag => Some(String::new()),
         }
     }
@@ -127,6 +133,10 @@ impl EnvironmentShell {
         if let NameTarget::ServerInput { .. } = dialog.target {
             self.input_answered(Some(typed), cx);
             cx.notify();
+            return;
+        }
+        if let NameTarget::ExtensionInput { .. } = dialog.target {
+            self.extension_input_answered(Some(&typed), cx);
             return;
         }
         if !typed.is_empty() {
@@ -158,7 +168,7 @@ impl EnvironmentShell {
                     self.create_named_tag(typed, cx);
                     return;
                 }
-                NameTarget::ServerInput { .. } => return,
+                NameTarget::ServerInput { .. } | NameTarget::ExtensionInput { .. } => return,
             }
             self.store();
         }
@@ -169,12 +179,16 @@ impl EnvironmentShell {
 
     fn close_name_dialog(&mut self, cx: &mut Context<Self>) {
         let closed = std::mem::take(&mut self.name_dialogs);
-        if let NameDialogs::Name(NameDialog {
-            target: NameTarget::ServerInput { .. },
-            ..
-        }) = closed
-        {
-            self.input_answered(None, cx);
+        match closed {
+            NameDialogs::Name(NameDialog {
+                target: NameTarget::ServerInput { .. },
+                ..
+            }) => self.input_answered(None, cx),
+            NameDialogs::Name(NameDialog {
+                target: NameTarget::ExtensionInput { .. },
+                ..
+            }) => self.extension_input_answered(None, cx),
+            _ => {}
         }
         cx.notify();
     }

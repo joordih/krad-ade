@@ -1,4 +1,6 @@
+use crate::acp::AcpSettings;
 use crate::agent::AgentPreset;
+use crate::extension_index::{lenient_index_repository, IndexRepository};
 use crate::file_icon::FileIconColors;
 use crate::font::{stored_font, FontChoice};
 use crate::gateway::GatewaySettings;
@@ -214,6 +216,14 @@ pub enum CodeTools {
     Off,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExtensionTools {
+    #[default]
+    On,
+    Off,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PerformanceMode {
@@ -250,6 +260,8 @@ pub struct Settings {
     pub appearance: AppearanceMode,
     #[serde(default)]
     pub code_tools: CodeTools,
+    #[serde(default)]
+    pub extension_tools: ExtensionTools,
     #[serde(default, skip_serializing)]
     pub terminal_theme: TerminalTheme,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -278,6 +290,8 @@ pub struct Settings {
     pub gateway: GatewaySettings,
     #[serde(default, skip_serializing_if = "McpSettings::is_empty")]
     pub mcp: McpSettings,
+    #[serde(default, skip_serializing_if = "AcpSettings::is_empty")]
+    pub acp: AcpSettings,
     #[serde(default)]
     pub window_material: WindowMaterial,
     #[serde(default, skip_serializing_if = "WindowTint::is_default")]
@@ -290,8 +304,18 @@ pub struct Settings {
         skip_serializing_if = "ServerRuntimePaths::is_empty"
     )]
     pub server_runtimes: ServerRuntimePaths,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        deserialize_with = "crate::server_runtime::lenient_extensions",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub extensions: Vec<ExtensionEntry>,
+    #[serde(
+        default,
+        deserialize_with = "lenient_index_repository",
+        skip_serializing_if = "IndexRepository::is_default"
+    )]
+    pub extension_index: IndexRepository,
     #[serde(default, skip_serializing_if = "HostTimeouts::is_default")]
     pub host_timeouts: HostTimeouts,
     #[serde(default, skip_serializing_if = "ToolchainActivation::is_off")]
@@ -393,13 +417,16 @@ impl Settings {
 
     #[must_use]
     pub fn launch_line(&self, preset: AgentPreset) -> Option<String> {
-        let program = preset.program()?;
+        let program = match preset.acp_agent() {
+            Some(id) => self.acp.agent(id)?.terminal?,
+            None => preset.program()?.to_owned(),
+        };
         let custom = self
             .harness_commands
             .get(&preset)
             .map(|line| line.trim())
             .filter(|line| !line.is_empty());
-        Some(custom.unwrap_or(program).to_owned())
+        Some(custom.map_or(program, str::to_owned))
     }
 }
 
@@ -483,6 +510,39 @@ mod tests {
             AppUpdateCheck::Automatic,
             "older settings files check for app updates"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn acp_agents_open_their_terminal_command_and_old_files_have_none() -> serde_json::Result<()> {
+        let old: Settings = serde_json::from_str(
+            r#"{"default_harness":"ClaudeCode","harness_commands":{"Opencode":"opencode --port 4096"},"harness_models":{"ClaudeCode":["opus"]},"mcp":{}}"#,
+        )?;
+        assert_eq!(old.default_harness, AgentPreset::ClaudeCode);
+        assert!(old.acp.is_empty());
+        assert!(!serde_json::to_string(&old)?.contains("acp"));
+        let codex_acp = AgentPreset::Acp(
+            "codex-acp"
+                .parse()
+                .unwrap_or_else(|_| unreachable!("a valid id")),
+        );
+        assert_eq!(old.launch_line(codex_acp).as_deref(), Some("codex"));
+        let mut settings = Settings {
+            default_harness: codex_acp,
+            ..old
+        };
+        let added = serde_json::from_str(
+            r#"{"id":"gemini","name":"Gemini","program":"gemini","args":["--experimental-acp"]}"#,
+        )?;
+        assert_eq!(settings.acp.add_agent(added), Ok(()));
+        let gemini = AgentPreset::Acp(
+            "gemini"
+                .parse()
+                .unwrap_or_else(|_| unreachable!("a valid id")),
+        );
+        assert_eq!(settings.launch_line(gemini), None, "no terminal command");
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&settings)?)?;
+        assert_eq!(back, settings);
         Ok(())
     }
 

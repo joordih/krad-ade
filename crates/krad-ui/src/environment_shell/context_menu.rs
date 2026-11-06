@@ -10,7 +10,7 @@ use krad_domain::{
 
 use super::file_tree::FileAction;
 use super::name_dialogs::{DeleteTarget, NameTarget};
-use super::surface::SurfaceCommand;
+use super::surface::{AcpChoice, SurfaceCommand};
 use super::workers::LeadEnding;
 use super::{EnvironmentShell, LiveEnv};
 use crate::components::IconName;
@@ -33,6 +33,7 @@ pub(super) enum MenuAction {
     DismissLead(SessionId),
     SetEffort(TerminalId, Effort),
     SetPermissionMode(TerminalId, PermissionMode),
+    ChooseAcp(TerminalId, AcpChoice),
     ContinueInTerminal(TerminalId),
     Note(super::notes_view::NoteAction),
     File(FileAction),
@@ -41,6 +42,7 @@ pub(super) enum MenuAction {
     SwitchEnvironment(EnvironmentName),
     NewEnvironment,
     NewSshEnvironment,
+    NewMachineEnvironment(Box<super::extensions::HostKindRef>),
     DeleteEnvironment(EnvironmentName),
     RenameGroup(GroupId),
     DeleteGroup(GroupId),
@@ -66,6 +68,7 @@ pub(super) enum MenuAction {
     ToggleSidebarPart(krad_domain::SidebarPart),
     ToggleSidebarDensity,
     CloseTabs(TerminalId, krad_domain::TabClosing),
+    Extension(Box<super::extensions::ExtensionMenu>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -398,6 +401,7 @@ impl EnvironmentShell {
             MenuAction::SetPermissionMode(owner, mode) => {
                 self.set_permission_mode(owner, mode, cx);
             }
+            MenuAction::ChooseAcp(owner, choice) => self.choose_acp(owner, choice, cx),
             MenuAction::ContinueInTerminal(id) => self.continue_in_terminal(id, cx),
             MenuAction::Note(action) => self.run_note_action(action, cx),
             MenuAction::File(action) => self.run_file_action(action, window, cx),
@@ -406,6 +410,7 @@ impl EnvironmentShell {
             MenuAction::SwitchEnvironment(name) => self.switch_env(&name, cx),
             MenuAction::NewEnvironment => self.new_environment(window, cx),
             MenuAction::NewSshEnvironment => self.open_ssh_dialog(window, cx),
+            MenuAction::NewMachineEnvironment(kind) => self.open_machine_dialog(*kind, cx),
             MenuAction::SelectGroup(group) => self.select_group(group, cx),
             MenuAction::OpenWorktree(path, origin) => self.open_worktree(path, origin, cx),
             MenuAction::CreateWorktree(group, name) => self.create_worktree(group, &name, cx),
@@ -433,6 +438,7 @@ impl EnvironmentShell {
             MenuAction::ToggleSidebarPart(part) => self.toggle_sidebar_part(part, cx),
             MenuAction::ToggleSidebarDensity => self.toggle_sidebar_density(cx),
             MenuAction::CloseTabs(tab, closing) => self.close_tabs(tab, closing, window, cx),
+            MenuAction::Extension(menu) => self.run_extension_menu(*menu, window, cx),
         }
         cx.notify();
     }

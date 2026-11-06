@@ -126,6 +126,7 @@ impl LiveHarness for ClaudeProcess {
                 }
             }
             Order::Rewind(request) => self.rewind(request),
+            Order::Acp(_) => {}
         }
     }
 
@@ -354,6 +355,11 @@ impl Routing {
                         .try_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
                             count.checked_sub(1)
                         })
+                        .unwrap_or_default();
+                }
+                ChatEvent::TurnStarted => {
+                    self.pending
+                        .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
                         .unwrap_or_default();
                 }
                 ChatEvent::Session(id) => {

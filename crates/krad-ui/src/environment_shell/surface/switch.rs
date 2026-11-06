@@ -47,7 +47,7 @@ impl SurfaceLock {
     pub(in crate::environment_shell) fn hint(self) -> String {
         match self {
             Self::ChatUnsupported => {
-                let names: Vec<&str> = AgentPreset::all()
+                let names: Vec<&str> = AgentPreset::NATIVE
                     .into_iter()
                     .filter(|preset| preset.terminal_chat().is_some())
                     .map(AgentPreset::display_name)

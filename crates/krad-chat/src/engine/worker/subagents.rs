@@ -110,7 +110,8 @@ fn run_subagent(
         | LiveEvent::Usage(_)
         | LiveEvent::Notice(_)
         | LiveEvent::Rewound(_)
-        | LiveEvent::Refused(_) => {}
+        | LiveEvent::Refused(_)
+        | LiveEvent::Acp(_) => {}
     };
     let mut worker = Worker::subagent(start, sink, own, allowed);
     worker.run(inbox);

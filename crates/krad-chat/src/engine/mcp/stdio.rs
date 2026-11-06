@@ -58,7 +58,7 @@ fn command(launch: &StdioLaunch<'_>) -> Result<(Command, Option<PathBuf>), McpEr
         .current_dir(launch.cwd)
         .in_login_shell();
     let mut env_file = None;
-    if let (HostLink::Ssh(ssh), false) = (launch.host, launch.env.is_empty()) {
+    if let (HostLink::Remote(ssh), false) = (launch.host, launch.env.is_empty()) {
         let file = ssh
             .write_env_file(launch.env)
             .map_err(|error| McpError::EnvOnHost(error.to_string()))?;

@@ -302,7 +302,7 @@ not json"#;
                     name: "Read".to_owned(),
                     kind: krad_domain::ToolKind::Read,
                     summary: "webhook.ts".to_owned(),
-                    edit: None,
+                    edits: Vec::new(),
                 })),
                 ChatEntry::Event(ChatEvent::Text("Done.".to_owned())),
                 user("Thanks"),

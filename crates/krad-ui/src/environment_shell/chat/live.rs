@@ -5,6 +5,7 @@ use krad_chat::{start_chat, ChatBackend, ChatError, LiveChat, LiveEvent, LiveSes
 use krad_domain::{parse_wsl_path, AgentPreset};
 use krad_host::HostLink;
 use krad_session::find_program;
+use std::borrow::Cow;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -17,14 +18,17 @@ const WAITING_TEXT: &str = "opencode is still starting";
 const NO_CONFIG_FOLDER_TEXT: &str = "Krad ADE has no config folder to keep the chat in";
 const NO_CHAT_TEXT: &str = "has no chat";
 
+pub(in crate::environment_shell) type HarnessName = Cow<'static, str>;
+
 #[derive(Debug)]
 pub(in crate::environment_shell) enum StartError {
-    NoProgram(AgentPreset),
-    NoChat(AgentPreset),
-    NotInWsl(AgentPreset),
+    NoProgram(HarnessName),
+    NoChat(HarnessName),
+    NotInWsl(HarnessName),
     Waiting,
     Opencode(String),
     Gateway(String),
+    Secret(String),
     NoConfigFolder,
     Chat(ChatError),
 }
@@ -32,17 +36,13 @@ pub(in crate::environment_shell) enum StartError {
 impl fmt::Display for StartError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NoProgram(preset) => {
-                write!(formatter, "{} {NO_PROGRAM_TEXT}", preset.display_name())
-            }
-            Self::NoChat(preset) => {
-                write!(formatter, "{} {NO_CHAT_TEXT}", preset.display_name())
-            }
-            Self::NotInWsl(preset) => {
-                write!(formatter, "{} {NOT_IN_WSL_TEXT}", preset.display_name())
-            }
+            Self::NoProgram(name) => write!(formatter, "{name} {NO_PROGRAM_TEXT}"),
+            Self::NoChat(name) => write!(formatter, "{name} {NO_CHAT_TEXT}"),
+            Self::NotInWsl(name) => write!(formatter, "{name} {NOT_IN_WSL_TEXT}"),
             Self::Waiting => formatter.write_str(WAITING_TEXT),
-            Self::Opencode(error) | Self::Gateway(error) => formatter.write_str(error),
+            Self::Opencode(error) | Self::Gateway(error) | Self::Secret(error) => {
+                formatter.write_str(error)
+            }
             Self::NoConfigFolder => formatter.write_str(NO_CONFIG_FOLDER_TEXT),
             Self::Chat(error) => error.fmt(formatter),
         }
@@ -113,14 +113,26 @@ impl EnvironmentShell {
             .settings
             .launch_line(preset)
             .and_then(|line| line.split_whitespace().next().map(str::to_owned))
-            .ok_or(StartError::NoProgram(preset))?;
-        if let HostLink::Ssh(ssh) = link {
+            .ok_or_else(|| StartError::NoProgram(self.settings.acp.harness_name(preset)))?;
+        self.program_runner(link, preset, program, root)
+    }
+
+    pub(in crate::environment_shell) fn program_runner(
+        &self,
+        link: &HostLink,
+        preset: AgentPreset,
+        program: String,
+        root: Option<&Path>,
+    ) -> Result<(Runner, PathBuf), StartError> {
+        if let HostLink::Remote(ssh) = link {
             let found = self
                 .host_agents
                 .get(&link.host())
                 .ok_or(StartError::Waiting)?;
             if !found.contains(&preset) {
-                return Err(StartError::NoProgram(preset));
+                return Err(StartError::NoProgram(
+                    self.settings.acp.harness_name(preset),
+                ));
             }
             let cwd = root
                 .map(Path::to_path_buf)
@@ -142,7 +154,7 @@ impl EnvironmentShell {
         }
         let runner = find_program(&program)
             .map(Runner::Native)
-            .ok_or(StartError::NoProgram(preset))?;
+            .ok_or_else(|| StartError::NoProgram(self.settings.acp.harness_name(preset)))?;
         let cwd = root
             .map(Path::to_path_buf)
             .or_else(|| home_dir().map(PathBuf::from))

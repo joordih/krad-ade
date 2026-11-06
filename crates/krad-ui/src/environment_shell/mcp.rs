@@ -2,9 +2,8 @@ mod tray;
 
 use gpui_kit::{AppContext as _, Context, Task};
 use krad_domain::{
-    CodeTools, EnvironmentName, McpFileError, McpProjectFile, McpProjectTrust, McpServer,
-    McpServerStart, McpServerState, McpTransport, McpValue, McpVariable, TerminalId,
-    PROJECT_MCP_FILE,
+    EnvironmentName, McpFileError, McpProjectFile, McpProjectTrust, McpServer, McpServerStart,
+    McpServerState, McpTransport, McpValue, McpVariable, TerminalId, PROJECT_MCP_FILE,
 };
 use krad_host::HostLink;
 use krad_store::find_mcp_secret;
@@ -125,7 +124,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
     ) -> Option<McpServer> {
-        if self.settings.code_tools != CodeTools::On || self.agent_bus.is_none() {
+        if !self.agent_tools_offered() || self.agent_bus.is_none() {
             return None;
         }
         let env = self

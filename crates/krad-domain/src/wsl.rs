@@ -93,6 +93,34 @@ pub fn wsl_linux_path(distro: &str, path: &Path) -> Option<String> {
 }
 
 #[must_use]
+pub fn wsl_windows_path(distro: &str, linux: &str) -> PathBuf {
+    let drive_path = linux
+        .strip_prefix(DRIVE_MOUNT)
+        .and_then(|rest| rest.strip_prefix(LINUX_SEPARATOR))
+        .and_then(|rest| {
+            let (drive, inside) = rest.split_once(LINUX_SEPARATOR).unwrap_or((rest, ""));
+            let mut letters = drive.chars();
+            let letter = letters.next().filter(char::is_ascii_alphabetic)?;
+            letters.next().is_none().then_some((letter, inside))
+        });
+    let Some((drive, inside)) = drive_path else {
+        return wsl_unc_path(distro, linux);
+    };
+    let mut windows = format!("{}{DRIVE_SEPARATOR}", drive.to_ascii_uppercase());
+    for part in inside
+        .split(LINUX_SEPARATOR)
+        .filter(|part| !part.is_empty())
+    {
+        windows.push(WINDOWS_SEPARATOR);
+        windows.push_str(part);
+    }
+    if windows.ends_with(DRIVE_SEPARATOR) {
+        windows.push(WINDOWS_SEPARATOR);
+    }
+    PathBuf::from(windows)
+}
+
+#[must_use]
 pub fn wsl_login_exec_args(distro: &str, linux_dir: &str) -> Vec<String> {
     [
         DISTRO_FLAG,
@@ -151,6 +179,31 @@ mod tests {
         assert_eq!(
             wsl_linux_path("Ubuntu", Path::new(r"\\server\share\x")),
             None
+        );
+    }
+
+    #[test]
+    fn paths_the_distro_names_are_opened_as_windows_sees_them() {
+        assert_eq!(
+            wsl_windows_path("Ubuntu", "/home/dev/api/src/lib.rs"),
+            PathBuf::from(r"\\wsl.localhost\Ubuntu\home\dev\api\src\lib.rs")
+        );
+        assert_eq!(
+            wsl_windows_path("Ubuntu", "/mnt/c/Users/dev/spec.pdf"),
+            PathBuf::from(r"C:\Users\dev\spec.pdf")
+        );
+        assert_eq!(wsl_windows_path("Ubuntu", "/mnt/d"), PathBuf::from(r"D:\"));
+        assert_eq!(
+            wsl_windows_path("Ubuntu", "/mnt/wsl/shared"),
+            PathBuf::from(r"\\wsl.localhost\Ubuntu\mnt\wsl\shared")
+        );
+        let windows = Path::new(r"C:\Users\dev\spec.pdf");
+        assert_eq!(
+            wsl_linux_path(
+                "Ubuntu",
+                &wsl_windows_path("Ubuntu", "/mnt/c/Users/dev/spec.pdf")
+            ),
+            wsl_linux_path("Ubuntu", windows)
         );
     }
 }

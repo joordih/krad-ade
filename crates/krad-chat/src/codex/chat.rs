@@ -468,6 +468,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
                 let outcome = self.rewind(server, &request);
                 (self.sink)(LiveEvent::Rewound(outcome));
             }
+            Order::Acp(_) => {}
         }
         Ok(())
     }

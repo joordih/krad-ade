@@ -389,6 +389,7 @@ impl Worker {
                 self.emit(LiveEvent::Rewound(outcome));
                 Ok(())
             }
+            Order::Acp(_) => Ok(()),
         }
     }
 

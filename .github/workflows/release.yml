@@ -198,10 +198,23 @@ jobs:
         run: |
           dmg="krad-ade-${{ needs.version.outputs.version }}-aarch64-macos.dmg"
           headroom_mb=64
+          attempts=5
+          wait_seconds=10
           ln -s /Applications dmg/Applications
           content_mb=$(du -sm dmg | cut -f1)
-          hdiutil create -volname "Krad ADE" -srcfolder dmg -fs HFS+ \
-            -size "$((content_mb + headroom_mb))m" -format UDZO "$dmg"
+          for attempt in $(seq 1 "$attempts"); do
+            if hdiutil create -volname "Krad ADE" -srcfolder dmg -fs HFS+ \
+              -size "$((content_mb + headroom_mb))m" -format UDZO "$dmg"; then
+              break
+            fi
+            rm -f "$dmg"
+            if [ "$attempt" -eq "$attempts" ]; then
+              echo "::error::hdiutil could not create the DMG after $attempts attempts"
+              exit 1
+            fi
+            echo "::warning::hdiutil failed (attempt $attempt of $attempts); retrying in ${wait_seconds}s"
+            sleep "$wait_seconds"
+          done
           if [ -n "$MACOS_SIGNING_IDENTITY" ]; then
             codesign --force --timestamp --sign "$MACOS_SIGNING_IDENTITY" "$dmg"
           fi

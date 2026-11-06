@@ -173,6 +173,7 @@ mod tests {
             mentions: Vec::new(),
             checklist: None,
             rewind: None,
+            tool_outputs: HashMap::new(),
         }
     }
 

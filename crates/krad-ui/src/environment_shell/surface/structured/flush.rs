@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use super::super::super::agent_bus::{cli_name, BUS_HINT};
 use super::super::super::agent_hooks::LEAD_HINT;
-use super::super::super::chat::{fold_entry, fold_prompt, LiveProcess, StartError};
+use super::super::super::chat::{LiveProcess, StartError};
 use super::super::super::gateway::GatewayReach;
 use super::super::super::opencode::OpencodeLink;
 use super::super::super::terminal_card::home_dir;
@@ -46,7 +46,7 @@ impl EnvironmentShell {
         let batch = structured.take_batch(outbox, Instant::now());
         if let Some(prompt) = &batch.message {
             outbox.delivered();
-            fold_prompt(messages, prompt, structured.harness);
+            structured.fold_sent(messages, prompt);
             *problem = None;
         }
         for notice in std::mem::take(&mut structured.notices) {
@@ -75,9 +75,9 @@ impl EnvironmentShell {
         {
             structured.closes_turn(true);
             for outcome in structured.asks.cancel_all() {
-                fold_entry(messages, &ChatEntry::Asked(outcome));
+                structured.fold_kept(messages, &ChatEntry::Asked(outcome));
             }
-            fold_entry(messages, &ChatEntry::Event(failure));
+            structured.fold_kept(messages, &ChatEntry::Event(failure));
         }
         self.set_agent_state(env, id, AgentState::Idle);
     }
@@ -164,7 +164,10 @@ impl EnvironmentShell {
                 ChatBackend::Opencode(server, config)
             }
             AgentPreset::Gateway => ChatBackend::Gateway(self.gateway_config(env, id, cx)?),
-            AgentPreset::Shell => return Err(StartError::NoChat(harness)),
+            AgentPreset::Acp(agent) => ChatBackend::Acp(self.acp_config(env, id, agent, cx)?),
+            AgentPreset::Shell => {
+                return Err(StartError::NoChat(self.settings.acp.harness_name(harness)))
+            }
         };
         let owner = env.clone();
         let apply = move |shell: &mut Self, event, cx: &mut Context<Self>| {
@@ -225,7 +228,9 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Result<Arc<OpencodeServer>, StartError> {
         if runner.in_wsl() {
-            return Err(StartError::NotInWsl(harness));
+            return Err(StartError::NotInWsl(
+                self.settings.acp.harness_name(harness),
+            ));
         }
         if runner.on_ssh() {
             return match self.opencode.hosts.get(&runner.link().host()) {
@@ -274,7 +279,7 @@ impl EnvironmentShell {
                 BusVars(self.bus_vars(env, id)),
                 home_dir().map(PathBuf::from),
             ),
-            HostLink::Ssh(ssh) => {
+            HostLink::Remote(ssh) => {
                 let home = ssh.home().map(Path::to_path_buf);
                 if self.remote_bus(env).is_some() {
                     (

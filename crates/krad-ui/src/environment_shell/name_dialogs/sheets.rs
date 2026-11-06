@@ -49,7 +49,9 @@ impl EnvironmentShell {
             NameTarget::Environment(_) => RENAME_ENVIRONMENT_TITLE.into(),
             NameTarget::Group(_) => RENAME_GROUP_TITLE.into(),
             NameTarget::Symbol { .. } => RENAME_SYMBOL_TITLE.into(),
-            NameTarget::ServerInput { title, .. } => title.clone().into(),
+            NameTarget::ServerInput { title, .. } | NameTarget::ExtensionInput { title, .. } => {
+                title.clone().into()
+            }
             NameTarget::Branch => NEW_BRANCH_TITLE.into(),
             NameTarget::Tag => NEW_TAG_TITLE.into(),
         };

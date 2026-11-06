@@ -73,7 +73,7 @@ impl EngineCall {
             name: name.into_owned(),
             kind,
             summary,
-            edit: None,
+            edits: Vec::new(),
         }
     }
 }

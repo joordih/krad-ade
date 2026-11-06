@@ -133,6 +133,9 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let _pal = palette(cx);
+        if let Some(extension) = self.extension_main_view(cx) {
+            return extension;
+        }
         match view {
             EnvironmentView::Sessions => self.session_pane(cx),
             EnvironmentView::Notes => self.notes_view(cx),
@@ -167,7 +170,10 @@ impl EnvironmentShell {
                     let window_h = window.viewport_size().height.as_f32();
                     moved
                         .update(cx, |shell, cx| match event.pressed_button {
-                            Some(MouseButton::Left) => shell.follow_activity_drag(y, cx),
+                            Some(MouseButton::Left) => {
+                                shell.follow_activity_drag(y, cx);
+                                shell.drag_in_terminal(x, y, cx);
+                            }
                             Some(_) => {}
                             None => {
                                 shell.follow_pointer_for_peek(x, cx);
@@ -182,7 +188,7 @@ impl EnvironmentShell {
                         return;
                     }
                     released
-                        .update(cx, EnvironmentShell::release_activity_drag)
+                        .update(cx, EnvironmentShell::release_captured_drag)
                         .unwrap_or_default();
                 });
             },
@@ -230,7 +236,7 @@ impl EnvironmentShell {
             .min_h_0()
             .gap(px(WINDOW_INSET))
             .pb(px(self.activity_room()))
-            .child(self.top_bar(cx))
+            .child(self.top_bar(window, cx))
             .child(
                 div()
                     .flex()
@@ -248,6 +254,16 @@ impl EnvironmentShell {
     }
 }
 
+impl EnvironmentShell {
+    fn sync_extensions(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.flush_extension_prompts(window, cx);
+        self.sync_extension_fields(window, cx);
+        self.sync_extension_events(cx);
+        self.sync_extension_tabs(cx);
+        self.sync_extension_popover_focus(window, cx);
+    }
+}
+
 impl Render for EnvironmentShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let pal = palette(cx);
@@ -257,6 +273,7 @@ impl Render for EnvironmentShell {
         self.ensure_structured_chats(window, cx);
         self.sync_file_tabs(window, cx);
         self.flush_workspace_edits(window, cx);
+        self.sync_extensions(window, cx);
         self.sync_changes_tabs(cx);
         self.sync_system_appearance(cx);
         self.track_cursor_jumps(cx);
@@ -265,6 +282,7 @@ impl Render for EnvironmentShell {
         self.sync_notes_view(view, window, cx);
         self.ensure_chat_sessions(cx);
         self.sync_session_panes();
+        self.end_hidden_anchors();
         self.sync_menu_focus(window, cx);
         self.sync_model_picker_focus(window, cx);
         self.sync_ask_focus(window, cx);
@@ -317,7 +335,9 @@ impl Render for EnvironmentShell {
                 None => self.workspace_row(view, window, cx),
             })
             .children(self.sidebar_chrome(cx))
+            .children(self.extension_popover_backdrop(cx))
             .child(self.toast_stack(cx))
+            .children(self.extension_progress(cx))
             .child(self.palette_overlay(viewport.width.as_f32(), pal, cx))
             .children(self.agent_composer_sheet(cx))
             .children(self.docs_generate_sheet(cx))
@@ -330,6 +350,7 @@ impl Render for EnvironmentShell {
             .children(self.context_menu_overlay(window, cx))
             .children(self.model_picker_overlay(window, cx))
             .children(self.name_dialog_sheet(window, cx))
+            .children(self.trust_sheet(cx))
             .children(self.host_dialog_sheet(window, cx))
             .children(self.toolchain_entry_sheet(cx))
             .child(self.close_dialog(cx));

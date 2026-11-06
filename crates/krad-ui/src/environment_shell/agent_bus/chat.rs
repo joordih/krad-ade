@@ -2,7 +2,8 @@ use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
 use krad_agents::{Request, Response};
 use krad_domain::{
-    chat_worker_brief, AgentPreset, EnvironmentName, GroupId, SessionId, TerminalGroup, TerminalId,
+    chat_worker_brief, AgentPreset, EnvironmentName, GroupId, PermissionMode, SessionId,
+    TerminalGroup, TerminalId,
 };
 
 use super::super::agent_hooks::{WorkerOf, WorkerOrder};
@@ -19,6 +20,7 @@ pub(super) struct ChatSpawn {
     pub(super) worktree: Option<String>,
     pub(super) task: String,
     pub(super) lead: Option<SessionId>,
+    pub(super) mode: Option<PermissionMode>,
 }
 
 impl EnvironmentShell {
@@ -52,6 +54,7 @@ impl EnvironmentShell {
                     worktree,
                     task,
                     lead: None,
+                    mode: None,
                 };
                 self.start_chat_worker(environment, group, spawn, reply, cx);
                 return;
@@ -61,6 +64,12 @@ impl EnvironmentShell {
                 Response::Error(TERMINALS_ONLY.to_owned())
             }
             Request::Askpass { .. } => Response::Error(super::askpass::GIT_ONLY.to_owned()),
+            Request::Tools => Response::Tools(self.tool_catalog()),
+            request @ Request::ExtensionTool { .. } => {
+                let caller = CodeCaller::Group(group);
+                self.answer_extension_tool(environment, &caller, request, reply, cx);
+                return;
+            }
         };
         reply.send(response).unwrap_or_default();
     }
@@ -126,6 +135,7 @@ impl EnvironmentShell {
                 session,
                 task: text,
             }),
+            mode: spawn.mode,
         };
         Ok((group, order))
     }

@@ -1,3 +1,4 @@
+mod acp;
 mod flush;
 mod forks;
 mod mcp;
@@ -7,21 +8,25 @@ mod rewind;
 
 use gpui_kit::Context;
 use krad_chat::{
-    new_session_id, Catalog, ChatEvent, LiveChat, LiveEvent, LiveSession, PlanUsage, ResumeRefused,
-    SlashCommand,
+    new_session_id, AcpEvent, Catalog, ChatEvent, LiveChat, LiveEvent, LiveSession, PlanUsage,
+    ResumeRefused, SlashCommand,
 };
 use krad_domain::{
-    AgentPreset, AgentState, ChatEntry, Effort, EnvironmentName, ModelId, PermissionMode, Prompt,
-    ResumeId, TerminalId,
+    AgentPreset, AgentState, ChatEntry, Effort, EnvironmentName, Mention, ModelId, PermissionMode,
+    Prompt, ResumeId, TerminalId,
 };
+use krad_store::{acp_transcript_file, AcpTranscript};
 use std::time::Instant;
 
 use super::super::ask::{AskQueue, Waiting};
-use super::super::chat::{fold_entry, LiveProcess};
+use super::super::chat::{fold_entry, fold_prompt, ChatMessage, LiveProcess};
 use super::super::EnvironmentShell;
+use super::acp::AcpOffers;
 use super::outbox::Outbox;
-use super::{view, Backend, SurfaceChat, SurfaceCommand};
+use super::{anchor, Backend, SurfaceChat, SurfaceCommand};
 
+pub(super) use acp::read_acp_env;
+use acp::AcpSecretsPrep;
 use mcp::McpPrep;
 pub(in crate::environment_shell) use open::restored_chats;
 use open::Earlier;
@@ -74,8 +79,11 @@ pub(in crate::environment_shell) struct StructuredChat {
     pub(super) usage: Option<PlanUsage>,
     pub(super) earlier: Option<Earlier>,
     mcp: McpPrep,
+    acp_secrets: AcpSecretsPrep,
     notices: Vec<String>,
     rewinding: Option<Rewinding>,
+    pub(in crate::environment_shell) acp: AcpOffers,
+    transcript: Option<AcpTranscript>,
 }
 
 impl StructuredChat {
@@ -101,8 +109,11 @@ impl StructuredChat {
             usage: None,
             earlier: None,
             mcp: McpPrep::default(),
+            acp_secrets: AcpSecretsPrep::default(),
             notices: Vec::new(),
             rewinding: None,
+            acp: AcpOffers::default(),
+            transcript: None,
         }
     }
 
@@ -112,15 +123,52 @@ impl StructuredChat {
             && !self.live.as_ref().is_some_and(|live| live.confirmed)
     }
 
-    pub(super) fn switch_harness(&mut self, harness: AgentPreset) {
+    pub(in crate::environment_shell) fn fold_kept(
+        &self,
+        messages: &mut Vec<ChatMessage>,
+        entry: &ChatEntry,
+    ) {
+        if let Some(transcript) = &self.transcript {
+            transcript.keep(entry);
+        }
+        fold_entry(messages, entry);
+    }
+
+    fn fold_sent(&self, messages: &mut Vec<ChatMessage>, prompt: &Prompt) {
+        if let Some(transcript) = &self.transcript {
+            transcript.keep(&ChatEntry::User {
+                text: prompt.text.clone(),
+                preset: self.harness,
+                model: self.chosen_model.clone(),
+                images: prompt
+                    .mentions
+                    .iter()
+                    .filter_map(|mention| match mention {
+                        Mention::Image(image) => Some(image.clone()),
+                        Mention::Path(_) => None,
+                    })
+                    .collect(),
+            });
+        }
+        fold_prompt(messages, prompt, self.harness);
+    }
+
+    pub(super) fn switch_harness(
+        &mut self,
+        harness: AgentPreset,
+        transcript: Option<AcpTranscript>,
+    ) {
+        self.transcript = transcript;
         self.harness = harness;
         self.live = None;
         self.mcp = McpPrep::default();
+        self.acp_secrets = AcpSecretsPrep::default();
         self.catalog = None;
         self.model = None;
         self.effort = None;
         self.context_tokens = None;
         self.context_window = None;
+        self.acp = AcpOffers::default();
         self.session = LiveSession::Start(new_session_id());
     }
 
@@ -166,6 +214,15 @@ impl StructuredChat {
         self.session = LiveSession::Resume(resume);
     }
 
+    fn opens_turn(&mut self) -> bool {
+        if self.working || self.outstanding > 0 {
+            return false;
+        }
+        self.outstanding = 1;
+        self.working = true;
+        true
+    }
+
     fn closes_turn(&mut self, ended: bool) -> bool {
         self.outstanding = self.outstanding.saturating_sub(1);
         if ended {
@@ -180,7 +237,13 @@ impl StructuredChat {
 
     fn retries(&mut self, refused: &ResumeRefused) -> Option<Batch> {
         match refused {
-            ResumeRefused::MissingConversation(_) => self.falls_back(),
+            ResumeRefused::MissingConversation(_) => {
+                let batch = self.falls_back()?;
+                if matches!(self.harness, AgentPreset::Acp(_)) {
+                    self.notices.push(refused.to_string());
+                }
+                Some(batch)
+            }
             ResumeRefused::TurnNotDropped(_) => self.drops_turn_again(),
         }
     }
@@ -252,6 +315,32 @@ fn structured_mut<'a>(
 }
 
 impl EnvironmentShell {
+    pub(super) fn acp_transcript(
+        &self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        harness: AgentPreset,
+    ) -> Option<AcpTranscript> {
+        if !matches!(harness, AgentPreset::Acp(_)) {
+            return None;
+        }
+        self.acp_transcripts
+            .as_ref()?
+            .transcript(acp_transcript_file(env, id)?)
+    }
+
+    pub(in crate::environment_shell) fn forget_acp_transcript(
+        &self,
+        env: &EnvironmentName,
+        id: TerminalId,
+    ) {
+        let (Some(transcripts), Some(file)) = (&self.acp_transcripts, acp_transcript_file(env, id))
+        else {
+            return;
+        };
+        transcripts.forget(file);
+    }
+
     fn apply_structured_event(
         &mut self,
         env: &EnvironmentName,
@@ -267,12 +356,13 @@ impl EnvironmentShell {
             messages,
             thread,
             problem,
+            anchor,
             ..
         }) = structured_chat(self, env, id)
         else {
             return;
         };
-        let followed = view::following(thread);
+        let followed = anchor::follows_tail(*anchor, thread);
         let mut state = None;
         let (event, refused) = match event {
             LiveEvent::Refused(refused) => (
@@ -287,6 +377,7 @@ impl EnvironmentShell {
                 self.keep_harness_models(env, harness, &catalog.models);
                 if let Some(structured) = structured_mut(self, env, id) {
                     structured.catalog = Some(catalog);
+                    structured.acp.opened();
                 }
                 return self.flush_structured(env, id, cx);
             }
@@ -315,7 +406,20 @@ impl EnvironmentShell {
             LiveEvent::Chat(ChatEvent::ContextWindow(window)) => {
                 structured.context_window = Some(window);
             }
+            LiveEvent::Acp(event) => {
+                if matches!(event, AcpEvent::SignInNeeded(_)) {
+                    state = Some(AgentState::WaitingForInput);
+                }
+                structured.acp.reported(event);
+            }
             LiveEvent::Refused(_) => {}
+            LiveEvent::Chat(ChatEvent::TurnStarted) => {
+                if !structured.opens_turn() {
+                    return;
+                }
+                structured.fold_kept(messages, &ChatEntry::Event(ChatEvent::TurnStarted));
+                state = Some(AgentState::Working);
+            }
             LiveEvent::Chat(event @ (ChatEvent::Done | ChatEvent::Error(_))) => {
                 if let Some(batch) = refused.and_then(|refused| structured.retries(&refused)) {
                     self.hand_over_again(env, id, batch, event, cx);
@@ -324,15 +428,15 @@ impl EnvironmentShell {
                 let ended = structured.live().is_none();
                 if structured.closes_turn(ended) {
                     for outcome in structured.asks.cancel_all() {
-                        fold_entry(messages, &ChatEntry::Asked(outcome));
+                        structured.fold_kept(messages, &ChatEntry::Asked(outcome));
                     }
-                    fold_entry(messages, &ChatEntry::Event(event));
+                    structured.fold_kept(messages, &ChatEntry::Event(event));
                     state = Some(AgentState::Idle);
                 } else if let ChatEvent::Error(error) = event {
                     *problem = Some(error);
                 }
             }
-            LiveEvent::Chat(event) => fold_entry(messages, &ChatEntry::Event(event)),
+            LiveEvent::Chat(event) => structured.fold_kept(messages, &ChatEntry::Event(event)),
         }
         if followed {
             thread.scroll_to_end();

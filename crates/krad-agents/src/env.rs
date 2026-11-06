@@ -14,6 +14,7 @@ const WORKER_REPORT_WAIT: Duration = Duration::from_mins(15);
 const LEAD_WAIT_TIMEOUT: Duration = Duration::from_mins(25);
 const LEAD_READ_LINES: usize = 80;
 const PROGRAM_SEPARATOR: &str = "|";
+const ACP_AGENT_CHOICE: &str = "acp-agent-id";
 
 pub(crate) struct BusEnv {
     pub(crate) endpoint: String,
@@ -108,6 +109,8 @@ Commands:
       Start a worker agent in a session of its own in your group (or a new
       git worktree of it). It reports back to you with send when done; wait for
       it with {cli} check --wait {report_wait}.
+      An ACP agent starts by the id Settings shows for it; write acp:<id>
+      when the id is also a harness program, as in acp:opencode.
   Add --json to any command for raw JSON output.
 
 Messages may also arrive as a typed notice like
@@ -162,9 +165,10 @@ How to orchestrate:
 }
 
 fn agent_programs() -> String {
-    AgentPreset::all()
+    AgentPreset::NATIVE
         .into_iter()
         .filter_map(AgentPreset::program)
+        .chain([ACP_AGENT_CHOICE])
         .collect::<Vec<_>>()
         .join(PROGRAM_SEPARATOR)
 }
@@ -199,7 +203,7 @@ mod tests {
     fn the_guides_name_every_agent_program_and_the_suggested_waits() {
         let member = guide(CLI_PROGRAM);
         for line in [
-            "krad-ade-agents spawn --agent <claude|codex|opencode> [--worktree <name>]",
+            "krad-ade-agents spawn --agent <claude|codex|opencode|acp-agent-id> [--worktree <name>]",
             "Example: krad-ade-agents check --wait 600",
             "Example: krad-ade-agents read 4 --lines 40",
             "it with krad-ade-agents check --wait 900.",
@@ -208,7 +212,7 @@ mod tests {
         }
         let lead = orchestrator_guide(CLI_PROGRAM);
         for line in [
-            "krad-ade-agents spawn --agent <claude|codex|opencode> [--worktree <name>]",
+            "krad-ade-agents spawn --agent <claude|codex|opencode|acp-agent-id> [--worktree <name>]",
             "krad-ade-agents wait <id> --timeout 1500",
             "krad-ade-agents read <id> --lines 80",
         ] {

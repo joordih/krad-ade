@@ -3,18 +3,17 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, relative, rgb, AnyElement, Context, ElementId, ExternalPaths, FontWeight,
     InteractiveElement, IntoElement, ListState, ParentElement, ScrollHandle, ScrollWheelEvent,
-    SharedString, StatefulInteractiveElement, Styled,
+    StatefulInteractiveElement, Styled,
 };
 use krad_domain::{AgentState, TerminalId};
-use std::time::Instant;
 
 use super::super::ask::{tray, tray_button};
-use super::super::rubber_band::{BandKey, ScrollEdges};
+use super::super::rubber_band::{band_watch, BandKey, ScrollEdges};
 use super::super::sidebar::PanelReveal;
 use super::super::EnvironmentShell;
 use super::dot_field::dot_field;
 use super::SurfaceChat;
-use crate::components::{icon, thinking_indicator, tooltip_view, IconName};
+use crate::components::{icon, tooltip_view, IconName};
 use crate::theme::{floating_shadow, palette, Palette, ICON, LINE_XS, SPACE_2, SPACE_3, TEXT_XS};
 
 const COLUMN_MAX_W: f32 = 760.0;
@@ -33,7 +32,7 @@ const EXITED_TEXT: &str = "The agent's terminal has closed.";
 pub(super) const LOADING_TEXT: &str = "Reading the conversation…";
 
 pub(super) fn following(thread: &ListState) -> bool {
-    thread.is_following_tail() || thread.is_scrolled_to_end().unwrap_or(true)
+    thread.is_following_tail() || thread.is_scrolled_to_end() == Some(true)
 }
 
 pub(super) fn at_bottom(scroll: &ScrollHandle) -> bool {
@@ -47,33 +46,6 @@ pub(super) enum AgentNow {
     Working,
     Waiting,
     Exited,
-}
-
-pub(super) fn status_line(
-    key: u64,
-    label: &'static str,
-    started: Instant,
-    activity: Option<&str>,
-    mono: SharedString,
-    pal: &Palette,
-) -> AnyElement {
-    div()
-        .flex()
-        .flex_row()
-        .items_center()
-        .gap(px(SPACE_2))
-        .min_w_0()
-        .child(thinking_indicator(key, label.into(), started, mono, pal))
-        .children(activity.map(|activity| {
-            div()
-                .min_w_0()
-                .truncate()
-                .text_size(px(TEXT_XS))
-                .line_height(px(LINE_XS))
-                .text_color(rgb(pal.text_muted))
-                .child(activity.to_owned())
-        }))
-        .into_any_element()
 }
 
 const QUESTION_TEXT: f32 = 22.0;
@@ -148,7 +120,8 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         if let Some(tool) = chat.subagents.trail.last() {
-            return Self::subagent_view(id, tool, chat, cx);
+            let started = self.turn_started(id, chat);
+            return Self::subagent_view(id, tool, chat, started, cx);
         }
         let scale = self
             .envs
@@ -211,9 +184,8 @@ impl EnvironmentShell {
                     .min_h_0()
                     .opacity(landed)
                     .child(self.bouncing_thread(id, chat, now, cx))
-                    .when(!following, |area| {
-                        area.child(Self::jump_down(id, chat.thread.clone(), cx))
-                    }),
+                    .children(self.timeline_strip(id, chat, cx))
+                    .when(!following, |area| area.child(Self::jump_down(id, cx))),
             )
             .child(
                 div().flex().flex_col().flex_none().items_center().child(
@@ -227,6 +199,7 @@ impl EnvironmentShell {
                                 .w_full()
                                 .children(
                                     self.ask_tray(id, cx)
+                                        .or_else(|| self.acp_sign_in_tray(id, chat, cx))
                                         .or_else(|| self.mcp_tray(id, chat, cx))
                                         .or_else(|| self.agent_notice(id, chat, cx))
                                         .or_else(|| Self::checklist_tray(id, chat, cx))
@@ -255,22 +228,21 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let bounce = chat.thread.clone();
+        let edges = move || ScrollEdges {
+            offset: -bounce.scroll_px_offset_for_scrollbar().y.as_f32(),
+            max: bounce.max_offset_for_scrollbar().y.as_f32(),
+        };
         div()
             .relative()
             .size_full()
             .top(px(self.gestures.bands.offset(BandKey::Chat(id))))
-            .on_scroll_wheel(cx.listener(
-                move |this: &mut Self, event: &ScrollWheelEvent, _, cx| {
-                    let edges = ScrollEdges {
-                        offset: -bounce.scroll_px_offset_for_scrollbar().y.as_f32(),
-                        max: bounce.max_offset_for_scrollbar().y.as_f32(),
-                    };
-                    if this.gestures.bands.wheel(BandKey::Chat(id), event, edges) {
-                        cx.notify();
-                    }
-                },
-            ))
+            .on_scroll_wheel(
+                cx.listener(move |this: &mut Self, _: &ScrollWheelEvent, _, _| {
+                    this.scrolled_by_hand(id);
+                }),
+            )
             .child(Self::surface_thread(id, chat, now, cx))
+            .child(band_watch(BandKey::Chat(id), edges, cx))
             .into_any_element()
     }
 
@@ -288,7 +260,10 @@ impl EnvironmentShell {
         }
         let text = match now {
             AgentNow::Waiting if waits_unseen => {
-                format!("{} {WAITING_TEXT}", chat.harness().display_name())
+                format!(
+                    "{} {WAITING_TEXT}",
+                    self.settings.acp.harness_name(chat.harness())
+                )
             }
             AgentNow::Exited => EXITED_TEXT.to_owned(),
             AgentNow::Waiting | AgentNow::Idle | AgentNow::Working => return None,
@@ -323,7 +298,7 @@ impl EnvironmentShell {
         )
     }
 
-    fn jump_down(id: TerminalId, thread: ListState, cx: &mut Context<Self>) -> AnyElement {
+    fn jump_down(id: TerminalId, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         div()
             .absolute()
@@ -344,8 +319,8 @@ impl EnvironmentShell {
                     .bg(rgb(pal.bg_surface))
                     .shadow(floating_shadow(pal))
                     .tooltip(|_, cx| tooltip_view(TOOLTIP_DOWN.into(), cx))
-                    .on_click(cx.listener(move |_: &mut Self, _, _, cx| {
-                        thread.scroll_to_end();
+                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                        this.jump_to_latest(id);
                         cx.notify();
                     }))
                     .child(icon(IconName::ChevronDown, ICON, pal.text_default)),
@@ -379,4 +354,29 @@ pub(super) fn error_line(text: &str, pal: &Palette) -> AnyElement {
         .text_color(rgb(pal.error_fg))
         .child(text.to_owned())
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui_kit::{FollowMode, ListAlignment};
+
+    fn thread() -> ListState {
+        let thread = ListState::new(3, ListAlignment::Top, px(0.0));
+        thread.set_follow_mode(FollowMode::Tail);
+        thread
+    }
+
+    #[test]
+    fn a_new_thread_follows_its_latest_message() {
+        assert!(following(&thread()));
+    }
+
+    #[test]
+    fn a_thread_scrolled_away_stays_put_while_its_messages_are_remeasured() {
+        let thread = thread();
+        thread.pause_following_tail();
+        thread.remeasure();
+        assert!(!following(&thread));
+    }
 }

@@ -1,10 +1,12 @@
 use crate::client::call;
 use crate::code::{CodeRequest, CodeTool};
 use crate::env::{bus_env, guide, orchestrator_guide, BusEnv, CLI_PROGRAM, ENV_TERMINAL};
+use crate::extension_tools::{render_catalog, tool_call_request, ExtensionToolOutcome};
 use crate::handle::Caller;
 use crate::hook::{run_ask, run_hook};
 use crate::protocol::{
-    preset_by_display_name, AgentInfo, BusToken, Message, Request, Response, MAX_WAIT,
+    bus_name, preset_by_bus_name, preset_by_display_name, AgentInfo, BusToken, Message, Request,
+    Response, MAX_WAIT,
 };
 use crate::statusline::run_status_line;
 use krad_domain::AgentPreset;
@@ -19,7 +21,7 @@ const EXIT_BUS: i32 = 2;
 pub(crate) const DEFAULT_WAIT_TIMEOUT: Duration = Duration::from_mins(10);
 pub(crate) const DEFAULT_READ_LINES: usize = 40;
 pub(crate) const UNKNOWN_AGENT: &str =
-    "Unknown agent; use a harness program such as claude, codex or opencode";
+    "Unknown agent; use a harness program such as claude, codex or opencode, or an ACP agent id";
 
 const FLAG_JSON: &str = "--json";
 const FLAG_VERSION: &str = "--version";
@@ -36,6 +38,7 @@ const NO_MESSAGES: &str = "No new messages";
 const TIMED_OUT: &str = "Timed out";
 const OUTSIDE_TERMINAL: &str = "Run this inside a Krad ADE terminal.";
 const SELF_MARKER: &str = "  (you)";
+const AGENT_MARKER: &str = "  agent: ";
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Verb {
@@ -50,11 +53,13 @@ enum Verb {
     Ask,
     StatusLine,
     Code,
+    Tools,
+    Tool,
     Mcp,
 }
 
 impl Verb {
-    const USAGE_ORDER: [Self; 8] = [
+    const USAGE_ORDER: [Self; 10] = [
         Self::List,
         Self::Send,
         Self::Check,
@@ -62,6 +67,8 @@ impl Verb {
         Self::Read,
         Self::Spawn,
         Self::Code,
+        Self::Tools,
+        Self::Tool,
         Self::Help,
     ];
 }
@@ -80,6 +87,8 @@ impl std::fmt::Display for Verb {
             Self::Ask => "ask",
             Self::StatusLine => "statusline",
             Self::Code => "code",
+            Self::Tools => "tools",
+            Self::Tool => "tool",
             Self::Mcp => "mcp",
         })
     }
@@ -101,6 +110,8 @@ impl FromStr for Verb {
             "ask" => Self::Ask,
             "statusline" => Self::StatusLine,
             "code" => Self::Code,
+            "tools" => Self::Tools,
+            "tool" => Self::Tool,
             "mcp" => Self::Mcp,
             _ => return Err(CliError::UnknownCommand(text.to_owned())),
         })
@@ -124,7 +135,7 @@ enum CliError {
     SendNeedsMessage,
     #[error("spawn needs a task")]
     SpawnNeedsTask,
-    #[error("spawn needs --agent <harness>")]
+    #[error("spawn needs --agent <harness or ACP agent id>")]
     SpawnNeedsAgent,
     #[error("{UNKNOWN_AGENT}: `{0}`")]
     UnknownAgent(String),
@@ -254,7 +265,11 @@ fn execute(request: &Request, json: bool) -> i32 {
 }
 
 fn report(request: &Request, response: &Response, json: bool) -> i32 {
-    let failed = matches!(response, Response::Error(_));
+    let failed = match response {
+        Response::Error(_) => true,
+        Response::ExtensionTool(answer) => answer.outcome == ExtensionToolOutcome::Failed,
+        _ => false,
+    };
     let output = if json {
         match serde_json::to_string(response) {
             Ok(line) => Output::Stdout(line),
@@ -292,6 +307,12 @@ fn build_request(verb: Verb, options: &Options) -> Result<Option<Request>, CliEr
                 CodeRequest::new(tool, target, new_name)
                     .map_err(|error| CliError::Code(error.to_string()))?,
             )
+        }
+        Verb::Tools => Request::Tools,
+        Verb::Tool => {
+            let (name, arguments) =
+                tool_call_request(&options.positional).map_err(CliError::Code)?;
+            Request::ExtensionTool { name, arguments }
         }
         Verb::List => Request::List,
         Verb::Send => {
@@ -339,9 +360,9 @@ fn build_request(verb: Verb, options: &Options) -> Result<Option<Request>, CliEr
 
 fn spawned_agent(name: Option<&str>) -> Result<AgentPreset, CliError> {
     let name = name.ok_or(CliError::SpawnNeedsAgent)?;
-    name.parse()
-        .ok()
+    preset_by_bus_name(name)
         .or_else(|| preset_by_display_name(name))
+        .or_else(|| name.parse().ok().map(AgentPreset::Acp))
         .filter(|preset| preset.is_agent())
         .ok_or_else(|| CliError::UnknownAgent(name.to_owned()))
 }
@@ -402,6 +423,8 @@ fn render(request: &Request, response: &Response) -> String {
         }
         Response::Submitted { terminal } => format!("Typed the message into terminal {terminal}"),
         Response::Code(answer) => answer.render(),
+        Response::Tools(catalog) => render_catalog(catalog),
+        Response::ExtensionTool(answer) => answer.text.clone(),
         Response::Error(message) => message.clone(),
     }
 }
@@ -412,8 +435,12 @@ fn render_agent(agent: &AgentInfo) -> String {
         .as_ref()
         .map_or_default(|group| format!("  group: {group}"));
     let you = if agent.is_self { SELF_MARKER } else { "" };
+    let harness = agent
+        .harness
+        .and_then(bus_name)
+        .map_or_default(|name| format!("{AGENT_MARKER}{name}"));
     format!(
-        "{}  {}  [{}]{group}{you}",
+        "{}  {}  [{}]{harness}{group}{you}",
         agent.terminal, agent.title, agent.state
     )
 }
@@ -457,13 +484,21 @@ mod tests {
                 task: "fix it".to_owned(),
             })
         );
+        let acp = |id: &str| {
+            AgentPreset::Acp(id.parse().unwrap_or_else(|_| unreachable!("{id} is an id")))
+        };
         for (name, agent) in [
             ("codex", AgentPreset::Codex),
             ("Claude Code", AgentPreset::ClaudeCode),
+            ("opencode", AgentPreset::Opencode),
+            ("acp:opencode", acp("opencode")),
+            ("gemini", acp("gemini")),
+            ("codex-acp", acp("codex-acp")),
+            ("Claude Code (ACP)", acp("claude-code-acp")),
         ] {
             assert_eq!(spawned_agent(Some(name)), Ok(agent));
         }
-        for name in ["zsh", "shell", "Gateway"] {
+        for name in ["Shell", "Gateway", "My Agent", "acp:Bad Id"] {
             assert_eq!(
                 spawned_agent(Some(name)),
                 Err(CliError::UnknownAgent(name.to_owned()))
@@ -471,9 +506,40 @@ mod tests {
         }
         assert_eq!(
             usage(),
-            "Usage: krad-ade-agents <list|send|check|wait|read|spawn|code|help> [args] [--json]"
+            "Usage: krad-ade-agents <list|send|check|wait|read|spawn|code|tools|tool|help> [args] [--json]"
         );
         assert_eq!("send".parse::<Verb>(), Ok(Verb::Send));
+        Ok(())
+    }
+
+    #[test]
+    fn spawn_starts_an_acp_agent_by_its_id_and_list_names_it() -> Result<(), CliError> {
+        let options = parse_options(&["--agent", "gemini", "write", "tests"].map(str::to_owned))?;
+        let gemini = AgentPreset::Acp(
+            "gemini"
+                .parse()
+                .unwrap_or_else(|_| unreachable!("a valid id")),
+        );
+        assert_eq!(
+            build_request(Verb::Spawn, &options)?,
+            Some(Request::Spawn {
+                agent: gemini,
+                worktree: None,
+                task: "write tests".to_owned(),
+            })
+        );
+        let listed = AgentInfo {
+            terminal: 5,
+            title: "Gemini (ACP) · 5".to_owned(),
+            group: None,
+            state: crate::protocol::TerminalState::Exited,
+            harness: Some(gemini),
+            is_self: false,
+        };
+        assert_eq!(
+            render_agent(&listed),
+            "5  Gemini (ACP) · 5  [exited]  agent: acp:gemini"
+        );
         Ok(())
     }
 }

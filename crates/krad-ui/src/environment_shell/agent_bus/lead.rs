@@ -26,12 +26,16 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let session = SessionId(lead.session);
-        let group = self
+        let env = EnvironmentName::new(lead.environment.clone());
+        let led_by = self
             .envs
-            .get(&EnvironmentName::new(lead.environment.clone()))
+            .get(&env)
             .and_then(|live| live.data.session(session))
-            .filter(|session| session.lead.is_some())
-            .map(|session| session.group);
+            .and_then(|session| Some((session.group, session.lead.as_ref()?.terminal)));
+        let group = led_by.map(|(group, _)| group);
+        let mode = led_by
+            .and_then(|(_, terminal)| terminal)
+            .and_then(|terminal| self.chat_permission_mode(&env, terminal));
         let refusal = match group {
             None => NOT_A_LEAD_ANYMORE,
             Some(None) => NO_LEAD_GROUP,
@@ -47,11 +51,11 @@ impl EnvironmentShell {
                             worktree,
                             task,
                             lead: Some(session),
+                            mode,
                         };
                         self.start_chat_worker(&lead.environment, group, spawn, reply, cx);
                     }
                     other => {
-                        let env = EnvironmentName::new(lead.environment.clone());
                         if let Some(answer) = self.answer_worker(&env, session, &other, cx) {
                             reply.send(answer).unwrap_or_default();
                             return;

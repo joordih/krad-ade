@@ -10,8 +10,8 @@ use krad_extensions::{
 };
 
 use super::super::dialog_parts::sheet_row_with;
-use super::sections::{card_field, empty_row, pane_column, settings_section};
-use super::{form_row, hint, panel_card, EnvironmentShell};
+use super::sections::{empty_row, pane_column, settings_section};
+use super::{form_row, panel_card, EnvironmentShell};
 use crate::components::{icon, Button, ButtonVariant, IconName};
 use crate::theme::{palette, ICON_SM, SPACE_2};
 
@@ -20,10 +20,6 @@ const RUNTIMES_TITLE: &str = "Server runtimes";
 const SERVER_RUNTIMES_HINT: &str = "What language servers run on, such as Node.js. Install a missing one here, or point to your own copy. Each project's toolchain is picked from the editor's status bar.";
 const RUNTIMES_LOADING: &str = "Looking for server runtimes…";
 const RUNTIMES_NONE: &str = "No installed language needs a server runtime.";
-const EXTENSIONS_TITLE: &str = "Extensions";
-const EXTENSIONS_SECTION_HINT: &str = "Add languages from a git address or a folder of manifests.";
-const EXTENSIONS_EMPTY: &str = "No extensions yet.";
-const ADD_EXTENSION_LABEL: &str = "Add";
 const EXTENSIONS_HINT: &str = "Your own language and server runtime manifests go in";
 const NOT_FOUND_TEXT: &str = "Not found";
 const CHOSEN_TEXT: &str = "chosen";
@@ -146,13 +142,18 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn extensions_changed(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn extensions_changed(&mut self, cx: &mut Context<Self>) {
         self.save_settings(cx);
         self.load_language_tools(cx);
+        self.load_extensions(cx);
         cx.notify();
     }
 
-    fn add_extension(&mut self, entry: Result<ExtensionEntry, String>, cx: &mut Context<Self>) {
+    pub(super) fn add_extension(
+        &mut self,
+        entry: Result<ExtensionEntry, String>,
+        cx: &mut Context<Self>,
+    ) {
         match entry {
             Ok(entry) => {
                 self.settings
@@ -207,7 +208,12 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn change_extension(&mut self, id: &str, change: ExtensionChange, cx: &mut Context<Self>) {
+    fn change_extension(
+        &mut self,
+        id: &krad_domain::ExtensionId,
+        change: ExtensionChange,
+        cx: &mut Context<Self>,
+    ) {
         let Some(config) = krad_store::config_dir() else {
             return;
         };
@@ -215,7 +221,7 @@ impl EnvironmentShell {
             .settings
             .extensions
             .iter()
-            .find(|entry| entry.id == id)
+            .find(|entry| entry.id == *id)
             .cloned()
         else {
             return;
@@ -226,30 +232,23 @@ impl EnvironmentShell {
                     .settings
                     .extensions
                     .iter_mut()
-                    .find(|known| known.id == id)
+                    .find(|known| known.id == *id)
                 {
                     known.enabled = !known.enabled;
                 }
                 self.extensions_changed(cx);
             }
-            ExtensionChange::Update | ExtensionChange::Remove => {
-                let removing = change == ExtensionChange::Remove;
-                let working = cx.background_spawn(async move {
-                    if removing {
-                        remove(&config, &entry)
-                    } else {
-                        update(&config, &entry)
-                    }
-                });
-                let id = id.to_owned();
+            ExtensionChange::Update if matches!(entry.source, ExtensionSource::Pinned { .. }) => {
+                self.update_pinned_extension(entry, cx);
+            }
+            ExtensionChange::Update => {
+                let working = cx.background_spawn(async move { update(&config, &entry) });
                 cx.spawn(async move |this, cx| {
                     let done = working.await;
                     this.update(cx, |shell, cx| {
-                        if let Err(error) = done {
-                            shell.toast(&error.to_string(), cx);
-                        }
-                        if removing {
-                            shell.settings.extensions.retain(|known| known.id != id);
+                        match done {
+                            Ok(updated) => shell.replace_extension_entry(updated),
+                            Err(error) => shell.toast(&error.to_string(), cx),
                         }
                         shell.extensions_changed(cx);
                     })
@@ -257,6 +256,34 @@ impl EnvironmentShell {
                 })
                 .detach();
             }
+            ExtensionChange::Remove => {
+                self.forget_extension_data(id, cx);
+                let working = cx.background_spawn(async move { remove(&config, &entry) });
+                let id = id.clone();
+                cx.spawn(async move |this, cx| {
+                    let done = working.await;
+                    this.update(cx, |shell, cx| {
+                        if let Err(error) = done {
+                            shell.toast(&error.to_string(), cx);
+                        }
+                        shell.settings.extensions.retain(|known| known.id != id);
+                        shell.extensions_changed(cx);
+                    })
+                    .unwrap_or_default();
+                })
+                .detach();
+            }
+        }
+    }
+
+    fn replace_extension_entry(&mut self, updated: ExtensionEntry) {
+        if let Some(known) = self
+            .settings
+            .extensions
+            .iter_mut()
+            .find(|known| known.id == updated.id)
+        {
+            *known = updated;
         }
     }
 
@@ -325,10 +352,14 @@ impl EnvironmentShell {
         .into_any_element()
     }
 
-    fn extension_row(index: usize, entry: &ExtensionEntry, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn extension_row(
+        index: usize,
+        entry: &ExtensionEntry,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let pal = palette(cx);
         let source = match &entry.source {
-            ExtensionSource::Git(url) => url.clone(),
+            ExtensionSource::Git(url) | ExtensionSource::Pinned { url, .. } => url.clone(),
             ExtensionSource::Folder(folder) => folder.display().to_string(),
         };
         let (toggle, refresh, drop) = (entry.id.clone(), entry.id.clone(), entry.id.clone());
@@ -361,7 +392,7 @@ impl EnvironmentShell {
                     })),
             )
             .into_any_element();
-        form_row(&entry.id, Some(&source), controls, pal)
+        form_row(entry.id.as_ref(), Some(&source), controls, pal)
     }
 
     pub(super) fn languages_pane(&self, ui: &LanguagesUi, cx: &mut Context<Self>) -> AnyElement {
@@ -375,24 +406,6 @@ impl EnvironmentShell {
                 .map(|(index, status)| Self::server_runtime_row(index, status, cx))
                 .collect(),
         };
-        let mut extensions: Vec<AnyElement> = self
-            .settings
-            .extensions
-            .iter()
-            .enumerate()
-            .map(|(index, entry)| Self::extension_row(index, entry, cx))
-            .collect();
-        if extensions.is_empty() {
-            extensions.push(empty_row(EXTENSIONS_EMPTY, pal));
-        }
-        extensions.push(card_field(
-            ADD_EXTENSION_LABEL,
-            Self::extension_adder(ui, cx),
-            pal,
-        ));
-        let manifests = krad_store::config_dir().map_or_else(String::new, |config| {
-            user_manifests_dir(&config).display().to_string()
-        });
         pane_column([
             settings_section(
                 BEHAVIOUR_TITLE,
@@ -409,19 +422,17 @@ impl EnvironmentShell {
                 [panel_card(server_runtimes, pal)],
                 pal,
             ),
-            settings_section(
-                EXTENSIONS_TITLE,
-                Some(EXTENSIONS_SECTION_HINT),
-                [
-                    panel_card(extensions, pal),
-                    hint(&format!("{EXTENSIONS_HINT} {manifests}."), pal),
-                ],
-                pal,
-            ),
         ])
     }
 
-    fn extension_adder(ui: &LanguagesUi, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn manifests_hint() -> String {
+        let manifests = krad_store::config_dir().map_or_else(String::new, |config| {
+            user_manifests_dir(&config).display().to_string()
+        });
+        format!("{EXTENSIONS_HINT} {manifests}.")
+    }
+
+    pub(super) fn extension_adder(ui: &LanguagesUi, cx: &mut Context<Self>) -> AnyElement {
         div()
             .flex()
             .flex_row()

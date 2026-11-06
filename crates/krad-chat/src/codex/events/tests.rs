@@ -12,7 +12,8 @@ fn chat(events: Vec<LiveEvent>) -> Vec<ChatEvent> {
             | LiveEvent::Usage(_)
             | LiveEvent::Notice(_)
             | LiveEvent::Rewound(_)
-            | LiveEvent::Refused(_) => None,
+            | LiveEvent::Refused(_)
+            | LiveEvent::Acp(_) => None,
         })
         .collect()
 }
@@ -64,7 +65,7 @@ fn a_turn_becomes_its_tools_text_usage_and_end() {
         unreachable!("the file change is a tool");
     };
     let lines: Vec<(LineChange, Option<u32>, Option<u32>)> =
-        edit.edit.as_ref().map_or_default(|edit| {
+        edit.edits.first().map_or_default(|edit| {
             edit.lines
                 .iter()
                 .map(|line| (line.change, line.old_line, line.new_line))

@@ -8,14 +8,14 @@ use gpui_kit::{
     ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_chat::{AskKind, Question, QuestionOption};
-use krad_domain::{AskOutcome, AskVerdict, PermissionMode, TerminalId};
+use krad_domain::{AskOutcome, AskVerdict, FileEdit, PermissionMode, TerminalId};
 use std::time::Duration;
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
-use super::super::surface::{edit_diff, tool_question};
+use super::super::surface::{edit_diffs, tool_question};
 use super::super::EnvironmentShell;
 use super::picks::{offered, OTHER_LABEL};
-use super::{AskQueue, Choice, NotePurpose, Waiting, OFFERED_MODES};
+use super::{acp_option, AskQueue, Choice, NotePurpose, Waiting, OFFERED_MODES};
 use crate::actions::{AskConfirm, AskDeny, ASK_KEY_CONTEXT};
 use crate::components::{check_box, icon, tooltip_view, Button, ButtonVariant, IconName};
 use crate::theme::{
@@ -88,8 +88,11 @@ const VERDICT_PLAN_REJECTED: &str = "Plan sent back";
 const VERDICT_CANCELLED: &str = "Cancelled";
 
 impl Choice {
-    const fn label(self) -> &'static str {
+    fn label(self, kind: &AskKind) -> &str {
         match self {
+            Self::AcpOption(index) => {
+                acp_option(kind, index).map_or("", |option| option.name.as_str())
+            }
             Self::Allow => ALLOW_LABEL,
             Self::AllowAlways => ALLOW_ALWAYS_LABEL,
             Self::Deny => DENY_LABEL,
@@ -100,8 +103,9 @@ impl Choice {
         }
     }
 
-    const fn tray_label(self) -> &'static str {
+    fn tray_label(self, kind: &AskKind) -> &str {
         match self {
+            Self::AcpOption(_) => self.label(kind),
             Self::Allow => ALLOW_LABEL,
             Self::AllowAlways => ALLOW_ALWAYS_LABEL,
             Self::Deny => DENY_SHORT_LABEL,
@@ -110,6 +114,11 @@ impl Choice {
             Self::ApproveManually => APPROVE_MANUALLY_LABEL,
             Self::KeepPlanning => KEEP_PLANNING_SHORT_LABEL,
         }
+    }
+
+    fn rejects(self, kind: &AskKind) -> bool {
+        matches!(self, Self::AcpOption(index)
+            if acp_option(kind, index).is_some_and(|option| !option.kind.allows()))
     }
 }
 
@@ -188,6 +197,40 @@ fn number_key(event: &KeyDownEvent) -> Option<usize> {
         .filter(|number| NUMBER_KEYS.contains(number))
 }
 
+fn permission_detail(
+    owner: TerminalId,
+    summary: &str,
+    title: Option<&str>,
+    edits: &[FileEdit],
+    mono: SharedString,
+    pal: &Palette,
+) -> AnyElement {
+    if let Some(diffs) = edit_diffs(edits, &mono, pal) {
+        return diffs;
+    }
+    div()
+        .id(owned_id(DETAIL_PREFIX, owner, 0))
+        .max_h(px(DETAIL_MAX_H))
+        .overflow_y_scroll()
+        .flex()
+        .flex_col()
+        .gap(px(SPACE_1))
+        .child(
+            div()
+                .font_family(mono)
+                .text_color(rgb(pal.text_strong))
+                .child(summary.to_owned()),
+        )
+        .children(title.map(|title| {
+            div()
+                .text_size(px(TEXT_XS))
+                .line_height(px(LINE_XS))
+                .text_color(rgb(pal.text_muted))
+                .child(title.to_owned())
+        }))
+        .into_any_element()
+}
+
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn ask_tray(
         &self,
@@ -208,33 +251,14 @@ impl EnvironmentShell {
                 summary,
                 title,
                 edit,
-            } => {
-                let detail = match edit {
-                    Some(edit) => edit_diff(edit, &mono, pal),
-                    None => div()
-                        .id(owned_id(DETAIL_PREFIX, owner, 0))
-                        .max_h(px(DETAIL_MAX_H))
-                        .overflow_y_scroll()
-                        .flex()
-                        .flex_col()
-                        .gap(px(SPACE_1))
-                        .child(
-                            div()
-                                .font_family(mono)
-                                .text_color(rgb(pal.text_strong))
-                                .child(summary.clone()),
-                        )
-                        .children(title.clone().map(|title| {
-                            div()
-                                .text_size(px(TEXT_XS))
-                                .line_height(px(LINE_XS))
-                                .text_color(rgb(pal.text_muted))
-                                .child(title)
-                        }))
-                        .into_any_element(),
-                };
-                (tool_question(tool, *kind), detail)
-            }
+            } => (
+                tool_question(tool, *kind),
+                permission_detail(owner, summary, title.as_deref(), edit.as_slice(), mono, pal),
+            ),
+            AskKind::AcpPermission { tool, .. } => (
+                tool_question(&tool.name, tool.kind),
+                permission_detail(owner, &tool.summary, None, &tool.edits, mono, pal),
+            ),
             AskKind::Plan { plan } => (
                 PLAN_QUESTION.into(),
                 div()
@@ -337,14 +361,17 @@ impl EnvironmentShell {
             .enumerate()
             .rev()
             .map(|(index, choice)| {
-                let key = format!("{} ({})", choice.label(), index + 1);
+                let kind = &waiting.ask.kind;
+                let key = format!("{} ({})", choice.label(kind), index + 1);
+                let rejects = choice.rejects(kind);
                 tray_button(owned_id(CHOICE_PREFIX, owner, index), index == 0, pal)
                     .when(index == last && last > 0, |button| button.ml(px(SPACE_1)))
+                    .when(rejects, |button| button.text_color(rgb(pal.error_fg)))
                     .tooltip(move |_, cx| tooltip_view(key.clone().into(), cx))
                     .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
                         this.choose(owner, choice, window, cx);
                     }))
-                    .child(choice.tray_label())
+                    .child(choice.tray_label(kind).to_owned())
                     .into_any_element()
             })
             .collect()

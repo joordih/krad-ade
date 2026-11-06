@@ -14,7 +14,7 @@ use std::time::{Duration, Instant, SystemTime};
 use super::super::ask::{AskQueue, Settled};
 use super::super::chat::{fold_entry, workplace_home, ChatMessage};
 use super::super::EnvironmentShell;
-use super::{view, Backend, Origin, SurfaceChat, SurfaceCommand};
+use super::{anchor, Backend, Origin, SurfaceChat, SurfaceCommand};
 
 pub(super) const TRANSCRIPT_HARNESS: AgentPreset = AgentPreset::ClaudeCode;
 const TAIL_INTERVAL: Duration = Duration::from_millis(400);
@@ -160,6 +160,7 @@ fn open_answer() -> ChatMessage {
         mentions: Vec::new(),
         checklist: None,
         rewind: None,
+        tool_outputs: HashMap::new(),
     }
 }
 
@@ -383,7 +384,7 @@ impl EnvironmentShell {
         if read.chunk.entries.is_empty() {
             return;
         }
-        let followed = view::following(&chat.thread);
+        let followed = anchor::follows_tail(chat.anchor, &chat.thread);
         fold_history(chat, read, opened && !read.skips_history());
         if followed {
             chat.thread.scroll_to_end();

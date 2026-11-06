@@ -14,8 +14,8 @@ use super::super::ask::ask_line;
 use super::super::chat::{AnswerPart, ChatMessage};
 use super::super::workers::{spawned_worker, WorkerCard};
 use super::super::EnvironmentShell;
-use super::message_actions::{copy_button, message_actions, message_group};
-use super::tool_group::ToolLook;
+use super::message_actions::{copy_button, message_actions, message_group, BookmarkAction};
+use super::tool_group::{ToolLook, ToolRows};
 use super::view::error_line;
 use super::{SurfaceChat, THINKING_LABEL};
 use crate::components::{icon, IconName};
@@ -83,6 +83,7 @@ impl EnvironmentShell {
         message: &ChatMessage,
         chat: &SurfaceChat,
         workers: &[WorkerCard],
+        bookmark: Option<BookmarkAction>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
@@ -99,7 +100,11 @@ impl EnvironmentShell {
             };
             let key = (index, start);
             let open = chat.tool_groups.get(&key).copied();
-            parts.push(Self::tool_group(id, key, calls, running, open, &mono, cx));
+            let rows = ToolRows {
+                calls,
+                outputs: &message.tool_outputs,
+            };
+            parts.push(Self::tool_group(id, key, &rows, running, open, &mono, cx));
             calls.clear();
         };
         for (part_index, part) in message.parts.iter().enumerate() {
@@ -153,10 +158,13 @@ impl EnvironmentShell {
         parts.extend(message.error.as_deref().map(|error| error_line(error, pal)));
         let said = answer_text(message);
         let group = message_group(id, index);
-        if !message.running && !said.is_empty() {
+        let copy = (!message.running && !said.is_empty()).then(|| {
             let key = format!("{MESSAGE_COPY_PREFIX}-{raw}-{index}");
-            let copy = copy_button(ElementId::Name(key.into()), said, MESSAGE_COPY_TOOLTIP, pal);
-            parts.push(message_actions(group.clone(), [copy]));
+            copy_button(ElementId::Name(key.into()), said, MESSAGE_COPY_TOOLTIP, pal)
+        });
+        let bookmark = bookmark.filter(|bookmark| bookmark.marked || copy.is_some());
+        if copy.is_some() || bookmark.is_some() {
+            parts.push(message_actions(group.clone(), copy, bookmark));
         }
         div()
             .group(group)
@@ -271,7 +279,7 @@ mod tests {
                     name: "Bash".to_owned(),
                     kind: ToolKind::Shell,
                     summary: "ls".to_owned(),
-                    edit: None,
+                    edits: Vec::new(),
                 }),
                 AnswerPart::Text("Second part.".to_owned()),
             ],
@@ -280,6 +288,7 @@ mod tests {
             mentions: Vec::new(),
             checklist: None,
             rewind: None,
+            tool_outputs: std::collections::HashMap::new(),
         };
         assert_eq!(answer_text(&message), "First part.\n\nSecond part.");
     }

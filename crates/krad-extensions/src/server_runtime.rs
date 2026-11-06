@@ -207,8 +207,8 @@ impl ServerRuntimes<'_> {
             })
     }
 
-    fn managed_folder(&self, id: &ServerRuntimeId) -> PathBuf {
-        self.root.join(SERVER_RUNTIMES_DIR).join(id.as_str())
+    fn managed_folder(&self, id: &ServerRuntimeId) -> Option<PathBuf> {
+        crate::path_lookup::segment_in(&self.root.join(SERVER_RUNTIMES_DIR), id.as_str())
     }
 
     pub(crate) fn find(&self, id: &ServerRuntimeId) -> Option<PathBuf> {
@@ -217,7 +217,10 @@ impl ServerRuntimes<'_> {
             .get(id)
             .and_then(|folder| self.in_folder_of(server_runtime, folder))
             .or_else(|| self.system(server_runtime))
-            .or_else(|| self.walk(server_runtime, &self.managed_folder(id), SEARCH_DEPTH))
+            .or_else(|| {
+                let managed = self.managed_folder(id)?;
+                self.walk(server_runtime, &managed, SEARCH_DEPTH)
+            })
     }
 
     pub(crate) fn accepts(&self, id: &ServerRuntimeId, folder: &Path) -> bool {
@@ -250,7 +253,9 @@ impl ServerRuntimes<'_> {
         let source = download_for(server_runtime, self.platform)?;
         let name = download_name(server_runtime, source);
         let digest = source_digest(agent, source, &name)?;
-        let folder = self.managed_folder(id);
+        let folder = self
+            .managed_folder(id)
+            .ok_or_else(|| ExtensionError::MissingServerRuntime(id.clone()))?;
         if folder.exists() {
             fs::remove_dir_all(&folder)?;
         }

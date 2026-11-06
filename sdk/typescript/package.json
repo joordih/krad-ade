@@ -1,0 +1,52 @@
+{
+  "name": "@krad-ade/extension",
+  "version": "0.4.0",
+  "description": "Write Krad ADE extension programs in TypeScript or JavaScript.",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joordih/krad-ade.git",
+    "directory": "sdk/typescript"
+  },
+  "homepage": "https://github.com/joordih/krad-ade/tree/main/sdk/typescript#readme",
+  "bugs": {
+    "url": "https://github.com/joordih/krad-ade/issues"
+  },
+  "keywords": [
+    "krad-ade",
+    "extension",
+    "sdk",
+    "json-rpc"
+  ],
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check-schema": "node scripts/check-schema.mjs",
+    "test": "npm run build && node --test test/*.test.mjs && npm run check-schema",
+    "prepublishOnly": "npm test",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.6.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": false
+  }
+}

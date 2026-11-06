@@ -170,7 +170,7 @@ impl EnvironmentShell {
             &folder,
             &sources,
             &keep,
-            preset.display_name(),
+            &self.settings.acp.harness_name(preset),
             dialog.model.as_ref(),
         );
         if let Some(root) = self.active_group().map(|group| group.root.clone()) {

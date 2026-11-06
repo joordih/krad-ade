@@ -37,6 +37,40 @@ pub enum ExtensionError {
     MissingServerRuntime(ServerRuntimeId),
     #[error(transparent)]
     Host(#[from] krad_host::HostError),
+    #[error("{extension} needs extension API {wanted}, newer than this app offers")]
+    Incompatible {
+        extension: String,
+        wanted: krad_extension_api::ApiVersion,
+    },
+    #[error("{} leaves its extension's folder", .0.display())]
+    OutsideFolder(std::path::PathBuf),
+    #[error(transparent)]
+    Program(#[from] crate::program::ProgramError),
+    #[error(transparent)]
+    Index(#[from] crate::index::IndexError),
+    #[error("{0} is pinned by the extension index and updates through it")]
+    Pinned(String),
+    #[error("the extension is installed as {entry} but its manifest says it is {manifest}")]
+    IdMismatch { entry: String, manifest: String },
+    #[error("two extensions call themselves {0}")]
+    DuplicateId(String),
+    #[error("the extension folder is larger than an extension may be")]
+    TooLarge,
+    #[error("the extension's checkout is not the commit it was installed at")]
+    CommitMoved,
+    #[error("{0} is not a valid extension id")]
+    InvalidId(String),
+    #[error("the address {0} cannot be cloned")]
+    BadAddress(String),
+}
+
+const NOT_FOUND_STATUS: u16 = 404;
+
+impl ExtensionError {
+    #[must_use]
+    pub fn is_not_found(&self) -> bool {
+        matches!(self, Self::Http(ureq::Error::StatusCode(NOT_FOUND_STATUS)))
+    }
 }
 
 const ERROR_MARKERS: [&str; 5] = ["ERROR:", "error:", "Error:", "npm ERR!", "fatal:"];

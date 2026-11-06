@@ -20,6 +20,7 @@ mod editor_popovers;
 mod entry_input;
 mod environment_menu;
 mod environment_order;
+mod extensions;
 mod file_tab;
 mod file_tree;
 mod gateway;
@@ -84,7 +85,7 @@ use krad_domain::{
     AgentPreset, EnvironmentData, EnvironmentName, EnvironmentView, PersistedLayout, Prompt,
     Settings, SidebarWidth, TerminalId, Visibility, WorkMode, DEFAULT_ENVIRONMENT,
 };
-use krad_store::LayoutWriter;
+use krad_store::{AcpTranscripts, LayoutWriter};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -154,6 +155,7 @@ pub struct EnvironmentShell {
     activity_log: activity::ActivityLog,
     close_request: CloseRequest,
     layout_writer: Option<LayoutWriter>,
+    acp_transcripts: Option<AcpTranscripts>,
     git: HashMap<groups::GitKey, groups::GroupGit>,
     git_task: Option<Task<()>>,
     file_tree: file_tree::FileTree,
@@ -161,6 +163,7 @@ pub struct EnvironmentShell {
     native_agents: Vec<AgentPreset>,
     wsl_agents: HashMap<String, Vec<AgentPreset>>,
     host_agents: HashMap<krad_domain::Host, Vec<AgentPreset>>,
+    detected_acp: Vec<krad_domain::AcpAgent>,
     settings: Settings,
     settings_ui: Option<settings_view::SettingsUi>,
     agent_bus: Option<agent_bus::AgentBus>,
@@ -183,6 +186,7 @@ pub struct EnvironmentShell {
     host_tools: host::HostTools,
     arcade: arcade::Arcade,
     app_updates: app_update::AppUpdates,
+    extensions: extensions::Extensions,
 }
 
 impl EnvironmentShell {
@@ -273,6 +277,7 @@ impl EnvironmentShell {
             activity_log: activity::ActivityLog::default(),
             close_request: CloseRequest::Idle,
             layout_writer: LayoutWriter::spawn(),
+            acp_transcripts: AcpTranscripts::spawn(),
             git: HashMap::new(),
             git_task: None,
             file_tree: file_tree::FileTree::default(),
@@ -280,6 +285,7 @@ impl EnvironmentShell {
             native_agents: vec![AgentPreset::Shell],
             wsl_agents: HashMap::new(),
             host_agents: HashMap::new(),
+            detected_acp: settings.acp.all_agents(),
             settings,
             settings_ui: None,
             agent_bus: None,
@@ -302,11 +308,9 @@ impl EnvironmentShell {
             unreadable_environments: Vec::new(),
             host_tools,
             app_updates: app_update::AppUpdates::default(),
+            extensions: extensions::Extensions::default(),
         };
-        shell.start_agent_bus(cx);
-        shell.check_gateway(cx);
-        shell.start_app_updates(cx);
-        Self::load_arcade_scores(cx);
+        shell.start_services(cx);
         match seed {
             Some(snapshot) => shell.restore_snapshot(snapshot),
             None => shell.restore_env(EnvironmentData::empty(EnvironmentName::new(
@@ -316,10 +320,22 @@ impl EnvironmentShell {
         let active = shell.active.clone();
         shell.show_host(&active, cx);
         shell.pump_task = Some(Self::start_pump(pump_rx, cx));
-        Self::detect_agents(cx);
-        shell.start_watches(cx);
-        shell.load_language_tools(cx);
+        shell.start_loading(cx);
         shell
+    }
+
+    fn start_services(&mut self, cx: &mut Context<Self>) {
+        self.start_agent_bus(cx);
+        self.check_gateway(cx);
+        self.start_app_updates(cx);
+        Self::load_arcade_scores(cx);
+    }
+
+    fn start_loading(&mut self, cx: &mut Context<Self>) {
+        self.detect_agents(cx);
+        self.start_watches(cx);
+        self.load_language_tools(cx);
+        self.load_extensions(cx);
     }
 
     fn frame_interval(&self) -> Duration {

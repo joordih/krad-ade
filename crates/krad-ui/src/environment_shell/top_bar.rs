@@ -1,9 +1,10 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, Action, AnyElement, Context, FontWeight, InteractiveElement, IntoElement,
-    ParentElement, StatefulInteractiveElement, Styled,
+    ParentElement, StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::EnvironmentView;
+use krad_extensions::api::manifest::TitlebarSide;
 
 use super::sidebar::SIDEBAR_TOGGLE_END;
 use super::EnvironmentShell;
@@ -19,11 +20,11 @@ const TOP_BAR_ID: &str = "top-bar";
 const BTN_SIDE_PANEL: &str = "side-panel";
 const TOOLTIP_SIDE_PANEL: &str = "Files and terminals";
 const BAR_PAD_X: f32 = SPACE_1;
-const PANEL_BUTTON_RADIUS: f32 = 7.0;
+pub(super) const PANEL_BUTTON_RADIUS: f32 = 7.0;
 const LIGHTS_GAP: f32 = SPACE_2;
 
 impl EnvironmentShell {
-    pub(super) fn top_bar(&self, cx: &mut Context<Self>) -> WindowTitleBar {
+    pub(super) fn top_bar(&self, window: &Window, cx: &mut Context<Self>) -> WindowTitleBar {
         WindowTitleBar::new(TOP_BAR_ID)
             .padding(BAR_PAD_X)
             .gap(LIGHTS_GAP)
@@ -38,7 +39,9 @@ impl EnvironmentShell {
                     .gap(px(SPACE_2))
                     .child(self.top_bar_middle(cx))
                     .children(self.app_update_pill(cx))
+                    .children(self.titlebar_items(TitlebarSide::Left, window, cx))
                     .child(self.work_mode_switch(cx))
+                    .children(self.titlebar_items(TitlebarSide::Right, window, cx))
                     .child(self.panel_toggles(cx)),
             )
     }

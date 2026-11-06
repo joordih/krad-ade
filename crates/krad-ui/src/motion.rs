@@ -36,6 +36,11 @@ impl Spring {
         self.resting = false;
     }
 
+    pub(crate) fn kick(&mut self, velocity: f32) {
+        self.velocity = velocity;
+        self.resting = false;
+    }
+
     pub(crate) const fn is_settled(&self) -> bool {
         self.resting
     }

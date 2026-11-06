@@ -36,7 +36,7 @@ pub fn run_hook(harness: AgentPreset, args: &[String]) -> i32 {
         AgentPreset::ClaudeCode => read_stdin().and_then(|payload| claude_request(&payload)),
         AgentPreset::Codex => args.last().and_then(|payload| codex_request(payload)),
         AgentPreset::Opencode => opencode_request(args),
-        AgentPreset::Shell | AgentPreset::Gateway => None,
+        AgentPreset::Shell | AgentPreset::Gateway | AgentPreset::Acp(_) => None,
     };
     if let Some(request) = request {
         send(request);
