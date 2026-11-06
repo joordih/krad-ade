@@ -124,11 +124,14 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
     ) -> Option<McpServer> {
-        if !self.agent_tools_offered() || self.agent_bus.is_none() {
+        if !self.agent_tools_offered() {
             return None;
         }
-        let env = self
-            .bus_vars(env, id)
+        let vars = self.bus_vars(env, id);
+        if vars.is_empty() {
+            return None;
+        }
+        let env = vars
             .into_iter()
             .filter_map(|(name, value)| {
                 Some(McpVariable {

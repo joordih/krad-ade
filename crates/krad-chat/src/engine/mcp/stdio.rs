@@ -19,6 +19,7 @@ const SHUTDOWN_POLL: Duration = Duration::from_millis(20);
 const STDERR_GRACE: Duration = Duration::from_millis(200);
 const LINE_END: &[u8] = b"\n";
 const TAIL_JOINER: &str = "\n";
+const PATH_VAR: &str = "PATH";
 
 enum Piece {
     Message(Incoming),
@@ -56,10 +57,14 @@ fn command(launch: &StdioLaunch<'_>) -> Result<(Command, Option<PathBuf>), McpEr
         .args(launch.args)
         .current_dir(launch.cwd)
         .in_login_shell();
+    let (path, env) = split_path(launch.env);
+    if let Some(dir) = path {
+        remote.prepend_path(dir);
+    }
     let mut env_file = None;
-    if let (HostLink::Remote(ssh), false) = (launch.host, launch.env.is_empty()) {
+    if let (HostLink::Remote(ssh), false) = (launch.host, env.is_empty()) {
         let file = ssh
-            .write_env_file(launch.env)
+            .write_env_file(&env)
             .map_err(|error| McpError::EnvOnHost(error.to_string()))?;
         remote.source_env_file(&file);
         env_file = Some(file);
@@ -74,6 +79,19 @@ fn command(launch: &StdioLaunch<'_>) -> Result<(Command, Option<PathBuf>), McpEr
         }
     };
     Ok((built, env_file))
+}
+
+fn split_path(env: &[(String, String)]) -> (Option<&str>, Vec<(String, String)>) {
+    let path = env
+        .iter()
+        .find(|(name, _)| name == PATH_VAR)
+        .map(|(_, value)| value.as_str());
+    let rest = env
+        .iter()
+        .filter(|(name, _)| name != PATH_VAR)
+        .cloned()
+        .collect();
+    (path, rest)
 }
 
 fn pump(stdout: impl Read, inbox: &SyncSender<Piece>) {
@@ -213,5 +231,24 @@ impl Drop for StdioLink {
         }
         self.child.kill().unwrap_or_default();
         self.child.wait().map_or_default(drop);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_path;
+
+    #[test]
+    fn path_is_taken_out_of_the_env_file_so_the_login_env_cannot_replace_it() {
+        let env = vec![
+            ("KRAD_ADE_ENDPOINT".to_owned(), "127.0.0.1:1".to_owned()),
+            ("PATH".to_owned(), "/home/u/.krad-ade/b/bin".to_owned()),
+        ];
+        let (path, rest) = split_path(&env);
+        assert_eq!(path, Some("/home/u/.krad-ade/b/bin"));
+        assert_eq!(
+            rest,
+            vec![("KRAD_ADE_ENDPOINT".to_owned(), "127.0.0.1:1".to_owned())]
+        );
     }
 }
