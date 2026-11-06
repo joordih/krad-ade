@@ -4019,6 +4019,7 @@ dependencies = [
  "ratex-svg",
  "ratex-types",
  "raw-window-handle",
+ "sha2 0.10.9",
  "tracing",
  "ureq",
 ]
