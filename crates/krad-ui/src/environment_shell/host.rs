@@ -90,6 +90,26 @@ impl EnvironmentShell {
             .is_some_and(|live| live.link.is_local() || live.host.is_connected())
     }
 
+    pub(super) fn connect_worker_hosts(&mut self, cx: &mut Context<Self>) {
+        let with_workers: Vec<EnvironmentName> = self
+            .envs
+            .iter()
+            .filter(|(_, live)| !live.link.is_local() && live.data.has_open_workers())
+            .map(|(name, _)| name.clone())
+            .collect();
+        for env in with_workers {
+            self.show_host(&env, cx);
+        }
+    }
+
+    pub(in crate::environment_shell) fn runs_in_background(&self, env: &EnvironmentName) -> bool {
+        *env != self.active
+            && self
+                .envs
+                .get(env)
+                .is_some_and(|live| live.host.is_connected() && live.data.has_open_workers())
+    }
+
     pub(super) fn show_host(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
         let connects = self
             .envs

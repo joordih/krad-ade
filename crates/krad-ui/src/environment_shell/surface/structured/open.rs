@@ -81,7 +81,25 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let env = self.active.clone();
+        let background: Vec<EnvironmentName> = self
+            .envs
+            .iter()
+            .filter(|(_, live)| !live.pending_chats.is_empty())
+            .map(|(name, _)| name.clone())
+            .filter(|name| self.runs_in_background(name))
+            .collect();
+        let active = self.active.clone();
+        for env in std::iter::once(active).chain(background) {
+            self.ensure_structured_chats_of(env, window, cx);
+        }
+    }
+
+    fn ensure_structured_chats_of(
+        &mut self,
+        env: EnvironmentName,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(live) = self.envs.get_mut(&env) else {
             return;
         };

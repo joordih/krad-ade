@@ -101,6 +101,15 @@ impl EnvironmentData {
     }
 
     #[must_use]
+    pub fn has_open_workers(&self) -> bool {
+        self.sessions
+            .iter()
+            .filter_map(|session| session.lead.as_ref())
+            .flat_map(|lead| &lead.workers)
+            .any(|worker| worker.session.is_some())
+    }
+
+    #[must_use]
     pub fn workers_closing_with(&self, terminal: TerminalId) -> Vec<TerminalId> {
         self.session_led_by(terminal)
             .map_or_else(Vec::new, |lead| self.open_workers(lead))
@@ -233,7 +242,9 @@ mod tests {
             node.resume = Some(resume.clone());
         }
         let opened = environment.open_worker_session(worker, spawn(lead));
+        assert!(environment.has_open_workers());
         assert!(environment.retire_worker(worker));
+        assert!(!environment.has_open_workers());
         assert!(opened.and_then(|id| environment.session(id)).is_none());
         assert_eq!(environment.open_workers(lead), Vec::<TerminalId>::new());
         let reopen = environment
