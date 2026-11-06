@@ -42,7 +42,10 @@ fn agent_programs(acp_agents: &[AcpAgent]) -> Vec<&str> {
 }
 
 fn presets_on_host(link: &HostLink, acp_agents: &[AcpAgent]) -> Vec<AgentPreset> {
-    let found = host_programs(link, &agent_programs(acp_agents)).unwrap_or_default();
+    let found = host_programs(link, &agent_programs(acp_agents)).unwrap_or_else(|error| {
+        tracing::warn!(%error, "could not look for agent CLIs on the host");
+        Vec::new()
+    });
     presets_found(acp_agents, |program| found.contains(&program))
 }
 

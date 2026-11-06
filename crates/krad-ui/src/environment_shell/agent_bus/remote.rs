@@ -17,6 +17,7 @@ const BUILD_PROFILES: [&str; 2] = ["release", "debug"];
 const PATH_VAR: &str = "PATH";
 const SLUG_ESCAPE: char = '_';
 const SCRIPT_SHEBANG: &str = "#!/bin/sh";
+const BUILD_HOST_CLI: &str = "just agents-linux";
 
 pub(in crate::environment_shell) struct RemoteBus {
     forward: RemoteForward,
@@ -56,9 +57,10 @@ pub(in crate::environment_shell) enum RemoteBusError {
 impl fmt::Display for RemoteBusError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NoBundledCli(platform) => {
-                write!(f, "this build has no {CLI_PROGRAM} for {platform} hosts")
-            }
+            Self::NoBundledCli(platform) => write!(
+                f,
+                "this build has no {CLI_PROGRAM} for {platform} hosts; run `{BUILD_HOST_CLI}` and reconnect"
+            ),
             Self::Host(error) => error.fmt(f),
             Self::Bundle(error) => write!(f, "could not read the bundled {CLI_PROGRAM}: {error}"),
         }
