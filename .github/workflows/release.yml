@@ -11,34 +11,91 @@ env:
   GH_TOKEN: ${{ github.token }}
   KRAD_GITHUB_CLIENT_ID: ${{ secrets.KRAD_GITHUB_CLIENT_ID }}
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   version:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.read.outputs.version }}
+      version: ${{ steps.bump.outputs.version }}
+      sha: ${{ steps.commit.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
-      - id: read
-        name: Read the version and check it is not released yet
+        with:
+          ref: ${{ github.ref }}
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+      - id: bump
+        name: Bump the patch version, rolling over to the next minor after 9
         run: |
-          version=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
+          last_patch=9
+          current=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
+          IFS=. read -r major minor patch <<< "$current"
+          patch=$((patch + 1))
+          if [ "$patch" -gt "$last_patch" ]; then
+            patch=0
+            minor=$((minor + 1))
+          fi
+          version="$major.$minor.$patch"
           if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::v$version is already released; bump the version in Cargo.toml"
+            echo "::error::v$version is already released"
             exit 1
           fi
+          echo "Releasing $version after $current"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Write the version to Cargo.toml and Cargo.lock
+        env:
+          CURRENT: ${{ steps.bump.outputs.current }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          sed -i "0,/^version = \"$CURRENT\"/s//version = \"$VERSION\"/" Cargo.toml
+          members=$(grep -l '^version.workspace = true' crates/*/Cargo.toml \
+            | xargs -n1 grep -m1 '^name = ' | cut -d '"' -f2)
+          python3 - "$CURRENT" "$VERSION" $members <<'EOF'
+          import re
+          import sys
+
+          current, version, *members = sys.argv[1:]
+          names = set(members)
+          with open("Cargo.lock") as lock:
+              blocks = lock.read().split("[[package]]")
+          for index, block in enumerate(blocks):
+              name = re.search(r'^name = "([^"]+)"', block, re.MULTILINE)
+              if name and name.group(1) in names:
+                  blocks[index] = block.replace(f'version = "{current}"', f'version = "{version}"', 1)
+          with open("Cargo.lock", "w") as lock:
+              lock.write("[[package]]".join(blocks))
+          EOF
+          git diff --stat
+      - name: Check the lockfile still matches
+        run: cargo metadata --locked --format-version 1 > /dev/null
+      - id: commit
+        name: Commit the release version to main
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Release $VERSION"
+          git push origin "HEAD:$GITHUB_REF_NAME"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   linux-agents:
     needs: version
     uses: ./.github/workflows/linux-agents.yml
     with:
       upload: true
+      ref: ${{ needs.version.outputs.sha }}
 
   linux:
     needs: [version, linux-agents]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.sha }}
       - name: Install GPUI's build dependencies
         run: |
           sudo apt-get update
@@ -89,6 +146,8 @@ jobs:
       PKG_CONFIG: pkgconf
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.sha }}
       - uses: msys2/setup-msys2@v2
         id: msys2
         with:
@@ -137,6 +196,8 @@ jobs:
       APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.sha }}
       - uses: taiki-e/install-action@v2
         with:
           tool: just
@@ -271,5 +332,5 @@ jobs:
           rm "$key"
       - run: |
           version=${{ needs.version.outputs.version }}
-          gh release create "v$version" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+          gh release create "v$version" --repo "$GITHUB_REPOSITORY" --target "${{ needs.version.outputs.sha }}" \
             --title "Krad ADE $version" --generate-notes krad-ade-* latest.json latest.json.sig
