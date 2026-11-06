@@ -53,6 +53,11 @@ impl RemoteLink {
     }
 
     #[must_use]
+    pub fn has_login_env(&self) -> bool {
+        lock(&self.login_env).is_some()
+    }
+
+    #[must_use]
     pub fn login_var(&self, name: &str) -> Option<String> {
         lock(&self.login_env).as_ref()?.vars.get(name).cloned()
     }

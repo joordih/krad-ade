@@ -20,6 +20,7 @@ pub use tools::HostTools;
 use gpui_kit::{AnyElement, AppContext as _, Context, Window};
 use krad_domain::{EnvironmentName, Host, TerminalId};
 use krad_host::{HostContext, HostError, HostLink, HostPlatform, HOST_CLI_PROGRAM};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
@@ -30,6 +31,8 @@ use super::sessions::Launch;
 use super::terminal_card::home_dir;
 use super::{live_meta, EnvironmentShell};
 
+const LOGIN_ENV_MISSING: &str =
+    "Could not read the login environment; agent CLIs set up in .bashrc or .zprofile may not be found on";
 const SIGN_IN_LABEL: &str = "Sign in";
 const SIGN_IN_UNAVAILABLE: &str = "This build cannot open an SSH sign-in terminal";
 const SIGN_IN_NOT_KEPT: &str =
@@ -52,6 +55,7 @@ pub(super) enum HostDialog {
 pub(super) struct HostUi {
     pub(super) dialog: HostDialog,
     prompts: sign_in::PromptInbox,
+    login_env_missing_told: HashSet<Host>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -250,9 +254,28 @@ impl EnvironmentShell {
         if !shared {
             self.opencode.hosts.remove(&host);
         }
+        self.tell_missing_login_env(env);
         self.detect_host_agents(env, cx);
         self.prepare_remote_bus(env, cx);
         self.finish_host_connection(env, cx);
+    }
+
+    fn tell_missing_login_env(&mut self, env: &EnvironmentName) {
+        let Some(live) = self.envs.get(env) else {
+            return;
+        };
+        let HostLink::Remote(ssh) = &live.link else {
+            return;
+        };
+        if ssh.has_login_env() {
+            return;
+        }
+        let host = live.data.host.clone();
+        let destination = host.to_string();
+        if !self.hosts.login_env_missing_told.insert(host) {
+            return;
+        }
+        self.push_toast(format!("{LOGIN_ENV_MISSING} {destination}"));
     }
 
     fn finish_host_connection(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
