@@ -87,7 +87,7 @@ impl EnvironmentShell {
         };
         let caller = Caller::Git(env.as_str().to_owned());
         if !live.link.is_local() {
-            return live.remote_bus.as_ref().map_or(AskpassPlan::Off, |remote| {
+            return live.remote_bus.ready().map_or(AskpassPlan::Off, |remote| {
                 let (program, vars) = remote.askpass(&caller);
                 AskpassPlan::Ready(Askpass::new(program, vars))
             });

@@ -319,6 +319,7 @@ impl EnvironmentShell {
         }
         let active = shell.active.clone();
         shell.show_host(&active, cx);
+        shell.connect_worker_hosts(cx);
         shell.pump_task = Some(Self::start_pump(pump_rx, cx));
         shell.start_loading(cx);
         shell

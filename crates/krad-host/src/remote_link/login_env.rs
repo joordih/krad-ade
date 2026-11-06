@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use super::{lock, RemoteLink};
@@ -41,9 +42,24 @@ pub(crate) fn parse(output: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+pub(crate) struct LoginEnv {
+    file: PathBuf,
+    vars: HashMap<String, String>,
+}
+
 impl RemoteLink {
     pub(crate) fn login_env_file(&self) -> Option<PathBuf> {
-        lock(&self.login_env).clone()
+        lock(&self.login_env).as_ref().map(|env| env.file.clone())
+    }
+
+    #[must_use]
+    pub fn has_login_env(&self) -> bool {
+        lock(&self.login_env).is_some()
+    }
+
+    #[must_use]
+    pub fn login_var(&self, name: &str) -> Option<String> {
+        lock(&self.login_env).as_ref()?.vars.get(name).cloned()
     }
 
     /// # Errors
@@ -71,7 +87,10 @@ impl RemoteLink {
             FileMode::PRIVATE_FILE,
         )?;
         tracing::debug!(vars = vars.len(), "captured the host's login environment");
-        *lock(&self.login_env) = Some(file);
+        *lock(&self.login_env) = Some(LoginEnv {
+            file,
+            vars: vars.into_iter().collect(),
+        });
         Ok(())
     }
 }

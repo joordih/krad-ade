@@ -174,7 +174,7 @@ impl EnvironmentShell {
         session: LiveSession,
         cx: &mut Context<Self>,
     ) -> Option<TerminalId> {
-        let preset = self.default_chat_harness();
+        let preset = self.default_chat_harness(env);
         let spec = NodeSpec {
             kind: NodeKind::Chat,
             harness: Some(preset),
@@ -225,10 +225,10 @@ impl EnvironmentShell {
         Some(id)
     }
 
-    fn default_chat_harness(&self) -> AgentPreset {
+    fn default_chat_harness(&self, env: &EnvironmentName) -> AgentPreset {
         AgentPreset::chat_harnesses(&self.settings.acp.all_agents())
             .into_iter()
-            .find(|preset| self.chats_on(*preset))
+            .find(|preset| self.chats_on(env, None, *preset))
             .unwrap_or(DEFAULT_CHAT_HARNESS)
     }
 

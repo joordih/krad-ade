@@ -155,6 +155,9 @@ impl EnvironmentShell {
         else {
             return Ok(());
         };
+        if self.awaits_remote_bus(env) {
+            return Err(StartError::Waiting);
+        }
         let backend = match harness {
             AgentPreset::ClaudeCode => ChatBackend::Claude(self.live_config(env, id, harness)?),
             AgentPreset::Codex => ChatBackend::Codex(self.live_config(env, id, harness)?),

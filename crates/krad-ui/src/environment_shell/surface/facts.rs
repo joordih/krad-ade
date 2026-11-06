@@ -1,6 +1,7 @@
 use krad_agents::AgentStatus;
 use krad_chat::{ModelOffer, ModelSource};
-use krad_domain::{AgentPreset, Effort, ModelId, TerminalId};
+use krad_domain::{AgentPreset, Effort, EnvironmentName, ModelId, TerminalId};
+use std::path::Path;
 
 use super::super::model_picker::ModelChoice;
 use super::super::EnvironmentShell;
@@ -157,13 +158,19 @@ impl StructuredChat {
 }
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn chats_on(&self, harness: AgentPreset) -> bool {
+    pub(in crate::environment_shell) fn chats_on(
+        &self,
+        env: &EnvironmentName,
+        root: Option<&Path>,
+        harness: AgentPreset,
+    ) -> bool {
         match harness {
             AgentPreset::Gateway => self.gateway_ready(),
-            AgentPreset::ClaudeCode | AgentPreset::Codex | AgentPreset::Opencode => {
-                self.native_agents.contains(&harness)
-            }
-            AgentPreset::Shell | AgentPreset::Acp(_) => false,
+            AgentPreset::ClaudeCode
+            | AgentPreset::Codex
+            | AgentPreset::Opencode
+            | AgentPreset::Acp(_) => self.agents_for(env, root).contains(&harness),
+            AgentPreset::Shell => false,
         }
     }
 
@@ -231,10 +238,13 @@ impl EnvironmentShell {
             Backend::Structured(structured) => {
                 let harness = structured.harness;
                 let fresh = chat.messages.is_empty() && structured.is_fresh();
+                let root = self.active_group().map(|group| group.root.as_path());
                 let others = if fresh {
                     AgentPreset::chat_harnesses(&self.settings.acp.all_agents())
                         .into_iter()
-                        .filter(|other| *other != harness && self.chats_on(*other))
+                        .filter(|other| {
+                            *other != harness && self.chats_on(&self.active, root, *other)
+                        })
                         .flat_map(|other| self.harness_picks(other, None))
                         .collect()
                 } else {

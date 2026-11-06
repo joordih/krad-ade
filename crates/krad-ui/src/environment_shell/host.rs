@@ -20,15 +20,19 @@ pub use tools::HostTools;
 use gpui_kit::{AnyElement, AppContext as _, Context, Window};
 use krad_domain::{EnvironmentName, Host, TerminalId};
 use krad_host::{HostContext, HostError, HostLink, HostPlatform, HOST_CLI_PROGRAM};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use super::activity::{TerminalsTab, UtilityTab};
+use super::agent_bus::RemoteBusSlot;
 use super::sessions::Launch;
 use super::terminal_card::home_dir;
 use super::{live_meta, EnvironmentShell};
 
+const LOGIN_ENV_MISSING: &str =
+    "Could not read the login environment; agent CLIs set up in .bashrc or .zprofile may not be found on";
 const SIGN_IN_LABEL: &str = "Sign in";
 const SIGN_IN_UNAVAILABLE: &str = "This build cannot open an SSH sign-in terminal";
 const SIGN_IN_NOT_KEPT: &str =
@@ -51,6 +55,7 @@ pub(super) enum HostDialog {
 pub(super) struct HostUi {
     pub(super) dialog: HostDialog,
     prompts: sign_in::PromptInbox,
+    login_env_missing_told: HashSet<Host>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,6 +92,26 @@ impl EnvironmentShell {
         self.envs
             .get(env)
             .is_some_and(|live| live.link.is_local() || live.host.is_connected())
+    }
+
+    pub(super) fn connect_worker_hosts(&mut self, cx: &mut Context<Self>) {
+        let with_workers: Vec<EnvironmentName> = self
+            .envs
+            .iter()
+            .filter(|(_, live)| !live.link.is_local() && live.data.has_open_workers())
+            .map(|(name, _)| name.clone())
+            .collect();
+        for env in with_workers {
+            self.show_host(&env, cx);
+        }
+    }
+
+    pub(in crate::environment_shell) fn runs_in_background(&self, env: &EnvironmentName) -> bool {
+        *env != self.active
+            && self
+                .envs
+                .get(env)
+                .is_some_and(|live| live.host.is_connected() && live.data.has_open_workers())
     }
 
     pub(super) fn show_host(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
@@ -220,7 +245,7 @@ impl EnvironmentShell {
             .iter()
             .map(|group| group.root.clone())
             .collect();
-        live.remote_bus = None;
+        live.remote_bus = RemoteBusSlot::Absent;
         let host = live.data.host.clone();
         let shared = self.envs.iter().any(|(name, other)| {
             name != env && other.data.host == host && other.host.is_connected()
@@ -229,10 +254,28 @@ impl EnvironmentShell {
         if !shared {
             self.opencode.hosts.remove(&host);
         }
+        self.tell_missing_login_env(env);
         self.detect_host_agents(env, cx);
-        if !self.prepare_remote_bus(env, cx) {
-            self.finish_host_connection(env, cx);
+        self.prepare_remote_bus(env, cx);
+        self.finish_host_connection(env, cx);
+    }
+
+    fn tell_missing_login_env(&mut self, env: &EnvironmentName) {
+        let Some(live) = self.envs.get(env) else {
+            return;
+        };
+        let HostLink::Remote(ssh) = &live.link else {
+            return;
+        };
+        if ssh.has_login_env() {
+            return;
         }
+        let host = live.data.host.clone();
+        let destination = host.to_string();
+        if !self.hosts.login_env_missing_told.insert(host) {
+            return;
+        }
+        self.push_toast(format!("{LOGIN_ENV_MISSING} {destination}"));
     }
 
     fn finish_host_connection(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
@@ -337,13 +380,15 @@ impl EnvironmentShell {
             .filter_map(|(name, live)| {
                 let next = live.host.dropped(now)?;
                 live.host = next;
-                live.remote_bus = None;
+                live.remote_bus = RemoteBusSlot::Absent;
                 Some((name.clone(), live.data.host.to_string()))
             })
             .collect();
         for live in self.envs.values_mut() {
-            if live.remote_bus.as_mut().is_some_and(|bus| !bus.is_alive()) {
-                live.remote_bus = None;
+            if let RemoteBusSlot::Ready(bus) = &mut live.remote_bus {
+                if !bus.is_alive() {
+                    live.remote_bus = RemoteBusSlot::Absent;
+                }
             }
         }
         for (_, destination) in &dropped {

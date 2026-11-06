@@ -5,6 +5,7 @@ use krad_host::{
     FileMode, HostCommand, HostError, HostLink, HostPlatform, RemoteForward, RemoteLink,
     HOST_CLI_BUILD, LOOPBACK,
 };
+use sha2::{Digest, Sha256};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -17,12 +18,40 @@ const BUILD_PROFILES: [&str; 2] = ["release", "debug"];
 const PATH_VAR: &str = "PATH";
 const SLUG_ESCAPE: char = '_';
 const SCRIPT_SHEBANG: &str = "#!/bin/sh";
+const BUILD_HOST_CLI: &str = "just agents-linux";
+const DIGEST_SUFFIX: &str = ".sha256";
+const STAGED_EXTENSION: &str = "new";
+const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+const NIBBLE_BITS: u8 = 4;
+const LOW_NIBBLE: u8 = 0x0f;
+const DIGEST_LIMIT: u64 = 128;
 
 pub(in crate::environment_shell) struct RemoteBus {
     forward: RemoteForward,
     bin_dir: PathBuf,
     token_file: PathBuf,
     pub(in crate::environment_shell) claude_settings: PathBuf,
+}
+
+#[derive(Default)]
+pub(in crate::environment_shell) enum RemoteBusSlot {
+    #[default]
+    Absent,
+    Preparing,
+    Ready(RemoteBus),
+}
+
+impl RemoteBusSlot {
+    pub(in crate::environment_shell) const fn ready(&self) -> Option<&RemoteBus> {
+        match self {
+            Self::Ready(bus) => Some(bus),
+            Self::Absent | Self::Preparing => None,
+        }
+    }
+
+    pub(in crate::environment_shell) const fn is_preparing(&self) -> bool {
+        matches!(self, Self::Preparing)
+    }
 }
 
 #[derive(Debug)]
@@ -35,9 +64,10 @@ pub(in crate::environment_shell) enum RemoteBusError {
 impl fmt::Display for RemoteBusError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NoBundledCli(platform) => {
-                write!(f, "this build has no {CLI_PROGRAM} for {platform} hosts")
-            }
+            Self::NoBundledCli(platform) => write!(
+                f,
+                "this build has no {CLI_PROGRAM} for {platform} hosts; run `{BUILD_HOST_CLI}` and reconnect"
+            ),
             Self::Host(error) => error.fmt(f),
             Self::Bundle(error) => write!(f, "could not read the bundled {CLI_PROGRAM}: {error}"),
         }
@@ -62,6 +92,7 @@ pub(in crate::environment_shell) struct RemoteBusPlan {
     pub(in crate::environment_shell) slug: String,
     pub(in crate::environment_shell) local_port: u16,
     pub(in crate::environment_shell) token: String,
+    pub(in crate::environment_shell) preferred_port: Option<u16>,
 }
 
 impl RemoteBusPlan {
@@ -70,6 +101,7 @@ impl RemoteBusPlan {
         link: HostLink,
         environment: &str,
         endpoint: &Endpoint,
+        preferred_port: Option<u16>,
     ) -> Self {
         Self {
             ssh,
@@ -77,6 +109,7 @@ impl RemoteBusPlan {
             slug: environment_slug(environment),
             local_port: endpoint.address.port(),
             token: member_token(endpoint).to_owned(),
+            preferred_port,
         }
     }
 
@@ -91,12 +124,20 @@ impl RemoteBusPlan {
             .ok_or(RemoteBusError::Host(HostError::NotConnected))?;
         let bin_dir = layout.bin_dir();
         let cli = bin_dir.join(CLI_PROGRAM);
-        if !self.has_current_cli(&cli) {
-            let bundled = bundled_cli(platform).ok_or(RemoteBusError::NoBundledCli(platform))?;
-            self.link
-                .create_dir_with_mode(&bin_dir, FileMode::PRIVATE_DIR)?;
-            self.link.write(&cli, &std::fs::read(bundled)?)?;
-            self.link.set_permissions(&cli, FileMode::EXECUTABLE)?;
+        let digest_file = bin_dir.join(format!("{CLI_PROGRAM}{DIGEST_SUFFIX}"));
+        match bundled_cli(platform) {
+            Some(bundled) => {
+                let binary = std::fs::read(bundled)?;
+                let digest = digest_hex(&binary);
+                if !self.has_cli_with_digest(&cli, &digest_file, &digest) {
+                    self.link
+                        .create_dir_with_mode(&bin_dir, FileMode::PRIVATE_DIR)?;
+                    self.replace_cli(&cli, &binary)?;
+                    self.link.write(&digest_file, digest.as_bytes())?;
+                }
+            }
+            None if self.has_current_cli(&cli) => {}
+            None => return Err(RemoteBusError::NoBundledCli(platform)),
         }
         self.link.write_with_mode(
             &bin_dir.join(ASKPASS_PROGRAM),
@@ -115,13 +156,33 @@ impl RemoteBusPlan {
             claude_hook_settings(CLI_PROGRAM).as_bytes(),
             FileMode::PRIVATE_FILE,
         )?;
-        let forward = self.ssh.forward_remote(self.local_port)?;
+        let forward = self
+            .ssh
+            .forward_remote(self.local_port, self.preferred_port)?;
         Ok(RemoteBus {
             forward,
             bin_dir,
             token_file,
             claude_settings,
         })
+    }
+
+    fn replace_cli(&self, cli: &Path, binary: &[u8]) -> Result<(), HostError> {
+        let staged = cli.with_extension(STAGED_EXTENSION);
+        self.link.write(&staged, binary)?;
+        self.link.set_permissions(&staged, FileMode::EXECUTABLE)?;
+        if self.link.rename(&staged, cli).is_ok() {
+            return Ok(());
+        }
+        if self.link.exists(cli) {
+            self.link.remove_file(cli)?;
+        }
+        self.link.rename(&staged, cli)
+    }
+
+    fn has_cli_with_digest(&self, cli: &Path, digest_file: &Path, digest: &str) -> bool {
+        let uploaded = self.link.read(digest_file, DIGEST_LIMIT);
+        uploaded.is_ok_and(|uploaded| uploaded == digest.as_bytes()) && self.has_current_cli(cli)
     }
 
     fn has_current_cli(&self, cli: &Path) -> bool {
@@ -159,9 +220,26 @@ impl RemoteBus {
         )
     }
 
+    pub(in crate::environment_shell) const fn remote_port(&self) -> u16 {
+        self.forward.remote_port
+    }
+
     pub(in crate::environment_shell) fn is_alive(&mut self) -> bool {
         self.forward.is_alive()
     }
+}
+
+fn digest_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .flat_map(|byte| {
+            [
+                HEX_DIGITS[usize::from(byte >> NIBBLE_BITS)],
+                HEX_DIGITS[usize::from(byte & LOW_NIBBLE)],
+            ]
+        })
+        .map(char::from)
+        .collect()
 }
 
 fn askpass_script() -> String {
@@ -224,6 +302,22 @@ mod tests {
             askpass_script(),
             "#!/bin/sh\nexec \"${0%/*}/krad-ade-agents\" askpass \"$@\"\n"
         );
+    }
+
+    #[test]
+    fn a_cli_is_told_apart_by_the_digest_of_its_bytes() {
+        assert_eq!(
+            digest_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_ne!(digest_hex(b"build one"), digest_hex(b"build two"));
+    }
+
+    #[test]
+    fn only_a_preparing_bus_holds_agents_back() {
+        assert!(RemoteBusSlot::Preparing.is_preparing());
+        assert!(!RemoteBusSlot::Absent.is_preparing());
+        assert!(RemoteBusSlot::Preparing.ready().is_none());
     }
 
     #[test]

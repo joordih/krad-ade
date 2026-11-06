@@ -2,9 +2,12 @@ use krad_domain::{
     expand_variables, AcpAgentStart, McpSecret, McpServerStart, McpServerState, McpTransport,
     McpValue, McpVariable, McpVariableName,
 };
+use krad_host::{HostLink, RemoteLink};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use thiserror::Error;
+
+use crate::process::Runner;
 
 use crate::acp::setup::{
     EnvVariable, HttpHeader, McpCapabilities, McpServer, RemoteMcpServer, StdioMcpServer,
@@ -23,24 +26,58 @@ pub(super) struct HandedServers {
     pub(super) skipped: Vec<String>,
 }
 
-fn from_env(name: &str) -> Option<String> {
-    std::env::var(name).ok()
+#[derive(Clone, Copy)]
+pub enum Variables<'a> {
+    Here,
+    OnHost(&'a RemoteLink),
 }
 
-fn expanded(text: &str) -> String {
-    expand_variables(text, from_env).into_owned()
+impl<'a> From<&'a HostLink> for Variables<'a> {
+    fn from(link: &'a HostLink) -> Self {
+        match link {
+            HostLink::Remote(ssh) => Self::OnHost(ssh),
+            HostLink::Local => Self::Here,
+        }
+    }
+}
+
+impl<'a> From<&'a Runner> for Variables<'a> {
+    fn from(runner: &'a Runner) -> Self {
+        match runner {
+            Runner::Ssh { link, .. } => Self::from(link),
+            Runner::Native(_) | Runner::Wsl { .. } => Self::Here,
+        }
+    }
+}
+
+impl Variables<'_> {
+    fn value(self, name: &str) -> Option<String> {
+        let found = match self {
+            Self::Here => std::env::var(name).ok(),
+            Self::OnHost(ssh) => ssh.login_var(name),
+        };
+        if found.is_none() {
+            tracing::debug!(variable = name, "an MCP variable is not set where it runs");
+        }
+        found
+    }
+
+    fn expanded(self, text: &str) -> String {
+        expand_variables(text, |name| self.value(name)).into_owned()
+    }
 }
 
 fn resolved(
     owner: &str,
     variables: &[McpVariable],
     secrets: &HashMap<McpVariableName, McpSecret>,
+    from: Variables<'_>,
 ) -> Result<Vec<(String, String)>, MissingSecret> {
     variables
         .iter()
         .map(|variable| {
             let value = match &variable.value {
-                McpValue::Plain(text) => expanded(text),
+                McpValue::Plain(text) => from.expanded(text),
                 McpValue::Secret => secrets
                     .get(&variable.name)
                     .map(|secret| secret.expose().to_owned())
@@ -57,21 +94,25 @@ fn resolved(
 /// # Errors
 ///
 /// Fails when a secret value of the agent's env is not among its read secrets.
-pub fn acp_agent_env(start: &AcpAgentStart) -> Result<Vec<(String, String)>, MissingSecret> {
-    resolved(&start.agent.name, &start.agent.env, &start.secrets)
+pub fn acp_agent_env(
+    start: &AcpAgentStart,
+    from: Variables<'_>,
+) -> Result<Vec<(String, String)>, MissingSecret> {
+    resolved(&start.agent.name, &start.agent.env, &start.secrets, from)
 }
 
 fn handed(
     start: &McpServerStart,
     mcp: McpCapabilities,
+    from: Variables<'_>,
 ) -> Result<Option<McpServer>, MissingSecret> {
     let owner = start.server.name.to_string();
     Ok(Some(match &start.server.transport {
         McpTransport::Stdio { command, args, env } => McpServer::Stdio(StdioMcpServer {
             name: owner.clone(),
-            command: PathBuf::from(expanded(command)),
-            args: args.iter().map(|arg| expanded(arg)).collect(),
-            env: resolved(&owner, env, &start.secrets)?
+            command: PathBuf::from(from.expanded(command)),
+            args: args.iter().map(|arg| from.expanded(arg)).collect(),
+            env: resolved(&owner, env, &start.secrets, from)?
                 .into_iter()
                 .map(|(name, value)| EnvVariable { name, value })
                 .collect(),
@@ -79,8 +120,8 @@ fn handed(
         McpTransport::Http { .. } if !mcp.http => return Ok(None),
         McpTransport::Http { url, headers } => McpServer::Http(RemoteMcpServer {
             name: owner.clone(),
-            url: expanded(url.as_str()),
-            headers: resolved(&owner, headers, &start.secrets)?
+            url: from.expanded(url.as_str()),
+            headers: resolved(&owner, headers, &start.secrets, from)?
                 .into_iter()
                 .map(|(name, value)| HttpHeader { name, value })
                 .collect(),
@@ -88,13 +129,17 @@ fn handed(
     }))
 }
 
-pub(super) fn handed_servers(starts: &[McpServerStart], mcp: McpCapabilities) -> HandedServers {
+pub(super) fn handed_servers(
+    starts: &[McpServerStart],
+    mcp: McpCapabilities,
+    from: Variables<'_>,
+) -> HandedServers {
     let mut handed_over = HandedServers::default();
     for start in starts
         .iter()
         .filter(|start| start.server.state == McpServerState::Enabled)
     {
-        match handed(start, mcp) {
+        match handed(start, mcp, from) {
             Ok(Some(server)) => handed_over.servers.push(server),
             Ok(None) => handed_over.skipped.push(start.server.name.to_string()),
             Err(missing) => handed_over.skipped.push(missing.to_string()),
@@ -163,7 +208,7 @@ mod tests {
             None,
         );
         let starts = [stdio, remote];
-        let local_only = handed_servers(&starts, McpCapabilities::default());
+        let local_only = handed_servers(&starts, McpCapabilities::default(), Variables::Here);
         assert!(matches!(
             local_only.servers.as_slice(),
             [McpServer::Stdio(StdioMcpServer { env, .. })] if env[0].value == "s3cret"
@@ -175,8 +220,23 @@ mod tests {
                 http: true,
                 sse: false,
             },
+            Variables::Here,
         );
         assert_eq!(both.servers.len(), 2);
+    }
+
+    #[test]
+    fn variables_of_a_host_come_from_its_login_environment_not_this_computer() {
+        let destination = "dev@box"
+            .parse()
+            .unwrap_or_else(|_| unreachable!("a valid ssh destination"));
+        let link = HostLink::new(
+            &krad_domain::Host::Ssh { destination },
+            &krad_host::HostContext::default(),
+        );
+        assert!(matches!(Variables::from(&link), Variables::OnHost(_)));
+        assert_eq!(Variables::from(&link).expanded("${HOME}"), "${HOME}");
+        assert_ne!(Variables::Here.expanded("${HOME}"), "${HOME}");
     }
 
     #[test]
@@ -190,7 +250,7 @@ mod tests {
             },
             None,
         );
-        let handed_over = handed_servers(&[locked], McpCapabilities::default());
+        let handed_over = handed_servers(&[locked], McpCapabilities::default(), Variables::Here);
         assert_eq!(handed_over.servers, Vec::<McpServer>::new());
         assert!(handed_over.skipped[0].contains("TOKEN"));
     }

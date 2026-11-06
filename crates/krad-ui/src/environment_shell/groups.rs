@@ -42,7 +42,10 @@ fn agent_programs(acp_agents: &[AcpAgent]) -> Vec<&str> {
 }
 
 fn presets_on_host(link: &HostLink, acp_agents: &[AcpAgent]) -> Vec<AgentPreset> {
-    let found = host_programs(link, &agent_programs(acp_agents)).unwrap_or_default();
+    let found = host_programs(link, &agent_programs(acp_agents)).unwrap_or_else(|error| {
+        tracing::warn!(%error, "could not look for agent CLIs on the host");
+        Vec::new()
+    });
     presets_found(acp_agents, |program| found.contains(&program))
 }
 
@@ -57,6 +60,13 @@ impl EnvironmentShell {
             &self.active,
             self.active_group().map(|group| group.root.as_path()),
         )
+    }
+
+    pub(super) fn host_agents_known(&self, env: &EnvironmentName) -> bool {
+        self.envs.get(env).is_some_and(|live| {
+            live.link.is_local()
+                || (live.host.is_connected() && self.host_agents.contains_key(&live.data.host))
+        })
     }
 
     pub(super) fn agents_for(&self, env: &EnvironmentName, root: Option<&Path>) -> &[AgentPreset] {
@@ -102,6 +112,7 @@ impl EnvironmentShell {
             this.update(cx, |shell, cx| {
                 shell.host_agents.insert(host, installed);
                 shell.list_host_models(&env, cx);
+                shell.load_missing_histories(&env, cx);
                 let harnesses: Vec<AgentPreset> =
                     AgentPreset::listed(&shell.settings.acp.all_agents()).collect();
                 for harness in harnesses {

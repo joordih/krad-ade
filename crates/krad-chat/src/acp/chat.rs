@@ -29,7 +29,7 @@ use crate::control::LiveEvent;
 use crate::live::{BusVars, LiveHarness, LiveSession, Order};
 use crate::process::Runner;
 use process::AgentProcess;
-pub use servers::{acp_agent_env, MissingSecret};
+pub use servers::{acp_agent_env, MissingSecret, Variables};
 use worker::Worker;
 
 #[derive(Clone)]
@@ -171,7 +171,7 @@ fn connect(
     process: &AgentProcess,
     forward: Forward,
 ) -> Result<AcpConnection, Unstarted> {
-    let mut env = acp_agent_env(&config.agent)?;
+    let mut env = acp_agent_env(&config.agent, Variables::from(&config.runner))?;
     env.extend(config.bus_vars.0.iter().cloned());
     let pipes = process
         .launch(&config.runner, &config.cwd, &config.agent.agent.args, &env)

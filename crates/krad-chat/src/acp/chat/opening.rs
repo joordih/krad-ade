@@ -2,7 +2,7 @@ use krad_domain::{AcpAuthMethod, AcpSignIn};
 use std::time::Duration;
 
 use super::choices::Choices;
-use super::servers::handed_servers;
+use super::servers::{handed_servers, Variables};
 use super::Launch;
 use crate::acp::connection::{AcpConnection, AcpError};
 use crate::acp::ids::SessionId;
@@ -99,7 +99,11 @@ pub(super) fn open(
     capabilities: AgentCapabilities,
     opening: &Opening,
 ) -> Result<Opened, OpenFailure> {
-    let handed = handed_servers(&launch.mcp, capabilities.mcp_capabilities);
+    let handed = handed_servers(
+        &launch.mcp,
+        capabilities.mcp_capabilities,
+        Variables::from(&launch.runner),
+    );
     let opened = match opening {
         Opening::New => connection
             .new_session(&NewSessionRequest {

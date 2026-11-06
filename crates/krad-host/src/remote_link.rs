@@ -31,7 +31,7 @@ pub struct RemoteLink {
     open: Arc<AtomicBool>,
     home: OnceLock<PathBuf>,
     platform: OnceLock<HostPlatform>,
-    login_env: Mutex<Option<PathBuf>>,
+    login_env: Mutex<Option<login_env::LoginEnv>>,
     tools: MuxTools,
     mux: Mutex<Option<Arc<MuxCarrier>>>,
     machine: Option<MachineReach>,

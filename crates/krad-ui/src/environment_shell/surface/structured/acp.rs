@@ -1,9 +1,10 @@
 use gpui_kit::{AppContext as _, Context};
-use krad_chat::{acp_agent_env, AcpConfig, BusVars};
+use krad_chat::{acp_agent_env, AcpConfig, BusVars, Variables};
 use krad_domain::{
     AcpAgent, AcpAgentId, AcpAgentStart, AgentPreset, EnvironmentName, McpSecret, McpVariableName,
     TerminalId,
 };
+use krad_host::HostLink;
 use krad_store::find_acp_secret;
 use std::collections::HashMap;
 
@@ -37,9 +38,11 @@ fn read_secrets(agent: &AcpAgent) -> Result<AcpSecrets, String> {
 
 pub(in crate::environment_shell::surface) fn read_acp_env(
     agent: AcpAgent,
+    link: &HostLink,
 ) -> Result<Vec<(String, String)>, String> {
     let secrets = read_secrets(&agent)?;
-    acp_agent_env(&AcpAgentStart { agent, secrets }).map_err(|error| error.to_string())
+    acp_agent_env(&AcpAgentStart { agent, secrets }, Variables::from(link))
+        .map_err(|error| error.to_string())
 }
 
 impl EnvironmentShell {

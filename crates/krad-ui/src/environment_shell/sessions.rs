@@ -29,7 +29,50 @@ const HOST_NOT_READY_TEXT: &str = "Connect to the environment's host first";
 const RESTORE_MARKER: &str = "── restored session ──";
 const SCROLLBACK_CLEARED: &[u8] = b"\x1b[3J";
 
+pub(super) struct DeferredLaunch {
+    id: TerminalId,
+    launch: Launch,
+    cwd: Option<PathBuf>,
+    prefill: Vec<String>,
+}
+
 impl EnvironmentShell {
+    fn defer_launch(&mut self, env: &EnvironmentName, deferred: DeferredLaunch) {
+        let Some(live) = self.envs.get_mut(env) else {
+            return;
+        };
+        if live
+            .deferred_launches
+            .iter()
+            .any(|waiting| waiting.id == deferred.id)
+        {
+            return;
+        }
+        live.deferred_launches.push(deferred);
+    }
+
+    pub(super) fn start_deferred_launches(&mut self, env: &EnvironmentName) {
+        let Some(live) = self.envs.get_mut(env) else {
+            return;
+        };
+        let deferred = std::mem::take(&mut live.deferred_launches);
+        for DeferredLaunch {
+            id,
+            launch,
+            cwd,
+            prefill,
+        } in deferred
+        {
+            if self
+                .envs
+                .get(env)
+                .is_some_and(|live| live.data.nodes.iter().any(|node| node.id == id))
+            {
+                self.start_session(env, id, launch, cwd, &prefill);
+            }
+        }
+    }
+
     pub(super) fn spawn_missing_sessions(&mut self, env: &EnvironmentName) -> usize {
         if !self.host_ready(env) {
             return 0;
@@ -110,6 +153,29 @@ impl EnvironmentShell {
     }
 
     pub(super) fn start_session(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        launch: Launch,
+        cwd: Option<PathBuf>,
+        prefill: &[String],
+    ) {
+        if launch.harness().is_some() && self.awaits_remote_bus(env) {
+            self.defer_launch(
+                env,
+                DeferredLaunch {
+                    id,
+                    launch,
+                    cwd,
+                    prefill: prefill.to_vec(),
+                },
+            );
+            return;
+        }
+        self.spawn_session(env, id, launch, cwd, prefill);
+    }
+
+    fn spawn_session(
         &mut self,
         env: &EnvironmentName,
         id: TerminalId,

@@ -1,3 +1,4 @@
+use krad_host::HostLink;
 mod tray;
 
 use gpui_kit::{AppContext as _, Context};
@@ -144,7 +145,8 @@ impl EnvironmentShell {
                         program: agent.program.clone(),
                         args,
                     };
-                    Self::sign_in_with_agent_env(id, agent, command, env, retry, cx);
+                    let link = self.active_link();
+                    Self::sign_in_with_agent_env(id, agent, command, env, retry, link, cx);
                 }
             }
         }
@@ -176,7 +178,8 @@ impl EnvironmentShell {
             return;
         };
         if let Some(command) = agent.terminal_command() {
-            Self::sign_in_with_agent_env(id, agent, command, BTreeMap::new(), retry, cx);
+            let link = self.active_link();
+            Self::sign_in_with_agent_env(id, agent, command, BTreeMap::new(), retry, link, cx);
         }
     }
 
@@ -186,9 +189,10 @@ impl EnvironmentShell {
         command: CommandLine,
         method_env: BTreeMap<String, String>,
         retry: AcpAuthMethodId,
+        link: HostLink,
         cx: &mut Context<Self>,
     ) {
-        let reading = cx.background_spawn(async move { read_acp_env(agent) });
+        let reading = cx.background_spawn(async move { read_acp_env(agent, &link) });
         cx.spawn(async move |this, cx| {
             let agent_env = reading.await;
             this.update(cx, |shell, cx| {
