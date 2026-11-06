@@ -7,14 +7,17 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use super::{
-    activity, agent_bus, changes_tab, file_tab, host, surface, terminal_images, workers, Prompt,
+    activity, agent_bus, changes_tab, file_tab, host, sessions, surface, terminal_images, workers,
+    Prompt,
 };
 
 pub(super) struct LiveEnv {
     pub(super) data: EnvironmentData,
     pub(super) link: krad_host::HostLink,
     pub(super) host: host::HostState,
-    pub(super) remote_bus: Option<agent_bus::RemoteBus>,
+    pub(super) remote_bus: agent_bus::RemoteBusSlot,
+    pub(super) remote_bus_port: Option<u16>,
+    pub(super) deferred_launches: Vec<sessions::DeferredLaunch>,
     pub(super) sessions: HashMap<TerminalId, LiveSession>,
     pub(super) chats: HashMap<TerminalId, surface::SurfaceChat>,
     pub(super) focused: Option<TerminalId>,
@@ -59,7 +62,9 @@ impl LiveEnv {
         Self {
             link,
             host: host::HostState::default(),
-            remote_bus: None,
+            remote_bus: agent_bus::RemoteBusSlot::Absent,
+            remote_bus_port: None,
+            deferred_launches: Vec::new(),
             data,
             sessions: HashMap::new(),
             chats: HashMap::new(),

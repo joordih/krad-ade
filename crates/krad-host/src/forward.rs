@@ -123,6 +123,36 @@ fn free_local_port() -> Result<u16, HostError> {
 }
 
 impl RemoteLink {
+    fn forward_remote_on_master(
+        &self,
+        remote_port: u16,
+        local_port: u16,
+        wait: Duration,
+    ) -> Option<Result<RemoteForward, HostError>> {
+        let request = remote_spec(remote_port, local_port);
+        let open = self
+            .args
+            .mux_forward_args(Direction::Remote, &request, ForwardRequest::Open)?;
+        let mut command = quiet(&open);
+        command.stdout(Stdio::piped());
+        let opened = output_within(command, wait, Waited::Forward).and_then(|output| {
+            if !output.status.success() {
+                return Err(HostError::Forward(ForwardFailure::Rejected));
+            }
+            master_granted_port(remote_port, &String::from_utf8_lossy(&output.stdout))
+                .ok_or(HostError::Forward(ForwardFailure::NoPortAllocated))
+        });
+        Some(opened.map(|granted| RemoteForward {
+            remote_port: granted,
+            carrier: Carrier::Master(Box::new(Multiplexed {
+                args: self.args.clone(),
+                direction: Direction::Remote,
+                spec: request,
+                alive: self.liveness(),
+            })),
+        }))
+    }
+
     /// # Errors
     #[tracing::instrument(skip_all, fields(destination = %self.args.destination, remote_port))]
     pub fn forward_local(&self, remote_port: u16) -> Result<Forward, HostError> {
@@ -183,7 +213,11 @@ impl RemoteLink {
 
     /// # Errors
     #[tracing::instrument(skip_all, fields(destination = %self.args.destination, local_port))]
-    pub fn forward_remote(&self, local_port: u16) -> Result<RemoteForward, HostError> {
+    pub fn forward_remote(
+        &self,
+        local_port: u16,
+        preferred: Option<u16>,
+    ) -> Result<RemoteForward, HostError> {
         let wait = self.args.timeouts.forward.duration();
         if let Some(mux) = self.multiplexed() {
             let (forward, remote_port) = MuxForward::remote(&mux, local_port, wait)?;
@@ -193,29 +227,19 @@ impl RemoteLink {
             });
         }
         self.refuse_ssh()?;
-        let request = remote_spec(ANY_PORT, local_port);
-        if let Some(open) =
-            self.args
-                .mux_forward_args(Direction::Remote, &request, ForwardRequest::Open)
-        {
-            let mut command = quiet(&open);
-            command.stdout(Stdio::piped());
-            let output = output_within(command, wait, Waited::Forward)?;
-            if !output.status.success() {
-                return Err(HostError::Forward(ForwardFailure::Rejected));
+        if let Some(port) = preferred.filter(|port| *port != ANY_PORT) {
+            match self.forward_remote_on_master(port, local_port, wait) {
+                Some(Ok(forward)) => return Ok(forward),
+                Some(Err(error)) => {
+                    tracing::debug!(%error, port, "the host's previous bus port is taken");
+                }
+                None => {}
             }
-            let remote_port = master_allocated_port(&String::from_utf8_lossy(&output.stdout))
-                .ok_or(HostError::Forward(ForwardFailure::NoPortAllocated))?;
-            return Ok(RemoteForward {
-                remote_port,
-                carrier: Carrier::Master(Box::new(Multiplexed {
-                    args: self.args.clone(),
-                    direction: Direction::Remote,
-                    spec: request,
-                    alive: self.liveness(),
-                })),
-            });
         }
+        if let Some(forward) = self.forward_remote_on_master(ANY_PORT, local_port, wait) {
+            return forward;
+        }
+        let request = remote_spec(ANY_PORT, local_port);
         let mut child = quiet(&self.args.tunnel_args(Direction::Remote, &request)).spawn()?;
         let Some(stderr) = child.stderr.take() else {
             return Err(HostError::Forward(ForwardFailure::NoPortAllocated));
@@ -243,6 +267,13 @@ impl RemoteLink {
 
 fn master_allocated_port(stdout: &str) -> Option<u16> {
     stdout.trim().parse().ok().filter(|port| *port != ANY_PORT)
+}
+
+fn master_granted_port(requested: u16, stdout: &str) -> Option<u16> {
+    if requested == ANY_PORT {
+        return master_allocated_port(stdout);
+    }
+    Some(requested)
 }
 
 fn tunnel_allocated_port(line: &str) -> Option<u16> {
@@ -278,6 +309,13 @@ mod tests {
         assert_eq!(master_allocated_port("53705\n"), Some(53_705));
         assert_eq!(master_allocated_port(""), None);
         assert_eq!(master_allocated_port("0"), None);
+    }
+
+    #[test]
+    fn a_requested_port_is_granted_as_asked_and_a_dynamic_one_as_printed() {
+        assert_eq!(master_granted_port(41_000, ""), Some(41_000));
+        assert_eq!(master_granted_port(ANY_PORT, "53705\n"), Some(53_705));
+        assert_eq!(master_granted_port(ANY_PORT, ""), None);
     }
 
     #[test]

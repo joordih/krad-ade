@@ -74,7 +74,7 @@ fn a_machine_never_falls_back_to_ssh() -> TestResult {
         Err(HostError::NotConnected)
     ));
     assert!(matches!(
-        ssh.forward_remote(80),
+        ssh.forward_remote(80, None),
         Err(HostError::NotConnected)
     ));
     Ok(())

@@ -25,6 +25,7 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use super::activity::{TerminalsTab, UtilityTab};
+use super::agent_bus::RemoteBusSlot;
 use super::sessions::Launch;
 use super::terminal_card::home_dir;
 use super::{live_meta, EnvironmentShell};
@@ -220,7 +221,7 @@ impl EnvironmentShell {
             .iter()
             .map(|group| group.root.clone())
             .collect();
-        live.remote_bus = None;
+        live.remote_bus = RemoteBusSlot::Absent;
         let host = live.data.host.clone();
         let shared = self.envs.iter().any(|(name, other)| {
             name != env && other.data.host == host && other.host.is_connected()
@@ -230,9 +231,8 @@ impl EnvironmentShell {
             self.opencode.hosts.remove(&host);
         }
         self.detect_host_agents(env, cx);
-        if !self.prepare_remote_bus(env, cx) {
-            self.finish_host_connection(env, cx);
-        }
+        self.prepare_remote_bus(env, cx);
+        self.finish_host_connection(env, cx);
     }
 
     fn finish_host_connection(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
@@ -337,13 +337,15 @@ impl EnvironmentShell {
             .filter_map(|(name, live)| {
                 let next = live.host.dropped(now)?;
                 live.host = next;
-                live.remote_bus = None;
+                live.remote_bus = RemoteBusSlot::Absent;
                 Some((name.clone(), live.data.host.to_string()))
             })
             .collect();
         for live in self.envs.values_mut() {
-            if live.remote_bus.as_mut().is_some_and(|bus| !bus.is_alive()) {
-                live.remote_bus = None;
+            if let RemoteBusSlot::Ready(bus) = &mut live.remote_bus {
+                if !bus.is_alive() {
+                    live.remote_bus = RemoteBusSlot::Absent;
+                }
             }
         }
         for (_, destination) in &dropped {

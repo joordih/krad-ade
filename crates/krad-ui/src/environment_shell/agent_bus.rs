@@ -6,7 +6,7 @@ mod requests;
 mod service;
 mod typing;
 
-pub(super) use remote::{bundled_cli, RemoteBus, RemoteBusPlan};
+pub(super) use remote::{bundled_cli, RemoteBus, RemoteBusPlan, RemoteBusSlot};
 
 use futures::channel::mpsc::{channel, Receiver};
 use futures::channel::oneshot::Sender as ReplySender;
@@ -176,7 +176,7 @@ impl EnvironmentShell {
         if let Some(live) = self.envs.get(env).filter(|live| !live.link.is_local()) {
             return live
                 .remote_bus
-                .as_ref()
+                .ready()
                 .map_or_default(|remote| remote.caller_vars(&Caller::Terminal(handle(env, id))));
         }
         let mut vars = Self::caller_vars(bus, &Caller::Terminal(handle(env, id)));

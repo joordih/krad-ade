@@ -25,6 +25,27 @@ pub(in crate::environment_shell) struct RemoteBus {
     pub(in crate::environment_shell) claude_settings: PathBuf,
 }
 
+#[derive(Default)]
+pub(in crate::environment_shell) enum RemoteBusSlot {
+    #[default]
+    Absent,
+    Preparing,
+    Ready(RemoteBus),
+}
+
+impl RemoteBusSlot {
+    pub(in crate::environment_shell) const fn ready(&self) -> Option<&RemoteBus> {
+        match self {
+            Self::Ready(bus) => Some(bus),
+            Self::Absent | Self::Preparing => None,
+        }
+    }
+
+    pub(in crate::environment_shell) const fn is_preparing(&self) -> bool {
+        matches!(self, Self::Preparing)
+    }
+}
+
 #[derive(Debug)]
 pub(in crate::environment_shell) enum RemoteBusError {
     NoBundledCli(HostPlatform),
@@ -62,6 +83,7 @@ pub(in crate::environment_shell) struct RemoteBusPlan {
     pub(in crate::environment_shell) slug: String,
     pub(in crate::environment_shell) local_port: u16,
     pub(in crate::environment_shell) token: String,
+    pub(in crate::environment_shell) preferred_port: Option<u16>,
 }
 
 impl RemoteBusPlan {
@@ -70,6 +92,7 @@ impl RemoteBusPlan {
         link: HostLink,
         environment: &str,
         endpoint: &Endpoint,
+        preferred_port: Option<u16>,
     ) -> Self {
         Self {
             ssh,
@@ -77,6 +100,7 @@ impl RemoteBusPlan {
             slug: environment_slug(environment),
             local_port: endpoint.address.port(),
             token: member_token(endpoint).to_owned(),
+            preferred_port,
         }
     }
 
@@ -115,7 +139,9 @@ impl RemoteBusPlan {
             claude_hook_settings(CLI_PROGRAM).as_bytes(),
             FileMode::PRIVATE_FILE,
         )?;
-        let forward = self.ssh.forward_remote(self.local_port)?;
+        let forward = self
+            .ssh
+            .forward_remote(self.local_port, self.preferred_port)?;
         Ok(RemoteBus {
             forward,
             bin_dir,
@@ -157,6 +183,10 @@ impl RemoteBus {
             self.bin_dir.join(ASKPASS_PROGRAM),
             token_file_env(&address, &self.token_file, caller),
         )
+    }
+
+    pub(in crate::environment_shell) const fn remote_port(&self) -> u16 {
+        self.forward.remote_port
     }
 
     pub(in crate::environment_shell) fn is_alive(&mut self) -> bool {
@@ -224,6 +254,13 @@ mod tests {
             askpass_script(),
             "#!/bin/sh\nexec \"${0%/*}/krad-ade-agents\" askpass \"$@\"\n"
         );
+    }
+
+    #[test]
+    fn only_a_preparing_bus_holds_agents_back() {
+        assert!(RemoteBusSlot::Preparing.is_preparing());
+        assert!(!RemoteBusSlot::Absent.is_preparing());
+        assert!(RemoteBusSlot::Preparing.ready().is_none());
     }
 
     #[test]
