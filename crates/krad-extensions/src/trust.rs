@@ -1,5 +1,6 @@
 use krad_domain::{ExtensionEntry, ExtensionFingerprint, ExtensionSource, GitCommit};
 use krad_extension_api::manifest::ExtensionManifest;
+use krad_host::hide_console_window;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -58,12 +59,14 @@ pub struct TrustedProgram {
 }
 
 fn git_head(dir: &Path) -> Result<String, ExtensionError> {
-    let output = Command::new(GIT)
+    let mut command = Command::new(GIT);
+    command
         .args(["rev-parse", "HEAD"])
         .current_dir(dir)
         .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()?;
+        .stderr(Stdio::null());
+    hide_console_window(&mut command);
+    let output = command.output()?;
     if !output.status.success() {
         return Err(ExtensionError::Tool(GIT.to_owned()));
     }

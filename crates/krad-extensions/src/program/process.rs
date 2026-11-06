@@ -3,7 +3,7 @@ use krad_domain::ServerLaunch;
 use krad_extension_api::protocol::{
     Empty, Exit, Initialize, InitializeParams, InitializeResult, Initialized,
 };
-use krad_host::{HostCommand, HostLink};
+use krad_host::{hide_console_window, HostCommand, HostLink};
 use std::collections::VecDeque;
 use std::io::{BufReader, Read};
 use std::path::Path;
@@ -131,6 +131,7 @@ fn program_command(
             .args(&launch.args)
             .envs(launch.env.iter().map(|(name, value)| (name, value)))
             .current_dir(cwd);
+        hide_console_window(&mut command);
         return Ok(command);
     }
     host_command(launch, cwd)
