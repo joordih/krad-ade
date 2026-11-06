@@ -165,6 +165,27 @@ impl EnvironmentShell {
         .detach();
     }
 
+    pub(super) fn start_host_opencode_for(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        cx: &mut Context<Self>,
+    ) {
+        let link = self.env_link(env);
+        if link.is_local() {
+            return;
+        }
+        let root = self
+            .envs
+            .get(env)
+            .and_then(|live| live.data.group_of(id))
+            .map(|group| group.root.clone());
+        match self.harness_runner(&link, AgentPreset::Opencode, root.as_deref()) {
+            Ok((runner, cwd)) => self.ensure_host_opencode(runner, cwd, cx),
+            Err(error) => tracing::debug!(%error, "opencode cannot start on the host yet"),
+        }
+    }
+
     pub(super) fn opencode_link_of(&self, env: &EnvironmentName) -> Option<&OpencodeLink> {
         let host = &self.envs.get(env)?.data.host;
         if host.is_local() {

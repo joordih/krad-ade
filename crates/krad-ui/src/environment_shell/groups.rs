@@ -59,6 +59,13 @@ impl EnvironmentShell {
         )
     }
 
+    pub(super) fn host_agents_known(&self, env: &EnvironmentName) -> bool {
+        self.envs.get(env).is_some_and(|live| {
+            live.link.is_local()
+                || (live.host.is_connected() && self.host_agents.contains_key(&live.data.host))
+        })
+    }
+
     pub(super) fn agents_for(&self, env: &EnvironmentName, root: Option<&Path>) -> &[AgentPreset] {
         if let Some(host) = self
             .envs
@@ -102,6 +109,7 @@ impl EnvironmentShell {
             this.update(cx, |shell, cx| {
                 shell.host_agents.insert(host, installed);
                 shell.list_host_models(&env, cx);
+                shell.load_missing_histories(&env, cx);
                 let harnesses: Vec<AgentPreset> =
                     AgentPreset::listed(&shell.settings.acp.all_agents()).collect();
                 for harness in harnesses {
