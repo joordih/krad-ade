@@ -90,17 +90,17 @@ impl EnvironmentShell {
             .collect();
         let active = self.active.clone();
         for env in std::iter::once(active).chain(background) {
-            self.ensure_structured_chats_of(env, window, cx);
+            self.ensure_structured_chats_of(&env, window, cx);
         }
     }
 
     fn ensure_structured_chats_of(
         &mut self,
-        env: EnvironmentName,
+        env: &EnvironmentName,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(live) = self.envs.get_mut(&env) else {
+        let Some(live) = self.envs.get_mut(env) else {
             return;
         };
         if live.pending_chats.is_empty() {
@@ -123,7 +123,7 @@ impl EnvironmentShell {
             let (input, events) = Self::chat_input(id, window, cx);
             let history = session.history().cloned();
             let mut structured = StructuredChat::new(session, harness);
-            let live = self.envs.get_mut(&env);
+            let live = self.envs.get_mut(env);
             let (waiting, mode) = live.map_or_else(Default::default, |live| {
                 (
                     live.waiting_prompts.remove(&id).unwrap_or_default(),
@@ -131,26 +131,26 @@ impl EnvironmentShell {
                 )
             });
             structured.permission_mode = mode;
-            structured.transcript = self.acp_transcript(&env, id, harness);
+            structured.transcript = self.acp_transcript(env, id, harness);
             let mut chat =
                 SurfaceChat::new(input, events, Backend::Structured(Box::new(structured)));
             let prompted = !waiting.is_empty();
             for prompt in waiting {
                 chat.outbox.push(prompt);
             }
-            if let Some(live) = self.envs.get_mut(&env) {
+            if let Some(live) = self.envs.get_mut(env) {
                 live.chats.insert(id, chat);
             }
-            self.watch_subagents(&env, id, cx);
+            self.watch_subagents(env, id, cx);
             if let Some(resume) = history {
-                if self.reads_history_now(&env, harness) {
+                if self.reads_history_now(env, harness) {
                     self.load_history(env.clone(), id, harness, resume, cx);
                 } else {
-                    self.note_history_waits_for_host(&env, id);
+                    self.note_history_waits_for_host(env, id);
                 }
             }
             if prompted {
-                self.flush_structured(&env, id, cx);
+                self.flush_structured(env, id, cx);
             }
         }
     }

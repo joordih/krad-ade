@@ -160,14 +160,6 @@ impl EnvironmentShell {
         cwd: Option<PathBuf>,
         prefill: &[String],
     ) {
-        let Some(pump) = self.pump_tx.clone() else {
-            return;
-        };
-        let signs_in = matches!(launch, Launch::SignIn { .. });
-        if !signs_in && !self.host_ready(env) {
-            self.push_toast(HOST_NOT_READY_TEXT.to_owned());
-            return;
-        }
         if launch.harness().is_some() && self.awaits_remote_bus(env) {
             self.defer_launch(
                 env,
@@ -178,6 +170,25 @@ impl EnvironmentShell {
                     prefill: prefill.to_vec(),
                 },
             );
+            return;
+        }
+        self.spawn_session(env, id, launch, cwd, prefill);
+    }
+
+    fn spawn_session(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        launch: Launch,
+        cwd: Option<PathBuf>,
+        prefill: &[String],
+    ) {
+        let Some(pump) = self.pump_tx.clone() else {
+            return;
+        };
+        let signs_in = matches!(launch, Launch::SignIn { .. });
+        if !signs_in && !self.host_ready(env) {
+            self.push_toast(HOST_NOT_READY_TEXT.to_owned());
             return;
         }
         let mut engine = match VtEngine::new(DEFAULT_COLS.into(), DEFAULT_ROWS.into()) {
