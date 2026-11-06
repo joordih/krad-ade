@@ -18,6 +18,8 @@
 </p>
 
 <p align="center">
+  <a href="https://getkrad.dev">Website</a> ·
+  <a href="https://getkrad.dev/docs">Docs</a> ·
   <a href="#features">Features</a> ·
   <a href="#getting-started">Getting started</a> ·
   <a href="#how-it-works">How it works</a> ·
