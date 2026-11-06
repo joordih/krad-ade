@@ -1,3 +1,4 @@
+use krad_host::hide_console_window;
 use std::fs::{self, File};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -45,6 +46,7 @@ pub(crate) fn kind_of(name: &str) -> Kind {
 }
 
 fn run(command: &mut Command, tool: &str) -> Result<(), ExtensionError> {
+    hide_console_window(command);
     let status = command.stdin(Stdio::null()).status()?;
     if status.success() {
         Ok(())

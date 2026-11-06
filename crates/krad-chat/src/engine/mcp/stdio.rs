@@ -1,4 +1,4 @@
-use krad_host::{HostCommand, HostLink};
+use krad_host::{hide_console_window, HostCommand, HostLink};
 use serde_json::Value;
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -49,6 +49,7 @@ fn command(launch: &StdioLaunch<'_>) -> Result<(Command, Option<PathBuf>), McpEr
             .args(launch.args)
             .envs(launch.env.iter().map(|(name, value)| (name, value)))
             .current_dir(launch.cwd);
+        hide_console_window(&mut command);
         return Ok((command, None));
     }
     let mut remote = HostCommand::new(launch.command);
