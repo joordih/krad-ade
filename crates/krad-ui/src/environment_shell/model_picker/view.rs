@@ -1,7 +1,7 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, KeyDownEvent,
-    MouseButton, ParentElement, StatefulInteractiveElement, Styled, Window,
+    MouseButton, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
 };
 use krad_chat::ModelSource;
 
@@ -31,6 +31,7 @@ const RAIL_PREFIX: &str = "model-picker-harness";
 const ROW_PREFIX: &str = "model-picker-row";
 const SEARCH_PLACEHOLDER: &str = "Search models";
 const NO_MODELS_TEXT: &str = "No models";
+const DETECTING_AGENTS_TEXT: &str = "Detecting agents on";
 const SECTION_H: f32 = 26.0;
 const FREE_LABEL: &str = "Free";
 
@@ -147,7 +148,22 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    fn picker_rows(choosing: &Choosing, pal: &Palette, cx: &mut Context<Self>) -> AnyElement {
+    fn picker_empty_text(&self) -> SharedString {
+        if self.host_agents_known(&self.active) {
+            return NO_MODELS_TEXT.into();
+        }
+        self.envs.get(&self.active).map_or_else(
+            || NO_MODELS_TEXT.into(),
+            |live| format!("{DETECTING_AGENTS_TEXT} {}", live.data.host).into(),
+        )
+    }
+
+    fn picker_rows(
+        choosing: &Choosing,
+        empty_text: SharedString,
+        pal: &Palette,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let shown = choosing.shown();
         let mut rows: Vec<AnyElement> = Vec::with_capacity(shown.len());
         let mut section = None;
@@ -204,7 +220,7 @@ impl EnvironmentShell {
                 .py(px(SPACE_2))
                 .text_size(px(TEXT_SM))
                 .text_color(rgb(pal.text_muted))
-                .child(NO_MODELS_TEXT)
+                .child(empty_text)
         });
         div()
             .id(LIST_ID)
@@ -286,7 +302,12 @@ impl EnvironmentShell {
                                 .flex_1()
                                 .min_w_0()
                                 .child(search_row(&picker.choosing.query, pal))
-                                .child(Self::picker_rows(&picker.choosing, pal, cx)),
+                                .child(Self::picker_rows(
+                                    &picker.choosing,
+                                    self.picker_empty_text(),
+                                    pal,
+                                    cx,
+                                )),
                         ),
                 )
                 .into_any_element(),
