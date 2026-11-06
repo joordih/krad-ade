@@ -15,7 +15,7 @@ use super::agent_hooks::NO_GROUP;
 use super::terminal_lifecycle::WorkerChat;
 use super::EnvironmentShell;
 
-pub(super) use card::{spawned_worker, WorkerCard};
+pub(super) use card::{spawned_worker, WorkerCard, NEEDS_YOU_LABEL};
 pub(super) use ending::LeadEnding;
 
 const WORKER_FAILED: &str = "The worker could not start";

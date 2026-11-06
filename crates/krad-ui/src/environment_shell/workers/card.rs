@@ -1,9 +1,11 @@
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, Context, ElementId, FontWeight, InteractiveElement, IntoElement,
     ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_domain::{AgentState, EnvironmentName, TerminalId};
 
+use super::super::ask::WorkerAsk;
 use super::super::chat::{AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
 use crate::components::{agent_status, icon, IconName, StatusKind};
@@ -16,6 +18,7 @@ const CARD_PREFIX: &str = "surface-worker";
 const WORKER_LABEL: &str = "Worker";
 const STARTING_LABEL: &str = "Starting…";
 const CLOSED_LABEL: &str = "Finished · open to read or continue it";
+pub(in crate::environment_shell) const NEEDS_YOU_LABEL: &str = "needs you";
 const SPAWN_VERB: &str = " spawn ";
 const ESCAPE: char = '\\';
 
@@ -25,6 +28,7 @@ pub(in crate::environment_shell) struct WorkerCard {
     pub(in crate::environment_shell) task: String,
     pub(in crate::environment_shell) state: Option<AgentState>,
     pub(in crate::environment_shell) activity: Option<String>,
+    pub(in crate::environment_shell) ask: Option<WorkerAsk>,
 }
 
 pub(in crate::environment_shell) fn spawned_worker<'a>(
@@ -63,6 +67,13 @@ fn latest_activity(messages: &[ChatMessage]) -> Option<String> {
                 .map(str::to_owned),
             AnswerPart::Thinking(_) | AnswerPart::Ask(_) => None,
         })
+}
+
+fn shown_state(card: &WorkerCard) -> Option<AgentState> {
+    if card.ask.is_some() {
+        return Some(AgentState::WaitingForInput);
+    }
+    card.state
 }
 
 fn status_mark(state: Option<AgentState>, pal: &Palette) -> AnyElement {
@@ -106,6 +117,7 @@ impl EnvironmentShell {
                     task: worker.task.clone(),
                     state,
                     activity: self.worker_activity(env, worker.terminal, open),
+                    ask: open.then(|| self.worker_ask(worker.terminal)).flatten(),
                 }
             })
             .collect()
@@ -176,22 +188,42 @@ impl EnvironmentShell {
                             .text_color(rgb(pal.text_muted))
                             .child(card.task.clone()),
                     )
-                    .child(status_mark(card.state, pal))
+                    .when(card.ask.is_some(), |header| {
+                        header.child(
+                            div()
+                                .flex_none()
+                                .text_size(px(TEXT_XS))
+                                .line_height(px(LINE_XS))
+                                .text_color(rgb(pal.attention_text))
+                                .child(NEEDS_YOU_LABEL),
+                        )
+                    })
+                    .child(status_mark(shown_state(card), pal))
                     .child(icon(IconName::ChevronRight, ICON_SM, pal.text_muted)),
             )
-            .children(card.activity.clone().map(|activity| {
-                div()
-                    .min_w_0()
-                    .truncate()
-                    .text_size(px(TEXT_XS))
-                    .line_height(px(LINE_XS))
-                    .text_color(rgb(pal.text_muted))
-                    .child(activity)
-            }))
+            .children(card.ask.as_ref().map(|ask| Self::worker_ask_row(ask, cx)))
+            .children(
+                card.activity
+                    .as_ref()
+                    .filter(|_| card.ask.is_none())
+                    .map(|activity| {
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(px(TEXT_XS))
+                            .line_height(px(LINE_XS))
+                            .text_color(rgb(pal.text_muted))
+                            .child(activity.clone())
+                    }),
+            )
             .into_any_element()
     }
 
-    fn go_to_worker(&mut self, terminal: TerminalId, cx: &mut Context<Self>) {
+    pub(in crate::environment_shell) fn go_to_worker(
+        &mut self,
+        terminal: TerminalId,
+        cx: &mut Context<Self>,
+    ) {
         let env = self.active.clone();
         if !self.reopen_worker(&env, terminal, cx) {
             return;
@@ -212,6 +244,7 @@ mod tests {
             task: task.to_owned(),
             state: None,
             activity: None,
+            ask: None,
         }
     }
 

@@ -88,7 +88,7 @@ const VERDICT_PLAN_REJECTED: &str = "Plan sent back";
 const VERDICT_CANCELLED: &str = "Cancelled";
 
 impl Choice {
-    fn label(self, kind: &AskKind) -> &str {
+    pub(super) fn label(self, kind: &AskKind) -> &str {
         match self {
             Self::AcpOption(index) => {
                 acp_option(kind, index).map_or("", |option| option.name.as_str())
@@ -116,7 +116,7 @@ impl Choice {
         }
     }
 
-    fn rejects(self, kind: &AskKind) -> bool {
+    pub(super) fn rejects(self, kind: &AskKind) -> bool {
         matches!(self, Self::AcpOption(index)
             if acp_option(kind, index).is_some_and(|option| !option.kind.allows()))
     }
@@ -178,7 +178,7 @@ pub(in crate::environment_shell) fn ask_line(outcome: &AskOutcome, pal: &Palette
         .into_any_element()
 }
 
-fn owned_id(prefix: &str, owner: TerminalId, index: usize) -> ElementId {
+pub(super) fn owned_id(prefix: &str, owner: TerminalId, index: usize) -> ElementId {
     ElementId::Name(SharedString::from(format!(
         "{prefix}-{}-{index}",
         owner.as_u64()

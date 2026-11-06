@@ -55,7 +55,7 @@ use timeline::Timeline;
 use transcript::{TranscriptView, TRANSCRIPT_HARNESS};
 
 pub(super) use acp::AcpChoice;
-pub(super) use answer::tool_question;
+pub(super) use answer::{names_its_tool, tool_question, tool_request};
 pub(super) use bus::ChatPresence;
 pub(super) use edit_diff::edit_diffs;
 pub(super) use facts::AccountUsage;
