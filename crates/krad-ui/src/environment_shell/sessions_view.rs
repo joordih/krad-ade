@@ -12,7 +12,7 @@ use std::borrow::Cow;
 
 use super::session_look::session_icon;
 use super::terminal_status::CardStatus;
-use super::workers::LeadEnding;
+use super::workers::{LeadEnding, NEEDS_YOU_LABEL};
 use super::{EnvironmentShell, LiveEnv};
 use crate::components::{agent_status, icon, Button, IconName};
 use crate::theme::{
@@ -154,6 +154,17 @@ impl EnvironmentShell {
             .child(icon(glyph, ICON_SM, tone))
             .child(Self::session_title(row, &tabs, cx))
             .child(Self::session_hover_tools(row, tabs, reveal, cx))
+            .when(unread, |element| {
+                element.child(
+                    div()
+                        .flex_none()
+                        .text_size(px(TEXT_XS))
+                        .line_height(px(LINE_XS))
+                        .font_weight(FontWeight::NORMAL)
+                        .text_color(rgb(pal.attention_text))
+                        .child(NEEDS_YOU_LABEL),
+                )
+            })
             .when(!quiet, |element| {
                 element.child(agent_status(row.status.kind(), ICON_SM, pal))
             })

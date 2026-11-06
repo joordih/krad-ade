@@ -2,6 +2,7 @@ mod held;
 mod picks;
 mod queue;
 mod view;
+mod worker;
 
 use gpui_kit::component::input::{InputEvent, TextareaState};
 use gpui_kit::{AppContext as _, Context, Entity, Focusable as _, Subscription, Window};
@@ -19,6 +20,7 @@ pub(super) use held::HeldAskReport;
 pub(super) use picks::Picks;
 pub(super) use queue::{AskQueue, AskReply, Settled, Waiting};
 pub(super) use view::{ask_line, tray, tray_button};
+pub(super) use worker::WorkerAsk;
 
 const DENIED_TEXT: &str = "The user declined this";
 const KEEP_PLANNING_TEXT: &str = "The user wants to keep planning";

@@ -39,6 +39,13 @@ const SUBAGENT_QUESTION: &str = "Allow this subagent?";
 const PLAN_QUESTION: &str = "Allow this plan update?";
 const FETCH_QUESTION: &str = "Allow this request?";
 const USE_QUESTION: &str = "Allow";
+const RUN_REQUEST: &str = "Allow running";
+const READ_REQUEST: &str = "Allow reading";
+const EDIT_REQUEST: &str = "Allow edit to";
+const SEARCH_REQUEST: &str = "Allow searching";
+const SUBAGENT_REQUEST: &str = "Allow subagent";
+const PLAN_REQUEST: &str = "Allow plan update";
+const FETCH_REQUEST: &str = "Allow request to";
 
 pub(in crate::environment_shell) fn tool_question(name: &str, kind: ToolKind) -> Cow<'static, str> {
     Cow::Borrowed(match ToolLook::from(kind) {
@@ -51,6 +58,23 @@ pub(in crate::environment_shell) fn tool_question(name: &str, kind: ToolKind) ->
         ToolLook::Web => FETCH_QUESTION,
         ToolLook::Other => return Cow::Owned(format!("{USE_QUESTION} {name}?")),
     })
+}
+
+pub(in crate::environment_shell) fn tool_request(name: &str, kind: ToolKind) -> Cow<'static, str> {
+    Cow::Borrowed(match ToolLook::from(kind) {
+        ToolLook::Shell => RUN_REQUEST,
+        ToolLook::Read => READ_REQUEST,
+        ToolLook::Edit => EDIT_REQUEST,
+        ToolLook::Search => SEARCH_REQUEST,
+        ToolLook::Agent => SUBAGENT_REQUEST,
+        ToolLook::Plan => PLAN_REQUEST,
+        ToolLook::Web => FETCH_REQUEST,
+        ToolLook::Other => return Cow::Owned(format!("{USE_QUESTION} {name}")),
+    })
+}
+
+pub(in crate::environment_shell) fn names_its_tool(kind: ToolKind) -> bool {
+    ToolLook::from(kind) == ToolLook::Other
 }
 
 fn answer_text(message: &ChatMessage) -> String {
