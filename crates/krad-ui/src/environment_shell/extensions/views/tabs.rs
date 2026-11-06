@@ -61,6 +61,7 @@ impl EnvironmentShell {
                     }
                 }
             }
+            ViewPlace::Popover(..) => self.forget_extension_popover(id),
             ViewPlace::FileTab(env, terminal) => {
                 if let Some(live) = self.envs.get_mut(&env) {
                     if live.data.nodes.iter().any(|node| node.id == terminal) {

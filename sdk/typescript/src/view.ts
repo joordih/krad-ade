@@ -49,6 +49,24 @@ export type Selection = "none" | "single" | "many";
 export type Expansion = "leaf" | "collapsed" | "expanded";
 export type Sortable = "no" | "yes";
 export type SortOrder = "ascending" | "descending";
+export type SliderFormat = "number" | "percent" | "duration";
+export type SliderLabels = "none" | "value" | "elapsed_remaining" | "min_max";
+
+export interface Advancing {
+  rate: number;
+}
+
+export interface Slider {
+  action: string;
+  value: number;
+  min?: number;
+  max: number;
+  step?: number | null;
+  format?: SliderFormat;
+  labels?: SliderLabels;
+  enabled?: Enabled;
+  advancing?: Advancing | null;
+}
 
 export interface Choice {
   value: string;
@@ -126,6 +144,7 @@ export type Element =
   | { type: "input"; action: string; value?: string; placeholder?: string | null; kind?: InputKind }
   | { type: "toggle"; action: string; value: boolean; label?: string | null }
   | { type: "select"; action: string; options: Choice[]; value?: string | null }
+  | ({ type: "slider" } & Slider)
   | { type: "list"; count: number; selection?: Selection }
   | { type: "tree"; items: TreeItem[] }
   | { type: "table"; columns: Column[]; count: number; sort?: Sort | null }
@@ -164,12 +183,22 @@ export type ViewEvent =
   | { kind: "submit"; action: string; text: string }
   | { kind: "toggle"; action: string; value: boolean }
   | { kind: "select"; action: string; value: string }
+  | { kind: "slider_change"; action: string; value: number }
+  | { kind: "slider_commit"; action: string; value: number }
   | { kind: "form"; action: string; values: Record<string, FieldValue> }
   | { kind: "expand"; item: string }
   | { kind: "collapse"; item: string }
   | { kind: "choose"; node: string; items: string[] }
   | { kind: "item_action"; action: string; item: string }
   | { kind: "sort"; node: string; sort: Sort };
+
+export type SliderChangeEvent = Extract<ViewEvent, { kind: "slider_change" }>;
+export type SliderCommitEvent = Extract<ViewEvent, { kind: "slider_commit" }>;
+export type SliderEvent = SliderChangeEvent | SliderCommitEvent;
+
+export function isSliderEvent(event: ViewEvent): event is SliderEvent {
+  return event.kind === "slider_change" || event.kind === "slider_commit";
+}
 
 type Without<T, K extends keyof T> = Omit<T, K>;
 type ElementOf<T extends Element["type"]> = Extract<Element, { type: T }>;
@@ -206,6 +235,8 @@ export const ui = {
     node("toggle", key, { action, value, label: label ?? null }),
   select: (key: string, action: string, options: Choice[], value?: string): Node =>
     node("select", key, { action, options, value: value ?? null }),
+  slider: (key: string, action: string, options: Without<Slider, "action">): Node =>
+    node("slider", key, { action, ...options }),
   list: (key: string, count: number, selection: Selection = "none"): Node => node("list", key, { count, selection }),
   tree: (key: string, items: TreeItem[]): Node => node("tree", key, { items }),
   table: (key: string, columns: Column[], count: number, sort?: Sort): Node =>

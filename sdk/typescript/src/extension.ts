@@ -15,6 +15,7 @@ import type {
   ProgramRequests,
   RowsParams,
   RowsResult,
+  SetTitlebarItemParams,
   SettingsValues,
   ViewRef,
   WorkspaceEvent,
@@ -50,6 +51,10 @@ export class App {
 
   patchView(view: ViewRef, patches: Patch[]): void {
     this.notify("view/patch", { ...view, patches });
+  }
+
+  setTitlebarItem(params: SetTitlebarItemParams): void {
+    this.notify("titlebar/set", params);
   }
 
   sendTerminal(terminal: number, text: string): void {
@@ -115,6 +120,21 @@ export interface ViewDefinition {
   rows?(params: RowsParams, context: Context): Promise<RowsResult> | RowsResult;
   onEvent?(event: ViewEvent, view: ViewRef, context: Context): Promise<void> | void;
   onClose?(view: ViewRef, context: Context): void;
+}
+
+export interface PopoverDefinition extends ViewDefinition {
+  onOpen?(view: ViewRef, context: Context): Promise<void> | void;
+}
+
+export function popoverView(definition: PopoverDefinition): ViewDefinition {
+  const { onOpen, render, ...rest } = definition;
+  return {
+    ...rest,
+    render: async (view, context) => {
+      await onOpen?.(view, context);
+      return render(view, context);
+    },
+  };
 }
 
 export type CommandHandler = (target: CommandTarget | null, context: Context) => Promise<void> | void;

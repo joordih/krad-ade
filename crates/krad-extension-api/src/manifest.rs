@@ -1,5 +1,6 @@
 mod contributions;
 mod program;
+mod titlebar;
 mod values;
 
 pub use contributions::{
@@ -8,6 +9,7 @@ pub use contributions::{
     SettingOption, ToolContribution, ToolEffect, ViewContribution, ViewZone,
 };
 pub use program::{Activation, Binary, BinarySource, Launch, Permission, Placement, Program};
+pub use titlebar::{TitlebarAction, TitlebarActionError, TitlebarItemContribution, TitlebarSide};
 pub use values::{HttpsUrl, ProgramPath, Sha256Hex, ValueError};
 
 use schemars::JsonSchema;
@@ -46,13 +48,23 @@ pub enum ManifestError {
     UnknownCommand(CommandId),
     #[error("the extension declares commands, views, tools or host kinds but brings no program")]
     NoProgram,
+    #[error("{0} names a view the extension does not declare")]
+    UnknownView(ViewId),
+    #[error("{0} opens from the titlebar but its zone is not popover")]
+    NotAPopover(ViewId),
+    #[error("{0} is a popover no titlebar item opens")]
+    UnanchoredPopover(ViewId),
+    #[error("the extension declares {0} titlebar items, more than the app shows")]
+    TooManyTitlebarItems(usize),
 }
 
 impl ExtensionManifest {
     /// # Errors
     ///
     /// Returns [`ManifestError`] when two contributions share an id, a menu or keybinding names an
-    /// undeclared command, or commands and views are declared without a program to answer them.
+    /// undeclared command, a titlebar item opens a missing or non-popover view, a popover view has
+    /// no titlebar item, there are too many titlebar items, or commands and views are declared
+    /// without a program to answer them.
     pub fn check(&self) -> Result<(), ManifestError> {
         let commands = unique(self.contributes.commands.iter().map(|command| &command.id))?;
         unique::<ViewId>(self.contributes.views.iter().map(|view| &view.id))?;
@@ -77,6 +89,7 @@ impl ExtensionManifest {
         {
             return Err(ManifestError::UnknownCommand(missing.clone()));
         }
+        titlebar::check_titlebar_items(&self.contributes, &commands)?;
         let answers_something = !self.contributes.commands.is_empty()
             || !self.contributes.views.is_empty()
             || !self.contributes.tools.is_empty()

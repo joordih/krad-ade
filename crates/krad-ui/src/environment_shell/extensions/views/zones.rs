@@ -47,6 +47,7 @@ impl EnvironmentShell {
                 self.store();
             }
             ViewPlace::Utilities(_) => self.show_utilities(UtilityTab::Extension(id), cx),
+            ViewPlace::Popover(..) => self.show_extension_popover(id, cx),
             ViewPlace::FileTab(env, terminal) => {
                 if let Some(live) = self.envs.get_mut(&env) {
                     live.data.reveal_terminal(terminal);

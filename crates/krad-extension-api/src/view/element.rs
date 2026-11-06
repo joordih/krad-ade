@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use crate::icon::Icon;
 use crate::id::{ActionId, NodeKey, TerminalHandle};
+use crate::view::slider::Slider;
 use crate::view::style::{
     Align, ColorToken, Direction, Justify, Size, Style, TextStyle, Tone, Wrap,
 };
@@ -117,6 +118,7 @@ pub enum Element {
         #[serde(default)]
         value: Option<String>,
     },
+    Slider(Slider),
     List {
         count: u32,
         #[serde(default)]

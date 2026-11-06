@@ -4,7 +4,8 @@ pub(crate) use tree::{Shown, TreeRow};
 
 use krad_extensions::api::protocol::{RowsResult, MAX_ROWS_PER_REQUEST};
 use krad_extensions::api::view::{
-    apply, Applied, Element, ListRow, Node, Patch, Selection, TableRow, ViewEvent,
+    apply, bounded, Applied, Element, ListRow, Node, Patch, Selection, TableRow, TextStyle,
+    ViewEvent,
 };
 use krad_extensions::api::NodeKey;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -16,6 +17,35 @@ use super::ViewOutput;
 pub(crate) enum CachedRow {
     List(ListRow),
     Table(TableRow),
+}
+
+impl CachedRow {
+    fn nodes(&self) -> &[Node] {
+        match self {
+            Self::List(row) => std::slice::from_ref(&row.node),
+            Self::Table(row) => &row.cells,
+        }
+    }
+
+    fn nodes_mut(&mut self) -> &mut [Node] {
+        match self {
+            Self::List(row) => std::slice::from_mut(&mut row.node),
+            Self::Table(row) => &mut row.cells,
+        }
+    }
+
+    fn bounded(mut self) -> Self {
+        for node in self.nodes_mut() {
+            if let Err(error) = bounded(node) {
+                tracing::debug!(%error, "extension row node refused");
+                node.element = Element::Text {
+                    text: String::new(),
+                    style: TextStyle::default(),
+                };
+            }
+        }
+        self
+    }
 }
 
 #[derive(Debug, Default)]
@@ -39,6 +69,7 @@ pub(crate) struct ViewModel {
     trees: HashMap<NodeKey, Vec<TreeRow>>,
     selection: HashMap<NodeKey, Vec<NodeKey>>,
     appended: HashSet<NodeKey>,
+    received_sliders: HashSet<NodeKey>,
 }
 
 impl ViewModel {
@@ -50,7 +81,9 @@ impl ViewModel {
             trees: HashMap::new(),
             selection: HashMap::new(),
             appended: HashSet::new(),
+            received_sliders: HashSet::new(),
         };
+        slider_keys(&model.root, &mut model.received_sliders);
         model.reflatten();
         model
     }
@@ -65,9 +98,14 @@ impl ViewModel {
                 Patch::Append { key, .. } => Some(key.clone()),
                 _ => None,
             };
+            let mut sliders = HashSet::new();
+            if let Patch::Replace { node } | Patch::Insert { node, .. } = &patch {
+                slider_keys(node, &mut sliders);
+            }
             match apply(&mut self.root, patch) {
                 Ok(Applied::Changed) => {
                     self.appended.extend(appended);
+                    self.received_sliders.extend(sliders);
                 }
                 Ok(Applied::RowsInvalidated(node)) => {
                     self.rows.remove(&node);
@@ -80,6 +118,10 @@ impl ViewModel {
 
     pub(crate) fn take_appended(&mut self) -> HashSet<NodeKey> {
         std::mem::take(&mut self.appended)
+    }
+
+    pub(crate) fn take_received_sliders(&mut self) -> HashSet<NodeKey> {
+        std::mem::take(&mut self.received_sliders)
     }
 
     fn reflatten(&mut self) {
@@ -125,8 +167,32 @@ impl ViewModel {
             RowsResult::Table { rows } => rows.into_iter().map(CachedRow::Table).collect(),
         };
         for (index, row) in (start..).zip(cached) {
+            let row = row.bounded();
+            for node in row.nodes() {
+                slider_keys(node, &mut self.received_sliders);
+            }
             store.rows.insert(index, row);
         }
+    }
+
+    pub(crate) fn find_node(&self, key: &NodeKey) -> Option<&Node> {
+        find(&self.root, key).or_else(|| self.cached_nodes().find_map(|node| find(node, key)))
+    }
+
+    pub(crate) fn every_slider_key(&self) -> HashSet<NodeKey> {
+        let mut keys = HashSet::new();
+        slider_keys(&self.root, &mut keys);
+        for node in self.cached_nodes() {
+            slider_keys(node, &mut keys);
+        }
+        keys
+    }
+
+    fn cached_nodes(&self) -> impl Iterator<Item = &Node> {
+        self.rows
+            .values()
+            .flat_map(|store| store.rows.values())
+            .flat_map(CachedRow::nodes)
     }
 
     pub(crate) fn row(&self, node: &NodeKey, index: u32) -> Option<&CachedRow> {
@@ -189,6 +255,15 @@ pub(crate) fn find<'a>(node: &'a Node, key: &NodeKey) -> Option<&'a Node> {
         return Some(node);
     }
     node.children().iter().find_map(|child| find(child, key))
+}
+
+pub(crate) fn slider_keys(node: &Node, keys: &mut HashSet<NodeKey>) {
+    if let Element::Slider(_) = node.element {
+        keys.insert(node.key.clone());
+    }
+    for child in node.children() {
+        slider_keys(child, keys);
+    }
 }
 
 pub(crate) fn stream_keys(node: &Node, keys: &mut Vec<NodeKey>) {

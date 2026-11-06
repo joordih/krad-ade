@@ -118,6 +118,17 @@ impl Extension {
     }
 
     #[must_use]
+    pub fn on_popover(
+        self,
+        view: ViewId,
+        opened: impl Fn(&App, ViewRef) -> Result<Node, HandlerError> + Send + Sync + 'static,
+        closed: impl Fn(&App, ViewRef) + Send + Sync + 'static,
+    ) -> Self {
+        self.on_render(view.clone(), opened)
+            .on_view_closed(view, closed)
+    }
+
+    #[must_use]
     pub fn on_tool(
         mut self,
         tool: ToolName,

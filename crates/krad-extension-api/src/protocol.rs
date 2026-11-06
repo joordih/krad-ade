@@ -3,6 +3,7 @@ mod hosts;
 mod lifecycle;
 mod settings;
 mod terminal;
+mod titlebar;
 mod tools;
 mod views;
 mod window;
@@ -27,6 +28,7 @@ pub use terminal::{
     OpenTerminal, OpenTerminalParams, SendTerminal, SendTerminalParams, TerminalCommand,
     TerminalZone,
 };
+pub use titlebar::{SetTitlebarItem, SetTitlebarItemParams};
 pub use tools::{CallTool, CallToolParams, CallToolResult, ToolContent, ToolOutcome};
 pub use views::{
     CloseView, OpenView, OpenViewParams, PatchView, PatchViewParams, RenderView, Rows, RowsParams,

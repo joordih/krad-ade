@@ -2,6 +2,7 @@ mod collections;
 mod form;
 mod layout;
 mod model;
+mod slider;
 mod style;
 
 use futures::channel::mpsc::UnboundedSender;
@@ -19,6 +20,7 @@ use std::path::{Path, PathBuf};
 use crate::theme::palette;
 pub(crate) use form::InputSlot;
 use model::ViewModel;
+use slider::SliderView;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ViewOutput {
@@ -35,6 +37,7 @@ pub(crate) struct ExtensionView {
     fields: HashMap<InputSlot, form::LocalValue>,
     sorts: HashMap<NodeKey, Sort>,
     streams: HashMap<NodeKey, UniformListScrollHandle>,
+    sliders: HashMap<NodeKey, Entity<SliderView>>,
     inputs_stale: bool,
     subscriptions: Vec<Subscription>,
 }
@@ -50,6 +53,7 @@ impl ExtensionView {
             fields: HashMap::new(),
             sorts: HashMap::new(),
             streams: HashMap::new(),
+            sliders: HashMap::new(),
             inputs_stale: true,
             subscriptions: Vec::new(),
         }
@@ -67,8 +71,10 @@ impl ExtensionView {
         self.fields.clear();
         self.sorts.clear();
         self.streams.clear();
+        self.sliders.clear();
         self.subscriptions.clear();
         self.inputs_stale = true;
+        self.sync_sliders(cx);
         cx.notify();
     }
 
@@ -83,11 +89,36 @@ impl ExtensionView {
             }
         }
         self.inputs_stale = true;
+        self.sync_sliders(cx);
+        self.prune_sliders();
         cx.notify();
+    }
+
+    fn sync_sliders(&mut self, cx: &mut Context<Self>) {
+        for key in self.model.take_received_sliders() {
+            let Some(Element::Slider(spec)) = self.model.find_node(&key).map(|node| &node.element)
+            else {
+                continue;
+            };
+            let spec = spec.clone();
+            if let Some(slider) = self.sliders.get(&key) {
+                slider.update(cx, |slider, cx| slider.receive(spec, cx));
+            } else {
+                let output = self.output.clone();
+                let slider = cx.new(|cx| SliderView::new(key.clone(), spec, output, cx));
+                self.sliders.insert(key, slider);
+            }
+        }
+    }
+
+    fn prune_sliders(&mut self) {
+        let present = self.model.every_slider_key();
+        self.sliders.retain(|key, _| present.contains(key));
     }
 
     pub(crate) fn set_rows(&mut self, node: NodeKey, rows: RowsResult, cx: &mut Context<Self>) {
         self.model.set_rows(node, rows);
+        self.sync_sliders(cx);
         cx.notify();
     }
 
@@ -235,6 +266,7 @@ fn collect_inputs(node: &Node, wanted: &mut Vec<(InputSlot, InitialInput)>) {
 impl Render for ExtensionView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.prepare_inputs(window, cx);
+        self.sync_sliders(cx);
         let pal = palette(cx);
         gpui_kit::div()
             .size_full()

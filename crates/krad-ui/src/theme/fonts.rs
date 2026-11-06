@@ -21,6 +21,7 @@ pub(crate) const BUNDLED_MONO_FAMILIES: [&str; 2] = [JETBRAINS_MONO_FAMILY, MONO
 pub(crate) const TERMINAL_FONT_SIZE: FontSize = FontSize::new(12);
 pub(crate) const EDITOR_FONT_SIZE: FontSize = FontSize::new(14);
 const LIGATURE_FEATURES: [&str; 2] = ["calt", "liga"];
+const TABULAR_DIGITS: &str = "tnum";
 const FEATURE_ON: u32 = 1;
 const FEATURE_OFF: u32 = 0;
 
@@ -45,6 +46,10 @@ pub(crate) fn mono_family(choice: &FontChoice) -> SharedString {
 
 pub(crate) fn interface_family(choice: &FontChoice) -> SharedString {
     SharedString::from(choice.family_or(UI_FONT_FAMILY).to_owned())
+}
+
+pub(crate) fn tabular_digits() -> FontFeatures {
+    FontFeatures(Arc::new(vec![(TABULAR_DIGITS.to_owned(), FEATURE_ON)]))
 }
 
 pub(crate) fn font_features(ligatures: Ligatures) -> FontFeatures {

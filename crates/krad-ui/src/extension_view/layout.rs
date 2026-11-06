@@ -58,6 +58,10 @@ impl ExtensionView {
             } => self.form_element(node, submit, fields, submit_label.as_deref(), pal, cx),
             Element::Details { entries } => details(entries, pal, cx),
             Element::Stream { lines, .. } => self.stream(node, lines, pal, cx),
+            Element::Slider(_) => self.sliders.get(&node.key).map_or_else(
+                || div().into_any_element(),
+                |slider| slider.clone().into_any_element(),
+            ),
             Element::Terminal { terminal } => self.terminals.get(terminal).map_or_else(
                 || placeholder(TERMINAL_WAITING, pal),
                 |view| {

@@ -58,6 +58,7 @@ string_id!(SecretName, check_id);
 string_id!(RuntimeId, check_id);
 string_id!(ToolName, check_id);
 string_id!(HostKindId, check_id);
+string_id!(TitlebarItemId, check_id);
 string_id!(MachineId, check_key);
 string_id!(NodeKey, check_key);
 string_id!(ActionId, check_key);

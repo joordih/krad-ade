@@ -236,7 +236,7 @@ impl EnvironmentShell {
             .min_h_0()
             .gap(px(WINDOW_INSET))
             .pb(px(self.activity_room()))
-            .child(self.top_bar(cx))
+            .child(self.top_bar(window, cx))
             .child(
                 div()
                     .flex()
@@ -260,6 +260,7 @@ impl EnvironmentShell {
         self.sync_extension_fields(window, cx);
         self.sync_extension_events(cx);
         self.sync_extension_tabs(cx);
+        self.sync_extension_popover_focus(window, cx);
     }
 }
 
@@ -334,6 +335,7 @@ impl Render for EnvironmentShell {
                 None => self.workspace_row(view, window, cx),
             })
             .children(self.sidebar_chrome(cx))
+            .children(self.extension_popover_backdrop(cx))
             .child(self.toast_stack(cx))
             .children(self.extension_progress(cx))
             .child(self.palette_overlay(viewport.width.as_f32(), pal, cx))

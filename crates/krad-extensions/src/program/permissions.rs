@@ -48,7 +48,8 @@ pub fn allowed_notice(permissions: &[Permission], notice: &AppNotice) -> Result<
         AppNotice::Log(_)
         | AppNotice::PatchView(_)
         | AppNotice::Toast(_)
-        | AppNotice::Progress(_) => Ok(()),
+        | AppNotice::Progress(_)
+        | AppNotice::SetTitlebarItem(_) => Ok(()),
     }
 }
 

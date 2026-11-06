@@ -160,6 +160,7 @@ impl EnvironmentShell {
             AppNotice::SendTerminal(params) => {
                 self.send_extension_terminal(key, params.terminal, params.text);
             }
+            AppNotice::SetTitlebarItem(params) => self.set_titlebar_item(key, params, cx),
         }
     }
 

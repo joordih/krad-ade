@@ -229,3 +229,88 @@ fn appended_streams_are_reported_once() -> TestResult {
     assert_eq!(keys, [logs]);
     Ok(())
 }
+
+fn slider(name: &str, value: f64) -> Result<Node, IdError> {
+    Ok(Node {
+        key: key(name)?,
+        element: Element::Slider(krad_extensions::api::view::Slider {
+            action: "seek".parse()?,
+            value,
+            min: 0.0,
+            max: 100.0,
+            step: None,
+            format: krad_extensions::api::view::SliderFormat::Duration,
+            labels: krad_extensions::api::view::SliderLabels::ElapsedRemaining,
+            enabled: krad_extensions::api::view::Enabled::Yes,
+            advancing: Some(krad_extensions::api::view::Advancing { rate: 1.0 }),
+        }),
+    })
+}
+
+#[test]
+fn sliders_count_as_received_when_a_patch_sends_them_again() -> TestResult {
+    let mut model = ViewModel::new(flex(
+        "root",
+        vec![slider("seek", 10.0)?, flex("side", Vec::new())?],
+    )?);
+    assert_eq!(model.take_received_sliders(), HashSet::from([key("seek")?]));
+    model.apply(vec![Patch::Insert {
+        parent: key("side")?,
+        index: 0,
+        node: flex("volume-box", vec![slider("volume", 0.5)?])?,
+    }]);
+    assert_eq!(
+        model.take_received_sliders(),
+        HashSet::from([key("volume")?])
+    );
+    model.apply(vec![Patch::Remove { key: key("side")? }]);
+    assert!(model.take_received_sliders().is_empty());
+    model.apply(vec![Patch::Replace {
+        node: slider("seek", 10.0)?,
+    }]);
+    assert_eq!(model.take_received_sliders(), HashSet::from([key("seek")?]));
+    model.apply(vec![Patch::Replace {
+        node: slider("gone", 1.0)?,
+    }]);
+    assert!(model.take_received_sliders().is_empty());
+    Ok(())
+}
+
+#[test]
+fn sliders_in_rows_are_bounded_found_and_counted_as_received() -> TestResult {
+    let mut model = ViewModel::new(list_view()?);
+    let list = key("containers")?;
+    model.take_received_sliders();
+    model.rows_needed(&list, 0..10);
+    let mut broken = slider("broken", 1.0)?;
+    if let Element::Slider(spec) = &mut broken.element {
+        spec.max = spec.min;
+    }
+    let rows = vec![
+        ListRow {
+            node: slider("track", 500.0)?,
+            menu: Vec::new(),
+        },
+        ListRow {
+            node: broken,
+            menu: Vec::new(),
+        },
+    ];
+    model.set_rows(list.clone(), RowsResult::List { rows });
+    assert_eq!(
+        model.take_received_sliders(),
+        HashSet::from([key("track")?])
+    );
+    assert!(matches!(
+        model.find_node(&key("track")?).map(|node| &node.element),
+        Some(Element::Slider(spec)) if (spec.value - spec.max).abs() < f64::EPSILON
+    ));
+    assert!(matches!(
+        model.find_node(&key("broken")?).map(|node| &node.element),
+        Some(Element::Text { .. })
+    ));
+    assert_eq!(model.every_slider_key(), HashSet::from([key("track")?]));
+    model.apply(vec![Patch::Invalidate { key: list }]);
+    assert!(model.every_slider_key().is_empty());
+    Ok(())
+}

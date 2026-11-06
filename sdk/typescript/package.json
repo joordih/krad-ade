@@ -1,6 +1,6 @@
 {
   "name": "@krad-ade/extension",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Write Krad ADE extension programs in TypeScript or JavaScript.",
   "license": "MIT OR Apache-2.0",
   "repository": {
