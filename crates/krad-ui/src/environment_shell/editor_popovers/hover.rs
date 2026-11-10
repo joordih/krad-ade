@@ -10,6 +10,7 @@ use gpui_kit::{
 use krad_domain::{LanguageId, ProblemSeverity};
 use krad_lsp::lsp_types::Hover;
 use std::ops::Range;
+use std::time::Instant;
 
 use super::super::file_tab::problem_list::EditorProblem;
 use super::super::language_servers::Document;
@@ -21,6 +22,7 @@ use crate::highlight::{highlight_lines, Syntax};
 use crate::theme::{
     palette, Palette, ICON_SM, LINE_SM, LINE_XS, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM, TEXT_XS,
 };
+use pointer::{HoverPointer, PointerStep, PointerZone, HOVER_GRACE};
 
 const HOVER_W: f32 = 520.0;
 const HOVER_MAX_H: f32 = 360.0;
@@ -30,6 +32,8 @@ const FIXES_PREFIX: &str = "editor-hover-fixes";
 const FIXES_LABEL: &str = "Show fixes";
 const KEEP_MARGIN_PX: f32 = 6.0;
 
+mod pointer;
+
 pub(in crate::environment_shell) struct HoverCard {
     pub(super) tab: krad_domain::TerminalId,
     anchor: Range<usize>,
@@ -37,6 +41,7 @@ pub(in crate::environment_shell) struct HoverCard {
     blocks: Vec<HoverBlock>,
     problems: Vec<EditorProblem>,
     syntax: Syntax,
+    pointer: HoverPointer,
 }
 
 fn word_around(text: &Rope, offset: usize) -> Range<usize> {
@@ -99,21 +104,25 @@ fn code_block(text: &str, syntax: Syntax, pal: &Palette, cx: &App) -> AnyElement
         .into_any_element()
 }
 
-fn keep_open_while_pointer_stays(
-    shell: WeakEntity<EnvironmentShell>,
-    anchor: Bounds<Pixels>,
-) -> AnyElement {
+fn track_hover_pointer(shell: WeakEntity<EnvironmentShell>, anchor: Bounds<Pixels>) -> AnyElement {
     canvas(
         |_, _, _| (),
         move |card: Bounds<Pixels>, (), window, _| {
-            let keep = card.union(&anchor.dilate(px(KEEP_MARGIN_PX)));
+            let text = anchor.dilate(px(KEEP_MARGIN_PX));
             let shell = shell.clone();
             window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
-                if phase != DispatchPhase::Bubble || keep.contains(&event.position) {
+                if phase != DispatchPhase::Bubble {
                     return;
                 }
+                let zone = if card.contains(&event.position) {
+                    PointerZone::Card
+                } else if text.contains(&event.position) {
+                    PointerZone::Text
+                } else {
+                    PointerZone::Elsewhere
+                };
                 shell
-                    .update(cx, EnvironmentShell::close_hover)
+                    .update(cx, |shell, cx| shell.hover_pointer_moved(zone, cx))
                     .unwrap_or_default();
             });
         },
@@ -153,7 +162,13 @@ impl EnvironmentShell {
             .and_then(|editor| editor.problems.clone())
             .map_or_else(Vec::new, |problems| problems.read(cx).at(offset));
         let blocks = hover.as_ref().map_or_else(Vec::new, hover_blocks);
-        if blocks.is_empty() && problems.is_empty() {
+        let has_content = !blocks.is_empty() || !problems.is_empty();
+        if let Some(EditorPopover::Hover(card)) = &self.editor_popover {
+            if !card.pointer.takes_new_hover(has_content) {
+                return;
+            }
+        }
+        if !has_content {
             self.close_hover(cx);
             return;
         }
@@ -172,11 +187,41 @@ impl EnvironmentShell {
             blocks,
             problems,
             syntax,
+            pointer: HoverPointer::OnText,
         }));
         cx.notify();
     }
 
-    pub(super) fn close_hover(&mut self, cx: &mut Context<Self>) {
+    fn hover_pointer_moved(&mut self, zone: PointerZone, cx: &mut Context<Self>) {
+        let Some(EditorPopover::Hover(card)) = &mut self.editor_popover else {
+            return;
+        };
+        match card.pointer.moved(zone, Instant::now()) {
+            PointerStep::Stay => {}
+            PointerStep::Leave => Self::close_hover_after_grace(cx),
+            PointerStep::Close => self.close_hover(cx),
+        }
+    }
+
+    fn close_hover_after_grace(cx: &mut Context<Self>) {
+        let timer = cx.background_executor().timer(HOVER_GRACE);
+        cx.spawn(async move |this, cx| {
+            timer.await;
+            this.update(cx, |shell, cx| {
+                let left = matches!(
+                    &shell.editor_popover,
+                    Some(EditorPopover::Hover(card)) if card.pointer.grace_elapsed(Instant::now())
+                );
+                if left {
+                    shell.close_hover(cx);
+                }
+            })
+            .unwrap_or_default();
+        })
+        .detach();
+    }
+
+    pub(in crate::environment_shell) fn close_hover(&mut self, cx: &mut Context<Self>) {
         if matches!(self.editor_popover, Some(EditorPopover::Hover(_))) {
             self.editor_popover = None;
             cx.notify();
@@ -305,7 +350,7 @@ impl EnvironmentShell {
                 .overflow_y_scroll()
                 .occlude()
                 .font_weight(FontWeight::NORMAL)
-                .child(keep_open_while_pointer_stays(shell, anchor))
+                .child(track_hover_pointer(shell, anchor))
                 .children(problems)
                 .children(divider)
                 .children(blocks)

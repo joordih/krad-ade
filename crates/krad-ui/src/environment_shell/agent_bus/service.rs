@@ -1,4 +1,4 @@
-use krad_agents::{notice_text, Response};
+use krad_agents::{notice_text, ErrorCode, Response};
 use krad_domain::{parse_wsl_path, AgentState, EnvironmentName, TerminalId};
 use krad_session::PtyInput;
 use std::time::Instant;
@@ -26,7 +26,7 @@ impl EnvironmentShell {
                     .unwrap_or_default(),
                 Settlement::Working => bus.settle_waiters.push((target, reply)),
                 Settlement::Missing => reply
-                    .send(Response::Error(NO_SUCH_TERMINAL.to_owned()))
+                    .send(Response::error(ErrorCode::NotFound, NO_SUCH_TERMINAL))
                     .unwrap_or_default(),
             }
         }

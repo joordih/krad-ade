@@ -1,7 +1,7 @@
 use krad_domain::review::{
-    Change, CiStatus, Commit, CommitSha, Discussion, DiscussionId, Job, JobId, MergeRequest,
-    MergeRequestIid, MergeRequestState, MergeStatus, Note, NoteId, Pipeline, PipelineId, User,
-    UserId,
+    Change, CiStatus, Commit, CommitSha, Discussion, DiscussionId, HeadRepository, Job, JobId,
+    MergeRequest, MergeRequestIid, MergeRequestState, MergeStatus, Note, NoteId, Pipeline,
+    PipelineId, User, UserId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -28,10 +28,28 @@ impl From<UserJson> for User {
 }
 
 #[derive(Deserialize)]
+struct RepoJson {
+    full_name: String,
+}
+
+#[derive(Deserialize)]
 struct BranchRefJson {
     #[serde(rename = "ref")]
     name: String,
     sha: String,
+    #[serde(default)]
+    repo: Option<RepoJson>,
+}
+
+fn head_repository(head: Option<&RepoJson>, base: Option<&RepoJson>) -> HeadRepository {
+    match (head, base) {
+        (Some(head), Some(base)) if head.full_name.eq_ignore_ascii_case(&base.full_name) => {
+            HeadRepository::Same
+        }
+        (Some(head), _) => HeadRepository::Fork(head.full_name.parse().ok()),
+        (None, None) => HeadRepository::Same,
+        (None, Some(_)) => HeadRepository::Fork(None),
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -132,6 +150,7 @@ impl From<PullJson> for MergeRequest {
             (PullState::Other, false) => MergeRequestState::Other,
         };
         let status = pull.mergeable_state.map(MergeStatus::from);
+        let head_repository = head_repository(pull.head.repo.as_ref(), pull.base.repo.as_ref());
         Self {
             iid: MergeRequestIid(pull.number),
             title: pull.title,
@@ -145,6 +164,7 @@ impl From<PullJson> for MergeRequest {
                 .map(User::from)
                 .collect(),
             source_branch: pull.head.name,
+            head_repository,
             target_branch: pull.base.name,
             sha: Some(CommitSha(pull.head.sha)),
             detailed_merge_status: status,
@@ -350,7 +370,7 @@ enum RunStatus {
 
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum Conclusion {
+pub(crate) enum Conclusion {
     Success,
     Failure,
     TimedOut,
@@ -362,6 +382,12 @@ enum Conclusion {
     ActionRequired,
     #[serde(other)]
     Other,
+}
+
+impl Conclusion {
+    pub(crate) const fn is_failure(self) -> bool {
+        matches!(self, Self::Failure | Self::TimedOut | Self::StartupFailure)
+    }
 }
 
 fn ci_status(status: RunStatus, conclusion: Option<Conclusion>) -> CiStatus {
@@ -478,7 +504,8 @@ mod tests {
         "number": 7, "title": "Rotate tokens", "body": null, "state": "closed",
         "draft": false, "user": {"id": 1, "login": "ana"},
         "requested_reviewers": [{"id": 2, "login": "bo"}],
-        "head": {"ref": "rotate", "sha": "head111"}, "base": {"ref": "main", "sha": "base000"},
+        "head": {"ref": "rotate", "sha": "head111", "repo": {"full_name": "o/r"}},
+        "base": {"ref": "main", "sha": "base000", "repo": {"full_name": "o/r"}},
         "merged_at": "2026-10-01T10:00:00Z", "mergeable_state": "dirty",
         "comments": 2, "review_comments": 3,
         "html_url": "https://github.com/o/r/pull/7",
@@ -499,6 +526,24 @@ mod tests {
         assert!(request.has_conflicts);
         assert_eq!(request.user_notes_count, 5);
         assert_eq!(request.sha, Some(CommitSha("head111".to_owned())));
+        assert_eq!(request.head_repository, HeadRepository::Same);
+        Ok(())
+    }
+
+    #[test]
+    fn a_pull_request_from_a_fork_names_the_fork() -> Result<(), Box<dyn std::error::Error>> {
+        let fork = PULL.replace(
+            r#""sha": "head111", "repo": {"full_name": "o/r"}"#,
+            r#""sha": "head111", "repo": {"full_name": "someone/r"}"#,
+        );
+        let request = MergeRequest::from(serde_json::from_str::<PullJson>(&fork)?);
+        assert_eq!(
+            request.head_repository,
+            HeadRepository::Fork(Some("someone/r".parse()?))
+        );
+        let deleted = PULL.replacen(r#", "repo": {"full_name": "o/r"}},"#, "},", 1);
+        let request = MergeRequest::from(serde_json::from_str::<PullJson>(&deleted)?);
+        assert_eq!(request.head_repository, HeadRepository::Fork(None));
         Ok(())
     }
 

@@ -18,6 +18,13 @@ const DIFF_ARGS: [&str; 5] = [
     "--find-renames",
     WHOLE_FILE_CONTEXT,
 ];
+const PATCH_ARGS: [&str; 5] = [
+    "diff",
+    "--no-color",
+    "--no-ext-diff",
+    "--find-renames",
+    HEAD,
+];
 const NUMSTAT_ARGS: [&str; 5] = ["diff", "--numstat", "-z", "--find-renames", HEAD];
 const RECORD_SEPARATOR: u8 = 0;
 const NUMSTAT_FIELD_SEPARATOR: char = '\t';
@@ -49,6 +56,14 @@ impl std::ops::Add for LineCount {
 /// no commit yet.
 pub fn line_counts(host: &HostLink, repo: &Path) -> Result<HashMap<PathBuf, LineCount>, RepoError> {
     run_git(host, repo, &NUMSTAT_ARGS).map(|stdout| parse_numstat(&stdout))
+}
+
+/// # Errors
+///
+/// Returns [`RepoError::Git`] when `git diff` fails, as in a repository with
+/// no commit yet.
+pub fn working_patch(host: &HostLink, repo: &Path) -> Result<String, RepoError> {
+    run_git(host, repo, &PATCH_ARGS).map(|stdout| String::from_utf8_lossy(&stdout).into_owned())
 }
 
 pub(crate) fn parse_numstat(output: &[u8]) -> HashMap<PathBuf, LineCount> {

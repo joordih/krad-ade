@@ -18,7 +18,6 @@ use crate::theme::{
     SPACE_1_5, SPACE_2, SPACE_3, TEXT_2XS, TEXT_SM, TEXT_XS,
 };
 
-const LIST_W: f32 = 300.0;
 const ROW_PAD: f32 = 10.0;
 const FACT_ICON: f32 = 12.0;
 const PIPELINE_ICON: f32 = 13.0;
@@ -34,7 +33,7 @@ const EMPTY_TEXT: &str = "Nothing matches this filter in the group's project.";
 const DRAFT_PREFIX: &str = "Draft: ";
 
 impl EnvironmentShell {
-    pub(super) fn request_list(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn request_list(&self, width: Option<f32>, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let words = self.review_words();
         let open = self.review.detail.as_ref().map(|detail| detail.request.iid);
@@ -61,7 +60,10 @@ impl EnvironmentShell {
             .flex()
             .flex_col()
             .flex_none()
-            .w(px(LIST_W))
+            .map(|list| match width {
+                Some(width) => list.w(px(width)),
+                None => list.w_full(),
+            })
             .h_full()
             .gap(px(SPACE_2))
             .py(px(SPACE_3))

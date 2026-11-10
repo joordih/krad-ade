@@ -2,7 +2,15 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::hash::Hash;
 
-const MODEL_PUNCTUATION: &str = "._/:@-";
+mod choice;
+mod effort_scale;
+mod name;
+
+pub use choice::ChatChoice;
+pub use effort_scale::{snap_effort, EffortSnap};
+pub use name::{claude_alias_name, humanize_model_id, split_context, ContextSize, CLAUDE_BRAND};
+
+const MODEL_PUNCTUATION: &str = "._/:@-[]";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -13,7 +21,7 @@ pub struct InvalidModelId;
 
 impl std::fmt::Display for InvalidModelId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("a model name is one word of letters, digits and ._/:@-")
+        f.write_str("a model name is one word of letters, digits and ._/:@-[]")
     }
 }
 
@@ -90,13 +98,24 @@ pub(crate) fn lenient_model<'de, D: Deserializer<'de>>(
     Ok(name.and_then(|name| ModelId::parse(&name)))
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) fn lenient_effort<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Effort>, D::Error> {
+    let level = Option::<String>::deserialize(deserializer)?;
+    Ok(level.and_then(|level| level.parse().ok()))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Effort {
+    Minimal,
     Low,
     Medium,
     High,
+    #[serde(rename = "xhigh")]
     ExtraHigh,
     Max,
+    Ultra,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -111,6 +130,16 @@ impl std::fmt::Display for UnknownEffort {
 impl std::error::Error for UnknownEffort {}
 
 impl Effort {
+    pub const LEVELS: [Self; 7] = [
+        Self::Minimal,
+        Self::Low,
+        Self::Medium,
+        Self::High,
+        Self::ExtraHigh,
+        Self::Max,
+        Self::Ultra,
+    ];
+
     pub const ALL: [Self; 5] = [
         Self::Low,
         Self::Medium,
@@ -121,22 +150,52 @@ impl Effort {
 
     const fn level(self) -> &'static str {
         match self {
+            Self::Minimal => "minimal",
             Self::Low => "low",
             Self::Medium => "medium",
             Self::High => "high",
             Self::ExtraHigh => "xhigh",
             Self::Max => "max",
+            Self::Ultra => "ultra",
         }
     }
 
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
+            Self::Minimal => "Minimal",
             Self::Low => "Low",
             Self::Medium => "Medium",
             Self::High => "High",
             Self::ExtraHigh => "Extra high",
             Self::Max => "Max",
+            Self::Ultra => "Ultra",
+        }
+    }
+
+    #[must_use]
+    pub const fn short_label(self) -> &'static str {
+        match self {
+            Self::Minimal => "Min",
+            Self::Low => "Low",
+            Self::Medium => "Med",
+            Self::High => "High",
+            Self::ExtraHigh => "XHigh",
+            Self::Max => "Max",
+            Self::Ultra => "Ultra",
+        }
+    }
+
+    #[must_use]
+    pub const fn meaning(self) -> &'static str {
+        match self {
+            Self::Minimal => "Minimal: answers almost at once, with barely any reasoning",
+            Self::Low => "Low: quick answers with light reasoning",
+            Self::Medium => "Medium: balances speed and depth",
+            Self::High => "High: reasons longer before answering",
+            Self::ExtraHigh => "Extra high: deep reasoning for hard problems",
+            Self::Max => "Max: the most reasoning the model allows per turn",
+            Self::Ultra => "Ultra: the longest reasoning, for the hardest tasks",
         }
     }
 }
@@ -151,7 +210,7 @@ impl std::str::FromStr for Effort {
     type Err = UnknownEffort;
 
     fn from_str(level: &str) -> Result<Self, Self::Err> {
-        Self::ALL
+        Self::LEVELS
             .into_iter()
             .find(|effort| effort.level() == level)
             .ok_or(UnknownEffort)
@@ -177,6 +236,10 @@ mod tests {
         assert_eq!(ModelId::parse("claude opus"), None);
         assert_eq!(ModelId::parse("opus&calc"), None);
         assert_eq!(ModelId::parse("\"opus\""), None);
+        assert_eq!(
+            ModelId::parse("claude-fable-5-1[1m]").map(|m| m.to_string()),
+            Some("claude-fable-5-1[1m]".to_owned())
+        );
     }
 
     #[test]
@@ -197,8 +260,10 @@ mod tests {
     fn effort_levels_read_and_write_as_claude_code_has_them() {
         assert_eq!("xhigh".parse(), Ok(Effort::ExtraHigh));
         assert_eq!("medium".parse(), Ok(Effort::Medium));
+        assert_eq!("ultra".parse(), Ok(Effort::Ultra));
+        assert_eq!("minimal".parse(), Ok(Effort::Minimal));
         assert_eq!("turbo".parse::<Effort>(), Err(UnknownEffort));
-        for effort in Effort::ALL {
+        for effort in Effort::LEVELS {
             assert_eq!(effort.to_string().parse(), Ok(effort));
         }
     }

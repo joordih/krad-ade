@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::git::run_git;
 use crate::RepoError;
+pub use krad_domain::ChangeKind;
 use krad_host::HostLink;
 
 const STATUS_ARGS: [&str; 5] = [
@@ -39,16 +40,6 @@ const DELETED_CODE: char = 'D';
 const RENAMED_CODE: char = 'R';
 const COPIED_CODE: char = 'C';
 const UNMODIFIED_CODE: char = '.';
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ChangeKind {
-    Modified,
-    Added,
-    Deleted,
-    Renamed,
-    Untracked,
-    Conflicted,
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileChange {

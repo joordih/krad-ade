@@ -154,6 +154,10 @@ _Avoid_: explorer, inspector, right sidebar
 Throwing away a file's uncommitted changes so it matches the last commit again; a file git does not track yet is deleted. A single block of changed lines can be reverted the same way from its diff.
 _Avoid_: reset, undo, rollback
 
+**Diff comment**:
+A comment the user leaves on a line or range of lines of a file's Changes diff for the session's agent, kept with the session until sent. It follows its hunk while line numbers shift and shows as outdated once that hunk changes. "Send review" sends every comment of the session to its agent as one message and clears them.
+_Avoid_: review comment, note, annotation, discussion
+
 **History**:
 The commits of the group's branch and its upstream, newest first, drawn as a graph of lanes under the git changes. A commit opens to list the files it changed, each shown as a diff against its first parent.
 _Avoid_: log, timeline, graph
@@ -266,9 +270,21 @@ _Avoid_: assistant, agent, conversation, agents bus
 A file, folder or image sent with a Chat message as context: typed as `@path`, picked, dropped or pasted. Images reach the model as images and other files by their path; pasted images are kept with the chat and go with it when it is deleted.
 _Avoid_: reference, link, tag, attachment, upload
 
+**Chat search**:
+Finding words across the history of every chat of the selected group from the command palette, each hit showing the chat and a snippet of the message, from where the user can reopen the chat, fork it or export it to a note.
+_Avoid_: history search, global search, find in chats
+
+**Fork**:
+A new chat that continues another one from one of its messages, leaving the original as it was: through the harness's own fork when it can, otherwise seeded with the conversation up to that message.
+_Avoid_: branch, copy, clone, duplicate
+
 **Rewind**:
-Cutting a Chat back to one of the user's messages, edited, so the harness answers it again; it rewinds the conversation, and the files too where the harness can restore them. Only while the chat is idle.
+Cutting a Chat back to one of the user's messages, edited, so the harness answers it again; it rewinds the conversation, and the files too where the harness can restore them or a checkpoint of that turn exists. Only while the chat is idle.
 _Avoid_: edit, retry, regenerate, undo
+
+**Checkpoint**:
+The state of a Group's git repository's files saved by the app just before a Chat turn, for harnesses that cannot restore files themselves, so a rewind can put them back; restoring one first saves the current files as another, so the restore can be undone.
+_Avoid_: snapshot, backup, stash
 
 **Checklist**:
 The steps an agent tracks for its current work, kept up to date as it goes and shown above a Chat's composer.
@@ -287,12 +303,72 @@ Report an agent CLI sends to the app at a point of its work (a prompt submitted,
 _Avoid_: callback, event, webhook
 
 **Worker**:
-Agent a lead starts through the bus to do part of the work, briefed to report back when done. It opens as a session of its own in the group, as a chat, without taking the user's place on screen; the lead owns it and its chat shows it as a Worker card. It closes when it fails to start, once it has finished and the lead has read its work (its chat is kept and reopens from the card), and when its lead is removed.
+Agent a lead starts through the bus to do part of the work, briefed to report back when done. It opens as a session of its own in the group, as a chat, without taking the user's place on screen; the lead owns it and its chat shows it as a Worker card. It closes when it fails to start, once it has finished and the lead has read its work, when the lead closes it (its chat is kept and reopens from the card, its worktree stays on disk unless the lead asks to remove a clean one), and when its lead is removed.
 _Avoid_: sub-agent, child, job, terminal
+
+**Kraddie**:
+The creature species of the app, and the feature named after it (the Kraddies): a Worker with an identity that lives between sessions, with a name the user gives it (there is no default name), a painted design, a harness and model and the repository it works in. It owns automations, its routines, and each of their runs works as a Worker session without a lead, reporting through the attention queue. Kept as a `.kraddie` file in the user's config folder (older `.kradpet` files and the folder of its former name still load), with its automations next to it. Its base art is also called Kraddie.
+_Avoid_: bot, cron job, mascot
+
+**Automation**:
+One routine of a Kraddie: a name, an active switch, triggers (a schedule, a GitHub or GitLab event, an app event of the Kraddie's repository, or a manual run from the app or `krad automation run`), instructions, optional harness, model, effort and permission mode, where its runs work and which conversation they continue, and a catch-up window for runs missed while the app was closed. Made from scratch or from an example in the Automations view; counted on the Kraddie page as its routines.
+_Avoid_: workflow, job, rule, habit
+
+**Kraddie run**:
+One run of a Kraddie's automation: when it started, what woke it, its outcome and the session it opened, kept in the automation's bounded history.
+_Avoid_: job, execution, task
+
+**Kraddie page**:
+A Kraddie's own page in the Kraddies view: a stage with its animated look and mood, and five parts picked from a sliding switch: At a glance (its Trail, Day so far, On the horizon, Fresh from today and Logbook cards), Compass, Keepsakes, Chats and memory (its Kraddie chats, its chat digests and its memory reach) and Tuning (look, brain, reach, its sessions, rounds and a fresh start). Cards reflow with the width of the content island.
+_Avoid_: profile screen, dashboard
+
+**Trail**:
+The heat map of a Kraddie's last six months, one square a day, by runs, lines, tokens or cost.
+_Avoid_: contributions, activity graph
+
+**Compass**:
+The guidance a Kraddie carries on every run, a Markdown document kept as `compass.md` in its config folder (a file of its former name is renamed once).
+_Avoid_: system prompt, persona, soul
+
+**Keepsakes**:
+The bounded list of short notes a Kraddie carries between runs (its memory in code and in `krad kraddie memory`); the user edits them on the Kraddie page and the Kraddie adds one with `krad kraddie remember`.
+_Avoid_: notes, knowledge base
+
+**Kraddie chat**:
+A chat session that belongs to a Kraddie, opened from its row in the sidebar, its page or `krad kraddie chat new`: it starts with the Kraddie's harness, model, effort and permissions, its identity, Compass and Keepsakes, works in the Kraddie's working folder when it has one (otherwise in the group the user is in), carries the Kraddie's avatar in the session lists and is reopened, renamed and closed like any session.
+_Avoid_: Kraddie session, persona chat
+
+**Chat digest**:
+The short list of facts and decisions a chat leaves behind, written in the background by the chat's own harness when the chat ends or rests for a while, with secrets redacted; kept per Kraddie for Kraddie chats and in one shared book for ordinary chats, and read, edited or forgotten by the user. A Kraddie can turn its automatic digests off.
+_Avoid_: summary, transcript, log
+
+**Memory reach**:
+Which memory a chat may read: the digests of ordinary chats always, plus, for a Kraddie chat, its own Kraddie's Keepsakes and digests and those of every Kraddie it can read memory of (one way, set on the reader, not passed on), plus any Kraddie the user mentions with `$` in that chat. Applied to the memory pack and to every `memory_search` and `memory_read` call.
+_Avoid_: permissions, sharing scope
+
+**Memory pack**:
+The memory within a chat's reach ranked by relevance and recency and cut to a token budget, handed to the harness when the chat starts; a `$` mention attaches the named Kraddie's own pack to the message.
+_Avoid_: context dump, RAG
+
+**Rounds**:
+A Kraddie's optional read-only look over its work after a quiet spell of a chosen span; it only suggests what to do next, through the attention queue.
+_Avoid_: ping, keepalive, auto-run, heartbeat
+
+**Kraddie studio**:
+The sheet, opened from the Kraddies view or the Kraddie page, where the user paints a Kraddie's design on layers and faces with brush, eraser, fill and shapes, a palette, and undo and redo.
+_Avoid_: editor, designer, paint tool
 
 **Worker card**:
 The preview of one Worker inside its lead's chat: its task, agent state and latest activity, kept live; clicking it goes to the Worker's session.
 _Avoid_: subagent card, worker preview, worker tab
+
+**Variant run**:
+The same task handed to two to four Variants at once, owned by the group it started from, so the user can compare them side by side in the Variants view and pick a winner; the others are discarded with their worktrees.
+_Avoid_: experiment, race, A/B test
+
+**Variant**:
+One attempt of a Variant run: a harness, an optional model and an optional extra instruction, working in a worktree of its own as a Worker session the run owns. Its diff, test result, cost, tokens and time are recorded for the comparison.
+_Avoid_: candidate, branch, fork
 
 **Subagent**:
 Helper a harness starts inside its own turn, such as one Claude Code or the Gateway's agent runs through its agent tool, with a fresh context; it has no terminal and the bus does not know it. The agent's chat shows it as a card the user can go into to read its whole conversation.
@@ -310,9 +386,45 @@ _Avoid_: view, mode, UI
 Channel through which agents in the app's terminals, and the Chat, list each other, exchange messages and wait for each other while the app runs.
 _Avoid_: orchestrator, chat, MCP
 
+**Agents API**:
+The versioned protocol of the Agents bus, spoken by the `krad` CLI: each request carries its API version and every refusal a stable error code. Besides coordinating agents it lets a lead close its Workers, lists, creates and closes sessions, creates worktrees, opens files and reads a group's changes.
+_Avoid_: public API, REST API, SDK
+
+**Agent event**:
+One line of an Agents API subscription: an agent opened, changed state or closed, numbered within the run of the app, with its previous and new state and the reason when known. A subscription starts with a snapshot of the open agents and stays alive with heartbeats.
+_Avoid_: app event, notification, webhook
+
+**API discovery file**:
+The owner-only `api.json` the app leaves in its config folder while it runs, naming the Agents API's endpoint, token, version and process, so programs outside the app's terminals can reach it; Settings can turn it off.
+_Avoid_: lock file, socket file, config
+
+**App event**:
+A typed fact the app publishes when its own state changes: an agent starts, waits for input or finishes, a worktree or session opens or closes, a group's git changes, a review is sent, or a merge request opens or its pipeline passes or fails. It names ids, never contents, carries the version of its format and reaches the group's event journal, the webhooks that chose it and the extensions that subscribed to it.
+_Avoid_: hook, notification, signal, message
+
+**Event journal**:
+The app events of one group kept on disk as lines in a bounded file that rotates, read back skipping any line it cannot read.
+_Avoid_: log, history, audit trail
+
+**Webhook**:
+An address the user adds in Settings that the app posts the app events it chose to, signed with its secret when it has one and retried a few times when it fails. Events from the code host reach the app by asking it now and then, never through an address the app opens.
+_Avoid_: hook, callback, integration, sink
+
 **Agent state**:
 Observable situation of an agent: idle, working, waiting-for-input or done (finished its turn and not yet seen).
 _Avoid_: status, presence, activity
+
+**Attention queue**:
+The agents waiting for the user, across environments: permissions first, then asks, errors and finished turns the user has not seen, oldest first within each. It feeds the app icon's count, the system notifications shown while the window is in the background and the shortcut that jumps to the next waiting agent.
+_Avoid_: unread, alerts
+
+**Attention inbox**:
+The panel, closed until opened, listing the attention queue and the recent history of events, filtered by kind: finished, asks, permissions and errors.
+_Avoid_: notification center, feed
+
+**Quiet hours**:
+The daily span in which no notification or sound is sent; the attention queue, the inbox and the count still fill. A muted session is quiet all day.
+_Avoid_: do not disturb, snooze
 
 **Theme**:
 The colors of the whole app in one set: the interface, the terminals' ANSI colors and the code editor's syntax. The user picks one theme for light appearance and one for dark, and the system appearance can choose between them. It does not change how translucent the window is.
@@ -331,6 +443,14 @@ _Avoid_: active focus, selection, cursor
 **Command palette**:
 Filterable list to run app commands from the keyboard.
 _Avoid_: command-K, launcher, global search
+
+**Project search**:
+Search across the files of the group's folder from the side panel, as text or a regular expression, matching case or whole words, narrowed by files to include and exclude; its replace shows each change before it and applies to one file or to all of them.
+_Avoid_: global search, grep, find in project
+
+**Project task**:
+A command the group's folder already declares for building, testing or running it: a `package.json` script, a Cargo command, a `justfile` recipe or a `Makefile` target. The command palette runs one in a new terminal in the group.
+_Avoid_: job, script, checklist
 
 **Settings**:
 Persistent user preferences: appearance, window material and tint, terminal font and theme, and integrations.

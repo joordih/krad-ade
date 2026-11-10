@@ -7,8 +7,9 @@ use crate::code::{CodePosition, CodeRequest, CodeTool};
 use crate::env::bus_env;
 use crate::extension_tools::{is_extension_tool, mcp_schema, ExtensionToolOutcome, ToolCatalog};
 use crate::handle::Caller;
-use crate::protocol::{BusToken, Request, Response};
+use crate::protocol::{MemoryTools, Request, Response};
 use krad_domain::CodeTools;
+use memory::{memory_request, memory_schemas, run_memory};
 
 const SERVER_NAME: &str = "krad-code";
 const DEFAULT_PROTOCOL: &str = "2025-06-18";
@@ -80,13 +81,12 @@ struct EnvBus;
 
 impl Bus for EnvBus {
     fn ask(&self, request: Request) -> Result<Response, String> {
-        let env = bus_env().ok_or_else(|| OUTSIDE_KRAD.to_owned())?;
+        let env = bus_env(None).ok_or_else(|| OUTSIDE_KRAD.to_owned())?;
         let from = env
             .terminal
             .parse::<Caller>()
             .map_err(|_| OUTSIDE_KRAD.to_owned())?;
-        call(&env.endpoint, &BusToken::from(env.token), &from, request)
-            .map_err(|error| error.to_string())
+        call(&env.endpoint, &env.token, &from, request).map_err(|error| error.to_string())
     }
 }
 
@@ -125,7 +125,8 @@ fn code_request(name: &str, arguments: Value) -> Result<CodeRequest, String> {
 fn run_code(bus: &impl Bus, request: CodeRequest) -> (String, bool) {
     match bus.ask(Request::Code(request)) {
         Ok(Response::Code(answer)) => (answer.render(), false),
-        Ok(Response::Error(message)) | Err(message) => (message, true),
+        Ok(Response::Error(error)) => (error.message, true),
+        Err(message) => (message, true),
         Ok(_) => (OUTSIDE_KRAD.to_owned(), true),
     }
 }
@@ -135,7 +136,8 @@ fn run_extension_tool(bus: &impl Bus, name: String, arguments: Value) -> (String
         Ok(Response::ExtensionTool(answer)) => {
             (answer.text, answer.outcome == ExtensionToolOutcome::Failed)
         }
-        Ok(Response::Error(message)) | Err(message) => (message, true),
+        Ok(Response::Error(error)) => (error.message, true),
+        Err(message) => (message, true),
         Ok(_) => (OUTSIDE_KRAD.to_owned(), true),
     }
 }
@@ -149,7 +151,12 @@ fn listed_tools(bus: &impl Bus) -> Vec<Value> {
         .then(|| CodeTool::ALL.map(tool_schema))
         .into_iter()
         .flatten();
-    code.chain(catalog.extension_tools.iter().map(mcp_schema))
+    let memory = (catalog.memory_tools == MemoryTools::On)
+        .then(memory_schemas)
+        .into_iter()
+        .flatten();
+    code.chain(memory)
+        .chain(catalog.extension_tools.iter().map(mcp_schema))
         .collect()
 }
 
@@ -158,6 +165,8 @@ fn call_tool(bus: &impl Bus, params: Value) -> Result<Value, (i64, String)> {
         .map_err(|error| (INVALID_PARAMS, error.to_string()))?;
     let (text, failed) = if is_extension_tool(&params.name) {
         run_extension_tool(bus, params.name, params.arguments)
+    } else if let Some(request) = memory_request(&params.name, params.arguments.clone()) {
+        run_memory(bus, request.map_err(|message| (INVALID_PARAMS, message))?)
     } else {
         let request = code_request(&params.name, params.arguments)
             .map_err(|message| (INVALID_PARAMS, message))?;
@@ -207,5 +216,6 @@ pub(crate) fn run_mcp() -> i32 {
     EXIT_OK
 }
 
+mod memory;
 #[cfg(test)]
 mod tests;

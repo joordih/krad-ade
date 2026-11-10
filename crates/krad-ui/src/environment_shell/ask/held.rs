@@ -72,6 +72,7 @@ impl EnvironmentShell {
             AskReply::Hook(reply)
         };
         chat.asks_mut().push(Waiting::held(ask, reply, tool, call));
+        self.raise_front_ask(&env, TerminalId(from.terminal));
     }
 
     pub(in crate::environment_shell) fn settle_held_asks(

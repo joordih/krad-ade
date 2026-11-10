@@ -5,6 +5,14 @@ use serde_json::Value;
 use crate::checklist::todos;
 use crate::edits::{file_edit, patched_edit};
 
+mod plan;
+mod spend;
+mod usage;
+
+pub(crate) use plan::claude_limit_alert;
+pub(crate) use spend::claude_spend;
+pub(crate) use usage::{claude_plan_usage, usage_failure_of};
+
 const SUMMARY_KEYS: &[&str] = &[
     "file_path",
     "filePath",

@@ -1,6 +1,11 @@
+mod rows;
+mod syntax;
+
 use krad_domain::review::{Change, NotePosition};
 
 use super::words::HostWords;
+pub(in crate::environment_shell) use rows::{diff_items, thread_anchors, DiffItem, ThreadAnchor};
+pub(in crate::environment_shell) use syntax::{highlight_diff, LineHighlights};
 
 const HUNK_PREFIX: &str = "@@";
 const ADDED_PREFIX: char = '+';
@@ -23,8 +28,8 @@ pub(in crate::environment_shell) enum LineKind {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(in crate::environment_shell) struct DiffLine {
     pub(in crate::environment_shell) kind: LineKind,
-    pub(super) old: Option<u32>,
-    pub(super) new: Option<u32>,
+    pub(in crate::environment_shell) old: Option<u32>,
+    pub(in crate::environment_shell) new: Option<u32>,
     pub(in crate::environment_shell) text: String,
 }
 

@@ -1,6 +1,6 @@
 use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
-use krad_agents::{Request, Response};
+use krad_agents::{ErrorCode, Request, Response};
 use krad_domain::{
     chat_worker_brief, AgentPreset, EnvironmentName, GroupId, PermissionMode, SessionId,
     TerminalGroup, TerminalId,
@@ -38,6 +38,8 @@ impl EnvironmentShell {
                 return;
             }
             Request::List => Response::Agents(self.agent_infos(environment, None)),
+            Request::ListAll => Response::Agents(self.all_agent_infos(environment, None)),
+            Request::Close(_) => Response::error(ErrorCode::Forbidden, super::ONLY_LEADS_CLOSE),
             Request::Send { to, body } => self.submit_from_chat(environment, to, &body, cx),
             Request::Wait { target, .. } => {
                 self.wait_for(environment, target, reply);
@@ -59,15 +61,51 @@ impl EnvironmentShell {
                 self.start_chat_worker(environment, group, spawn, reply, cx);
                 return;
             }
-            Request::Check { .. } => Response::Error(NO_CHAT_INBOX.to_owned()),
+            Request::Check { .. } => Response::error(ErrorCode::Unsupported, NO_CHAT_INBOX),
+            Request::SubscribeAgents(_) => super::feed::streamed_by_the_bus(),
             Request::Hook { .. } | Request::Status(_) | Request::Ask { .. } => {
-                Response::Error(TERMINALS_ONLY.to_owned())
+                Response::error(ErrorCode::Unsupported, TERMINALS_ONLY)
             }
-            Request::Askpass { .. } => Response::Error(super::askpass::GIT_ONLY.to_owned()),
+            Request::Askpass { .. } => super::askpass::git_only(),
             Request::Tools => Response::Tools(self.tool_catalog()),
             request @ Request::ExtensionTool { .. } => {
                 let caller = CodeCaller::Group(group);
                 self.answer_extension_tool(environment, &caller, request, reply, cx);
+                return;
+            }
+            request @ (Request::Kraddies
+            | Request::RunKraddie { .. }
+            | Request::Automations
+            | Request::RunAutomation { .. }
+            | Request::SwitchAutomation { .. }
+            | Request::RememberKraddie { .. }
+            | Request::KraddieMemory { .. }) => {
+                self.answer_kraddies(request, reply, cx);
+                return;
+            }
+            request @ (Request::KraddieRecall { .. }
+            | Request::NewKraddieChat { .. }
+            | Request::ShareKraddieMemory { .. }) => {
+                self.answer_kraddie_memory(request, reply, cx);
+                return;
+            }
+            request @ (Request::MemorySearch { .. } | Request::MemoryRead { .. }) => {
+                self.answer_memory(environment, None, &request)
+            }
+            request @ (Request::Hello
+            | Request::Sessions
+            | Request::CreateSession { .. }
+            | Request::CloseSession { .. }
+            | Request::CreateWorktree { .. }
+            | Request::OpenFile { .. }
+            | Request::Changes { .. }) => {
+                self.answer_workspace(environment, Some(group), request, reply, cx);
+                return;
+            }
+            request @ (Request::RunVariants(_)
+            | Request::Variants { .. }
+            | Request::PickVariant { .. }) => {
+                self.answer_variants(environment, Some(group), request, reply, cx);
                 return;
             }
         };
@@ -92,7 +130,7 @@ impl EnvironmentShell {
             .and_then(|live| live.sessions.get(&id))
             .is_some_and(|session| session.state.is_running());
         if !running {
-            return Response::Error(CLOSED_TERMINAL.to_owned());
+            return Response::error(ErrorCode::NotFound, CLOSED_TERMINAL);
         }
         self.submit_text_into(&env, id, body);
         Response::Submitted { terminal: to }
@@ -126,7 +164,7 @@ impl EnvironmentShell {
             .get(env)
             .and_then(|live| live.data.group(group))
             .cloned()
-            .ok_or_else(|| Response::Error(NO_CHAT_GROUP.to_owned()))?;
+            .ok_or_else(|| Response::error(ErrorCode::NotFound, NO_CHAT_GROUP))?;
         let order = WorkerOrder {
             preset,
             worktree: spawn.worktree,

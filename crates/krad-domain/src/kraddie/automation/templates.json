@@ -1,0 +1,149 @@
+[
+  {
+    "id": "morning-risk-sweep",
+    "categories": ["popular", "code_review"],
+    "icon": "bug",
+    "title": "Morning risk sweep",
+    "description": "Each workday, reread yesterday's merges and flag what could break for people using it.",
+    "triggers": [{ "kind": "schedule", "schedule": { "kind": "at", "time": "08:30", "days": ["mon", "tue", "wed", "thu", "fri"] } }],
+    "instructions": "Go through every commit merged since your previous sweep. Hunt for crashes, lost data, broken edge cases and results that quietly come out wrong. For each worry, give the file, the line, why it is risky and the smallest change that would settle it. Leave the code untouched."
+  },
+  {
+    "id": "attack-surface-walk",
+    "categories": ["popular", "security"],
+    "icon": "shield",
+    "title": "Attack surface walk",
+    "description": "Once a week, walk the inputs and boundaries of the project the way an intruder would.",
+    "triggers": [{ "kind": "schedule", "schedule": { "kind": "at", "time": "10:30", "days": ["tue"] } }],
+    "instructions": "Trace every place where outside data enters the program: requests, files, environment, command lines. Look for injection, path escapes, unchecked deserialization, missing permission checks and credentials living in the code or its history. Order what you find from most to least dangerous and sketch a remedy for each."
+  },
+  {
+    "id": "docs-refresh",
+    "categories": ["popular", "data_and_research"],
+    "icon": "docs",
+    "title": "Docs refresh",
+    "description": "Bring the written guides back in line with whatever the code changed lately.",
+    "triggers": [{ "kind": "schedule", "schedule": { "kind": "at", "time": "14:00", "days": ["thu"] } }],
+    "instructions": "Spot the public functions, commands and settings whose behaviour moved during the last seven days and refresh the pages that describe them. Match the voice already used in the docs, keep the structure, and leave the edits ready for someone to read over."
+  },
+  {
+    "id": "one-more-test",
+    "categories": ["popular", "code_review"],
+    "icon": "tests",
+    "title": "One more test a day",
+    "description": "Every workday, find a path nobody tests yet and pin its behaviour down.",
+    "triggers": [{ "kind": "schedule", "schedule": { "kind": "at", "time": "13:00", "days": ["mon", "tue", "wed", "thu", "fri"] } }],
+    "instructions": "Choose one meaningful code path that no test exercises today. Write small, focused tests that describe what it should do, run them until they pass, and finish with a short note on what is now protected."
+  },
+  {
+    "id": "first-look-review",
+    "categories": ["code_review"],
+    "icon": "review",
+    "title": "First look on new pull requests",
+    "description": "Leave an early, friendly review the moment a pull request shows up.",
+    "triggers": [{ "kind": "code_host", "host": "Github", "event": "request_opened" }],
+    "instructions": "A pull request has just been opened. Read it for correctness, missing tests, unclear names and changes that look risky. Answer with a list of remarks, each tied to a file and a line, and open with one sentence on the overall shape of the change."
+  },
+  {
+    "id": "unused-code-sweep",
+    "categories": ["code_review"],
+    "icon": "review",
+    "title": "Unused code sweep",
+    "description": "At the end of the week, clear out functions, flags and files nothing reaches anymore.",
+    "triggers": [{ "kind": "schedule", "schedule": { "kind": "at", "time": "15:30", "days": ["fri"] } }],
+    "instructions": "Find code that nothing calls anymore: functions, feature switches, whole files and packages. Delete only what is clearly unreachable, then build and run the tests. List separately anything that looked unused but deserves a human decision."
+  },
+  {
+    "id": "dependency-health",
+    "categories": ["security"],
+    "icon": "dependencies",
+    "title": "Dependency health check",
+    "description": "Compare every package the project pulls in against published advisories.",
+    "triggers": [{ "kind": "schedule", "schedule": { "kind": "at", "time": "09:15", "days": ["mon"] } }],
+    "instructions": "Enumerate the packages the project depends on, directly and through others. Check each against known security advisories and notice the ones that look abandoned. For every problem, propose the gentlest upgrade or replacement that resolves it."
+  },
+  {
+    "id": "credential-guard",
+    "categories": ["security"],
+    "icon": "shield",
+    "title": "Credential guard",
+    "description": "Whenever files change, make sure no key or password slipped into them.",
+    "triggers": [{ "kind": "app", "event": "git_changed" }],
+    "instructions": "Look over the pending changes and the most recent commits for API keys, access tokens, passwords and internal addresses. Point to each one by file and line, and explain how to take it out, including from the history if it was already committed."
+  },
+  {
+    "id": "red-build-responder",
+    "categories": ["popular", "incidents_and_triage"],
+    "icon": "incident",
+    "title": "Red build responder",
+    "description": "The moment a pipeline turns red, work out why and prepare the repair.",
+    "triggers": [
+      { "kind": "code_host", "host": "Github", "event": "ci_failed" },
+      { "kind": "code_host", "host": "Gitlab", "event": "ci_failed" }
+    ],
+    "instructions": "A CI run has failed. Open the jobs that broke, connect them to the commit responsible and decide whether the failure is genuine or just unstable. Then suggest, or apply, the narrowest fix that turns it green again."
+  },
+  {
+    "id": "wobbly-test-finder",
+    "categories": ["incidents_and_triage"],
+    "icon": "incident",
+    "title": "Wobbly test finder",
+    "description": "Run the suite over and over to catch tests that pass one time and fail the next.",
+    "triggers": [{ "kind": "schedule", "schedule": { "kind": "at", "time": "06:45", "days": ["mon", "tue", "wed", "thu", "fri"] } }],
+    "instructions": "Run the whole test suite several times in a row. Note every test whose result changes between runs, keep the output of its failures and explain what most likely makes it unstable: timing, ordering, shared state or the network."
+  },
+  {
+    "id": "loose-ends-digest",
+    "categories": ["incidents_and_triage"],
+    "icon": "flag",
+    "title": "Loose ends digest",
+    "description": "Gather the reminders left in the code and say which ones are getting urgent.",
+    "triggers": [{ "kind": "schedule", "schedule": { "kind": "at", "time": "11:00", "days": ["wed"] } }],
+    "instructions": "Collect the TODO, FIXME and HACK markers across the project, cluster them by area and weigh how much harm each could do if left alone. Close with the handful that should be tackled first and why."
+  },
+  {
+    "id": "friday-recap",
+    "categories": ["data_and_research"],
+    "icon": "research",
+    "title": "Friday recap",
+    "description": "Turn the week's commits into a short story the whole team can skim.",
+    "triggers": [{ "kind": "schedule", "schedule": { "kind": "at", "time": "16:30", "days": ["fri"] } }],
+    "instructions": "Read the commits from the past seven days and write a brief recap for teammates: what shipped, what got fixed and what still deserves a careful second look. Keep it readable in under a minute."
+  },
+  {
+    "id": "upgrade-scout",
+    "categories": ["data_and_research"],
+    "icon": "dependencies",
+    "title": "Upgrade scout",
+    "description": "Find packages with newer releases and size up what moving to them would cost.",
+    "triggers": [{ "kind": "schedule", "schedule": { "kind": "at", "time": "10:00", "days": ["thu"] } }],
+    "instructions": "List the dependencies that have newer releases available. Skim their release notes and estimate, for each, how much work and how much risk an upgrade would bring. Report only; do not change any version."
+  },
+  {
+    "id": "clean-build-probe",
+    "categories": ["environment"],
+    "icon": "environment",
+    "title": "Clean build probe",
+    "description": "Build and test a few times a day so a broken toolchain shows up early.",
+    "triggers": [{ "kind": "schedule", "schedule": { "kind": "every", "minutes": 240 } }],
+    "instructions": "Build the project and run its tests in this checkout. If something breaks, figure out whether the code, a dependency or the toolchain itself is at fault and describe what you found."
+  },
+  {
+    "id": "worktree-warmup",
+    "categories": ["environment"],
+    "icon": "environment",
+    "title": "Worktree warm-up",
+    "description": "Get every new worktree ready to use before you open it.",
+    "triggers": [{ "kind": "app", "event": "worktree_created" }],
+    "instructions": "A worktree has just been created. Install what it needs, follow the setup steps the project documents and tell me about any step that did not go through."
+  },
+  {
+    "id": "branch-tidy-list",
+    "categories": ["environment"],
+    "icon": "environment",
+    "title": "Branch tidy list",
+    "description": "Point out merged or forgotten branches and worktrees without removing anything.",
+    "triggers": [{ "kind": "schedule", "schedule": { "kind": "at", "time": "17:15", "days": ["fri"] } }],
+    "instructions": "Find the local branches and worktrees that are already merged or have not moved in a month. Show each with its latest commit and age so I can decide; delete nothing yourself."
+  }
+]

@@ -4,17 +4,20 @@ use gpui_kit::{
     MouseDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_domain::{
-    AgentPreset, AgentState, EnvironmentView, GroupId, Session, SessionId, SessionSpec,
-    SidebarDensity, TerminalId,
+    AgentPreset, AgentState, EnvironmentView, GroupId, Session, SessionAttention, SessionId,
+    SessionSpec, SidebarDensity, TerminalId,
 };
 
 use std::borrow::Cow;
+use std::rc::Rc;
 
 use super::session_look::session_icon;
+use super::spending::spend_caption;
 use super::terminal_status::CardStatus;
 use super::workers::{LeadEnding, NEEDS_YOU_LABEL};
 use super::{EnvironmentShell, LiveEnv};
 use crate::components::{agent_status, icon, Button, IconName};
+use crate::kraddie_avatar::{kraddie_avatar, KraddieSprite};
 use crate::theme::{
     hue_rgb, palette, row_fill, row_shadow, ICON_SM, LINE_SM, LINE_XS, NAV_ROW_H, RADIUS_XS,
     SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM, TEXT_XS,
@@ -23,11 +26,15 @@ use crate::theme::{
 const SESSION_ROW_PREFIX: &str = "session-row";
 const SESSION_CLOSE_PREFIX: &str = "close-session-";
 const CLOSE_SESSION_TOOLTIP: &str = "Close session; its terminals move to another one";
+const SESSION_MUTE_PREFIX: &str = "mute-session-";
+const MUTE_SESSION_TOOLTIP: &str = "Mute notifications and sounds from this session";
+const UNMUTE_SESSION_TOOLTIP: &str = "Notify again about this session";
 const TABS_SUFFIX: &str = "tabs";
 const SESSION_ROW_GROUP_PREFIX: &str = "session-row-hover-";
 const SESSION_ROW_PAD_LEFT: f32 = SPACE_1;
 const NORMAL_ROW_H: f32 = 44.0;
 const CAPTION_SEPARATOR: &str = " · ";
+const KRADDIE_AVATAR_SIDE: f32 = 20.0;
 
 pub(super) fn session_terminals(session: &Session) -> impl Iterator<Item = TerminalId> + '_ {
     session
@@ -66,14 +73,23 @@ impl EnvironmentShell {
         };
         live.data
             .sessions_of(group)
+            .filter(|session| !self.kraddie_session_hidden(&self.active, session.id))
             .map(|session| {
+                let status = Self::status_of(live, session);
                 let row = SessionRow {
                     session,
-                    status: Self::status_of(live, session),
+                    status,
+                    kraddie: self.session_kraddie_look(
+                        &self.active,
+                        session.id,
+                        status.agent_state(),
+                    ),
+                    frame: self.kraddies_frame(),
                     active: live.data.active_session == Some(session.id),
                     closable: live.data.can_close_session(session.id),
                     harness: Self::harness_of(live, session)
                         .map(|harness| self.settings.acp.harness_name(harness)),
+                    spent: spend_caption(&live.data.session_spend(session)),
                     density: self.settings.sidebar.density,
                 };
                 Self::session_row(&row, cx)
@@ -151,9 +167,18 @@ impl EnvironmentShell {
                     this.customize_session(id, at, window, cx);
                 }),
             )
-            .child(icon(glyph, ICON_SM, tone))
+            .map(|element| match &row.kraddie {
+                Some(sprite) => {
+                    element.child(kraddie_avatar(sprite, KRADDIE_AVATAR_SIDE, row.frame))
+                }
+                None => element.child(icon(glyph, ICON_SM, tone)),
+            })
             .child(Self::session_title(row, &tabs, cx))
             .child(Self::session_hover_tools(row, tabs, reveal, cx))
+            .when(
+                row.session.attention == SessionAttention::Muted,
+                |element| element.child(icon(IconName::BellOff, ICON_SM, pal.text_muted)),
+            )
             .when(unread, |element| {
                 element.child(
                     div()
@@ -174,10 +199,14 @@ impl EnvironmentShell {
     fn session_title(row: &SessionRow<'_>, tabs: &str, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let normal = row.density == SidebarDensity::Normal;
-        let caption = match &row.harness {
-            Some(harness) => format!("{harness}{CAPTION_SEPARATOR}{tabs}"),
-            None => tabs.to_owned(),
-        };
+        let caption = row
+            .harness
+            .as_deref()
+            .into_iter()
+            .chain([tabs])
+            .chain(row.spent.as_deref())
+            .collect::<Vec<_>>()
+            .join(CAPTION_SEPARATOR);
         div()
             .flex()
             .flex_col()
@@ -224,6 +253,20 @@ impl EnvironmentShell {
                         .text_color(rgb(pal.text_muted))
                         .child(tabs),
                 )
+            })
+            .child({
+                let (glyph, tooltip) = match row.session.attention {
+                    SessionAttention::Notify => (IconName::BellOff, MUTE_SESSION_TOOLTIP),
+                    SessionAttention::Muted => (IconName::Bell, UNMUTE_SESSION_TOOLTIP),
+                };
+                Button::new(SharedString::from(format!("{SESSION_MUTE_PREFIX}{raw}")))
+                    .icon(glyph)
+                    .small()
+                    .tooltip(tooltip)
+                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                        cx.stop_propagation();
+                        this.toggle_session_attention(id, cx);
+                    }))
             })
             .when(row.closable && row.active, |element| {
                 element.child(
@@ -278,6 +321,7 @@ impl EnvironmentShell {
         self.with_sessions(cx, |live| {
             live.data.new_session(group, spec);
         });
+        self.capture_session_baseline(cx);
     }
 
     pub(super) fn close_session(&mut self, id: SessionId, cx: &mut Context<Self>) {
@@ -307,13 +351,16 @@ impl EnvironmentShell {
 struct SessionRow<'a> {
     session: &'a Session,
     status: CardStatus,
+    kraddie: Option<Rc<KraddieSprite>>,
+    frame: u64,
     active: bool,
     closable: bool,
     harness: Option<Cow<'static, str>>,
+    spent: Option<String>,
     density: SidebarDensity,
 }
 
-fn show_current_session(live: &mut LiveEnv) {
+pub(super) fn show_current_session(live: &mut LiveEnv) {
     let Some(session) = live.data.current_session() else {
         return;
     };

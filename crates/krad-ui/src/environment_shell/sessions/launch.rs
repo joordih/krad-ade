@@ -1,7 +1,7 @@
 use krad_chat::{new_opencode_session_id, OpencodeServer};
 use krad_domain::{
-    parse_wsl_path, resume_line, AgentPreset, EnvironmentName, ModelId, ResumeId, TerminalId,
-    WslPath,
+    parse_wsl_path, resume_line, AgentPreset, EnvironmentName, ModelId, ProjectTask, ResumeId,
+    TerminalId, WslPath,
 };
 use krad_host::{HostError, HostLink};
 use krad_session::{default_shell, wsl_shell_in, PtyOpener};
@@ -33,6 +33,7 @@ pub(in crate::environment_shell) enum Launch {
         program: String,
         args: Vec<String>,
     },
+    Task(ProjectTask),
 }
 
 impl Launch {
@@ -47,16 +48,19 @@ impl Launch {
             | Self::Agent { .. }
             | Self::Resume { .. }
             | Self::Command { .. }
-            | Self::SignIn { .. } => None,
+            | Self::SignIn { .. }
+            | Self::Task(_) => None,
         }
     }
 
     pub(super) fn model(&self) -> Option<ModelId> {
         match self {
             Self::Agent { model, .. } => model.clone(),
-            Self::Preset(_) | Self::Resume { .. } | Self::Command { .. } | Self::SignIn { .. } => {
-                None
-            }
+            Self::Preset(_)
+            | Self::Resume { .. }
+            | Self::Command { .. }
+            | Self::SignIn { .. }
+            | Self::Task(_) => None,
         }
     }
 }
@@ -171,7 +175,8 @@ impl EnvironmentShell {
             | Launch::Agent { .. }
             | Launch::Resume { .. }
             | Launch::Command { .. }
-            | Launch::SignIn { .. } => new_opencode_session_id(),
+            | Launch::SignIn { .. }
+            | Launch::Task(_) => new_opencode_session_id(),
         };
         Some((server, resume))
     }
@@ -248,6 +253,16 @@ impl EnvironmentShell {
                 vars: Vec::new(),
                 shell: LaunchShell::Local,
             },
+            Launch::Task(task) => {
+                let (program, args) = shell();
+                ResolvedLaunch {
+                    program,
+                    args,
+                    agent: Some((task.command_line(site.quoting()), None)),
+                    vars: Vec::new(),
+                    shell: LaunchShell::Login,
+                }
+            }
         }
     }
 }

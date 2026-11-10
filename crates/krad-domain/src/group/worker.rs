@@ -1,6 +1,7 @@
 use super::{Worker, WorkerReopen};
 use crate::environment::EnvironmentData;
 use crate::ids::{SessionId, TerminalId};
+use crate::usage::Spend;
 
 const WORKER_SESSION_NAME: &str = "Worker";
 const WORKER_NAME_CHARS: usize = 40;
@@ -65,6 +66,7 @@ impl EnvironmentData {
                 task,
                 session: Some(at),
                 reopen: None,
+                spent: Spend::default(),
             }),
         }
     }
@@ -81,7 +83,7 @@ impl EnvironmentData {
         })
     }
 
-    fn worker_mut(&mut self, terminal: TerminalId) -> Option<&mut Worker> {
+    pub(crate) fn worker_mut(&mut self, terminal: TerminalId) -> Option<&mut Worker> {
         self.sessions
             .iter_mut()
             .filter_map(|session| session.lead.as_mut())

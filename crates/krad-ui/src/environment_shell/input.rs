@@ -130,6 +130,10 @@ impl EnvironmentShell {
             .on_action(cx.listener(Self::on_text_smaller))
             .on_action(cx.listener(Self::on_text_reset))
             .on_action(cx.listener(Self::on_new_agent))
+            .on_action(cx.listener(Self::on_next_waiting_agent))
+            .on_action(cx.listener(Self::on_toggle_attention_inbox))
+            .on_action(cx.listener(Self::on_toggle_kraddies))
+            .on_action(cx.listener(Self::on_toggle_automations))
             .on_action(cx.listener(Self::on_send_tab))
             .on_action(cx.listener(Self::on_send_back_tab))
             .on_key_down(

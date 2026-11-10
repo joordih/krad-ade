@@ -1,0 +1,15 @@
+The CI job "test (ubuntu)" failed on pull request #42 "Parse durations" (branch parse-durations into main).
+Stage: CI
+Failing step: Run cargo test
+Job: https://github.com/octo/app/actions/runs/1/job/7
+
+Log of the failing step (2 lines):
+```
+error: test durations::parses_minutes failed
+token=[REDACTED]
+```
+
+The pull request changes 1 files (+12 -3):
+- src/duration.rs (+12 -3)
+
+Find the cause of the failure, fix it on branch parse-durations, and run the failing check locally to confirm it passes before you finish. Do not push.

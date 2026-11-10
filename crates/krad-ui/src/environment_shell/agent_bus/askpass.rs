@@ -1,6 +1,6 @@
 use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
-use krad_agents::{terminal_env, Caller, PromptAnswer, Request, Response, ASKPASS_WAIT};
+use krad_agents::{terminal_env, Caller, ErrorCode, PromptAnswer, Request, Response, ASKPASS_WAIT};
 use krad_domain::{parse_wsl_path, EnvironmentName};
 use krad_host::mux::{askpass_alias, PromptAsker, SignInPrompt};
 use krad_repo::Askpass;
@@ -10,8 +10,12 @@ use std::sync::mpsc;
 
 use super::super::EnvironmentShell;
 
-pub(super) const GIT_ONLY: &str = "Only git asks for a sign-in through the bus";
+const GIT_ONLY: &str = "Only git asks for a sign-in through the bus";
 const ANSWER_THREAD: &str = "krad-ade-git-askpass";
+
+pub(super) fn git_only() -> Response {
+    Response::error(ErrorCode::Forbidden, GIT_ONLY)
+}
 
 pub(in crate::environment_shell) enum AskpassPlan {
     Off,
@@ -47,9 +51,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let Request::Askpass { prompt } = request else {
-            reply
-                .send(Response::Error(GIT_ONLY.to_owned()))
-                .unwrap_or_default();
+            reply.send(git_only()).unwrap_or_default();
             return;
         };
         let (answer, answered) = mpsc::channel();

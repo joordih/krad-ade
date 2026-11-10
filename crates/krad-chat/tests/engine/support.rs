@@ -148,10 +148,7 @@ pub(crate) fn gateway_model(id: &str, vendor: Vendor) -> GatewayModel {
         offer: ModelOffer {
             value: id.to_owned(),
             name: id.to_owned(),
-            description: None,
-            efforts: Vec::new(),
-            thinking_off: false,
-            source: None,
+            ..ModelOffer::default()
         },
         vendor,
     }

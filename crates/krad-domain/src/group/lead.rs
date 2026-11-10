@@ -2,6 +2,7 @@ use crate::agent::AgentPreset;
 use crate::environment::EnvironmentData;
 use crate::ids::{GroupId, ResumeId, SessionId, TerminalId};
 use crate::model::{lenient_model, ModelId};
+use crate::usage::Spend;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,6 +36,8 @@ pub struct Worker {
     pub session: Option<SessionId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reopen: Option<WorkerReopen>,
+    #[serde(default, skip_serializing_if = "Spend::is_empty")]
+    pub spent: Spend,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -140,6 +143,7 @@ mod tests {
                 task: "webhook".to_owned(),
                 session: None,
                 reopen: None,
+                spent: Spend::default(),
             }])
         );
     }

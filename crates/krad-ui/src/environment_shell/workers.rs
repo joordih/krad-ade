@@ -4,7 +4,7 @@ mod mode;
 
 use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
-use krad_agents::Response;
+use krad_agents::{ErrorCode, Response};
 use krad_chat::{new_session_id, LiveEvent, LiveSession};
 use krad_domain::{
     AgentPreset, ChatEvent, EnvironmentName, GroupId, PermissionMode, Prompt, TerminalId,
@@ -43,9 +43,12 @@ fn launch_progress(event: &LiveEvent) -> LaunchProgress {
         LiveEvent::Chat(ChatEvent::Error(error)) => LaunchProgress::Failed(error.clone()),
         LiveEvent::Refused(refused) => LaunchProgress::Failed(refused.to_string()),
         LiveEvent::Chat(_) | LiveEvent::Ready(_) | LiveEvent::Ask(_) => LaunchProgress::Started,
-        LiveEvent::Usage(_) | LiveEvent::Notice(_) | LiveEvent::Rewound(_) | LiveEvent::Acp(_) => {
-            LaunchProgress::Unknown
-        }
+        LiveEvent::Usage(_)
+        | LiveEvent::Limit(_)
+        | LiveEvent::Spent(_)
+        | LiveEvent::Notice(_)
+        | LiveEvent::Rewound(_)
+        | LiveEvent::Acp(_) => LaunchProgress::Unknown,
     }
 }
 
@@ -66,7 +69,7 @@ impl EnvironmentShell {
         } = launch;
         if preset.worker_surface() != WorkerSurface::Chat {
             reply
-                .send(Response::Error(NOT_A_WORKER.to_owned()))
+                .send(Response::error(ErrorCode::Unsupported, NOT_A_WORKER))
                 .unwrap_or_default();
             return;
         }
@@ -86,7 +89,7 @@ impl EnvironmentShell {
                 live.worker_launches.insert(id, reply);
             }
             None => reply
-                .send(Response::Error(NO_GROUP.to_owned()))
+                .send(Response::error(ErrorCode::Unsupported, NO_GROUP))
                 .unwrap_or_default(),
         }
     }
@@ -131,7 +134,7 @@ impl EnvironmentShell {
         error: &str,
         cx: &mut Context<Self>,
     ) {
-        let failure = Response::Error(format!("{WORKER_FAILED}: {error}"));
+        let failure = Response::error(ErrorCode::Failed, format!("{WORKER_FAILED}: {error}"));
         if !self.answer_launch(env, id, failure) {
             return;
         }
@@ -142,7 +145,11 @@ impl EnvironmentShell {
     }
 
     pub(super) fn end_worker_launch(&mut self, env: &EnvironmentName, id: TerminalId) {
-        self.answer_launch(env, id, Response::Error(WORKER_CLOSED_EARLY.to_owned()));
+        self.answer_launch(
+            env,
+            id,
+            Response::error(ErrorCode::Failed, WORKER_CLOSED_EARLY),
+        );
     }
 
     fn answer_launch(&mut self, env: &EnvironmentName, id: TerminalId, response: Response) -> bool {
@@ -215,6 +222,9 @@ impl EnvironmentShell {
             .and_then(|live| live.data.nodes.iter_mut().find(|node| node.id == terminal))
         {
             node.resume = Some(reopen.resume);
+        }
+        if let Some(live) = self.envs.get_mut(env) {
+            live.data.resume_worker_usage(terminal);
         }
         self.store();
         true

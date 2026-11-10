@@ -1,5 +1,9 @@
+mod comment_actions;
+mod comment_view;
+mod comments;
 mod folds;
 mod load;
+mod paint;
 mod revert;
 
 use gpui_kit::component::ActiveTheme;
@@ -13,7 +17,11 @@ use std::collections::HashSet;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
+use super::session_changes::LoadGeneration;
+use comment_actions::CommentDraft;
+use comments::{with_comments, PlacedComment};
 use folds::{diff_rows, widest_row, DiffRow};
+pub(in crate::environment_shell) use paint::DiffColors;
 pub(super) use revert::reverted_block;
 
 use super::discard::Discard;
@@ -41,6 +49,7 @@ const FOLD_INDENT: f32 = 96.0;
 const REVERT_INSET: f32 = 2.0;
 const BTN_REVERT_PREFIX: &str = "changes-tab-revert";
 const TOOLTIP_REVERT: &str = "Revert this block";
+const LINE_GROUP: &str = "changes-tab-line";
 
 const FOLD_LINE: &str = "unchanged line";
 const FOLD_LINES: &str = "unchanged lines";
@@ -55,6 +64,7 @@ struct ReadDiff {
     blocks: Vec<usize>,
     rows: Vec<DiffRow>,
     widest: usize,
+    colors: DiffColors,
 }
 
 enum DiffLoad {
@@ -70,6 +80,9 @@ pub(super) struct FileDiff {
     load: DiffLoad,
     unfolded: HashSet<usize>,
     unfold_all: bool,
+    comments: Vec<PlacedComment>,
+    draft: Option<CommentDraft>,
+    generation: LoadGeneration,
 }
 
 impl FileDiff {
@@ -80,12 +93,18 @@ impl FileDiff {
             load: DiffLoad::Pending,
             unfolded: HashSet::new(),
             unfold_all: false,
+            comments: Vec::new(),
+            draft: None,
+            generation: LoadGeneration::default(),
         }
     }
 
     fn refold(&mut self) {
         if let DiffLoad::Ready(read) = &mut self.load {
-            read.rows = diff_rows(&read.lines, &self.unfolded, self.unfold_all);
+            read.rows = with_comments(
+                diff_rows(&read.lines, &self.unfolded, self.unfold_all),
+                &self.comments,
+            );
             read.widest = widest_row(&read.rows, &read.lines);
         }
     }
@@ -198,6 +217,8 @@ impl EnvironmentShell {
         };
         let list = Self::diff_list(id, read, cx);
         let unfold_all = diff.unfold_all;
+        let send = Self::send_review_button(live, id, cx);
+        let draft = Self::draft_strip(live, id, cx);
         div()
             .flex()
             .flex_col()
@@ -209,6 +230,7 @@ impl EnvironmentShell {
                 shown_path,
                 (added, removed),
                 unfold_all,
+                send,
                 cx,
             ))
             .child(
@@ -223,6 +245,7 @@ impl EnvironmentShell {
                     .line_height(px(DIFF_LINE_H))
                     .child(list),
             )
+            .children(draft)
             .into_any_element()
     }
 
@@ -231,6 +254,7 @@ impl EnvironmentShell {
         shown_path: String,
         (added, removed): (usize, usize),
         unfold_all: bool,
+        send: Option<AnyElement>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
@@ -269,6 +293,7 @@ impl EnvironmentShell {
                     .text_color(rgb(pal.error_fg))
                     .child(format!("{REMOVED_SIGN}{removed}")),
             )
+            .children(send)
             .child(
                 Button::new(BTN_UNFOLD_ALL)
                     .icon(if unfold_all {
@@ -296,14 +321,17 @@ impl EnvironmentShell {
             cx.processor(
                 move |this: &mut Self, range: Range<usize>, _: &mut Window, cx| {
                     let pal = palette(cx);
-                    let Some(DiffLoad::Ready(read)) = this
-                        .envs
-                        .get(&this.active)
-                        .and_then(|live| live.diffs.get(&id))
-                        .map(|diff| &diff.load)
-                    else {
+                    let wash = Self::selection_wash(cx);
+                    let Some(live) = this.envs.get(&this.active) else {
                         return Vec::new();
                     };
+                    let Some(diff) = live.diffs.get(&id) else {
+                        return Vec::new();
+                    };
+                    let DiffLoad::Ready(read) = &diff.load else {
+                        return Vec::new();
+                    };
+                    let commentable = diff.view == FileView::Changes;
                     read.rows
                         .get(range)
                         .unwrap_or_default()
@@ -313,18 +341,32 @@ impl EnvironmentShell {
                                 || div().into_any_element(),
                                 |line| {
                                     let starts_block = read.blocks.contains(index);
+                                    let picked = diff
+                                        .draft
+                                        .as_ref()
+                                        .is_some_and(|draft| draft.covers(*index));
                                     div()
                                         .relative()
+                                        .group(LINE_GROUP)
                                         .h(px(DIFF_LINE_H))
-                                        .child(diff_row(line, pal))
+                                        .child(diff_row(line, read.colors.line(*index), pal))
+                                        .when(picked, |row| row.bg(wash))
                                         .when(starts_block, |row| {
                                             row.child(Self::revert_button(id, *index, cx))
+                                        })
+                                        .when(commentable && line.kind != LineKind::Hunk, |row| {
+                                            row.child(Self::comment_button(
+                                                id, *index, LINE_GROUP, cx,
+                                            ))
                                         })
                                         .into_any_element()
                                 },
                             ),
                             DiffRow::Fold { first, hidden } => {
                                 Self::fold_row(id, *first, *hidden, cx)
+                            }
+                            DiffRow::Comment { id: comment, part } => {
+                                Self::comment_row(live, id, *comment, *part, cx)
                             }
                         })
                         .collect::<Vec<_>>()

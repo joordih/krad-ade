@@ -90,8 +90,18 @@ jobs:
       ref: ${{ needs.version.outputs.sha }}
 
   linux:
+    name: Linux (${{ matrix.arch }})
     needs: [version, linux-agents]
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@v4
         with:
@@ -105,9 +115,11 @@ jobs:
         with:
           tool: just
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
       - if: hashFiles('packaging/ghostty-vt/package.sh') != ''
-        run: just ghostty-libs x86_64-unknown-linux-gnu
-      - run: cargo build --release --locked -p krad-app
+        run: just ghostty-libs ${{ matrix.target }}
+      - run: cargo build --release --locked -p krad-app --target ${{ matrix.target }}
       - uses: actions/download-artifact@v4
         with:
           pattern: agents-*
@@ -122,9 +134,10 @@ jobs:
           chmod +x target/agents/*/krad-ade-agents
       - name: Package
         run: |
-          name=krad-ade-${{ needs.version.outputs.version }}-x86_64-linux
+          name=krad-ade-${{ needs.version.outputs.version }}-${{ matrix.arch }}-linux
+          release=target/${{ matrix.target }}/release
           mkdir -p "$name/licenses"
-          cp target/release/krad-ade target/release/krad-ade-agents packaging/linux/krad-ade.desktop "$name/"
+          cp "$release/krad-ade" "$release/krad" "$release/krad-ade-agents" packaging/linux/krad-ade.desktop "$name/"
           cp -R target/agents "$name/agents"
           cp packaging/update/krad-ade.install "$name/"
           cp packaging/icon/png/krad-ade-256.png "$name/krad-ade.png"
@@ -133,8 +146,8 @@ jobs:
           tar -czf "$name.tar.gz" "$name"
       - uses: actions/upload-artifact@v4
         with:
-          name: linux
-          path: krad-ade-*-x86_64-linux.tar.gz
+          name: linux-${{ matrix.arch }}
+          path: krad-ade-*-${{ matrix.arch }}-linux.tar.gz
 
   windows:
     needs: [version, linux-agents]
@@ -185,9 +198,18 @@ jobs:
           path: target/installer/krad-ade-*-setup.exe
 
   macos:
+    name: macOS (${{ matrix.arch }})
     needs: [version, linux-agents]
     runs-on: macos-15
+    strategy:
+      matrix:
+        include:
+          - arch: aarch64
+            target: aarch64-apple-darwin
+          - arch: x86_64
+            target: x86_64-apple-darwin
     env:
+      PKG_CONFIG_ALLOW_CROSS: "1"
       MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
       MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
       MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
@@ -202,8 +224,11 @@ jobs:
         with:
           tool: just
       - uses: Swatinem/rust-cache@v2
-      - run: just ghostty-libs aarch64-apple-darwin
-      - run: cargo build --release --locked -p krad-app
+        with:
+          key: ${{ matrix.target }}
+      - run: rustup target add ${{ matrix.target }}
+      - run: just ghostty-libs ${{ matrix.target }}
+      - run: cargo build --release --locked -p krad-app --target ${{ matrix.target }}
       - uses: actions/download-artifact@v4
         with:
           pattern: agents-*
@@ -235,7 +260,8 @@ jobs:
           version=${{ needs.version.outputs.version }}
           app="dmg/Krad ADE.app"
           mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/licenses"
-          cp target/release/krad-ade target/release/krad-ade-agents "$app/Contents/MacOS/"
+          release=target/${{ matrix.target }}/release
+          cp "$release/krad-ade" "$release/krad" "$release/krad-ade-agents" "$app/Contents/MacOS/"
           cp packaging/macos/krad-ade.icns packaging/update/krad-ade.install "$app/Contents/Resources/"
           cp -R target/agents "$app/Contents/Resources/agents"
           cp assets/icons/LICENSE-*.txt assets/fonts/*.txt "$app/Contents/Resources/licenses/"
@@ -247,7 +273,7 @@ jobs:
         run: |
           app="dmg/Krad ADE.app"
           codesign --force --options runtime --timestamp --sign "$MACOS_SIGNING_IDENTITY" \
-            "$app/Contents/MacOS/krad-ade-agents"
+            "$app/Contents/MacOS/krad" "$app/Contents/MacOS/krad-ade-agents"
           codesign --force --options runtime --timestamp --sign "$MACOS_SIGNING_IDENTITY" "$app"
           codesign --verify --strict --verbose=2 "$app"
       - name: Sign Krad ADE.app ad hoc
@@ -257,7 +283,7 @@ jobs:
           codesign --force --deep --sign - "dmg/Krad ADE.app"
       - name: Create the DMG
         run: |
-          dmg="krad-ade-${{ needs.version.outputs.version }}-aarch64-macos.dmg"
+          dmg="krad-ade-${{ needs.version.outputs.version }}-${{ matrix.arch }}-macos.dmg"
           headroom_mb=64
           attempts=5
           wait_seconds=10
@@ -282,7 +308,7 @@ jobs:
       - name: Notarize and staple the DMG
         if: env.MACOS_SIGNING_IDENTITY != '' && env.APPLE_ID != ''
         run: |
-          dmg="krad-ade-${{ needs.version.outputs.version }}-aarch64-macos.dmg"
+          dmg="krad-ade-${{ needs.version.outputs.version }}-${{ matrix.arch }}-macos.dmg"
           xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_PASSWORD" --wait
           xcrun stapler staple "$dmg"
@@ -290,13 +316,13 @@ jobs:
           spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
       - name: Archive Krad ADE.app for in-app updates
         run: |
-          tar -czf "krad-ade-${{ needs.version.outputs.version }}-aarch64-macos.app.tar.gz" -C dmg "Krad ADE.app"
+          tar -czf "krad-ade-${{ needs.version.outputs.version }}-${{ matrix.arch }}-macos.app.tar.gz" -C dmg "Krad ADE.app"
       - uses: actions/upload-artifact@v4
         with:
-          name: macos
+          name: macos-${{ matrix.arch }}
           path: |
-            krad-ade-*-aarch64-macos.dmg
-            krad-ade-*-aarch64-macos.app.tar.gz
+            krad-ade-*-${{ matrix.arch }}-macos.dmg
+            krad-ade-*-${{ matrix.arch }}-macos.app.tar.gz
 
   release:
     needs: [version, linux, windows, macos]
@@ -324,9 +350,14 @@ jobs:
           }
           jq -n --arg version "$version" \
             --argjson macos "$(build "krad-ade-$version-aarch64-macos.app.tar.gz")" \
+            --argjson macos_intel "$(build "krad-ade-$version-x86_64-macos.app.tar.gz")" \
             --argjson windows "$(build "krad-ade-$version-setup.exe")" \
             --argjson linux "$(build "krad-ade-$version-x86_64-linux.tar.gz")" \
-            '{version: $version, builds: {"aarch64-macos": $macos, "x86_64-windows": $windows, "x86_64-linux": $linux}}' \
+            --argjson linux_arm "$(build "krad-ade-$version-aarch64-linux.tar.gz")" \
+            '{version: $version,
+              builds: {"aarch64-macos": $macos, "x86_64-windows": $windows, "x86_64-linux": $linux},
+              targets: {"aarch64-macos": $macos, "x86_64-macos": $macos_intel, "x86_64-windows": $windows,
+                "x86_64-linux": $linux, "aarch64-linux": $linux_arm}}' \
             > latest.json
           sign latest.json > latest.json.sig
           rm "$key"

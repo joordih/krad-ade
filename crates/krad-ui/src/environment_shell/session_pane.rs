@@ -265,7 +265,7 @@ impl EnvironmentShell {
                 .icon(IconName::Add)
                 .variant(ButtonVariant::Primary)
                 .on_click(cx.listener(move |this: &mut Self, _, _window, cx| {
-                    this.start_chat_session(group, cx);
+                    this.new_session_in(group, cx);
                 }));
             return card(pal, cx)
                 .size_full()

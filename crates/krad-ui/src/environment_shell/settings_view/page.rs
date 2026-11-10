@@ -37,6 +37,7 @@ const GROUPS: [(&str, &[SettingsPane]); 2] = [
         "App",
         &[
             SettingsPane::General,
+            SettingsPane::Notifications,
             SettingsPane::Appearance,
             SettingsPane::Terminal,
             SettingsPane::Editor,
@@ -45,10 +46,12 @@ const GROUPS: [(&str, &[SettingsPane]); 2] = [
     (
         "Workspace",
         &[
+            SettingsPane::Harnesses,
             SettingsPane::Integrations,
             SettingsPane::Gateway,
             SettingsPane::Mcp,
             SettingsPane::Acp,
+            SettingsPane::Webhooks,
             SettingsPane::Languages,
             SettingsPane::Extensions,
         ],
@@ -63,13 +66,16 @@ impl EnvironmentShell {
         let ui = self.settings_ui.as_ref()?;
         let content = match ui.pane {
             SettingsPane::General => self.general_pane(cx),
+            SettingsPane::Notifications => self.notifications_pane(cx),
             SettingsPane::Appearance => self.appearance_pane(cx),
             SettingsPane::Terminal => self.terminal_pane(cx),
             SettingsPane::Editor => self.editor_pane(cx),
+            SettingsPane::Harnesses => self.harnesses_pane(cx),
             SettingsPane::Integrations => self.integrations_pane(ui, cx),
             SettingsPane::Gateway => self.gateway_pane(&ui.gateway, cx),
             SettingsPane::Mcp => self.mcp_pane(&ui.mcp, cx),
             SettingsPane::Acp => self.acp_pane(&ui.acp, cx),
+            SettingsPane::Webhooks => self.webhooks_pane(&ui.webhooks, cx),
             SettingsPane::Languages => self.languages_pane(&ui.languages, cx),
             SettingsPane::Extensions => self.extensions_pane(cx),
         };

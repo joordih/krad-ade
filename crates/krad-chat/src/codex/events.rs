@@ -1,11 +1,15 @@
 mod diff;
 
-use krad_domain::{ChatEvent, FileEdit, RewindId, RewindPoint, ToolCall, ToolKind, ToolUseId};
+use krad_domain::{
+    ChatEvent, FileEdit, ModelId, ReportedUsage, RewindId, RewindPoint, ToolCall, ToolKind,
+    ToolUseId, UsageReport,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
+use super::limits::{LimitBook, LimitSnapshot, LimitsRead};
 use super::plan::{checklist, PLAN_UPDATED};
-use crate::control::{LiveEvent, PlanUsage};
+use crate::control::LiveEvent;
 use diff::file_edit;
 pub(crate) use diff::{ChangeKind, FileUpdate};
 
@@ -18,8 +22,6 @@ const WRITE_TOOL: (&str, ToolKind) = ("Write", ToolKind::Edit);
 const WEB_SEARCH_TOOL: (&str, ToolKind) = ("WebSearch", ToolKind::Search);
 const TASK_TOOL: (&str, ToolKind) = ("Task", ToolKind::Subagent);
 const REASONING_SEPARATOR: &str = "\n\n";
-const FIVE_HOURS_MINS: u32 = 300;
-const SEVEN_DAYS_MINS: u32 = 10_080;
 const UNKNOWN_FAILURE: &str = "codex reported an error";
 
 pub(super) const ITEM_STARTED: &str = "item/started";
@@ -239,9 +241,24 @@ struct TurnNotice {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct Breakdown {
-    input_tokens: u64,
+    #[serde(rename = "inputTokens")]
+    input: u64,
+    #[serde(default, rename = "cachedInputTokens")]
+    cached: u64,
+    #[serde(default, rename = "outputTokens")]
+    output: u64,
+}
+
+impl From<&Breakdown> for krad_domain::TokenUsage {
+    fn from(breakdown: &Breakdown) -> Self {
+        Self {
+            input: breakdown.input.saturating_sub(breakdown.cached),
+            output: breakdown.output,
+            cache_read: breakdown.cached,
+            cache_write: 0,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -270,35 +287,8 @@ struct SettingsNotice {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct LimitWindow {
-    used_percent: u16,
-    window_duration_mins: Option<u32>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Limits {
-    primary: Option<LimitWindow>,
-    secondary: Option<LimitWindow>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct LimitsNotice {
-    rate_limits: Limits,
-}
-
-fn plan_usage(limits: &Limits) -> PlanUsage {
-    let used = |minutes: u32| {
-        [limits.primary.as_ref(), limits.secondary.as_ref()]
-            .into_iter()
-            .flatten()
-            .find(|window| window.window_duration_mins == Some(minutes))
-            .map(|window| window.used_percent)
-    };
-    PlanUsage {
-        five_hour: used(FIVE_HOURS_MINS),
-        seven_day: used(SEVEN_DAYS_MINS),
-    }
+    rate_limits: LimitSnapshot,
 }
 
 fn parsed<T: for<'de> Deserialize<'de>>(params: &Value) -> Option<T> {
@@ -309,9 +299,14 @@ fn parsed<T: for<'de> Deserialize<'de>>(params: &Value) -> Option<T> {
 pub(crate) struct Translator {
     pub(crate) turn: Option<String>,
     pub(crate) model: Option<String>,
+    limits: LimitBook,
 }
 
 impl Translator {
+    pub(crate) fn read_limits(&mut self, read: LimitsRead) -> LiveEvent {
+        LiveEvent::Usage(self.limits.read(read))
+    }
+
     pub(crate) fn translate(&mut self, method: &str, params: &Value) -> Vec<LiveEvent> {
         let chat = |events: Vec<ChatEvent>| events.into_iter().map(LiveEvent::Chat).collect();
         match method {
@@ -364,11 +359,18 @@ impl Translator {
             }
             TOKEN_USAGE => parsed::<UsageNotice>(params).map_or_default(|notice| {
                 let usage = notice.token_usage;
-                chat(
-                    std::iter::once(ChatEvent::ContextTokens(usage.last.input_tokens))
+                let spent = LiveEvent::Spent(UsageReport::Added(ReportedUsage {
+                    tokens: (&usage.last).into(),
+                    cost: None,
+                    model: self.model.as_deref().and_then(ModelId::parse),
+                }));
+                let mut events: Vec<LiveEvent> = chat(
+                    std::iter::once(ChatEvent::ContextTokens(usage.last.input))
                         .chain(usage.model_context_window.map(ChatEvent::ContextWindow))
                         .collect(),
-                )
+                );
+                events.push(spent);
+                events
             }),
             SETTINGS_UPDATED => parsed::<SettingsNotice>(params)
                 .and_then(|notice| notice.thread_settings.model)
@@ -380,8 +382,9 @@ impl Translator {
             PLAN_UPDATED => {
                 checklist(params).map_or_default(|list| chat(vec![ChatEvent::Checklist(list)]))
             }
-            RATE_LIMITS => parsed::<LimitsNotice>(params)
-                .map_or_default(|notice| vec![LiveEvent::Usage(plan_usage(&notice.rate_limits))]),
+            RATE_LIMITS => parsed::<LimitsNotice>(params).map_or_default(|notice| {
+                vec![LiveEvent::Usage(self.limits.update(notice.rate_limits))]
+            }),
             _ => Vec::new(),
         }
     }

@@ -13,7 +13,7 @@ mkdir -p "$2"
 install_root=$(cd "$2" && pwd)
 zig=${ZIG:-zig}
 
-for zig_target in x86_64-linux-gnu x86_64-windows-gnu aarch64-macos x86_64-macos; do
+for zig_target in x86_64-linux-gnu aarch64-linux-gnu x86_64-windows-gnu aarch64-macos x86_64-macos; do
     (cd "$source_dir" && "$zig" build \
         -Demit-lib-vt=true \
         -Doptimize=ReleaseFast \

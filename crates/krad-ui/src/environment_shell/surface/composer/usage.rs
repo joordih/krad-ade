@@ -9,13 +9,10 @@ use super::super::facts::Facts;
 use crate::components::tooltip_view;
 use crate::theme::{Palette, SPACE_1};
 
-const WARN_PERCENT: u16 = 80;
+const CONTEXT_WARN_PERCENT: u16 = 80;
 const USAGE_PREFIX: &str = "surface-usage";
 const CONTEXT_LABEL: &str = "Context";
-const FIVE_HOUR_LABEL: &str = "5h";
-const SEVEN_DAY_LABEL: &str = "7d";
 const PERCENT_SIGN: &str = "%";
-const USAGE_SEPARATOR: &str = " · ";
 const MILLION: u64 = 1_000_000;
 const THOUSAND: u64 = 1_000;
 const MILLION_SUFFIX: &str = "M";
@@ -35,49 +32,54 @@ pub(super) fn window_label(tokens: u64) -> String {
     }
 }
 
-fn usage_text(facts: &Facts) -> Option<String> {
-    let parts: Vec<String> = [
-        (CONTEXT_LABEL, facts.context),
-        (FIVE_HOUR_LABEL, facts.usage.five_hour),
-        (SEVEN_DAY_LABEL, facts.usage.seven_day),
-    ]
-    .into_iter()
-    .filter_map(|(label, used)| Some(format!("{label} {}{PERCENT_SIGN}", used?)))
-    .collect();
-    (!parts.is_empty()).then(|| parts.join(USAGE_SEPARATOR))
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct ContextView {
+    pub(super) details: String,
+    pub(super) used: u16,
+    pub(super) warns: bool,
+}
+
+pub(super) fn context_view(context: Option<u16>) -> Option<ContextView> {
+    let used = context?;
+    Some(ContextView {
+        details: format!("{CONTEXT_LABEL} {used}{PERCENT_SIGN}"),
+        used: used.min(FULL_PERCENT),
+        warns: used >= CONTEXT_WARN_PERCENT,
+    })
 }
 
 pub(super) fn usage_ring(id: TerminalId, facts: &Facts, pal: &Palette) -> Option<AnyElement> {
-    let text = SharedString::from(usage_text(facts)?);
-    let used = facts.context.unwrap_or_default().min(FULL_PERCENT);
-    let warns = [facts.context, facts.usage.five_hour, facts.usage.seven_day]
-        .into_iter()
-        .flatten()
-        .any(|used| used >= WARN_PERCENT);
-    let fill: Hsla = rgb(if warns {
+    let view = context_view(facts.context)?;
+    let text = SharedString::from(view.details);
+    let tone = if view.warns {
         pal.attention_text
     } else {
         pal.text_muted
-    })
-    .into();
+    };
+    let fill: Hsla = rgb(tone).into();
     let track: Hsla = pal.divider.into();
-    let fraction = f32::from(used) / f32::from(FULL_PERCENT);
+    let fraction = f32::from(view.used) / f32::from(FULL_PERCENT);
     Some(
         div()
             .id((USAGE_PREFIX, id.as_u64()))
+            .flex()
+            .flex_row()
             .flex_none()
-            .size(px(RING_SIZE))
+            .items_center()
+            .gap(px(SPACE_1))
             .ml(px(SPACE_1))
             .tooltip(move |_, cx| tooltip_view(text.clone(), cx))
             .child(
-                canvas(
-                    |_, _, _| (),
-                    move |bounds, (), window, _| {
-                        paint_ring(bounds, 1.0, track, window);
-                        paint_ring(bounds, fraction, fill, window);
-                    },
-                )
-                .size_full(),
+                div().flex_none().size(px(RING_SIZE)).child(
+                    canvas(
+                        |_, _, _| (),
+                        move |bounds, (), window, _| {
+                            paint_ring(bounds, 1.0, track, window);
+                            paint_ring(bounds, fraction, fill, window);
+                        },
+                    )
+                    .size_full(),
+                ),
             )
             .into_any_element(),
     )
@@ -117,5 +119,20 @@ mod tests {
         assert_eq!(window_label(200_000), "200K");
         assert_eq!(window_label(1_500_000), "1500K");
         assert_eq!(window_label(512), "512");
+    }
+
+    #[test]
+    fn the_ring_shows_only_the_context_and_warns_when_it_fills() {
+        assert_eq!(context_view(None), None);
+        assert_eq!(
+            context_view(Some(8)),
+            Some(ContextView {
+                details: "Context 8%".to_owned(),
+                used: 8,
+                warns: false,
+            })
+        );
+        let full = context_view(Some(130));
+        assert_eq!(full.map(|view| (view.used, view.warns)), Some((100, true)));
     }
 }

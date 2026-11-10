@@ -252,6 +252,7 @@ name = "CSS"
 extensions = ["css"]
 grammar = "css"
 syntax = "c_family"
+server = "css-lsp"
 
 [[language]]
 id = "scss"
@@ -260,12 +261,57 @@ extensions = ["scss"]
 grammar = "scss"
 line_comment = "//"
 syntax = "c_family"
+server = "css-lsp"
 
 [[language]]
 id = "html"
 name = "HTML"
 extensions = ["html", "htm"]
 grammar = "html"
+server = "html-lsp"
+
+[[language]]
+id = "vue"
+name = "Vue"
+extensions = ["vue"]
+grammar = "html"
+
+[[language.templates]]
+id = "component"
+label = "Vue component"
+group = "Vue"
+file = "{{name}}.vue"
+body = "<script setup lang=\"ts\">\n$0\n</script>\n\n<template>\n  <div></div>\n</template>\n\n<style scoped>\n</style>\n"
+markers = ["package.json"]
+
+[[language]]
+id = "svelte"
+name = "Svelte"
+extensions = ["svelte"]
+grammar = "svelte"
+server = "svelte-language-server"
+
+[[language.templates]]
+id = "component"
+label = "Svelte component"
+group = "Svelte"
+file = "{{name}}.svelte"
+body = "<script lang=\"ts\">\n  $0\n</script>\n\n<div></div>\n\n<style>\n</style>\n"
+markers = ["package.json"]
+
+[[language]]
+id = "astro"
+name = "Astro"
+extensions = ["astro"]
+grammar = "astro"
+
+[[language.templates]]
+id = "component"
+label = "Astro component"
+group = "Astro"
+file = "{{name}}.astro"
+body = "---\n$0\n---\n\n<div></div>\n\n<style>\n</style>\n"
+markers = ["package.json"]
 
 [[language]]
 id = "shellscript"
@@ -477,6 +523,31 @@ GOROOT = "{{toolchain.prefix}}"
 
 [[server]]
 package = "clangd"
+
+[[server]]
+package = "html-lsp"
+bin = "vscode-html-language-server"
+args = ["--stdio"]
+
+[server.settings]
+provideFormatter = true
+
+[server.settings.embeddedLanguages]
+css = true
+javascript = true
+
+[[server]]
+package = "css-lsp"
+bin = "vscode-css-language-server"
+args = ["--stdio"]
+
+[server.settings]
+provideFormatter = true
+
+[[server]]
+package = "svelte-language-server"
+bin = "svelteserver"
+args = ["--stdio"]
 
 [[server]]
 package = "json-lsp"

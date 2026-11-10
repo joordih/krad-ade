@@ -1,8 +1,8 @@
 use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::{AppContext as _, Context};
 use krad_agents::{
-    extension_tool_name, ExtensionToolAnswer, ExtensionToolEffect, ExtensionToolInfo,
-    ExtensionToolOutcome, Request, Response, ToolCatalog,
+    extension_tool_name, ErrorCode, ExtensionToolAnswer, ExtensionToolEffect, ExtensionToolInfo,
+    ExtensionToolOutcome, MemoryTools, Request, Response, ToolCatalog,
 };
 use krad_domain::{CodeTools, EnvironmentName, ExtensionTools};
 use krad_extensions::api::manifest::{ExtensionManifest, Placement, ToolEffect};
@@ -91,6 +91,7 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn agent_tools_offered(&self) -> bool {
         self.settings.code_tools == CodeTools::On
             || self.settings.extension_tools == ExtensionTools::On
+            || self.memory_tools_offered()
     }
 
     pub(in crate::environment_shell) fn tool_catalog(&self) -> ToolCatalog {
@@ -105,6 +106,11 @@ impl EnvironmentShell {
         ToolCatalog {
             code_tools: self.settings.code_tools,
             extension_tools,
+            memory_tools: if self.memory_tools_offered() {
+                MemoryTools::On
+            } else {
+                MemoryTools::Off
+            },
         }
     }
 
@@ -116,22 +122,22 @@ impl EnvironmentShell {
         reply: ReplySender<Response>,
         cx: &mut Context<Self>,
     ) {
-        let refuse = |reply: ReplySender<Response>, message: &str| {
+        let refuse = |reply: ReplySender<Response>, code: ErrorCode, message: &str| {
             reply
-                .send(Response::Error(message.to_owned()))
+                .send(Response::error(code, message))
                 .unwrap_or_default();
         };
         let Request::ExtensionTool { name, arguments } = request else {
-            refuse(reply, NOT_A_TOOL_CALL);
+            refuse(reply, ErrorCode::BadRequest, NOT_A_TOOL_CALL);
             return;
         };
         if self.settings.extension_tools != ExtensionTools::On {
-            refuse(reply, TOOLS_OFF);
+            refuse(reply, ErrorCode::Forbidden, TOOLS_OFF);
             return;
         }
         let env = EnvironmentName::new(environment.to_owned());
         let Some(live) = self.envs.get(&env) else {
-            refuse(reply, NO_ENVIRONMENT);
+            refuse(reply, ErrorCode::NotFound, NO_ENVIRONMENT);
             return;
         };
         let group = match caller {
@@ -143,7 +149,7 @@ impl EnvironmentShell {
             .into_iter()
             .find(|offered| offered.info.name == name)
         else {
-            refuse(reply, UNKNOWN_TOOL);
+            refuse(reply, ErrorCode::NotFound, UNKNOWN_TOOL);
             return;
         };
         let key = SlotKey {
@@ -173,14 +179,14 @@ impl EnvironmentShell {
         let ToolCall { params, reply } = call;
         let Some(connection) = self.extensions.connection(key) else {
             reply
-                .send(Response::Error(UNKNOWN_TOOL.to_owned()))
+                .send(Response::error(ErrorCode::NotFound, UNKNOWN_TOOL))
                 .unwrap_or_default();
             return;
         };
         cx.background_spawn(async move {
             let response = match connection.request::<CallTool>(&params).await {
                 Ok(result) => Response::ExtensionTool(answer_of(result)),
-                Err(error) => Response::Error(error.to_string()),
+                Err(error) => Response::error(ErrorCode::Failed, error.to_string()),
             };
             reply.send(response).unwrap_or_default();
         })

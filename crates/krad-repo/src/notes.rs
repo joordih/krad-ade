@@ -198,6 +198,24 @@ pub fn create_note(
 /// # Errors
 ///
 /// Returns [`RepoError::OutsideRepository`] for a folder outside the vault
+/// and [`RepoError::Io`] when the note cannot be written.
+pub fn add_note(
+    host: &HostLink,
+    root: &Path,
+    folder: &str,
+    stem: &str,
+    text: &str,
+) -> Result<String, RepoError> {
+    let dir = inside(root, folder)?;
+    host.create_dir_all(&dir)?;
+    let path = free_name(host, &dir, stem, Some(NOTE_EXTENSION));
+    write_atomically(host, &path, text)?;
+    Ok(relative(&vault_dir(root), &path))
+}
+
+/// # Errors
+///
+/// Returns [`RepoError::OutsideRepository`] for a folder outside the vault
 /// and [`RepoError::Io`] when it cannot be created.
 pub fn create_vault_folder(
     host: &HostLink,
@@ -279,6 +297,28 @@ mod tests {
         }
         fs::create_dir_all(&root)?;
         Ok(root)
+    }
+
+    #[test]
+    fn an_added_note_keeps_its_text_and_never_replaces_another() -> Result<(), RepoError> {
+        let root = temp_root("added")?;
+        let first = add_note(&HostLink::Local, &root, "Chats", "Chat · 3", "# One\n")?;
+        let second = add_note(&HostLink::Local, &root, "Chats", "Chat · 3", "# Two\n")?;
+        assert_eq!(
+            (first.as_str(), second.as_str()),
+            ("Chats/Chat · 3.md", "Chats/Chat · 3 2.md")
+        );
+        assert_eq!(
+            fs::read_to_string(vault_dir(&root).join(&first))?,
+            "# One\n"
+        );
+        assert_eq!(
+            fs::read_to_string(vault_dir(&root).join(&second))?,
+            "# Two\n"
+        );
+        assert!(add_note(&HostLink::Local, &root, "../outside", "Note", "").is_err());
+        fs::remove_dir_all(root)?;
+        Ok(())
     }
 
     #[test]

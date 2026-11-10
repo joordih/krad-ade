@@ -1,9 +1,9 @@
 mod dispatch;
 
 use krad_extension_api::protocol::{
-    CallToolParams, CallToolResult, ConnectMachineParams, ExecuteCommandParams, InitializeParams,
-    ListMachinesParams, Machine, MachineChannel, RowsParams, RowsResult, SettingsValues,
-    ViewEventParams, ViewRef, WorkspaceEvent,
+    AppEventParams, CallToolParams, CallToolResult, ConnectMachineParams, ExecuteCommandParams,
+    InitializeParams, ListMachinesParams, Machine, MachineChannel, RowsParams, RowsResult,
+    SettingsValues, ViewEventParams, ViewRef, WorkspaceEvent,
 };
 use krad_extension_api::view::Node;
 use krad_extension_api::{CommandId, HostKindId, ToolName, ViewId};
@@ -29,6 +29,7 @@ pub(crate) struct Handlers {
     machines: HashMap<HostKindId, Handler<ListMachinesParams, Vec<Machine>>>,
     connections: HashMap<HostKindId, Handler<ConnectMachineParams, MachineChannel>>,
     workspace_events: Option<Hook<WorkspaceEvent>>,
+    app_events: Option<Hook<AppEventParams>>,
     settings_changed: Option<Hook<SettingsValues>>,
 }
 
@@ -173,6 +174,15 @@ impl Extension {
         hook: impl Fn(&App, WorkspaceEvent) + Send + Sync + 'static,
     ) -> Self {
         self.handlers.workspace_events = Some(Box::new(hook));
+        self
+    }
+
+    #[must_use]
+    pub fn on_app_event(
+        mut self,
+        hook: impl Fn(&App, AppEventParams) + Send + Sync + 'static,
+    ) -> Self {
+        self.handlers.app_events = Some(Box::new(hook));
         self
     }
 

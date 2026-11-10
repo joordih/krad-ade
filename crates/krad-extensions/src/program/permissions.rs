@@ -34,7 +34,8 @@ pub fn allowed(permissions: &[Permission], call: &AppCall) -> Result<(), Refusal
         | AppCall::GetSecret(_)
         | AppCall::SetSecret(_)
         | AppCall::OpenView(_)
-        | AppCall::CloseView(_) => Ok(()),
+        | AppCall::CloseView(_)
+        | AppCall::SubscribeEvents(_) => Ok(()),
     }
 }
 

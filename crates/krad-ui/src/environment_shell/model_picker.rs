@@ -1,8 +1,9 @@
+mod layout;
 mod view;
 
 use gpui_kit::{Capslock, Context, FocusHandle, KeyDownEvent, SharedString, Window};
 use krad_chat::ModelSource;
-use krad_domain::{AgentPreset, ModelId, TerminalId};
+use krad_domain::{AgentPreset, ContextSize, ModelId, TerminalId};
 
 use super::surface::SurfaceCommand;
 use super::EnvironmentShell;
@@ -17,12 +18,16 @@ const KEY_LEFT: &str = "left";
 const KEY_RIGHT: &str = "right";
 const KEY_TAB: &str = "tab";
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct ModelChoice {
     pub(super) id: Option<ModelId>,
     pub(super) label: String,
     pub(super) current: bool,
     pub(super) section: Option<ModelSource>,
+    pub(super) description: Option<String>,
+    pub(super) recommended: bool,
+    pub(super) context: Option<ContextSize>,
+    pub(super) missing: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,6 +92,10 @@ impl Choosing {
                     .filter(|choice| {
                         query.is_empty()
                             || choice.label.to_lowercase().contains(&query)
+                            || choice
+                                .description
+                                .as_ref()
+                                .is_some_and(|text| text.to_lowercase().contains(&query))
                             || choice
                                 .id
                                 .as_ref()
@@ -294,7 +303,7 @@ mod tests {
             id: Some(ModelId::parse(id).unwrap_or_else(|| unreachable!("{id} is a model id"))),
             label: label.to_owned(),
             current,
-            section: None,
+            ..ModelChoice::default()
         }
     }
 

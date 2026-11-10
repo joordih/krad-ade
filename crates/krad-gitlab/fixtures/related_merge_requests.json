@@ -1,0 +1,11 @@
+[
+  {
+    "id": 3100,
+    "iid": 31,
+    "title": "Refresh the login token before it expires",
+    "state": "merged",
+    "web_url": "https://gitlab.example.com/team/app/-/merge_requests/31",
+    "source_branch": "fix-refresh",
+    "target_branch": "main"
+  }
+]

@@ -1,22 +1,29 @@
 mod acp;
+mod api_file;
 mod editor;
 mod extensions;
+mod flat_pane;
 mod fonts;
 mod gateway;
 mod general;
 mod github;
 mod gitlab;
+mod harnesses;
 mod integrations;
 mod java_engine;
 mod languages;
 mod material;
 mod mcp;
+mod notifications;
 mod page;
+mod plan_usage;
 mod sections;
+mod spending;
 mod terminal;
 mod theme_editor;
 mod themes;
 mod toolchains;
+mod webhooks;
 
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
@@ -40,6 +47,7 @@ use github::GithubUi;
 pub(super) use gitlab::gitlab_token_saver;
 use gitlab::GitlabUi;
 use mcp::McpUi;
+use webhooks::WebhooksUi;
 
 const SWATCH_GAP: f32 = 10.0;
 const CHOICE_PAD: f32 = 14.0;
@@ -50,13 +58,16 @@ const SETTINGS_NOT_SAVED: &str = "Couldn't save the settings";
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsPane {
     General,
+    Notifications,
     Appearance,
     Terminal,
     Editor,
+    Harnesses,
     Integrations,
     Gateway,
     Mcp,
     Acp,
+    Webhooks,
     Languages,
     Extensions,
 }
@@ -65,13 +76,16 @@ impl SettingsPane {
     const fn title(self) -> &'static str {
         match self {
             Self::General => "General",
+            Self::Notifications => "Notifications",
             Self::Appearance => "Appearance",
             Self::Terminal => "Terminal",
             Self::Editor => "Editor",
+            Self::Harnesses => "Harnesses",
             Self::Integrations => "Integrations",
             Self::Gateway => "Gateway",
             Self::Mcp => "MCP",
             Self::Acp => "ACP agents",
+            Self::Webhooks => "Webhooks",
             Self::Languages => "Languages",
             Self::Extensions => "Extensions",
         }
@@ -79,16 +93,25 @@ impl SettingsPane {
 
     const fn description(self) -> &'static str {
         match self {
-            Self::General => "App updates and the tools agents get.",
+            Self::General => {
+                "App updates, the tools agents get, what they may spend, plan usage and the chat composer."
+            }
+            Self::Notifications => {
+                "When agents finish or need you: notifications, sounds, quiet hours and the app icon."
+            }
             Self::Appearance => "Light and dark themes, the window and the interface font.",
             Self::Terminal => "The font, copy and paste, and the colours of terminals.",
             Self::Editor => "How files look, show their problems and the minimap.",
+            Self::Harnesses => {
+                "Whether Claude Code, Codex and opencode are installed, current and signed in."
+            }
             Self::Integrations => "The code hosts reviews and merge requests come from.",
             Self::Gateway => {
                 "Chat with the models of a gateway you run, through the app's own agent."
             }
             Self::Mcp => "The MCP servers whose tools Gateway chats can use.",
             Self::Acp => "Agents the app talks to over the Agent Client Protocol.",
+            Self::Webhooks => "Send the app's events to your own services over HTTPS.",
             Self::Languages => "Language servers and the SDKs they need.",
             Self::Extensions => {
                 "Extensions that add languages, commands, views and tools, and their settings."
@@ -99,13 +122,16 @@ impl SettingsPane {
     const fn icon(self) -> IconName {
         match self {
             Self::General => IconName::Settings,
+            Self::Notifications => IconName::Bell,
             Self::Appearance => IconName::Sun,
             Self::Terminal => IconName::Terminal,
             Self::Editor => IconName::File,
+            Self::Harnesses => IconName::CheckCircle,
             Self::Integrations => IconName::Merge,
             Self::Gateway => IconName::Flow,
             Self::Mcp => IconName::Plug,
             Self::Acp => IconName::UserGroup,
+            Self::Webhooks => IconName::Send,
             Self::Languages => IconName::Workflow,
             Self::Extensions => IconName::Layers,
         }
@@ -121,6 +147,7 @@ pub(super) struct SettingsUi {
     gateway: GatewayUi,
     mcp: McpUi,
     acp: AcpUi,
+    webhooks: WebhooksUi,
     tint: material::TintUi,
     languages: languages::LanguagesUi,
     extensions: extensions::ExtensionsUi,
@@ -235,6 +262,7 @@ impl EnvironmentShell {
         let gateway = self.gateway_ui(window, cx);
         let mcp = Self::mcp_ui(window, cx);
         let acp = Self::acp_ui(window, cx);
+        let webhooks = Self::webhooks_ui(window, cx);
         let tint = self.tint_ui(cx);
         let languages = Self::languages_ui(window, cx);
         self.settings_ui = Some(SettingsUi {
@@ -244,6 +272,7 @@ impl EnvironmentShell {
             gateway,
             mcp,
             acp,
+            webhooks,
             tint,
             languages,
             extensions: extensions::ExtensionsUi::default(),
@@ -318,6 +347,9 @@ impl EnvironmentShell {
         }
         if pane == SettingsPane::Languages {
             self.refresh_server_runtime_statuses(cx);
+        }
+        if pane == SettingsPane::Harnesses {
+            self.check_harness_health(cx);
         }
         cx.notify();
     }

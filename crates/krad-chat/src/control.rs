@@ -1,7 +1,7 @@
 use krad_domain::{
     AcpAuthMethod, AcpConfigOption, AcpModels, AcpModes, AcpPermissionKind, AcpPermissionOption,
-    AcpPermissionOptionId, ChatEvent, FileEdit, ModelId, PermissionMode, RewindId, ToolCall,
-    ToolKind,
+    AcpPermissionOptionId, ChatEvent, FileEdit, LimitAlert, ModelId, PermissionMode, PlanUsage,
+    RewindId, ToolCall, ToolKind, UsageReport,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -37,18 +37,14 @@ where
         .collect())
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct PlanUsage {
-    pub five_hour: Option<u16>,
-    pub seven_day: Option<u16>,
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum LiveEvent {
     Chat(ChatEvent),
     Ask(Box<ToolAsk>),
     Ready(Catalog),
     Usage(PlanUsage),
+    Limit(Option<LimitAlert>),
+    Spent(UsageReport),
     Notice(String),
     Rewound(Result<Rewound, RewindError>),
     Refused(ResumeRefused),
@@ -376,6 +372,7 @@ enum OutgoingRequest<'a> {
     SetModel { model: &'a ModelId },
     SetPermissionMode { mode: PermissionMode },
     RewindFiles { user_message_id: &'a str },
+    GetUsage { skip_behaviors: bool },
 }
 
 #[derive(Serialize)]
@@ -439,6 +436,15 @@ fn control_request(request_id: &str, request: OutgoingRequest<'_>) -> String {
 
 pub(crate) fn initialize_line(request_id: &str) -> String {
     control_request(request_id, OutgoingRequest::Initialize)
+}
+
+pub(crate) fn usage_line(request_id: &str) -> String {
+    control_request(
+        request_id,
+        OutgoingRequest::GetUsage {
+            skip_behaviors: true,
+        },
+    )
 }
 
 pub(crate) fn interrupt_line(request_id: &str) -> String {

@@ -9,6 +9,7 @@ use krad_domain::{Mention, Prompt, TerminalId};
 
 use super::super::chat::ChatMessage;
 use super::super::EnvironmentShell;
+use super::files_restore::FilesRewind;
 use super::mentions::sent_mentions;
 use super::message_actions::action_button;
 use super::SurfaceChat;
@@ -171,9 +172,25 @@ impl EnvironmentShell {
         let index = editor.index;
         let harness = chat.harness();
         let asks_files = harness.restores_files() && changed_files_after(&chat.messages, index);
+        let point = chat
+            .messages
+            .get(index)
+            .and_then(|message| message.rewind.clone());
         let mentions = editor.mentions.clone();
         let text = self.skill_message(harness, text);
         let prompt = Prompt::new(&text, mentions);
+        let checkpoint = point
+            .filter(|_| harness.checkpoints_files())
+            .and_then(|point| self.turn_checkpoint(&env, id, &point));
+        if let Some(checkpoint) = checkpoint {
+            let rewind = FilesRewind {
+                index,
+                prompt,
+                checkpoint,
+            };
+            self.rewind_with_files(&env, id, rewind, window, cx);
+            return cx.notify();
+        }
         if !asks_files {
             self.start_rewind(&env, id, index, prompt, RewindScope::Conversation, cx);
             return cx.notify();

@@ -17,6 +17,7 @@ use krad_ui::{
 };
 
 const APP_TITLE: &str = "Krad ADE";
+const APP_IDENTIFIER: &str = "com.joordih.krad-ade";
 
 fn main() {
     let log_guard = logging::start(config_dir().as_deref());
@@ -34,6 +35,7 @@ fn main() {
         .with_http_client(http_client())
         .run(move |cx| {
             init(cx);
+            cx.set_app_identity(APP_IDENTIFIER, APP_TITLE);
             drop(register_fonts(cx));
             install_theme_library(user_themes, cx);
             apply_settings_theme(&settings, cx);

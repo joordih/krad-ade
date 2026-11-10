@@ -122,14 +122,14 @@ impl EnvironmentShell {
         };
         (
             (row - viewer_extent).max(1.0),
-            (self.root_size(window).1 - top - WINDOW_INSET).max(1.0),
+            (self.root_size(window).1 - top - WINDOW_INSET - self.usage_bar_room()).max(1.0),
         )
     }
 
     fn view_card(
         &mut self,
         view: EnvironmentView,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let _pal = palette(cx);
@@ -139,7 +139,9 @@ impl EnvironmentShell {
         match view {
             EnvironmentView::Sessions => self.session_pane(cx),
             EnvironmentView::Notes => self.notes_view(cx),
-            EnvironmentView::Review => self.review_view(cx),
+            EnvironmentView::Automations => self.automations_view(window, cx),
+            EnvironmentView::Kraddies => self.kraddies_view(window, cx),
+            EnvironmentView::Review => self.review_view(window, cx),
         }
     }
 
@@ -209,6 +211,7 @@ impl EnvironmentShell {
             .flex_row()
             .flex_1()
             .min_h_0()
+            .overflow_hidden()
             .p(px(WINDOW_INSET))
             .child(self.sidebar(cx))
             .child(self.content_column(view, window, cx))
@@ -259,18 +262,22 @@ impl EnvironmentShell {
         self.flush_extension_prompts(window, cx);
         self.sync_extension_fields(window, cx);
         self.sync_extension_events(cx);
+        self.sync_app_events();
         self.sync_extension_tabs(cx);
         self.sync_extension_popover_focus(window, cx);
     }
 }
 
-impl Render for EnvironmentShell {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let pal = palette(cx);
-        self.frame_inset = content_inset(window);
-        let view = self.active_view();
+impl EnvironmentShell {
+    fn sync_frame_state(
+        &mut self,
+        view: EnvironmentView,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.sync_file_tree(cx);
         self.ensure_structured_chats(window, cx);
+        self.sync_composer_rows(window, cx);
         self.sync_file_tabs(window, cx);
         self.flush_workspace_edits(window, cx);
         self.sync_extensions(window, cx);
@@ -289,6 +296,15 @@ impl Render for EnvironmentShell {
         self.sync_terminal_images(window);
         self.probe_review(cx);
         self.sync_window_background(window, cx);
+    }
+}
+
+impl Render for EnvironmentShell {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let pal = palette(cx);
+        self.frame_inset = content_inset(window);
+        let view = self.active_view();
+        self.sync_frame_state(view, window, cx);
         let now = Instant::now();
         if self.advance_motion(now, window, cx) {
             window.request_animation_frame();
@@ -334,14 +350,19 @@ impl Render for EnvironmentShell {
                 Some(settings) => settings,
                 None => self.workspace_row(view, window, cx),
             })
+            .children(self.usage_bar(cx))
             .children(self.sidebar_chrome(cx))
             .children(self.extension_popover_backdrop(cx))
             .child(self.toast_stack(cx))
             .children(self.extension_progress(cx))
             .child(self.palette_overlay(viewport.width.as_f32(), pal, cx))
             .children(self.agent_composer_sheet(cx))
+            .children(self.template_picker_sheet(cx))
+            .children(self.variants_draft_sheet(cx))
+            .children(self.variants_view_sheet(cx))
             .children(self.docs_generate_sheet(cx))
             .children(self.delete_file_dialog(cx))
+            .children(self.session_changes_sheet(cx))
             .children(self.discard_dialog(cx))
             .children(self.lead_ending_dialog(cx))
             .children(self.signature_overlay(window, cx))
@@ -349,10 +370,15 @@ impl Render for EnvironmentShell {
             .children(self.template_popup_overlay(window, cx))
             .children(self.context_menu_overlay(window, cx))
             .children(self.model_picker_overlay(window, cx))
+            .children(self.effort_popover_overlay(window, cx))
+            .children(self.attention_inbox_overlay(window, cx))
+            .children(self.kraddie_editor_sheet(cx))
+            .children(self.kraddie_studio_sheet(cx))
             .children(self.name_dialog_sheet(window, cx))
             .children(self.trust_sheet(cx))
             .children(self.host_dialog_sheet(window, cx))
             .children(self.toolchain_entry_sheet(cx))
+            .children(self.harness_onboarding_sheet(cx))
             .child(self.close_dialog(cx));
         let root = if self.fps_hud.is_visible() {
             root.child(fps_monitor(window, cx))

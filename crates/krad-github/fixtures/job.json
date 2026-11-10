@@ -1,0 +1,16 @@
+{
+  "id": 7,
+  "run_id": 1,
+  "name": "test (ubuntu-latest)",
+  "status": "completed",
+  "conclusion": "failure",
+  "html_url": "https://github.com/octo/app/actions/runs/1/job/7",
+  "steps": [
+    {"name": "Set up job", "status": "completed", "conclusion": "success", "number": 1},
+    {"name": "Run actions/checkout@v4", "status": "completed", "conclusion": "success", "number": 2},
+    {"name": "Run tests", "status": "completed", "conclusion": "failure", "number": 3},
+    {"name": "Upload report", "status": "completed", "conclusion": "skipped", "number": 4},
+    {"name": "Post Run actions/checkout@v4", "status": "completed", "conclusion": "success", "number": 5},
+    {"name": "Complete job", "status": "completed", "conclusion": null, "number": 6}
+  ]
+}

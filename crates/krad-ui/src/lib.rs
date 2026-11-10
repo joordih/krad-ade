@@ -1,8 +1,10 @@
 mod actions;
+mod app_badge;
 mod app_menu;
 #[cfg(target_os = "macos")]
 mod appkit;
 mod assets;
+mod attention_sound;
 mod components;
 mod environment_shell;
 mod extension_view;
@@ -11,7 +13,9 @@ mod font_catalog;
 mod highlight;
 mod http;
 mod keymap;
+mod kraddie_avatar;
 mod language;
+mod local_clock;
 mod motion;
 mod native_picker;
 mod native_swipe;
@@ -20,6 +24,7 @@ mod theme;
 mod title_bar;
 mod traffic_lights;
 mod typed_text;
+mod webhook;
 mod window_frame;
 
 pub use actions::*;

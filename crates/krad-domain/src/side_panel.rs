@@ -1,5 +1,6 @@
 use crate::ids::TerminalId;
-use serde::{Deserialize, Serialize};
+use serde::de::IntoDeserializer;
+use serde::{Deserialize, Deserializer, Serialize};
 
 pub const SIDE_PANEL_DEFAULT_W: f32 = 300.0;
 pub const SIDE_PANEL_MIN_W: f32 = 220.0;
@@ -55,7 +56,7 @@ pub struct SidePanelLayout {
     pub shown: Option<TerminalId>,
     #[serde(default)]
     pub terminals_open: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_section")]
     pub section: SidePanelSection,
     #[serde(default)]
     pub changes_layout: ChangesLayout,
@@ -63,6 +64,15 @@ pub struct SidePanelLayout {
     pub history_open: bool,
     #[serde(default = "default_history_height")]
     pub history_height: f32,
+}
+
+fn lenient_section<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<SidePanelSection, D::Error> {
+    let stored = String::deserialize(deserializer)?;
+    let known: Result<SidePanelSection, serde::de::value::Error> =
+        SidePanelSection::deserialize(stored.as_str().into_deserializer());
+    Ok(known.unwrap_or_default())
 }
 
 const fn default_history_height() -> f32 {
@@ -141,6 +151,15 @@ impl SidePanelLayout {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_section_this_version_does_not_know_opens_the_explorer() -> Result<(), serde_json::Error> {
+        let changes: SidePanelLayout = serde_json::from_str(r#"{"section":"changes"}"#)?;
+        assert_eq!(changes.section, SidePanelSection::Changes);
+        let removed: SidePanelLayout = serde_json::from_str(r#"{"section":"audit"}"#)?;
+        assert_eq!(removed.section, SidePanelSection::Explorer);
+        Ok(())
+    }
 
     #[test]
     fn closing_the_shown_terminal_shows_its_neighbour() {

@@ -1,4 +1,5 @@
 mod commands;
+mod events;
 mod hosts;
 mod lifecycle;
 mod settings;
@@ -11,6 +12,10 @@ mod workspace;
 
 pub use commands::{
     CommandTarget, ExecuteCommand, ExecuteCommandParams, RunCommand, RunCommandParams,
+};
+pub use events::{
+    AppEvent, AppEventKind, AppEventNotification, AppEventParams, ReviewVerdict, SubscribeEvents,
+    SubscribeEventsParams,
 };
 pub use hosts::{
     ConnectMachine, ConnectMachineParams, ListMachines, ListMachinesParams, Machine,

@@ -12,8 +12,8 @@ use crate::theme::{
     Palette, ICON_SM, LINE_SM, SPACE_0_5, SPACE_1_5, SPACE_2, SPACE_3, SPACE_6, TEXT_SM,
 };
 
-const PANE_GAP: f32 = SPACE_6;
-const HEADING_GAP: f32 = SPACE_2;
+pub(super) const PANE_GAP: f32 = SPACE_6;
+pub(super) const HEADING_GAP: f32 = SPACE_2;
 
 pub(super) fn pane_column(sections: impl IntoIterator<Item = AnyElement>) -> AnyElement {
     div()

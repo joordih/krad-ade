@@ -1,8 +1,10 @@
-use krad_agents::{AgentInfo, Response, TerminalHandle, TerminalState};
+use krad_agents::{AgentInfo, ErrorCode, Response, TerminalHandle, TerminalState};
 use krad_domain::{AgentState, EnvironmentName, TerminalId};
 
 use super::super::surface::ChatPresence;
 use super::super::EnvironmentShell;
+use super::close::closed_worker_infos;
+use super::feed::lists_as_agent;
 use super::{handle, Settlement, NO_SUCH_TERMINAL};
 
 pub(super) const CLOSED_TERMINAL: &str = "That terminal has no running session";
@@ -16,36 +18,29 @@ impl EnvironmentShell {
         live.data
             .nodes
             .iter()
-            .filter(|node| node.file.is_none())
-            .map(|node| {
-                let session = live.sessions.get(&node.id);
-                let chat = self.chat_presence(&env, node.id).is_some();
-                let alive = chat || session.is_some_and(|session| session.state.is_running());
-                AgentInfo {
-                    terminal: node.id.as_u64(),
-                    title: node.title.clone(),
-                    group: live.data.group_of(node.id).map(|group| group.name.clone()),
-                    state: if alive {
-                        TerminalState::Running(node.state)
-                    } else {
-                        TerminalState::Exited
-                    },
-                    harness: session
-                        .and_then(|session| session.harness)
-                        .or(node.harness.filter(|_| chat)),
-                    is_self: Some(node.id.as_u64()) == me,
-                }
+            .filter(|node| lists_as_agent(node))
+            .map(|node| AgentInfo {
+                is_self: Some(node.id.as_u64()) == me,
+                ..self.agent_info(&env, live, node)
             })
             .collect()
+    }
+
+    pub(super) fn all_agent_infos(&self, environment: &str, me: Option<u64>) -> Vec<AgentInfo> {
+        let mut agents = self.agent_infos(environment, me);
+        if let Some(live) = self.envs.get(&EnvironmentName::new(environment.to_owned())) {
+            agents.extend(closed_worker_infos(&live.data));
+        }
+        agents
     }
 
     pub(super) fn post(&mut self, from: &TerminalHandle, to: u64, body: String) -> Response {
         let env = EnvironmentName::new(from.environment.clone());
         let Some(live) = self.envs.get_mut(&env) else {
-            return Response::Error(NO_SUCH_TERMINAL.to_owned());
+            return Response::error(ErrorCode::NotFound, NO_SUCH_TERMINAL);
         };
         if !live.data.nodes.iter().any(|node| node.id.as_u64() == to) {
-            return Response::Error(NO_SUCH_TERMINAL.to_owned());
+            return Response::error(ErrorCode::NotFound, NO_SUCH_TERMINAL);
         }
         let from_title = live
             .data
@@ -82,7 +77,22 @@ impl EnvironmentShell {
     }
 
     pub(super) fn settled_state(&self, target: &TerminalHandle) -> Settlement {
-        self.find_settlement(target).unwrap_or(Settlement::Missing)
+        self.find_settlement(target)
+            .or_else(|| self.closed_settlement(target))
+            .unwrap_or(Settlement::Missing)
+    }
+
+    fn closed_settlement(&self, target: &TerminalHandle) -> Option<Settlement> {
+        let env = EnvironmentName::new(target.environment.clone());
+        let (_, worker) = self
+            .envs
+            .get(&env)?
+            .data
+            .worker(TerminalId(target.terminal))?;
+        worker
+            .session
+            .is_none()
+            .then_some(Settlement::Settled(TerminalState::Closed))
     }
 
     fn find_settlement(&self, target: &TerminalHandle) -> Option<Settlement> {
@@ -117,7 +127,7 @@ impl EnvironmentShell {
         let session = self.envs.get(&env).and_then(|live| live.sessions.get(&id));
         match session {
             Some(session) => Response::Screen(session.engine.recent_lines(lines).join("\n")),
-            None => Response::Error(CLOSED_TERMINAL.to_owned()),
+            None => Response::error(ErrorCode::NotFound, CLOSED_TERMINAL),
         }
     }
 }

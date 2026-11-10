@@ -33,9 +33,9 @@ pub(super) enum ReasoningEffort {
 impl From<Effort> for ReasoningEffort {
     fn from(effort: Effort) -> Self {
         match effort {
-            Effort::Low => Self::Low,
+            Effort::Minimal | Effort::Low => Self::Low,
             Effort::Medium => Self::Medium,
-            Effort::High | Effort::ExtraHigh | Effort::Max => Self::High,
+            Effort::High | Effort::ExtraHigh | Effort::Max | Effort::Ultra => Self::High,
         }
     }
 }

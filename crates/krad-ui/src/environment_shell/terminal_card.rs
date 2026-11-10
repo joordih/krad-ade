@@ -45,6 +45,7 @@ impl EnvironmentShell {
                 }
             }
         }
+        self.attention_seen(&env, id);
     }
 
     pub(super) fn step_text_scale(&mut self, id: TerminalId, bigger: bool, cx: &mut Context<Self>) {

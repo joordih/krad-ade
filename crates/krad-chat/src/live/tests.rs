@@ -92,6 +92,7 @@ fn a_live_config_never_prints_the_bus_token() {
         effort: None,
         permission_mode: None,
         bus_vars: BusVars(vec![("KRAD_ADE_TOKEN".to_owned(), token.to_owned())]),
+        usage_budget: std::sync::Arc::default(),
     };
     let printed = format!("{config:?}");
     assert!(printed.contains("KRAD_ADE_TOKEN"));
@@ -138,4 +139,23 @@ fn claude_code_refusals_to_resume_are_told_apart_from_other_failures() {
             "the harness exited with code 1".to_owned()
         ))
     );
+}
+
+#[test]
+fn a_usage_reply_reaches_the_chat_as_its_plan_usage_and_a_failed_one_is_left_out() {
+    let routing = Routing::new(INIT_ID, 0);
+    let events = routed(
+        &[
+            r#"{"type":"control_response","response":{"subtype":"success","request_id":"krad_usage_0","response":{"subscription_type":"pro","rate_limits":{"limits":[{"kind":"session","group":"session","percent":12,"resets_at":null,"severity":"normal","is_active":true}]}}}}"#,
+            r#"{"type":"control_response","response":{"subtype":"error","request_id":"krad_usage_1","error":"Unknown subtype"}}"#,
+            r#"{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1794249000},"uuid":"u","session_id":"s"}"#,
+        ],
+        &routing,
+    );
+    let [LiveEvent::Usage(read), LiveEvent::Limit(Some(alert))] = events.as_slice() else {
+        unreachable!("a reading and an alert: {events:?}");
+    };
+    assert_eq!(read.plan.as_deref(), Some("pro"));
+    assert_eq!(read.windows.len(), 1);
+    assert_eq!(alert.status, krad_domain::LimitStatus::Reached);
 }

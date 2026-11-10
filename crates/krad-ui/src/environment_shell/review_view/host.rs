@@ -1,7 +1,7 @@
 use krad_domain::review::{
-    project_on_host, Approvals, Change, Commit, Discussion, DiscussionId, Job, MergeOptions,
-    MergeRequest, MergeRequestIid, MergeRequestQuery, Note, Pipeline, PipelineId, ProjectPath,
-    User,
+    project_on_host, Approvals, Change, Commit, Discussion, DiscussionId, Issue, Job, JobId,
+    JobLog, MergeOptions, MergeRequest, MergeRequestIid, MergeRequestQuery, Note, Pipeline,
+    PipelineId, ProjectPath, User,
 };
 use krad_domain::CodeHost;
 use krad_github::{GithubClient, GithubError, GITHUB_HOST};
@@ -149,6 +149,13 @@ impl HostClient {
         on_host!(self, current_user())
     }
 
+    pub(in crate::environment_shell) fn issues(
+        &self,
+        project: &ProjectPath,
+    ) -> Result<Vec<Issue>, HostError> {
+        on_host!(self, issues(project))
+    }
+
     pub(in crate::environment_shell) fn merge_requests(
         &self,
         project: &ProjectPath,
@@ -265,6 +272,14 @@ impl HostClient {
         pipeline: PipelineId,
     ) -> Result<Vec<Job>, HostError> {
         on_host!(self, jobs(project, pipeline))
+    }
+
+    pub(in crate::environment_shell) fn job_log(
+        &self,
+        project: &ProjectPath,
+        job: JobId,
+    ) -> Result<JobLog, HostError> {
+        on_host!(self, job_log(project, job))
     }
 }
 

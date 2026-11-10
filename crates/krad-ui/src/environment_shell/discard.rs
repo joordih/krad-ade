@@ -2,7 +2,11 @@ use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, FontWeight, ParentElement, Styled, Window,
 };
 use krad_domain::TerminalId;
-use krad_repo::{discard_change, read_text, ChangeKind, FileChange, RepoError};
+use krad_repo::{
+    discard_change, discard_folder, read_text, revert_session_file, revert_session_hunk,
+    ChangeKind, FileChange, FilePatch, PatchStatus, RepoError,
+};
+use std::borrow::Cow;
 use std::path::PathBuf;
 
 use super::changes_tab::reverted_block;
@@ -15,9 +19,21 @@ use crate::theme::{palette, LINE_BASE, LINE_SM, SPACE_2, SPACE_5, SPACE_6, TEXT_
 const DISCARD_TITLE: &str = "Discard changes?";
 const DELETE_TITLE: &str = "Delete file?";
 const REVERT_TITLE: &str = "Revert this block?";
+const FOLDER_TITLE: &str = "Discard the folder's changes?";
+const FOLDER_ONE_FILE: &str = "1 file in this folder goes";
+const FOLDER_FILES_PREFIX: &str = "files in this folder go";
+const FOLDER_TEXT: &str =
+    "back to the last commit; files git does not track are deleted, ignored files are kept. This cannot be undone.";
 const DISCARD_TEXT: &str = "Its changes are lost. This cannot be undone.";
 const DELETE_TEXT: &str = "The file is not tracked, so it is deleted. This cannot be undone.";
 const REVERT_TEXT: &str = "The block goes back to the last commit. This cannot be undone.";
+const SESSION_FILE_TITLE: &str = "Revert this file?";
+const SESSION_FILE_TEXT: &str =
+    "It goes back to how it was when the session started. This cannot be undone.";
+const SESSION_BLOCK_TEXT: &str =
+    "The block goes back to how it was when the session started. This cannot be undone.";
+const SESSION_NEW_FILE_TEXT: &str =
+    "The file was created during the session, so it is deleted. This cannot be undone.";
 const DISCARD_CONFIRM: &str = "Discard";
 const DELETE_CONFIRM: &str = "Delete";
 const REVERT_CONFIRM: &str = "Revert";
@@ -31,14 +47,38 @@ const MAX_REVERT_BYTES: u64 = 8 * 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Discard {
-    File { repo: PathBuf, change: FileChange },
-    Block { tab: TerminalId, start: usize },
+    File {
+        repo: PathBuf,
+        change: FileChange,
+    },
+    Block {
+        tab: TerminalId,
+        start: usize,
+    },
+    Session {
+        repo: PathBuf,
+        patch: FilePatch,
+        hunk: Option<usize>,
+    },
+    Folder {
+        repo: PathBuf,
+        folder: PathBuf,
+        files: usize,
+    },
 }
 
 struct DiscardWords {
     title: &'static str,
-    text: &'static str,
+    text: Cow<'static, str>,
     confirm: &'static str,
+}
+
+fn folder_text(files: usize) -> String {
+    if files == 1 {
+        format!("{FOLDER_ONE_FILE} {FOLDER_TEXT}")
+    } else {
+        format!("{files} {FOLDER_FILES_PREFIX} {FOLDER_TEXT}")
+    }
 }
 
 impl Discard {
@@ -46,18 +86,42 @@ impl Discard {
         match self {
             Self::File { change, .. } if change.kind == ChangeKind::Untracked => DiscardWords {
                 title: DELETE_TITLE,
-                text: DELETE_TEXT,
+                text: Cow::Borrowed(DELETE_TEXT),
                 confirm: DELETE_CONFIRM,
             },
             Self::File { .. } => DiscardWords {
                 title: DISCARD_TITLE,
-                text: DISCARD_TEXT,
+                text: Cow::Borrowed(DISCARD_TEXT),
                 confirm: DISCARD_CONFIRM,
             },
             Self::Block { .. } => DiscardWords {
                 title: REVERT_TITLE,
-                text: REVERT_TEXT,
+                text: Cow::Borrowed(REVERT_TEXT),
                 confirm: REVERT_CONFIRM,
+            },
+            Self::Session { patch, .. } if patch.status == PatchStatus::Added => DiscardWords {
+                title: DELETE_TITLE,
+                text: Cow::Borrowed(SESSION_NEW_FILE_TEXT),
+                confirm: DELETE_CONFIRM,
+            },
+            Self::Session {
+                patch,
+                hunk: Some(_),
+                ..
+            } if patch.status == PatchStatus::Modified => DiscardWords {
+                title: REVERT_TITLE,
+                text: Cow::Borrowed(SESSION_BLOCK_TEXT),
+                confirm: REVERT_CONFIRM,
+            },
+            Self::Session { .. } => DiscardWords {
+                title: SESSION_FILE_TITLE,
+                text: Cow::Borrowed(SESSION_FILE_TEXT),
+                confirm: REVERT_CONFIRM,
+            },
+            Self::Folder { files, .. } => DiscardWords {
+                title: FOLDER_TITLE,
+                text: Cow::Owned(folder_text(*files)),
+                confirm: DISCARD_CONFIRM,
             },
         }
     }
@@ -72,6 +136,8 @@ impl EnvironmentShell {
     fn discarded_path(&self, discard: &Discard) -> Option<PathBuf> {
         match discard {
             Discard::File { change, .. } => Some(change.path.clone()),
+            Discard::Session { patch, .. } => Some(patch.path.clone()),
+            Discard::Folder { folder, .. } => Some(folder.clone()),
             Discard::Block { tab, .. } => {
                 let live = self.envs.get(&self.active)?;
                 let path = live.diff_path(*tab)?;
@@ -122,6 +188,20 @@ impl EnvironmentShell {
                 Discard::File { repo, change } => cx.background_spawn(async move {
                     discard_change(&link, &repo, &change).map(|()| true)
                 }),
+                Discard::Session { repo, patch, hunk } => cx.background_spawn(async move {
+                    let reverted = match hunk {
+                        Some(hunk) => revert_session_hunk(&link, &repo, &patch, hunk),
+                        None => revert_session_file(&link, &repo, &patch),
+                    };
+                    match reverted {
+                        Ok(()) => Ok(true),
+                        Err(RepoError::Stale(_)) => Ok(false),
+                        Err(error) => Err(error),
+                    }
+                }),
+                Discard::Folder { repo, folder, .. } => cx.background_spawn(async move {
+                    discard_folder(&link, &repo, &folder).map(|_| true)
+                }),
                 Discard::Block { tab, start } => {
                     let Some((path, lines)) = self
                         .envs
@@ -152,6 +232,7 @@ impl EnvironmentShell {
                     Err(error) => shell.toast_failure(&error),
                 }
                 shell.refresh_git(cx);
+                shell.reload_session_changes(cx);
             })
             .unwrap_or_default();
         })
@@ -185,7 +266,7 @@ impl EnvironmentShell {
                             .text_size(px(TEXT_SM))
                             .line_height(px(LINE_SM))
                             .text_color(rgb(pal.text_muted))
-                            .child(words.text),
+                            .child(words.text.into_owned()),
                     ),
             )
             .child(
@@ -209,5 +290,56 @@ impl EnvironmentShell {
                     ),
             );
         Some(sheet_overlay(sheet, cancel, cx))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use krad_repo::parse_patch;
+
+    const DIFF: &str = concat!(
+        "diff --git a/a.rs b/a.rs\n",
+        "index 1111111111111111111111111111111111111111..2222222222222222222222222222222222222222 100644\n",
+        "--- a/a.rs\n",
+        "+++ b/a.rs\n",
+        "@@ -1,2 +1,2 @@\n",
+        " keep\n",
+        "-old\n",
+        "+new\n",
+    );
+
+    fn session(status: PatchStatus, hunk: Option<usize>) -> Option<Discard> {
+        let mut patch = parse_patch(DIFF).into_iter().next()?;
+        patch.status = status;
+        Some(Discard::Session {
+            repo: PathBuf::from("/w"),
+            patch,
+            hunk,
+        })
+    }
+
+    fn title(discard: Option<Discard>) -> Option<&'static str> {
+        discard.map(|discard| discard.words().title)
+    }
+
+    #[test]
+    fn a_block_revert_that_reverts_the_whole_file_says_so() {
+        assert_eq!(
+            title(session(PatchStatus::Modified, Some(0))),
+            Some(REVERT_TITLE)
+        );
+        assert_eq!(
+            title(session(PatchStatus::Modified, None)),
+            Some(SESSION_FILE_TITLE)
+        );
+        assert_eq!(
+            title(session(PatchStatus::Deleted, Some(0))),
+            Some(SESSION_FILE_TITLE)
+        );
+        assert_eq!(
+            title(session(PatchStatus::Added, Some(0))),
+            Some(DELETE_TITLE)
+        );
     }
 }

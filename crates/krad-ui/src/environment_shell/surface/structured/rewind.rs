@@ -92,7 +92,7 @@ impl EnvironmentShell {
             home: None,
         };
         if !harness.rewinds_from_home() {
-            return self.hand_rewind(env, id, request);
+            return self.hand_rewind(env, id, request, cx);
         }
         let root = self
             .envs
@@ -105,7 +105,7 @@ impl EnvironmentShell {
         cx.spawn(async move |this, cx| {
             let home = found.await.ok().flatten();
             this.update(cx, |shell, cx| {
-                shell.hand_rewind(&env, id, RewindRequest { home, ..request });
+                shell.hand_rewind(&env, id, RewindRequest { home, ..request }, cx);
                 cx.notify();
             })
             .unwrap_or_default();
@@ -113,14 +113,39 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn hand_rewind(&mut self, env: &EnvironmentName, id: TerminalId, request: RewindRequest) {
+    fn hand_rewind(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        request: RewindRequest,
+        cx: &mut Context<Self>,
+    ) {
         match structured_mut(self, env, id).and_then(|structured| structured.live()) {
             Some(live) => live.rewind(request),
-            None => self.rewound(env, id, Err(RewindError::Stopped)),
+            None => self.rewound(env, id, Err(RewindError::Stopped), cx),
         }
     }
 
     pub(super) fn rewound(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        outcome: Result<Rewound, RewindError>,
+        cx: &mut Context<Self>,
+    ) {
+        let point = structured_chat(self, env, id).and_then(|chat| {
+            let index = chat.structured()?.rewinding.as_ref()?.index;
+            chat.messages.get(index)?.rewind.clone()
+        });
+        let settled = outcome.is_ok();
+        self.rewound_conversation(env, id, outcome);
+        if let (true, Some(point)) = (settled, point.as_ref()) {
+            self.forget_checkpoints_from(env, id, point);
+        }
+        self.files_rewind_settled(env, id, settled, cx);
+    }
+
+    fn rewound_conversation(
         &mut self,
         env: &EnvironmentName,
         id: TerminalId,

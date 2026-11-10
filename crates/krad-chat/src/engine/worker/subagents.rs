@@ -1,4 +1,4 @@
-use krad_domain::{ChatEvent, PermissionMode, Prompt, ToolCall, ToolUseId};
+use krad_domain::{ChatEvent, PermissionMode, Prompt, ToolCall, ToolUseId, UsageReport};
 use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -20,6 +20,7 @@ const ASK_ID_SEPARATOR: char = '/';
 
 pub(crate) enum SubagentNews {
     Asked(Box<ToolAsk>),
+    Spent(UsageReport),
     Finished(Ran),
 }
 
@@ -104,10 +105,17 @@ fn run_subagent(
                 news: SubagentNews::Asked(ask),
             })
             .unwrap_or_default(),
+        LiveEvent::Spent(report) => parent
+            .send(Inbound::Subagent {
+                call: call.clone(),
+                news: SubagentNews::Spent(report),
+            })
+            .unwrap_or_default(),
         LiveEvent::Chat(ChatEvent::Error(error)) => failures.send(error).unwrap_or_default(),
         LiveEvent::Chat(_)
         | LiveEvent::Ready(_)
         | LiveEvent::Usage(_)
+        | LiveEvent::Limit(_)
         | LiveEvent::Notice(_)
         | LiveEvent::Rewound(_)
         | LiveEvent::Refused(_)
@@ -260,6 +268,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
                     .insert(outer, RoutedAsk { call, inner });
                 (self.sink)(LiveEvent::Ask(ask));
             }
+            SubagentNews::Spent(report) => (self.sink)(LiveEvent::Spent(report)),
             SubagentNews::Finished(report) => {
                 batch.subagents.running.remove(&call);
                 batch.subagents.asks.retain(|_, routed| routed.call != call);

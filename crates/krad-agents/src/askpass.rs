@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use crate::client::call;
 use crate::env::bus_env;
 use crate::handle::Caller;
-use crate::protocol::{BusToken, Request, Response};
+use crate::protocol::{Request, Response};
 
 pub const ASKPASS_VERB: &str = "askpass";
 const EXIT_OK: i32 = 0;
@@ -20,7 +20,7 @@ pub(crate) fn run(prompt: &str) -> i32 {
     if std::env::var_os(krad_host::mux::ENV_ENDPOINT).is_some() {
         return krad_host::mux::run_askpass(prompt);
     }
-    let Some(bus) = bus_env() else {
+    let Some(bus) = bus_env(None) else {
         return EXIT_NO_ANSWER;
     };
     let Ok(from) = bus.terminal.parse::<Caller>() else {
@@ -29,7 +29,7 @@ pub(crate) fn run(prompt: &str) -> i32 {
     let request = Request::Askpass {
         prompt: prompt.to_owned(),
     };
-    match call(&bus.endpoint, &BusToken::from(bus.token), &from, request) {
+    match call(&bus.endpoint, &bus.token, &from, request) {
         Ok(Response::Answered(Some(answer))) => {
             let mut out = io::stdout();
             let written = out

@@ -1,10 +1,11 @@
 use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
-use krad_agents::{LeadHandle, Request, Response, TerminalState};
-use krad_domain::{AgentState, EnvironmentName, SessionId, TerminalId};
+use krad_agents::{Caller, ErrorCode, LeadHandle, Request, Response, TerminalState};
+use krad_domain::{AgentState, EnvironmentName, SessionId, TerminalId, VariantRunId};
 
 use super::super::EnvironmentShell;
 use super::chat::ChatSpawn;
+use super::close::{pick_refusal, session_close_refusal};
 use super::{handle, Settlement};
 
 const NOT_A_LEAD_ANYMORE: &str = "This chat is no longer its session's lead";
@@ -18,6 +19,32 @@ enum WorkerPlace {
 }
 
 impl EnvironmentShell {
+    pub(super) fn as_lead(&self, from: Caller, request: &Request) -> Caller {
+        let Caller::Terminal(terminal) = &from else {
+            return from;
+        };
+        let Some(live) = self
+            .envs
+            .get(&EnvironmentName::new(terminal.environment.clone()))
+        else {
+            return from;
+        };
+        let Some(session) = live.data.session_led_by(TerminalId(terminal.terminal)) else {
+            return from;
+        };
+        let follows_own_worker = request
+            .followed_terminal()
+            .and_then(|target| live.data.worker(TerminalId(target)))
+            .is_some_and(|(owner, _)| owner == session);
+        if !request.directs_workers() && !follows_own_worker {
+            return from;
+        }
+        Caller::Lead(LeadHandle {
+            environment: terminal.environment.clone(),
+            session: session.as_u64(),
+        })
+    }
+
     pub(super) fn answer_lead(
         &mut self,
         lead: &LeadHandle,
@@ -41,6 +68,9 @@ impl EnvironmentShell {
             Some(None) => NO_LEAD_GROUP,
             Some(Some(group)) => {
                 match request {
+                    Request::Close(order) => {
+                        self.close_for_lead(&env, session, order, reply, cx);
+                    }
                     Request::Spawn {
                         agent,
                         worktree,
@@ -55,6 +85,32 @@ impl EnvironmentShell {
                         };
                         self.start_chat_worker(&lead.environment, group, spawn, reply, cx);
                     }
+                    request @ Request::CloseSession { session: closing } => {
+                        let refused = self.envs.get(&env).and_then(|live| {
+                            session_close_refusal(&live.data, session, SessionId(closing))
+                        });
+                        match refused {
+                            Some(error) => reply.send(Response::Error(error)).unwrap_or_default(),
+                            None => self.answer_chat(&lead.environment, group, request, reply, cx),
+                        }
+                    }
+                    request @ Request::PickVariant { run, .. } => {
+                        let run_group = self.envs.get(&env).and_then(|live| {
+                            live.data
+                                .variant_runs
+                                .run(VariantRunId(run))
+                                .map(|run| run.group)
+                        });
+                        match pick_refusal(run_group, group) {
+                            Some(error) => reply.send(Response::Error(error)).unwrap_or_default(),
+                            None => self.answer_chat(&lead.environment, group, request, reply, cx),
+                        }
+                    }
+                    other @ (Request::MemorySearch { .. } | Request::MemoryRead { .. }) => {
+                        let chat = led_by.and_then(|(_, terminal)| terminal);
+                        let answer = self.answer_memory(&lead.environment, chat, &other);
+                        reply.send(answer).unwrap_or_default();
+                    }
                     other => {
                         if let Some(answer) = self.answer_worker(&env, session, &other, cx) {
                             reply.send(answer).unwrap_or_default();
@@ -67,7 +123,7 @@ impl EnvironmentShell {
             }
         };
         reply
-            .send(Response::Error(refusal.to_owned()))
+            .send(Response::error(ErrorCode::Forbidden, refusal))
             .unwrap_or_default();
     }
 
@@ -105,10 +161,12 @@ impl EnvironmentShell {
             Request::Read { target, lines } => {
                 let terminal = TerminalId(*target);
                 match self.worker_place(env, lead, terminal)? {
-                    WorkerPlace::Closed => Some(Response::Error(WORKER_RETIRED.to_owned())),
+                    WorkerPlace::Closed => {
+                        Some(Response::error(ErrorCode::NotFound, WORKER_RETIRED))
+                    }
                     WorkerPlace::Open if self.has_finished(env, terminal) => {
                         let tail = self.screen_tail(env.as_str(), *target, *lines);
-                        self.close_terminal_in(env, terminal, cx);
+                        self.close_finished_worker(env, lead, terminal, cx);
                         Some(tail)
                     }
                     WorkerPlace::Open => None,
@@ -119,7 +177,7 @@ impl EnvironmentShell {
                     self.worker_place(env, lead, TerminalId(*target)) == Some(WorkerPlace::Closed);
                 closed.then_some(Response::Settled {
                     target: *target,
-                    state: TerminalState::Exited,
+                    state: TerminalState::Closed,
                 })
             }
             Request::Send { to, .. } => {

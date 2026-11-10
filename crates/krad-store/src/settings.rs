@@ -15,8 +15,11 @@ fn settings_file_path() -> Option<PathBuf> {
 pub fn read_settings() -> Settings {
     settings_file_path()
         .and_then(|path| std::fs::read(path).ok())
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .unwrap_or_default()
+        .map_or_else(Settings::default, |bytes| settings_from(&bytes))
+}
+
+fn settings_from(bytes: &[u8]) -> Settings {
+    serde_json::from_slice(bytes).unwrap_or_default()
 }
 
 /// # Errors
@@ -28,4 +31,30 @@ pub fn write_settings(settings: &Settings) -> std::io::Result<()> {
     let bytes = serde_json::to_vec_pretty(settings)
         .map_err(|error| Error::new(ErrorKind::InvalidData, error))?;
     write_atomically(&path, &bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use krad_domain::{AppearanceMode, Switch};
+
+    #[test]
+    fn a_bad_attention_value_keeps_every_other_setting() {
+        let read = settings_from(
+            br#"{
+                "appearance": "Dark",
+                "attention": {
+                    "notifications": "off",
+                    "quiet_hours": {"switch": "on", "start": "25:00"},
+                    "rules": {"finished": {"sound": "kazoo"}}
+                }
+            }"#,
+        );
+        assert_eq!(read.appearance, AppearanceMode::Dark);
+        assert_eq!(read.attention.notifications, Switch::Off);
+        assert_eq!(read.attention.quiet_hours.switch, Switch::On);
+        let whole = settings_from(br#"{"appearance": "Dark", "attention": 7}"#);
+        assert_eq!(whole.appearance, AppearanceMode::Dark);
+        assert!(whole.attention.is_default());
+    }
 }

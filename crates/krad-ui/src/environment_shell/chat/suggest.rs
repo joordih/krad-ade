@@ -2,13 +2,16 @@ use gpui_kit::component::input::InlineToken;
 use gpui_kit::component::input::TextareaState;
 use gpui_kit::{AppContext as _, Context, Entity, SharedString, Window};
 use krad_chat::{claude_skills, search_skills, shared_skill_message, Skill, SkillSource};
-use krad_domain::{parse_wsl_path, wsl_unc_path, AgentPreset, TerminalId, WslPath};
+use krad_domain::{
+    kraddie_mention_at, parse_wsl_path, wsl_unc_path, AgentPreset, TerminalId, WslPath,
+};
 use krad_host::HostLink;
 use krad_repo::{wsl_home, EntryKind, IndexEntry, RepoError};
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
+use super::super::kraddie_memory::KraddieSuggestion;
 use super::super::terminal_card::home_dir;
 use super::super::EnvironmentShell;
 
@@ -24,6 +27,7 @@ const SUGGESTION_LIMIT: usize = 200;
 pub(in crate::environment_shell) enum SuggestKind {
     Mention,
     Skill,
+    Kraddie,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -38,6 +42,7 @@ pub(in crate::environment_shell) struct Suggest {
 pub(in crate::environment_shell) enum Suggestion {
     Entry(IndexEntry),
     Skill(Skill),
+    Kraddie(KraddieSuggestion),
 }
 
 fn trigger(composer: TerminalId, text: &str, cursor: usize) -> Option<Suggest> {
@@ -52,6 +57,8 @@ fn trigger(composer: TerminalId, text: &str, cursor: usize) -> Option<Suggest> {
         SuggestKind::Mention
     } else if word.starts_with(SKILL_PREFIX) {
         SuggestKind::Skill
+    } else if kraddie_mention_at(text, cursor).is_some() {
+        SuggestKind::Kraddie
     } else {
         return None;
     };
@@ -104,7 +111,7 @@ impl EnvironmentShell {
         match opened {
             Some(SuggestKind::Mention) => self.refresh_file_index(root, cx),
             Some(SuggestKind::Skill) => Self::refresh_skills(self.active_link(), root, cx),
-            None => {}
+            Some(SuggestKind::Kraddie) | None => {}
         }
         cx.notify();
     }
@@ -166,6 +173,12 @@ impl EnvironmentShell {
                         .collect(),
                 )
             }
+            SuggestKind::Kraddie => Some(
+                self.kraddie_suggestions(&suggest.query, SUGGESTION_LIMIT)
+                    .into_iter()
+                    .map(Suggestion::Kraddie)
+                    .collect(),
+            ),
         }
     }
 
@@ -235,6 +248,19 @@ impl EnvironmentShell {
                         cx,
                     );
                 });
+            }
+            Some(Suggestion::Kraddie(kraddie)) => {
+                if let Some(text) = self.attach_kraddie_chip(suggest.composer, &kraddie.id) {
+                    let token = InlineToken::new(text.clone(), text);
+                    input.update(cx, |input, cx| {
+                        if input
+                            .replace_range_with_token(suggest.range, token, window, cx)
+                            .is_ok()
+                        {
+                            input.insert(WORD_GAP, window, cx);
+                        }
+                    });
+                }
             }
             None => {}
         }
@@ -356,6 +382,15 @@ mod tests {
             found("then run /rev"),
             Some((SuggestKind::Skill, 9..13, "rev".to_owned()))
         );
+    }
+
+    #[test]
+    fn a_dollar_word_asks_for_kraddies_but_prices_do_not() {
+        assert_eq!(
+            found("ask $owl"),
+            Some((SuggestKind::Kraddie, 4..8, "owl".to_owned()))
+        );
+        assert_eq!(found("costs $5"), None);
     }
 
     #[test]

@@ -9,6 +9,7 @@ use krad_repo::EntryKind;
 use super::super::suggest::{entry_labels, SuggestKind, Suggestion};
 use super::super::EnvironmentShell;
 use crate::components::{icon, IconName};
+use crate::kraddie_avatar::kraddie_avatar;
 use crate::theme::{
     palette, popover_fill, popover_shadow, Palette, ICON_SM, LINE_SM, LINE_XS, NAV_ROW_H,
     RADIUS_MD, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM, TEXT_XS,
@@ -21,6 +22,8 @@ const MENU_MAX_H: f32 = 300.0;
 const LOADING_TEXT: &str = "Loading…";
 const NO_FILES_TEXT: &str = "No matching files or folders";
 const NO_SKILLS_TEXT: &str = "No matching skills";
+const NO_KRADDIES_TEXT: &str = "No Kraddie by that name";
+const KRADDIE_AVATAR_SIDE: f32 = 18.0;
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn suggestion_menu(
@@ -38,6 +41,7 @@ impl EnvironmentShell {
         let empty_text = match suggest.kind {
             SuggestKind::Mention => NO_FILES_TEXT,
             SuggestKind::Skill => NO_SKILLS_TEXT,
+            SuggestKind::Kraddie => NO_KRADDIES_TEXT,
         };
         let rows: Vec<AnyElement> = match self.suggestions() {
             None => vec![note(LOADING_TEXT, pal)],
@@ -45,7 +49,7 @@ impl EnvironmentShell {
             Some(rows) => rows
                 .into_iter()
                 .enumerate()
-                .map(|(index, row)| Self::suggestion_row(index, &row, index == selected, cx))
+                .map(|(index, row)| self.suggestion_row(index, &row, index == selected, cx))
                 .collect(),
         };
         Some(
@@ -74,12 +78,20 @@ impl EnvironmentShell {
     }
 
     fn suggestion_row(
+        &self,
         index: usize,
         row: &Suggestion,
         selected: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
+        let avatar = match row {
+            Suggestion::Kraddie(kraddie) => Some(
+                kraddie_avatar(&kraddie.sprite, KRADDIE_AVATAR_SIDE, self.kraddies_frame())
+                    .into_any_element(),
+            ),
+            Suggestion::Entry(_) | Suggestion::Skill(_) => None,
+        };
         let (glyph, name, detail) = match row {
             Suggestion::Entry(entry) => {
                 let (name, folder) = entry_labels(entry);
@@ -93,6 +105,11 @@ impl EnvironmentShell {
                 IconName::Magic,
                 skill.name.clone(),
                 skill.description.clone(),
+            ),
+            Suggestion::Kraddie(kraddie) => (
+                IconName::Kraddie,
+                kraddie.name.to_string(),
+                kraddie.size.to_string(),
             ),
         };
         div()
@@ -111,7 +128,9 @@ impl EnvironmentShell {
             .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
                 this.accept_suggestion(index, window, cx);
             }))
-            .child(icon(glyph, ICON_SM, pal.text_muted))
+            .child(
+                avatar.unwrap_or_else(|| icon(glyph, ICON_SM, pal.text_muted).into_any_element()),
+            )
             .child(
                 div()
                     .flex_none()

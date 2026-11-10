@@ -223,7 +223,9 @@ impl EnvironmentShell {
         let dirs = changed_dirs(&self.git, &git);
         let files = changed_files(&self.git, &git);
         let vanished = any_vanished(&self.git, &git);
+        let changed_roots = super::super::app_events::changed_git_roots(&self.git, &git);
         self.git = git;
+        self.announce_git_changes(&changed_roots);
         let mut by_host: HashMap<Host, Vec<(PathBuf, DiskChange)>> = HashMap::new();
         for (host, path, change) in files {
             by_host.entry(host).or_default().push((path, change));

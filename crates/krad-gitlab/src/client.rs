@@ -1,3 +1,5 @@
+mod issues;
+
 use crate::config::GitlabConfig;
 use crate::encode::percent_encode;
 use crate::model::{
@@ -6,12 +8,15 @@ use crate::model::{
     UserJson,
 };
 use crate::oauth::{self, oauth_agent, OAuthError};
+use crate::trace::read_trace;
 use krad_domain::review::{
-    Approvals, Change, Commit, Discussion, DiscussionId, Job, MergeOptions, MergeRequest,
-    MergeRequestIid, MergeRequestQuery, Note, Pipeline, PipelineId, ProjectPath, User,
+    Approvals, Change, Commit, Discussion, DiscussionId, Job, JobId, JobLog, MergeOptions,
+    MergeRequest, MergeRequestIid, MergeRequestQuery, Note, Pipeline, PipelineId, ProjectPath,
+    User,
 };
 use krad_domain::GitlabTokens;
 use serde::de::DeserializeOwned;
+use std::io::BufReader;
 use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 use ureq::Agent;
@@ -41,6 +46,7 @@ const UNAPPROVE_PATH: &str = "/unapprove";
 const MERGE_PATH: &str = "/merge";
 const PIPELINES_PATH: &str = "/pipelines";
 const JOBS_PATH: &str = "/jobs";
+const TRACE_PATH: &str = "/trace";
 
 pub type TokenSaver = Box<dyn Fn(&GitlabTokens) -> std::io::Result<()> + Send + Sync>;
 
@@ -289,6 +295,21 @@ impl GitlabClient {
         self.list::<JobJson, _>(&project_path(project, &path), &[])
     }
 
+    /// # Errors
+    ///
+    /// See [`GitlabClient::current_user`]; [`GitlabError::Http`] also when the
+    /// log stops arriving halfway.
+    pub fn job_log(&self, project: &ProjectPath, job: JobId) -> Result<JobLog, GitlabError> {
+        let url = self.config.api_url(&project_path(
+            project,
+            &format!("{JOBS_PATH}/{job}{TRACE_PATH}"),
+        ));
+        self.authorized(|bearer| {
+            let mut response = self.agent.get(&url).header(AUTHORIZATION, bearer).call()?;
+            read_trace(BufReader::new(response.body_mut().as_reader())).map_err(ureq::Error::Io)
+        })
+    }
+
     fn get<J: DeserializeOwned, T: From<J>>(&self, path: &str) -> Result<T, GitlabError> {
         let url = self.config.api_url(path);
         self.authorized(|bearer| {
@@ -415,6 +436,7 @@ mod tests {
     use std::thread::JoinHandle;
 
     const TOKEN: &str = include_str!("../fixtures/token.json");
+    const ISSUES: &str = include_str!("../fixtures/issues.json");
     const USER: &str = r#"{"id":5,"username":"me","name":"Me"}"#;
     const CONTENT_LENGTH: &str = "content-length:";
     const CRLF: &str = "\r\n";
@@ -422,11 +444,22 @@ mod tests {
     fn serve(
         answers: Vec<(u16, &'static str)>,
     ) -> std::io::Result<(String, JoinHandle<Vec<String>>)> {
+        serve_with_headers(
+            answers
+                .into_iter()
+                .map(|(status, body)| (status, body, ""))
+                .collect(),
+        )
+    }
+
+    pub(super) fn serve_with_headers(
+        answers: Vec<(u16, &'static str, &'static str)>,
+    ) -> std::io::Result<(String, JoinHandle<Vec<String>>)> {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
         let host = format!("http://{}", listener.local_addr()?);
         let server = std::thread::spawn(move || {
             let mut seen = Vec::new();
-            for (status, body) in answers {
+            for (status, body, headers) in answers {
                 let Ok((stream, _)) = listener.accept() else {
                     break;
                 };
@@ -448,7 +481,7 @@ mod tests {
                 let mut request_body = vec![0; length];
                 reader.read_exact(&mut request_body).unwrap_or_default();
                 let answer = format!(
-                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
                     body.len()
                 );
                 (&stream).write_all(answer.as_bytes()).unwrap_or_default();
@@ -528,6 +561,53 @@ mod tests {
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
         assert_eq!(kept.access_token, "fixture-access");
+        Ok(())
+    }
+
+    #[test]
+    fn open_issues_are_read_from_the_project() -> Result<(), Box<dyn std::error::Error>> {
+        let (host, server) = serve(vec![(200, ISSUES)])?;
+        let client = GitlabClient::new(
+            GitlabConfig {
+                host,
+                client_id: "app".to_owned(),
+            },
+            tokens("access"),
+            Box::new(|_| Ok(())),
+        );
+        let issues = client.issues(&"team/app".parse()?)?;
+        let titles: Vec<&str> = issues.iter().map(|issue| issue.title.as_str()).collect();
+        assert_eq!(
+            titles,
+            [
+                "Dark mode for the settings page",
+                "Login token is not refreshed"
+            ],
+            "newest first"
+        );
+        let seen = server.join().map_err(|_| "server panicked")?;
+        assert!(seen[0].starts_with("GET /api/v4/projects/team%2Fapp/issues?"));
+        assert!(seen[0].contains("state=opened"));
+        Ok(())
+    }
+
+    #[test]
+    fn a_job_log_is_read_from_the_jobs_trace() -> Result<(), Box<dyn std::error::Error>> {
+        const TRACE: &str = include_str!("../fixtures/job_trace.txt");
+        let (host, server) = serve(vec![(200, TRACE)])?;
+        let client = GitlabClient::new(
+            GitlabConfig {
+                host,
+                client_id: "app".to_owned(),
+            },
+            tokens("access"),
+            Box::new(|_| Ok(())),
+        );
+        let project: ProjectPath = "group/app".parse()?;
+        let log = client.job_log(&project, JobId(9))?;
+        assert_eq!(log.failing_step(), Some("step_script"));
+        let seen = server.join().map_err(|_| "server panicked")?;
+        assert!(seen[0].starts_with("GET /api/v4/projects/group%2Fapp/jobs/9/trace"));
         Ok(())
     }
 }

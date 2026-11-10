@@ -10,6 +10,8 @@ fn chat(events: Vec<LiveEvent>) -> Vec<ChatEvent> {
             LiveEvent::Ask(_)
             | LiveEvent::Ready(_)
             | LiveEvent::Usage(_)
+            | LiveEvent::Limit(_)
+            | LiveEvent::Spent(_)
             | LiveEvent::Notice(_)
             | LiveEvent::Rewound(_)
             | LiveEvent::Refused(_)
@@ -103,21 +105,26 @@ fn a_turn_becomes_its_tools_text_usage_and_end() {
 }
 
 #[test]
-fn rate_limits_fill_the_five_hour_and_weekly_rings() {
+fn a_rate_limits_notice_merges_into_the_last_reading() {
     let mut translator = Translator::default();
-    let events = translator.translate(
+    let first = translator.translate(
         RATE_LIMITS,
-        &json!({"rateLimits": {"limitId": "codex",
+        &json!({"rateLimits": {"limitId": "codex", "planType": "plus",
             "primary": {"usedPercent": 12, "windowDurationMins": 300, "resetsAt": 1},
             "secondary": {"usedPercent": 40, "windowDurationMins": 10_080, "resetsAt": 2}}}),
     );
-    assert_eq!(
-        events,
-        [LiveEvent::Usage(PlanUsage {
-            five_hour: Some(12),
-            seven_day: Some(40),
-        })]
+    assert_eq!(first.len(), 1);
+    let sparse = translator.translate(
+        RATE_LIMITS,
+        &json!({"rateLimits": {"limitId": "codex", "secondary": {"usedPercent": 41}}}),
     );
+    let [LiveEvent::Usage(usage)] = sparse.as_slice() else {
+        unreachable!("a notice is one reading: {sparse:?}");
+    };
+    let used = |span| usage.window(&span).map(|window| window.used);
+    assert_eq!(used(krad_domain::WindowSpan::FiveHours), Some(12));
+    assert_eq!(used(krad_domain::WindowSpan::Weekly), Some(41));
+    assert_eq!(usage.plan.as_deref(), Some("plus"));
 }
 
 #[test]
@@ -147,5 +154,39 @@ fn a_codex_subagent_call_is_told_apart_as_a_subagent() {
                 && call.summary == "Map the UI"
         ),
         "{events:?}"
+    );
+}
+
+#[test]
+fn each_token_notice_adds_the_last_request_priced_by_the_thread_model() {
+    let mut translator = Translator {
+        model: Some("gpt-5-codex".to_owned()),
+        ..Translator::default()
+    };
+    let events = translator.translate(
+        TOKEN_USAGE,
+        &json!({"threadId": "t", "turnId": "turn-1", "tokenUsage": {
+        "total": {"totalTokens": 90000, "inputTokens": 80000, "cachedInputTokens": 0, "outputTokens": 10000},
+        "last": {"totalTokens": 14316, "inputTokens": 14263, "cachedInputTokens": 12288, "outputTokens": 53}}}),
+    );
+    let spent: Vec<_> = events
+        .into_iter()
+        .filter_map(|event| match event {
+            LiveEvent::Spent(report) => Some(report),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        spent,
+        [UsageReport::Added(ReportedUsage {
+            tokens: krad_domain::TokenUsage {
+                input: 1975,
+                output: 53,
+                cache_read: 12288,
+                cache_write: 0,
+            },
+            cost: None,
+            model: ModelId::parse("gpt-5-codex"),
+        })]
     );
 }

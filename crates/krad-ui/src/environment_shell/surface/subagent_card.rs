@@ -1,7 +1,7 @@
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
-    div, px, rgb, AnyElement, Context, ElementId, FontWeight, InteractiveElement, IntoElement,
-    ParentElement, SharedString, StatefulInteractiveElement, Styled,
+    div, px, rgb, AnyElement, Context, ElementId, Entity, FontWeight, InteractiveElement,
+    IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_chat::{Speaker, ToolCall};
 use krad_domain::{AgentState, TerminalId, TextScale, ToolUseId};
@@ -9,11 +9,12 @@ use std::time::Instant;
 
 use super::super::chat::{question_bubble, AnswerPart};
 use super::super::EnvironmentShell;
+use super::answer::{AnswerPlace, ShownAnswer};
 use super::status_line::{status_line, TurnPhase};
 use super::subagents::SubagentRun;
 use super::view::{column, muted_line};
 use super::SurfaceChat;
-use crate::components::{agent_status, icon, IconName, StatusKind};
+use crate::components::{agent_status, icon, CopyFeedback, IconName, StatusKind};
 use crate::theme::{
     palette, Palette, ICON_SM, LINE_SM, LINE_XS, RADIUS_MD, SPACE_1_5, SPACE_2, SPACE_3, TEXT_SM,
     TEXT_XS, VIEW_HEADER_H,
@@ -160,6 +161,7 @@ impl EnvironmentShell {
         tool: &ToolUseId,
         chat: &SurfaceChat,
         started: Instant,
+        copies: &Entity<CopyFeedback>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
@@ -178,7 +180,15 @@ impl EnvironmentShell {
                         pal,
                     )
                 }
-                Speaker::Assistant => Self::surface_answer(id, index, message, chat, &[], None, cx),
+                Speaker::Assistant => {
+                    let answer = ShownAnswer {
+                        id,
+                        index,
+                        message,
+                        place: AnswerPlace::Subagent(tool),
+                    };
+                    Self::surface_answer(answer, chat, &[], None, copies, cx)
+                }
             });
         }
         if run.is_none() {

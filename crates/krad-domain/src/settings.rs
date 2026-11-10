@@ -1,5 +1,8 @@
 use crate::acp::AcpSettings;
 use crate::agent::AgentPreset;
+use crate::attention::AttentionSettings;
+use crate::composer_height::ComposerHeight;
+use crate::event::WebhookSettings;
 use crate::extension_index::{lenient_index_repository, IndexRepository};
 use crate::file_icon::FileIconColors;
 use crate::font::{stored_font, FontChoice};
@@ -9,12 +12,14 @@ use crate::host_timeouts::HostTimeouts;
 use crate::hue::Hue;
 use crate::java_engine::JavaEngine;
 use crate::mcp::McpSettings;
-use crate::model::{lenient_model_lists, ModelId};
+use crate::model::{lenient_model_lists, ChatChoice, ModelId};
+use crate::plan_usage::PlanUsageSettings;
 use crate::problem::EditorSettings;
 use crate::server_runtime::{ExtensionEntry, ServerRuntimePaths};
 use crate::sidebar_layout::SidebarLayout;
 use crate::theme::{ThemeAppearance, ThemeId};
 use crate::toolchain::ToolchainActivation;
+use crate::usage::SpendSettings;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -202,6 +207,20 @@ impl CopyMode {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum HarnessOnboarding {
+    #[default]
+    Pending,
+    Done,
+}
+
+impl HarnessOnboarding {
+    #[must_use]
+    pub const fn is_pending(&self) -> bool {
+        matches!(self, Self::Pending)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum AppUpdateCheck {
     #[default]
     Automatic,
@@ -214,6 +233,21 @@ pub enum CodeTools {
     #[default]
     On,
     Off,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ApiDiscoveryFile {
+    #[default]
+    On,
+    Off,
+}
+
+impl ApiDiscoveryFile {
+    #[must_use]
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -284,6 +318,8 @@ pub struct Settings {
         skip_serializing_if = "HashMap::is_empty"
     )]
     pub harness_models: HashMap<AgentPreset, Vec<ModelId>>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub chat_defaults: HashMap<AgentPreset, ChatChoice>,
     #[serde(default, skip_serializing_if = "GitlabSettings::is_empty")]
     pub gitlab: GitlabSettings,
     #[serde(default, skip_serializing_if = "GatewaySettings::is_empty")]
@@ -330,6 +366,24 @@ pub struct Settings {
     pub performance_mode: PerformanceMode,
     #[serde(default, skip_serializing_if = "SidebarLayout::is_default")]
     pub sidebar: SidebarLayout,
+    #[serde(default, skip_serializing_if = "ComposerHeight::is_default")]
+    pub composer_height: ComposerHeight,
+    #[serde(
+        default,
+        deserialize_with = "crate::attention::lenient_attention",
+        skip_serializing_if = "AttentionSettings::is_default"
+    )]
+    pub attention: AttentionSettings,
+    #[serde(default, skip_serializing_if = "HarnessOnboarding::is_pending")]
+    pub harness_onboarding: HarnessOnboarding,
+    #[serde(default, skip_serializing_if = "SpendSettings::is_default")]
+    pub spending: SpendSettings,
+    #[serde(default, skip_serializing_if = "PlanUsageSettings::is_default")]
+    pub plan_usage: PlanUsageSettings,
+    #[serde(default, skip_serializing_if = "WebhookSettings::is_empty")]
+    pub webhooks: WebhookSettings,
+    #[serde(default, skip_serializing_if = "ApiDiscoveryFile::is_default")]
+    pub api_discovery_file: ApiDiscoveryFile,
 }
 
 impl Settings {
@@ -446,6 +500,27 @@ mod tests {
     }
 
     #[test]
+    fn the_api_discovery_file_is_on_until_turned_off() -> serde_json::Result<()> {
+        assert_eq!(Settings::default().api_discovery_file, ApiDiscoveryFile::On);
+        assert!(!serde_json::to_string(&Settings::default())?.contains("api_discovery_file"));
+        let read: Settings = serde_json::from_str(r#"{"api_discovery_file":"off"}"#)?;
+        assert_eq!(read.api_discovery_file, ApiDiscoveryFile::Off);
+        assert!(serde_json::to_string(&read)?.contains(r#""api_discovery_file":"off""#));
+        Ok(())
+    }
+
+    #[test]
+    fn the_composer_height_is_normal_until_picked_and_stays_out_of_the_file(
+    ) -> serde_json::Result<()> {
+        assert!(!serde_json::to_string(&Settings::default())?.contains("composer_height"));
+        let read: Settings = serde_json::from_str(r#"{"composer_height":"compact"}"#)?;
+        assert_eq!(read.composer_height, ComposerHeight::Compact);
+        let written = serde_json::to_string(&read)?;
+        assert!(written.contains(r#""composer_height":"compact""#));
+        Ok(())
+    }
+
+    #[test]
     fn custom_harness_command_replaces_the_bare_program() {
         let mut settings = Settings::default();
         assert_eq!(settings.launch_line(AgentPreset::Shell), None);
@@ -488,6 +563,7 @@ mod tests {
             themes: Some(TerminalTheme::Dracula.as_selection()),
             default_harness: AgentPreset::Codex,
             copy_mode: CopyMode::Both,
+            composer_height: ComposerHeight::Roomy,
             ..Settings::default()
         };
         settings
@@ -510,6 +586,29 @@ mod tests {
             AppUpdateCheck::Automatic,
             "older settings files check for app updates"
         );
+        assert_eq!(
+            partial.composer_height,
+            ComposerHeight::Normal,
+            "older settings files get the normal composer"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn the_last_model_and_effort_of_each_harness_are_remembered() -> serde_json::Result<()> {
+        let mut settings = Settings::default();
+        settings.chat_defaults.insert(
+            AgentPreset::Codex,
+            ChatChoice {
+                model: ModelId::parse("gpt-6.1-sol"),
+                effort: Some(crate::model::Effort::Ultra),
+            },
+        );
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&settings)?)?;
+        assert_eq!(back.chat_defaults, settings.chat_defaults);
+        let old: Settings = serde_json::from_str(r#"{"default_harness":"ClaudeCode"}"#)?;
+        assert!(old.chat_defaults.is_empty());
+        assert!(!serde_json::to_string(&old)?.contains("chat_defaults"));
         Ok(())
     }
 
@@ -577,6 +676,21 @@ mod tests {
             !unchanged.contains("harness_models"),
             "untouched lists stay out of the file"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn harness_onboarding_stays_out_of_the_file_until_it_is_done() -> serde_json::Result<()> {
+        let fresh = serde_json::to_string(&Settings::default())?;
+        assert!(!fresh.contains("harness_onboarding"));
+        let old: Settings = serde_json::from_str(r#"{"appearance":"Dark"}"#)?;
+        assert_eq!(old.harness_onboarding, HarnessOnboarding::Pending);
+        let done = Settings {
+            harness_onboarding: HarnessOnboarding::Done,
+            ..Settings::default()
+        };
+        let read: Settings = serde_json::from_str(&serde_json::to_string(&done)?)?;
+        assert_eq!(read.harness_onboarding, HarnessOnboarding::Done);
         Ok(())
     }
 

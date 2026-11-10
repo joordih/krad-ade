@@ -3,7 +3,7 @@ use krad_domain::review::{
     project_on_host, DiffRefs, DiscussionId, MergeOptions, MergeRequest, MergeRequestIid,
     MergeRequestQuery, ProjectPath,
 };
-use krad_domain::{CodeHost, GitlabSettings};
+use krad_domain::{AppEvent, CodeHost, EnvironmentName, GitlabSettings, GroupId, ReviewVerdict};
 use krad_gitlab::GitlabConfig;
 use krad_host::HostLink;
 use krad_repo::{diff_between, remote_url, ORIGIN_REMOTE};
@@ -245,6 +245,8 @@ impl EnvironmentShell {
                 detail.discussions = discussions;
                 detail.approvals = approvals;
                 detail.pipelines = pipelines;
+                detail.forget_colors();
+                detail.sync_rows();
                 shell.read_local_diffs(cx);
                 cx.notify();
             })
@@ -288,6 +290,10 @@ impl EnvironmentShell {
                 for (file, diff) in files.iter_mut().zip(&diffs) {
                     file.set_diff(diff, DiffSource::LocalCheckout);
                 }
+                if let Some(detail) = shell.review.detail.as_mut() {
+                    detail.forget_colors();
+                    detail.sync_rows();
+                }
                 cx.notify();
             })
             .unwrap_or_default();
@@ -309,7 +315,8 @@ impl EnvironmentShell {
         };
         let added =
             cx.background_spawn(async move { client.add_note(&project, iid, &body).map(drop) });
-        Self::reload_after_write(added, cx);
+        let sent = self.sent_review(iid, ReviewVerdict::Commented);
+        Self::reload_after_write(added, sent, cx);
     }
 
     pub(super) fn send_reply(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -327,7 +334,8 @@ impl EnvironmentShell {
         let replied = cx.background_spawn(async move {
             client.reply(&project, iid, &discussion, &body).map(drop)
         });
-        Self::reload_after_write(replied, cx);
+        let sent = self.sent_review(iid, ReviewVerdict::Replied);
+        Self::reload_after_write(replied, sent, cx);
     }
 
     pub(super) fn resolve_thread(&mut self, discussion: DiscussionId, cx: &mut Context<Self>) {
@@ -337,7 +345,7 @@ impl EnvironmentShell {
         let resolved = cx.background_spawn(async move {
             client.resolve_discussion(&project, iid, &discussion, true)
         });
-        Self::reload_after_write(resolved, cx);
+        Self::reload_after_write(resolved, None, cx);
     }
 
     pub(super) fn set_approval(&mut self, approve: Approval, cx: &mut Context<Self>) {
@@ -350,7 +358,10 @@ impl EnvironmentShell {
                 Approval::Revoke => client.unapprove(&project, iid),
             }
         });
-        Self::reload_after_write(changed, cx);
+        let sent = (approve == Approval::Approve)
+            .then(|| self.sent_review(iid, ReviewVerdict::Approved))
+            .flatten();
+        Self::reload_after_write(changed, sent, cx);
     }
 
     pub(super) fn merge_request(&mut self, cx: &mut Context<Self>) {
@@ -387,12 +398,40 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn reload_after_write(change: Task<Result<(), HostError>>, cx: &mut Context<Self>) {
+    fn sent_review(&self, iid: MergeRequestIid, verdict: ReviewVerdict) -> Option<SentReview> {
+        let root = &self.review.detail.as_ref()?.root;
+        let group = self
+            .envs
+            .get(&self.active)?
+            .data
+            .groups
+            .iter()
+            .find(|group| &group.root == root)
+            .map(|group| group.id);
+        Some(SentReview {
+            environment: self.active.clone(),
+            group,
+            event: AppEvent::ReviewSent {
+                merge_request: iid,
+                verdict,
+            },
+        })
+    }
+
+    fn reload_after_write(
+        change: Task<Result<(), HostError>>,
+        sent: Option<SentReview>,
+        cx: &mut Context<Self>,
+    ) {
         cx.spawn(async move |this, cx| {
             let result = change.await;
             this.update(cx, |shell, cx| {
-                if let Err(error) = result {
-                    shell.toast(&error.to_string(), cx);
+                match (result, sent) {
+                    (Err(error), _) => shell.toast(&error.to_string(), cx),
+                    (Ok(()), Some(sent)) => {
+                        shell.publish_event(&sent.environment, sent.group, sent.event);
+                    }
+                    (Ok(()), None) => {}
                 }
                 shell.load_request_detail(cx);
             })
@@ -401,7 +440,7 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn host_client(&self) -> Option<Arc<HostClient>> {
+    pub(super) fn host_client(&self) -> Option<Arc<HostClient>> {
         match &self.review.connection {
             Connection::Ready(account) => Some(Arc::clone(&account.client)),
             _ => None,
@@ -416,6 +455,12 @@ impl EnvironmentShell {
             detail.request.iid,
         ))
     }
+}
+
+struct SentReview {
+    environment: EnvironmentName,
+    group: Option<GroupId>,
+    event: AppEvent,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

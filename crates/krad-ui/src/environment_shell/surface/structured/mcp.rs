@@ -104,11 +104,12 @@ impl EnvironmentShell {
             return;
         };
         structured.mcp = McpPrep::Launching;
+        let chosen = structured.mcp_servers.clone();
         let project = project
             .into_iter()
             .chain(self.code_tools_server(env, id))
             .collect();
-        let launch = self.mcp_launch(project, cx);
+        let launch = self.mcp_launch(project, chosen.as_deref(), cx);
         let env = env.clone();
         cx.spawn(async move |this, cx| {
             let launch = launch.await;

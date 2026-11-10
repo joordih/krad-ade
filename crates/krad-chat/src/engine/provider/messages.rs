@@ -122,11 +122,11 @@ pub(super) struct Body<'a> {
 
 const fn budget(effort: Effort) -> u64 {
     match effort {
-        Effort::Low => LOW_BUDGET,
+        Effort::Minimal | Effort::Low => LOW_BUDGET,
         Effort::Medium => MEDIUM_BUDGET,
         Effort::High => HIGH_BUDGET,
         Effort::ExtraHigh => EXTRA_HIGH_BUDGET,
-        Effort::Max => MAX_BUDGET,
+        Effort::Max | Effort::Ultra => MAX_BUDGET,
     }
 }
 

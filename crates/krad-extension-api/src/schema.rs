@@ -3,11 +3,12 @@ use serde_json::{json, Map, Value};
 
 use crate::manifest::ExtensionManifest;
 use crate::protocol::{
-    CallTool, CloseView, Confirm, ConnectMachine, ExecuteCommand, Exit, GetSecret, GetSettings,
-    Initialize, Initialized, InputBox, ListMachines, Log, Notification, OpenFile, OpenTerminal,
-    OpenView, PatchView, Pick, Progress, RenderView, Request, Rows, RunCommand, SendTerminal,
-    SetSecret, SetTitlebarItem, SettingsChanged, Shutdown, Toast, ViewClosed,
-    ViewEventNotification, WorkspaceContext, WorkspaceEventNotification,
+    AppEventNotification, CallTool, CloseView, Confirm, ConnectMachine, ExecuteCommand, Exit,
+    GetSecret, GetSettings, Initialize, Initialized, InputBox, ListMachines, Log, Notification,
+    OpenFile, OpenTerminal, OpenView, PatchView, Pick, Progress, RenderView, Request, Rows,
+    RunCommand, SendTerminal, SetSecret, SetTitlebarItem, SettingsChanged, Shutdown,
+    SubscribeEvents, Toast, ViewClosed, ViewEventNotification, WorkspaceContext,
+    WorkspaceEventNotification,
 };
 use crate::version::CURRENT_API;
 
@@ -66,6 +67,7 @@ pub fn api_schema() -> Value {
         .request::<CallTool>()
         .request::<ListMachines>()
         .request::<ConnectMachine>()
+        .request::<SubscribeEvents>()
         .notification::<Initialized>()
         .notification::<Exit>()
         .notification::<Log>()
@@ -77,7 +79,8 @@ pub fn api_schema() -> Value {
         .notification::<SendTerminal>()
         .notification::<WorkspaceEventNotification>()
         .notification::<SettingsChanged>()
-        .notification::<SetTitlebarItem>();
+        .notification::<SetTitlebarItem>()
+        .notification::<AppEventNotification>();
     let manifest = collector.generator.subschema_for::<ExtensionManifest>();
     let definitions = collector.generator.take_definitions(true);
     sorted(json!({
@@ -149,9 +152,22 @@ mod tests {
     }
 
     #[test]
+    fn app_events_are_published_from_api_1_2() {
+        let schema = api_schema();
+        assert_eq!(schema["api"], "1.2");
+        assert_eq!(schema["requests"]["events/subscribe"]["answered_by"], "app");
+        assert_eq!(
+            schema["notifications"]["events/event"]["received_by"],
+            "program"
+        );
+        let kinds = schema["$defs"]["AppEventKind"]["enum"].to_string();
+        assert!(kinds.contains("ci_failed") && kinds.contains("merge_request_opened"));
+    }
+
+    #[test]
     fn the_slider_and_its_events_are_published_from_api_1_1() {
         let schema = api_schema();
-        assert_eq!(schema["api"], "1.1");
+        assert!(CURRENT_API.supports(crate::ApiVersion::new(1, 1)));
         let slider = &schema["$defs"]["Slider"];
         assert_eq!(slider["required"], json!(["action", "value", "max"]));
         assert!(schema["$defs"]["SliderLabels"]["enum"]

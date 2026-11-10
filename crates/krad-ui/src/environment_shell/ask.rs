@@ -1,3 +1,4 @@
+mod from_notification;
 mod held;
 mod picks;
 mod queue;
@@ -16,10 +17,11 @@ use krad_domain::{
 use super::chat::fold_entry;
 use super::surface::{Backend, StructuredChat, SurfaceChat};
 use super::EnvironmentShell;
+pub(super) use from_notification::PermissionReply;
 pub(super) use held::HeldAskReport;
 pub(super) use picks::Picks;
 pub(super) use queue::{AskQueue, AskReply, Settled, Waiting};
-pub(super) use view::{ask_line, tray, tray_button};
+pub(super) use view::{ask_line, mode_label, tray, tray_button};
 pub(super) use worker::WorkerAsk;
 
 const DENIED_TEXT: &str = "The user declined this";

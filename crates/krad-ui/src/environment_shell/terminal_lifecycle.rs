@@ -1,4 +1,5 @@
 use gpui_kit::Context;
+use krad_agents::StateReason;
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::SessionSpec;
 use krad_domain::{
@@ -10,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
 use super::sessions::Launch;
-use super::sessions_view::session_terminals;
+use super::sessions_view::{session_terminals, show_current_session};
 use super::EnvironmentShell;
 
 const NEW_CHAT_LABEL: &str = "New chat";
@@ -56,11 +57,15 @@ impl EnvironmentShell {
         self.add_chat_tab(cx);
     }
 
-    pub(super) fn start_chat_session(&mut self, group: Option<GroupId>, cx: &mut Context<Self>) {
+    pub(super) fn start_chat_session(
+        &mut self,
+        group: Option<GroupId>,
+        cx: &mut Context<Self>,
+    ) -> Option<TerminalId> {
         self.new_session(group, SessionSpec::default(), cx);
         let env = self.active.clone();
         let session = LiveSession::Start(new_session_id());
-        self.spawn_chat_in(&env, NodeGroup::Exactly(group), session, cx);
+        self.spawn_chat_in(&env, NodeGroup::Exactly(group), session, cx)
     }
 
     pub(super) fn ensure_chat_sessions(&mut self, cx: &mut Context<Self>) {
@@ -175,6 +180,17 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Option<TerminalId> {
         let preset = self.default_chat_harness(env);
+        self.spawn_chat_as(env, group, preset, session, cx)
+    }
+
+    pub(super) fn spawn_chat_as(
+        &mut self,
+        env: &EnvironmentName,
+        group: NodeGroup,
+        preset: AgentPreset,
+        session: LiveSession,
+        cx: &mut Context<Self>,
+    ) -> Option<TerminalId> {
         let spec = NodeSpec {
             kind: NodeKind::Chat,
             harness: Some(preset),
@@ -186,6 +202,32 @@ impl EnvironmentShell {
             live.pending_chats.insert(id, session);
         }
         self.draw_arcade_game();
+        self.settle_new_node(cx);
+        Some(id)
+    }
+
+    pub(super) fn spawn_seeded_chat(
+        &mut self,
+        env: &EnvironmentName,
+        group: Option<GroupId>,
+        harness: AgentPreset,
+        session: LiveSession,
+        prompts: Vec<Prompt>,
+        cx: &mut Context<Self>,
+    ) -> Option<TerminalId> {
+        let label = self.settings.acp.harness_name(harness);
+        let spec = NodeSpec {
+            kind: NodeKind::Chat,
+            harness: Some(harness),
+            label: &label,
+            group: NodeGroup::Exactly(group),
+        };
+        let (id, _) = self.add_node(env, &spec, None)?;
+        let live = self.envs.get_mut(env)?;
+        live.pending_chats.insert(id, session);
+        if !prompts.is_empty() {
+            live.waiting_prompts.insert(id, prompts);
+        }
         self.settle_new_node(cx);
         Some(id)
     }
@@ -290,6 +332,9 @@ impl EnvironmentShell {
             file: None,
             extension: None,
             bookmarks: krad_domain::ChatBookmarks::default(),
+            usage: krad_domain::ChatUsage::default(),
+            checkpoints: krad_domain::ChatCheckpoints::default(),
+            choice: krad_domain::ChatChoice::default(),
         });
         Some((cwd, anchor_node.map(|node| node.id)))
     }
@@ -305,6 +350,7 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &mut Context<Self>,
     ) {
+        self.digest_ended_chat(env, id, cx);
         self.end_worker_launch(env, id);
         let workers = self
             .envs
@@ -316,7 +362,7 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
-        live.data.retire_worker(id);
+        live.data.retire_chat_usage(id);
         if let Some(session) = live.sessions.remove(&id) {
             session.cancelled.store(true, Ordering::SeqCst);
             if let Some(killer) = session.killer {
@@ -327,13 +373,18 @@ impl EnvironmentShell {
         live.pending_chats.remove(&id);
         live.waiting_prompts.remove(&id);
         live.waiting_modes.remove(&id);
-        live.data.nodes.retain(|node| node.id != id);
-        live.data.meta.remove(&id);
+        live.waiting_choices.remove(&id);
+        live.data.drop_terminal(id);
         live.mailbox.forget(id.as_u64());
-        live.data.remove_terminal_tiles(id);
         if live.focused == Some(id) {
-            live.focused = live.data.nodes.first().map(|node| node.id);
+            live.focused = None;
+            show_current_session(live);
+            if live.focused.is_none() {
+                live.focused = live.data.nodes.first().map(|node| node.id);
+            }
         }
+        self.forget_attention(env, id);
+        self.publish_agent(env, id, Some(StateReason::UserClosed));
         if chat.is_some_and(|chat| chat.structured().is_some()) {
             Self::forget_chat_images(env, id, cx);
             self.forget_acp_transcript(env, id);

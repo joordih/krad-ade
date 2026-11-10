@@ -3,10 +3,10 @@ use gpui_kit::component::text::TextView;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, App, Context, ElementId, InteractiveElement, IntoElement,
-    ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
+    div, px, rems, rgb, AnyElement, Context, ElementId, Entity, InteractiveElement, IntoElement,
+    MouseButton, MouseDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
-use krad_chat::ToolCall;
+use krad_chat::{ToolCall, ToolUseId};
 use krad_domain::{TerminalId, ToolKind};
 use std::borrow::Cow;
 
@@ -14,14 +14,18 @@ use super::super::ask::ask_line;
 use super::super::chat::{AnswerPart, ChatMessage};
 use super::super::workers::{spawned_worker, WorkerCard};
 use super::super::EnvironmentShell;
+use super::answer_blocks::{answer_blocks, AnswerBlock};
+use super::chat_menu::{ChatSpot, CodeSpot};
 use super::message_actions::{copy_button, message_actions, message_group, BookmarkAction};
+use super::prose_views::ProseKey;
 use super::tool_group::{ToolLook, ToolRows};
 use super::view::error_line;
 use super::{SurfaceChat, THINKING_LABEL};
-use crate::components::{icon, IconName};
+use crate::components::{icon, CopyFeedback, IconName};
 use crate::theme::{palette, ICON_XS, LINE_SM, LINE_XS, SPACE_1_5, SPACE_3, TEXT_BASE, TEXT_XS};
 
 const PART_GAP: f32 = 12.0;
+const BLOCK_GAP_REMS: f32 = 0.75;
 const ANSWER_LINE_H: f32 = 22.0;
 const THOUGHT_RULE_W: f32 = 2.0;
 const THOUGHT_PREFIX: &str = "surface-thought";
@@ -77,7 +81,7 @@ pub(in crate::environment_shell) fn names_its_tool(kind: ToolKind) -> bool {
     ToolLook::from(kind) == ToolLook::Other
 }
 
-fn answer_text(message: &ChatMessage) -> String {
+pub(super) fn answer_text(message: &ChatMessage) -> String {
     message
         .parts
         .iter()
@@ -90,29 +94,47 @@ fn answer_text(message: &ChatMessage) -> String {
         .join(PARAGRAPH_BREAK)
 }
 
-fn code_copy_button(block: &CodeBlock, _: &mut Window, cx: &mut App) -> AnyElement {
-    let start = block.span.as_ref().map_or(0, |span| span.start);
-    copy_button(
-        ElementId::Name(format!("{CODE_COPY_PREFIX}-{start}").into()),
-        block.code().to_string(),
-        CODE_COPY_TOOLTIP,
-        palette(cx),
-    )
+#[derive(Clone, Copy)]
+pub(super) enum AnswerPlace<'a> {
+    Thread,
+    Subagent(&'a ToolUseId),
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct ShownAnswer<'a> {
+    pub(super) id: TerminalId,
+    pub(super) index: usize,
+    pub(super) message: &'a ChatMessage,
+    pub(super) place: AnswerPlace<'a>,
+}
+
+impl ShownAnswer<'_> {
+    fn key(&self, prefix: &str, suffix: &str) -> SharedString {
+        let raw = self.id.as_u64();
+        let index = self.index;
+        SharedString::from(match self.place {
+            AnswerPlace::Thread => format!("{prefix}-{raw}-{index}{suffix}"),
+            AnswerPlace::Subagent(tool) => {
+                format!("{prefix}-{raw}-{}-{index}{suffix}", tool.as_str())
+            }
+        })
+    }
 }
 
 impl EnvironmentShell {
     pub(super) fn surface_answer(
-        id: TerminalId,
-        index: usize,
-        message: &ChatMessage,
+        answer: ShownAnswer<'_>,
         chat: &SurfaceChat,
         workers: &[WorkerCard],
         bookmark: Option<BookmarkAction>,
+        copies: &Entity<CopyFeedback>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let ShownAnswer {
+            id, index, message, ..
+        } = answer;
         let pal = palette(cx);
         let mono = cx.theme().mono_font_family.clone();
-        let raw = id.as_u64();
         let mut parts: Vec<AnyElement> = Vec::new();
         let mut calls: Vec<(usize, &ToolCall)> = Vec::new();
         let group = |calls: &mut Vec<(usize, &ToolCall)>,
@@ -158,21 +180,9 @@ impl EnvironmentShell {
                     parts.push(Self::thought(id, (index, part_index), thought, opened, cx));
                 }
                 AnswerPart::Text(text) => {
-                    let answer_id = ElementId::Name(SharedString::from(format!(
-                        "{ANSWER_PREFIX}-{raw}-{index}-{part_index}"
-                    )));
-                    parts.push(
-                        div()
-                            .text_size(px(TEXT_BASE * chat.text_scale.get()))
-                            .line_height(px(ANSWER_LINE_H * chat.text_scale.get()))
-                            .text_color(rgb(pal.text_strong))
-                            .child(
-                                TextView::markdown(answer_id, text.clone())
-                                    .selectable(true)
-                                    .code_block_actions(code_copy_button),
-                            )
-                            .into_any_element(),
-                    );
+                    parts.push(Self::answer_prose(
+                        answer, part_index, text, chat, copies, cx,
+                    ));
                 }
                 AnswerPart::Ask(outcome) => parts.push(ask_line(outcome, pal)),
                 AnswerPart::Tool(_) => {}
@@ -183,8 +193,8 @@ impl EnvironmentShell {
         let said = answer_text(message);
         let group = message_group(id, index);
         let copy = (!message.running && !said.is_empty()).then(|| {
-            let key = format!("{MESSAGE_COPY_PREFIX}-{raw}-{index}");
-            copy_button(ElementId::Name(key.into()), said, MESSAGE_COPY_TOOLTIP, pal)
+            let key = answer.key(MESSAGE_COPY_PREFIX, "");
+            copy_button(copies, key, said, MESSAGE_COPY_TOOLTIP, cx)
         });
         let bookmark = bookmark.filter(|bookmark| bookmark.marked || copy.is_some());
         if copy.is_some() || bookmark.is_some() {
@@ -196,6 +206,90 @@ impl EnvironmentShell {
             .flex_col()
             .gap(px(PART_GAP))
             .children(parts)
+            .into_any_element()
+    }
+
+    fn answer_prose(
+        answer: ShownAnswer<'_>,
+        part: usize,
+        text: &str,
+        chat: &SurfaceChat,
+        copies: &Entity<CopyFeedback>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let pal = palette(cx);
+        let scale = chat.text_scale.get();
+        let mut views = chat.prose.borrow_mut();
+        let blocks: Vec<AnyElement> = answer_blocks(text)
+            .into_iter()
+            .enumerate()
+            .map(|(block, shown)| {
+                let source = match shown {
+                    AnswerBlock::Prose(prose) | AnswerBlock::Code { source: prose, .. } => prose,
+                };
+                let view = match answer.place {
+                    AnswerPlace::Thread => {
+                        let key = ProseKey {
+                            message: answer.index,
+                            part,
+                            block,
+                        };
+                        TextView::new(&Self::prose_view(&mut views, key, source, cx))
+                    }
+                    AnswerPlace::Subagent(_) => {
+                        let suffix = format!("-{part}-{block}");
+                        let view_id = ElementId::Name(answer.key(ANSWER_PREFIX, &suffix));
+                        TextView::markdown(view_id, source.to_owned())
+                    }
+                }
+                .selectable(true);
+                if matches!(shown, AnswerBlock::Prose(_)) {
+                    return view.into_any_element();
+                }
+                let suffix = format!("-{part}-{block}");
+                let copy_key = answer.key(CODE_COPY_PREFIX, &suffix);
+                let copies = copies.clone();
+                let code_view = view.code_block_actions(move |code: &CodeBlock, _, cx| {
+                    copy_button(
+                        &copies,
+                        copy_key.clone(),
+                        code.code().to_string(),
+                        CODE_COPY_TOOLTIP,
+                        cx,
+                    )
+                });
+                let menu = match answer.place {
+                    AnswerPlace::Thread => Some(ChatSpot {
+                        chat: answer.id,
+                        message: answer.index,
+                        code: Some(CodeSpot { part, block }),
+                    }),
+                    AnswerPlace::Subagent(_) => None,
+                };
+                div()
+                    .when_some(menu, |view, spot| {
+                        view.on_mouse_down(
+                            MouseButton::Right,
+                            cx.listener(
+                                move |this: &mut Self, event: &MouseDownEvent, window, cx| {
+                                    cx.stop_propagation();
+                                    this.open_chat_menu(spot, event, window, cx);
+                                },
+                            ),
+                        )
+                    })
+                    .child(code_view)
+                    .into_any_element()
+            })
+            .collect();
+        div()
+            .flex()
+            .flex_col()
+            .gap(rems(BLOCK_GAP_REMS))
+            .text_size(px(TEXT_BASE * scale))
+            .line_height(px(ANSWER_LINE_H * scale))
+            .text_color(rgb(pal.text_strong))
+            .children(blocks)
             .into_any_element()
     }
 

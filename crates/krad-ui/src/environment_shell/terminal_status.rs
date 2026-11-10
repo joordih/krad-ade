@@ -11,6 +11,13 @@ pub(super) enum CardStatus {
 }
 
 impl CardStatus {
+    pub(super) const fn agent_state(self) -> Option<AgentState> {
+        match self {
+            Self::Agent(state) => Some(state),
+            Self::Exited | Self::Failed => None,
+        }
+    }
+
     pub(super) fn of(state: AgentState, session: Option<&LiveSession>) -> Self {
         match session {
             Some(session) => match session.state {

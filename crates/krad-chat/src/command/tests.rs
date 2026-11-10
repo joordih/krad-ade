@@ -16,6 +16,7 @@ fn live_config() -> LiveConfig {
         effort: None,
         permission_mode: None,
         bus_vars: BusVars::default(),
+        usage_budget: std::sync::Arc::default(),
     }
 }
 

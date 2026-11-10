@@ -2,7 +2,7 @@ mod claude;
 
 use krad_domain::{
     AcpAuthMethodId, AcpConfigOptionId, AcpConfigValue, AcpModeId, AcpModelId, Effort, ModelId,
-    PermissionMode, Prompt, ResumeId,
+    PermissionMode, Prompt, ResumeId, UsageBudget,
 };
 use std::collections::hash_map::RandomState;
 use std::fmt;
@@ -85,7 +85,7 @@ impl LiveSession {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct LiveConfig {
     pub runner: Runner,
     pub model: Option<ModelId>,
@@ -94,6 +94,7 @@ pub struct LiveConfig {
     pub effort: Option<Effort>,
     pub permission_mode: Option<PermissionMode>,
     pub bus_vars: BusVars,
+    pub usage_budget: Arc<UsageBudget>,
 }
 
 #[derive(Debug)]

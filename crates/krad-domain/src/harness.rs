@@ -1,7 +1,9 @@
 mod capabilities;
+mod health;
 mod hooks;
 mod inherited_env;
 pub use capabilities::*;
+pub use health::*;
 pub use hooks::*;
 pub use inherited_env::INHERITED_SESSION_VARS;
 

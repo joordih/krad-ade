@@ -7,6 +7,7 @@ use krad_domain::{AgentState, EnvironmentName, TerminalId};
 
 use super::super::ask::WorkerAsk;
 use super::super::chat::{AnswerPart, ChatMessage};
+use super::super::spending::spend_caption;
 use super::super::EnvironmentShell;
 use crate::components::{agent_status, icon, IconName, StatusKind};
 use crate::theme::{
@@ -29,6 +30,7 @@ pub(in crate::environment_shell) struct WorkerCard {
     pub(in crate::environment_shell) state: Option<AgentState>,
     pub(in crate::environment_shell) activity: Option<String>,
     pub(in crate::environment_shell) ask: Option<WorkerAsk>,
+    pub(in crate::environment_shell) spent: Option<String>,
 }
 
 pub(in crate::environment_shell) fn spawned_worker<'a>(
@@ -118,6 +120,7 @@ impl EnvironmentShell {
                     state,
                     activity: self.worker_activity(env, worker.terminal, open),
                     ask: open.then(|| self.worker_ask(worker.terminal)).flatten(),
+                    spent: spend_caption(&live.data.worker_spend(worker)),
                 }
             })
             .collect()
@@ -198,6 +201,14 @@ impl EnvironmentShell {
                                 .child(NEEDS_YOU_LABEL),
                         )
                     })
+                    .children(card.spent.as_ref().map(|spent| {
+                        div()
+                            .flex_none()
+                            .text_size(px(TEXT_XS))
+                            .line_height(px(LINE_XS))
+                            .text_color(rgb(pal.text_muted))
+                            .child(spent.clone())
+                    }))
                     .child(status_mark(shown_state(card), pal))
                     .child(icon(IconName::ChevronRight, ICON_SM, pal.text_muted)),
             )
@@ -245,6 +256,7 @@ mod tests {
             state: None,
             activity: None,
             ask: None,
+            spent: None,
         }
     }
 

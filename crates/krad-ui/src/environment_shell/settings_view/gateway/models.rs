@@ -121,10 +121,8 @@ mod tests {
             offer: ModelOffer {
                 value: id.to_owned(),
                 name: id.to_owned(),
-                description: None,
-                efforts: Vec::new(),
-                thinking_off: false,
                 source: Some(ModelSource::Provider(owner.to_owned())),
+                ..ModelOffer::default()
             },
             vendor: Vendor::from(owner),
         }

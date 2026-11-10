@@ -1,4 +1,5 @@
 mod acp;
+mod checkpoint;
 mod flush;
 mod forks;
 mod mcp;
@@ -8,18 +9,19 @@ mod rewind;
 
 use gpui_kit::Context;
 use krad_chat::{
-    new_session_id, AcpEvent, Catalog, ChatEvent, LiveChat, LiveEvent, LiveSession, PlanUsage,
-    ResumeRefused, SlashCommand,
+    new_session_id, AcpEvent, Catalog, ChatEvent, LiveChat, LiveEvent, LiveSession, ResumeRefused,
+    SlashCommand,
 };
 use krad_domain::{
-    AgentPreset, AgentState, ChatEntry, Effort, EnvironmentName, Mention, ModelId, PermissionMode,
-    Prompt, ResumeId, TerminalId,
+    AgentPreset, AgentState, AttentionKind, ChatEntry, Effort, EffortSnap, EnvironmentName,
+    McpServerName, Mention, ModelId, PermissionMode, Prompt, ResumeId, TerminalId, UsageReport,
 };
 use krad_store::{acp_transcript_file, AcpTranscript};
 use std::time::Instant;
 
 use super::super::ask::{AskQueue, Waiting};
 use super::super::chat::{fold_entry, fold_prompt, ChatMessage, LiveProcess};
+use super::super::usage_bar::UsageNews;
 use super::super::EnvironmentShell;
 use super::acp::AcpOffers;
 use super::outbox::Outbox;
@@ -71,17 +73,20 @@ pub(in crate::environment_shell) struct StructuredChat {
     pub(super) model: Option<String>,
     pub(super) chosen_model: Option<ModelId>,
     pub(super) effort: Option<Effort>,
+    pub(super) effort_notice: Option<EffortSnap>,
+    pub(super) effort_was: Option<Effort>,
     pub(super) thinking: bool,
     commands: Vec<SlashCommand>,
     context_tokens: Option<u64>,
     pub(super) context_window: Option<u64>,
     pub(super) working: bool,
-    pub(super) usage: Option<PlanUsage>,
     pub(super) earlier: Option<Earlier>,
     mcp: McpPrep,
+    mcp_servers: Option<Vec<McpServerName>>,
     acp_secrets: AcpSecretsPrep,
     notices: Vec<String>,
     rewinding: Option<Rewinding>,
+    pending_checkpoints: checkpoint::CheckpointQueue,
     pub(in crate::environment_shell) acp: AcpOffers,
     transcript: Option<AcpTranscript>,
 }
@@ -101,17 +106,20 @@ impl StructuredChat {
             model: None,
             chosen_model: None,
             effort: None,
+            effort_notice: None,
+            effort_was: None,
             thinking: THINKING_DEFAULT,
             commands: Vec::new(),
             context_tokens: None,
             context_window: None,
             working: false,
-            usage: None,
             earlier: None,
             mcp: McpPrep::default(),
+            mcp_servers: None,
             acp_secrets: AcpSecretsPrep::default(),
             notices: Vec::new(),
             rewinding: None,
+            pending_checkpoints: checkpoint::CheckpointQueue::default(),
             acp: AcpOffers::default(),
             transcript: None,
         }
@@ -166,9 +174,11 @@ impl StructuredChat {
         self.catalog = None;
         self.model = None;
         self.effort = None;
+        self.effort_notice = None;
         self.context_tokens = None;
         self.context_window = None;
         self.acp = AcpOffers::default();
+        self.pending_checkpoints.clear();
         self.session = LiveSession::Start(new_session_id());
     }
 
@@ -277,7 +287,9 @@ impl StructuredChat {
                 self.chosen_model = Some(model);
             }
             SurfaceCommand::Effort(effort) => {
+                self.effort_was = self.effort;
                 self.effort = Some(effort);
+                self.effort_notice = None;
                 if self.live.is_some() {
                     self.commands.push(SlashCommand::Effort(effort));
                 }
@@ -287,6 +299,16 @@ impl StructuredChat {
                 self.commands.push(SlashCommand::Thinking(self.thinking));
             }
         }
+    }
+}
+
+fn split_refusal(event: LiveEvent) -> (LiveEvent, Option<ResumeRefused>) {
+    match event {
+        LiveEvent::Refused(refused) => (
+            LiveEvent::Chat(ChatEvent::Error(refused.to_string())),
+            Some(refused),
+        ),
+        event => (event, None),
     }
 }
 
@@ -315,6 +337,38 @@ fn structured_mut<'a>(
 }
 
 impl EnvironmentShell {
+    fn chat_spent(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        report: UsageReport,
+        cx: &mut Context<Self>,
+    ) {
+        let model = structured_mut(self, env, id).and_then(|structured| structured.model.clone());
+        self.record_spend(env, id, report, model.as_deref(), cx);
+    }
+
+    fn chat_usage(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        event: LiveEvent,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(harness) = structured_mut(self, env, id).map(|structured| structured.harness)
+        else {
+            return;
+        };
+        let news = match event {
+            LiveEvent::Usage(usage) => UsageNews::Read(usage),
+            LiveEvent::Limit(alert) => UsageNews::Alert(alert),
+            _ => return,
+        };
+        let host = self.env_link(env).host();
+        self.usage_heard(host, harness, news);
+        cx.notify();
+    }
+
     pub(super) fn acp_transcript(
         &self,
         env: &EnvironmentName,
@@ -351,6 +405,12 @@ impl EnvironmentShell {
         if self.follow_worker_launch(env, id, &event, cx) {
             return;
         }
+        if let LiveEvent::Spent(report) = event {
+            return self.chat_spent(env, id, report, cx);
+        }
+        if let LiveEvent::Usage(_) | LiveEvent::Limit(_) = event {
+            return self.chat_usage(env, id, event, cx);
+        }
         let Some(SurfaceChat {
             backend: Backend::Structured(structured),
             messages,
@@ -364,13 +424,8 @@ impl EnvironmentShell {
         };
         let followed = anchor::follows_tail(*anchor, thread);
         let mut state = None;
-        let (event, refused) = match event {
-            LiveEvent::Refused(refused) => (
-                LiveEvent::Chat(ChatEvent::Error(refused.to_string())),
-                Some(refused),
-            ),
-            event => (event, None),
-        };
+        let mut raised = None;
+        let (event, refused) = split_refusal(event);
         match event {
             LiveEvent::Ready(catalog) => {
                 let harness = structured.harness;
@@ -381,9 +436,8 @@ impl EnvironmentShell {
                 }
                 return self.flush_structured(env, id, cx);
             }
-            LiveEvent::Usage(usage) => structured.usage = Some(usage),
             LiveEvent::Rewound(outcome) => {
-                self.rewound(env, id, outcome);
+                self.rewound(env, id, outcome, cx);
                 return self.flush_structured(env, id, cx);
             }
             LiveEvent::Notice(notice) => add_notice(problem, &notice),
@@ -412,7 +466,10 @@ impl EnvironmentShell {
                 }
                 structured.acp.reported(event);
             }
-            LiveEvent::Refused(_) => {}
+            LiveEvent::Refused(_)
+            | LiveEvent::Spent(_)
+            | LiveEvent::Usage(_)
+            | LiveEvent::Limit(_) => {}
             LiveEvent::Chat(ChatEvent::TurnStarted) => {
                 if !structured.opens_turn() {
                     return;
@@ -421,6 +478,7 @@ impl EnvironmentShell {
                 state = Some(AgentState::Working);
             }
             LiveEvent::Chat(event @ (ChatEvent::Done | ChatEvent::Error(_))) => {
+                raised = matches!(event, ChatEvent::Error(_)).then_some(AttentionKind::Error);
                 if let Some(batch) = refused.and_then(|refused| structured.retries(&refused)) {
                     self.hand_over_again(env, id, batch, event, cx);
                     return;
@@ -441,8 +499,21 @@ impl EnvironmentShell {
         if followed {
             thread.scroll_to_end();
         }
+        self.conclude_structured_event(env, id, (state, raised), cx);
+    }
+
+    fn conclude_structured_event(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        (state, raised): (Option<AgentState>, Option<AttentionKind>),
+        cx: &mut Context<Self>,
+    ) {
         if let Some(state) = state {
             self.set_agent_state(env, id, state);
+        }
+        if let Some(kind) = raised {
+            self.raise_attention(env, id, kind);
         }
         self.flush_structured(env, id, cx);
     }

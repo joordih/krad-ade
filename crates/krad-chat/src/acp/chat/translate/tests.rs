@@ -142,3 +142,33 @@ fn a_wsl_agent_s_diffs_and_locations_show_as_the_app_sees_them() {
     let paths: Vec<&str> = call.edits.iter().map(|edit| edit.path.as_str()).collect();
     assert_eq!(paths, ["src/lib.rs", r"C:\notes.md"]);
 }
+
+#[test]
+fn a_session_cost_in_dollars_is_its_running_total_and_another_currency_is_left_out() {
+    let mut translator = translator();
+    let spent = |events: Vec<LiveEvent>| {
+        events
+            .into_iter()
+            .filter_map(|event| match event {
+                LiveEvent::Spent(report) => Some(report),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let dollars = translator.translate(update(json!({
+        "sessionUpdate": "usage_update", "used": 10, "size": 100,
+        "cost": {"amount": 0.75, "currency": "USD"}
+    })));
+    assert_eq!(
+        spent(dollars),
+        [UsageReport::RunningTotal(ReportedUsage {
+            cost: krad_domain::UsdCost::try_from(0.75).ok(),
+            ..ReportedUsage::default()
+        })]
+    );
+    let euros = translator.translate(update(json!({
+        "sessionUpdate": "usage_update", "used": 10, "size": 100,
+        "cost": {"amount": 0.75, "currency": "EUR"}
+    })));
+    assert_eq!(spent(euros), []);
+}

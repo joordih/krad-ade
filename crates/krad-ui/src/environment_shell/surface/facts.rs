@@ -1,6 +1,9 @@
 use krad_agents::AgentStatus;
 use krad_chat::{ModelOffer, ModelSource};
-use krad_domain::{AgentPreset, Effort, EnvironmentName, ModelId, TerminalId};
+use krad_domain::{
+    claude_alias_name, humanize_model_id, AgentPreset, ContextSize, Effort, EffortSnap,
+    EnvironmentName, ModelId, TerminalId,
+};
 use std::path::Path;
 
 use super::super::model_picker::ModelChoice;
@@ -9,30 +12,38 @@ use super::structured::StructuredChat;
 use super::transcript::TRANSCRIPT_HARNESS;
 use super::{Backend, SurfaceChat};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(in crate::environment_shell) struct AccountUsage {
-    pub(in crate::environment_shell) five_hour: Option<u16>,
-    pub(in crate::environment_shell) seven_day: Option<u16>,
-}
-
 pub(super) struct ModelPick {
     pub(super) id: ModelId,
     pub(super) label: String,
     pub(super) current: bool,
     pub(super) harness: AgentPreset,
     pub(super) source: Option<ModelSource>,
+    pub(super) description: Option<String>,
+    pub(super) recommended: bool,
+    pub(super) context: Option<ContextSize>,
+    pub(super) missing: bool,
 }
 
 pub(super) struct Facts {
     pub(super) model: Option<String>,
+    pub(super) model_missing: bool,
     pub(super) models: Vec<ModelPick>,
     pub(super) effort: Option<Effort>,
     pub(super) efforts: Vec<Effort>,
+    pub(super) default_effort: Option<Effort>,
+    pub(super) offers_effort: bool,
+    pub(super) effort_notice: Option<EffortSnap>,
     pub(super) thinking: Option<bool>,
     pub(super) context: Option<u16>,
     pub(super) context_window: Option<u64>,
     pub(super) account: Option<String>,
-    pub(super) usage: AccountUsage,
+}
+
+pub(in crate::environment_shell) fn model_label(id: &str) -> String {
+    claude_alias_name(id)
+        .map(str::to_owned)
+        .or_else(|| humanize_model_id(id))
+        .unwrap_or_else(|| id.to_owned())
 }
 
 fn settings_picks(
@@ -44,10 +55,14 @@ fn settings_picks(
         .into_iter()
         .map(|model| ModelPick {
             current: current.is_some_and(|current| current.contains(model.as_str())),
-            label: model.as_str().to_owned(),
+            label: model_label(model.as_str()),
+            context: krad_domain::split_context(model.as_str()).1,
             id: model,
             harness,
             source: None,
+            description: None,
+            recommended: false,
+            missing: false,
         })
         .collect()
 }
@@ -63,18 +78,40 @@ fn offer_picks(
             Some(ModelPick {
                 id: ModelId::parse(&offer.value)?,
                 label: offer.name.clone(),
-                current: current == Some(offer.value.as_str()),
+                current: current.is_some_and(|current| offer.answers_to(current)),
                 harness,
                 source: offer.source.clone(),
+                description: offer.description.clone(),
+                recommended: offer.recommended,
+                context: offer.context,
+                missing: false,
             })
         })
         .collect()
 }
 
-fn transcript_facts(status: AgentStatus, models: Vec<ModelId>, account: AccountUsage) -> Facts {
+fn missing_pick(model: &ModelId, harness: AgentPreset) -> ModelPick {
+    ModelPick {
+        id: model.clone(),
+        label: model_label(model.as_str()),
+        current: true,
+        harness,
+        source: None,
+        description: None,
+        recommended: false,
+        context: krad_domain::split_context(model.as_str()).1,
+        missing: true,
+    }
+}
+
+fn transcript_facts(status: &AgentStatus, models: Vec<ModelId>) -> Facts {
     Facts {
         models: settings_picks(models, status.model_id.as_deref(), TRANSCRIPT_HARNESS),
-        model: status.model_name,
+        model: status.model_name.clone(),
+        model_missing: false,
+        default_effort: None,
+        offers_effort: true,
+        effort_notice: None,
         effort: status
             .effort
             .as_deref()
@@ -84,10 +121,6 @@ fn transcript_facts(status: AgentStatus, models: Vec<ModelId>, account: AccountU
         context: status.context_used,
         context_window: None,
         account: None,
-        usage: AccountUsage {
-            five_hour: status.five_hour_used.or(account.five_hour),
-            seven_day: status.seven_day_used.or(account.seven_day),
-        },
     }
 }
 
@@ -98,6 +131,10 @@ impl From<&ModelPick> for ModelChoice {
             label: pick.label.clone(),
             current: pick.current,
             section: pick.source.clone(),
+            description: pick.description.clone(),
+            recommended: pick.recommended,
+            context: pick.context,
+            missing: pick.missing,
         }
     }
 }
@@ -109,19 +146,23 @@ struct Offered<'a> {
 }
 
 impl StructuredChat {
-    fn facts(&self, offered: Offered<'_>, usage: AccountUsage) -> Facts {
+    fn facts(&self, offered: Offered<'_>) -> Facts {
         let offers = self
             .catalog
             .as_ref()
             .map(|catalog| catalog.models.as_slice())
             .or(offered.fallback);
         let chosen = self.chosen_model.as_ref();
-        let shown = offers.and_then(|offers| {
-            offers
+        let shown = offers.and_then(|offers| match chosen {
+            Some(chosen) => offers
                 .iter()
-                .find(|offer| chosen.is_some_and(|chosen| chosen.as_str() == offer.value))
-                .or_else(|| offers.first())
+                .find(|offer| offer.answers_to(chosen.as_str())),
+            None => offers
+                .iter()
+                .find(|offer| offer.recommended)
+                .or_else(|| offers.first()),
         });
+        let missing = chosen.filter(|_| offers.is_some() && shown.is_none());
         let mut models = offers.map_or_else(
             || settings_picks(offered.settings, chosen.map(ModelId::as_str), self.harness),
             |offers| {
@@ -132,17 +173,27 @@ impl StructuredChat {
                 )
             },
         );
+        if let Some(missing) = missing {
+            models.insert(0, missing_pick(missing, self.harness));
+        }
         models.extend(offered.others);
+        let offers_effort = !self.harness.offered_efforts().is_empty()
+            || offers.is_some_and(|offers| offers.iter().any(|offer| !offer.efforts.is_empty()));
         Facts {
             model: shown
                 .map(|offer| offer.name.clone())
+                .or_else(|| missing.map(|model| model_label(model.as_str())))
                 .or_else(|| self.model.clone()),
+            model_missing: missing.is_some(),
             models,
             effort: self.effort,
             efforts: shown.map_or_else(
                 || self.harness.offered_efforts().to_vec(),
                 |offer| offer.efforts.clone(),
             ),
+            default_effort: shown.and_then(|offer| offer.default_effort),
+            offers_effort,
+            effort_notice: self.effort_notice,
             thinking: shown
                 .filter(|offer| offer.thinking_off)
                 .map(|_| self.thinking),
@@ -152,7 +203,6 @@ impl StructuredChat {
                 .catalog
                 .as_ref()
                 .and_then(|catalog| catalog.subscription.clone()),
-            usage,
         }
     }
 }
@@ -174,7 +224,7 @@ impl EnvironmentShell {
         }
     }
 
-    fn harness_offers(&self, harness: AgentPreset) -> Option<&[ModelOffer]> {
+    pub(super) fn harness_offers(&self, harness: AgentPreset) -> Option<&[ModelOffer]> {
         let host = self.active_link().host();
         let offers = match harness {
             AgentPreset::Opencode => self.opencode_models_on(&host),
@@ -190,14 +240,6 @@ impl EnvironmentShell {
             self.settings.models(harness)
         } else {
             Vec::new()
-        }
-    }
-
-    fn account_usage_of(&self, harness: AgentPreset) -> AccountUsage {
-        if harness.reports_account_usage() {
-            self.account_usage
-        } else {
-            AccountUsage::default()
         }
     }
 
@@ -229,11 +271,7 @@ impl EnvironmentShell {
                     .and_then(|live| live.statuses.get(&id))
                     .cloned()
                     .unwrap_or_default();
-                transcript_facts(
-                    status,
-                    self.settings_models(TRANSCRIPT_HARNESS),
-                    self.account_usage_of(TRANSCRIPT_HARNESS),
-                )
+                transcript_facts(&status, self.settings_models(TRANSCRIPT_HARNESS))
             }
             Backend::Structured(structured) => {
                 let harness = structured.harness;
@@ -255,14 +293,7 @@ impl EnvironmentShell {
                     settings: self.settings_models(harness),
                     others,
                 };
-                let usage = structured.usage.map_or_else(
-                    || self.account_usage_of(harness),
-                    |usage| AccountUsage {
-                        five_hour: usage.five_hour,
-                        seven_day: usage.seven_day,
-                    },
-                );
-                structured.facts(offered, usage)
+                structured.facts(offered)
             }
         }
     }

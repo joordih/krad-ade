@@ -62,6 +62,10 @@ pub fn repo_root(host: &HostLink, path: &Path) -> Result<Option<PathBuf>, RepoEr
     }
 }
 
+pub(crate) fn required_repo_root(host: &HostLink, path: &Path) -> Result<PathBuf, RepoError> {
+    repo_root(host, path)?.ok_or_else(|| RepoError::OutsideRepository(path.display().to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

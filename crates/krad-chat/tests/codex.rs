@@ -39,6 +39,7 @@ fn a_codex_chat_opens_a_thread_answers_and_reads_back() {
         effort: Some(krad_domain::Effort::Low),
         permission_mode: Some(PermissionMode::Manual),
         bus_vars: BusVars::default(),
+        usage_budget: std::sync::Arc::default(),
     };
     let (sender, receiver) = channel();
     let chat = start_chat(

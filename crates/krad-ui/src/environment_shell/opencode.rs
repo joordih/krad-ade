@@ -68,6 +68,7 @@ impl EnvironmentShell {
                 };
                 shell.load_waiting_histories(cx);
                 shell.flush_chats_of(AgentPreset::Opencode, cx);
+                shell.read_usage_on_time(cx);
                 cx.notify();
             })
             .unwrap_or_default();
@@ -158,6 +159,7 @@ impl EnvironmentShell {
                 shell.opencode.hosts.insert(host, link);
                 shell.load_waiting_histories(cx);
                 shell.flush_chats_of(AgentPreset::Opencode, cx);
+                shell.read_usage_on_time(cx);
                 cx.notify();
             })
             .unwrap_or_default();

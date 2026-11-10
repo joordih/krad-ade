@@ -6,62 +6,176 @@ use gpui_kit::KeyBinding;
 use crate::actions::{
     AcceptCompletion, AskConfirm, AskDeny, CloseAllTabs, CloseTab, CopySelection, DeleteLine,
     DuplicateLine, FindInFiles, FindReferences, MoveLineDown, MoveLineUp, NavigateBack,
-    NavigateForward, NewAgent, NewTerminal, NewTreeFile, NextProblem, OpenSettings, PasteClipboard,
-    PreviousProblem, QuickOpen, Reformat, RenameFile, RenameSymbol, SaveFile, SearchTerminal,
-    SendBackTab, SendTab, ShowTabAt, SplitTerminal, TextLarger, TextReset, TextSmaller,
-    ToggleActivity, ToggleFps, ToggleLineComment, TogglePalette, ToggleSidePanel, ToggleSidebar,
-    ToggleWorkMode, ASK_KEY_CONTEXT, EDITOR_KEY_CONTEXT, FILE_TAB_KEY_CONTEXT,
-    FILE_TREE_KEY_CONTEXT, SHELL_KEY_CONTEXT, VIEWER_KEY_CONTEXT,
+    NavigateForward, NewAgent, NewTerminal, NewTreeFile, NextProblem, NextWaitingAgent,
+    OpenSettings, PasteClipboard, PreviousProblem, QuickOpen, Reformat, RenameFile, RenameSymbol,
+    SaveFile, SearchTerminal, SendBackTab, SendTab, ShowTabAt, SplitTerminal, TextLarger,
+    TextReset, TextSmaller, ToggleActivity, ToggleAttentionInbox, ToggleFps, ToggleLineComment,
+    TogglePalette, ToggleSidePanel, ToggleSidebar, ToggleWorkMode, ASK_KEY_CONTEXT,
+    EDITOR_KEY_CONTEXT, FILE_TAB_KEY_CONTEXT, FILE_TREE_KEY_CONTEXT, SHELL_KEY_CONTEXT,
+    VIEWER_KEY_CONTEXT,
 };
 #[cfg(target_os = "macos")]
 use crate::actions::{HideApp, HideOtherApps, MinimizeWindow, Quit};
 
-#[cfg(target_os = "macos")]
-mod keys {
-    pub(super) const TOGGLE_FPS: &str = "cmd-alt-shift-f";
-    pub(super) const PALETTE: &str = "cmd-k";
-    pub(super) const OPEN_SETTINGS_HINT: &str = "⌘,";
-    pub(super) const NEW_TERMINAL: &str = "cmd-t";
-    pub(super) const NEW_TERMINAL_HINT: &str = "⌘T";
-    pub(super) const NAVIGATE_BACK: &str = "ctrl--";
-    pub(super) const NAVIGATE_FORWARD: &str = "ctrl-shift--";
-    pub(super) const TAB_SLOTS: [&str; 9] = [
+struct KeySet {
+    toggle_fps: &'static str,
+    palette: &'static str,
+    open_settings_hint: &'static str,
+    new_terminal: &'static str,
+    new_terminal_hint: &'static str,
+    navigate_back: &'static str,
+    navigate_forward: &'static str,
+    tab_slots: [&'static str; 9],
+    tab_slot_hints: [&'static str; 9],
+    new_tree_file: &'static str,
+    split_terminal: &'static str,
+    close_tab: &'static str,
+    close_tab_hint: &'static str,
+    close_all_tabs: &'static str,
+    close_all_tabs_hint: &'static str,
+    copy: &'static str,
+    viewer_copy: &'static str,
+    copy_hint: &'static str,
+    paste: &'static str,
+    paste_hint: &'static str,
+    commit_hint: &'static str,
+    search: &'static str,
+    toggle_activity: &'static str,
+    toggle_sidebar: &'static str,
+    toggle_side_panel: &'static str,
+    toggle_work_mode: &'static str,
+    quick_open: &'static str,
+    reformat: &'static str,
+    find_in_files: &'static str,
+    go_to_definition: &'static str,
+    replace: &'static str,
+    duplicate_line: &'static str,
+    delete_line: &'static str,
+    toggle_line_comment: &'static str,
+    redo: &'static str,
+    save_file: &'static str,
+    open_settings: &'static str,
+    text_larger: &'static str,
+    text_smaller: &'static str,
+    text_reset: &'static str,
+    new_agent: &'static str,
+    next_waiting_agent: &'static str,
+    attention_inbox: &'static str,
+    next_waiting_agent_hint: &'static str,
+    attention_inbox_hint: &'static str,
+}
+
+#[cfg(any(target_os = "macos", test))]
+const MAC_KEYS: KeySet = KeySet {
+    toggle_fps: "cmd-alt-shift-f",
+    palette: "cmd-k",
+    open_settings_hint: "⌘,",
+    new_terminal: "cmd-t",
+    new_terminal_hint: "⌘T",
+    navigate_back: "ctrl--",
+    navigate_forward: "ctrl-shift--",
+    tab_slots: [
         "cmd-1", "cmd-2", "cmd-3", "cmd-4", "cmd-5", "cmd-6", "cmd-7", "cmd-8", "cmd-9",
-    ];
-    pub(super) const TAB_SLOT_HINTS: [&str; 9] =
-        ["⌘1", "⌘2", "⌘3", "⌘4", "⌘5", "⌘6", "⌘7", "⌘8", "⌘9"];
-    pub(super) const NEW_TREE_FILE: &str = "cmd-n";
-    pub(super) const SPLIT_TERMINAL: &str = "cmd-d";
-    pub(super) const CLOSE_TAB: &str = "cmd-w";
-    pub(super) const CLOSE_TAB_HINT: &str = "⌘W";
-    pub(super) const CLOSE_ALL_TABS: &str = "cmd-shift-w";
-    pub(super) const CLOSE_ALL_TABS_HINT: &str = "⌘⇧W";
-    pub(super) const COPY: &str = "cmd-c";
-    pub(super) const VIEWER_COPY: &str = "cmd-c";
-    pub(super) const COPY_HINT: &str = "⌘C";
-    pub(super) const PASTE: &str = "cmd-v";
-    pub(super) const PASTE_HINT: &str = "⌘V";
-    pub(super) const COMMIT_HINT: &str = "⌘↩";
-    pub(super) const SEARCH: &str = "cmd-f";
-    pub(super) const TOGGLE_ACTIVITY: &str = "cmd-shift-e";
-    pub(super) const TOGGLE_SIDEBAR: &str = "cmd-ctrl-s";
-    pub(super) const TOGGLE_SIDE_PANEL: &str = "cmd-alt-b";
-    pub(super) const TOGGLE_WORK_MODE: &str = "cmd-alt-e";
-    pub(super) const QUICK_OPEN: &str = "cmd-shift-o";
-    pub(super) const REFORMAT: &str = "cmd-alt-l";
-    pub(super) const FIND_IN_FILES: &str = "cmd-shift-f";
-    pub(super) const GO_TO_DEFINITION: &str = "cmd-b";
-    pub(super) const REPLACE: &str = "cmd-r";
-    pub(super) const DUPLICATE_LINE: &str = "cmd-d";
-    pub(super) const DELETE_LINE: &str = "cmd-backspace";
-    pub(super) const TOGGLE_LINE_COMMENT: &str = "cmd-/";
-    pub(super) const REDO: &str = "cmd-shift-z";
-    pub(super) const SAVE_FILE: &str = "cmd-s";
-    pub(super) const OPEN_SETTINGS: &str = "cmd-,";
-    pub(super) const TEXT_LARGER: &str = "cmd-alt-=";
-    pub(super) const TEXT_SMALLER: &str = "cmd-alt--";
-    pub(super) const TEXT_RESET: &str = "cmd-alt-0";
-    pub(super) const NEW_AGENT: &str = "cmd-alt-n";
+    ],
+    tab_slot_hints: ["⌘1", "⌘2", "⌘3", "⌘4", "⌘5", "⌘6", "⌘7", "⌘8", "⌘9"],
+    new_tree_file: "cmd-n",
+    split_terminal: "cmd-d",
+    close_tab: "cmd-w",
+    close_tab_hint: "⌘W",
+    close_all_tabs: "cmd-shift-w",
+    close_all_tabs_hint: "⌘⇧W",
+    copy: "cmd-c",
+    viewer_copy: "cmd-c",
+    copy_hint: "⌘C",
+    paste: "cmd-v",
+    paste_hint: "⌘V",
+    commit_hint: "⌘↩",
+    search: "cmd-f",
+    toggle_activity: "cmd-shift-e",
+    toggle_sidebar: "cmd-ctrl-s",
+    toggle_side_panel: "cmd-alt-b",
+    toggle_work_mode: "cmd-alt-e",
+    quick_open: "cmd-shift-o",
+    reformat: "cmd-alt-l",
+    find_in_files: "cmd-shift-f",
+    go_to_definition: "cmd-b",
+    replace: "cmd-r",
+    duplicate_line: "cmd-d",
+    delete_line: "cmd-backspace",
+    toggle_line_comment: "cmd-/",
+    redo: "cmd-shift-z",
+    save_file: "cmd-s",
+    open_settings: "cmd-,",
+    text_larger: "cmd-alt-=",
+    text_smaller: "cmd-alt--",
+    text_reset: "cmd-alt-0",
+    new_agent: "cmd-alt-n",
+    next_waiting_agent: "cmd-shift-j",
+    attention_inbox: "cmd-alt-a",
+    next_waiting_agent_hint: "⌘⇧J",
+    attention_inbox_hint: "⌥⌘A",
+};
+
+#[cfg(any(not(target_os = "macos"), test))]
+const OTHER_KEYS: KeySet = KeySet {
+    toggle_fps: "ctrl-alt-shift-f",
+    palette: "ctrl-shift-p",
+    open_settings_hint: "Ctrl+,",
+    new_terminal: "ctrl-shift-t",
+    new_terminal_hint: "Ctrl+Shift+T",
+    navigate_back: "alt-left",
+    navigate_forward: "alt-right",
+    tab_slots: [
+        "alt-1", "alt-2", "alt-3", "alt-4", "alt-5", "alt-6", "alt-7", "alt-8", "alt-9",
+    ],
+    tab_slot_hints: [
+        "Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8", "Alt+9",
+    ],
+    new_tree_file: "ctrl-shift-n",
+    split_terminal: "ctrl-shift-d",
+    close_tab: "ctrl-shift-w",
+    close_tab_hint: "Ctrl+Shift+W",
+    close_all_tabs: "ctrl-alt-shift-w",
+    close_all_tabs_hint: "Ctrl+Alt+Shift+W",
+    copy: "ctrl-shift-c",
+    viewer_copy: "ctrl-c",
+    copy_hint: "Ctrl+Shift+C",
+    paste: "ctrl-shift-v",
+    paste_hint: "Ctrl+Shift+V",
+    commit_hint: "Ctrl+Enter",
+    search: "ctrl-shift-f",
+    toggle_activity: "ctrl-shift-e",
+    toggle_sidebar: "ctrl-shift-b",
+    toggle_side_panel: "ctrl-alt-b",
+    toggle_work_mode: "ctrl-alt-e",
+    quick_open: "ctrl-shift-n",
+    reformat: "ctrl-alt-l",
+    find_in_files: "ctrl-alt-f",
+    go_to_definition: "ctrl-b",
+    replace: "ctrl-r",
+    duplicate_line: "ctrl-d",
+    delete_line: "ctrl-y",
+    toggle_line_comment: "ctrl-/",
+    redo: "ctrl-shift-z",
+    save_file: "ctrl-s",
+    open_settings: "ctrl-,",
+    text_larger: "ctrl-alt-=",
+    text_smaller: "ctrl-alt--",
+    text_reset: "ctrl-alt-0",
+    new_agent: "ctrl-alt-n",
+    next_waiting_agent: "ctrl-shift-j",
+    attention_inbox: "ctrl-alt-a",
+    next_waiting_agent_hint: "Ctrl+Shift+J",
+    attention_inbox_hint: "Ctrl+Alt+A",
+};
+
+#[cfg(target_os = "macos")]
+const KEYS: KeySet = MAC_KEYS;
+#[cfg(not(target_os = "macos"))]
+const KEYS: KeySet = OTHER_KEYS;
+
+#[cfg(target_os = "macos")]
+mod app_keys {
     pub(super) const QUIT: &str = "cmd-q";
     pub(super) const HIDE_APP: &str = "cmd-h";
     pub(super) const HIDE_OTHER_APPS: &str = "cmd-alt-h";
@@ -71,65 +185,16 @@ mod keys {
 #[cfg(target_os = "macos")]
 fn app_bindings() -> Vec<KeyBinding> {
     vec![
-        KeyBinding::new(keys::QUIT, Quit, None),
-        KeyBinding::new(keys::HIDE_APP, HideApp, None),
-        KeyBinding::new(keys::HIDE_OTHER_APPS, HideOtherApps, None),
-        KeyBinding::new(keys::MINIMIZE_WINDOW, MinimizeWindow, None),
+        KeyBinding::new(app_keys::QUIT, Quit, None),
+        KeyBinding::new(app_keys::HIDE_APP, HideApp, None),
+        KeyBinding::new(app_keys::HIDE_OTHER_APPS, HideOtherApps, None),
+        KeyBinding::new(app_keys::MINIMIZE_WINDOW, MinimizeWindow, None),
     ]
 }
 
 #[cfg(not(target_os = "macos"))]
 fn app_bindings() -> Vec<KeyBinding> {
     Vec::new()
-}
-
-#[cfg(not(target_os = "macos"))]
-mod keys {
-    pub(super) const TOGGLE_FPS: &str = "ctrl-alt-shift-f";
-    pub(super) const PALETTE: &str = "ctrl-shift-p";
-    pub(super) const OPEN_SETTINGS_HINT: &str = "Ctrl+,";
-    pub(super) const NEW_TERMINAL: &str = "ctrl-shift-t";
-    pub(super) const NEW_TERMINAL_HINT: &str = "Ctrl+Shift+T";
-    pub(super) const NAVIGATE_BACK: &str = "alt-left";
-    pub(super) const NAVIGATE_FORWARD: &str = "alt-right";
-    pub(super) const TAB_SLOTS: [&str; 9] = [
-        "alt-1", "alt-2", "alt-3", "alt-4", "alt-5", "alt-6", "alt-7", "alt-8", "alt-9",
-    ];
-    pub(super) const TAB_SLOT_HINTS: [&str; 9] = [
-        "Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8", "Alt+9",
-    ];
-    pub(super) const NEW_TREE_FILE: &str = "ctrl-shift-n";
-    pub(super) const SPLIT_TERMINAL: &str = "ctrl-shift-d";
-    pub(super) const CLOSE_TAB: &str = "ctrl-shift-w";
-    pub(super) const CLOSE_TAB_HINT: &str = "Ctrl+Shift+W";
-    pub(super) const CLOSE_ALL_TABS: &str = "ctrl-alt-shift-w";
-    pub(super) const CLOSE_ALL_TABS_HINT: &str = "Ctrl+Alt+Shift+W";
-    pub(super) const COPY: &str = "ctrl-shift-c";
-    pub(super) const VIEWER_COPY: &str = "ctrl-c";
-    pub(super) const COPY_HINT: &str = "Ctrl+Shift+C";
-    pub(super) const PASTE: &str = "ctrl-shift-v";
-    pub(super) const PASTE_HINT: &str = "Ctrl+Shift+V";
-    pub(super) const COMMIT_HINT: &str = "Ctrl+Enter";
-    pub(super) const SEARCH: &str = "ctrl-shift-f";
-    pub(super) const TOGGLE_ACTIVITY: &str = "ctrl-shift-e";
-    pub(super) const TOGGLE_SIDEBAR: &str = "ctrl-shift-b";
-    pub(super) const TOGGLE_SIDE_PANEL: &str = "ctrl-alt-b";
-    pub(super) const TOGGLE_WORK_MODE: &str = "ctrl-alt-e";
-    pub(super) const QUICK_OPEN: &str = "ctrl-shift-n";
-    pub(super) const REFORMAT: &str = "ctrl-alt-l";
-    pub(super) const FIND_IN_FILES: &str = "ctrl-shift-f";
-    pub(super) const GO_TO_DEFINITION: &str = "ctrl-b";
-    pub(super) const REPLACE: &str = "ctrl-r";
-    pub(super) const DUPLICATE_LINE: &str = "ctrl-d";
-    pub(super) const DELETE_LINE: &str = "ctrl-y";
-    pub(super) const TOGGLE_LINE_COMMENT: &str = "ctrl-/";
-    pub(super) const REDO: &str = "ctrl-shift-z";
-    pub(super) const SAVE_FILE: &str = "ctrl-s";
-    pub(super) const OPEN_SETTINGS: &str = "ctrl-,";
-    pub(super) const TEXT_LARGER: &str = "ctrl-alt-=";
-    pub(super) const TEXT_SMALLER: &str = "ctrl-alt--";
-    pub(super) const TEXT_RESET: &str = "ctrl-alt-0";
-    pub(super) const NEW_AGENT: &str = "ctrl-alt-n";
 }
 
 const SEND_TAB: &str = "tab";
@@ -147,86 +212,131 @@ const RENAME_SYMBOL: &str = "shift-f6";
 const ASK_CONFIRM: &str = "enter";
 const ASK_DENY: &str = "escape";
 
-pub(crate) const OPEN_SETTINGS_HINT: &str = keys::OPEN_SETTINGS_HINT;
-pub(crate) const NEW_TERMINAL_HINT: &str = keys::NEW_TERMINAL_HINT;
-pub(crate) const TAB_SLOT_HINTS: [&str; 9] = keys::TAB_SLOT_HINTS;
-pub(crate) const COPY_HINT: &str = keys::COPY_HINT;
-pub(crate) const PASTE_HINT: &str = keys::PASTE_HINT;
-pub(crate) const CLOSE_TAB_HINT: &str = keys::CLOSE_TAB_HINT;
-pub(crate) const CLOSE_ALL_TABS_HINT: &str = keys::CLOSE_ALL_TABS_HINT;
-pub(crate) const COMMIT_HINT: &str = keys::COMMIT_HINT;
+pub(crate) const OPEN_SETTINGS_HINT: &str = KEYS.open_settings_hint;
+pub(crate) const NEW_TERMINAL_HINT: &str = KEYS.new_terminal_hint;
+pub(crate) const TAB_SLOT_HINTS: [&str; 9] = KEYS.tab_slot_hints;
+pub(crate) const COPY_HINT: &str = KEYS.copy_hint;
+pub(crate) const PASTE_HINT: &str = KEYS.paste_hint;
+pub(crate) const CLOSE_TAB_HINT: &str = KEYS.close_tab_hint;
+pub(crate) const CLOSE_ALL_TABS_HINT: &str = KEYS.close_all_tabs_hint;
+pub(crate) const COMMIT_HINT: &str = KEYS.commit_hint;
+pub(crate) const NEXT_WAITING_AGENT_HINT: &str = KEYS.next_waiting_agent_hint;
+pub(crate) const ATTENTION_INBOX_HINT: &str = KEYS.attention_inbox_hint;
 
 #[must_use]
 pub fn key_bindings() -> Vec<KeyBinding> {
-    let scope = Some(SHELL_KEY_CONTEXT);
     let mut bindings = app_bindings();
+    bindings.extend(bindings_for(&KEYS));
+    bindings
+}
+
+fn bindings_for(keys: &KeySet) -> Vec<KeyBinding> {
+    let scope = Some(SHELL_KEY_CONTEXT);
+    let mut bindings = Vec::new();
     bindings.extend([
-        KeyBinding::new(keys::TOGGLE_FPS, ToggleFps, scope),
-        KeyBinding::new(keys::PALETTE, TogglePalette, scope),
-        KeyBinding::new(keys::NEW_TERMINAL, NewTerminal, scope),
-        KeyBinding::new(keys::NAVIGATE_BACK, NavigateBack, scope),
-        KeyBinding::new(keys::NAVIGATE_FORWARD, NavigateForward, scope),
+        KeyBinding::new(keys.toggle_fps, ToggleFps, scope),
+        KeyBinding::new(keys.palette, TogglePalette, scope),
+        KeyBinding::new(keys.new_terminal, NewTerminal, scope),
+        KeyBinding::new(keys.navigate_back, NavigateBack, scope),
+        KeyBinding::new(keys.navigate_forward, NavigateForward, scope),
     ]);
     bindings.extend(
-        keys::TAB_SLOTS
+        keys.tab_slots
             .iter()
             .enumerate()
             .map(|(slot, key)| KeyBinding::new(key, ShowTabAt { slot }, scope)),
     );
     bindings.extend([
-        KeyBinding::new(keys::SPLIT_TERMINAL, SplitTerminal, scope),
-        KeyBinding::new(keys::CLOSE_TAB, CloseTab, scope),
-        KeyBinding::new(keys::CLOSE_ALL_TABS, CloseAllTabs, scope),
-        KeyBinding::new(keys::COPY, CopySelection, scope),
-        KeyBinding::new(keys::PASTE, PasteClipboard, scope),
-        KeyBinding::new(keys::SEARCH, SearchTerminal, scope),
-        KeyBinding::new(keys::TOGGLE_ACTIVITY, ToggleActivity, scope),
-        KeyBinding::new(keys::TOGGLE_SIDEBAR, ToggleSidebar, scope),
-        KeyBinding::new(keys::TOGGLE_SIDE_PANEL, ToggleSidePanel, scope),
-        KeyBinding::new(keys::TOGGLE_WORK_MODE, ToggleWorkMode, scope),
-        KeyBinding::new(keys::QUICK_OPEN, QuickOpen, scope),
-        KeyBinding::new(keys::OPEN_SETTINGS, OpenSettings, scope),
-        KeyBinding::new(keys::TEXT_LARGER, TextLarger, scope),
-        KeyBinding::new(keys::TEXT_SMALLER, TextSmaller, scope),
-        KeyBinding::new(keys::TEXT_RESET, TextReset, scope),
-        KeyBinding::new(keys::NEW_AGENT, NewAgent, scope),
+        KeyBinding::new(keys.split_terminal, SplitTerminal, scope),
+        KeyBinding::new(keys.close_tab, CloseTab, scope),
+        KeyBinding::new(keys.close_all_tabs, CloseAllTabs, scope),
+        KeyBinding::new(keys.copy, CopySelection, scope),
+        KeyBinding::new(keys.paste, PasteClipboard, scope),
+        KeyBinding::new(keys.search, SearchTerminal, scope),
+        KeyBinding::new(keys.toggle_activity, ToggleActivity, scope),
+        KeyBinding::new(keys.toggle_sidebar, ToggleSidebar, scope),
+        KeyBinding::new(keys.toggle_side_panel, ToggleSidePanel, scope),
+        KeyBinding::new(keys.toggle_work_mode, ToggleWorkMode, scope),
+        KeyBinding::new(keys.quick_open, QuickOpen, scope),
+        KeyBinding::new(keys.open_settings, OpenSettings, scope),
+        KeyBinding::new(keys.text_larger, TextLarger, scope),
+        KeyBinding::new(keys.text_smaller, TextSmaller, scope),
+        KeyBinding::new(keys.text_reset, TextReset, scope),
+        KeyBinding::new(keys.new_agent, NewAgent, scope),
+        KeyBinding::new(keys.next_waiting_agent, NextWaitingAgent, scope),
+        KeyBinding::new(keys.attention_inbox, ToggleAttentionInbox, scope),
         KeyBinding::new(SEND_TAB, SendTab, scope),
         KeyBinding::new(SEND_BACK_TAB, SendBackTab, scope),
-        KeyBinding::new(keys::VIEWER_COPY, CopySelection, Some(VIEWER_KEY_CONTEXT)),
+        KeyBinding::new(keys.viewer_copy, CopySelection, Some(VIEWER_KEY_CONTEXT)),
         KeyBinding::new(RENAME_FILE, RenameFile, Some(FILE_TREE_KEY_CONTEXT)),
-        KeyBinding::new(
-            keys::NEW_TREE_FILE,
-            NewTreeFile,
-            Some(FILE_TREE_KEY_CONTEXT),
-        ),
-        KeyBinding::new(keys::SAVE_FILE, SaveFile, Some(FILE_TAB_KEY_CONTEXT)),
+        KeyBinding::new(keys.new_tree_file, NewTreeFile, Some(FILE_TREE_KEY_CONTEXT)),
+        KeyBinding::new(keys.save_file, SaveFile, Some(FILE_TAB_KEY_CONTEXT)),
         KeyBinding::new(ASK_CONFIRM, AskConfirm, Some(ASK_KEY_CONTEXT)),
         KeyBinding::new(ASK_DENY, AskDeny, Some(ASK_KEY_CONTEXT)),
     ]);
-    bindings.extend(editor_bindings());
+    bindings.extend(editor_bindings(keys));
     bindings
 }
 
-fn editor_bindings() -> Vec<KeyBinding> {
+fn editor_bindings(keys: &KeySet) -> Vec<KeyBinding> {
     let editor = Some(EDITOR_KEY_CONTEXT);
     vec![
         KeyBinding::new(ACCEPT_COMPLETION, AcceptCompletion, editor),
         KeyBinding::new(SHOW_COMPLETIONS, ShowCompletions, editor),
-        KeyBinding::new(keys::GO_TO_DEFINITION, GoToDefinition, editor),
+        KeyBinding::new(keys.go_to_definition, GoToDefinition, editor),
         KeyBinding::new(FIND_REFERENCES, FindReferences, editor),
         KeyBinding::new(CODE_ACTIONS, ToggleCodeActions, editor),
-        KeyBinding::new(keys::REPLACE, Replace, editor),
-        KeyBinding::new(keys::REDO, Redo, editor),
-        KeyBinding::new(keys::DUPLICATE_LINE, DuplicateLine, editor),
-        KeyBinding::new(keys::DELETE_LINE, DeleteLine, editor),
+        KeyBinding::new(keys.replace, Replace, editor),
+        KeyBinding::new(keys.redo, Redo, editor),
+        KeyBinding::new(keys.duplicate_line, DuplicateLine, editor),
+        KeyBinding::new(keys.delete_line, DeleteLine, editor),
         KeyBinding::new(MOVE_LINE_UP, MoveLineUp, editor),
         KeyBinding::new(MOVE_LINE_DOWN, MoveLineDown, editor),
-        KeyBinding::new(keys::TOGGLE_LINE_COMMENT, ToggleLineComment, editor),
+        KeyBinding::new(keys.toggle_line_comment, ToggleLineComment, editor),
         KeyBinding::new(NEXT_PROBLEM, NextProblem, editor),
         KeyBinding::new(PREVIOUS_PROBLEM, PreviousProblem, editor),
         KeyBinding::new(RENAME_SYMBOL, RenameSymbol, editor),
-        KeyBinding::new(keys::REFORMAT, Reformat, editor),
-        KeyBinding::new(keys::FIND_IN_FILES, FindInFiles, editor),
-        KeyBinding::new(keys::FIND_IN_FILES, FindInFiles, Some(SHELL_KEY_CONTEXT)),
+        KeyBinding::new(keys.reformat, Reformat, editor),
+        KeyBinding::new(keys.find_in_files, FindInFiles, editor),
+        KeyBinding::new(keys.find_in_files, FindInFiles, Some(SHELL_KEY_CONTEXT)),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn clashes(keys: &KeySet) -> Vec<String> {
+        let mut seen: HashMap<(String, String), usize> = HashMap::new();
+        for binding in bindings_for(keys) {
+            let chord = binding
+                .keystrokes()
+                .iter()
+                .map(gpui_kit::KeybindingKeystroke::unparse)
+                .collect::<Vec<_>>()
+                .join(" ");
+            let context = binding
+                .predicate()
+                .map_or_else(String::new, |predicate| predicate.to_string());
+            *seen.entry((chord, context)).or_default() += 1;
+        }
+        let mut clashes: Vec<String> = seen
+            .into_iter()
+            .filter(|(_, count)| *count > 1)
+            .map(|((chord, context), _)| format!("{chord} in {context}"))
+            .collect();
+        clashes.sort();
+        clashes
+    }
+
+    #[test]
+    fn no_chord_is_bound_twice_within_one_context_on_either_platform() {
+        assert_eq!(clashes(&MAC_KEYS), Vec::<String>::new(), "macOS");
+        assert_eq!(
+            clashes(&OTHER_KEYS),
+            Vec::<String>::new(),
+            "Windows and Linux"
+        );
+    }
 }

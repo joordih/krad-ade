@@ -125,6 +125,9 @@ impl EnvironmentData {
             }),
             extension: None,
             bookmarks: crate::bookmark::ChatBookmarks::default(),
+            usage: crate::usage::ChatUsage::default(),
+            checkpoints: crate::checkpoint::ChatCheckpoints::default(),
+            choice: crate::model::ChatChoice::default(),
         });
         self.place_terminal(id, None);
         self.reveal_terminal(id);
