@@ -2,6 +2,11 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release instead of the next patch, such as 0.4.0
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -27,17 +32,32 @@ jobs:
           ref: ${{ github.ref }}
           ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
       - id: bump
-        name: Bump the patch version, rolling over to the next minor after 9
+        name: Pick the version, the next patch rolling over to the next minor after 9 unless one is requested
+        env:
+          REQUESTED: ${{ inputs.version }}
         run: |
           last_patch=9
           current=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
-          IFS=. read -r major minor patch <<< "$current"
-          patch=$((patch + 1))
-          if [ "$patch" -gt "$last_patch" ]; then
-            patch=0
-            minor=$((minor + 1))
+          if [ -n "$REQUESTED" ]; then
+            if ! [[ "$REQUESTED" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::$REQUESTED is not a major.minor.patch version"
+              exit 1
+            fi
+            newest=$(printf '%s\n%s\n' "$current" "$REQUESTED" | sort -V | tail -n1)
+            if [ "$newest" != "$REQUESTED" ] || [ "$current" = "$REQUESTED" ]; then
+              echo "::error::$REQUESTED must be newer than $current"
+              exit 1
+            fi
+            version="$REQUESTED"
+          else
+            IFS=. read -r major minor patch <<< "$current"
+            patch=$((patch + 1))
+            if [ "$patch" -gt "$last_patch" ]; then
+              patch=0
+              minor=$((minor + 1))
+            fi
+            version="$major.$minor.$patch"
           fi
-          version="$major.$minor.$patch"
           if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::error::v$version is already released"
             exit 1
