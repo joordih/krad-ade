@@ -46,6 +46,7 @@ fn temp_dir(label: &str) -> Result<PathBuf, Box<dyn Error>> {
 
 fn new_repo(path: &Path) -> TestResult {
     git(path, &["init", "--quiet", "--initial-branch=main"])?;
+    git(path, &["config", "core.autocrlf", "false"])?;
     git(path, &["config", "user.name", "Test"])?;
     git(path, &["config", "user.email", "test@example.com"])?;
     git(path, &["config", "commit.gpgsign", "false"])?;

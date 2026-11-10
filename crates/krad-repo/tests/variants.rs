@@ -51,6 +51,7 @@ fn with_repo(label: &str, run: impl FnOnce(&Path) -> TestResult) -> TestResult {
     let repo = base.join("app");
     fs::create_dir_all(&repo)?;
     git(&repo, &["init", "--quiet", "--initial-branch=main"])?;
+    git(&repo, &["config", "core.autocrlf", "false"])?;
     git(&repo, &["config", "user.name", "Test"])?;
     git(&repo, &["config", "user.email", "test@example.test"])?;
     fs::write(repo.join("lib.rs"), "fn one() {}\n")?;

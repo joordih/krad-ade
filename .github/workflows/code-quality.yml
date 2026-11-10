@@ -95,4 +95,4 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: just ghostty-libs ${{ matrix.target }}
       - run: just lint
-      - run: cargo test --workspace --locked
+      - run: cargo test --workspace --locked --no-fail-fast
