@@ -136,7 +136,8 @@ mod tests {
         let dir = scratch("failed");
         drop(std::fs::remove_dir_all(&dir));
         let saved = saved(&dir)?;
-        std::fs::write(dir.join("early-bird"), b"in the way")?;
+        std::fs::create_dir_all(dir.join("early-bird"))?;
+        std::fs::write(dir.join("early-bird").join("in-the-way"), b"in the way")?;
         let old = saved.kraddie.id();
         let failed = saved.shelf.rename(&order(&saved, &old));
         assert!(failed.is_err());
