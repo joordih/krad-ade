@@ -163,7 +163,7 @@ mod tests {
             }],
         };
         assert_eq!(
-            watch_line(&Response::AgentSnapshot(snapshot), false).as_deref(),
+            watch_line(&Response::AgentSnapshot(Box::new(snapshot)), false).as_deref(),
             Some("1 agents at seq 3 (stream ab12)  (resync: events were missed)\nmain:4  Codex · 4  [idle]  agent: codex")
         );
     }

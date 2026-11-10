@@ -48,11 +48,11 @@ pub(super) fn memory_answer(
                 Err(error) => return Response::error(ErrorCode::BadRequest, error.to_string()),
             };
             match library.read(reach, &reference) {
-                Ok(item) => Response::MemoryEntry(MemoryEntryInfo {
+                Ok(item) => Response::MemoryEntry(Box::new(MemoryEntryInfo {
                     id: item.reference.to_string(),
                     title: item.title.clone(),
                     text: item.text.clone(),
-                }),
+                })),
                 Err(error) => Response::error(access_code(error), error.to_string()),
             }
         }
@@ -211,7 +211,7 @@ impl EnvironmentShell {
                 })
                 .collect()
         });
-        Response::KraddieRecall(KraddieRecallInfo {
+        Response::KraddieRecall(Box::new(KraddieRecallInfo {
             kraddie: id.to_string(),
             keepsakes: self.kraddie_mind(&id).memory.lines().to_vec(),
             digests,
@@ -223,7 +223,7 @@ impl EnvironmentShell {
                 .map(ToString::to_string)
                 .collect(),
             automatic_digests: entry.kraddie.settings.digests.is_automatic(),
-        })
+        }))
     }
 
     fn share_from_bus(

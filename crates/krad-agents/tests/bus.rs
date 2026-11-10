@@ -178,15 +178,15 @@ fn workspace_answer(request: Request) -> Response {
             Response::error(ErrorCode::NotFound, "No session with that id")
         }
         Request::CloseSession { session } => Response::SessionClosed { session },
-        Request::CreateWorktree { name } => Response::WorktreeCreated(WorktreeInfo {
+        Request::CreateWorktree { name } => Response::WorktreeCreated(Box::new(WorktreeInfo {
             path: PathBuf::from("/repos").join(&name),
             group: name.clone(),
             branch: Some(name),
-        }),
+        })),
         Request::OpenFile { path, .. } => Response::Opened { path },
-        Request::Changes { session } => Response::Changes(changes(
+        Request::Changes { session } => Response::Changes(Box::new(changes(
             session.map_or_else(|| "api".to_owned(), |session| format!("session {session}")),
-        )),
+        ))),
         _ => Response::error(ErrorCode::Unsupported, "not a workspace request"),
     }
 }
@@ -323,7 +323,7 @@ fn workspace_requests_reach_the_app_and_come_back() -> Result<(), krad_agents::A
     );
     assert_eq!(
         ask(Request::Changes { session: Some(7) })?,
-        Response::Changes(changes("session 7".to_owned()))
+        Response::Changes(Box::new(changes("session 7".to_owned())))
     );
     Ok(())
 }

@@ -87,10 +87,10 @@ enum RunPlace {
     Group(GroupId),
 }
 
-fn run_branch(automation: &str, run: u64, nonce: u64) -> String {
+fn run_branch(automation: &str, run: u64, uniqueness: u64) -> String {
     format!(
         "{WORKTREE_PREFIX}-{automation}-{run}-{:06x}",
-        nonce & BRANCH_SUFFIX_MASK
+        uniqueness & BRANCH_SUFFIX_MASK
     )
 }
 

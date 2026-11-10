@@ -87,11 +87,11 @@ impl EnvironmentShell {
         let name = group
             .and_then(|group| live.data.group(group))
             .map_or_default(|group| group.name.clone());
-        Response::WorktreeCreated(WorktreeInfo {
+        Response::WorktreeCreated(Box::new(WorktreeInfo {
             group: name,
             path,
             branch: worktree.branch,
-        })
+        }))
     }
 
     pub(super) fn send_changes(
@@ -143,7 +143,7 @@ impl EnvironmentShell {
         cx.background_spawn(async move {
             let (read, patched) = futures::join!(reading, patching);
             let response = match (read, patched) {
-                (Ok(status), Ok(patch)) => Response::Changes(ChangeSet {
+                (Ok(status), Ok(patch)) => Response::Changes(Box::new(ChangeSet {
                     group: group.name,
                     root,
                     branch: status.branch,
@@ -156,7 +156,7 @@ impl EnvironmentShell {
                         })
                         .collect(),
                     patch,
-                }),
+                })),
                 (Err(error), _) | (_, Err(error)) => {
                     Response::error(ErrorCode::Failed, error.to_string())
                 }

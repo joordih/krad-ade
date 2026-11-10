@@ -41,11 +41,11 @@ impl Bus for FakeBus {
                 crate::protocol::ErrorCode::Forbidden,
                 "That memory is not shared with this chat",
             )),
-            Request::MemoryRead { id } => Ok(Response::MemoryEntry(MemoryEntryInfo {
+            Request::MemoryRead { id } => Ok(Response::MemoryEntry(Box::new(MemoryEntryInfo {
                 id,
                 title: None,
                 text: "Login uses OAuth".to_owned(),
-            })),
+            }))),
             _ => Err(OUTSIDE_KRAD.to_owned()),
         }
     }

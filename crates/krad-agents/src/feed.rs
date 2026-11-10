@@ -262,7 +262,7 @@ impl FeedState {
                 )
                 .collect();
         }
-        vec![Response::AgentSnapshot(AgentSnapshot {
+        vec![Response::AgentSnapshot(Box::new(AgentSnapshot {
             stream: self.stream.clone(),
             seq: self.seq,
             at,
@@ -273,7 +273,7 @@ impl FeedState {
                 .filter(|agent| subscription.filter.admits_agent(agent))
                 .cloned()
                 .collect(),
-        })]
+        }))]
     }
 
     fn replay(&self, subscription: &AgentSubscription) -> Option<Vec<AgentEvent>> {

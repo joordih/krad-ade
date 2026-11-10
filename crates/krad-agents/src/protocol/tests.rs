@@ -262,7 +262,7 @@ fn answers_carry_a_stable_error_code() -> Result<(), serde_json::Error> {
     let line = r#"{"Error":{"code":"forbidden","message":"no"}}"#;
     assert_eq!(serde_json::to_string(&refused)?, line);
     assert_eq!(serde_json::from_str::<Response>(line)?, refused);
-    let changes = Response::Changes(ChangeSet {
+    let changes = Response::Changes(Box::new(ChangeSet {
         group: "api".to_owned(),
         root: PathBuf::from("/repo"),
         branch: Some("main".to_owned()),
@@ -271,7 +271,7 @@ fn answers_carry_a_stable_error_code() -> Result<(), serde_json::Error> {
             kind: krad_domain::ChangeKind::Modified,
         }],
         patch: String::new(),
-    });
+    }));
     let line = serde_json::to_string(&changes)?;
     assert!(line.contains(r#""kind":"modified""#), "{line}");
     assert_eq!(serde_json::from_str::<Response>(&line)?, changes);
@@ -402,4 +402,15 @@ fn automation_requests_and_answers_keep_their_shape_on_the_wire() -> Result<(), 
     };
     assert_eq!(read.first().map(|info| info.runs), Some(0));
     Ok(())
+}
+
+const MAX_RESPONSE_BYTES: usize = 96;
+
+#[test]
+fn a_response_stays_small_enough_to_return_as_an_error_on_every_platform() {
+    let size = std::mem::size_of::<Response>();
+    assert!(
+        size <= MAX_RESPONSE_BYTES,
+        "Response is {size} bytes; box its largest payloads"
+    );
 }
