@@ -1,6 +1,13 @@
+mod watch;
+
+pub use watch::HEARTBEAT_INTERVAL;
+
 use crate::error::AgentsError;
+use crate::feed::AgentFeed;
 use crate::handle::Caller;
-use crate::protocol::{BusToken, Envelope, Request, Response};
+use crate::protocol::{
+    ApiError, ApiInfo, BusToken, Envelope, ErrorCode, Request, Response, API_VERSION,
+};
 use futures::channel::{mpsc, oneshot};
 use futures::executor::block_on;
 use futures::SinkExt;
@@ -26,20 +33,21 @@ pub struct Endpoint {
     pub address: SocketAddr,
     pub token: BusToken,
     pub lead_token: BusToken,
+    pub feed: AgentFeed,
 }
 
 impl Endpoint {
-    fn refusal(&self, envelope: &Envelope) -> Option<&'static str> {
+    fn refusal(&self, envelope: &Envelope) -> Option<ApiError> {
         let expected = match envelope.from {
             Caller::Lead(_) => &self.lead_token,
-            Caller::Terminal(_) | Caller::Git(_) => &self.token,
+            Caller::Terminal(_) | Caller::Git(_) | Caller::Client => &self.token,
         };
         if envelope.token == *expected {
             None
         } else if envelope.token == self.token {
-            Some(NOT_A_LEAD)
+            Some(ApiError::new(ErrorCode::Unauthorized, NOT_A_LEAD))
         } else {
-            Some(INVALID_TOKEN)
+            Some(ApiError::new(ErrorCode::Unauthorized, INVALID_TOKEN))
         }
     }
 }
@@ -58,6 +66,7 @@ pub fn serve(requests: mpsc::Sender<Incoming>) -> Result<Endpoint, AgentsError> 
         address: listener.local_addr()?,
         token: crate::token::new_token(),
         lead_token: crate::token::new_token(),
+        feed: AgentFeed::new(),
     };
     let served = endpoint.clone();
     thread::Builder::new()
@@ -83,26 +92,51 @@ fn accept_loop(listener: &TcpListener, endpoint: &Endpoint, requests: &mpsc::Sen
 fn serve_connection(stream: &TcpStream, endpoint: &Endpoint, requests: mpsc::Sender<Incoming>) {
     let response = match read_envelope(stream) {
         Ok(envelope) => match endpoint.refusal(&envelope) {
-            None => dispatch(stream, envelope, requests),
-            Some(refusal) => Response::Error(refusal.to_owned()),
+            None => answer(stream, envelope, endpoint, requests),
+            Some(refusal) => Some(Response::Error(refusal)),
         },
-        Err(message) => Response::Error(message),
+        Err(error) => Some(Response::Error(error)),
     };
-    let _written = write_response(stream, &response);
+    if let Some(response) = response {
+        let _written = write_response(stream, &response);
+    }
 }
 
-fn read_envelope(stream: &TcpStream) -> Result<Envelope, String> {
+fn answer(
+    stream: &TcpStream,
+    envelope: Envelope,
+    endpoint: &Endpoint,
+    requests: mpsc::Sender<Incoming>,
+) -> Option<Response> {
+    if envelope.api_version != API_VERSION {
+        return Some(Response::Error(ApiError::unsupported_version(
+            envelope.api_version,
+        )));
+    }
+    match envelope.request {
+        Request::Hello => Some(Response::Hello(ApiInfo::current())),
+        Request::SubscribeAgents(subscription) => {
+            watch::stream_agents(stream, &endpoint.feed, subscription);
+            None
+        }
+        _ => Some(dispatch(stream, envelope, requests)),
+    }
+}
+
+fn read_envelope(stream: &TcpStream) -> Result<Envelope, ApiError> {
+    let bad_request =
+        |error: &dyn std::fmt::Display| ApiError::new(ErrorCode::BadRequest, error.to_string());
     stream
         .set_read_timeout(Some(REQUEST_READ_TIMEOUT))
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| bad_request(&error))?;
     let mut line = String::new();
     BufReader::new(stream.take(MAX_LINE_BYTES as u64 + 1))
         .read_line(&mut line)
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| bad_request(&error))?;
     if line.len() > MAX_LINE_BYTES {
-        return Err(LINE_TOO_LONG.to_owned());
+        return Err(ApiError::new(ErrorCode::BadRequest, LINE_TOO_LONG));
     }
-    serde_json::from_str(&line).map_err(|error| error.to_string())
+    serde_json::from_str(&line).map_err(|error| bad_request(&error))
 }
 
 fn dispatch(
@@ -118,7 +152,7 @@ fn dispatch(
         reply,
     };
     if block_on(requests.send(incoming)).is_err() {
-        return Response::Error(APP_GONE.to_owned());
+        return Response::error(ErrorCode::Unavailable, APP_GONE);
     }
     await_reply(stream, reply_rx, deadline)
 }
@@ -162,10 +196,12 @@ fn await_reply(
             Ok(None) if !watched => thread::sleep(REPLY_POLL_INTERVAL),
             Ok(None) => {
                 if watch_peer(stream) == Peer::Left {
-                    return Response::Error(CALLER_LEFT.to_owned());
+                    return Response::error(ErrorCode::Unavailable, CALLER_LEFT);
                 }
             }
-            Err(oneshot::Canceled) => return Response::Error(REQUEST_DROPPED.to_owned()),
+            Err(oneshot::Canceled) => {
+                return Response::error(ErrorCode::Unavailable, REQUEST_DROPPED)
+            }
         }
     }
     Response::TimedOut

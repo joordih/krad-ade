@@ -34,12 +34,20 @@ pub enum RepoError {
         command: String,
         message: String,
     },
+    #[error("`{0}` changed since its diff was read")]
+    Stale(String),
+    #[error("`{0}` cannot be reverted from here")]
+    Unsupported(String),
+    #[error("`{0}` printed something unexpected")]
+    UnexpectedOutput(String),
     #[error("file is not text")]
     Binary,
     #[error("invalid file: {0}")]
     Format(String),
     #[error("`{0}` is not a valid name")]
     InvalidName(String),
+    #[error("`{0}` has uncommitted changes; commit or stash them first")]
+    Uncommitted(String),
     #[error("`{0}` already exists")]
     AlreadyExists(String),
     #[error("a folder cannot move into itself")]
@@ -50,4 +58,8 @@ pub enum RepoError {
     Reveal(String),
     #[error("the file manager only opens folders on this computer")]
     NotOnThisComputer,
+    #[error("the worktree has uncommitted changes")]
+    UncommittedChanges,
+    #[error("the worktree has {0} commit(s) not merged into the repository's checked-out branch")]
+    UnmergedCommits(usize),
 }

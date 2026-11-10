@@ -1,5 +1,6 @@
 use super::*;
 use crate::extension_tools::{ExtensionToolAnswer, ExtensionToolEffect, ExtensionToolInfo};
+use crate::protocol::{MemoryEntryInfo, MemoryHitInfo};
 use std::cell::RefCell;
 
 struct FakeBus {
@@ -31,6 +32,20 @@ impl Bus for FakeBus {
                     outcome: ExtensionToolOutcome::Done,
                 }))
             }
+            Request::MemorySearch { query, .. } => Ok(Response::MemoryHits(vec![MemoryHitInfo {
+                id: "chats/digest/1".to_owned(),
+                title: Some("Login".to_owned()),
+                excerpt: format!("about {query}"),
+            }])),
+            Request::MemoryRead { id } if id.starts_with("kraddie/other") => Ok(Response::error(
+                crate::protocol::ErrorCode::Forbidden,
+                "That memory is not shared with this chat",
+            )),
+            Request::MemoryRead { id } => Ok(Response::MemoryEntry(Box::new(MemoryEntryInfo {
+                id,
+                title: None,
+                text: "Login uses OAuth".to_owned(),
+            }))),
             _ => Err(OUTSIDE_KRAD.to_owned()),
         }
     }
@@ -46,6 +61,7 @@ fn docker_catalog(code_tools: CodeTools) -> ToolCatalog {
             input_schema: json!({"type": "object", "properties": {"id": {"type": "string"}}}),
             effect: ExtensionToolEffect::Destructive,
         }],
+        memory_tools: crate::protocol::MemoryTools::Off,
     }
 }
 
@@ -197,4 +213,75 @@ fn notifications_get_no_answer() {
         json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
     );
     assert!(notification.is_ok_and(|incoming| answer(incoming, &FakeBus::new(None)).is_none()));
+}
+
+#[test]
+fn memory_tools_are_listed_only_when_the_app_offers_them() {
+    let mut catalog = docker_catalog(CodeTools::Off);
+    let listed = ask(
+        &FakeBus::new(Some(catalog.clone())),
+        "tools/list",
+        &json!({}),
+    );
+    assert!(!listed_names(&listed.unwrap_or_default()).contains(&"memory_search".to_owned()));
+    catalog.memory_tools = MemoryTools::On;
+    let listed = ask(&FakeBus::new(Some(catalog)), "tools/list", &json!({})).unwrap_or_default();
+    assert_eq!(
+        listed_names(&listed),
+        [
+            "memory_search",
+            "memory_read",
+            "ext_docker_restart-container"
+        ]
+    );
+}
+
+#[test]
+fn memory_calls_reach_the_app_which_enforces_what_the_chat_may_read() {
+    let bus = FakeBus::new(None);
+    let found = ask(
+        &bus,
+        "tools/call",
+        &json!({"name": "memory_search", "arguments": {"query": "login", "limit": 3}}),
+    )
+    .unwrap_or_default();
+    assert_eq!(
+        found["result"]["content"][0]["text"],
+        json!("chats/digest/1  Login  about login")
+    );
+    assert!(bus.asked.borrow().contains(&Request::MemorySearch {
+        query: "login".to_owned(),
+        limit: Some(3),
+    }));
+    let read = ask(
+        &bus,
+        "tools/call",
+        &json!({"name": "memory_read", "arguments": {"id": "chats/digest/1"}}),
+    )
+    .unwrap_or_default();
+    assert_eq!(read["result"]["isError"], json!(false));
+    let refused = ask(
+        &bus,
+        "tools/call",
+        &json!({"name": "memory_read", "arguments": {"id": "kraddie/other/keepsake/1"}}),
+    )
+    .unwrap_or_default();
+    assert_eq!(refused["result"]["isError"], json!(true));
+    assert_eq!(
+        refused["result"]["content"][0]["text"],
+        json!("That memory is not shared with this chat")
+    );
+}
+
+#[test]
+fn a_memory_search_without_words_is_refused_before_the_bus() {
+    let bus = FakeBus::new(None);
+    let refused = ask(
+        &bus,
+        "tools/call",
+        &json!({"name": "memory_search", "arguments": {"query": "  "}}),
+    )
+    .unwrap_or_default();
+    assert_eq!(refused["error"]["code"], json!(INVALID_PARAMS));
+    assert!(bus.asked.borrow().is_empty());
 }

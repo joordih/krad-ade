@@ -2,7 +2,10 @@ mod client;
 mod device;
 mod encode;
 mod graphql;
+mod issue;
+mod job_log;
 mod model;
+mod timeline;
 
 pub use client::{GithubClient, GithubError, GITHUB_HOST};
 pub use device::{DeviceError, DeviceLogin, SCOPE};

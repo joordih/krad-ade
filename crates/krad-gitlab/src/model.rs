@@ -1,7 +1,8 @@
 use krad_domain::review::{
     Approval, Approvals, Change, CiStatus, Commit, CommitSha, DiffRefs, Discussion, DiscussionId,
-    Job, JobId, MergeOptions, MergeRequest, MergeRequestIid, MergeRequestState, MergeStatus, Note,
-    NoteId, NotePosition, Pipeline, PipelineId, Scope, StateFilter, User, UserId,
+    HeadRepository, Job, JobId, MergeOptions, MergeRequest, MergeRequestIid, MergeRequestState,
+    MergeStatus, Note, NoteId, NotePosition, Pipeline, PipelineId, Scope, StateFilter, User,
+    UserId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +25,7 @@ impl From<UserJson> for User {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum StateJson {
+pub(crate) enum StateJson {
     Opened,
     Closed,
     Locked,
@@ -95,6 +96,10 @@ pub(crate) struct MergeRequestJson {
     source_branch: String,
     target_branch: String,
     #[serde(default)]
+    source_project_id: Option<u64>,
+    #[serde(default)]
+    target_project_id: Option<u64>,
+    #[serde(default)]
     sha: Option<String>,
     #[serde(default)]
     detailed_merge_status: Option<MergeStatusJson>,
@@ -111,8 +116,16 @@ pub(crate) struct MergeRequestJson {
     diff_refs: Option<DiffRefsJson>,
 }
 
+fn head_repository(source: Option<u64>, target: Option<u64>) -> HeadRepository {
+    match (source, target) {
+        (Some(source), Some(target)) if source != target => HeadRepository::Fork(None),
+        _ => HeadRepository::Same,
+    }
+}
+
 impl From<MergeRequestJson> for MergeRequest {
     fn from(request: MergeRequestJson) -> Self {
+        let head_repository = head_repository(request.source_project_id, request.target_project_id);
         Self {
             iid: MergeRequestIid(request.iid),
             title: request.title,
@@ -122,6 +135,7 @@ impl From<MergeRequestJson> for MergeRequest {
             author: request.author.into(),
             reviewers: request.reviewers.into_iter().map(User::from).collect(),
             source_branch: request.source_branch,
+            head_repository,
             target_branch: request.target_branch,
             sha: request.sha.map(CommitSha),
             detailed_merge_status: request.detailed_merge_status.map(MergeStatus::from),
@@ -467,6 +481,14 @@ mod tests {
     }
 
     #[test]
+    fn a_merge_request_from_another_project_comes_from_a_fork() -> serde_json::Result<()> {
+        let fork = MERGE_REQUEST.replace("\"source_project_id\": 7", "\"source_project_id\": 8");
+        let request: MergeRequest = parse::<MergeRequestJson, _>(&fork)?;
+        assert_eq!(request.head_repository, HeadRepository::Fork(None));
+        Ok(())
+    }
+
+    #[test]
     fn a_merge_request_parses_with_unknown_fields_and_states() -> serde_json::Result<()> {
         let request: MergeRequest = parse::<MergeRequestJson, _>(MERGE_REQUEST)?;
         assert_eq!(request.iid, MergeRequestIid(42));
@@ -474,6 +496,7 @@ mod tests {
         assert_eq!(request.detailed_merge_status, Some(MergeStatus::Other));
         assert_eq!(request.reviewers[0].username, "reviewer");
         assert_eq!(request.sha, Some(CommitSha("abc123".to_owned())));
+        assert_eq!(request.head_repository, HeadRepository::Same);
         let pipeline = request
             .head_pipeline
             .as_ref()

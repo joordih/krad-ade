@@ -3,9 +3,10 @@ use gpui_kit::{
     div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, ParentElement, StatefulInteractiveElement, Styled,
 };
-use krad_domain::{GroupId, SidebarPart};
+use krad_domain::{BudgetStatus, GroupId, SidebarPart};
 
 use super::groups::GroupGit;
+use super::spending::GroupSpendLabel;
 use super::EnvironmentShell;
 use crate::components::{icon, Button, IconName};
 use crate::theme::{
@@ -46,6 +47,7 @@ struct HeaderInfo {
     branch: Option<String>,
     branch_control: Option<AnyElement>,
     trailing: Option<(String, Trailing)>,
+    spent: Option<GroupSpendLabel>,
     selected: bool,
     adds_session: bool,
 }
@@ -68,6 +70,25 @@ fn branch_label(caption: String, pal: &Palette) -> AnyElement {
         .text_color(rgb(pal.text_muted))
         .child(icon(IconName::GitBranch, BRANCH_ICON, pal.text_muted))
         .child(div().truncate().child(caption))
+        .into_any_element()
+}
+
+const fn budget_tone(status: Option<BudgetStatus>, pal: &Palette) -> u32 {
+    match status {
+        Some(BudgetStatus::Exceeded) => pal.error_fg,
+        Some(BudgetStatus::Approaching) => pal.warning_fg,
+        Some(BudgetStatus::Within) | None => pal.text_muted,
+    }
+}
+
+fn spent_label(spent: GroupSpendLabel, pal: &Palette) -> AnyElement {
+    div()
+        .flex_none()
+        .font_weight(FontWeight::NORMAL)
+        .text_size(px(TEXT_XS))
+        .line_height(px(LINE_XS))
+        .text_color(rgb(budget_tone(spent.status, pal)))
+        .child(spent.text)
         .into_any_element()
 }
 
@@ -95,6 +116,7 @@ impl EnvironmentShell {
                         Trailing::Attention,
                     )
                 }),
+                spent: self.group_spend_label(Some(group.id)),
                 selected: live.selected_group == Some(group.id),
                 adds_session: in_sessions,
             };
@@ -119,6 +141,7 @@ impl EnvironmentShell {
                         Trailing::Attention,
                     )
                 }),
+                spent: self.group_spend_label(None),
                 selected: false,
                 adds_session: in_sessions,
             };
@@ -152,7 +175,7 @@ impl EnvironmentShell {
                 .tooltip(NEW_SESSION_TOOLTIP)
                 .on_click(cx.listener(move |this: &mut Self, _, _window, cx| {
                     cx.stop_propagation();
-                    this.start_chat_session(id, cx);
+                    this.new_session_in(id, cx);
                 }))
         });
         div()
@@ -203,6 +226,7 @@ impl EnvironmentShell {
                     .child(count.to_string())
             }))
             .children(info.branch.map(|caption| branch_label(caption, pal)))
+            .children(info.spent.map(|spent| spent_label(spent, pal)))
             .children(info.branch_control)
             .children(info.trailing.map(|(text, tone)| {
                 div()

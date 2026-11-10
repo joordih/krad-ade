@@ -1,4 +1,5 @@
-use super::{SessionLead, SessionLook, SessionPanes};
+use super::{DiffComment, SessionChanges, SessionLead, SessionLook, SessionMemory, SessionPanes};
+use crate::attention::SessionAttention;
 use crate::environment::{EnvironmentData, TerminalNode};
 use crate::ids::{GroupId, SessionId, TerminalId};
 use crate::mosaic::MosaicState;
@@ -21,6 +22,18 @@ pub struct Session {
     pub look: SessionLook,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_chat: Option<TerminalId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changes: Option<SessionChanges>,
+    #[serde(default, skip_serializing_if = "SessionAttention::is_default")]
+    pub attention: SessionAttention,
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "super::diff_comment::kept_diff_comments"
+    )]
+    pub diff_comments: Vec<DiffComment>,
+    #[serde(default, skip_serializing_if = "SessionMemory::is_plain")]
+    pub memory: SessionMemory,
 }
 
 impl EnvironmentData {
@@ -164,11 +177,15 @@ impl EnvironmentData {
             panes: SessionPanes::default(),
             look: SessionLook::default(),
             last_chat: None,
+            changes: None,
+            attention: SessionAttention::default(),
+            diff_comments: Vec::new(),
+            memory: SessionMemory::default(),
         });
         id
     }
 
-    pub(super) fn home_of(&self, node: &TerminalNode) -> Option<GroupId> {
+    pub(crate) fn home_of(&self, node: &TerminalNode) -> Option<GroupId> {
         node.group.filter(|group| self.group(*group).is_some())
     }
 

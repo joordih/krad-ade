@@ -1,3 +1,4 @@
+use krad_domain::UsdCost;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -201,10 +202,29 @@ pub struct ConfigOptionUpdate {
     pub config_options: Vec<SessionConfigOption>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+const DOLLARS: &str = "USD";
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SessionCost {
+    pub amount: f64,
+    pub currency: String,
+}
+
+impl SessionCost {
+    #[must_use]
+    pub fn dollars(&self) -> Option<UsdCost> {
+        (self.currency == DOLLARS)
+            .then(|| UsdCost::try_from(self.amount).ok())
+            .flatten()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UsageUpdate {
     pub used: u64,
     pub size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<SessionCost>,
 }
 
 #[cfg(test)]
@@ -253,7 +273,11 @@ mod tests {
             usage.ok(),
             Some(SessionUpdate::UsageUpdate(UsageUpdate {
                 used: 9761,
-                size: 200_000
+                size: 200_000,
+                cost: Some(SessionCost {
+                    amount: 0.0,
+                    currency: "USD".to_owned()
+                }),
             }))
         );
         assert_eq!(unknown.ok(), Some(SessionUpdate::Unknown));

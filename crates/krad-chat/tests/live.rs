@@ -68,6 +68,7 @@ fn a_live_claude_answers_and_resumes_its_conversation() {
         effort: None,
         permission_mode: None,
         bus_vars: BusVars::default(),
+        usage_budget: std::sync::Arc::default(),
     };
     let id = new_session_id();
     let (sender, receiver) = channel();
@@ -148,6 +149,7 @@ fn a_live_claude_rewinds_to_an_edited_last_prompt() {
         effort: None,
         permission_mode: None,
         bus_vars: BusVars::default(),
+        usage_budget: std::sync::Arc::default(),
     };
     let spawn = |session: &LiveSession| {
         let (sender, receiver) = channel();

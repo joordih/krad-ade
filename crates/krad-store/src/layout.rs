@@ -1,5 +1,7 @@
 use crate::config_dir::config_dir;
 use krad_domain::{PersistedLayout, LAYOUT_SCHEMA_VERSION};
+use std::collections::hash_map::RandomState;
+use std::hash::BuildHasher;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Sender};
 use std::thread::JoinHandle;
@@ -27,9 +29,16 @@ pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()>
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let tmp = path.with_extension(TMP_EXTENSION);
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, path)
+    let nonce = RandomState::new().hash_one(std::thread::current().id());
+    let tmp = path.with_extension(format!(
+        "{TMP_EXTENSION}.{}.{nonce:016x}",
+        std::process::id()
+    ));
+    let written = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, path));
+    if written.is_err() {
+        drop(std::fs::remove_file(&tmp));
+    }
+    written
 }
 
 pub struct LayoutWriter {
@@ -83,6 +92,50 @@ impl Drop for LayoutWriter {
 mod tests {
     use super::*;
     use krad_domain::{EnvironmentName, SidebarWidth, WorkMode};
+
+    const WRITERS: usize = 8;
+    const WRITES_EACH: usize = 20;
+
+    #[test]
+    fn writers_racing_on_one_file_never_share_a_temp_file() -> std::io::Result<()> {
+        let dir = std::env::temp_dir().join(format!("krad-ade-atomic-{}", std::process::id()));
+        drop(std::fs::remove_dir_all(&dir));
+        let path = dir.join("digests.json");
+        let payloads: Vec<String> = (0..WRITERS)
+            .map(|writer| format!("{{\"writer\":{writer}}}"))
+            .collect();
+        let outcomes: Vec<std::io::Result<()>> = std::thread::scope(|scope| {
+            let handles: Vec<_> = payloads
+                .iter()
+                .map(|payload| {
+                    let path = &path;
+                    scope.spawn(move || {
+                        (0..WRITES_EACH)
+                            .try_for_each(|_| write_atomically(path, payload.as_bytes()))
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| {
+                    handle
+                        .join()
+                        .unwrap_or_else(|_| Err(std::io::Error::other("a writer panicked")))
+                })
+                .collect()
+        });
+        for outcome in outcomes {
+            outcome?;
+        }
+        let kept = std::fs::read_to_string(&path)?;
+        assert!(payloads.contains(&kept), "{kept}");
+        let left: Vec<_> = std::fs::read_dir(&dir)?
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name())
+            .collect();
+        assert_eq!(left.len(), 1, "{left:?}");
+        std::fs::remove_dir_all(&dir)
+    }
 
     #[test]
     fn a_layout_from_a_newer_app_is_not_loaded() -> serde_json::Result<()> {

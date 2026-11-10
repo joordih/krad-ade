@@ -1,29 +1,32 @@
-use krad_domain::{ChatEvent, Prompt, ResumeId, RewindId, RewindPoint};
+use krad_domain::{
+    AgentPreset, ChatEvent, Prompt, ResumeId, RewindId, RewindPoint, UsageBudget, UsageCadence,
+};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime};
 
 use super::{keep_stderr_tail, new_uuid, LiveConfig, LiveHarness, Order};
 use crate::command::live_chat_command;
 use crate::control::{
     answer_line, initialize_line, interrupt_line, rewind_files_line, route, set_model_line,
-    set_permission_mode_line, LiveEvent, Responder, Routed,
+    set_permission_mode_line, usage_line, LiveEvent, Responder, Routed,
 };
 use crate::error::ChatError;
 use crate::exit::closing_event;
 use crate::history::claude_conversation_file;
 use crate::live::LiveSession;
 use crate::message::{user_message_line, SlashCommand};
-use crate::parse::claude;
+use crate::parse::{claude, claude_limit_alert, claude_plan_usage, claude_spend, usage_failure_of};
 use crate::process::harness_command;
 use crate::refused::ResumeRefused;
 use crate::rewind::{files_reply, transcript_cut, RewindError, RewindRequest, Rewound};
 
 const REQUEST_ID_PREFIX: &str = "krad_";
+const USAGE_REQUEST_PREFIX: &str = "krad_usage_";
 const CHECKPOINTING_VAR: &str = "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING";
 const CHECKPOINTING_ON: &str = "true";
 const FILES_REPLY_WAIT: Duration = Duration::from_secs(60);
@@ -41,6 +44,41 @@ impl Outbound {
             Self::Line(line) => line,
             Self::Prompt(prompt, uuid) => user_message_line(&prompt, uuid.as_ref()),
         }
+    }
+}
+
+#[derive(Default)]
+pub(super) struct UsageAsk {
+    outbox: Option<Sender<Outbound>>,
+    next: AtomicU64,
+    budget: Arc<UsageBudget>,
+}
+
+impl UsageAsk {
+    fn new(outbox: Sender<Outbound>, budget: Arc<UsageBudget>) -> Self {
+        Self {
+            outbox: Some(outbox),
+            next: AtomicU64::new(0),
+            budget,
+        }
+    }
+
+    fn ask(&self) {
+        let Some(outbox) = &self.outbox else {
+            return;
+        };
+        let cadence = UsageCadence::of(AgentPreset::ClaudeCode);
+        if !self.budget.try_spend(Instant::now(), cadence) {
+            tracing::trace!("plan usage asked within the shared budget gap; skipped");
+            return;
+        }
+        let id = self.next.fetch_add(1, Ordering::SeqCst);
+        let line = usage_line(&format!("{USAGE_REQUEST_PREFIX}{id}"));
+        outbox.send(Outbound::Line(line)).unwrap_or_default();
+    }
+
+    fn answers(request_id: &str) -> bool {
+        request_id.starts_with(USAGE_REQUEST_PREFIX)
     }
 }
 
@@ -261,8 +299,10 @@ pub(super) fn spawn_claude(
         pending: Arc::clone(&claude.pending),
         awaited: Arc::clone(&claude.awaited),
         session: Arc::clone(&claude.session),
+        usage: UsageAsk::new(claude.outbox.clone(), Arc::clone(&config.usage_budget)),
     };
     claude.write(initialize_line(&routing.init_id));
+    routing.usage.ask();
     let child = Arc::clone(&claude.child);
     let stopped = Arc::clone(&claude.stopped);
     let exited = Arc::clone(&claude.exited);
@@ -303,6 +343,7 @@ pub(super) struct Routing {
     pub(super) pending: Arc<AtomicUsize>,
     awaited: AwaitedReply,
     session: KnownSession,
+    usage: UsageAsk,
 }
 
 impl Routing {
@@ -313,6 +354,7 @@ impl Routing {
             pending: Arc::new(AtomicUsize::new(pending)),
             awaited: Arc::default(),
             session: Arc::default(),
+            usage: UsageAsk::default(),
         }
     }
 
@@ -340,6 +382,16 @@ impl Routing {
             None | Some(Routed::Control) => return,
             Some(Routed::Ask(ask)) => return sink(LiveEvent::Ask(ask)),
             Some(Routed::Ready(catalog)) => return sink(LiveEvent::Ready(catalog)),
+            Some(Routed::Replied { request_id, reply }) if UsageAsk::answers(&request_id) => {
+                let read = reply
+                    .map_err(|error| usage_failure_of(&error))
+                    .and_then(|reply| claude_plan_usage(&reply));
+                match read {
+                    Ok(usage) => sink(LiveEvent::Usage(usage)),
+                    Err(failure) => tracing::debug!(?failure, "the chat could not read plan usage"),
+                }
+                return;
+            }
             Some(Routed::Replied { request_id, reply }) => {
                 if let Some(awaited) = self.take_awaited(&request_id) {
                     awaited.reply.send(files_reply(reply)).unwrap_or_default();
@@ -348,9 +400,16 @@ impl Routing {
             }
             Some(Routed::Conversation(value)) => value,
         };
+        if let Some(spent) = claude_spend(&value) {
+            sink(LiveEvent::Spent(spent));
+        }
+        if let Some(alert) = claude_limit_alert(&value, SystemTime::now()) {
+            return sink(LiveEvent::Limit(alert.into()));
+        }
         for event in claude(&value) {
             match &event {
                 ChatEvent::Done | ChatEvent::Error(_) => {
+                    self.usage.ask();
                     self.pending
                         .try_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
                             count.checked_sub(1)
@@ -382,5 +441,35 @@ fn write_messages(mut stdin: ChildStdin, inbox: &Receiver<Outbound>) {
         {
             break;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_usage_ask_after_each_turn_keeps_the_shared_budget_gap() {
+        let (outbox, sent) = channel();
+        let usage = UsageAsk::new(outbox, Arc::default());
+        usage.ask();
+        usage.ask();
+        usage.ask();
+        let asked: Vec<Outbound> = sent.try_iter().collect();
+        assert_eq!(asked.len(), 1);
+        assert!(matches!(&asked[0], Outbound::Line(line) if line.contains(USAGE_REQUEST_PREFIX)));
+    }
+
+    #[test]
+    fn two_chats_sharing_one_budget_ask_for_usage_once_within_the_gap() {
+        let budget: Arc<UsageBudget> = Arc::default();
+        let (first_outbox, first_sent) = channel();
+        let (second_outbox, second_sent) = channel();
+        let first = UsageAsk::new(first_outbox, Arc::clone(&budget));
+        let second = UsageAsk::new(second_outbox, Arc::clone(&budget));
+        first.ask();
+        second.ask();
+        assert_eq!(first_sent.try_iter().count(), 1);
+        assert_eq!(second_sent.try_iter().count(), 0);
     }
 }

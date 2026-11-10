@@ -1,6 +1,6 @@
 use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::{AppContext as _, Context};
-use krad_agents::{AgentStatus, Response, TerminalHandle};
+use krad_agents::{AgentStatus, ErrorCode, Response, TerminalHandle};
 use krad_domain::{
     code_tools_launch_args, hook_launch_args, launch_with_prompt, quote_for_shell, worker_brief,
     AgentPreset, AgentState, EnvironmentName, ModelDelivery, ModelId, PermissionMode, ResumeId,
@@ -12,7 +12,6 @@ use std::time::{Duration, Instant};
 use super::agent_bus::{cli_name, BUS_HINT};
 use super::ask::HeldAskReport;
 use super::shell_site::ShellSite;
-use super::surface::AccountUsage;
 use super::workers::WorkerLaunch;
 use super::EnvironmentShell;
 
@@ -21,9 +20,10 @@ const FRESH_CONVERSATION: &str = "Fresh conversation";
 const FRESH_TOAST: &str = "could not resume its conversation and started a fresh one";
 pub(super) const NO_GROUP: &str = "Run spawn from a terminal that belongs to a group";
 const UNKNOWN_ACP_AGENT: &str = "is not an ACP agent; add it in Settings, ACP agents";
-const NOT_A_REPO: &str =
+pub(super) const NOT_A_REPO: &str =
     "The caller's group is not in a git repository, so it cannot branch a worktree";
-const BAD_WORKTREE_NAME: &str = "Use letters, digits, '-', '_' or '.' for the worktree name";
+pub(super) const BAD_WORKTREE_NAME: &str =
+    "Use letters, digits, '-', '_' or '.' for the worktree name";
 
 pub(super) struct HookReport<'a> {
     pub(super) harness: AgentPreset,
@@ -81,10 +81,11 @@ impl EnvironmentShell {
         role: AgentRole,
     ) -> Option<(String, Option<String>)> {
         let mut line = self.settings.launch_line(preset)?;
+        let quoting = site.quoting();
         if let (Some(model), Some(ModelDelivery::Flag(flag))) = (model, preset.model_delivery()) {
+            let model = quote_for_shell(model.as_str(), quoting);
             line = format!("{line} {flag} {model}");
         }
-        let quoting = site.quoting();
         let cli = cli_name(site.is_wsl());
         let remote = self.remote_bus(env).filter(|_| site == ShellSite::Ssh);
         let reaches = site.reaches_bus() || remote.is_some();
@@ -129,7 +130,8 @@ impl EnvironmentShell {
 
     pub(super) fn apply_status(&mut self, from: &TerminalHandle, status: AgentStatus) -> Response {
         let env = EnvironmentName::new(from.environment.clone());
-        self.account_usage = merged_usage(self.account_usage, &status);
+        let host = self.env_link(&env).host();
+        self.statusline_heard(host, &status);
         if let Some(live) = self.envs.get_mut(&env) {
             live.statuses.insert(TerminalId(from.terminal), status);
         }
@@ -213,7 +215,7 @@ impl EnvironmentShell {
             .cloned()
         else {
             reply
-                .send(Response::Error(NO_GROUP.to_owned()))
+                .send(Response::error(ErrorCode::Unsupported, NO_GROUP))
                 .unwrap_or_default();
             return;
         };
@@ -250,7 +252,10 @@ impl EnvironmentShell {
             .filter(|id| self.settings.acp.agent(*id).is_none())
         {
             reply
-                .send(Response::Error(format!("{id} {UNKNOWN_ACP_AGENT}")))
+                .send(Response::error(
+                    ErrorCode::NotFound,
+                    format!("{id} {UNKNOWN_ACP_AGENT}"),
+                ))
                 .unwrap_or_default();
             return;
         }
@@ -275,13 +280,13 @@ impl EnvironmentShell {
             .map(|git| git.repo_root.clone())
         else {
             reply
-                .send(Response::Error(NOT_A_REPO.to_owned()))
+                .send(Response::error(ErrorCode::Unsupported, NOT_A_REPO))
                 .unwrap_or_default();
             return;
         };
         let Some(name) = sanitize_worktree_name(&name) else {
             reply
-                .send(Response::Error(BAD_WORKTREE_NAME.to_owned()))
+                .send(Response::error(ErrorCode::BadRequest, BAD_WORKTREE_NAME))
                 .unwrap_or_default();
             return;
         };
@@ -313,43 +318,11 @@ impl EnvironmentShell {
                     shell.launch_worker(&env, launch, reply, cx);
                 }
                 Err(error) => reply
-                    .send(Response::Error(error.to_string()))
+                    .send(Response::error(ErrorCode::Failed, error.to_string()))
                     .unwrap_or_default(),
             })
             .unwrap_or_default();
         })
         .detach();
-    }
-}
-
-fn merged_usage(previous: AccountUsage, status: &AgentStatus) -> AccountUsage {
-    AccountUsage {
-        five_hour: status.five_hour_used.or(previous.five_hour),
-        seven_day: status.seven_day_used.or(previous.seven_day),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_status_with_one_usage_window_keeps_the_other() {
-        let previous = AccountUsage {
-            five_hour: Some(10),
-            seven_day: Some(40),
-        };
-        let weekly_only = AgentStatus {
-            seven_day_used: Some(45),
-            ..AgentStatus::default()
-        };
-        assert_eq!(
-            merged_usage(previous, &weekly_only),
-            AccountUsage {
-                five_hour: Some(10),
-                seven_day: Some(45),
-            }
-        );
-        assert_eq!(merged_usage(previous, &AgentStatus::default()), previous);
     }
 }

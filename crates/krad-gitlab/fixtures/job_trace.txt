@@ -1,0 +1,21 @@
+[0KRunning with gitlab-runner 16.11.0 (abc)[0;m
+section_start:1700000000:prepare_executor[0K[0K[36;1mPreparing the "docker" executor[0;m
+Using docker image rust:1.80
+section_end:1700000005:prepare_executor[0K
+section_start:1700000006:get_sources[0K[36;1mGetting source from Git repository[0;m
+Fetching changes with git depth set to 20...
+section_end:1700000008:get_sources[0K
+section_start:1700000009:step_script[0K[36;1mExecuting "step_script" stage of the job script[0;m
+[32;1m$ export CI_JOB_TOKEN=glcbt-64_abcdefghijklmnopqrstu[0;m
+[32;1m$ cargo test --workspace[0;m
+   Compiling app v0.1.0   Compiled app v0.1.0
+thread 'durations::parses_minutes' panicked at src/duration.rs:41:9
+test result: FAILED. 41 passed; 1 failed
+section_end:1700000060:step_script[0K
+section_start:1700000061:after_script[0K[36;1mRunning after_script[0;m
+$ echo done
+section_end:1700000062:after_script[0K
+section_start:1700000063:cleanup_file_variables[0K[36;1mCleaning up project directory and file based variables[0;m
+section_end:1700000064:cleanup_file_variables[0K
+[31;1mERROR: Job failed: exit code 101
+[0;m

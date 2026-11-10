@@ -6,6 +6,7 @@ use std::str::FromStr;
 const SEPARATOR: char = ':';
 const LEAD_PREFIX: &str = "lead-";
 const GIT_CALLER: &str = "git";
+const CLIENT_CALLER: &str = "client";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TerminalHandle {
@@ -47,6 +48,7 @@ pub enum Caller {
     Terminal(TerminalHandle),
     Lead(LeadHandle),
     Git(String),
+    Client,
 }
 
 impl fmt::Display for Caller {
@@ -59,6 +61,7 @@ impl fmt::Display for Caller {
                 handle.environment, handle.session
             ),
             Self::Git(environment) => write!(f, "{environment}{SEPARATOR}{GIT_CALLER}"),
+            Self::Client => f.write_str(CLIENT_CALLER),
         }
     }
 }
@@ -67,6 +70,9 @@ impl FromStr for Caller {
     type Err = HandleError;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
+        if text == CLIENT_CALLER {
+            return Ok(Self::Client);
+        }
         let (environment, last) = text
             .rsplit_once(SEPARATOR)
             .ok_or(HandleError::MissingSeparator)?;
@@ -109,6 +115,14 @@ mod tests {
         let git = Caller::Git("wsl:Ubuntu".to_owned());
         assert_eq!(git.to_string(), "wsl:Ubuntu:git");
         assert_eq!(git.to_string().parse::<Caller>()?, git);
+        assert_eq!(
+            Caller::Client.to_string().parse::<Caller>()?,
+            Caller::Client
+        );
+        assert_eq!(
+            serde_json::to_string(&Caller::Client).ok().as_deref(),
+            Some("\"Client\"")
+        );
         assert!(matches!(
             "main:lead-x".parse::<Caller>(),
             Err(HandleError::InvalidTerminal(_))

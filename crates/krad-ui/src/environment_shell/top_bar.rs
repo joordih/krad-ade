@@ -8,7 +8,7 @@ use krad_extensions::api::manifest::TitlebarSide;
 
 use super::sidebar::SIDEBAR_TOGGLE_END;
 use super::EnvironmentShell;
-use crate::actions::ToggleSidePanel;
+use crate::actions::{ToggleAttentionInbox, ToggleSidePanel};
 use crate::components::{icon, tooltip_view, tooltip_with_shortcut, IconName};
 use crate::theme::{
     palette, Palette, Tint, ICON, ICON_BUTTON, ICON_SM, LINE_SM, SPACE_0_5, SPACE_1, SPACE_2,
@@ -19,6 +19,8 @@ use crate::title_bar::WindowTitleBar;
 const TOP_BAR_ID: &str = "top-bar";
 const BTN_SIDE_PANEL: &str = "side-panel";
 const TOOLTIP_SIDE_PANEL: &str = "Files and terminals";
+const BTN_ATTENTION: &str = "attention-inbox-toggle";
+const TOOLTIP_ATTENTION: &str = "Agents waiting for you";
 const BAR_PAD_X: f32 = SPACE_1;
 pub(super) const PANEL_BUTTON_RADIUS: f32 = 7.0;
 const LIGHTS_GAP: f32 = SPACE_2;
@@ -57,7 +59,9 @@ impl EnvironmentShell {
         let tabs = match view {
             EnvironmentView::Sessions => self.top_bar_tabs(cx),
             EnvironmentView::Notes => self.note_top_bar(cx),
-            EnvironmentView::Review => None,
+            EnvironmentView::Automations | EnvironmentView::Kraddies | EnvironmentView::Review => {
+                None
+            }
         };
         if let Some(tabs) = tabs {
             return tabs;
@@ -102,11 +106,28 @@ impl EnvironmentShell {
             .occlude()
             .child(
                 panel_button(
+                    BTN_ATTENTION,
+                    IconName::Bell,
+                    TOOLTIP_ATTENTION,
+                    Some(Box::new(ToggleAttentionInbox)),
+                    self.attention_inbox_open().then_some(pal.bg_selected),
+                    if self.attention_waiting() {
+                        pal.attention
+                    } else {
+                        pal.text_muted
+                    },
+                    pal,
+                )
+                .on_click(cx.listener(|this: &mut Self, _, _, cx| this.toggle_attention_inbox(cx))),
+            )
+            .child(
+                panel_button(
                     BTN_SIDE_PANEL,
                     IconName::SidebarRight,
                     TOOLTIP_SIDE_PANEL,
                     Some(Box::new(ToggleSidePanel)),
                     self.right_sidebar_open().then_some(pal.bg_selected),
+                    pal.text_muted,
                     pal,
                 )
                 .on_click(cx.listener(|this: &mut Self, _, _, cx| this.toggle_side_panel(cx))),
@@ -141,6 +162,8 @@ pub(super) const fn view_identity(view: EnvironmentView) -> (IconName, &'static 
     match view {
         EnvironmentView::Sessions => (IconName::Mosaic, "Sessions"),
         EnvironmentView::Notes => (IconName::Book, "Notes"),
+        EnvironmentView::Automations => (IconName::Flash, "Automations"),
+        EnvironmentView::Kraddies => (IconName::Kraddie, "Kraddies"),
         EnvironmentView::Review => (IconName::Merge, "Review"),
     }
 }
@@ -151,6 +174,7 @@ fn panel_button(
     tooltip: &'static str,
     shortcut: Option<Box<dyn Action>>,
     fill: Option<Tint>,
+    tone: u32,
     pal: &Palette,
 ) -> gpui_kit::Stateful<gpui_kit::Div> {
     div()
@@ -169,7 +193,7 @@ fn panel_button(
             Some(action) => tooltip_with_shortcut(tooltip.into(), action, cx),
             None => tooltip_view(tooltip.into(), cx),
         })
-        .child(icon(name, ICON, pal.text_muted))
+        .child(icon(name, ICON, tone))
 }
 
 #[cfg(test)]
@@ -178,15 +202,21 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
-    fn review_shows_only_when_offered() {
+    fn automations_follow_notes_before_kraddies_and_review_shows_only_when_offered() {
         let labels = |review| -> Vec<&str> {
             offered_views(review)
                 .into_iter()
                 .map(|(_, _, label)| label)
                 .collect()
         };
-        assert_eq!(labels(false), ["Sessions", "Notes"]);
-        assert_eq!(labels(true), ["Sessions", "Notes", "Review"]);
+        assert_eq!(
+            labels(false),
+            ["Sessions", "Notes", "Automations", "Kraddies"]
+        );
+        assert_eq!(
+            labels(true),
+            ["Sessions", "Notes", "Automations", "Kraddies", "Review"]
+        );
     }
 
     #[test]

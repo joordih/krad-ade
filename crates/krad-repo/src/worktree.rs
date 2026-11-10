@@ -6,6 +6,7 @@ use crate::refs::{Branch, BranchPlace};
 use krad_host::HostLink;
 
 use crate::git::run_git;
+use crate::status::status;
 use crate::RepoError;
 
 const WORKTREES_FOLDER_SUFFIX: &str = ".worktrees";
@@ -22,6 +23,9 @@ const BRANCH_FIELD: &str = "branch ";
 const BRANCH_REF_PREFIX: &str = "refs/heads/";
 const BARE_FIELD: &str = "bare";
 const PRUNABLE_FIELD: &str = "prunable";
+const ARG_SEPARATOR: &str = " ";
+const HEAD_ARGS: [&str; 2] = ["rev-parse", START_POINT];
+const COUNT_UNMERGED_ARGS: [&str; 4] = ["rev-list", "--count", START_POINT, "--not"];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Worktree {
@@ -117,6 +121,44 @@ pub fn remove_worktree(host: &HostLink, repo_root: &Path, path: &Path) -> Result
     ];
     run_git(host, repo_root, &args)?;
     run_git(host, repo_root, &PRUNE_ARGS)?;
+    Ok(())
+}
+
+/// # Errors
+///
+/// Returns [`RepoError::UncommittedChanges`] or [`RepoError::UnmergedCommits`]
+/// and leaves the worktree in place when removing it could lose work.
+pub fn remove_settled_worktree(
+    host: &HostLink,
+    repo_root: &Path,
+    path: &Path,
+) -> Result<(), RepoError> {
+    ensure_settled(host, repo_root, path)?;
+    remove_worktree(host, repo_root, path)
+}
+
+pub(crate) fn ensure_settled(
+    host: &HostLink,
+    repo_root: &Path,
+    path: &Path,
+) -> Result<(), RepoError> {
+    if !status(host, path)?.changes.is_empty() {
+        return Err(RepoError::UncommittedChanges);
+    }
+    let base = String::from_utf8_lossy(&run_git(host, repo_root, &HEAD_ARGS)?)
+        .trim()
+        .to_owned();
+    let mut args: Vec<&str> = COUNT_UNMERGED_ARGS.to_vec();
+    args.push(&base);
+    let counted = String::from_utf8_lossy(&run_git(host, path, &args)?)
+        .trim()
+        .to_owned();
+    let unmerged: usize = counted
+        .parse()
+        .map_err(|_| RepoError::UnexpectedOutput(COUNT_UNMERGED_ARGS.join(ARG_SEPARATOR)))?;
+    if unmerged > 0 {
+        return Err(RepoError::UnmergedCommits(unmerged));
+    }
     Ok(())
 }
 

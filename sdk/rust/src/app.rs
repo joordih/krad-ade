@@ -1,11 +1,11 @@
 use krad_extension_api::protocol::{
-    Answer, CloseView, Confirm, ConfirmParams, Empty, GetSecret, GetSecretParams, GetSettings,
-    InputBox, InputBoxParams, Log, LogLevel, LogParams, Notification, OpenFile, OpenFileParams,
-    OpenTerminal, OpenTerminalParams, OpenView, OpenViewParams, Party, PatchView, PatchViewParams,
-    Pick, PickParams, Progress, ProgressParams, Request, RunCommand, RunCommandParams, Secret,
-    SendTerminal, SendTerminalParams, SetSecret, SetSecretParams, SetTitlebarItem,
-    SetTitlebarItemParams, SettingsValues, Toast, ToastParams, ViewRef, WorkspaceContext,
-    WorkspaceContextResult,
+    Answer, AppEventKind, CloseView, Confirm, ConfirmParams, Empty, GetSecret, GetSecretParams,
+    GetSettings, InputBox, InputBoxParams, Log, LogLevel, LogParams, Notification, OpenFile,
+    OpenFileParams, OpenTerminal, OpenTerminalParams, OpenView, OpenViewParams, Party, PatchView,
+    PatchViewParams, Pick, PickParams, Progress, ProgressParams, Request, RunCommand,
+    RunCommandParams, Secret, SendTerminal, SendTerminalParams, SetSecret, SetSecretParams,
+    SetTitlebarItem, SetTitlebarItemParams, SettingsValues, SubscribeEvents, SubscribeEventsParams,
+    Toast, ToastParams, ViewRef, WorkspaceContext, WorkspaceContextResult,
 };
 use krad_extension_api::view::{Patch, Tone};
 use krad_extension_api::{SecretName, TerminalHandle};
@@ -206,6 +206,19 @@ impl App {
     /// Returns [`SdkError`] when the app cannot be reached.
     pub fn workspace_context(&self) -> Result<WorkspaceContextResult, SdkError> {
         self.request::<WorkspaceContext>(&Empty {})
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`SdkError`] when the app cannot be reached.
+    pub fn subscribe_events(
+        &self,
+        kinds: impl IntoIterator<Item = AppEventKind>,
+    ) -> Result<(), SdkError> {
+        let params = SubscribeEventsParams {
+            kinds: kinds.into_iter().collect(),
+        };
+        self.request::<SubscribeEvents>(&params).map(drop)
     }
 
     /// # Errors

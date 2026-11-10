@@ -1,14 +1,14 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, App, Context, Div, ElementId, FontWeight, InteractiveElement,
+    div, px, rgb, AnyElement, App, Context, Div, ElementId, Entity, FontWeight, InteractiveElement,
     IntoElement, KeyDownEvent, MouseButton, ParentElement, StatefulInteractiveElement, Styled,
     Window,
 };
 
 use super::super::EnvironmentShell;
-use super::search::matching;
-use super::{ContextMenu, MenuEntry, MenuPlacement, MenuSearch, Submenu};
-use crate::components::{icon, IconName};
+use super::search::{item_ranks, items_in, matching};
+use super::{ContextMenu, MenuAction, MenuEntry, MenuPlacement, MenuSearch, Submenu};
+use crate::components::{copy_glyph, icon, CopyFeedback, IconName};
 use crate::theme::{
     palette, popover_fill, popover_shadow, Palette, ICON, ICON_SM, LINE_BASE, LINE_SM, LINE_XS,
     SPACE_1, SPACE_1_5, SPACE_2, SPACE_3, TEXT_BASE, TEXT_SM, TEXT_XS,
@@ -71,23 +71,33 @@ fn row_id(prefix: &'static str, index: usize) -> ElementId {
     (prefix, u64::try_from(index).unwrap_or(u64::MAX)).into()
 }
 
-fn icon_slot(glyph: Option<IconName>, color: u32) -> AnyElement {
+fn lead_slot(lead: Option<AnyElement>) -> AnyElement {
     div()
         .flex()
         .flex_none()
         .items_center()
         .justify_center()
         .size(px(ICON))
-        .when_some(glyph, |slot, name| slot.child(icon(name, ICON, color)))
+        .children(lead)
         .into_any_element()
 }
 
-fn item_body(entry: &MenuEntry, chosen: bool, pal: &Palette) -> Vec<AnyElement> {
+fn icon_slot(glyph: Option<IconName>, color: u32) -> AnyElement {
+    lead_slot(glyph.map(|name| icon(name, ICON, color).into_any_element()))
+}
+
+fn item_body(
+    entry: &MenuEntry,
+    chosen: bool,
+    lead: Option<AnyElement>,
+    pal: &Palette,
+) -> Vec<AnyElement> {
     let MenuEntry::Item {
         label,
         icon: glyph,
         checked,
         destructive,
+        disabled,
         detail,
         trailing,
         ..
@@ -95,7 +105,9 @@ fn item_body(entry: &MenuEntry, chosen: bool, pal: &Palette) -> Vec<AnyElement> 
     else {
         return Vec::new();
     };
-    let (text, mark) = if chosen {
+    let (text, mark) = if *disabled {
+        (pal.text_disabled, pal.text_disabled)
+    } else if chosen {
         (pal.on_accent, pal.on_accent)
     } else if *destructive {
         (pal.error_fg, pal.error_fg)
@@ -114,7 +126,10 @@ fn item_body(entry: &MenuEntry, chosen: bool, pal: &Palette) -> Vec<AnyElement> 
         pal.text_muted
     };
     vec![
-        icon_slot(leading, if tick_leads { text } else { mark }),
+        match lead {
+            Some(lead) => lead_slot(Some(lead)),
+            None => icon_slot(leading, if tick_leads { text } else { mark }),
+        },
         div()
             .flex()
             .flex_col()
@@ -159,6 +174,7 @@ enum RowLook {
     Rest,
     Open,
     Chosen,
+    Disabled,
 }
 
 impl RowLook {
@@ -182,11 +198,11 @@ fn row_shell(id: ElementId, height: f32, look: RowLook, pal: &Palette) -> gpui_k
         .h(px(height))
         .px(px(SPACE_2))
         .rounded(px(ROW_RADIUS))
-        .cursor_pointer()
         .map(|row| match look {
-            RowLook::Chosen => row.bg(rgb(pal.accent)),
-            RowLook::Open => row.bg(pal.bg_hover),
-            RowLook::Rest => row.hover(|style| style.bg(pal.bg_hover)),
+            RowLook::Chosen => row.cursor_pointer().bg(rgb(pal.accent)),
+            RowLook::Open => row.cursor_pointer().bg(pal.bg_hover),
+            RowLook::Rest => row.cursor_pointer().hover(|style| style.bg(pal.bg_hover)),
+            RowLook::Disabled => row.cursor_default(),
         })
 }
 
@@ -225,26 +241,6 @@ fn passive_row(entry: &MenuEntry, pal: &Palette) -> AnyElement {
     }
 }
 
-fn item_ranks(shown: &[&MenuEntry]) -> Vec<Option<usize>> {
-    let mut rank = 0;
-    shown
-        .iter()
-        .map(|entry| {
-            matches!(entry, MenuEntry::Item { .. }).then(|| {
-                rank += 1;
-                rank - 1
-            })
-        })
-        .collect()
-}
-
-fn items_in(shown: &[&MenuEntry]) -> usize {
-    shown
-        .iter()
-        .filter(|entry| matches!(entry, MenuEntry::Item { .. }))
-        .count()
-}
-
 impl EnvironmentShell {
     fn create_choice(
         label: String,
@@ -258,7 +254,7 @@ impl EnvironmentShell {
             .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
                 this.run_menu_action(action.clone(), window, cx);
             }))
-            .children(item_body(&entry, chosen, pal))
+            .children(item_body(&entry, chosen, None, pal))
             .into_any_element()
     }
 
@@ -266,11 +262,26 @@ impl EnvironmentShell {
         index: usize,
         entry: &MenuEntry,
         look: RowLook,
-        pal: &Palette,
+        copies: &Entity<CopyFeedback>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let pal = palette(cx);
         match entry {
-            MenuEntry::Item { action, .. } => {
+            MenuEntry::Item {
+                action, disabled, ..
+            } => {
+                let look = if *disabled { RowLook::Disabled } else { look };
+                let lead = match action {
+                    MenuAction::CopyChat(copy) => {
+                        let color = if *disabled {
+                            pal.text_disabled
+                        } else {
+                            pal.text_muted
+                        };
+                        Some(copy_glyph(copies, &copy.key.into(), ICON, color, cx))
+                    }
+                    _ => None,
+                };
                 let action = action.clone();
                 row_shell(row_id(ITEM_PREFIX, index), entry_height(entry), look, pal)
                     .on_hover(cx.listener(|this: &mut Self, hovered: &bool, _, cx| {
@@ -278,10 +289,12 @@ impl EnvironmentShell {
                             this.close_submenu(cx);
                         }
                     }))
-                    .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
-                        this.run_menu_action(action.clone(), window, cx);
-                    }))
-                    .children(item_body(entry, look == RowLook::Chosen, pal))
+                    .when(!*disabled, |row| {
+                        row.on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                            this.run_menu_action(action.clone(), window, cx);
+                        }))
+                    })
+                    .children(item_body(entry, look == RowLook::Chosen, lead, pal))
                     .into_any_element()
             }
             MenuEntry::Submenu(submenu) => row_shell(row_id(ITEM_PREFIX, index), ITEM_H, look, pal)
@@ -346,7 +359,7 @@ impl EnvironmentShell {
                 ),
             )
         })
-        .children(item_body(entry, chosen, pal))
+        .children(item_body(entry, chosen, None, pal))
         .into_any_element()
     }
 
@@ -503,7 +516,7 @@ impl EnvironmentShell {
                 .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
                     this.run_menu_action(action.clone(), window, cx);
                 }))
-                .children(item_body(entry, false, pal))
+                .children(item_body(entry, false, None, pal))
                 .into_any_element()
             })
             .collect();
@@ -539,9 +552,10 @@ impl EnvironmentShell {
     fn searched_rows(
         menu: &ContextMenu,
         search: &MenuSearch,
-        pal: &Palette,
+        copies: &Entity<CopyFeedback>,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
+        let pal = palette(cx);
         let shown = matching(&menu.entries, &menu.query);
         let ranks = item_ranks(&shown);
         let create_chosen = menu.chosen == items_in(&shown);
@@ -566,13 +580,13 @@ impl EnvironmentShell {
                 .enumerate()
                 .map(|(index, (entry, rank))| {
                     let look = RowLook::of(rank == Some(menu.chosen));
-                    Self::menu_row(index, entry, look, pal, cx)
+                    Self::menu_row(index, entry, look, copies, cx)
                 }),
         );
         rows.extend(create);
         rows.extend(empty);
         rows.extend(search.footer.iter().enumerate().map(|(index, entry)| {
-            Self::menu_row(listed + 1 + index, entry, RowLook::Rest, pal, cx)
+            Self::menu_row(listed + 1 + index, entry, RowLook::Rest, copies, cx)
         }));
         rows
     }
@@ -598,7 +612,7 @@ impl EnvironmentShell {
         let left = x.min(root_w - MENU_W - EDGE_MARGIN).max(EDGE_MARGIN);
         let top = top.min(root_h - height - EDGE_MARGIN).max(EDGE_MARGIN);
         let rows = match &menu.search {
-            Some(search) => Self::searched_rows(menu, search, pal, cx),
+            Some(search) => Self::searched_rows(menu, search, &self.copy_feedback, cx),
             None => menu
                 .entries
                 .iter()
@@ -609,7 +623,7 @@ impl EnvironmentShell {
                     } else {
                         RowLook::Rest
                     };
-                    Self::menu_row(index, entry, look, pal, cx)
+                    Self::menu_row(index, entry, look, &self.copy_feedback, cx)
                 })
                 .collect(),
         };
@@ -670,7 +684,6 @@ impl EnvironmentShell {
 
 #[cfg(test)]
 mod tests {
-    use super::super::MenuAction;
     use super::*;
 
     #[test]

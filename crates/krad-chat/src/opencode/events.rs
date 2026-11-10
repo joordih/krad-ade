@@ -1,4 +1,7 @@
-use krad_domain::{line_diff, ChatEvent, FileEdit, PermissionMode, ToolCall, ToolKind, ToolUseId};
+use krad_domain::{
+    line_diff, ChatEvent, FileEdit, ModelId, PermissionMode, ReportedUsage, TokenUsage, ToolCall,
+    ToolKind, ToolUseId, UsageReport, UsdCost,
+};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -96,6 +99,10 @@ pub(crate) struct Tokens {
     #[serde(default)]
     input: u64,
     #[serde(default)]
+    output: u64,
+    #[serde(default)]
+    reasoning: u64,
+    #[serde(default)]
     cache: Cache,
 }
 
@@ -105,11 +112,37 @@ impl Tokens {
     }
 }
 
+impl From<Tokens> for TokenUsage {
+    fn from(tokens: Tokens) -> Self {
+        Self {
+            input: tokens.input,
+            output: tokens.output.saturating_add(tokens.reasoning),
+            cache_read: tokens.cache.read,
+            cache_write: tokens.cache.write,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub(crate) struct StepEnded {
     #[serde(rename = "sessionID")]
     session_id: String,
     tokens: Option<Tokens>,
+    cost: Option<f64>,
+}
+
+impl StepEnded {
+    fn spent(&self, model: Option<&str>) -> Option<LiveEvent> {
+        let tokens = self.tokens?;
+        Some(LiveEvent::Spent(UsageReport::Added(ReportedUsage {
+            tokens: tokens.into(),
+            cost: self
+                .cost
+                .and_then(|cost| UsdCost::try_from(cost).ok())
+                .filter(|cost| !cost.is_zero()),
+            model: model.and_then(ModelId::parse),
+        })))
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -251,6 +284,7 @@ pub(crate) fn tool_call(id: &str, tool: &str, input: &Value) -> ToolCall {
 pub(crate) struct Translator {
     tools: HashMap<String, String>,
     windows: HashMap<String, u64>,
+    model: Option<String>,
     pub(crate) mode: Option<PermissionMode>,
 }
 
@@ -259,6 +293,7 @@ impl Translator {
         Self {
             tools: HashMap::new(),
             windows,
+            model: None,
             mode,
         }
     }
@@ -302,15 +337,18 @@ impl Translator {
             }) => {
                 let selector = model.selector();
                 let window = self.windows.get(&selector).copied();
+                self.model = Some(selector.clone());
                 std::iter::once(ChatEvent::Model(selector))
                     .chain(window.map(ChatEvent::ContextWindow))
                     .map(LiveEvent::Chat)
                     .collect()
             }
-            ServerEvent::StepEnded(StepEnded {
-                tokens: Some(tokens),
-                ..
-            }) => vec![LiveEvent::Chat(ChatEvent::ContextTokens(tokens.context()))],
+            ServerEvent::StepEnded(step) => step
+                .tokens
+                .map(|tokens| LiveEvent::Chat(ChatEvent::ContextTokens(tokens.context())))
+                .into_iter()
+                .chain(step.spent(self.model.as_deref()))
+                .collect(),
             ServerEvent::Succeeded(_) | ServerEvent::Interrupted(_) => {
                 vec![LiveEvent::Chat(ChatEvent::Done)]
             }

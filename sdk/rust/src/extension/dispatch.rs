@@ -1,7 +1,7 @@
 use krad_extension_api::protocol::{
-    CallTool, ConnectMachine, Empty, ExecuteCommand, Exit, Feature, Initialize, InitializeResult,
-    Initialized, ListMachines, Notification, RenderView, Request, Rows, SettingsChanged, Shutdown,
-    ViewClosed, ViewEventNotification, WorkspaceEventNotification,
+    AppEventNotification, CallTool, ConnectMachine, Empty, ExecuteCommand, Exit, Feature,
+    Initialize, InitializeResult, Initialized, ListMachines, Notification, RenderView, Request,
+    Rows, SettingsChanged, Shutdown, ViewClosed, ViewEventNotification, WorkspaceEventNotification,
 };
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -106,6 +106,7 @@ fn features(handlers: &Handlers) -> BTreeSet<Feature> {
         (!handlers.renders.is_empty(), Feature::Views),
         (!handlers.tools.is_empty(), Feature::Tools),
         (!handlers.machines.is_empty(), Feature::HostKinds),
+        (handlers.app_events.is_some(), Feature::Events),
     ];
     offered
         .into_iter()
@@ -190,6 +191,13 @@ fn dispatch_notice(handlers: &Handlers, app: &App, method: &str, params: Value) 
                 notice::<WorkspaceEventNotification>(params),
                 &handlers.workspace_events,
             ) {
+                hook(app, event);
+            }
+        }
+        AppEventNotification::METHOD => {
+            if let (Some(event), Some(hook)) =
+                (notice::<AppEventNotification>(params), &handlers.app_events)
+            {
                 hook(app, event);
             }
         }

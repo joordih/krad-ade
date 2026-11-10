@@ -2,8 +2,9 @@ mod tray;
 
 use gpui_kit::{AppContext as _, Context, Task};
 use krad_domain::{
-    EnvironmentName, McpFileError, McpProjectFile, McpProjectTrust, McpServer, McpServerStart,
-    McpServerState, McpTransport, McpValue, McpVariable, TerminalId, PROJECT_MCP_FILE,
+    EnvironmentName, McpFileError, McpProjectFile, McpProjectTrust, McpServer, McpServerName,
+    McpServerStart, McpServerState, McpSettings, McpTransport, McpValue, McpVariable, TerminalId,
+    PROJECT_MCP_FILE,
 };
 use krad_host::HostLink;
 use krad_store::find_mcp_secret;
@@ -56,6 +57,20 @@ pub(super) fn server_summary(server: &McpServer) -> String {
             .collect::<Vec<_>>()
             .join(ARGUMENT_JOINER),
         McpTransport::Http { url, .. } => url.to_string(),
+    }
+}
+
+fn settings_servers<'a>(
+    settings: &'a McpSettings,
+    chosen: Option<&[McpServerName]>,
+) -> Vec<&'a McpServer> {
+    match chosen {
+        Some(names) => settings
+            .servers
+            .iter()
+            .filter(|server| names.contains(&server.name))
+            .collect(),
+        None => settings.enabled_servers().collect(),
     }
 }
 
@@ -154,10 +169,11 @@ impl EnvironmentShell {
     pub(super) fn mcp_launch(
         &self,
         project: Vec<McpServer>,
+        chosen: Option<&[McpServerName]>,
         cx: &mut Context<Self>,
     ) -> Task<McpLaunch> {
-        let enabled: Vec<&McpServer> = self.settings.mcp.enabled_servers().collect();
-        let servers = servers_to_start(&enabled, project);
+        let settings = settings_servers(&self.settings.mcp, chosen);
+        let servers = servers_to_start(&settings, project);
         cx.background_spawn(async move { with_secrets(servers) })
     }
 }
@@ -218,6 +234,35 @@ mod tests {
         );
         let summaries: Vec<String> = started.iter().map(server_summary).collect();
         assert_eq!(summaries, ["mine --stdio", "docs --stdio"]);
+    }
+
+    #[test]
+    fn a_template_picks_settings_servers_by_name_even_when_disabled() {
+        let mut off = server("browser", "browser");
+        off.state = McpServerState::Disabled;
+        let settings = McpSettings {
+            servers: vec![server("files", "files"), off],
+            ..McpSettings::default()
+        };
+        let names = |picked: Vec<&McpServer>| -> Vec<String> {
+            picked
+                .into_iter()
+                .map(|server| server.name.as_str().to_owned())
+                .collect()
+        };
+        assert_eq!(names(settings_servers(&settings, None)), ["files"]);
+        let chosen: Vec<McpServerName> = ["browser", "missing"]
+            .into_iter()
+            .filter_map(|name| name.parse().ok())
+            .collect();
+        assert_eq!(
+            names(settings_servers(&settings, Some(&chosen))),
+            ["browser"]
+        );
+        assert_eq!(
+            names(settings_servers(&settings, Some(&[]))),
+            Vec::<String>::new()
+        );
     }
 
     #[test]

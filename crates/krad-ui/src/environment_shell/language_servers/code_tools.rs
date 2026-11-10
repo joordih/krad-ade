@@ -1,6 +1,6 @@
 use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::{AppContext as _, Context};
-use krad_agents::{CodeAnswer, CodeLine, CodePosition, CodeRequest, CodeTool, Response};
+use krad_agents::{CodeAnswer, CodeLine, CodePosition, CodeRequest, CodeTool, ErrorCode, Response};
 use krad_domain::{EnvironmentName, GroupId, TerminalId};
 use krad_lsp::lsp_types::request::{
     DocumentDiagnosticRequest, GotoDefinition, HoverRequest, References, Rename,
@@ -274,7 +274,7 @@ impl EnvironmentShell {
         let env = EnvironmentName::new(environment.to_owned());
         let Some(live) = self.envs.get(&env) else {
             reply
-                .send(Response::Error(NO_GROUP.to_owned()))
+                .send(Response::error(ErrorCode::Unsupported, NO_GROUP))
                 .unwrap_or_default();
             return;
         };
@@ -284,7 +284,7 @@ impl EnvironmentShell {
         };
         let Some(root) = group.map(|group| group.root.clone()) else {
             reply
-                .send(Response::Error(NO_GROUP.to_owned()))
+                .send(Response::error(ErrorCode::Unsupported, NO_GROUP))
                 .unwrap_or_default();
             return;
         };
@@ -297,14 +297,14 @@ impl EnvironmentShell {
         };
         if !path.starts_with(&root) {
             reply
-                .send(Response::Error(NOT_A_FILE.to_owned()))
+                .send(Response::error(ErrorCode::NotFound, NOT_A_FILE))
                 .unwrap_or_default();
             return;
         }
         let document = Document::new(&host, &path);
         let Some((key, client)) = self.code_server(&document) else {
             reply
-                .send(Response::Error(NO_SERVER.to_owned()))
+                .send(Response::error(ErrorCode::Unsupported, NO_SERVER))
                 .unwrap_or_default();
             return;
         };
@@ -319,7 +319,7 @@ impl EnvironmentShell {
             this.update(cx, |shell, cx| {
                 let response = match answered {
                     Ok((_, Some(edit))) if modifies && !confined(&edit, &root) => {
-                        Response::Error(OUTSIDE_GROUP.to_owned())
+                        Response::error(ErrorCode::Forbidden, OUTSIDE_GROUP)
                     }
                     Ok((lines, edit)) => {
                         if let Some(edit) = edit {
@@ -327,7 +327,7 @@ impl EnvironmentShell {
                         }
                         Response::Code(CodeAnswer { lines, partial })
                     }
-                    Err(error) => Response::Error(error.to_string()),
+                    Err(error) => Response::error(ErrorCode::Failed, error.to_string()),
                 };
                 reply.send(response).unwrap_or_default();
             })

@@ -199,14 +199,17 @@ fn the_initialize_answer_lists_models_commands_and_the_plan() {
         unreachable!("the initialize answer");
     };
     assert_eq!(found.models[0].value, "opus");
-    assert_eq!(found.models[0].name, "Opus");
+    assert_eq!(found.models[0].name, "Claude Opus");
     assert_eq!(
         found.models[0].efforts,
         [Effort::Low, Effort::ExtraHigh],
         "an unknown level is skipped"
     );
     assert!(!found.models[0].thinking_off);
-    assert_eq!(found.models[1].name, "haiku", "named by its value");
+    assert_eq!(
+        found.models[1].name, "Claude Haiku",
+        "named from the alias table"
+    );
     assert_eq!(found.models[1].efforts, []);
     assert!(found.models[1].thinking_off);
     assert_eq!(found.commands[0].name, "review");

@@ -2,7 +2,7 @@ use gpui_kit::Context;
 use krad_chat::{
     BusVars, ChatBackend, ChatEvent, EngineConfig, LiveConfig, OpencodeServer, Runner,
 };
-use krad_domain::{AgentPreset, AgentState, ChatEntry, EnvironmentName, TerminalId};
+use krad_domain::{AgentPreset, AgentState, AttentionKind, ChatEntry, EnvironmentName, TerminalId};
 use krad_host::HostLink;
 use krad_store::gateway_sessions_dir;
 use std::path::{Path, PathBuf};
@@ -13,6 +13,7 @@ use super::super::super::agent_bus::{cli_name, BUS_HINT};
 use super::super::super::agent_hooks::LEAD_HINT;
 use super::super::super::chat::{LiveProcess, StartError};
 use super::super::super::gateway::GatewayReach;
+use super::super::super::kraddie_memory::joined_prompt;
 use super::super::super::opencode::OpencodeLink;
 use super::super::super::terminal_card::home_dir;
 use super::super::super::EnvironmentShell;
@@ -52,6 +53,9 @@ impl EnvironmentShell {
         for notice in std::mem::take(&mut structured.notices) {
             add_notice(problem, &notice);
         }
+        if batch.message.is_some() && structured.harness.checkpoints_files() {
+            return self.hand_over_after_checkpoint(env, id, batch, cx);
+        }
         self.hand_over(env, id, batch);
     }
 
@@ -80,9 +84,10 @@ impl EnvironmentShell {
             structured.fold_kept(messages, &ChatEntry::Event(failure));
         }
         self.set_agent_state(env, id, AgentState::Idle);
+        self.raise_attention(env, id, AttentionKind::Error);
     }
 
-    fn hand_over(&mut self, env: &EnvironmentName, id: TerminalId, batch: Batch) {
+    pub(super) fn hand_over(&mut self, env: &EnvironmentName, id: TerminalId, batch: Batch) {
         let Some(structured) = structured_mut(self, env, id) else {
             return;
         };
@@ -158,7 +163,27 @@ impl EnvironmentShell {
         if self.awaits_remote_bus(env) {
             return Err(StartError::Waiting);
         }
-        let backend = match harness {
+        let backend = self.chat_backend(env, id, harness, cx)?;
+        let owner = env.clone();
+        let apply = move |shell: &mut Self, event, cx: &mut Context<Self>| {
+            shell.note_prompted(&owner, id, &event);
+            shell.apply_structured_event(&owner, id, event, cx);
+        };
+        let Some(structured) = structured_mut(self, env, id) else {
+            return Ok(());
+        };
+        structured.live = Some(LiveProcess::spawn(backend, &structured.session, cx, apply)?);
+        Ok(())
+    }
+
+    pub(in crate::environment_shell) fn chat_backend(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        harness: AgentPreset,
+        cx: &mut Context<Self>,
+    ) -> Result<ChatBackend, StartError> {
+        Ok(match harness {
             AgentPreset::ClaudeCode => ChatBackend::Claude(self.live_config(env, id, harness)?),
             AgentPreset::Codex => ChatBackend::Codex(self.live_config(env, id, harness)?),
             AgentPreset::Opencode => {
@@ -171,24 +196,16 @@ impl EnvironmentShell {
             AgentPreset::Shell => {
                 return Err(StartError::NoChat(self.settings.acp.harness_name(harness)))
             }
-        };
-        let owner = env.clone();
-        let apply = move |shell: &mut Self, event, cx: &mut Context<Self>| {
-            shell.apply_structured_event(&owner, id, event, cx);
-        };
-        let Some(structured) = structured_mut(self, env, id) else {
-            return Ok(());
-        };
-        structured.live = Some(LiveProcess::spawn(backend, &structured.session, cx, apply)?);
-        Ok(())
+        })
     }
 
     fn system_prompt(&self, env: &EnvironmentName, id: TerminalId, in_wsl: bool) -> Option<String> {
-        if self.orchestrates_in(env, id) {
+        let hint = if self.orchestrates_in(env, id) {
             self.lead_hint(in_wsl)
         } else {
             self.bus_hint(in_wsl)
-        }
+        };
+        joined_prompt(hint, self.memory_preamble(env, id))
     }
 
     fn live_config(
@@ -204,22 +221,27 @@ impl EnvironmentShell {
             .map(|group| group.root.clone());
         let (runner, cwd) = self.harness_runner(&self.env_link(env), harness, root.as_deref())?;
         let (system_prompt, bus_vars) = if runner.on_ssh() && self.remote_bus(env).is_none() {
-            (None, BusVars(Vec::new()))
+            (self.memory_preamble(env, id), BusVars(Vec::new()))
         } else {
             (
                 self.system_prompt(env, id, runner.in_wsl()),
                 BusVars(self.bus_vars(env, id)),
             )
         };
+        let chosen = structured_mut(self, env, id).and_then(|chat| chat.chosen_model.clone());
+        let (model, notice) = self.offered_model(harness, chosen);
+        let usage_budget = self.claude_usage_budget();
         let structured = structured_mut(self, env, id).ok_or(StartError::Waiting)?;
+        structured.notices.extend(notice);
         Ok(LiveConfig {
             runner,
-            model: structured.chosen_model.clone(),
+            model,
             cwd,
             system_prompt,
             effort: structured.effort,
             permission_mode: structured.permission_mode,
             bus_vars,
+            usage_budget,
         })
     }
 
@@ -291,7 +313,7 @@ impl EnvironmentShell {
                         home,
                     )
                 } else {
-                    (None, BusVars(Vec::new()), home)
+                    (self.memory_preamble(env, id), BusVars(Vec::new()), home)
                 }
             }
         };

@@ -9,6 +9,10 @@ pub enum AgentsError {
     Json(#[from] serde_json::Error),
     #[error("the agent bus closed the connection without answering")]
     ConnectionClosed,
+    #[error("the app sent no heartbeat in time; it may have stopped")]
+    NoHeartbeat,
+    #[error("could not write the API discovery file: {0}")]
+    Host(#[from] krad_host::HostError),
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]

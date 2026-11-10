@@ -1,11 +1,13 @@
 use gpui_kit::{
-    div, px, AnyElement, ClipboardItem, Div, ElementId, InteractiveElement, IntoElement,
+    div, px, AnyElement, App, Div, ElementId, Entity, InteractiveElement, IntoElement,
     ParentElement, SharedString, Stateful, StatefulInteractiveElement, Styled,
 };
 use krad_domain::TerminalId;
 
-use crate::components::{icon, tooltip_view, IconName};
-use crate::theme::{Palette, ICON_XS, RADIUS_XS, SPACE_1};
+use crate::components::{
+    copy_glyph, copy_with_feedback, icon, tooltip_view, CopyFeedback, IconName,
+};
+use crate::theme::{palette, Palette, ICON_XS, RADIUS_XS, SPACE_1};
 
 const ACTION_SIZE: f32 = 24.0;
 const MESSAGE_GROUP_PREFIX: &str = "surface-message";
@@ -66,6 +68,10 @@ pub(super) fn tinted_action_button(
     color: u32,
     pal: &Palette,
 ) -> Stateful<Div> {
+    action_shell(id, tooltip, pal).child(icon(shown, ICON_XS, color))
+}
+
+fn action_shell(id: ElementId, tooltip: &'static str, pal: &Palette) -> Stateful<Div> {
     div()
         .id(id)
         .flex()
@@ -77,18 +83,22 @@ pub(super) fn tinted_action_button(
         .cursor_pointer()
         .hover(|style| style.bg(pal.bg_hover))
         .tooltip(move |_, cx| tooltip_view(tooltip.into(), cx))
-        .child(icon(shown, ICON_XS, color))
 }
 
 pub(super) fn copy_button(
-    id: ElementId,
+    feedback: &Entity<CopyFeedback>,
+    key: SharedString,
     text: String,
     tooltip: &'static str,
-    pal: &Palette,
+    cx: &App,
 ) -> AnyElement {
-    action_button(id, IconName::Copy, tooltip, pal)
+    let pal = palette(cx);
+    let glyph = copy_glyph(feedback, &key, ICON_XS, pal.text_muted, cx);
+    let feedback = feedback.clone();
+    action_shell(ElementId::Name(key.clone()), tooltip, pal)
+        .child(glyph)
         .on_click(move |_, _, cx| {
-            cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
+            copy_with_feedback(&feedback, key.clone(), text.clone(), cx);
         })
         .into_any_element()
 }

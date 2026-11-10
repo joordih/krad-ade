@@ -1,0 +1,339 @@
+{
+  "title": "Krad ADE agents API",
+  "api_version": 1,
+  "transport": "One TCP connection on the loopback address per request. The client writes one envelope as a single JSON line ending in a newline; the app answers with one response line and closes, except SubscribeAgents, which keeps the connection open and writes one response line per message until either side closes it.",
+  "discovery": {
+    "file": "api.json in the app's config folder: $XDG_CONFIG_HOME/krad-ade, else ~/.config/krad-ade, else %APPDATA%\\krad-ade",
+    "permissions": "Written atomically, owner-only (0600 on Unix), replaced on every start and removed on a clean exit. Settings can turn it off.",
+    "stale_when": "Nothing answers Hello at the endpoint, or the pid in the Hello answer differs from the pid in the file.",
+    "example": {
+      "api_version": 1,
+      "endpoint": "127.0.0.1:52144",
+      "token": "6f1c0d9e2b7a4c58e3f09a1d7b6c2e40",
+      "pid": 48211,
+      "started_at": "2026-11-10T09:12:00.000Z"
+    }
+  },
+  "envelope": {
+    "fields": {
+      "api_version": "1; a missing version is read as 1",
+      "token": "the token from api.json, or KRAD_ADE_TOKEN inside the app's terminals",
+      "from": "\"Client\" for programs outside the app; terminals send {\"Terminal\":{\"environment\":\"main\",\"terminal\":4}}",
+      "request": "one of the requests below"
+    }
+  },
+  "requests": {
+    "hello": {
+      "api_version": 1,
+      "token": "6f1c0d9e2b7a4c58e3f09a1d7b6c2e40",
+      "from": "Client",
+      "request": "Hello"
+    },
+    "list": {
+      "api_version": 1,
+      "token": "6f1c0d9e2b7a4c58e3f09a1d7b6c2e40",
+      "from": "Client",
+      "request": "List"
+    },
+    "list_all": {
+      "api_version": 1,
+      "token": "6f1c0d9e2b7a4c58e3f09a1d7b6c2e40",
+      "from": "Client",
+      "request": "ListAll"
+    },
+    "subscribe_agents": {
+      "api_version": 1,
+      "token": "6f1c0d9e2b7a4c58e3f09a1d7b6c2e40",
+      "from": "Client",
+      "request": {
+        "SubscribeAgents": {
+          "filter": {
+            "environment": "main",
+            "group": "api",
+            "harness": "Claude Code",
+            "terminals": [4, 7]
+          },
+          "since_seq": 41,
+          "stream": "9d3b5f0a7c214e6b8a90c1d2e3f4a5b6"
+        }
+      }
+    },
+    "subscribe_agents_everything": {
+      "api_version": 1,
+      "token": "6f1c0d9e2b7a4c58e3f09a1d7b6c2e40",
+      "from": "Client",
+      "request": { "SubscribeAgents": {} }
+    }
+  },
+  "responses": {
+    "hello": {
+      "Hello": { "api_version": 1, "build": "0.3.3", "pid": 48211 }
+    },
+    "agents": {
+      "Agents": [
+        {
+          "environment": "main",
+          "terminal": 4,
+          "title": "Claude Code · 4",
+          "group": "api",
+          "state": "working",
+          "harness": "Claude Code",
+          "is_self": false
+        },
+        {
+          "environment": "main",
+          "terminal": 9,
+          "title": "Fix the webhook retries",
+          "group": "api",
+          "state": "closed",
+          "harness": "Codex",
+          "is_self": false
+        }
+      ]
+    },
+    "agent_snapshot": {
+      "AgentSnapshot": {
+        "stream": "9d3b5f0a7c214e6b8a90c1d2e3f4a5b6",
+        "seq": 41,
+        "at": "2026-11-10T09:15:00.120Z",
+        "resync": false,
+        "agents": [
+          {
+            "environment": "main",
+            "terminal": 4,
+            "title": "Claude Code · 4",
+            "group": "api",
+            "state": "working",
+            "harness": "Claude Code",
+            "is_self": false
+          }
+        ]
+      }
+    },
+    "agent_event": {
+      "AgentEvent": {
+        "seq": 42,
+        "at": "2026-11-10T09:15:02.481Z",
+        "kind": "state_changed",
+        "environment": "main",
+        "terminal": 4,
+        "title": "Claude Code · 4",
+        "group": "api",
+        "harness": "Claude Code",
+        "previous": "working",
+        "state": "waiting-for-input",
+        "coarse_state": "waiting-for-input",
+        "reason": "permission_pending"
+      }
+    },
+    "heartbeat": {
+      "Heartbeat": {
+        "stream": "9d3b5f0a7c214e6b8a90c1d2e3f4a5b6",
+        "seq": 42,
+        "at": "2026-11-10T09:15:17.481Z"
+      }
+    },
+    "error": {
+      "Error": {
+        "code": "slow_subscriber",
+        "message": "The subscriber fell too far behind the agent events and was dropped; subscribe again with since_seq"
+      }
+    }
+  },
+  "fields": {
+    "harness": "Display name of the harness: Shell, Claude Code, Codex, opencode, Gateway, or acp:<id> for ACP agents; null when unknown",
+    "state": "idle | working | waiting-for-input | done | exited | closed",
+    "coarse_state": "idle (idle, done) | working | waiting-for-input | closed (exited, closed)",
+    "kind": "opened (previous is null) | state_changed | closed (state is closed)",
+    "seq": "Grows by one per event within a stream; a snapshot and a heartbeat carry the seq of the last event before them",
+    "stream": "Identifies one run of the app; seq starts again in a new stream",
+    "at": "RFC 3339 in UTC with milliseconds",
+    "reason": "Present when known; one of reasons"
+  },
+  "states": ["idle", "working", "waiting-for-input", "done", "exited", "closed"],
+  "coarse_states": ["idle", "working", "waiting-for-input", "closed"],
+  "reasons": [
+    "turn_started",
+    "turn_finished",
+    "ask_pending",
+    "permission_pending",
+    "input_pending",
+    "process_exited",
+    "user_closed",
+    "environment_closed"
+  ],
+  "subscription": {
+    "first_line": "AgentSnapshot of every open agent the filter admits. With since_seq and the stream it came from, when that stream is the app's current one and the seq is still inside its buffer of the last 1024 events, a Heartbeat followed by the missed events instead; otherwise, including a since_seq without a stream, an AgentSnapshot with resync true.",
+    "heartbeat_every_secs": 15,
+    "queue_per_subscriber": 256,
+    "slow_subscriber": "A subscriber whose 256 pending lines are not read is dropped: it receives the lines already queued, then an Error with code slow_subscriber, and the connection closes.",
+    "filter": "Every field is optional; an empty filter admits every agent of every environment."
+  },
+  "error_codes": [
+    "unauthorized",
+    "unsupported_api_version",
+    "bad_request",
+    "not_found",
+    "forbidden",
+    "unsupported",
+    "unavailable",
+    "failed",
+    "not_owned",
+    "busy",
+    "worktree_not_clean",
+    "slow_subscriber",
+    "out_of_reach"
+  ],
+  "cli": {
+    "krad agents list [--all] [--json]": "The agents of every environment when run outside the app, of the terminal's environment inside it; --all adds closed workers",
+    "krad agents watch [--json] [--group G] [--harness H] [--terminal ID] [--since SEQ --stream ID]": "Prints the snapshot, whose first line names its seq and stream, then one line per event until interrupted; --since with --stream resumes after that seq",
+    "krad api info [--show-token] [--json]": "The endpoint and API version, and where they were found; the token only with --show-token",
+    "exit_codes": {
+      "0": "done",
+      "1": "wrong arguments",
+      "2": "the app cannot be reached (also a dropped slow subscriber or a missed heartbeat)",
+      "3": "timed out",
+      "4": "no such agent, session or file",
+      "5": "refused for this caller",
+      "6": "the app speaks another API version",
+      "7": "the app could not do it"
+    }
+  },
+  "example_session": [
+    {
+      "from": "client",
+      "line": {
+        "api_version": 1,
+        "token": "6f1c0d9e2b7a4c58e3f09a1d7b6c2e40",
+        "from": "Client",
+        "request": { "SubscribeAgents": { "filter": { "group": "api" } } }
+      }
+    },
+    {
+      "from": "app",
+      "line": {
+        "AgentSnapshot": {
+          "stream": "9d3b5f0a7c214e6b8a90c1d2e3f4a5b6",
+          "seq": 41,
+          "at": "2026-11-10T09:15:00.120Z",
+          "resync": false,
+          "agents": [
+            {
+              "environment": "main",
+              "terminal": 4,
+              "title": "Claude Code · 4",
+              "group": "api",
+              "state": "working",
+              "harness": "Claude Code",
+              "is_self": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "from": "app",
+      "line": {
+        "AgentEvent": {
+          "seq": 42,
+          "at": "2026-11-10T09:15:02.481Z",
+          "kind": "state_changed",
+          "environment": "main",
+          "terminal": 4,
+          "title": "Claude Code · 4",
+          "group": "api",
+          "harness": "Claude Code",
+          "previous": "working",
+          "state": "waiting-for-input",
+          "coarse_state": "waiting-for-input",
+          "reason": "permission_pending"
+        }
+      }
+    },
+    {
+      "from": "app",
+      "line": {
+        "AgentEvent": {
+          "seq": 43,
+          "at": "2026-11-10T09:15:09.007Z",
+          "kind": "state_changed",
+          "environment": "main",
+          "terminal": 4,
+          "title": "Claude Code · 4",
+          "group": "api",
+          "harness": "Claude Code",
+          "previous": "waiting-for-input",
+          "state": "working",
+          "coarse_state": "working",
+          "reason": "turn_started"
+        }
+      }
+    },
+    {
+      "from": "app",
+      "line": {
+        "AgentEvent": {
+          "seq": 44,
+          "at": "2026-11-10T09:16:30.550Z",
+          "kind": "opened",
+          "environment": "main",
+          "terminal": 7,
+          "title": "Codex · 7",
+          "group": "api",
+          "harness": "Codex",
+          "previous": null,
+          "state": "idle",
+          "coarse_state": "idle"
+        }
+      }
+    },
+    {
+      "from": "app",
+      "line": {
+        "Heartbeat": {
+          "stream": "9d3b5f0a7c214e6b8a90c1d2e3f4a5b6",
+          "seq": 44,
+          "at": "2026-11-10T09:16:45.550Z"
+        }
+      }
+    },
+    {
+      "from": "app",
+      "line": {
+        "AgentEvent": {
+          "seq": 45,
+          "at": "2026-11-10T09:18:12.904Z",
+          "kind": "state_changed",
+          "environment": "main",
+          "terminal": 4,
+          "title": "Claude Code · 4",
+          "group": "api",
+          "harness": "Claude Code",
+          "previous": "working",
+          "state": "done",
+          "coarse_state": "idle",
+          "reason": "turn_finished"
+        }
+      }
+    },
+    {
+      "from": "app",
+      "line": {
+        "AgentEvent": {
+          "seq": 46,
+          "at": "2026-11-10T09:18:40.033Z",
+          "kind": "closed",
+          "environment": "main",
+          "terminal": 4,
+          "title": "Claude Code · 4",
+          "group": "api",
+          "harness": "Claude Code",
+          "previous": "done",
+          "state": "closed",
+          "coarse_state": "closed",
+          "reason": "user_closed"
+        }
+      }
+    }
+  ]
+}

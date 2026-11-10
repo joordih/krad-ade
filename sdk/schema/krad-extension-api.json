@@ -57,6 +57,270 @@
     "ApiVersion": {
       "type": "string"
     },
+    "AppEvent": {
+      "oneOf": [
+        {
+          "properties": {
+            "harness": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "agent_started",
+              "type": "string"
+            },
+            "terminal": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "terminal"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "agent_waiting",
+              "type": "string"
+            },
+            "terminal": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "terminal"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "agent_finished",
+              "type": "string"
+            },
+            "terminal": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "terminal"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "worktree_created",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "from"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "worktree_removed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "session_opened",
+              "type": "string"
+            },
+            "session": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "session"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "session_closed",
+              "type": "string"
+            },
+            "session": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "session"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "git_changed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "review_sent",
+              "type": "string"
+            },
+            "merge_request": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "verdict": {
+              "$ref": "#/$defs/ReviewVerdict"
+            }
+          },
+          "required": [
+            "kind",
+            "merge_request",
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "ci_failed",
+              "type": "string"
+            },
+            "merge_request": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "pipeline": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "merge_request",
+            "pipeline"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "ci_passed",
+              "type": "string"
+            },
+            "merge_request": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "pipeline": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "merge_request",
+            "pipeline"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "merge_request_opened",
+              "type": "string"
+            },
+            "merge_request": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "merge_request"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "AppEventKind": {
+      "enum": [
+        "agent_started",
+        "agent_waiting",
+        "agent_finished",
+        "worktree_created",
+        "worktree_removed",
+        "session_opened",
+        "session_closed",
+        "git_changed",
+        "review_sent",
+        "ci_failed",
+        "ci_passed",
+        "merge_request_opened"
+      ],
+      "type": "string"
+    },
+    "AppEventParams": {
+      "properties": {
+        "environment": {
+          "type": "string"
+        },
+        "event": {
+          "$ref": "#/$defs/AppEvent"
+        },
+        "group": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version",
+        "environment",
+        "event"
+      ],
+      "type": "object"
+    },
     "AppInfo": {
       "properties": {
         "name": {
@@ -624,7 +888,8 @@
         "settings",
         "secrets",
         "tools",
-        "host_kinds"
+        "host_kinds",
+        "events"
       ],
       "type": "string"
     },
@@ -2388,6 +2653,14 @@
       ],
       "type": "string"
     },
+    "ReviewVerdict": {
+      "enum": [
+        "commented",
+        "replied",
+        "approved"
+      ],
+      "type": "string"
+    },
     "RowsParams": {
       "properties": {
         "end": {
@@ -2950,6 +3223,21 @@
           "default": "auto"
         }
       },
+      "type": "object"
+    },
+    "SubscribeEventsParams": {
+      "properties": {
+        "kinds": {
+          "items": {
+            "$ref": "#/$defs/AppEventKind"
+          },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "kinds"
+      ],
       "type": "object"
     },
     "TableRow": {
@@ -3765,11 +4053,17 @@
       "type": "string"
     }
   },
-  "api": "1.1",
+  "api": "1.2",
   "manifest": {
     "$ref": "#/$defs/ExtensionManifest"
   },
   "notifications": {
+    "events/event": {
+      "params": {
+        "$ref": "#/$defs/AppEventParams"
+      },
+      "received_by": "program"
+    },
     "exit": {
       "params": {
         "$ref": "#/$defs/Empty"
@@ -3860,6 +4154,15 @@
       "answered_by": "app",
       "params": {
         "$ref": "#/$defs/RunCommandParams"
+      },
+      "result": {
+        "$ref": "#/$defs/Empty"
+      }
+    },
+    "events/subscribe": {
+      "answered_by": "app",
+      "params": {
+        "$ref": "#/$defs/SubscribeEventsParams"
       },
       "result": {
         "$ref": "#/$defs/Empty"

@@ -7,3 +7,5 @@ docs/
 DESIGN.md
 .sc/
 dist/
+.DS_Store
+**/.DS_Store

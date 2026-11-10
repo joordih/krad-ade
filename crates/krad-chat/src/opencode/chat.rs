@@ -11,6 +11,7 @@ use std::thread;
 use super::ask::{reply, Reply};
 use super::catalog::{listing, Listing};
 use super::events::{Translator, MODEL_SEPARATOR};
+use super::limits::read_plan_usage;
 use super::prompt::{attachments, outgoing, Known, Outgoing, Place};
 use super::server::{Delivery, OpencodeError, OpencodeServer};
 use super::tools::{agent, rules, Rule, BUILD_AGENT};
@@ -160,6 +161,26 @@ impl LiveHarness for OpencodeChat {
     }
 }
 
+struct UsageReader {
+    server: Arc<OpencodeServer>,
+    directory: String,
+    outbox: Sender<Inbound>,
+}
+
+impl UsageReader {
+    fn read(&self) {
+        let server = Arc::clone(&self.server);
+        let directory = self.directory.clone();
+        let outbox = self.outbox.clone();
+        thread::spawn(move || match read_plan_usage(&server, &directory) {
+            Ok(usage) => outbox
+                .send(Inbound::Emit(LiveEvent::Usage(usage)))
+                .unwrap_or_default(),
+            Err(failure) => tracing::debug!(?failure, "the chat could not read plan usage"),
+        });
+    }
+}
+
 struct Worker {
     server: Arc<OpencodeServer>,
     config: LiveConfig,
@@ -183,12 +204,21 @@ pub(crate) fn spawn_opencode(
     let (outbox, inbound) = channel::<Inbound>();
     let running = Arc::new(AtomicBool::new(true));
     let mode = config.permission_mode.unwrap_or(PermissionMode::Manual);
+    let directory = config.runner.served_directory(&config.cwd);
+    let reader = UsageReader {
+        server: Arc::clone(&server),
+        directory: directory.clone(),
+        outbox: outbox.clone(),
+    };
     thread::spawn(move || {
         let mut translator = Translator::new(HashMap::new(), Some(mode));
         for message in inbound {
             match message {
                 Inbound::Server(delivery) => {
                     for event in translator.translate(&delivery.event, delivery.nested) {
+                        if event == LiveEvent::Chat(ChatEvent::Done) {
+                            reader.read();
+                        }
                         sink(event);
                     }
                 }
@@ -198,7 +228,7 @@ pub(crate) fn spawn_opencode(
         }
     });
     let worker = Worker {
-        directory: config.runner.served_directory(&config.cwd),
+        directory,
         preamble: config.system_prompt.clone(),
         effort: config.effort,
         model: config.model.clone(),
@@ -405,6 +435,12 @@ impl Worker {
             .send(Inbound::Windows(windows))
             .unwrap_or_default();
         self.emit(LiveEvent::Ready(self.listing.catalog.clone()));
+        UsageReader {
+            server: Arc::clone(&self.server),
+            directory: self.directory.clone(),
+            outbox: self.outbox.clone(),
+        }
+        .read();
         for order in inbox {
             if let Err(error) = self.handle(order) {
                 self.report(&error);

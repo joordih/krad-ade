@@ -1,6 +1,8 @@
+use krad_domain::DiffCommentId;
 use std::collections::HashSet;
 
 use super::super::review_view::{DiffLine, LineKind};
+use super::comments::CommentPart;
 
 const FOLD_CONTEXT: usize = 3;
 const MIN_FOLDED: usize = 2;
@@ -8,7 +10,14 @@ const MIN_FOLDED: usize = 2;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum DiffRow {
     Line(usize),
-    Fold { first: usize, hidden: usize },
+    Fold {
+        first: usize,
+        hidden: usize,
+    },
+    Comment {
+        id: DiffCommentId,
+        part: CommentPart,
+    },
 }
 
 pub(super) fn diff_rows(
@@ -61,7 +70,7 @@ pub(super) fn widest_row(rows: &[DiffRow], lines: &[DiffLine]) -> usize {
             DiffRow::Line(index) => lines
                 .get(*index)
                 .map_or(0, |line| line.text.chars().count()),
-            DiffRow::Fold { .. } => 0,
+            DiffRow::Fold { .. } | DiffRow::Comment { .. } => 0,
         })
         .map_or(0, |(index, _)| index)
 }

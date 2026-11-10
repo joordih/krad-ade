@@ -1,0 +1,14 @@
+﻿2024-05-01T10:00:00.1000000Z Current runner version: '2.317.0'
+2024-05-01T10:00:01.0000000Z ##[group]Run actions/checkout@v4
+2024-05-01T10:00:01.1000000Z with:
+2024-05-01T10:00:01.2000000Z   token: ***
+2024-05-01T10:00:02.0000000Z ##[endgroup]
+2024-05-01T10:00:03.0000000Z ##[group]Run cargo test --workspace
+2024-05-01T10:00:03.1000000Z env:
+2024-05-01T10:00:03.2000000Z   CARGO_REGISTRY_TOKEN: ghp_abcdefghijklmnopqrstuvwxyz0123
+2024-05-01T10:00:09.0000000Z [1m[31mthread 'durations::parses_minutes' panicked at src/duration.rs:41:9[0m
+2024-05-01T10:00:09.1000000Z test result: FAILED. 41 passed; 1 failed
+2024-05-01T10:00:09.2000000Z ##[error]Process completed with exit code 101.
+2024-05-01T10:00:10.0000000Z Post job cleanup.
+2024-05-01T10:00:10.1000000Z [command]/usr/bin/git version
+2024-05-01T10:00:11.0000000Z Cleaning up orphan processes

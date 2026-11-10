@@ -17,11 +17,11 @@ const SILENT_SETUP_FLAGS: [&str; 5] = [
 const DIR_FLAG: &str = "/DIR=";
 const RELAUNCH_FLAG: &str = "/RELAUNCH=yes";
 
-pub(super) fn locate(exe: &Path) -> Option<Installation> {
+pub(super) fn locate(exe: &Path, target: ReleaseTarget) -> Option<Installation> {
     Some(Installation {
         root: exe.parent()?.to_path_buf(),
         staging: std::env::temp_dir().join(STAGING_DIR),
-        target: ReleaseTarget::WindowsX86_64,
+        target,
     })
 }
 

@@ -1,5 +1,5 @@
 use gpui_kit::{AppContext as _, Context};
-use krad_domain::{GroupId, WorktreeOrigin};
+use krad_domain::{AppEvent, GroupId, WorktreeOrigin};
 use krad_repo::{add_worktree, remove_worktree, sanitize_worktree_name};
 
 use super::EnvironmentShell;
@@ -30,6 +30,7 @@ impl EnvironmentShell {
             self.toast(INVALID_NAME_TEXT, cx);
             return;
         };
+        let env = self.active.clone();
         let link = self.active_link();
         let create = cx.background_spawn({
             let repo_root = repo_root.clone();
@@ -42,7 +43,11 @@ impl EnvironmentShell {
                     let origin = worktree
                         .branch
                         .map(|branch| WorktreeOrigin { repo_root, branch });
-                    shell.add_group(worktree.path, origin, cx);
+                    let created = shell.add_group_to(&env, worktree.path, origin, cx);
+                    if let Some(created) = created {
+                        let event = AppEvent::WorktreeCreated { from: group };
+                        shell.publish_event(&env, Some(created), event);
+                    }
                 }
                 Err(error) => shell.toast(&error.to_string(), cx),
             })
@@ -72,6 +77,7 @@ impl EnvironmentShell {
         for id in terminals {
             self.close_terminal(id, cx);
         }
+        let env = self.active.clone();
         let link = self.active_link();
         let remove =
             cx.background_spawn(async move { remove_worktree(&link, &origin.repo_root, &root) });
@@ -79,6 +85,7 @@ impl EnvironmentShell {
             let removed = remove.await;
             this.update(cx, |shell, cx| match removed {
                 Ok(()) => {
+                    shell.publish_event(&env, Some(group), AppEvent::WorktreeRemoved);
                     shell.select_group(group, cx);
                     shell.remove_selected_group(cx);
                 }
@@ -89,7 +96,7 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn group_repo_root(&self, group: GroupId) -> Option<std::path::PathBuf> {
+    pub(super) fn group_repo_root(&self, group: GroupId) -> Option<std::path::PathBuf> {
         let live = self.envs.get(&self.active)?;
         let root = &live.data.group(group)?.root;
         self.active_git(root).map(|git| git.repo_root.clone())

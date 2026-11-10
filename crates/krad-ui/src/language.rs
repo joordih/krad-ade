@@ -56,6 +56,17 @@ mod tests {
     }
 
     #[test]
+    fn web_framework_files_open_with_a_built_in_grammar() {
+        let catalog = builtin_catalog();
+        let grammar = |path: &str| catalog.for_path(Path::new(path)).and_then(editor_id);
+        assert_eq!(grammar("src/App.vue"), Some("html"));
+        assert_eq!(grammar("src/lib/Card.svelte"), Some("svelte"));
+        assert_eq!(grammar("src/pages/index.astro"), Some("astro"));
+        assert_eq!(grammar("styles/theme.scss"), Some("scss"));
+        assert_eq!(grammar("src/Button.tsx"), Some("tsx"));
+    }
+
+    #[test]
     fn every_grammar_a_manifest_names_is_built_in() {
         use gpui_kit::component::highlighter::Language as Grammar;
         let unknown: Vec<String> = builtin_catalog()

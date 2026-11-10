@@ -1,9 +1,11 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    canvas, div, px, rgb, AnyElement, Context, DispatchPhase, InteractiveElement, IntoElement,
-    MouseMoveEvent, ParentElement, Pixels, Point, StatefulInteractiveElement, Styled,
+    canvas, div, fill, point, px, rgb, size, AnyElement, Bounds, Context, DispatchPhase,
+    InteractiveElement, IntoElement, MouseMoveEvent, ParentElement, Pixels, Point,
+    StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::{ChatBookmarks, TerminalId};
+use std::rc::Rc;
 
 use super::super::super::EnvironmentShell;
 use super::super::SurfaceChat;
@@ -62,28 +64,82 @@ fn pointer_watch(id: TerminalId, area: Area, cx: &mut Context<EnvironmentShell>)
     .into_any_element()
 }
 
-fn tick_color(kind: TickKind, current: bool, pal: &Palette) -> u32 {
-    match kind {
-        TickKind::Bookmark => pal.attention,
-        TickKind::Question if current => pal.text_strong,
-        TickKind::Question => pal.text_disabled,
+fn rows(count: usize) -> f32 {
+    u16::try_from(count).map_or(f32::from(u16::MAX), f32::from)
+}
+
+fn row_top(top: f32, index: usize) -> f32 {
+    top + rows(index) * TICK_HIT_H
+}
+
+fn ticks_in_view(top: f32, count: usize, clip: (f32, f32)) -> impl Iterator<Item = usize> {
+    (0..count)
+        .skip_while(move |index| row_top(top, index + 1) <= clip.0)
+        .take_while(move |index| row_top(top, *index) < clip.1)
+}
+
+#[derive(Clone, Copy)]
+struct TickInk {
+    bookmark: u32,
+    current: u32,
+    rest: u32,
+}
+
+impl TickInk {
+    const fn of(pal: &Palette) -> Self {
+        Self {
+            bookmark: pal.attention,
+            current: pal.text_strong,
+            rest: pal.text_disabled,
+        }
+    }
+
+    const fn color(self, kind: TickKind, current: bool) -> u32 {
+        match kind {
+            TickKind::Bookmark => self.bookmark,
+            TickKind::Question if current => self.current,
+            TickKind::Question => self.rest,
+        }
     }
 }
 
-fn tick_mark(tick: &Tick, current: bool, pal: &Palette) -> gpui_kit::Div {
-    let width = if current { CURRENT_TICK_W } else { TICK_W };
+fn paint_ticks(
+    bounds: Bounds<Pixels>,
+    ticks: &[Tick],
+    current: Option<usize>,
+    ink: TickInk,
+    window: &mut Window,
+) {
+    let mask = window.content_mask().bounds;
+    let top = bounds.origin.y.as_f32();
+    let clip = (mask.origin.y.as_f32(), mask.bottom().as_f32());
+    let right = bounds.right();
+    for index in ticks_in_view(top, ticks.len(), clip) {
+        let Some(tick) = ticks.get(index) else {
+            continue;
+        };
+        let lit = current == Some(index);
+        let width = if lit { CURRENT_TICK_W } else { TICK_W };
+        let y = row_top(top, index) + (TICK_HIT_H - TICK_H) / 2.0;
+        let bar = Bounds::new(point(right - px(width), px(y)), size(px(width), px(TICK_H)));
+        window.paint_quad(fill(bar, rgb(ink.color(tick.kind, lit))).corner_radii(px(TICK_H / 2.0)));
+    }
+}
+
+fn tick_field(ticks: Rc<[Tick]>, current: Option<usize>, pal: &Palette) -> AnyElement {
+    let ink = TickInk::of(pal);
+    let height = rows(ticks.len()) * TICK_HIT_H;
     div()
-        .h(px(TICK_HIT_H))
-        .flex()
-        .items_center()
-        .justify_end()
+        .w_full()
+        .h(px(height))
         .child(
-            div()
-                .h(px(TICK_H))
-                .w(px(width))
-                .rounded_full()
-                .bg(rgb(tick_color(tick.kind, current, pal))),
+            canvas(
+                |_, _, _| (),
+                move |bounds, (), window, _| paint_ticks(bounds, &ticks, current, ink, window),
+            )
+            .size_full(),
         )
+        .into_any_element()
 }
 
 impl EnvironmentShell {
@@ -115,10 +171,7 @@ impl EnvironmentShell {
             (hover.open, hover.strip.clone(), hover.card.clone())
         };
         let pal = palette(cx);
-        let marks = ticks
-            .iter()
-            .enumerate()
-            .map(|(index, tick)| tick_mark(tick, current == Some(index), pal));
+        let marks = tick_field(ticks.clone(), current, pal);
         let strip = div()
             .relative()
             .flex()
@@ -126,7 +179,7 @@ impl EnvironmentShell {
             .w(px(STRIP_W))
             .py(px(SPACE_1))
             .cursor_pointer()
-            .children(marks)
+            .child(marks)
             .child(pointer_watch(id, strip_area, cx));
         let card = open.then(|| {
             div()
@@ -248,5 +301,37 @@ impl EnvironmentShell {
         {
             chat.jump_to_row(row);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn painted(count: usize, clip: (f32, f32)) -> Vec<usize> {
+        ticks_in_view(100.0, count, clip).collect()
+    }
+
+    #[test]
+    fn only_the_ticks_inside_the_clip_are_painted() {
+        assert_eq!(painted(1000, (100.0, 170.0)), (0..10).collect::<Vec<_>>());
+        assert_eq!(painted(1000, (103.5, 110.0)), vec![0, 1]);
+        assert_eq!(
+            painted(1000, (800.0, 870.0)),
+            (100..110).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn a_clip_beyond_the_strip_paints_nothing_past_its_ends() {
+        assert_eq!(painted(5, (0.0, 2000.0)), (0..5).collect::<Vec<_>>());
+        assert_eq!(painted(5, (0.0, 50.0)), Vec::<usize>::new());
+        assert_eq!(painted(5, (500.0, 900.0)), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn each_tick_keeps_its_row_of_the_strip() {
+        assert!((row_top(100.0, 0) - 100.0).abs() < f32::EPSILON);
+        assert!((row_top(100.0, 3) - (100.0 + 3.0 * TICK_HIT_H)).abs() < f32::EPSILON);
     }
 }

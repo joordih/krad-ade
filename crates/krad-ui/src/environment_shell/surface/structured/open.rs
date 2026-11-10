@@ -4,8 +4,8 @@ use krad_chat::{
     read_opencode_transcript, LiveSession,
 };
 use krad_domain::{
-    AgentPreset, ChatEntry, EnvironmentName, NodeKind, ResumeId, TerminalId, TerminalNode,
-    DEFAULT_CHAT_HARNESS,
+    AgentPreset, ChatChoice, ChatEntry, EnvironmentName, NodeKind, ResumeId, TerminalId,
+    TerminalNode, DEFAULT_CHAT_HARNESS,
 };
 use krad_store::{acp_transcript_file, gateway_sessions_dir, read_acp_transcript};
 use std::collections::HashMap;
@@ -124,13 +124,27 @@ impl EnvironmentShell {
             let history = session.history().cloned();
             let mut structured = StructuredChat::new(session, harness);
             let live = self.envs.get_mut(env);
-            let (waiting, mode) = live.map_or_else(Default::default, |live| {
+            let (waiting, mode, choices) = live.map_or_else(Default::default, |live| {
                 (
                     live.waiting_prompts.remove(&id).unwrap_or_default(),
                     live.waiting_modes.remove(&id),
+                    live.waiting_choices.remove(&id).unwrap_or_default(),
                 )
             });
+            let choice = self.restored_choice(
+                env,
+                id,
+                harness,
+                ChatChoice {
+                    model: choices.model,
+                    effort: choices.effort,
+                },
+            );
+            self.keep_choice(env, id, choice.clone());
             structured.permission_mode = mode;
+            structured.chosen_model = choice.model;
+            structured.mcp_servers = choices.mcp_servers;
+            structured.effort = choice.effort;
             structured.transcript = self.acp_transcript(env, id, harness);
             let mut chat =
                 SurfaceChat::new(input, events, Backend::Structured(Box::new(structured)));

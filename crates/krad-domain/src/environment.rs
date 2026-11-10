@@ -1,10 +1,14 @@
 use crate::agent::{AgentPreset, AgentState};
 use crate::bookmark::ChatBookmarks;
+use crate::checkpoint::ChatCheckpoints;
 use crate::group::{Session, ShownExtensionViews, TerminalGroup};
 use crate::host::Host;
 use crate::ids::{EnvironmentName, ResumeId, SessionId, TerminalId};
+use crate::model::ChatChoice;
 use crate::side_panel::SidePanelLayout;
 use crate::text_scale::TextScale;
+use crate::usage::{ChatUsage, RetiredSpend};
+use crate::variants::VariantRuns;
 use crate::view::EnvironmentView;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
@@ -34,6 +38,12 @@ pub struct TerminalNode {
     pub extension: Option<crate::group::ExtensionTab>,
     #[serde(default, skip_serializing_if = "ChatBookmarks::is_empty")]
     pub bookmarks: ChatBookmarks,
+    #[serde(default, skip_serializing_if = "ChatUsage::is_empty")]
+    pub usage: ChatUsage,
+    #[serde(default, skip_serializing_if = "ChatCheckpoints::is_empty")]
+    pub checkpoints: ChatCheckpoints,
+    #[serde(default, skip_serializing_if = "ChatChoice::is_empty")]
+    pub choice: ChatChoice,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,7 +83,7 @@ pub struct EnvironmentData {
     pub nodes: Vec<TerminalNode>,
     pub meta: HashMap<TerminalId, TerminalMeta>,
     pub next_id: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::view::lenient_view")]
     pub view: EnvironmentView,
     #[serde(default)]
     pub focus: Option<TerminalId>,
@@ -91,6 +101,10 @@ pub struct EnvironmentData {
     pub note_tabs: Vec<crate::notes::NoteTabs>,
     #[serde(default, skip_serializing_if = "ShownExtensionViews::is_empty")]
     pub extension_views: ShownExtensionViews,
+    #[serde(default, skip_serializing_if = "RetiredSpend::is_empty")]
+    pub retired_spend: RetiredSpend,
+    #[serde(default, skip_serializing_if = "VariantRuns::is_empty")]
+    pub variant_runs: VariantRuns,
 }
 
 impl EnvironmentData {
@@ -120,6 +134,8 @@ impl EnvironmentData {
             side_panel: SidePanelLayout::default(),
             note_tabs: Vec::new(),
             extension_views: ShownExtensionViews::default(),
+            retired_spend: RetiredSpend::default(),
+            variant_runs: VariantRuns::default(),
         }
     }
 }
@@ -160,6 +176,9 @@ pub(crate) fn seed_terminals() -> (Vec<TerminalNode>, u64) {
             file: None,
             extension: None,
             bookmarks: ChatBookmarks::default(),
+            usage: ChatUsage::default(),
+            checkpoints: ChatCheckpoints::default(),
+            choice: ChatChoice::default(),
         })
         .collect();
     (terminals, SEED_NEXT_ID)
@@ -189,6 +208,23 @@ mod tests {
         let node: TerminalNode = serde_json::from_value(older)?;
         assert!(node.bookmarks.is_empty());
         assert!(serde_json::to_value(&node)?.get("bookmarks").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn a_chat_keeps_its_model_and_effort_and_older_nodes_have_none() -> serde_json::Result<()> {
+        let older: TerminalNode = serde_json::from_value(serde_json::json!({
+            "id": 3, "title": "Chat", "state": "Idle", "kind": "Chat"
+        }))?;
+        assert!(older.choice.is_empty());
+        assert!(serde_json::to_value(&older)?.get("choice").is_none());
+        let mut node = older;
+        node.choice = ChatChoice {
+            model: crate::model::ModelId::parse("claude-fable-5-1[1m]"),
+            effort: Some(crate::model::Effort::Max),
+        };
+        let back: TerminalNode = serde_json::from_value(serde_json::to_value(&node)?)?;
+        assert_eq!(back.choice, node.choice);
         Ok(())
     }
 

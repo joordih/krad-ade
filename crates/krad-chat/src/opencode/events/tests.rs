@@ -13,6 +13,8 @@ fn chat(events: Vec<LiveEvent>) -> Vec<ChatEvent> {
             LiveEvent::Ask(_)
             | LiveEvent::Ready(_)
             | LiveEvent::Usage(_)
+            | LiveEvent::Limit(_)
+            | LiveEvent::Spent(_)
             | LiveEvent::Notice(_)
             | LiveEvent::Rewound(_)
             | LiveEvent::Refused(_)
@@ -130,4 +132,34 @@ fn a_todowrite_call_sends_the_checklist_after_its_tool_row() {
         [ChatEvent::Tool(tool), ChatEvent::Checklist(list)]
             if tool.name == "TodoWrite" && list.items.len() == 1
     ));
+}
+
+#[test]
+fn each_step_adds_what_opencode_says_it_cost() {
+    let mut translator = Translator::new(HashMap::new(), None);
+    let lines = [
+        r#"{"type":"session.step.started","data":{"sessionID":"ses_a","assistantMessageID":"msg_1","model":{"providerID":"anthropic","id":"claude-sonnet-5-5"}}}"#,
+        r#"{"type":"session.step.ended","data":{"sessionID":"ses_a","assistantMessageID":"msg_1","finish":"stop","cost":0.01,"tokens":{"input":1200,"output":85,"reasoning":15,"cache":{"read":9000,"write":10}}}}"#,
+    ];
+    let spent: Vec<_> = lines
+        .iter()
+        .flat_map(|line| translator.translate(&event(line), false))
+        .filter_map(|event| match event {
+            LiveEvent::Spent(report) => Some(report),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        spent,
+        [UsageReport::Added(ReportedUsage {
+            tokens: TokenUsage {
+                input: 1200,
+                output: 100,
+                cache_read: 9000,
+                cache_write: 10,
+            },
+            cost: UsdCost::try_from(0.01).ok(),
+            model: ModelId::parse("anthropic/claude-sonnet-5-5"),
+        })]
+    );
 }

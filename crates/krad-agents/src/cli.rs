@@ -1,182 +1,78 @@
+mod agents;
+mod api_info;
+mod exit;
+mod memory;
+mod render;
+mod request;
+mod status;
+mod variants;
+mod verb;
+mod watch;
+
+pub(crate) use exit::exit_codes_help;
+pub(crate) use request::{DEFAULT_READ_LINES, DEFAULT_WAIT_TIMEOUT};
+
 use crate::client::call;
-use crate::code::{CodeRequest, CodeTool};
-use crate::env::{bus_env, guide, orchestrator_guide, BusEnv, CLI_PROGRAM, ENV_TERMINAL};
-use crate::extension_tools::{render_catalog, tool_call_request, ExtensionToolOutcome};
+use crate::discovery::ApiFile;
+use crate::env::{bus_env, guide, orchestrator_guide, CLI_PROGRAM, ENV_TERMINAL};
+use crate::extension_tools::ExtensionToolOutcome;
 use crate::handle::Caller;
 use crate::hook::{run_ask, run_hook};
-use crate::protocol::{
-    bus_name, preset_by_bus_name, preset_by_display_name, AgentInfo, BusToken, Message, Request,
-    Response, MAX_WAIT,
-};
+use crate::protocol::{Request, Response};
 use crate::statusline::run_status_line;
+use agents::api_action;
+use exit::Exit;
 use krad_domain::AgentPreset;
-use std::str::FromStr;
-use std::time::Duration;
+use render::render;
+use request::{build_request, parse_options, Options};
+use status::AgentStates;
+use std::ffi::OsStr;
+use std::path::Path;
+use verb::{usage, ApiAction, Verb};
 
-const EXIT_OK: i32 = 0;
+pub const CLI_NAME: &str = "krad";
 const LEAD_TOPIC: &str = "lead";
-const EXIT_USAGE: i32 = 1;
-const EXIT_BUS: i32 = 2;
-
-pub(crate) const DEFAULT_WAIT_TIMEOUT: Duration = Duration::from_mins(10);
-pub(crate) const DEFAULT_READ_LINES: usize = 40;
-pub(crate) const UNKNOWN_AGENT: &str =
-    "Unknown agent; use a harness program such as claude, codex or opencode, or an ACP agent id";
-
-const FLAG_JSON: &str = "--json";
 const FLAG_VERSION: &str = "--version";
-const FLAG_WAIT: &str = "--wait";
-const FLAG_TIMEOUT: &str = "--timeout";
-const FLAG_LINES: &str = "--lines";
-const FLAG_AGENT: &str = "--agent";
-const FLAG_WORKTREE: &str = "--worktree";
-const TERMINAL_ID: &str = "terminal id";
-const CODE_USAGE: &str = "Usage: krad-ade-agents code <diagnostics|definition|references|hover|rename> FILE[:LINE:COLUMN] [NEW_NAME]";
-
-const NO_AGENTS: &str = "No agents";
-const NO_MESSAGES: &str = "No new messages";
-const TIMED_OUT: &str = "Timed out";
-const OUTSIDE_TERMINAL: &str = "Run this inside a Krad ADE terminal.";
-const SELF_MARKER: &str = "  (you)";
-const AGENT_MARKER: &str = "  agent: ";
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Verb {
-    List,
-    Send,
-    Check,
-    Wait,
-    Read,
-    Spawn,
-    Help,
-    Hook,
-    Ask,
-    StatusLine,
-    Code,
-    Tools,
-    Tool,
-    Mcp,
-}
-
-impl Verb {
-    const USAGE_ORDER: [Self; 10] = [
-        Self::List,
-        Self::Send,
-        Self::Check,
-        Self::Wait,
-        Self::Read,
-        Self::Spawn,
-        Self::Code,
-        Self::Tools,
-        Self::Tool,
-        Self::Help,
-    ];
-}
-
-impl std::fmt::Display for Verb {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(match self {
-            Self::List => "list",
-            Self::Send => "send",
-            Self::Check => "check",
-            Self::Wait => "wait",
-            Self::Read => "read",
-            Self::Spawn => "spawn",
-            Self::Help => "help",
-            Self::Hook => "hook",
-            Self::Ask => "ask",
-            Self::StatusLine => "statusline",
-            Self::Code => "code",
-            Self::Tools => "tools",
-            Self::Tool => "tool",
-            Self::Mcp => "mcp",
-        })
-    }
-}
-
-impl FromStr for Verb {
-    type Err = CliError;
-
-    fn from_str(text: &str) -> Result<Self, Self::Err> {
-        Ok(match text {
-            "list" => Self::List,
-            "send" => Self::Send,
-            "check" => Self::Check,
-            "wait" => Self::Wait,
-            "read" => Self::Read,
-            "spawn" => Self::Spawn,
-            "help" => Self::Help,
-            "hook" => Self::Hook,
-            "ask" => Self::Ask,
-            "statusline" => Self::StatusLine,
-            "code" => Self::Code,
-            "tools" => Self::Tools,
-            "tool" => Self::Tool,
-            "mcp" => Self::Mcp,
-            _ => return Err(CliError::UnknownCommand(text.to_owned())),
-        })
-    }
-}
-
-fn usage() -> String {
-    let verbs = Verb::USAGE_ORDER
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join("|");
-    format!("Usage: krad-ade-agents <{verbs}> [args] [--json]")
-}
-
-#[derive(Debug, PartialEq, Eq, thiserror::Error)]
-enum CliError {
-    #[error("send needs a terminal id and a message")]
-    SendNeedsTarget,
-    #[error("send needs a message")]
-    SendNeedsMessage,
-    #[error("spawn needs a task")]
-    SpawnNeedsTask,
-    #[error("spawn needs --agent <harness or ACP agent id>")]
-    SpawnNeedsAgent,
-    #[error("{UNKNOWN_AGENT}: `{0}`")]
-    UnknownAgent(String),
-    #[error("missing terminal id")]
-    MissingTerminal,
-    #[error("unknown command `{0}`")]
-    UnknownCommand(String),
-    #[error("invalid {what}: `{text}`")]
-    InvalidValue { what: String, text: String },
-    #[error("{0} needs a value")]
-    FlagNeedsValue(String),
-    #[error("{0}")]
-    Code(String),
-}
+const OUTSIDE_TERMINAL: &str = "Run this inside a Krad ADE terminal, or start Krad ADE with \"Let other programs find the agents API\" on in Settings.";
 
 enum Output {
     Stdout(String),
     Stderr(String),
 }
 
-#[derive(Default)]
-struct Options {
-    json: bool,
-    wait: Option<u64>,
-    timeout: Option<u64>,
-    lines: Option<usize>,
-    agent: Option<String>,
-    worktree: Option<String>,
-    positional: Vec<String>,
+#[must_use]
+pub fn run_process(api_file: Option<&ApiFile>) -> i32 {
+    let mut words = std::env::args_os();
+    let invoked = words.next().unwrap_or_default();
+    let args: Vec<String> = words
+        .map(|word| word.to_string_lossy().into_owned())
+        .collect();
+    run_invoked(&invoked, &args, api_file)
 }
 
 #[must_use]
-pub fn run_invoked(invoked: &std::ffi::OsStr, args: &[String]) -> i32 {
+pub fn run_invoked(invoked: &OsStr, args: &[String], api_file: Option<&ApiFile>) -> i32 {
     if krad_host::mux::is_askpass_invocation(invoked) {
         return crate::askpass::run(args.first().map_or("", String::as_str));
     }
-    run_cli(args)
+    run_as(program_name(invoked), args, api_file)
 }
 
 #[must_use]
 pub fn run_cli(args: &[String]) -> i32 {
+    run_as(CLI_PROGRAM, args, None)
+}
+
+fn program_name(invoked: &OsStr) -> &'static str {
+    let stem = Path::new(invoked).file_stem();
+    if stem == Some(OsStr::new(CLI_NAME)) {
+        CLI_NAME
+    } else {
+        CLI_PROGRAM
+    }
+}
+
+fn run_as(program: &str, args: &[String], api_file: Option<&ApiFile>) -> i32 {
     if let Some(code) = crate::host_verbs::run(args) {
         return code;
     }
@@ -187,23 +83,23 @@ pub fn run_cli(args: &[String]) -> i32 {
         return code;
     }
     let Some((verb, rest)) = args.split_first() else {
-        emit(Output::Stdout(guide(CLI_PROGRAM)));
-        return EXIT_OK;
+        emit(Output::Stdout(guide(program)));
+        return Exit::Ok.code();
     };
     if verb == FLAG_VERSION {
         emit(Output::Stdout(krad_host::HOST_CLI_BUILD.to_owned()));
-        return EXIT_OK;
+        return Exit::Ok.code();
     }
     let verb = match verb.parse::<Verb>() {
         Ok(verb) => verb,
         Err(error) => {
-            emit(Output::Stderr(format!("{error}\n{}", usage())));
-            return EXIT_USAGE;
+            emit(Output::Stderr(format!("{error}\n{}", usage(program))));
+            return Exit::Usage.code();
         }
     };
     if matches!(verb, Verb::Hook | Verb::Ask | Verb::StatusLine) {
         let Some((harness, args)) = harness_args(rest) else {
-            return EXIT_OK;
+            return Exit::Ok.code();
         };
         return match verb {
             Verb::Ask => run_ask(harness),
@@ -215,20 +111,20 @@ pub fn run_cli(args: &[String]) -> i32 {
         return crate::mcp::run_mcp();
     }
     if verb == Verb::Help && rest.first().map(String::as_str) == Some(LEAD_TOPIC) {
-        emit(Output::Stdout(orchestrator_guide(CLI_PROGRAM)));
-        return EXIT_OK;
+        emit(Output::Stdout(orchestrator_guide(program)));
+        return Exit::Ok.code();
     }
     let parsed =
-        parse_options(rest).and_then(|options| Ok((build_request(verb, &options)?, options.json)));
+        parse_options(rest).and_then(|options| Ok((build_request(verb, &options)?, options)));
     match parsed {
-        Ok((Some(request), json)) => execute(&request, json),
+        Ok((Some(request), options)) => execute(verb, &request, &options, api_file),
         Ok((None, _)) => {
-            emit(Output::Stdout(guide(CLI_PROGRAM)));
-            EXIT_OK
+            emit(Output::Stdout(guide(program)));
+            Exit::Ok.code()
         }
         Err(error) => {
-            emit(Output::Stderr(format!("{error}\n{}", usage())));
-            EXIT_USAGE
+            emit(Output::Stderr(format!("{error}\n{}", usage(program))));
+            Exit::Usage.code()
         }
     }
 }
@@ -238,222 +134,68 @@ fn harness_args(rest: &[String]) -> Option<(AgentPreset, &[String])> {
     Some((harness.parse().ok()?, args))
 }
 
-fn execute(request: &Request, json: bool) -> i32 {
-    let Some(BusEnv {
-        endpoint,
-        token,
-        terminal,
-    }) = bus_env()
-    else {
+fn execute(verb: Verb, request: &Request, options: &Options, api_file: Option<&ApiFile>) -> i32 {
+    let json = options.json;
+    let Some(bus) = bus_env(api_file) else {
         emit(Output::Stderr(OUTSIDE_TERMINAL.to_owned()));
-        return EXIT_BUS;
+        return Exit::Bus.code();
     };
-    let from = match terminal.parse::<Caller>() {
+    let from = match bus.terminal.parse::<Caller>() {
         Ok(from) => from,
         Err(error) => {
             emit(Output::Stderr(format!("{ENV_TERMINAL}: {error}")));
-            return EXIT_BUS;
+            return Exit::Bus.code();
         }
     };
-    match call(&endpoint, &BusToken::from(token), &from, request.clone()) {
-        Ok(response) => report(request, &response, json),
+    if let Request::SubscribeAgents(subscription) = request {
+        return watch::run(&bus, &from, subscription.clone(), json);
+    }
+    if verb == Verb::Api && api_action(options) == Ok(ApiAction::Info) {
+        return api_info::run(&bus, &from, options.token, json);
+    }
+    match call(&bus.endpoint, &bus.token, &from, request.clone()) {
+        Ok(response) => {
+            let (output, exit) = report(verb, request, &response, json);
+            emit(output);
+            exit.code()
+        }
         Err(error) => {
             emit(Output::Stderr(error.to_string()));
-            EXIT_BUS
+            Exit::Bus.code()
         }
     }
 }
 
-fn report(request: &Request, response: &Response, json: bool) -> i32 {
-    let failed = match response {
-        Response::Error(_) => true,
-        Response::ExtensionTool(answer) => answer.outcome == ExtensionToolOutcome::Failed,
-        _ => false,
-    };
+fn exit_of(response: &Response) -> Exit {
+    match response {
+        Response::Error(error) => error.code.into(),
+        Response::TimedOut => Exit::TimedOut,
+        Response::ExtensionTool(answer) if answer.outcome == ExtensionToolOutcome::Failed => {
+            Exit::Failed
+        }
+        _ => Exit::Ok,
+    }
+}
+
+fn report(verb: Verb, request: &Request, response: &Response, json: bool) -> (Output, Exit) {
+    let exit = exit_of(response);
     let output = if json {
-        match serde_json::to_string(response) {
+        let line = match response {
+            Response::Agents(agents) if verb == Verb::Status => {
+                serde_json::to_string(&AgentStates::sort(agents))
+            }
+            _ => serde_json::to_string(response),
+        };
+        match line {
             Ok(line) => Output::Stdout(line),
             Err(error) => Output::Stderr(error.to_string()),
         }
-    } else if let Response::Error(message) = response {
-        Output::Stderr(message.clone())
+    } else if let Response::Error(error) = response {
+        Output::Stderr(error.message.clone())
     } else {
-        Output::Stdout(render(request, response))
+        Output::Stdout(render(verb, request, response))
     };
-    emit(output);
-    if failed {
-        EXIT_BUS
-    } else {
-        EXIT_OK
-    }
-}
-
-fn build_request(verb: Verb, options: &Options) -> Result<Option<Request>, CliError> {
-    let request = match verb {
-        Verb::Help | Verb::Hook | Verb::Ask | Verb::StatusLine | Verb::Mcp => return Ok(None),
-        Verb::Code => {
-            let (tool, rest) = options
-                .positional
-                .split_first()
-                .ok_or_else(|| CliError::Code(CODE_USAGE.to_owned()))?;
-            let (target, name) = rest
-                .split_first()
-                .ok_or_else(|| CliError::Code(CODE_USAGE.to_owned()))?;
-            let tool = tool
-                .parse::<CodeTool>()
-                .map_err(|error| CliError::Code(error.to_string()))?;
-            let new_name = (!name.is_empty()).then(|| name.join(" "));
-            Request::Code(
-                CodeRequest::new(tool, target, new_name)
-                    .map_err(|error| CliError::Code(error.to_string()))?,
-            )
-        }
-        Verb::Tools => Request::Tools,
-        Verb::Tool => {
-            let (name, arguments) =
-                tool_call_request(&options.positional).map_err(CliError::Code)?;
-            Request::ExtensionTool { name, arguments }
-        }
-        Verb::List => Request::List,
-        Verb::Send => {
-            let (to, words) = options
-                .positional
-                .split_first()
-                .ok_or(CliError::SendNeedsTarget)?;
-            let body = words.join(" ");
-            if body.is_empty() {
-                return Err(CliError::SendNeedsMessage);
-            }
-            Request::Send {
-                to: parse_value(TERMINAL_ID, to)?,
-                body,
-            }
-        }
-        Verb::Check => Request::Check {
-            wait_secs: options.wait.map(|secs| secs.min(MAX_WAIT.as_secs())),
-        },
-        Verb::Wait => Request::Wait {
-            target: target(options)?,
-            timeout_secs: options
-                .timeout
-                .unwrap_or(DEFAULT_WAIT_TIMEOUT.as_secs())
-                .min(MAX_WAIT.as_secs()),
-        },
-        Verb::Read => Request::Read {
-            target: target(options)?,
-            lines: options.lines.unwrap_or(DEFAULT_READ_LINES),
-        },
-        Verb::Spawn => {
-            let task = options.positional.join(" ");
-            if task.trim().is_empty() {
-                return Err(CliError::SpawnNeedsTask);
-            }
-            Request::Spawn {
-                agent: spawned_agent(options.agent.as_deref())?,
-                worktree: options.worktree.clone(),
-                task,
-            }
-        }
-    };
-    Ok(Some(request))
-}
-
-fn spawned_agent(name: Option<&str>) -> Result<AgentPreset, CliError> {
-    let name = name.ok_or(CliError::SpawnNeedsAgent)?;
-    preset_by_bus_name(name)
-        .or_else(|| preset_by_display_name(name))
-        .or_else(|| name.parse().ok().map(AgentPreset::Acp))
-        .filter(|preset| preset.is_agent())
-        .ok_or_else(|| CliError::UnknownAgent(name.to_owned()))
-}
-
-fn target(options: &Options) -> Result<u64, CliError> {
-    let id = options
-        .positional
-        .first()
-        .ok_or(CliError::MissingTerminal)?;
-    parse_value(TERMINAL_ID, id)
-}
-
-fn parse_options(args: &[String]) -> Result<Options, CliError> {
-    let mut options = Options::default();
-    let mut words = args.iter();
-    while let Some(word) = words.next() {
-        let mut value = || {
-            words
-                .next()
-                .ok_or_else(|| CliError::FlagNeedsValue(word.clone()))
-        };
-        match word.as_str() {
-            FLAG_JSON => options.json = true,
-            FLAG_AGENT => options.agent = Some(value()?.clone()),
-            FLAG_WORKTREE => options.worktree = Some(value()?.clone()),
-            FLAG_WAIT => options.wait = Some(parse_value(word, value()?)?),
-            FLAG_TIMEOUT => options.timeout = Some(parse_value(word, value()?)?),
-            FLAG_LINES => options.lines = Some(parse_value(word, value()?)?),
-            _ => options.positional.push(word.clone()),
-        }
-    }
-    Ok(options)
-}
-
-fn parse_value<T: FromStr>(what: &str, text: &str) -> Result<T, CliError> {
-    text.parse().map_err(|_| CliError::InvalidValue {
-        what: what.to_owned(),
-        text: text.to_owned(),
-    })
-}
-
-fn render(request: &Request, response: &Response) -> String {
-    match response {
-        Response::Agents(agents) if agents.is_empty() => NO_AGENTS.to_owned(),
-        Response::Agents(agents) => lines(agents.iter().map(render_agent)),
-        Response::Sent { id } => match request {
-            Request::Send { to, .. } => format!("Sent message {id} to terminal {to}"),
-            _ => format!("Sent message {id}"),
-        },
-        Response::Messages(messages) if messages.is_empty() => NO_MESSAGES.to_owned(),
-        Response::Messages(messages) => lines(messages.iter().map(render_message)),
-        Response::Settled { target, state } => format!("Terminal {target} is {state}"),
-        Response::TimedOut => TIMED_OUT.to_owned(),
-        Response::Screen(screen) => screen.clone(),
-        Response::Noted | Response::Decided(_) | Response::Answered(_) => String::new(),
-        Response::Spawned { terminal } => {
-            format!("Started worker {terminal} in a session of its own")
-        }
-        Response::Submitted { terminal } => format!("Typed the message into terminal {terminal}"),
-        Response::Code(answer) => answer.render(),
-        Response::Tools(catalog) => render_catalog(catalog),
-        Response::ExtensionTool(answer) => answer.text.clone(),
-        Response::Error(message) => message.clone(),
-    }
-}
-
-fn render_agent(agent: &AgentInfo) -> String {
-    let group = agent
-        .group
-        .as_ref()
-        .map_or_default(|group| format!("  group: {group}"));
-    let you = if agent.is_self { SELF_MARKER } else { "" };
-    let harness = agent
-        .harness
-        .and_then(bus_name)
-        .map_or_default(|name| format!("{AGENT_MARKER}{name}"));
-    format!(
-        "{}  {}  [{}]{harness}{group}{you}",
-        agent.terminal, agent.title, agent.state
-    )
-}
-
-fn render_message(message: &Message) -> String {
-    format!(
-        "#{} from {} ({}): {}",
-        message.id, message.from, message.from_title, message.body
-    )
-}
-
-fn lines(rendered: impl Iterator<Item = String>) -> String {
-    rendered.collect::<Vec<_>>().join("\n")
+    (output, exit)
 }
 
 #[allow(clippy::print_stdout, clippy::print_stderr)]
@@ -465,81 +207,4 @@ fn emit(output: Output) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn spawn_needs_an_agent_and_a_task() -> Result<(), CliError> {
-        let mut options = parse_options(&["--agent", "claude"].map(str::to_owned))?;
-        assert_eq!(
-            build_request(Verb::Spawn, &options),
-            Err(CliError::SpawnNeedsTask)
-        );
-        options.positional = vec!["fix".to_owned(), "it".to_owned()];
-        assert_eq!(
-            build_request(Verb::Spawn, &options)?,
-            Some(Request::Spawn {
-                agent: AgentPreset::ClaudeCode,
-                worktree: None,
-                task: "fix it".to_owned(),
-            })
-        );
-        let acp = |id: &str| {
-            AgentPreset::Acp(id.parse().unwrap_or_else(|_| unreachable!("{id} is an id")))
-        };
-        for (name, agent) in [
-            ("codex", AgentPreset::Codex),
-            ("Claude Code", AgentPreset::ClaudeCode),
-            ("opencode", AgentPreset::Opencode),
-            ("acp:opencode", acp("opencode")),
-            ("gemini", acp("gemini")),
-            ("codex-acp", acp("codex-acp")),
-            ("Claude Code (ACP)", acp("claude-code-acp")),
-        ] {
-            assert_eq!(spawned_agent(Some(name)), Ok(agent));
-        }
-        for name in ["Shell", "Gateway", "My Agent", "acp:Bad Id"] {
-            assert_eq!(
-                spawned_agent(Some(name)),
-                Err(CliError::UnknownAgent(name.to_owned()))
-            );
-        }
-        assert_eq!(
-            usage(),
-            "Usage: krad-ade-agents <list|send|check|wait|read|spawn|code|tools|tool|help> [args] [--json]"
-        );
-        assert_eq!("send".parse::<Verb>(), Ok(Verb::Send));
-        Ok(())
-    }
-
-    #[test]
-    fn spawn_starts_an_acp_agent_by_its_id_and_list_names_it() -> Result<(), CliError> {
-        let options = parse_options(&["--agent", "gemini", "write", "tests"].map(str::to_owned))?;
-        let gemini = AgentPreset::Acp(
-            "gemini"
-                .parse()
-                .unwrap_or_else(|_| unreachable!("a valid id")),
-        );
-        assert_eq!(
-            build_request(Verb::Spawn, &options)?,
-            Some(Request::Spawn {
-                agent: gemini,
-                worktree: None,
-                task: "write tests".to_owned(),
-            })
-        );
-        let listed = AgentInfo {
-            terminal: 5,
-            title: "Gemini (ACP) · 5".to_owned(),
-            group: None,
-            state: crate::protocol::TerminalState::Exited,
-            harness: Some(gemini),
-            is_self: false,
-        };
-        assert_eq!(
-            render_agent(&listed),
-            "5  Gemini (ACP) · 5  [exited]  agent: acp:gemini"
-        );
-        Ok(())
-    }
-}
+mod tests;

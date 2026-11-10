@@ -3,8 +3,8 @@ use krad_extension_api::protocol::{
     InputBoxParams, Log, LogParams, Notification, OpenFile, OpenFileParams, OpenTerminal,
     OpenTerminalParams, OpenView, OpenViewParams, PatchView, PatchViewParams, Pick, PickParams,
     Progress, ProgressParams, Request, RunCommand, RunCommandParams, SendTerminal,
-    SendTerminalParams, SetSecret, SetSecretParams, SetTitlebarItem, SetTitlebarItemParams, Toast,
-    ToastParams, ViewRef, WorkspaceContext,
+    SendTerminalParams, SetSecret, SetSecretParams, SetTitlebarItem, SetTitlebarItemParams,
+    SubscribeEvents, SubscribeEventsParams, Toast, ToastParams, ViewRef, WorkspaceContext,
 };
 use serde_json::Value;
 
@@ -22,6 +22,7 @@ pub enum AppCall {
     RunCommand(RunCommandParams),
     OpenView(OpenViewParams),
     CloseView(ViewRef),
+    SubscribeEvents(SubscribeEventsParams),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,6 +58,9 @@ impl AppCall {
             RunCommand::METHOD => request_params::<RunCommand>(params).map(Self::RunCommand),
             OpenView::METHOD => request_params::<OpenView>(params).map(Self::OpenView),
             CloseView::METHOD => request_params::<CloseView>(params).map(Self::CloseView),
+            SubscribeEvents::METHOD => {
+                request_params::<SubscribeEvents>(params).map(Self::SubscribeEvents)
+            }
             _ => return None,
         };
         Some(call)
@@ -103,6 +107,17 @@ mod tests {
             AppCall::parse("workspace/context", Value::Null),
             Some(Ok(AppCall::WorkspaceContext))
         ));
+    }
+
+    #[test]
+    fn an_event_subscription_reads_into_its_call() {
+        let call = AppCall::parse("events/subscribe", json!({"kinds": ["agent_waiting"]}));
+        let Some(Ok(AppCall::SubscribeEvents(params))) = call else {
+            unreachable!("a subscription call");
+        };
+        assert!(params
+            .kinds
+            .contains(&krad_extension_api::protocol::AppEventKind::AgentWaiting));
     }
 
     #[test]

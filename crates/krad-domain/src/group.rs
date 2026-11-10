@@ -1,20 +1,31 @@
+mod closing;
+mod diff_comment;
 mod extension_tab;
 mod file_tab;
+mod hunk_fingerprint;
 mod lead;
 mod new_session;
 mod panes;
 mod session;
+mod session_attention;
+mod session_changes;
 mod session_chat;
 mod session_look;
+mod session_memory;
 mod tab_closing;
 mod worker;
+pub use closing::*;
+pub use diff_comment::*;
 pub use extension_tab::*;
 pub use file_tab::*;
+pub use hunk_fingerprint::*;
 pub use lead::*;
 pub use new_session::*;
 pub use panes::*;
 pub use session::*;
+pub use session_changes::*;
 pub use session_look::*;
+pub use session_memory::*;
 pub use tab_closing::*;
 pub use worker::*;
 
@@ -77,6 +88,8 @@ impl EnvironmentData {
         }
         let removed = self.groups.remove(index);
         self.sessions.retain(|session| session.group != Some(id));
+        self.retired_spend.forget(id);
+        self.variant_runs.forget_group(id);
         if self
             .active_session
             .is_some_and(|active| self.session(active).is_none())

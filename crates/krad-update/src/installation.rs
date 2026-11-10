@@ -1,32 +1,21 @@
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(target_os = "linux")]
 mod linux;
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[cfg(target_os = "macos")]
 mod macos;
-#[cfg(any(
-    all(target_os = "macos", target_arch = "aarch64"),
-    all(target_os = "linux", target_arch = "x86_64")
-))]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod unix;
-#[cfg(not(any(
-    all(target_os = "macos", target_arch = "aarch64"),
-    all(target_os = "linux", target_arch = "x86_64"),
-    all(target_os = "windows", target_arch = "x86_64")
-)))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 mod unsupported;
-#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+#[cfg(target_os = "windows")]
 mod windows;
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(target_os = "linux")]
 use linux as platform;
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[cfg(target_os = "macos")]
 use macos as platform;
-#[cfg(not(any(
-    all(target_os = "macos", target_arch = "aarch64"),
-    all(target_os = "linux", target_arch = "x86_64"),
-    all(target_os = "windows", target_arch = "x86_64")
-)))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 use unsupported as platform;
-#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+#[cfg(target_os = "windows")]
 use windows as platform;
 
 use std::fs::{self, File};
@@ -76,8 +65,11 @@ impl Installation {
     ///
     /// [`UpdateError::Io`] when the running executable can't be located.
     pub fn detect() -> Result<Option<Self>, UpdateError> {
+        let Some(target) = ReleaseTarget::running() else {
+            return Ok(None);
+        };
         let exe = std::env::current_exe()?;
-        let installed = platform::locate(&exe).filter(|installation| {
+        let installed = platform::locate(&exe, target).filter(|installation| {
             platform::marker_dir(installation)
                 .join(MARKER_FILE)
                 .is_file()
@@ -135,12 +127,14 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(target_os = "macos")]
     #[test]
     fn finds_the_bundle_around_the_executable() -> TestResult {
         let exe = Path::new("/Applications/Krad ADE.app/Contents/MacOS/krad-ade");
-        let installation = platform::locate(exe).ok_or("no bundle around the executable")?;
+        let installation = platform::locate(exe, ReleaseTarget::MacosX86_64)
+            .ok_or("no bundle around the executable")?;
         assert_eq!(installation.root, Path::new("/Applications/Krad ADE.app"));
+        assert_eq!(installation.target, ReleaseTarget::MacosX86_64);
         assert_eq!(
             installation.staging,
             Path::new("/Applications/.krad-ade-update")
@@ -152,13 +146,32 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(target_os = "linux")]
     #[test]
-    fn a_bare_executable_is_not_a_bundle() {
-        assert!(platform::locate(Path::new("/Users/me/dev/target/release/krad-ade")).is_none());
+    fn installs_next_to_the_executable_for_its_architecture() -> TestResult {
+        let exe = Path::new("/opt/krad-ade/krad-ade");
+        let installation = platform::locate(exe, ReleaseTarget::LinuxAarch64)
+            .ok_or("no installation around the executable")?;
+        assert_eq!(installation.root, Path::new("/opt/krad-ade"));
+        assert_eq!(
+            installation.staging,
+            Path::new("/opt/krad-ade/.krad-ade-update")
+        );
+        assert_eq!(installation.target, ReleaseTarget::LinuxAarch64);
+        Ok(())
     }
 
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_bare_executable_is_not_a_bundle() {
+        assert!(platform::locate(
+            Path::new("/Users/me/dev/target/release/krad-ade"),
+            ReleaseTarget::MacosAarch64
+        )
+        .is_none());
+    }
+
+    #[cfg(target_os = "macos")]
     #[test]
     fn swaps_the_bundle_and_keeps_the_old_one_in_staging() -> TestResult {
         let root = std::env::temp_dir().join(format!("krad-update-swap-{}", std::process::id()));
@@ -180,10 +193,7 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(
-        all(target_os = "macos", target_arch = "aarch64"),
-        all(target_os = "linux", target_arch = "x86_64")
-    ))]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[test]
     fn unpacks_the_folder_inside_a_tarball() -> TestResult {
         let root = std::env::temp_dir().join(format!("krad-update-untar-{}", std::process::id()));

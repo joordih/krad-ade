@@ -3,13 +3,16 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::mpsc::channel;
 
+use super::limits::{LimitsRead, ReadParams, RATE_LIMITS_READ};
 use super::rpc::{AppServer, CodexError};
-use crate::control::{Catalog, CommandOffer, ModelOffer};
+use crate::control::{Catalog, CommandOffer, ModelOffer, ModelSource};
 use crate::process::Runner;
+use krad_domain::{humanize_model_id, split_context, Effort};
 
 const MODEL_LIST: &str = "model/list";
 const SKILLS_LIST: &str = "skills/list";
 const ACCOUNT_READ: &str = "account/read";
+const OPENAI: &str = "OpenAI";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,6 +32,7 @@ struct ModelInfo {
     is_default: bool,
     #[serde(default)]
     supported_reasoning_efforts: Vec<EffortOption>,
+    default_reasoning_effort: Option<String>,
 }
 
 impl From<&ModelInfo> for ModelOffer {
@@ -38,15 +42,24 @@ impl From<&ModelInfo> for ModelOffer {
             name: model
                 .display_name
                 .clone()
+                .filter(|name| !name.trim().is_empty())
+                .or_else(|| humanize_model_id(&model.id))
                 .unwrap_or_else(|| model.id.clone()),
             description: model.description.clone(),
-            efforts: model
-                .supported_reasoning_efforts
-                .iter()
-                .filter_map(|option| option.reasoning_effort.parse().ok())
-                .collect(),
-            thinking_off: false,
-            source: None,
+            efforts: Effort::ordered(
+                model
+                    .supported_reasoning_efforts
+                    .iter()
+                    .filter_map(|option| option.reasoning_effort.parse().ok()),
+            ),
+            default_effort: model
+                .default_reasoning_effort
+                .as_deref()
+                .and_then(|level| level.parse().ok()),
+            source: Some(ModelSource::Provider(OPENAI.to_owned())),
+            context: split_context(&model.id).1,
+            recommended: model.is_default,
+            ..Self::default()
         }
     }
 }
@@ -99,6 +112,7 @@ struct SkillsParams<'a> {
 pub(crate) struct Listing {
     pub(crate) catalog: Catalog,
     pub(crate) skills: HashMap<String, String>,
+    pub(crate) limits: Option<LimitsRead>,
 }
 
 fn offers(models: &[ModelInfo]) -> Vec<ModelOffer> {
@@ -129,6 +143,9 @@ pub(crate) fn listing(server: &AppServer, directory: &str) -> Listing {
         .ok()
         .and_then(|read| read.account)
         .and_then(|account| account.plan_type);
+    let limits = server
+        .call::<_, LimitsRead>(RATE_LIMITS_READ, &ReadParams::default())
+        .ok();
     Listing {
         catalog: Catalog {
             models,
@@ -145,6 +162,7 @@ pub(crate) fn listing(server: &AppServer, directory: &str) -> Listing {
             .into_iter()
             .map(|skill| (skill.name, skill.path))
             .collect(),
+        limits,
     }
 }
 
@@ -160,7 +178,6 @@ pub fn codex_models(runner: &Runner, cwd: &Path) -> Result<Vec<ModelOffer>, Code
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_domain::Effort;
     use serde_json::json;
 
     #[test]
@@ -180,7 +197,39 @@ mod tests {
         assert_eq!(names, ["GPT-6.1-Sol", "GPT-6.1-Luna"]);
         assert_eq!(
             offered[0].efforts,
-            [Effort::Low, Effort::Medium, Effort::High, Effort::ExtraHigh]
+            [
+                Effort::Minimal,
+                Effort::Low,
+                Effort::Medium,
+                Effort::High,
+                Effort::ExtraHigh
+            ]
         );
+        assert!(offered[0].recommended);
+        assert!(!offered[1].recommended);
+    }
+
+    #[test]
+    fn levels_come_in_order_with_ultra_and_the_default_level() {
+        let models: Vec<ModelInfo> = serde_json::from_value(json!([
+            {"id": "gpt-6.1-sol", "displayName": "GPT-6.1-Sol", "isDefault": true,
+             "defaultReasoningEffort": "low",
+             "supportedReasoningEfforts": [{"reasoningEffort": "ultra"}, {"reasoningEffort": "low"},
+                                           {"reasoningEffort": "max"}, {"reasoningEffort": "none"}]},
+            {"id": "gpt-7-nova"}
+        ]))
+        .unwrap_or_else(|_| unreachable!("the fixture is valid"));
+        let offered = offers(&models);
+        assert_eq!(
+            offered[0].efforts,
+            [Effort::Low, Effort::Max, Effort::Ultra]
+        );
+        assert_eq!(offered[0].default_effort, Some(Effort::Low));
+        assert_eq!(
+            offered[0].source,
+            Some(ModelSource::Provider(OPENAI.to_owned()))
+        );
+        assert_eq!(offered[1].name, "GPT-7 Nova");
+        assert_eq!(offered[1].efforts, []);
     }
 }

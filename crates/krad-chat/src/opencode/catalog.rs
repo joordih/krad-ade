@@ -5,6 +5,7 @@ use std::thread;
 use super::events::model_selector;
 use super::server::{OpencodeError, OpencodeServer};
 use crate::control::{Catalog, CommandOffer, ModelOffer, ModelSource};
+use krad_domain::{humanize_model_id, split_context, Effort};
 
 const MODELS_PATH: &str = "/api/model";
 const DEFAULT_MODEL_PATH: &str = "/api/model/default";
@@ -116,15 +117,21 @@ impl From<&ModelInfo> for ModelOffer {
     fn from(model: &ModelInfo) -> Self {
         Self {
             value: model.selector(),
-            name: model.name.clone().unwrap_or_else(|| model.id.clone()),
+            name: model
+                .name
+                .clone()
+                .filter(|name| !name.trim().is_empty())
+                .or_else(|| humanize_model_id(&model.id))
+                .unwrap_or_else(|| model.id.clone()),
             description: Some(model.provider_id.clone()),
-            efforts: model
-                .variants
-                .iter()
-                .filter_map(|variant| variant.id.parse().ok())
-                .collect(),
-            thinking_off: false,
-            source: None,
+            efforts: Effort::ordered(
+                model
+                    .variants
+                    .iter()
+                    .filter_map(|variant| variant.id.parse().ok()),
+            ),
+            context: split_context(&model.id).1,
+            ..Self::default()
         }
     }
 }
@@ -178,6 +185,7 @@ fn offers(
         .map(|model| model.offer(providers))
         .collect();
     if let Some(at) = first.and_then(|first| offers.iter().position(|offer| offer.value == first)) {
+        offers[at].recommended = true;
         offers[..=at].rotate_right(1);
     }
     offers
@@ -286,7 +294,12 @@ mod tests {
             values,
             ["opencode/deepseek-v4.1-flash-free", "opencode/big-pickle"]
         );
-        assert_eq!(offered[0].efforts, [Effort::Low, Effort::High, Effort::Max]);
+        assert_eq!(
+            offered[0].efforts,
+            [Effort::Minimal, Effort::Low, Effort::High, Effort::Max]
+        );
+        assert!(offered[0].recommended);
+        assert!(!offered[1].recommended);
         assert_eq!(offered[1].name, "Big Pickle");
     }
 

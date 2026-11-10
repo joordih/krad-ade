@@ -118,7 +118,7 @@ impl EnvironmentShell {
                     id: None,
                     label: DEFAULT_MODEL_LABEL.to_owned(),
                     current: chosen && model.is_none(),
-                    section: None,
+                    ..ModelChoice::default()
                 });
             }
             choices.into_iter().map(move |choice| (harness, choice))

@@ -3,8 +3,8 @@ use gpui_kit::{
     StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::FileOpening;
-use krad_repo::{ChangeKind, FileChange};
-use std::path::PathBuf;
+use krad_repo::{folder_changes, ChangeKind, FileChange};
+use std::path::{Path, PathBuf};
 
 use super::super::super::context_menu::{MenuAction, MenuEntry};
 use super::super::super::discard::Discard;
@@ -17,6 +17,8 @@ use crate::theme::{palette, ICON_SM, ICON_XS, RADIUS_XS};
 pub(super) const ROW_GROUP: &str = "side-change-row-group";
 pub(super) const SECTION_GROUP: &str = "side-change-section-group";
 const BTN_DISCARD_PREFIX: &str = "side-change-discard";
+const BTN_DISCARD_FOLDER_PREFIX: &str = "side-change-discard-folder";
+const DISCARD_FOLDER_LABEL: &str = "Discard folder changes";
 const BTN_STAGE_PREFIX: &str = "side-change-stage";
 const BTN_STAGE_ALL_PREFIX: &str = "side-change-stage-all";
 const STAGE_LABEL: &str = "Stage changes";
@@ -32,6 +34,7 @@ const COPY_PATH_LABEL: &str = "Copy path";
 pub(in crate::environment_shell) enum ChangesAction {
     Open(PathBuf),
     Discard { repo: PathBuf, change: FileChange },
+    DiscardFolder(PathBuf),
     Copy(String),
 }
 
@@ -68,7 +71,64 @@ pub(super) fn change_menu(repo: &std::path::Path, change: &FileChange) -> Vec<Me
     ]
 }
 
+pub(super) fn folder_menu(folder: &Path) -> Vec<MenuEntry> {
+    vec![
+        MenuEntry::item(
+            COPY_PATH_LABEL,
+            Some(IconName::Copy),
+            MenuAction::Changes(ChangesAction::Copy(folder.display().to_string())),
+        ),
+        MenuEntry::Separator,
+        MenuEntry::destructive(
+            DISCARD_FOLDER_LABEL,
+            IconName::Undo,
+            MenuAction::Changes(ChangesAction::DiscardFolder(folder.to_path_buf())),
+        ),
+    ]
+}
+
 impl EnvironmentShell {
+    fn folder_discard(&self, folder: &Path) -> Option<Discard> {
+        let git = self.group_git()?;
+        let files = folder_changes(&git.status.changes, folder).len();
+        (files > 0).then(|| Discard::Folder {
+            repo: git.repo_root.clone(),
+            folder: folder.to_path_buf(),
+            files,
+        })
+    }
+
+    fn ask_folder_discard(&mut self, folder: &Path, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(discard) = self.folder_discard(folder) {
+            self.ask_discard(discard, window, cx);
+        }
+    }
+
+    pub(super) fn discard_folder_button(folder: &Path, cx: &mut Context<Self>) -> impl IntoElement {
+        let pal = palette(cx);
+        let discarded = folder.to_path_buf();
+        div()
+            .id((
+                BTN_DISCARD_FOLDER_PREFIX,
+                row_key(ChangeSide::Unstaged, folder),
+            ))
+            .flex_none()
+            .flex()
+            .items_center()
+            .justify_center()
+            .size(px(ICON_SM))
+            .rounded(px(RADIUS_XS))
+            .invisible()
+            .group_hover(ROW_GROUP, Styled::visible)
+            .hover(|style| style.bg(pal.bg_selected))
+            .tooltip(|_, cx| tooltip_view(DISCARD_FOLDER_LABEL.into(), cx))
+            .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                cx.stop_propagation();
+                this.ask_folder_discard(&discarded, window, cx);
+            }))
+            .child(icon(IconName::Undo, ICON_XS, pal.text_muted))
+    }
+
     pub(in crate::environment_shell) fn run_changes_action(
         &mut self,
         action: ChangesAction,
@@ -80,6 +140,7 @@ impl EnvironmentShell {
             ChangesAction::Discard { repo, change } => {
                 self.ask_discard(Discard::File { repo, change }, window, cx);
             }
+            ChangesAction::DiscardFolder(folder) => self.ask_folder_discard(&folder, window, cx),
             ChangesAction::Copy(text) => cx.write_to_clipboard(ClipboardItem::new_string(text)),
         }
     }

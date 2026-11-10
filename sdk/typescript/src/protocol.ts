@@ -4,7 +4,7 @@ export type Empty = Record<string, never>;
 export type Placement = "app" | "environment";
 export type Feature =
   | "views" | "commands" | "window" | "terminals" | "files" | "workspace" | "settings" | "secrets"
-  | "tools" | "host_kinds";
+  | "tools" | "host_kinds" | "events";
 
 export type HostInfo =
   | { kind: "local" }
@@ -175,6 +175,38 @@ export type WorkspaceEvent =
   | { kind: "active_file_changed"; path: string | null }
   | { kind: "file_saved"; path: string };
 
+export type AppEventKind =
+  | "agent_started" | "agent_waiting" | "agent_finished" | "worktree_created" | "worktree_removed"
+  | "session_opened" | "session_closed" | "git_changed" | "review_sent" | "ci_failed" | "ci_passed"
+  | "merge_request_opened";
+
+export type ReviewVerdict = "commented" | "replied" | "approved";
+
+export type AppEvent =
+  | { kind: "agent_started"; terminal: string; harness?: string | null }
+  | { kind: "agent_waiting"; terminal: string }
+  | { kind: "agent_finished"; terminal: string }
+  | { kind: "worktree_created"; from: string }
+  | { kind: "worktree_removed" }
+  | { kind: "session_opened"; session: string }
+  | { kind: "session_closed"; session: string }
+  | { kind: "git_changed" }
+  | { kind: "review_sent"; merge_request: number; verdict: ReviewVerdict }
+  | { kind: "ci_failed"; merge_request: number; pipeline: number }
+  | { kind: "ci_passed"; merge_request: number; pipeline: number }
+  | { kind: "merge_request_opened"; merge_request: number };
+
+export interface AppEventParams {
+  version: number;
+  environment: string;
+  group?: string | null;
+  event: AppEvent;
+}
+
+export interface SubscribeEventsParams {
+  kinds: AppEventKind[];
+}
+
 export interface OpenFileParams {
   path: string;
   position?: FilePosition | null;
@@ -251,6 +283,7 @@ export interface AppRequests {
   "settings/get": [Empty, SettingsValues];
   "secret/get": [GetSecretParams, string | null];
   "secret/set": [SetSecretParams, Empty];
+  "events/subscribe": [SubscribeEventsParams, Empty];
 }
 
 export interface ProgramNotifications {
@@ -260,6 +293,7 @@ export interface ProgramNotifications {
   "view/closed": ViewRef;
   "workspace/event": WorkspaceEvent;
   "settings/changed": SettingsValues;
+  "events/event": AppEventParams;
 }
 
 export interface AppNotifications {
@@ -278,9 +312,11 @@ export const PROGRAM_REQUESTS: readonly (keyof ProgramRequests)[] = [
 export const APP_REQUESTS: readonly (keyof AppRequests)[] = [
   "command/run", "view/open", "view/close", "window/confirm", "window/pick", "window/input",
   "terminal/open", "workspace/context", "file/open", "settings/get", "secret/get", "secret/set",
+  "events/subscribe",
 ];
 export const PROGRAM_NOTIFICATIONS: readonly (keyof ProgramNotifications)[] = [
   "initialized", "exit", "view/event", "view/closed", "workspace/event", "settings/changed",
+  "events/event",
 ];
 export const APP_NOTIFICATIONS: readonly (keyof AppNotifications)[] = [
   "window/log", "view/patch", "window/toast", "window/progress", "terminal/send", "titlebar/set",

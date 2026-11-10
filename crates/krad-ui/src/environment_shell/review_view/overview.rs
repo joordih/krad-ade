@@ -1,5 +1,6 @@
 use gpui_kit::component::input::Textarea;
 use gpui_kit::component::text::TextView;
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, ClickEvent, Context, Div, ElementId, FontWeight, InteractiveElement,
     IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
@@ -8,6 +9,7 @@ use krad_domain::review::{MergeRequestState, Pipeline};
 use std::time::Duration;
 
 use super::detail::RequestDetail;
+use super::layout::READING_MAX_W;
 use super::summary::{run_time, stages};
 use super::threads::{comments, ThreadPlace};
 use super::Remote;
@@ -19,7 +21,6 @@ use crate::theme::{
     RADIUS_XL, SPACE_2, SPACE_3, TEXT_2XS, TEXT_BASE, TEXT_SM, TEXT_XS,
 };
 
-const SIDE_W: f32 = 320.0;
 const COLUMN_GAP: f32 = 16.0;
 const CARD_PAD: f32 = 14.0;
 const CARD_GAP: f32 = 10.0;
@@ -49,34 +50,35 @@ const LOADING: &str = "Loading…";
 
 impl EnvironmentShell {
     pub(super) fn overview(&self, detail: &RequestDetail, cx: &mut Context<Self>) -> AnyElement {
-        div()
+        let side_w = self.review.frame.side_w;
+        let main = div()
             .flex()
-            .flex_row()
-            .items_start()
+            .flex_col()
+            .flex_1()
+            .min_w_0()
+            .max_w(px(READING_MAX_W))
             .gap(px(COLUMN_GAP))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .gap(px(COLUMN_GAP))
-                    .child(Self::description(detail, cx))
-                    .child(Self::discussions(detail, cx))
-                    .child(Self::comment_box(detail, cx)),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_none()
-                    .w(px(SIDE_W))
-                    .gap(px(SPACE_3))
-                    .children(Self::merge_card(detail, cx))
-                    .child(self.approvals_card(detail, cx))
-                    .child(Self::pipeline_card(detail, cx)),
-            )
-            .into_any_element()
+            .child(Self::description(detail, cx))
+            .child(Self::discussions(detail, cx))
+            .child(Self::comment_box(detail, cx));
+        let side = div()
+            .flex()
+            .flex_col()
+            .flex_none()
+            .map(|side| match side_w {
+                Some(width) => side.w(px(width)),
+                None => side.w_full(),
+            })
+            .gap(px(SPACE_3))
+            .children(Self::merge_card(detail, cx))
+            .child(self.approvals_card(detail, cx))
+            .child(Self::pipeline_card(detail, cx));
+        let columns = div().flex().gap(px(COLUMN_GAP));
+        match side_w {
+            Some(_) => columns.flex_row().items_start().child(main).child(side),
+            None => columns.flex_col().child(side).child(main),
+        }
+        .into_any_element()
     }
 
     fn description(detail: &RequestDetail, cx: &mut Context<Self>) -> AnyElement {
@@ -335,6 +337,7 @@ impl EnvironmentShell {
                     ),
             )
             .children(rows)
+            .children(Self::failed_job_rows(detail, cx))
             .into_any_element()
     }
 }

@@ -1,0 +1,6 @@
+##[group]Run cargo test --workspace
+env:
+  CARGO_REGISTRY_TOKEN: [REDACTED]
+thread 'durations::parses_minutes' panicked at src/duration.rs:41:9
+test result: FAILED. 41 passed; 1 failed
+##[error]Process completed with exit code 101.

@@ -5,7 +5,8 @@ mod rewind;
 mod subagents;
 
 use krad_domain::{
-    ChatEvent, ContextWindow, Effort, GatewayAccess, PermissionMode, Prompt, RewindPoint,
+    ChatEvent, ContextWindow, Effort, GatewayAccess, ModelId, PermissionMode, Prompt,
+    ReportedUsage, RewindPoint, UsageReport,
 };
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -343,8 +344,16 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
                 return self.emit(ChatEvent::Error(error.to_string()));
             }
         };
-        self.context = reply.usage.context();
+        self.context = reply.usage.total();
         self.emit(ChatEvent::ContextTokens(self.context));
+        (self.sink)(LiveEvent::Spent(UsageReport::Added(ReportedUsage {
+            tokens: reply.usage,
+            cost: None,
+            model: self
+                .model
+                .as_ref()
+                .and_then(|model| ModelId::parse(&model.id)),
+        })));
         let calls: Vec<_> = reply
             .blocks
             .iter()

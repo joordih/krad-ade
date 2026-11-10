@@ -1,3 +1,4 @@
+use crate::protocol::MemoryTools;
 use krad_domain::CodeTools;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -31,6 +32,8 @@ pub struct ExtensionToolInfo {
 pub struct ToolCatalog {
     pub code_tools: CodeTools,
     pub extension_tools: Vec<ExtensionToolInfo>,
+    #[serde(default)]
+    pub memory_tools: MemoryTools,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]

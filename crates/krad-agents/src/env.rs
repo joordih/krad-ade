@@ -1,5 +1,7 @@
-use crate::cli::{DEFAULT_READ_LINES, DEFAULT_WAIT_TIMEOUT};
+use crate::cli::{exit_codes_help, DEFAULT_READ_LINES, DEFAULT_WAIT_TIMEOUT};
+use crate::discovery::ApiFile;
 use crate::handle::Caller;
+use crate::protocol::{BusToken, API_VERSION};
 use crate::server::Endpoint;
 use krad_domain::AgentPreset;
 use std::ffi::OsString;
@@ -16,14 +18,35 @@ const LEAD_READ_LINES: usize = 80;
 const PROGRAM_SEPARATOR: &str = "|";
 const ACP_AGENT_CHOICE: &str = "acp-agent-id";
 
-pub(crate) struct BusEnv {
-    pub(crate) endpoint: String,
-    pub(crate) token: String,
-    pub(crate) terminal: String,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum BusSource {
+    Environment,
+    ApiFile { path: std::path::PathBuf, pid: u32 },
 }
 
-pub(crate) fn bus_env() -> Option<BusEnv> {
-    bus_env_from(|name| std::env::var_os(name))
+#[derive(Debug)]
+pub(crate) struct BusEnv {
+    pub(crate) endpoint: String,
+    pub(crate) token: BusToken,
+    pub(crate) terminal: String,
+    pub(crate) source: BusSource,
+}
+
+pub(crate) fn bus_env(api_file: Option<&ApiFile>) -> Option<BusEnv> {
+    bus_env_from(|name| std::env::var_os(name)).or_else(|| api_file.and_then(discovered_env))
+}
+
+fn discovered_env(file: &ApiFile) -> Option<BusEnv> {
+    let found = file.read().ok()??;
+    Some(BusEnv {
+        endpoint: found.endpoint.to_string(),
+        token: found.token,
+        terminal: Caller::Client.to_string(),
+        source: BusSource::ApiFile {
+            path: file.path.clone(),
+            pid: found.pid,
+        },
+    })
 }
 
 fn bus_env_from(var: impl Fn(&str) -> Option<OsString>) -> Option<BusEnv> {
@@ -38,8 +61,9 @@ fn bus_env_from(var: impl Fn(&str) -> Option<OsString>) -> Option<BusEnv> {
     })?;
     Some(BusEnv {
         endpoint,
-        token,
+        token: BusToken::from(token),
         terminal,
+        source: BusSource::Environment,
     })
 }
 
@@ -68,7 +92,7 @@ pub fn token_file_env(
 pub fn terminal_env(endpoint: &Endpoint, caller: &Caller) -> Vec<(String, String)> {
     let token = match caller {
         Caller::Lead(_) => &endpoint.lead_token,
-        Caller::Terminal(_) | Caller::Git(_) => &endpoint.token,
+        Caller::Terminal(_) | Caller::Git(_) | Caller::Client => &endpoint.token,
     };
     [
         (ENV_ENDPOINT, endpoint.address.to_string()),
@@ -85,6 +109,7 @@ pub fn guide(cli: &str) -> String {
     let agents = agent_programs();
     let check_wait = DEFAULT_WAIT_TIMEOUT.as_secs();
     let report_wait = WORKER_REPORT_WAIT.as_secs();
+    let exit_codes = exit_codes_help();
     format!(
         "Krad ADE agent bus
 You are running inside a Krad ADE terminal next to other coding agents.
@@ -111,7 +136,64 @@ Commands:
       it with {cli} check --wait {report_wait}.
       An ACP agent starts by the id Settings shows for it; write acp:<id>
       when the id is also a harness program, as in acp:opencode.
+  {cli} status
+      The agents grouped by state: working, waiting-for-input, done, idle
+      and exited.
+  {cli} sessions
+      List the sessions: session id, name, terminals and group.
+  {cli} session create [NAME] [--group GROUP]
+      Open a new session in your group, or in the group named GROUP.
+  {cli} session close <session id>
+      Close a session and the workers it holds.
+  {cli} worktree create <name>
+      Create a git worktree of your group's repository on a new branch and
+      open it as a group of its own.
+  {cli} open <file>[:LINE[:COLUMN]]
+      Open a file of your group in the app's editor, relative to the group.
+  {cli} changes [<session id>]
+      The files changed in a session's group (yours by default).
+  {cli} diff [<session id>]
+      The patch of those changes against HEAD.
+  {cli} kraddie list
+      Your Kraddies: id, name, harness, schedule, next run and last outcome.
+  {cli} kraddie run <name> [prompt]
+      Wake a Kraddie now: it runs its manual automation, or its first one.
+  {cli} kraddie remember <name> <text>
+      Hand a Kraddie a keepsake, one short line it carries into every run.
+  {cli} kraddie memory <name>
+      The keepsakes a Kraddie carries, numbered, with how many are left.
+  {cli} automation list
+      The automations of every Kraddie: triggers, next run, last outcome and runs.
+  {cli} automation run <name> [prompt]
+      Run an automation now, with an optional prompt; write <kraddie>/<name>
+      when two Kraddies have an automation of that name.
+  {cli} automation enable|disable <name>
+      Switch an automation on or off.
+  {cli} variants run --variant <agent> [--model M] [--instruction TEXT] ... [--test \"TASK\"] \"<task>\"
+      Launch the same task as two to four variants, each in its own worktree,
+      to compare in the app's Variants view. TASK is a project task such as
+      \"cargo test\", run in each worktree once its variant finishes.
+  {cli} variants status [<run id>]
+      Each variant's state, cost, tokens, time, tests and diff.
+  {cli} variants pick <run id> <variant> [--apply] --yes
+      Keep the winner's worktree as its session (or, with --apply, apply its
+      changes onto the base worktree) and discard the other variants.
+  {cli} agents list [--all]
+      Every agent with its terminal id, title, group, harness and state.
+  {cli} agents watch [--group G] [--harness H] [--terminal ID]... [--since SEQ --stream ID]
+      Print the agents, then one line each time one opens, changes state or
+      closes, until interrupted. Repeat --terminal to follow only those ids. To resume, pass the last seq seen and the
+      stream id from the first line; without the stream id the app answers
+      with a fresh list.
+  {cli} api
+      The agents API version the app serves (this CLI speaks {API_VERSION}).
+  {cli} api info [--show-token]
+      Where the agents API listens, found through this terminal or through
+      the app's api.json from any other terminal.
   Add --json to any command for raw JSON output.
+
+Exit codes:
+{exit_codes}
 
 Messages may also arrive as a typed notice like
 \"You have N new message(s) from other agents...\".
@@ -133,8 +215,9 @@ just answer. You cannot edit files or run other commands yourself: delegate the
 work to agents and check it by reading files and their screens.
 
 Commands:
-  {cli} list
-      The agents of the environment: id, title, state and group.
+  {cli} list [--all]
+      The agents of the environment: id, title, state and group. With --all,
+      also the workers that were closed, as closed.
   {cli} spawn --agent <{agents}> [--worktree <name>] \"<task>\"
       Start a worker in a session of its own in the group, as a chat, and
       print its id once it has started; if it cannot start, the error says
@@ -147,7 +230,18 @@ Commands:
       Block until worker <id> stops working. Always pass a timeout.
   {cli} read <id> --lines {LEAD_READ_LINES}
       The end of worker <id>'s conversation. Reading a worker that has
-      finished closes it: read it once you are done waiting for it.
+      finished closes it as close does: read it once you are done waiting.
+  {cli} close <id> [--force] [--remove-worktree]
+      Close worker <id>: its chat stops and its session leaves the sidebar.
+      Its worktree and files stay on disk and the answer says where;
+      --remove-worktree also removes the worktree, only when it has no
+      uncommitted changes and no commits missing from the repository's
+      checked-out branch. A worker still working is refused unless --force,
+      which stops its turn first. Only workers you started can be closed.
+  {cli} close --session <session id> [--force] [--remove-worktree]
+      Close another session of your group the same way; never your own.
+  {cli} close --all-idle [--remove-worktree]
+      Close every worker of yours that has finished, and print their ids.
 
 How to orchestrate:
   1. Split the work into self-contained tasks, each with acceptance criteria,
@@ -158,7 +252,9 @@ How to orchestrate:
   4. If the work falls short or the worker is stuck, send a precise correction
      and wait again. If it waits for a permission, tell the user to answer it
      in the worker's session.
-  5. Finish with a short report: what each agent did, what you verified and
+  5. Close each worker once its work is checked (reading a finished one
+     closes it; close --all-idle closes the rest).
+  6. Finish with a short report: what each agent did, what you verified and
      what is left for the user.
 "
     )
@@ -193,7 +289,8 @@ mod tests {
         .collect();
         let env = bus_env_from(|name| vars.get(name).cloned()).ok_or("no bus env")?;
         std::fs::remove_file(&file)?;
-        assert_eq!(env.token, "secret");
+        assert_eq!(env.token, BusToken::from("secret"));
+        assert_eq!(env.source, BusSource::Environment);
         assert_eq!(env.endpoint, "127.0.0.1:4000");
         assert!(bus_env_from(|name| (name == ENV_ENDPOINT).then(|| OsString::from("x"))).is_none());
         Ok(())
@@ -207,6 +304,13 @@ mod tests {
             "Example: krad-ade-agents check --wait 600",
             "Example: krad-ade-agents read 4 --lines 40",
             "it with krad-ade-agents check --wait 900.",
+            "krad-ade-agents session create [NAME] [--group GROUP]",
+            "krad-ade-agents open <file>[:LINE[:COLUMN]]",
+            "(this CLI speaks v1)",
+            "krad-ade-agents agents watch [--group G] [--harness H] [--terminal ID]... [--since SEQ --stream ID]",
+            "krad-ade-agents api info [--show-token]",
+            "Repeat --terminal to follow only those ids.",
+            "  6  the app speaks another API version",
         ] {
             assert!(member.contains(line), "{line}");
         }
@@ -215,6 +319,10 @@ mod tests {
             "krad-ade-agents spawn --agent <claude|codex|opencode|acp-agent-id> [--worktree <name>]",
             "krad-ade-agents wait <id> --timeout 1500",
             "krad-ade-agents read <id> --lines 80",
+            "krad-ade-agents list [--all]",
+            "krad-ade-agents close <id> [--force] [--remove-worktree]",
+            "krad-ade-agents close --session <session id> [--force] [--remove-worktree]",
+            "krad-ade-agents close --all-idle [--remove-worktree]",
         ] {
             assert!(lead.contains(line), "{line}");
         }

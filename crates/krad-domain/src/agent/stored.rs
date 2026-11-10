@@ -19,17 +19,23 @@ const NATIVE_NAMES: [(AgentPreset, &str); 5] = [
     (AgentPreset::Gateway, GATEWAY),
 ];
 
-impl Serialize for AgentPreset {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+impl fmt::Display for AgentPreset {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
-            Self::Acp(id) => return serializer.collect_str(&format_args!("{ACP_PREFIX}{id}")),
+            Self::Acp(id) => return write!(formatter, "{ACP_PREFIX}{id}"),
             Self::Shell => SHELL,
             Self::ClaudeCode => CLAUDE_CODE,
             Self::Codex => CODEX,
             Self::Opencode => OPENCODE,
             Self::Gateway => GATEWAY,
         };
-        serializer.serialize_str(name)
+        formatter.write_str(name)
+    }
+}
+
+impl Serialize for AgentPreset {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
     }
 }
 
@@ -77,6 +83,7 @@ mod tests {
             (AgentPreset::Gateway, r#""Gateway""#),
         ] {
             assert_eq!(serde_json::to_string(&preset)?, stored);
+            assert_eq!(format!("\"{preset}\""), stored);
             assert_eq!(serde_json::from_str::<AgentPreset>(stored)?, preset);
         }
         let acp = AgentPreset::Acp(

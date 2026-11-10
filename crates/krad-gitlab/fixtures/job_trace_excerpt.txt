@@ -1,0 +1,7 @@
+Executing "step_script" stage of the job script
+$ export CI_JOB_TOKEN=[REDACTED]
+$ cargo test --workspace
+   Compiled app v0.1.0
+thread 'durations::parses_minutes' panicked at src/duration.rs:41:9
+test result: FAILED. 41 passed; 1 failed
+ERROR: Job failed: exit code 101

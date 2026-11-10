@@ -1,0 +1,33 @@
+[
+  {
+    "number": 42,
+    "title": "Refund fails on Safari",
+    "body": "Steps to reproduce:\n1. Pay with Apple Pay\n2. Ask for a refund",
+    "state": "open",
+    "html_url": "https://github.com/octo/shop/issues/42",
+    "labels": [{ "id": 1, "name": "bug", "color": "d73a4a" }],
+    "user": { "id": 7, "login": "ana" },
+    "created_at": "2026-10-01T10:00:00Z"
+  },
+  {
+    "number": 43,
+    "title": "Add Apple Pay refunds",
+    "body": null,
+    "state": "open",
+    "html_url": "https://github.com/octo/shop/pull/43",
+    "labels": [],
+    "user": { "id": 8, "login": "bo" },
+    "pull_request": { "url": "https://api.github.com/repos/octo/shop/pulls/43" },
+    "created_at": "2026-10-02T10:00:00Z"
+  },
+  {
+    "number": 44,
+    "title": "Document the checkout flow",
+    "body": null,
+    "state": "open",
+    "html_url": "https://github.com/octo/shop/issues/44",
+    "labels": [{ "id": 2, "name": "docs" }, { "id": 3, "name": "good first issue" }],
+    "user": { "id": 7, "login": "ana" },
+    "created_at": "2026-10-03T10:00:00Z"
+  }
+]

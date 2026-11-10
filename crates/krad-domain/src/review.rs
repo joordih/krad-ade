@@ -1,8 +1,20 @@
+mod ci_fix;
+mod issue;
+mod job_log;
 mod remote;
 
 use std::fmt;
 use std::str::FromStr;
 
+pub use ci_fix::{ci_fix_prompt, ChangeStat, CiFailure, SUMMARY_FILES_LIMIT};
+pub use issue::{
+    sort_issues, Issue, IssueActivity, IssueComment, IssueEvent, IssueEventKind, IssuePage,
+    IssueQuery, IssueSort, IssueState, IssueStateFilter, LinkedRequest, ListPage, TimelineEntry,
+};
+pub(crate) use job_log::redact_secrets;
+pub use job_log::{
+    read_log_line, strip_ansi, JobLog, StepLines, LOG_EXCERPT_LINES, MAX_LOG_LINE_BYTES,
+};
 pub use remote::{project_on_host, remote_project, resolve_ssh_alias, RemoteProject};
 
 const PATH_SEPARATOR: char = '/';
@@ -10,7 +22,11 @@ const PATH_SEPARATOR: char = '/';
 macro_rules! numeric_id {
     ($(#[$doc:meta])* $name:ident) => {
         $(#[$doc])*
-        #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+        #[derive(
+            Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, serde::Serialize,
+            serde::Deserialize,
+        )]
+        #[serde(transparent)]
         pub struct $name(pub u64);
 
         impl fmt::Display for $name {
@@ -26,6 +42,7 @@ numeric_id!(MergeRequestIid);
 numeric_id!(NoteId);
 numeric_id!(PipelineId);
 numeric_id!(JobId);
+numeric_id!(IssueNumber);
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ProjectPath(String);
@@ -62,6 +79,24 @@ impl fmt::Display for ProjectPath {
 impl AsRef<str> for ProjectPath {
     fn as_ref(&self) -> &str {
         &self.0
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Default)]
+pub enum HeadRepository {
+    #[default]
+    Same,
+    Fork(Option<ProjectPath>),
+}
+
+impl HeadRepository {
+    #[must_use]
+    pub fn lives_in(&self, project: &ProjectPath) -> bool {
+        match self {
+            Self::Same => true,
+            Self::Fork(Some(fork)) => fork.0.eq_ignore_ascii_case(&project.0),
+            Self::Fork(None) => false,
+        }
     }
 }
 
@@ -122,6 +157,7 @@ pub struct MergeRequest {
     pub author: User,
     pub reviewers: Vec<User>,
     pub source_branch: String,
+    pub head_repository: HeadRepository,
     pub target_branch: String,
     pub sha: Option<CommitSha>,
     pub detailed_merge_status: Option<MergeStatus>,
@@ -290,6 +326,16 @@ pub struct MergeOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_fork_head_lives_in_the_project_only_when_it_names_it() -> Result<(), InvalidProjectPath> {
+        let project: ProjectPath = "acme/app".parse()?;
+        assert!(HeadRepository::Same.lives_in(&project));
+        assert!(HeadRepository::Fork(Some("Acme/App".parse()?)).lives_in(&project));
+        assert!(!HeadRepository::Fork(Some("someone/app".parse()?)).lives_in(&project));
+        assert!(!HeadRepository::Fork(None).lives_in(&project));
+        Ok(())
+    }
 
     #[test]
     fn project_paths_reject_empty_segments() {

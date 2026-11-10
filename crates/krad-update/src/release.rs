@@ -124,8 +124,7 @@ fn newer_build(
         return Ok(None);
     }
     let build = manifest
-        .builds
-        .get(&installation.target)
+        .build(installation.target)
         .cloned()
         .ok_or(UpdateError::NoBuild)?;
     Ok(Some(AvailableUpdate {

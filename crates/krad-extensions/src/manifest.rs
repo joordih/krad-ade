@@ -377,6 +377,97 @@ mod tests {
     }
 
     #[test]
+    fn web_files_find_their_language_and_its_server() {
+        let loaded = load_with(&[], &[]);
+        assert!(loaded.problems.is_empty(), "{:?}", loaded.problems);
+        let manifests = loaded.manifests;
+        let language = |path: &str| manifests.languages.for_path(Path::new(path));
+        let cases = [
+            ("src/App.vue", "vue", None),
+            (
+                "src/lib/Card.svelte",
+                "svelte",
+                Some("svelte-language-server"),
+            ),
+            ("src/pages/index.astro", "astro", None),
+            ("public/index.HTML", "html", Some("html-lsp")),
+            ("styles/main.css", "css", Some("css-lsp")),
+            ("styles/theme.scss", "scss", Some("css-lsp")),
+            ("src/Button.tsx", "tsx", Some("vtsls")),
+            ("src/Button.jsx", "javascript", Some("vtsls")),
+        ];
+        for (path, id, server) in cases {
+            let found = language(path);
+            assert_eq!(found.map(|found| found.id.as_str()), Some(id), "{path}");
+            assert_eq!(
+                found.and_then(|found| found.server.as_deref()),
+                server,
+                "{path}"
+            );
+        }
+        let launch = |package: &str| {
+            manifests
+                .server(package)
+                .map(|server| (server.bin.as_deref(), server.args.clone()))
+        };
+        let stdio = vec!["--stdio".to_owned()];
+        assert_eq!(
+            launch("html-lsp"),
+            Some((Some("vscode-html-language-server"), stdio.clone()))
+        );
+        assert_eq!(
+            launch("css-lsp"),
+            Some((Some("vscode-css-language-server"), stdio.clone()))
+        );
+        assert_eq!(
+            launch("svelte-language-server"),
+            Some((Some("svelteserver"), stdio))
+        );
+        assert!(manifests
+            .server("html-lsp")
+            .and_then(|server| server.settings.as_ref())
+            .is_some_and(|settings| settings.contains_key("embeddedLanguages")));
+    }
+
+    #[test]
+    fn every_web_framework_offers_a_component_template() {
+        let manifests = load_with(&[], &[]).manifests;
+        let cases = [
+            ("tsx", "tsx", "React component"),
+            ("javascript", "jsx", "React component"),
+            ("vue", "vue", "Vue component"),
+            ("svelte", "svelte", "Svelte component"),
+            ("astro", "astro", "Astro component"),
+        ];
+        for (id, extension, label) in cases {
+            let component = manifests
+                .languages
+                .get(&LanguageId::new(id))
+                .and_then(|language| {
+                    language
+                        .templates
+                        .iter()
+                        .find(|template| template.creates(extension))
+                });
+            assert_eq!(
+                component.map(|template| template.label.as_str()),
+                Some(label)
+            );
+            assert!(component
+                .is_some_and(|template| template.markers.contains(&"package.json".to_owned())));
+            let rendered = component.and_then(|template| template.render("ui/Button", None));
+            assert_eq!(
+                rendered
+                    .as_ref()
+                    .map(|rendered| (rendered.folders.clone(), rendered.file.clone())),
+                Some((vec!["ui".to_owned()], format!("Button.{extension}"))),
+                "{id}"
+            );
+            assert!(rendered.is_some_and(|rendered| !rendered.text.contains("$0")));
+        }
+    }
+
+    #[test]
     fn every_toolchain_family_and_hand_off_is_complete() -> Result<(), String> {
         use crate::toolchains::manifest::LocatorSpec;
 

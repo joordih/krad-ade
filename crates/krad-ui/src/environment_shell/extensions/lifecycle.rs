@@ -21,7 +21,7 @@ use super::{Deferred, Running, Slot, SlotKey};
 
 const APP_NAME: &str = krad_store::APP_NAME;
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
-const FEATURES: [Feature; 10] = [
+const FEATURES: [Feature; 11] = [
     Feature::Views,
     Feature::Commands,
     Feature::Window,
@@ -32,6 +32,7 @@ const FEATURES: [Feature; 10] = [
     Feature::Secrets,
     Feature::Tools,
     Feature::HostKinds,
+    Feature::Events,
 ];
 const NOT_TRUSTED_TEXT: &str = "is not trusted yet";
 const COULD_NOT_START_TEXT: &str = "could not start";

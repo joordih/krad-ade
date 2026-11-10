@@ -1,23 +1,30 @@
 mod askpass;
 mod chat;
+mod close;
+mod discovery;
+mod feed;
 mod lead;
 mod remote;
 mod requests;
 mod service;
 mod typing;
+mod workspace;
 
 pub(super) use remote::{bundled_cli, RemoteBus, RemoteBusPlan, RemoteBusSlot};
+pub(super) use workspace::target_group;
 
 use futures::channel::mpsc::{channel, Receiver};
 use futures::channel::oneshot::Sender as ReplySender;
 use futures::StreamExt as _;
 use gpui_kit::Context;
 use krad_agents::{
-    lead_refusal, serve, terminal_env, Caller, Endpoint, Incoming, LeadHandle, Request, Response,
-    TerminalHandle, TerminalState, CLI_PROGRAM,
+    lead_refusal, serve, terminal_env, Caller, Endpoint, ErrorCode, Incoming, Request, Response,
+    TerminalHandle, TerminalState, Timestamp, CLI_PROGRAM,
 };
 use krad_chat::ToolAsk;
-use krad_domain::{claude_hook_settings, parse_wsl_path, EnvironmentName, TerminalId};
+use krad_domain::{
+    claude_hook_settings, parse_wsl_path, ApiDiscoveryFile, EnvironmentName, TerminalId,
+};
 use krad_session::find_program;
 use krad_store::config_dir;
 use std::path::PathBuf;
@@ -40,6 +47,7 @@ const WSLENV_SEPARATOR: &str = ":";
 
 pub(super) const BUS_HINT: &str = "You run inside Krad ADE next to other coding agents. Run 'krad-ade-agents help' to see them, message them and wait for them.";
 const NO_SUCH_TERMINAL: &str = "No terminal with that id in your environment";
+const ONLY_LEADS_CLOSE: &str = "Only a session's lead can close workers and sessions";
 
 pub(super) struct AgentBus {
     endpoint: Endpoint,
@@ -51,6 +59,8 @@ pub(super) struct AgentBus {
     pub(super) pending_prompts: Vec<PendingPrompt>,
     pub(super) claude_settings: Option<PathBuf>,
     pub(super) remote_unavailable_told: std::collections::HashSet<krad_domain::Host>,
+    started_at: Timestamp,
+    api_file: discovery::LatestWins<ApiDiscoveryFile>,
 }
 
 struct PendingKeys {
@@ -154,7 +164,10 @@ impl EnvironmentShell {
             pending_prompts: Vec::new(),
             claude_settings: write_claude_settings(),
             remote_unavailable_told: std::collections::HashSet::new(),
+            started_at: Timestamp::now(),
+            api_file: discovery::LatestWins::default(),
         });
+        self.sync_api_file(cx);
         cx.spawn(async move |this, cx| {
             let mut incoming: Receiver<Incoming> = incoming;
             while let Some(request) = incoming.next().await {
@@ -223,31 +236,56 @@ impl EnvironmentShell {
             reply.send(refusal).unwrap_or_default();
             return;
         }
+        if let Some(refusal) = self.memory_gate(&from, &request) {
+            reply.send(Response::Error(refusal)).unwrap_or_default();
+            return;
+        }
         match from {
             Caller::Terminal(from) => self.answer_terminal(from, request, reply, cx),
             Caller::Lead(lead) => self.answer_lead(&lead, request, reply, cx),
             Caller::Git(_) => self.answer_git(request, reply, cx),
+            Caller::Client => reply
+                .send(feed::client_answer(self, &request))
+                .unwrap_or_default(),
         }
         cx.notify();
     }
 
-    fn as_lead(&self, from: Caller, request: &Request) -> Caller {
-        let Caller::Terminal(terminal) = &from else {
-            return from;
-        };
-        if !request.directs_workers() {
-            return from;
-        }
-        let session = self
-            .envs
-            .get(&EnvironmentName::new(terminal.environment.clone()))
-            .and_then(|live| live.data.session_led_by(TerminalId(terminal.terminal)));
-        match session {
-            Some(session) => Caller::Lead(LeadHandle {
-                environment: terminal.environment.clone(),
-                session: session.as_u64(),
-            }),
-            None => from,
+    fn answer_group_request(
+        &mut self,
+        from: &TerminalHandle,
+        request: Request,
+        reply: ReplySender<Response>,
+        cx: &mut Context<Self>,
+    ) {
+        match request {
+            request @ (Request::Kraddies
+            | Request::RunKraddie { .. }
+            | Request::Automations
+            | Request::RunAutomation { .. }
+            | Request::SwitchAutomation { .. }
+            | Request::RememberKraddie { .. }
+            | Request::KraddieMemory { .. }) => {
+                self.answer_kraddies(request, reply, cx);
+            }
+            request @ (Request::KraddieRecall { .. }
+            | Request::NewKraddieChat { .. }
+            | Request::ShareKraddieMemory { .. }
+            | Request::MemorySearch { .. }
+            | Request::MemoryRead { .. }) => {
+                let chat = Some(TerminalId(from.terminal));
+                self.answer_memory_call(&from.environment, chat, request, reply, cx);
+            }
+            request @ (Request::RunVariants(_)
+            | Request::Variants { .. }
+            | Request::PickVariant { .. }) => {
+                let group = self.caller_group(from);
+                self.answer_variants(&from.environment, group, request, reply, cx);
+            }
+            request => {
+                let group = self.caller_group(from);
+                self.answer_workspace(&from.environment, group, request, reply, cx);
+            }
         }
     }
 
@@ -258,25 +296,23 @@ impl EnvironmentShell {
         reply: ReplySender<Response>,
         cx: &mut Context<Self>,
     ) {
+        let caller = CodeCaller::Terminal(TerminalId(from.terminal));
         let response = match request {
             Request::Code(code) => {
-                let caller = CodeCaller::Terminal(TerminalId(from.terminal));
                 self.answer_code(&from.environment, &caller, code, reply, cx);
                 return;
             }
             Request::List => Some(Response::Agents(
                 self.agent_infos(&from.environment, Some(from.terminal)),
             )),
+            Request::ListAll => Some(Response::Agents(
+                self.all_agent_infos(&from.environment, Some(from.terminal)),
+            )),
+            Request::Close(_) => Some(Response::error(ErrorCode::Forbidden, ONLY_LEADS_CLOSE)),
             Request::Send { to, body } => Some(self.post(&from, to, body)),
             Request::Check { wait_secs } => {
-                let messages = self.take_mail(&from);
-                if messages.is_empty() && wait_secs.is_some() {
-                    if let Some(bus) = &mut self.agent_bus {
-                        bus.inbox_waiters.push((from, reply));
-                    }
-                    return;
-                }
-                Some(Response::Messages(messages))
+                self.answer_check(from, wait_secs, reply);
+                return;
             }
             Request::Wait { target, .. } => {
                 self.wait_for(&from.environment, target, reply);
@@ -323,17 +359,58 @@ impl EnvironmentShell {
                 self.spawn_worker(&from, agent, worktree, &task, reply, cx);
                 return;
             }
-            Request::Askpass { .. } => Some(Response::Error(askpass::GIT_ONLY.to_owned())),
+            Request::Askpass { .. } => Some(askpass::git_only()),
             Request::Tools => Some(Response::Tools(self.tool_catalog())),
+            Request::SubscribeAgents(_) => Some(feed::streamed_by_the_bus()),
             request @ Request::ExtensionTool { .. } => {
-                let caller = CodeCaller::Terminal(TerminalId(from.terminal));
                 self.answer_extension_tool(&from.environment, &caller, request, reply, cx);
+                return;
+            }
+            request @ (Request::Kraddies
+            | Request::RunKraddie { .. }
+            | Request::Automations
+            | Request::RunAutomation { .. }
+            | Request::SwitchAutomation { .. }
+            | Request::RememberKraddie { .. }
+            | Request::KraddieMemory { .. }
+            | Request::KraddieRecall { .. }
+            | Request::NewKraddieChat { .. }
+            | Request::ShareKraddieMemory { .. }
+            | Request::MemorySearch { .. }
+            | Request::MemoryRead { .. }
+            | Request::Hello
+            | Request::Sessions
+            | Request::CreateSession { .. }
+            | Request::CloseSession { .. }
+            | Request::CreateWorktree { .. }
+            | Request::OpenFile { .. }
+            | Request::Changes { .. }
+            | Request::RunVariants(_)
+            | Request::Variants { .. }
+            | Request::PickVariant { .. }) => {
+                self.answer_group_request(&from, request, reply, cx);
                 return;
             }
         };
         if let Some(response) = response {
             reply.send(response).unwrap_or_default();
         }
+    }
+
+    fn answer_check(
+        &mut self,
+        from: TerminalHandle,
+        wait_secs: Option<u64>,
+        reply: ReplySender<Response>,
+    ) {
+        let messages = self.take_mail(&from);
+        if messages.is_empty() && wait_secs.is_some() {
+            if let Some(bus) = &mut self.agent_bus {
+                bus.inbox_waiters.push((from, reply));
+            }
+            return;
+        }
+        reply.send(Response::Messages(messages)).unwrap_or_default();
     }
 
     fn wait_for(&mut self, environment: &str, target: u64, reply: ReplySender<Response>) {
@@ -353,7 +430,7 @@ impl EnvironmentShell {
                 })
                 .unwrap_or_default(),
             Settlement::Missing => reply
-                .send(Response::Error(NO_SUCH_TERMINAL.to_owned()))
+                .send(Response::error(ErrorCode::NotFound, NO_SUCH_TERMINAL))
                 .unwrap_or_default(),
             Settlement::Settled(_) | Settlement::Working => {
                 if let Some(bus) = &mut self.agent_bus {

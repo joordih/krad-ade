@@ -9,12 +9,12 @@ const STAGING_DIR: &str = ".krad-ade-update";
 const RETIRED_DIR: &str = "retired";
 const APP_BINARY: &str = "krad-ade";
 
-pub(super) fn locate(exe: &Path) -> Option<Installation> {
+pub(super) fn locate(exe: &Path, target: ReleaseTarget) -> Option<Installation> {
     let root = exe.parent()?;
     Some(Installation {
         root: root.to_path_buf(),
         staging: root.join(STAGING_DIR),
-        target: ReleaseTarget::LinuxX86_64,
+        target,
     })
 }
 

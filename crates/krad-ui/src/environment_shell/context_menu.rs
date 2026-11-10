@@ -4,16 +4,16 @@ mod view;
 
 use gpui_kit::{Context, FocusHandle, Window};
 use krad_domain::{
-    AgentPreset, Effort, EnvironmentData, EnvironmentName, GroupActivation, GroupId,
-    PermissionMode, SessionId, TerminalId, ToolchainChoice, ToolchainScope, WorktreeOrigin,
+    AgentPreset, EnvironmentData, EnvironmentName, GroupActivation, GroupId, PermissionMode,
+    SessionId, TerminalId, ToolchainChoice, ToolchainScope, WorktreeOrigin,
 };
 
 use super::file_tree::FileAction;
 use super::name_dialogs::{DeleteTarget, NameTarget};
-use super::surface::{AcpChoice, SurfaceCommand};
+use super::surface::{AcpChoice, ChatCopy};
 use super::workers::LeadEnding;
 use super::{EnvironmentShell, LiveEnv};
-use crate::components::IconName;
+use crate::components::{copy_with_feedback, IconName};
 
 const CREATE_WORKTREE_LABEL: &str = "Create worktree";
 const CREATE_TAB_LABEL: &str = "New terminal";
@@ -31,7 +31,6 @@ pub(super) enum MenuAction {
     ShowEditorChat(TerminalId),
     OpenLocation(std::path::PathBuf, krad_lsp::lsp_types::Position),
     DismissLead(SessionId),
-    SetEffort(TerminalId, Effort),
     SetPermissionMode(TerminalId, PermissionMode),
     ChooseAcp(TerminalId, AcpChoice),
     ContinueInTerminal(TerminalId),
@@ -69,6 +68,9 @@ pub(super) enum MenuAction {
     ToggleSidebarDensity,
     CloseTabs(TerminalId, krad_domain::TabClosing),
     Extension(Box<super::extensions::ExtensionMenu>),
+    CopyChat(ChatCopy),
+    ChatHit(super::chat_search::ChatHitAction),
+    Automation(super::automations::AutomationMenu),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,6 +123,7 @@ pub(super) enum MenuEntry {
         action: MenuAction,
         checked: bool,
         destructive: bool,
+        disabled: bool,
         detail: Option<String>,
         trailing: Option<String>,
         key: Option<char>,
@@ -144,6 +147,7 @@ impl MenuEntry {
             action,
             checked: false,
             destructive: false,
+            disabled: false,
             detail: None,
             trailing: None,
             key: None,
@@ -158,6 +162,7 @@ impl MenuEntry {
             action,
             checked,
             destructive: false,
+            disabled: false,
             detail: None,
             trailing: None,
             key: None,
@@ -176,6 +181,7 @@ impl MenuEntry {
             action,
             checked: false,
             destructive: true,
+            disabled: false,
             detail: None,
             trailing: None,
             key: None,
@@ -216,6 +222,14 @@ impl MenuEntry {
     pub(super) fn creating(mut self, create: MenuCreate) -> Self {
         if let Self::Submenu(submenu) = &mut self {
             submenu.create = Some(create);
+        }
+        self
+    }
+
+    #[must_use]
+    pub(super) fn disabled_when(mut self, unavailable: bool) -> Self {
+        if let Self::Item { disabled, .. } = &mut self {
+            *disabled = unavailable;
         }
         self
     }
@@ -364,6 +378,10 @@ impl EnvironmentShell {
                 self.ask_name(NameTarget::Group(group), window, cx);
                 return;
             }
+            MenuAction::CopyChat(copy) => {
+                copy_with_feedback(&self.copy_feedback, copy.key.into(), copy.text, cx);
+                return;
+            }
             _ => {}
         }
         self.context_menu = None;
@@ -374,7 +392,9 @@ impl EnvironmentShell {
             MenuAction::DeleteGroup(group) => {
                 self.ask_delete(DeleteTarget::Group(group), window, cx);
             }
-            MenuAction::RenameGroup(_) | MenuAction::RenameEnvironment(_) => {}
+            MenuAction::RenameGroup(_)
+            | MenuAction::RenameEnvironment(_)
+            | MenuAction::CopyChat(_) => {}
             MenuAction::NewTerminal(preset) => self.add_terminal(preset, cx),
             MenuAction::NewAgent => self.open_agent_composer(window, cx),
             MenuAction::RemoveWorktree(group) => {
@@ -391,13 +411,11 @@ impl EnvironmentShell {
             }
             MenuAction::SwitchSurface(id) => self.switch_surface(id, window, cx),
             MenuAction::ShowSessionTab(id) => self.show_terminal_tab(id, window, cx),
+            MenuAction::ChatHit(action) => self.run_chat_hit_action(action, window, cx),
             MenuAction::ShowEditorChat(id) => self.show_editor_chat(id, cx),
             MenuAction::OpenLocation(path, at) => self.open_file_at(&path, Some(at), cx),
             MenuAction::AnswerChoice(answer) => self.answer_choice(*answer),
             MenuAction::DismissLead(id) => self.ask_end_lead(LeadEnding::Dismiss(id), window, cx),
-            MenuAction::SetEffort(id, effort) => {
-                self.command_surface(id, SurfaceCommand::Effort(effort), cx);
-            }
             MenuAction::SetPermissionMode(owner, mode) => {
                 self.set_permission_mode(owner, mode, cx);
             }
@@ -439,6 +457,7 @@ impl EnvironmentShell {
             MenuAction::ToggleSidebarDensity => self.toggle_sidebar_density(cx),
             MenuAction::CloseTabs(tab, closing) => self.close_tabs(tab, closing, window, cx),
             MenuAction::Extension(menu) => self.run_extension_menu(*menu, window, cx),
+            MenuAction::Automation(choice) => self.run_automation_menu(choice, window, cx),
         }
         cx.notify();
     }

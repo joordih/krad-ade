@@ -55,6 +55,6 @@ pub use terminals::{
 pub use update::{
     AvailableCommand, AvailableCommandInput, AvailableCommandsUpdate, ConfigOptionUpdate,
     ContentChunk, CurrentModeUpdate, Diff, Plan, PlanEntry, PlanEntryPriority, PlanEntryStatus,
-    SessionNotification, SessionUpdate, ToolCall, ToolCallContent, ToolCallLocation,
+    SessionCost, SessionNotification, SessionUpdate, ToolCall, ToolCallContent, ToolCallLocation,
     ToolCallStatus, ToolCallUpdate, ToolKind, UsageUpdate,
 };

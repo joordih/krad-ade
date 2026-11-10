@@ -2,8 +2,9 @@ use std::path::{Path, PathBuf};
 
 use super::{AfterInstall, Installation};
 use crate::error::UpdateError;
+use crate::manifest::ReleaseTarget;
 
-pub(super) fn locate(_exe: &Path) -> Option<Installation> {
+pub(super) fn locate(_exe: &Path, _target: ReleaseTarget) -> Option<Installation> {
     None
 }
 

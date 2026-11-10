@@ -87,6 +87,7 @@ impl EnvironmentShell {
         if !self.completions_open() {
             if event.keystroke.key == KEY_ESCAPE {
                 self.close_signature(cx);
+                self.close_hover(cx);
             }
             return;
         }

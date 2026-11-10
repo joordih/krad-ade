@@ -11,11 +11,11 @@ per crate:
 
 | Crate | Responsibility |
 |---|---|
-| `krad-domain` | Pure domain: ids, environments, groups, sessions and their panes, agents and harnesses, notes, settings, the review types every code host reads into, and the persisted layout format. No GPUI or terminal types and no I/O. |
+| `krad-domain` | Pure domain: ids, environments, groups, sessions and their panes, agents and harnesses, notes, settings, the review types every code host reads into, Kraddies with their automations, run history, memory and chat digests, variants, plan usage, the typed app events with their delivery and webhooks, and the persisted layout format. No GPUI or terminal types and no I/O. |
 | `krad-pty` | Process spawning and PTY I/O over `portable-pty` (Unix PTY, Windows ConPTY) behind a platform-neutral API; platform shells in `unix.rs`, `windows.rs`, `wsl.rs`. |
 | `krad-term` | Terminal emulation over libghostty-vt, linked from prebuilt static libraries. Bytes in, renderable snapshots out, key and mouse input encoded. |
 | `krad-session` | Glue: owns a PTY + terminal pair, spawn/reader/writer threads, emits session events (`PumpMsg`). Re-exports the PTY and terminal items `krad-ui` needs, so the UI never depends on `krad-pty` or `krad-term` directly. |
-| `krad-store` | The app's files on disk: config folder lookup, the layout file and its writer thread, `settings.json`, the GitLab and GitHub logins, the Gateway key and the MCP server secrets (system keyring, config-folder fallback), the images pasted into chats, the folder of Gateway chat sessions and the transcripts of ACP chats. Synchronous. |
+| `krad-store` | The app's files on disk: config folder lookup, the layout file and its writer thread, `settings.json`, the GitLab and GitHub logins, the Gateway key and the MCP server secrets (system keyring, config-folder fallback), the images pasted into chats, the folder of Gateway chat sessions, the transcripts of ACP chats, the event journal of each group, the webhook secrets, and the Kraddies with their automations, run histories, profiles and chat digests, including the migration of the old pets folder. Synchronous. |
 | `krad-repo` | A Group's root folder: directory listing, the file index behind `@` mentions, text file reads, git status and worktrees through the `git` CLI. Synchronous; the UI calls it from the background executor. |
 | `krad-chat` | The live chat of each harness: Claude Code's stream-JSON process, Codex's app server and opencode's server, their asks, histories and model lists, the skills a message can call, and the Gateway's model list and the app's own agent engine that chats through it (agent loop, Anthropic Messages, OpenAI Responses and Chat Completions streams, its tools: files, search, shell, web fetch and search, questions, plans, checklists and subagents, an MCP client over stdio and HTTP, permissions and its session files). |
 | `krad-gitlab` | GitLab's REST API v4: OAuth sign-in (Authorization Code with PKCE through a loopback redirect, Device Authorization Grant as fallback) and token refresh, merge requests, commits, changes, discussions, notes, approvals, merge, pipelines and jobs, over `ureq`. Synchronous; the UI calls it from the background executor. |
@@ -26,9 +26,9 @@ per crate:
 | `krad-extension-id` | The extension id and its rule (one safe path segment), with no I/O; published to crates.io and shared by `krad-domain` and `krad-extension-api`. |
 | `krad-extension-api` | The protocol between the app and extension programs, with no I/O: the `extension.toml` manifest, ids and the API version, the JSON-RPC requests and notifications in both directions, the extension view model (building blocks, ready-made trees, tables, forms and streams, keyed patches, events) and the JSON Schema published in `sdk/schema/`. |
 | `krad-extensions` | Language, toolchain and server runtime manifests and the package registry: locating, installing and launching language servers and their server runtimes, and finding a project's toolchains (data-driven locators, project hints, ranking, cache) and handing the chosen one to its server, here or on an SSH host through `krad-host`. |
-| `krad-agents` | Agent coordination bus, after Orca's orchestration: the loopback endpoint the app serves, its line-JSON protocol, the mailbox, and the `krad-ade-agents` CLI agents run from their shell, which on a host also serves the multiplexed session and, on this computer, carries its commands and sign-in prompts, and detects Python environments with Microsoft's `pet` (feature `python-toolchains`, enabled by `krad-app`). |
-| `krad-ui` | All GPUI views, elements, actions, the per-platform keymap (`keymap.rs`: Cmd on macOS, Ctrl+Shift on Windows/Linux so shells keep their control keys) and the light/dark theme. |
-| `krad-app` | Binaries: `krad-ade` (bootstrap, wiring, window creation; kept thin; needs the default `desktop` feature) and the console `krad-ade-agents` CLI, which only calls `krad-agents` and also builds without `desktop` as a static musl binary for SSH hosts (`just agents-linux`). |
+| `krad-agents` | Agent coordination bus, after Orca's orchestration: the loopback endpoint the app serves, its line-JSON protocol versioned as the agents API (version handshake, stable error codes), the mailbox, and the `krad` CLI (alias `krad-ade-agents`) agents run from their shell, which on a host also serves the multiplexed session and, on this computer, carries its commands and sign-in prompts, and detects Python environments with Microsoft's `pet` (feature `python-toolchains`, enabled by `krad-app`). |
+| `krad-ui` | All GPUI views, elements, actions, the per-platform keymap (`keymap.rs`: Cmd on macOS, Ctrl+Shift on Windows/Linux so shells keep their control keys), the light/dark theme, and the webhook sender that posts app events. |
+| `krad-app` | Binaries: `krad-ade` (bootstrap, wiring, window creation; kept thin; needs the default `desktop` feature) and the console `krad` CLI with its `krad-ade-agents` alias, both of which only call `krad-agents`; the alias also builds without `desktop` as a static musl binary for SSH hosts (`just agents-linux`). |
 
 **Dependency rules (mandatory):**
 
@@ -41,7 +41,8 @@ per crate:
 
 Inside `krad-ui`, the root view lives in `environment_shell.rs` and each concern of it (sessions
 and their panes, chat surfaces, terminal bodies and actions, sidebar, groups, file tree, file
-tabs, notes, review, side panel, utilities panel, settings, gateway, app updates, agent bus, agent hooks, hosts, context menus,
+tabs, notes, review, side panel, utilities panel, settings, gateway, app updates, app events, agent bus, agent hooks, hosts, context menus,
+Kraddies and their chats and memory, automations, variants, usage bar, attention inbox, session changes,
 dialogs, palette, input, terminal lifecycle, layout snapshot, window close, arcade) is a child
 module in
 `environment_shell/` with its own `impl EnvironmentShell` block. Children see the shell's private

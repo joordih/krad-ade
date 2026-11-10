@@ -81,6 +81,8 @@ impl EnvironmentShell {
             side_panel: self.persisted_side_panel(name, live),
             note_tabs: live.data.note_tabs.clone(),
             extension_views: live.data.extension_views.clone(),
+            retired_spend: live.data.retired_spend.clone(),
+            variant_runs: live.data.variant_runs.clone(),
         }
     }
 

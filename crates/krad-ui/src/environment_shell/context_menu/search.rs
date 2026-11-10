@@ -15,24 +15,67 @@ pub(super) fn matching<'a>(entries: &'a [MenuEntry], query: &str) -> Vec<&'a Men
     if query.is_empty() {
         return entries.iter().collect();
     }
-    entries
-        .iter()
-        .filter(|entry| match entry {
+    let mut found = Vec::new();
+    collect_matches(entries, &query, &mut found);
+    found
+}
+
+fn collect_matches<'a>(entries: &'a [MenuEntry], query: &str, found: &mut Vec<&'a MenuEntry>) {
+    for entry in entries {
+        match entry {
             MenuEntry::Item {
                 label,
                 detail,
                 trailing,
                 ..
-            } => [Some(label), detail.as_ref(), trailing.as_ref()]
-                .into_iter()
-                .flatten()
-                .any(|text| text.to_lowercase().contains(&query)),
-            MenuEntry::Submenu(_)
-            | MenuEntry::Header(_)
-            | MenuEntry::Note(_)
-            | MenuEntry::Separator => false,
+            } => {
+                let hit = [Some(label), detail.as_ref(), trailing.as_ref()]
+                    .into_iter()
+                    .flatten()
+                    .any(|text| text.to_lowercase().contains(query));
+                if hit {
+                    found.push(entry);
+                }
+            }
+            MenuEntry::Submenu(submenu) => collect_matches(&submenu.entries, query, found),
+            MenuEntry::Header(_) | MenuEntry::Note(_) | MenuEntry::Separator => {}
+        }
+    }
+}
+
+const fn is_choosable(entry: &MenuEntry) -> bool {
+    matches!(
+        entry,
+        MenuEntry::Item {
+            disabled: false,
+            ..
+        }
+    )
+}
+
+pub(super) fn item_ranks(shown: &[&MenuEntry]) -> Vec<Option<usize>> {
+    let mut rank = 0;
+    shown
+        .iter()
+        .map(|entry| {
+            is_choosable(entry).then(|| {
+                rank += 1;
+                rank - 1
+            })
         })
         .collect()
+}
+
+pub(super) fn items_in(shown: &[&MenuEntry]) -> usize {
+    shown.iter().filter(|entry| is_choosable(entry)).count()
+}
+
+fn names_taken(entries: &[MenuEntry], query: &str) -> bool {
+    entries.iter().any(|entry| match entry {
+        MenuEntry::Item { label, .. } => label.eq_ignore_ascii_case(query),
+        MenuEntry::Submenu(submenu) => names_taken(&submenu.entries, query),
+        MenuEntry::Header(_) | MenuEntry::Note(_) | MenuEntry::Separator => false,
+    })
 }
 
 fn create_row(
@@ -42,15 +85,14 @@ fn create_row(
 ) -> Option<(String, MenuAction)> {
     let create = create?;
     let query = query.trim();
-    let taken = entries.iter().any(
-        |entry| matches!(entry, MenuEntry::Item { label, .. } if label.eq_ignore_ascii_case(query)),
-    );
+    let taken = names_taken(entries, query);
     (!query.is_empty() && !taken).then(|| (create.label(query), create.action(query)))
 }
 
 fn choices(entries: &[MenuEntry], create: Option<MenuCreate>, query: &str) -> Vec<MenuAction> {
     matching(entries, query)
         .into_iter()
+        .filter(|entry| is_choosable(entry))
         .filter_map(|entry| match entry {
             MenuEntry::Item { action, .. } => Some(action.clone()),
             _ => None,
@@ -216,6 +258,24 @@ mod tests {
     }
 
     #[test]
+    fn a_query_reaches_the_items_inside_submenus() {
+        let entries = vec![
+            MenuEntry::submenu(
+                "Scheduled",
+                crate::components::IconName::Repeat,
+                vec![item("Every hour", ""), item("Weekdays at 09:00", "")],
+            ),
+            item("Manual", ""),
+        ];
+        assert_eq!(matching(&entries, "").len(), 2);
+        assert_eq!(labels(&matching(&entries, "hour")), ["Every hour"]);
+        assert_eq!(
+            labels(&matching(&entries, "a")),
+            ["Weekdays at 09:00", "Manual"]
+        );
+    }
+
+    #[test]
     fn only_a_new_name_offers_to_be_created() {
         let submenu = Submenu {
             label: "Switch worktree".to_owned(),
@@ -230,6 +290,34 @@ mod tests {
             submenu.create_row("login").map(|(_, action)| action),
             Some(MenuAction::CreateWorktree(GroupId(1), "login".to_owned()))
         );
+    }
+
+    #[test]
+    fn enter_skips_disabled_entries_and_ranks_stay_aligned_with_choices() {
+        let entries = vec![
+            MenuEntry::item("off", None, MenuAction::NewGroup).disabled_when(true),
+            MenuEntry::item("on", None, MenuAction::NewAgent),
+        ];
+        assert_eq!(
+            choice_at(&entries, None, "o", 0),
+            Some(MenuAction::NewAgent)
+        );
+        assert_eq!(choice_at(&entries, None, "o", 1), None);
+        let shown = matching(&entries, "o");
+        assert_eq!(item_ranks(&shown), [None, Some(0)]);
+        assert_eq!(items_in(&shown), choices(&entries, None, "o").len());
+    }
+
+    #[test]
+    fn a_name_inside_a_submenu_is_not_offered_again() {
+        let pane = krad_domain::PaneId(2);
+        let entries = vec![MenuEntry::submenu(
+            "More",
+            crate::components::IconName::Repeat,
+            vec![item("build", "")],
+        )];
+        assert!(create_row(Some(MenuCreate::Tab(pane)), &entries, "Build").is_none());
+        assert!(create_row(Some(MenuCreate::Tab(pane)), &entries, "deploy").is_some());
     }
 
     #[test]

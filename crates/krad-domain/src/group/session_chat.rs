@@ -2,7 +2,7 @@ use crate::environment::{EnvironmentData, NodeKind};
 use crate::ids::TerminalId;
 
 impl EnvironmentData {
-    fn is_chat(&self, id: TerminalId) -> bool {
+    pub(super) fn is_chat(&self, id: TerminalId) -> bool {
         self.nodes
             .iter()
             .any(|node| node.id == id && node.kind == NodeKind::Chat)
@@ -85,6 +85,9 @@ mod tests {
             file: None,
             extension: None,
             bookmarks: crate::bookmark::ChatBookmarks::default(),
+            usage: crate::usage::ChatUsage::default(),
+            checkpoints: crate::checkpoint::ChatCheckpoints::default(),
+            choice: crate::model::ChatChoice::default(),
         });
         env.place_terminal(id, None);
         id

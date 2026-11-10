@@ -19,6 +19,7 @@ use std::time::Instant;
 
 use self::launch::{LaunchShell, Placed, ResolvedLaunch};
 use super::agent_hooks::AgentRole;
+use super::app_events::agent_event;
 use super::shell_site::ShellSite;
 use super::EnvironmentShell;
 
@@ -372,6 +373,7 @@ impl EnvironmentShell {
         if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
             node.state = AgentState::Idle;
         }
+        self.publish_agent(env, id, None);
         let raw = id.as_u64();
         match code {
             Some(code) => self.push_toast(format!("terminal #{raw} exited (code {code})")),
@@ -396,6 +398,7 @@ impl EnvironmentShell {
         let now = Instant::now();
         let mut changed = self.expire_toasts(now);
         self.service_agent_bus(now);
+        self.reconcile_agent_feed();
         let names: Vec<EnvironmentName> = self.envs.keys().cloned().collect();
         for env in names {
             let ids: Vec<TerminalId> = match self.envs.get(&env) {
@@ -442,7 +445,10 @@ impl EnvironmentShell {
         if node.state == state {
             return false;
         }
-        let waiting = node.state == AgentState::Working && state == AgentState::WaitingForInput;
+        let previous = node.state;
+        let event = agent_event(id, node.harness, previous, state);
+        let group = node.group;
+        let waiting = previous == AgentState::Working && state == AgentState::WaitingForInput;
         node.state = state;
         if state == AgentState::Working {
             live.working_since.insert(id, Instant::now());
@@ -456,6 +462,12 @@ impl EnvironmentShell {
             if *env != self.active {
                 self.unseen.insert(env.clone());
             }
+        }
+        self.observe_attention(env, id, previous, state);
+        self.publish_agent(env, id, None);
+        if let Some(event) = event {
+            self.note_variant_progress(env, &event);
+            self.publish_event(env, group, event);
         }
         true
     }

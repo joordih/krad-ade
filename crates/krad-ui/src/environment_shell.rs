@@ -2,11 +2,14 @@ mod activity;
 mod agent_bus;
 mod agent_composer;
 mod agent_hooks;
+mod app_events;
 mod app_update;
 mod arcade;
 mod ask;
+mod attention;
 mod changes_tab;
 mod chat;
+mod chat_search;
 mod chrome;
 mod code_viewer;
 mod context_menu;
@@ -27,11 +30,15 @@ mod gateway;
 mod gestures;
 mod git_actions;
 mod groups;
+mod harness_health;
 mod harness_models;
 mod host;
 mod template_popup;
 pub use host::HostTools;
+mod automations;
 mod input;
+mod kraddie_memory;
+mod kraddies;
 mod language_servers;
 mod layout;
 mod live_env;
@@ -48,8 +55,10 @@ mod performance;
 mod rename;
 mod review_view;
 mod rubber_band;
+mod session_changes;
 mod session_look;
 mod session_pane;
+mod session_templates;
 mod sessions;
 mod sessions_view;
 mod settings_swipe;
@@ -59,6 +68,7 @@ mod side_panel;
 mod sidebar;
 mod sidebar_terminals;
 mod snapshot;
+mod spending;
 mod surface;
 mod terminal_actions;
 mod terminal_body;
@@ -69,6 +79,8 @@ mod terminal_status;
 mod terminal_text;
 mod toolchains;
 mod top_bar;
+mod usage_bar;
+mod variants;
 mod window_close;
 mod work_mode;
 mod workers;
@@ -100,6 +112,8 @@ use krad_session::pump_channel;
 use krad_session::spawn_ticker;
 use krad_session::PumpMsg;
 
+use crate::components::{new_copy_feedback, CopyFeedback};
+
 const FPS_HUD_DEFAULT: Visibility = Visibility::Hidden;
 const FULL_REFRESH_HZ: u32 = 30;
 const REDUCED_REFRESH_HZ: u32 = 15;
@@ -116,6 +130,7 @@ pub struct EnvironmentShell {
     activation_watch: Option<Subscription>,
     palette_open: bool,
     palette_files: Vec<PathBuf>,
+    palette_tasks: Vec<krad_domain::ProjectTask>,
     language_servers: language_servers::LanguageServers,
     file_icons: Option<crate::file_icons::FileIcons>,
     editor_popover: Option<editor_popovers::EditorPopover>,
@@ -150,6 +165,7 @@ pub struct EnvironmentShell {
     side_search: side_panel::SideSearch,
     git_ui: git_actions::GitUi,
     pending_discard: Option<discard::Discard>,
+    session_changes: session_changes::SessionChangesUi,
     gestures: gestures::Gestures,
     history: side_panel::CommitHistory,
     activity_log: activity::ActivityLog,
@@ -170,13 +186,18 @@ pub struct EnvironmentShell {
     opencode: opencode::Opencode,
     gateway: gateway::Gateway,
     listed_models: harness_models::ListedModels,
-    account_usage: surface::AccountUsage,
+    harness_checks: harness_health::HarnessChecks,
+    usage: usage_bar::UsageBoard,
     context_menu: Option<context_menu::ContextMenu>,
+    copy_feedback: Entity<CopyFeedback>,
     model_picker: Option<model_picker::ModelPicker>,
+    effort_popover: Option<surface::EffortPopover>,
     agent_composer: Option<agent_composer::AgentComposer>,
+    template_picker: Option<session_templates::TemplatePicker>,
     panel_widths: layout::PanelWidths,
     chat: chat::ChatState,
     notes: notes_view::NotesUi,
+    chat_search: chat_search::ChatSearch,
     review: review_view::ReviewUi,
     docs_dialog: Option<docs_generate::DocsDialog>,
     name_dialogs: name_dialogs::NameDialogs,
@@ -187,6 +208,11 @@ pub struct EnvironmentShell {
     arcade: arcade::Arcade,
     app_updates: app_update::AppUpdates,
     extensions: extensions::Extensions,
+    attention: attention::AttentionUi,
+    app_events: app_events::AppEvents,
+    kraddies: kraddies::KraddiesUi,
+    automations: automations::AutomationsUi,
+    variants: variants::VariantsUi,
 }
 
 impl EnvironmentShell {
@@ -204,6 +230,9 @@ impl EnvironmentShell {
                         changed |= shell.apply_pump(msg);
                     }
                     shell.flush_noticed_chats(cx);
+                    shell.flush_attention(cx);
+                    shell.flush_kraddies(cx);
+                    shell.flush_variant_progress(cx);
                     shell.service_hosts(cx);
                     shell.watch_new_opencode_terminals(cx);
                     if changed {
@@ -238,6 +267,7 @@ impl EnvironmentShell {
             activation_watch: None,
             palette_open: false,
             palette_files: Vec::new(),
+            palette_tasks: Vec::new(),
             language_servers: language_servers::LanguageServers::new(),
             file_icons: crate::file_icons::FileIcons::load(),
             editor_popover: None,
@@ -272,6 +302,7 @@ impl EnvironmentShell {
             side_search: side_panel::SideSearch::default(),
             git_ui: git_actions::GitUi::default(),
             pending_discard: None,
+            session_changes: session_changes::SessionChangesUi::default(),
             gestures: gestures::Gestures::default(),
             history: side_panel::CommitHistory::default(),
             activity_log: activity::ActivityLog::default(),
@@ -292,13 +323,18 @@ impl EnvironmentShell {
             opencode: opencode::Opencode::default(),
             gateway: gateway::Gateway::default(),
             listed_models: harness_models::ListedModels::default(),
-            account_usage: surface::AccountUsage::default(),
+            harness_checks: harness_health::HarnessChecks::default(),
+            usage: usage_bar::UsageBoard::default(),
             context_menu: None,
+            copy_feedback: new_copy_feedback(cx),
             model_picker: None,
+            effort_popover: None,
             agent_composer: None,
+            template_picker: None,
             panel_widths: layout::PanelWidths::default(),
             chat: chat::ChatState::default(),
             notes: notes_view::NotesUi::default(),
+            chat_search: chat_search::ChatSearch::default(),
             review: review_view::ReviewUi::default(),
             docs_dialog: None,
             arcade: arcade::Arcade::new(cx.focus_handle()),
@@ -309,34 +345,53 @@ impl EnvironmentShell {
             host_tools,
             app_updates: app_update::AppUpdates::default(),
             extensions: extensions::Extensions::default(),
+            attention: attention::AttentionUi::default(),
+            app_events: app_events::AppEvents::start(),
+            kraddies: kraddies::KraddiesUi::default(),
+            automations: automations::AutomationsUi::default(),
+            variants: variants::VariantsUi::default(),
         };
-        shell.start_services(cx);
-        match seed {
-            Some(snapshot) => shell.restore_snapshot(snapshot),
-            None => shell.restore_env(EnvironmentData::empty(EnvironmentName::new(
-                DEFAULT_ENVIRONMENT.to_owned(),
-            ))),
-        }
-        let active = shell.active.clone();
-        shell.show_host(&active, cx);
-        shell.connect_worker_hosts(cx);
-        shell.pump_task = Some(Self::start_pump(pump_rx, cx));
-        shell.start_loading(cx);
+        shell.start(seed, pump_rx, cx);
         shell
     }
 
+    fn start(
+        &mut self,
+        seed: Option<PersistedLayout>,
+        pump_rx: PumpReceiver<PumpMsg>,
+        cx: &mut Context<Self>,
+    ) {
+        self.start_services(cx);
+        match seed {
+            Some(snapshot) => self.restore_snapshot(snapshot),
+            None => self.restore_env(EnvironmentData::empty(EnvironmentName::new(
+                DEFAULT_ENVIRONMENT.to_owned(),
+            ))),
+        }
+        let active = self.active.clone();
+        self.show_host(&active, cx);
+        self.connect_worker_hosts(cx);
+        self.pump_task = Some(Self::start_pump(pump_rx, cx));
+        self.start_loading(cx);
+    }
+
     fn start_services(&mut self, cx: &mut Context<Self>) {
+        cx.observe(&self.copy_feedback, |_, _, cx| cx.notify())
+            .detach();
         self.start_agent_bus(cx);
         self.check_gateway(cx);
         self.start_app_updates(cx);
+        self.start_code_host_watch(cx);
         Self::load_arcade_scores(cx);
     }
 
     fn start_loading(&mut self, cx: &mut Context<Self>) {
         self.detect_agents(cx);
+        self.start_harness_onboarding(cx);
         self.start_watches(cx);
         self.load_language_tools(cx);
         self.load_extensions(cx);
+        self.load_kraddies(cx);
     }
 
     fn frame_interval(&self) -> Duration {

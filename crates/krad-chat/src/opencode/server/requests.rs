@@ -46,6 +46,18 @@ impl OpencodeServer {
         Ok(envelope.data)
     }
 
+    pub(crate) fn read_located<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        directory: &str,
+    ) -> Result<T, OpencodeError> {
+        let request = Self::located(
+            self.without_body(self.agent.get(&self.url_of(path))),
+            Some(directory),
+        );
+        Ok(request.call()?.body_mut().read_json()?)
+    }
+
     pub(crate) fn read<T: DeserializeOwned>(&self, path: &str) -> Result<T, OpencodeError> {
         let request = self.without_body(self.agent.get(&self.url_of(path)));
         Ok(request.call()?.body_mut().read_json()?)

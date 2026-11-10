@@ -68,19 +68,7 @@ pub(crate) struct Outcome {
     pub(crate) failed: bool,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Usage {
-    pub(crate) input: u64,
-    pub(crate) output: u64,
-    pub(crate) cache_read: u64,
-    pub(crate) cache_write: u64,
-}
-
-impl Usage {
-    pub(crate) const fn context(self) -> u64 {
-        self.input + self.cache_read + self.cache_write + self.output
-    }
-}
+pub(crate) use krad_domain::TokenUsage as Usage;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

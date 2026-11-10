@@ -6,9 +6,10 @@ use krad_repo::{commit_diff, working_diff, ChangeKind, FileChange, RepoError};
 use std::path::{Path, PathBuf};
 
 use super::super::review_view::{numbered_lines, DiffLine};
+use super::super::session_changes::LoadGeneration;
 use super::super::EnvironmentShell;
 use super::revert::block_starts;
-use super::{DiffLoad, FileDiff, ReadDiff};
+use super::{DiffColors, DiffLoad, FileDiff, ReadDiff};
 
 enum DiffSource {
     Working(Option<(PathBuf, FileChange)>),
@@ -71,12 +72,17 @@ impl EnvironmentShell {
             .entry(id)
             .or_insert_with(|| FileDiff::new(path.clone(), view.clone()));
         if diff.path != path || diff.view != view {
+            let generation = diff.generation;
             *diff = FileDiff::new(path.clone(), view.clone());
+            diff.generation = generation;
         }
-        if !matches!(diff.load, DiffLoad::Pending) {
-            return;
+        match diff.load {
+            DiffLoad::Pending => {}
+            DiffLoad::Ready(_) => return self.paint_diff(&env, id, cx),
+            DiffLoad::Reading | DiffLoad::Failed(_) => return,
         }
         diff.load = DiffLoad::Reading;
+        let generation = diff.generation.advance();
         let source = match view {
             FileView::Commit(sha) => {
                 let Some(repo) = self.repo_holding(&path) else {
@@ -98,7 +104,7 @@ impl EnvironmentShell {
             FileView::Changes | FileView::Edit => DiffSource::Working(self.change_at(&path)),
         };
         let link = self.env_link(&env);
-        Self::read_diff(link, env, id, source, cx);
+        Self::read_diff(link, env, id, generation, source, cx);
     }
 
     pub(in crate::environment_shell) fn forget_diffs(&mut self) {
@@ -138,6 +144,7 @@ impl EnvironmentShell {
         link: HostLink,
         env: EnvironmentName,
         id: TerminalId,
+        generation: LoadGeneration,
         source: DiffSource,
         cx: &mut Context<Self>,
     ) {
@@ -149,6 +156,7 @@ impl EnvironmentShell {
                     .envs
                     .get_mut(&env)
                     .and_then(|live| live.diffs.get_mut(&id))
+                    .filter(|diff| diff.generation.admits(generation))
                 {
                     let revertible = diff.view == FileView::Changes;
                     diff.load = match read {
@@ -161,11 +169,14 @@ impl EnvironmentShell {
                             lines,
                             rows: Vec::new(),
                             widest: 0,
+                            colors: DiffColors::Unpainted,
                         }),
                         Err(error) => DiffLoad::Failed(error.to_string()),
                     };
                     diff.refold();
+                    diff.relocate_draft();
                 }
+                shell.refresh_diff_comments(&env, id);
                 cx.notify();
             })
             .unwrap_or_default();

@@ -1,19 +1,22 @@
 mod changes;
+mod ci_fix;
 mod detail;
 mod diff;
 mod header;
 mod host;
+mod layout;
 mod list;
 mod marks;
 mod offer;
 mod overview;
+mod paint;
 mod remote;
 mod summary;
 mod tabs;
 mod threads;
 mod words;
 
-use gpui_kit::{div, AnyElement, App, Context, IntoElement, ParentElement, Styled};
+use gpui_kit::{div, AnyElement, App, Context, IntoElement, ParentElement, Styled, Window};
 use krad_domain::review::{
     CiStatus, MergeRequest, MergeRequestIid, MergeRequestQuery, ProjectPath, Scope, StateFilter,
     User, UserId,
@@ -29,10 +32,11 @@ use crate::components::{
     card, split_island, Button, ButtonVariant, CenteredEmpty, EmptyState, IconName,
 };
 use crate::theme::{palette, Palette};
-pub(super) use changes::diff_row;
-use detail::RequestDetail;
-pub(super) use diff::{numbered_lines, DiffLine, LineKind};
-pub(super) use host::HostClient;
+pub(super) use changes::{diff_row, DIFF_GUTTER_W};
+use detail::{RequestDetail, ReviewTab};
+pub(super) use diff::{highlight_diff, numbered_lines, DiffLine, LineHighlights, LineKind};
+pub(super) use host::{origin_repo, HostClient};
+use layout::{review_frame, ReviewFrame};
 use marks::{
     avatar, ci_color, ci_glyph, ci_label, merge_status_label, meta_line, state_color, state_label,
     status_pill, WASH_ALPHA,
@@ -149,6 +153,7 @@ pub(super) struct ReviewUi {
     list: Option<RequestList>,
     detail: Option<RequestDetail>,
     offers: HashMap<crate::environment_shell::groups::GitKey, Offer>,
+    frame: ReviewFrame,
 }
 
 impl ReviewUi {
@@ -161,7 +166,7 @@ impl ReviewUi {
 }
 
 impl EnvironmentShell {
-    pub(super) fn review_view(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn review_view(&mut self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let Some(root) = self.active_group().map(|group| group.root.clone()) else {
             return island(
@@ -198,25 +203,40 @@ impl EnvironmentShell {
             return island(pal, notice, cx);
         }
         self.ensure_review_list(&root, cx);
-        let detail = match &self.review.detail {
+        let (width, _) = self.content_size(window);
+        self.review.frame = review_frame(width, self.review.detail.is_some());
+        if self
+            .review
+            .detail
+            .as_ref()
+            .is_some_and(|detail| detail.tab == ReviewTab::Changes)
+        {
+            self.paint_review_file(cx);
+        }
+        let frame = self.review.frame;
+        let detail = frame.shows_detail().then(|| match &self.review.detail {
             Some(detail) => self.request_detail(detail, cx),
             None => {
                 EmptyState::new(IconName::Merge, words.none_open, NONE_OPEN_TEXT).into_any_element()
             }
-        };
-        split_island(
-            self.request_list(cx),
-            div()
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_w_0()
-                .min_h_0()
-                .child(detail),
-            pal,
-            cx,
-        )
-        .into_any_element()
+        });
+        let list = frame
+            .list_w
+            .map(|width| self.request_list(frame.shows_detail().then_some(width), cx));
+        let detail = div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .children(detail);
+        match list {
+            Some(list) if frame.shows_detail() => {
+                split_island(list, detail, pal, cx).into_any_element()
+            }
+            Some(list) => island(pal, list, cx),
+            None => island(pal, detail, cx),
+        }
     }
 
     fn signed_out(reason: &str, words: &'static HostWords, cx: &mut Context<Self>) -> AnyElement {

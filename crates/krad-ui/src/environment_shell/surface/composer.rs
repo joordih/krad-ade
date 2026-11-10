@@ -1,3 +1,4 @@
+mod effort_slider;
 mod usage;
 
 use gpui_kit::component::input::Textarea;
@@ -7,9 +8,9 @@ use gpui_kit::{
     InteractiveElement, IntoElement, MouseButton, ParentElement, StatefulInteractiveElement,
     Styled,
 };
-use krad_domain::{Effort, TerminalId};
+use krad_domain::TerminalId;
 
-use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
+use super::super::context_menu::{MenuEntry, MenuPlacement};
 use super::super::model_picker::{grouped, ModelChoice, PickFor};
 use super::super::EnvironmentShell;
 use super::facts::Facts;
@@ -20,26 +21,26 @@ use crate::theme::{
     palette, row_fill, row_shadow, Palette, ICON_SM, ICON_XS, LINE_SM, LINE_XS, RADIUS_MD,
     RADIUS_XL, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3, TEXT_SM, TEXT_XS,
 };
+pub(in crate::environment_shell) use effort_slider::EffortPopover;
 use usage::{usage_ring, window_label};
 
 const COMPOSER_RING: f32 = 1.0;
 const CONTROL_H: f32 = 24.0;
 const SEND_PREFIX: &str = "surface-send";
 const MODEL_PREFIX: &str = "surface-model";
-const EFFORT_PREFIX: &str = "surface-effort";
 const THINKING_PREFIX: &str = "surface-thinking";
 const TOOLTIP_SEND: &str = "Send to the agent";
 const TOOLTIP_STOP: &str = "Stop the agent";
 const TOOLTIP_MODEL: &str = "Model";
+const TOOLTIP_MODEL_MISSING: &str =
+    "This model is no longer offered here; the default model answers until you pick another";
 const ORCHESTRATOR_LABEL: &str = "Orchestrator";
 const ORCHESTRATOR_PREFIX: &str = "surface-orchestrator";
 const TOOLTIP_ORCHESTRATOR_OFF: &str =
     "Orchestrator: lead this session, starting and directing Workers";
 const TOOLTIP_ORCHESTRATOR_ON: &str = "Leading this session; click to make it a plain chat again";
-const TOOLTIP_EFFORT: &str = "Reasoning effort";
 const TOOLTIP_THINKING: &str = "Extended thinking";
 const MODEL_LABEL: &str = "Model";
-const EFFORT_LABEL: &str = "Effort";
 
 impl EnvironmentShell {
     pub(super) fn surface_composer(
@@ -105,19 +106,21 @@ impl EnvironmentShell {
                     .is_some()
                     .then(|| self.orchestrator_control(id, cx)),
             )
-            .child(Self::model_controls(id, chat, &facts, cx));
+            .child(self.model_controls(id, chat, &facts, cx));
         div()
             .flex()
             .flex_col()
             .w_full()
             .gap(px(SPACE_1_5))
             .children(Self::attached_tray(id, chat, cx))
+            .children(self.kraddie_chip_tray(id, cx))
             .child(field)
             .child(settings)
             .into_any_element()
     }
 
     fn model_controls(
+        &self,
         id: TerminalId,
         chat: &SurfaceChat,
         facts: &Facts,
@@ -142,7 +145,7 @@ impl EnvironmentShell {
             }))
             .children(Self::chat_model_control(id, chat, facts, cx))
             .children(Self::acp_option_controls(id, chat, cx))
-            .children(Self::effort_control(id, facts, cx))
+            .children(self.effort_trigger(id, facts, cx))
             .children(Self::thinking_control(id, facts, cx))
             .children(facts.context_window.map(|tokens| {
                 div()
@@ -234,8 +237,22 @@ impl EnvironmentShell {
                 .iter()
                 .map(|pick| (pick.harness, ModelChoice::from(pick))),
         ));
+        let missing = facts.model_missing;
         control_pill((MODEL_PREFIX, id.as_u64()), pal)
-            .tooltip(|_, cx| tooltip_view(TOOLTIP_MODEL.into(), cx))
+            .tooltip(move |_, cx| {
+                tooltip_view(
+                    if missing {
+                        TOOLTIP_MODEL_MISSING
+                    } else {
+                        TOOLTIP_MODEL
+                    }
+                    .into(),
+                    cx,
+                )
+            })
+            .when(missing, |pill| {
+                pill.child(icon(IconName::Flag, ICON_XS, pal.warning_fg))
+            })
             .on_click(
                 cx.listener(move |this: &mut Self, event: &ClickEvent, _, cx| {
                     let at = event.position();
@@ -246,37 +263,6 @@ impl EnvironmentShell {
             .child(div().font_weight(FontWeight::MEDIUM).child(label))
             .child(icon(IconName::ChevronDown, ICON_XS, pal.text_subtle))
             .into_any_element()
-    }
-
-    fn effort_control(id: TerminalId, facts: &Facts, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if facts.efforts.is_empty() {
-            return None;
-        }
-        let pal = palette(cx);
-        let label = facts.effort.map_or(EFFORT_LABEL, Effort::label);
-        let entries: Vec<MenuEntry> = std::iter::once(MenuEntry::Header(EFFORT_LABEL.to_owned()))
-            .chain(facts.efforts.iter().map(|effort| {
-                MenuEntry::checked(
-                    effort.label(),
-                    facts.effort == Some(*effort),
-                    MenuAction::SetEffort(id, *effort),
-                )
-            }))
-            .collect();
-        let entries = std::rc::Rc::new(entries);
-        Some(
-            control_pill((EFFORT_PREFIX, id.as_u64()), pal)
-                .tooltip(|_, cx| tooltip_view(TOOLTIP_EFFORT.into(), cx))
-                .on_click(
-                    cx.listener(move |this: &mut Self, event: &ClickEvent, _, cx| {
-                        this.open_menu_above(event, entries.to_vec(), cx);
-                    }),
-                )
-                .child(icon(IconName::Flash, ICON_XS, pal.text_muted))
-                .child(label)
-                .child(icon(IconName::ChevronDown, ICON_XS, pal.text_subtle))
-                .into_any_element(),
-        )
     }
 
     pub(super) fn open_menu_above(

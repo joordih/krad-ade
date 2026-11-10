@@ -1,4 +1,5 @@
 mod activation;
+mod app_events;
 mod calls;
 mod commands;
 mod events;
@@ -142,6 +143,7 @@ pub(in crate::environment_shell) struct Extensions {
     watch: activation::Watch,
     loaded: bool,
     machines: machines::Machines,
+    subscriptions: app_events::Subscriptions,
 }
 
 impl Extensions {

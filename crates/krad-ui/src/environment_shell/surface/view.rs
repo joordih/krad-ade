@@ -121,7 +121,7 @@ impl EnvironmentShell {
     ) -> AnyElement {
         if let Some(tool) = chat.subagents.trail.last() {
             let started = self.turn_started(id, chat);
-            return Self::subagent_view(id, tool, chat, started, cx);
+            return Self::subagent_view(id, tool, chat, started, &self.copy_feedback, cx);
         }
         let scale = self
             .envs

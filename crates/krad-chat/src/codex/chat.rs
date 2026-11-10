@@ -512,6 +512,10 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         }
         self.listing = listing(&server, &self.directory);
         (self.sink)(LiveEvent::Ready(self.listing.catalog.clone()));
+        if let Some(read) = self.listing.limits.take() {
+            let usage = self.translator.read_limits(read);
+            (self.sink)(usage);
+        }
         for inbound in inbox {
             match inbound {
                 Inbound::Order(order) => {

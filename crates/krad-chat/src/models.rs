@@ -22,6 +22,7 @@ pub fn claude_models(runner: &Runner, cwd: &Path) -> Result<Vec<ModelOffer>, Cha
         effort: None,
         permission_mode: None,
         bus_vars: BusVars::default(),
+        usage_budget: std::sync::Arc::default(),
     };
     let (sender, receiver) = channel();
     let chat = start_chat(

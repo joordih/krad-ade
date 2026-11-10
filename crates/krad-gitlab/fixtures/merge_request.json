@@ -10,6 +10,8 @@
   "reviewers": [{ "id": 2, "username": "reviewer", "name": "Reviewer" }],
   "source_branch": "feature",
   "target_branch": "master",
+  "source_project_id": 7,
+  "target_project_id": 7,
   "sha": "abc123",
   "detailed_merge_status": "security_policy_violations",
   "has_conflicts": false,

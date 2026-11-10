@@ -25,7 +25,7 @@ use crate::theme::{
     SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM, TEXT_XS,
 };
 pub(in crate::environment_shell) use actions::ChangesAction;
-use actions::{change_menu, side_button, ROW_GROUP, SECTION_GROUP};
+use actions::{change_menu, folder_menu, side_button, ROW_GROUP, SECTION_GROUP};
 pub(in crate::environment_shell) use history::CommitHistory;
 use rows::{change_rows, ChangeRow, Sides};
 
@@ -36,6 +36,8 @@ const BTN_BRANCH: &str = "side-changes-branch";
 const BTN_LAYOUT: &str = "side-changes-layout";
 const BTN_COLLAPSE: &str = "side-changes-collapse";
 const BTN_REFRESH: &str = "side-changes-refresh";
+const BTN_SESSION: &str = "side-changes-session";
+const TOOLTIP_SESSION: &str = "Review session changes";
 const BTN_MORE: &str = "side-changes-more";
 const TOOLTIP_AS_LIST: &str = "View as list";
 const TOOLTIP_AS_TREE: &str = "View as tree";
@@ -225,6 +227,15 @@ impl EnvironmentShell {
                 )
             })
             .child(
+                Button::new(BTN_SESSION)
+                    .icon(IconName::Tasks)
+                    .small()
+                    .tooltip(TOOLTIP_SESSION)
+                    .on_click(cx.listener(|this: &mut Self, _, _, cx| {
+                        this.open_session_changes(cx);
+                    })),
+            )
+            .child(
                 Button::new(BTN_REFRESH)
                     .icon(IconName::Refresh)
                     .small()
@@ -328,8 +339,11 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let pal = palette(cx);
         let toggled = path.to_path_buf();
+        let menu_folder = path.to_path_buf();
+        let discard = (side == ChangeSide::Unstaged).then(|| Self::discard_folder_button(path, cx));
         div()
             .id((CHANGE_ROW_PREFIX, row_key(side, path)))
+            .group(ROW_GROUP)
             .flex()
             .flex_row()
             .w_full()
@@ -350,6 +364,13 @@ impl EnvironmentShell {
                 }
                 cx.notify();
             }))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    this.open_menu_at(event, folder_menu(&menu_folder), cx);
+                }),
+            )
             .child(icon(
                 if collapsed {
                     IconName::ChevronRight
@@ -361,6 +382,7 @@ impl EnvironmentShell {
             ))
             .child(icon(IconName::Folder, ICON_SM, pal.text_muted))
             .child(div().flex_1().min_w_0().truncate().child(label.to_owned()))
+            .children(discard)
             .into_any_element()
     }
 

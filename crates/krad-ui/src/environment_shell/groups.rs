@@ -269,21 +269,33 @@ impl EnvironmentShell {
             cx.notify();
             return;
         };
-        let held: Vec<TerminalId> = live
-            .data
-            .nodes
-            .iter()
-            .filter(|node| node.group == Some(id))
-            .map(|node| node.id)
-            .collect();
+        self.remove_group_in(&env, id, cx);
+    }
+
+    pub(super) fn remove_group_in(
+        &mut self,
+        env: &EnvironmentName,
+        id: GroupId,
+        cx: &mut Context<Self>,
+    ) {
+        let held: Vec<TerminalId> = self.envs.get(env).map_or_default(|live| {
+            live.data
+                .nodes
+                .iter()
+                .filter(|node| node.group == Some(id))
+                .map(|node| node.id)
+                .collect()
+        });
         for terminal in held {
-            self.close_terminal(terminal, cx);
+            self.close_terminal_in(env, terminal, cx);
         }
-        let Some(live) = self.envs.get_mut(&env) else {
+        let Some(live) = self.envs.get_mut(env) else {
             return;
         };
         let removed = live.data.remove_group(id);
-        live.selected_group = live.data.groups.first().map(|group| group.id);
+        if live.selected_group.is_none_or(|selected| selected == id) {
+            live.selected_group = live.data.groups.first().map(|group| group.id);
+        }
         let host = live.data.host.clone();
         if let Some(removed) = removed {
             self.forget_group_toolchains(&host, &removed.root);
@@ -303,6 +315,7 @@ impl EnvironmentShell {
                 shell.native_agents = installed;
                 shell.ensure_opencode(cx);
                 shell.list_harness_models(cx);
+                shell.watch_usage(cx);
                 cx.notify();
             })
             .unwrap_or_default();

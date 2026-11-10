@@ -6,19 +6,24 @@ use gpui_kit::{
 use krad_chat::ModelSource;
 
 use super::super::EnvironmentShell;
-use super::Choosing;
+use super::layout::picker_layout;
+use super::{Choosing, ModelChoice};
 use crate::components::{harness_icon, icon, tooltip_view, IconName};
 use crate::theme::{
     palette, popover_fill, popover_shadow, Palette, ICON, ICON_SM, LINE_BASE, LINE_XS, SPACE_1,
     SPACE_1_5, SPACE_2, SPACE_3, TEXT_BASE, TEXT_SM, TEXT_XS,
 };
 
-const PICKER_W: f32 = 340.0;
 const PICKER_H: f32 = 380.0;
 const RAIL_W: f32 = 48.0;
 const RAIL_BUTTON: f32 = 34.0;
 const SEARCH_H: f32 = 44.0;
 const ROW_H: f32 = 32.0;
+const DESCRIBED_ROW_H: f32 = 46.0;
+const BADGE_H: f32 = 16.0;
+const BADGE_RADIUS: f32 = 5.0;
+const DEFAULT_BADGE: &str = "Default";
+const MISSING_BADGE: &str = "Unavailable";
 const PANEL_RADIUS: f32 = 14.0;
 const BUTTON_RADIUS: f32 = 9.0;
 const CARET_W: f32 = 1.5;
@@ -55,6 +60,76 @@ fn section_header(section: &ModelSource, pal: &Palette) -> AnyElement {
         .font_weight(FontWeight::MEDIUM)
         .text_color(rgb(pal.text_subtle))
         .child(section_label(section).to_owned())
+        .into_any_element()
+}
+
+fn badge(text: &'static str, fill: u32, color: u32) -> AnyElement {
+    div()
+        .flex_none()
+        .flex()
+        .items_center()
+        .h(px(BADGE_H))
+        .px(px(SPACE_1_5))
+        .rounded(px(BADGE_RADIUS))
+        .bg(rgb(fill))
+        .text_size(px(TEXT_XS))
+        .line_height(px(LINE_XS))
+        .text_color(rgb(color))
+        .child(text)
+        .into_any_element()
+}
+
+fn badges(choice: &ModelChoice, pal: &Palette) -> impl Iterator<Item = AnyElement> {
+    let recommended = choice
+        .recommended
+        .then(|| badge(DEFAULT_BADGE, pal.chip_bg, pal.chip_fg));
+    let context = choice
+        .context
+        .map(|context| badge(context.label(), pal.chip_bg, pal.chip_fg));
+    let missing = choice
+        .missing
+        .then(|| badge(MISSING_BADGE, pal.chip_bg, pal.warning_fg));
+    recommended.into_iter().chain(context).chain(missing)
+}
+
+fn choice_text(choice: &ModelChoice, described: bool, pal: &Palette) -> AnyElement {
+    let name = div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(SPACE_1_5))
+        .min_w_0()
+        .child(
+            div()
+                .min_w_0()
+                .truncate()
+                .text_size(px(TEXT_BASE))
+                .line_height(px(LINE_BASE))
+                .text_color(rgb(pal.text_strong))
+                .child(choice.label.clone()),
+        )
+        .children(badges(choice, pal));
+    div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_w_0()
+        .child(name)
+        .children(
+            choice
+                .description
+                .as_ref()
+                .filter(|_| described)
+                .map(|text| {
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .text_size(px(TEXT_XS))
+                        .line_height(px(LINE_XS))
+                        .text_color(rgb(pal.text_muted))
+                        .child(text.clone())
+                }),
+        )
         .into_any_element()
 }
 
@@ -160,6 +235,7 @@ impl EnvironmentShell {
 
     fn picker_rows(
         choosing: &Choosing,
+        described: bool,
         empty_text: SharedString,
         pal: &Palette,
         cx: &mut Context<Self>,
@@ -177,6 +253,7 @@ impl EnvironmentShell {
             }
             section = Some(&choice.section);
             let highlighted = index == choosing.highlighted;
+            let tall = described && choice.description.is_some();
             rows.push(
                 div()
                     .id((ROW_PREFIX, element_index(index)))
@@ -185,11 +262,12 @@ impl EnvironmentShell {
                     .flex_row()
                     .items_center()
                     .gap(px(SPACE_2))
-                    .h(px(ROW_H))
+                    .h(px(if tall { DESCRIBED_ROW_H } else { ROW_H }))
                     .px(px(SPACE_2))
                     .rounded(px(BUTTON_RADIUS))
                     .cursor_pointer()
                     .when(highlighted, |row| row.bg(pal.bg_hover))
+                    .active(|row| row.bg(pal.bg_selected))
                     .on_hover(cx.listener(move |this: &mut Self, hovered: &bool, _, cx| {
                         if *hovered {
                             this.highlight_model(index, cx);
@@ -198,16 +276,7 @@ impl EnvironmentShell {
                     .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                         this.pick_model(index, cx);
                     }))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_size(px(TEXT_BASE))
-                            .line_height(px(LINE_BASE))
-                            .text_color(rgb(pal.text_strong))
-                            .child(choice.label.clone()),
-                    )
+                    .child(choice_text(choice, described, pal))
                     .when(choice.current, |row| {
                         row.child(icon(IconName::Tick, ICON_SM, pal.text_strong))
                     })
@@ -248,8 +317,9 @@ impl EnvironmentShell {
             picker.origin.0 - self.frame_inset.0,
             picker.origin.1 - self.frame_inset.1,
         );
+        let layout = picker_layout(root_w);
         let height = PICKER_H.min(root_h - 2.0 * EDGE_MARGIN);
-        let left = x.min(root_w - PICKER_W - EDGE_MARGIN).max(EDGE_MARGIN);
+        let left = x.min(root_w - layout.width - EDGE_MARGIN).max(EDGE_MARGIN);
         let top = (y - height - ANCHOR_GAP)
             .min(root_h - height - EDGE_MARGIN)
             .max(EDGE_MARGIN);
@@ -283,7 +353,7 @@ impl EnvironmentShell {
                         .absolute()
                         .left(px(left))
                         .top(px(top))
-                        .w(px(PICKER_W))
+                        .w(px(layout.width))
                         .h(px(height))
                         .flex()
                         .flex_row()
@@ -304,6 +374,7 @@ impl EnvironmentShell {
                                 .child(search_row(&picker.choosing.query, pal))
                                 .child(Self::picker_rows(
                                     &picker.choosing,
+                                    layout.descriptions,
                                     self.picker_empty_text(),
                                     pal,
                                     cx,

@@ -1,14 +1,18 @@
+mod issues;
+
 use crate::encode::encode_path;
 use crate::graphql::{self, Answer, Ignored, ReplyData, ThreadsData};
+use crate::issue::{ALL_STATE, CLOSED_STATE, OPEN_STATE};
+use crate::job_log::{read_job_log, JobStepsJson};
 use crate::model::{
     CommentBody, CommitJson, CompareJson, DismissBody, FileJson, IssueCommentJson, JobsJson,
     MergeBody, PullJson, ReviewBody, ReviewJson, ReviewState, RunsJson, UserJson,
     CONVERSATION_PREFIX,
 };
 use krad_domain::review::{
-    Approval, Approvals, Change, Commit, CommitSha, DiffRefs, Discussion, DiscussionId, Job,
-    MergeOptions, MergeRequest, MergeRequestIid, MergeRequestQuery, Note, Pipeline, PipelineId,
-    ProjectPath, Scope, StateFilter, User, UserId,
+    Approval, Approvals, Change, Commit, CommitSha, DiffRefs, Discussion, DiscussionId, Job, JobId,
+    JobLog, ListPage, MergeOptions, MergeRequest, MergeRequestIid, MergeRequestQuery, Note,
+    Pipeline, PipelineId, ProjectPath, Scope, StateFilter, User, UserId,
 };
 use krad_domain::GithubToken;
 use serde::de::DeserializeOwned;
@@ -37,17 +41,16 @@ const LINK_SEPARATOR: char = ',';
 const LINK_FIELD_SEPARATOR: char = ';';
 const PER_PAGE_PARAM: &str = "per_page";
 const PER_PAGE: &str = "100";
+const PAGE_PARAM: &str = "page";
 const STATE_PARAM: &str = "state";
 const HEAD_SHA_PARAM: &str = "head_sha";
-const OPEN_STATE: &str = "open";
-const CLOSED_STATE: &str = "closed";
-const ALL_STATE: &str = "all";
 const APPROVE_EVENT: &str = "APPROVE";
 const DISMISS_EVENT: &str = "DISMISS";
 const WITHDRAWN_MESSAGE: &str = "Approval withdrawn";
 const SQUASH_METHOD: &str = "squash";
 const MERGE_METHOD: &str = "merge";
 const PATH_SEPARATOR: char = '/';
+const LOGS_PATH: &str = "/logs";
 
 #[derive(Debug, thiserror::Error)]
 pub enum GithubError {
@@ -59,6 +62,8 @@ pub enum GithubError {
     Graphql(String),
     #[error("GitHub request failed: {0}")]
     Http(ureq::Error),
+    #[error("Could not read the job's log from GitHub: {0}")]
+    Log(std::io::Error),
 }
 
 impl From<ureq::Error> for GithubError {
@@ -401,6 +406,18 @@ impl GithubClient {
         Ok(jobs.jobs.into_iter().map(Job::from).collect())
     }
 
+    /// # Errors
+    ///
+    /// See [`GithubClient::current_user`]; [`GithubError::Log`] when the log
+    /// stops arriving halfway.
+    pub fn job_log(&self, project: &ProjectPath, job: JobId) -> Result<JobLog, GithubError> {
+        let path = repo_path(project, &format!("/actions/jobs/{job}"))?;
+        let steps: JobStepsJson = self.get(&path)?;
+        let mut response = self.call(self.agent.get(&api_url(&format!("{path}{LOGS_PATH}"))))?;
+        let reader = std::io::BufReader::new(response.body_mut().as_reader());
+        read_job_log(reader, steps.failing_step()).map_err(GithubError::Log)
+    }
+
     fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, GithubError> {
         self.read(self.agent.get(&api_url(path)))
     }
@@ -443,6 +460,37 @@ impl GithubClient {
     ) -> Result<D, GithubError> {
         let answer: Answer<D> = self.send_json(GRAPHQL_PATH, request)?;
         answer.into_data()
+    }
+
+    fn patch_json<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, GithubError> {
+        let request = signed(self.agent.patch(&api_url(path)), &self.bearer);
+        Ok(request.send_json(body)?.body_mut().read_json()?)
+    }
+
+    fn page_of<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+        page: ListPage,
+    ) -> Result<(T, bool), GithubError> {
+        let request = self
+            .agent
+            .get(&api_url(path))
+            .query(PER_PAGE_PARAM, PER_PAGE)
+            .query(PAGE_PARAM, page.0.to_string())
+            .query_pairs(params.iter().map(|(key, value)| (*key, value.as_str())));
+        let mut response = self.call(request)?;
+        let more = response
+            .headers()
+            .get(LINK_HEADER)
+            .and_then(|value| value.to_str().ok())
+            .and_then(next_link)
+            .is_some();
+        Ok((response.body_mut().read_json()?, more))
     }
 
     fn list<T: DeserializeOwned>(

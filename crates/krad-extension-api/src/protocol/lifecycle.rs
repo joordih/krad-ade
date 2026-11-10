@@ -23,6 +23,7 @@ pub enum Feature {
     Secrets,
     Tools,
     HostKinds,
+    Events,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

@@ -6,7 +6,8 @@ use krad_extensions::api::limits::TOAST_INTERVAL;
 use krad_extensions::api::manifest::SettingKind;
 use krad_extensions::api::protocol::{
     CloseView, Empty, GetSettings, GroupInfo, OpenFile, OpenFileParams, OpenTerminal, OpenView,
-    Request, RunCommand, SettingValue, SettingsValues, WorkspaceContext, WorkspaceContextResult,
+    Request, RunCommand, SettingValue, SettingsValues, SubscribeEvents, WorkspaceContext,
+    WorkspaceContextResult,
 };
 use krad_extensions::api::view::Tone;
 use krad_extensions::program::{AppCall, AppNotice, CallId};
@@ -119,6 +120,10 @@ impl EnvironmentShell {
             AppCall::CloseView(view) => {
                 self.close_extension_views(key, &view, cx);
                 self.answer_call::<CloseView>(key, id, &Empty {});
+            }
+            AppCall::SubscribeEvents(params) => {
+                self.subscribe_app_events(key, params.kinds);
+                self.answer_call::<SubscribeEvents>(key, id, &Empty {});
             }
         }
     }

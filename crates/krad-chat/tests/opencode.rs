@@ -29,6 +29,7 @@ fn config(runner: Runner) -> LiveConfig {
         effort: None,
         permission_mode: Some(PermissionMode::Manual),
         bus_vars: BusVars(vec![("KRAD_TEST".to_owned(), "1".to_owned())]),
+        usage_budget: std::sync::Arc::default(),
     }
 }
 

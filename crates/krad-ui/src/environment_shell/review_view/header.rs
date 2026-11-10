@@ -29,6 +29,8 @@ const META_ICON: f32 = 13.0;
 const FACT_ICON: f32 = 12.0;
 const TAB_PREFIX: &str = "review-tab";
 const BTN_OPEN_WEB: &str = "review-open-web";
+const BTN_BACK: &str = "review-back";
+const BACK_TOOLTIP: &str = "Back to the list";
 const BTN_APPROVE: &str = "review-approve";
 const BTN_MERGE: &str = "review-merge";
 const APPROVE_LABEL: &str = "Approve";
@@ -93,11 +95,22 @@ impl EnvironmentShell {
                 .variant(ButtonVariant::Primary)
                 .on_click(cx.listener(|this: &mut Self, _, _, cx| this.merge_request(cx)))
         });
+        let back = self.review.frame.needs_back().then(|| {
+            Button::new(BTN_BACK)
+                .icon(IconName::ChevronLeft)
+                .small()
+                .tooltip(BACK_TOOLTIP)
+                .on_click(cx.listener(|this: &mut Self, _, _, cx| {
+                    this.review.detail = None;
+                    cx.notify();
+                }))
+        });
         div()
             .flex()
             .flex_row()
             .items_center()
             .gap(px(HEADER_GAP))
+            .children(back)
             .child(
                 div()
                     .flex_none()

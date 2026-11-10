@@ -1,6 +1,6 @@
 use crate::hook::{read_stdin, send};
 use crate::protocol::{AgentStatus, Request};
-use krad_domain::AgentPreset;
+use krad_domain::{AgentPreset, ResetTime};
 use serde_json::Value;
 use std::io::Write as _;
 
@@ -12,6 +12,8 @@ const EFFORT: &str = "/effort/level";
 const THINKING: &str = "/thinking/enabled";
 const FIVE_HOUR_USED: &str = "/rate_limits/five_hour/used_percentage";
 const SEVEN_DAY_USED: &str = "/rate_limits/seven_day/used_percentage";
+const FIVE_HOUR_RESETS: &str = "/rate_limits/five_hour/resets_at";
+const SEVEN_DAY_RESETS: &str = "/rate_limits/seven_day/resets_at";
 const USER_COMMAND: &str = "/statusLine/command";
 
 #[must_use]
@@ -40,6 +42,14 @@ fn percent_at(value: &Value, pointer: &str) -> Option<u16> {
     Some(raw.round().clamp(0.0, f64::from(u16::MAX)) as u16)
 }
 
+fn reset_at(value: &Value, pointer: &str) -> Option<ResetTime> {
+    let reset = value.pointer(pointer)?;
+    reset
+        .as_u64()
+        .map(ResetTime::from_epoch)
+        .or_else(|| reset.as_str().and_then(ResetTime::parse_iso))
+}
+
 fn claude_status(payload: &str) -> Option<AgentStatus> {
     let value: Value = serde_json::from_str(payload).ok()?;
     Some(AgentStatus {
@@ -50,6 +60,8 @@ fn claude_status(payload: &str) -> Option<AgentStatus> {
         thinking: value.pointer(THINKING).and_then(Value::as_bool),
         five_hour_used: percent_at(&value, FIVE_HOUR_USED),
         seven_day_used: percent_at(&value, SEVEN_DAY_USED),
+        five_hour_resets_at: reset_at(&value, FIVE_HOUR_RESETS),
+        seven_day_resets_at: reset_at(&value, SEVEN_DAY_RESETS),
     })
 }
 
@@ -69,7 +81,8 @@ mod tests {
         let payload = r#"{"model":{"id":"claude-opus-5-5","display_name":"Opus 5.5"},
             "context_window":{"used_percentage":8.4},"effort":{"level":"high"},
             "thinking":{"enabled":true},
-            "rate_limits":{"five_hour":{"used_percentage":23.5},"seven_day":{"used_percentage":41.2}}}"#;
+            "rate_limits":{"five_hour":{"used_percentage":23.5,"resets_at":1794249000},
+            "seven_day":{"used_percentage":41.2}}}"#;
         assert_eq!(
             claude_status(payload),
             Some(AgentStatus {
@@ -80,6 +93,8 @@ mod tests {
                 thinking: Some(true),
                 five_hour_used: Some(24),
                 seven_day_used: Some(41),
+                five_hour_resets_at: Some(ResetTime::from_epoch_secs(1_794_249_000)),
+                seven_day_resets_at: None,
             })
         );
     }

@@ -1,8 +1,8 @@
 mod client_side;
 
 use krad_domain::{
-    line_diff, ChatEvent, Checklist, ChecklistItem, ChecklistStatus, FileEdit, ToolCall,
-    ToolKind as ShownKind, ToolUseId,
+    line_diff, ChatEvent, Checklist, ChecklistItem, ChecklistStatus, FileEdit, ReportedUsage,
+    ToolCall, ToolKind as ShownKind, ToolUseId, UsageReport,
 };
 use std::collections::HashMap;
 use std::mem;
@@ -12,10 +12,18 @@ use crate::acp::ids::{TerminalId, ToolCallId};
 use crate::acp::paths::AgentPaths;
 use crate::acp::update::{
     AvailableCommand, Diff, Plan, PlanEntryStatus, SessionUpdate, ToolCall as AgentToolCall,
-    ToolCallContent, ToolCallStatus, ToolCallUpdate, ToolKind,
+    ToolCallContent, ToolCallStatus, ToolCallUpdate, ToolKind, UsageUpdate,
 };
 use crate::control::{Catalog, CommandOffer, LiveEvent};
 use crate::parse::tool_summary;
+
+fn usage_spent(usage: &UsageUpdate) -> Option<LiveEvent> {
+    let cost = usage.cost.as_ref()?.dollars()?;
+    Some(LiveEvent::Spent(UsageReport::RunningTotal(ReportedUsage {
+        cost: Some(cost),
+        ..ReportedUsage::default()
+    })))
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct ToolState {
@@ -157,10 +165,13 @@ impl Translator {
                     .collect();
                 events.push(LiveEvent::Ready(self.catalog.clone()));
             }
-            SessionUpdate::UsageUpdate(usage) => events.extend([
-                LiveEvent::Chat(ChatEvent::ContextTokens(usage.used)),
-                LiveEvent::Chat(ChatEvent::ContextWindow(usage.size)),
-            ]),
+            SessionUpdate::UsageUpdate(usage) => {
+                events.extend([
+                    LiveEvent::Chat(ChatEvent::ContextTokens(usage.used)),
+                    LiveEvent::Chat(ChatEvent::ContextWindow(usage.size)),
+                ]);
+                events.extend(usage_spent(&usage));
+            }
             SessionUpdate::AgentThoughtChunk(_)
             | SessionUpdate::UserMessageChunk(_)
             | SessionUpdate::CurrentModeUpdate(_)

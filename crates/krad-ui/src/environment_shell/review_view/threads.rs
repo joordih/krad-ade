@@ -152,6 +152,7 @@ impl EnvironmentShell {
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                 if let Some(detail) = this.review.detail.as_mut() {
                     detail.expanded.insert(id.clone());
+                    detail.remeasure_threads();
                 }
                 cx.notify();
             }))
@@ -214,6 +215,7 @@ impl EnvironmentShell {
                 field,
                 _send_on_enter: send_on_enter,
             });
+            detail.remeasure_threads();
         }
         cx.notify();
     }

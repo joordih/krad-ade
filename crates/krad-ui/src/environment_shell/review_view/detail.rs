@@ -1,20 +1,21 @@
 use gpui_kit::component::input::TextareaState;
 use gpui_kit::{
     div, px, AnyElement, AppContext as _, Context, Entity, InteractiveElement, IntoElement,
-    ParentElement, StatefulInteractiveElement, Styled, Window,
+    ListAlignment, ListState, ParentElement, StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::review::{
-    Approvals, Commit, Discussion, DiscussionId, Job, MergeRequest, MergeRequestState, MergeStatus,
-    Pipeline, ProjectPath, UserId,
+    Approvals, Commit, Discussion, DiscussionId, Job, JobId, MergeRequest, MergeRequestState,
+    MergeStatus, Pipeline, ProjectPath, UserId,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use super::diff::ChangedFile;
+use super::diff::{diff_items, thread_anchors, ChangedFile, DiffItem, ThreadAnchor};
 use super::remote::Approval;
 use super::threads::ReplyDraft;
 use super::words::HostWords;
 use super::Remote;
+use crate::environment_shell::changes_tab::DiffColors;
 use crate::environment_shell::EnvironmentShell;
 use crate::theme::palette;
 
@@ -23,6 +24,7 @@ const SCROLL_ID: &str = "review-detail";
 const MERGE_LABEL: &str = "Merge";
 const CONFIRM_MERGE_LABEL: &str = "Click again to merge";
 const COMMENT_ROWS: usize = 2;
+const DIFF_OVERDRAW: f32 = 600.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub(super) enum ReviewTab {
@@ -59,10 +61,15 @@ pub(in crate::environment_shell) struct RequestDetail {
     pub(super) commits: Remote<Vec<Commit>>,
     pub(super) files: Remote<Vec<ChangedFile>>,
     pub(super) selected_file: usize,
+    pub(super) anchors: Vec<Vec<ThreadAnchor>>,
+    pub(super) items: Vec<DiffItem>,
+    pub(super) diff_list: ListState,
+    pub(super) colors: HashMap<usize, DiffColors>,
     pub(super) discussions: Remote<Vec<Discussion>>,
     pub(super) approvals: Remote<Approvals>,
     pub(super) pipelines: Remote<Vec<Pipeline>>,
     pub(super) jobs: Remote<Vec<Job>>,
+    pub(super) fixing: HashSet<JobId>,
     pub(super) draft: Entity<TextareaState>,
     pub(super) reply: Option<ReplyDraft>,
     pub(super) expanded: HashSet<DiscussionId>,
@@ -95,10 +102,15 @@ impl RequestDetail {
             commits: Remote::Loading,
             files: Remote::Loading,
             selected_file: 0,
+            anchors: Vec::new(),
+            items: Vec::new(),
+            diff_list: ListState::new(0, ListAlignment::Top, px(DIFF_OVERDRAW)),
+            colors: HashMap::new(),
             discussions: Remote::Loading,
             approvals: Remote::Loading,
             pipelines: Remote::Loading,
             jobs: Remote::Loading,
+            fixing: HashSet::new(),
             draft,
             reply: None,
             expanded: HashSet::new(),
@@ -137,7 +149,61 @@ impl RequestDetail {
             .update(cx, |field, cx| field.set_value("", window, cx));
         let discussion = reply.discussion.clone();
         self.reply = None;
+        self.remeasure_threads();
         Some((discussion, text))
+    }
+
+    pub(super) fn shown_file(&self) -> Option<(usize, &ChangedFile)> {
+        let Remote::Ready(files) = &self.files else {
+            return None;
+        };
+        let index = self.selected_file.min(files.len().checked_sub(1)?);
+        Some((index, files.get(index)?))
+    }
+
+    pub(super) fn sync_rows(&mut self) {
+        self.anchors = match (&self.files, &self.discussions) {
+            (Remote::Ready(files), Remote::Ready(discussions)) => {
+                thread_anchors(files, discussions)
+            }
+            _ => Vec::new(),
+        };
+        let items = self.shown_items();
+        if items == self.items {
+            self.remeasure_threads();
+        } else {
+            self.set_items(items);
+        }
+    }
+
+    pub(super) fn select_file(&mut self, index: usize) {
+        if self.selected_file == index {
+            return;
+        }
+        self.selected_file = index;
+        let items = self.shown_items();
+        self.set_items(items);
+    }
+
+    pub(super) fn forget_colors(&mut self) {
+        self.colors.clear();
+    }
+
+    pub(super) fn remeasure_threads(&self) {
+        self.diff_list.remeasure_items(0..self.items.len());
+    }
+
+    fn shown_items(&self) -> Vec<DiffItem> {
+        let Some((index, file)) = self.shown_file() else {
+            return Vec::new();
+        };
+        let anchors = self.anchors.get(index).map_or(&[][..], Vec::as_slice);
+        diff_items(file.lines.len(), anchors)
+    }
+
+    fn set_items(&mut self, items: Vec<DiffItem>) {
+        self.diff_list.reset(items.len());
+        self.items = items;
     }
 
     pub(super) fn approval_action(&self, me: Option<UserId>) -> Option<Approval> {
@@ -195,7 +261,7 @@ impl EnvironmentShell {
         let body = match detail.tab {
             ReviewTab::Overview => self.overview(detail, cx),
             ReviewTab::Commits => super::tabs::commits(&detail.commits, pal),
-            ReviewTab::Changes => return self.with_header(detail, Self::changes(detail, cx), cx),
+            ReviewTab::Changes => return self.with_header(detail, self.changes(detail, cx), cx),
             ReviewTab::Pipelines => super::tabs::pipelines(&detail.pipelines, detail.words, pal),
         };
         let scrolled = div()

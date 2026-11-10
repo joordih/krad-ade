@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use super::{
-    activity, agent_bus, changes_tab, file_tab, host, sessions, surface, terminal_images, workers,
-    Prompt,
+    activity, agent_bus, changes_tab, file_tab, host, session_templates, sessions, surface,
+    terminal_images, workers, Prompt,
 };
 
 pub(super) struct LiveEnv {
@@ -28,6 +28,7 @@ pub(super) struct LiveEnv {
     pub(super) pending_chats: HashMap<TerminalId, krad_chat::LiveSession>,
     pub(super) waiting_prompts: HashMap<TerminalId, Vec<Prompt>>,
     pub(super) waiting_modes: HashMap<TerminalId, PermissionMode>,
+    pub(super) waiting_choices: HashMap<TerminalId, session_templates::ChatChoices>,
     pub(super) noticed_chats: Vec<TerminalId>,
     pub(super) images: HashMap<TerminalId, terminal_images::TerminalImages>,
     pub(super) editors: HashMap<TerminalId, file_tab::FileEditor>,
@@ -76,6 +77,7 @@ impl LiveEnv {
             pending_chats,
             waiting_prompts: HashMap::new(),
             waiting_modes: HashMap::new(),
+            waiting_choices: HashMap::new(),
             noticed_chats: Vec::new(),
             images: HashMap::new(),
             editors: HashMap::new(),

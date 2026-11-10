@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+chrono = { workspace = true, features = ["clock"] }
 futures.workspace = true
 gpui-fps.workspace = true
 gpui-kit.workspace = true

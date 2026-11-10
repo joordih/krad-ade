@@ -1,19 +1,25 @@
 mod acp;
 mod anchor;
 mod answer;
+mod answer_blocks;
 mod bookmarks;
 mod bus;
+mod chat_menu;
 mod checklist;
+mod choice;
 mod composer;
+mod composer_rows;
 mod dot_field;
 mod edit_diff;
 mod edit_message;
 mod facts;
+mod files_restore;
 mod glide;
 mod mentions;
 mod message_actions;
 mod origin;
 mod outbox;
+mod prose_views;
 mod status_line;
 mod structured;
 mod subagent_card;
@@ -32,7 +38,7 @@ use gpui_kit::{
     Subscription, Window,
 };
 use krad_domain::{
-    AgentPreset, Effort, EnvironmentName, Mention, ModelId, Prompt, TerminalId,
+    AgentPreset, Effort, EnvironmentName, Mention, ModelId, Prompt, TerminalId, COMPOSER_MIN_ROWS,
     DEFAULT_CHAT_HARNESS,
 };
 use krad_repo::IndexEntry;
@@ -45,6 +51,7 @@ use super::chat::ChatMessage;
 use super::EnvironmentShell;
 use anchor::Anchor;
 use checklist::ChecklistView;
+pub(super) use composer::EffortPopover;
 use edit_message::MessageEditor;
 use glide::Glide;
 pub(super) use origin::age_label;
@@ -57,13 +64,12 @@ use transcript::{TranscriptView, TRANSCRIPT_HARNESS};
 pub(super) use acp::AcpChoice;
 pub(super) use answer::{names_its_tool, tool_question, tool_request};
 pub(super) use bus::ChatPresence;
+pub(super) use chat_menu::ChatCopy;
 pub(super) use edit_diff::edit_diffs;
-pub(super) use facts::AccountUsage;
 pub(super) use status_line::elapsed_label;
 pub(super) use structured::restored_chats;
 pub(super) use structured::StructuredChat;
 
-const INPUT_ROWS: usize = 2;
 const INPUT_PLACEHOLDER: &str = "Ask anything…  @ for files, / for skills";
 const THINKING_LABEL: &str = "Thinking";
 const THREAD_OVERDRAW: f32 = 800.0;
@@ -98,12 +104,14 @@ pub(super) struct SurfaceChat {
     pub(super) messages: Vec<ChatMessage>,
     pub(super) origin: Option<Origin>,
     pub(super) input: Entity<TextareaState>,
+    composer_rows: u16,
     _input_events: Subscription,
     pub(super) mentions: HashMap<SharedString, IndexEntry>,
     pub(super) attached: Vec<Mention>,
     pub(super) opened_thoughts: HashSet<(usize, usize)>,
     pub(super) tool_groups: HashMap<(usize, usize), bool>,
     pub(super) thread: ListState,
+    prose: RefCell<prose_views::ProseViews>,
     pub(super) measured_tail: Cell<u64>,
     pub(super) text_scale: Cell<f32>,
     pub(super) pins_latest: bool,
@@ -120,6 +128,7 @@ pub(super) struct SurfaceChat {
     subagents: Subagents,
     checklist_view: ChecklistView,
     editing: Option<MessageEditor>,
+    files_undo: Option<files_restore::FilesUndo>,
 }
 
 impl SurfaceChat {
@@ -137,12 +146,14 @@ impl SurfaceChat {
             messages: Vec::new(),
             origin: None,
             input,
+            composer_rows: COMPOSER_MIN_ROWS,
             _input_events: input_events,
             mentions: HashMap::new(),
             attached: Vec::new(),
             opened_thoughts: HashSet::new(),
             tool_groups: HashMap::new(),
             thread: new_thread(),
+            prose: RefCell::default(),
             measured_tail: Cell::new(0),
             text_scale: Cell::new(krad_domain::TextScale::DEFAULT),
             pins_latest: false,
@@ -159,6 +170,7 @@ impl SurfaceChat {
             subagents: Subagents::default(),
             checklist_view: ChecklistView::default(),
             editing: None,
+            files_undo: None,
         }
     }
 
@@ -206,7 +218,10 @@ impl EnvironmentShell {
     ) -> (Entity<TextareaState>, Subscription) {
         let input = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .rows(INPUT_ROWS)
+                .auto_grow(
+                    usize::from(COMPOSER_MIN_ROWS),
+                    usize::from(COMPOSER_MIN_ROWS),
+                )
                 .submit_on_enter(true)
                 .placeholder(INPUT_PLACEHOLDER)
         });
@@ -259,6 +274,7 @@ impl EnvironmentShell {
             self.recheck_failed_gateway(cx);
         }
         let text = self.skill_message(harness, text);
+        let text = self.with_kraddie_packs(&env, id, text);
         if let Some(chat) = self
             .envs
             .get_mut(&env)
@@ -386,15 +402,33 @@ impl EnvironmentShell {
             HarnessChange::Switched => self.store(),
             HarnessChange::Kept => {}
         }
+        let chosen = command.clone();
+        self.run_surface_command(&env, id, command);
+        if matches!(chosen, SurfaceCommand::Model(..)) {
+            self.fit_effort_to_model(&env, id);
+        }
+        self.remember_choice(&env, id, &chosen, cx);
+        cx.notify();
+    }
+
+    pub(super) fn stop_turn_in(&mut self, env: &EnvironmentName, id: TerminalId) {
+        self.run_surface_command(env, id, SurfaceCommand::Stop);
+    }
+
+    fn run_surface_command(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        command: SurfaceCommand,
+    ) {
         match self
             .envs
-            .get_mut(&env)
+            .get_mut(env)
             .and_then(|live| live.chats.get_mut(&id))
             .map(|chat| &mut chat.backend)
         {
             Some(Backend::Structured(structured)) => structured.command(command),
-            Some(Backend::Transcript(_)) | None => self.command_transcript(&env, id, &command),
+            Some(Backend::Transcript(_)) | None => self.command_transcript(env, id, &command),
         }
-        cx.notify();
     }
 }

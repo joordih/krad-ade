@@ -154,6 +154,7 @@ impl EnvironmentShell {
         self.close_request = CloseRequest::Confirmed;
         self.store();
         self.close_hosts();
+        self.remove_api_file();
         match then {
             CloseThen::RemoveWindow => window.remove_window(),
             CloseThen::Quit if self.app_update_ready() => {

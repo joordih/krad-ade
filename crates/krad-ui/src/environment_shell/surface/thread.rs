@@ -1,8 +1,8 @@
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, list, px, AnyElement, Context, ElementId, InteractiveElement, IntoElement, ParentElement,
-    Styled, Window,
+    div, list, px, AnyElement, App, Context, ElementId, Entity, InteractiveElement, IntoElement,
+    MouseButton, MouseDownEvent, ParentElement, SharedString, Styled, Window,
 };
 use krad_chat::Speaker;
 use krad_domain::TerminalId;
@@ -11,6 +11,8 @@ use std::rc::Rc;
 
 use super::super::chat::{question_bubble, AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
+use super::answer::{AnswerPlace, ShownAnswer};
+use super::chat_menu::ChatSpot;
 use super::edit_message::is_edited;
 use super::mentions::sent_mentions;
 use super::message_actions::{copy_button, message_actions, message_group, BookmarkAction};
@@ -18,7 +20,7 @@ use super::origin::origin_line;
 use super::status_line::{status_line, TurnPhase};
 use super::view::{column, error_line, muted_line, AgentNow, LOADING_TEXT};
 use super::{Backend, Origin, SurfaceChat};
-use crate::components::{Button, ButtonVariant};
+use crate::components::{Button, ButtonVariant, CopyFeedback};
 use crate::theme::{palette, Palette, SPACE_0_5};
 
 const THREAD_PAD_TOP: f32 = 20.0;
@@ -40,6 +42,7 @@ enum ThreadItem {
     Pending(usize),
     Status,
     Problem,
+    FilesRestored,
     Runway,
 }
 
@@ -59,6 +62,9 @@ fn thread_items(chat: &SurfaceChat, now: AgentNow) -> Vec<ThreadItem> {
     }
     if chat.problem.is_some() {
         items.push(ThreadItem::Problem);
+    }
+    if chat.files_undo.is_some() {
+        items.push(ThreadItem::FilesRestored);
     }
     if chat.pins_latest && latest_question(chat, &items).is_some() {
         items.push(ThreadItem::Runway);
@@ -92,8 +98,28 @@ pub(super) fn first_message_row(chat: &SurfaceChat) -> usize {
     usize::from(chat.skips_history()) + usize::from(chat.origin.is_some())
 }
 
-fn question_text(text: &str) -> Option<&str> {
+pub(super) fn question_text(text: &str) -> Option<&str> {
     Some(text.trim()).filter(|text| !text.is_empty())
+}
+
+fn question_copy(
+    id: TerminalId,
+    index: usize,
+    message: &ChatMessage,
+    chat: &SurfaceChat,
+    copies: &Entity<CopyFeedback>,
+    cx: &App,
+) -> Option<AnyElement> {
+    let text =
+        question_text(&message.text).filter(|_| matches!(chat.backend, Backend::Structured(_)))?;
+    let key = SharedString::from(format!("{QUESTION_COPY_PREFIX}-{}-{index}", id.as_u64()));
+    Some(copy_button(
+        copies,
+        key,
+        text.to_owned(),
+        QUESTION_COPY_TOOLTIP,
+        cx,
+    ))
 }
 
 fn question_row(
@@ -101,25 +127,14 @@ fn question_row(
     index: usize,
     message: &ChatMessage,
     chat: &SurfaceChat,
-    edit: Option<AnyElement>,
+    actions: Vec<AnyElement>,
     bookmark: Option<BookmarkAction>,
     pal: &Palette,
 ) -> AnyElement {
     let bubble = format!("{BUBBLE_PREFIX}-{}-{index}", id.as_u64());
     let group = message_group(id, index);
-    let copy = question_text(&message.text)
-        .filter(|_| matches!(chat.backend, Backend::Structured(_)))
-        .map(|text| {
-            let key = format!("{QUESTION_COPY_PREFIX}-{}-{index}", id.as_u64());
-            copy_button(
-                ElementId::Name(key.into()),
-                text.to_owned(),
-                QUESTION_COPY_TOOLTIP,
-                pal,
-            )
-        });
-    let actions = (copy.is_some() || bookmark.is_some())
-        .then(|| message_actions(group.clone(), edit.into_iter().chain(copy), bookmark));
+    let actions = (!actions.is_empty() || bookmark.is_some())
+        .then(|| message_actions(group.clone(), actions, bookmark));
     div()
         .group(group)
         .flex()
@@ -284,23 +299,47 @@ impl EnvironmentShell {
             ThreadItem::Origin(origin) => origin_line(origin, pal),
             ThreadItem::Message(index) => {
                 let message = chat.messages.get(index)?;
-                match message.speaker {
+                let copies = &self.copy_feedback;
+                let row = match message.speaker {
                     Speaker::User if is_edited(chat, index) => {
-                        Self::message_editor(id, chat, pal, cx)?
+                        return Self::message_editor(id, chat, pal, cx);
                     }
                     Speaker::User => {
                         let edit = chat
                             .offers_edit(index)
                             .then(|| Self::edit_button(id, index, pal, cx));
+                        let copy = question_copy(id, index, message, chat, copies, cx);
+                        let actions = edit.into_iter().chain(copy).collect();
                         let bookmark = self.bookmark_action(id, index, chat, pal, cx);
-                        question_row(id, index, message, chat, edit, bookmark, pal)
+                        question_row(id, index, message, chat, actions, bookmark, pal)
                     }
                     Speaker::Assistant => {
                         let workers = self.worker_cards(id);
                         let bookmark = self.bookmark_action(id, index, chat, pal, cx);
-                        Self::surface_answer(id, index, message, chat, &workers, bookmark, cx)
+                        let answer = ShownAnswer {
+                            id,
+                            index,
+                            message,
+                            place: AnswerPlace::Thread,
+                        };
+                        Self::surface_answer(answer, chat, &workers, bookmark, copies, cx)
                     }
-                }
+                };
+                let spot = ChatSpot {
+                    chat: id,
+                    message: index,
+                    code: None,
+                };
+                div()
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(move |this: &mut Self, event: &MouseDownEvent, window, cx| {
+                            cx.stop_propagation();
+                            this.open_chat_menu(spot, event, window, cx);
+                        }),
+                    )
+                    .child(row)
+                    .into_any_element()
             }
             ThreadItem::Loading => muted_line(LOADING_TEXT, pal),
             ThreadItem::Pending(index) => {
@@ -324,6 +363,7 @@ impl EnvironmentShell {
                 )
             }
             ThreadItem::Problem => error_line(chat.problem.as_deref()?, pal),
+            ThreadItem::FilesRestored => Self::files_restored_row(id, pal, cx),
             ThreadItem::Runway => div().into_any_element(),
         })
     }

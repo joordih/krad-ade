@@ -1,6 +1,8 @@
 import type { Readable, Writable } from "node:stream";
 
 import type {
+  AppEventKind,
+  AppEventParams,
   AppNotifications,
   AppRequests,
   CallToolResult,
@@ -85,6 +87,10 @@ export class App {
     return this.request("workspace/context", {});
   }
 
+  subscribeEvents(kinds: AppEventKind[]) {
+    return this.request("events/subscribe", { kinds });
+  }
+
   getSettings() {
     return this.request("settings/get", {});
   }
@@ -158,6 +164,7 @@ export interface ExtensionDefinition {
   hostKinds?: Record<string, HostKindDefinition>;
   onWorkspaceEvent?(event: WorkspaceEvent, context: Context): void;
   onSettingsChanged?(settings: SettingsValues, context: Context): void;
+  onAppEvent?(event: AppEventParams, context: Context): void;
 }
 
 export interface Extension {
@@ -173,6 +180,7 @@ function features(definition: ExtensionDefinition): Feature[] {
   if (definition.views !== undefined) offered.push("views");
   if (definition.tools !== undefined) offered.push("tools");
   if (definition.hostKinds !== undefined) offered.push("host_kinds");
+  if (definition.onAppEvent !== undefined) offered.push("events");
   return offered;
 }
 
@@ -247,6 +255,7 @@ export function createExtension(
     "view/closed": (view) => definition.views?.[view.view]?.onClose?.(view, ready()),
     "workspace/event": (event) => definition.onWorkspaceEvent?.(event, ready()),
     "settings/changed": (settings) => definition.onSettingsChanged?.(settings, ready()),
+    "events/event": (event) => definition.onAppEvent?.(event, ready()),
   };
 
   connection.handleRequests((method, params) => {

@@ -13,7 +13,7 @@ const RETIRED_BUNDLE: &str = "retired.app";
 const OPEN: &str = "/usr/bin/open";
 const RESOURCES_DIR: [&str; 2] = ["Contents", "Resources"];
 
-pub(super) fn locate(exe: &Path) -> Option<Installation> {
+pub(super) fn locate(exe: &Path, target: ReleaseTarget) -> Option<Installation> {
     let bundle = exe.ancestors().nth(BUNDLE_LEVELS_ABOVE_EXE)?;
     if bundle.extension() != Some(OsStr::new(BUNDLE_EXTENSION)) {
         return None;
@@ -21,7 +21,7 @@ pub(super) fn locate(exe: &Path) -> Option<Installation> {
     Some(Installation {
         root: bundle.to_path_buf(),
         staging: bundle.parent()?.join(STAGING_DIR),
-        target: ReleaseTarget::MacosAarch64,
+        target,
     })
 }
 

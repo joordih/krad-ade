@@ -1,4 +1,4 @@
-use krad_domain::{GatewayAccess, ModelId};
+use krad_domain::{humanize_model_id, split_context, GatewayAccess, ModelId};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use thiserror::Error;
@@ -17,6 +17,9 @@ const DETAIL_SEPARATOR: &str = ": ";
 const ANTHROPIC_OWNERS: [&str; 2] = ["anthropic", "claude"];
 const OPENAI_OWNERS: [&str; 3] = ["openai", "codex", "azure-openai"];
 const GOOGLE_OWNERS: [&str; 2] = ["google", "gemini"];
+const ANTHROPIC_LABEL: &str = "Anthropic";
+const OPENAI_LABEL: &str = "OpenAI";
+const GOOGLE_LABEL: &str = "Google";
 
 #[derive(Debug, Error)]
 pub enum GatewayError {
@@ -77,6 +80,18 @@ pub enum Vendor {
     Other,
 }
 
+impl Vendor {
+    #[must_use]
+    pub const fn label(self) -> Option<&'static str> {
+        match self {
+            Self::Anthropic => Some(ANTHROPIC_LABEL),
+            Self::OpenAi => Some(OPENAI_LABEL),
+            Self::Google => Some(GOOGLE_LABEL),
+            Self::Other => None,
+        }
+    }
+}
+
 fn owned_by(owner: &str, known: &[&str]) -> bool {
     known.iter().any(|name| owner.eq_ignore_ascii_case(name))
 }
@@ -123,11 +138,15 @@ impl ListedModel {
         Some(GatewayModel {
             offer: ModelOffer {
                 value: id.as_str().to_owned(),
-                name: id.as_str().to_owned(),
-                description: None,
+                name: humanize_model_id(id.as_str()).unwrap_or_else(|| id.as_str().to_owned()),
                 efforts: Protocol::from(vendor).efforts().to_vec(),
-                thinking_off: false,
-                source: owner.map(ModelSource::Provider),
+                source: vendor
+                    .label()
+                    .map(str::to_owned)
+                    .or(owner)
+                    .map(ModelSource::Provider),
+                context: split_context(id.as_str()).1,
+                ..ModelOffer::default()
             },
             vendor,
         })
@@ -188,8 +207,9 @@ mod tests {
         assert_eq!(ids, ["gpt-5"]);
         assert_eq!(
             models[0].offer.source,
-            Some(ModelSource::Provider("openai".to_owned()))
+            Some(ModelSource::Provider(OPENAI_LABEL.to_owned()))
         );
+        assert_eq!(models[0].offer.name, "GPT-5");
         Ok(())
     }
 

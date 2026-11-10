@@ -1,0 +1,69 @@
+[
+  {
+    "event": "labeled",
+    "actor": { "id": 7, "login": "ana" },
+    "label": { "name": "bug", "color": "d73a4a" },
+    "created_at": "2026-10-01T10:01:00Z"
+  },
+  {
+    "event": "commented",
+    "id": 9001,
+    "node_id": "IC_a",
+    "user": { "id": 8, "login": "bo" },
+    "body": "I can reproduce it on **iOS 18**.",
+    "reactions": { "total_count": 2 },
+    "created_at": "2026-10-01T11:00:00Z"
+  },
+  {
+    "event": "assigned",
+    "actor": { "id": 7, "login": "ana" },
+    "assignee": { "id": 8, "login": "bo" },
+    "created_at": "2026-10-01T11:05:00Z"
+  },
+  {
+    "event": "cross-referenced",
+    "actor": { "id": 8, "login": "bo" },
+    "created_at": "2026-10-02T09:00:00Z",
+    "source": {
+      "type": "issue",
+      "issue": {
+        "number": 51,
+        "title": "Retry Apple Pay refunds",
+        "state": "closed",
+        "html_url": "https://github.com/octo/shop/pull/51",
+        "pull_request": { "url": "https://api.github.com/repos/octo/shop/pulls/51", "merged_at": "2026-10-03T12:00:00Z" }
+      }
+    }
+  },
+  {
+    "event": "cross-referenced",
+    "actor": { "id": 9, "login": "cy" },
+    "created_at": "2026-10-02T10:00:00Z",
+    "source": {
+      "type": "issue",
+      "issue": {
+        "number": 60,
+        "title": "Another issue that mentions this one",
+        "state": "open",
+        "html_url": "https://github.com/octo/shop/issues/60"
+      }
+    }
+  },
+  {
+    "event": "renamed",
+    "actor": { "id": 7, "login": "ana" },
+    "rename": { "from": "Refunds broken", "to": "Refund fails on Safari" },
+    "created_at": "2026-10-02T11:00:00Z"
+  },
+  {
+    "event": "subscribed",
+    "actor": { "id": 7, "login": "ana" },
+    "created_at": "2026-10-02T11:30:00Z"
+  },
+  {
+    "event": "closed",
+    "actor": { "id": 8, "login": "bo" },
+    "commit_id": null,
+    "created_at": "2026-10-04T08:30:00Z"
+  }
+]

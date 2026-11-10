@@ -309,6 +309,7 @@ impl EnvironmentShell {
             .child(Self::sidebar_header())
             .child(self.environment_header(cx))
             .children(views)
+            .children((!editing).then(|| self.sidebar_kraddies(cx)).flatten())
             .child(list)
             .child(self.sidebar_footer(cx))
     }

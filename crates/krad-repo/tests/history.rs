@@ -7,7 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use krad_domain::CommitLabel;
 use krad_host::HostLink;
 use krad_repo::{
-    commit_diff, commit_files, commit_log, discard_change, status, ChangeKind, LineCount,
+    commit_diff, commit_files, commit_log, discard_change, status, working_patch, ChangeKind,
+    LineCount,
 };
 
 fn git(repo: &Path, args: &[&str]) -> Result<(), Box<dyn Error>> {
@@ -116,5 +117,18 @@ fn the_log_lists_commits_with_their_files_and_diffs() -> Result<(), Box<dyn Erro
     );
     assert_eq!(diff, "@@ -1,2 +1,2 @@\n one\n-two\n+three\n");
     assert_eq!(root_files.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn the_working_patch_shows_every_tracked_change_against_head() -> Result<(), Box<dyn Error>> {
+    let repo = repository("patch")?;
+    fs::write(repo.join("a.txt"), "one\nthree\n")?;
+    let patch = working_patch(&HostLink::Local, &repo)?;
+    fs::remove_dir_all(&repo)?;
+    assert!(patch.contains("--- a/a.txt"), "{patch}");
+    assert!(patch.contains("-two"), "{patch}");
+    assert!(patch.contains("+three"), "{patch}");
+    assert!(!patch.contains("old.txt"), "{patch}");
     Ok(())
 }
