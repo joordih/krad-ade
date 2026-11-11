@@ -5,11 +5,9 @@ use gpui_kit::{
 };
 
 use super::EnvironmentShell;
+use crate::components::floating::floating_surface;
 use crate::components::{Button, IconName};
-use crate::theme::{
-    palette, popover_fill, popover_shadow, LINE_SM, RADIUS_MD, SPACE_1, SPACE_2, SPACE_3, TEXT_SM,
-    TOOLBAR_H, WINDOW_INSET,
-};
+use crate::theme::{palette, LINE_SM, SPACE_1, SPACE_2, SPACE_3, TEXT_SM, TOOLBAR_H, WINDOW_INSET};
 
 const BTN_CLOSE: &str = "close";
 
@@ -37,8 +35,7 @@ impl EnvironmentShell {
             .iter()
             .map(|toast| {
                 let seq = toast.seq;
-                div()
-                    .flex()
+                floating_surface(pal, cx)
                     .flex_row()
                     .items_center()
                     .justify_between()
@@ -46,11 +43,6 @@ impl EnvironmentShell {
                     .pl(px(SPACE_3))
                     .pr(px(SPACE_1))
                     .py(px(SPACE_1))
-                    .bg(popover_fill(pal, cx))
-                    .border_1()
-                    .border_color(pal.border)
-                    .rounded(px(RADIUS_MD))
-                    .shadow(popover_shadow(pal, cx))
                     .child(
                         div()
                             .flex_1()

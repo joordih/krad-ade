@@ -4,10 +4,12 @@ use std::time::Instant;
 
 use super::sidebar::PanelReveal;
 use super::EnvironmentShell;
+use crate::motion::follow_motion_preference;
+use crate::theme::advance_theme_fade;
 
 impl EnvironmentShell {
     pub fn apply_performance_mode(&self, cx: &mut App) {
-        cx.set_reduce_motion(self.settings.performance_mode.reduces_motion());
+        follow_motion_preference(self.settings.performance_mode.reduces_motion(), cx);
     }
 
     pub(super) fn set_performance_mode(&mut self, mode: PerformanceMode, cx: &mut Context<Self>) {
@@ -26,7 +28,9 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let moving = self.sidebar.advance(now)
+        let moving = advance_theme_fade(now, cx)
+            | self.sidebar.advance(now)
+            | self.content_shift.advance(now)
             | self.sync_side_panel(now)
             | self.sync_activity(now)
             | self.pane_drag.advance(now)
@@ -42,6 +46,7 @@ impl EnvironmentShell {
 
     fn settle_reveals(&mut self) {
         self.sidebar.settle();
+        self.content_shift.settle();
         self.side_reveal.settle();
         self.activity_reveal.settle();
         self.chat_landings

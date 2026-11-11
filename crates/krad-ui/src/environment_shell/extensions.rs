@@ -147,6 +147,10 @@ pub(in crate::environment_shell) struct Extensions {
 }
 
 impl Extensions {
+    pub(in crate::environment_shell) fn trusting(&self) -> bool {
+        !self.trust_queue.is_empty()
+    }
+
     pub(in crate::environment_shell) fn record(
         &self,
         id: &ExtensionId,

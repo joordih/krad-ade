@@ -156,7 +156,16 @@ mod tests {
             .iter()
             .map(|agent| agent.id.to_string())
             .collect();
-        assert_eq!(ids, ["claude-code-acp", "codex-acp", "opencode", "gemini"]);
+        assert_eq!(
+            ids,
+            [
+                "claude-code-acp",
+                "codex-acp",
+                "opencode",
+                "gemini-cli",
+                "gemini"
+            ]
+        );
         let names = [
             AgentPreset::Codex,
             AgentPreset::Acp(agent("gemini").id),
@@ -170,6 +179,17 @@ mod tests {
             Some(agent("gemini"))
         );
         assert!(settings.is_empty());
+    }
+
+    #[test]
+    fn both_claude_code_harnesses_are_named_claude_code() {
+        let settings = AcpSettings::default();
+        let names = [
+            AgentPreset::ClaudeCode,
+            AgentPreset::Acp(agent("claude-code-acp").id),
+        ]
+        .map(|preset| settings.harness_name(preset));
+        assert_eq!(names, ["Claude Code", "Claude Code"]);
     }
 
     #[test]

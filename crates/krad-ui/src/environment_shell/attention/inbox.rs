@@ -11,10 +11,11 @@ use std::time::Instant;
 use super::super::dialog_parts::{segment, SegmentSize};
 use super::super::EnvironmentShell;
 use crate::actions::ToggleAttentionInbox;
+use crate::components::floating::floating_surface;
 use crate::components::{icon, IconName};
 use crate::theme::{
-    palette, popover_fill, popover_shadow, Palette, ICON_SM, LINE_SM, LINE_XS, NAV_ROW_H,
-    RADIUS_LG, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3, TEXT_SM, TEXT_XS,
+    palette, Palette, ICON_SM, LINE_SM, LINE_XS, NAV_ROW_H, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2,
+    SPACE_3, TEXT_SM, TEXT_XS,
 };
 
 const INBOX_ID: &str = "attention-inbox";
@@ -177,21 +178,13 @@ impl EnvironmentShell {
                         .on_mouse_down(MouseButton::Right, cx.listener(dismiss)),
                 )
                 .child(
-                    div()
+                    floating_surface(pal, cx)
                         .id(INBOX_ID)
                         .absolute()
                         .top(px(INBOX_TOP))
                         .right(px(INBOX_RIGHT))
                         .w(px(INBOX_W))
                         .max_h(px(height))
-                        .flex()
-                        .flex_col()
-                        .rounded(px(RADIUS_LG))
-                        .bg(popover_fill(pal, cx))
-                        .border_1()
-                        .border_color(pal.divider)
-                        .shadow(popover_shadow(pal, cx))
-                        .overflow_hidden()
                         .occlude()
                         .child(self.inbox_header(pal, cx))
                         .child(self.inbox_filters(pal, cx))

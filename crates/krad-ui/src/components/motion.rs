@@ -5,6 +5,8 @@ use gpui_kit::{
 use std::f32::consts::TAU;
 use std::time::Duration;
 
+pub(crate) use crate::motion::ease_out_cubic;
+
 const MOTION_QUICK: Duration = Duration::from_millis(120);
 pub(crate) const MOTION_BASE: Duration = Duration::from_millis(220);
 const MOTION_GENTLE: Duration = Duration::from_millis(340);
@@ -24,11 +26,6 @@ pub(crate) const MOTION_GLIDE: SpringConfig = SpringConfig::new(380.0, 34.0, 1.0
 pub(crate) const MOTION_SETTLED: f32 = 1.0;
 pub(crate) const MOTION_HIDDEN: f32 = 0.0;
 const BACK_OVERSHOOT: f32 = 1.701_58;
-
-#[must_use]
-pub(crate) fn ease_out_cubic(t: f32) -> f32 {
-    1.0 - (1.0 - t.clamp(0.0, 1.0)).powi(3)
-}
 
 #[must_use]
 pub(crate) fn ease_out_back(t: f32) -> f32 {

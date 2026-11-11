@@ -1,17 +1,20 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, KeyDownEvent,
-    MouseButton, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
+    div, point, px, rgb, size, AnyElement, Context, FontWeight, InteractiveElement, IntoElement,
+    KeyDownEvent, MouseButton, ParentElement, SharedString, StatefulInteractiveElement, Styled,
+    Window,
 };
 use krad_chat::ModelSource;
 
 use super::super::EnvironmentShell;
 use super::layout::picker_layout;
-use super::{Choosing, ModelChoice};
+use super::marks::Mark;
+use super::{Choosing, ModelChoice, Shelf};
+use crate::components::floating::{floating_at, floating_surface, place, Anchor, Side};
 use crate::components::{harness_icon, icon, tooltip_view, IconName};
 use crate::theme::{
-    palette, popover_fill, popover_shadow, Palette, ICON, ICON_SM, LINE_BASE, LINE_XS, SPACE_1,
-    SPACE_1_5, SPACE_2, SPACE_3, TEXT_BASE, TEXT_SM, TEXT_XS,
+    palette, Palette, ICON, ICON_SM, LINE_BASE, LINE_XS, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3,
+    TEXT_BASE, TEXT_SM, TEXT_XS,
 };
 
 const PICKER_H: f32 = 380.0;
@@ -22,15 +25,15 @@ const ROW_H: f32 = 32.0;
 const DESCRIBED_ROW_H: f32 = 46.0;
 const BADGE_H: f32 = 16.0;
 const BADGE_RADIUS: f32 = 5.0;
+const RECOMMENDED_BADGE: &str = "Recommended";
 const DEFAULT_BADGE: &str = "Default";
 const MISSING_BADGE: &str = "Unavailable";
-const PANEL_RADIUS: f32 = 14.0;
 const BUTTON_RADIUS: f32 = 9.0;
 const CARET_W: f32 = 1.5;
 const CARET_H: f32 = 18.0;
 const ANCHOR_GAP: f32 = 8.0;
-const EDGE_MARGIN: f32 = 8.0;
 const PICKER_ID: &str = "model-picker";
+const PICKER_MOTION_ID: &str = "model-picker-motion";
 const LIST_ID: &str = "model-picker-list";
 const RAIL_PREFIX: &str = "model-picker-harness";
 const ROW_PREFIX: &str = "model-picker-row";
@@ -39,6 +42,16 @@ const NO_MODELS_TEXT: &str = "No models";
 const DETECTING_AGENTS_TEXT: &str = "Detecting agents on";
 const SECTION_H: f32 = 26.0;
 const FREE_LABEL: &str = "Free";
+const FAVORITES_LABEL: &str = "Favorites";
+const MODELS_LABEL: &str = "Models";
+const STAR_PREFIX: &str = "model-picker-star";
+const DEFAULT_PREFIX: &str = "model-picker-default";
+const TOOLTIP_ADD_FAVORITE: &str = "Add to favorites";
+const TOOLTIP_REMOVE_FAVORITE: &str = "Remove from favorites";
+const TOOLTIP_SET_DEFAULT: &str = "Use for new chats of this agent";
+const TOOLTIP_CLEAR_DEFAULT: &str = "Stop using for new chats";
+const MARK_BUTTON: f32 = 22.0;
+const MARK_RADIUS: f32 = 6.0;
 
 fn section_label(section: &ModelSource) -> &str {
     match section {
@@ -47,7 +60,15 @@ fn section_label(section: &ModelSource) -> &str {
     }
 }
 
-fn section_header(section: &ModelSource, pal: &Palette) -> AnyElement {
+fn shelf_label(shelf: Shelf<'_>, follows: bool) -> Option<&str> {
+    match shelf {
+        Shelf::Favorites => Some(FAVORITES_LABEL),
+        Shelf::Source(Some(section)) => Some(section_label(section)),
+        Shelf::Source(None) => follows.then_some(MODELS_LABEL),
+    }
+}
+
+fn section_header(label: &str, pal: &Palette) -> AnyElement {
     div()
         .flex_none()
         .flex()
@@ -59,7 +80,7 @@ fn section_header(section: &ModelSource, pal: &Palette) -> AnyElement {
         .line_height(px(LINE_XS))
         .font_weight(FontWeight::MEDIUM)
         .text_color(rgb(pal.text_subtle))
-        .child(section_label(section).to_owned())
+        .child(label.to_owned())
         .into_any_element()
 }
 
@@ -80,16 +101,24 @@ fn badge(text: &'static str, fill: u32, color: u32) -> AnyElement {
 }
 
 fn badges(choice: &ModelChoice, pal: &Palette) -> impl Iterator<Item = AnyElement> {
+    let default = choice
+        .marks
+        .default
+        .then(|| badge(DEFAULT_BADGE, pal.chip_bg, pal.text_strong));
     let recommended = choice
         .recommended
-        .then(|| badge(DEFAULT_BADGE, pal.chip_bg, pal.chip_fg));
+        .then(|| badge(RECOMMENDED_BADGE, pal.chip_bg, pal.chip_fg));
     let context = choice
         .context
         .map(|context| badge(context.label(), pal.chip_bg, pal.chip_fg));
     let missing = choice
         .missing
         .then(|| badge(MISSING_BADGE, pal.chip_bg, pal.warning_fg));
-    recommended.into_iter().chain(context).chain(missing)
+    default
+        .into_iter()
+        .chain(recommended)
+        .chain(context)
+        .chain(missing)
 }
 
 fn choice_text(choice: &ModelChoice, described: bool, pal: &Palette) -> AnyElement {
@@ -223,6 +252,80 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
+    fn mark_button(
+        id: (&'static str, u64),
+        glyph: IconName,
+        color: u32,
+        tooltip: &'static str,
+        on_click: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+        pal: &Palette,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        div()
+            .id(id)
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
+            .size(px(MARK_BUTTON))
+            .rounded(px(MARK_RADIUS))
+            .cursor_pointer()
+            .hover(|style| style.bg(pal.bg_selected))
+            .tooltip(move |_, cx| tooltip_view(tooltip.into(), cx))
+            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                cx.stop_propagation();
+                on_click(this, cx);
+            }))
+            .child(icon(glyph, ICON_SM, color))
+            .into_any_element()
+    }
+
+    fn mark_buttons(
+        choice: &ModelChoice,
+        index: usize,
+        highlighted: bool,
+        pal: &Palette,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        if choice.id.is_none() {
+            return Vec::new();
+        }
+        let at = element_index(index);
+        let default = (highlighted || choice.marks.default).then(|| {
+            let (color, tooltip) = if choice.marks.default {
+                (pal.accent, TOOLTIP_CLEAR_DEFAULT)
+            } else {
+                (pal.text_subtle, TOOLTIP_SET_DEFAULT)
+            };
+            Self::mark_button(
+                (DEFAULT_PREFIX, at),
+                IconName::Target,
+                color,
+                tooltip,
+                move |this, cx| this.toggle_model_mark(index, Mark::NewChatDefault, cx),
+                pal,
+                cx,
+            )
+        });
+        let star = (highlighted || choice.marks.favorite).then(|| {
+            let (glyph, color, tooltip) = if choice.marks.favorite {
+                (IconName::StarFilled, pal.accent, TOOLTIP_REMOVE_FAVORITE)
+            } else {
+                (IconName::Star, pal.text_subtle, TOOLTIP_ADD_FAVORITE)
+            };
+            Self::mark_button(
+                (STAR_PREFIX, at),
+                glyph,
+                color,
+                tooltip,
+                move |this, cx| this.toggle_model_mark(index, Mark::Favorite, cx),
+                pal,
+                cx,
+            )
+        });
+        default.into_iter().chain(star).collect()
+    }
+
     fn picker_empty_text(&self) -> SharedString {
         if self.host_agents_known(&self.active) {
             return NO_MODELS_TEXT.into();
@@ -242,16 +345,15 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let shown = choosing.shown();
         let mut rows: Vec<AnyElement> = Vec::with_capacity(shown.len());
-        let mut section = None;
+        let mut shelf = None;
         for (index, choice) in shown.iter().enumerate() {
-            if let Some(current) = choice
-                .section
-                .as_ref()
-                .filter(|_| section != Some(&choice.section))
-            {
-                rows.push(section_header(current, pal));
+            let current = choice.shelf();
+            if shelf != Some(current) {
+                if let Some(label) = shelf_label(current, shelf.is_some()) {
+                    rows.push(section_header(label, pal));
+                }
             }
-            section = Some(&choice.section);
+            shelf = Some(current);
             let highlighted = index == choosing.highlighted;
             let tall = described && choice.description.is_some();
             rows.push(
@@ -277,6 +379,7 @@ impl EnvironmentShell {
                         this.pick_model(index, cx);
                     }))
                     .child(choice_text(choice, described, pal))
+                    .children(Self::mark_buttons(choice, index, highlighted, pal, cx))
                     .when(choice.current, |row| {
                         row.child(icon(IconName::Tick, ICON_SM, pal.text_strong))
                     })
@@ -318,11 +421,12 @@ impl EnvironmentShell {
             picker.origin.1 - self.frame_inset.1,
         );
         let layout = picker_layout(root_w);
-        let height = PICKER_H.min(root_h - 2.0 * EDGE_MARGIN);
-        let left = x.min(root_w - layout.width - EDGE_MARGIN).max(EDGE_MARGIN);
-        let top = (y - height - ANCHOR_GAP)
-            .min(root_h - height - EDGE_MARGIN)
-            .max(EDGE_MARGIN);
+        let placed = place(
+            Anchor::Point(point(px(x), px(y - ANCHOR_GAP))),
+            size(px(layout.width), px(PICKER_H)),
+            size(px(root_w), px(root_h)),
+            Side::Above,
+        );
         let dismiss = |this: &mut Self,
                        _: &gpui_kit::MouseDownEvent,
                        _: &mut Window,
@@ -347,22 +451,15 @@ impl EnvironmentShell {
                         .on_mouse_down(MouseButton::Left, cx.listener(dismiss))
                         .on_mouse_down(MouseButton::Right, cx.listener(dismiss)),
                 )
-                .child(
-                    div()
+                .child(floating_at(
+                    PICKER_MOTION_ID,
+                    placed,
+                    floating_surface(pal, cx)
                         .id(PICKER_ID)
                         .absolute()
-                        .left(px(left))
-                        .top(px(top))
                         .w(px(layout.width))
-                        .h(px(height))
-                        .flex()
+                        .h(px(placed.max_height))
                         .flex_row()
-                        .rounded(px(PANEL_RADIUS))
-                        .bg(popover_fill(pal, cx))
-                        .border_1()
-                        .border_color(pal.divider)
-                        .shadow(popover_shadow(pal, cx))
-                        .overflow_hidden()
                         .occlude()
                         .child(Self::picker_rail(&picker.choosing, pal, cx))
                         .child(
@@ -380,7 +477,7 @@ impl EnvironmentShell {
                                     cx,
                                 )),
                         ),
-                )
+                ))
                 .into_any_element(),
         )
     }

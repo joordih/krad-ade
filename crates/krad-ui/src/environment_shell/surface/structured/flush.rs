@@ -228,8 +228,7 @@ impl EnvironmentShell {
                 BusVars(self.bus_vars(env, id)),
             )
         };
-        let chosen = structured_mut(self, env, id).and_then(|chat| chat.chosen_model.clone());
-        let (model, notice) = self.offered_model(harness, chosen);
+        let (model, notice) = self.offered_choice(env, id, harness);
         let usage_budget = self.claude_usage_budget();
         let structured = structured_mut(self, env, id).ok_or(StartError::Waiting)?;
         structured.notices.extend(notice);
@@ -339,6 +338,7 @@ impl EnvironmentShell {
             bus_vars,
             mcp: launch.starts,
             host,
+            skills: self.settings.skills.clone(),
         })
     }
 

@@ -37,6 +37,12 @@ pub(super) struct HarnessChecks {
     onboarding_open: bool,
 }
 
+impl HarnessChecks {
+    pub(super) const fn onboarding_shown(&self) -> bool {
+        self.onboarding_open
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum OnboardingStep {
     Wait,

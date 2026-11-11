@@ -9,6 +9,7 @@ use krad_domain::WindowMaterial;
 use std::sync::OnceLock;
 
 use crate::theme::Palette;
+pub(crate) use backdrop::{backdrop_layer, BackdropLayer, Viewport};
 
 const INITIAL_WIDTH: f32 = 1440.0;
 const INITIAL_HEIGHT: f32 = 900.0;
@@ -67,6 +68,9 @@ pub fn initial_window_bounds(cx: &App) -> WindowBounds {
     WindowBounds::Windowed(Bounds::centered(None, size(px(width), px(height)), cx))
 }
 
+mod backdrop;
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(windows)]
@@ -88,6 +92,11 @@ const fn system_transparency() -> bool {
     true
 }
 
+#[must_use]
+pub(crate) fn transparency_reduced() -> bool {
+    !system_transparency()
+}
+
 fn system_has_mica() -> bool {
     static MICA: OnceLock<bool> = OnceLock::new();
     #[cfg(windows)]
@@ -95,6 +104,15 @@ fn system_has_mica() -> bool {
     #[cfg(not(windows))]
     let read = || false;
     *MICA.get_or_init(read)
+}
+
+fn system_has_blur() -> bool {
+    static BLUR: OnceLock<bool> = OnceLock::new();
+    #[cfg(target_os = "linux")]
+    let read = linux::compositor_blurs;
+    #[cfg(not(target_os = "linux"))]
+    let read = || true;
+    *BLUR.get_or_init(read)
 }
 
 fn system_has_glass() -> bool {
@@ -109,6 +127,12 @@ fn system_has_glass() -> bool {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct SystemMaterials {
     transparency: bool,
+    blur: bool,
+    native: NativeMaterials,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct NativeMaterials {
     mica: bool,
     glass: bool,
 }
@@ -117,8 +141,11 @@ struct SystemMaterials {
 pub(crate) fn usable_material(material: WindowMaterial) -> WindowMaterial {
     let system = SystemMaterials {
         transparency: system_transparency(),
-        mica: system_has_mica(),
-        glass: system_has_glass(),
+        blur: system_has_blur(),
+        native: NativeMaterials {
+            mica: system_has_mica(),
+            glass: system_has_glass(),
+        },
     };
     material_on(material, system)
 }
@@ -127,9 +154,10 @@ const fn material_on(material: WindowMaterial, system: SystemMaterials) -> Windo
     match material {
         WindowMaterial::Opaque => WindowMaterial::Opaque,
         _ if !system.transparency => WindowMaterial::Opaque,
-        WindowMaterial::Mica if !system.mica => WindowMaterial::Blurred,
-        WindowMaterial::Glass if !system.glass => WindowMaterial::Blurred,
-        material => material,
+        WindowMaterial::Mica if system.native.mica => WindowMaterial::Mica,
+        WindowMaterial::Glass if system.native.glass => WindowMaterial::Glass,
+        _ if !system.blur => WindowMaterial::Opaque,
+        _ => WindowMaterial::Blurred,
     }
 }
 
@@ -189,25 +217,35 @@ pub(crate) fn window_frame(
     content: AnyElement,
     window: &Window,
     pal: &Palette,
-    backdrop: Background,
+    (backdrop, image): (Background, Option<BackdropLayer>),
 ) -> AnyElement {
     let floating = match window.window_decorations() {
         Decorations::Client { tiling } => IS_LINUX && !tiling.is_tiled(),
         Decorations::Server => false,
     };
+    let underlay = image.map(|layer| backdrop_layer(&layer, Viewport::of(window)));
     if !floating {
         return window_border()
             .shadow_size(px(WINDOW_SHADOW_PX))
-            .child(div().size_full().bg(backdrop).child(content))
+            .child(
+                div()
+                    .relative()
+                    .size_full()
+                    .bg(backdrop)
+                    .children(underlay)
+                    .child(content),
+            )
             .into_any_element();
     }
     div()
         .relative()
         .size_full()
         .rounded(px(WINDOW_RADIUS))
+        .overflow_hidden()
         .border_1()
         .border_color(pal.border)
         .bg(backdrop)
+        .children(underlay)
         .child(content)
         .children(resize_zones())
         .into_any_element()
@@ -274,17 +312,23 @@ mod tests {
     fn a_material_the_system_lacks_falls_back_to_blur_or_to_opaque() {
         let full = SystemMaterials {
             transparency: true,
-            mica: true,
-            glass: true,
+            blur: true,
+            native: NativeMaterials {
+                mica: true,
+                glass: true,
+            },
         };
         let bare = SystemMaterials {
-            mica: false,
-            glass: false,
+            native: NativeMaterials::default(),
             ..full
         };
         let solid = SystemMaterials {
             transparency: false,
             ..full
+        };
+        let unblurred = SystemMaterials {
+            blur: false,
+            ..bare
         };
         for (material, system, expected) in [
             (WindowMaterial::Glass, full, WindowMaterial::Glass),
@@ -295,6 +339,9 @@ mod tests {
             (WindowMaterial::Glass, solid, WindowMaterial::Opaque),
             (WindowMaterial::Blurred, solid, WindowMaterial::Opaque),
             (WindowMaterial::Opaque, full, WindowMaterial::Opaque),
+            (WindowMaterial::Glass, unblurred, WindowMaterial::Opaque),
+            (WindowMaterial::Blurred, unblurred, WindowMaterial::Opaque),
+            (WindowMaterial::Mica, unblurred, WindowMaterial::Opaque),
         ] {
             assert_eq!(
                 material_on(material, system),

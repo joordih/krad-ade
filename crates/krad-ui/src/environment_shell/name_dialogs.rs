@@ -14,7 +14,7 @@ const DELETE_ENVIRONMENT_TITLE: &str = "Delete environment?";
 const DELETE_ENVIRONMENT_TEXT: &str = "Its terminals and sessions close with it.";
 const DELETE_GROUP_TITLE: &str = "Delete group?";
 const DELETE_GROUP_TEXT: &str =
-    "Its terminals and sessions close with it. The folder stays on disk.";
+    "Its sessions close with it and their terminals and chats are deleted. The folder stays on disk.";
 const DELETE_CONFIRM: &str = "Delete";
 const DELETE_CANCEL: &str = "Cancel";
 

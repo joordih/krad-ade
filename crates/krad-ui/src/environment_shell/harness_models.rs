@@ -1,11 +1,20 @@
 use gpui_kit::{AppContext as _, Context};
-use krad_chat::{claude_models, codex_models, ModelOffer, Runner};
-use krad_domain::{AgentPreset, EnvironmentName, Host};
+use krad_chat::{acp_offers, claude_models, codex_models, ModelOffer, Runner};
+use krad_domain::{AcpAgentId, AcpAgentStart, AgentPreset, EnvironmentName, Host};
 use krad_host::HostLink;
 use std::collections::HashMap;
 use std::path::Path;
 
+use super::chat::StartError;
+use super::surface::{read_acp_secrets, AcpSeed};
 use super::EnvironmentShell;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum AcpListing {
+    Listing,
+    NoModels,
+    Failed(String),
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Listing {
@@ -37,6 +46,12 @@ impl Listing {
 pub(super) struct ListedModels {
     listed: HashMap<(Host, AgentPreset), Vec<ModelOffer>>,
     asked: Vec<(Host, AgentPreset)>,
+    acp: HashMap<(Host, AcpAgentId), AcpListing>,
+    acp_seeds: HashMap<(Host, AcpAgentId), AcpSeed>,
+}
+
+const fn keeps(harness: AgentPreset) -> bool {
+    matches!(harness, AgentPreset::Acp(_)) || Listing::of(harness).is_some()
 }
 
 impl ListedModels {
@@ -47,10 +62,21 @@ impl ListedModels {
     }
 
     fn keep(&mut self, host: Host, harness: AgentPreset, models: Vec<ModelOffer>) {
-        if models.is_empty() || Listing::of(harness).is_none() {
+        if models.is_empty() || !keeps(harness) {
             return;
         }
+        if let AgentPreset::Acp(agent) = harness {
+            self.acp.remove(&(host.clone(), agent));
+        }
         self.listed.insert((host, harness), models);
+    }
+
+    pub(super) fn acp_listing(&self, host: &Host, agent: AcpAgentId) -> Option<&AcpListing> {
+        self.acp.get(&(host.clone(), agent))
+    }
+
+    pub(super) fn acp_seed(&self, host: &Host, agent: AcpAgentId) -> Option<&AcpSeed> {
+        self.acp_seeds.get(&(host.clone(), agent))
     }
 }
 
@@ -98,9 +124,83 @@ impl EnvironmentShell {
             let listed = listed.await;
             this.update(cx, |shell, cx| {
                 match listed {
-                    Ok(models) => shell.listed_models.keep(host, harness, models),
+                    Ok(models) => {
+                        shell.listed_models.keep(host, harness, models);
+                        shell.forget_unoffered_models(harness);
+                    }
                     Err(error) => shell.toast(&error, cx),
                 }
+                cx.notify();
+            })
+            .unwrap_or_default();
+        })
+        .detach();
+    }
+
+    pub(super) fn list_acp_models(&mut self, agent: AcpAgentId, cx: &mut Context<Self>) {
+        let link = self.active_link();
+        let host = link.host();
+        let preset = AgentPreset::Acp(agent);
+        let key = (host.clone(), agent);
+        let busy_or_known = matches!(
+            self.listed_models.acp.get(&key),
+            Some(AcpListing::Listing | AcpListing::NoModels)
+        ) || (!self.listed_models.of(&host, preset).is_empty()
+            && self.listed_models.acp_seeds.contains_key(&key));
+        if busy_or_known || !self.installed_agents().contains(&preset) {
+            return;
+        }
+        let Some(found) = self.settings.acp.agent(agent) else {
+            return;
+        };
+        let root = self.active_group().map(|group| group.root.clone());
+        let started = self.acp_runner(&link, &found, root.as_deref(), cx);
+        let (runner, cwd) = match started {
+            Ok(started) => started,
+            Err(StartError::Waiting) => return,
+            Err(error) => {
+                self.listed_models
+                    .acp
+                    .insert(key, AcpListing::Failed(error.to_string()));
+                return cx.notify();
+            }
+        };
+        self.listed_models
+            .acp
+            .insert(key.clone(), AcpListing::Listing);
+        let listed = cx.background_spawn(async move {
+            let secrets = read_acp_secrets(&found)?;
+            acp_offers(
+                &runner,
+                &cwd,
+                AcpAgentStart {
+                    agent: found,
+                    secrets,
+                },
+            )
+            .map_err(|error| error.to_string())
+        });
+        cx.spawn(async move |this, cx| {
+            let listed = listed.await;
+            this.update(cx, |shell, cx| {
+                let listed = listed.map(|offered| {
+                    let seed = AcpSeed::from(&offered);
+                    shell.listed_models.acp_seeds.insert(key.clone(), seed);
+                    offered.models
+                });
+                match listed {
+                    Ok(models) if models.is_empty() => {
+                        shell.listed_models.acp.insert(key, AcpListing::NoModels);
+                    }
+                    Ok(models) => shell.listed_models.keep(host, preset, models),
+                    Err(error) => {
+                        shell
+                            .listed_models
+                            .acp
+                            .insert(key, AcpListing::Failed(error));
+                    }
+                }
+                shell.seed_acp_chats();
                 cx.notify();
             })
             .unwrap_or_default();

@@ -24,7 +24,7 @@ const VERSION_SEPARATOR: &str = ".";
 const DATE_DIGITS: usize = 8;
 const REASONING_MODEL_LETTER: char = 'o';
 
-const CLAUDE_ALIASES: [(&str, &str); 7] = [
+const FALLBACK_CLAUDE_ALIAS_NAMES: [(&str, &str); 7] = [
     ("default", "Default"),
     ("opus", "Claude Opus"),
     ("sonnet", "Claude Sonnet"),
@@ -61,7 +61,7 @@ pub fn split_context(id: &str) -> (&str, Option<ContextSize>) {
 #[must_use]
 pub fn claude_alias_name(alias: &str) -> Option<&'static str> {
     let (alias, _) = split_context(alias);
-    CLAUDE_ALIASES
+    FALLBACK_CLAUDE_ALIAS_NAMES
         .iter()
         .find(|(known, _)| known.eq_ignore_ascii_case(alias))
         .map(|(_, name)| *name)

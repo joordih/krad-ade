@@ -4,8 +4,8 @@ pub(super) use launch::Launch;
 
 use krad_chat::{prepare_opencode_session, OpencodeServer};
 use krad_domain::{
-    attach_line, classify_agent_state, AgentPreset, AgentState, EnvironmentName, ModelId, ResumeId,
-    TerminalId,
+    attach_line, classify_agent_state, AgentPreset, AgentState, AppEvent, EnvironmentName, ModelId,
+    ResumeId, TerminalId,
 };
 use krad_session::{
     run_spawn_job, FirstInput, LiveSession, PtyInput, PumpMsg, SessionState, SharedKiller,
@@ -466,6 +466,9 @@ impl EnvironmentShell {
         self.observe_attention(env, id, previous, state);
         self.publish_agent(env, id, None);
         if let Some(event) = event {
+            if matches!(event, AppEvent::AgentFinished { .. }) {
+                self.note_agent_finished_in(env, group);
+            }
             self.note_variant_progress(env, &event);
             self.publish_event(env, group, event);
         }

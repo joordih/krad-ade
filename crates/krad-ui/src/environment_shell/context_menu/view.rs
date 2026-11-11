@@ -1,267 +1,82 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, App, Context, Div, ElementId, Entity, FontWeight, InteractiveElement,
-    IntoElement, KeyDownEvent, MouseButton, ParentElement, StatefulInteractiveElement, Styled,
-    Window,
+    div, point, px, size, AnyElement, Bounds, Context, Entity, InteractiveElement, IntoElement,
+    KeyDownEvent, MouseButton, ParentElement, StatefulInteractiveElement, Styled, Window,
 };
 
 use super::super::EnvironmentShell;
+use super::rows::{
+    empty_row, entry_height, item_body, passive_row, row_id, row_shell, search_row, submenu_body,
+    switch_look, RowLook, NOTE_H,
+};
 use super::search::{item_ranks, items_in, matching};
-use super::{ContextMenu, MenuAction, MenuEntry, MenuPlacement, MenuSearch, Submenu};
-use crate::components::{copy_glyph, icon, CopyFeedback, IconName};
+use super::{ContextMenu, MenuAction, MenuEntry, MenuLevel, MenuPlacement, MenuSearch, Submenu};
+use crate::components::floating::{floating_at, floating_panel, place, Anchor, Placed, Side};
+use crate::components::{copy_glyph, CopyFeedback, IconName};
 use crate::theme::{
-    palette, popover_fill, popover_shadow, Palette, ICON, ICON_SM, LINE_BASE, LINE_SM, LINE_XS,
-    SPACE_1, SPACE_1_5, SPACE_2, SPACE_3, TEXT_BASE, TEXT_SM, TEXT_XS,
+    palette, Palette, FLOATING_PAD, ICON, MENU_MIN_W, MENU_ROW_H, MENU_SEARCH_H, MENU_W,
+    MENU_WIDE_W,
 };
 
-const MENU_W: f32 = 264.0;
-const SUBMENU_W: f32 = 320.0;
-const ITEM_H: f32 = 34.0;
-const ITEM_DETAIL_H: f32 = 48.0;
-const HEADER_H: f32 = 24.0;
-const NOTE_H: f32 = 52.0;
-const SEARCH_H: f32 = 44.0;
-const SEPARATOR_H: f32 = 9.0;
-const SEPARATOR_LINE: f32 = 1.0;
-const SUBMENU_GAP: f32 = 6.0;
-const EDGE_MARGIN: f32 = 8.0;
-const PANEL_PAD: f32 = SPACE_1_5;
-const PANEL_RADIUS: f32 = 14.0;
-const ROW_RADIUS: f32 = 9.0;
-const CARET_W: f32 = 1.5;
-const CARET_H: f32 = 18.0;
+const BORDER_W: f32 = 1.0;
 const MENU_ID: &str = "context-menu";
+const MENU_MOTION_ID: &str = "context-menu-motion";
 const SUBMENU_ID: &str = "context-submenu";
+const SUBMENU_MOTION_PREFIX: &str = "context-submenu-motion";
 const SUBMENU_ROWS_ID: &str = "context-submenu-rows";
 const ITEM_PREFIX: &str = "menu-item";
 const SUB_ITEM_PREFIX: &str = "submenu-item";
 const CREATE_ID: &str = "submenu-create";
 const NO_MATCHES_TEXT: &str = "No matches";
 const OPTIONS_ID: &str = "menu-options";
+const OPTIONS_MOTION_ID: &str = "menu-options-motion";
 const OPTION_PREFIX: &str = "menu-option";
-const OPTIONS_W: f32 = 180.0;
 
-const fn entry_height(entry: &MenuEntry) -> f32 {
-    match entry {
-        MenuEntry::Item {
-            detail: Some(_), ..
-        } => ITEM_DETAIL_H,
-        MenuEntry::Item { .. } | MenuEntry::Submenu(_) => ITEM_H,
-        MenuEntry::Header(_) => HEADER_H,
-        MenuEntry::Note(_) => NOTE_H,
-        MenuEntry::Separator => SEPARATOR_H,
+const fn chrome() -> f32 {
+    2.0 * (FLOATING_PAD + BORDER_W)
+}
+
+const fn side_of(placement: MenuPlacement) -> Side {
+    match placement {
+        MenuPlacement::Below => Side::Below,
+        MenuPlacement::Above => Side::Above,
     }
 }
 
-fn panel(pal: &Palette, cx: &App) -> Div {
-    div()
-        .absolute()
-        .flex()
-        .flex_col()
-        .p(px(PANEL_PAD))
-        .rounded(px(PANEL_RADIUS))
-        .bg(popover_fill(pal, cx))
-        .border_1()
-        .border_color(pal.divider)
-        .shadow(popover_shadow(pal, cx))
-        .occlude()
-}
-
-fn row_id(prefix: &'static str, index: usize) -> ElementId {
-    (prefix, u64::try_from(index).unwrap_or(u64::MAX)).into()
-}
-
-fn lead_slot(lead: Option<AnyElement>) -> AnyElement {
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .size(px(ICON))
-        .children(lead)
-        .into_any_element()
-}
-
-fn icon_slot(glyph: Option<IconName>, color: u32) -> AnyElement {
-    lead_slot(glyph.map(|name| icon(name, ICON, color).into_any_element()))
-}
-
-fn item_body(
-    entry: &MenuEntry,
-    chosen: bool,
-    lead: Option<AnyElement>,
-    pal: &Palette,
-) -> Vec<AnyElement> {
-    let MenuEntry::Item {
-        label,
-        icon: glyph,
-        checked,
-        destructive,
-        disabled,
-        detail,
-        trailing,
-        ..
-    } = entry
-    else {
-        return Vec::new();
-    };
-    let (text, mark) = if *disabled {
-        (pal.text_disabled, pal.text_disabled)
-    } else if chosen {
-        (pal.on_accent, pal.on_accent)
-    } else if *destructive {
-        (pal.error_fg, pal.error_fg)
-    } else {
-        (pal.text_strong, pal.text_muted)
-    };
-    let tick_leads = *checked && glyph.is_none();
-    let leading = if tick_leads {
-        Some(IconName::Tick)
-    } else {
-        *glyph
-    };
-    let detail_color = if chosen {
-        pal.on_accent
-    } else {
-        pal.text_muted
-    };
-    vec![
-        match lead {
-            Some(lead) => lead_slot(Some(lead)),
-            None => icon_slot(leading, if tick_leads { text } else { mark }),
-        },
-        div()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_w_0()
-            .child(
-                div()
-                    .truncate()
-                    .text_size(px(TEXT_BASE))
-                    .line_height(px(LINE_BASE))
-                    .text_color(rgb(text))
-                    .child(label.clone()),
-            )
-            .children(detail.as_ref().map(|detail| {
-                div()
-                    .truncate()
-                    .text_size(px(TEXT_SM))
-                    .line_height(px(LINE_SM))
-                    .text_color(rgb(detail_color))
-                    .child(detail.clone())
-            }))
-            .into_any_element(),
-        div()
-            .flex()
-            .flex_row()
-            .flex_none()
-            .items_center()
-            .gap(px(SPACE_2))
-            .text_size(px(TEXT_SM))
-            .line_height(px(LINE_SM))
-            .text_color(rgb(detail_color))
-            .children(trailing.clone())
-            .when(*checked && !tick_leads, |end| {
-                end.child(icon(IconName::Tick, ICON_SM, text))
-            })
-            .into_any_element(),
-    ]
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum RowLook {
-    Rest,
-    Open,
-    Chosen,
-    Disabled,
-}
-
-impl RowLook {
-    fn of(chosen: bool) -> Self {
-        if chosen {
-            Self::Chosen
-        } else {
-            Self::Rest
-        }
-    }
-}
-
-fn row_shell(id: ElementId, height: f32, look: RowLook, pal: &Palette) -> gpui_kit::Stateful<Div> {
-    div()
-        .id(id)
-        .flex_none()
-        .flex()
-        .flex_row()
-        .items_center()
-        .gap(px(SPACE_3))
-        .h(px(height))
-        .px(px(SPACE_2))
-        .rounded(px(ROW_RADIUS))
-        .map(|row| match look {
-            RowLook::Chosen => row.cursor_pointer().bg(rgb(pal.accent)),
-            RowLook::Open => row.cursor_pointer().bg(pal.bg_hover),
-            RowLook::Rest => row.cursor_pointer().hover(|style| style.bg(pal.bg_hover)),
-            RowLook::Disabled => row.cursor_default(),
-        })
-}
-
-fn passive_row(entry: &MenuEntry, pal: &Palette) -> AnyElement {
-    match entry {
-        MenuEntry::Header(text) => div()
-            .flex_none()
-            .flex()
-            .items_end()
-            .h(px(HEADER_H))
-            .px(px(SPACE_2))
-            .pb(px(SPACE_1 / 2.0))
-            .text_size(px(TEXT_XS))
-            .line_height(px(LINE_XS))
-            .font_weight(FontWeight::MEDIUM)
-            .text_color(rgb(pal.text_subtle))
-            .child(text.clone())
-            .into_any_element(),
-        MenuEntry::Note(text) => div()
-            .flex_none()
-            .px(px(SPACE_2))
-            .py(px(SPACE_2))
-            .text_size(px(TEXT_SM))
-            .line_height(px(LINE_SM))
-            .text_color(rgb(pal.error_fg))
-            .child(text.clone())
-            .into_any_element(),
-        _ => div()
-            .flex_none()
-            .flex()
-            .items_center()
-            .h(px(SEPARATOR_H))
-            .px(px(SPACE_2))
-            .child(div().h(px(SEPARATOR_LINE)).w_full().bg(pal.divider))
-            .into_any_element(),
-    }
+#[derive(Clone, Copy)]
+enum RowPointer {
+    Entry(usize),
+    Rank(usize),
+    Inert,
 }
 
 impl EnvironmentShell {
     fn create_choice(
         label: String,
-        action: super::MenuAction,
-        chosen: bool,
+        action: MenuAction,
+        (chosen, rank, level): (bool, usize, MenuLevel),
         pal: &Palette,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let entry = MenuEntry::item(label, Some(IconName::Add), action.clone());
-        row_shell(CREATE_ID.into(), ITEM_H, RowLook::of(chosen), pal)
+        let look = RowLook::of(chosen);
+        row_shell(CREATE_ID.into(), MENU_ROW_H, look, pal)
+            .on_hover(cx.listener(move |this: &mut Self, hovered: &bool, _, cx| {
+                if *hovered {
+                    this.choose_menu_rank(rank, level, cx);
+                }
+            }))
             .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
                 this.run_menu_action(action.clone(), window, cx);
             }))
-            .children(item_body(&entry, chosen, None, pal))
+            .children(item_body(&entry, look, None, pal))
             .into_any_element()
     }
 
     fn menu_row(
         index: usize,
         entry: &MenuEntry,
-        look: RowLook,
+        (look, pointer): (RowLook, RowPointer),
         copies: &Entity<CopyFeedback>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -270,7 +85,11 @@ impl EnvironmentShell {
             MenuEntry::Item {
                 action, disabled, ..
             } => {
-                let look = if *disabled { RowLook::Disabled } else { look };
+                let look = if *disabled {
+                    RowLook::Disabled
+                } else {
+                    switch_look(entry, look)
+                };
                 let lead = match action {
                     MenuAction::CopyChat(copy) => {
                         let color = if *disabled {
@@ -283,42 +102,43 @@ impl EnvironmentShell {
                     _ => None,
                 };
                 let action = action.clone();
+                let enabled = !*disabled;
                 row_shell(row_id(ITEM_PREFIX, index), entry_height(entry), look, pal)
-                    .on_hover(cx.listener(|this: &mut Self, hovered: &bool, _, cx| {
-                        if *hovered {
-                            this.close_submenu(cx);
+                    .on_hover(cx.listener(move |this: &mut Self, hovered: &bool, _, cx| {
+                        if !*hovered {
+                            return;
+                        }
+                        this.close_submenu(cx);
+                        match pointer {
+                            RowPointer::Entry(index) if enabled => this.point_menu_at(index, cx),
+                            RowPointer::Rank(rank) => {
+                                this.choose_menu_rank(rank, MenuLevel::Root, cx);
+                            }
+                            RowPointer::Entry(_) | RowPointer::Inert => {}
                         }
                     }))
-                    .when(!*disabled, |row| {
+                    .when(enabled, |row| {
                         row.on_click(cx.listener(move |this: &mut Self, _, window, cx| {
                             this.run_menu_action(action.clone(), window, cx);
                         }))
                     })
-                    .children(item_body(entry, look == RowLook::Chosen, lead, pal))
+                    .children(item_body(entry, look, lead, pal))
                     .into_any_element()
             }
-            MenuEntry::Submenu(submenu) => row_shell(row_id(ITEM_PREFIX, index), ITEM_H, look, pal)
-                .on_hover(cx.listener(move |this: &mut Self, hovered: &bool, _, cx| {
-                    if *hovered {
+            MenuEntry::Submenu(submenu) => {
+                row_shell(row_id(ITEM_PREFIX, index), MENU_ROW_H, look, pal)
+                    .on_hover(cx.listener(move |this: &mut Self, hovered: &bool, _, cx| {
+                        if *hovered {
+                            this.open_submenu(index, cx);
+                            this.point_menu_at(index, cx);
+                        }
+                    }))
+                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                         this.open_submenu(index, cx);
-                    }
-                }))
-                .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                    this.open_submenu(index, cx);
-                }))
-                .child(icon_slot(submenu.icon, pal.text_muted))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .truncate()
-                        .text_size(px(TEXT_BASE))
-                        .line_height(px(LINE_BASE))
-                        .text_color(rgb(pal.text_strong))
-                        .child(submenu.label.clone()),
-                )
-                .child(icon(IconName::ChevronRight, ICON_SM, pal.text_muted))
-                .into_any_element(),
+                    }))
+                    .children(submenu_body(submenu, look, pal))
+                    .into_any_element()
+            }
             _ => passive_row(entry, pal),
         }
     }
@@ -326,27 +146,42 @@ impl EnvironmentShell {
     fn submenu_row(
         index: usize,
         entry: &MenuEntry,
-        chosen: bool,
+        (chosen, rank): (bool, Option<usize>),
         pal: &Palette,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let MenuEntry::Item {
-            action, options, ..
+            action,
+            options,
+            disabled,
+            ..
         } = entry
         else {
             return passive_row(entry, pal);
+        };
+        let look = if *disabled {
+            RowLook::Disabled
+        } else {
+            RowLook::of(chosen)
         };
         let action = action.clone();
         let options = options.clone();
         row_shell(
             row_id(SUB_ITEM_PREFIX, index),
             entry_height(entry),
-            RowLook::of(chosen),
+            look,
             pal,
         )
-        .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
-            this.run_menu_action(action.clone(), window, cx);
+        .on_hover(cx.listener(move |this: &mut Self, hovered: &bool, _, cx| {
+            if let Some(rank) = rank.filter(|_| *hovered) {
+                this.choose_menu_rank(rank, MenuLevel::Submenu, cx);
+            }
         }))
+        .when(!*disabled, |row| {
+            row.on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                this.run_menu_action(action.clone(), window, cx);
+            }))
+        })
         .when(!options.is_empty(), |row| {
             row.on_mouse_down(
                 MouseButton::Right,
@@ -359,90 +194,46 @@ impl EnvironmentShell {
                 ),
             )
         })
-        .children(item_body(entry, chosen, None, pal))
+        .children(item_body(entry, look, None, pal))
         .into_any_element()
     }
 
-    fn search_row(placeholder: &'static str, query: &str, pal: &Palette) -> AnyElement {
-        let caret = div()
-            .flex_none()
-            .w(px(CARET_W))
-            .h(px(CARET_H))
-            .bg(rgb(pal.text_strong));
-        let typed = (!query.is_empty()).then(|| {
-            div()
-                .text_color(rgb(pal.text_strong))
-                .child(query.to_owned())
-        });
-        div()
-            .flex_none()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(SPACE_3))
-            .h(px(SEARCH_H - PANEL_PAD))
-            .px(px(SPACE_3))
-            .mb(px(PANEL_PAD))
-            .rounded(px(ROW_RADIUS))
-            .bg(pal.bg_hover)
-            .text_size(px(TEXT_BASE))
-            .line_height(px(LINE_BASE))
-            .child(icon(IconName::Search, ICON, pal.text_muted))
-            .children(typed)
-            .child(caret)
-            .when(query.is_empty(), |row| {
-                row.child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .truncate()
-                        .text_color(rgb(pal.text_subtle))
-                        .child(placeholder),
-                )
-            })
-            .into_any_element()
-    }
-
     fn submenu_panel(
-        submenu: &Submenu,
-        (query, chosen): (&str, usize),
-        (left, top, rows_max): (f32, f32, f32),
+        (index, submenu): (usize, &Submenu),
+        menu: &ContextMenu,
+        placed: Placed,
         pal: &Palette,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let query = menu.query.as_str();
         let shown = matching(&submenu.entries, query);
         let ranks = item_ranks(&shown);
-        let create_chosen = submenu.search.is_some() && chosen == items_in(&shown);
-        let create = submenu
-            .create_row(query)
-            .map(|(label, action)| Self::create_choice(label, action, create_chosen, pal, cx));
-        let empty = (shown.is_empty() && create.is_none()).then(|| {
-            div()
-                .px(px(SPACE_2))
-                .py(px(SPACE_2))
-                .text_size(px(TEXT_SM))
-                .text_color(rgb(pal.text_muted))
-                .child(NO_MATCHES_TEXT)
-        });
+        let listed = items_in(&shown);
         let searching = submenu.search.is_some();
+        let keyed = searching || menu.level == MenuLevel::Submenu;
+        let create = submenu.create_row(query).map(|(label, action)| {
+            let chosen = searching && menu.chosen == listed;
+            Self::create_choice(label, action, (chosen, listed, MenuLevel::Submenu), pal, cx)
+        });
+        let empty = (shown.is_empty() && create.is_none()).then(|| empty_row(NO_MATCHES_TEXT, pal));
         let rows: Vec<AnyElement> = shown
             .into_iter()
             .zip(ranks)
             .enumerate()
-            .map(|(index, (entry, rank))| {
-                let picked = searching && rank == Some(chosen);
-                Self::submenu_row(index, entry, picked, pal, cx)
+            .map(|(row, (entry, rank))| {
+                let picked = keyed && rank == Some(menu.chosen);
+                Self::submenu_row(row, entry, (picked, rank), pal, cx)
             })
             .collect();
-        panel(pal, cx)
+        let search = submenu.search.map_or(0.0, |_| MENU_SEARCH_H);
+        let rows_max = (placed.max_height - chrome() - search).max(0.0);
+        let panel = floating_panel(pal, cx)
             .id(SUBMENU_ID)
-            .left(px(left))
-            .top(px(top))
-            .w(px(SUBMENU_W))
+            .w(px(MENU_WIDE_W))
             .children(
                 submenu
                     .search
-                    .map(|placeholder| Self::search_row(placeholder, query, pal)),
+                    .map(|placeholder| search_row(placeholder, query, pal)),
             )
             .child(
                 div()
@@ -454,13 +245,13 @@ impl EnvironmentShell {
                     .children(rows)
                     .children(create)
                     .children(empty),
-            )
-            .into_any_element()
+            );
+        floating_at(row_id(SUBMENU_MOTION_PREFIX, index), placed, panel)
     }
 
     fn submenu_rows_height(submenu: &Submenu, query: &str) -> f32 {
         let shown = matching(&submenu.entries, query);
-        let create = submenu.create_row(query).map_or(0.0, |_| ITEM_H);
+        let create = submenu.create_row(query).map_or(0.0, |_| MENU_ROW_H);
         let empty = if shown.is_empty() && create == 0.0 {
             NOTE_H
         } else {
@@ -469,33 +260,31 @@ impl EnvironmentShell {
         shown.into_iter().map(entry_height).sum::<f32>() + create + empty
     }
 
-    fn submenu_origin(
+    fn submenu_placement(
         menu: &ContextMenu,
-        submenu: &Submenu,
+        (index, submenu): (usize, &Submenu),
         (menu_left, menu_top): (f32, f32),
-        (root_w, root_h): (f32, f32),
-    ) -> (f32, f32, f32) {
-        let index = menu.submenu.unwrap_or_default();
+        root: (f32, f32),
+    ) -> Placed {
         let above: f32 = menu.entries.iter().take(index).map(entry_height).sum();
-        let right = menu_left + MENU_W + SUBMENU_GAP;
-        let left = if right + SUBMENU_W + EDGE_MARGIN <= root_w {
-            right
-        } else {
-            (menu_left - SUBMENU_GAP - SUBMENU_W).max(EDGE_MARGIN)
-        };
-        let search = submenu.search.map_or(0.0, |_| SEARCH_H);
-        let chrome = 2.0 * PANEL_PAD + search;
-        let available = (root_h - 2.0 * EDGE_MARGIN).max(chrome);
-        let height = (chrome + Self::submenu_rows_height(submenu, &menu.query)).min(available);
-        let top = (menu_top + above)
-            .min(root_h - height - EDGE_MARGIN)
-            .max(EDGE_MARGIN);
-        (left, top, height - chrome)
+        let row = Bounds::new(
+            point(px(menu_left), px(menu_top + above)),
+            size(px(MENU_W), px(MENU_ROW_H)),
+        );
+        let search = submenu.search.map_or(0.0, |_| MENU_SEARCH_H);
+        let height = chrome() + search + Self::submenu_rows_height(submenu, &menu.query);
+        place(
+            Anchor::Bounds(row),
+            size(px(MENU_WIDE_W), px(height)),
+            size(px(root.0), px(root.1)),
+            Side::After,
+        )
     }
 
     fn options_panel(
         options: &[MenuEntry],
-        (x, y): (f32, f32),
+        at: (f32, f32),
+        root: (f32, f32),
         pal: &Palette,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -516,17 +305,22 @@ impl EnvironmentShell {
                 .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
                     this.run_menu_action(action.clone(), window, cx);
                 }))
-                .children(item_body(entry, false, None, pal))
+                .children(item_body(entry, RowLook::Rest, None, pal))
                 .into_any_element()
             })
             .collect();
-        panel(pal, cx)
+        let height = chrome() + options.iter().map(entry_height).sum::<f32>();
+        let placed = place(
+            Anchor::Point(point(px(at.0), px(at.1))),
+            size(px(MENU_MIN_W), px(height)),
+            size(px(root.0), px(root.1)),
+            Side::Below,
+        );
+        let panel = floating_panel(pal, cx)
             .id(OPTIONS_ID)
-            .left(px(x))
-            .top(px(y))
-            .w(px(OPTIONS_W))
-            .children(rows)
-            .into_any_element()
+            .w(px(MENU_MIN_W))
+            .children(rows);
+        floating_at(OPTIONS_MOTION_ID, placed, panel)
     }
 
     fn root_rows_height(menu: &ContextMenu) -> f32 {
@@ -539,14 +333,14 @@ impl EnvironmentShell {
             .sum();
         let create = search
             .create_row(&menu.entries, &menu.query)
-            .map_or(0.0, |_| ITEM_H);
+            .map_or(0.0, |_| MENU_ROW_H);
         let empty = if shown == 0.0 && create == 0.0 {
             NOTE_H
         } else {
             0.0
         };
         let footer: f32 = search.footer.iter().map(entry_height).sum();
-        SEARCH_H + PANEL_PAD + shown + create + empty + footer
+        MENU_SEARCH_H + shown + create + empty + footer
     }
 
     fn searched_rows(
@@ -558,21 +352,16 @@ impl EnvironmentShell {
         let pal = palette(cx);
         let shown = matching(&menu.entries, &menu.query);
         let ranks = item_ranks(&shown);
-        let create_chosen = menu.chosen == items_in(&shown);
+        let listed = items_in(&shown);
         let create = search
             .create_row(&menu.entries, &menu.query)
-            .map(|(label, action)| Self::create_choice(label, action, create_chosen, pal, cx));
-        let empty = (shown.is_empty() && create.is_none()).then(|| {
-            div()
-                .px(px(SPACE_2))
-                .py(px(SPACE_2))
-                .text_size(px(TEXT_SM))
-                .text_color(rgb(pal.text_muted))
-                .child(NO_MATCHES_TEXT)
-                .into_any_element()
-        });
-        let listed = shown.len();
-        let mut rows = vec![Self::search_row(search.placeholder, &menu.query, pal)];
+            .map(|(label, action)| {
+                let chosen = menu.chosen == listed;
+                Self::create_choice(label, action, (chosen, listed, MenuLevel::Root), pal, cx)
+            });
+        let empty = (shown.is_empty() && create.is_none()).then(|| empty_row(NO_MATCHES_TEXT, pal));
+        let count = shown.len();
+        let mut rows = vec![search_row(search.placeholder, &menu.query, pal)];
         rows.extend(
             shown
                 .into_iter()
@@ -580,15 +369,44 @@ impl EnvironmentShell {
                 .enumerate()
                 .map(|(index, (entry, rank))| {
                     let look = RowLook::of(rank == Some(menu.chosen));
-                    Self::menu_row(index, entry, look, copies, cx)
+                    let pointer = rank.map_or(RowPointer::Inert, RowPointer::Rank);
+                    Self::menu_row(index, entry, (look, pointer), copies, cx)
                 }),
         );
         rows.extend(create);
         rows.extend(empty);
         rows.extend(search.footer.iter().enumerate().map(|(index, entry)| {
-            Self::menu_row(listed + 1 + index, entry, RowLook::Rest, copies, cx)
+            Self::menu_row(
+                count + 1 + index,
+                entry,
+                (RowLook::Rest, RowPointer::Inert),
+                copies,
+                cx,
+            )
         }));
         rows
+    }
+
+    fn plain_rows(
+        menu: &ContextMenu,
+        copies: &Entity<CopyFeedback>,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        menu.entries
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| {
+                let pointed = menu.cursor == Some(index) && menu.level == MenuLevel::Root;
+                let look = if pointed {
+                    RowLook::Chosen
+                } else if menu.submenu == Some(index) {
+                    RowLook::Open
+                } else {
+                    RowLook::Rest
+                };
+                Self::menu_row(index, entry, (look, RowPointer::Entry(index)), copies, cx)
+            })
+            .collect()
     }
 
     pub(in crate::environment_shell) fn context_menu_overlay(
@@ -598,55 +416,46 @@ impl EnvironmentShell {
     ) -> Option<AnyElement> {
         let menu = self.context_menu.as_ref()?;
         let pal = palette(cx);
-        let (root_w, root_h) = self.root_size(window);
-        let max_height = root_h - 2.0 * EDGE_MARGIN;
-        let height = (Self::root_rows_height(menu) + 2.0 * PANEL_PAD).min(max_height);
-        let (x, y) = (
-            menu.origin.0 - self.frame_inset.0,
-            menu.origin.1 - self.frame_inset.1,
+        let root = self.root_size(window);
+        let height = Self::root_rows_height(menu) + chrome();
+        let origin = point(px(menu.origin.0), px(menu.origin.1));
+        let placed = place(
+            Anchor::Point(origin).relative_to(self.frame_inset),
+            size(px(MENU_W), px(height)),
+            size(px(root.0), px(root.1)),
+            side_of(menu.placement),
         );
-        let top = match menu.placement {
-            MenuPlacement::Below => y,
-            MenuPlacement::Above => y - height,
-        };
-        let left = x.min(root_w - MENU_W - EDGE_MARGIN).max(EDGE_MARGIN);
-        let top = top.min(root_h - height - EDGE_MARGIN).max(EDGE_MARGIN);
+        let top = placed.top(root.1, height);
         let rows = match &menu.search {
             Some(search) => Self::searched_rows(menu, search, &self.copy_feedback, cx),
-            None => menu
-                .entries
-                .iter()
-                .enumerate()
-                .map(|(index, entry)| {
-                    let look = if menu.submenu == Some(index) {
-                        RowLook::Open
-                    } else {
-                        RowLook::Rest
-                    };
-                    Self::menu_row(index, entry, look, &self.copy_feedback, cx)
-                })
-                .collect(),
+            None => Self::plain_rows(menu, &self.copy_feedback, cx),
         };
         let submenu = menu
             .submenu
             .and_then(|index| match menu.entries.get(index) {
-                Some(MenuEntry::Submenu(submenu)) => Some(submenu),
+                Some(MenuEntry::Submenu(submenu)) => Some((index, submenu)),
                 _ => None,
             })
-            .map(|submenu| {
-                let origin = Self::submenu_origin(menu, submenu, (left, top), (root_w, root_h));
-                Self::submenu_panel(submenu, (&menu.query, menu.chosen), origin, pal, cx)
+            .map(|opened| {
+                let at = Self::submenu_placement(menu, opened, (placed.left, top), root);
+                Self::submenu_panel(opened, menu, at, pal, cx)
             });
         let options = menu.options.as_ref().map(|(options, (x, y))| {
             let at = (x - self.frame_inset.0, y - self.frame_inset.1);
-            Self::options_panel(options, at, pal, cx)
+            Self::options_panel(options, at, root, pal, cx)
         });
         let dismiss = |this: &mut Self,
                        _: &gpui_kit::MouseDownEvent,
-                       _: &mut Window,
+                       window: &mut Window,
                        cx: &mut Context<Self>| {
-            this.close_menu(cx);
+            this.close_menu(window, cx);
         };
+        let panel = floating_panel(pal, cx)
+            .id(MENU_ID)
+            .w(px(MENU_W))
+            .max_h(px(placed.max_height))
+            .overflow_y_scroll()
+            .children(rows);
         Some(
             div()
                 .absolute()
@@ -665,31 +474,10 @@ impl EnvironmentShell {
                         .on_mouse_down(MouseButton::Left, cx.listener(dismiss))
                         .on_mouse_down(MouseButton::Right, cx.listener(dismiss)),
                 )
-                .child(
-                    panel(pal, cx)
-                        .id(MENU_ID)
-                        .left(px(left))
-                        .top(px(top))
-                        .w(px(MENU_W))
-                        .max_h(px(max_height))
-                        .overflow_y_scroll()
-                        .children(rows),
-                )
+                .child(floating_at(MENU_MOTION_ID, placed, panel))
                 .children(submenu)
                 .children(options)
                 .into_any_element(),
         )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_second_line_makes_a_row_taller() {
-        let plain = MenuEntry::item("Settings", None, MenuAction::NewGroup);
-        let detailed = plain.clone().with_detail("Every checkout");
-        assert!(entry_height(&detailed) > entry_height(&plain));
     }
 }

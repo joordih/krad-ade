@@ -156,6 +156,10 @@ impl EnvironmentShell {
                 live.chats.insert(id, chat);
             }
             self.watch_subagents(env, id, cx);
+            if let AgentPreset::Acp(agent) = harness {
+                self.seed_acp_chats();
+                self.list_acp_models(agent, cx);
+            }
             if let Some(resume) = history {
                 if self.reads_history_now(env, harness) {
                     self.load_history(env.clone(), id, harness, resume, cx);

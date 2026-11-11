@@ -81,10 +81,14 @@ impl EnvironmentData {
 
     pub fn remove_group(&mut self, id: GroupId) -> Option<TerminalGroup> {
         let index = self.groups.iter().position(|group| group.id == id)?;
-        for node in &mut self.nodes {
-            if node.group == Some(id) {
-                node.group = None;
-            }
+        let held: Vec<TerminalId> = self
+            .nodes
+            .iter()
+            .filter(|node| node.group == Some(id))
+            .map(|node| node.id)
+            .collect();
+        for terminal in held {
+            self.drop_terminal(terminal);
         }
         let removed = self.groups.remove(index);
         self.sessions.retain(|session| session.group != Some(id));
@@ -118,13 +122,14 @@ mod tests {
     use crate::environment::seed_environment;
 
     #[test]
-    fn removing_a_group_keeps_its_terminals_ungrouped() {
+    fn removing_a_group_closes_its_terminals() {
         let mut environment = seed_environment();
         let first = environment.add_group(PathBuf::from("/work/api"), None);
         let second = environment.add_group(PathBuf::from("/work/web"), None);
         assert_ne!(first, second);
         let terminal = environment.nodes[0].id;
         environment.nodes[0].group = Some(first);
+        environment.enter_sessions();
         assert_eq!(
             environment
                 .group_of(terminal)
@@ -132,8 +137,9 @@ mod tests {
             Some("api")
         );
         assert!(environment.remove_group(first).is_some());
-        assert_eq!(environment.nodes.len(), 3);
-        assert_eq!(environment.nodes[0].group, None);
-        assert!(environment.group_of(terminal).is_none());
+        assert_eq!(environment.nodes.len(), 2);
+        assert!(environment.nodes.iter().all(|node| node.id != terminal));
+        assert!(environment.session_of(terminal).is_none());
+        assert!(!environment.meta.contains_key(&terminal));
     }
 }

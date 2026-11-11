@@ -6,7 +6,7 @@ use krad_domain::{
 };
 use std::path::Path;
 
-use super::super::model_picker::ModelChoice;
+use super::super::model_picker::{ModelChoice, ModelMarks};
 use super::super::EnvironmentShell;
 use super::structured::StructuredChat;
 use super::transcript::TRANSCRIPT_HARNESS;
@@ -33,8 +33,10 @@ pub(super) struct Facts {
     pub(super) default_effort: Option<Effort>,
     pub(super) offers_effort: bool,
     pub(super) effort_notice: Option<EffortSnap>,
+    pub(super) fast: Option<bool>,
     pub(super) thinking: Option<bool>,
     pub(super) context: Option<u16>,
+    pub(super) reports_context: bool,
     pub(super) context_window: Option<u64>,
     pub(super) account: Option<String>,
 }
@@ -112,12 +114,14 @@ fn transcript_facts(status: &AgentStatus, models: Vec<ModelId>) -> Facts {
         default_effort: None,
         offers_effort: true,
         effort_notice: None,
+        fast: None,
         effort: status
             .effort
             .as_deref()
             .and_then(|level| level.parse().ok()),
         efforts: TRANSCRIPT_HARNESS.offered_efforts().to_vec(),
         thinking: status.thinking,
+        reports_context: status.context_used.is_some(),
         context: status.context_used,
         context_window: None,
         account: None,
@@ -135,6 +139,7 @@ impl From<&ModelPick> for ModelChoice {
             recommended: pick.recommended,
             context: pick.context,
             missing: pick.missing,
+            marks: ModelMarks::default(),
         }
     }
 }
@@ -147,12 +152,20 @@ struct Offered<'a> {
 
 impl StructuredChat {
     fn facts(&self, offered: Offered<'_>) -> Facts {
-        let offers = self
-            .catalog
+        let live = self.acp.live_models();
+        let offers = live
             .as_ref()
-            .map(|catalog| catalog.models.as_slice())
+            .map(|(offers, _)| offers.as_slice())
+            .or_else(|| {
+                self.catalog
+                    .as_ref()
+                    .map(|catalog| catalog.models.as_slice())
+            })
             .or(offered.fallback);
-        let chosen = self.chosen_model.as_ref();
+        let chosen = live
+            .as_ref()
+            .and_then(|(_, current)| current.as_ref())
+            .or(self.chosen_model.as_ref());
         let shown = offers.and_then(|offers| match chosen {
             Some(chosen) => offers
                 .iter()
@@ -179,7 +192,7 @@ impl StructuredChat {
         models.extend(offered.others);
         let offers_effort = !self.harness.offered_efforts().is_empty()
             || offers.is_some_and(|offers| offers.iter().any(|offer| !offer.efforts.is_empty()));
-        Facts {
+        let facts = Facts {
             model: shown
                 .map(|offer| offer.name.clone())
                 .or_else(|| missing.map(|model| model_label(model.as_str())))
@@ -198,11 +211,25 @@ impl StructuredChat {
                 .filter(|offer| offer.thinking_off)
                 .map(|_| self.thinking),
             context: self.context_used(),
+            reports_context: self.reports_context(),
             context_window: self.context_window,
+            fast: None,
             account: self
                 .catalog
                 .as_ref()
                 .and_then(|catalog| catalog.subscription.clone()),
+        };
+        match self.acp.effort() {
+            Some(acp) => Facts {
+                effort: acp.current,
+                efforts: acp.levels,
+                default_effort: None,
+                offers_effort: true,
+                effort_notice: None,
+                fast: acp.fast,
+                ..facts
+            },
+            None => facts,
         }
     }
 }
@@ -229,8 +256,10 @@ impl EnvironmentShell {
         let offers = match harness {
             AgentPreset::Opencode => self.opencode_models_on(&host),
             AgentPreset::Gateway => self.gateway_offers(),
-            AgentPreset::ClaudeCode | AgentPreset::Codex => self.listed_models.of(&host, harness),
-            AgentPreset::Shell | AgentPreset::Acp(_) => &[],
+            AgentPreset::ClaudeCode | AgentPreset::Codex | AgentPreset::Acp(_) => {
+                self.listed_models.of(&host, harness)
+            }
+            AgentPreset::Shell => &[],
         };
         (!offers.is_empty()).then_some(offers)
     }
@@ -278,10 +307,13 @@ impl EnvironmentShell {
                 let fresh = chat.messages.is_empty() && structured.is_fresh();
                 let root = self.active_group().map(|group| group.root.as_path());
                 let others = if fresh {
+                    let available = self.agents_for(&self.active, root);
                     AgentPreset::chat_harnesses(&self.settings.acp.all_agents())
                         .into_iter()
                         .filter(|other| {
-                            *other != harness && self.chats_on(&self.active, root, *other)
+                            other.native_twin() != harness.native_twin()
+                                && other.is_offered(available)
+                                && self.chats_on(&self.active, root, *other)
                         })
                         .flat_map(|other| self.harness_picks(other, None))
                         .collect()

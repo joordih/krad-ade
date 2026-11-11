@@ -16,6 +16,14 @@ const BLACK: ThemeColor = ThemeColor(0x0000_0000);
 const LIGHT_INK: u32 = 0x001d_1d1f;
 const DARK_INK: u32 = 0x00f5_f5f7;
 const SHADOW_BLACK: u32 = 0x0000_0000;
+const LIGHT_SHELL_INK: u32 = 0x00f7_f7f7;
+const DARK_SHELL_INK: u32 = 0x0017_1717;
+const LIGHT_SUCCESS: u32 = 0x0024_8a3d;
+const LIGHT_ERROR: u32 = 0x00d7_0015;
+const LIGHT_WARNING: u32 = 0x00c2_6a00;
+const DARK_SUCCESS: u32 = 0x0030_d158;
+const DARK_ERROR: u32 = 0x00ff_453a;
+const DARK_WARNING: u32 = 0x00ff_9f0a;
 
 const WASH_HOVER: f32 = 0.05;
 const WASH_SELECTED: f32 = 0.08;
@@ -112,6 +120,7 @@ const fn dark_shadows(ink: u32) -> Shadows {
 
 pub(super) const LIGHT: Palette = Palette {
     backdrop_from: 0x00e8_e8ed,
+    shell_ink: LIGHT_SHELL_INK,
     backdrop_to: 0x00ed_edf0,
     text_strong: LIGHT_INK,
     text_default: 0x0042_4245,
@@ -134,10 +143,13 @@ pub(super) const LIGHT: Palette = Palette {
     accent_hover: 0x0000_71eb,
     accent_pressed: 0x0000_62cc,
     on_accent: 0x00ff_ffff,
-    success_fg: 0x0024_8a3d,
-    warning_fg: 0x00c2_6a00,
-    error_fg: 0x00d7_0015,
+    success_fg: LIGHT_SUCCESS,
+    warning_fg: LIGHT_WARNING,
+    error_fg: LIGHT_ERROR,
     info_fg: 0x0000_7aff,
+    diff_added: LIGHT_SUCCESS,
+    diff_removed: LIGHT_ERROR,
+    diff_modified: LIGHT_WARNING,
     ansi: AnsiPalette([
         LIGHT_INK,
         0x00cf_4b4b,
@@ -168,6 +180,7 @@ pub(super) const LIGHT: Palette = Palette {
 
 pub(super) const DARK: Palette = Palette {
     backdrop_from: 0x001c_1c1e,
+    shell_ink: DARK_SHELL_INK,
     backdrop_to: 0x001f_1f1f,
     text_strong: DARK_INK,
     text_default: 0x00c7_c7cc,
@@ -190,10 +203,13 @@ pub(super) const DARK: Palette = Palette {
     accent_hover: 0x0040_9cff,
     accent_pressed: 0x0000_71e3,
     on_accent: 0x00ff_ffff,
-    success_fg: 0x0030_d158,
-    warning_fg: 0x00ff_9f0a,
-    error_fg: 0x00ff_453a,
+    success_fg: DARK_SUCCESS,
+    warning_fg: DARK_WARNING,
+    error_fg: DARK_ERROR,
     info_fg: 0x000a_84ff,
+    diff_added: DARK_SUCCESS,
+    diff_removed: DARK_ERROR,
+    diff_modified: DARK_WARNING,
     ansi: krad_session::XTERM_PALETTE,
     syntax: SyntaxColors {
         keyword: 0x00fc_5fa3,
@@ -213,6 +229,11 @@ pub(super) fn themed(theme: &Theme) -> Palette {
     let ansi = theme.terminal.ansi.map(|color| color.0);
     Palette {
         backdrop_from: ui.background.0,
+        shell_ink: if dark {
+            DARK_SHELL_INK
+        } else {
+            LIGHT_SHELL_INK
+        },
         backdrop_to: mix(ui.background, ui.surface, BACKDROP_MIX),
         text_strong: ink,
         text_default: mix(ui.text, ui.background, DEFAULT_TEXT_MIX),
@@ -239,6 +260,9 @@ pub(super) fn themed(theme: &Theme) -> Palette {
         warning_fg: ui.warning.0,
         error_fg: ui.error.0,
         info_fg: ui.info.0,
+        diff_added: ui.success.0,
+        diff_removed: ui.error.0,
+        diff_modified: ui.warning.0,
         ansi: AnsiPalette(ansi),
         syntax: SyntaxColors {
             keyword: theme.syntax.keyword.0,

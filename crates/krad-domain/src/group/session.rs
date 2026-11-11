@@ -3,6 +3,7 @@ use crate::attention::SessionAttention;
 use crate::environment::{EnvironmentData, TerminalNode};
 use crate::ids::{GroupId, SessionId, TerminalId};
 use crate::mosaic::MosaicState;
+use crate::view::EnvironmentView;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -112,7 +113,7 @@ impl EnvironmentData {
         } else {
             (at + ids.len() - 1) % ids.len()
         };
-        next != at && self.select_session(ids[next])
+        next != at && self.show_session(ids[next])
     }
 
     pub fn select_session(&mut self, id: SessionId) -> bool {
@@ -123,21 +124,36 @@ impl EnvironmentData {
         exists
     }
 
-    #[must_use]
-    pub fn can_close_session(&self, id: SessionId) -> bool {
-        let Some(session) = self.session(id) else {
+    pub fn show_session(&mut self, id: SessionId) -> bool {
+        let selected = self.select_session(id);
+        if selected {
+            self.view = EnvironmentView::Sessions;
+        }
+        selected
+    }
+
+    pub fn show_terminal(&mut self, terminal: TerminalId) -> bool {
+        if self.session_of(terminal).is_none() {
             return false;
-        };
-        let empty = session.tabs.tabs.iter().all(|tab| tab.tiles.is_empty());
-        empty || self.sessions_of(session.group).count() > 1
+        }
+        self.reveal_terminal(terminal);
+        self.view = EnvironmentView::Sessions;
+        true
     }
 
     pub fn close_session(&mut self, id: SessionId) -> bool {
-        let Some(group) = self.session(id).map(|session| session.group) else {
+        let Some(session) = self.session(id) else {
             return false;
         };
-        if !self.can_close_session(id) {
-            return false;
+        let group = session.group;
+        let held: Vec<TerminalId> = session
+            .tabs
+            .tabs
+            .iter()
+            .flat_map(|tab| tab.tiles.iter().map(|tile| tile.id))
+            .collect();
+        for terminal in held {
+            self.drop_terminal(terminal);
         }
         self.sessions.retain(|session| session.id != id);
         if self.active_session == Some(id) {
@@ -307,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn closing_a_session_hands_its_terminals_to_the_group() {
+    fn closing_a_session_closes_its_terminals_instead_of_moving_them() {
         let (mut environment, api, _) = grouped_environment();
         environment.enter_sessions();
         let second = environment.new_session(Some(api), SessionSpec::default());
@@ -319,15 +335,74 @@ mod tests {
         environment.place_terminal(TerminalId(2), None);
         assert_eq!(environment.session_of(TerminalId(2)), Some(second));
         assert!(environment.close_session(second));
-        assert_eq!(environment.session_of(TerminalId(2)), main);
-        assert_eq!(holders(&environment, TerminalId(2)), 1);
-        let Some(main) = main else {
+        assert!(environment.session(second).is_none());
+        assert_eq!(holders(&environment, TerminalId(2)), 0);
+        assert!(environment
+            .nodes
+            .iter()
+            .all(|node| node.id != TerminalId(2)));
+        assert_eq!(environment.session_of(TerminalId(1)), main);
+        assert_eq!(environment.active_session, main);
+    }
+
+    #[test]
+    fn the_last_session_of_a_group_closes_with_its_terminals() {
+        let (mut environment, api, _) = grouped_environment();
+        environment.enter_sessions();
+        environment.reveal_terminal(TerminalId(1));
+        let Some(main) = environment.active_session else {
             return;
         };
-        assert!(
-            !environment.close_session(main),
-            "its terminals need another session to move to"
+        assert!(environment.close_session(main));
+        assert_eq!(environment.sessions_of(Some(api)).count(), 0);
+        assert!(environment.nodes.iter().all(|node| node.group != Some(api)));
+        environment.enter_sessions();
+        assert_eq!(
+            environment.sessions_of(Some(api)).count(),
+            0,
+            "nothing comes back for the closed terminals"
         );
+        assert!(environment.current_session().is_some());
+    }
+
+    #[test]
+    fn showing_a_session_leaves_whatever_view_was_open() {
+        let (mut environment, api, _) = grouped_environment();
+        environment.enter_sessions();
+        let second = environment.new_session(Some(api), SessionSpec::default());
+        for view in EnvironmentView::ALL {
+            environment.view = view;
+            environment.active_session = None;
+            assert!(environment.show_session(second), "{view:?}");
+            assert_eq!(environment.view, EnvironmentView::Sessions, "{view:?}");
+            assert_eq!(environment.active_session, Some(second), "{view:?}");
+        }
+    }
+
+    #[test]
+    fn showing_a_terminal_opens_its_session_from_any_view() {
+        let (mut environment, _, _) = grouped_environment();
+        environment.enter_sessions();
+        let home = environment.session_of(TerminalId(3));
+        for view in EnvironmentView::ALL {
+            environment.view = view;
+            environment.reveal_terminal(TerminalId(1));
+            assert!(environment.show_terminal(TerminalId(3)), "{view:?}");
+            assert_eq!(environment.view, EnvironmentView::Sessions, "{view:?}");
+            assert_eq!(environment.active_session, home, "{view:?}");
+        }
+    }
+
+    #[test]
+    fn showing_something_unknown_keeps_the_open_view() {
+        let (mut environment, _, _) = grouped_environment();
+        environment.enter_sessions();
+        environment.view = EnvironmentView::Notes;
+        let shown = environment.active_session;
+        assert!(!environment.show_session(SessionId(u64::MAX)));
+        assert!(!environment.show_terminal(TerminalId(u64::MAX)));
+        assert_eq!(environment.view, EnvironmentView::Notes);
+        assert_eq!(environment.active_session, shown);
     }
 
     #[test]
@@ -351,9 +426,10 @@ mod tests {
             .iter()
             .all(|session| session.group != Some(api)));
         assert!(environment.current_session().is_some(), "another one shows");
-        for id in [TerminalId(1), TerminalId(2), TerminalId(3)] {
-            assert_eq!(holders(&environment, id), 1, "{id:?}");
+        for id in [TerminalId(1), TerminalId(2)] {
+            assert_eq!(holders(&environment, id), 0, "{id:?}");
         }
+        assert_eq!(holders(&environment, TerminalId(3)), 1);
         let added = environment.add_group(PathBuf::from("/work/docs"), None);
         assert_eq!(
             environment.sessions_of(Some(added)).count(),

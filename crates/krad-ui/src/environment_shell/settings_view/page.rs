@@ -2,12 +2,13 @@ use crate::environment_shell::rubber_band::{band_watch, BandKey, ScrollEdges};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, KeyDownEvent,
-    ParentElement, ScrollHandle, StatefulInteractiveElement, Styled,
+    ParentElement, ScrollHandle, StatefulInteractiveElement, Styled, Window,
 };
 
 use super::super::sidebar::SIDEBAR_WIDTH;
 use super::super::EnvironmentShell;
-use super::SettingsPane;
+use super::navigation::{PaneMatch, SettingsSection};
+use super::{SettingsPane, SettingsUi};
 use crate::components::{card, icon, IconName};
 use crate::keymap::OPEN_SETTINGS_HINT;
 use crate::theme::{
@@ -17,6 +18,7 @@ use crate::theme::{
 use crate::title_bar::WindowTitleBar;
 
 const NAV_BAR_ID: &str = "settings-nav-bar";
+const NAV_LIST_ID: &str = "settings-nav-list";
 const PAGE_BAR_ID: &str = "settings-page-bar";
 const SETTINGS_SCROLL_ID: &str = "settings-page";
 const BTN_BACK: &str = "settings-back";
@@ -31,36 +33,15 @@ const PAGE_TITLE_LINE: f32 = 28.0;
 const GROUP_LABEL_TOP: f32 = 14.0;
 const PAGE_TOP: f32 = 20.0;
 const PAGE_GAP: f32 = 24.0;
-
-const GROUPS: [(&str, &[SettingsPane]); 2] = [
-    (
-        "App",
-        &[
-            SettingsPane::General,
-            SettingsPane::Notifications,
-            SettingsPane::Appearance,
-            SettingsPane::Terminal,
-            SettingsPane::Editor,
-        ],
-    ),
-    (
-        "Workspace",
-        &[
-            SettingsPane::Harnesses,
-            SettingsPane::Integrations,
-            SettingsPane::Gateway,
-            SettingsPane::Mcp,
-            SettingsPane::Acp,
-            SettingsPane::Webhooks,
-            SettingsPane::Languages,
-            SettingsPane::Extensions,
-        ],
-    ),
-];
+const NAV_MIN_W: f32 = 184.0;
+const NAV_SHARE: f32 = 0.24;
+const NO_MATCH_TEXT: &str = "No settings match";
+const HIT_INDENT: f32 = 30.0;
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn settings_page(
         &self,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let ui = self.settings_ui.as_ref()?;
@@ -70,11 +51,14 @@ impl EnvironmentShell {
             SettingsPane::Appearance => self.appearance_pane(cx),
             SettingsPane::Terminal => self.terminal_pane(cx),
             SettingsPane::Editor => self.editor_pane(cx),
+            SettingsPane::Chat => self.chat_pane(cx),
+            SettingsPane::Worktrees => self.worktrees_pane(&ui.worktrees, cx),
             SettingsPane::Harnesses => self.harnesses_pane(cx),
             SettingsPane::Integrations => self.integrations_pane(ui, cx),
             SettingsPane::Gateway => self.gateway_pane(&ui.gateway, cx),
             SettingsPane::Mcp => self.mcp_pane(&ui.mcp, cx),
             SettingsPane::Acp => self.acp_pane(&ui.acp, cx),
+            SettingsPane::Skills => self.skills_pane(&ui.skills, cx),
             SettingsPane::Webhooks => self.webhooks_pane(&ui.webhooks, cx),
             SettingsPane::Languages => self.languages_pane(&ui.languages, cx),
             SettingsPane::Extensions => self.extensions_pane(cx),
@@ -97,7 +81,7 @@ impl EnvironmentShell {
                         }
                     }),
                 )
-                .child(Self::settings_nav(ui.pane, cx))
+                .child(Self::settings_nav(ui, nav_width(window), cx))
                 .child(Self::settings_main(
                     ui.pane,
                     content,
@@ -113,10 +97,19 @@ impl EnvironmentShell {
         )
     }
 
-    fn settings_nav(shown: SettingsPane, cx: &mut Context<Self>) -> AnyElement {
+    fn settings_nav_items(ui: &SettingsUi, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let pal = palette(cx);
+        let matches = ui.search.matches();
+        let searching = ui.search.is_searching();
         let mut items: Vec<AnyElement> = Vec::new();
-        for (label, panes) in GROUPS {
+        for section in SettingsSection::ALL {
+            let listed: Vec<&PaneMatch> = matches
+                .iter()
+                .filter(|hit| hit.pane.section() == section)
+                .collect();
+            if listed.is_empty() {
+                continue;
+            }
             items.push(
                 div()
                     .px(px(SPACE_2))
@@ -126,20 +119,49 @@ impl EnvironmentShell {
                     .line_height(px(LINE_XS))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(rgb(pal.text_muted))
-                    .child(label)
+                    .child(section.title())
                     .into_any_element(),
             );
-            items.extend(
-                panes
-                    .iter()
-                    .map(|pane| Self::nav_row(*pane, *pane == shown, cx)),
+            for hit in listed {
+                items.push(Self::nav_row(hit.pane, hit.pane == ui.pane, cx));
+                if searching {
+                    items.extend(hit.settings.iter().map(|setting| {
+                        div()
+                            .pl(px(HIT_INDENT))
+                            .pr(px(SPACE_2))
+                            .truncate()
+                            .text_size(px(TEXT_XS))
+                            .line_height(px(LINE_XS))
+                            .text_color(rgb(pal.text_subtle))
+                            .child(*setting)
+                            .into_any_element()
+                    }));
+                }
+            }
+        }
+        if items.is_empty() {
+            items.push(
+                div()
+                    .px(px(SPACE_2))
+                    .pt(px(GROUP_LABEL_TOP))
+                    .text_size(px(TEXT_SM))
+                    .line_height(px(LINE_SM))
+                    .text_color(rgb(pal.text_muted))
+                    .child(NO_MATCH_TEXT)
+                    .into_any_element(),
             );
         }
+        items
+    }
+
+    fn settings_nav(ui: &SettingsUi, width: f32, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
+        let items = Self::settings_nav_items(ui, cx);
         div()
             .flex()
             .flex_col()
             .flex_none()
-            .w(px(SIDEBAR_WIDTH))
+            .w(px(width))
             .h_full()
             .child(
                 WindowTitleBar::new(NAV_BAR_ID)
@@ -149,10 +171,18 @@ impl EnvironmentShell {
             )
             .child(
                 div()
+                    .px(px(SPACE_1))
+                    .pb(px(SPACE_1))
+                    .child(Self::settings_search_field(&ui.search, cx)),
+            )
+            .child(
+                div()
+                    .id(NAV_LIST_ID)
                     .flex()
                     .flex_col()
                     .flex_1()
                     .min_h_0()
+                    .overflow_y_scroll()
                     .px(px(SPACE_1))
                     .gap(px(SPACE_0_5))
                     .children(items),
@@ -318,22 +348,6 @@ impl EnvironmentShell {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn every_page_sits_in_one_group_with_its_own_title_and_icon() {
-        let panes: Vec<SettingsPane> = GROUPS
-            .iter()
-            .flat_map(|(_, panes)| panes.iter().copied())
-            .collect();
-        for (index, pane) in panes.iter().enumerate() {
-            for other in &panes[index + 1..] {
-                assert!(pane != other, "{} sits in two groups", pane.title());
-                assert_ne!(pane.title(), other.title());
-                assert_ne!(pane.icon(), other.icon());
-            }
-        }
-    }
+fn nav_width(window: &Window) -> f32 {
+    (window.viewport_size().width.as_f32() * NAV_SHARE).clamp(NAV_MIN_W, SIDEBAR_WIDTH)
 }

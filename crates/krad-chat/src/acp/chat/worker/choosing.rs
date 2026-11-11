@@ -1,7 +1,23 @@
 use krad_domain::{AcpAuthMethodId, AcpConfigValue, AcpModeId, AcpModelId, ChatEvent};
-use tracing::debug;
+use tracing::{debug, info};
 
-use super::{Flow, Worker, SIGN_IN_FAILED_TEXT, SIGN_IN_TIMEOUT};
+use super::{AcpWanted, Flow, Worker, SIGN_IN_FAILED_TEXT, SIGN_IN_TIMEOUT};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ModelWish {
+    Preferred,
+    Asked,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct WantedModel {
+    pub(super) id: AcpModelId,
+    pub(super) wish: ModelWish,
+}
+
+const NO_MODELS_TEXT: &str =
+    "the agent offers no models to choose from, so it keeps its own instead of";
+const MODEL_NOT_OFFERED_TEXT: &str = "the agent does not offer the model";
 use crate::acp::chat::choices::Setter;
 use crate::acp::chat::opening::auth_methods;
 use crate::acp::chat::{settle_later, Answered};
@@ -12,19 +28,52 @@ use crate::acp::setup::{AuthenticateRequest, SetSessionModeRequest, SetSessionMo
 use crate::control::{AcpEvent, LiveEvent};
 
 impl<S: FnMut(LiveEvent)> Worker<S> {
-    pub(super) fn choose_mode(&mut self, mode: AcpModeId) {
+    pub(super) fn choose_wanted(&mut self) -> usize {
+        let wanted = std::mem::take(&mut self.wanted);
+        let mode = wanted.mode.filter(|mode| self.choose_mode(mode.clone()));
+        let options: Vec<(ConfigOptionId, AcpConfigValue)> = wanted
+            .options
+            .into_iter()
+            .filter(|(option, value)| self.choose_option(option.clone(), value.clone()))
+            .collect();
+        self.in_flight = AcpWanted { mode, options };
+        self.overlay_in_flight();
+        usize::from(self.in_flight.mode.is_some()) + self.in_flight.options.len()
+    }
+
+    pub(super) fn overlay_in_flight(&mut self) {
+        let choices = &mut self.choices;
+        let in_flight = &mut self.in_flight;
+        if let Some(mode) = in_flight.mode.clone() {
+            choices.mode_is(mode);
+        }
+        in_flight
+            .options
+            .retain(|(option, value)| !choices.other_is_already(option, value));
+        for (option, value) in &in_flight.options {
+            choices.option_is(option, value.clone());
+        }
+    }
+
+    pub(super) fn choose_mode(&mut self, mode: AcpModeId) -> bool {
         let Some(session) = self.session.clone() else {
-            return;
+            return false;
         };
-        let Some(setter) = self
-            .choices
-            .modes
-            .as_ref()
-            .map(|modes| modes.setter.clone())
-        else {
+        let Some(modes) = self.choices.modes.as_ref() else {
             debug!("the ACP agent offers no modes");
-            return;
+            return false;
         };
+        if modes.offer.current == mode
+            || !modes
+                .offer
+                .available
+                .iter()
+                .any(|offered| offered.id == mode)
+        {
+            debug!("the ACP agent already runs that mode or does not offer it");
+            return false;
+        }
+        let setter = modes.setter.clone();
         match setter {
             Setter::Method => {
                 let pending = self.connection.set_mode(&SetSessionModeRequest {
@@ -37,23 +86,31 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             }
             Setter::Config(config_id) => self.configure(session, config_id, mode.0),
         }
+        true
     }
 
-    pub(super) fn choose_model(&mut self, model: AcpModelId) {
+    pub(super) fn choose_model(&mut self, wanted: WantedModel) -> bool {
         let Some(session) = self.session.clone() else {
-            return;
+            self.wanted_model = Some(wanted);
+            return false;
         };
-        let Some(setter) = self
-            .choices
-            .models
-            .as_ref()
-            .filter(|models| models.offer.offers(&model))
-            .map(|models| models.setter.clone())
+        let Some(models) = self.choices.models.as_ref() else {
+            self.unoffered(&wanted, NO_MODELS_TEXT);
+            return false;
+        };
+        let Some(model) = models
+            .offer
+            .answering(&wanted.id.0)
+            .map(|model| model.id.clone())
         else {
-            debug!("the ACP agent does not offer that model");
-            return;
+            self.unoffered(&wanted, MODEL_NOT_OFFERED_TEXT);
+            return false;
         };
-        match setter {
+        if model == models.offer.current {
+            debug!("the ACP agent already runs the chosen model");
+            return false;
+        }
+        match models.setter.clone() {
             Setter::Method => {
                 let pending = self.connection.set_model(&SetSessionModelRequest {
                     session_id: session,
@@ -65,17 +122,33 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             }
             Setter::Config(config_id) => self.configure(session, config_id, model.0),
         }
+        info!("asked the ACP agent for the chosen model");
+        true
     }
 
-    pub(super) fn choose_option(&mut self, option: ConfigOptionId, value: AcpConfigValue) {
+    fn unoffered(&mut self, wanted: &WantedModel, reason: &str) {
+        match wanted.wish {
+            ModelWish::Asked => self.notice(format!("{reason} {}", wanted.id.0)),
+            ModelWish::Preferred => {
+                debug!("the ACP agent does not offer the preferred model, so it keeps its own");
+            }
+        }
+    }
+
+    pub(super) fn choose_option(&mut self, option: ConfigOptionId, value: AcpConfigValue) -> bool {
         let Some(session) = self.session.clone() else {
-            return;
+            return false;
         };
         if !self.choices.offers_other(&option, &value) {
             debug!("the ACP agent does not offer that choice");
-            return;
+            return false;
+        }
+        if self.choices.other_is_already(&option, &value) {
+            debug!("the ACP agent already runs that choice");
+            return false;
         }
         self.configure(session, option, value.0);
+        true
     }
 
     fn configure(&self, session: SessionId, config_id: ConfigOptionId, value: String) {

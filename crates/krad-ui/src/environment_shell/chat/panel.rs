@@ -3,9 +3,13 @@ mod suggestions;
 
 use gpui_kit::base::SelectableText;
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::{div, px, relative, rgb, AnyElement, ElementId, IntoElement, ParentElement, Styled};
+use gpui_kit::{
+    div, px, relative, rgb, AnyElement, App, ElementId, IntoElement, ParentElement, Styled,
+};
 
-use crate::theme::{Palette, RADIUS_LG, SPACE_0_5, SPACE_3, TEXT_SM, TEXT_XS};
+use crate::theme::{
+    level_fill, Palette, SurfaceLevel, RADIUS_LG, SPACE_0_5, SPACE_3, TEXT_SM, TEXT_XS,
+};
 
 const BUBBLE_MAX_W: f32 = 0.82;
 const BUBBLE_PAD_X: f32 = SPACE_3;
@@ -20,6 +24,7 @@ pub(in crate::environment_shell) fn question_bubble(
     queued: bool,
     scale: f32,
     pal: &Palette,
+    cx: &App,
 ) -> AnyElement {
     div()
         .flex()
@@ -33,7 +38,7 @@ pub(in crate::environment_shell) fn question_bubble(
                 .px(px(BUBBLE_PAD_X))
                 .py(px(BUBBLE_PAD_Y))
                 .rounded(px(RADIUS_LG))
-                .bg(rgb(pal.bg_panel))
+                .bg(level_fill(SurfaceLevel::Pane, pal.bg_panel, cx))
                 .text_size(px(TEXT_SM * scale))
                 .line_height(px(BUBBLE_LINE_H * scale))
                 .text_color(rgb(pal.text_strong))

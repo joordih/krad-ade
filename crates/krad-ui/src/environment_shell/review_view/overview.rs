@@ -2,8 +2,9 @@ use gpui_kit::component::input::Textarea;
 use gpui_kit::component::text::TextView;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, ClickEvent, Context, Div, ElementId, FontWeight, InteractiveElement,
-    IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
+    div, px, rgb, AnyElement, App, ClickEvent, Context, Div, ElementId, FontWeight,
+    InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement,
+    Styled, Window,
 };
 use krad_domain::review::{MergeRequestState, Pipeline};
 use std::time::Duration;
@@ -17,8 +18,8 @@ use super::{ci_glyph, merge_status_label, meta_line, WASH_ALPHA};
 use crate::components::{check_box, icon, Button, ButtonVariant, IconName};
 use crate::environment_shell::EnvironmentShell;
 use crate::theme::{
-    palette, row_shadow, tinted, Palette, BUTTON_H, ICON_SM, LINE_BASE, LINE_XS, RADIUS_LG,
-    RADIUS_XL, SPACE_2, SPACE_3, TEXT_2XS, TEXT_BASE, TEXT_SM, TEXT_XS,
+    level_fill, palette, row_shadow, tinted, Palette, SurfaceLevel, BUTTON_H, ICON_SM, LINE_BASE,
+    LINE_XS, RADIUS_LG, RADIUS_XL, SPACE_2, SPACE_3, TEXT_2XS, TEXT_BASE, TEXT_SM, TEXT_XS,
 };
 
 const COLUMN_GAP: f32 = 16.0;
@@ -148,7 +149,7 @@ impl EnvironmentShell {
             .gap(px(SPACE_2))
             .p(px(SPACE_2))
             .rounded(px(RADIUS_LG))
-            .bg(rgb(pal.bg_surface))
+            .bg(level_fill(SurfaceLevel::Pane, pal.bg_surface, cx))
             .shadow(row_shadow(pal, cx))
             .border_1()
             .border_color(pal.border)
@@ -192,7 +193,7 @@ impl EnvironmentShell {
                 .variant(ButtonVariant::Primary)
                 .on_click(cx.listener(|this: &mut Self, _, _, cx| this.merge_request(cx)))
         });
-        let card = side_card(pal)
+        let card = side_card(pal, cx)
             .gap(px(CARD_GAP))
             .child(
                 div()
@@ -285,7 +286,7 @@ impl EnvironmentShell {
                 })
                 .collect(),
         };
-        side_card(pal)
+        side_card(pal, cx)
             .gap(px(SPACE_2))
             .child(card_label(APPROVALS_LABEL.to_owned(), pal))
             .children(rows)
@@ -295,7 +296,7 @@ impl EnvironmentShell {
     fn pipeline_card(detail: &RequestDetail, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let Some(pipeline) = detail.request.head_pipeline.as_ref() else {
-            return side_card(pal)
+            return side_card(pal, cx)
                 .child(meta_line(detail.words.no_pipeline, pal))
                 .into_any_element();
         };
@@ -320,7 +321,7 @@ impl EnvironmentShell {
                 })
                 .collect(),
         };
-        side_card(pal)
+        side_card(pal, cx)
             .gap(px(CARD_GAP))
             .child(
                 div()
@@ -372,13 +373,13 @@ fn merge_option(
         .into_any_element()
 }
 
-fn side_card(pal: &Palette) -> Div {
+fn side_card(pal: &Palette, cx: &App) -> Div {
     div()
         .flex()
         .flex_col()
         .p(px(CARD_PAD))
         .rounded(px(RADIUS_XL))
-        .bg(rgb(pal.bg_panel))
+        .bg(level_fill(SurfaceLevel::Pane, pal.bg_panel, cx))
 }
 
 fn card_label(text: String, pal: &Palette) -> Div {

@@ -7,7 +7,10 @@ mod servers;
 mod translate;
 mod worker;
 
-use krad_domain::{AcpAgentStart, AcpModeId, AcpModelId, ChatEvent, McpServerStart};
+use krad_domain::{
+    AcpAgentStart, AcpConfigOptionId, AcpConfigValue, AcpModeId, AcpModelId, ChatEvent,
+    McpServerStart,
+};
 use krad_host::HostLink;
 use std::io;
 use std::path::PathBuf;
@@ -40,6 +43,14 @@ pub struct AcpConfig {
     pub mcp: Vec<McpServerStart>,
     pub bus_vars: BusVars,
     pub buffers: Arc<dyn OpenBuffers>,
+    pub model: Option<AcpModelId>,
+    pub wanted: AcpWanted,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AcpWanted {
+    pub mode: Option<AcpModeId>,
+    pub options: Vec<(AcpConfigOptionId, AcpConfigValue)>,
 }
 
 #[derive(Debug, Error)]
@@ -116,6 +127,8 @@ struct Launch {
     paths: AgentPaths,
     agent: String,
     mcp: Vec<McpServerStart>,
+    model: Option<AcpModelId>,
+    wanted: AcpWanted,
 }
 
 struct Serving {
@@ -192,6 +205,8 @@ pub(crate) fn spawn_acp(
         runner: config.runner.clone(),
         agent: config.agent.agent.display_name(),
         mcp: config.mcp.clone(),
+        model: config.model.clone(),
+        wanted: config.wanted.clone(),
     };
     let serving = Serving {
         host: config.runner.link(),

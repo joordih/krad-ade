@@ -21,7 +21,7 @@ use super::status_line::{status_line, TurnPhase};
 use super::view::{column, error_line, muted_line, AgentNow, LOADING_TEXT};
 use super::{Backend, Origin, SurfaceChat};
 use crate::components::{Button, ButtonVariant, CopyFeedback};
-use crate::theme::{palette, Palette, SPACE_0_5};
+use crate::theme::{palette, SPACE_0_5};
 
 const THREAD_PAD_TOP: f32 = 20.0;
 const THREAD_PAD_BOTTOM: f32 = 28.0;
@@ -129,8 +129,9 @@ fn question_row(
     chat: &SurfaceChat,
     actions: Vec<AnyElement>,
     bookmark: Option<BookmarkAction>,
-    pal: &Palette,
+    cx: &App,
 ) -> AnyElement {
+    let pal = palette(cx);
     let bubble = format!("{BUBBLE_PREFIX}-{}-{index}", id.as_u64());
     let group = message_group(id, index);
     let actions = (!actions.is_empty() || bookmark.is_some())
@@ -149,9 +150,10 @@ fn question_row(
                 false,
                 chat.text_scale.get(),
                 pal,
+                cx,
             ))
         })
-        .children(sent_mentions(&message.mentions, pal))
+        .children(sent_mentions(&message.mentions, pal, cx))
         .children(actions)
         .into_any_element()
 }
@@ -311,7 +313,7 @@ impl EnvironmentShell {
                         let copy = question_copy(id, index, message, chat, copies, cx);
                         let actions = edit.into_iter().chain(copy).collect();
                         let bookmark = self.bookmark_action(id, index, chat, pal, cx);
-                        question_row(id, index, message, chat, actions, bookmark, pal)
+                        question_row(id, index, message, chat, actions, bookmark, cx)
                     }
                     Speaker::Assistant => {
                         let workers = self.worker_cards(id);

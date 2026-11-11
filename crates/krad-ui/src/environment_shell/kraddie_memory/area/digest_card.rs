@@ -11,8 +11,8 @@ use super::super::DigestEdit;
 use crate::components::motion::{drop_in, rise_in};
 use crate::components::{Button, ButtonVariant, IconName};
 use crate::theme::{
-    palette, Palette, LINE_SM, LINE_XS, RADIUS_MD, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3, TEXT_SM,
-    TEXT_XS,
+    level_fill, palette, Palette, SurfaceLevel, LINE_SM, LINE_XS, RADIUS_MD, SPACE_1, SPACE_1_5,
+    SPACE_2, SPACE_3, TEXT_SM, TEXT_XS,
 };
 
 const DIGEST_PREFIX: &str = "kraddie-digest";
@@ -95,7 +95,7 @@ impl EnvironmentShell {
             .rounded(px(RADIUS_MD))
             .border_1()
             .border_color(pal.border)
-            .bg(rgb(pal.bg_panel))
+            .bg(level_fill(SurfaceLevel::Pane, pal.bg_panel, cx))
             .child(
                 div()
                     .flex()

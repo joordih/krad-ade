@@ -1,6 +1,7 @@
 mod client_side;
 mod fake;
 mod live;
+mod models;
 
 use krad_domain::{
     AcpAuthMethodId, AcpConfigOptionId, AcpConfigValue, AcpModeId, AcpPermissionKind,

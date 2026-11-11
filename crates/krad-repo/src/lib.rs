@@ -80,6 +80,7 @@ pub use variant::{
     VariantRemoval,
 };
 pub use worktree::{
-    add_branch_worktree, add_worktree, list_worktrees, remove_settled_worktree, remove_worktree,
-    sanitize_worktree_name, worktree_path, Worktree,
+    add_branch_worktree, add_planned_worktree, add_worktree, discard_worktree, list_worktrees,
+    planned_worktree_path, remove_merged_worktree, remove_settled_worktree, remove_worktree,
+    sanitize_worktree_name, worktree_path, worktree_state, PlannedWorktree, Worktree,
 };

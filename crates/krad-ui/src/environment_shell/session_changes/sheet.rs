@@ -60,8 +60,8 @@ const SUMMARY_SEPARATOR: &str = " · ";
 
 fn line_counts(count: LineCount, pal: &Palette) -> impl Iterator<Item = AnyElement> {
     [
-        (count.added, ADDED_SIGN, pal.success_fg),
-        (count.removed, REMOVED_SIGN, pal.error_fg),
+        (count.added, ADDED_SIGN, pal.diff_added),
+        (count.removed, REMOVED_SIGN, pal.diff_removed),
     ]
     .into_iter()
     .filter(|(lines, _, _)| *lines > 0)

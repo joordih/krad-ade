@@ -1,6 +1,6 @@
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use gpui_kit::{
-    div, px, relative, rgb, AnyElement, AppContext as _, Context, ElementId, Entity, IntoElement,
+    div, px, relative, AnyElement, AppContext as _, Context, ElementId, Entity, IntoElement,
     ParentElement, PromptButton, PromptLevel, StatefulInteractiveElement, Styled, Subscription,
     Window,
 };
@@ -14,7 +14,9 @@ use super::mentions::sent_mentions;
 use super::message_actions::action_button;
 use super::SurfaceChat;
 use crate::components::{Button, ButtonVariant, IconName};
-use crate::theme::{Palette, RADIUS_LG, SPACE_1, SPACE_2, SPACE_3, TEXT_SM};
+use crate::theme::{
+    level_fill, Palette, SurfaceLevel, RADIUS_LG, SPACE_1, SPACE_2, SPACE_3, TEXT_SM,
+};
 
 const EDITOR_ROWS: usize = 3;
 const EDITOR_WIDTH: f32 = 0.82;
@@ -269,7 +271,7 @@ impl EnvironmentShell {
                         .px(px(SPACE_3))
                         .py(px(EDITOR_PAD_Y))
                         .rounded(px(RADIUS_LG))
-                        .bg(rgb(pal.bg_panel))
+                        .bg(level_fill(SurfaceLevel::Pane, pal.bg_panel, cx))
                         .text_size(px(TEXT_SM))
                         .child(
                             Textarea::new(&editor.input)
@@ -277,7 +279,7 @@ impl EnvironmentShell {
                                 .disabled(rewinding),
                         ),
                 )
-                .children(sent_mentions(&editor.mentions, pal))
+                .children(sent_mentions(&editor.mentions, pal, cx))
                 .children(buttons)
                 .into_any_element(),
         )

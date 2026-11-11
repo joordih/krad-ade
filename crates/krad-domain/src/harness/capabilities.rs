@@ -1,4 +1,4 @@
-use crate::acp::AcpAgent;
+use crate::acp::{is_claude_code_acp, AcpAgent};
 use crate::agent::AgentPreset;
 use crate::model::Effort;
 
@@ -18,6 +18,7 @@ pub enum WorkerSurface {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum ChatPreference {
+    ClaudeOverAcp,
     First,
     Second,
     Third,
@@ -26,8 +27,9 @@ enum ChatPreference {
 }
 
 impl AgentPreset {
-    const fn chat_preference(self) -> Option<ChatPreference> {
+    fn chat_preference(self) -> Option<ChatPreference> {
         match self {
+            Self::Acp(id) if is_claude_code_acp(id) => Some(ChatPreference::ClaudeOverAcp),
             Self::ClaudeCode => Some(ChatPreference::First),
             Self::Opencode => Some(ChatPreference::Second),
             Self::Codex => Some(ChatPreference::Third),
@@ -38,8 +40,12 @@ impl AgentPreset {
     }
 
     #[must_use]
-    pub const fn has_structured_chat(self) -> bool {
+    pub fn has_structured_chat(self) -> bool {
         self.chat_preference().is_some()
+    }
+
+    pub fn sort_by_chat_preference(presets: &mut [Self]) {
+        presets.sort_by_key(|preset| preset.chat_preference());
     }
 
     #[must_use]
@@ -47,7 +53,7 @@ impl AgentPreset {
         let mut harnesses: Vec<Self> = Self::listed(acp_agents)
             .filter(|preset| preset.has_structured_chat())
             .collect();
-        harnesses.sort_by_key(|preset| preset.chat_preference());
+        Self::sort_by_chat_preference(&mut harnesses);
         harnesses
     }
 
@@ -187,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn a_new_chat_prefers_claude_code_then_opencode_codex_the_gateway_and_acp_agents() {
+    fn a_new_chat_prefers_claude_code_over_acp_then_the_native_harnesses_and_other_acp_agents() {
         assert_eq!(
             AgentPreset::chat_harnesses(&[]),
             [
@@ -200,13 +206,14 @@ mod tests {
         assert_eq!(
             AgentPreset::chat_harnesses(&built_in_acp_agents()),
             [
+                acp("claude-code-acp"),
                 AgentPreset::ClaudeCode,
                 AgentPreset::Opencode,
                 AgentPreset::Codex,
                 AgentPreset::Gateway,
-                acp("claude-code-acp"),
                 acp("codex-acp"),
                 acp("opencode"),
+                acp("gemini-cli"),
             ]
         );
     }

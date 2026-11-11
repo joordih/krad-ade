@@ -1,0 +1,58 @@
+{
+  "id": "krad-paper",
+  "name": "Krad Paper",
+  "appearance": "light",
+  "interface": {
+    "background": "#ece7df",
+    "surface": "#fbf9f5",
+    "panel": "#f4f0e9",
+    "text": "#2a2622",
+    "muted_text": "#6b645b",
+    "accent": "#c2552d",
+    "on_accent": "#ffffff",
+    "success": "#2f7d4a",
+    "warning": "#a8650a",
+    "error": "#c0362c",
+    "info": "#2f6db3"
+  },
+  "terminal": {
+    "background": "#fbf9f5",
+    "foreground": "#2a2622",
+    "cursor": "#c2552d",
+    "selection": "#ead9c8",
+    "ansi": [
+      "#2a2622",
+      "#c0362c",
+      "#2f7d4a",
+      "#a8650a",
+      "#2f6db3",
+      "#8a4fb0",
+      "#2b7f86",
+      "#8f877c",
+      "#6b645b",
+      "#d14a3f",
+      "#3b9158",
+      "#bd7714",
+      "#3f7fc6",
+      "#9d61c2",
+      "#35939a",
+      "#4a443d"
+    ]
+  },
+  "syntax": {
+    "comment": "#8a8276",
+    "keyword": "#8a4fb0",
+    "string": "#2f7d4a",
+    "escape": "#2b7f86",
+    "number": "#a8650a",
+    "constant": "#a8650a",
+    "attribute": "#a8650a",
+    "type": "#2f6db3",
+    "operator": "#2b7f86",
+    "function": "#3f7fc6",
+    "property": "#c0362c",
+    "tag": "#c2552d",
+    "variable": "#2a2622",
+    "punctuation": "#2a2622"
+  }
+}

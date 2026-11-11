@@ -77,6 +77,8 @@ icons! {
     Chat => "bubble-chat",
     Flag => "flag-02",
     Bookmark => "bookmark-02",
+    Star => "star",
+    StarFilled => "star-filled",
     Book => "book-open-01",
     Note => "note-01",
     Magic => "ai-magic",
@@ -115,8 +117,8 @@ pub(crate) fn icon(name: IconName, size: f32, color: u32) -> Svg {
         .text_color(rgb(color))
 }
 
-pub(crate) const fn harness_icon(preset: AgentPreset, pal: &Palette) -> (IconName, u32) {
-    match preset {
+pub(crate) fn harness_icon(preset: AgentPreset, pal: &Palette) -> (IconName, u32) {
+    match preset.native_twin() {
         AgentPreset::ClaudeCode => (IconName::BrandClaude, CLAUDE_BRAND),
         AgentPreset::Codex => (IconName::BrandOpenai, pal.text_strong),
         AgentPreset::Opencode => (IconName::BrandOpencode, pal.text_strong),

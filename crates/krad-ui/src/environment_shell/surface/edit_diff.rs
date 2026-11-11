@@ -1,8 +1,10 @@
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::{div, px, rgb, AnyElement, IntoElement, ParentElement, SharedString, Styled};
+use gpui_kit::{div, px, rgb, AnyElement, App, IntoElement, ParentElement, SharedString, Styled};
 use krad_domain::{EditLine, FileEdit, LineChange};
 
-use crate::theme::{tinted, Palette, LINE_XS, RADIUS_SM, SPACE_1, SPACE_2, TEXT_XS};
+use crate::theme::{
+    level_fill, tinted, Palette, SurfaceLevel, LINE_XS, RADIUS_SM, SPACE_1, SPACE_2, TEXT_XS,
+};
 
 const SHOWN_LINES: usize = 24;
 const WASH_ALPHA: u32 = 0x22;
@@ -40,14 +42,14 @@ fn edit_line(line: &EditLine, numbered: bool, pal: &Palette) -> AnyElement {
     }
     let (wash, sign, sign_color) = match line.change {
         LineChange::Added => (
-            Some(tinted(pal.success_fg, WASH_ALPHA)),
+            Some(tinted(pal.diff_added, WASH_ALPHA)),
             ADDED_SIGN,
-            pal.success_fg,
+            pal.diff_added,
         ),
         LineChange::Removed => (
-            Some(tinted(pal.error_fg, WASH_ALPHA)),
+            Some(tinted(pal.diff_removed, WASH_ALPHA)),
             REMOVED_SIGN,
-            pal.error_fg,
+            pal.diff_removed,
         ),
         LineChange::Kept | LineChange::Gap => (None, "", pal.text_muted),
     };
@@ -91,7 +93,7 @@ fn edit_line(line: &EditLine, numbered: bool, pal: &Palette) -> AnyElement {
         .into_any_element()
 }
 
-fn edit_diff(edit: &FileEdit, mono: &SharedString, pal: &Palette) -> AnyElement {
+fn edit_diff(edit: &FileEdit, mono: &SharedString, pal: &Palette, cx: &App) -> AnyElement {
     let hidden = edit.lines.len().saturating_sub(SHOWN_LINES);
     let numbered = edit.lines.iter().any(|line| line_number(line).is_some());
     div()
@@ -101,7 +103,7 @@ fn edit_diff(edit: &FileEdit, mono: &SharedString, pal: &Palette) -> AnyElement 
         .py(px(SPACE_1))
         .rounded(px(RADIUS_SM))
         .overflow_hidden()
-        .bg(rgb(pal.bg_surface))
+        .bg(level_fill(SurfaceLevel::Pane, pal.bg_surface, cx))
         .font_family(mono.clone())
         .text_size(px(TEXT_XS))
         .line_height(px(LINE_XS))
@@ -126,9 +128,10 @@ pub(in crate::environment_shell) fn edit_diffs(
     edits: &[FileEdit],
     mono: &SharedString,
     pal: &Palette,
+    cx: &App,
 ) -> Option<AnyElement> {
     if let [edit] = edits {
-        return Some(edit_diff(edit, mono, pal));
+        return Some(edit_diff(edit, mono, pal, cx));
     }
     if edits.is_empty() {
         return None;
@@ -151,7 +154,7 @@ pub(in crate::environment_shell) fn edit_diffs(
                             .text_color(rgb(pal.text_muted))
                             .child(edit.path.clone()),
                     )
-                    .child(edit_diff(edit, mono, pal))
+                    .child(edit_diff(edit, mono, pal, cx))
             }))
             .into_any_element(),
     )

@@ -1,0 +1,58 @@
+{
+  "id": "krad-forest",
+  "name": "Krad Forest",
+  "appearance": "dark",
+  "interface": {
+    "background": "#121a17",
+    "surface": "#1a2420",
+    "panel": "#202c27",
+    "text": "#eef5f1",
+    "muted_text": "#98aaa1",
+    "accent": "#3fbf8a",
+    "on_accent": "#08130e",
+    "success": "#5fd38f",
+    "warning": "#e8b24a",
+    "error": "#f2685f",
+    "info": "#5fb4e8"
+  },
+  "terminal": {
+    "background": "#151e1a",
+    "foreground": "#e0ebe5",
+    "cursor": "#3fbf8a",
+    "selection": "#2c4038",
+    "ansi": [
+      "#1a2420",
+      "#f2685f",
+      "#5fd38f",
+      "#e8b24a",
+      "#5fb4e8",
+      "#b58ce0",
+      "#4fc9bd",
+      "#cfdcd5",
+      "#64766d",
+      "#ff8a80",
+      "#82e0a8",
+      "#f5c870",
+      "#86c9f0",
+      "#cba8ec",
+      "#76dbd1",
+      "#ffffff"
+    ]
+  },
+  "syntax": {
+    "comment": "#6f8279",
+    "keyword": "#b58ce0",
+    "string": "#5fd38f",
+    "escape": "#4fc9bd",
+    "number": "#e8b24a",
+    "constant": "#e8b24a",
+    "attribute": "#e8b24a",
+    "type": "#5fb4e8",
+    "operator": "#4fc9bd",
+    "function": "#86c9f0",
+    "property": "#ff8a80",
+    "tag": "#f2685f",
+    "variable": "#e0ebe5",
+    "punctuation": "#e0ebe5"
+  }
+}

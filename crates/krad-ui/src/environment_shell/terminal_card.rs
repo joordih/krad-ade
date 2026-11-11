@@ -33,9 +33,16 @@ impl EnvironmentShell {
 
     pub(super) fn focus_terminal(&mut self, id: TerminalId) {
         let env = self.active.clone();
+        let shown = self
+            .envs
+            .get(&env)
+            .is_some_and(|live| live.data.session_of(id).is_some());
+        if shown {
+            self.leave_main_overlays();
+        }
         if let Some(live) = self.envs.get_mut(&env) {
             live.focused = Some(id);
-            live.data.reveal_terminal(id);
+            live.data.show_terminal(id);
             if let Some(group) = live.data.group_of(id) {
                 live.selected_group = Some(group.id);
             }

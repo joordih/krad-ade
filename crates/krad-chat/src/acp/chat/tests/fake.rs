@@ -1,3 +1,4 @@
+use krad_domain::AcpModelId;
 use krad_host::HostLink;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -10,7 +11,7 @@ use std::thread;
 use std::time::Duration;
 
 use super::super::process::AgentProcess;
-use super::super::{spawn_worker, AcpChat, Launch, Serving};
+use super::super::{spawn_worker, AcpChat, AcpWanted, Launch, Serving};
 use crate::acp::client_side::OpenBuffers;
 use crate::acp::connection::AcpConnection;
 use crate::control::LiveEvent;
@@ -148,6 +149,18 @@ impl Started {
 }
 
 pub(super) fn start(session: &LiveSession) -> Started {
+    start_wanting(session, None)
+}
+
+pub(super) fn start_wanting(session: &LiveSession, model: Option<AcpModelId>) -> Started {
+    start_choosing(session, model, AcpWanted::default())
+}
+
+pub(super) fn start_choosing(
+    session: &LiveSession,
+    model: Option<AcpModelId>,
+    wanted: AcpWanted,
+) -> Started {
     let pipe = || std::io::pipe().unwrap_or_else(|error| unreachable!("no pipe: {error}"));
     let (agent_in, client_out) = pipe();
     let (client_in, agent_out) = pipe();
@@ -167,6 +180,8 @@ pub(super) fn start(session: &LiveSession) -> Started {
         paths: crate::acp::paths::AgentPaths::on_host(PathBuf::from(CWD)),
         agent: "Fake (ACP)".to_owned(),
         mcp: Vec::new(),
+        model,
+        wanted,
     };
     let buffers = Arc::new(FakeBuffers::default());
     let serving = Serving {

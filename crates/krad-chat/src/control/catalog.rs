@@ -85,7 +85,17 @@ impl ModelOfferLine {
         }
     }
 
+    fn versioned_display_name(&self) -> Option<&str> {
+        self.display_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| self.value != DEFAULT_MODEL && name.chars().any(|c| c.is_ascii_digit()))
+    }
+
     fn name(&self) -> String {
+        if let Some(name) = self.versioned_display_name() {
+            return name.to_owned();
+        }
         let resolved = self.resolved();
         if resolved.to_ascii_lowercase().starts_with(CLAUDE_ID_PREFIX) {
             if let Some(name) = humanize_model_id(resolved) {

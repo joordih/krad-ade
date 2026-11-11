@@ -18,8 +18,8 @@ use super::view::{AgentNow, ROUND_BUTTON};
 use super::{SurfaceChat, SurfaceCommand, THINKING_LABEL};
 use crate::components::{harness_icon, icon, tooltip_view, IconName};
 use crate::theme::{
-    palette, row_fill, row_shadow, Palette, ICON_SM, ICON_XS, LINE_SM, LINE_XS, RADIUS_MD,
-    RADIUS_XL, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3, TEXT_SM, TEXT_XS,
+    level_fill, palette, row_fill, row_shadow, Palette, SurfaceLevel, ICON_SM, ICON_XS, LINE_SM,
+    LINE_XS, RADIUS_MD, RADIUS_XL, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3, TEXT_SM, TEXT_XS,
 };
 pub(in crate::environment_shell) use effort_slider::EffortPopover;
 use usage::{usage_ring, window_label};
@@ -67,7 +67,7 @@ impl EnvironmentShell {
             .pr(px(SPACE_1_5))
             .py(px(SPACE_1_5))
             .rounded(px(RADIUS_XL))
-            .bg(rgb(pal.bg_surface))
+            .bg(level_fill(SurfaceLevel::Pane, pal.bg_surface, cx))
             .shadow(ring)
             .text_size(px(TEXT_SM))
             .line_height(px(LINE_SM))
@@ -146,7 +146,7 @@ impl EnvironmentShell {
             .children(Self::chat_model_control(id, chat, facts, cx))
             .children(Self::acp_option_controls(id, chat, cx))
             .children(self.effort_trigger(id, facts, cx))
-            .children(Self::thinking_control(id, facts, cx))
+            .children(usage_ring(id, facts, pal))
             .children(facts.context_window.map(|tokens| {
                 div()
                     .flex_none()
@@ -154,7 +154,7 @@ impl EnvironmentShell {
                     .text_color(rgb(pal.text_subtle))
                     .child(format!("({})", window_label(tokens)))
             }))
-            .children(usage_ring(id, facts, pal))
+            .children(Self::thinking_control(id, facts, cx))
             .into_any_element()
     }
 
@@ -177,14 +177,11 @@ impl EnvironmentShell {
         facts: &Facts,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let Some(structured) = chat
+        let acp = chat
             .structured()
-            .filter(|structured| structured.harness.acp_agent().is_some())
-        else {
+            .is_some_and(|structured| structured.harness.acp_agent().is_some());
+        if !acp {
             return Some(Self::model_control(id, facts, cx));
-        };
-        if structured.acp.has_models() {
-            return Self::acp_model_control(id, chat, cx);
         }
         (!facts.models.is_empty()).then(|| Self::model_control(id, facts, cx))
     }

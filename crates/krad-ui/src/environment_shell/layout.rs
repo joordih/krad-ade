@@ -229,6 +229,7 @@ impl EnvironmentShell {
         let viewer_extent = viewer.as_ref().map_or(0.0, |_| viewer_width + WINDOW_INSET);
         let beside_pane = viewer_extent + self.side_panel_extent();
         let view = self.view_card(view, window, cx);
+        let view = self.content_shift.wrap(view, Instant::now());
         let pane = self.main_pane(view, cx);
         div()
             .relative()
@@ -292,10 +293,12 @@ impl EnvironmentShell {
         self.end_hidden_anchors();
         self.sync_menu_focus(window, cx);
         self.sync_model_picker_focus(window, cx);
+        self.sync_focus_returns(window, cx);
         self.sync_ask_focus(window, cx);
         self.sync_terminal_images(window);
         self.probe_review(cx);
         self.sync_window_background(window, cx);
+        self.sync_backdrop(window, cx);
     }
 }
 
@@ -306,6 +309,7 @@ impl Render for EnvironmentShell {
         let view = self.active_view();
         self.sync_frame_state(view, window, cx);
         let now = Instant::now();
+        self.content_shift.follow(self.shown_content(view), now);
         if self.advance_motion(now, window, cx) {
             window.request_animation_frame();
         }
@@ -342,7 +346,7 @@ impl Render for EnvironmentShell {
             .relative()
             .text_color(rgb(pal.text_default))
             .child(TextSelectionLayer)
-            .child(match self.settings_page(cx) {
+            .child(match self.settings_page(window, cx) {
                 Some(settings) if self.gestures.settings.offset() > 0.0 => {
                     let behind = self.workspace_row(view, window, cx);
                     self.sliding_settings(settings, behind, cx)
@@ -385,11 +389,12 @@ impl Render for EnvironmentShell {
         } else {
             root
         };
+        let image = self.backdrop_layer(krad_domain::BackdropPlace::Window, cx);
         window_frame(
             root.into_any_element(),
             window,
             pal,
-            window_backdrop(pal, cx),
+            (window_backdrop(pal, cx), image),
         )
     }
 }

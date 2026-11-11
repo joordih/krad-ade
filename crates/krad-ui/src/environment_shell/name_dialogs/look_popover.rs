@@ -1,9 +1,9 @@
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, AppContext as _, Context, Entity, InteractiveElement, IntoElement,
-    KeyDownEvent, MouseButton, ParentElement, SharedString, StatefulInteractiveElement, Styled,
-    Subscription, Window,
+    div, point, px, rgb, size, AnyElement, AppContext as _, Context, Entity, InteractiveElement,
+    IntoElement, KeyDownEvent, MouseButton, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, Subscription, Window,
 };
 use krad_domain::{Hue, SessionIcon, SessionId, SessionLook};
 
@@ -12,16 +12,17 @@ use super::super::session_look::session_icon;
 use super::super::workers::LeadEnding;
 use super::super::EnvironmentShell;
 use super::NameDialogs;
+use crate::components::floating::{floating_at, floating_panel, place, Anchor, Side};
 use crate::components::{icon, IconName};
 use crate::theme::{
-    hue_rgb, palette, popover_fill, popover_shadow, Palette, ICON, ICON_SM, LINE_SM, RADIUS_SM,
-    RADIUS_XL, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3, TEXT_SM,
+    hue_rgb, palette, Palette, ICON, ICON_SM, LINE_SM, RADIUS_SM, RADIUS_XS, SPACE_1, SPACE_1_5,
+    SPACE_2, SPACE_3, TEXT_SM,
 };
 
 const POPOVER_ID: &str = "session-look";
+const POPOVER_MOTION_ID: &str = "session-look-motion";
 const POPOVER_W: f32 = 312.0;
 const POPOVER_H: f32 = 236.0;
-const EDGE_MARGIN: f32 = 8.0;
 const GLYPH_CELL: f32 = 32.0;
 const SWATCH: f32 = 22.0;
 const SELECTED_RING: f32 = 2.0;
@@ -131,40 +132,26 @@ impl EnvironmentShell {
     ) -> Option<AnyElement> {
         let live = self.envs.get(&self.active)?;
         let look = live.data.session(popover.session)?.look;
-        let closable = live.data.can_close_session(popover.session);
         let pal = palette(cx);
         let (root_w, root_h) = self.root_size(window);
-        let left = (popover.origin.0 - self.frame_inset.0)
-            .min(root_w - POPOVER_W - EDGE_MARGIN)
-            .max(EDGE_MARGIN);
-        let top = (popover.origin.1 - self.frame_inset.1)
-            .min(root_h - POPOVER_H - EDGE_MARGIN)
-            .max(EDGE_MARGIN);
+        let placed = place(
+            Anchor::Point(point(px(popover.origin.0), px(popover.origin.1)))
+                .relative_to(self.frame_inset),
+            size(px(POPOVER_W), px(POPOVER_H)),
+            size(px(root_w), px(root_h)),
+            Side::Below,
+        );
         let session = popover.session;
-        let panel = div()
+        let panel = floating_panel(pal, cx)
             .id(POPOVER_ID)
-            .absolute()
-            .left(px(left))
-            .top(px(top))
             .w(px(POPOVER_W))
-            .flex()
-            .flex_col()
             .gap(px(SPACE_2))
             .p(px(SPACE_2))
-            .rounded(px(RADIUS_XL))
-            .bg(popover_fill(pal, cx))
-            .border_1()
-            .border_color(pal.divider)
-            .shadow(popover_shadow(pal, cx))
-            .occlude()
             .child(Input::new(&popover.field).cleanable(false))
             .child(Self::glyph_picks(session, look, pal, cx))
             .child(Self::color_picks(session, look, pal, cx))
-            .when(closable, |panel| {
-                panel
-                    .child(div().h(px(RULE)).mx(px(SPACE_1)).bg(pal.divider))
-                    .child(Self::close_row(session, pal, cx))
-            });
+            .child(div().h(px(RULE)).mx(px(SPACE_1)).bg(pal.divider))
+            .child(Self::close_row(session, pal, cx));
         Some(
             div()
                 .absolute()
@@ -179,7 +166,7 @@ impl EnvironmentShell {
                     MouseButton::Left,
                     cx.listener(|this: &mut Self, _, _, cx| this.close_name_dialog(cx)),
                 ))
-                .child(panel)
+                .child(floating_at(POPOVER_MOTION_ID, placed, panel))
                 .into_any_element(),
         )
     }

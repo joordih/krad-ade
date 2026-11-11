@@ -1,0 +1,58 @@
+{
+  "id": "krad-dusk",
+  "name": "Krad Dusk",
+  "appearance": "dark",
+  "interface": {
+    "background": "#17151f",
+    "surface": "#211e2b",
+    "panel": "#272334",
+    "text": "#f2f0f7",
+    "muted_text": "#a39fb3",
+    "accent": "#7563f0",
+    "on_accent": "#ffffff",
+    "success": "#4fd18b",
+    "warning": "#f5b74e",
+    "error": "#ff6b7a",
+    "info": "#7aa8ff"
+  },
+  "terminal": {
+    "background": "#1b1924",
+    "foreground": "#e6e3ef",
+    "cursor": "#7563f0",
+    "selection": "#3a3452",
+    "ansi": [
+      "#211e2b",
+      "#ff6b7a",
+      "#4fd18b",
+      "#f5b74e",
+      "#7aa8ff",
+      "#c08bff",
+      "#5fd4d4",
+      "#d8d4e3",
+      "#6e6880",
+      "#ff8a96",
+      "#74e0a5",
+      "#ffcb73",
+      "#9cc0ff",
+      "#d4a8ff",
+      "#86e4e4",
+      "#ffffff"
+    ]
+  },
+  "syntax": {
+    "comment": "#7d7792",
+    "keyword": "#c08bff",
+    "string": "#4fd18b",
+    "escape": "#5fd4d4",
+    "number": "#f5b74e",
+    "constant": "#f5b74e",
+    "attribute": "#f5b74e",
+    "type": "#7aa8ff",
+    "operator": "#5fd4d4",
+    "function": "#9cc0ff",
+    "property": "#ff8a96",
+    "tag": "#ff6b7a",
+    "variable": "#e6e3ef",
+    "punctuation": "#e6e3ef"
+  }
+}

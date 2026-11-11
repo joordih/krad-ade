@@ -19,9 +19,12 @@ const MAGENTA: usize = 5;
 const CYAN: usize = 6;
 const BRIGHT_BLUE: usize = 12;
 
-const SHIPPED_THEMES: [&str; 22] = [
+const SHIPPED_THEMES: [&str; 25] = [
     include_str!("../../../../assets/themes/builtin/xcode-light.json"),
     include_str!("../../../../assets/themes/builtin/xcode-dark.json"),
+    include_str!("../../../../assets/themes/builtin/krad-paper.json"),
+    include_str!("../../../../assets/themes/builtin/krad-dusk.json"),
+    include_str!("../../../../assets/themes/builtin/krad-forest.json"),
     include_str!("../../../../assets/themes/library/ayu-dark.json"),
     include_str!("../../../../assets/themes/library/ayu-light.json"),
     include_str!("../../../../assets/themes/library/ayu-mirage.json"),
@@ -147,6 +150,8 @@ pub(crate) fn add_to_library(theme: Theme, cx: &mut App) {
 mod tests {
     use super::*;
 
+    const OWN_THEME_PREFIXES: [&str; 2] = ["xcode", "krad"];
+
     #[test]
     fn every_shipped_theme_reads_and_has_its_own_id() {
         let themes: Vec<Theme> = shipped_themes().collect();
@@ -157,7 +162,9 @@ mod tests {
         assert_eq!(ids.len(), themes.len());
         assert!(themes
             .iter()
-            .filter(|theme| !theme.id.0.starts_with("xcode"))
+            .filter(|theme| !OWN_THEME_PREFIXES
+                .iter()
+                .any(|prefix| theme.id.0.starts_with(prefix)))
             .all(|theme| theme.credit.is_some()));
     }
 }

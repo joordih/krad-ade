@@ -110,3 +110,44 @@ fn unknown_effort_levels_are_left_out_and_the_rest_ordered() {
     ]));
     assert_eq!(read.models[0].efforts, [Effort::Low, Effort::Max]);
 }
+
+fn reported_by_claude_code_2_1() -> serde_json::Value {
+    json!([
+        {"value": "default", "resolvedModel": "claude-fable-5-2", "displayName": "Default (recommended)",
+         "description": "Fable 5.2", "supportedEffortLevels": LEVELS},
+        {"value": "opus", "resolvedModel": "claude-opus-5-5", "displayName": "Opus 5.5",
+         "description": "For complex work and everyday tasks", "supportedEffortLevels": LEVELS},
+        {"value": "fable", "resolvedModel": "claude-fable-5-2", "displayName": "Fable 5.2",
+         "description": "For your toughest challenges", "supportedEffortLevels": LEVELS},
+        {"value": "claude-fable-5-1", "resolvedModel": "claude-fable-5-1", "displayName": "Fable 5.1",
+         "description": "Most capable for your hardest and longest-running tasks"}
+    ])
+}
+
+#[test]
+fn newer_claude_code_names_its_models_and_the_newest_fable_is_the_default() {
+    let read = catalog(&reported_by_claude_code_2_1());
+    assert_eq!(
+        names(&read),
+        [
+            ("opus", "Opus 5.5"),
+            ("fable", "Fable 5.2"),
+            ("claude-fable-5-1", "Fable 5.1"),
+        ]
+    );
+    let fable = &read.models[1];
+    assert!(fable.recommended);
+    assert!(fable.answers_to("default"));
+    assert_eq!(
+        fable.description.as_deref(),
+        Some("For your toughest challenges")
+    );
+}
+
+#[test]
+fn a_default_line_never_takes_its_generic_display_name() {
+    let read = catalog(&json!([
+        {"value": "default", "resolvedModel": "claude-fable-6-0", "displayName": "Default (recommended 2)"}
+    ]));
+    assert_eq!(names(&read), [("default", "Claude Fable 6.0")]);
+}

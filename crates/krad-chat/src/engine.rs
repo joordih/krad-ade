@@ -59,6 +59,7 @@ pub struct EngineConfig {
     pub bus_vars: BusVars,
     pub mcp: Vec<McpServerStart>,
     pub host: krad_host::HostLink,
+    pub skills: krad_domain::SkillSettings,
 }
 
 const REMOTE_PLATFORM: &str = "linux";
@@ -112,7 +113,12 @@ fn failure_notice(failure: &McpStartFailure) -> String {
 }
 
 fn setup(config: &EngineConfig, mcp: Arc<McpToolbox>) -> Setup {
-    let skills = skill_files(&config.host, config.home.as_deref(), Some(&config.cwd));
+    let skills = skill_files(
+        &config.host,
+        config.home.as_deref(),
+        Some(&config.cwd),
+        &config.skills,
+    );
     let instructions = instruction_files(&config.host, config.home.as_deref(), &config.cwd);
     let platform = if config.host.is_local() {
         std::env::consts::OS

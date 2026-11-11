@@ -4,10 +4,10 @@ use krad_extensions::api::ProgressToken;
 
 use super::super::EnvironmentShell;
 use super::SlotKey;
+use crate::components::floating::floating_surface;
 use crate::components::working_dots;
 use crate::theme::{
-    palette, popover_fill, popover_shadow, LINE_SM, LINE_XS, RADIUS_MD, RADIUS_XS, SPACE_1,
-    SPACE_2, SPACE_3, TEXT_SM, TEXT_XS, WINDOW_INSET,
+    palette, LINE_SM, LINE_XS, RADIUS_XS, SPACE_1, SPACE_2, SPACE_3, TEXT_SM, TEXT_XS, WINDOW_INSET,
 };
 
 pub(super) const MAX_PROGRESS: usize = 6;
@@ -160,20 +160,13 @@ impl EnvironmentShell {
                     .children(bar)
             });
         Some(
-            div()
+            floating_surface(pal, cx)
                 .absolute()
                 .bottom(px(PROGRESS_BOTTOM))
                 .right(px(PROGRESS_RIGHT))
                 .w(px(PROGRESS_WIDTH))
-                .flex()
-                .flex_col()
                 .gap(px(SPACE_2))
                 .p(px(SPACE_3))
-                .bg(popover_fill(pal, cx))
-                .border_1()
-                .border_color(pal.border)
-                .rounded(px(RADIUS_MD))
-                .shadow(popover_shadow(pal, cx))
                 .children(rows)
                 .into_any_element(),
         )

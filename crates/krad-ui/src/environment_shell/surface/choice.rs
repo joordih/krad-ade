@@ -166,7 +166,80 @@ impl EnvironmentShell {
             .get(&harness)
             .cloned()
             .unwrap_or_default();
-        explicit.or(&kept).or(&remembered)
+        let preferred = ChatChoice {
+            model: self.new_chat_model(harness, remembered.model.as_ref()),
+            effort: remembered.effort,
+        };
+        explicit.or(&kept).or(&preferred)
+    }
+
+    fn new_chat_model(&self, harness: AgentPreset, last_used: Option<&ModelId>) -> Option<ModelId> {
+        let offers = self.harness_offers(harness);
+        let offered = |model: &ModelId| {
+            offers.is_some_and(|offers| offers.iter().any(|offer| offer.answers_to(model.as_str())))
+        };
+        let listed: Option<&dyn Fn(&ModelId) -> bool> = if offers.is_some() {
+            Some(&offered)
+        } else {
+            None
+        };
+        self.settings
+            .model_preferences
+            .new_chat_model(harness, last_used, listed)
+    }
+
+    pub(in crate::environment_shell) fn forget_unoffered_models(&mut self, harness: AgentPreset) {
+        let Some(offers) = self.harness_offers(harness) else {
+            return;
+        };
+        let offered = |model: &ModelId| offers.iter().any(|offer| offer.answers_to(model.as_str()));
+        let env = self.active.clone();
+        let stale: Vec<TerminalId> = self.envs.get(&env).map_or_default(|live| {
+            live.chats
+                .iter()
+                .filter_map(|(id, chat)| match &chat.backend {
+                    Backend::Structured(structured)
+                        if structured.harness == harness
+                            && chat.messages.is_empty()
+                            && structured.is_fresh()
+                            && structured
+                                .chosen_model
+                                .as_ref()
+                                .is_some_and(|model| !offered(model)) =>
+                    {
+                        Some(*id)
+                    }
+                    Backend::Structured(_) | Backend::Transcript(_) => None,
+                })
+                .collect()
+        });
+        for id in stale {
+            if let Some(structured) = structured_mut(self, &env, id) {
+                structured.chosen_model = None;
+            }
+            if let Some(node) = node_mut(self, &env, id) {
+                node.choice.model = None;
+            }
+        }
+    }
+
+    pub(super) fn offered_choice(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        harness: AgentPreset,
+    ) -> (Option<ModelId>, Option<String>) {
+        let chosen = structured_mut(self, env, id).and_then(|chat| chat.chosen_model.clone());
+        let (model, notice) = self.offered_model(harness, chosen);
+        if notice.is_some() {
+            if let Some(structured) = structured_mut(self, env, id) {
+                structured.chosen_model = None;
+            }
+            if let Some(node) = node_mut(self, env, id) {
+                node.choice.model = None;
+            }
+        }
+        (model, notice)
     }
 
     pub(super) fn keep_choice(
@@ -180,7 +253,7 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn offered_model(
+    fn offered_model(
         &self,
         harness: AgentPreset,
         chosen: Option<ModelId>,

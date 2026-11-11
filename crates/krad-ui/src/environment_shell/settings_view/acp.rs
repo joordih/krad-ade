@@ -1,23 +1,28 @@
 mod admit;
 mod draft;
 mod form;
+mod package;
 
 use gpui_kit::{
     div, px, AnyElement, AppContext as _, ClipboardItem, Context, IntoElement, ParentElement,
     Styled, Window,
 };
-use krad_domain::{acp_install_command, parse_wsl_path, AcpAgent, AcpAgentId, AgentPreset};
+use krad_domain::{
+    acp_package, parse_wsl_path, AcpAgent, AcpAgentId, AcpPackage, AcpPackageState, AgentPreset,
+};
 use krad_store::delete_acp_secret;
 
+use super::super::surface::KeptAdapterView;
 use super::sections::{empty_row, footnote, pane_column, settings_section};
 use super::{form_row, panel_card, EnvironmentShell};
 use crate::components::{Button, ButtonVariant, IconName};
 use crate::theme::{palette, Palette, SPACE_2};
 use form::AcpForm;
+use package::{package_detail, AcpPackages};
 
 const SECRETS_NOTE: &str = "Secret values are kept in the system keyring. Without one, as under WSL, they go in the config folder, readable only by you.";
 const BUILT_IN_TITLE: &str = "Known agents";
-const BUILT_IN_HINT: &str = "The ACP adapters of the agents the app knows, found on PATH. They show next to the native ones, with (ACP) after their name.";
+const BUILT_IN_HINT: &str = "The ACP adapters of the agents the app knows, found on PATH. Install a missing npm adapter here. They show next to the native ones, with (ACP) after their name; Claude Code's adapter takes the place of Claude Code.";
 const CUSTOM_TITLE: &str = "Your agents";
 const CUSTOM_HINT: &str = "Any other agent that speaks the Agent Client Protocol, by its command line. Start one from the bus with krad-ade-agents spawn --agent <id>.";
 const CUSTOM_EMPTY: &str = "No agents yet.";
@@ -31,6 +36,11 @@ const ADD_AGENT_LABEL: &str = "Add agent";
 const EDIT_LABEL: &str = "Edit";
 const REMOVE_LABEL: &str = "Remove";
 const COPY_TOOLTIP: &str = "Copy the install command";
+const INSTALL_LABEL: &str = "Install";
+const RETRY_LABEL: &str = "Try again";
+const INSTALL_TOOLTIP: &str = "Install the agent's npm package globally";
+const KEPT_RETRY_TOOLTIP: &str = "Install the adapter in Krad ADE's own folder again";
+const INSTALL_PREFIX: &str = "acp-install";
 const COPIED_TOAST: &str = "Install command copied";
 const REMOVED_TOAST: &str = "ACP agent removed";
 const BTN_OPEN_FORM: &str = "acp-open-form";
@@ -41,9 +51,10 @@ const DETAIL_SEPARATOR: &str = " · ";
 
 pub(in crate::environment_shell) struct AcpUi {
     form: AcpForm,
+    packages: AcpPackages,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum DetectionPlace {
     ThisComputer,
     Wsl(String),
@@ -92,6 +103,7 @@ impl EnvironmentShell {
     ) -> AcpUi {
         AcpUi {
             form: AcpForm::new(window, cx),
+            packages: AcpPackages::default(),
         }
     }
 
@@ -155,29 +167,97 @@ impl EnvironmentShell {
         index: usize,
         agent: &AcpAgent,
         place: &DetectionPlace,
-        pal: &Palette,
+        packages: &AcpPackages,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let pal = palette(cx);
+        if let Some(kept) = self
+            .kept_adapter(agent.id)
+            .filter(|_| *place == DetectionPlace::ThisComputer)
+        {
+            return Self::kept_adapter_row(index, agent, &kept, cx);
+        }
         let detected = self
             .installed_agents()
             .contains(&AgentPreset::Acp(agent.id));
-        let install = acp_install_command(agent.id).filter(|_| !detected);
-        let detail = detection_detail(place, detected, install);
-        let control = install.map_or_else(
-            || div().into_any_element(),
-            |command| {
-                Button::new((COPY_PREFIX, element_index(index)))
-                    .icon(IconName::Copy)
-                    .small()
-                    .variant(ButtonVariant::Secondary)
-                    .tooltip(COPY_TOOLTIP)
-                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                        this.copy_acp_install(command, cx);
-                    }))
-                    .into_any_element()
-            },
-        );
+        let package = acp_package(agent.id);
+        let install = package.map(|package| package.to_string());
+        let shown_install = install.as_deref().filter(|_| !detected);
+        let npm = package.and_then(AcpPackage::npm);
+        let state = npm.map(|_| packages.state(&(place.clone(), agent.id)));
+        let detail = match (npm, state) {
+            (Some(npm), Some(state)) => format!(
+                "{}{DETAIL_SEPARATOR}{}",
+                detection_detail(place, detected, None),
+                package_detail(npm, state)
+            ),
+            _ => detection_detail(place, detected, shown_install),
+        };
+        let copy = install.filter(|_| !detected).map(|command| {
+            Button::new((COPY_PREFIX, element_index(index)))
+                .icon(IconName::Copy)
+                .small()
+                .variant(ButtonVariant::Secondary)
+                .tooltip(COPY_TOOLTIP)
+                .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                    this.copy_acp_install(&command, cx);
+                }))
+        });
+        let id = agent.id;
+        let offer = state.filter(|state| state.can_install()).map(|state| {
+            let label = if matches!(state, AcpPackageState::Failed(_)) {
+                RETRY_LABEL
+            } else {
+                INSTALL_LABEL
+            };
+            Button::new((INSTALL_PREFIX, element_index(index)))
+                .label(label)
+                .icon(IconName::Add)
+                .small()
+                .variant(ButtonVariant::Primary)
+                .tooltip(INSTALL_TOOLTIP)
+                .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                    this.install_acp_agent(id, cx);
+                }))
+        });
+        let control = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(SPACE_2))
+            .children(offer)
+            .children(copy)
+            .into_any_element();
         form_row(&agent.display_name(), Some(&detail), control, pal)
+    }
+
+    fn kept_adapter_row(
+        index: usize,
+        agent: &AcpAgent,
+        kept: &KeptAdapterView,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let pal = palette(cx);
+        let id = agent.id;
+        let retry = kept.retries.then(|| {
+            Button::new((INSTALL_PREFIX, element_index(index)))
+                .label(RETRY_LABEL)
+                .icon(IconName::Add)
+                .small()
+                .variant(ButtonVariant::Primary)
+                .tooltip(KEPT_RETRY_TOOLTIP)
+                .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                    this.retry_acp_adapter(id, cx);
+                }))
+        });
+        let control = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(SPACE_2))
+            .children(retry)
+            .into_any_element();
+        form_row(&agent.display_name(), Some(&kept.detail), control, pal)
     }
 
     fn acp_custom_row(
@@ -219,14 +299,14 @@ impl EnvironmentShell {
         )
     }
 
-    fn acp_built_in_card(&self, cx: &mut Context<Self>) -> AnyElement {
-        let pal = palette(cx);
+    fn acp_built_in_card(&self, packages: &AcpPackages, cx: &mut Context<Self>) -> AnyElement {
         let place = self.acp_detection_place();
         let rows: Vec<AnyElement> = krad_domain::built_in_acp_agents()
             .iter()
             .enumerate()
-            .map(|(index, agent)| self.acp_built_in_row(index, agent, &place, pal, cx))
+            .map(|(index, agent)| self.acp_built_in_row(index, agent, &place, packages, cx))
             .collect();
+        let pal = palette(cx);
         settings_section(
             BUILT_IN_TITLE,
             Some(BUILT_IN_HINT),
@@ -276,7 +356,10 @@ impl EnvironmentShell {
     pub(super) fn acp_pane(&self, ui: &AcpUi, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let open = ui.form.open;
-        let mut sections = vec![self.acp_built_in_card(cx), self.acp_custom_card(open, cx)];
+        let mut sections = vec![
+            self.acp_built_in_card(&ui.packages, cx),
+            self.acp_custom_card(open, cx),
+        ];
         if open {
             sections.push(Self::acp_form_section(&ui.form, cx));
         }

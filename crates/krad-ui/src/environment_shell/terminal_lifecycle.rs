@@ -268,9 +268,13 @@ impl EnvironmentShell {
     }
 
     fn default_chat_harness(&self, env: &EnvironmentName) -> AgentPreset {
-        AgentPreset::chat_harnesses(&self.settings.acp.all_agents())
+        let available = self.agents_for(env, None);
+        let chosen = self.settings.default_harness.as_offered(available);
+        let preferred = chosen.has_structured_chat().then_some(chosen);
+        preferred
             .into_iter()
-            .find(|preset| self.chats_on(env, None, *preset))
+            .chain(AgentPreset::chat_harnesses(&self.settings.acp.all_agents()))
+            .find(|preset| self.chats_on(env, None, *preset) && preset.is_offered(available))
             .unwrap_or(DEFAULT_CHAT_HARNESS)
     }
 

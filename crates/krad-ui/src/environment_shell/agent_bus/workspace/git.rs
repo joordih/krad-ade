@@ -2,7 +2,7 @@ use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::{AppContext as _, Context};
 use krad_agents::{ChangeSet, ChangedFile, ErrorCode, Response, WorktreeInfo};
 use krad_domain::{EnvironmentName, GroupId, SessionId, WorktreeOrigin};
-use krad_repo::{add_worktree, sanitize_worktree_name, status, working_patch, Worktree};
+use krad_repo::{sanitize_worktree_name, status, working_patch, Worktree};
 use std::path::PathBuf;
 
 use super::super::super::agent_hooks::{BAD_WORKTREE_NAME, NOT_A_REPO};
@@ -48,9 +48,10 @@ impl EnvironmentShell {
             }
         };
         let link = self.env_link(&env);
+        let recipe = self.worktree_recipe(&env, &repo_root);
         let create = cx.background_spawn({
             let repo_root = repo_root.clone();
-            async move { add_worktree(&link, &repo_root, &name) }
+            async move { recipe.add(&link, &repo_root, &name) }
         });
         cx.spawn(async move |this, cx| {
             let created = create.await;

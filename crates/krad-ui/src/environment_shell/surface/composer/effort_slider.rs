@@ -1,3 +1,4 @@
+mod fast;
 mod layout;
 mod popover;
 mod state;
@@ -126,7 +127,15 @@ impl EnvironmentShell {
                             this.open_effort_popover(id, origin, window, cx);
                         },
                     ))
-                    .child(icon(IconName::Flash, ICON_XS, pal.text_muted))
+                    .child(icon(
+                        IconName::Flash,
+                        ICON_XS,
+                        if facts.fast == Some(true) {
+                            pal.accent
+                        } else {
+                            pal.text_muted
+                        },
+                    ))
                     .child(div().font_weight(FontWeight::MEDIUM).child(label))
                     .child(meter(current_step(facts), steps, pal))
                     .child(icon(IconName::ChevronDown, ICON_XS, pal.text_subtle))

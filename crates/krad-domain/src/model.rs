@@ -5,10 +5,12 @@ use std::hash::Hash;
 mod choice;
 mod effort_scale;
 mod name;
+mod preference;
 
 pub use choice::ChatChoice;
 pub use effort_scale::{snap_effort, EffortSnap};
 pub use name::{claude_alias_name, humanize_model_id, split_context, ContextSize, CLAUDE_BRAND};
+pub use preference::{Marked, ModelPreferences};
 
 const MODEL_PUNCTUATION: &str = "._/:@-[]";
 

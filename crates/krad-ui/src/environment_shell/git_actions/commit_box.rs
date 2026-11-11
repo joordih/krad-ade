@@ -13,8 +13,8 @@ use super::{CommitIntent, GitAction};
 use crate::components::{icon, IconName};
 use crate::keymap::COMMIT_HINT;
 use crate::theme::{
-    palette, ICON_SM, LINE_SM, RADIUS_SM, RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2,
-    TEXT_SM,
+    level_fill, palette, SurfaceLevel, ICON_SM, LINE_SM, RADIUS_SM, RADIUS_XS, SPACE_0_5, SPACE_1,
+    SPACE_1_5, SPACE_2, TEXT_SM,
 };
 
 const MESSAGE_MAX_ROWS: usize = 6;
@@ -99,7 +99,7 @@ impl EnvironmentShell {
                 .rounded(px(RADIUS_SM))
                 .border_1()
                 .border_color(pal.divider)
-                .bg(rgb(pal.bg_surface))
+                .bg(level_fill(SurfaceLevel::Pane, pal.bg_surface, cx))
                 .text_size(px(TEXT_SM))
                 .line_height(px(LINE_SM))
                 .child(Textarea::new(message).appearance(false))

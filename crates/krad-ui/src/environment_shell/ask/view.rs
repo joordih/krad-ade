@@ -3,9 +3,9 @@ use gpui_kit::component::text::TextView;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, ease_out_quint, px, rgb, Animation, AnimationExt as _, AnyElement, ClickEvent, Context,
-    Div, ElementId, FontWeight, InteractiveElement, IntoElement, KeyDownEvent, MouseButton,
-    ParentElement, SharedString, StatefulInteractiveElement, Styled,
+    div, ease_out_quint, px, rgb, Animation, AnimationExt as _, AnyElement, App, ClickEvent,
+    Context, Div, ElementId, FontWeight, InteractiveElement, IntoElement, KeyDownEvent,
+    MouseButton, ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_chat::{AskKind, Question, QuestionOption};
 use krad_domain::{AskOutcome, AskVerdict, FileEdit, PermissionMode, TerminalId};
@@ -19,8 +19,9 @@ use super::{acp_option, AskQueue, Choice, NotePurpose, Waiting, OFFERED_MODES};
 use crate::actions::{AskConfirm, AskDeny, ASK_KEY_CONTEXT};
 use crate::components::{check_box, icon, tooltip_view, Button, ButtonVariant, IconName};
 use crate::theme::{
-    palette, Palette, ICON, ICON_XS, LINE_2XS, LINE_SM, LINE_XS, RADIUS_LG, RADIUS_MD, RADIUS_SM,
-    RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3, TEXT_2XS, TEXT_SM, TEXT_XS,
+    level_fill, palette, Palette, SurfaceLevel, ICON, ICON_XS, LINE_2XS, LINE_SM, LINE_XS,
+    RADIUS_LG, RADIUS_MD, RADIUS_SM, RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3,
+    TEXT_2XS, TEXT_SM, TEXT_XS,
 };
 
 const DETAIL_MAX_H: f32 = 160.0;
@@ -204,8 +205,9 @@ fn permission_detail(
     edits: &[FileEdit],
     mono: SharedString,
     pal: &Palette,
+    cx: &App,
 ) -> AnyElement {
-    if let Some(diffs) = edit_diffs(edits, &mono, pal) {
+    if let Some(diffs) = edit_diffs(edits, &mono, pal, cx) {
         return diffs;
     }
     div()
@@ -253,11 +255,19 @@ impl EnvironmentShell {
                 edit,
             } => (
                 tool_question(tool, *kind),
-                permission_detail(owner, summary, title.as_deref(), edit.as_slice(), mono, pal),
+                permission_detail(
+                    owner,
+                    summary,
+                    title.as_deref(),
+                    edit.as_slice(),
+                    mono,
+                    pal,
+                    cx,
+                ),
             ),
             AskKind::AcpPermission { tool, .. } => (
                 tool_question(&tool.name, tool.kind),
-                permission_detail(owner, &tool.summary, None, &tool.edits, mono, pal),
+                permission_detail(owner, &tool.summary, None, &tool.edits, mono, pal, cx),
             ),
             AskKind::Plan { plan } => (
                 PLAN_QUESTION.into(),
@@ -485,7 +495,7 @@ impl EnvironmentShell {
                 .gap(px(SPACE_1))
                 .p(px(SPACE_2))
                 .rounded(px(RADIUS_XS))
-                .bg(rgb(pal.bg_surface))
+                .bg(level_fill(SurfaceLevel::Pane, pal.bg_surface, cx))
                 .child(Textarea::new(&note.input).appearance(false))
                 .child(
                     div()

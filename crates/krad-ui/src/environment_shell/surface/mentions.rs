@@ -1,5 +1,5 @@
 use gpui_kit::{
-    div, img, px, rgb, AnyElement, AppContext as _, ClipboardEntry, ClipboardItem, Context,
+    div, img, px, rgb, AnyElement, App, AppContext as _, ClipboardEntry, ClipboardItem, Context,
     ElementId, InteractiveElement, IntoElement, ObjectFit, ParentElement, PathPromptOptions,
     SharedString, StatefulInteractiveElement, Styled, StyledImage,
 };
@@ -11,8 +11,8 @@ use super::super::EnvironmentShell;
 use super::SurfaceChat;
 use crate::components::{icon, tooltip_view, IconName};
 use crate::theme::{
-    palette, Palette, ICON_SM, ICON_XS, LINE_XS, RADIUS_MD, RADIUS_SM, SPACE_1, SPACE_1_5, SPACE_2,
-    TEXT_XS,
+    level_fill, palette, Palette, SurfaceLevel, ICON_SM, ICON_XS, LINE_XS, RADIUS_MD, RADIUS_SM,
+    SPACE_1, SPACE_1_5, SPACE_2, TEXT_XS,
 };
 
 const PICK_PROMPT: &str = "Attach";
@@ -86,7 +86,7 @@ fn thumbnail(path: &Path, size: f32) -> gpui_kit::Img {
         .object_fit(ObjectFit::Cover)
 }
 
-fn file_chip(path: &Path, pal: &Palette) -> gpui_kit::Div {
+fn file_chip(path: &Path, pal: &Palette, cx: &App) -> gpui_kit::Div {
     div()
         .flex()
         .flex_row()
@@ -96,7 +96,7 @@ fn file_chip(path: &Path, pal: &Palette) -> gpui_kit::Div {
         .max_w(px(CHIP_MAX_W))
         .px(px(SPACE_2))
         .rounded(px(RADIUS_SM))
-        .bg(rgb(pal.bg_panel))
+        .bg(level_fill(SurfaceLevel::Pane, pal.bg_panel, cx))
         .text_size(px(TEXT_XS))
         .line_height(px(LINE_XS))
         .text_color(rgb(pal.text_default))
@@ -104,14 +104,14 @@ fn file_chip(path: &Path, pal: &Palette) -> gpui_kit::Div {
         .child(div().truncate().child(mention_name(path)))
 }
 
-fn mention_element(mention: &Mention, size: f32, pal: &Palette) -> AnyElement {
+fn mention_element(mention: &Mention, size: f32, pal: &Palette, cx: &App) -> AnyElement {
     match mention {
         Mention::Image(image) => thumbnail(&image.path, size).into_any_element(),
-        Mention::Path(path) => file_chip(path, pal).into_any_element(),
+        Mention::Path(path) => file_chip(path, pal, cx).into_any_element(),
     }
 }
 
-pub(super) fn sent_mentions(mentions: &[Mention], pal: &Palette) -> Option<AnyElement> {
+pub(super) fn sent_mentions(mentions: &[Mention], pal: &Palette, cx: &App) -> Option<AnyElement> {
     if mentions.is_empty() {
         return None;
     }
@@ -126,7 +126,7 @@ pub(super) fn sent_mentions(mentions: &[Mention], pal: &Palette) -> Option<AnyEl
             .children(
                 mentions
                     .iter()
-                    .map(|mention| mention_element(mention, SENT_THUMB_SIZE, pal)),
+                    .map(|mention| mention_element(mention, SENT_THUMB_SIZE, pal, cx)),
             )
             .into_any_element(),
     )
@@ -309,7 +309,7 @@ impl EnvironmentShell {
             div()
                 .relative()
                 .flex_none()
-                .child(mention_element(mention, THUMB_SIZE, pal))
+                .child(mention_element(mention, THUMB_SIZE, pal, cx))
                 .child(remove)
         });
         Some(

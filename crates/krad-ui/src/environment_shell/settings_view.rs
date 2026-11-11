@@ -1,5 +1,7 @@
 mod acp;
 mod api_file;
+mod backdrop_image;
+mod chat;
 mod editor;
 mod extensions;
 mod flat_pane;
@@ -14,16 +16,21 @@ mod java_engine;
 mod languages;
 mod material;
 mod mcp;
+mod navigation;
 mod notifications;
 mod page;
 mod plan_usage;
+mod search;
 mod sections;
+mod skills;
 mod spending;
 mod terminal;
 mod theme_editor;
 mod themes;
 mod toolchains;
+mod tuning;
 mod webhooks;
+mod worktrees;
 
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
@@ -36,10 +43,9 @@ use krad_store::write_settings;
 use super::dialog_parts::{sheet_group, sheet_row};
 use super::EnvironmentShell;
 use crate::actions::OpenSettings;
-use crate::components::IconName;
 use crate::theme::{
-    appearance, apply_settings_theme, card_shadow, mode_appearance, system_is_dark, Appearance,
-    Palette, CAPSULE_PAD, LINE_SM, LINE_XS, RADIUS_XL, SPACE_0_5, TEXT_SM, TEXT_XS,
+    appearance, card_shadow, mode_appearance, system_is_dark, Appearance, Palette, CAPSULE_PAD,
+    LINE_SM, LINE_XS, RADIUS_XL, SPACE_0_5, TEXT_SM, TEXT_XS,
 };
 use acp::AcpUi;
 use gateway::GatewayUi;
@@ -55,93 +61,15 @@ const CHOICE_GAP: f32 = 10.0;
 const CHOICE_RING: f32 = 1.5;
 const SETTINGS_NOT_SAVED: &str = "Couldn't save the settings";
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum SettingsPane {
-    General,
-    Notifications,
-    Appearance,
-    Terminal,
-    Editor,
-    Harnesses,
-    Integrations,
-    Gateway,
-    Mcp,
-    Acp,
-    Webhooks,
-    Languages,
-    Extensions,
-}
-
-impl SettingsPane {
-    const fn title(self) -> &'static str {
-        match self {
-            Self::General => "General",
-            Self::Notifications => "Notifications",
-            Self::Appearance => "Appearance",
-            Self::Terminal => "Terminal",
-            Self::Editor => "Editor",
-            Self::Harnesses => "Harnesses",
-            Self::Integrations => "Integrations",
-            Self::Gateway => "Gateway",
-            Self::Mcp => "MCP",
-            Self::Acp => "ACP agents",
-            Self::Webhooks => "Webhooks",
-            Self::Languages => "Languages",
-            Self::Extensions => "Extensions",
-        }
-    }
-
-    const fn description(self) -> &'static str {
-        match self {
-            Self::General => {
-                "App updates, the tools agents get, what they may spend, plan usage and the chat composer."
-            }
-            Self::Notifications => {
-                "When agents finish or need you: notifications, sounds, quiet hours and the app icon."
-            }
-            Self::Appearance => "Light and dark themes, the window and the interface font.",
-            Self::Terminal => "The font, copy and paste, and the colours of terminals.",
-            Self::Editor => "How files look, show their problems and the minimap.",
-            Self::Harnesses => {
-                "Whether Claude Code, Codex and opencode are installed, current and signed in."
-            }
-            Self::Integrations => "The code hosts reviews and merge requests come from.",
-            Self::Gateway => {
-                "Chat with the models of a gateway you run, through the app's own agent."
-            }
-            Self::Mcp => "The MCP servers whose tools Gateway chats can use.",
-            Self::Acp => "Agents the app talks to over the Agent Client Protocol.",
-            Self::Webhooks => "Send the app's events to your own services over HTTPS.",
-            Self::Languages => "Language servers and the SDKs they need.",
-            Self::Extensions => {
-                "Extensions that add languages, commands, views and tools, and their settings."
-            }
-        }
-    }
-
-    const fn icon(self) -> IconName {
-        match self {
-            Self::General => IconName::Settings,
-            Self::Notifications => IconName::Bell,
-            Self::Appearance => IconName::Sun,
-            Self::Terminal => IconName::Terminal,
-            Self::Editor => IconName::File,
-            Self::Harnesses => IconName::CheckCircle,
-            Self::Integrations => IconName::Merge,
-            Self::Gateway => IconName::Flow,
-            Self::Mcp => IconName::Plug,
-            Self::Acp => IconName::UserGroup,
-            Self::Webhooks => IconName::Send,
-            Self::Languages => IconName::Workflow,
-            Self::Extensions => IconName::Layers,
-        }
-    }
-}
+pub(super) use navigation::SettingsPane;
 
 pub(in crate::environment_shell) use fonts::FontZone;
 
 pub(super) struct SettingsUi {
     pane: SettingsPane,
+    search: search::SearchUi,
+    skills: skills::SkillsUi,
+    worktrees: worktrees::WorktreesUi,
     gitlab: GitlabUi,
     github: GithubUi,
     gateway: GatewayUi,
@@ -149,6 +77,8 @@ pub(super) struct SettingsUi {
     acp: AcpUi,
     webhooks: WebhooksUi,
     tint: material::TintUi,
+    tuning: tuning::TuningUi,
+    backdrop: backdrop_image::BackdropUi,
     languages: languages::LanguagesUi,
     extensions: extensions::ExtensionsUi,
     fonts: crate::font_catalog::FontCatalog,
@@ -264,9 +194,17 @@ impl EnvironmentShell {
         let acp = Self::acp_ui(window, cx);
         let webhooks = Self::webhooks_ui(window, cx);
         let tint = self.tint_ui(cx);
+        let tuning = self.tuning_ui(window, cx);
+        let backdrop = self.backdrop_ui(cx);
         let languages = Self::languages_ui(window, cx);
+        let search = Self::settings_search_ui(window, cx);
+        let skills = Self::skills_ui(window, cx);
+        let worktrees = self.worktrees_ui(window, cx);
         self.settings_ui = Some(SettingsUi {
             pane: SettingsPane::General,
+            search,
+            skills,
+            worktrees,
             gitlab,
             github,
             gateway,
@@ -274,6 +212,8 @@ impl EnvironmentShell {
             acp,
             webhooks,
             tint,
+            tuning,
+            backdrop,
             languages,
             extensions: extensions::ExtensionsUi::default(),
             fonts: crate::font_catalog::font_catalog(cx),
@@ -292,11 +232,18 @@ impl EnvironmentShell {
     }
 
     pub(super) fn dismiss_settings(&mut self, cx: &mut Context<Self>) -> bool {
+        let dismissed = self.drop_settings();
+        if dismissed {
+            cx.notify();
+        }
+        dismissed
+    }
+
+    pub(super) fn drop_settings(&mut self) -> bool {
         if self.settings_ui.take().is_none() {
             return false;
         }
         self.review.forget_login();
-        cx.notify();
         true
     }
 
@@ -323,13 +270,13 @@ impl EnvironmentShell {
         }
         let wanted = mode_appearance(AppearanceMode::System, system_is_dark(cx));
         if wanted != appearance(cx) {
-            apply_settings_theme(&self.settings, cx);
+            self.apply_active_theme(cx);
         }
     }
 
     fn set_appearance(&mut self, mode: AppearanceMode, cx: &mut Context<Self>) {
         self.settings.appearance = mode;
-        apply_settings_theme(&self.settings, cx);
+        self.apply_active_theme(cx);
         self.save_settings(cx);
     }
 
@@ -350,6 +297,12 @@ impl EnvironmentShell {
         }
         if pane == SettingsPane::Harnesses {
             self.check_harness_health(cx);
+        }
+        if pane == SettingsPane::Acp {
+            self.check_acp_packages(cx);
+        }
+        if pane == SettingsPane::Skills {
+            self.refresh_skill_library(cx);
         }
         cx.notify();
     }

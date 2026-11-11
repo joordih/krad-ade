@@ -11,8 +11,8 @@ use super::comments::CommentPart;
 use super::DIFF_LINE_H;
 use crate::components::{icon, tooltip_view, Button, ButtonVariant, IconName};
 use crate::theme::{
-    palette, tinted, ICON_XS, LINE_SM, RADIUS_SM, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3,
-    TEXT_SM,
+    level_fill, palette, tinted, SurfaceLevel, ICON_XS, LINE_SM, RADIUS_SM, RADIUS_XS, SPACE_1,
+    SPACE_1_5, SPACE_2, SPACE_3, TEXT_SM,
 };
 
 const BTN_COMMENT_PREFIX: &str = "changes-tab-comment";
@@ -225,7 +225,7 @@ impl EnvironmentShell {
                         .rounded(px(RADIUS_SM))
                         .border_1()
                         .border_color(pal.divider)
-                        .bg(rgb(pal.bg_surface))
+                        .bg(level_fill(SurfaceLevel::Pane, pal.bg_surface, cx))
                         .child(Textarea::new(&draft.field).appearance(false)),
                 )
                 .child(

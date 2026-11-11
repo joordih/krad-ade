@@ -4,14 +4,17 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use krad_domain::{BranchPrefix, EnvFiles, WorktreeBase, WorktreeSettings, WorktreeState};
 use krad_host::HostLink;
 use krad_repo::{
-    add_worktree, remove_settled_worktree, remove_worktree, repo_root, status, ChangeKind,
-    FileChange, RepoError,
+    add_planned_worktree, add_worktree, remove_merged_worktree, remove_settled_worktree,
+    remove_worktree, repo_root, status, worktree_state, Askpass, ChangeKind, FileChange, RepoError,
 };
 
 const WORKTREE_NAME: &str = "fix-login";
 const SETTLED_NAME: &str = "close-worker";
+const MERGED_NAME: &str = "auto-remove";
+const PREFIX: &str = "krad/";
 
 fn git_available() -> bool {
     Command::new("git")
@@ -138,6 +141,97 @@ fn a_worktree_with_work_left_is_never_removed() -> Result<(), Box<dyn Error>> {
     }
     let base = unique_temp_dir(SETTLED_NAME)?;
     let result = exercise_settled_removal(&base);
+    fs::remove_dir_all(&base)?;
+    result
+}
+
+fn exercise_merged_removal(base: &Path) -> Result<(), Box<dyn Error>> {
+    let repo = base.join("app");
+    fs::create_dir(&repo)?;
+    git(&repo, &["init", "--quiet"])?;
+    fs::write(repo.join("README.md"), "hello\n")?;
+    fs::write(repo.join(".gitignore"), ".env*\n")?;
+    fs::write(repo.join(".env.local"), "TOKEN=1\n")?;
+    git(&repo, &["add", "README.md", ".gitignore"])?;
+    git(&repo, &["commit", "--quiet", "-m", "initial"])?;
+    let root = repo_root(&HostLink::Local, &repo)?.ok_or("repository root not found")?;
+    let host = HostLink::Local;
+    let settings = WorktreeSettings {
+        branch_prefix: BranchPrefix::from(PREFIX),
+        env_files: EnvFiles::Copy,
+        ..WorktreeSettings::default()
+    };
+    let planned = add_planned_worktree(&host, &root, MERGED_NAME, &settings, &Askpass::default())?;
+    assert!(planned.setbacks.is_empty(), "{:?}", planned.setbacks);
+    let added = planned.worktree;
+    let branch = format!("{PREFIX}{MERGED_NAME}");
+    assert_eq!(added.branch.as_deref(), Some(branch.as_str()));
+    assert_eq!(
+        fs::read_to_string(added.path.join(".env.local"))?,
+        "TOKEN=1\n"
+    );
+    let state =
+        |path: &Path| worktree_state(&host, &root, path, Some(&branch), WorktreeBase::CurrentHead);
+    assert_eq!(state(&added.path)?, WorktreeState::Fresh);
+    assert_eq!(
+        remove_merged_worktree(
+            &host,
+            &root,
+            &added.path,
+            Some(&branch),
+            WorktreeBase::CurrentHead
+        )?,
+        WorktreeState::Fresh
+    );
+    assert!(added.path.is_dir(), "an untouched worktree stays");
+
+    fs::write(added.path.join("draft.txt"), "draft\n")?;
+    assert_eq!(
+        remove_merged_worktree(
+            &host,
+            &root,
+            &added.path,
+            Some(&branch),
+            WorktreeBase::CurrentHead
+        )?,
+        WorktreeState::Dirty
+    );
+    git(&added.path, &["add", "draft.txt"])?;
+    git(&added.path, &["commit", "--quiet", "-m", "draft"])?;
+    assert_eq!(
+        remove_merged_worktree(
+            &host,
+            &root,
+            &added.path,
+            Some(&branch),
+            WorktreeBase::CurrentHead
+        )?,
+        WorktreeState::Ahead(1)
+    );
+    assert!(added.path.join("draft.txt").is_file());
+
+    git(&root, &["merge", "--quiet", "--ff-only", &branch])?;
+    assert_eq!(
+        remove_merged_worktree(
+            &host,
+            &root,
+            &added.path,
+            Some(&branch),
+            WorktreeBase::CurrentHead
+        )?,
+        WorktreeState::Merged
+    );
+    assert!(!added.path.exists());
+    Ok(())
+}
+
+#[test]
+fn only_a_merged_and_clean_worktree_is_removed_automatically() -> Result<(), Box<dyn Error>> {
+    if !git_available() {
+        return Err("git is not on PATH; this test needs the git CLI".into());
+    }
+    let base = unique_temp_dir(MERGED_NAME)?;
+    let result = exercise_merged_removal(&base);
     fs::remove_dir_all(&base)?;
     result
 }

@@ -19,7 +19,6 @@ const NO_SUCH_GROUP: &str = "No group with that name in your environment";
 const NO_CALLER_GROUP: &str = "The caller belongs to no group; name one with --group";
 const NO_SUCH_SESSION: &str = "No session with that id in your environment";
 const NO_SESSION_GROUP: &str = "That session belongs to no group";
-const LAST_SESSION: &str = "That session is the last one of its group and still has tabs";
 const NOT_ON_SCREEN: &str = "That environment is not the one on screen; open it in the app first";
 const OUTSIDE_GROUP: &str = "The file is not inside the caller's group folder";
 const UNRESOLVED_GROUP: &str = "The caller's group folder could not be read";
@@ -206,9 +205,6 @@ impl EnvironmentShell {
         let data = &self.envs.get(env).ok_or_else(no_environment)?.data;
         if data.session(session).is_none() {
             return Err(refusal(ErrorCode::NotFound, NO_SUCH_SESSION));
-        }
-        if !data.can_close_session(session) {
-            return Err(refusal(ErrorCode::Failed, LAST_SESSION));
         }
         if *env != self.active {
             return Err(refusal(ErrorCode::Unsupported, NOT_ON_SCREEN));

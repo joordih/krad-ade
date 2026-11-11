@@ -56,7 +56,7 @@ const fn mix(base: u32, hue: u32, share: u32) -> u32 {
     mixed
 }
 
-const fn opacity_alpha(opacity: TintOpacity) -> u32 {
+pub(super) const fn opacity_alpha(opacity: TintOpacity) -> u32 {
     opacity.percent() as u32 * FULL_ALPHA / TintOpacity::MAX as u32
 }
 

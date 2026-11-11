@@ -177,6 +177,7 @@ impl EnvironmentShell {
                 )
             })
             .child(dot_field(pal, hole))
+            .children(self.chat_backdrop(cx))
             .child(
                 div()
                     .relative()

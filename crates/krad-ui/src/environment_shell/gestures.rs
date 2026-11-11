@@ -274,6 +274,7 @@ impl EnvironmentShell {
             .get_mut(&env)
             .is_some_and(|live| live.data.step_session(forward));
         if stepped {
+            self.leave_main_overlays();
             cx.notify();
             self.store();
         }

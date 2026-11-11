@@ -6,6 +6,7 @@ const HOME_VAR: &str = "HOME";
 const APPDATA_VAR: &str = "APPDATA";
 const CONFIG_FALLBACK_DIR: &str = ".config";
 const GATEWAY_SESSIONS_DIR: &str = "gateway-sessions";
+const ACP_ADAPTERS_DIR: &str = "acp-adapters";
 
 pub const APP_NAME: &str = "krad-ade";
 
@@ -23,6 +24,11 @@ pub fn config_dir() -> Option<PathBuf> {
 #[must_use]
 pub fn gateway_sessions_dir() -> Option<PathBuf> {
     config_dir().map(|dir| dir.join(GATEWAY_SESSIONS_DIR))
+}
+
+#[must_use]
+pub fn acp_adapters_dir() -> Option<PathBuf> {
+    config_dir().map(|dir| dir.join(ACP_ADAPTERS_DIR))
 }
 
 pub(crate) fn non_empty_var(name: &str) -> Option<OsString> {

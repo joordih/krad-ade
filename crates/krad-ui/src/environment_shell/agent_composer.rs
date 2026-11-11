@@ -3,7 +3,7 @@ mod sheet;
 use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::{AppContext as _, Context, Entity, Window};
 use krad_domain::{AgentPreset, GroupId, WorktreeOrigin};
-use krad_repo::{add_worktree, sanitize_worktree_name};
+use krad_repo::sanitize_worktree_name;
 
 use super::sessions::Launch;
 use super::EnvironmentShell;
@@ -39,15 +39,12 @@ impl EnvironmentShell {
     }
 
     pub(super) fn open_agent_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let preset = Some(self.settings.default_harness)
-            .filter(|preset| preset.is_agent() && self.installed_agents().contains(preset))
-            .or_else(|| {
-                self.installed_agents()
-                    .iter()
-                    .copied()
-                    .find(|preset| preset.is_agent())
-            })
-            .unwrap_or(self.settings.default_harness);
+        let offered = self.offered_agents();
+        let default = self.offered_default_harness();
+        let preset = Some(default)
+            .filter(|preset| preset.is_agent() && offered.contains(preset))
+            .or_else(|| offered.iter().copied().find(|preset| preset.is_agent()))
+            .unwrap_or(default);
         let prompt = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .rows(PROMPT_ROWS)
@@ -97,9 +94,10 @@ impl EnvironmentShell {
             (true, Some(repo_root), Some(name)) => {
                 let label = self.settings.acp.harness_name(composer.preset);
                 let link = self.env_link(&env);
+                let recipe = self.worktree_recipe(&env, &repo_root);
                 let create = cx.background_spawn({
                     let repo_root = repo_root.clone();
-                    async move { add_worktree(&link, &repo_root, &name) }
+                    async move { recipe.add(&link, &repo_root, &name) }
                 });
                 cx.spawn(async move |this, cx| {
                     let created = create.await;

@@ -101,13 +101,17 @@ impl EnvironmentShell {
     }
 
     fn open_harness_choice(&mut self, origin: (f32, f32), cx: &mut Context<Self>) {
-        let current: Option<AgentPreset> = self.editor_draft().and_then(|draft| draft.harness);
+        let agents = self.kraddie_agents();
+        let current: Option<AgentPreset> = self
+            .editor_draft()
+            .and_then(|draft| draft.harness)
+            .map(|harness| harness.as_offered(&agents));
         let mut entries = vec![choice(
             OWN_AGENT,
             current.is_none(),
             AutomationMenu::Harness(None),
         )];
-        entries.extend(self.kraddie_agents().into_iter().map(|preset| {
+        entries.extend(agents.into_iter().map(|preset| {
             choice(
                 self.settings.acp.harness_name(preset),
                 current == Some(preset),

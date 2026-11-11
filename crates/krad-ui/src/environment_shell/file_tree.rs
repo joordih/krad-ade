@@ -61,6 +61,10 @@ struct NewEntryRow<'a> {
 }
 
 impl FileTree {
+    pub(super) const fn deleting(&self) -> bool {
+        self.pending_delete.is_some()
+    }
+
     fn rows(&self, draft: Option<&NewEntryRow<'_>>, catalog: &LanguageCatalog) -> Vec<TreeRow> {
         let mut rows = Vec::new();
         if let Some(root) = &self.root {

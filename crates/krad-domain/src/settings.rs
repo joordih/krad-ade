@@ -1,6 +1,7 @@
 use crate::acp::AcpSettings;
 use crate::agent::AgentPreset;
 use crate::attention::AttentionSettings;
+use crate::backdrop_image::BackdropImage;
 use crate::composer_height::ComposerHeight;
 use crate::event::WebhookSettings;
 use crate::extension_index::{lenient_index_repository, IndexRepository};
@@ -10,16 +11,20 @@ use crate::gateway::GatewaySettings;
 use crate::gitlab::GitlabSettings;
 use crate::host_timeouts::HostTimeouts;
 use crate::hue::Hue;
+use crate::ids::EnvironmentName;
 use crate::java_engine::JavaEngine;
 use crate::mcp::McpSettings;
-use crate::model::{lenient_model_lists, ChatChoice, ModelId};
+use crate::model::{lenient_model_lists, ChatChoice, ModelId, ModelPreferences};
 use crate::plan_usage::PlanUsageSettings;
 use crate::problem::EditorSettings;
 use crate::server_runtime::{ExtensionEntry, ServerRuntimePaths};
 use crate::sidebar_layout::SidebarLayout;
+use crate::skill::SkillSettings;
 use crate::theme::{ThemeAppearance, ThemeId};
+use crate::theme_tuning::{EnvironmentThemes, ThemeTuning};
 use crate::toolchain::ToolchainActivation;
 use crate::usage::SpendSettings;
+use crate::worktree_settings::WorktreeSettings;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -300,6 +305,10 @@ pub struct Settings {
     pub terminal_theme: TerminalTheme,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub themes: Option<ThemeSelection>,
+    #[serde(default, skip_serializing_if = "EnvironmentThemes::is_empty")]
+    pub environment_themes: EnvironmentThemes,
+    #[serde(default, skip_serializing_if = "ThemeTuning::is_default")]
+    pub theme_tuning: ThemeTuning,
     #[serde(default)]
     pub default_harness: AgentPreset,
     #[serde(default)]
@@ -320,6 +329,8 @@ pub struct Settings {
     pub harness_models: HashMap<AgentPreset, Vec<ModelId>>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub chat_defaults: HashMap<AgentPreset, ChatChoice>,
+    #[serde(default, skip_serializing_if = "ModelPreferences::is_empty")]
+    pub model_preferences: ModelPreferences,
     #[serde(default, skip_serializing_if = "GitlabSettings::is_empty")]
     pub gitlab: GitlabSettings,
     #[serde(default, skip_serializing_if = "GatewaySettings::is_empty")]
@@ -332,6 +343,10 @@ pub struct Settings {
     pub window_material: WindowMaterial,
     #[serde(default, skip_serializing_if = "WindowTint::is_default")]
     pub window_tint: WindowTint,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backdrop_image: Option<BackdropImage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_backdrop_image: Option<BackdropImage>,
     #[serde(default)]
     pub app_updates: AppUpdateCheck,
     #[serde(
@@ -384,6 +399,10 @@ pub struct Settings {
     pub webhooks: WebhookSettings,
     #[serde(default, skip_serializing_if = "ApiDiscoveryFile::is_default")]
     pub api_discovery_file: ApiDiscoveryFile,
+    #[serde(default, skip_serializing_if = "SkillSettings::is_empty")]
+    pub skills: SkillSettings,
+    #[serde(default, skip_serializing_if = "WorktreeSettings::is_default")]
+    pub worktrees: WorktreeSettings,
 }
 
 impl Settings {
@@ -391,14 +410,20 @@ impl Settings {
         let legacy = self.terminal_theme;
         self.themes.get_or_insert_with(|| legacy.as_selection())
     }
+
+    #[must_use]
+    pub fn theme_selection(&self, environment: Option<&EnvironmentName>) -> ThemeSelection {
+        let app = self.themes.clone().unwrap_or_default();
+        self.environment_themes.selection(environment, &app)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
 pub enum WindowMaterial {
-    #[default]
     Opaque,
     Blurred,
     Mica,
+    #[default]
     Glass,
 }
 
@@ -489,6 +514,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_chosen_backdrop_image_survives_a_restart_and_no_image_stays_out_of_the_file(
+    ) -> serde_json::Result<()> {
+        let plain = serde_json::to_string(&Settings::default())?;
+        assert!(!plain.contains("backdrop_image"));
+        let settings = Settings {
+            backdrop_image: Some(BackdropImage::new("backdrop/image.png")),
+            ..Settings::default()
+        };
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&settings)?)?;
+        assert_eq!(back.backdrop_image, settings.backdrop_image);
+        Ok(())
+    }
+
+    #[test]
     fn performance_mode_is_off_by_default_and_stays_out_of_the_file() -> serde_json::Result<()> {
         let settings = Settings::default();
         assert_eq!(settings.performance_mode, PerformanceMode::Off);
@@ -496,6 +535,16 @@ mod tests {
         assert!(!serde_json::to_string(&settings)?.contains("performance_mode"));
         let read: Settings = serde_json::from_str(r#"{"performance_mode":"on"}"#)?;
         assert!(read.performance_mode.reduces_motion());
+        Ok(())
+    }
+
+    #[test]
+    fn new_settings_start_on_glass_and_a_saved_material_is_kept() -> serde_json::Result<()> {
+        assert_eq!(Settings::default().window_material, WindowMaterial::Glass);
+        let read: Settings = serde_json::from_str("{}")?;
+        assert_eq!(read.window_material, WindowMaterial::Glass);
+        let saved: Settings = serde_json::from_str(r#"{"window_material":"Opaque"}"#)?;
+        assert_eq!(saved.window_material, WindowMaterial::Opaque);
         Ok(())
     }
 
@@ -613,6 +662,26 @@ mod tests {
     }
 
     #[test]
+    fn favorite_and_default_models_survive_a_restart() -> serde_json::Result<()> {
+        let Some(fable) = ModelId::parse("fable") else {
+            unreachable!("fable is a model id");
+        };
+        let mut settings = Settings::default();
+        settings
+            .model_preferences
+            .toggle_favorite(AgentPreset::ClaudeCode, &fable);
+        settings
+            .model_preferences
+            .toggle_default(AgentPreset::ClaudeCode, &fable);
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&settings)?)?;
+        assert_eq!(back.model_preferences, settings.model_preferences);
+        let old: Settings = serde_json::from_str(r#"{"default_harness":"ClaudeCode"}"#)?;
+        assert!(old.model_preferences.is_empty());
+        assert!(!serde_json::to_string(&old)?.contains("model_preferences"));
+        Ok(())
+    }
+
+    #[test]
     fn acp_agents_open_their_terminal_command_and_old_files_have_none() -> serde_json::Result<()> {
         let old: Settings = serde_json::from_str(
             r#"{"default_harness":"ClaudeCode","harness_commands":{"Opencode":"opencode --port 4096"},"harness_models":{"ClaudeCode":["opus"]},"mcp":{}}"#,
@@ -691,6 +760,30 @@ mod tests {
         };
         let read: Settings = serde_json::from_str(&serde_json::to_string(&done)?)?;
         assert_eq!(read.harness_onboarding, HarnessOnboarding::Done);
+        Ok(())
+    }
+
+    #[test]
+    fn theme_tuning_and_environment_themes_survive_a_restart() -> serde_json::Result<()> {
+        let plain = serde_json::to_string(&Settings::default())?;
+        assert!(!plain.contains("theme_tuning"));
+        assert!(!plain.contains("environment_themes"));
+        let work = EnvironmentName::new("work".to_owned());
+        let mut settings = Settings::default();
+        settings.theme_tuning.interface_scale = crate::InterfaceScale::new(120);
+        settings.theme_tuning.main_pane = crate::MainPaneMaterial::Opaque;
+        settings.environment_themes.set(
+            &work,
+            ThemeAppearance::Dark,
+            Some(ThemeId("nord".to_owned())),
+        );
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&settings)?)?;
+        assert_eq!(back, settings);
+        assert_eq!(
+            back.theme_selection(Some(&work)).dark,
+            ThemeId("nord".to_owned())
+        );
+        assert_eq!(back.theme_selection(None), ThemeSelection::default());
         Ok(())
     }
 

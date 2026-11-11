@@ -12,11 +12,9 @@ use super::super::super::EnvironmentShell;
 use super::super::commands::icon_of;
 use super::super::OpenViewId;
 use super::ShownButton;
+use crate::components::floating::floating_surface;
 use crate::components::{icon, tooltip_view};
-use crate::theme::{
-    palette, popover_fill, popover_shadow, ICON, ICON_BUTTON, RADIUS_XL, SPACE_0_5, SPACE_1,
-    TOOLBAR_H, WINDOW_INSET,
-};
+use crate::theme::{palette, ICON, ICON_BUTTON, SPACE_0_5, SPACE_1, TOOLBAR_H, WINDOW_INSET};
 
 const BUTTON_PREFIX_LEFT: &str = "titlebar-extension-left";
 const BUTTON_PREFIX_RIGHT: &str = "titlebar-extension-right";
@@ -115,20 +113,13 @@ impl EnvironmentShell {
             .popover
             .as_ref()
             .map(|popover| popover.focus.clone());
-        let panel = div()
+        let panel = floating_surface(pal, cx)
             .id(POPOVER_ID)
-            .flex()
-            .flex_col()
             .min_w(px(POPOVER_MIN_W))
             .max_w(px(POPOVER_MAX_W))
             .min_h(px(POPOVER_MIN_H))
             .max_h(px(max_h))
             .overflow_y_scroll()
-            .rounded(px(RADIUS_XL))
-            .bg(popover_fill(pal, cx))
-            .border_1()
-            .border_color(pal.divider)
-            .shadow(popover_shadow(pal, cx))
             .occlude()
             .when_some(focus, |panel, focus| panel.track_focus(&focus))
             .on_key_down(cx.listener(|this: &mut Self, event: &KeyDownEvent, _, cx| {

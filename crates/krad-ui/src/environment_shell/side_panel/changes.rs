@@ -72,8 +72,8 @@ fn side_changes_of(git: &GroupGit, side: ChangeSide) -> &[FileChange] {
 
 fn line_count_chips(lines: LineCount, pal: &Palette) -> Vec<AnyElement> {
     [
-        (lines.added, ADDED_SIGN, pal.success_fg),
-        (lines.removed, REMOVED_SIGN, pal.error_fg),
+        (lines.added, ADDED_SIGN, pal.diff_added),
+        (lines.removed, REMOVED_SIGN, pal.diff_removed),
     ]
     .into_iter()
     .filter(|(count, _, _)| *count > 0)

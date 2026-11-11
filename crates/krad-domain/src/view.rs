@@ -1,7 +1,9 @@
 use serde::de::IntoDeserializer;
 use serde::{Deserialize, Deserializer, Serialize};
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize,
+)]
 pub enum EnvironmentView {
     #[default]
     Sessions,
@@ -20,6 +22,11 @@ impl EnvironmentView {
         Self::Kraddies,
         Self::Review,
     ];
+
+    #[must_use]
+    pub const fn is_optional(self) -> bool {
+        matches!(self, Self::Automations | Self::Kraddies | Self::Review)
+    }
 }
 
 pub(crate) fn lenient_view<'de, D: Deserializer<'de>>(

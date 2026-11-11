@@ -15,19 +15,19 @@ use std::path::{Path, PathBuf};
 use super::entry_input::entry_name;
 use super::rename::KEY_ESCAPE;
 use super::EnvironmentShell;
+use crate::components::floating::{floating_at, floating_panel, Edge, Placed, Side};
 use crate::theme::{
-    palette, popover_fill, popover_shadow, LINE_SM, LINE_XS, SPACE_1, SPACE_2, SPACE_3, TEXT_BASE,
-    TEXT_SM, TEXT_XS,
+    palette, LINE_SM, LINE_XS, SPACE_1, SPACE_2, SPACE_3, TEXT_BASE, TEXT_SM, TEXT_XS,
 };
 use choices::TemplateChoice;
 
 const POPUP_W: f32 = 420.0;
 const POPUP_TOP: f32 = 120.0;
-const POPUP_RADIUS: f32 = 14.0;
 const ROW_H: f32 = 28.0;
 const ROW_RADIUS: f32 = 8.0;
 const LIST_MAX_H: f32 = 320.0;
 const POPUP_ID: &str = "template-popup";
+const POPUP_MOTION_ID: &str = "template-popup-motion";
 const ROW_PREFIX: &str = "template-choice";
 const NAME_PLACEHOLDER: &str = "Name";
 const NEW_TITLE: &str = "New";
@@ -257,7 +257,7 @@ impl EnvironmentShell {
     ) -> Option<AnyElement> {
         let popup = self.template_popup.as_ref()?;
         let pal = palette(cx);
-        let (root_w, _) = self.root_size(window);
+        let (root_w, root_h) = self.root_size(window);
         let mut rows = Vec::new();
         let mut group: Option<&str> = None;
         for (index, choice) in popup.choices.iter().enumerate() {
@@ -302,23 +302,19 @@ impl EnvironmentShell {
                     MouseButton::Left,
                     cx.listener(|this: &mut Self, _, _, cx| this.close_template_popup(cx)),
                 ))
-                .child(
-                    div()
+                .child(floating_at(
+                    POPUP_MOTION_ID,
+                    Placed {
+                        left: ((root_w - POPUP_W) / 2.0).max(SPACE_3),
+                        edge: Edge::Top(POPUP_TOP),
+                        max_height: root_h,
+                        side: Side::Below,
+                    },
+                    floating_panel(pal, cx)
                         .id(POPUP_ID)
-                        .absolute()
-                        .left(px(((root_w - POPUP_W) / 2.0).max(SPACE_3)))
-                        .top(px(POPUP_TOP))
                         .w(px(POPUP_W))
-                        .flex()
-                        .flex_col()
                         .gap(px(SPACE_2))
                         .p(px(SPACE_3))
-                        .rounded(px(POPUP_RADIUS))
-                        .bg(popover_fill(pal, cx))
-                        .border_1()
-                        .border_color(pal.divider)
-                        .shadow(popover_shadow(pal, cx))
-                        .occlude()
                         .child(
                             div()
                                 .text_size(px(TEXT_BASE))
@@ -336,7 +332,7 @@ impl EnvironmentShell {
                                 .children(rows)
                                 .children(note),
                         ),
-                )
+                ))
                 .into_any_element(),
         )
     }

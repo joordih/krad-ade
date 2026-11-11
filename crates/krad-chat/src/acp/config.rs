@@ -1,17 +1,8 @@
+use krad_domain::AcpConfigCategory;
 use serde::{Deserialize, Serialize};
 
 use super::ids::{ConfigOptionId, SessionId};
 use super::lenient::readable_items;
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ConfigCategory {
-    Mode,
-    Model,
-    ThoughtLevel,
-    #[serde(other)]
-    Other,
-}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -29,7 +20,7 @@ pub struct SessionConfigOption {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub category: Option<ConfigCategory>,
+    pub category: Option<AcpConfigCategory>,
     #[serde(rename = "type")]
     pub kind: ConfigKind,
     pub current_value: String,
@@ -105,7 +96,7 @@ mod tests {
         }));
         let options = options.map_or_default(|response| response.config_options);
         assert_eq!(options.len(), 2);
-        assert_eq!(options[0].category, Some(ConfigCategory::Model));
+        assert_eq!(options[0].category, Some(AcpConfigCategory::Model));
         let modes: Vec<&str> = options[1]
             .choices()
             .map(|choice| choice.value.as_str())

@@ -1,4 +1,5 @@
 use super::*;
+use krad_domain::{SkillKey, SkillKind};
 use std::error::Error;
 use std::fs;
 
@@ -141,9 +142,46 @@ fn search_puts_names_starting_with_the_query_first() {
         source: SkillSource::Claude,
     };
     let skills = [skill("code-review"), skill("review"), skill("deploy")];
-    let found: Vec<&str> = search_skills(&skills, "REV", 5)
+    let found: Vec<&str> = search_skills(&skills, &SkillSettings::default(), "REV", 5)
         .into_iter()
         .map(|skill| skill.name.as_str())
         .collect();
     assert_eq!(found, ["review", "code-review"]);
+}
+
+#[test]
+fn the_composer_offers_only_enabled_skills() {
+    let skill = |name: &str| Skill {
+        name: name.to_owned(),
+        description: String::new(),
+        source: SkillSource::Claude,
+    };
+    let skills = [skill("review"), skill("deploy"), skill("planner")];
+    let mut settings = SkillSettings::default();
+    settings.set_enabled(SkillKey::new(SkillKind::Skill, "review"), false);
+    settings.set_enabled(SkillKey::new(SkillKind::Agent, "planner"), false);
+    let found: Vec<&str> = search_skills(&skills, &settings, "", 5)
+        .into_iter()
+        .map(|skill| skill.name.as_str())
+        .collect();
+    assert_eq!(found, ["deploy", "planner"]);
+}
+
+#[test]
+fn disabled_skills_are_left_out_of_what_the_gateway_agent_gets() -> Result<(), Box<dyn Error>> {
+    let home = temp_dir("disabled-home")?;
+    write(
+        &home.join(".claude/skills/lint/SKILL.md"),
+        "---\nname: lint\n---\n",
+    )?;
+    write(&home.join(".claude/commands/ship.md"), "Ship it\n")?;
+    let mut settings = SkillSettings::default();
+    settings.set_enabled(SkillKey::new(SkillKind::Command, "ship"), false);
+    let names: Vec<String> = skill_files(&HostLink::Local, Some(&home), None, &settings)
+        .into_iter()
+        .map(|skill| skill.name)
+        .collect();
+    assert_eq!(names, ["lint"]);
+    fs::remove_dir_all(home)?;
+    Ok(())
 }

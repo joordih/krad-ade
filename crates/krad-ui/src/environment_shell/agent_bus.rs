@@ -10,6 +10,7 @@ mod service;
 mod typing;
 mod workspace;
 
+pub(in crate::environment_shell) use askpass::AskpassPlan;
 pub(super) use remote::{bundled_cli, RemoteBus, RemoteBusPlan, RemoteBusSlot};
 pub(super) use workspace::target_group;
 

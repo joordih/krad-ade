@@ -10,8 +10,8 @@ use super::super::EnvironmentShell;
 use super::view::duration_text;
 use crate::components::{harness_icon, icon, Button, ButtonVariant, IconName};
 use crate::theme::{
-    palette, Palette, ICON_SM, LINE_SM, LINE_XS, RADIUS_LG, SPACE_1, SPACE_2, SPACE_3, TEXT_SM,
-    TEXT_XS,
+    level_fill, palette, Palette, SurfaceLevel, ICON_SM, LINE_SM, LINE_XS, RADIUS_LG, SPACE_1,
+    SPACE_2, SPACE_3, TEXT_SM, TEXT_XS,
 };
 
 const SHOWN_FILES: usize = 8;
@@ -132,7 +132,7 @@ impl EnvironmentShell {
             .gap(px(SPACE_1))
             .p(px(SPACE_3))
             .rounded(px(RADIUS_LG))
-            .bg(rgb(pal.bg_panel))
+            .bg(level_fill(SurfaceLevel::Pane, pal.bg_panel, cx))
             .border_1()
             .border_color(pal.divider)
             .child(

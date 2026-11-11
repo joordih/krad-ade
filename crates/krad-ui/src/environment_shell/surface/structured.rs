@@ -9,8 +9,8 @@ mod rewind;
 
 use gpui_kit::Context;
 use krad_chat::{
-    new_session_id, AcpEvent, Catalog, ChatEvent, LiveChat, LiveEvent, LiveSession, ResumeRefused,
-    SlashCommand,
+    new_session_id, AcpEvent, Catalog, ChatEvent, LiveChat, LiveEvent, LiveSession, ModelOffer,
+    ResumeRefused, SlashCommand,
 };
 use krad_domain::{
     AgentPreset, AgentState, AttentionKind, ChatEntry, Effort, EffortSnap, EnvironmentName,
@@ -23,11 +23,12 @@ use super::super::ask::{AskQueue, Waiting};
 use super::super::chat::{fold_entry, fold_prompt, ChatMessage, LiveProcess};
 use super::super::usage_bar::UsageNews;
 use super::super::EnvironmentShell;
-use super::acp::AcpOffers;
+use super::acp::{AcpChoice, AcpOffers};
 use super::outbox::Outbox;
 use super::{anchor, Backend, SurfaceChat, SurfaceCommand};
 
 pub(super) use acp::read_acp_env;
+pub(in crate::environment_shell) use acp::read_acp_secrets;
 use acp::AcpSecretsPrep;
 use mcp::McpPrep;
 pub(in crate::environment_shell) use open::restored_chats;
@@ -182,6 +183,12 @@ impl StructuredChat {
         self.session = LiveSession::Start(new_session_id());
     }
 
+    pub(super) fn reports_context(&self) -> bool {
+        self.harness.acp_agent().is_none()
+            || self.context_tokens.is_some()
+            || self.context_window.is_some()
+    }
+
     pub(super) fn context_used(&self) -> Option<u16> {
         let (tokens, window) = (self.context_tokens?, self.context_window?);
         let percent = tokens.saturating_mul(FULL_PERCENT) / window.max(1);
@@ -300,6 +307,33 @@ impl StructuredChat {
             }
         }
     }
+}
+
+type ReportedModels = (AgentPreset, Vec<ModelOffer>);
+
+fn acp_reported(
+    structured: &mut StructuredChat,
+    event: AcpEvent,
+) -> (Option<AgentState>, Option<ReportedModels>) {
+    let state = matches!(event, AcpEvent::SignInNeeded(_)).then_some(AgentState::WaitingForInput);
+    let models = if let AcpEvent::Models(models) = &event {
+        Some((
+            structured.harness,
+            models.available.iter().map(ModelOffer::from).collect(),
+        ))
+    } else {
+        None
+    };
+    let early = structured.acp.reported(event);
+    if let Some(live) = structured.live() {
+        for choice in early {
+            match choice {
+                AcpChoice::Mode(mode) => live.set_acp_mode(mode),
+                AcpChoice::Option(option, value) => live.set_acp_option(option, value),
+            }
+        }
+    }
+    (state, models)
 }
 
 fn split_refusal(event: LiveEvent) -> (LiveEvent, Option<ResumeRefused>) {
@@ -425,6 +459,7 @@ impl EnvironmentShell {
         let followed = anchor::follows_tail(*anchor, thread);
         let mut state = None;
         let mut raised = None;
+        let mut reported_models: Option<ReportedModels> = None;
         let (event, refused) = split_refusal(event);
         match event {
             LiveEvent::Ready(catalog) => {
@@ -460,12 +495,7 @@ impl EnvironmentShell {
             LiveEvent::Chat(ChatEvent::ContextWindow(window)) => {
                 structured.context_window = Some(window);
             }
-            LiveEvent::Acp(event) => {
-                if matches!(event, AcpEvent::SignInNeeded(_)) {
-                    state = Some(AgentState::WaitingForInput);
-                }
-                structured.acp.reported(event);
-            }
+            LiveEvent::Acp(event) => (state, reported_models) = acp_reported(structured, event),
             LiveEvent::Refused(_)
             | LiveEvent::Spent(_)
             | LiveEvent::Usage(_)
@@ -498,6 +528,9 @@ impl EnvironmentShell {
         }
         if followed {
             thread.scroll_to_end();
+        }
+        if let Some((harness, offers)) = reported_models {
+            self.keep_harness_models(env, harness, &offers);
         }
         self.conclude_structured_event(env, id, (state, raised), cx);
     }

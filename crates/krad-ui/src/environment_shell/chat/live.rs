@@ -29,6 +29,7 @@ pub(in crate::environment_shell) enum StartError {
     Opencode(String),
     Gateway(String),
     Secret(String),
+    Adapter(String),
     NoConfigFolder,
     Chat(ChatError),
 }
@@ -40,9 +41,10 @@ impl fmt::Display for StartError {
             Self::NoChat(name) => write!(formatter, "{name} {NO_CHAT_TEXT}"),
             Self::NotInWsl(name) => write!(formatter, "{name} {NOT_IN_WSL_TEXT}"),
             Self::Waiting => formatter.write_str(WAITING_TEXT),
-            Self::Opencode(error) | Self::Gateway(error) | Self::Secret(error) => {
-                formatter.write_str(error)
-            }
+            Self::Opencode(error)
+            | Self::Gateway(error)
+            | Self::Secret(error)
+            | Self::Adapter(error) => formatter.write_str(error),
             Self::NoConfigFolder => formatter.write_str(NO_CONFIG_FOLDER_TEXT),
             Self::Chat(error) => error.fmt(formatter),
         }

@@ -12,8 +12,8 @@ use super::summary::short_time;
 use crate::components::{icon, Button, ButtonVariant, IconName};
 use crate::environment_shell::EnvironmentShell;
 use crate::theme::{
-    card_shadow, palette, Palette, INPUT_H, LINE_2XS, LINE_XS, RADIUS_LG, RADIUS_SM, SPACE_1_5,
-    SPACE_2, SPACE_3, TEXT_2XS, TEXT_SM, TEXT_XS,
+    card_shadow, level_fill, palette, Palette, SurfaceLevel, INPUT_H, LINE_2XS, LINE_XS, RADIUS_LG,
+    RADIUS_SM, SPACE_1_5, SPACE_2, SPACE_3, TEXT_2XS, TEXT_SM, TEXT_XS,
 };
 
 const THREAD_GAP: f32 = 10.0;
@@ -112,7 +112,7 @@ impl EnvironmentShell {
             .gap(px(THREAD_GAP))
             .p(px(SPACE_3))
             .rounded(px(RADIUS_LG))
-            .bg(rgb(pal.bg_surface))
+            .bg(level_fill(SurfaceLevel::Pane, pal.bg_surface, cx))
             .shadow(card_shadow(pal))
             .border_1()
             .border_color(pal.border)
@@ -142,7 +142,7 @@ impl EnvironmentShell {
             .h(px(RESOLVED_ROW_H))
             .px(px(SPACE_3))
             .rounded(px(RADIUS_LG))
-            .bg(rgb(pal.bg_panel))
+            .bg(level_fill(SurfaceLevel::Pane, pal.bg_panel, cx))
             .cursor_pointer()
             .text_size(px(TEXT_XS))
             .text_color(rgb(pal.text_muted))
@@ -181,7 +181,7 @@ impl EnvironmentShell {
             .h(px(INPUT_H))
             .px(px(THREAD_GAP))
             .rounded(px(RADIUS_SM))
-            .bg(rgb(pal.bg_panel))
+            .bg(level_fill(SurfaceLevel::Pane, pal.bg_panel, cx))
             .cursor_text()
             .text_size(px(TEXT_SM))
             .text_color(rgb(pal.text_muted))

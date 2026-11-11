@@ -6,7 +6,9 @@ mod content;
 mod files;
 mod ids;
 mod lenient;
+mod managed;
 mod methods;
+mod package;
 mod paths;
 mod permission;
 mod prompt;
@@ -16,11 +18,11 @@ mod terminals;
 mod update;
 
 pub(crate) use chat::spawn_acp;
-pub use chat::{acp_agent_env, AcpConfig, MissingSecret, Variables};
+pub use chat::{acp_agent_env, AcpConfig, AcpWanted, MissingSecret, Variables};
 pub use client_side::{ClientSide, FileWritten, HostTerminals, OpenBuffers, PermissionAsked};
 pub use config::{
-    ConfigCategory, ConfigKind, ConfigSelectEntry, ConfigSelectGroup, ConfigSelectOption,
-    SessionConfigOption, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
+    ConfigKind, ConfigSelectEntry, ConfigSelectGroup, ConfigSelectOption, SessionConfigOption,
+    SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
 };
 pub use connection::{AcpClient, AcpConnection, AcpError, AgentRequest, Pending, Responder};
 pub use content::{
@@ -32,6 +34,8 @@ pub use ids::{
     AuthMethodId, ConfigOptionId, ModeId, ModelId, PermissionOptionId, SessionId, TerminalId,
     ToolCallId,
 };
+pub use managed::{install_managed_adapter, managed_adapter_program, managed_adapter_update_due};
+pub use package::{acp_package_state, install_acp_package, AcpPackageError};
 pub use paths::AgentPaths;
 pub use permission::{
     PermissionOption, PermissionOptionKind, RequestPermissionOutcome, RequestPermissionRequest,

@@ -12,8 +12,8 @@ use super::wording::cues_summary;
 use crate::components::motion::{reveal, rise_in};
 use crate::components::{glide_track, icon, GlideOption, GlidePick, GlideSizing, IconName};
 use crate::theme::{
-    tinted, Palette, ICON_SM, LINE_SM, LINE_XS, RADIUS_LG, RADIUS_MD, SPACE_1, SPACE_2, SPACE_3,
-    TEXT_SM, TEXT_XS,
+    level_fill, tinted, Palette, SurfaceLevel, ICON_SM, LINE_SM, LINE_XS, RADIUS_LG, RADIUS_MD,
+    SPACE_1, SPACE_2, SPACE_3, TEXT_SM, TEXT_XS,
 };
 
 const SHELF_REVEAL: &str = "automation-shelf";
@@ -139,7 +139,7 @@ impl EnvironmentShell {
             .rounded(px(RADIUS_LG))
             .border_1()
             .border_color(pal.divider)
-            .bg(rgb(pal.bg_panel))
+            .bg(level_fill(SurfaceLevel::Pane, pal.bg_panel, cx))
             .child(heading)
             .child(
                 div()
@@ -260,7 +260,7 @@ impl EnvironmentShell {
             .rounded(px(RADIUS_MD))
             .border_1()
             .border_color(pal.divider)
-            .bg(rgb(pal.bg_surface))
+            .bg(level_fill(SurfaceLevel::Pane, pal.bg_surface, cx))
             .cursor_pointer()
             .hover(move |style| style.border_color(tinted(accent, TILE_HOVER_ALPHA)))
             .active(|style| style.opacity(TILE_PRESSED))
