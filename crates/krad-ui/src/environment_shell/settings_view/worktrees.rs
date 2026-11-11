@@ -335,14 +335,10 @@ mod tests {
     fn an_empty_folder_keeps_worktrees_beside_the_repository_and_relative_ones_are_refused() {
         assert_eq!(folder_from("  "), Some(WorktreeFolder::BesideRepository));
         assert_eq!(folder_from("trees"), None);
-        let custom = folder_from("/work/trees");
-        assert_eq!(
-            custom,
-            Some(WorktreeFolder::Custom(PathBuf::from("/work/trees")))
-        );
-        assert_eq!(
-            custom.map(|folder| folder_text(&folder)),
-            Some("/work/trees".to_owned())
-        );
+        let absolute = std::env::temp_dir().join("trees");
+        let text = absolute.display().to_string();
+        let custom = folder_from(&text);
+        assert_eq!(custom, Some(WorktreeFolder::Custom(absolute)));
+        assert_eq!(custom.map(|folder| folder_text(&folder)), Some(text));
     }
 }
