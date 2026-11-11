@@ -9,6 +9,7 @@ use crate::file_icon::FileIconColors;
 use crate::font::{stored_font, FontChoice};
 use crate::gateway::GatewaySettings;
 use crate::gitlab::GitlabSettings;
+use crate::harness::OfferedTwin;
 use crate::host_timeouts::HostTimeouts;
 use crate::hue::Hue;
 use crate::ids::EnvironmentName;
@@ -339,6 +340,8 @@ pub struct Settings {
     pub mcp: McpSettings,
     #[serde(default, skip_serializing_if = "AcpSettings::is_empty")]
     pub acp: AcpSettings,
+    #[serde(default, skip_serializing_if = "OfferedTwin::is_native")]
+    pub offered_twin: OfferedTwin,
     #[serde(default)]
     pub window_material: WindowMaterial,
     #[serde(default, skip_serializing_if = "WindowTint::is_default")]
@@ -745,6 +748,20 @@ mod tests {
             !unchanged.contains("harness_models"),
             "untouched lists stay out of the file"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn claude_code_runs_on_its_cli_until_acp_is_switched_on() -> serde_json::Result<()> {
+        let old: Settings = serde_json::from_str(r#"{"appearance":"Dark"}"#)?;
+        assert_eq!(old.offered_twin, OfferedTwin::Native);
+        assert!(!serde_json::to_string(&Settings::default())?.contains("offered_twin"));
+        let over_acp = Settings {
+            offered_twin: OfferedTwin::Acp,
+            ..Settings::default()
+        };
+        let stored: Settings = serde_json::from_str(&serde_json::to_string(&over_acp)?)?;
+        assert_eq!(stored.offered_twin, OfferedTwin::Acp);
         Ok(())
     }
 

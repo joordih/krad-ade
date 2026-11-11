@@ -1,4 +1,5 @@
 mod admit;
+mod claude_code;
 mod draft;
 mod form;
 mod package;
@@ -22,7 +23,7 @@ use package::{package_detail, AcpPackages};
 
 const SECRETS_NOTE: &str = "Secret values are kept in the system keyring. Without one, as under WSL, they go in the config folder, readable only by you.";
 const BUILT_IN_TITLE: &str = "Known agents";
-const BUILT_IN_HINT: &str = "The ACP adapters of the agents the app knows, found on PATH. Install a missing npm adapter here. They show next to the native ones, with (ACP) after their name; Claude Code's adapter takes the place of Claude Code.";
+const BUILT_IN_HINT: &str = "The ACP adapters of the agents the app knows, found on PATH. Install a missing npm adapter here. They show next to the native ones, with (ACP) after their name; Claude Code's adapter takes the place of Claude Code only when it runs over ACP.";
 const CUSTOM_TITLE: &str = "Your agents";
 const CUSTOM_HINT: &str = "Any other agent that speaks the Agent Client Protocol, by its command line. Start one from the bus with krad-ade-agents spawn --agent <id>.";
 const CUSTOM_EMPTY: &str = "No agents yet.";
@@ -357,6 +358,7 @@ impl EnvironmentShell {
         let pal = palette(cx);
         let open = ui.form.open;
         let mut sections = vec![
+            self.acp_claude_code_card(cx),
             self.acp_built_in_card(&ui.packages, cx),
             self.acp_custom_card(open, cx),
         ];

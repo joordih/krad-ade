@@ -312,7 +312,7 @@ impl EnvironmentShell {
                         .into_iter()
                         .filter(|other| {
                             other.native_twin() != harness.native_twin()
-                                && other.is_offered(available)
+                                && other.is_offered(available, self.settings.offered_twin)
                                 && self.chats_on(&self.active, root, *other)
                         })
                         .flat_map(|other| self.harness_picks(other, None))
