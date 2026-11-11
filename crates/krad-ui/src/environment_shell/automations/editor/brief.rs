@@ -105,7 +105,7 @@ impl EnvironmentShell {
         let current: Option<AgentPreset> = self
             .editor_draft()
             .and_then(|draft| draft.harness)
-            .map(|harness| harness.as_offered(&agents));
+            .map(|harness| harness.as_offered(&agents, self.settings.offered_twin));
         let mut entries = vec![choice(
             OWN_AGENT,
             current.is_none(),

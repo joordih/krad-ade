@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use super::chat::StartError;
-use super::surface::{read_acp_secrets, AcpSeed};
+use super::surface::{read_acp_secrets, AcpSeed, SurfaceChat};
 use super::EnvironmentShell;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -78,6 +78,16 @@ impl ListedModels {
     pub(super) fn acp_seed(&self, host: &Host, agent: AcpAgentId) -> Option<&AcpSeed> {
         self.acp_seeds.get(&(host.clone(), agent))
     }
+}
+
+fn acp_agents_of(harnesses: impl IntoIterator<Item = AgentPreset>) -> Vec<AcpAgentId> {
+    let mut agents: Vec<AcpAgentId> = harnesses
+        .into_iter()
+        .filter_map(AgentPreset::acp_agent)
+        .collect();
+    agents.sort_unstable();
+    agents.dedup();
+    agents
 }
 
 impl EnvironmentShell {
@@ -208,6 +218,18 @@ impl EnvironmentShell {
         .detach();
     }
 
+    pub(super) fn list_open_acp_models(&mut self, cx: &mut Context<Self>) {
+        let harnesses = self
+            .envs
+            .get(&self.active)
+            .into_iter()
+            .flat_map(|live| live.chats.values())
+            .map(SurfaceChat::harness);
+        for agent in acp_agents_of(harnesses) {
+            self.list_acp_models(agent, cx);
+        }
+    }
+
     pub(super) fn keep_harness_models(
         &mut self,
         env: &EnvironmentName,
@@ -216,5 +238,35 @@ impl EnvironmentShell {
     ) {
         let host = self.env_link(env).host();
         self.listed_models.keep(host, harness, models.to_vec());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_acp_agent_of_the_open_chats_is_listed_once() {
+        let claude: AcpAgentId = "claude-code-acp"
+            .parse()
+            .unwrap_or_else(|_| unreachable!("a valid id"));
+        let gemini: AcpAgentId = "gemini"
+            .parse()
+            .unwrap_or_else(|_| unreachable!("a valid id"));
+        let mut expected = vec![claude, gemini];
+        expected.sort_unstable();
+        assert_eq!(
+            acp_agents_of([
+                AgentPreset::Acp(claude),
+                AgentPreset::ClaudeCode,
+                AgentPreset::Acp(gemini),
+                AgentPreset::Acp(claude),
+            ]),
+            expected
+        );
+        assert_eq!(
+            acp_agents_of([AgentPreset::Codex, AgentPreset::Shell]),
+            Vec::new()
+        );
     }
 }

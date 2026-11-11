@@ -202,7 +202,9 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let agents = self.kraddie_agents();
-        let chosen = editor.harness.as_offered(&agents);
+        let chosen = editor
+            .harness
+            .as_offered(&agents, self.settings.offered_twin);
         agents
             .into_iter()
             .enumerate()

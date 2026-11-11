@@ -7,7 +7,7 @@ pub use capabilities::*;
 pub use health::*;
 pub use hooks::*;
 pub use inherited_env::INHERITED_SESSION_VARS;
-pub use stand_in::{OfferedTwin, OFFERED_TWIN};
+pub use stand_in::OfferedTwin;
 
 use crate::agent::{AgentPreset, AgentState};
 use crate::ids::ResumeId;

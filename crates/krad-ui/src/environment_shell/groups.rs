@@ -64,13 +64,13 @@ impl EnvironmentShell {
     }
 
     pub(super) fn offered_agents(&self) -> Vec<AgentPreset> {
-        AgentPreset::offered(self.installed_agents())
+        AgentPreset::offered(self.installed_agents(), self.settings.offered_twin)
     }
 
     pub(super) fn offered_default_harness(&self) -> AgentPreset {
         self.settings
             .default_harness
-            .as_offered(self.installed_agents())
+            .as_offered(self.installed_agents(), self.settings.offered_twin)
     }
 
     pub(super) fn host_agents_known(&self, env: &EnvironmentName) -> bool {
@@ -123,6 +123,7 @@ impl EnvironmentShell {
             this.update(cx, |shell, cx| {
                 shell.host_agents.insert(host, installed);
                 shell.list_host_models(&env, cx);
+                shell.list_open_acp_models(cx);
                 shell.load_missing_histories(&env, cx);
                 let harnesses: Vec<AgentPreset> =
                     AgentPreset::listed(&shell.settings.acp.all_agents()).collect();
@@ -335,6 +336,7 @@ impl EnvironmentShell {
                 shell.native_agents = installed;
                 shell.ensure_opencode(cx);
                 shell.list_harness_models(cx);
+                shell.list_open_acp_models(cx);
                 shell.watch_usage(cx);
                 cx.notify();
             })

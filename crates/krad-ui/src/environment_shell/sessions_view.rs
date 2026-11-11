@@ -62,6 +62,13 @@ fn session_status(statuses: impl IntoIterator<Item = CardStatus>) -> CardStatus 
         .unwrap_or(CardStatus::Agent(AgentState::Idle))
 }
 
+const fn attention_toggle(attention: SessionAttention) -> (IconName, &'static str) {
+    match attention {
+        SessionAttention::Notify => (IconName::Bell, MUTE_SESSION_TOOLTIP),
+        SessionAttention::Muted => (IconName::BellOff, UNMUTE_SESSION_TOOLTIP),
+    }
+}
+
 impl EnvironmentShell {
     pub(super) fn session_rows(
         &self,
@@ -173,11 +180,8 @@ impl EnvironmentShell {
                 None => element.child(icon(glyph, ICON_SM, tone)),
             })
             .child(Self::session_title(row, &tabs, cx))
-            .child(Self::session_hover_tools(row, tabs, reveal, cx))
-            .when(
-                row.session.attention == SessionAttention::Muted,
-                |element| element.child(icon(IconName::BellOff, ICON_SM, pal.text_muted)),
-            )
+            .child(Self::session_hover_tools(row, tabs, reveal.clone(), cx))
+            .child(Self::session_attention_toggle(row, reveal, cx))
             .when(unread, |element| {
                 element.child(
                     div()
@@ -253,20 +257,6 @@ impl EnvironmentShell {
                         .child(tabs),
                 )
             })
-            .child({
-                let (glyph, tooltip) = match row.session.attention {
-                    SessionAttention::Notify => (IconName::BellOff, MUTE_SESSION_TOOLTIP),
-                    SessionAttention::Muted => (IconName::Bell, UNMUTE_SESSION_TOOLTIP),
-                };
-                Button::new(SharedString::from(format!("{SESSION_MUTE_PREFIX}{raw}")))
-                    .icon(glyph)
-                    .small()
-                    .tooltip(tooltip)
-                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                        cx.stop_propagation();
-                        this.toggle_session_attention(id, cx);
-                    }))
-            })
             .when(row.active, |element| {
                 element.child(
                     Button::new(SharedString::from(format!("{SESSION_CLOSE_PREFIX}{raw}")))
@@ -279,6 +269,35 @@ impl EnvironmentShell {
                         })),
                 )
             })
+            .into_any_element()
+    }
+
+    fn session_attention_toggle(
+        row: &SessionRow<'_>,
+        reveal: SharedString,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let id = row.session.id;
+        let (glyph, tooltip) = attention_toggle(row.session.attention);
+        div()
+            .flex_none()
+            .when(
+                row.session.attention == SessionAttention::Notify,
+                |element| element.invisible().group_hover(reveal, Styled::visible),
+            )
+            .child(
+                Button::new(SharedString::from(format!(
+                    "{SESSION_MUTE_PREFIX}{}",
+                    id.as_u64()
+                )))
+                .icon(glyph)
+                .small()
+                .tooltip(tooltip)
+                .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                    cx.stop_propagation();
+                    this.toggle_session_attention(id, cx);
+                })),
+            )
             .into_any_element()
     }
 
@@ -402,5 +421,17 @@ mod tests {
         );
         assert_eq!(session_status([idle, done]), done);
         assert_eq!(session_status([]), idle);
+    }
+
+    #[test]
+    fn the_attention_toggle_shows_the_state_the_session_is_in() {
+        assert_eq!(
+            attention_toggle(SessionAttention::Notify),
+            (IconName::Bell, MUTE_SESSION_TOOLTIP)
+        );
+        assert_eq!(
+            attention_toggle(SessionAttention::Muted),
+            (IconName::BellOff, UNMUTE_SESSION_TOOLTIP)
+        );
     }
 }
