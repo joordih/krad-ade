@@ -11,10 +11,10 @@ use super::super::super::EnvironmentShell;
 use super::super::SurfaceChat;
 use super::hover::Area;
 use super::{current_question, Tick, TickKind, View};
+use crate::components::floating::floating_surface;
 use crate::components::{icon, IconName};
 use crate::theme::{
-    palette, popover_fill, popover_shadow, Palette, ICON_SM, LINE_SM, NAV_ROW_H, RADIUS_MD,
-    RADIUS_XS, SPACE_1, SPACE_2, TEXT_SM,
+    palette, Palette, ICON_SM, LINE_SM, NAV_ROW_H, RADIUS_XS, SPACE_1, SPACE_2, TEXT_SM,
 };
 
 const MIN_QUESTIONS: usize = 2;
@@ -256,7 +256,7 @@ impl EnvironmentShell {
                     cx.notify();
                 }))
         });
-        div()
+        floating_surface(pal, cx)
             .id((TIMELINE_LIST_PREFIX, id.as_u64()))
             .w(px(CARD_W))
             .max_h(px(CARD_MAX_H))
@@ -264,11 +264,6 @@ impl EnvironmentShell {
             .flex()
             .flex_col()
             .p(px(SPACE_1))
-            .rounded(px(RADIUS_MD))
-            .bg(popover_fill(pal, cx))
-            .border_1()
-            .border_color(pal.border)
-            .shadow(popover_shadow(pal, cx))
             .occlude()
             .children(rows)
             .into_any_element()

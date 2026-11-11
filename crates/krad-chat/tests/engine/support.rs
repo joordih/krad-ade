@@ -182,6 +182,7 @@ pub(crate) fn config(url: &str, root: &Path) -> EngineConfig {
         permission_mode: Some(PermissionMode::Manual),
         bus_vars: BusVars::default(),
         mcp: Vec::new(),
+        skills: krad_domain::SkillSettings::default(),
     }
 }
 

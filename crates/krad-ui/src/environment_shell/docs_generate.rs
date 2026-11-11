@@ -88,9 +88,8 @@ impl EnvironmentShell {
     }
 
     fn briefed_agents(&self) -> Vec<AgentPreset> {
-        self.installed_agents()
-            .iter()
-            .copied()
+        self.offered_agents()
+            .into_iter()
             .filter(|preset| preset.is_agent())
             .collect()
     }
@@ -100,7 +99,7 @@ impl EnvironmentShell {
         agents
             .iter()
             .copied()
-            .find(|preset| *preset == self.settings.default_harness)
+            .find(|preset| *preset == self.offered_default_harness())
             .or_else(|| agents.first().copied())
     }
 

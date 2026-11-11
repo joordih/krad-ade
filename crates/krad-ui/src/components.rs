@@ -5,6 +5,7 @@ mod check;
 mod chip;
 mod copy_feedback;
 mod empty_state;
+pub(crate) mod floating;
 mod glide_track;
 mod icon;
 pub(crate) mod motion;

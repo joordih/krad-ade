@@ -6,7 +6,7 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::super::{spawn_acp, AcpConfig};
+use super::super::{spawn_acp, AcpConfig, AcpWanted};
 use crate::acp::client_side::OpenBuffers;
 use crate::control::{AcpEvent, LiveEvent};
 use crate::live::{AcpOrder, BusVars, LiveHarness, LiveSession, Order};
@@ -71,6 +71,8 @@ fn opencode_acp_opens_a_session_switches_mode_and_answers_a_prompt() {
             mcp: Vec::new(),
             bus_vars: BusVars::default(),
             buffers: Arc::new(NoBuffers),
+            model: None,
+            wanted: AcpWanted::default(),
         },
         &LiveSession::Start(crate::live::new_session_id()),
         move |event| drop(sender.send(event)),

@@ -4,7 +4,9 @@ use gpui_kit::{App, Global, SharedString};
 use krad_domain::{FontChoice, SyntaxColors};
 use std::sync::Arc;
 
-use super::{appearance, current_theme, mono_family, palette, terminal_fill_alpha, Appearance};
+use super::{
+    appearance, current_theme, mono_family, settled_palette, terminal_fill_alpha, Appearance,
+};
 
 const ALPHA_BITS: u32 = 8;
 const OPAQUE_ALPHA: u32 = 0xff;
@@ -113,7 +115,7 @@ struct Colors {
 
 pub(super) fn style_editor(cx: &mut App) {
     let look = cx.try_global::<CodeLook>().cloned().unwrap_or_default();
-    let pal = palette(cx);
+    let pal = settled_palette(cx);
     let current = current_theme(cx);
     let colors = Colors {
         background: current.terminal.background.0,

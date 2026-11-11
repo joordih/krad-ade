@@ -63,9 +63,8 @@ fn row(harness: AgentPreset, window: &mut Window, cx: &mut Context<EnvironmentSh
 
 impl EnvironmentShell {
     pub(super) fn variant_harnesses(&self) -> Vec<AgentPreset> {
-        self.installed_agents()
-            .iter()
-            .copied()
+        self.offered_agents()
+            .into_iter()
             .filter(|preset| preset.is_agent() && preset.worker_surface() == WorkerSurface::Chat)
             .collect()
     }
@@ -85,7 +84,7 @@ impl EnvironmentShell {
         let Some(first) = harnesses
             .iter()
             .copied()
-            .find(|preset| *preset == self.settings.default_harness)
+            .find(|preset| *preset == self.offered_default_harness())
             .or_else(|| harnesses.first().copied())
         else {
             return self.toast(NO_AGENTS_TEXT, cx);

@@ -61,12 +61,13 @@ use subagents::Subagents;
 use timeline::Timeline;
 use transcript::{TranscriptView, TRANSCRIPT_HARNESS};
 
-pub(super) use acp::AcpChoice;
+pub(super) use acp::{app_kept_adapter_present, AcpChoice, AcpSeed, KeptAdapterView};
 pub(super) use answer::{names_its_tool, tool_question, tool_request};
 pub(super) use bus::ChatPresence;
 pub(super) use chat_menu::ChatCopy;
 pub(super) use edit_diff::edit_diffs;
 pub(super) use status_line::elapsed_label;
+pub(super) use structured::read_acp_secrets;
 pub(super) use structured::restored_chats;
 pub(super) use structured::StructuredChat;
 
@@ -387,6 +388,7 @@ impl EnvironmentShell {
         if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
             node.harness = Some(*harness);
         }
+        self.seed_acp_chats();
         HarnessChange::Switched
     }
 
@@ -396,6 +398,11 @@ impl EnvironmentShell {
         command: SurfaceCommand,
         cx: &mut Context<Self>,
     ) {
+        if let SurfaceCommand::Effort(effort) = command {
+            if self.choose_acp_effort(id, effort, cx) {
+                return;
+            }
+        }
         let env = self.active.clone();
         match self.harness_change(&env, id, &command) {
             HarnessChange::Refused => return,

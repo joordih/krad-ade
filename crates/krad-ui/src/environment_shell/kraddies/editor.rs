@@ -45,11 +45,13 @@ fn read_model(text: &str) -> Result<Option<ModelId>, &'static str> {
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn kraddie_agents(&self) -> Vec<AgentPreset> {
-        self.installed_agents()
-            .iter()
-            .copied()
+        let mut agents: Vec<AgentPreset> = self
+            .offered_agents()
+            .into_iter()
             .filter(|preset| preset.is_agent() && preset.worker_surface() == WorkerSurface::Chat)
-            .collect()
+            .collect();
+        AgentPreset::sort_by_chat_preference(&mut agents);
+        agents
     }
 
     pub(in crate::environment_shell) fn open_kraddie_editor(
@@ -101,6 +103,32 @@ impl EnvironmentShell {
                     .default_value(model)
             }),
         });
+        self.list_kraddie_models(harness, cx);
+        cx.notify();
+    }
+
+    fn list_kraddie_models(&mut self, harness: AgentPreset, cx: &mut Context<Self>) {
+        if let AgentPreset::Acp(agent) = harness {
+            self.list_acp_models(agent, cx);
+        }
+    }
+
+    fn choose_kraddie_harness(&mut self, harness: AgentPreset, cx: &mut Context<Self>) {
+        let Some(editor) = &mut self.kraddies.editor else {
+            return;
+        };
+        editor.harness = harness;
+        self.list_kraddie_models(harness, cx);
+        cx.notify();
+    }
+
+    fn pick_kraddie_model(&mut self, model: &ModelId, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(editor) = &mut self.kraddies.editor else {
+            return;
+        };
+        editor.refusal = None;
+        let field = editor.model.clone();
+        field.update(cx, |input, cx| input.set_value(model.as_str(), window, cx));
         cx.notify();
     }
 

@@ -142,7 +142,7 @@ impl EnvironmentShell {
                     .and_then(|agent| self.settings.acp.agent(agent));
                 if let Some(agent) = agent {
                     let command = CommandLine {
-                        program: agent.program.clone(),
+                        program: self.acp_program_name(&agent),
                         args,
                     };
                     let link = self.active_link();

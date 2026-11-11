@@ -14,8 +14,8 @@ use super::{ci_color, ci_glyph, ci_label, state_color, state_label, status_pill}
 use crate::components::{icon, Button, ButtonVariant, IconName};
 use crate::environment_shell::EnvironmentShell;
 use crate::theme::{
-    palette, LINE_2XS, LINE_LG, LINE_XS, RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_2, SPACE_3, TEXT_2XS,
-    TEXT_LG, TEXT_SM, TEXT_XS,
+    level_fill, palette, SurfaceLevel, LINE_2XS, LINE_LG, LINE_XS, RADIUS_XS, SPACE_0_5, SPACE_1,
+    SPACE_2, SPACE_3, TEXT_2XS, TEXT_LG, TEXT_SM, TEXT_XS,
 };
 
 const HEADER_PAD_TOP: f32 = 14.0;
@@ -156,7 +156,7 @@ impl EnvironmentShell {
                 .h(px(BRANCH_CHIP_H))
                 .px(px(SPACE_2))
                 .rounded(px(RADIUS_XS))
-                .bg(rgb(pal.bg_panel))
+                .bg(level_fill(SurfaceLevel::Pane, pal.bg_panel, cx))
                 .font_family(mono.clone())
                 .text_size(px(TEXT_2XS))
                 .line_height(px(LINE_2XS))

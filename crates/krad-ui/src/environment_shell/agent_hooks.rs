@@ -6,7 +6,7 @@ use krad_domain::{
     AgentPreset, AgentState, EnvironmentName, ModelDelivery, ModelId, PermissionMode, ResumeId,
     SessionId, TerminalGroup, TerminalId, WorkerSpawn, WorktreeOrigin,
 };
-use krad_repo::{add_worktree, sanitize_worktree_name};
+use krad_repo::sanitize_worktree_name;
 use std::time::{Duration, Instant};
 
 use super::agent_bus::{cli_name, BUS_HINT};
@@ -291,9 +291,10 @@ impl EnvironmentShell {
             return;
         };
         let link = self.env_link(&env);
+        let recipe = self.worktree_recipe(&env, &repo_root);
         let create = cx.background_spawn({
             let repo_root = repo_root.clone();
-            async move { add_worktree(&link, &repo_root, &name) }
+            async move { recipe.add(&link, &repo_root, &name) }
         });
         cx.spawn(async move |this, cx| {
             let created = create.await;

@@ -3,9 +3,10 @@ use gpui_kit::{
     StatefulInteractiveElement, Styled,
 };
 
-use krad_domain::{SidebarDensity, SidebarPart};
+use krad_domain::{EnvironmentView, SidebarDensity, SidebarLayout, SidebarPart};
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
+use super::super::top_bar::view_identity;
 use super::super::EnvironmentShell;
 use crate::components::{icon, Button, IconName};
 use crate::theme::{
@@ -104,39 +105,123 @@ impl EnvironmentShell {
     }
 
     fn sidebar_options(&self) -> Vec<MenuEntry> {
-        let layout = &self.settings.sidebar;
-        let mut entries: Vec<MenuEntry> = SidebarPart::ALL
-            .into_iter()
-            .map(|part| {
-                MenuEntry::checked(
-                    part.display_name(),
-                    layout.shows(part),
-                    MenuAction::ToggleSidebarPart(part),
-                )
-            })
-            .collect();
-        entries.push(MenuEntry::Separator);
-        entries.push(MenuEntry::checked(
-            COMPACT_LABEL,
-            layout.density == SidebarDensity::Compact,
-            MenuAction::ToggleSidebarDensity,
-        ));
-        entries
+        sidebar_options(&self.settings.sidebar)
     }
 
-    pub(in crate::environment_shell) fn toggle_sidebar_part(
+    pub(in crate::environment_shell) fn run_sidebar_option(
         &mut self,
-        part: SidebarPart,
+        action: &MenuAction,
         cx: &mut Context<Self>,
     ) {
-        self.settings.sidebar.toggle(part);
+        let layout = &mut self.settings.sidebar;
+        match action {
+            MenuAction::ToggleSidebarPart(part) => layout.toggle(*part),
+            MenuAction::ToggleSidebarDensity => layout.density = layout.density.toggled(),
+            MenuAction::ToggleSidebarView(view) => {
+                layout.toggle_view(*view);
+                self.leave_hidden_views();
+            }
+            _ => return,
+        }
         self.save_settings(cx);
+        let entries = self.sidebar_options();
+        self.replace_menu_entries(entries);
         cx.notify();
     }
 
-    pub(in crate::environment_shell) fn toggle_sidebar_density(&mut self, cx: &mut Context<Self>) {
-        self.settings.sidebar.density = self.settings.sidebar.density.toggled();
-        self.save_settings(cx);
-        cx.notify();
+    fn leave_hidden_views(&mut self) {
+        let layout = &self.settings.sidebar;
+        let mut moved = false;
+        for live in self.envs.values_mut() {
+            let reachable = layout.reachable_view(live.data.view);
+            moved |= reachable != live.data.view;
+            live.data.view = reachable;
+        }
+        if moved {
+            self.store();
+        }
+    }
+}
+
+const fn part_icon(part: SidebarPart) -> IconName {
+    match part {
+        SidebarPart::Views => IconName::ListView,
+        SidebarPart::Branches => IconName::GitBranch,
+        SidebarPart::AgentCounts => IconName::UserGroup,
+    }
+}
+
+fn sidebar_options(layout: &SidebarLayout) -> Vec<MenuEntry> {
+    let views = EnvironmentView::ALL
+        .into_iter()
+        .filter(|view| view.is_optional())
+        .map(|view| {
+            let (glyph, label) = view_identity(view);
+            MenuEntry::switch(
+                label,
+                glyph,
+                layout.shows_view(view),
+                MenuAction::ToggleSidebarView(view),
+            )
+        });
+    let parts = SidebarPart::ALL.into_iter().map(|part| {
+        MenuEntry::switch(
+            part.display_name(),
+            part_icon(part),
+            layout.shows(part),
+            MenuAction::ToggleSidebarPart(part),
+        )
+    });
+    let compact = MenuEntry::switch(
+        COMPACT_LABEL,
+        IconName::CollapseAll,
+        layout.density == SidebarDensity::Compact,
+        MenuAction::ToggleSidebarDensity,
+    );
+    views
+        .chain(std::iter::once(MenuEntry::Separator))
+        .chain(parts)
+        .chain(std::iter::once(compact))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn switches(entries: &[MenuEntry]) -> Vec<(&str, bool)> {
+        entries
+            .iter()
+            .filter_map(|entry| match entry {
+                MenuEntry::Item { label, checked, .. } if entry.is_switch() => {
+                    Some((label.as_str(), *checked))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_menu_lists_optional_views_then_the_sidebar_parts_as_switches() {
+        let mut layout = SidebarLayout::default();
+        layout.toggle_view(EnvironmentView::Kraddies);
+        layout.density = SidebarDensity::Compact;
+        let entries = sidebar_options(&layout);
+        assert_eq!(
+            switches(&entries),
+            [
+                ("Automations", true),
+                ("Kraddies", false),
+                ("Review", true),
+                ("Views", true),
+                ("Branches", true),
+                ("Agent counts", true),
+                (COMPACT_LABEL, true),
+            ]
+        );
+        assert!(matches!(entries.get(3), Some(MenuEntry::Separator)));
+        assert!(entries
+            .iter()
+            .all(|entry| matches!(entry, MenuEntry::Separator) || entry.is_switch()));
     }
 }

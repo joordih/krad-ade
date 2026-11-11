@@ -134,9 +134,10 @@ impl EnvironmentShell {
                     false,
                     TextScale::DEFAULT,
                     pal,
+                    cx,
                 ))
             })
-            .children(sent_mentions(&outgoing.prompt.mentions, pal))
+            .children(sent_mentions(&outgoing.prompt.mentions, pal, cx))
             .child(
                 div()
                     .flex()

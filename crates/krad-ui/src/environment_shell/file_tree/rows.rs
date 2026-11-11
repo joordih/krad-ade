@@ -37,9 +37,9 @@ pub(in crate::environment_shell) const fn change_mark(kind: ChangeKind) -> &'sta
 
 pub(in crate::environment_shell) const fn change_color(kind: ChangeKind, pal: &Palette) -> u32 {
     match kind {
-        ChangeKind::Modified | ChangeKind::Renamed => pal.warning_fg,
-        ChangeKind::Added | ChangeKind::Untracked => pal.success_fg,
-        ChangeKind::Deleted | ChangeKind::Conflicted => pal.error_fg,
+        ChangeKind::Modified | ChangeKind::Renamed => pal.diff_modified,
+        ChangeKind::Added | ChangeKind::Untracked => pal.diff_added,
+        ChangeKind::Deleted | ChangeKind::Conflicted => pal.diff_removed,
     }
 }
 

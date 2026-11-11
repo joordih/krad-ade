@@ -12,6 +12,7 @@ use crate::theme::{Palette, SPACE_1};
 const CONTEXT_WARN_PERCENT: u16 = 80;
 const USAGE_PREFIX: &str = "surface-usage";
 const CONTEXT_LABEL: &str = "Context";
+const CONTEXT_UNMEASURED: &str = "Context: measured after the next reply";
 const PERCENT_SIGN: &str = "%";
 const MILLION: u64 = 1_000_000;
 const THOUSAND: u64 = 1_000;
@@ -39,8 +40,14 @@ pub(super) struct ContextView {
     pub(super) warns: bool,
 }
 
-pub(super) fn context_view(context: Option<u16>) -> Option<ContextView> {
-    let used = context?;
+pub(super) fn context_view(context: Option<u16>, reports: bool) -> Option<ContextView> {
+    let Some(used) = context else {
+        return reports.then(|| ContextView {
+            details: CONTEXT_UNMEASURED.to_owned(),
+            used: 0,
+            warns: false,
+        });
+    };
     Some(ContextView {
         details: format!("{CONTEXT_LABEL} {used}{PERCENT_SIGN}"),
         used: used.min(FULL_PERCENT),
@@ -49,7 +56,7 @@ pub(super) fn context_view(context: Option<u16>) -> Option<ContextView> {
 }
 
 pub(super) fn usage_ring(id: TerminalId, facts: &Facts, pal: &Palette) -> Option<AnyElement> {
-    let view = context_view(facts.context)?;
+    let view = context_view(facts.context, facts.reports_context)?;
     let text = SharedString::from(view.details);
     let tone = if view.warns {
         pal.attention_text
@@ -67,7 +74,6 @@ pub(super) fn usage_ring(id: TerminalId, facts: &Facts, pal: &Palette) -> Option
             .flex_none()
             .items_center()
             .gap(px(SPACE_1))
-            .ml(px(SPACE_1))
             .tooltip(move |_, cx| tooltip_view(text.clone(), cx))
             .child(
                 div().flex_none().size(px(RING_SIZE)).child(
@@ -123,16 +129,28 @@ mod tests {
 
     #[test]
     fn the_ring_shows_only_the_context_and_warns_when_it_fills() {
-        assert_eq!(context_view(None), None);
+        assert_eq!(context_view(None, false), None);
         assert_eq!(
-            context_view(Some(8)),
+            context_view(Some(8), true),
             Some(ContextView {
                 details: "Context 8%".to_owned(),
                 used: 8,
                 warns: false,
             })
         );
-        let full = context_view(Some(130));
+        let full = context_view(Some(130), true);
         assert_eq!(full.map(|view| (view.used, view.warns)), Some((100, true)));
+    }
+
+    #[test]
+    fn a_chat_that_reports_context_shows_an_empty_ring_before_the_first_reply() {
+        assert_eq!(
+            context_view(None, true),
+            Some(ContextView {
+                details: CONTEXT_UNMEASURED.to_owned(),
+                used: 0,
+                warns: false,
+            })
+        );
     }
 }

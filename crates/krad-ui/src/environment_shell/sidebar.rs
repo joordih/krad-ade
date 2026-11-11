@@ -2,20 +2,23 @@ mod bars;
 mod environment;
 mod views;
 
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     div, px, AnyElement, Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
     ParentElement, StatefulInteractiveElement, Styled, Window,
 };
 use std::time::Instant;
 
-use krad_domain::{SidebarPart, SidebarWidth};
+use krad_domain::{EnvironmentView, SidebarPart, SidebarWidth};
 
 use super::drag::DragState;
 use super::EnvironmentShell;
 use crate::actions::ToggleSidebar;
 use crate::components::{icon, tooltip_view, Button, IconName};
 use crate::motion::Spring;
-use crate::theme::{palette, ICON_BUTTON_SM, ICON_XS, RADIUS_XS, SPACE_2, WINDOW_INSET};
+use crate::theme::{
+    palette, sidebar_fill, ICON_BUTTON_SM, ICON_XS, RADIUS_XS, SPACE_2, WINDOW_INSET,
+};
 use crate::title_bar::{LEADING_CONTROLS_END_PX, TITLE_BAR_HEIGHT_PX};
 
 const SIDEBAR_LIST_ID: &str = "sidebar-list";
@@ -309,7 +312,11 @@ impl EnvironmentShell {
             .child(Self::sidebar_header())
             .child(self.environment_header(cx))
             .children(views)
-            .children((!editing).then(|| self.sidebar_kraddies(cx)).flatten())
+            .children(
+                (!editing && self.settings.sidebar.shows_view(EnvironmentView::Kraddies))
+                    .then(|| self.sidebar_kraddies(cx))
+                    .flatten(),
+            )
             .child(list)
             .child(self.sidebar_footer(cx))
     }
@@ -320,12 +327,14 @@ impl EnvironmentShell {
             return div().into_any_element();
         }
         let width = self.sidebar_width();
+        let fill = sidebar_fill(palette(cx), cx);
         div()
             .relative()
             .flex_none()
             .h_full()
             .w(px(width))
             .overflow_hidden()
+            .when_some(fill, Styled::bg)
             .child(
                 div()
                     .absolute()

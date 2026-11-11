@@ -63,6 +63,19 @@ impl AcpModels {
     pub fn offers(&self, id: &AcpModelId) -> bool {
         self.available.iter().any(|model| &model.id == id)
     }
+
+    #[must_use]
+    pub fn answering(&self, wanted: &str) -> Option<&AcpModel> {
+        let wanted = wanted.trim();
+        self.available
+            .iter()
+            .find(|model| model.id.0 == wanted)
+            .or_else(|| {
+                self.available
+                    .iter()
+                    .find(|model| model.name.eq_ignore_ascii_case(wanted))
+            })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -72,11 +85,23 @@ pub struct AcpConfigChoice {
     pub description: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcpConfigCategory {
+    Mode,
+    Model,
+    ThoughtLevel,
+    ModelConfig,
+    #[serde(other)]
+    Other,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AcpConfigOption {
     pub id: AcpConfigOptionId,
     pub name: String,
     pub description: Option<String>,
+    pub category: Option<AcpConfigCategory>,
     pub current: AcpConfigValue,
     pub choices: Vec<AcpConfigChoice>,
 }
@@ -162,6 +187,18 @@ mod tests {
     }
 
     #[test]
+    fn a_wanted_model_is_found_by_its_id_then_by_its_name() {
+        let models = AcpModels {
+            current: AcpModelId("default".to_owned()),
+            available: vec![model("default"), model("opus")],
+        };
+        let found = |wanted: &str| models.answering(wanted).map(|model| model.id.0.clone());
+        assert_eq!(found("opus"), Some("opus".to_owned()));
+        assert_eq!(found(" OPUS "), Some("opus".to_owned()));
+        assert_eq!(found("claude-haiku-4-5"), None);
+    }
+
+    #[test]
     fn a_config_option_shows_its_current_choice_and_offers_only_its_own() {
         let choice = |value: &str| AcpConfigChoice {
             value: AcpConfigValue(value.to_owned()),
@@ -172,6 +209,7 @@ mod tests {
             id: AcpConfigOptionId("effort".to_owned()),
             name: "Effort".to_owned(),
             description: None,
+            category: Some(AcpConfigCategory::ThoughtLevel),
             current: AcpConfigValue("high".to_owned()),
             choices: vec![choice("low"), choice("high")],
         };

@@ -25,7 +25,7 @@ use crate::theme::{
 
 const SESSION_ROW_PREFIX: &str = "session-row";
 const SESSION_CLOSE_PREFIX: &str = "close-session-";
-const CLOSE_SESSION_TOOLTIP: &str = "Close session; its terminals move to another one";
+const CLOSE_SESSION_TOOLTIP: &str = "Close session; its terminals and chats close with it";
 const SESSION_MUTE_PREFIX: &str = "mute-session-";
 const MUTE_SESSION_TOOLTIP: &str = "Mute notifications and sounds from this session";
 const UNMUTE_SESSION_TOOLTIP: &str = "Notify again about this session";
@@ -86,7 +86,6 @@ impl EnvironmentShell {
                     ),
                     frame: self.kraddies_frame(),
                     active: live.data.active_session == Some(session.id),
-                    closable: live.data.can_close_session(session.id),
                     harness: Self::harness_of(live, session)
                         .map(|harness| self.settings.acp.harness_name(harness)),
                     spent: spend_caption(&live.data.session_spend(session)),
@@ -268,7 +267,7 @@ impl EnvironmentShell {
                         this.toggle_session_attention(id, cx);
                     }))
             })
-            .when(row.closable && row.active, |element| {
+            .when(row.active, |element| {
                 element.child(
                     Button::new(SharedString::from(format!("{SESSION_CLOSE_PREFIX}{raw}")))
                         .icon(IconName::Close)
@@ -289,6 +288,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
+        let view = self.settings.sidebar.reachable_view(view);
         if let Some(live) = self.envs.get_mut(&env) {
             live.data.view = view;
         }
@@ -307,9 +307,22 @@ impl EnvironmentShell {
     }
 
     fn select_session(&mut self, id: SessionId, cx: &mut Context<Self>) {
+        self.leave_main_overlays();
         self.with_sessions(cx, |live| {
-            live.data.select_session(id);
+            live.data.show_session(id);
         });
+    }
+
+    pub(super) fn leave_main_overlays(&mut self) {
+        self.drop_settings();
+        let env = self.active.clone();
+        let extension = self
+            .envs
+            .get_mut(&env)
+            .and_then(|live| live.extension_sidebar.take());
+        if extension.is_some() {
+            self.remember_extension_views(&env);
+        }
     }
 
     pub(super) fn new_session(
@@ -318,28 +331,22 @@ impl EnvironmentShell {
         spec: SessionSpec,
         cx: &mut Context<Self>,
     ) {
+        self.leave_main_overlays();
         self.with_sessions(cx, |live| {
-            live.data.new_session(group, spec);
+            let id = live.data.new_session(group, spec);
+            live.data.show_session(id);
         });
         self.capture_session_baseline(cx);
     }
 
     pub(super) fn close_session(&mut self, id: SessionId, cx: &mut Context<Self>) {
         let env = self.active.clone();
-        let workers: Vec<TerminalId> = self
+        let held: Vec<TerminalId> = self
             .envs
             .get(&env)
-            .and_then(|live| {
-                let session = live.data.session(id)?;
-                let held = session_terminals(session).filter(|terminal| {
-                    live.data
-                        .worker(*terminal)
-                        .is_some_and(|(_, worker)| worker.session == Some(id))
-                });
-                Some(held.collect())
-            })
-            .unwrap_or_default();
-        for terminal in workers {
+            .and_then(|live| live.data.session(id))
+            .map_or_default(|session| session_terminals(session).collect());
+        for terminal in held {
             self.close_terminal_in(&env, terminal, cx);
         }
         self.with_sessions(cx, |live| {
@@ -354,7 +361,6 @@ struct SessionRow<'a> {
     kraddie: Option<Rc<KraddieSprite>>,
     frame: u64,
     active: bool,
-    closable: bool,
     harness: Option<Cow<'static, str>>,
     spent: Option<String>,
     density: SidebarDensity,

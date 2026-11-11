@@ -238,12 +238,12 @@ impl EnvironmentShell {
                     .text_size(px(TEXT_XS))
                     .child(
                         div()
-                            .text_color(rgb(pal.success_fg))
+                            .text_color(rgb(pal.diff_added))
                             .child(format!("{ADDED_SIGN}{}", file.lines.added)),
                     )
                     .child(
                         div()
-                            .text_color(rgb(pal.error_fg))
+                            .text_color(rgb(pal.diff_removed))
                             .child(format!("{REMOVED_SIGN}{}", file.lines.removed)),
                     ),
             )

@@ -1,8 +1,11 @@
 mod layout;
+mod marks;
+
+pub(super) use marks::mark;
 mod view;
 
 use gpui_kit::{Capslock, Context, FocusHandle, KeyDownEvent, SharedString, Window};
-use krad_chat::ModelSource;
+use krad_chat::{ModelSource, SourceRank};
 use krad_domain::{AgentPreset, ContextSize, ModelId, TerminalId};
 
 use super::surface::SurfaceCommand;
@@ -28,6 +31,36 @@ pub(super) struct ModelChoice {
     pub(super) recommended: bool,
     pub(super) context: Option<ContextSize>,
     pub(super) missing: bool,
+    pub(super) marks: ModelMarks,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct ModelMarks {
+    pub(super) favorite: bool,
+    pub(super) default: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Shelf<'a> {
+    Favorites,
+    Source(Option<&'a ModelSource>),
+}
+
+impl ModelChoice {
+    pub(super) fn shelf(&self) -> Shelf<'_> {
+        if self.marks.favorite {
+            Shelf::Favorites
+        } else {
+            Shelf::Source(self.section.as_ref())
+        }
+    }
+
+    fn order(&self) -> (bool, Option<SourceRank>) {
+        (
+            !self.marks.favorite,
+            self.section.as_ref().map(ModelSource::rank),
+        )
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -103,7 +136,7 @@ impl Choosing {
                     })
                     .collect()
             });
-        shown.sort_by_key(|choice| choice.section.as_ref().map(ModelSource::rank));
+        shown.sort_by_key(|choice| choice.order());
         shown
     }
 
@@ -186,6 +219,7 @@ impl EnvironmentShell {
     ) {
         for group in &mut groups {
             group.name = self.settings.acp.harness_name(group.harness).into();
+            marks::mark(group, &self.settings.model_preferences);
         }
         if groups
             .iter()

@@ -1,7 +1,7 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, ease_out_quint, px, rgb, Animation, AnimationExt as _, AnyElement, Context, ElementId,
-    FontWeight, InteractiveElement, IntoElement, ParentElement, SharedString,
+    div, ease_out_quint, px, rgb, Animation, AnimationExt as _, AnyElement, App, Context,
+    ElementId, FontWeight, InteractiveElement, IntoElement, ParentElement, SharedString,
     StatefulInteractiveElement, Styled,
 };
 use krad_chat::ToolCall;
@@ -16,8 +16,8 @@ use super::edit_diff::{edit_counts, edit_diffs};
 use super::tool_output::tool_output;
 use crate::components::{icon, shimmer_text, IconName};
 use crate::theme::{
-    palette, Palette, CHIP_H, ICON_SM, ICON_XS, LINE_SM, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2,
-    TEXT_SM, TEXT_XS,
+    level_fill, palette, Palette, SurfaceLevel, CHIP_H, ICON_SM, ICON_XS, LINE_SM, RADIUS_XS,
+    SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM, TEXT_XS,
 };
 
 const HEADER_PREFIX: &str = "surface-tools";
@@ -150,7 +150,7 @@ fn one_line(summary: &str) -> String {
     format!("{first}{CUT_MARK}")
 }
 
-fn file_chip(path: &str, pal: &Palette) -> AnyElement {
+fn file_chip(path: &str, pal: &Palette, cx: &App) -> AnyElement {
     let name = Path::new(path).file_name().map_or_else(
         || path.to_owned(),
         |name| name.to_string_lossy().into_owned(),
@@ -164,7 +164,7 @@ fn file_chip(path: &str, pal: &Palette) -> AnyElement {
         .h(px(CHIP_H))
         .px(px(SPACE_1_5))
         .rounded(px(RADIUS_XS))
-        .bg(rgb(pal.bg_panel))
+        .bg(level_fill(SurfaceLevel::Pane, pal.bg_panel, cx))
         .border_1()
         .border_color(pal.divider)
         .text_color(rgb(pal.text_strong))
@@ -211,6 +211,7 @@ fn call_row(
     last: bool,
     mono: &SharedString,
     pal: &Palette,
+    cx: &App,
 ) -> gpui_kit::Div {
     let kind = ToolLook::from(call.kind);
     let verb = match kind {
@@ -218,7 +219,7 @@ fn call_row(
         _ => kind.wording().row.to_owned(),
     };
     let target = if kind.names_file() && !call.summary.is_empty() {
-        file_chip(&call.summary, pal)
+        file_chip(&call.summary, pal, cx)
     } else {
         div()
             .min_w_0()
@@ -259,8 +260,8 @@ fn call_row(
         .pl(px(ELBOW_W + SPACE_1_5))
         .child(rail(last, pal))
         .child(line)
-        .children(edit_diffs(&call.edits, mono, pal))
-        .children(output.map(|output| tool_output(output, mono, pal)))
+        .children(edit_diffs(&call.edits, mono, pal, cx))
+        .children(output.map(|output| tool_output(output, mono, pal, cx)))
 }
 
 impl EnvironmentShell {
@@ -330,7 +331,7 @@ impl EnvironmentShell {
         let last = calls.len().saturating_sub(1);
         let rows = calls.iter().enumerate().map(|(position, (part, call))| {
             let output = call.id.as_ref().and_then(|tool| rows.outputs.get(tool));
-            let row = call_row(call, output, position == last, mono, pal);
+            let row = call_row(call, output, position == last, mono, pal, cx);
             if !running {
                 return row.into_any_element();
             }

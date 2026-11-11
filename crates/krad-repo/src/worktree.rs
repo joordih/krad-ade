@@ -1,3 +1,7 @@
+mod planned;
+mod removal;
+mod state;
+
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
@@ -8,6 +12,10 @@ use krad_host::HostLink;
 use crate::git::run_git;
 use crate::status::status;
 use crate::RepoError;
+
+pub use planned::{add_planned_worktree, planned_worktree_path, PlannedWorktree};
+pub use removal::{discard_worktree, remove_merged_worktree};
+pub use state::worktree_state;
 
 const WORKTREES_FOLDER_SUFFIX: &str = ".worktrees";
 const START_POINT: &str = "HEAD";

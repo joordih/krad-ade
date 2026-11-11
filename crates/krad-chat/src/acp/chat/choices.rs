@@ -1,9 +1,9 @@
 use krad_domain::{
-    AcpConfigChoice, AcpConfigOption, AcpConfigValue, AcpMode, AcpModeId, AcpModel, AcpModelId,
-    AcpModels, AcpModes,
+    AcpConfigCategory, AcpConfigChoice, AcpConfigOption, AcpConfigValue, AcpMode, AcpModeId,
+    AcpModel, AcpModelId, AcpModels, AcpModes,
 };
 
-use crate::acp::config::{ConfigCategory, ConfigKind, SessionConfigOption};
+use crate::acp::config::{ConfigKind, SessionConfigOption};
 use crate::acp::ids::ConfigOptionId;
 use crate::acp::setup::{SessionModeState, SessionModelState};
 
@@ -93,6 +93,7 @@ fn other_option(option: &SessionConfigOption) -> AcpConfigOption {
         id: option.id.clone(),
         name: option.name.clone(),
         description: option.description.clone(),
+        category: option.category,
         current: AcpConfigValue(option.current_value.clone()),
         choices: option
             .choices()
@@ -107,13 +108,11 @@ fn other_option(option: &SessionConfigOption) -> AcpConfigOption {
 
 fn selected(
     options: &[SessionConfigOption],
-    category: &ConfigCategory,
+    category: AcpConfigCategory,
 ) -> Option<SessionConfigOption> {
     options
         .iter()
-        .find(|option| {
-            option.kind == ConfigKind::Select && option.category.as_ref() == Some(category)
-        })
+        .find(|option| option.kind == ConfigKind::Select && option.category == Some(category))
         .cloned()
 }
 
@@ -139,8 +138,8 @@ impl Choices {
     }
 
     pub(super) fn configure(&mut self, config: &[SessionConfigOption]) {
-        let mode = selected(config, &ConfigCategory::Mode);
-        let model = selected(config, &ConfigCategory::Model);
+        let mode = selected(config, AcpConfigCategory::Mode);
+        let model = selected(config, AcpConfigCategory::Model);
         let taken = |option: &SessionConfigOption| {
             [&mode, &model]
                 .into_iter()
@@ -178,6 +177,18 @@ impl Choices {
             .any(|option| &option.id == id && option.offers(value))
     }
 
+    pub(super) fn other_is_already(&self, id: &ConfigOptionId, value: &AcpConfigValue) -> bool {
+        self.others
+            .iter()
+            .any(|option| &option.id == id && &option.current == value)
+    }
+
+    pub(super) fn option_is(&mut self, id: &ConfigOptionId, current: AcpConfigValue) {
+        if let Some(option) = self.others.iter_mut().find(|option| &option.id == id) {
+            option.current = current;
+        }
+    }
+
     pub(super) fn model_is(&mut self, current: AcpModelId) -> Option<&AcpModels> {
         let models = &mut self.models.as_mut()?.offer;
         models.current = current;
@@ -188,6 +199,7 @@ impl Choices {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use krad_domain::AcpOptionRole;
     use serde_json::json;
 
     fn config(value: serde_json::Value) -> Vec<SessionConfigOption> {
@@ -242,6 +254,43 @@ mod tests {
                 .and_then(|models| models.offer.current_model().map(|model| model.name.clone())),
             Some("Big Pickle".to_owned())
         );
+    }
+
+    #[test]
+    fn claude_agent_acp_s_options_keep_their_category_for_the_composer() {
+        let options = config(json!([
+            {"id": "mode", "name": "Mode", "category": "mode", "type": "select", "currentValue": "auto",
+             "options": [{"value": "default", "name": "Manual"}, {"value": "auto", "name": "Auto"}]},
+            {"id": "model", "name": "Model", "category": "model", "type": "select", "currentValue": "opus",
+             "options": [{"value": "default", "name": "Default (recommended)"}, {"value": "opus", "name": "Opus 5.5"}]},
+            {"id": "effort", "name": "Effort", "category": "thought_level", "type": "select",
+             "currentValue": "medium",
+             "options": [{"value": "default", "name": "Default"}, {"value": "low", "name": "Low"},
+                         {"value": "medium", "name": "Medium"}, {"value": "high", "name": "High"},
+                         {"value": "xhigh", "name": "Xhigh"}, {"value": "max", "name": "Max"}]},
+            {"id": "fast", "name": "Fast mode", "category": "model_config", "type": "select",
+             "currentValue": "off", "options": [{"value": "on", "name": "On"}, {"value": "off", "name": "Off"}]},
+            {"id": "ultracode", "name": "Ultracode", "category": "model_config", "type": "select",
+             "currentValue": "off", "options": [{"value": "on", "name": "On"}, {"value": "off", "name": "Off"}]},
+            {"id": "agent", "name": "Agent", "type": "select", "currentValue": "default",
+             "options": [{"value": "default", "name": "Default"}]}
+        ]));
+        let choices = Choices::reported(None, None, &options);
+        let roles: Vec<(&str, AcpOptionRole)> = choices
+            .others
+            .iter()
+            .map(|option| (option.id.0.as_str(), option.role()))
+            .collect();
+        assert_eq!(
+            roles,
+            [
+                ("effort", AcpOptionRole::Effort),
+                ("fast", AcpOptionRole::Fast),
+                ("ultracode", AcpOptionRole::Ultracode),
+                ("agent", AcpOptionRole::Persona),
+            ]
+        );
+        assert!(choices.modes.is_some() && choices.models.is_some());
     }
 
     #[test]

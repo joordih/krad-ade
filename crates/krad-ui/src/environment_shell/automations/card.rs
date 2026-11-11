@@ -13,8 +13,8 @@ use crate::components::motion::{fade_in, idle_bob, PULSE_FPS, PULSE_PERIOD};
 use crate::components::{icon, toggle_switch, Button, IconName};
 use crate::kraddie_avatar::kraddie_avatar;
 use crate::theme::{
-    row_fill, row_shadow, tinted, Palette, ICON_SM, LINE_SM, LINE_XS, RADIUS_LG, RADIUS_MD,
-    SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3, TEXT_SM, TEXT_XS,
+    level_fill, row_fill, row_shadow, tinted, Palette, SurfaceLevel, ICON_SM, LINE_SM, LINE_XS,
+    RADIUS_LG, RADIUS_MD, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3, TEXT_SM, TEXT_XS,
 };
 
 const CARD_PREFIX: &str = "automation-card";
@@ -310,7 +310,7 @@ impl EnvironmentShell {
             .rounded(px(RADIUS_LG))
             .border_1()
             .border_color(ring)
-            .bg(rgb(pal.bg_panel))
+            .bg(level_fill(SurfaceLevel::Pane, pal.bg_panel, cx))
             .cursor_pointer()
             .when(!card.on_duty(), |tile| tile.opacity(PRESSED_OPACITY))
             .hover(move |style| style.border_color(tinted(accent, HOVER_RING_ALPHA)))

@@ -128,6 +128,8 @@ struct ListedModel {
     id: String,
     #[serde(default)]
     owned_by: Option<String>,
+    #[serde(default)]
+    display_name: Option<String>,
 }
 
 impl ListedModel {
@@ -135,10 +137,16 @@ impl ListedModel {
         let id = ModelId::parse(&self.id)?;
         let owner = self.owned_by.filter(|owner| !owner.trim().is_empty());
         let vendor = owner.as_deref().map_or_default(Vendor::from);
+        let name = self
+            .display_name
+            .map(|name| name.trim().to_owned())
+            .filter(|name| !name.is_empty())
+            .or_else(|| humanize_model_id(id.as_str()))
+            .unwrap_or_else(|| id.as_str().to_owned());
         Some(GatewayModel {
             offer: ModelOffer {
                 value: id.as_str().to_owned(),
-                name: humanize_model_id(id.as_str()).unwrap_or_else(|| id.as_str().to_owned()),
+                name,
                 efforts: Protocol::from(vendor).efforts().to_vec(),
                 source: vendor
                     .label()
@@ -210,6 +218,22 @@ mod tests {
             Some(ModelSource::Provider(OPENAI_LABEL.to_owned()))
         );
         assert_eq!(models[0].offer.name, "GPT-5");
+        Ok(())
+    }
+
+    #[test]
+    fn a_display_name_from_the_gateway_wins_over_the_humanized_id() -> serde_json::Result<()> {
+        let list: ModelList = serde_json::from_str(
+            r#"{"data":[
+                {"id":"claude-fable-5-2","owned_by":"anthropic","display_name":"Claude Fable 5.2"},
+                {"id":"gpt-7-nova","owned_by":"openai","display_name":"  "}
+            ]}"#,
+        )?;
+        let names: Vec<String> = read_models(list)
+            .into_iter()
+            .map(|model| model.offer.name)
+            .collect();
+        assert_eq!(names, ["Claude Fable 5.2", "GPT-7 Nova"]);
         Ok(())
     }
 

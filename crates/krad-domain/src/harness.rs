@@ -2,10 +2,12 @@ mod capabilities;
 mod health;
 mod hooks;
 mod inherited_env;
+mod stand_in;
 pub use capabilities::*;
 pub use health::*;
 pub use hooks::*;
 pub use inherited_env::INHERITED_SESSION_VARS;
+pub use stand_in::{OfferedTwin, OFFERED_TWIN};
 
 use crate::agent::{AgentPreset, AgentState};
 use crate::ids::ResumeId;

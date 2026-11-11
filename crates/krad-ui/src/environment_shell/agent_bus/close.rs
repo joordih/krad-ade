@@ -220,7 +220,9 @@ impl EnvironmentShell {
                 .ok()
         });
         if let Some(plan) = plan {
+            self.note_agent_finished_in(env, plan.worktree);
             self.close_planned(env, &plan, cx);
+            self.sweep_merged_worktrees(cx);
         }
     }
 

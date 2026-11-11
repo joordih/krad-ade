@@ -15,7 +15,9 @@ use super::super::EnvironmentShell;
 use crate::components::motion::drop_in;
 use crate::components::{icon, tooltip_view, IconName};
 use crate::kraddie_avatar::{kraddie_avatar, KraddieSprite};
-use crate::theme::{palette, ICON_XS, LINE_XS, SPACE_1, SPACE_1_5, SPACE_2, TEXT_XS};
+use crate::theme::{
+    level_fill, palette, SurfaceLevel, ICON_XS, LINE_XS, SPACE_1, SPACE_1_5, SPACE_2, TEXT_XS,
+};
 
 const CHIP_PREFIX: &str = "kraddie-chip";
 const CHIP_REMOVE_PREFIX: &str = "kraddie-chip-remove";
@@ -201,7 +203,7 @@ impl EnvironmentShell {
                 .rounded_full()
                 .border_1()
                 .border_color(pal.border)
-                .bg(rgb(pal.bg_surface))
+                .bg(level_fill(SurfaceLevel::Pane, pal.bg_surface, cx))
                 .text_size(px(TEXT_XS))
                 .line_height(px(LINE_XS))
                 .text_color(rgb(pal.text_strong))

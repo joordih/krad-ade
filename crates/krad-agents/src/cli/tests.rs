@@ -50,7 +50,7 @@ fn spawn_needs_an_agent_and_a_task() -> Result<(), CliError> {
         ("acp:opencode", acp("opencode")),
         ("gemini", acp("gemini")),
         ("codex-acp", acp("codex-acp")),
-        ("Claude Code (ACP)", acp("claude-code-acp")),
+        ("claude-code-acp", acp("claude-code-acp")),
     ] {
         assert_eq!(spawned_agent(Some(name)), Ok(agent));
     }

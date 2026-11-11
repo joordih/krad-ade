@@ -6,20 +6,17 @@ mod signature;
 mod snippet;
 
 use gpui_kit::component::input::EditorState;
-use gpui_kit::{px, AnyElement, App, Bounds, Context, Div, Entity, Pixels, Styled, Window};
+use gpui_kit::{px, size, AnyElement, App, Bounds, Context, Div, Entity, Pixels, Styled, Window};
 use krad_domain::TerminalId;
 use std::ops::Range;
 
 use super::language_servers::Document;
 use super::EnvironmentShell;
-use crate::theme::{popover_fill, popover_shadow, Palette, SPACE_1_5};
+use crate::components::floating::{self, floating_panel, Anchor, Edge, Placed, Side};
+use crate::theme::Palette;
 pub(super) use code_actions::ActionMenu;
 pub(super) use hover::HoverCard;
 pub(super) use signature::SignatureCard;
-
-const POPOVER_RADIUS: f32 = 12.0;
-const POPOVER_GAP: f32 = 4.0;
-const EDGE_MARGIN: f32 = 8.0;
 
 pub(super) enum EditorPopover {
     Hover(HoverCard),
@@ -38,24 +35,22 @@ impl EditorPopover {
 }
 
 fn popover_panel(pal: &Palette, cx: &App) -> Div {
-    gpui_kit::div()
-        .absolute()
-        .flex()
-        .flex_col()
-        .p(px(SPACE_1_5))
-        .rounded(px(POPOVER_RADIUS))
-        .bg(popover_fill(pal, cx))
-        .border_1()
-        .border_color(pal.divider)
-        .shadow(popover_shadow(pal, cx))
+    floating_panel(pal, cx)
 }
 
-#[derive(Clone, Copy)]
-struct Placement {
-    left: f32,
-    top: Option<f32>,
-    bottom: Option<f32>,
-    max_height: f32,
+fn place_on(
+    side: Side,
+    anchor: Bounds<Pixels>,
+    inset: (f32, f32),
+    root: (f32, f32),
+    wanted: (f32, f32),
+) -> Placed {
+    floating::place(
+        Anchor::Bounds(anchor).relative_to(inset),
+        size(px(wanted.0), px(wanted.1)),
+        size(px(root.0), px(root.1)),
+        side,
+    )
 }
 
 fn place(
@@ -63,30 +58,8 @@ fn place(
     inset: (f32, f32),
     root: (f32, f32),
     wanted: (f32, f32),
-) -> Placement {
-    let (width, height) = wanted;
-    let left = (anchor.left().as_f32() - inset.0)
-        .min(root.0 - width - EDGE_MARGIN)
-        .max(EDGE_MARGIN);
-    let below = anchor.bottom().as_f32() - inset.1 + POPOVER_GAP;
-    let above = anchor.top().as_f32() - inset.1 - POPOVER_GAP;
-    let room_below = root.1 - below - EDGE_MARGIN;
-    let room_above = above - EDGE_MARGIN;
-    if room_below >= height || room_below >= room_above {
-        Placement {
-            left,
-            top: Some(below),
-            bottom: None,
-            max_height: room_below.min(height).max(0.0),
-        }
-    } else {
-        Placement {
-            left,
-            top: None,
-            bottom: Some(root.1 - above),
-            max_height: room_above.min(height).max(0.0),
-        }
-    }
+) -> Placed {
+    place_on(Side::Below, anchor, inset, root, wanted)
 }
 
 fn place_above(
@@ -94,31 +67,17 @@ fn place_above(
     inset: (f32, f32),
     root: (f32, f32),
     wanted: (f32, f32),
-) -> Placement {
-    let below = place(anchor, inset, root, wanted);
-    let above = anchor.top().as_f32() - inset.1 - POPOVER_GAP;
-    if above - EDGE_MARGIN >= wanted.1 || below.top.is_none() {
-        return Placement {
-            top: None,
-            bottom: Some(root.1 - above),
-            max_height: (above - EDGE_MARGIN).min(wanted.1).max(0.0),
-            ..below
-        };
-    }
-    below
+) -> Placed {
+    place_on(Side::Above, anchor, inset, root, wanted)
 }
 
-fn placed(panel: Div, placement: Placement) -> Div {
+fn placed(panel: Div, placement: Placed) -> Div {
     let panel = panel
         .left(px(placement.left))
         .max_h(px(placement.max_height));
-    let panel = match placement.top {
-        Some(top) => panel.top(px(top)),
-        None => panel,
-    };
-    match placement.bottom {
-        Some(bottom) => panel.bottom(px(bottom)),
-        None => panel,
+    match placement.edge {
+        Edge::Top(top) => panel.top(px(top)),
+        Edge::Bottom(bottom) => panel.bottom(px(bottom)),
     }
 }
 
@@ -178,7 +137,8 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui_kit::{point, size};
+    use crate::theme::FLOATING_EDGE_MARGIN;
+    use gpui_kit::point;
 
     fn line(top: f32) -> Bounds<Pixels> {
         Bounds::new(point(px(100.0), px(top)), size(px(40.0), px(20.0)))
@@ -188,12 +148,20 @@ mod tests {
     fn a_popover_opens_below_its_line_unless_only_the_room_above_fits_it() {
         let root = (1000.0, 800.0);
         let below = place(line(100.0), (0.0, 0.0), root, (400.0, 300.0));
-        assert_eq!(below.top, Some(124.0));
+        assert_eq!(below.edge, Edge::Top(124.0));
         assert!((below.max_height - 300.0).abs() < f32::EPSILON);
         let above = place(line(700.0), (0.0, 0.0), root, (400.0, 300.0));
-        assert_eq!(above.top, None);
-        assert_eq!(above.bottom, Some(104.0));
+        assert_eq!(above.edge, Edge::Bottom(104.0));
         let pushed = place(line(100.0), (0.0, 0.0), (300.0, 800.0), (400.0, 300.0));
-        assert!((pushed.left - EDGE_MARGIN).abs() < f32::EPSILON);
+        assert!((pushed.left - FLOATING_EDGE_MARGIN).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn a_signature_card_prefers_the_room_above_its_line() {
+        let root = (1000.0, 800.0);
+        let above = place_above(line(400.0), (0.0, 0.0), root, (400.0, 200.0));
+        assert_eq!(above.edge, Edge::Bottom(404.0));
+        let below = place_above(line(50.0), (0.0, 0.0), root, (400.0, 200.0));
+        assert_eq!(below.edge, Edge::Top(74.0));
     }
 }

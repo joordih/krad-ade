@@ -16,8 +16,8 @@ use super::view::{column, muted_line};
 use super::SurfaceChat;
 use crate::components::{agent_status, icon, CopyFeedback, IconName, StatusKind};
 use crate::theme::{
-    palette, Palette, ICON_SM, LINE_SM, LINE_XS, RADIUS_MD, SPACE_1_5, SPACE_2, SPACE_3, TEXT_SM,
-    TEXT_XS, VIEW_HEADER_H,
+    level_fill, palette, Palette, SurfaceLevel, ICON_SM, LINE_SM, LINE_XS, RADIUS_MD, SPACE_1_5,
+    SPACE_2, SPACE_3, TEXT_SM, TEXT_XS, VIEW_HEADER_H,
 };
 
 const CARD_PREFIX: &str = "surface-subagent";
@@ -104,7 +104,7 @@ impl EnvironmentShell {
             .px(px(SPACE_3))
             .py(px(SPACE_2))
             .rounded(px(RADIUS_MD))
-            .bg(rgb(pal.bg_panel))
+            .bg(level_fill(SurfaceLevel::Pane, pal.bg_panel, cx))
             .cursor_pointer()
             .hover(|style| style.bg(pal.bg_hover))
             .text_size(px(TEXT_SM))
@@ -178,6 +178,7 @@ impl EnvironmentShell {
                         false,
                         TextScale::DEFAULT,
                         pal,
+                        cx,
                     )
                 }
                 Speaker::Assistant => {

@@ -1,10 +1,17 @@
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::{div, px, rgb, AnyElement, IntoElement, ParentElement, SharedString, Styled};
+use gpui_kit::{div, px, rgb, AnyElement, App, IntoElement, ParentElement, SharedString, Styled};
 
 use super::super::chat::ShownOutput;
-use crate::theme::{Palette, LINE_XS, RADIUS_SM, SPACE_1, SPACE_2, TEXT_XS};
+use crate::theme::{
+    level_fill, Palette, SurfaceLevel, LINE_XS, RADIUS_SM, SPACE_1, SPACE_2, TEXT_XS,
+};
 
-pub(super) fn tool_output(output: &ShownOutput, mono: &SharedString, pal: &Palette) -> AnyElement {
+pub(super) fn tool_output(
+    output: &ShownOutput,
+    mono: &SharedString,
+    pal: &Palette,
+    cx: &App,
+) -> AnyElement {
     div()
         .flex()
         .flex_col()
@@ -13,7 +20,7 @@ pub(super) fn tool_output(output: &ShownOutput, mono: &SharedString, pal: &Palet
         .px(px(SPACE_2))
         .rounded(px(RADIUS_SM))
         .overflow_hidden()
-        .bg(rgb(pal.bg_surface))
+        .bg(level_fill(SurfaceLevel::Pane, pal.bg_surface, cx))
         .font_family(mono.clone())
         .text_size(px(TEXT_XS))
         .line_height(px(LINE_XS))

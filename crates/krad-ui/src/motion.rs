@@ -1,3 +1,17 @@
+mod easing;
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "macos")]
+mod macos;
+mod preference;
+mod tween;
+#[cfg(windows)]
+mod windows;
+
+pub(crate) use easing::{ease_out_cubic, ease_out_emphasized, Easing, LAYOUT_SHIFT, THEME_FADE};
+pub(crate) use preference::follow_motion_preference;
+pub(crate) use tween::Tween;
+
 use std::f32::consts::TAU;
 
 const MAX_SUBSTEP: f32 = 1.0 / 240.0;

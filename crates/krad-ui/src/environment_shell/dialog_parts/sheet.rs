@@ -4,14 +4,16 @@ use gpui_kit::{
 };
 
 use super::super::EnvironmentShell;
+use crate::components::floating::{backdrop_fade, dialog_backdrop, dialog_enter, dialog_surface};
 use crate::components::{Button, ButtonVariant, IconName};
 use crate::theme::{
-    floating_shadow, palette, scrim_fill, Palette, LINE_LG, LINE_SM, LINE_XS, RADIUS_LG, SPACE_0_5,
-    SPACE_2, SPACE_3, SPACE_6, TEXT_LG, TEXT_SM, TEXT_XS,
+    palette, Palette, LINE_LG, LINE_SM, LINE_XS, RADIUS_LG, SPACE_0_5, SPACE_2, SPACE_3, SPACE_6,
+    TEXT_LG, TEXT_SM, TEXT_XS,
 };
 
 const SHEET_MARGIN: f32 = 32.0;
-const SHEET_RADIUS: f32 = 16.0;
+const BACKDROP_MOTION_ID: &str = "dialog-backdrop";
+const SHEET_MOTION_ID: &str = "dialog-sheet";
 const TITLE_H: f32 = 60.0;
 const SECTION_GAP: f32 = 28.0;
 const SECTION_HEADER_GAP: f32 = 10.0;
@@ -26,7 +28,7 @@ pub(in crate::environment_shell) type Dismiss =
     fn(&mut EnvironmentShell, &mut Window, &mut Context<EnvironmentShell>);
 
 pub(in crate::environment_shell) fn sheet_overlay(
-    sheet: impl IntoElement,
+    sheet: impl IntoElement + Styled + 'static,
     dismiss: Dismiss,
     cx: &mut Context<EnvironmentShell>,
 ) -> AnyElement {
@@ -38,7 +40,6 @@ pub(in crate::environment_shell) fn sheet_overlay(
         .items_center()
         .justify_center()
         .p(px(SHEET_MARGIN))
-        .bg(scrim_fill(pal, cx))
         .occlude()
         .on_mouse_down(
             MouseButton::Left,
@@ -46,23 +47,16 @@ pub(in crate::environment_shell) fn sheet_overlay(
                 dismiss(this, window, cx);
             }),
         )
-        .child(sheet)
+        .child(backdrop_fade(BACKDROP_MOTION_ID, dialog_backdrop(pal, cx)))
+        .child(dialog_enter(SHEET_MOTION_ID, sheet))
         .into_any_element()
 }
 
 pub(in crate::environment_shell) fn sheet_panel(width: f32, pal: &Palette) -> Div {
-    div()
-        .flex()
-        .flex_col()
+    dialog_surface(pal)
         .w_full()
         .max_w(px(width))
         .max_h_full()
-        .rounded(px(SHEET_RADIUS))
-        .bg(rgb(pal.bg_surface))
-        .border_1()
-        .border_color(pal.border)
-        .shadow(floating_shadow(pal))
-        .overflow_hidden()
         .occlude()
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 }

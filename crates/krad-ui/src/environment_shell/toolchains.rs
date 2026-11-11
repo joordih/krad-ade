@@ -38,6 +38,10 @@ pub(super) struct Toolchains {
 }
 
 impl Toolchains {
+    pub(super) const fn entry_shown(&self) -> bool {
+        self.entry.is_some()
+    }
+
     pub(super) fn with_choices(choices: ToolchainChoices) -> Self {
         Self {
             choices,

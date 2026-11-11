@@ -1,8 +1,10 @@
 mod native;
+mod navigation;
+mod rows;
 mod search;
 mod view;
 
-use gpui_kit::{Context, FocusHandle, Window};
+use gpui_kit::{App, Context, FocusHandle, Window};
 use krad_domain::{
     AgentPreset, EnvironmentData, EnvironmentName, GroupActivation, GroupId, PermissionMode,
     SessionId, TerminalId, ToolchainChoice, ToolchainScope, WorktreeOrigin,
@@ -54,6 +56,7 @@ pub(super) enum MenuAction {
     SetFont(super::settings_view::FontZone, Option<String>),
     RebaseTheme(krad_domain::ThemeId),
     ChooseTheme(krad_domain::ThemeAppearance, krad_domain::ThemeId),
+    ChooseEnvironmentTheme(krad_domain::ThemeAppearance, Option<krad_domain::ThemeId>),
     NewGroup,
     OpenSettings,
     ChooseToolchain(Box<ToolchainChoice>),
@@ -66,6 +69,7 @@ pub(super) enum MenuAction {
     PinTab(TerminalId),
     ToggleSidebarPart(krad_domain::SidebarPart),
     ToggleSidebarDensity,
+    ToggleSidebarView(krad_domain::EnvironmentView),
     CloseTabs(TerminalId, krad_domain::TabClosing),
     Extension(Box<super::extensions::ExtensionMenu>),
     CopyChat(ChatCopy),
@@ -115,6 +119,13 @@ pub(super) struct Submenu {
     create: Option<MenuCreate>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum CheckStyle {
+    #[default]
+    Tick,
+    Switch,
+}
+
 #[derive(Clone)]
 pub(super) enum MenuEntry {
     Item {
@@ -122,6 +133,7 @@ pub(super) enum MenuEntry {
         icon: Option<IconName>,
         action: MenuAction,
         checked: bool,
+        check_style: CheckStyle,
         destructive: bool,
         disabled: bool,
         detail: Option<String>,
@@ -146,6 +158,7 @@ impl MenuEntry {
             icon,
             action,
             checked: false,
+            check_style: CheckStyle::Tick,
             destructive: false,
             disabled: false,
             detail: None,
@@ -161,6 +174,7 @@ impl MenuEntry {
             icon: None,
             action,
             checked,
+            check_style: CheckStyle::Tick,
             destructive: false,
             disabled: false,
             detail: None,
@@ -168,6 +182,37 @@ impl MenuEntry {
             key: None,
             options: Vec::new(),
         }
+    }
+
+    pub(super) fn switch(
+        label: impl Into<String>,
+        icon: IconName,
+        on: bool,
+        action: MenuAction,
+    ) -> Self {
+        Self::Item {
+            label: label.into(),
+            icon: Some(icon),
+            action,
+            checked: on,
+            check_style: CheckStyle::Switch,
+            destructive: false,
+            disabled: false,
+            detail: None,
+            trailing: None,
+            key: None,
+            options: Vec::new(),
+        }
+    }
+
+    pub(super) const fn is_switch(&self) -> bool {
+        matches!(
+            self,
+            Self::Item {
+                check_style: CheckStyle::Switch,
+                ..
+            }
+        )
     }
 
     pub(super) fn destructive(
@@ -180,6 +225,7 @@ impl MenuEntry {
             icon: Some(icon),
             action,
             checked: false,
+            check_style: CheckStyle::Tick,
             destructive: true,
             disabled: false,
             detail: None,
@@ -265,6 +311,12 @@ pub(super) enum MenuPlacement {
     Above,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MenuLevel {
+    Root,
+    Submenu,
+}
+
 pub(super) struct ContextMenu {
     origin: (f32, f32),
     placement: MenuPlacement,
@@ -274,8 +326,22 @@ pub(super) struct ContextMenu {
     search: Option<MenuSearch>,
     query: String,
     chosen: usize,
+    cursor: Option<usize>,
+    level: MenuLevel,
     focus: FocusHandle,
     focus_pending: bool,
+    restore: Option<FocusHandle>,
+}
+
+impl ContextMenu {
+    fn restore_focus(self, window: &mut Window, cx: &mut App) {
+        let Some(previous) = self.restore else {
+            return;
+        };
+        if self.focus.is_focused(window) {
+            window.focus(&previous, cx);
+        }
+    }
 }
 
 impl EnvironmentShell {
@@ -286,6 +352,7 @@ impl EnvironmentShell {
         entries: Vec<MenuEntry>,
         cx: &mut Context<Self>,
     ) {
+        let restore = self.context_menu.take().and_then(|menu| menu.restore);
         self.context_menu = Some(ContextMenu {
             origin,
             placement,
@@ -295,8 +362,11 @@ impl EnvironmentShell {
             search: None,
             query: String::new(),
             chosen: 0,
+            cursor: None,
+            level: MenuLevel::Root,
             focus: cx.focus_handle(),
             focus_pending: true,
+            restore,
         });
         cx.notify();
     }
@@ -331,8 +401,10 @@ impl EnvironmentShell {
         }
     }
 
-    fn close_menu(&mut self, cx: &mut Context<Self>) {
-        self.context_menu = None;
+    fn close_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(menu) = self.context_menu.take() {
+            menu.restore_focus(window, cx);
+        }
         cx.notify();
     }
 
@@ -361,30 +433,47 @@ impl EnvironmentShell {
         }
     }
 
+    fn run_menu_action_in_place(
+        &mut self,
+        action: MenuAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<MenuAction> {
+        match action {
+            MenuAction::RenameEnvironment(name) => {
+                self.close_menu_options();
+                self.ask_name(NameTarget::Environment(name), window, cx);
+                None
+            }
+            MenuAction::RenameGroup(group) => {
+                self.close_menu_options();
+                self.ask_name(NameTarget::Group(group), window, cx);
+                None
+            }
+            MenuAction::CopyChat(copy) => {
+                copy_with_feedback(&self.copy_feedback, copy.key.into(), copy.text, cx);
+                None
+            }
+            MenuAction::ToggleSidebarPart(_)
+            | MenuAction::ToggleSidebarDensity
+            | MenuAction::ToggleSidebarView(_) => {
+                self.run_sidebar_option(&action, cx);
+                None
+            }
+            other => Some(other),
+        }
+    }
+
     pub(super) fn run_menu_action(
         &mut self,
         action: MenuAction,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        match action {
-            MenuAction::RenameEnvironment(name) => {
-                self.close_menu_options();
-                self.ask_name(NameTarget::Environment(name), window, cx);
-                return;
-            }
-            MenuAction::RenameGroup(group) => {
-                self.close_menu_options();
-                self.ask_name(NameTarget::Group(group), window, cx);
-                return;
-            }
-            MenuAction::CopyChat(copy) => {
-                copy_with_feedback(&self.copy_feedback, copy.key.into(), copy.text, cx);
-                return;
-            }
-            _ => {}
-        }
-        self.context_menu = None;
+        let Some(action) = self.run_menu_action_in_place(action, window, cx) else {
+            return;
+        };
+        let closed = self.context_menu.take();
         match action {
             MenuAction::DeleteEnvironment(name) => {
                 self.ask_delete(DeleteTarget::Environment(name), window, cx);
@@ -394,7 +483,10 @@ impl EnvironmentShell {
             }
             MenuAction::RenameGroup(_)
             | MenuAction::RenameEnvironment(_)
-            | MenuAction::CopyChat(_) => {}
+            | MenuAction::CopyChat(_)
+            | MenuAction::ToggleSidebarPart(_)
+            | MenuAction::ToggleSidebarDensity
+            | MenuAction::ToggleSidebarView(_) => {}
             MenuAction::NewTerminal(preset) => self.add_terminal(preset, cx),
             MenuAction::NewAgent => self.open_agent_composer(window, cx),
             MenuAction::RemoveWorktree(group) => {
@@ -437,6 +529,9 @@ impl EnvironmentShell {
             MenuAction::NewEditorChat => self.add_chat_tab(cx),
             MenuAction::RebaseTheme(base) => self.rebase_theme_draft(&base, window, cx),
             MenuAction::ChooseTheme(appearance, id) => self.choose_theme(appearance, id, cx),
+            MenuAction::ChooseEnvironmentTheme(appearance, id) => {
+                self.choose_environment_theme(appearance, id, cx);
+            }
             MenuAction::SetFont(zone, family) => {
                 self.set_font(zone, |choice| choice.family = family, cx);
             }
@@ -453,11 +548,12 @@ impl EnvironmentShell {
             }
             MenuAction::HideMinimap => self.hide_minimap(cx),
             MenuAction::PinTab(tab) => self.pin_file_tab(tab, cx),
-            MenuAction::ToggleSidebarPart(part) => self.toggle_sidebar_part(part, cx),
-            MenuAction::ToggleSidebarDensity => self.toggle_sidebar_density(cx),
             MenuAction::CloseTabs(tab, closing) => self.close_tabs(tab, closing, window, cx),
             MenuAction::Extension(menu) => self.run_extension_menu(*menu, window, cx),
             MenuAction::Automation(choice) => self.run_automation_menu(choice, window, cx),
+        }
+        if let Some(menu) = closed {
+            menu.restore_focus(window, cx);
         }
         cx.notify();
     }
@@ -476,6 +572,7 @@ impl EnvironmentShell {
     pub(super) fn sync_menu_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(menu) = self.context_menu.as_mut().filter(|menu| menu.focus_pending) {
             menu.focus_pending = false;
+            menu.restore = menu.restore.take().or_else(|| window.focused(cx));
             window.focus(&menu.focus, cx);
         }
     }

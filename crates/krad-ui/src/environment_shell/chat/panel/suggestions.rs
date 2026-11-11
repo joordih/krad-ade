@@ -8,11 +8,12 @@ use krad_repo::EntryKind;
 
 use super::super::suggest::{entry_labels, SuggestKind, Suggestion};
 use super::super::EnvironmentShell;
+use crate::components::floating::floating_surface;
 use crate::components::{icon, IconName};
 use crate::kraddie_avatar::kraddie_avatar;
 use crate::theme::{
-    palette, popover_fill, popover_shadow, Palette, ICON_SM, LINE_SM, LINE_XS, NAV_ROW_H,
-    RADIUS_MD, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2, TEXT_SM, TEXT_XS,
+    palette, Palette, ICON_SM, LINE_SM, LINE_XS, NAV_ROW_H, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2,
+    TEXT_SM, TEXT_XS,
 };
 
 const ROW_PREFIX: &str = "chat-suggestion";
@@ -53,7 +54,7 @@ impl EnvironmentShell {
                 .collect(),
         };
         Some(
-            div()
+            floating_surface(pal, cx)
                 .id(MENU_ID)
                 .absolute()
                 .left(px(0.0))
@@ -66,11 +67,6 @@ impl EnvironmentShell {
                 .flex()
                 .flex_col()
                 .p(px(SPACE_1))
-                .rounded(px(RADIUS_MD))
-                .bg(popover_fill(pal, cx))
-                .border_1()
-                .border_color(pal.border)
-                .shadow(popover_shadow(pal, cx))
                 .occlude()
                 .children(rows)
                 .into_any_element(),

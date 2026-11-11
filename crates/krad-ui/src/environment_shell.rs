@@ -7,11 +7,13 @@ mod app_update;
 mod arcade;
 mod ask;
 mod attention;
+mod backdrop;
 mod changes_tab;
 mod chat;
 mod chat_search;
 mod chrome;
 mod code_viewer;
+mod content_shift;
 mod context_menu;
 mod dialog_parts;
 mod discard;
@@ -26,6 +28,7 @@ mod environment_order;
 mod extensions;
 mod file_tab;
 mod file_tree;
+mod focus_return;
 mod gateway;
 mod gestures;
 mod git_actions;
@@ -89,10 +92,7 @@ mod worktrees;
 use futures::channel::mpsc::{Receiver as PumpReceiver, Sender as PumpSender};
 use futures::StreamExt as _;
 use gpui_kit::component::command::CommandState;
-use gpui_kit::{
-    Context, Entity, FocusHandle, Subscription, Task, WeakEntity, Window,
-    WindowBackgroundAppearance,
-};
+use gpui_kit::{Context, Entity, FocusHandle, Subscription, Task, WeakEntity, Window};
 use krad_domain::{
     AgentPreset, EnvironmentData, EnvironmentName, EnvironmentView, PersistedLayout, Prompt,
     Settings, SidebarWidth, TerminalId, Visibility, WorkMode, DEFAULT_ENVIRONMENT,
@@ -126,7 +126,7 @@ pub struct EnvironmentShell {
     active: EnvironmentName,
     drag: DragState,
     fps_hud: Visibility,
-    window_background: Option<(WindowBackgroundAppearance, bool)>,
+    backdrop: backdrop::Backdrop,
     activation_watch: Option<Subscription>,
     palette_open: bool,
     palette_files: Vec<PathBuf>,
@@ -160,6 +160,7 @@ pub struct EnvironmentShell {
     chat_landings: HashMap<TerminalId, PanelReveal>,
     side_panel_view: EnvironmentView,
     work_mode: WorkMode,
+    content_shift: content_shift::ContentShift,
     sidebar_w: SidebarWidth,
     side_reveal: PanelReveal,
     side_search: side_panel::SideSearch,
@@ -174,6 +175,7 @@ pub struct EnvironmentShell {
     acp_transcripts: Option<AcpTranscripts>,
     git: HashMap<groups::GitKey, groups::GroupGit>,
     git_task: Option<Task<()>>,
+    worktree_sweep: worktrees::WorktreeSweep,
     file_tree: file_tree::FileTree,
     viewer: Option<code_viewer::CodeView>,
     native_agents: Vec<AgentPreset>,
@@ -186,9 +188,11 @@ pub struct EnvironmentShell {
     opencode: opencode::Opencode,
     gateway: gateway::Gateway,
     listed_models: harness_models::ListedModels,
+    acp_adapters: HashMap<krad_domain::AcpAgentId, krad_domain::ManagedAdapter>,
     harness_checks: harness_health::HarnessChecks,
     usage: usage_bar::UsageBoard,
     context_menu: Option<context_menu::ContextMenu>,
+    focus_returns: focus_return::FocusReturns,
     copy_feedback: Entity<CopyFeedback>,
     model_picker: Option<model_picker::ModelPicker>,
     effort_popover: Option<surface::EffortPopover>,
@@ -255,7 +259,18 @@ impl EnvironmentShell {
     ) -> Self {
         let (pump_tx, pump_rx) = pump_channel();
         spawn_ticker(pump_tx.clone());
-        let mut shell = Self {
+        let mut shell = Self::assemble(cx, settings, host_tools, pump_tx);
+        shell.start(seed, pump_rx, cx);
+        shell
+    }
+
+    fn assemble(
+        cx: &mut Context<Self>,
+        settings: Settings,
+        host_tools: host::HostTools,
+        pump_tx: PumpSender<PumpMsg>,
+    ) -> Self {
+        Self {
             focus: cx.focus_handle(),
             file_tree_focus: cx.focus_handle(),
             envs: HashMap::new(),
@@ -263,7 +278,7 @@ impl EnvironmentShell {
             active: EnvironmentName::new(String::new()),
             drag: DragState::None,
             fps_hud: FPS_HUD_DEFAULT,
-            window_background: None,
+            backdrop: backdrop::Backdrop::default(),
             activation_watch: None,
             palette_open: false,
             palette_files: Vec::new(),
@@ -297,6 +312,7 @@ impl EnvironmentShell {
             chat_landings: HashMap::new(),
             side_panel_view: EnvironmentView::Sessions,
             work_mode: WorkMode::default(),
+            content_shift: content_shift::ContentShift::default(),
             sidebar_w: SidebarWidth::default(),
             side_reveal: PanelReveal::new(false),
             side_search: side_panel::SideSearch::default(),
@@ -311,6 +327,7 @@ impl EnvironmentShell {
             acp_transcripts: AcpTranscripts::spawn(),
             git: HashMap::new(),
             git_task: None,
+            worktree_sweep: worktrees::WorktreeSweep::default(),
             file_tree: file_tree::FileTree::default(),
             viewer: None,
             native_agents: vec![AgentPreset::Shell],
@@ -323,9 +340,11 @@ impl EnvironmentShell {
             opencode: opencode::Opencode::default(),
             gateway: gateway::Gateway::default(),
             listed_models: harness_models::ListedModels::default(),
+            acp_adapters: HashMap::new(),
             harness_checks: harness_health::HarnessChecks::default(),
             usage: usage_bar::UsageBoard::default(),
             context_menu: None,
+            focus_returns: focus_return::FocusReturns::default(),
             copy_feedback: new_copy_feedback(cx),
             model_picker: None,
             effort_popover: None,
@@ -350,9 +369,7 @@ impl EnvironmentShell {
             kraddies: kraddies::KraddiesUi::default(),
             automations: automations::AutomationsUi::default(),
             variants: variants::VariantsUi::default(),
-        };
-        shell.start(seed, pump_rx, cx);
-        shell
+        }
     }
 
     fn start(

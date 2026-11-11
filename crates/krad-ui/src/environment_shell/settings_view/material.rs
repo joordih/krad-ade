@@ -1,7 +1,7 @@
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, App, AppContext as _, Context, Entity, InteractiveElement,
+    div, px, rgb, AnyElement, App, AppContext as _, Context, Div, Entity, InteractiveElement,
     IntoElement, ParentElement, StatefulInteractiveElement as _, Styled, Subscription, Window,
 };
 use krad_domain::{Hue, TintOpacity, WindowMaterial, WindowTint};
@@ -10,8 +10,9 @@ use super::super::dialog_parts::{segment, SegmentSize};
 use super::{form_row, segmented_track, EnvironmentShell};
 use crate::components::{icon, IconName};
 use crate::theme::{
-    appearance, apply_window_material, apply_window_tint, hue_rgb, palette, tinted,
-    window_material, Appearance, Palette, ICON_SM, RADIUS_SM, SPACE_1, TEXT_XS,
+    appearance, apply_window_material, apply_window_tint, hue_rgb, interface_rem, palette,
+    shell_opacity, tinted, window_material, Appearance, Palette, ICON_SM, RADIUS_SM, SPACE_1,
+    TEXT_XS,
 };
 use crate::window_frame::{
     offered_materials, replace_window_background, tint_adjustable, usable_material,
@@ -29,7 +30,6 @@ const TINT_DEFAULT_ID: &str = "window-tint-default";
 const TINT_HUE_PREFIX: &str = "window-tint";
 const OPACITY_SUFFIX: &str = "%";
 const OPACITY_STEP: f32 = 1.0;
-const DEFAULT_OPACITY: u8 = 65;
 const SLIDER_W: f32 = 180.0;
 const OPACITY_LABEL_W: f32 = 36.0;
 const SWATCH: f32 = 22.0;
@@ -51,13 +51,18 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn sync_window_background(
         &mut self,
         window: &mut Window,
-        cx: &App,
+        cx: &mut App,
     ) {
+        self.sync_environment_theme(cx);
+        let rem = interface_rem(cx);
+        if window.rem_size() != rem {
+            window.set_rem_size(rem);
+        }
         let dark = appearance(cx) == Appearance::Dark;
         let wanted = usable_window_background(window_material(cx), dark);
-        if self.window_background != Some((wanted, dark)) {
+        if self.backdrop.material != Some((wanted, dark)) {
             replace_window_background(window, wanted, dark);
-            self.window_background = Some((wanted, dark));
+            self.backdrop.material = Some((wanted, dark));
         }
     }
 
@@ -70,6 +75,7 @@ impl EnvironmentShell {
                 return;
             }
             this.reload_workspace(cx);
+            this.apply_performance_mode(cx);
             let material = this.settings.window_material;
             if usable_material(material) == window_material(cx) {
                 return;
@@ -127,7 +133,7 @@ impl EnvironmentShell {
             .settings
             .window_tint
             .opacity
-            .unwrap_or(TintOpacity::new(DEFAULT_OPACITY));
+            .unwrap_or_else(|| shell_opacity(window_material(cx), appearance(cx)));
         let opacity = cx.new(|_| {
             SliderState::new()
                 .min(0.0)
@@ -139,12 +145,7 @@ impl EnvironmentShell {
             let SliderEvent::Change(value) = event else {
                 return;
             };
-            let percent = value.start().round();
-            let opacity = TintOpacity::new(
-                (0..=TintOpacity::MAX)
-                    .find(|step| f32::from(*step) >= percent)
-                    .unwrap_or(TintOpacity::MAX),
-            );
+            let opacity = TintOpacity::new(slider_percent(value.start(), TintOpacity::MAX));
             this.edit_tint(|tint| tint.opacity = Some(opacity), cx);
         });
         TintUi {
@@ -165,22 +166,9 @@ impl EnvironmentShell {
             .settings
             .window_tint
             .opacity
-            .unwrap_or(TintOpacity::new(DEFAULT_OPACITY))
+            .unwrap_or_else(|| shell_opacity(window_material(cx), appearance(cx)))
             .percent();
-        let slider = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(SPACE_1))
-            .child(div().w(px(SLIDER_W)).child(Slider::new(&ui.tint.opacity)))
-            .child(
-                div()
-                    .w(px(OPACITY_LABEL_W))
-                    .text_size(px(TEXT_XS))
-                    .text_color(rgb(pal.text_muted))
-                    .child(format!("{percent}{OPACITY_SUFFIX}")),
-            )
-            .into_any_element();
+        let slider = slider_control(&ui.tint.opacity, format!("{percent}{OPACITY_SUFFIX}"), pal);
         vec![
             form_row(
                 TINT_COLOR_LABEL,
@@ -194,21 +182,7 @@ impl EnvironmentShell {
 
     fn tint_swatches(&self, pal: &Palette, cx: &mut Context<Self>) -> AnyElement {
         let picked = self.settings.window_tint.hue;
-        let cell = |selected: bool| {
-            div()
-                .flex()
-                .items_center()
-                .justify_center()
-                .size(px(SWATCH))
-                .rounded(px(RADIUS_SM))
-                .cursor_pointer()
-                .border(px(SWATCH_RING))
-                .when(selected, |cell| cell.border_color(rgb(pal.accent)))
-                .when(!selected, |cell| {
-                    cell.border_color(gpui_kit::transparent_black())
-                })
-                .hover(|style| style.bg(pal.bg_hover))
-        };
+        let cell = |selected: bool| swatch_cell(selected, pal);
         let default = cell(picked.is_none())
             .id(TINT_DEFAULT_ID)
             .on_click(cx.listener(|this: &mut Self, _, _, cx| {
@@ -221,12 +195,7 @@ impl EnvironmentShell {
                 .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                     this.edit_tint(|tint| tint.hue = Some(hue), cx);
                 }))
-                .child(
-                    div()
-                        .size(px(SWATCH_DOT))
-                        .rounded_full()
-                        .bg(tinted(hue_rgb(hue, pal), SWATCH_ALPHA)),
-                )
+                .child(swatch_dot(hue_rgb(hue, pal)))
                 .into_any_element()
         });
         div()
@@ -245,6 +214,61 @@ impl EnvironmentShell {
         self.save_settings(cx);
         cx.notify();
     }
+}
+
+pub(super) fn slider_control(
+    state: &Entity<SliderState>,
+    value: String,
+    pal: &Palette,
+) -> AnyElement {
+    div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(SPACE_1))
+        .child(div().w(px(SLIDER_W)).child(Slider::new(state)))
+        .child(
+            div()
+                .w(px(OPACITY_LABEL_W))
+                .text_size(px(TEXT_XS))
+                .text_color(rgb(pal.text_muted))
+                .child(value),
+        )
+        .into_any_element()
+}
+
+pub(super) fn slider_percent<T: TryFrom<u16> + Copy>(value: f32, max: T) -> T
+where
+    u16: From<T>,
+{
+    let wanted = value.round();
+    (0..=u16::from(max))
+        .find(|step| f32::from(*step) >= wanted)
+        .and_then(|step| T::try_from(step).ok())
+        .unwrap_or(max)
+}
+
+pub(super) fn swatch_cell(selected: bool, pal: &Palette) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .justify_center()
+        .size(px(SWATCH))
+        .rounded(px(RADIUS_SM))
+        .cursor_pointer()
+        .border(px(SWATCH_RING))
+        .when(selected, |cell| cell.border_color(rgb(pal.accent)))
+        .when(!selected, |cell| {
+            cell.border_color(gpui_kit::transparent_black())
+        })
+        .hover(|style| style.bg(pal.bg_hover))
+}
+
+pub(super) fn swatch_dot(color: u32) -> Div {
+    div()
+        .size(px(SWATCH_DOT))
+        .rounded_full()
+        .bg(tinted(color, SWATCH_ALPHA))
 }
 
 pub(super) struct TintUi {

@@ -8,6 +8,7 @@ use krad_repo::{host_programs, wsl_programs};
 use krad_session::find_program;
 use std::path::{Path, PathBuf};
 
+use super::surface::app_kept_adapter_present;
 use super::EnvironmentShell;
 
 mod git_poll;
@@ -60,6 +61,16 @@ impl EnvironmentShell {
             &self.active,
             self.active_group().map(|group| group.root.as_path()),
         )
+    }
+
+    pub(super) fn offered_agents(&self) -> Vec<AgentPreset> {
+        AgentPreset::offered(self.installed_agents())
+    }
+
+    pub(super) fn offered_default_harness(&self) -> AgentPreset {
+        self.settings
+            .default_harness
+            .as_offered(self.installed_agents())
     }
 
     pub(super) fn host_agents_known(&self, env: &EnvironmentName) -> bool {
@@ -181,6 +192,7 @@ impl EnvironmentShell {
         if let Some(live) = self.envs.get_mut(&env) {
             live.selected_group = Some(id);
         }
+        self.refresh_skill_library(cx);
         cx.notify();
     }
 
@@ -307,7 +319,15 @@ impl EnvironmentShell {
     pub(super) fn detect_agents(&self, cx: &mut Context<Self>) {
         let acp_agents = self.settings.acp.all_agents();
         let lookup = cx.background_spawn(async move {
-            presets_found(&acp_agents, |program| find_program(program).is_some())
+            let mut found = presets_found(&acp_agents, |program| find_program(program).is_some());
+            let kept = acp_agents
+                .iter()
+                .filter(|agent| app_kept_adapter_present(agent))
+                .map(|agent| AgentPreset::Acp(agent.id))
+                .filter(|preset| !found.contains(preset))
+                .collect::<Vec<_>>();
+            found.extend(kept);
+            found
         });
         cx.spawn(async move |this, cx| {
             let installed = lookup.await;
@@ -370,9 +390,10 @@ mod tests {
             agent_programs(&agents),
             [
                 "claude",
-                "claude-code-acp",
+                "claude-agent-acp",
                 "codex",
                 "codex-acp",
+                "gemini",
                 "opencode"
             ]
         );

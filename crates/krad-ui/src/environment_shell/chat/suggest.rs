@@ -166,11 +166,16 @@ impl EnvironmentShell {
                 let offered = self.harness_skills(suggest.composer);
                 let skills = offered.as_deref().or(self.chat.skills.as_deref())?;
                 Some(
-                    search_skills(skills, &suggest.query, SUGGESTION_LIMIT)
-                        .into_iter()
-                        .cloned()
-                        .map(Suggestion::Skill)
-                        .collect(),
+                    search_skills(
+                        skills,
+                        &self.settings.skills,
+                        &suggest.query,
+                        SUGGESTION_LIMIT,
+                    )
+                    .into_iter()
+                    .cloned()
+                    .map(Suggestion::Skill)
+                    .collect(),
                 )
             }
             SuggestKind::Kraddie => Some(
@@ -313,7 +318,8 @@ impl EnvironmentShell {
             .trim_start()
             .strip_prefix(SKILL_PREFIX)?
             .split_whitespace()
-            .next()?;
+            .next()
+            .filter(|name| self.settings.skills.allows_call(name))?;
         let skill = self
             .chat
             .skills

@@ -1,9 +1,15 @@
-use krad_domain::{parse_wsl_path, wsl_unc_path, WslPath};
+mod library;
+
+use krad_domain::{parse_wsl_path, wsl_unc_path, SkillSettings, WslPath};
 use krad_host::HostLink;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+
+pub use library::{
+    enabled_count, skill_library, LibraryFilter, LibrarySkill, SkillHarness, SkillPlace, SkillScope,
+};
 
 pub(crate) const CLAUDE_DIR: &str = ".claude";
 const AGENTS_DIR: &str = ".agents";
@@ -91,18 +97,26 @@ pub(crate) fn skill_files(
     host: &HostLink,
     home: Option<&Path>,
     project: Option<&Path>,
+    settings: &SkillSettings,
 ) -> Vec<SkillFile> {
     found_skills(host, home, project)
         .into_iter()
         .map(|found| found.skill)
+        .filter(|skill| settings.allows_call(&skill.name))
         .collect()
 }
 
 #[must_use]
-pub fn search_skills<'a>(skills: &'a [Skill], query: &str, limit: usize) -> Vec<&'a Skill> {
+pub fn search_skills<'a>(
+    skills: &'a [Skill],
+    settings: &SkillSettings,
+    query: &str,
+    limit: usize,
+) -> Vec<&'a Skill> {
     let query = query.to_lowercase();
     let mut found: Vec<(bool, &Skill)> = skills
         .iter()
+        .filter(|skill| settings.allows_call(&skill.name))
         .filter_map(|skill| {
             let name = skill.name.to_lowercase();
             name.contains(&query)

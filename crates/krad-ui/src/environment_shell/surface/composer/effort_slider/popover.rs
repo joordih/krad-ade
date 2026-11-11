@@ -15,10 +15,11 @@ use super::layout::{
     DOT_PITCH, DOT_ROWS, KEY_HELP, POPOVER_W, THUMB_W, TRACK_W,
 };
 use super::{current_step, level_color, DEFAULT_EFFORT_LABEL};
+use crate::components::floating::floating_surface;
 use crate::components::tooltip_view;
 use crate::theme::{
-    palette, popover_fill, popover_shadow, row_shadow, tinted, Palette, LINE_BASE, LINE_XS,
-    RADIUS_SM, RADIUS_XL, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3, TEXT_BASE, TEXT_XS,
+    palette, row_shadow, tinted, Palette, LINE_BASE, LINE_XS, RADIUS_SM, SPACE_1, SPACE_1_5,
+    SPACE_2, SPACE_3, TEXT_BASE, TEXT_XS,
 };
 
 const CARD_ID: &str = "effort-popover";
@@ -337,20 +338,13 @@ impl EnvironmentShell {
         let bottom = root_h - (popover.origin.1 - self.frame_inset.1) + ANCHOR_GAP;
         let left = popover_left(x, root_w);
         let help = popover.state.help.then(|| Self::effort_help(&facts, pal));
-        let card = div()
+        let card = floating_surface(pal, cx)
             .id(CARD_ID)
             .absolute()
             .left(px(left))
             .w(px(POPOVER_W))
-            .flex()
-            .flex_col()
             .gap(px(SPACE_3))
             .p(px(CARD_PAD))
-            .rounded(px(RADIUS_XL))
-            .bg(popover_fill(pal, cx))
-            .border_1()
-            .border_color(pal.divider)
-            .shadow(popover_shadow(pal, cx))
             .occlude()
             .track_focus(&popover.focus)
             .on_key_down(cx.listener(|this: &mut Self, event: &KeyDownEvent, _, cx| {
@@ -379,6 +373,7 @@ impl EnvironmentShell {
                     .child(HIGH_END),
             )
             .child(Self::effort_track(&track, &facts, pal, cx))
+            .children(facts.fast.map(|on| Self::fast_row(chat, on, pal, cx)))
             .with_animation(
                 (OPEN_PREFIX, chat.as_u64()),
                 Animation::new(motion(reduced, OPEN)).with_easing(ease_out_quint()),

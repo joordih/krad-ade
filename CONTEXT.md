@@ -118,6 +118,10 @@ _Avoid_: theme, style, label colour
 The colour and opacity laid over the desktop behind a translucent window, which the user can pick on macOS; it always stays translucent.
 _Avoid_: background, wallpaper
 
+**Backdrop image**:
+A picture the user picks to paint behind the whole window, under its panes and over the window material, with its own fit, opacity, blur and dim; it is copied into the config folder, shared by the light and dark themes, and hidden while the system reduces transparency.
+_Avoid_: wallpaper, background image
+
 **Pane**:
 One part of a session's view, with its own strip of tabs and one of them on screen; a session shows up to four.
 _Avoid_: split, tile, window, frame
@@ -249,6 +253,10 @@ _Avoid_: assistant, bot, agent entity
 **Harness**:
 Agent CLI the app knows how to detect on `PATH` and start in a terminal, such as Claude Code, Codex or opencode.
 _Avoid_: provider, integration, plugin
+
+**Twin**:
+The ACP agent that stands for a native harness, such as Claude Code's ACP adapter for Claude Code. Both carry the harness's name and mark; pickers offer only one of the two, the ACP one while it can run, and chats keep the one they started with.
+_Avoid_: duplicate, alias
 
 **Model**:
 Language model a harness runs, such as `sonnet` for Claude Code; Settings keeps the list each harness offers.

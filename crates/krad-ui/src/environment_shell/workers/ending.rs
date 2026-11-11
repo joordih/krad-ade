@@ -9,6 +9,7 @@ use crate::theme::{palette, LINE_SM, SPACE_5, SPACE_6, TEXT_SM};
 
 const STOP_TITLE: &str = "Stop its workers?";
 const STOP_TEXT: &str = "Workers of this lead are still working. They stop and their sessions close; their chats can be reopened later from the lead.";
+const STOP_CLOSING_TEXT: &str = "Workers of this lead are still working. They stop, and this session closes with all its terminals and chats, which are deleted.";
 const STOP_CONFIRM: &str = "Stop workers";
 const CANCEL: &str = "Cancel";
 const BTN_CLOSE: &str = "lead-ending-close";
@@ -24,6 +25,13 @@ pub(in crate::environment_shell) enum LeadEnding {
 }
 
 impl LeadEnding {
+    const fn warning(self) -> &'static str {
+        match self {
+            Self::CloseSession(_) => STOP_CLOSING_TEXT,
+            Self::Dismiss(_) | Self::CloseTab { .. } => STOP_TEXT,
+        }
+    }
+
     const fn session(self) -> SessionId {
         match self {
             Self::Dismiss(session)
@@ -90,7 +98,7 @@ impl EnvironmentShell {
         }
         let confirmation = Confirmation {
             title: STOP_TITLE,
-            detail: STOP_TEXT,
+            detail: ending.warning(),
             confirm: STOP_CONFIRM,
             cancel: CANCEL,
         };
@@ -119,6 +127,7 @@ impl EnvironmentShell {
             LeadEnding::CloseSession(session) => self.close_session(session, cx),
             LeadEnding::CloseTab { tab, .. } => self.close_terminal_in(&env, tab, cx),
         }
+        self.sweep_merged_worktrees(cx);
     }
 
     fn confirm_lead_ending(&mut self, cx: &mut Context<Self>) {
@@ -136,7 +145,7 @@ impl EnvironmentShell {
         &self,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        self.envs.get(&self.active)?.pending_lead_ending?;
+        let ending = self.envs.get(&self.active)?.pending_lead_ending?;
         let pal = palette(cx);
         let sheet = sheet_panel(DIALOG_W, pal)
             .child(sheet_title(STOP_TITLE, None, BTN_CLOSE, cancel, cx))
@@ -147,7 +156,7 @@ impl EnvironmentShell {
                     .text_size(px(TEXT_SM))
                     .line_height(px(LINE_SM))
                     .text_color(rgb(pal.text_muted))
-                    .child(STOP_TEXT),
+                    .child(ending.warning()),
             )
             .child(
                 sheet_footer(pal)
@@ -170,5 +179,22 @@ impl EnvironmentShell {
                     ),
             );
         Some(sheet_overlay(sheet, cancel, cx))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn closing_a_session_warns_that_its_chats_are_deleted() {
+        let session = SessionId(1);
+        let tab = TerminalId(1);
+        assert_eq!(
+            LeadEnding::CloseSession(session).warning(),
+            STOP_CLOSING_TEXT
+        );
+        assert_eq!(LeadEnding::Dismiss(session).warning(), STOP_TEXT);
+        assert_eq!(LeadEnding::CloseTab { session, tab }.warning(), STOP_TEXT);
     }
 }

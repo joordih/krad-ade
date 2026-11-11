@@ -120,8 +120,8 @@ impl EnvironmentShell {
                     .truncate()
                     .child(file.name().to_owned()),
             )
-            .children(count(ADDED_SIGN, file.added, pal.success_fg))
-            .children(count(REMOVED_SIGN, file.removed, pal.error_fg))
+            .children(count(ADDED_SIGN, file.added, pal.diff_added))
+            .children(count(REMOVED_SIGN, file.removed, pal.diff_removed))
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                 if let Some(detail) = this.review.detail.as_mut() {
                     detail.select_file(index);
@@ -245,14 +245,14 @@ pub(in crate::environment_shell) fn diff_row(
 ) -> AnyElement {
     let (background, sign, sign_color) = match line.kind {
         LineKind::Added => (
-            Some(tinted(pal.success_fg, WASH_ALPHA)),
+            Some(tinted(pal.diff_added, WASH_ALPHA)),
             ADDED_SIGN,
-            pal.success_fg,
+            pal.diff_added,
         ),
         LineKind::Removed => (
-            Some(tinted(pal.error_fg, WASH_ALPHA)),
+            Some(tinted(pal.diff_removed, WASH_ALPHA)),
             REMOVED_SIGN,
-            pal.error_fg,
+            pal.diff_removed,
         ),
         LineKind::Context | LineKind::Hunk => (None, "", pal.text_muted),
     };

@@ -4,7 +4,9 @@ use gpui_kit::{
     div, px, Action, AnyElement, App, Context, InteractiveElement, IntoElement, MouseButton,
     ParentElement, Styled, WeakEntity, Window,
 };
-use krad_domain::{AgentPreset, ChatHit, EnvironmentName, FileOpening, ProjectTask, TerminalId};
+use krad_domain::{
+    AgentPreset, ChatHit, EnvironmentName, EnvironmentView, FileOpening, ProjectTask, TerminalId,
+};
 use std::path::PathBuf;
 
 mod chat_hits;
@@ -25,11 +27,14 @@ use crate::actions::{
     ToggleAutomations, ToggleFps, ToggleKraddies, ToggleMinimap, ToggleSidePanel, ToggleSidebar,
     ToggleWorkMode,
 };
+use crate::components::floating::{backdrop_fade, dialog_backdrop, dialog_enter, floating_frame};
 use crate::components::{harness_icon, IconName};
-use crate::theme::{floating_shadow, scrim_fill, Palette, RADIUS_LG};
+use crate::theme::{Palette, FLOATING_RADIUS};
 
 pub(super) const PALETTE_W: f32 = 620.0;
 pub(super) const PALETTE_TOP: f32 = 120.0;
+const PALETTE_BACKDROP_ID: &str = "palette-backdrop";
+const PALETTE_MOTION_ID: &str = "palette-enter";
 
 const PALETTE_SECTION_FILES: usize = 0;
 const PALETTE_SECTION_NEW: usize = 1;
@@ -154,9 +159,18 @@ struct PaletteRows {
     extensions: Vec<PaletteEntry>,
     chat_hits: Vec<ChatHit>,
     tasks: Vec<ProjectTask>,
+    view_commands: Vec<(&'static str, PaletteCmd)>,
 }
 
 impl PaletteCmd {
+    const fn opened_view(&self) -> Option<EnvironmentView> {
+        match self {
+            Self::ToggleAutomations => Some(EnvironmentView::Automations),
+            Self::ToggleKraddies => Some(EnvironmentView::Kraddies),
+            _ => None,
+        }
+    }
+
     const fn glyph(&self) -> IconName {
         match self {
             Self::NewTerminal(_) | Self::NewWslTerminal => IconName::Terminal,
@@ -225,6 +239,7 @@ impl PaletteCmd {
             extensions,
             chat_hits,
             tasks,
+            view_commands,
         } = rows;
         for (index, hit) in chat_hits.iter().enumerate() {
             if path.eq_row(IndexPath::new(index).section(PALETTE_SECTION_CHAT_HITS)) {
@@ -271,7 +286,7 @@ impl PaletteCmd {
                 return Some(entry.1.clone());
             }
         }
-        for (index, entry) in PALETTE_VIEW.iter().enumerate() {
+        for (index, entry) in view_commands.iter().enumerate() {
             if path.eq_row(IndexPath::new(index).section(PALETTE_SECTION_VIEW)) {
                 return Some(entry.1.clone());
             }
@@ -281,6 +296,15 @@ impl PaletteCmd {
 }
 
 impl EnvironmentShell {
+    fn palette_view_commands(&self) -> Vec<(&'static str, PaletteCmd)> {
+        let layout = &self.settings.sidebar;
+        PALETTE_VIEW
+            .iter()
+            .filter(|(_, cmd)| cmd.opened_view().is_none_or(|view| layout.shows_view(view)))
+            .cloned()
+            .collect()
+    }
+
     pub(super) fn toggle_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.palette_open = !self.palette_open;
         if self.palette_open {
@@ -385,13 +409,14 @@ impl EnvironmentShell {
         let root = self.palette_root();
         let rows = PaletteRows {
             files: self.palette_files.clone(),
-            agents: self.installed_agents().to_vec(),
+            agents: self.offered_agents(),
             envs: self.order.clone(),
             notes: self.palette_notes(&query),
             note_lines: self.palette_note_lines().to_vec(),
             extensions: self.extension_palette_entries(),
             chat_hits: self.palette_chat_hits().to_vec(),
             tasks: self.palette_tasks.clone(),
+            view_commands: self.palette_view_commands(),
         };
         let weak_cancel = weak.clone();
         let weak_query = weak.clone();
@@ -426,7 +451,7 @@ impl EnvironmentShell {
                 )
                 .group(
                     CommandGroup::new().label(PALETTE_GROUP_VIEW).items(
-                        PALETTE_VIEW
+                        rows.view_commands
                             .iter()
                             .map(|(label, cmd)| PaletteCmd::row(label, cmd)),
                     ),
@@ -505,27 +530,27 @@ fn palette_frame(
     div()
         .absolute()
         .inset_0()
-        .child(
-            div()
-                .absolute()
-                .inset_0()
-                .bg(scrim_fill(pal, cx))
-                .occlude()
-                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+        .child(backdrop_fade(
+            PALETTE_BACKDROP_ID,
+            dialog_backdrop(pal, cx).occlude().on_mouse_down(
+                MouseButton::Left,
+                move |_, window, cx| {
                     dismiss(&backdrop, window, cx);
-                }),
-        )
+                },
+            ),
+        ))
         .child(
             div()
                 .absolute()
                 .left(px(left))
                 .top(px(PALETTE_TOP))
                 .w(px(PALETTE_W))
-                .rounded(px(RADIUS_LG))
-                .overflow_hidden()
-                .shadow(floating_shadow(pal))
-                .occlude()
-                .child(command),
+                .child(dialog_enter(
+                    PALETTE_MOTION_ID,
+                    floating_frame(pal)
+                        .occlude()
+                        .child(command.bordered(false).rounded(px(FLOATING_RADIUS))),
+                )),
         )
         .into_any_element()
 }

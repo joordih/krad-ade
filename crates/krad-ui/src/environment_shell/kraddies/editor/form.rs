@@ -4,12 +4,14 @@ use gpui_kit::{
     div, px, rgb, AnyElement, Context, Div, IntoElement, ParentElement, SharedString,
     StatefulInteractiveElement, Styled, Window,
 };
-use krad_domain::KraddieWorkspace;
+use krad_domain::{AgentPreset, KraddieWorkspace};
 
 use super::super::super::dialog_parts::{
     field_label, segment, sheet_body, sheet_footer, sheet_overlay, sheet_panel, sheet_title,
     SegmentSize,
 };
+use super::super::super::harness_models::AcpListing;
+use super::super::super::model_picker::{mark, HarnessModels, ModelChoice};
 use super::super::super::EnvironmentShell;
 use super::super::motion::{entering, shaking};
 use super::KraddieEditor;
@@ -39,6 +41,12 @@ const NO_WORKSPACE: &str = "Open a group of a git repository so it has a home to
 const OTHER_WORKSPACE_PREFIX: &str = "Another environment: ";
 const AGENT_PREFIX: &str = "kraddie-agent";
 const GROUP_PREFIX: &str = "kraddie-group";
+const MODEL_PREFIX: &str = "kraddie-model";
+const MAX_MODEL_CHIPS: usize = 12;
+const DEFAULT_SUFFIX: &str = " · default";
+const LISTING_MODELS: &str = "Asking the agent for its models…";
+const NO_MODELS: &str = "The agent offers no models to choose from";
+const MODELS_FAILED: &str = "Its models could not be listed";
 
 fn close(this: &mut EnvironmentShell, _: &mut Window, cx: &mut Context<EnvironmentShell>) {
     this.close_kraddie_editor(cx);
@@ -84,6 +92,8 @@ impl EnvironmentShell {
                 .child(chips().children(self.kraddie_agent_chips(editor, pal, cx)))
                 .child(field_label(MODEL_LABEL, pal))
                 .child(Input::new(&editor.model))
+                .children(self.kraddie_model_chips(editor, pal, cx))
+                .children(self.kraddie_model_note(editor, pal))
                 .child(field_label(WORKSPACE_LABEL, pal))
                 .child(self.kraddie_workspace_chips(editor, pal, cx)),
         );
@@ -191,7 +201,9 @@ impl EnvironmentShell {
         pal: &Palette,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        self.kraddie_agents()
+        let agents = self.kraddie_agents();
+        let chosen = editor.harness.as_offered(&agents);
+        agents
             .into_iter()
             .enumerate()
             .map(|(index, preset)| {
@@ -200,17 +212,93 @@ impl EnvironmentShell {
                     (AGENT_PREFIX, index),
                     self.settings.acp.harness_name(preset),
                     Some(glyph),
-                    editor.harness == preset,
+                    chosen == preset,
                     SegmentSize::Compact,
                     pal,
                     cx,
                 )
                 .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                    edit(this, cx, |editor| editor.harness = preset);
+                    this.choose_kraddie_harness(preset, cx);
                 }))
                 .into_any_element()
             })
             .collect()
+    }
+
+    fn kraddie_model_chips(
+        &self,
+        editor: &KraddieEditor,
+        pal: &Palette,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let typed = editor.model.read(cx).value().trim().to_owned();
+        let models = self.kraddie_model_rows(editor.harness);
+        if models.is_empty() {
+            return None;
+        }
+        let picks = models
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, choice)| {
+                let model = choice.id?;
+                let selected = model.as_str() == typed;
+                let label = if choice.marks.default {
+                    format!("{}{DEFAULT_SUFFIX}", choice.label)
+                } else {
+                    choice.label
+                };
+                let chip = segment(
+                    (MODEL_PREFIX, index),
+                    SharedString::from(label),
+                    choice.marks.favorite.then_some(IconName::StarFilled),
+                    selected,
+                    SegmentSize::Compact,
+                    pal,
+                    cx,
+                )
+                .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                    this.pick_kraddie_model(&model, window, cx);
+                }));
+                Some(chip.into_any_element())
+            });
+        Some(chips().children(picks).into_any_element())
+    }
+
+    fn kraddie_model_rows(&self, harness: AgentPreset) -> Vec<ModelChoice> {
+        let mut group = HarnessModels {
+            harness,
+            name: self.settings.acp.harness_name(harness).into(),
+            models: self
+                .model_choices(harness, None)
+                .into_iter()
+                .filter(|choice| choice.id.is_some())
+                .collect(),
+        };
+        mark(&mut group, &self.settings.model_preferences);
+        group
+            .models
+            .sort_by_key(|choice| (!choice.marks.favorite, !choice.marks.default));
+        group.models.truncate(MAX_MODEL_CHIPS);
+        group.models
+    }
+
+    fn kraddie_model_note(&self, editor: &KraddieEditor, pal: &Palette) -> Option<AnyElement> {
+        let AgentPreset::Acp(agent) = editor.harness else {
+            return None;
+        };
+        let host = self.active_link().host();
+        let text = match self.listed_models.acp_listing(&host, agent)? {
+            AcpListing::Listing => LISTING_MODELS.to_owned(),
+            AcpListing::NoModels => NO_MODELS.to_owned(),
+            AcpListing::Failed(reason) => format!("{MODELS_FAILED}: {reason}"),
+        };
+        Some(
+            div()
+                .text_size(px(TEXT_XS))
+                .text_color(rgb(pal.text_muted))
+                .child(text)
+                .into_any_element(),
+        )
     }
 
     fn kraddie_workspace_chips(

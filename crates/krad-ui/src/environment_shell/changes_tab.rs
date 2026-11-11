@@ -284,13 +284,13 @@ impl EnvironmentShell {
             .child(
                 div()
                     .flex_none()
-                    .text_color(rgb(pal.success_fg))
+                    .text_color(rgb(pal.diff_added))
                     .child(format!("{ADDED_SIGN}{added}")),
             )
             .child(
                 div()
                     .flex_none()
-                    .text_color(rgb(pal.error_fg))
+                    .text_color(rgb(pal.diff_removed))
                     .child(format!("{REMOVED_SIGN}{removed}")),
             )
             .children(send)

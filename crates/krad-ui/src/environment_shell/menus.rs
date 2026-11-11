@@ -39,11 +39,12 @@ impl EnvironmentShell {
             MenuEntry::Separator,
             MenuEntry::Header(NEW_TERMINAL_HEADER.to_owned()),
         ];
-        entries.extend(self.installed_agents().iter().map(|preset| {
+        let default = self.offered_default_harness();
+        entries.extend(self.offered_agents().into_iter().map(|preset| {
             MenuEntry::checked(
-                self.settings.acp.harness_name(*preset),
-                *preset == self.settings.default_harness,
-                MenuAction::NewTerminal(*preset),
+                self.settings.acp.harness_name(preset),
+                preset == default,
+                MenuAction::NewTerminal(preset),
             )
         }));
         self.open_menu(point(anchor), placement, entries, cx);

@@ -195,7 +195,11 @@ impl EnvironmentShell {
                     .background_executor()
                     .spawn(async move { read_git(&link, roots) })
                     .await;
-                let Ok(changed) = this.update(cx, |shell, cx| shell.apply_git(git, cx)) else {
+                let Ok(changed) = this.update(cx, |shell, cx| {
+                    let changed = shell.apply_git(git, cx);
+                    shell.sweep_merged_worktrees(cx);
+                    changed
+                }) else {
                     break;
                 };
                 pace = pace.after(changed, remote);

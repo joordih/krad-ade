@@ -1,9 +1,13 @@
 mod editor;
+mod fade;
 mod fonts;
+mod glass;
 mod library;
 mod palettes;
+mod surface_tokens;
 mod tint;
 mod tokens;
+mod tuning;
 
 pub use editor::apply_editor_font;
 use fonts::{app_fonts, MONO_FONT_FAMILY};
@@ -11,20 +15,26 @@ pub(crate) use fonts::{
     font_features, interface_family, mono_family, tabular_digits, BUNDLED_MONO_FAMILIES,
     EDITOR_FONT_SIZE, SYSTEM_MONO_LABEL, TERMINAL_FONT_SIZE, UI_FONT_FAMILY,
 };
+pub(crate) use glass::{backdrop_veil, level_fill, shell_opacity, sidebar_fill, SurfaceLevel};
 pub use library::install_theme_library;
 pub(crate) use library::{add_to_library, theme_library};
+pub(crate) use surface_tokens::*;
 pub use tint::apply_window_tint;
 pub(crate) use tint::hue_rgb;
 pub(crate) use tokens::*;
+pub(crate) use tuning::hsl_rgb;
 
 use gpui_kit::component::theme::{Theme, ThemeMode};
 use gpui_kit::{
     linear_color_stop, linear_gradient, px, rgb, rgba, transparent_black, App, Background,
-    BoxShadow, Fill, Global, Hsla, Rgba, SharedString, WindowAppearance,
+    BoxShadow, Fill, Global, Hsla, Pixels, Rgba, SharedString, WindowAppearance,
 };
-use krad_domain::{AppearanceMode, FontChoice, ThemeAppearance, ThemeSelection, WindowMaterial};
+use krad_domain::{
+    AppearanceMode, EnvironmentName, FontChoice, ThemeAppearance, ThemeSelection, WindowMaterial,
+};
 use krad_session::AnsiPalette;
 use std::collections::HashMap;
+use std::time::Instant;
 
 use crate::highlight::TokenKind;
 use crate::window_frame::{match_window_frame, usable_material};
@@ -32,23 +42,14 @@ use crate::window_frame::{match_window_frame, usable_material};
 use self::palettes::{DARK, LIGHT};
 
 const ALPHA_BITS: u32 = 8;
+const BASE_REM: f32 = 16.0;
 pub(crate) const FOCUS_RING_PX: f32 = 2.0;
 const RING_ALPHA: u32 = 0x33;
+const SELECTION_ALPHA: u32 = 0x4d;
 const BACKDROP_ANGLE_DEG: f32 = 135.0;
 const GRADIENT_START: f32 = 0.0;
 const GRADIENT_END: f32 = 1.0;
 const OPAQUE_ALPHA: u32 = 0xff;
-const CLEAR_ALPHA: u32 = 0x00;
-const DARK_CHROME_TINT: u32 = 0x0017_1717;
-const LIGHT_CHROME_TINT: u32 = 0x00f7_f7f7;
-const BLURRED_DARK_ALPHA: u32 = 0xa6;
-const BLURRED_LIGHT_ALPHA: u32 = 0xe0;
-const MICA_DARK_ALPHA: u32 = CLEAR_ALPHA;
-const MICA_LIGHT_ALPHA: u32 = 0xcc;
-const GLASS_DARK_ALPHA: u32 = 0xa6;
-const GLASS_LIGHT_ALPHA: u32 = 0xcc;
-const SURFACE_DARK_ALPHA: u32 = 0x14;
-const SURFACE_LIGHT_ALPHA: u32 = 0x40;
 const POPOVER_ALPHA: u32 = 0xf2;
 const POPOVER_TRANSLUCENT_ALPHA: u32 = 0xc7;
 const THEMED_TERMINAL_ALPHA: u32 = 0x1a;
@@ -81,6 +82,7 @@ impl Appearance {
 struct CurrentTheme {
     appearance: Appearance,
     palette: &'static Palette,
+    settled: &'static Palette,
     theme: krad_domain::Theme,
 }
 
@@ -147,9 +149,11 @@ struct Shadows {
     floating: ShadowLayer,
 }
 
+#[derive(Clone)]
 pub(crate) struct Palette {
     pub(crate) backdrop_from: u32,
     pub(crate) backdrop_to: u32,
+    pub(crate) shell_ink: u32,
     pub(crate) text_strong: u32,
     pub(crate) text_default: u32,
     pub(crate) text_subtle: u32,
@@ -175,11 +179,15 @@ pub(crate) struct Palette {
     pub(crate) warning_fg: u32,
     pub(crate) error_fg: u32,
     pub(crate) info_fg: u32,
+    pub(crate) diff_added: u32,
+    pub(crate) diff_removed: u32,
+    pub(crate) diff_modified: u32,
     pub(crate) ansi: AnsiPalette,
     pub(crate) syntax: SyntaxColors,
     shadows: Shadows,
 }
 
+#[derive(Clone)]
 pub(crate) struct SyntaxColors {
     pub(crate) keyword: u32,
     pub(crate) string: u32,
@@ -268,9 +276,32 @@ pub fn system_is_dark(cx: &App) -> bool {
 }
 
 pub fn apply_settings_theme(settings: &krad_domain::Settings, cx: &mut App) {
-    let selection = settings.themes.clone().unwrap_or_default();
+    apply_environment_theme(settings, None, cx);
+}
+
+struct ThemedEnvironment(Option<EnvironmentName>);
+
+impl Global for ThemedEnvironment {}
+
+pub(crate) fn apply_environment_theme(
+    settings: &krad_domain::Settings,
+    environment: Option<&EnvironmentName>,
+    cx: &mut App,
+) {
+    cx.set_global(tuning::CurrentTuning(settings.theme_tuning));
+    cx.set_global(ThemedEnvironment(environment.cloned()));
+    let selection = settings.theme_selection(environment);
     let dark = system_is_dark(cx);
     apply_themes(&selection, settings.appearance, dark, cx);
+}
+
+pub(crate) fn themed_for(environment: &EnvironmentName, cx: &App) -> bool {
+    cx.try_global::<ThemedEnvironment>()
+        .is_some_and(|themed| themed.0.as_ref() == Some(environment))
+}
+
+pub(crate) fn interface_rem(cx: &App) -> Pixels {
+    px(BASE_REM * tuning::current_tuning(cx).interface_scale.factor())
 }
 
 pub fn apply_themes(
@@ -298,13 +329,36 @@ pub(crate) fn apply_theme(theme: krad_domain::Theme, cx: &mut App) {
         ThemeAppearance::Light => Appearance::Light,
         ThemeAppearance::Dark => Appearance::Dark,
     };
-    let palette = interned_palette(&theme, cx);
+    let base = interned_palette(&theme, cx);
+    let settled = tuning::tuned_palette(base, appearance, cx);
+    let shown = cx
+        .try_global::<CurrentTheme>()
+        .map(|current| current.palette);
+    let palette = fade::begin(shown, settled, Instant::now(), cx);
     cx.set_global(CurrentTheme {
         appearance,
         palette,
+        settled,
         theme,
     });
     restyle_kit(cx);
+}
+
+pub(crate) fn advance_theme_fade(now: Instant, cx: &mut App) -> bool {
+    let Some((shown, moving)) = fade::advance(now, cx) else {
+        return false;
+    };
+    if let Some(current) = cx.try_global::<CurrentTheme>() {
+        if !std::ptr::eq(current.palette, shown) {
+            cx.global_mut::<CurrentTheme>().palette = shown;
+        }
+    }
+    moving
+}
+
+pub(crate) fn settled_palette(cx: &App) -> &'static Palette {
+    cx.try_global::<CurrentTheme>()
+        .map_or(Appearance::default().palette(), |current| current.settled)
 }
 
 impl From<Appearance> for ThemeAppearance {
@@ -317,14 +371,17 @@ impl From<Appearance> for ThemeAppearance {
 }
 
 fn restyle_kit(cx: &mut App) {
-    let (appearance, palette) = (appearance(cx), palette(cx));
+    let (appearance, palette) = (appearance(cx), settled_palette(cx));
     let material = window_material(cx);
     match_window_frame(appearance == Appearance::Dark);
     Theme::change(appearance.kit_mode(), None, cx);
     let interface = cx
         .try_global::<InterfaceFont>()
         .map_or_else(|| UI_FONT_FAMILY.into(), |font| font.0.clone());
-    Theme::update(cx, |theme| style_kit_theme(theme, palette, interface));
+    let scale = tuning::current_tuning(cx).interface_scale.factor();
+    Theme::update(cx, |theme| {
+        style_kit_theme(theme, palette, interface, scale);
+    });
     if material.is_translucent() {
         let popover = popover_fill(palette, cx).into();
         let kit = Theme::global_mut(cx);
@@ -358,19 +415,7 @@ pub fn apply_window_material(material: WindowMaterial, cx: &mut App) {
 
 pub(crate) fn window_material(cx: &App) -> WindowMaterial {
     cx.try_global::<CurrentMaterial>()
-        .map_or(WindowMaterial::default(), |current| current.0)
-}
-
-const fn chrome_tint(material: WindowMaterial, appearance: Appearance) -> (u32, u32) {
-    match (material, appearance) {
-        (WindowMaterial::Opaque, _) => (0, OPAQUE_ALPHA),
-        (WindowMaterial::Blurred, Appearance::Dark) => (DARK_CHROME_TINT, BLURRED_DARK_ALPHA),
-        (WindowMaterial::Blurred, Appearance::Light) => (LIGHT_CHROME_TINT, BLURRED_LIGHT_ALPHA),
-        (WindowMaterial::Mica, Appearance::Dark) => (DARK_CHROME_TINT, MICA_DARK_ALPHA),
-        (WindowMaterial::Mica, Appearance::Light) => (LIGHT_CHROME_TINT, MICA_LIGHT_ALPHA),
-        (WindowMaterial::Glass, Appearance::Dark) => (DARK_CHROME_TINT, GLASS_DARK_ALPHA),
-        (WindowMaterial::Glass, Appearance::Light) => (LIGHT_CHROME_TINT, GLASS_LIGHT_ALPHA),
-    }
+        .map_or(WindowMaterial::Opaque, |current| current.0)
 }
 
 pub(crate) fn window_backdrop(pal: &Palette, cx: &App) -> Background {
@@ -378,35 +423,17 @@ pub(crate) fn window_backdrop(pal: &Palette, cx: &App) -> Background {
     if !material.is_translucent() {
         return backdrop(pal);
     }
-    let base = chrome_tint(material, appearance(cx));
+    let base = glass::shell_tint(material, appearance(cx), pal);
     let (tint, alpha) = tint::picked_chrome_tint(base, material, pal, cx);
     tinted(tint, alpha).into()
 }
 
 pub(crate) fn island_fill(pal: &Palette, cx: &App) -> Rgba {
-    if window_material(cx).is_translucent() {
-        tinted(pal.bg_panel, CLEAR_ALPHA)
-    } else {
-        rgb(pal.bg_panel)
-    }
+    level_fill(SurfaceLevel::Inset, pal.bg_panel, cx)
 }
 
 pub(crate) fn surface_fill(color: u32, cx: &App) -> Rgba {
-    if !window_material(cx).is_translucent() {
-        return rgb(color);
-    }
-    let alpha = match appearance(cx) {
-        Appearance::Dark => SURFACE_DARK_ALPHA,
-        Appearance::Light => SURFACE_LIGHT_ALPHA,
-    };
-    tinted(color, alpha)
-}
-
-pub(crate) fn popover_shadow(pal: &Palette, cx: &App) -> Vec<BoxShadow> {
-    if window_material(cx).is_translucent() {
-        return Vec::new();
-    }
-    floating_shadow(pal)
+    level_fill(SurfaceLevel::Pane, color, cx)
 }
 
 pub(crate) fn scrim_fill(pal: &Palette, cx: &App) -> Tint {
@@ -469,10 +496,10 @@ pub(crate) fn floating_shadow(pal: &Palette) -> Vec<BoxShadow> {
     vec![pal.shadows.floating.into()]
 }
 
-fn style_kit_theme(theme: &mut Theme, pal: &Palette, interface: SharedString) {
+fn style_kit_theme(theme: &mut Theme, pal: &Palette, interface: SharedString, scale: f32) {
     let color = |value: u32| -> Hsla { rgb(value).into() };
     theme.font_family = interface;
-    theme.font_size = px(TEXT_SM);
+    theme.font_size = px(TEXT_SM * scale);
     theme.mono_font_family = MONO_FONT_FAMILY.into();
     theme.mono_font_size = px(TEXT_SM);
     theme.background = color(pal.bg_surface);
@@ -482,6 +509,7 @@ fn style_kit_theme(theme: &mut Theme, pal: &Palette, interface: SharedString) {
     theme.border = pal.border.into();
     theme.input = pal.border.into();
     theme.ring = color(pal.accent);
+    theme.selection = tinted(pal.accent, SELECTION_ALPHA).into();
     theme.popover = color(pal.bg_surface);
     theme.popover_foreground = color(pal.text_strong);
     theme.accent = pal.bg_hover.into();

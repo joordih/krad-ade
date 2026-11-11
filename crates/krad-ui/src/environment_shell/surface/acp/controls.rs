@@ -2,7 +2,7 @@ use gpui_kit::{
     div, AnyElement, ClickEvent, Context, ElementId, FontWeight, IntoElement, ParentElement,
     StatefulInteractiveElement as _, Styled as _,
 };
-use krad_domain::TerminalId;
+use krad_domain::{Effort, TerminalId};
 use std::rc::Rc;
 
 use super::super::super::context_menu::{MenuAction, MenuEntry};
@@ -14,12 +14,9 @@ use crate::components::{icon, tooltip_view, IconName};
 use crate::theme::{palette, ICON_XS};
 
 const MODE_PREFIX: &str = "acp-mode";
-const MODEL_PREFIX: &str = "acp-model";
 const OPTION_PREFIX: &str = "acp-option";
 const MODE_HEADER: &str = "Mode";
-const MODEL_HEADER: &str = "Model";
 const TOOLTIP_MODE: &str = "The agent's mode";
-const TOOLTIP_MODEL: &str = "The agent's model";
 const TOOLTIP_OPTION: &str = "The agent's setting";
 
 pub(super) struct Picker {
@@ -59,27 +56,6 @@ impl AcpOffers {
             label,
             tooltip: TOOLTIP_MODE,
             entries: header(MODE_HEADER, entries),
-        })
-    }
-
-    pub(super) fn model_picker(&self, id: TerminalId) -> Option<Picker> {
-        let models = self.models()?;
-        let label = models
-            .current_model()
-            .map_or_else(|| models.current.0.clone(), |model| model.name.clone());
-        let entries = models.available.iter().map(|model| {
-            MenuEntry::checked(
-                model.name.clone(),
-                model.id == models.current,
-                MenuAction::ChooseAcp(id, AcpChoice::Model(model.id.clone())),
-            )
-        });
-        Some(Picker {
-            id: element_id(MODEL_PREFIX, id, 0),
-            glyph: None,
-            label,
-            tooltip: TOOLTIP_MODEL,
-            entries: header(MODEL_HEADER, entries),
         })
     }
 
@@ -142,15 +118,6 @@ impl EnvironmentShell {
         Some(Self::picker_pill(picker, cx))
     }
 
-    pub(in crate::environment_shell) fn acp_model_control(
-        id: TerminalId,
-        chat: &SurfaceChat,
-        cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
-        let picker = chat.structured()?.acp.model_picker(id)?;
-        Some(Self::picker_pill(picker, cx))
-    }
-
     pub(in crate::environment_shell) fn acp_option_controls(
         id: TerminalId,
         chat: &SurfaceChat,
@@ -164,6 +131,48 @@ impl EnvironmentShell {
             .into_iter()
             .map(|picker| Self::picker_pill(picker, cx))
             .collect()
+    }
+
+    fn acp_offers_of(&self, id: TerminalId) -> Option<&AcpOffers> {
+        self.envs
+            .get(&self.active)?
+            .chats
+            .get(&id)?
+            .structured()
+            .map(|structured| &structured.acp)
+    }
+
+    pub(in crate::environment_shell) fn choose_acp_effort(
+        &mut self,
+        id: TerminalId,
+        effort: Effort,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(choices) = self
+            .acp_offers_of(id)
+            .filter(|offers| offers.effort().is_some())
+            .map(|offers| offers.effort_choices(effort))
+        else {
+            return false;
+        };
+        for choice in choices {
+            self.choose_acp(id, choice, cx);
+        }
+        true
+    }
+
+    pub(in crate::environment_shell) fn switch_acp_fast(
+        &mut self,
+        id: TerminalId,
+        on: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let choice = self
+            .acp_offers_of(id)
+            .and_then(|offers| offers.fast_choice(on));
+        if let Some(choice) = choice {
+            self.choose_acp(id, choice, cx);
+        }
     }
 
     pub(in crate::environment_shell) fn choose_acp(
@@ -187,7 +196,6 @@ impl EnvironmentShell {
         if let Some(live) = structured.live() {
             match choice {
                 AcpChoice::Mode(mode) => live.set_acp_mode(mode),
-                AcpChoice::Model(model) => live.set_acp_model(model),
                 AcpChoice::Option(option, value) => live.set_acp_option(option, value),
             }
         }

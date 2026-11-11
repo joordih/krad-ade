@@ -18,7 +18,7 @@ use super::opening::{
 use super::process::AgentProcess;
 use super::prompt::prompt_blocks;
 use super::translate::Translator;
-use super::{settle_later, Answered, Inbound, Launch};
+use super::{settle_later, AcpWanted, Answered, Inbound, Launch};
 use crate::acp::client_side::{ClientSide, FileWritten};
 use crate::acp::connection::{AcpConnection, AcpError};
 use crate::acp::ids::SessionId;
@@ -29,6 +29,7 @@ use crate::control::{AcpEvent, LiveEvent};
 use crate::live::{AcpOrder, LiveSession, Order};
 use crate::refused::ResumeRefused;
 use crate::rewind::RewindError;
+use choosing::{ModelWish, WantedModel};
 use watching::{Watched, TERMINAL_REFRESH};
 
 const SIGN_IN_TIMEOUT: Duration = Duration::from_mins(10);
@@ -69,6 +70,10 @@ pub(super) struct Worker<S> {
     queue: VecDeque<Prompt>,
     prompting: bool,
     replaying: bool,
+    wanted_model: Option<WantedModel>,
+    wanted: AcpWanted,
+    in_flight: AcpWanted,
+    settling: usize,
 }
 
 const fn is_replayed(update: &SessionUpdate) -> bool {
@@ -94,6 +99,11 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         sink: S,
     ) -> Self {
         let translator = Translator::new(launch.paths.clone());
+        let wanted_model = launch.model.clone().map(|id| WantedModel {
+            id,
+            wish: ModelWish::Preferred,
+        });
+        let wanted = launch.wanted.clone();
         Self {
             sink,
             launch,
@@ -114,6 +124,10 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             queue: VecDeque::new(),
             prompting: false,
             replaying: false,
+            wanted_model,
+            wanted,
+            in_flight: AcpWanted::default(),
+            settling: 0,
         }
     }
 
@@ -241,6 +255,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
         }
         self.session = Some(opened.id);
         self.choices = opened.choices;
+        self.settling = self.choose_wanted();
         self.choices_changed();
         if !opened.skipped_servers.is_empty() {
             let skipped = opened.skipped_servers.join(LIST_SEPARATOR);
@@ -253,6 +268,9 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             }
         }
         (self.sink)(LiveEvent::Ready(self.translator.catalog().clone()));
+        if let Some(model) = self.wanted_model.take() {
+            self.settling += usize::from(self.choose_model(model));
+        }
         self.next_prompt();
     }
 
@@ -346,10 +364,18 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
                 self.next_prompt();
             }
             Order::Interrupt => self.interrupt(),
-            Order::Model(model) => self.choose_model(AcpModelId(model.as_str().to_owned())),
-            Order::Acp(AcpOrder::Model(model)) => self.choose_model(model),
-            Order::Acp(AcpOrder::Mode(mode)) => self.choose_mode(mode),
-            Order::Acp(AcpOrder::Option(option, value)) => self.choose_option(option, value),
+            Order::Model(model) => {
+                self.choose_model(WantedModel {
+                    id: AcpModelId(model.as_str().to_owned()),
+                    wish: ModelWish::Asked,
+                });
+            }
+            Order::Acp(AcpOrder::Mode(mode)) => {
+                self.choose_mode(mode);
+            }
+            Order::Acp(AcpOrder::Option(option, value)) => {
+                self.choose_option(option, value);
+            }
             Order::Acp(AcpOrder::SignIn(method)) => return self.sign_in(method),
             Order::Answer(ask, answer) => self.asks.answer(&ask, &answer),
             Order::Rewind(_) => (self.sink)(LiveEvent::Rewound(Err(RewindError::Unsupported))),
@@ -371,7 +397,7 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
     }
 
     fn next_prompt(&mut self) {
-        while !self.prompting && self.signing_in.is_none() {
+        while !self.prompting && self.settling == 0 && self.signing_in.is_none() {
             let Some(session) = self.session.clone() else {
                 return;
             };
@@ -394,11 +420,28 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
     }
 
     fn answered(&mut self, answered: Answered) {
+        let settles = matches!(
+            answered,
+            Answered::ModeSet(..) | Answered::ModelSet(..) | Answered::Configured(_)
+        );
+        self.take_answer(answered);
+        if settles && self.settling > 0 {
+            self.settling -= 1;
+            if self.settling == 0 {
+                self.in_flight = AcpWanted::default();
+            }
+            self.next_prompt();
+        }
+    }
+
+    fn take_answer(&mut self, answered: Answered) {
         match answered {
             Answered::Prompted(outcome) => self.prompted(outcome),
             Answered::ModeSet(mode, Ok(_)) => {
-                if let Some(modes) = self.choices.mode_is(mode) {
-                    let modes = modes.clone();
+                self.choices.mode_is(mode);
+                self.overlay_in_flight();
+                if let Some(modes) = &self.choices.modes {
+                    let modes = modes.offer.clone();
                     (self.sink)(LiveEvent::Acp(AcpEvent::Modes(modes)));
                 }
             }
@@ -409,11 +452,13 @@ impl<S: FnMut(LiveEvent)> Worker<S> {
             }
             Answered::Configured(Ok(configured)) => {
                 self.choices.configure(&configured.config_options);
+                self.overlay_in_flight();
                 self.choices_changed();
             }
             Answered::ModeSet(_, Err(error))
             | Answered::ModelSet(_, Err(error))
             | Answered::Configured(Err(error)) => {
+                self.in_flight = AcpWanted::default();
                 let text = self.failure_text(&error);
                 self.notice(format!("{CHOICE_REFUSED_TEXT}: {text}"));
             }

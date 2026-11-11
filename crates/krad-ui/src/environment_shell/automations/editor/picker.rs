@@ -7,11 +7,11 @@ use gpui_kit::{
 use super::super::super::EnvironmentShell;
 use super::super::model::{cue_root, cue_shelf, CueEntry, CueShelf};
 use super::{AutomationEditor, CuePicker};
+use crate::components::floating::floating_frame;
 use crate::components::motion::{pop, slide_from_side};
 use crate::components::{icon, Button, IconName};
 use crate::theme::{
-    popover_shadow, Palette, ICON_SM, LINE_XS, RADIUS_LG, RADIUS_MD, SPACE_0_5, SPACE_1, SPACE_2,
-    TEXT_SM, TEXT_XS,
+    Palette, ICON_SM, LINE_XS, RADIUS_MD, SPACE_0_5, SPACE_1, SPACE_2, TEXT_SM, TEXT_XS,
 };
 
 const PICKER_PREFIX: &str = "automation-cue-picker";
@@ -103,20 +103,13 @@ impl EnvironmentShell {
         );
         pop(
             ElementId::NamedInteger(PICKER_PREFIX.into(), picker.opened),
-            div()
+            floating_frame(pal)
                 .relative()
-                .flex()
-                .flex_col()
                 .w_full()
                 .max_w(px(PICKER_MAX_W))
                 .gap(px(SPACE_1))
                 .p(px(SPACE_1))
-                .rounded(px(RADIUS_LG))
-                .border_1()
-                .border_color(pal.divider)
                 .bg(rgb(pal.bg_surface))
-                .shadow(popover_shadow(pal, cx))
-                .overflow_hidden()
                 .child(header)
                 .child(list),
         )

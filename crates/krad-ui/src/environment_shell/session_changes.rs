@@ -21,6 +21,12 @@ pub(super) struct SessionChangesUi {
     generation: LoadGeneration,
 }
 
+impl SessionChangesUi {
+    pub(super) const fn sheet_shown(&self) -> bool {
+        self.review.is_some()
+    }
+}
+
 struct SessionReview {
     env: EnvironmentName,
     session: SessionId,

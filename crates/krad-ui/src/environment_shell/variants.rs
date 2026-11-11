@@ -25,6 +25,12 @@ pub(super) struct VariantsUi {
     progress: Vec<(EnvironmentName, krad_domain::AppEvent)>,
 }
 
+impl VariantsUi {
+    pub(super) const fn sheet_shown(&self) -> bool {
+        self.draft.is_some() || self.view.is_some()
+    }
+}
+
 fn answer(reply: VariantsReply, response: Response) {
     if let Some(reply) = reply {
         reply.send(response).unwrap_or_default();
