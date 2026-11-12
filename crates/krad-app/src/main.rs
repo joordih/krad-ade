@@ -7,6 +7,7 @@ mod rounded_corners;
 use gpui_kit::component::command::CommandState;
 use gpui_kit::component::TitleBar;
 use gpui_kit::{application, init, open_window, AppContext, WindowDecorations, WindowOptions};
+use krad_runtime::Runtime;
 use krad_store::{config_dir, read_layout_snapshot, read_settings, read_user_themes, APP_NAME};
 use krad_ui::{
     active_appearance, apply_editor_font, apply_interface_font, apply_settings_theme,
@@ -30,6 +31,13 @@ fn main() {
     settings.migrate_themes();
     let user_themes = read_user_themes();
     let host_tools = HostTools::discover();
+    let runtime = match Runtime::start() {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            tracing::error!(%error, "could not start the runtime");
+            std::process::exit(1);
+        }
+    };
     application()
         .with_assets(AppAssets)
         .with_http_client(http_client())
@@ -57,7 +65,8 @@ fn main() {
                 ..TitleBar::window_options()
             };
             match open_window(options, cx, |window, cx| {
-                let view = cx.new(|cx| EnvironmentShell::with_seed(cx, seed, settings, host_tools));
+                let view = cx
+                    .new(|cx| EnvironmentShell::with_seed(cx, seed, settings, host_tools, runtime));
                 let palette = cx.new(|cx| CommandState::new(window, cx));
                 let weak = view.downgrade();
                 let veto = view.downgrade();

@@ -204,7 +204,7 @@ impl EnvironmentShell {
         (launch, cwd, prefill): (Launch, Option<PathBuf>, &[String]),
         cloud: Option<CloudOpener>,
     ) {
-        let Some(pump) = self.pump_tx.clone() else {
+        let Some(pump) = self.pump.tx.clone() else {
             return;
         };
         let signs_in = matches!(launch, Launch::SignIn { .. });

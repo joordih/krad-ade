@@ -100,6 +100,7 @@ use krad_domain::{
     AgentPreset, EnvironmentData, EnvironmentName, EnvironmentView, PersistedLayout, Prompt,
     Settings, SidebarWidth, TerminalId, Visibility, WorkMode, DEFAULT_ENVIRONMENT,
 };
+use krad_runtime::RuntimeHandle;
 use krad_store::{AcpTranscripts, LayoutWriter};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -120,6 +121,12 @@ use crate::components::{new_copy_feedback, CopyFeedback};
 const FPS_HUD_DEFAULT: Visibility = Visibility::Hidden;
 const FULL_REFRESH_HZ: u32 = 30;
 const REDUCED_REFRESH_HZ: u32 = 15;
+
+#[derive(Default)]
+struct Pump {
+    task: Option<Task<()>>,
+    tx: Option<PumpSender<PumpMsg>>,
+}
 
 pub struct EnvironmentShell {
     focus: FocusHandle,
@@ -142,8 +149,7 @@ pub struct EnvironmentShell {
     template_popup: Option<template_popup::TemplatePopup>,
     pub palette: Option<Entity<CommandState>>,
     pub self_ref: Option<WeakEntity<Self>>,
-    pump_task: Option<Task<()>>,
-    pump_tx: Option<PumpSender<PumpMsg>>,
+    pump: Pump,
     toasts: Toasts,
     unseen: HashSet<EnvironmentName>,
     cell_width_px: Option<f32>,
@@ -220,6 +226,7 @@ pub struct EnvironmentShell {
     automations: automations::AutomationsUi,
     variants: variants::VariantsUi,
     cloud: cloud::CloudRunners,
+    _runtime: RuntimeHandle,
 }
 
 impl EnvironmentShell {
@@ -260,19 +267,26 @@ impl EnvironmentShell {
         seed: Option<PersistedLayout>,
         settings: Settings,
         host_tools: host::HostTools,
+        runtime: RuntimeHandle,
     ) -> Self {
-        let (pump_tx, pump_rx) = pump_channel();
-        spawn_ticker(pump_tx.clone());
-        let mut shell = Self::assemble(cx, settings, host_tools, pump_tx);
+        let mut shell = Self::assemble(cx, settings, host_tools, runtime);
+        let pump_rx = shell.open_pump();
         shell.start(seed, pump_rx, cx);
         shell
+    }
+
+    fn open_pump(&mut self) -> PumpReceiver<PumpMsg> {
+        let (pump_tx, pump_rx) = pump_channel();
+        spawn_ticker(pump_tx.clone());
+        self.pump.tx = Some(pump_tx);
+        pump_rx
     }
 
     fn assemble(
         cx: &mut Context<Self>,
         settings: Settings,
         host_tools: host::HostTools,
-        pump_tx: PumpSender<PumpMsg>,
+        runtime: RuntimeHandle,
     ) -> Self {
         Self {
             focus: cx.focus_handle(),
@@ -295,8 +309,7 @@ impl EnvironmentShell {
             template_popup: None,
             palette: None,
             self_ref: None,
-            pump_task: None,
-            pump_tx: Some(pump_tx),
+            pump: Pump::default(),
             toasts: Toasts::default(),
             unseen: HashSet::new(),
             cell_width_px: None,
@@ -373,6 +386,7 @@ impl EnvironmentShell {
             automations: automations::AutomationsUi::default(),
             variants: variants::VariantsUi::default(),
             cloud: cloud::CloudRunners::default(),
+            _runtime: runtime,
         }
     }
 
@@ -392,7 +406,7 @@ impl EnvironmentShell {
         let active = self.active.clone();
         self.show_host(&active, cx);
         self.connect_worker_hosts(cx);
-        self.pump_task = Some(Self::start_pump(pump_rx, cx));
+        self.pump.task = Some(Self::start_pump(pump_rx, cx));
         self.start_loading(cx);
     }
 

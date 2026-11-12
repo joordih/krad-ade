@@ -3828,6 +3828,7 @@ dependencies = [
  "gpui-kit",
  "krad-agents",
  "krad-domain",
+ "krad-runtime",
  "krad-store",
  "krad-ui",
  "tracing",
@@ -3947,6 +3948,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "krad-protocol"
+version = "0.4.1"
+dependencies = [
+ "krad-domain",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "krad-pty"
 version = "0.4.1"
 dependencies = [
@@ -3962,6 +3973,16 @@ dependencies = [
  "krad-domain",
  "krad-host",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "krad-runtime"
+version = "0.4.1"
+dependencies = [
+ "futures",
+ "krad-protocol",
+ "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
@@ -4012,6 +4033,7 @@ dependencies = [
  "krad-host",
  "krad-lsp",
  "krad-repo",
+ "krad-runtime",
  "krad-session",
  "krad-store",
  "krad-update",

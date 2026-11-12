@@ -20,6 +20,7 @@ krad-gitlab.workspace = true
 krad-lsp.workspace = true
 krad-host.workspace = true
 krad-repo.workspace = true
+krad-runtime.workspace = true
 krad-session.workspace = true
 krad-store.workspace = true
 krad-update.workspace = true
