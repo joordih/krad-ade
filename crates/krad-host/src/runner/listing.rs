@@ -24,10 +24,11 @@ pub(super) fn list_processes(
         journaled_ids(processes_dir)
             .filter(|id| !tracked.contains_key(id))
             .filter_map(|id| {
-                let end = Journal::new(processes_dir.join(id.as_str())).len().ok()?;
+                let journal = Journal::new(processes_dir.join(id.as_str()));
+                let end = journal.len().ok()?;
                 Some(CloudProcessStatus {
                     id,
-                    run: CloudProcessRun::Ended(None),
+                    run: CloudProcessRun::Ended(journal.exit_code()),
                     end,
                 })
             }),
@@ -36,7 +37,7 @@ pub(super) fn list_processes(
     statuses
 }
 
-fn journaled_ids(processes_dir: &Path) -> impl Iterator<Item = CloudProcessId> {
+pub(super) fn journaled_ids(processes_dir: &Path) -> impl Iterator<Item = CloudProcessId> {
     fs::read_dir(processes_dir)
         .into_iter()
         .flatten()

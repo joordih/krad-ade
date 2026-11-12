@@ -1,3 +1,5 @@
+mod curl;
+
 use krad_domain::{
     DeliveryOutcome, EventRecord, InstallId, RunnerWebhooks, SyncedWebhook, WebhookId,
     WebhookSigning,
@@ -9,7 +11,8 @@ use std::sync::mpsc::{channel, Sender};
 use std::time::{Duration, Instant};
 
 use super::{queued_events, runner_record, QueuedEvent};
-use crate::webhook::{post_webhook, webhook_agent};
+use crate::webhook::webhook_request;
+use curl::post_with_curl;
 
 const CLI_WAIT: Duration = Duration::from_secs(3);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
@@ -50,20 +53,25 @@ fn deliveries_for(runner_dir: &Path, install: &InstallId, queued: &QueuedEvent) 
         .collect()
 }
 
-fn deliver(delivery: &Delivery, deadline: Instant) -> DeliveryOutcome {
-    let agent = webhook_agent(REQUEST_TIMEOUT);
+fn post(delivery: &Delivery) -> Option<DeliveryOutcome> {
+    let request = webhook_request(
+        &delivery.hook.hook,
+        &delivery.record,
+        delivery.hook.secret.as_ref(),
+    );
+    match request {
+        Ok(request) => post_with_curl(&request, REQUEST_TIMEOUT).ok(),
+        Err(error) => Some(DeliveryOutcome::from(&error)),
+    }
+}
+
+fn deliver(delivery: &Delivery, deadline: Instant) -> Option<DeliveryOutcome> {
     let mut attempt = 1;
     loop {
-        let outcome = post_webhook(
-            &agent,
-            &delivery.hook.hook,
-            &delivery.record,
-            delivery.hook.secret.as_ref(),
-        )
-        .unwrap_or_else(|error| DeliveryOutcome::from(&error));
+        let outcome = post(delivery)?;
         let retry_fits = Instant::now() + RETRY_PAUSE + REQUEST_TIMEOUT <= deadline;
         if outcome != DeliveryOutcome::Failed || attempt >= ATTEMPTS || !retry_fits {
-            return outcome;
+            return Some(outcome);
         }
         attempt += 1;
         std::thread::sleep(RETRY_PAUSE);
@@ -73,7 +81,7 @@ fn deliver(delivery: &Delivery, deadline: Instant) -> DeliveryOutcome {
 fn spawn_delivery(
     delivery: Delivery,
     deadline: Instant,
-    done: Sender<(InstallId, WebhookId, DeliveryOutcome)>,
+    done: Sender<(InstallId, WebhookId, Option<DeliveryOutcome>)>,
 ) -> bool {
     std::thread::Builder::new()
         .name(SENDER_THREAD_NAME.to_owned())
@@ -100,7 +108,7 @@ fn send_within(deliveries: Vec<Delivery>, wait: Duration) -> Sent {
         let Ok((install, hook, outcome)) = results.recv_timeout(left) else {
             break;
         };
-        if outcome != DeliveryOutcome::Failed {
+        if outcome.is_some_and(|outcome| outcome != DeliveryOutcome::Failed) {
             sent.entry(install).or_default().insert(hook);
         }
     }

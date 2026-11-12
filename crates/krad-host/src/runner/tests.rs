@@ -1,3 +1,5 @@
+mod restart;
+
 use krad_domain::{CloudProcessId, CloudProcessRun, InstallId, JournalOffset, Pairing};
 use std::io::Write;
 use std::os::unix::net::UnixStream;
@@ -212,7 +214,7 @@ fn a_client_speaking_another_protocol_is_told_why() -> TestResult {
 }
 
 #[test]
-fn the_list_shows_running_ended_and_orphaned_processes() -> TestResult {
+fn the_list_shows_running_and_ended_processes_across_a_restart() -> TestResult {
     let runner = running_daemon("list")?;
     let done: CloudProcessId = "chat-done".parse()?;
     attach(
@@ -241,12 +243,19 @@ fn the_list_shows_running_ended_and_orphaned_processes() -> TestResult {
         ]
     );
     serve(&runner.root)?;
-    let restarted = list(&runner.socket, &runner.pairing)?;
-    assert!(restarted
+    let restarted: Vec<_> = list(&runner.socket, &runner.pairing)?
         .iter()
-        .all(|status| status.run == CloudProcessRun::Ended(None)));
-    assert_eq!(restarted.len(), 2);
+        .map(|status| (status.id.as_str().to_owned(), status.run))
+        .collect();
+    assert_eq!(
+        restarted,
+        [
+            ("chat-done".to_owned(), CloudProcessRun::Ended(Some(3))),
+            ("chat-waiting".to_owned(), CloudProcessRun::Running),
+        ]
+    );
     drop(stream);
+    stop(&runner.socket, &runner.pairing, waiting)?;
     Ok(())
 }
 

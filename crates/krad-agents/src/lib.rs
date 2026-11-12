@@ -52,4 +52,4 @@ pub use protocol::{
 };
 pub use server::{serve, Endpoint, Incoming, HEARTBEAT_INTERVAL};
 pub use token::new_token;
-pub use webhook::{post_webhook, webhook_agent, WebhookPostError};
+pub use webhook::{webhook_request, WebhookPostError, WebhookRequest};

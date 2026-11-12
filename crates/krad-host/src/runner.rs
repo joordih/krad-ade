@@ -14,9 +14,13 @@ mod journal;
 #[cfg(unix)]
 mod listing;
 #[cfg(unix)]
+mod piped;
+#[cfg(unix)]
 mod process;
 #[cfg(unix)]
 mod pty;
+#[cfg(unix)]
+mod restart;
 mod service;
 mod status;
 #[cfg(all(test, unix))]

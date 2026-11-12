@@ -21,6 +21,7 @@ pub(super) fn start_pty(
     size: TerminalSize,
 ) -> Result<Arc<Tracked>, &'static str> {
     let (output, _) = journal.create().map_err(|_| SPAWN_FAILED)?;
+    journal.mark_terminal().map_err(|_| SPAWN_FAILED)?;
     let pair = native_pty_system()
         .openpty(pty_size(size))
         .map_err(|error| {

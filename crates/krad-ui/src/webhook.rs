@@ -1,4 +1,4 @@
-use krad_agents::{post_webhook, webhook_agent, WebhookPostError};
+use krad_agents::{webhook_request, WebhookPostError, WebhookRequest};
 use krad_domain::{
     next_delivery_step, DeliveryOutcome, DeliveryStep, EventRecord, Webhook, WebhookId,
     WebhookSecret, WebhookSigning,
@@ -208,6 +208,28 @@ fn serve(inbox: &Receiver<Order>) {
     }
 }
 
+fn webhook_agent(timeout: Duration) -> Agent {
+    Agent::config_builder()
+        .timeout_global(Some(timeout))
+        .http_status_as_error(false)
+        .build()
+        .into()
+}
+
+fn send_request(agent: &Agent, request: &WebhookRequest) -> DeliveryOutcome {
+    let sending = request.headers.iter().fold(
+        agent.post(request.url.as_str()),
+        |sending, (name, value)| sending.header(*name, value),
+    );
+    match sending.send(request.body.as_bytes()) {
+        Ok(response) => DeliveryOutcome::of_status(response.status().as_u16()),
+        Err(error) => {
+            tracing::debug!(%error, "webhook not reached");
+            DeliveryOutcome::Failed
+        }
+    }
+}
+
 #[tracing::instrument(skip_all, fields(webhook = %hook.id))]
 fn post(
     agent: &Agent,
@@ -215,8 +237,8 @@ fn post(
     record: &EventRecord,
     secret: Option<&WebhookSecret>,
 ) -> DeliveryOutcome {
-    match post_webhook(agent, hook, record, secret) {
-        Ok(outcome) => outcome,
+    match webhook_request(hook, record, secret) {
+        Ok(request) => send_request(agent, &request),
         Err(error @ WebhookPostError::NoSecret) => {
             tracing::warn!(%error, "webhook not sent");
             DeliveryOutcome::from(&error)

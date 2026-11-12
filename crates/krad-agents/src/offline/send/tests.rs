@@ -58,6 +58,13 @@ fn serve_once(listener: TcpListener) -> JoinHandle<Option<Received>> {
     })
 }
 
+fn curl_missing() -> bool {
+    std::process::Command::new("curl")
+        .arg("--version")
+        .output()
+        .is_err()
+}
+
 fn runner_dir(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("krad-offline-{name}-{}", std::process::id()))
 }
@@ -95,6 +102,9 @@ fn stop_event() -> Result<QueuedEvent, Box<dyn std::error::Error>> {
 
 #[test]
 fn a_hook_is_signed_and_delivered_and_its_line_marked_for_that_install_only() -> TestResult {
+    if curl_missing() {
+        return Ok(());
+    }
     let root = runner_dir("delivered");
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let url = format!("http://{}/krad", listener.local_addr()?);
@@ -119,6 +129,9 @@ fn a_hook_is_signed_and_delivered_and_its_line_marked_for_that_install_only() ->
         [WebhookId(7)].into_iter().collect()
     );
     assert!(line_of(&without)?.webhooked.is_empty());
+    assert_eq!(received.header("content-type"), Some("application/json"));
+    assert_eq!(received.header("user-agent"), Some("krad-ade-webhooks"));
+    assert!(received.head[0].starts_with("POST /krad "));
     let record: EventRecord = serde_json::from_str(&received.body)?;
     assert_eq!(
         record.event,
@@ -138,6 +151,9 @@ fn a_hook_is_signed_and_delivered_and_its_line_marked_for_that_install_only() ->
 
 #[test]
 fn an_unreachable_hook_leaves_the_line_for_the_app_within_the_wait() -> TestResult {
+    if curl_missing() {
+        return Ok(());
+    }
     let root = runner_dir("unreached");
     let closed = TcpListener::bind("127.0.0.1:0")?.local_addr()?;
     let install: InstallId = "0123456789abcdef".parse()?;

@@ -3,22 +3,22 @@ use portable_pty::MasterPty;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
-use std::os::unix::process::{CommandExt, ExitStatusExt};
-use std::process::{Command, Stdio};
+use std::os::unix::process::ExitStatusExt;
+use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::Duration;
 
 use super::journal::{append, Journal};
-use super::wire::{CloudLaunch, Frame};
+use super::wire::Frame;
 use crate::mux::TerminalSize;
 
 const CHUNK_BYTES: usize = 32 * 1024;
-const OWN_PROCESS_GROUP: i32 = 0;
 const SIGNAL_EXIT_BASE: i32 = 128;
 const KILL_PROGRAM: &str = "kill";
 const TERMINATE_SIGNAL: &str = "-TERM";
 const KILL_SIGNAL: &str = "-KILL";
+const PROBE_SIGNAL: &str = "-0";
 const END_OF_OPTIONS: &str = "--";
 const KILL_GRACE: Duration = Duration::from_secs(2);
 const PUMP_THREAD: &str = "krad-cloud-pump";
@@ -45,12 +45,10 @@ pub(super) struct Tracked {
 impl Tracked {
     pub(super) fn finished(journal: Journal) -> io::Result<Self> {
         let written = journal.len()?.0;
+        let run = CloudProcessRun::Ended(journal.exit_code());
         Ok(Self {
             journal,
-            progress: Mutex::new(Progress {
-                written,
-                run: CloudProcessRun::Ended(None),
-            }),
+            progress: Mutex::new(Progress { written, run }),
             changed: Condvar::new(),
             input: Mutex::new(None),
             terminal: None,
@@ -79,6 +77,17 @@ impl Tracked {
         }
     }
 
+    pub(super) fn adopted(journal: Journal, input: Input, group: u32) -> Self {
+        Self {
+            journal,
+            progress: Mutex::new(Progress::default()),
+            changed: Condvar::new(),
+            input: Mutex::new(Some(input)),
+            terminal: None,
+            group: Some(group),
+        }
+    }
+
     fn progress(&self) -> MutexGuard<'_, Progress> {
         self.progress.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -101,7 +110,23 @@ impl Tracked {
         self.changed.notify_all();
     }
 
-    fn record_exit(&self, code: Option<i32>) {
+    pub(super) fn observe_length(&self) {
+        let Ok(length) = self.journal.len() else {
+            return;
+        };
+        let mut progress = self.progress();
+        if length.0 > progress.written {
+            progress.written = length.0;
+            self.changed.notify_all();
+        }
+    }
+
+    pub(super) fn record_exit(&self, code: Option<i32>) {
+        if let (Some(code), None) = (code, self.journal.exit_code()) {
+            if let Err(error) = self.journal.record_exit(code) {
+                tracing::debug!(%error, "could not record a cloud process exit code");
+            }
+        }
         self.progress().run = CloudProcessRun::Ended(code);
         self.changed.notify_all();
     }
@@ -115,43 +140,6 @@ impl Tracked {
                 .map_err(io::Error::other),
         )
     }
-}
-
-pub(super) fn start_piped(
-    journal: Journal,
-    launch: &CloudLaunch,
-) -> Result<Arc<Tracked>, &'static str> {
-    let (output, errors) = journal.create().map_err(|_| SPAWN_FAILED)?;
-    let mut child = Command::new(&launch.program)
-        .args(&launch.args)
-        .envs(launch.env.iter().map(|(name, value)| (name, value)))
-        .current_dir(&launch.cwd)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::from(errors))
-        .process_group(OWN_PROCESS_GROUP)
-        .spawn()
-        .map_err(|error| {
-            tracing::debug!(%error, "could not start a cloud process");
-            SPAWN_FAILED
-        })?;
-    let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
-        return Err(SPAWN_FAILED);
-    };
-    let tracked = Arc::new(Tracked::live(
-        journal,
-        Box::new(stdin),
-        None,
-        Some(child.id()),
-    ));
-    spawn_pump(&tracked, stdout, output, move || {
-        child.wait().ok().map(|status| {
-            status
-                .code()
-                .unwrap_or_else(|| SIGNAL_EXIT_BASE + status.signal().unwrap_or_default())
-        })
-    })?;
-    Ok(tracked)
 }
 
 pub(super) fn spawn_pump(
@@ -197,6 +185,9 @@ pub(super) fn forward_input(tracked: &Arc<Tracked>, mut stream: UnixStream) {
             let mut chunk = vec![0; CHUNK_BYTES];
             while let Ok(read) = stream.read(&mut chunk) {
                 if read == 0 {
+                    break;
+                }
+                if tracked.run() != CloudProcessRun::Running {
                     break;
                 }
                 let mut input = tracked.input.lock().unwrap_or_else(PoisonError::into_inner);
@@ -249,10 +240,26 @@ pub(super) fn stream_output(
 }
 
 pub(super) fn stop_group(group: u32) {
-    let group = format!("-{group}");
-    signal_group(TERMINATE_SIGNAL, &group);
+    signal_group(TERMINATE_SIGNAL, &format!("-{group}"));
     thread::sleep(KILL_GRACE);
-    signal_group(KILL_SIGNAL, &group);
+    if group_alive(group) {
+        signal_group(KILL_SIGNAL, &format!("-{group}"));
+    }
+}
+
+pub(super) fn group_alive(group: u32) -> bool {
+    Command::new(KILL_PROGRAM)
+        .args([PROBE_SIGNAL, END_OF_OPTIONS, &format!("-{group}")])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+pub(super) fn exit_code_of(status: ExitStatus) -> Option<i32> {
+    status
+        .code()
+        .or_else(|| status.signal().map(|signal| SIGNAL_EXIT_BASE + signal))
 }
 
 fn signal_group(signal: &str, group: &str) {

@@ -10,8 +10,10 @@ use std::thread;
 use super::clients::{ensure_private_dir, is_paired};
 use super::journal::Journal;
 use super::listing::list_processes;
-use super::process::{forward_input, start_piped, stop_group, stream_output, Tracked};
+use super::piped::start_piped;
+use super::process::{forward_input, stop_group, stream_output, Tracked};
 use super::pty::start_pty;
+use super::restart::adopt_previous;
 use super::wire::{CloudLaunch, Envelope, Reply, Request};
 use super::PROCESS_ENV;
 use crate::mux::TerminalSize;
@@ -48,7 +50,7 @@ impl RunnerDaemon {
     pub fn new(root: &Path) -> Arc<Self> {
         Arc::new(Self {
             root: root.to_owned(),
-            processes: Mutex::new(HashMap::new()),
+            processes: Mutex::new(adopt_previous(&root.join(PROCESSES_DIR))),
         })
     }
 
