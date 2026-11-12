@@ -1,7 +1,9 @@
+use gpui_kit::Context;
 use krad_agents::{AgentInfo, ErrorCode, Response, TerminalHandle, TerminalState};
 use krad_domain::{AgentState, EnvironmentName, TerminalId};
-use krad_runtime::{BusReply, Mail};
+use krad_runtime::{BusReply, Mail, Pending};
 
+use super::super::live_terminal::LiveTerminal;
 use super::super::surface::ChatPresence;
 use super::super::EnvironmentShell;
 use super::close::closed_worker_infos;
@@ -9,6 +11,24 @@ use super::feed::lists_as_agent;
 use super::{Settlement, NO_SUCH_TERMINAL};
 
 pub(super) const CLOSED_TERMINAL: &str = "That terminal has no running session";
+
+pub(super) enum ScreenTail {
+    Now(Response),
+    Later(Pending<Option<Vec<String>>>),
+}
+
+impl From<Response> for ScreenTail {
+    fn from(response: Response) -> Self {
+        Self::Now(response)
+    }
+}
+
+fn tail_response(tail: Option<Vec<String>>) -> Response {
+    tail.map_or_else(
+        || Response::error(ErrorCode::NotFound, CLOSED_TERMINAL),
+        |lines| Response::Screen(lines.join("\n")),
+    )
+}
 
 impl EnvironmentShell {
     pub(super) fn agent_infos(&self, environment: &str, me: Option<u64>) -> Vec<AgentInfo> {
@@ -91,7 +111,7 @@ impl EnvironmentShell {
             None => live
                 .sessions
                 .get(&node.id)
-                .is_some_and(|session| session.state.is_running()),
+                .is_some_and(LiveTerminal::is_running),
         };
         Some(match (alive, node.state) {
             (false, _) => Settlement::Settled(TerminalState::Exited),
@@ -100,16 +120,34 @@ impl EnvironmentShell {
         })
     }
 
-    pub(super) fn screen_tail(&self, environment: &str, target: u64, lines: usize) -> Response {
+    pub(super) fn screen_tail(&self, environment: &str, target: u64, lines: usize) -> ScreenTail {
         let env = EnvironmentName::new(environment.to_owned());
         let id = TerminalId(target);
         if let Some(tail) = self.chat_tail(&env, id, lines) {
-            return Response::Screen(tail);
+            return Response::Screen(tail).into();
         }
-        let session = self.envs.get(&env).and_then(|live| live.sessions.get(&id));
-        match session {
-            Some(session) => Response::Screen(session.engine.recent_lines(lines).join("\n")),
-            None => Response::error(ErrorCode::NotFound, CLOSED_TERMINAL),
+        let runs = self
+            .envs
+            .get(&env)
+            .is_some_and(|live| live.sessions.contains_key(&id));
+        if !runs {
+            return Response::error(ErrorCode::NotFound, CLOSED_TERMINAL).into();
+        }
+        ScreenTail::Later(
+            self.terminals()
+                .terminal_lines(super::super::live_terminal::terminal_ref(&env, id), lines),
+        )
+    }
+
+    pub(super) fn reply_tail(tail: ScreenTail, reply: BusReply, cx: &mut Context<Self>) {
+        match tail {
+            ScreenTail::Now(response) => reply.send(response).unwrap_or_default(),
+            ScreenTail::Later(lines) => cx
+                .spawn(async move |_, _| {
+                    let response = tail_response(lines.await.ok().flatten());
+                    reply.send(response).unwrap_or_default();
+                })
+                .detach(),
         }
     }
 }

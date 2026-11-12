@@ -13,6 +13,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use super::super::ask::{AskQueue, Settled};
 use super::super::chat::{fold_entry, workplace_home, ChatMessage};
+use super::super::live_terminal::LiveTerminal;
 use super::super::EnvironmentShell;
 use super::{anchor, Backend, Origin, SurfaceChat, SurfaceCommand};
 
@@ -242,10 +243,7 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
-        let running = live
-            .sessions
-            .get(&id)
-            .is_some_and(|session| session.state.is_running());
+        let running = live.sessions.get(&id).is_some_and(LiveTerminal::is_running);
         let state = live
             .data
             .nodes

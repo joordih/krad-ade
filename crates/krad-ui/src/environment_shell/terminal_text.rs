@@ -3,7 +3,9 @@ use gpui_kit::{
     FontWeight, Hitbox, HitboxBehavior, Hsla, IntoElement, Pixels, Rgba, ShapedLine, Styled,
     TextAlign, TextRun, UnderlineStyle, Window,
 };
-use krad_session::{block, CellRect, TermRow, TermSpan, CELL_STEPS};
+use krad_runtime::TerminalFrame;
+use krad_session::{block, CellPoint, CellRect, TermRow, TermSpan, CELL_STEPS};
+use std::sync::Arc;
 
 const UNDERLINE_PX: f32 = 1.0;
 
@@ -168,15 +170,25 @@ fn paint(prepared: Prepared, window: &mut Window, cx: &mut App) {
     }
 }
 
-pub(super) fn terminal_text(rows: Vec<TermRow>, look: TextLook) -> AnyElement {
-    let height = count_px(rows.len()) * look.line_h;
+pub(super) fn terminal_text(frame: Arc<TerminalFrame>, look: TextLook) -> AnyElement {
+    let height = count_px(frame.screen.rows.len()) * look.line_h;
     canvas(
-        move |bounds, window, _| prepare(&rows, &look, bounds, window),
+        move |bounds, window, _| prepare(&frame.screen.rows, &look, bounds, window),
         move |_, prepared, window, cx| paint(prepared, window, cx),
     )
     .w_full()
     .h(px(height))
     .into_any_element()
+}
+
+pub(super) fn link_at(rows: &[TermRow], cell: CellPoint) -> Option<String> {
+    let mut start = 0;
+    rows.get(cell.row)?.spans.iter().find_map(|span| {
+        let end = start + span.cells;
+        let hit = (start..end).contains(&cell.col);
+        start = end;
+        hit.then(|| span.link.clone()).flatten()
+    })
 }
 
 #[cfg(test)]
@@ -209,6 +221,31 @@ mod tests {
             style: SpanStyle::default(),
             link: None,
         }
+    }
+
+    #[test]
+    fn a_click_finds_the_link_of_the_span_under_it() {
+        let link = TermSpan {
+            text: "docs".to_owned(),
+            cells: 4,
+            link: Some("https://example.com".to_owned()),
+            ..span(None)
+        };
+        let rows = vec![TermRow {
+            spans: vec![span(None), link, span(None)],
+        }];
+        let at = |col| CellPoint { row: 0, col };
+        assert_eq!(link_at(&rows, at(0)), None);
+        assert_eq!(
+            link_at(&rows, at(1)).as_deref(),
+            Some("https://example.com")
+        );
+        assert_eq!(
+            link_at(&rows, at(4)).as_deref(),
+            Some("https://example.com")
+        );
+        assert_eq!(link_at(&rows, at(5)), None);
+        assert_eq!(link_at(&rows, CellPoint { row: 3, col: 0 }), None);
     }
 
     #[test]

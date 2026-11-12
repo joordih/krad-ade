@@ -1,11 +1,12 @@
+use futures::channel::mpsc;
 use gpui_kit::{AppContext as _, Context};
 use krad_domain::{CloudRunnerId, EnvironmentName, TerminalId, ToastKind};
 use krad_host::{quote, Forward, HostError, HostLink};
+use krad_runtime::{remote_terminal, remote_terminal_opener, OutputTap};
 use std::collections::HashSet;
 use std::io::ErrorKind;
 
 use super::super::super::activity::{TerminalsTab, UtilityTab};
-use super::super::super::host::{remote_terminal, remote_terminal_opener};
 use super::super::super::sessions::Launch;
 use super::super::super::EnvironmentShell;
 use super::super::{HelperTerminal, NodeKey};
@@ -17,6 +18,7 @@ const SHELL_FLAG: &str = "-c";
 const STAY_IN_SHELL: &str = "; exec \"${SHELL:-/bin/sh}\" -l";
 const ARG_SEPARATOR: &str = " ";
 const TAIL_KEPT: usize = 4096;
+const TAP_CAPACITY: usize = 64;
 const LABEL_PREFIX: &str = "Sign in on";
 const NOT_READY: &str = "The cloud runner is not connected yet; try again once it is ready";
 const NO_TERMINAL: &str = "Could not open a terminal on the cloud runner";
@@ -30,6 +32,7 @@ pub(in crate::environment_shell) struct SignInWatch {
     tail: String,
     seen: HashSet<u16>,
     forwards: Vec<Forward>,
+    output: Option<mpsc::Receiver<Vec<u8>>>,
 }
 
 impl SignInWatch {
@@ -40,7 +43,18 @@ impl SignInWatch {
             tail: String::new(),
             seen: HashSet::new(),
             forwards: Vec::new(),
+            output: None,
         }
+    }
+
+    fn heard_since(&mut self) -> Vec<LoopbackCallback> {
+        let mut chunks = Vec::new();
+        if let Some(output) = &mut self.output {
+            while let Ok(bytes) = output.try_recv() {
+                chunks.push(bytes);
+            }
+        }
+        chunks.iter().flat_map(|bytes| self.heard(bytes)).collect()
     }
 
     fn heard(&mut self, bytes: &[u8]) -> Vec<LoopbackCallback> {
@@ -140,20 +154,30 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    pub(in crate::environment_shell) fn watch_runner_sign_in(
+    pub(in crate::environment_shell) fn runner_sign_in_tap(
         &mut self,
         env: &EnvironmentName,
         id: TerminalId,
-        bytes: &[u8],
-    ) {
-        let key = (env.clone(), id);
-        let Some(HelperTerminal::SignIn(watch)) = self.cloud.helpers.get_mut(&key) else {
-            return;
+    ) -> Option<OutputTap> {
+        let Some(HelperTerminal::SignIn(watch)) = self.cloud.helpers.get_mut(&(env.clone(), id))
+        else {
+            return None;
         };
-        let heard = watch.heard(bytes);
-        self.cloud
-            .forward_asks
-            .extend(heard.into_iter().map(|callback| (key.clone(), callback)));
+        let (tap, output) = mpsc::channel(TAP_CAPACITY);
+        watch.output = Some(output);
+        Some(tap)
+    }
+
+    pub(in crate::environment_shell) fn hear_runner_sign_ins(&mut self) {
+        for (key, helper) in &mut self.cloud.helpers {
+            let HelperTerminal::SignIn(watch) = helper else {
+                continue;
+            };
+            let heard = watch.heard_since();
+            self.cloud
+                .forward_asks
+                .extend(heard.into_iter().map(|callback| (key.clone(), callback)));
+        }
     }
 
     pub(in crate::environment_shell) fn runner_helper_exited(

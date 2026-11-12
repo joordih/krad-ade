@@ -295,6 +295,8 @@ impl EnvironmentShell {
         self.sync_model_picker_focus(window, cx);
         self.sync_focus_returns(window, cx);
         self.sync_ask_focus(window, cx);
+        self.runtime
+            .use_palette(crate::terminal_theme::terminal_colors(cx).ansi);
         self.sync_terminal_images(window);
         self.probe_review(cx);
         self.sync_window_background(window, cx);

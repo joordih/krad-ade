@@ -282,7 +282,9 @@ impl EnvironmentShell {
                 return;
             }
             Request::Read { target, lines } => {
-                Some(self.screen_tail(&from.environment, target, lines))
+                let tail = self.screen_tail(&from.environment, target, lines);
+                Self::reply_tail(tail, reply, cx);
+                return;
             }
             Request::Hook {
                 harness,

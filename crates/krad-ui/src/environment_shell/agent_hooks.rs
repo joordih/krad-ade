@@ -153,12 +153,12 @@ impl EnvironmentShell {
         let id = TerminalId(from.terminal);
         let preset = report.harness;
         let state = hook_state(preset, report.event, report.tool);
+        self.mark_terminal_hooked(&env, id);
         if let Some(session) = self
             .envs
             .get_mut(&env)
             .and_then(|live| live.sessions.get_mut(&id))
         {
-            session.hooked = true;
             if state.is_some() {
                 session.activity = report.detail;
             }

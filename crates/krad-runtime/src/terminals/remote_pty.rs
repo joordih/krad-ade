@@ -31,10 +31,7 @@ fn spawn_failure(error: HostError) -> PtyError {
     PtyError::Spawn(Box::new(error))
 }
 
-pub(in crate::environment_shell) fn multiplexed_opener(
-    link: &HostLink,
-    command: HostCommand,
-) -> Option<PtyOpener> {
+pub(super) fn multiplexed_opener(link: &HostLink, command: HostCommand) -> Option<PtyOpener> {
     let HostLink::Remote(ssh) = link else {
         return None;
     };

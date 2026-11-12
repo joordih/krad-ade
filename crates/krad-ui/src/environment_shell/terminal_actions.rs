@@ -4,8 +4,10 @@ use gpui_kit::{
     div, px, rgb, AnyElement, ClipboardItem, Context, IntoElement, ParentElement, Styled, Window,
 };
 use krad_domain::{AgentPreset, TerminalId};
+use krad_runtime::TerminalAction;
 use krad_session::SearchDirection;
 
+use super::live_terminal::terminal_ref;
 use super::sessions::Launch;
 use super::EnvironmentShell;
 use crate::actions::{CopySelection, PasteClipboard, SearchTerminal, SplitTerminal};
@@ -57,25 +59,39 @@ impl EnvironmentShell {
         if !self.settings.copy_mode.copies_on_shortcut() {
             return;
         }
-        let text = self
-            .focused_session()
-            .and_then(|session| session.engine.selection_text());
-        Self::copy_text(text, cx);
+        let focused = self.envs.get(&self.active).and_then(|live| live.focused);
+        if let Some(id) = focused {
+            self.copy_terminal_selection(id, cx);
+        }
     }
 
     pub(super) fn copy_finished_selection(&self, id: TerminalId, cx: &mut Context<Self>) {
-        if !self.settings.copy_mode.copies_on_select() {
-            return;
+        if self.settings.copy_mode.copies_on_select() {
+            self.copy_terminal_selection(id, cx);
         }
-        let text = self
-            .envs
-            .get(&self.active)
-            .and_then(|live| live.sessions.get(&id))
-            .and_then(|session| session.engine.selection_text());
-        Self::copy_text(text, cx);
     }
 
-    fn copy_text(text: Option<String>, cx: &mut Context<Self>) {
+    fn copy_terminal_selection(&self, id: TerminalId, cx: &mut Context<Self>) {
+        let runs = self
+            .envs
+            .get(&self.active)
+            .is_some_and(|live| live.sessions.contains_key(&id));
+        if !runs {
+            return;
+        }
+        let selection = self
+            .terminals()
+            .terminal_selection(terminal_ref(&self.active, id));
+        cx.spawn(async move |_, cx| {
+            let Ok(Some(text)) = selection.await else {
+                return;
+            };
+            cx.update(|cx| Self::copy_text(Some(text), cx));
+        })
+        .detach();
+    }
+
+    fn copy_text(text: Option<String>, cx: &mut gpui_kit::App) {
         if let Some(text) = text.filter(|text| !text.is_empty()) {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
         }
@@ -106,7 +122,7 @@ impl EnvironmentShell {
     pub(super) fn paste_into_focused(&mut self, text: &str, cx: &mut Context<Self>) {
         let bracketed = self
             .focused_session()
-            .is_some_and(|session| session.engine.bracketed_paste());
+            .is_some_and(|session| session.view.status().bracketed_paste);
         self.send_to_focused(paste_bytes(text, bracketed), cx);
     }
 
@@ -144,8 +160,9 @@ impl EnvironmentShell {
         match key {
             KEY_ESCAPE => {
                 self.search = None;
-                if let Some(session) = self.focused_session_mut() {
-                    session.engine.clear_selection();
+                if let Some(id) = self.envs.get(&self.active).and_then(|live| live.focused) {
+                    let env = self.active.clone();
+                    self.act_on_terminal(&env, id, TerminalAction::ClearSelection);
                 }
             }
             KEY_ENTER => {
@@ -154,37 +171,54 @@ impl EnvironmentShell {
                 } else {
                     SearchDirection::Older
                 };
-                self.run_search(direction, false);
+                self.run_search(direction, false, cx);
             }
             KEY_BACKSPACE => {
                 search.text.pop();
-                self.run_search(SearchDirection::Older, true);
+                self.run_search(SearchDirection::Older, true, cx);
             }
             _ => {
                 let Some(text) = key_char.filter(|text| !text.is_empty()) else {
                     return true;
                 };
                 search.text.push_str(text);
-                self.run_search(SearchDirection::Older, true);
+                self.run_search(SearchDirection::Older, true, cx);
             }
         }
         cx.notify();
         true
     }
 
-    fn run_search(&mut self, direction: SearchDirection, restart: bool) {
+    fn run_search(&mut self, direction: SearchDirection, restart: bool, cx: &mut Context<Self>) {
         let Some(query) = self.search.as_ref().map(|search| search.text.clone()) else {
             return;
         };
-        let found = self.focused_session_mut().is_some_and(|session| {
-            if restart {
-                session.engine.clear_selection();
+        let focused = self
+            .focused_session()
+            .and(self.envs.get(&self.active).and_then(|live| live.focused));
+        let Some(id) = focused else {
+            if let Some(search) = &mut self.search {
+                search.missing = !query.is_empty();
             }
-            !query.is_empty() && session.engine.search(&query, direction)
-        });
-        if let Some(search) = &mut self.search {
-            search.missing = !query.is_empty() && !found;
-        }
+            return;
+        };
+        let found = self.terminals().search_terminal(
+            terminal_ref(&self.active, id),
+            query.clone(),
+            direction,
+            restart,
+        );
+        cx.spawn(async move |this, cx| {
+            let found = found.await.unwrap_or(false);
+            this.update(cx, |shell, cx| {
+                if let Some(search) = shell.search.as_mut().filter(|search| search.text == query) {
+                    search.missing = !query.is_empty() && !found;
+                    cx.notify();
+                }
+            })
+            .unwrap_or_default();
+        })
+        .detach();
     }
 
     pub(super) fn search_bar(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -255,7 +289,7 @@ impl EnvironmentShell {
                     .icon(IconName::ChevronUp)
                     .small()
                     .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                        this.run_search(SearchDirection::Older, false);
+                        this.run_search(SearchDirection::Older, false, cx);
                         cx.notify();
                     })),
             )
@@ -264,7 +298,7 @@ impl EnvironmentShell {
                     .icon(IconName::ChevronDown)
                     .small()
                     .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                        this.run_search(SearchDirection::Newer, false);
+                        this.run_search(SearchDirection::Newer, false, cx);
                         cx.notify();
                     })),
             )

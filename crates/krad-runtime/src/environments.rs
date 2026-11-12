@@ -1,9 +1,9 @@
 use futures::channel::oneshot;
 use krad_domain::{
     BudgetStatus, EnvironmentChange, EnvironmentData, EnvironmentName, RuntimeState, SpendSettings,
-    TerminalId, UsageReport,
+    TerminalId, TerminalMeta, UsageReport,
 };
-use krad_protocol::{EnvironmentCommand, ErrorCode, EventKind, Reply, SpendingCrossed};
+use krad_protocol::{AgentRef, EnvironmentCommand, ErrorCode, EventKind, Reply, SpendingCrossed};
 use krad_store::{config_dir, LayoutFile, LayoutWriter};
 use std::path::PathBuf;
 
@@ -119,6 +119,13 @@ impl Environments {
         self.state.environments.clone()
     }
 
+    pub(crate) fn knows(&self, name: &EnvironmentName) -> bool {
+        self.state
+            .environments
+            .iter()
+            .any(|environment| environment.name == *name)
+    }
+
     fn find_mut(&mut self, name: &EnvironmentName) -> Option<&mut EnvironmentData> {
         self.state
             .environments
@@ -185,9 +192,29 @@ impl Environments {
         let Some(kept) = self.find_mut(&environment) else {
             return refused(ErrorCode::NotFound, UNKNOWN_ENVIRONMENT);
         };
+        let (owned, mut changes): (Vec<_>, Vec<_>) = changes
+            .into_iter()
+            .partition(EnvironmentChange::is_runtime_owned);
+        if !owned.is_empty() {
+            tracing::debug!(
+                count = owned.len(),
+                "a client changed fields the runtime owns; ignored"
+            );
+        }
         for change in &changes {
             kept.apply(change.clone());
         }
+        let pruned: Vec<EnvironmentChange> = changes
+            .iter()
+            .filter_map(|change| match change {
+                EnvironmentChange::NodeRemoved { id } => kept
+                    .meta
+                    .remove(id)
+                    .map(|_| EnvironmentChange::MetaRemoved { terminal: *id }),
+                _ => None,
+            })
+            .collect();
+        changes.extend(pruned);
         if changes.is_empty() {
             return Reply::Accepted;
         }
@@ -197,6 +224,29 @@ impl Environments {
             changes,
         });
         Reply::Accepted
+    }
+
+    pub(crate) fn put_meta(
+        &mut self,
+        terminal: AgentRef,
+        meta: TerminalMeta,
+        outbox: &mut Vec<EventKind>,
+    ) {
+        let Some(kept) = self.find_mut(&terminal.environment) else {
+            return;
+        };
+        if kept.meta.get(&terminal.terminal) == Some(&meta) {
+            return;
+        }
+        kept.meta.insert(terminal.terminal, meta.clone());
+        self.dirty = true;
+        outbox.push(EventKind::EnvironmentChanged {
+            environment: terminal.environment,
+            changes: vec![EnvironmentChange::Meta {
+                terminal: terminal.terminal,
+                meta,
+            }],
+        });
     }
 
     fn record_usage(

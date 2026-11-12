@@ -12,7 +12,6 @@ use krad_domain::{
 use krad_store::{forget_archived_chat_files, gateway_sessions_dir};
 use std::time::{Duration, SystemTime};
 
-use super::live_env::live_meta;
 use super::EnvironmentShell;
 
 const SWEEP_EVERY: Duration = Duration::from_hours(1);
@@ -69,7 +68,6 @@ impl EnvironmentShell {
             live.data.archive.leave_session(session);
             return;
         }
-        live.data.meta = live_meta(live);
         live.data.archive_session(session, SystemTime::now());
     }
 

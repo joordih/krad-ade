@@ -4,18 +4,15 @@ mod bus;
 mod failure;
 mod folder_browser;
 mod problem;
-mod remote_pty;
 mod sign_in;
 mod ssh_dialog;
 mod state;
-mod terminal;
 mod tools;
 
 pub(super) use folder_browser::{FolderBrowser, FolderPurpose};
 pub(super) use problem::explain as explain_host_problem;
 pub(super) use ssh_dialog::{ssh_config_suggestions, SshDialog};
 pub(super) use state::HostState;
-pub(super) use terminal::{remote_terminal, remote_terminal_opener};
 pub use tools::HostTools;
 
 use gpui_kit::{AnyElement, AppContext as _, Context, Window};
@@ -23,14 +20,14 @@ use krad_domain::{EnvironmentName, Host, TerminalId, ToastKind};
 use krad_host::{HostContext, HostError, HostLink, HostPlatform, HOST_CLI_PROGRAM};
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use super::activity::{TerminalsTab, UtilityTab};
 use super::agent_bus::RemoteBusSlot;
+use super::live_terminal::end_terminal_on;
 use super::sessions::Launch;
 use super::terminal_card::home_dir;
-use super::{live_meta, EnvironmentShell};
+use super::EnvironmentShell;
 
 const LOGIN_ENV_MISSING: &str =
     "Could not read the login environment; agent CLIs set up in .bashrc or .zprofile may not be found on";
@@ -237,9 +234,7 @@ impl EnvironmentShell {
             return;
         };
         live.host = HostState::Connected(platform);
-        live.data.meta = live_meta(live);
-        live.sessions
-            .retain(|_, session| session.state.is_running());
+        live.sessions.retain(|_, session| session.is_running());
         let roots: Vec<PathBuf> = live
             .data
             .groups
@@ -344,8 +339,8 @@ impl EnvironmentShell {
             return false;
         };
         if next == HostState::SignedIn {
-            if let Some(session) = live.sessions.remove(&id) {
-                session.cancelled.store(true, Ordering::SeqCst);
+            if live.sessions.remove(&id).is_some() {
+                end_terminal_on(&self.runtime.handle, env, id);
             }
             live.data.side_panel.remove_terminal(id);
             if live.focused == Some(id) {

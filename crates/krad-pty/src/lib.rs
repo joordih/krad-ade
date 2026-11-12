@@ -15,6 +15,7 @@ mod windows;
 mod wsl;
 
 pub use handles::{resize_master, PtyKill, PtyResize, PtyWait, SharedKiller, SharedMaster};
+pub use krad_domain::GridSize;
 
 #[cfg(not(windows))]
 pub use unix::{clear_screen_prefix, default_shell, login_shell_env, SHELL_QUOTING};
@@ -158,23 +159,6 @@ pub fn run_reader_loop(
             Err(error) if error.kind() == std::io::ErrorKind::Interrupted => (),
             Err(_) => break,
         }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub struct GridSize {
-    pub cols: u16,
-    pub rows: u16,
-    pub cell_width_px: u16,
-    pub cell_height_px: u16,
-}
-
-impl GridSize {
-    pub(crate) const fn pixels(self) -> (u16, u16) {
-        (
-            self.cols.saturating_mul(self.cell_width_px),
-            self.rows.saturating_mul(self.cell_height_px),
-        )
     }
 }
 

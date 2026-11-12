@@ -1,10 +1,8 @@
-use krad_domain::{
-    EnvironmentData, GroupId, PermissionMode, TerminalId, TerminalMeta, SCROLLBACK_PERSIST_LINES,
-};
-use krad_session::LiveSession;
+use krad_domain::{EnvironmentData, GroupId, PermissionMode, TerminalId};
 use std::collections::HashMap;
 use std::time::Instant;
 
+use super::live_terminal::LiveTerminal;
 use super::{
     activity, agent_bus, archive, changes_tab, file_tab, host, session_templates, sessions,
     surface, terminal_images, workers, Prompt,
@@ -17,7 +15,7 @@ pub(super) struct LiveEnv {
     pub(super) remote_bus: agent_bus::RemoteBusSlot,
     pub(super) remote_bus_port: Option<u16>,
     pub(super) deferred_launches: Vec<sessions::DeferredLaunch>,
-    pub(super) sessions: HashMap<TerminalId, LiveSession>,
+    pub(super) sessions: HashMap<TerminalId, LiveTerminal>,
     pub(super) chats: HashMap<TerminalId, surface::SurfaceChat>,
     pub(super) focused: Option<TerminalId>,
     pub(super) selected_group: Option<GroupId>,
@@ -90,18 +88,4 @@ impl LiveEnv {
             extension_side: None,
         }
     }
-}
-
-pub(super) fn live_meta(live: &LiveEnv) -> HashMap<TerminalId, TerminalMeta> {
-    let mut meta = live.data.meta.clone();
-    for (id, session) in &live.sessions {
-        meta.insert(
-            *id,
-            TerminalMeta {
-                cwd: session.cwd.clone().unwrap_or_default(),
-                scrollback: session.engine.scrollback(SCROLLBACK_PERSIST_LINES),
-            },
-        );
-    }
-    meta
 }

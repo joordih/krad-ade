@@ -1,5 +1,6 @@
-use krad_domain::AgentState;
-use krad_session::{LiveSession, SessionState};
+use krad_domain::{AgentState, ProcessRun};
+
+use super::live_terminal::LiveTerminal;
 
 use crate::components::StatusKind;
 
@@ -18,14 +19,11 @@ impl CardStatus {
         }
     }
 
-    pub(super) fn of(state: AgentState, session: Option<&LiveSession>) -> Self {
-        match session {
-            Some(session) => match session.state {
-                SessionState::Running => Self::Agent(state),
-                SessionState::Exited(_) => Self::Exited,
-                SessionState::Failed(_) => Self::Failed,
-            },
-            _ => Self::Agent(state),
+    pub(super) fn of(state: AgentState, session: Option<&LiveTerminal>) -> Self {
+        match session.map(|session| session.view.status().run) {
+            Some(ProcessRun::Exited { .. }) => Self::Exited,
+            Some(ProcessRun::Failed { .. }) => Self::Failed,
+            Some(ProcessRun::Running) | None => Self::Agent(state),
         }
     }
 

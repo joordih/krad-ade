@@ -1,8 +1,9 @@
 use krad_agents::{notice_text, ErrorCode, Response};
 use krad_domain::{parse_wsl_path, AgentState, EnvironmentName, TerminalId};
-use krad_session::PtyInput;
+use krad_protocol::WriteBy;
 use std::time::Instant;
 
+use super::super::live_terminal::terminal_ref;
 use super::super::runtime_view::MailNotices;
 use super::super::{EnvironmentShell, LiveEnv};
 use super::{cli_name, handle, PendingEnter, Settlement, ENTER, NO_SUCH_TERMINAL};
@@ -68,7 +69,7 @@ impl EnvironmentShell {
                 .filter(|node| {
                     live.sessions
                         .get(&node.id)
-                        .is_some_and(|session| session.is_agent && session.state.is_running())
+                        .is_some_and(|session| session.is_agent() && session.is_running())
                 })
                 .map(|node| node.id)
                 .collect();
@@ -79,12 +80,13 @@ impl EnvironmentShell {
                     .group_of(id)
                     .is_some_and(|group| parse_wsl_path(&group.root).is_some());
                 if let Some(count) = self.runtime.view.mail.notify(env, id) {
-                    if let Some(session) = live.sessions.get(&id) {
+                    if live.sessions.contains_key(&id) {
                         let notice = notice_text(cli_name(in_wsl), count).into_bytes();
-                        session
-                            .writer_tx
-                            .send(PtyInput::Bytes(notice))
-                            .unwrap_or_default();
+                        self.runtime.handle.write_terminal(
+                            terminal_ref(env, id),
+                            notice,
+                            WriteBy::App,
+                        );
                     }
                     bus.enters_due.push(PendingEnter::new(target, now));
                 }

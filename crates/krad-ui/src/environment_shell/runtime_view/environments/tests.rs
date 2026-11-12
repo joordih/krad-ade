@@ -75,3 +75,30 @@ fn an_opened_environment_leaves_its_view_to_the_shell() {
     working.focus = None;
     assert_eq!(mirror.commands_toward(&[working]), Vec::new());
 }
+
+#[test]
+fn the_ui_never_sends_the_meta_the_runtime_owns() {
+    let mut mirror = EnvironmentsMirror::default();
+    let mut kept = named("main");
+    kept.meta.insert(
+        TerminalId(3),
+        krad_domain::TerminalMeta {
+            cwd: "/work/api".to_owned(),
+            scrollback: vec!["from the runtime".to_owned()],
+        },
+    );
+    mirror.replace(vec![kept.clone()]);
+    let mut stale = kept;
+    stale.meta.clear();
+    assert_eq!(
+        mirror.commands_toward(std::slice::from_ref(&stale)),
+        Vec::new()
+    );
+    stale.title = Some("Payments".to_owned());
+    let commands = mirror.commands_toward(&[stale]);
+    assert!(matches!(
+        commands.as_slice(),
+        [EnvironmentCommand::Change { changes, .. }]
+            if changes.iter().all(|change| !change.is_runtime_owned())
+    ));
+}

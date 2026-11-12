@@ -6,7 +6,7 @@ use krad_domain::{
 };
 use krad_protocol::Command;
 
-use super::{live_meta, EnvironmentShell, LiveEnv};
+use super::{EnvironmentShell, LiveEnv};
 
 impl EnvironmentShell {
     pub(super) fn restore_layout(&mut self, layout: Layout) {
@@ -57,16 +57,11 @@ impl EnvironmentShell {
     }
 
     fn snapshot_env(&self, name: &EnvironmentName, live: &LiveEnv) -> EnvironmentData {
-        let meta = if *name == self.active {
-            live_meta(live)
-        } else {
-            live.data.meta.clone()
-        };
         EnvironmentData {
             name: live.data.name.clone(),
             host: live.data.host.clone(),
             nodes: self.nodes_with_offsets(name, &live.data.nodes),
-            meta,
+            meta: live.data.meta.clone(),
             next_id: live.data.next_id,
             view: live.data.view,
             focus: live.focused,

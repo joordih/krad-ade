@@ -8,6 +8,7 @@ use krad_runtime::BusReply;
 
 use super::super::agent_hooks::{WorkerOf, WorkerOrder};
 use super::super::language_servers::CodeCaller;
+use super::super::live_terminal::LiveTerminal;
 use super::super::EnvironmentShell;
 use super::requests::CLOSED_TERMINAL;
 
@@ -45,7 +46,11 @@ impl EnvironmentShell {
                 self.wait_for(environment, target, reply);
                 return;
             }
-            Request::Read { target, lines } => self.screen_tail(environment, target, lines),
+            Request::Read { target, lines } => {
+                let tail = self.screen_tail(environment, target, lines);
+                Self::reply_tail(tail, reply, cx);
+                return;
+            }
             Request::Spawn {
                 agent,
                 worktree,
@@ -128,7 +133,7 @@ impl EnvironmentShell {
             .envs
             .get(&env)
             .and_then(|live| live.sessions.get(&id))
-            .is_some_and(|session| session.state.is_running());
+            .is_some_and(LiveTerminal::is_running);
         if !running {
             return Response::error(ErrorCode::NotFound, CLOSED_TERMINAL);
         }

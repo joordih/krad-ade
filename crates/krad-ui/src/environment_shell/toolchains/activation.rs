@@ -7,13 +7,14 @@ use krad_extensions::{
     activation_lines, SharedLocatorManifest, ToolchainCache, ToolchainFamilyManifest,
 };
 use krad_host::{HostCommand, HostLink};
-use krad_session::{FirstInput, PtyInput};
+use krad_protocol::{AgentRef, WriteBy};
+use krad_runtime::RuntimeHandle;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use super::super::context_menu::{MenuAction, MenuEntry};
+use super::super::live_terminal::terminal_ref;
 use super::super::shell_site::ShellSite;
 use super::super::EnvironmentShell;
 use super::resolve::{discover_scope, DiscoveryInputs};
@@ -98,15 +99,23 @@ impl ActivationCache {
     }
 }
 
-fn type_once(writer: &Sender<PtyInput>, first_input: &FirstInput, lines: &[String]) {
-    let Some(typed) = typed_activation(lines) else {
-        return;
-    };
-    if !first_input.claim_for_app() {
-        tracing::debug!("toolchain activation skipped: the terminal was already in use");
-        return;
+#[derive(Clone)]
+struct Typist {
+    runtime: RuntimeHandle,
+    terminal: AgentRef,
+}
+
+impl Typist {
+    fn type_once(&self, lines: &[String]) {
+        let Some(typed) = typed_activation(lines) else {
+            return;
+        };
+        self.runtime.write_terminal(
+            self.terminal.clone(),
+            typed.into_bytes(),
+            WriteBy::AppOnUntouchedPrompt,
+        );
     }
-    drop(writer.send(PtyInput::Bytes(typed.into_bytes())));
 }
 
 struct ActivationJob {
@@ -115,8 +124,7 @@ struct ActivationJob {
     shared: Vec<SharedLocatorManifest>,
     cache: Arc<ToolchainCache>,
     choices: ToolchainChoices,
-    writer: Sender<PtyInput>,
-    first_input: FirstInput,
+    typist: Typist,
     activations: ActivationCache,
     key: ActivationKey,
     typed_from_cache: bool,
@@ -155,7 +163,7 @@ impl ActivationJob {
         }
         self.activations.put(self.key.clone(), lines.clone());
         if !self.typed_from_cache {
-            type_once(&self.writer, &self.first_input, &lines);
+            self.typist.type_once(&lines);
         }
     }
 }
@@ -201,8 +209,6 @@ impl EnvironmentShell {
         &self,
         env: &EnvironmentName,
         id: TerminalId,
-        writer: Sender<PtyInput>,
-        first_input: FirstInput,
         site: ShellSite,
     ) {
         if site.is_wsl() {
@@ -228,9 +234,13 @@ impl EnvironmentShell {
             return;
         };
         let key = (live.data.host.clone(), group.root.clone());
+        let typist = Typist {
+            runtime: self.terminals().clone(),
+            terminal: terminal_ref(env, id),
+        };
         let cached = self.toolchains.activations.get(&key);
         if let Some(lines) = &cached {
-            type_once(&writer, &first_input, lines);
+            typist.type_once(lines);
         }
         let job = ActivationJob {
             inputs,
@@ -238,8 +248,7 @@ impl EnvironmentShell {
             shared: tools.shared_locators().to_vec(),
             cache: Arc::clone(&self.toolchains.cache),
             choices: self.toolchains.choices.clone(),
-            writer,
-            first_input,
+            typist,
             activations: self.toolchains.activations.clone(),
             key,
             typed_from_cache: cached.is_some(),

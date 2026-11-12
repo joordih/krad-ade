@@ -1,8 +1,12 @@
-use futures::StreamExt as _;
+use futures::{FutureExt as _, StreamExt as _};
 use gpui_kit::Context;
-use krad_domain::{AgentStatus, EnvironmentName, TerminalId};
-use krad_protocol::{AgentRef, AskId, BusSnapshot, EventKind, Feed, MailCount, StatusReport};
+use krad_domain::{AgentStatus, EnvironmentChange, EnvironmentData, EnvironmentName, TerminalId};
+use krad_protocol::{
+    AgentRef, AskId, BusSnapshot, EventKind, Feed, MailCount, StatusReport, TerminalClassified,
+    TerminalSummary,
+};
 use krad_runtime::RuntimeHandle;
+use krad_session::AnsiPalette;
 use std::collections::{BTreeSet, HashMap};
 
 mod environments;
@@ -24,6 +28,7 @@ fn spot(agent: AgentRef) -> AgentSpot {
 pub(super) struct RuntimeLink {
     pub(super) handle: RuntimeHandle,
     pub(super) view: RuntimeView,
+    palette: Option<AnsiPalette>,
 }
 
 impl RuntimeLink {
@@ -31,6 +36,13 @@ impl RuntimeLink {
         Self {
             handle,
             view: RuntimeView::default(),
+            palette: None,
+        }
+    }
+
+    pub(super) fn use_palette(&mut self, palette: AnsiPalette) {
+        if self.palette.replace(palette) != Some(palette) {
+            self.handle.terminal_palette(palette);
         }
     }
 }
@@ -47,10 +59,11 @@ pub(super) struct RuntimeView {
     pub(super) environments: EnvironmentsMirror,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Heard {
     Quietly,
     Visibly,
+    FromTerminals,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -110,13 +123,18 @@ impl EnvironmentShell {
     pub(super) fn follow_runtime(&mut self, cx: &mut Context<Self>) {
         let mut feed = self.runtime.handle.subscribe();
         cx.spawn(async move |this, cx| {
-            while let Some(feed) = feed.next().await {
-                if this
-                    .update(cx, |shell, cx| shell.apply_runtime_feed(feed, cx))
-                    .is_err()
-                {
-                    break;
+            while let Some(first) = feed.next().await {
+                let mut batch = vec![first];
+                while let Some(Some(more)) = feed.next().now_or_never() {
+                    batch.push(more);
                 }
+                let Ok(interval) = this.update(cx, |shell, cx| {
+                    shell.apply_runtime_feeds(batch, cx);
+                    shell.frame_interval()
+                }) else {
+                    break;
+                };
+                cx.background_executor().timer(interval).await;
             }
         })
         .detach();
@@ -130,7 +148,24 @@ impl EnvironmentShell {
         self.runtime.view.statuses.get(&(env.clone(), id))
     }
 
-    fn apply_runtime_feed(&mut self, feed: Feed, cx: &mut Context<Self>) {
+    fn apply_runtime_feeds(&mut self, batch: Vec<Feed>, cx: &mut Context<Self>) {
+        let heard = batch
+            .into_iter()
+            .map(|feed| self.apply_runtime_feed(feed, cx))
+            .max()
+            .unwrap_or(Heard::Quietly);
+        match heard {
+            Heard::Quietly => return,
+            Heard::Visibly => {
+                self.flush_attention(cx);
+                self.flush_kraddies(cx);
+            }
+            Heard::FromTerminals => self.flush_live_work(cx),
+        }
+        cx.notify();
+    }
+
+    fn apply_runtime_feed(&mut self, feed: Feed, cx: &mut Context<Self>) -> Heard {
         match feed {
             Feed::Snapshot(snapshot) => {
                 self.apply_bus_snapshot(snapshot.bus);
@@ -138,21 +173,19 @@ impl EnvironmentShell {
                 self.runtime.view.health.replace(snapshot.health.checks);
                 self.runtime.view.usage.replace(snapshot.usage.shown);
                 self.runtime.view.models.replace(snapshot.models.listed);
+                self.adopt_runtime_meta(&snapshot.environments);
                 self.runtime
                     .view
                     .environments
                     .replace(snapshot.environments);
                 self.advance_harness_onboarding(cx);
-            }
-            Feed::Event(event) => {
-                if self.apply_runtime_event(event.kind, cx) == Heard::Quietly {
-                    return;
+                for summary in snapshot.terminals {
+                    self.terminal_summary_heard(summary);
                 }
+                Heard::FromTerminals
             }
+            Feed::Event(event) => self.apply_runtime_event(event.kind, cx),
         }
-        self.flush_attention(cx);
-        self.flush_kraddies(cx);
-        cx.notify();
     }
 
     fn apply_runtime_event(&mut self, kind: EventKind, cx: &mut Context<Self>) -> Heard {
@@ -164,13 +197,66 @@ impl EnvironmentShell {
             EventKind::EnvironmentChanged {
                 environment,
                 changes,
-            } => environments.changed(&environment, changes),
+            } => {
+                self.adopt_runtime_changes(&environment, &changes);
+                self.runtime
+                    .view
+                    .environments
+                    .changed(&environment, changes);
+            }
+            EventKind::TerminalChanged { terminal } => {
+                return if terminal.environment == self.active {
+                    Heard::Visibly
+                } else {
+                    Heard::Quietly
+                };
+            }
+            EventKind::TerminalEnded(summary) => {
+                self.terminal_summary_heard(summary);
+                return Heard::FromTerminals;
+            }
+            EventKind::TerminalClassified(TerminalClassified { terminal, state }) => {
+                return if self.terminal_classified(&terminal.environment, terminal.terminal, state)
+                {
+                    Heard::FromTerminals
+                } else {
+                    Heard::Quietly
+                };
+            }
             kind => {
                 self.apply_shown_event(kind, cx);
                 return Heard::Visibly;
             }
         }
         Heard::Quietly
+    }
+
+    fn terminal_summary_heard(&mut self, summary: TerminalSummary) {
+        let TerminalSummary { terminal, run } = summary;
+        if !run.is_running() {
+            self.terminal_ended(&terminal.environment, terminal.terminal, run);
+        }
+    }
+
+    fn adopt_runtime_changes(
+        &mut self,
+        environment: &EnvironmentName,
+        changes: &[EnvironmentChange],
+    ) {
+        let Some(live) = self.envs.get_mut(environment) else {
+            return;
+        };
+        for change in changes.iter().filter(|change| change.is_runtime_owned()) {
+            live.data.apply(change.clone());
+        }
+    }
+
+    fn adopt_runtime_meta(&mut self, environments: &[EnvironmentData]) {
+        for environment in environments {
+            if let Some(live) = self.envs.get_mut(&environment.name) {
+                live.data.meta.clone_from(&environment.meta);
+            }
+        }
     }
 
     fn apply_shown_event(&mut self, kind: EventKind, cx: &mut Context<Self>) {
@@ -204,6 +290,9 @@ impl EnvironmentShell {
             | EventKind::EnvironmentClosed { .. }
             | EventKind::EnvironmentsOrdered { .. }
             | EventKind::EnvironmentChanged { .. }
+            | EventKind::TerminalChanged { .. }
+            | EventKind::TerminalEnded(_)
+            | EventKind::TerminalClassified(_)
             | EventKind::Pong { .. }
             | EventKind::Unknown => {}
         }

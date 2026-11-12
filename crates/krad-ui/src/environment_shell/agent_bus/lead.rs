@@ -6,6 +6,7 @@ use krad_runtime::BusReply;
 use super::super::EnvironmentShell;
 use super::chat::ChatSpawn;
 use super::close::{pick_refusal, session_close_refusal};
+use super::requests::ScreenTail;
 use super::{handle, Settlement};
 
 const NOT_A_LEAD_ANYMORE: &str = "This chat is no longer its session's lead";
@@ -113,7 +114,7 @@ impl EnvironmentShell {
                     }
                     other => {
                         if let Some(answer) = self.answer_worker(&env, session, &other, cx) {
-                            reply.send(answer).unwrap_or_default();
+                            Self::reply_tail(answer, reply, cx);
                             return;
                         }
                         self.answer_chat(&lead.environment, group, other, reply, cx);
@@ -156,13 +157,13 @@ impl EnvironmentShell {
         lead: SessionId,
         request: &Request,
         cx: &mut Context<Self>,
-    ) -> Option<Response> {
+    ) -> Option<ScreenTail> {
         match request {
             Request::Read { target, lines } => {
                 let terminal = TerminalId(*target);
                 match self.worker_place(env, lead, terminal)? {
                     WorkerPlace::Closed => {
-                        Some(Response::error(ErrorCode::NotFound, WORKER_RETIRED))
+                        Some(Response::error(ErrorCode::NotFound, WORKER_RETIRED).into())
                     }
                     WorkerPlace::Open if self.has_finished(env, terminal) => {
                         let tail = self.screen_tail(env.as_str(), *target, *lines);
@@ -175,9 +176,12 @@ impl EnvironmentShell {
             Request::Wait { target, .. } => {
                 let closed =
                     self.worker_place(env, lead, TerminalId(*target)) == Some(WorkerPlace::Closed);
-                closed.then_some(Response::Settled {
-                    target: *target,
-                    state: TerminalState::Closed,
+                closed.then(|| {
+                    Response::Settled {
+                        target: *target,
+                        state: TerminalState::Closed,
+                    }
+                    .into()
                 })
             }
             Request::Send { to, .. } => {

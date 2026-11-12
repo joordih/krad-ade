@@ -5,6 +5,7 @@ use crate::attention::AttentionCommand;
 use crate::bus::BusCommand;
 use crate::environments::EnvironmentCommand;
 use crate::models::ModelsCommand;
+use crate::terminals::TerminalCommand;
 use crate::usage::UsageCommand;
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -17,6 +18,7 @@ pub enum Command {
     Usage(UsageCommand),
     Models(ModelsCommand),
     Environments(EnvironmentCommand),
+    Terminal(TerminalCommand),
     #[serde(other)]
     Unknown,
 }

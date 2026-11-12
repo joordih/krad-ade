@@ -1,8 +1,8 @@
 use gpui_kit::Context;
 use krad_chat::LiveSession;
 use krad_domain::{AgentPreset, EnvironmentName, GroupId, NodeKind, ResumeId, TerminalId};
-use std::sync::atomic::Ordering;
 
+use super::super::super::live_terminal::end_terminal_on;
 use super::super::super::sessions::Launch;
 use super::super::super::EnvironmentShell;
 
@@ -66,11 +66,8 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get_mut(&env) else {
             return;
         };
-        if let Some(session) = live.sessions.remove(&id) {
-            session.cancelled.store(true, Ordering::SeqCst);
-            if let Some(killer) = session.killer {
-                killer.kill();
-            }
+        if live.sessions.remove(&id).is_some() {
+            end_terminal_on(&self.runtime.handle, &env, id);
         }
         if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
             node.kind = NodeKind::Chat;

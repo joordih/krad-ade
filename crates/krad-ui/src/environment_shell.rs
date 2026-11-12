@@ -47,6 +47,7 @@ mod kraddies;
 mod language_servers;
 mod layout;
 mod live_env;
+mod live_terminal;
 mod markdown_images;
 mod mcp;
 mod menus;
@@ -93,8 +94,6 @@ mod work_mode;
 mod workers;
 mod worktrees;
 
-use futures::channel::mpsc::{Receiver as PumpReceiver, Sender as PumpSender};
-use futures::StreamExt as _;
 use gpui_kit::component::command::CommandState;
 use gpui_kit::{Context, Entity, FocusHandle, Subscription, Task, WeakEntity, Window};
 use krad_domain::{
@@ -105,29 +104,20 @@ use krad_runtime::RuntimeHandle;
 use krad_store::{AcpTranscripts, LayoutFile, LayoutWriter};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use self::drag::DragState;
-use self::live_env::{live_meta, LiveEnv};
+use self::live_env::LiveEnv;
 use self::sidebar::PanelReveal;
 use self::toasts::Toasts;
 use self::window_close::CloseRequest;
-use krad_session::pump_channel;
-use krad_session::spawn_ticker;
-use krad_session::PumpMsg;
 
 use crate::components::{new_copy_feedback, CopyFeedback};
 
 const FPS_HUD_DEFAULT: Visibility = Visibility::Hidden;
 const FULL_REFRESH_HZ: u32 = 30;
 const REDUCED_REFRESH_HZ: u32 = 15;
-
-#[derive(Default)]
-struct Pump {
-    task: Option<Task<()>>,
-    tx: Option<PumpSender<PumpMsg>>,
-}
+const UI_TICK: Duration = Duration::from_secs(1);
 
 pub struct EnvironmentShell {
     focus: FocusHandle,
@@ -150,7 +140,7 @@ pub struct EnvironmentShell {
     template_popup: Option<template_popup::TemplatePopup>,
     pub palette: Option<Entity<CommandState>>,
     pub self_ref: Option<WeakEntity<Self>>,
-    pump: Pump,
+    ticker: Option<Task<()>>,
     toasts: Toasts,
     unseen: HashSet<EnvironmentName>,
     cell_width_px: Option<f32>,
@@ -229,36 +219,30 @@ pub struct EnvironmentShell {
 }
 
 impl EnvironmentShell {
-    fn start_pump(pump_rx: PumpReceiver<PumpMsg>, cx: &mut Context<Self>) -> Task<()> {
-        cx.spawn(async move |this, cx| {
-            let mut inbox = pump_rx;
-            while let Some(first) = inbox.next().await {
-                let mut batch = vec![first];
-                while let Ok(msg) = inbox.try_recv() {
-                    batch.push(msg);
+    fn start_ticker(cx: &mut Context<Self>) -> Task<()> {
+        cx.spawn(async move |this, cx| loop {
+            cx.background_executor().timer(UI_TICK).await;
+            let ticked = this.update(cx, |shell, cx| {
+                let changed = shell.apply_tick();
+                shell.flush_live_work(cx);
+                if changed {
+                    cx.notify();
                 }
-                let Ok(interval) = this.update(cx, |shell, cx| {
-                    let mut changed = false;
-                    for msg in batch {
-                        changed |= shell.apply_pump(msg);
-                    }
-                    shell.flush_noticed_chats(cx);
-                    shell.flush_attention(cx);
-                    shell.flush_kraddies(cx);
-                    shell.flush_variant_progress(cx);
-                    shell.service_hosts(cx);
-                    shell.watch_new_opencode_terminals(cx);
-                    shell.connect_wanted_runners(cx);
-                    if changed {
-                        cx.notify();
-                    }
-                    shell.frame_interval()
-                }) else {
-                    break;
-                };
-                cx.background_executor().timer(interval).await;
+            });
+            if ticked.is_err() {
+                break;
             }
         })
+    }
+
+    fn flush_live_work(&mut self, cx: &mut Context<Self>) {
+        self.flush_noticed_chats(cx);
+        self.flush_attention(cx);
+        self.flush_kraddies(cx);
+        self.flush_variant_progress(cx);
+        self.service_hosts(cx);
+        self.watch_new_opencode_terminals(cx);
+        self.connect_wanted_runners(cx);
     }
 
     pub fn with_seed(
@@ -269,16 +253,8 @@ impl EnvironmentShell {
         runtime: RuntimeHandle,
     ) -> Self {
         let mut shell = Self::assemble(cx, settings, host_tools, runtime);
-        let pump_rx = shell.open_pump();
-        shell.start(layout, pump_rx, cx);
+        shell.start(layout, cx);
         shell
-    }
-
-    fn open_pump(&mut self) -> PumpReceiver<PumpMsg> {
-        let (pump_tx, pump_rx) = pump_channel();
-        spawn_ticker(pump_tx.clone());
-        self.pump.tx = Some(pump_tx);
-        pump_rx
     }
 
     fn assemble(
@@ -308,7 +284,7 @@ impl EnvironmentShell {
             template_popup: None,
             palette: None,
             self_ref: None,
-            pump: Pump::default(),
+            ticker: None,
             toasts: Toasts::default(),
             unseen: HashSet::new(),
             cell_width_px: None,
@@ -387,13 +363,13 @@ impl EnvironmentShell {
         }
     }
 
-    fn start(&mut self, layout: Layout, pump_rx: PumpReceiver<PumpMsg>, cx: &mut Context<Self>) {
+    fn start(&mut self, layout: Layout, cx: &mut Context<Self>) {
         self.start_services(cx);
         self.restore_layout(layout);
         let active = self.active.clone();
         self.show_host(&active, cx);
         self.connect_worker_hosts(cx);
-        self.pump.task = Some(Self::start_pump(pump_rx, cx));
+        self.ticker = Some(Self::start_ticker(cx));
         self.start_loading(cx);
     }
 
@@ -420,7 +396,7 @@ impl EnvironmentShell {
         self.start_archive_sweeps(cx);
     }
 
-    fn frame_interval(&self) -> Duration {
+    pub(super) fn frame_interval(&self) -> Duration {
         let terminals_shown = self
             .envs
             .get(&self.active)
@@ -439,10 +415,6 @@ impl EnvironmentShell {
 
     fn switch_env(&mut self, name: &EnvironmentName, cx: &mut Context<Self>) {
         if self.envs.contains_key(name) {
-            let leaving = self.active.clone();
-            if let Some(live) = self.envs.get_mut(&leaving) {
-                live.data.meta = live_meta(live);
-            }
             self.active = name.clone();
             self.unseen.remove(name);
             self.show_host(name, cx);
@@ -462,11 +434,8 @@ impl EnvironmentShell {
             {
                 host::close_link(&live.link);
             }
-            for (_, session) in live.sessions {
-                session.cancelled.store(true, Ordering::SeqCst);
-                if let Some(killer) = session.killer {
-                    killer.kill();
-                }
+            for id in live.sessions.keys() {
+                self.end_terminal(name, *id);
             }
         }
         self.order.retain(|entry| entry != name);

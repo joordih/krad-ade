@@ -2,7 +2,9 @@ use gpui_kit::{Context, Keystroke};
 use krad_domain::{AgentPreset, EnvironmentName, GroupId, TerminalId};
 use krad_extensions::api::protocol::{OpenTerminalParams, TerminalZone};
 use krad_extensions::api::TerminalHandle;
-use krad_session::{KeyModifiers, PtyInput};
+use krad_protocol::WriteBy;
+use krad_runtime::TerminalAction;
+use krad_session::KeyModifiers;
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 
@@ -177,19 +179,21 @@ impl EnvironmentShell {
             tracing::debug!(extension = %key.extension, "terminal of another extension refused");
             return;
         };
-        self.write_terminal(&env, terminal, text.into_bytes());
+        self.write_extension_terminal(&env, terminal, text.into_bytes());
     }
 
-    fn write_terminal(&mut self, env: &EnvironmentName, terminal: TerminalId, bytes: Vec<u8>) {
-        let Some(session) = self
+    fn write_extension_terminal(
+        &self,
+        env: &EnvironmentName,
+        terminal: TerminalId,
+        bytes: Vec<u8>,
+    ) {
+        let runs = self
             .envs
-            .get_mut(env)
-            .and_then(|live| live.sessions.get_mut(&terminal))
-        else {
-            return;
-        };
-        if session.writer_tx.send(PtyInput::Bytes(bytes)).is_err() {
-            tracing::debug!("extension terminal writer closed");
+            .get(env)
+            .is_some_and(|live| live.sessions.contains_key(&terminal));
+        if runs {
+            self.write_terminal(env, terminal, bytes, WriteBy::App);
         }
     }
 
@@ -207,17 +211,17 @@ impl EnvironmentShell {
             alt: keystroke.modifiers.alt,
             shift: keystroke.modifiers.shift,
         };
-        let bytes = self
+        let runs = self
             .envs
-            .get_mut(env)
-            .and_then(|live| live.sessions.get_mut(&terminal))
-            .and_then(|session| {
-                session
-                    .engine
-                    .encode_key(&keystroke.key, keystroke.key_char.as_deref(), held)
-            });
-        if let Some(bytes) = bytes {
-            self.write_terminal(env, terminal, bytes);
+            .get(env)
+            .is_some_and(|live| live.sessions.contains_key(&terminal));
+        if runs {
+            let action = TerminalAction::Key {
+                key: keystroke.key.clone(),
+                text: keystroke.key_char.clone(),
+                held,
+            };
+            self.act_on_terminal(env, terminal, action);
         }
     }
 }

@@ -4,8 +4,10 @@ use krad_agents::{AgentInfo, AgentKey, StateReason};
 use krad_chat::Runner;
 use krad_domain::{AgentPreset, Host, ToolDecision, UsageBudget};
 use krad_protocol::{
-    AskId, BusCommand, Command, Feed, HealthPlace, Reply, RequestId, Scope, Snapshot,
+    AgentRef, AskId, BusCommand, Command, Feed, HealthPlace, Reply, RequestId, Scope, Snapshot,
+    TerminalCommand, WriteBy,
 };
+use krad_session::{AnsiPalette, SearchDirection};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -17,6 +19,7 @@ use std::task::{Context, Poll};
 use crate::bus::{BusAccess, DelegationReceiver, DELEGATION_BUFFER};
 use crate::harness_health::HarnessProbe;
 use crate::input::Input;
+use crate::terminals::{Shared, TerminalAction, TerminalLaunch, TerminalView};
 use crate::usage::UsagePlace;
 
 const SUBSCRIBER_BUFFER: usize = 256;
@@ -141,6 +144,64 @@ impl RuntimeHandle {
     #[must_use]
     pub fn usage_budget(&self) -> Arc<UsageBudget> {
         Arc::clone(&self.usage_budget)
+    }
+
+    #[must_use]
+    pub fn open_terminal(&self, terminal: AgentRef, launch: TerminalLaunch) -> TerminalView {
+        let shared = Shared::new(self.inbox.clone());
+        let view = TerminalView::new(Arc::clone(&shared));
+        self.deliver(Input::OpenTerminal {
+            terminal,
+            launch,
+            shared,
+        });
+        view
+    }
+
+    pub fn write_terminal(&self, terminal: AgentRef, bytes: Vec<u8>, by: WriteBy) {
+        self.post(Command::Terminal(TerminalCommand::Write {
+            terminal,
+            bytes,
+            by,
+        }));
+    }
+
+    pub fn act_on_terminal(&self, terminal: AgentRef, action: TerminalAction) {
+        self.deliver(Input::TerminalAction { terminal, action });
+    }
+
+    pub fn terminal_selection(&self, terminal: AgentRef) -> Pending<Option<String>> {
+        let (text, answer) = oneshot::channel();
+        self.act_on_terminal(terminal, TerminalAction::CopySelection(text));
+        Pending(answer)
+    }
+
+    pub fn search_terminal(
+        &self,
+        terminal: AgentRef,
+        query: String,
+        direction: SearchDirection,
+        restart: bool,
+    ) -> Pending<bool> {
+        let (found, answer) = oneshot::channel();
+        let action = TerminalAction::Search {
+            query,
+            direction,
+            restart,
+            found,
+        };
+        self.act_on_terminal(terminal, action);
+        Pending(answer)
+    }
+
+    pub fn terminal_lines(&self, terminal: AgentRef, lines: usize) -> Pending<Option<Vec<String>>> {
+        let (tail, answer) = oneshot::channel();
+        self.act_on_terminal(terminal, TerminalAction::RecentLines { lines, tail });
+        Pending(answer)
+    }
+
+    pub fn terminal_palette(&self, palette: AnsiPalette) {
+        self.deliver(Input::TerminalPalette(palette));
     }
 
     #[must_use]

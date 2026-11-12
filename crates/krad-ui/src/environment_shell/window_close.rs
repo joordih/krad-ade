@@ -69,7 +69,7 @@ impl EnvironmentShell {
         self.envs
             .values()
             .flat_map(|live| live.sessions.values())
-            .filter(|session| session.state.is_running())
+            .filter(|session| session.is_running())
             .count()
     }
 

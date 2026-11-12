@@ -19,8 +19,8 @@ pub(super) struct ImageGrid {
     pub(super) placed_with: CellPixels,
 }
 
-fn render_image(pixels: ImagePixels) -> Option<Arc<RenderImage>> {
-    let buffer = RgbaImage::from_raw(pixels.width, pixels.height, pixels.bgra)?;
+fn render_image(pixels: &ImagePixels) -> Option<Arc<RenderImage>> {
+    let buffer = RgbaImage::from_raw(pixels.width, pixels.height, pixels.bgra.clone())?;
     Some(Arc::new(RenderImage::new(vec![Frame::new(buffer)])))
 }
 
@@ -108,7 +108,8 @@ impl EnvironmentShell {
             kept
         });
         for (id, session) in &live.sessions {
-            let placements = session.engine.images();
+            let frame = session.view.frame();
+            let placements = &frame.screen.images;
             if placements.is_empty() && !live.images.contains_key(id) {
                 continue;
             }
@@ -122,14 +123,15 @@ impl EnvironmentShell {
                 }
                 shown
             });
-            for placed in &placements {
+            for placed in placements {
                 if uploaded.0.contains_key(&placed.id) {
                     continue;
                 }
-                let image = session
-                    .engine
-                    .image_pixels(placed.id)
-                    .and_then(render_image);
+                let image = frame
+                    .images
+                    .get(&placed.id)
+                    .filter(|shown| shown.generation == placed.generation)
+                    .and_then(|shown| render_image(&shown.pixels));
                 if let Some(image) = image {
                     uploaded.0.insert(placed.id, (placed.generation, image));
                 }

@@ -262,14 +262,14 @@ impl EnvironmentShell {
     }
 
     fn apply_opencode_state(&mut self, env: &EnvironmentName, id: TerminalId, state: AgentState) {
-        let Some(session) = self
+        let runs = self
             .envs
-            .get_mut(env)
-            .and_then(|live| live.sessions.get_mut(&id))
-        else {
+            .get(env)
+            .is_some_and(|live| live.sessions.contains_key(&id));
+        if !runs {
             return;
-        };
-        session.hooked = true;
+        }
+        self.mark_terminal_hooked(env, id);
         self.set_agent_state(env, id, state);
     }
 

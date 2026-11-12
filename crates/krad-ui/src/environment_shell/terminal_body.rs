@@ -4,16 +4,15 @@ use gpui_kit::{
     MouseButton, MouseDownEvent, ParentElement, ScrollWheelEvent, SharedString, Styled, Window,
 };
 use krad_domain::{Ligatures, TerminalId};
-use krad_session::{
-    CellPoint, CursorShape, GridSize, ImageDepth, LiveSession, MouseAction, PtyInput, TermCursor,
-    WheelInput,
-};
+use krad_runtime::TerminalAction;
+use krad_session::{CellPoint, CursorShape, GridSize, ImageDepth, MouseAction, TermCursor};
 use std::time::Duration;
 
 use super::drag::DragState;
+use super::live_terminal::LiveTerminal;
 use super::surface::elapsed_label;
 use super::terminal_images::{image_layer, ImageGrid, TerminalImages};
-use super::terminal_text::{terminal_text, TextLook};
+use super::terminal_text::{link_at, terminal_text, TextLook};
 use super::EnvironmentShell;
 use crate::components::thinking_indicator;
 use crate::terminal_theme::TerminalColors;
@@ -33,16 +32,16 @@ const AGENT_STARTING_SUFFIX: &str = "…";
 const AGENT_FALLBACK_NAME: &str = "the agent";
 const AGENT_START_LIMIT: Duration = Duration::from_secs(20);
 
-fn agent_starting(session: &LiveSession) -> bool {
-    session.is_agent
-        && !session.hooked
-        && session.state.is_running()
+fn agent_starting(session: &LiveTerminal) -> bool {
+    session.is_agent()
         && session.spawned_at.elapsed() < AGENT_START_LIMIT
+        && session.is_running()
+        && !session.hooked()
 }
 
 fn starting_view(
     id: TerminalId,
-    session: &LiveSession,
+    session: &LiveTerminal,
     mono: &SharedString,
     cx: &mut Context<EnvironmentShell>,
 ) -> AnyElement {
@@ -127,7 +126,7 @@ fn cells_in(length: f32, cell: f32) -> u16 {
 
 fn session_screen(
     body: Div,
-    session: &LiveSession,
+    session: &LiveTerminal,
     uploaded: Option<&TerminalImages>,
     look: BodyLook,
     mono: &SharedString,
@@ -139,7 +138,7 @@ fn session_screen(
         focused,
         ..
     } = look;
-    let screen = session.engine.screen(&colors.ansi);
+    let frame = session.view.paint_frame();
     let text_look = TextLook {
         font: Font {
             features: font_features(look.ligatures),
@@ -152,23 +151,24 @@ fn session_screen(
         background: colors.background,
         selection: tinted(colors.selection.0, colors.selection.1),
     };
-    let grid = ImageGrid {
-        left: BODY_PAD_X * zoom,
-        top: BODY_PAD_TOP * zoom,
-        cell_w: geometry.cell_w,
-        line_h: geometry.line_h,
-        placed_with: session.engine.cell_pixels(),
+    let layer = |depth| {
+        frame.cell.map_or_else(Vec::new, |placed_with| {
+            let grid = ImageGrid {
+                left: BODY_PAD_X * zoom,
+                top: BODY_PAD_TOP * zoom,
+                cell_w: geometry.cell_w,
+                line_h: geometry.line_h,
+                placed_with,
+            };
+            image_layer(&frame.screen.images, uploaded, depth, grid)
+        })
     };
-    let layer = |depth| image_layer(&screen.images, uploaded, depth, grid);
     let below = layer(ImageDepth::BelowText);
     let above = layer(ImageDepth::AboveText);
+    let cursor = frame.screen.cursor;
     body.children(below)
-        .child(terminal_text(screen.rows, text_look))
-        .children(
-            screen
-                .cursor
-                .map(|cursor| cursor_element(cursor, geometry, zoom, focused, colors)),
-        )
+        .child(terminal_text(frame, text_look))
+        .children(cursor.map(|cursor| cursor_element(cursor, geometry, zoom, focused, colors)))
         .children(above)
         .into_any_element()
 }
@@ -205,10 +205,6 @@ fn cursor_element(
     }
 }
 
-fn send_input(session: &LiveSession, bytes: Vec<u8>) {
-    drop(session.writer_tx.send(PtyInput::Bytes(bytes)));
-}
-
 fn count_px(count: usize) -> f32 {
     u16::try_from(count).map_or(f32::from(u16::MAX), f32::from)
 }
@@ -224,7 +220,7 @@ pub(super) struct BodyLook {
 }
 
 pub(super) fn embedded_screen(
-    session: &LiveSession,
+    session: &LiveTerminal,
     look: BodyLook,
     mono: &SharedString,
     colors: &TerminalColors,
@@ -255,7 +251,7 @@ pub(super) fn embedded_screen(
 impl EnvironmentShell {
     pub(super) fn terminal_body(
         id: TerminalId,
-        session: Option<&LiveSession>,
+        session: Option<&LiveTerminal>,
         uploaded: Option<&TerminalImages>,
         look: BodyLook,
         mono: &SharedString,
@@ -341,42 +337,29 @@ impl EnvironmentShell {
             return;
         };
         live.focused = Some(id);
-        let Some(session) = live.sessions.get_mut(&id) else {
+        let Some(session) = live.sessions.get(&id) else {
             cx.notify();
             return;
         };
         if event.modifiers.secondary() {
-            if let Some(url) = session.engine.hyperlink_at(cell) {
+            if let Some(url) = link_at(&session.view.frame().screen.rows, cell) {
                 cx.open_url(&url);
                 return;
             }
         }
-        let report = (!event.modifiers.shift)
-            .then(|| session.engine.click_report(MouseAction::Press, cell))
-            .flatten();
-        if let Some(bytes) = report {
-            session.engine.clear_selection();
-            send_input(session, bytes);
-            self.drag = DragState::Report { id, geometry, cell };
+        let report = !event.modifiers.shift && session.view.status().mouse_tracking;
+        self.act_on_terminal(&env, id, TerminalAction::Press { at: cell, report });
+        self.drag = if report {
+            DragState::Report { id, geometry, cell }
         } else {
-            session.engine.start_selection(cell);
-            self.drag = DragState::Select { id, geometry };
-        }
+            DragState::Select { id, geometry }
+        };
         cx.notify();
     }
 
     pub(super) fn report_click(&mut self, id: TerminalId, action: MouseAction, cell: CellPoint) {
         let env = self.active.clone();
-        let Some(session) = self
-            .envs
-            .get_mut(&env)
-            .and_then(|live| live.sessions.get_mut(&id))
-        else {
-            return;
-        };
-        if let Some(bytes) = session.engine.click_report(action, cell) {
-            send_input(session, bytes);
-        }
+        self.act_on_terminal(&env, id, TerminalAction::Mouse { action, at: cell });
     }
 
     fn scroll_terminal(
@@ -395,17 +378,14 @@ impl EnvironmentShell {
         #[allow(clippy::cast_possible_truncation)]
         let steps = whole as i32;
         let env = self.active.clone();
-        let Some(session) = self
-            .envs
-            .get_mut(&env)
-            .and_then(|live| live.sessions.get_mut(&id))
-        else {
-            return;
-        };
-        match session.engine.wheel(steps, cell) {
-            WheelInput::History(lines) => session.engine.scroll_lines(lines),
-            WheelInput::Program(bytes) => send_input(session, bytes),
-        }
+        self.act_on_terminal(
+            &env,
+            id,
+            TerminalAction::Wheel {
+                lines: steps,
+                at: cell,
+            },
+        );
         cx.notify();
     }
 

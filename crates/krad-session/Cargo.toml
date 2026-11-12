@@ -6,7 +6,6 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-futures.workspace = true
 krad-domain.workspace = true
 krad-pty.workspace = true
 krad-term.workspace = true

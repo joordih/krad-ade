@@ -277,9 +277,11 @@ fn keys_follow_the_modes_the_program_turns_on() {
 #[test]
 fn a_program_tracking_the_mouse_gets_clicks_and_the_wheel() {
     let mut engine = engine(COLS, ROWS);
+    assert!(!engine.mouse_tracking());
     assert_eq!(engine.click_report(MouseAction::Press, CELL), None);
     assert_eq!(engine.wheel(3, CELL), WheelInput::History(3));
     engine.push(b"\x1b[?1002h\x1b[?1006h");
+    assert!(engine.mouse_tracking());
     assert_eq!(
         engine.click_report(MouseAction::Press, CELL).as_deref(),
         Some(&b"\x1b[<0;10;5M"[..])

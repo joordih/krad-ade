@@ -3,12 +3,12 @@ use krad_domain::{
     parse_wsl_path, resume_line, AgentPreset, EnvironmentName, ModelId, ProjectTask, ResumeId,
     TerminalId, WslPath,
 };
-use krad_host::{HostError, HostLink};
-use krad_session::{default_shell, wsl_shell_in, PtyOpener};
-use std::path::{Path, PathBuf};
+use krad_host::HostLink;
+use krad_runtime::{HostShell, TerminalPlace};
+use krad_session::{default_shell, wsl_shell_in};
+use std::path::Path;
 use std::sync::Arc;
 
-use super::super::host::{remote_terminal, remote_terminal_opener};
 use super::super::shell_site::ShellSite;
 use super::super::EnvironmentShell;
 
@@ -79,56 +79,18 @@ pub(super) enum LaunchShell {
     Local,
 }
 
-pub(super) struct Placed {
-    pub(super) program: String,
-    pub(super) args: Vec<String>,
-    pub(super) cwd: Option<PathBuf>,
-    pub(super) vars: Vec<(String, String)>,
-    pub(super) opener: Option<PtyOpener>,
-}
-
-impl Placed {
-    pub(super) fn in_cloud(self, opener: PtyOpener) -> Self {
-        Self {
-            cwd: None,
-            vars: Vec::new(),
-            opener: Some(opener),
-            ..self
+impl LaunchShell {
+    pub(super) fn place(self, link: HostLink, in_wsl: bool) -> TerminalPlace {
+        let shell = match self {
+            Self::Local => return TerminalPlace::Here,
+            Self::Login => HostShell::Login,
+            Self::Given => HostShell::Given,
+        };
+        TerminalPlace::Host {
+            link,
+            shell,
+            in_wsl,
         }
-    }
-
-    pub(super) fn on(
-        self,
-        link: &HostLink,
-        shell: LaunchShell,
-        in_wsl: bool,
-    ) -> Result<Self, HostError> {
-        if shell == LaunchShell::Local {
-            return Ok(self);
-        }
-        let given =
-            (shell == LaunchShell::Given).then_some((self.program.as_str(), self.args.as_slice()));
-        if let Some(opener) = remote_terminal_opener(link, given, self.cwd.as_deref(), &self.vars) {
-            return Ok(Self {
-                cwd: None,
-                vars: Vec::new(),
-                opener: Some(opener),
-                ..self
-            });
-        }
-        Ok(
-            match remote_terminal(link, given, self.cwd.as_deref(), &self.vars)? {
-                Some((program, args)) => Self {
-                    program,
-                    args,
-                    cwd: None,
-                    vars: Vec::new(),
-                    opener: None,
-                },
-                None if in_wsl => Self { cwd: None, ..self },
-                None => self,
-            },
-        )
     }
 }
 

@@ -6,11 +6,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_events::WebhookTest;
 use crate::attention::{AttentionNotice, AttentionSnapshot};
-use crate::bus::{AskId, AskSettlement, BusSnapshot, MailCount, PendingAsk, StatusReport};
+use crate::bus::{
+    AgentRef, AskId, AskSettlement, BusSnapshot, MailCount, PendingAsk, StatusReport,
+};
 use crate::environments::SpendingCrossed;
 use crate::harness_health::{HarnessChecked, HealthSnapshot};
 use crate::ids::{RequestId, Seq};
 use crate::models::{ListedModels, ModelsOrigin, ModelsSnapshot};
+use crate::terminals::{TerminalClassified, TerminalSummary};
 use crate::usage::{UsageShown, UsageSnapshot};
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -64,6 +67,11 @@ pub enum EventKind {
         changes: Vec<EnvironmentChange>,
     },
     SpendingCrossed(SpendingCrossed),
+    TerminalChanged {
+        terminal: AgentRef,
+    },
+    TerminalEnded(TerminalSummary),
+    TerminalClassified(TerminalClassified),
     #[serde(other)]
     Unknown,
 }
@@ -90,6 +98,8 @@ pub struct Snapshot {
     pub models: ModelsSnapshot,
     #[serde(default)]
     pub environments: Vec<EnvironmentData>,
+    #[serde(default)]
+    pub terminals: Vec<TerminalSummary>,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -143,6 +153,7 @@ mod tests {
                 usage: UsageSnapshot::default(),
                 models: ModelsSnapshot::default(),
                 environments: Vec::new(),
+                terminals: Vec::new(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

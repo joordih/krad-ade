@@ -1,6 +1,6 @@
 use krad_agents::TerminalHandle;
 use krad_domain::{AgentState, EnvironmentName, TerminalId};
-use krad_session::PtyInput;
+use krad_protocol::WriteBy;
 use std::time::Instant;
 
 use super::super::terminal_actions::paste_bytes;
@@ -36,7 +36,7 @@ impl EnvironmentShell {
         let hooked = live
             .sessions
             .get(&id)
-            .is_some_and(|session| session.hooked && session.state.is_running());
+            .is_some_and(|session| session.hooked() && session.is_running());
         hooked
             && live
                 .data
@@ -50,7 +50,7 @@ impl EnvironmentShell {
             .envs
             .get(&EnvironmentName::new(target.environment.clone()))
             .and_then(|live| live.sessions.get(&TerminalId(target.terminal)))
-            .is_some_and(|session| session.engine.bracketed_paste());
+            .is_some_and(|session| session.view.status().bracketed_paste);
         self.type_into(target, paste_bytes(text, bracketed));
     }
 
@@ -89,15 +89,14 @@ impl EnvironmentShell {
     }
 
     pub(super) fn type_into(&self, target: &TerminalHandle, bytes: Vec<u8>) {
-        if let Some(session) = self
+        let env = EnvironmentName::new(target.environment.clone());
+        let id = TerminalId(target.terminal);
+        let runs = self
             .envs
-            .get(&EnvironmentName::new(target.environment.clone()))
-            .and_then(|live| live.sessions.get(&TerminalId(target.terminal)))
-        {
-            session
-                .writer_tx
-                .send(PtyInput::Bytes(bytes))
-                .unwrap_or_default();
+            .get(&env)
+            .is_some_and(|live| live.sessions.contains_key(&id));
+        if runs {
+            self.write_terminal(&env, id, bytes, WriteBy::App);
         }
     }
 }

@@ -8,7 +8,6 @@ use krad_domain::{
 };
 use krad_session::wsl_shell;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 
 use super::sessions::Launch;
 use super::sessions_view::{session_terminals, show_current_session};
@@ -384,12 +383,7 @@ impl EnvironmentShell {
             return;
         };
         live.data.retire_chat_usage(id);
-        if let Some(session) = live.sessions.remove(&id) {
-            session.cancelled.store(true, Ordering::SeqCst);
-            if let Some(killer) = session.killer {
-                killer.kill();
-            }
-        }
+        let ran = live.sessions.remove(&id).is_some();
         let chat = live.chats.remove(&id);
         live.pending_chats.remove(&id);
         live.waiting_prompts.remove(&id);
@@ -402,6 +396,9 @@ impl EnvironmentShell {
             if live.focused.is_none() {
                 live.focused = live.data.nodes.first().map(|node| node.id);
             }
+        }
+        if ran {
+            self.end_terminal(env, id);
         }
         self.forget_attention(env, id);
         self.publish_agent(env, id, Some(StateReason::UserClosed));

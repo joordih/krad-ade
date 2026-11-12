@@ -56,7 +56,10 @@ impl EnvironmentsMirror {
                 environment: Box::new(opened),
             });
         };
-        let changes = EnvironmentChange::between(kept, environment);
+        let changes: Vec<EnvironmentChange> = EnvironmentChange::between(kept, environment)
+            .into_iter()
+            .filter(|change| !change.is_runtime_owned())
+            .collect();
         (!changes.is_empty()).then(|| EnvironmentCommand::Change {
             environment: environment.name.clone(),
             changes,

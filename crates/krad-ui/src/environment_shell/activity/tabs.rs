@@ -421,13 +421,11 @@ impl EnvironmentShell {
         let width = self.content_row_width(window) - if listed { TERMINAL_LIST_W } else { 0.0 };
         let height = self.activity_log.height;
         let env = self.active.clone();
-        if let Some(session) = self
-            .envs
-            .get_mut(&env)
-            .and_then(|live| live.sessions.get_mut(&id))
-        {
-            session.resize_grid(body_grid(width, height, TAB_STRIP_H, cell_width, zoom));
-        }
+        self.resize_terminal(
+            &env,
+            id,
+            body_grid(width, height, TAB_STRIP_H, cell_width, zoom),
+        );
     }
 }
 

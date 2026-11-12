@@ -8,6 +8,7 @@ use gpui_kit::{
 use krad_domain::{AgentState, TerminalId};
 
 use super::super::ask::{tray, tray_button};
+use super::super::live_terminal::LiveTerminal;
 use super::super::rubber_band::{band_watch, BandKey, ScrollEdges};
 use super::super::sidebar::PanelReveal;
 use super::super::EnvironmentShell;
@@ -93,10 +94,7 @@ impl EnvironmentShell {
                 AgentNow::Idle
             };
         }
-        let running = live
-            .sessions
-            .get(&id)
-            .is_some_and(|session| session.state.is_running());
+        let running = live.sessions.get(&id).is_some_and(LiveTerminal::is_running);
         if !running {
             return AgentNow::Exited;
         }

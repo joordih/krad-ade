@@ -29,8 +29,12 @@ impl EnvironmentShell {
         let preset = session
             .and_then(|session| session.harness)
             .or(node.harness)?;
-        let folder = session
-            .and_then(|session| session.cwd.clone())
+        let folder = live
+            .data
+            .meta
+            .get(&id)
+            .filter(|_| session.is_some())
+            .map(|meta| meta.cwd.clone())
             .filter(|cwd| !cwd.is_empty())
             .or_else(|| {
                 live.data

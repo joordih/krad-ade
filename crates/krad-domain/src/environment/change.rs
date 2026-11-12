@@ -61,6 +61,13 @@ pub enum EnvironmentChange {
     },
 }
 
+impl EnvironmentChange {
+    #[must_use]
+    pub const fn is_runtime_owned(&self) -> bool {
+        matches!(self, Self::Meta { .. } | Self::MetaRemoved { .. })
+    }
+}
+
 struct Placed<T> {
     index: usize,
     item: T,

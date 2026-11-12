@@ -3985,6 +3985,7 @@ dependencies = [
  "krad-domain",
  "krad-host",
  "krad-protocol",
+ "krad-session",
  "krad-store",
  "serde_json",
  "thiserror 2.0.21",
@@ -3996,7 +3997,6 @@ dependencies = [
 name = "krad-session"
 version = "0.4.1"
 dependencies = [
- "futures",
  "krad-domain",
  "krad-pty",
  "krad-term",

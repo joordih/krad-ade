@@ -21,6 +21,7 @@ use crate::input::Input;
 use crate::jobs::{JobDone, Jobs};
 use crate::models::Models;
 use crate::subscribers::Subscribers;
+use crate::terminals::{Settling, Terminals};
 use crate::usage::Usage;
 
 const THREAD_NAME: &str = "krad-runtime";
@@ -49,6 +50,7 @@ pub struct Runtime {
     usage: Usage,
     models: Models,
     environments: Environments,
+    terminals: Terminals,
     stopped: Arc<AtomicBool>,
 }
 
@@ -82,19 +84,16 @@ impl Runtime {
         let usage_budget = Arc::new(UsageBudget::default());
         let usage = Usage::new(Arc::clone(&usage_budget));
         let environments = Environments::start(setup.environments);
-        let runtime = Self::idle(
-            access.clone(),
-            Owned {
-                events,
-                usage,
-                environments,
-            },
-            &inbox,
-            stopped,
-        );
+        let owned = Owned {
+            events,
+            usage,
+            environments,
+        };
+        let shared_access = access.clone();
+        let runtime_inbox = inbox.clone();
         thread::Builder::new()
             .name(THREAD_NAME.to_owned())
-            .spawn(move || runtime.run(&input))?;
+            .spawn(move || Self::idle(shared_access, owned, &runtime_inbox, stopped).run(&input))?;
         tracing::info!("runtime started");
         Ok(RuntimeHandle::new(inbox, access, usage_budget))
     }
@@ -117,6 +116,7 @@ impl Runtime {
             usage: owned.usage,
             models: Models::default(),
             environments: owned.environments,
+            terminals: Terminals::new(inbox.clone()),
             stopped,
         }
     }
@@ -141,11 +141,13 @@ impl Runtime {
                     flow = Flow::Stopping;
                 }
             }
+            self.terminals.pumped(&mut self.outbox);
             self.flush();
             if flow == Flow::Stopping {
                 break;
             }
         }
+        self.terminals.stop();
         self.stopped.store(true, Ordering::Release);
         tracing::info!("runtime stopped");
     }
@@ -165,7 +167,20 @@ impl Runtime {
                     bus.tick(&mut self.outbox);
                 }
                 self.usage.tick(&self.jobs, &mut self.outbox);
+                self.terminals.tick(Instant::now(), &mut self.outbox);
             }
+            Input::OpenTerminal {
+                terminal,
+                launch,
+                shared,
+            } => self
+                .terminals
+                .open(terminal, launch, shared, &mut self.outbox),
+            Input::TerminalAction { terminal, action } => {
+                self.terminals.act(&terminal, action, &mut self.outbox);
+            }
+            Input::TerminalPalette(palette) => self.terminals.recolor(palette),
+            Input::Wake => {}
             Input::CheckHarnesses { place, probes } => {
                 self.health
                     .check(&place, probes, &self.jobs, &mut self.outbox);
@@ -178,7 +193,10 @@ impl Runtime {
                 cwd,
             } => self.models.list((host, harness), runner, cwd, &self.jobs),
             Input::JobDone(done) => self.job_done(done),
-            Input::Settle(reply) => self.environments.settle(reply),
+            Input::Settle(reply) => {
+                self.save_terminal_metas(Settling::Now);
+                self.environments.settle(reply);
+            }
             Input::Bus(incoming) => {
                 let Some(bus) = &mut self.bus else {
                     tracing::debug!("a bus request reached a runtime without a bus");
@@ -219,6 +237,10 @@ impl Runtime {
             | Input::ListModels { .. }
             | Input::JobDone(_)
             | Input::Settle(_)
+            | Input::OpenTerminal { .. }
+            | Input::TerminalAction { .. }
+            | Input::TerminalPalette(_)
+            | Input::Wake
             | Input::Tick
             | Input::Stop => {}
         }
@@ -273,14 +295,30 @@ impl Runtime {
                 .environments
                 .execute(command, &mut self.outbox)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
+            Command::Terminal(command) => self
+                .terminals
+                .execute(command, &mut self.outbox)
+                .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Runtime(RuntimeCommand::Unknown) | Command::Unknown => {
                 refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)
             }
         }
     }
 
+    fn save_terminal_metas(&mut self, settling: Settling) {
+        let environments = &self.environments;
+        let metas = self.terminals.metas(Instant::now(), settling, |terminal| {
+            environments.knows(&terminal.environment)
+        });
+        for (terminal, meta) in metas {
+            self.environments.put_meta(terminal, meta, &mut self.outbox);
+        }
+    }
+
     fn flush(&mut self) {
+        self.save_terminal_metas(Settling::No);
         self.environments.flush();
+        self.terminals.render(&mut self.outbox);
         let events: Vec<Event> = self
             .outbox
             .drain(..)
@@ -299,6 +337,7 @@ impl Runtime {
             usage: &self.usage,
             models: &self.models,
             environments: &self.environments,
+            terminals: &self.terminals,
         };
         let seq = self.seq;
         self.subscribers
@@ -313,6 +352,7 @@ impl Runtime {
             usage: &self.usage,
             models: &self.models,
             environments: &self.environments,
+            terminals: &self.terminals,
         }
         .snapshot(self.seq, scope)
     }
@@ -325,6 +365,7 @@ struct Parts<'a> {
     usage: &'a Usage,
     models: &'a Models,
     environments: &'a Environments,
+    terminals: &'a Terminals,
 }
 
 impl Parts<'_> {
@@ -338,6 +379,7 @@ impl Parts<'_> {
             usage: self.usage.snapshot(),
             models: self.models.snapshot(),
             environments: self.environments.snapshot(),
+            terminals: self.terminals.snapshot(),
         }
     }
 }

@@ -2,6 +2,7 @@ use krad_agents::{AgentInfo, AgentKey, ErrorCode, Request, Response, StateReason
 use krad_domain::{AgentState, AttentionKind, EnvironmentName, NodeKind, TerminalId, TerminalNode};
 
 use super::super::live_env::LiveEnv;
+use super::super::live_terminal::LiveTerminal;
 use super::super::EnvironmentShell;
 
 const STREAMED_BY_THE_BUS: &str =
@@ -43,7 +44,7 @@ impl EnvironmentShell {
     ) -> AgentInfo {
         let session = live.sessions.get(&node.id);
         let chat = self.chat_presence(env, node.id).is_some();
-        let alive = chat || session.is_some_and(|session| session.state.is_running());
+        let alive = chat || session.is_some_and(LiveTerminal::is_running);
         AgentInfo {
             environment: Some(env.as_str().to_owned()),
             terminal: node.id.as_u64(),

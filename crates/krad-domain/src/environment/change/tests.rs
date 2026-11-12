@@ -77,3 +77,21 @@ fn a_change_round_trips_through_json() -> serde_json::Result<()> {
     assert_eq!(serde_json::from_str::<EnvironmentChange>(&json)?, change);
     Ok(())
 }
+
+#[test]
+fn only_terminal_meta_belongs_to_the_runtime() {
+    let meta = EnvironmentChange::Meta {
+        terminal: TerminalId(1),
+        meta: TerminalMeta {
+            cwd: "/work".to_owned(),
+            scrollback: Vec::new(),
+        },
+    };
+    assert!(meta.is_runtime_owned());
+    assert!(EnvironmentChange::MetaRemoved {
+        terminal: TerminalId(1)
+    }
+    .is_runtime_owned());
+    assert!(!EnvironmentChange::NodeRemoved { id: TerminalId(1) }.is_runtime_owned());
+    assert!(!EnvironmentChange::Title { title: None }.is_runtime_owned());
+}

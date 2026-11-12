@@ -266,6 +266,11 @@ impl VtEngine {
     }
 
     #[must_use]
+    pub fn mouse_tracking(&self) -> bool {
+        self.term.borrow().is_mouse_tracking().unwrap_or(false)
+    }
+
+    #[must_use]
     pub fn hyperlink_at(&self, cell: CellPoint) -> Option<String> {
         snapshot::link_at(&self.term.borrow(), cell.into())
     }

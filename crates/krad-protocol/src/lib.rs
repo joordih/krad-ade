@@ -8,6 +8,7 @@ mod frame;
 mod harness_health;
 mod ids;
 mod models;
+mod terminals;
 mod usage;
 
 pub use app_events::{EventsCommand, WebhookTest};
@@ -23,4 +24,7 @@ pub use frame::{read_frame, write_frame, Frame, FrameError, Message, TerminalByt
 pub use harness_health::{HarnessCheck, HarnessChecked, HealthPlace, HealthSnapshot};
 pub use ids::{ProtocolVersion, RequestId, Seq};
 pub use models::{ListedModels, ModelsCommand, ModelsOrigin, ModelsSnapshot};
+pub use terminals::{
+    TerminalClassified, TerminalCommand, TerminalScroll, TerminalSummary, WriteBy,
+};
 pub use usage::{UsageCommand, UsageNews, UsageNote, UsageShown, UsageSnapshot};

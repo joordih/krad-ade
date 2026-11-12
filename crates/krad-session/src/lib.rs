@@ -6,33 +6,22 @@ pub use krad_pty::{
 pub use krad_term::{
     block, AnsiPalette, Block, CellPixels, CellPoint, CellRect, CursorShape, ImageDepth,
     ImagePixels, KeyModifiers, MouseAction, SearchDirection, SpanStyle, TermCursor, TermImage,
-    TermRow, TermSpan, VtEngine, WheelInput, ANSI_COLORS, CELL_STEPS, XTERM_PALETTE,
+    TermRow, TermScreen, TermSpan, VtEngine, WheelInput, ANSI_COLORS, CELL_STEPS, XTERM_PALETTE,
 };
 
-use futures::channel::mpsc::{channel, Receiver as PumpReceiver, Sender as PumpSender};
-use futures::executor::block_on;
-use futures::SinkExt as _;
-use krad_domain::{AgentPreset, EnvironmentName, TerminalId};
+use krad_domain::{EnvironmentName, ProcessRun, TerminalId};
 use krad_pty::{run_reader_loop, run_writer_loop, spawn_pty, watch_exit, SpawnRequest};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-pub const TICK_SECS: u64 = 1;
 pub const THREAD_IO_NAME: &str = "krad-ade-pty";
-pub const THREAD_TICK_NAME: &str = "krad-ade-tick";
-pub const PUMP_CAPACITY: usize = 256;
 const WRITER_THREAD_FAILED: &str = "writer thread unavailable";
 
-#[must_use]
-pub fn pump_channel() -> (PumpSender<PumpMsg>, PumpReceiver<PumpMsg>) {
-    channel(PUMP_CAPACITY)
-}
-
-fn deliver(pump: &mut PumpSender<PumpMsg>, msg: PumpMsg) -> bool {
-    block_on(pump.send(msg)).is_ok()
+pub trait PumpSink: Clone + Send + 'static {
+    fn deliver(&mut self, msg: PumpMsg) -> bool;
 }
 
 pub enum PumpMsg {
@@ -46,22 +35,6 @@ pub enum PumpMsg {
     ),
     Exited(EnvironmentName, TerminalId, Option<i32>),
     SpawnFailed(EnvironmentName, TerminalId, String),
-    Tick,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum SessionState {
-    #[default]
-    Running,
-    Exited(Option<i32>),
-    Failed(String),
-}
-
-impl SessionState {
-    #[must_use]
-    pub const fn is_running(&self) -> bool {
-        matches!(self, Self::Running)
-    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -101,13 +74,8 @@ pub struct LiveSession {
     pub writer_tx: Sender<PtyInput>,
     pub killer: Option<SharedKiller>,
     pub cancelled: Arc<AtomicBool>,
-    pub state: SessionState,
+    pub state: ProcessRun,
     pub last_output: Instant,
-    pub spawned_at: Instant,
-    pub is_agent: bool,
-    pub harness: Option<AgentPreset>,
-    pub hooked: bool,
-    pub activity: Option<String>,
     pub cwd: Option<String>,
     pub first_input: FirstInput,
 }
@@ -119,12 +87,6 @@ impl LiveSession {
         let replies = self.engine.take_replies();
         if !replies.is_empty() {
             drop(self.writer_tx.send(PtyInput::Bytes(replies)));
-        }
-    }
-
-    pub fn mark_exited(&mut self, code: Option<i32>) {
-        if !matches!(self.state, SessionState::Failed(_)) {
-            self.state = SessionState::Exited(code);
         }
     }
 
@@ -142,20 +104,20 @@ impl LiveSession {
     }
 }
 
-pub struct SpawnJob {
+pub struct SpawnJob<S> {
     pub env: EnvironmentName,
     pub id: TerminalId,
     pub program: String,
     pub args: Vec<String>,
     pub cwd: Option<PathBuf>,
     pub vars: Vec<(String, String)>,
-    pub pump: PumpSender<PumpMsg>,
+    pub pump: S,
     pub cancelled: Arc<AtomicBool>,
     pub inbox: Receiver<PtyInput>,
     pub opener: Option<PtyOpener>,
 }
 
-pub fn run_spawn_job(job: SpawnJob) {
+pub fn run_spawn_job<S: PumpSink>(job: SpawnJob<S>) {
     let SpawnJob {
         env,
         id,
@@ -185,7 +147,7 @@ pub fn run_spawn_job(job: SpawnJob) {
     let spawned = match opened {
         Ok(spawned) => spawned,
         Err(error) => {
-            deliver(&mut pump, PumpMsg::SpawnFailed(env, id, error.to_string()));
+            pump.deliver(PumpMsg::SpawnFailed(env, id, error.to_string()));
             return;
         }
     };
@@ -205,7 +167,7 @@ pub fn run_spawn_job(job: SpawnJob) {
         Ok(watcher) => watcher,
         Err(error) => {
             killer.kill();
-            deliver(&mut pump, PumpMsg::SpawnFailed(env, id, error.to_string()));
+            pump.deliver(PumpMsg::SpawnFailed(env, id, error.to_string()));
             return;
         }
     };
@@ -218,37 +180,20 @@ pub fn run_spawn_job(job: SpawnJob) {
         });
     if writer_thread.is_err() {
         killer.kill();
-        deliver(
-            &mut pump,
-            PumpMsg::SpawnFailed(env, id, WRITER_THREAD_FAILED.to_owned()),
-        );
+        pump.deliver(PumpMsg::SpawnFailed(
+            env,
+            id,
+            WRITER_THREAD_FAILED.to_owned(),
+        ));
         return;
     }
-    deliver(
-        &mut pump,
-        PumpMsg::Ready(env.clone(), id, cwd_text, pid, killer),
-    );
+    pump.deliver(PumpMsg::Ready(env.clone(), id, cwd_text, pid, killer));
     let mut pump_output = pump.clone();
     run_reader_loop(&mut reader, &cancelled, |bytes| {
-        deliver(
-            &mut pump_output,
-            PumpMsg::Output(env.clone(), id, bytes.to_vec()),
-        )
+        pump_output.deliver(PumpMsg::Output(env.clone(), id, bytes.to_vec()))
     });
     let code = watcher.join().ok().flatten();
-    deliver(&mut pump, PumpMsg::Exited(env, id, code));
-}
-
-pub fn spawn_ticker(mut pump: PumpSender<PumpMsg>) {
-    let outcome = std::thread::Builder::new()
-        .name(THREAD_TICK_NAME.to_owned())
-        .spawn(move || loop {
-            std::thread::sleep(Duration::from_secs(TICK_SECS));
-            if !deliver(&mut pump, PumpMsg::Tick) {
-                break;
-            }
-        });
-    drop(outcome);
+    pump.deliver(PumpMsg::Exited(env, id, code));
 }
 
 #[cfg(test)]
@@ -264,37 +209,5 @@ mod tests {
         let typed = FirstInput::default();
         typed.user_typed();
         assert!(!typed.claim_for_app());
-    }
-
-    fn session(state: SessionState) -> LiveSession {
-        let (writer_tx, _writer_rx) = std::sync::mpsc::channel();
-        LiveSession {
-            engine: VtEngine::new(DEFAULT_COLS.into(), DEFAULT_ROWS.into())
-                .unwrap_or_else(|error| unreachable!("{error}")),
-            writer_tx,
-            killer: None,
-            cancelled: Arc::new(AtomicBool::new(false)),
-            state,
-            last_output: Instant::now(),
-            spawned_at: Instant::now(),
-            is_agent: false,
-            harness: None,
-            hooked: false,
-            activity: None,
-            cwd: None,
-            first_input: FirstInput::default(),
-        }
-    }
-
-    #[test]
-    fn exit_ends_a_running_session_but_keeps_a_failure() {
-        let mut running = session(SessionState::Running);
-        running.mark_exited(Some(1));
-        assert_eq!(running.state, SessionState::Exited(Some(1)));
-
-        let failure = SessionState::Failed("writer lost".to_owned());
-        let mut failed = session(failure.clone());
-        failed.mark_exited(Some(0));
-        assert_eq!(failed.state, failure);
     }
 }

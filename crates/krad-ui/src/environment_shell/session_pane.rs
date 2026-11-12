@@ -24,7 +24,7 @@ use gpui_kit::{
     Window,
 };
 use krad_domain::{AgentPreset, AgentState, FileView, PaneId, SessionPanes, TerminalId, UnitRect};
-use krad_session::SessionState;
+use krad_domain::{GridSize, ProcessRun};
 
 use super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
 use super::sessions_view::session_terminals;
@@ -549,9 +549,9 @@ impl EnvironmentShell {
             cell_w: self.cell_width_px.unwrap_or(TERMINAL_FONT_PX) * text_zoom,
             line_h: TERMINAL_LINE_PX * text_zoom,
         };
-        let failure = match session.map(|session| &session.state) {
-            Some(SessionState::Failed(text)) => Some(error_line(text, pal)),
-            _ => None,
+        let failure = match session.map(|session| session.view.status().run) {
+            Some(ProcessRun::Failed { error }) => Some(error_line(&error, pal)),
+            Some(ProcessRun::Running | ProcessRun::Exited { .. }) | None => None,
         };
         div()
             .flex()
@@ -648,30 +648,34 @@ impl EnvironmentShell {
         let size = self.canvas_px;
         let strip_h = self.pane_strip_h();
         let env = self.active.clone();
-        let Some(live) = self.envs.get_mut(&env) else {
+        let Some(live) = self.envs.get(&env) else {
             return;
         };
         let Some(session) = live.data.current_session() else {
             return;
         };
-        let shown: Vec<(TerminalId, UnitRect)> = session
+        let grids: Vec<(TerminalId, GridSize)> = session
             .panes
             .layout()
             .into_iter()
             .filter_map(|(pane, rect)| Some((session.panes.pane(pane)?.shown?, rect)))
+            .map(|(id, rect)| {
+                let (_, _, width, height) = pane_px(rect, (0.0, 0.0), size);
+                let text_scale = live
+                    .data
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == id)
+                    .map_or(UNZOOMED, |node| node.text_scale.as_f32())
+                    * font_zoom;
+                (
+                    id,
+                    body_grid(width, height, strip_h, cell_width, text_scale),
+                )
+            })
             .collect();
-        for (id, rect) in shown {
-            let (_, _, width, height) = pane_px(rect, (0.0, 0.0), size);
-            let text_scale = live
-                .data
-                .nodes
-                .iter()
-                .find(|node| node.id == id)
-                .map_or(UNZOOMED, |node| node.text_scale.as_f32())
-                * font_zoom;
-            if let Some(session) = live.sessions.get_mut(&id) {
-                session.resize_grid(body_grid(width, height, strip_h, cell_width, text_scale));
-            }
+        for (id, grid) in grids {
+            self.resize_terminal(&env, id, grid);
         }
     }
 }

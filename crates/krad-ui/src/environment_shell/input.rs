@@ -2,14 +2,17 @@ use gpui_kit::{
     div, AnyElement, Context, InteractiveElement, IntoElement, KeyDownEvent, Modifiers,
     ParentElement, Styled, Window,
 };
-use krad_session::{KeyModifiers, LiveSession, PtyInput, SessionState};
+use krad_domain::TerminalId;
+use krad_protocol::WriteBy;
+use krad_runtime::TerminalAction;
+use krad_session::KeyModifiers;
 
+use super::live_terminal::LiveTerminal;
 use super::rename::KEY_ESCAPE;
 use super::EnvironmentShell;
 use crate::actions::{SendBackTab, SendTab, SHELL_KEY_CONTEXT};
 use crate::typed_text::typed_text;
 
-const WRITER_LOST_TEXT: &str = "writer lost";
 const TAB: &[u8] = b"\t";
 const BACK_TAB: &[u8] = b"\x1b[Z";
 
@@ -18,37 +21,23 @@ fn is_dead_key(event: &KeyDownEvent) -> bool {
 }
 
 impl EnvironmentShell {
-    pub(super) fn focused_session(&self) -> Option<&LiveSession> {
+    pub(super) fn focused_session(&self) -> Option<&LiveTerminal> {
         let live = self.envs.get(&self.active)?;
         live.sessions.get(&live.focused?)
     }
 
-    pub(super) fn focused_session_mut(&mut self) -> Option<&mut LiveSession> {
-        let live = self.envs.get_mut(&self.active)?;
-        let focused = live.focused?;
-        live.sessions.get_mut(&focused)
+    fn focused_terminal(&self) -> Option<TerminalId> {
+        let live = self.envs.get(&self.active)?;
+        live.focused.filter(|id| live.sessions.contains_key(id))
     }
 
     pub(super) fn send_to_focused(&mut self, bytes: Vec<u8>, cx: &mut Context<Self>) {
+        let Some(focused) = self.focused_terminal() else {
+            return;
+        };
         let env = self.active.clone();
-        let Some(live) = self.envs.get_mut(&env) else {
-            return;
-        };
-        let Some(focused) = live.focused else {
-            return;
-        };
-        let Some(session) = live.sessions.get_mut(&focused) else {
-            return;
-        };
-        session.engine.scroll_to_bottom();
-        session.first_input.user_typed();
+        self.write_terminal(&env, focused, bytes, WriteBy::User);
         cx.notify();
-        if session.writer_tx.send(PtyInput::Bytes(bytes)).is_err() {
-            if let Some(session) = live.sessions.get_mut(&focused) {
-                session.state = SessionState::Failed(WRITER_LOST_TEXT.to_owned());
-            }
-            cx.notify();
-        }
     }
 
     fn on_send_tab(&mut self, _: &SendTab, window: &mut Window, cx: &mut Context<Self>) {
@@ -88,12 +77,17 @@ impl EnvironmentShell {
             alt: modifiers.alt,
             shift: modifiers.shift,
         };
-        let bytes = self
-            .focused_session_mut()
-            .and_then(|session| session.engine.encode_key(key, key_char, held));
-        if let Some(bytes) = bytes {
-            self.send_to_focused(bytes, cx);
-        }
+        let Some(focused) = self.focused_terminal() else {
+            return;
+        };
+        let env = self.active.clone();
+        let action = TerminalAction::Key {
+            key: key.to_owned(),
+            text: key_char.map(str::to_owned),
+            held,
+        };
+        self.act_on_terminal(&env, focused, action);
+        cx.notify();
     }
 
     pub(super) fn main_pane(&self, view: AnyElement, cx: &mut Context<Self>) -> AnyElement {

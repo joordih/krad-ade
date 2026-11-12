@@ -1,4 +1,5 @@
 use gpui_kit::{Context, Window};
+use krad_runtime::TerminalAction;
 use krad_session::{CellPoint, MouseAction};
 
 use super::activity::ActivityDrag;
@@ -106,13 +107,8 @@ impl EnvironmentShell {
         match self.drag {
             DragState::Select { id, geometry } => {
                 let env = self.active.clone();
-                if let Some(session) = self
-                    .envs
-                    .get_mut(&env)
-                    .and_then(|live| live.sessions.get_mut(&id))
-                {
-                    session.engine.extend_selection(geometry.cell_at(x, y));
-                }
+                let at = geometry.cell_at(x, y);
+                self.act_on_terminal(&env, id, TerminalAction::ExtendSelection(at));
                 cx.notify();
             }
             DragState::Report { id, geometry, cell } => {
