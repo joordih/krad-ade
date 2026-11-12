@@ -67,7 +67,7 @@ impl Sum for Spend {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReportedUsage {
     pub tokens: TokenUsage,
     pub cost: Option<UsdCost>,
@@ -88,7 +88,8 @@ impl ReportedUsage {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum UsageReport {
     Added(ReportedUsage),
     RunningTotal(ReportedUsage),

@@ -55,6 +55,7 @@ pub(crate) enum Input {
         cwd: PathBuf,
     },
     JobDone(JobDone),
+    Settle(oneshot::Sender<()>),
     Tick,
     Stop,
 }

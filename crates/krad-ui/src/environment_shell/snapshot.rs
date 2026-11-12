@@ -1,22 +1,25 @@
+use gpui_kit::Context;
 use krad_domain::{
-    AgentState, EnvironmentData, EnvironmentName, PersistedLayout, SidePanelLayout, TerminalId,
-    ToastKind, DEFAULT_ENVIRONMENT, LAYOUT_SCHEMA_VERSION,
+    AgentState, EnvironmentData, EnvironmentName, EnvironmentViewPreferences, Layout,
+    SidePanelLayout, TerminalId, ToastKind, ViewPreferences, DEFAULT_ENVIRONMENT,
+    LAYOUT_SCHEMA_VERSION,
 };
+use krad_protocol::Command;
 
 use super::{live_meta, EnvironmentShell, LiveEnv};
 
 impl EnvironmentShell {
-    pub(super) fn restore_snapshot(&mut self, snapshot: PersistedLayout) {
-        self.toolchains = super::toolchains::Toolchains::with_choices(snapshot.toolchains);
-        if !snapshot.unreadable.is_empty() {
-            tracing::warn!(
-                count = snapshot.unreadable.len(),
-                "kept environments this version cannot read; they stay in the layout file"
-            );
-        }
-        self.unreadable_environments = snapshot.unreadable;
+    pub(super) fn restore_layout(&mut self, layout: Layout) {
+        let Layout { state, mut view } = layout;
+        self.toolchains =
+            super::toolchains::Toolchains::with_choices(std::mem::take(&mut view.toolchains));
+        self.runtime
+            .view
+            .environments
+            .replace(state.environments.clone());
         let mut restored = 0;
-        for mut data in snapshot.environments {
+        for mut data in state.environments {
+            view.dress(&mut data);
             let ids: Vec<TerminalId> = data.nodes.iter().map(|node| node.id).collect();
             let data_focus = data.focus.filter(|id| ids.contains(id));
             for node in &mut data.nodes {
@@ -38,28 +41,21 @@ impl EnvironmentShell {
                 .insert(name.clone(), LiveEnv::new(data, None, link));
             restored += self.spawn_missing_sessions(&name);
         }
-        self.work_mode = snapshot.work_mode;
-        self.sidebar_w = snapshot.sidebar_width;
-        let active = snapshot.active;
-        if self.envs.contains_key(&active) {
-            self.active = active;
-        } else if let Some(first) = self.order.first().cloned() {
-            self.active = first;
+        self.work_mode = view.work_mode;
+        self.sidebar_w = view.sidebar_width;
+        match view.active.filter(|active| self.envs.contains_key(active)) {
+            Some(active) => self.active = active,
+            None => {
+                if let Some(first) = self.order.first().cloned() {
+                    self.active = first;
+                }
+            }
         }
         if restored > 0 {
             self.push_toast(ToastKind::Success, format!("Restored {restored} terminals"));
         }
     }
 
-    pub(super) fn restore_env(&mut self, data: EnvironmentData) {
-        let name = data.name.clone();
-        self.order.push(name.clone());
-        let link = self.link_for(&data.host);
-        self.envs
-            .insert(name.clone(), LiveEnv::new(data, None, link));
-        self.active = name.clone();
-        self.spawn_missing_sessions(&name);
-    }
     fn snapshot_env(&self, name: &EnvironmentName, live: &LiveEnv) -> EnvironmentData {
         let meta = if *name == self.active {
             live_meta(live)
@@ -98,27 +94,49 @@ impl EnvironmentShell {
         side_panel
     }
 
-    fn snapshot(&self) -> PersistedLayout {
-        let mut environments = Vec::new();
-        for name in &self.order {
-            if let Some(live) = self.envs.get(name) {
-                environments.push(self.snapshot_env(name, live));
-            }
-        }
-        PersistedLayout {
+    fn view_preferences(&self, environments: &[EnvironmentData]) -> ViewPreferences {
+        ViewPreferences {
             version: LAYOUT_SCHEMA_VERSION,
-            active: self.active.clone(),
-            environments,
-            unreadable: self.unreadable_environments.clone(),
+            active: Some(self.active.clone()),
             work_mode: self.work_mode,
             sidebar_width: self.sidebar_w,
             toolchains: self.toolchains.choices.clone(),
+            environments: environments
+                .iter()
+                .map(EnvironmentViewPreferences::from)
+                .collect(),
         }
     }
 
+    pub(super) fn settle_runtime_on_quit(cx: &mut Context<Self>) {
+        cx.on_app_quit(|shell, _| {
+            shell.store();
+            let settled = shell.runtime.handle.settle();
+            async move {
+                if settled.await.is_err() {
+                    tracing::warn!("the runtime stopped before the layout settled");
+                }
+            }
+        })
+        .detach();
+    }
+
     pub(super) fn store(&self) {
-        if let Some(writer) = &self.layout_writer {
-            writer.persist(&self.snapshot());
+        let environments: Vec<EnvironmentData> = self
+            .order
+            .iter()
+            .filter_map(|name| Some(self.snapshot_env(name, self.envs.get(name)?)))
+            .collect();
+        for command in self
+            .runtime
+            .view
+            .environments
+            .commands_toward(&environments)
+        {
+            self.runtime.handle.post(Command::Environments(command));
+        }
+        if let Some(writer) = &self.view_writer {
+            writer.persist(&self.view_preferences(&environments));
         }
     }
 }

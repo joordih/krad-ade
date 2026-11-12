@@ -1,0 +1,95 @@
+{
+  "version": 12,
+  "active": "remote",
+  "work_mode": "Editor",
+  "sidebar_width": 288.5,
+  "toolchains": [],
+  "environments": [
+    {
+      "name": "main",
+      "nodes": [
+        {
+          "id": 27,
+          "title": "lead · payments",
+          "state": "Working",
+          "harness": "Acp:claude-code-acp",
+          "resume": "0a6c9d63-61f1-4a0e-8f3c-3a9a1a5c2b77",
+          "group": 1,
+          "text_scale": 1.0072818994522095,
+          "kind": "Chat",
+          "usage": {
+            "settled": { "tokens": { "input": 10, "output": 20, "cache_read": 30, "cache_write": 40 }, "cost": 35882756 },
+            "running": { "tokens": { "input": 0, "output": 0, "cache_read": 0, "cache_write": 0 }, "cost": 1146032 }
+          },
+          "choice": { "model": "claude-fable-5-1" }
+        },
+        { "id": 30, "title": "README.md", "state": "Idle", "group": 1, "kind": "File", "file": { "path": "/work/api/README.md", "pinned": true } }
+      ],
+      "meta": {
+        "26": { "cwd": "/work/api", "scrollback": ["$ git status", "nothing to commit"] }
+      },
+      "next_id": 31,
+      "view": "Sessions",
+      "focus": 27,
+      "title": "Payments",
+      "groups": [
+        { "id": 1, "name": "api", "root": "/work/api", "activation": "on" },
+        { "id": 3, "name": "fix-refunds", "root": "/work/.worktrees/api/fix-refunds", "worktree": { "repo_root": "/work/api", "branch": "fix-refunds" } }
+      ],
+      "sessions": [
+        {
+          "id": 2,
+          "group": 1,
+          "name": "Payments",
+          "tabs": {
+            "tabs": [{ "id": 0, "name": "1", "arrangement": "Columns", "tiles": [{ "id": 27, "share": 1.0 }], "main_ratio": 0.6000000238418579 }],
+            "active": 0,
+            "next_tab": 1
+          },
+          "lead": { "preset": "Acp:claude-code-acp", "model": "claude-fable-5-1", "terminal": 27 },
+          "panes": { "panes": [{ "id": 0, "tabs": [27, 30], "shown": 27 }], "root": { "pane": 0 }, "next_id": 1 },
+          "look": { "color": "blue", "icon": "terminal" },
+          "last_chat": 27
+        }
+      ],
+      "active_session": 2,
+      "side_panel": {
+        "open": true,
+        "width": 400.8984375,
+        "split": 0.6000000238418579,
+        "terminals": [{ "id": 26, "title": "zsh" }],
+        "shown": 26,
+        "terminals_open": false,
+        "section": "changes",
+        "changes_layout": "tree",
+        "history_open": false,
+        "history_height": 402.25390625
+      },
+      "extension_views": { "sidebar": { "extension": "containers", "view": "list" } },
+      "retired_spend": [
+        { "group": 1, "spent": { "tokens": { "input": 2682, "output": 945038, "cache_read": 194438485, "cache_write": 2678720 }, "cost": 83445284470 } }
+      ],
+      "archive": {
+        "sessions": [
+          { "id": 1, "group": 1, "name": "Old refunds", "closed": { "secs_since_epoch": 1762000000, "nanos_since_epoch": 0 } }
+        ]
+      }
+    },
+    {
+      "name": "remote",
+      "host": { "kind": "ssh", "destination": "dev@buildbox" },
+      "nodes": [{ "id": 1, "title": "shell", "state": "Idle" }],
+      "meta": {},
+      "next_id": 2,
+      "view": "Sessions",
+      "title": "Build box"
+    },
+    {
+      "name": "broken",
+      "host": { "kind": "ssh", "destination": "-oProxyCommand=evil" },
+      "nodes": [],
+      "meta": {},
+      "next_id": 1
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "version": 11,
+  "active": "main",
+  "work_mode": "Editor",
+  "environments": [
+    {
+      "name": "main",
+      "nodes": [
+        { "id": 4, "title": "claude", "state": "Idle", "harness": "ClaudeCode", "group": 1, "kind": "Chat", "resume": "6f1c2a7e-0b1d-4c55-9a43-2f8f8d0c1e11" },
+        { "id": 5, "title": "chat", "state": "Done", "harness": "Gateway", "kind": "Chat", "group": 1 }
+      ],
+      "meta": {},
+      "next_id": 7,
+      "view": "Sessions",
+      "focus": 4,
+      "groups": [{ "id": 1, "name": "api", "root": "/work/api" }],
+      "sessions": [
+        {
+          "id": 6,
+          "group": 1,
+          "name": "Refunds",
+          "tabs": {
+            "tabs": [{ "id": 0, "name": "1", "arrangement": "Columns", "tiles": [{ "id": 4, "share": 0.5 }, { "id": 5, "share": 0.5 }], "main_ratio": 0.6 }],
+            "active": 0,
+            "next_tab": 1
+          }
+        }
+      ],
+      "active_session": 6,
+      "side_panel": { "open": false, "width": 360.0, "split": 0.5 }
+    },
+    {
+      "name": "docs",
+      "nodes": [],
+      "meta": {},
+      "next_id": 1,
+      "title": "Docs",
+      "view": "Notes",
+      "note_tabs": [{ "group": null, "tabs": [{ "path": "plan.md", "pinned": true, "mode": "split" }], "active": 0 }]
+    }
+  ],
+  "sidebar_width": 300.0
+}

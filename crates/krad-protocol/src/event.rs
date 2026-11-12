@@ -1,21 +1,25 @@
-use krad_domain::{AgentPreset, AttentionTarget, EventRecord, Host};
+use krad_domain::{
+    AgentPreset, AttentionTarget, EnvironmentChange, EnvironmentData, EnvironmentName, EventRecord,
+    Host,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::app_events::WebhookTest;
 use crate::attention::{AttentionNotice, AttentionSnapshot};
 use crate::bus::{AskId, AskSettlement, BusSnapshot, MailCount, PendingAsk, StatusReport};
+use crate::environments::SpendingCrossed;
 use crate::harness_health::{HarnessChecked, HealthSnapshot};
 use crate::ids::{RequestId, Seq};
 use crate::models::{ListedModels, ModelsOrigin, ModelsSnapshot};
 use crate::usage::{UsageShown, UsageSnapshot};
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Event {
     pub seq: Seq,
     pub kind: EventKind,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EventKind {
     Pong {
@@ -46,6 +50,20 @@ pub enum EventKind {
         harness: AgentPreset,
         error: String,
     },
+    EnvironmentOpened {
+        environment: Box<EnvironmentData>,
+    },
+    EnvironmentClosed {
+        environment: EnvironmentName,
+    },
+    EnvironmentsOrdered {
+        order: Vec<EnvironmentName>,
+    },
+    EnvironmentChanged {
+        environment: EnvironmentName,
+        changes: Vec<EnvironmentChange>,
+    },
+    SpendingCrossed(SpendingCrossed),
     #[serde(other)]
     Unknown,
 }
@@ -56,7 +74,7 @@ pub enum Scope {
     Runtime,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Snapshot {
     pub scope: Scope,
     pub seq: Seq,
@@ -70,9 +88,11 @@ pub struct Snapshot {
     pub usage: UsageSnapshot,
     #[serde(default)]
     pub models: ModelsSnapshot,
+    #[serde(default)]
+    pub environments: Vec<EnvironmentData>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(tag = "feed", rename_all = "snake_case")]
 pub enum Feed {
     Snapshot(Snapshot),
@@ -122,6 +142,7 @@ mod tests {
                 health: HealthSnapshot::default(),
                 usage: UsageSnapshot::default(),
                 models: ModelsSnapshot::default(),
+                environments: Vec::new(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

@@ -98,11 +98,11 @@ use futures::StreamExt as _;
 use gpui_kit::component::command::CommandState;
 use gpui_kit::{Context, Entity, FocusHandle, Subscription, Task, WeakEntity, Window};
 use krad_domain::{
-    AgentPreset, EnvironmentData, EnvironmentName, EnvironmentView, PersistedLayout, Prompt,
-    Settings, SidebarWidth, TerminalId, Visibility, WorkMode, DEFAULT_ENVIRONMENT,
+    AgentPreset, EnvironmentData, EnvironmentName, EnvironmentView, Layout, Prompt, Settings,
+    SidebarWidth, TerminalId, Visibility, WorkMode, DEFAULT_ENVIRONMENT,
 };
 use krad_runtime::RuntimeHandle;
-use krad_store::{AcpTranscripts, LayoutWriter};
+use krad_store::{AcpTranscripts, LayoutFile, LayoutWriter};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -180,7 +180,7 @@ pub struct EnvironmentShell {
     history: side_panel::CommitHistory,
     activity_log: activity::ActivityLog,
     close_request: CloseRequest,
-    layout_writer: Option<LayoutWriter>,
+    view_writer: Option<LayoutWriter>,
     acp_transcripts: Option<AcpTranscripts>,
     git: HashMap<groups::GitKey, groups::GroupGit>,
     git_task: Option<Task<()>>,
@@ -215,7 +215,6 @@ pub struct EnvironmentShell {
     name_dialogs: name_dialogs::NameDialogs,
     hosts: host::HostUi,
     toolchains: toolchains::Toolchains,
-    unreadable_environments: Vec<krad_domain::UnreadableEnvironment>,
     host_tools: host::HostTools,
     arcade: arcade::Arcade,
     app_updates: app_update::AppUpdates,
@@ -264,14 +263,14 @@ impl EnvironmentShell {
 
     pub fn with_seed(
         cx: &mut Context<Self>,
-        seed: Option<PersistedLayout>,
+        layout: Layout,
         settings: Settings,
         host_tools: host::HostTools,
         runtime: RuntimeHandle,
     ) -> Self {
         let mut shell = Self::assemble(cx, settings, host_tools, runtime);
         let pump_rx = shell.open_pump();
-        shell.start(seed, pump_rx, cx);
+        shell.start(layout, pump_rx, cx);
         shell
     }
 
@@ -339,7 +338,7 @@ impl EnvironmentShell {
             history: side_panel::CommitHistory::default(),
             activity_log: activity::ActivityLog::default(),
             close_request: CloseRequest::Idle,
-            layout_writer: LayoutWriter::spawn(),
+            view_writer: LayoutWriter::spawn(LayoutFile::View),
             acp_transcripts: AcpTranscripts::spawn(),
             git: HashMap::new(),
             git_task: None,
@@ -375,7 +374,6 @@ impl EnvironmentShell {
             name_dialogs: name_dialogs::NameDialogs::Closed,
             hosts: host::HostUi::default(),
             toolchains: toolchains::Toolchains::default(),
-            unreadable_environments: Vec::new(),
             host_tools,
             app_updates: app_update::AppUpdates::default(),
             extensions: extensions::Extensions::default(),
@@ -389,19 +387,9 @@ impl EnvironmentShell {
         }
     }
 
-    fn start(
-        &mut self,
-        seed: Option<PersistedLayout>,
-        pump_rx: PumpReceiver<PumpMsg>,
-        cx: &mut Context<Self>,
-    ) {
+    fn start(&mut self, layout: Layout, pump_rx: PumpReceiver<PumpMsg>, cx: &mut Context<Self>) {
         self.start_services(cx);
-        match seed {
-            Some(snapshot) => self.restore_snapshot(snapshot),
-            None => self.restore_env(EnvironmentData::empty(EnvironmentName::new(
-                DEFAULT_ENVIRONMENT.to_owned(),
-            ))),
-        }
+        self.restore_layout(layout);
         let active = self.active.clone();
         self.show_host(&active, cx);
         self.connect_worker_hosts(cx);
@@ -413,6 +401,7 @@ impl EnvironmentShell {
         cx.observe(&self.copy_feedback, |_, _, cx| cx.notify())
             .detach();
         self.follow_runtime(cx);
+        Self::settle_runtime_on_quit(cx);
         self.use_webhooks();
         self.start_agent_bus(cx);
         self.check_gateway(cx);

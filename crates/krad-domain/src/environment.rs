@@ -15,7 +15,11 @@ use crate::view::EnvironmentView;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+mod change;
+
+pub use change::EnvironmentChange;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TerminalNode {
     pub id: TerminalId,
     pub title: String,
@@ -73,13 +77,13 @@ fn valid_resume_id<'de, D: Deserializer<'de>>(
     Ok(raw.and_then(|raw| ResumeId::try_from(raw).ok()))
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TerminalMeta {
     pub cwd: String,
     pub scrollback: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EnvironmentData {
     pub name: EnvironmentName,
     #[serde(default, skip_serializing_if = "Host::is_local")]
@@ -87,9 +91,9 @@ pub struct EnvironmentData {
     pub nodes: Vec<TerminalNode>,
     pub meta: HashMap<TerminalId, TerminalMeta>,
     pub next_id: u64,
-    #[serde(default, deserialize_with = "crate::view::lenient_view")]
+    #[serde(skip)]
     pub view: EnvironmentView,
-    #[serde(default)]
+    #[serde(skip)]
     pub focus: Option<TerminalId>,
     #[serde(default)]
     pub title: Option<String>,
@@ -99,11 +103,11 @@ pub struct EnvironmentData {
     pub sessions: Vec<Session>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_session: Option<SessionId>,
-    #[serde(default)]
+    #[serde(skip)]
     pub side_panel: SidePanelLayout,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(skip)]
     pub note_tabs: Vec<crate::notes::NoteTabs>,
-    #[serde(default, skip_serializing_if = "ShownExtensionViews::is_empty")]
+    #[serde(skip)]
     pub extension_views: ShownExtensionViews,
     #[serde(default, skip_serializing_if = "RetiredSpend::is_empty")]
     pub retired_spend: RetiredSpend,

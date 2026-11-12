@@ -3,10 +3,11 @@ use serde::{Deserialize, Serialize};
 use crate::app_events::EventsCommand;
 use crate::attention::AttentionCommand;
 use crate::bus::BusCommand;
+use crate::environments::EnvironmentCommand;
 use crate::models::ModelsCommand;
 use crate::usage::UsageCommand;
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(tag = "area", rename_all = "snake_case")]
 pub enum Command {
     Runtime(RuntimeCommand),
@@ -15,6 +16,7 @@ pub enum Command {
     Attention(AttentionCommand),
     Usage(UsageCommand),
     Models(ModelsCommand),
+    Environments(EnvironmentCommand),
     #[serde(other)]
     Unknown,
 }

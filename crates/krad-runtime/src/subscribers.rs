@@ -95,6 +95,7 @@ mod tests {
             health: krad_protocol::HealthSnapshot::default(),
             usage: krad_protocol::UsageSnapshot::default(),
             models: krad_protocol::ModelsSnapshot::default(),
+            environments: Vec::new(),
         }
     }
 

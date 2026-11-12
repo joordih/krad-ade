@@ -122,11 +122,11 @@ mod tests {
     #[test]
     fn the_shown_sidebar_view_persists_and_an_empty_one_is_not_written() -> serde_json::Result<()> {
         let mut env = EnvironmentData::empty(EnvironmentName::new("main".to_owned()));
-        let quiet = serde_json::to_value(&env)?;
+        let quiet = serde_json::to_value(crate::EnvironmentViewPreferences::from(&env))?;
         assert!(quiet.get("extension_views").is_none());
         env.extension_views.sidebar = Some(containers());
-        let text = serde_json::to_string(&env)?;
-        let back: EnvironmentData = serde_json::from_str(&text)?;
+        let text = serde_json::to_string(&crate::EnvironmentViewPreferences::from(&env))?;
+        let back: crate::EnvironmentViewPreferences = serde_json::from_str(&text)?;
         assert_eq!(back.extension_views.sidebar, Some(containers()));
         assert_eq!(back.extension_views.side_panel, None);
         Ok(())

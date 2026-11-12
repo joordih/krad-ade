@@ -80,6 +80,7 @@ fn a_subscriber_starts_from_a_snapshot_and_receives_events_with_rising_seqs() ->
             health: HealthSnapshot::default(),
             usage: UsageSnapshot::default(),
             models: ModelsSnapshot::default(),
+            environments: Vec::new(),
         }
     );
     Ok(())

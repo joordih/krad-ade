@@ -1,10 +1,7 @@
 use super::*;
 use crate::environment::seed_environment;
 use crate::group::{SessionLead, SessionSpec, WorkerSpawn, WorktreeOrigin};
-use crate::persisted_layout::{PersistedLayout, LAYOUT_SCHEMA_VERSION};
-use crate::sidebar_width::SidebarWidth;
-use crate::toolchain::ToolchainChoices;
-use crate::work_mode::WorkMode;
+use crate::persisted_layout::RuntimeState;
 use crate::AgentPreset;
 use std::path::PathBuf;
 
@@ -205,16 +202,11 @@ fn a_closed_worker_leaves_the_persisted_layout_and_cannot_close_twice() -> serde
         plan(&fixture, CloseSubject::Worker(WORKER)),
         Err(CloseRefusal::AlreadyClosed)
     );
-    let layout = PersistedLayout {
-        version: LAYOUT_SCHEMA_VERSION,
-        active: fixture.environment.name.clone(),
+    let state = RuntimeState {
         environments: vec![fixture.environment],
-        unreadable: Vec::new(),
-        work_mode: WorkMode::default(),
-        sidebar_width: SidebarWidth::default(),
-        toolchains: ToolchainChoices::default(),
+        ..RuntimeState::default()
     };
-    let back: PersistedLayout = serde_json::from_str(&serde_json::to_string(&layout)?)?;
+    let back: RuntimeState = serde_json::from_str(&serde_json::to_string(&state)?)?;
     let Some(restored) = back.environments.first() else {
         return Err(serde::de::Error::custom("no environment"));
     };

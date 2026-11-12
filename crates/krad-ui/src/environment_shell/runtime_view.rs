@@ -5,6 +5,10 @@ use krad_protocol::{AgentRef, AskId, BusSnapshot, EventKind, Feed, MailCount, St
 use krad_runtime::RuntimeHandle;
 use std::collections::{BTreeSet, HashMap};
 
+mod environments;
+
+pub(super) use environments::EnvironmentsMirror;
+
 use super::attention::AttentionMirror;
 use super::harness_health::HealthMirror;
 use super::harness_models::ModelsMirror;
@@ -40,6 +44,13 @@ pub(super) struct RuntimeView {
     pub(super) health: HealthMirror,
     pub(super) usage: UsageMirror,
     pub(super) models: ModelsMirror,
+    pub(super) environments: EnvironmentsMirror,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Heard {
+    Quietly,
+    Visibly,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -127,16 +138,42 @@ impl EnvironmentShell {
                 self.runtime.view.health.replace(snapshot.health.checks);
                 self.runtime.view.usage.replace(snapshot.usage.shown);
                 self.runtime.view.models.replace(snapshot.models.listed);
+                self.runtime
+                    .view
+                    .environments
+                    .replace(snapshot.environments);
                 self.advance_harness_onboarding(cx);
             }
-            Feed::Event(event) => self.apply_runtime_event(event.kind, cx),
+            Feed::Event(event) => {
+                if self.apply_runtime_event(event.kind, cx) == Heard::Quietly {
+                    return;
+                }
+            }
         }
         self.flush_attention(cx);
         self.flush_kraddies(cx);
         cx.notify();
     }
 
-    fn apply_runtime_event(&mut self, kind: EventKind, cx: &mut Context<Self>) {
+    fn apply_runtime_event(&mut self, kind: EventKind, cx: &mut Context<Self>) -> Heard {
+        let environments = &mut self.runtime.view.environments;
+        match kind {
+            EventKind::EnvironmentOpened { environment } => environments.opened(*environment),
+            EventKind::EnvironmentClosed { environment } => environments.closed(&environment),
+            EventKind::EnvironmentsOrdered { order } => environments.ordered(&order),
+            EventKind::EnvironmentChanged {
+                environment,
+                changes,
+            } => environments.changed(&environment, changes),
+            kind => {
+                self.apply_shown_event(kind, cx);
+                return Heard::Visibly;
+            }
+        }
+        Heard::Quietly
+    }
+
+    fn apply_shown_event(&mut self, kind: EventKind, cx: &mut Context<Self>) {
         match kind {
             EventKind::AppEvent(record) => self.app_event_heard(&record),
             EventKind::WebhookTested(tested) => self.webhook_tested(tested, cx),
@@ -162,7 +199,13 @@ impl EnvironmentShell {
             EventKind::UsageShown(shown) => self.runtime.view.usage.apply(shown),
             EventKind::ModelsListed { listed, origin } => self.models_listed(listed, origin, cx),
             EventKind::ModelListFailed { error, .. } => self.model_list_failed(&error, cx),
-            EventKind::Pong { .. } | EventKind::Unknown => {}
+            EventKind::SpendingCrossed(crossed) => self.spending_crossed(&crossed),
+            EventKind::EnvironmentOpened { .. }
+            | EventKind::EnvironmentClosed { .. }
+            | EventKind::EnvironmentsOrdered { .. }
+            | EventKind::EnvironmentChanged { .. }
+            | EventKind::Pong { .. }
+            | EventKind::Unknown => {}
         }
     }
 

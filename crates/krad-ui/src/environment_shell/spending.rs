@@ -3,6 +3,7 @@ use krad_domain::{
     BudgetStatus, EnvironmentData, EnvironmentName, GroupId, ModelId, Spend, TerminalId, ToastKind,
     UsageReport, UsdCost,
 };
+use krad_protocol::{Command, EnvironmentCommand, SpendingCrossed};
 
 use super::EnvironmentShell;
 
@@ -89,34 +90,36 @@ impl EnvironmentShell {
         model: Option<&str>,
         cx: &mut Context<Self>,
     ) {
-        let prices = self.settings.spending.model_prices();
+        let spending = self.settings.spending.clone();
         let report = report.or_model(model.and_then(ModelId::parse));
+        self.store();
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
-        let group = live.data.group_of_chat(chat);
-        let before = live.data.group_spend(group).cost;
-        live.data.record_usage(chat, &report, &prices);
-        let after = live.data.group_spend(group).cost;
+        live.data
+            .record_usage(chat, &report, &spending.model_prices());
+        self.runtime
+            .handle
+            .post(Command::Environments(EnvironmentCommand::RecordUsage {
+                environment: env.clone(),
+                chat,
+                report,
+                spending,
+            }));
         self.note_variant_spend(env, chat);
-        let Some(live) = self.envs.get_mut(env) else {
-            return;
-        };
-        let spending = &self.settings.spending;
-        let crossed = spending
-            .status(before)
-            .zip(spending.status(after))
-            .and_then(|(before, after)| BudgetStatus::crossed(before, after));
-        let warning = crossed
-            .zip(spending.group_budget)
-            .and_then(|(status, budget)| {
-                budget_warning(&group_name(&live.data, group), status, after, budget)
-            });
-        if let Some(warning) = warning {
-            self.push_toast(ToastKind::Warning, warning);
-        }
         cx.notify();
         self.store();
+    }
+
+    pub(super) fn spending_crossed(&mut self, crossed: &SpendingCrossed) {
+        let Some(live) = self.envs.get(&crossed.environment) else {
+            return;
+        };
+        let group = group_name(&live.data, crossed.group);
+        if let Some(warning) = budget_warning(&group, crossed.status, crossed.spent, crossed.budget)
+        {
+            self.push_toast(ToastKind::Warning, warning);
+        }
     }
 
     pub(super) fn group_spend_label(&self, group: Option<GroupId>) -> Option<GroupSpendLabel> {

@@ -8,8 +8,10 @@ use gpui_kit::component::command::CommandState;
 use gpui_kit::component::TitleBar;
 use gpui_kit::{application, init, open_window, AppContext, WindowDecorations, WindowOptions};
 use krad_agents::CliPlace;
-use krad_runtime::{BusSetup, EventsSetup, Runtime, RuntimeSetup};
-use krad_store::{config_dir, read_layout_snapshot, read_settings, read_user_themes, APP_NAME};
+use krad_runtime::{BusSetup, EnvironmentsSetup, EventsSetup, Runtime, RuntimeSetup};
+use krad_store::{
+    config_dir, open_layout, read_settings, read_user_themes, LayoutOpening, OpenedLayout, APP_NAME,
+};
 use krad_ui::{
     active_appearance, apply_editor_font, apply_interface_font, apply_settings_theme,
     apply_window_material, apply_window_tint, http_client, initial_window_bounds,
@@ -21,13 +23,44 @@ use krad_ui::{
 const APP_TITLE: &str = "Krad ADE";
 const APP_IDENTIFIER: &str = "com.joordih.krad-ade";
 
+fn opened_layout() -> (krad_domain::Layout, EnvironmentsSetup) {
+    let OpenedLayout { layout, opening } = open_layout();
+    let state = layout.state.clone();
+    let setup = match &opening {
+        LayoutOpening::StateUnreadable { .. } => EnvironmentsSetup { state, file: None },
+        _ => EnvironmentsSetup::in_config_folder(state),
+    };
+    match opening {
+        LayoutOpening::Empty | LayoutOpening::Read => {}
+        LayoutOpening::Migrated { from, .. } => {
+            tracing::info!(
+                from,
+                "split the layout into state and view files, kept the old one"
+            );
+        }
+        LayoutOpening::MigratedUnsaved { from, error } => {
+            tracing::warn!(from, %error, "could not save the split layout; the old file stays");
+        }
+        LayoutOpening::SingleFileFromNewerApp { version } => {
+            tracing::warn!(version, "the layout is from a newer app; left untouched");
+        }
+        LayoutOpening::StateSetAside { .. } => {
+            tracing::warn!("the state file could not be read; kept it aside and started empty");
+        }
+        LayoutOpening::StateUnreadable { error } => {
+            tracing::error!(%error, "could not read the state file; it will not be written");
+        }
+    }
+    (layout, setup)
+}
+
 fn main() {
     let log_guard = logging::start(config_dir().as_deref());
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "krad-ade starting");
     for (name, value) in login_shell_env() {
         std::env::set_var(name, value);
     }
-    let seed = read_layout_snapshot();
+    let (layout, environments) = opened_layout();
     let mut settings = read_settings();
     settings.migrate_themes();
     let user_themes = read_user_themes();
@@ -39,6 +72,7 @@ fn main() {
     let runtime = match Runtime::start(RuntimeSetup {
         bus,
         events: Some(EventsSetup::in_config_folder()),
+        environments,
     }) {
         Ok(runtime) => runtime,
         Err(error) => {
@@ -73,8 +107,9 @@ fn main() {
                 ..TitleBar::window_options()
             };
             match open_window(options, cx, |window, cx| {
-                let view = cx
-                    .new(|cx| EnvironmentShell::with_seed(cx, seed, settings, host_tools, runtime));
+                let view = cx.new(|cx| {
+                    EnvironmentShell::with_seed(cx, layout, settings, host_tools, runtime)
+                });
                 let palette = cx.new(|cx| CommandState::new(window, cx));
                 let weak = view.downgrade();
                 let veto = view.downgrade();

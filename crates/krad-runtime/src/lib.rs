@@ -1,6 +1,7 @@
 mod app_events;
 mod attention;
 mod bus;
+mod environments;
 mod handle;
 mod harness_health;
 mod input;
@@ -12,6 +13,7 @@ mod usage;
 
 pub use app_events::{EventsSetup, WebhookSecrets};
 pub use bus::{BusAccess, BusReply, BusSetup, Delegated, DelegationReceiver, Mail};
+pub use environments::EnvironmentsSetup;
 pub use handle::{EventReceiver, HeldAsk, Pending, RuntimeHandle, RuntimeStopped};
 pub use harness_health::HarnessProbe;
 pub use runtime::{Runtime, RuntimeSetup};

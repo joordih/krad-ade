@@ -54,7 +54,9 @@ pub use kraddies::{
     export_kraddie, import_kraddie, KraddieProfileFiles, KraddieRename, KraddieShelf,
     KraddieStoreError, ShelvedAutomation, ShelvedKraddie,
 };
-pub use layout::{read_layout_snapshot, LayoutWriter};
+pub use layout::{
+    open_layout, open_layout_in, LayoutFile, LayoutOpening, LayoutWriter, OpenedLayout,
+};
 pub use mcp_secret::{delete_mcp_secret, find_mcp_secret, write_mcp_secret};
 pub use settings::{read_settings, write_settings};
 pub use themes::{read_user_themes, write_user_theme};

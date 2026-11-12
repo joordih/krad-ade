@@ -2,6 +2,7 @@ mod app_events;
 mod attention;
 mod bus;
 mod command;
+mod environments;
 mod event;
 mod frame;
 mod harness_health;
@@ -16,6 +17,7 @@ pub use bus::{
     StatusReport,
 };
 pub use command::{Command, ErrorCode, Reply, RuntimeCommand};
+pub use environments::{EnvironmentCommand, SpendingCrossed};
 pub use event::{Event, EventKind, Feed, Scope, Snapshot};
 pub use frame::{read_frame, write_frame, Frame, FrameError, Message, TerminalBytes};
 pub use harness_health::{HarnessCheck, HarnessChecked, HealthPlace, HealthSnapshot};

@@ -5,7 +5,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 const DEFAULT_BUDGET_WARNING: WarnPercent = WarnPercent::known(80);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BudgetStatus {
     Within,
     Approaching,

@@ -89,6 +89,12 @@ impl RuntimeHandle {
         Pending(answer)
     }
 
+    pub fn settle(&self) -> Pending<()> {
+        let (reply, answer) = oneshot::channel();
+        self.deliver(Input::Settle(reply));
+        Pending(answer)
+    }
+
     #[must_use]
     pub fn bus(&self) -> Option<&BusAccess> {
         self.bus.as_deref()

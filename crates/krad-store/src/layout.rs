@@ -1,28 +1,34 @@
 use crate::config_dir::config_dir;
-use krad_domain::{PersistedLayout, LAYOUT_SCHEMA_VERSION};
+use serde::Serialize;
 use std::collections::hash_map::RandomState;
 use std::hash::BuildHasher;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::JoinHandle;
 
-const LAYOUT_FILE_NAME: &str = "layout.json";
+mod opening;
+
+pub use opening::{open_layout, open_layout_in, LayoutOpening, OpenedLayout};
+
+const STATE_FILE_NAME: &str = "state.json";
+const VIEW_FILE_NAME: &str = "view.json";
 const TMP_EXTENSION: &str = "json.tmp";
 const PERSIST_THREAD_NAME: &str = "krad-ade-layout-writer";
 
-fn layout_file_path() -> Option<PathBuf> {
-    config_dir().map(|dir| dir.join(LAYOUT_FILE_NAME))
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LayoutFile {
+    State,
+    View,
 }
 
-#[must_use]
-pub fn read_layout_snapshot() -> Option<PersistedLayout> {
-    let bytes = std::fs::read(layout_file_path()?).ok()?;
-    known_layout(&bytes)
-}
-
-fn known_layout(bytes: &[u8]) -> Option<PersistedLayout> {
-    let snapshot: PersistedLayout = serde_json::from_slice(bytes).ok()?;
-    (snapshot.version <= LAYOUT_SCHEMA_VERSION).then_some(snapshot)
+impl LayoutFile {
+    #[must_use]
+    pub fn path_in(self, dir: &Path) -> PathBuf {
+        dir.join(match self {
+            Self::State => STATE_FILE_NAME,
+            Self::View => VIEW_FILE_NAME,
+        })
+    }
 }
 
 pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
@@ -41,29 +47,50 @@ pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()>
     written
 }
 
+type Written = Box<dyn FnOnce() + Send>;
+
+enum Job {
+    Write(Vec<u8>),
+    Then(Written),
+}
+
+#[derive(Debug)]
 pub struct LayoutWriter {
-    queue: Option<Sender<Vec<u8>>>,
+    queue: Option<Sender<Job>>,
     worker: Option<JoinHandle<()>>,
+}
+
+fn write_jobs(path: &Path, inbox: &Receiver<Job>) {
+    while let Ok(first) = inbox.recv() {
+        let mut newest = None;
+        let mut waiting = Vec::new();
+        for job in std::iter::once(first).chain(inbox.try_iter()) {
+            match job {
+                Job::Write(bytes) => newest = Some(bytes),
+                Job::Then(done) => waiting.push(done),
+            }
+        }
+        if let Some(bytes) = newest {
+            drop(write_atomically(path, &bytes));
+        }
+        for done in waiting {
+            done();
+        }
+    }
 }
 
 impl LayoutWriter {
     #[must_use]
-    pub fn spawn() -> Option<Self> {
-        Self::spawn_at(layout_file_path()?)
+    pub fn spawn(file: LayoutFile) -> Option<Self> {
+        Self::spawn_at(file.path_in(&config_dir()?))
     }
 
-    fn spawn_at(path: PathBuf) -> Option<Self> {
-        let (queue, inbox) = channel::<Vec<u8>>();
+    #[must_use]
+    pub fn spawn_at(path: PathBuf) -> Option<Self> {
+        let (queue, inbox) = channel::<Job>();
         let worker = std::thread::Builder::new()
             .name(PERSIST_THREAD_NAME.to_owned())
-            .spawn(move || {
-                while let Ok(mut bytes) = inbox.recv() {
-                    while let Ok(newer) = inbox.try_recv() {
-                        bytes = newer;
-                    }
-                    drop(write_atomically(&path, &bytes));
-                }
-            })
+            .spawn(move || write_jobs(&path, &inbox))
             .ok()?;
         Some(Self {
             queue: Some(queue),
@@ -71,11 +98,23 @@ impl LayoutWriter {
         })
     }
 
-    pub fn persist(&self, snapshot: &PersistedLayout) {
+    pub fn persist<T: Serialize>(&self, snapshot: &T) {
         let (Some(queue), Ok(bytes)) = (&self.queue, serde_json::to_vec_pretty(snapshot)) else {
             return;
         };
-        drop(queue.send(bytes));
+        drop(queue.send(Job::Write(bytes)));
+    }
+
+    pub fn then(&self, done: impl FnOnce() + Send + 'static) {
+        let Some(queue) = &self.queue else {
+            done();
+            return;
+        };
+        if let Err(unsent) = queue.send(Job::Then(Box::new(done))) {
+            if let Job::Then(done) = unsent.0 {
+                done();
+            }
+        }
     }
 }
 
@@ -89,137 +128,4 @@ impl Drop for LayoutWriter {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use krad_domain::{EnvironmentName, SidebarWidth, WorkMode};
-
-    const WRITERS: usize = 8;
-    const WRITES_EACH: usize = 20;
-
-    #[test]
-    fn writers_racing_on_one_file_never_share_a_temp_file() -> std::io::Result<()> {
-        let dir = std::env::temp_dir().join(format!("krad-ade-atomic-{}", std::process::id()));
-        drop(std::fs::remove_dir_all(&dir));
-        let path = dir.join("digests.json");
-        let payloads: Vec<String> = (0..WRITERS)
-            .map(|writer| format!("{{\"writer\":{writer}}}"))
-            .collect();
-        let outcomes: Vec<std::io::Result<()>> = std::thread::scope(|scope| {
-            let handles: Vec<_> = payloads
-                .iter()
-                .map(|payload| {
-                    let path = &path;
-                    scope.spawn(move || {
-                        (0..WRITES_EACH)
-                            .try_for_each(|_| write_atomically(path, payload.as_bytes()))
-                    })
-                })
-                .collect();
-            handles
-                .into_iter()
-                .map(|handle| {
-                    handle
-                        .join()
-                        .unwrap_or_else(|_| Err(std::io::Error::other("a writer panicked")))
-                })
-                .collect()
-        });
-        for outcome in outcomes {
-            outcome?;
-        }
-        let kept = std::fs::read_to_string(&path)?;
-        assert!(payloads.contains(&kept), "{kept}");
-        let left: Vec<_> = std::fs::read_dir(&dir)?
-            .filter_map(Result::ok)
-            .map(|entry| entry.file_name())
-            .collect();
-        assert_eq!(left.len(), 1, "{left:?}");
-        std::fs::remove_dir_all(&dir)
-    }
-
-    #[test]
-    fn a_layout_from_a_newer_app_is_not_loaded() -> serde_json::Result<()> {
-        let layout = |version| PersistedLayout {
-            version,
-            active: EnvironmentName::new("main".to_owned()),
-            environments: Vec::new(),
-            unreadable: Vec::new(),
-            work_mode: WorkMode::default(),
-            sidebar_width: SidebarWidth::default(),
-            toolchains: krad_domain::ToolchainChoices::default(),
-        };
-        let current = serde_json::to_vec(&layout(LAYOUT_SCHEMA_VERSION))?;
-        assert_eq!(
-            known_layout(&current).map(|loaded| loaded.version),
-            Some(LAYOUT_SCHEMA_VERSION)
-        );
-        let newer = serde_json::to_vec(&layout(LAYOUT_SCHEMA_VERSION + 1))?;
-        assert!(known_layout(&newer).is_none());
-        Ok(())
-    }
-
-    #[test]
-    fn an_environment_keeps_its_archive_across_a_restart() -> serde_json::Result<()> {
-        let closed = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_hours(24);
-        let mut environment =
-            krad_domain::EnvironmentData::empty(EnvironmentName::new("main".to_owned()));
-        environment
-            .archive
-            .sessions
-            .push(krad_domain::ArchivedSession {
-                id: krad_domain::ArchivedSessionId(1),
-                group: krad_domain::GroupId(1),
-                name: "Refunds".to_owned(),
-                look: krad_domain::SessionLook::default(),
-                closed,
-                chats: Vec::new(),
-                shells: Vec::new(),
-                files: Vec::new(),
-                lead: None,
-                workers: Vec::new(),
-                cloud: None,
-            });
-        let kept = environment.archive.clone();
-        let layout = PersistedLayout {
-            version: LAYOUT_SCHEMA_VERSION,
-            active: environment.name.clone(),
-            environments: vec![environment],
-            unreadable: Vec::new(),
-            work_mode: WorkMode::default(),
-            sidebar_width: SidebarWidth::default(),
-            toolchains: krad_domain::ToolchainChoices::default(),
-        };
-        let back = known_layout(&serde_json::to_vec(&layout)?);
-        assert_eq!(
-            back.and_then(|layout| layout.environments.into_iter().next())
-                .map(|environment| environment.archive),
-            Some(kept)
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn writer_lands_the_newest_snapshot() {
-        let dir = std::env::temp_dir().join(format!("krad-ade-writer-{}", std::process::id()));
-        let path = dir.join(LAYOUT_FILE_NAME);
-        let snapshot = |name: &str| PersistedLayout {
-            version: LAYOUT_SCHEMA_VERSION,
-            active: EnvironmentName::new(name.to_owned()),
-            environments: Vec::new(),
-            unreadable: Vec::new(),
-            work_mode: WorkMode::default(),
-            sidebar_width: SidebarWidth::default(),
-            toolchains: krad_domain::ToolchainChoices::default(),
-        };
-        let writer = LayoutWriter::spawn_at(path.clone());
-        assert!(writer.is_some(), "a writer thread starts");
-        if let Some(writer) = writer {
-            writer.persist(&snapshot("older"));
-            writer.persist(&snapshot("newer"));
-        }
-        let written = std::fs::read(&path).unwrap_or_default();
-        let decoded = serde_json::from_slice::<PersistedLayout>(&written);
-        assert!(decoded.is_ok_and(|layout| layout.active.as_str() == "newer"));
-        assert!(std::fs::remove_dir_all(&dir).is_ok());
-    }
-}
+mod tests;

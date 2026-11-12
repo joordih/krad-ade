@@ -31,7 +31,7 @@ impl TryFrom<u8> for FrameKind {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Message {
     Hello { version: ProtocolVersion },
@@ -46,7 +46,7 @@ pub struct TerminalBytes {
     pub bytes: Vec<u8>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Frame {
     Message(Box<Message>),
     Terminal(TerminalBytes),

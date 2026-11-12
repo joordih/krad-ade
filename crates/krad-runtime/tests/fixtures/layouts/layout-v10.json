@@ -1,0 +1,22 @@
+{
+  "version": 10,
+  "active": "main",
+  "environments": [
+    {
+      "name": "main",
+      "nodes": [
+        { "id": 1, "title": "shell", "state": "Idle" },
+        { "id": 2, "title": "claude · api", "state": "Working", "harness": "ClaudeCode", "group": 1, "text_scale": 1.1 }
+      ],
+      "meta": {
+        "1": { "cwd": "/work/api", "scrollback": ["$ make test", "ok"] }
+      },
+      "next_id": 3,
+      "view": "Pets",
+      "focus": 2,
+      "title": "Work",
+      "groups": [{ "id": 1, "name": "api", "root": "/work/api" }]
+    }
+  ],
+  "sidebar_width": 260.0
+}

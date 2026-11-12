@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use crate::app_events::{AppEvents, EventsSetup};
 use crate::attention::Attention;
 use crate::bus::{open, Bus, BusSetup};
+use crate::environments::{Environments, EnvironmentsSetup};
 use crate::handle::RuntimeHandle;
 use crate::harness_health::Health;
 use crate::input::Input;
@@ -32,6 +33,7 @@ const NO_BUS: &str = "this runtime serves no agent bus";
 pub struct RuntimeSetup {
     pub bus: Option<BusSetup>,
     pub events: Option<EventsSetup>,
+    pub environments: EnvironmentsSetup,
 }
 
 #[derive(Debug)]
@@ -46,7 +48,14 @@ pub struct Runtime {
     health: Health,
     usage: Usage,
     models: Models,
+    environments: Environments,
     stopped: Arc<AtomicBool>,
+}
+
+struct Owned {
+    events: AppEvents,
+    usage: Usage,
+    environments: Environments,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -72,7 +81,17 @@ impl Runtime {
         let events = AppEvents::start(setup.events, &inbox);
         let usage_budget = Arc::new(UsageBudget::default());
         let usage = Usage::new(Arc::clone(&usage_budget));
-        let runtime = Self::idle(access.clone(), events, usage, &inbox, stopped);
+        let environments = Environments::start(setup.environments);
+        let runtime = Self::idle(
+            access.clone(),
+            Owned {
+                events,
+                usage,
+                environments,
+            },
+            &inbox,
+            stopped,
+        );
         thread::Builder::new()
             .name(THREAD_NAME.to_owned())
             .spawn(move || runtime.run(&input))?;
@@ -82,8 +101,7 @@ impl Runtime {
 
     fn idle(
         access: Option<Arc<crate::bus::BusAccess>>,
-        events: AppEvents,
-        usage: Usage,
+        owned: Owned,
         inbox: &SyncSender<Input>,
         stopped: Arc<AtomicBool>,
     ) -> Self {
@@ -92,12 +110,13 @@ impl Runtime {
             outbox: Vec::new(),
             subscribers: Subscribers::default(),
             bus: access.map(|access| Bus::new(access, inbox.clone())),
-            events,
+            events: owned.events,
             attention: Attention::default(),
             jobs: Jobs::new(inbox.clone()),
             health: Health::default(),
-            usage,
+            usage: owned.usage,
             models: Models::default(),
+            environments: owned.environments,
             stopped,
         }
     }
@@ -134,7 +153,7 @@ impl Runtime {
     fn apply(&mut self, input: Input) -> Flow {
         match input {
             Input::Command { id, command, reply } => {
-                let answer = self.execute(id, &command);
+                let answer = self.execute(id, command);
                 answer_to(reply, answer);
             }
             Input::Subscribe(feed) => self.subscribers.add(feed),
@@ -159,6 +178,7 @@ impl Runtime {
                 cwd,
             } => self.models.list((host, harness), runner, cwd, &self.jobs),
             Input::JobDone(done) => self.job_done(done),
+            Input::Settle(reply) => self.environments.settle(reply),
             Input::Bus(incoming) => {
                 let Some(bus) = &mut self.bus else {
                     tracing::debug!("a bus request reached a runtime without a bus");
@@ -198,6 +218,7 @@ impl Runtime {
             | Input::PlaceUsage(_)
             | Input::ListModels { .. }
             | Input::JobDone(_)
+            | Input::Settle(_)
             | Input::Tick
             | Input::Stop => {}
         }
@@ -219,7 +240,7 @@ impl Runtime {
         }
     }
 
-    fn execute(&mut self, id: RequestId, command: &Command) -> Reply {
+    fn execute(&mut self, id: RequestId, command: Command) -> Reply {
         match command {
             Command::Runtime(RuntimeCommand::Ping) => {
                 self.outbox.push(EventKind::Pong { request: id });
@@ -229,23 +250,27 @@ impl Runtime {
                 let Some(bus) = &mut self.bus else {
                     return refused(ErrorCode::Unsupported, NO_BUS);
                 };
-                bus.execute(command, &mut self.outbox)
+                bus.execute(&command, &mut self.outbox)
                     .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND))
             }
             Command::Events(command) => self
                 .events
-                .execute(command, &mut self.outbox)
+                .execute(&command, &mut self.outbox)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Attention(command) => self
                 .attention
-                .execute(command, &mut self.outbox)
+                .execute(&command, &mut self.outbox)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Usage(command) => self
                 .usage
-                .execute(command, &self.jobs, &mut self.outbox)
+                .execute(&command, &self.jobs, &mut self.outbox)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Models(command) => self
                 .models
+                .execute(&command, &mut self.outbox)
+                .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
+            Command::Environments(command) => self
+                .environments
                 .execute(command, &mut self.outbox)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Runtime(RuntimeCommand::Unknown) | Command::Unknown => {
@@ -255,6 +280,7 @@ impl Runtime {
     }
 
     fn flush(&mut self) {
+        self.environments.flush();
         let events: Vec<Event> = self
             .outbox
             .drain(..)
@@ -272,6 +298,7 @@ impl Runtime {
             health: &self.health,
             usage: &self.usage,
             models: &self.models,
+            environments: &self.environments,
         };
         let seq = self.seq;
         self.subscribers
@@ -285,6 +312,7 @@ impl Runtime {
             health: &self.health,
             usage: &self.usage,
             models: &self.models,
+            environments: &self.environments,
         }
         .snapshot(self.seq, scope)
     }
@@ -296,6 +324,7 @@ struct Parts<'a> {
     health: &'a Health,
     usage: &'a Usage,
     models: &'a Models,
+    environments: &'a Environments,
 }
 
 impl Parts<'_> {
@@ -308,6 +337,7 @@ impl Parts<'_> {
             health: self.health.snapshot(),
             usage: self.usage.snapshot(),
             models: self.models.snapshot(),
+            environments: self.environments.snapshot(),
         }
     }
 }
