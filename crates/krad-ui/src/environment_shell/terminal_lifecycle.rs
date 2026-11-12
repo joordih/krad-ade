@@ -344,6 +344,16 @@ impl EnvironmentShell {
         Some((cwd, anchor_node.map(|node| node.id)))
     }
 
+    pub(super) fn close_chat_tab(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        cx: &mut Context<Self>,
+    ) {
+        self.archive_chat_tab(env, id);
+        self.close_terminal_in(env, id, cx);
+    }
+
     pub(super) fn close_terminal(&mut self, id: TerminalId, cx: &mut Context<Self>) {
         let env = self.active.clone();
         self.close_terminal_in(&env, id, cx);
@@ -390,7 +400,8 @@ impl EnvironmentShell {
         }
         self.forget_attention(env, id);
         self.publish_agent(env, id, Some(StateReason::UserClosed));
-        if chat.is_some_and(|chat| chat.structured().is_some()) {
+        let archived = self.archive_holds(env, id);
+        if !archived && chat.is_some_and(|chat| chat.structured().is_some()) {
             Self::forget_chat_images(env, id, cx);
             self.forget_acp_transcript(env, id);
         }

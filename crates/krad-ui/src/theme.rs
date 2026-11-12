@@ -103,6 +103,17 @@ impl Tint {
     const fn new(color: u32, alpha: f32) -> Self {
         Self { color, alpha }
     }
+
+    pub(crate) fn over(self, base: Rgba) -> Rgba {
+        let top = rgb(self.color);
+        let blend = |under: f32, over: f32| (over - under).mul_add(self.alpha, under);
+        Rgba {
+            r: blend(base.r, top.r),
+            g: blend(base.g, top.g),
+            b: blend(base.b, top.b),
+            a: base.a,
+        }
+    }
 }
 
 impl From<Tint> for Rgba {

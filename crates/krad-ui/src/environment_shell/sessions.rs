@@ -5,7 +5,7 @@ pub(super) use launch::Launch;
 use krad_chat::{prepare_opencode_session, OpencodeServer};
 use krad_domain::{
     attach_line, classify_agent_state, AgentPreset, AgentState, AppEvent, EnvironmentName, ModelId,
-    ResumeId, TerminalId,
+    ResumeId, TerminalId, ToastKind,
 };
 use krad_session::{
     run_spawn_job, FirstInput, LiveSession, PtyInput, PumpMsg, SessionState, SharedKiller,
@@ -147,7 +147,10 @@ impl EnvironmentShell {
         match placement.on(link, shell, in_wsl) {
             Ok(placed) => Some(placed),
             Err(error) => {
-                self.push_toast(format!("{REMOTE_LAUNCH_FAILED_TEXT}: {error}"));
+                self.push_toast(
+                    ToastKind::Error,
+                    format!("{REMOTE_LAUNCH_FAILED_TEXT}: {error}"),
+                );
                 None
             }
         }
@@ -189,13 +192,13 @@ impl EnvironmentShell {
         };
         let signs_in = matches!(launch, Launch::SignIn { .. });
         if !signs_in && !self.host_ready(env) {
-            self.push_toast(HOST_NOT_READY_TEXT.to_owned());
+            self.push_toast(ToastKind::Error, HOST_NOT_READY_TEXT.to_owned());
             return;
         }
         let mut engine = match VtEngine::new(DEFAULT_COLS.into(), DEFAULT_ROWS.into()) {
             Ok(engine) => engine,
             Err(error) => {
-                self.push_toast(format!("{ENGINE_FAILED_TEXT}: {error}"));
+                self.push_toast(ToastKind::Error, format!("{ENGINE_FAILED_TEXT}: {error}"));
                 return;
             }
         };
@@ -376,8 +379,11 @@ impl EnvironmentShell {
         self.publish_agent(env, id, None);
         let raw = id.as_u64();
         match code {
-            Some(code) => self.push_toast(format!("terminal #{raw} exited (code {code})")),
-            None => self.push_toast(format!("terminal #{raw} exited")),
+            Some(code) => self.push_toast(
+                ToastKind::Info,
+                format!("terminal #{raw} exited (code {code})"),
+            ),
+            None => self.push_toast(ToastKind::Info, format!("terminal #{raw} exited")),
         }
         self.store();
         true
@@ -390,7 +396,7 @@ impl EnvironmentShell {
                 session.state = SessionState::Failed(error);
             }
         }
-        self.push_toast(format!("terminal #{raw} failed to spawn"));
+        self.push_toast(ToastKind::Error, format!("terminal #{raw} failed to spawn"));
         true
     }
 
@@ -458,7 +464,10 @@ impl EnvironmentShell {
         if waiting {
             let raw = id.as_u64();
             let name = env.as_str().to_owned();
-            self.push_toast(format!("agent #{raw} waits for input ({name})"));
+            self.push_toast(
+                ToastKind::Info,
+                format!("agent #{raw} waits for input ({name})"),
+            );
             if *env != self.active {
                 self.unseen.insert(env.clone());
             }

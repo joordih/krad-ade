@@ -4,7 +4,7 @@ use gpui_kit::{
     IntoElement, ParentElement, SharedString, SpringAnimation, Styled, Window,
 };
 use krad_agents::{ErrorCode, KraddieMemoryInfo};
-use krad_domain::{KraddieId, MemoryError, MAX_MEMORY_LINES};
+use krad_domain::{KraddieId, MemoryError, ToastKind, MAX_MEMORY_LINES};
 
 use super::super::super::EnvironmentShell;
 use super::super::layout::PageLayout;
@@ -107,7 +107,7 @@ impl EnvironmentShell {
                 self.edit_mind(id, |mind| mind.memory = memory, cx);
                 input.update(cx, |input, cx| input.set_value("", window, cx));
             }
-            Err(error) => self.toast(&error.to_string(), cx),
+            Err(error) => self.toast(ToastKind::Error, &error.to_string(), cx),
         }
     }
 
@@ -136,7 +136,7 @@ impl EnvironmentShell {
             Ok(()) => self.edit_mind(id, |mind| mind.memory = memory, cx),
             Err(error) => {
                 self.kraddies.profile.editing_line = Some(draft);
-                self.toast(&error.to_string(), cx);
+                self.toast(ToastKind::Error, &error.to_string(), cx);
             }
         }
     }

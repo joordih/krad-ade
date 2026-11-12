@@ -3,7 +3,7 @@ use krad_agents::{ErrorCode, KraddieChatInfo, Response};
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
     EnvironmentName, EnvironmentView, GroupId, KraddieId, Session, SessionId, SessionSpec,
-    TerminalId, WorkerSurface,
+    TerminalId, ToastKind, WorkerSurface,
 };
 
 use super::super::session_templates::ChatChoices;
@@ -98,7 +98,7 @@ impl EnvironmentShell {
 
     pub(super) fn start_kraddie_chat(&mut self, id: &KraddieId, cx: &mut Context<Self>) {
         if let Err(reason) = self.open_kraddie_chat(id, cx) {
-            self.toast(reason, cx);
+            self.toast(ToastKind::Error, reason, cx);
         }
     }
 

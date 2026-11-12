@@ -5,7 +5,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, ClipboardItem, Context, Entity, FontWeight, IntoElement,
     ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
-use krad_domain::{relative_age, GitlabSignIn};
+use krad_domain::{relative_age, GitlabSignIn, ToastKind};
 use krad_gitlab::{REDIRECT_URI, SCOPE};
 use krad_store::LoginPlace;
 use std::time::Duration;
@@ -322,7 +322,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         cx.write_to_clipboard(ClipboardItem::new_string(text.to_owned()));
-        self.toast(COPIED_TOAST, cx);
+        self.toast(ToastKind::Success, COPIED_TOAST, cx);
     }
 }
 

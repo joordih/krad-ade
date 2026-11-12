@@ -4,7 +4,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, ClipboardItem, Context, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
 };
-use krad_domain::{relative_age, Visibility};
+use krad_domain::{relative_age, ToastKind, Visibility};
 use std::collections::VecDeque;
 use std::time::Instant;
 
@@ -435,7 +435,7 @@ impl EnvironmentShell {
 
     fn copy_activity(&mut self, text: String, cx: &mut Context<Self>) {
         cx.write_to_clipboard(ClipboardItem::new_string(text));
-        self.push_toast(COPIED_TEXT.to_owned());
+        self.push_toast(ToastKind::Success, COPIED_TEXT.to_owned());
         cx.notify();
     }
 }

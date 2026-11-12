@@ -4,6 +4,8 @@ use krad_extensions::api::QualifiedCommand;
 use std::collections::{BTreeSet, HashSet};
 use std::rc::Rc;
 
+use krad_domain::ToastKind;
+
 use super::super::EnvironmentShell;
 use crate::actions::{RunExtensionCommand, SHELL_KEY_CONTEXT};
 
@@ -153,7 +155,11 @@ impl EnvironmentShell {
                         .is_some_and(|manifest| manifest.id.as_ref() == extension)
                 })
                 .map_or(extension.clone(), super::ExtensionRecord::title);
-            self.toast(&format!("{RESTART_TO_REMOVE} {title}"), cx);
+            self.toast(
+                ToastKind::Warning,
+                &format!("{RESTART_TO_REMOVE} {title}"),
+                cx,
+            );
         }
     }
 

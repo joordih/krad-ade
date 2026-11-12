@@ -3,7 +3,7 @@ use gpui_kit::{
     div, px, AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement,
     StatefulInteractiveElement as _, Styled, Window,
 };
-use krad_domain::{McpSecretKey, McpServerTaken};
+use krad_domain::{McpSecretKey, McpServerTaken, ToastKind};
 use krad_store::write_mcp_secret;
 
 use super::super::super::dialog_parts::{segment, SegmentSize};
@@ -252,14 +252,14 @@ impl EnvironmentShell {
             let written = written.await;
             this.update(cx, |shell, cx| {
                 if let Err(error) = written {
-                    return shell.toast(&error.to_string(), cx);
+                    return shell.toast(ToastKind::Error, &error.to_string(), cx);
                 }
                 match shell.settings.mcp.add_server(server) {
                     Ok(()) => {
                         shell.save_settings(cx);
-                        shell.toast(ADDED_TOAST, cx);
+                        shell.toast(ToastKind::Success, ADDED_TOAST, cx);
                     }
-                    Err(taken) => shell.toast(&taken.to_string(), cx),
+                    Err(taken) => shell.toast(ToastKind::Warning, &taken.to_string(), cx),
                 }
             })
             .unwrap_or_default();

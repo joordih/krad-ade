@@ -3,7 +3,9 @@ use krad_domain::review::{
     project_on_host, DiffRefs, DiscussionId, MergeOptions, MergeRequest, MergeRequestIid,
     MergeRequestQuery, ProjectPath,
 };
-use krad_domain::{AppEvent, CodeHost, EnvironmentName, GitlabSettings, GroupId, ReviewVerdict};
+use krad_domain::{
+    AppEvent, CodeHost, EnvironmentName, GitlabSettings, GroupId, ReviewVerdict, ToastKind,
+};
 use krad_gitlab::GitlabConfig;
 use krad_host::HostLink;
 use krad_repo::{diff_between, remote_url, ORIGIN_REMOTE};
@@ -387,7 +389,7 @@ impl EnvironmentShell {
             let merged = merged.await;
             this.update(cx, |shell, cx| {
                 if let Err(error) = merged {
-                    shell.toast(&error.to_string(), cx);
+                    shell.toast(ToastKind::Error, &error.to_string(), cx);
                 }
                 shell.review.list = None;
                 shell.load_request_detail(cx);
@@ -427,7 +429,7 @@ impl EnvironmentShell {
             let result = change.await;
             this.update(cx, |shell, cx| {
                 match (result, sent) {
-                    (Err(error), _) => shell.toast(&error.to_string(), cx),
+                    (Err(error), _) => shell.toast(ToastKind::Error, &error.to_string(), cx),
                     (Ok(()), Some(sent)) => {
                         shell.publish_event(&sent.environment, sent.group, sent.event);
                     }

@@ -63,6 +63,7 @@ struct KeySet {
     attention_inbox: &'static str,
     next_waiting_agent_hint: &'static str,
     attention_inbox_hint: &'static str,
+    free_drop_hint: &'static str,
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -114,6 +115,7 @@ const MAC_KEYS: KeySet = KeySet {
     attention_inbox: "cmd-alt-a",
     next_waiting_agent_hint: "⌘⇧J",
     attention_inbox_hint: "⌥⌘A",
+    free_drop_hint: "⌥",
 };
 
 #[cfg(any(not(target_os = "macos"), test))]
@@ -167,6 +169,7 @@ const OTHER_KEYS: KeySet = KeySet {
     attention_inbox: "ctrl-alt-a",
     next_waiting_agent_hint: "Ctrl+Shift+J",
     attention_inbox_hint: "Ctrl+Alt+A",
+    free_drop_hint: "Alt",
 };
 
 #[cfg(target_os = "macos")]
@@ -213,6 +216,7 @@ const ASK_CONFIRM: &str = "enter";
 const ASK_DENY: &str = "escape";
 
 pub(crate) const OPEN_SETTINGS_HINT: &str = KEYS.open_settings_hint;
+pub(crate) const FREE_DROP_HINT: &str = KEYS.free_drop_hint;
 pub(crate) const NEW_TERMINAL_HINT: &str = KEYS.new_terminal_hint;
 pub(crate) const TAB_SLOT_HINTS: [&str; 9] = KEYS.tab_slot_hints;
 pub(crate) const COPY_HINT: &str = KEYS.copy_hint;

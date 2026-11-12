@@ -1,7 +1,9 @@
 use crate::acp::AcpSettings;
 use crate::agent::AgentPreset;
+use crate::archive::ArchiveRetention;
 use crate::attention::AttentionSettings;
 use crate::backdrop_image::BackdropImage;
+use crate::beta::BetaSettings;
 use crate::composer_height::ComposerHeight;
 use crate::event::WebhookSettings;
 use crate::extension_index::{lenient_index_repository, IndexRepository};
@@ -23,6 +25,7 @@ use crate::sidebar_layout::SidebarLayout;
 use crate::skill::SkillSettings;
 use crate::theme::{ThemeAppearance, ThemeId};
 use crate::theme_tuning::{EnvironmentThemes, ThemeTuning};
+use crate::toast::ToastSettings;
 use crate::toolchain::ToolchainActivation;
 use crate::usage::SpendSettings;
 use crate::worktree_settings::WorktreeSettings;
@@ -406,6 +409,12 @@ pub struct Settings {
     pub skills: SkillSettings,
     #[serde(default, skip_serializing_if = "WorktreeSettings::is_default")]
     pub worktrees: WorktreeSettings,
+    #[serde(default, skip_serializing_if = "ToastSettings::is_default")]
+    pub toasts: ToastSettings,
+    #[serde(default, skip_serializing_if = "BetaSettings::is_default")]
+    pub beta: BetaSettings,
+    #[serde(default, skip_serializing_if = "ArchiveRetention::is_default")]
+    pub archive_retention: ArchiveRetention,
 }
 
 impl Settings {

@@ -5,8 +5,8 @@ pub(super) use actions::ChatHitAction;
 
 use gpui_kit::{AppContext as _, Context, Task};
 use krad_domain::{
-    search_chats, AgentPreset, ChatDocument, ChatHit, EnvironmentName, HistoryQuery, ResumeId,
-    TerminalId,
+    search_chats, AgentPreset, Archive, ArchivedSession, ChatDocument, ChatHit, EnvironmentName,
+    GroupId, HistoryQuery, ResumeId, TerminalId,
 };
 use krad_store::{acp_transcript_file, gateway_sessions_dir};
 use std::collections::{HashMap, HashSet};
@@ -25,12 +25,37 @@ struct Revision {
     last_text: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ChatPlace {
+    Open,
+    Archived,
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct GroupChat {
     pub(super) id: TerminalId,
     pub(super) title: String,
     pub(super) harness: AgentPreset,
     pub(super) resume: ResumeId,
+    pub(super) place: ChatPlace,
+}
+
+fn archived_chats(archive: &Archive, group: GroupId) -> Vec<GroupChat> {
+    let in_sessions = archive
+        .sessions_of(group)
+        .into_iter()
+        .flat_map(ArchivedSession::all_chats);
+    let loose = archive.chats_of(group).into_iter().map(|loose| &loose.chat);
+    loose
+        .chain(in_sessions)
+        .map(|chat| GroupChat {
+            id: chat.terminal,
+            title: chat.title.clone(),
+            harness: chat.harness,
+            resume: chat.resume.clone(),
+            place: ChatPlace::Archived,
+        })
+        .collect()
 }
 
 #[derive(Default)]
@@ -51,7 +76,8 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get(&self.active) else {
             return Vec::new();
         };
-        live.data
+        let mut chats: Vec<GroupChat> = live
+            .data
             .nodes
             .iter()
             .rev()
@@ -62,9 +88,12 @@ impl EnvironmentShell {
                     title: node.title.clone(),
                     harness: node.harness.filter(|preset| preset.is_agent())?,
                     resume: node.resume.clone()?,
+                    place: ChatPlace::Open,
                 })
             })
-            .collect()
+            .collect();
+        chats.extend(archived_chats(&live.data.archive, group));
+        chats
     }
 
     pub(super) fn indexed_chat(&self, id: TerminalId) -> Option<Arc<ChatDocument>> {
@@ -85,11 +114,7 @@ impl EnvironmentShell {
 
     fn history_source(&self, env: &EnvironmentName, chat: &GroupChat) -> Option<HistorySource> {
         let resume = chat.resume.clone();
-        let root = self
-            .envs
-            .get(env)
-            .and_then(|live| live.data.group_of(chat.id))
-            .map(|group| group.root.clone());
+        let root = self.active_group().map(|group| group.root.clone());
         let link = self.env_link(env);
         match chat.harness {
             AgentPreset::ClaudeCode => Some(HistorySource::Claude {
@@ -104,7 +129,7 @@ impl EnvironmentShell {
             }),
             AgentPreset::Gateway => Some(HistorySource::Gateway {
                 sessions: gateway_sessions_dir()?,
-                cwd: self.chat_folder(env, chat.id),
+                cwd: root.unwrap_or_else(|| self.chat_folder(env, chat.id)),
                 resume,
             }),
             AgentPreset::Acp(_) => Some(HistorySource::Acp {
@@ -128,9 +153,12 @@ impl EnvironmentShell {
         }
     }
 
-    fn needs_reading(&self, key: &ChatKey) -> bool {
+    fn needs_reading(&self, key: &ChatKey, place: ChatPlace) -> bool {
         if self.chat_search.reading.contains(key) {
             return false;
+        }
+        if place == ChatPlace::Archived {
+            return !self.chat_search.indexed.contains_key(key);
         }
         let known = self.chat_search.revisions.get(key);
         match self.chat_revision(&key.0, key.1) {
@@ -143,7 +171,7 @@ impl EnvironmentShell {
         let env = self.active.clone();
         for chat in self.group_chats() {
             let key = (env.clone(), chat.id);
-            if !self.needs_reading(&key) {
+            if !self.needs_reading(&key, chat.place) {
                 continue;
             }
             let Some(source) = self.history_source(&env, &chat) else {

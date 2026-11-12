@@ -1,4 +1,5 @@
 mod panes;
+mod tab_look;
 mod tab_menu;
 mod tab_motion;
 mod tab_peek;
@@ -6,6 +7,10 @@ mod tab_picker;
 
 pub(in crate::environment_shell) use tab_motion::entering_tab;
 pub(in crate::environment_shell) use tab_picker::tab_picker_shell;
+
+use tab_look::{
+    sweep_color, tab_badge, tab_tile, working_sweep, BadgeLook, StateDot, TAB_HOVER_GROUP,
+};
 
 use panes::{pane_px, PANE_STRIP_H};
 pub(super) use panes::{DraggedTab, PaneDrag};
@@ -15,7 +20,7 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, transparent_black, AnyElement, AppContext as _, ClickEvent, Context, Div,
     FontWeight, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseUpEvent,
-    ParentElement, Pixels, Point, SharedString, Stateful, StatefulInteractiveElement, Styled, Svg,
+    ParentElement, Pixels, Point, SharedString, Stateful, StatefulInteractiveElement, Styled,
     Window,
 };
 use krad_domain::{AgentPreset, AgentState, FileView, PaneId, SessionPanes, TerminalId, UnitRect};
@@ -30,16 +35,15 @@ use super::terminal_card::error_line;
 use super::terminal_status::CardStatus;
 use super::{EnvironmentShell, LiveEnv};
 use crate::components::{
-    agent_status, card, harness_icon, icon, tooltip_view, working_dots, Button, ButtonVariant,
-    CenteredEmpty, EmptyState, IconName,
+    card, harness_icon, icon, tooltip_view, Button, ButtonVariant, CenteredEmpty, EmptyState,
+    IconName,
 };
 use crate::terminal_theme::terminal_colors;
 use crate::theme::{
-    mono_family, palette, row_fill, row_shadow, Palette, CAPSULE_H, CAPSULE_PAD, ICON_SM, LINE_SM,
+    mono_family, palette, row_fill, row_shadow, Palette, CAPSULE_H, CAPSULE_PAD, LINE_SM,
     RADIUS_LG, RADIUS_XS, SPACE_0_5, SPACE_1, SPACE_1_5, SPACE_2, TAB_H, TAB_STRIP_MARGIN, TEXT_SM,
 };
 
-const TAB_BADGE: f32 = 20.0;
 const TAB_MIN_W: f32 = 110.0;
 const TAB_DIVIDER_W: f32 = 1.0;
 const TAB_DIVIDER_H: f32 = 14.0;
@@ -49,7 +53,6 @@ const DIRTY_DOT: f32 = 6.0;
 const UNZOOMED: f32 = 1.0;
 const TERMINAL_TAB_PREFIX: &str = "session-tab";
 const TAB_CLOSE_PREFIX: &str = "session-tab-close";
-const TAB_HOVER_GROUP: &str = "session-tab-hover";
 const BTN_ADD_TAB: &str = "session-add-tab";
 const ADD_TAB_TOOLTIP: &str = "New chat (right-click for a terminal)";
 const CLOSE_TAB_TOOLTIP: &str = "Close tab";
@@ -117,24 +120,15 @@ pub(in crate::environment_shell) enum TabWidth {
 enum TabTrailing {
     Close,
     CloseOnHover,
-    Working,
 }
 
 impl TabTrailing {
-    const fn of(shown: bool, working: bool) -> Self {
-        match (working, shown) {
-            (true, _) => Self::Working,
-            (false, true) => Self::Close,
-            (false, false) => Self::CloseOnHover,
+    const fn of(shown: bool) -> Self {
+        if shown {
+            Self::Close
+        } else {
+            Self::CloseOnHover
         }
-    }
-}
-
-fn tab_leading(mark: IconName, color: u32, status: CardStatus, pal: &Palette) -> Svg {
-    if status.is_quiet() || status == CardStatus::Agent(AgentState::Working) {
-        icon(mark, ICON_SM, color)
-    } else {
-        agent_status(status.kind(), ICON_SM, pal)
     }
 }
 
@@ -200,24 +194,6 @@ pub(in crate::environment_shell) fn tab_capsule(
         .bg(pal.bg_hover)
         .overflow_hidden()
         .children(tabs)
-}
-
-pub(in crate::environment_shell) fn tab_badge(
-    glyph: impl IntoElement,
-    pal: &Palette,
-) -> AnyElement {
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .size(px(TAB_BADGE))
-        .rounded(px(RADIUS_XS))
-        .bg(rgb(pal.chip_bg))
-        .border_1()
-        .border_color(pal.divider)
-        .child(glyph)
-        .into_any_element()
 }
 
 pub(in crate::environment_shell) fn tab_divider(pal: &Palette) -> AnyElement {
@@ -414,76 +390,77 @@ impl EnvironmentShell {
         let is_file = file.is_some();
         let working = status == CardStatus::Agent(AgentState::Working);
         let peeks = !is_file && preset != AgentPreset::Shell;
-        let leading = tab_leading(mark, mark_color, status, pal);
+        let badge = tab_badge(
+            BadgeLook::of(preset, leads, is_file, pal),
+            StateDot::of(status.kind()),
+            shown,
+            pal,
+        );
         let title = self.title_label(id, &node.title);
         let peek = peeks.then(|| SharedString::from(title.clone()));
         let dragged = DraggedTab::new(id, title.clone(), mark, mark_color, cx.entity().downgrade());
         Some(
-            tab_shell(
-                (TERMINAL_TAB_PREFIX, id.as_u64()),
-                shown,
-                TabWidth::Fill,
-                pal,
-                cx,
-            )
-            .group(TAB_HOVER_GROUP)
-            .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
-            .on_mouse_up(
-                MouseButton::Middle,
-                cx.listener(move |this: &mut Self, _: &MouseUpEvent, window, cx| {
-                    this.request_close_tab(id, window, cx);
-                }),
-            )
-            .on_click(
-                cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
-                    if is_file {
-                        this.show_file_tab(id, cx);
-                    } else if this.editing() {
-                        this.show_editor_chat(id, cx);
-                    } else if shown {
-                        this.open_terminal_tab_menu(id, position_of(event), cx);
-                    } else {
-                        this.show_terminal_tab(id, window, cx);
-                    }
-                }),
-            )
-            .when(preview, |tab| {
-                tab.on_double_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                    this.pin_file_tab(id, cx);
-                }))
-            })
-            .on_mouse_down(
-                MouseButton::Right,
-                cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
-                    cx.stop_propagation();
-                    let position = (event.position.x.as_f32(), event.position.y.as_f32());
-                    this.open_terminal_tab_menu(id, position, cx);
-                }),
-            )
-            .child(tab_badge(leading, pal))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .when(preview, Styled::italic)
-                    .child(title),
-            )
-            .when(dirty, |tab| {
-                tab.child(
-                    div()
-                        .flex_none()
-                        .size(px(DIRTY_DOT))
-                        .rounded_full()
-                        .bg(rgb(pal.text_default)),
+            tab_tile((TERMINAL_TAB_PREFIX, id.as_u64()), shown, cx)
+                .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
+                .on_mouse_up(
+                    MouseButton::Middle,
+                    cx.listener(move |this: &mut Self, _: &MouseUpEvent, window, cx| {
+                        this.request_close_tab(id, window, cx);
+                    }),
                 )
-            })
-            .when(on_chat, |tab| {
-                tab.child(icon(IconName::Chat, STATUS_ICON, pal.text_muted))
-            })
-            .when_some(peek, |tab, fallback| Self::with_peek(tab, id, fallback, cx))
-            .child(Self::tab_trailing(id, TabTrailing::of(shown, working), cx))
-            .into_any_element(),
+                .on_click(
+                    cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
+                        if is_file {
+                            this.show_file_tab(id, cx);
+                        } else if this.editing() {
+                            this.show_editor_chat(id, cx);
+                        } else if shown {
+                            this.open_terminal_tab_menu(id, position_of(event), cx);
+                        } else {
+                            this.show_terminal_tab(id, window, cx);
+                        }
+                    }),
+                )
+                .when(preview, |tab| {
+                    tab.on_double_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                        this.pin_file_tab(id, cx);
+                    }))
+                })
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
+                        cx.stop_propagation();
+                        let position = (event.position.x.as_f32(), event.position.y.as_f32());
+                        this.open_terminal_tab_menu(id, position, cx);
+                    }),
+                )
+                .child(badge)
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .when(preview, Styled::italic)
+                        .child(title),
+                )
+                .when(dirty, |tab| {
+                    tab.child(
+                        div()
+                            .flex_none()
+                            .size(px(DIRTY_DOT))
+                            .rounded_full()
+                            .bg(rgb(pal.text_default)),
+                    )
+                })
+                .when(on_chat, |tab| {
+                    tab.child(icon(IconName::Chat, STATUS_ICON, pal.text_muted))
+                })
+                .when_some(peek, |tab, fallback| Self::with_peek(tab, id, fallback, cx))
+                .child(Self::close_tab_button(id, TabTrailing::of(shown), cx))
+                .when(working, |tab| {
+                    tab.child(working_sweep(id, sweep_color(preset, pal)))
+                })
+                .into_any_element(),
         )
     }
 
@@ -500,35 +477,15 @@ impl EnvironmentShell {
         })
     }
 
-    fn tab_trailing(id: TerminalId, trailing: TabTrailing, cx: &mut Context<Self>) -> AnyElement {
-        let close = Self::close_tab_button(id, trailing == TabTrailing::Close, cx);
-        if trailing != TabTrailing::Working {
-            return close;
-        }
-        let pal = palette(cx);
-        div()
-            .relative()
-            .flex_none()
-            .size(px(CLOSE_BUTTON))
-            .child(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .group_hover(TAB_HOVER_GROUP, Styled::invisible)
-                    .child(working_dots(id.as_u64(), pal.text_muted)),
-            )
-            .child(div().absolute().inset_0().child(close))
-            .into_any_element()
-    }
-
-    fn close_tab_button(id: TerminalId, always: bool, cx: &mut Context<Self>) -> AnyElement {
+    fn close_tab_button(
+        id: TerminalId,
+        trailing: TabTrailing,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let pal = palette(cx);
         div()
             .id((TAB_CLOSE_PREFIX, id.as_u64()))
-            .when(!always, |button| {
+            .when(trailing == TabTrailing::CloseOnHover, |button| {
                 button
                     .invisible()
                     .group_hover(TAB_HOVER_GROUP, Styled::visible)
@@ -728,11 +685,9 @@ mod tests {
     const ELSEWHERE: TerminalId = TerminalId(9);
 
     #[test]
-    fn a_working_tab_shows_its_dots_and_only_the_shown_idle_tab_keeps_its_close_button() {
-        assert_eq!(TabTrailing::of(true, true), TabTrailing::Working);
-        assert_eq!(TabTrailing::of(false, true), TabTrailing::Working);
-        assert_eq!(TabTrailing::of(true, false), TabTrailing::Close);
-        assert_eq!(TabTrailing::of(false, false), TabTrailing::CloseOnHover);
+    fn only_the_shown_tab_keeps_its_close_button_the_rest_show_it_on_hover() {
+        assert_eq!(TabTrailing::of(true), TabTrailing::Close);
+        assert_eq!(TabTrailing::of(false), TabTrailing::CloseOnHover);
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use gpui_kit::{AppContext as _, Context, PromptButton, PromptLevel, Window};
-use krad_domain::ServerRuntimeId;
+use krad_domain::{ServerRuntimeId, ToastKind};
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
 use super::super::EnvironmentShell;
@@ -122,7 +122,7 @@ impl EnvironmentShell {
             return;
         };
         let name = tools.server_runtime_name(&pending.runtime);
-        self.push_toast(format!("{INSTALLING_TEXT} {name}"));
+        self.push_toast(ToastKind::Info, format!("{INSTALLING_TEXT} {name}"));
         let chosen = self.settings.server_runtimes.clone();
         let runtime = pending.runtime.clone();
         let installing = cx.background_spawn(async move {
@@ -142,7 +142,11 @@ impl EnvironmentShell {
                 }
                 Err(error) => {
                     tracing::warn!(%error, "server runtime install for an extension failed");
-                    shell.toast(&format!("{name} {INSTALL_FAILED_TEXT}: {error}"), cx);
+                    shell.toast(
+                        ToastKind::Error,
+                        &format!("{name} {INSTALL_FAILED_TEXT}: {error}"),
+                        cx,
+                    );
                 }
             })
             .unwrap_or_default();

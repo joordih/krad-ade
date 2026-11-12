@@ -1,3 +1,4 @@
+mod deck;
 mod layout;
 mod marks;
 
@@ -6,7 +7,7 @@ mod view;
 
 use gpui_kit::{Capslock, Context, FocusHandle, KeyDownEvent, SharedString, Window};
 use krad_chat::{ModelSource, SourceRank};
-use krad_domain::{AgentPreset, ContextSize, ModelId, TerminalId};
+use krad_domain::{AgentPreset, ComposerDesign, ContextSize, ModelId, TerminalId};
 
 use super::surface::SurfaceCommand;
 use super::EnvironmentShell;
@@ -87,10 +88,19 @@ pub(super) fn grouped(
     groups
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum Scope {
+    #[default]
+    Harness,
+    All,
+    Favorites,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 struct Choosing {
     groups: Vec<HarnessModels>,
     harness: AgentPreset,
+    scope: Scope,
     query: String,
     highlighted: usize,
 }
@@ -105,6 +115,7 @@ impl Choosing {
         let mut choosing = Self {
             groups,
             harness,
+            scope: Scope::Harness,
             query: String::new(),
             highlighted: 0,
         };
@@ -112,36 +123,60 @@ impl Choosing {
         Some(choosing)
     }
 
-    fn shown(&self) -> Vec<&ModelChoice> {
+    fn entries(&self) -> Vec<(AgentPreset, &ModelChoice)> {
         let query = self.query.trim().to_lowercase();
-        let mut shown: Vec<&ModelChoice> = self
+        let matches = |choice: &ModelChoice| {
+            query.is_empty()
+                || choice.label.to_lowercase().contains(&query)
+                || choice
+                    .description
+                    .as_ref()
+                    .is_some_and(|text| text.to_lowercase().contains(&query))
+                || choice
+                    .id
+                    .as_ref()
+                    .is_some_and(|id| id.as_str().to_lowercase().contains(&query))
+        };
+        let mut entries: Vec<(usize, AgentPreset, &ModelChoice)> = self
             .groups
             .iter()
-            .find(|group| group.harness == self.harness)
-            .map_or_default(|group| {
+            .enumerate()
+            .filter(|(_, group)| self.scope != Scope::Harness || group.harness == self.harness)
+            .flat_map(|(rank, group)| {
                 group
                     .models
                     .iter()
-                    .filter(|choice| {
-                        query.is_empty()
-                            || choice.label.to_lowercase().contains(&query)
-                            || choice
-                                .description
-                                .as_ref()
-                                .is_some_and(|text| text.to_lowercase().contains(&query))
-                            || choice
-                                .id
-                                .as_ref()
-                                .is_some_and(|id| id.as_str().to_lowercase().contains(&query))
-                    })
-                    .collect()
-            });
-        shown.sort_by_key(|choice| choice.order());
-        shown
+                    .map(move |choice| (rank, group.harness, choice))
+            })
+            .filter(|(_, _, choice)| self.scope != Scope::Favorites || choice.marks.favorite)
+            .filter(|(_, _, choice)| matches(choice))
+            .collect();
+        entries.sort_by_key(|(rank, _, choice)| (*rank, choice.order()));
+        entries
+            .into_iter()
+            .map(|(_, harness, choice)| (harness, choice))
+            .collect()
+    }
+
+    fn shown(&self) -> Vec<&ModelChoice> {
+        self.entries()
+            .into_iter()
+            .map(|(_, choice)| choice)
+            .collect()
+    }
+
+    fn show_scope(&mut self, scope: Scope) {
+        self.scope = scope;
+        self.highlighted = self
+            .shown()
+            .iter()
+            .position(|choice| choice.current)
+            .unwrap_or_default();
     }
 
     fn show_harness(&mut self, harness: AgentPreset) {
         self.harness = harness;
+        self.scope = Scope::Harness;
         self.query.clear();
         self.highlighted = self
             .shown()
@@ -190,8 +225,9 @@ impl Choosing {
     }
 
     fn picked(&self, index: usize) -> Option<(AgentPreset, Option<ModelId>)> {
-        let choice = self.shown().get(index).map(|choice| choice.id.clone())?;
-        Some((self.harness, choice))
+        self.entries()
+            .get(index)
+            .map(|(harness, choice)| (*harness, choice.id.clone()))
     }
 }
 
@@ -230,11 +266,17 @@ impl EnvironmentShell {
         let Some(choosing) = Choosing::new(groups) else {
             return;
         };
+        let focus = cx.focus_handle();
+        if let PickFor::Chat(chat) = target {
+            if self.settings.beta.composer == ComposerDesign::Tray {
+                self.embed_effort(chat, focus.clone());
+            }
+        }
         self.model_picker = Some(ModelPicker {
             target,
             origin,
             choosing,
-            focus: cx.focus_handle(),
+            focus,
             focus_pending: true,
         });
         cx.notify();
@@ -242,6 +284,14 @@ impl EnvironmentShell {
 
     fn close_model_picker(&mut self, cx: &mut Context<Self>) {
         self.model_picker = None;
+        self.drop_embedded_effort();
+        cx.notify();
+    }
+
+    fn show_picker_scope(&mut self, scope: Scope, cx: &mut Context<Self>) {
+        if let Some(picker) = self.model_picker.as_mut() {
+            picker.choosing.show_scope(scope);
+        }
         cx.notify();
     }
 
@@ -249,6 +299,7 @@ impl EnvironmentShell {
         let Some(picker) = self.model_picker.take() else {
             return;
         };
+        self.drop_embedded_effort();
         let Some((harness, model)) = picker.choosing.picked(index) else {
             return cx.notify();
         };
@@ -434,5 +485,31 @@ mod tests {
         picker.step_row(false);
         assert_eq!(picker.highlighted, 1);
         assert_eq!(Choosing::new(Vec::new()), None);
+    }
+
+    #[test]
+    fn the_all_and_favorites_scopes_cross_harnesses_and_pick_from_the_right_one() {
+        let mut groups = groups();
+        groups[1].models[1].marks.favorite = true;
+        let mut picker = Choosing::new(groups).unwrap_or_else(|| unreachable!("there are models"));
+        picker.show_scope(Scope::All);
+        assert_eq!(picker.shown().len(), 4);
+        assert_eq!(
+            picker.picked(0).map(|(harness, _)| harness),
+            Some(AgentPreset::ClaudeCode)
+        );
+        picker.show_scope(Scope::Favorites);
+        let favorites: Vec<&str> = picker
+            .shown()
+            .iter()
+            .map(|choice| choice.label.as_str())
+            .collect();
+        assert_eq!(favorites, ["Big Pickle"]);
+        assert_eq!(
+            picker.picked(0).map(|(harness, _)| harness),
+            Some(AgentPreset::Opencode)
+        );
+        picker.show_harness(AgentPreset::ClaudeCode);
+        assert_eq!(picker.scope, Scope::Harness);
     }
 }

@@ -18,7 +18,7 @@ pub(super) use terminal::{remote_terminal, remote_terminal_opener};
 pub use tools::HostTools;
 
 use gpui_kit::{AnyElement, AppContext as _, Context, Window};
-use krad_domain::{EnvironmentName, Host, TerminalId};
+use krad_domain::{EnvironmentName, Host, TerminalId, ToastKind};
 use krad_host::{HostContext, HostError, HostLink, HostPlatform, HOST_CLI_PROGRAM};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -275,7 +275,10 @@ impl EnvironmentShell {
         if !self.hosts.login_env_missing_told.insert(host) {
             return;
         }
-        self.push_toast(format!("{LOGIN_ENV_MISSING} {destination}"));
+        self.push_toast(
+            ToastKind::Error,
+            format!("{LOGIN_ENV_MISSING} {destination}"),
+        );
     }
 
     fn finish_host_connection(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
@@ -392,9 +395,10 @@ impl EnvironmentShell {
             }
         }
         for (_, destination) in &dropped {
-            self.push_toast(format!(
-                "{LOST_CONNECTION} {destination}; {RECONNECTING_SUFFIX}"
-            ));
+            self.push_toast(
+                ToastKind::Info,
+                format!("{LOST_CONNECTION} {destination}; {RECONNECTING_SUFFIX}"),
+            );
         }
         if !dropped.is_empty() {
             cx.notify();

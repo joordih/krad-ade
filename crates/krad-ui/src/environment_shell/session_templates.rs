@@ -2,7 +2,7 @@ mod launch;
 mod sheet;
 
 use gpui_kit::{AppContext as _, Context};
-use krad_domain::review::Issue;
+use krad_domain::{review::Issue, ToastKind};
 use krad_domain::{CodeHost, GitlabSettings, GroupId, McpServerName, ModelId, SessionTemplate};
 use krad_gitlab::GitlabConfig;
 use krad_host::HostLink;
@@ -93,7 +93,7 @@ impl EnvironmentShell {
     fn open_picker_for_selected(&mut self, opening: PickerOpening, cx: &mut Context<Self>) {
         match self.active_group().map(|group| group.id) {
             Some(group) => self.read_templates(group, opening, cx),
-            None => self.toast(NO_GROUP_TEXT, cx),
+            None => self.toast(ToastKind::Warning, NO_GROUP_TEXT, cx),
         }
     }
 

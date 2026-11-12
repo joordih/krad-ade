@@ -35,7 +35,9 @@ use crate::live::{BusVars, LiveHarness, LiveSession, Order};
 use crate::skills::skill_files;
 use mcp::{McpStartFailure, McpTool, McpToolbox};
 use prompt::{instruction_files, system_prompt, PromptParts};
-use session::{read_records, refusal, session_path, Chosen, Record, Restored, SessionFile};
+use session::{
+    forget_session, read_records, refusal, session_path, Chosen, Record, Restored, SessionFile,
+};
 use snapshots::Snapshots;
 use tools::{Background, Workspace};
 use wire::ToolSpec;
@@ -265,6 +267,13 @@ pub(crate) fn spawn_engine(
         running,
         background,
     }
+}
+
+/// # Errors
+///
+/// Fails when the conversation file or its folder exists and cannot be removed.
+pub fn forget_engine_session(sessions: &Path, resume: &ResumeId) -> io::Result<()> {
+    forget_session(sessions, resume)
 }
 
 /// # Errors

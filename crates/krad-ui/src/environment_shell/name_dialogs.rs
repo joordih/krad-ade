@@ -13,8 +13,7 @@ use super::EnvironmentShell;
 const DELETE_ENVIRONMENT_TITLE: &str = "Delete environment?";
 const DELETE_ENVIRONMENT_TEXT: &str = "Its terminals and sessions close with it.";
 const DELETE_GROUP_TITLE: &str = "Delete group?";
-const DELETE_GROUP_TEXT: &str =
-    "Its sessions close with it and their terminals and chats are deleted. The folder stays on disk.";
+const DELETE_GROUP_TEXT: &str = "Its sessions close with it and their terminals and chats are deleted, together with its Archive of closed sessions and chats. The folder stays on disk.";
 const DELETE_CONFIRM: &str = "Delete";
 const DELETE_CANCEL: &str = "Cancel";
 

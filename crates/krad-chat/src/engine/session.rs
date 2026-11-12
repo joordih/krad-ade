@@ -123,6 +123,18 @@ pub(crate) fn session_path(dir: &Path, id: &ResumeId) -> PathBuf {
     dir.join(id.as_str()).with_extension(SESSION_EXTENSION)
 }
 
+fn absent_is_fine(removed: io::Result<()>) -> io::Result<()> {
+    match removed {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        done => done,
+    }
+}
+
+pub(crate) fn forget_session(dir: &Path, id: &ResumeId) -> io::Result<()> {
+    absent_is_fine(fs::remove_file(session_path(dir, id)))?;
+    absent_is_fine(fs::remove_dir_all(dir.join(id.as_str())))
+}
+
 pub(crate) fn read_records(path: &Path) -> io::Result<Vec<Record>> {
     let file = File::open(path).map_err(|error| match error.kind() {
         io::ErrorKind::NotFound => io::Error::new(
@@ -393,5 +405,23 @@ mod tests {
             matches!(refused, Some(ResumeRefused::MissingConversation(_))),
             "{refused:?}"
         );
+    }
+
+    #[test]
+    fn forgetting_a_session_removes_its_file_and_folder_only() -> io::Result<()> {
+        let dir = scratch("forget");
+        let gone = new_session_id();
+        let kept = new_session_id();
+        for id in [&gone, &kept] {
+            fs::write(session_path(&dir, id), b"{}\n")?;
+            fs::create_dir_all(dir.join(id.as_str()).join(SNAPSHOTS_DIR))?;
+        }
+        forget_session(&dir, &gone)?;
+        assert!(!session_path(&dir, &gone).exists());
+        assert!(!dir.join(gone.as_str()).exists());
+        assert!(session_path(&dir, &kept).exists());
+        assert!(dir.join(kept.as_str()).exists());
+        forget_session(&dir, &gone)?;
+        fs::remove_dir_all(&dir)
     }
 }

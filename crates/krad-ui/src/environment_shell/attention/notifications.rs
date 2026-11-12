@@ -2,7 +2,7 @@ use gpui_kit::{
     App, Context, SharedString, SystemNotification, SystemNotificationAction,
     SystemNotificationResponse, Window,
 };
-use krad_domain::{AttentionKind, AttentionTarget};
+use krad_domain::{AttentionKind, AttentionTarget, ToastKind};
 
 use super::super::ask::PermissionReply;
 use super::super::EnvironmentShell;
@@ -196,7 +196,7 @@ impl EnvironmentShell {
                     && notified.subject.as_deref() == Some(front.subject.as_str())
         );
         if !unchanged {
-            self.push_toast(ASKS_SOMETHING_ELSE.to_owned());
+            self.push_toast(ToastKind::Info, ASKS_SOMETHING_ELSE.to_owned());
             cx.notify();
             return;
         }
@@ -204,7 +204,7 @@ impl EnvironmentShell {
             self.switch_env(&target.environment, cx);
         }
         if !self.reply_to_permission(target.terminal, reply, cx) {
-            self.push_toast(ASKS_SOMETHING_ELSE.to_owned());
+            self.push_toast(ToastKind::Info, ASKS_SOMETHING_ELSE.to_owned());
         }
         cx.notify();
     }

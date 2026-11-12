@@ -2,6 +2,7 @@ use gpui_kit::{AppContext as _, Context};
 use krad_chat::{gateway_models, GatewayModel, ModelOffer};
 use krad_domain::{
     AgentPreset, EnvironmentName, GatewayAccess, GatewayKey, GatewayUrl, ModelId, TerminalId,
+    ToastKind,
 };
 use krad_host::HostLink;
 use krad_store::{delete_gateway_key, find_gateway_key, write_gateway_key, LoginPlace};
@@ -105,8 +106,8 @@ impl EnvironmentShell {
             let removed = removed.await;
             this.update(cx, |shell, cx| {
                 match removed {
-                    Ok(()) => shell.toast(KEY_FORGOTTEN_TOAST, cx),
-                    Err(error) => shell.toast(&error.to_string(), cx),
+                    Ok(()) => shell.toast(ToastKind::Success, KEY_FORGOTTEN_TOAST, cx),
+                    Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
                 }
                 shell.check_gateway(cx);
             })
@@ -172,7 +173,7 @@ impl EnvironmentShell {
                     },
                 };
                 if saving && !matches!(link, GatewayLink::Failed { access: None, .. }) {
-                    shell.toast(KEY_SAVED_TOAST, cx);
+                    shell.toast(ToastKind::Success, KEY_SAVED_TOAST, cx);
                 }
                 shell.settle_gateway(link, cx);
             })

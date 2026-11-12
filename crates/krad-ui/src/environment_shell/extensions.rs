@@ -23,7 +23,7 @@ pub(in crate::environment_shell) use machines::{HostKindRef, MachineDialog};
 pub(in crate::environment_shell) use views::OpenViewId;
 
 use gpui_kit::{AppContext as _, Context, Task};
-use krad_domain::{EnvironmentName, ExtensionEntry, ExtensionSettings};
+use krad_domain::{EnvironmentName, ExtensionEntry, ExtensionSettings, ToastKind};
 use krad_extensions::api::manifest::{ExtensionManifest, Placement};
 use krad_extensions::api::{ExtensionId, TerminalHandle};
 use krad_extensions::program::{ExtensionProcess, ProgramConnection, ProgramLog, RestartPolicy};
@@ -245,7 +245,11 @@ impl EnvironmentShell {
             Loaded::Problem(problem) if record.entry.enabled => Some(problem.clone()),
             _ => None,
         }) {
-            self.toast(&format!("{EXTENSIONS_NOT_READ}: {problem}"), cx);
+            self.toast(
+                ToastKind::Error,
+                &format!("{EXTENSIONS_NOT_READ}: {problem}"),
+                cx,
+            );
         }
         self.stop_changed_programs(&kept, cx);
         self.extensions.records = kept;

@@ -32,12 +32,14 @@ impl EnvironmentShell {
         let pal = palette(cx);
         let updates_card = panel_card(vec![self.app_updates_row(cx)], pal);
         let performance_card = panel_card(vec![self.performance_row(cx)], pal);
+        let beta_card = self.beta_card(cx);
         div()
             .flex()
             .flex_col()
             .gap(px(SWATCH_GAP))
             .child(updates_card)
             .child(performance_card)
+            .child(beta_card)
             .into_any_element()
     }
 

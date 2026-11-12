@@ -5,7 +5,7 @@ use gpui_kit::component::switch::Switch;
 use gpui_kit::{
     div, px, AnyElement, AppContext as _, Context, IntoElement, ParentElement, Styled, Window,
 };
-use krad_domain::{McpProjectTrust, McpServer, McpServerName, McpServerState};
+use krad_domain::{McpProjectTrust, McpServer, McpServerName, McpServerState, ToastKind};
 use krad_store::delete_mcp_secret;
 use std::path::{Path, PathBuf};
 
@@ -85,8 +85,8 @@ impl EnvironmentShell {
         cx.spawn(async move |this, cx| {
             let removed = removed.await;
             this.update(cx, |shell, cx| match removed {
-                Ok(()) => shell.toast(REMOVED_TOAST, cx),
-                Err(error) => shell.toast(&error.to_string(), cx),
+                Ok(()) => shell.toast(ToastKind::Success, REMOVED_TOAST, cx),
+                Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
             })
             .unwrap_or_default();
         })

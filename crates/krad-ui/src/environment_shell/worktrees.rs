@@ -2,7 +2,7 @@ mod sweep;
 
 use gpui_kit::{AppContext as _, Context};
 use krad_domain::{
-    AppEvent, BaseFetch, EnvironmentName, GroupId, WorktreeOrigin, WorktreeSettings,
+    AppEvent, BaseFetch, EnvironmentName, GroupId, ToastKind, WorktreeOrigin, WorktreeSettings,
 };
 use krad_host::HostLink;
 use krad_repo::{
@@ -46,11 +46,11 @@ impl WorktreeRecipe {
 impl EnvironmentShell {
     pub(super) fn start_new_worktree(&mut self, cx: &mut Context<Self>) {
         let Some(group) = self.active_group().map(|group| group.id) else {
-            self.toast(NOT_A_REPO_TEXT, cx);
+            self.toast(ToastKind::Warning, NOT_A_REPO_TEXT, cx);
             return;
         };
         if self.group_repo_root(group).is_none() {
-            self.toast(NOT_A_REPO_TEXT, cx);
+            self.toast(ToastKind::Warning, NOT_A_REPO_TEXT, cx);
             return;
         }
         self.start_worktree_draft(group, cx);
@@ -58,11 +58,11 @@ impl EnvironmentShell {
 
     pub(super) fn create_worktree(&mut self, group: GroupId, name: &str, cx: &mut Context<Self>) {
         let Some(repo_root) = self.group_repo_root(group) else {
-            self.toast(NOT_A_REPO_TEXT, cx);
+            self.toast(ToastKind::Warning, NOT_A_REPO_TEXT, cx);
             return;
         };
         let Some(name) = sanitize_worktree_name(name) else {
-            self.toast(INVALID_NAME_TEXT, cx);
+            self.toast(ToastKind::Warning, INVALID_NAME_TEXT, cx);
             return;
         };
         let env = self.active.clone();
@@ -85,7 +85,7 @@ impl EnvironmentShell {
                         shell.publish_event(&env, Some(created), event);
                     }
                 }
-                Err(error) => shell.toast(&error.to_string(), cx),
+                Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
             })
             .unwrap_or_default();
         })
@@ -99,7 +99,7 @@ impl EnvironmentShell {
                 .clone()
                 .map(|origin| (group.id, group.root.clone(), origin))
         }) else {
-            self.toast(NOT_A_WORKTREE_TEXT, cx);
+            self.toast(ToastKind::Warning, NOT_A_WORKTREE_TEXT, cx);
             return;
         };
         let terminals: Vec<_> = self.envs.get(&self.active).map_or_default(|live| {
@@ -125,7 +125,7 @@ impl EnvironmentShell {
                     shell.select_group(group, cx);
                     shell.remove_selected_group(cx);
                 }
-                Err(error) => shell.toast(&error.to_string(), cx),
+                Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
             })
             .unwrap_or_default();
         })
@@ -149,10 +149,5 @@ impl EnvironmentShell {
         let live = self.envs.get(&self.active)?;
         let root = &live.data.group(group)?.root;
         self.active_git(root).map(|git| git.repo_root.clone())
-    }
-
-    pub(super) fn toast(&mut self, text: &str, cx: &mut Context<Self>) {
-        self.push_toast(text.to_owned());
-        cx.notify();
     }
 }

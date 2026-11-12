@@ -3,6 +3,7 @@ use gpui_kit::{
 };
 use krad_domain::TerminalId;
 
+use super::tab_look::TAB_MAX_W;
 use super::TAB_MIN_W;
 use crate::theme::MOTION_SPRING;
 
@@ -15,6 +16,7 @@ pub(in crate::environment_shell) fn entering_tab(id: TerminalId, tab: AnyElement
         .flex()
         .flex_row()
         .flex_1()
+        .max_w(px(TAB_MAX_W))
         .child(tab)
         .with_spring(
             (ENTER_PREFIX, id.as_u64()),

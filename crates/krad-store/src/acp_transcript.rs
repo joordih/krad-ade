@@ -20,7 +20,7 @@ enum Job {
     Stop,
 }
 
-fn transcript_file(root: &Path, env: &EnvironmentName, chat: TerminalId) -> PathBuf {
+pub(crate) fn transcript_file(root: &Path, env: &EnvironmentName, chat: TerminalId) -> PathBuf {
     root.join(ACP_TRANSCRIPTS_DIR_NAME)
         .join(environment_folder(env))
         .join(chat.as_u64().to_string())

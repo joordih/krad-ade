@@ -5,6 +5,8 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash as _, Hasher as _};
 use std::path::{Path, PathBuf};
 
+use krad_domain::ToastKind;
+
 use super::super::EnvironmentShell;
 use super::{Document, ServerKey};
 
@@ -94,7 +96,7 @@ impl EnvironmentShell {
             let opened = writing.await;
             this.update(cx, |shell, cx| {
                 if opened.is_none() {
-                    shell.toast(OPEN_FAILED_TEXT, cx);
+                    shell.toast(ToastKind::Error, OPEN_FAILED_TEXT, cx);
                     return;
                 }
                 shell

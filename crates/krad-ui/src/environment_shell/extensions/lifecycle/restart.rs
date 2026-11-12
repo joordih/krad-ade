@@ -1,6 +1,8 @@
 use gpui_kit::Context;
 use krad_extensions::program::RestartPolicy;
 
+use krad_domain::ToastKind;
+
 use super::super::super::EnvironmentShell;
 use super::super::{Slot, SlotKey};
 
@@ -29,7 +31,7 @@ impl EnvironmentShell {
             .after_crash(ran_for);
         let Some(delay) = delay else {
             let title = self.extensions.title_of(&key.extension);
-            self.toast(&format!("{title} {GAVE_UP_TEXT}"), cx);
+            self.toast(ToastKind::Error, &format!("{title} {GAVE_UP_TEXT}"), cx);
             self.extensions
                 .slots
                 .insert(key.clone(), Slot::Failed(GAVE_UP_TEXT.to_owned()));

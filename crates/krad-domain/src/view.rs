@@ -25,7 +25,7 @@ impl EnvironmentView {
 
     #[must_use]
     pub const fn is_optional(self) -> bool {
-        matches!(self, Self::Automations | Self::Kraddies | Self::Review)
+        !matches!(self, Self::Sessions)
     }
 }
 

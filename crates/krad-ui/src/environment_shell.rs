@@ -5,13 +5,13 @@ mod agent_hooks;
 mod app_events;
 mod app_update;
 mod arcade;
+mod archive;
 mod ask;
 mod attention;
 mod backdrop;
 mod changes_tab;
 mod chat;
 mod chat_search;
-mod chrome;
 mod code_viewer;
 mod content_shift;
 mod context_menu;
@@ -80,6 +80,7 @@ mod terminal_images;
 mod terminal_lifecycle;
 mod terminal_status;
 mod terminal_text;
+mod toasts;
 mod toolchains;
 mod top_bar;
 mod usage_bar;
@@ -103,10 +104,10 @@ use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use self::chrome::Toast;
 use self::drag::DragState;
 use self::live_env::{live_meta, LiveEnv};
 use self::sidebar::PanelReveal;
+use self::toasts::Toasts;
 use self::window_close::CloseRequest;
 use krad_session::pump_channel;
 use krad_session::spawn_ticker;
@@ -141,8 +142,7 @@ pub struct EnvironmentShell {
     pub self_ref: Option<WeakEntity<Self>>,
     pump_task: Option<Task<()>>,
     pump_tx: Option<PumpSender<PumpMsg>>,
-    toasts: Vec<Toast>,
-    toast_seq: u64,
+    toasts: Toasts,
     unseen: HashSet<EnvironmentName>,
     cell_width_px: Option<f32>,
     scroll_remainder: f32,
@@ -293,8 +293,7 @@ impl EnvironmentShell {
             self_ref: None,
             pump_task: None,
             pump_tx: Some(pump_tx),
-            toasts: Vec::new(),
-            toast_seq: 0,
+            toasts: Toasts::default(),
             unseen: HashSet::new(),
             cell_width_px: None,
             scroll_remainder: 0.0,
@@ -409,6 +408,7 @@ impl EnvironmentShell {
         self.load_language_tools(cx);
         self.load_extensions(cx);
         self.load_kraddies(cx);
+        self.start_archive_sweeps(cx);
     }
 
     fn frame_interval(&self) -> Duration {
@@ -443,6 +443,7 @@ impl EnvironmentShell {
     }
 
     fn close_env(&mut self, name: &EnvironmentName, cx: &mut Context<Self>) {
+        self.forget_environment_archive(name, cx);
         if let Some(live) = self.envs.remove(name) {
             if !self
                 .envs

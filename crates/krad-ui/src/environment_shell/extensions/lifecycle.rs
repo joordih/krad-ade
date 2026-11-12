@@ -3,7 +3,7 @@ mod restart;
 use futures::channel::mpsc;
 use futures::StreamExt as _;
 use gpui_kit::{AppContext as _, Context};
-use krad_domain::{Host, ServerRuntimeId};
+use krad_domain::{Host, ServerRuntimeId, ToastKind};
 use krad_extensions::api::manifest::Placement;
 use krad_extensions::api::protocol::{
     AppInfo, EnvironmentInfo, ExecuteCommand, ExecuteCommandParams, Feature, HostInfo,
@@ -80,11 +80,11 @@ impl EnvironmentShell {
                 return;
             }
             Some(Slot::Failed(_)) => {
-                self.toast(&format!("{title} {FAILED_TEXT}"), cx);
+                self.toast(ToastKind::Error, &format!("{title} {FAILED_TEXT}"), cx);
                 return;
             }
             Some(Slot::Unsupported) => {
-                self.toast(&format!("{title} {NO_BUILD_TEXT}"), cx);
+                self.toast(ToastKind::Warning, &format!("{title} {NO_BUILD_TEXT}"), cx);
                 return;
             }
             None => {}
@@ -106,13 +106,21 @@ impl EnvironmentShell {
         }
         let Some(program) = record.program() else {
             if record.trust() != Trust::Trusted {
-                self.toast(&format!("{} {NOT_TRUSTED_TEXT}", record.title()), cx);
+                self.toast(
+                    ToastKind::Warning,
+                    &format!("{} {NOT_TRUSTED_TEXT}", record.title()),
+                    cx,
+                );
                 self.ask_trust(&record.entry.id, cx);
             }
             return;
         };
         let Some((link, platform)) = self.program_link(&key) else {
-            self.toast(&format!("{} {HOST_GONE_TEXT}", record.title()), cx);
+            self.toast(
+                ToastKind::Warning,
+                &format!("{} {HOST_GONE_TEXT}", record.title()),
+                cx,
+            );
             return;
         };
         let Some(tools) = self.language_tools() else {
@@ -223,7 +231,7 @@ impl EnvironmentShell {
         let (process, mut events, params) = match started {
             Ok(started) => started,
             Err(StartFailure::NoBuild) => {
-                self.toast(&format!("{title} {NO_BUILD_TEXT}"), cx);
+                self.toast(ToastKind::Warning, &format!("{title} {NO_BUILD_TEXT}"), cx);
                 self.extensions.slots.insert(key.clone(), Slot::Unsupported);
                 self.fail_views_of(key, cx);
                 return;
@@ -240,7 +248,11 @@ impl EnvironmentShell {
                 if let Some(record) = self.extensions.record(&key.extension) {
                     record.log.push(error.clone());
                 }
-                self.toast(&format!("{title} {COULD_NOT_START_TEXT}: {error}"), cx);
+                self.toast(
+                    ToastKind::Error,
+                    &format!("{title} {COULD_NOT_START_TEXT}: {error}"),
+                    cx,
+                );
                 self.extensions
                     .slots
                     .insert(key.clone(), Slot::Failed(error));
@@ -295,7 +307,11 @@ impl EnvironmentShell {
             running.process.log.push(error.clone());
             drop(running);
             let title = self.extensions.title_of(&key.extension);
-            self.toast(&format!("{title} {COULD_NOT_START_TEXT}: {error}"), cx);
+            self.toast(
+                ToastKind::Error,
+                &format!("{title} {COULD_NOT_START_TEXT}: {error}"),
+                cx,
+            );
             self.extensions
                 .slots
                 .insert(key.clone(), Slot::Failed(error));
@@ -338,7 +354,11 @@ impl EnvironmentShell {
                     let params = ExecuteCommandParams { command, target };
                     if let Err(error) = connection.request::<ExecuteCommand>(&params).await {
                         this.update(cx, |shell, cx| {
-                            shell.toast(&format!("{title}: {COMMAND_FAILED_TEXT}: {error}"), cx);
+                            shell.toast(
+                                ToastKind::Error,
+                                &format!("{title}: {COMMAND_FAILED_TEXT}: {error}"),
+                                cx,
+                            );
                         })
                         .unwrap_or_default();
                     }

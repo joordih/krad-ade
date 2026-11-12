@@ -4,7 +4,7 @@ use krad_agents::{AgentStatus, ErrorCode, Response, TerminalHandle};
 use krad_domain::{
     code_tools_launch_args, hook_launch_args, launch_with_prompt, quote_for_shell, worker_brief,
     AgentPreset, AgentState, EnvironmentName, ModelDelivery, ModelId, PermissionMode, ResumeId,
-    SessionId, TerminalGroup, TerminalId, WorkerSpawn, WorktreeOrigin,
+    SessionId, TerminalGroup, TerminalId, ToastKind, WorkerSpawn, WorktreeOrigin,
 };
 use krad_repo::sanitize_worktree_name;
 use std::time::{Duration, Instant};
@@ -192,7 +192,10 @@ impl EnvironmentShell {
             if let Some(session) = live.sessions.get_mut(&id) {
                 session.activity = Some(FRESH_CONVERSATION.to_owned());
             }
-            self.push_toast(format!("terminal #{} {FRESH_TOAST}", id.as_u64()));
+            self.push_toast(
+                ToastKind::Info,
+                format!("terminal #{} {FRESH_TOAST}", id.as_u64()),
+            );
         }
         self.store();
     }

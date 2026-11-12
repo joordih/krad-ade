@@ -7,6 +7,8 @@ use gpui_kit::{
 };
 use krad_lsp::lsp_types::{CodeAction, CodeActionKind};
 
+use krad_domain::ToastKind;
+
 use super::super::language_servers::Document;
 use super::super::EnvironmentShell;
 use super::{place, placed, popover_panel, EditorPopover};
@@ -140,7 +142,7 @@ impl EnvironmentShell {
             return;
         };
         if actions.is_empty() {
-            self.push_toast(NO_ACTIONS_TEXT.to_owned());
+            self.push_toast(ToastKind::Warning, NO_ACTIONS_TEXT.to_owned());
             return;
         }
         let actions = ordered(actions);

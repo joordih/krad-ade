@@ -1,3 +1,4 @@
+mod embedded;
 mod fast;
 mod layout;
 mod popover;
@@ -36,10 +37,23 @@ const TOOLTIP_ONE_EFFORT: &str = "This model thinks at a single effort level";
 const NOT_AVAILABLE: &str = "is not available for this model";
 const MOVED_TO: &str = "so the effort is set to";
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::environment_shell) struct ChatTuning {
+    pub(in crate::environment_shell) fixed_effort: Option<Effort>,
+    pub(in crate::environment_shell) thinking: Option<bool>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EffortPlacement {
+    Floating,
+    InPicker,
+}
+
 pub(in crate::environment_shell) struct EffortPopover {
     state: PopoverState,
     origin: (f32, f32),
     focus: FocusHandle,
+    placement: EffortPlacement,
 }
 
 fn notice_text(snap: EffortSnap) -> Option<String> {
@@ -186,8 +200,32 @@ impl EnvironmentShell {
             state: PopoverState::new(id),
             origin,
             focus,
+            placement: EffortPlacement::Floating,
         });
         cx.notify();
+    }
+
+    pub(in crate::environment_shell) fn embed_effort(
+        &mut self,
+        chat: TerminalId,
+        focus: FocusHandle,
+    ) {
+        self.effort_popover = Some(EffortPopover {
+            state: PopoverState::new(chat),
+            origin: (0.0, 0.0),
+            focus,
+            placement: EffortPlacement::InPicker,
+        });
+    }
+
+    pub(in crate::environment_shell) fn drop_embedded_effort(&mut self) {
+        if self
+            .effort_popover
+            .as_ref()
+            .is_some_and(|popover| popover.placement == EffortPlacement::InPicker)
+        {
+            self.effort_popover = None;
+        }
     }
 
     fn close_effort_popover(&mut self, cx: &mut Context<Self>) {
@@ -200,6 +238,18 @@ impl EnvironmentShell {
             .get(&self.active)
             .and_then(|live| live.chats.get(&id))
             .map(|chat| self.composer_facts(id, chat))
+    }
+
+    pub(in crate::environment_shell) fn chat_tuning(&self, id: TerminalId) -> Option<ChatTuning> {
+        let facts = self.chat_facts(id)?;
+        let fixed_effort = match facts.efforts.as_slice() {
+            [only] => Some(*only),
+            _ => None,
+        };
+        Some(ChatTuning {
+            fixed_effort,
+            thinking: facts.thinking,
+        })
     }
 
     fn effort_was(&self, id: TerminalId) -> Option<Effort> {

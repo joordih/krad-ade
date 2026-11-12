@@ -1,7 +1,7 @@
 use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, FontWeight, ParentElement, Styled, Window,
 };
-use krad_domain::TerminalId;
+use krad_domain::{TerminalId, ToastKind};
 use krad_repo::{
     discard_change, discard_folder, read_text, revert_session_file, revert_session_hunk,
     ChangeKind, FileChange, FilePatch, PatchStatus, RepoError,
@@ -228,7 +228,7 @@ impl EnvironmentShell {
             this.update(cx, |shell, cx| {
                 match result {
                     Ok(true) => {}
-                    Ok(false) => shell.toast(STALE_TOAST, cx),
+                    Ok(false) => shell.toast(ToastKind::Warning, STALE_TOAST, cx),
                     Err(error) => shell.toast_failure(&error),
                 }
                 shell.refresh_git(cx);

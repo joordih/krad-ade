@@ -4,7 +4,7 @@ pub(super) mod remotes;
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{AppContext as _, Context, Entity, Subscription, Window};
-use krad_domain::{GitlabSignIn, GitlabTokens};
+use krad_domain::{GitlabSignIn, GitlabTokens, ToastKind};
 use krad_gitlab::{
     DeviceLogin, GitlabClient, GitlabConfig, GitlabError, LoopbackLogin, OAuthError, TokenSaver,
 };
@@ -135,7 +135,7 @@ impl EnvironmentShell {
 
     fn gitlab_config(&mut self, cx: &mut Context<Self>) -> Option<GitlabConfig> {
         GitlabConfig::try_from(&self.settings.gitlab)
-            .map_err(|error| self.toast(&error.to_string(), cx))
+            .map_err(|error| self.toast(ToastKind::Error, &error.to_string(), cx))
             .ok()
     }
 
@@ -176,7 +176,7 @@ impl EnvironmentShell {
             let checked = check.await;
             this.update(cx, |shell, cx| {
                 let status = checked.unwrap_or_else(|error| {
-                    shell.toast(&error, cx);
+                    shell.toast(ToastKind::Error, &error, cx);
                     GitlabStatus::SignedOut
                 });
                 shell.set_gitlab_status(status, cx);
@@ -262,8 +262,12 @@ impl EnvironmentShell {
             };
             this.update(cx, |shell, cx| {
                 match kept {
-                    Ok(username) => shell.toast(&format!("Signed in to GitLab as @{username}"), cx),
-                    Err(text) => shell.toast(&text, cx),
+                    Ok(username) => shell.toast(
+                        ToastKind::Success,
+                        &format!("Signed in to GitLab as @{username}"),
+                        cx,
+                    ),
+                    Err(text) => shell.toast(ToastKind::Error, &text, cx),
                 }
                 shell.refresh_gitlab_status(cx);
             })
@@ -303,8 +307,8 @@ impl EnvironmentShell {
             let deleted = delete.await;
             this.update(cx, |shell, cx| {
                 match deleted {
-                    Ok(()) => shell.toast(SIGNED_OUT_TOAST, cx),
-                    Err(error) => shell.toast(&error.to_string(), cx),
+                    Ok(()) => shell.toast(ToastKind::Success, SIGNED_OUT_TOAST, cx),
+                    Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
                 }
                 shell.refresh_gitlab_status(cx);
             })

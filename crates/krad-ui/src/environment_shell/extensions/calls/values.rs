@@ -1,5 +1,5 @@
 use gpui_kit::{AppContext as _, Context};
-use krad_domain::{ExtensionSecret, ExtensionSecretKey, ExtensionSettingValue};
+use krad_domain::{ExtensionSecret, ExtensionSecretKey, ExtensionSettingValue, ToastKind};
 use krad_extensions::api::protocol::{
     Empty, GetSecret, GetSecretParams, Secret, SetSecret, SetSecretParams,
 };
@@ -143,8 +143,10 @@ impl EnvironmentShell {
             cx.background_spawn(async move { krad_store::write_extension_settings(&values) });
         cx.spawn(async move |this, cx| {
             if let Err(error) = writing.await {
-                this.update(cx, |shell, cx| shell.toast(&error.to_string(), cx))
-                    .unwrap_or_default();
+                this.update(cx, |shell, cx| {
+                    shell.toast(ToastKind::Error, &error.to_string(), cx);
+                })
+                .unwrap_or_default();
             }
         })
         .detach();

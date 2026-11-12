@@ -1,7 +1,7 @@
 use gpui_kit::{
     div, px, AnyElement, Context, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
 };
-use krad_domain::{CodeTools, ComposerHeight, ExtensionTools};
+use krad_domain::{ArchiveRetention, CodeTools, ComposerHeight, ExtensionTools};
 
 use super::super::dialog_parts::{segment, SegmentSize};
 use super::{form_row, panel_card, segmented_track, EnvironmentShell, SWATCH_GAP};
@@ -19,6 +19,9 @@ const EXTENSION_TOOLS_HINT: &str = "Agents the app starts can use the tools that
 const COMPOSER_HEIGHT_PREFIX: &str = "composer-height";
 const COMPOSER_HEIGHT_LABEL: &str = "Chat composer height";
 const COMPOSER_HEIGHT_HINT: &str = "How tall the chat composer may grow as you write before it scrolls. It never takes more than a share of the window.";
+const RETENTION_PREFIX: &str = "archive-retention";
+const RETENTION_LABEL: &str = "Keep archived";
+const RETENTION_HINT: &str = "How long each group's Archive keeps closed sessions and chats so they can be reopened. Deleting removes only what the app keeps, never the harness's own conversations. Not at all deletes them on close.";
 const CODE_TOOLS_HINT: &str = "Agents the app starts can ask the editor's language servers for diagnostics, definitions, references and renames. Applies to agents started after the change.";
 
 impl EnvironmentShell {
@@ -32,7 +35,10 @@ impl EnvironmentShell {
             ],
             pal,
         );
-        let composer_card = panel_card(vec![self.composer_height_row(cx)], pal);
+        let composer_card = panel_card(
+            vec![self.composer_height_row(cx), self.archive_retention_row(cx)],
+            pal,
+        );
         let spending_card = self.spending_card(cx);
         let plan_usage_card = self.plan_usage_card(cx);
         div()
@@ -143,6 +149,37 @@ impl EnvironmentShell {
             segmented,
             pal,
         )
+    }
+
+    fn archive_retention_row(&self, cx: &mut Context<Self>) -> AnyElement {
+        let pal = palette(cx);
+        let current = self.settings.archive_retention;
+        let segments = ArchiveRetention::ALL.map(|retention| {
+            segment(
+                (RETENTION_PREFIX, retention as u64),
+                retention.display_name(),
+                None,
+                current == retention,
+                SegmentSize::Compact,
+                pal,
+                cx,
+            )
+            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                this.set_archive_retention(retention, cx);
+            }))
+        });
+        let segmented = segmented_track(pal).children(segments).into_any_element();
+        form_row(RETENTION_LABEL, Some(RETENTION_HINT), segmented, pal)
+    }
+
+    fn set_archive_retention(&mut self, retention: ArchiveRetention, cx: &mut Context<Self>) {
+        if self.settings.archive_retention == retention {
+            return;
+        }
+        self.settings.archive_retention = retention;
+        self.save_settings(cx);
+        self.sweep_archive(cx);
+        cx.notify();
     }
 
     fn set_composer_height(&mut self, height: ComposerHeight, cx: &mut Context<Self>) {

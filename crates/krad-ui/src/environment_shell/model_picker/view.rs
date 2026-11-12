@@ -5,11 +5,12 @@ use gpui_kit::{
     Window,
 };
 use krad_chat::ModelSource;
+use krad_domain::ComposerDesign;
 
 use super::super::EnvironmentShell;
 use super::layout::picker_layout;
 use super::marks::Mark;
-use super::{Choosing, ModelChoice, Shelf};
+use super::{Choosing, ModelChoice, PickFor, Shelf};
 use crate::components::floating::{floating_at, floating_surface, place, Anchor, Side};
 use crate::components::{harness_icon, icon, tooltip_view, IconName};
 use crate::theme::{
@@ -166,7 +167,7 @@ fn element_index(index: usize) -> u64 {
     u64::try_from(index).unwrap_or(u64::MAX)
 }
 
-fn search_row(query: &str, pal: &Palette) -> AnyElement {
+pub(super) fn search_row(query: &str, pal: &Palette) -> AnyElement {
     div()
         .flex_none()
         .flex()
@@ -326,7 +327,7 @@ impl EnvironmentShell {
         default.into_iter().chain(star).collect()
     }
 
-    fn picker_empty_text(&self) -> SharedString {
+    pub(super) fn picker_empty_text(&self) -> SharedString {
         if self.host_agents_known(&self.active) {
             return NO_MODELS_TEXT.into();
         }
@@ -414,6 +415,11 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let picker = self.model_picker.as_ref()?;
+        if self.settings.beta.composer == ComposerDesign::Tray
+            && matches!(picker.target, PickFor::Chat(_))
+        {
+            return self.model_deck_overlay(window, cx);
+        }
         let pal = palette(cx);
         let (root_w, root_h) = self.root_size(window);
         let (x, y) = (

@@ -3,7 +3,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, Entity, FontWeight, InteractiveElement,
     IntoElement, ParentElement, StatefulInteractiveElement, Styled, Subscription, Window,
 };
-use krad_domain::{EnvironmentName, ToolchainScope};
+use krad_domain::{EnvironmentName, ToastKind, ToolchainScope};
 use krad_host::{HostError, HostLink};
 use std::path::{Path, PathBuf};
 
@@ -106,7 +106,7 @@ impl EnvironmentShell {
             return;
         };
         let Some(home) = ssh.home().map(Path::to_path_buf) else {
-            self.toast(NO_HOME_TEXT, cx);
+            self.toast(ToastKind::Warning, NO_HOME_TEXT, cx);
             return;
         };
         let field = cx.new(|cx| InputState::new(window, cx).placeholder(GO_TO_PLACEHOLDER));

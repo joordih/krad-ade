@@ -1,6 +1,6 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_domain::{
-    Automation, AutomationId, AutomationKey, Kraddie, KraddieHistory, KraddieId, Switch,
+    Automation, AutomationId, AutomationKey, Kraddie, KraddieHistory, KraddieId, Switch, ToastKind,
 };
 
 use krad_store::KraddieRename;
@@ -57,8 +57,10 @@ impl EnvironmentShell {
         cx.spawn(async move |this, cx| {
             if let Err(error) = write.await {
                 tracing::warn!(%error, "automations not saved");
-                this.update(cx, |shell, cx| shell.toast(AUTOMATIONS_FAILED, cx))
-                    .unwrap_or_default();
+                this.update(cx, |shell, cx| {
+                    shell.toast(ToastKind::Error, AUTOMATIONS_FAILED, cx);
+                })
+                .unwrap_or_default();
             }
         })
         .detach();
@@ -139,8 +141,10 @@ impl EnvironmentShell {
             cx.spawn(async move |this, cx| {
                 if let Err(error) = renaming.await {
                     tracing::warn!(%error, "kraddie not renamed");
-                    this.update(cx, |shell, cx| shell.toast(RENAME_FAILED, cx))
-                        .unwrap_or_default();
+                    this.update(cx, |shell, cx| {
+                        shell.toast(ToastKind::Error, RENAME_FAILED, cx);
+                    })
+                    .unwrap_or_default();
                 }
             })
             .detach();
@@ -156,8 +160,10 @@ impl EnvironmentShell {
         cx.spawn(async move |this, cx| {
             if let Err(error) = write.await {
                 tracing::warn!(%error, "kraddie not saved");
-                this.update(cx, |shell, cx| shell.toast(SAVE_FAILED, cx))
-                    .unwrap_or_default();
+                this.update(cx, |shell, cx| {
+                    shell.toast(ToastKind::Error, SAVE_FAILED, cx);
+                })
+                .unwrap_or_default();
             }
         })
         .detach();

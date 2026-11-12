@@ -2,7 +2,7 @@ use gpui_kit::component::input::{InputEvent, TextareaState};
 use gpui_kit::{AppContext as _, Context, Entity, SharedString, Subscription, Window};
 use krad_domain::{
     review_message, DiffAnchor, DiffComment, DiffCommentId, EnvironmentName, HunkLines, Session,
-    TerminalId,
+    TerminalId, ToastKind,
 };
 
 use super::super::{EnvironmentShell, LiveEnv};
@@ -300,7 +300,7 @@ impl EnvironmentShell {
             }
         }
         if moved {
-            self.toast(DRAFT_MOVED, cx);
+            self.toast(ToastKind::Warning, DRAFT_MOVED, cx);
         }
         self.refresh_diff_comments(&env, tab);
         self.store();
@@ -344,11 +344,11 @@ impl EnvironmentShell {
             .map_or_default(|group| group.root.clone());
         let message = review_message(&root, &session.diff_comments);
         let Some(recipient) = live.data.review_recipient(session.id) else {
-            self.toast(NO_AGENT, cx);
+            self.toast(ToastKind::Warning, NO_AGENT, cx);
             return;
         };
         if !self.queue_chat_prompt(&env, recipient, &message, cx) {
-            self.toast(NO_AGENT, cx);
+            self.toast(ToastKind::Warning, NO_AGENT, cx);
             return;
         }
         if let Some(session) = self
@@ -360,6 +360,6 @@ impl EnvironmentShell {
         }
         self.refresh_diff_comments(&env, tab);
         self.store();
-        self.toast(REVIEW_SENT, cx);
+        self.toast(ToastKind::Success, REVIEW_SENT, cx);
     }
 }

@@ -1,5 +1,5 @@
 use gpui_kit::{AppContext as _, Context, Window};
-use krad_domain::{Host, LanguageId, LanguageTemplate};
+use krad_domain::{Host, LanguageId, LanguageTemplate, ToastKind};
 use krad_host::HostLink;
 use krad_lsp::lsp_types::Position;
 use krad_repo::EntryKind;
@@ -303,7 +303,7 @@ impl EnvironmentShell {
                 let output = asked.await;
                 this.update_in(cx, |shell, window, cx| match output {
                     Some(output) => shell.write_template_output(&host, output, window, cx),
-                    None => shell.toast(TEMPLATE_FAILED_TEXT, cx),
+                    None => shell.toast(ToastKind::Error, TEMPLATE_FAILED_TEXT, cx),
                 })
                 .unwrap_or_default();
             })
@@ -329,7 +329,11 @@ impl EnvironmentShell {
             let written = writing.await;
             this.update(cx, |shell, cx| {
                 if let Err(error) = written {
-                    shell.toast(&format!("{TEMPLATE_FAILED_TEXT}: {error}"), cx);
+                    shell.toast(
+                        ToastKind::Error,
+                        &format!("{TEMPLATE_FAILED_TEXT}: {error}"),
+                        cx,
+                    );
                     return;
                 }
                 shell.reload_file_tree(cx);

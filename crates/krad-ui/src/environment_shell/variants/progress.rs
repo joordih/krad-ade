@@ -1,6 +1,7 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_domain::{
-    AppEvent, EnvironmentName, TerminalId, VariantEvent, VariantId, VariantRunId, VariantWorktree,
+    AppEvent, EnvironmentName, TerminalId, ToastKind, VariantEvent, VariantId, VariantRunId,
+    VariantWorktree,
 };
 use krad_repo::{run_task, variant_diff_summary, TASK_RUN_TIMEOUT};
 use std::path::PathBuf;
@@ -44,7 +45,10 @@ impl EnvironmentShell {
         let group = found.group;
         if finished {
             self.publish_event(env, Some(group), AppEvent::VariantsFinished { run });
-            self.push_toast(format!("{READY_PREFIX}{run}{READY_SUFFIX}"));
+            self.push_toast(
+                ToastKind::Success,
+                format!("{READY_PREFIX}{run}{READY_SUFFIX}"),
+            );
         }
         self.store();
         cx.notify();

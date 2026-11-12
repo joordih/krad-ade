@@ -2,7 +2,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, ClipboardItem, Context, Div, InteractiveElement, IntoElement,
     ParentElement, StatefulInteractiveElement, Styled,
 };
-use krad_domain::TerminalId;
+use krad_domain::{TerminalId, ToastKind};
 use krad_extensions::MissingServerRuntime;
 use std::path::Path;
 
@@ -135,7 +135,7 @@ impl EnvironmentShell {
                                     cx.write_to_clipboard(ClipboardItem::new_string(
                                         copied.clone(),
                                     ));
-                                    this.push_toast(COPIED_TEXT.to_owned());
+                                    this.push_toast(ToastKind::Success, COPIED_TEXT.to_owned());
                                     cx.notify();
                                 })),
                         ),

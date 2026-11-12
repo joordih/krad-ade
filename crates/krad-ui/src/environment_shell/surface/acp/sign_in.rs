@@ -4,7 +4,7 @@ mod tray;
 use gpui_kit::{AppContext as _, Context};
 use krad_domain::{
     AcpAgent, AcpAuthMethod, AcpAuthMethodId, AcpSignIn, CommandLine, EnvironmentName, NodeKind,
-    TerminalId,
+    TerminalId, ToastKind,
 };
 use std::collections::BTreeMap;
 
@@ -205,7 +205,7 @@ impl EnvironmentShell {
                         };
                         shell.open_sign_in_terminal(id, launch, retry, cx);
                     }
-                    Err(error) => shell.push_toast(error),
+                    Err(error) => shell.push_toast(ToastKind::Error, error),
                 }
                 cx.notify();
             })

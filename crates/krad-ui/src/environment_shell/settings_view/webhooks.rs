@@ -5,7 +5,9 @@ use futures::channel::oneshot;
 use gpui_kit::{
     div, px, AnyElement, AppContext as _, Context, IntoElement, ParentElement, Styled, Window,
 };
-use krad_domain::{AppEvent, DeliveryOutcome, EventRecord, Webhook, WebhookId, WebhookSigning};
+use krad_domain::{
+    AppEvent, DeliveryOutcome, EventRecord, ToastKind, Webhook, WebhookId, WebhookSigning,
+};
 use krad_store::delete_webhook_secret;
 use std::time::SystemTime;
 
@@ -109,8 +111,8 @@ impl EnvironmentShell {
                 return;
             };
             this.update(cx, |shell, cx| match removed {
-                Ok(()) => shell.toast(REMOVED_TOAST, cx),
-                Err(error) => shell.toast(&error.to_string(), cx),
+                Ok(()) => shell.toast(ToastKind::Success, REMOVED_TOAST, cx),
+                Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
             })
             .unwrap_or_default();
         })
@@ -126,8 +128,10 @@ impl EnvironmentShell {
         let sent = cx.background_spawn(async move { deliver_once(&delivery) });
         cx.spawn(async move |this, cx| {
             let outcome = sent.await;
-            this.update(cx, |shell, cx| shell.toast(test_toast(outcome), cx))
-                .unwrap_or_default();
+            this.update(cx, |shell, cx| {
+                shell.toast(ToastKind::Info, test_toast(outcome), cx);
+            })
+            .unwrap_or_default();
         })
         .detach();
     }

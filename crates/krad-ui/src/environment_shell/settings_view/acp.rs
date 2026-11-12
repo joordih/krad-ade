@@ -10,6 +10,7 @@ use gpui_kit::{
 };
 use krad_domain::{
     acp_package, parse_wsl_path, AcpAgent, AcpAgentId, AcpPackage, AcpPackageState, AgentPreset,
+    ToastKind,
 };
 use krad_store::delete_acp_secret;
 
@@ -110,7 +111,7 @@ impl EnvironmentShell {
 
     fn copy_acp_install(&mut self, command: &str, cx: &mut Context<Self>) {
         cx.write_to_clipboard(ClipboardItem::new_string(command.to_owned()));
-        self.toast(COPIED_TOAST, cx);
+        self.toast(ToastKind::Success, COPIED_TOAST, cx);
     }
 
     fn edit_acp_agent(&mut self, id: AcpAgentId, window: &mut Window, cx: &mut Context<Self>) {
@@ -139,8 +140,8 @@ impl EnvironmentShell {
         cx.spawn(async move |this, cx| {
             let removed = removed.await;
             this.update(cx, |shell, cx| match removed {
-                Ok(()) => shell.toast(REMOVED_TOAST, cx),
-                Err(error) => shell.toast(&error.to_string(), cx),
+                Ok(()) => shell.toast(ToastKind::Success, REMOVED_TOAST, cx),
+                Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
             })
             .unwrap_or_default();
         })

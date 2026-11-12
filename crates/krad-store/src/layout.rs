@@ -159,6 +159,45 @@ mod tests {
     }
 
     #[test]
+    fn an_environment_keeps_its_archive_across_a_restart() -> serde_json::Result<()> {
+        let closed = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_hours(24);
+        let mut environment =
+            krad_domain::EnvironmentData::empty(EnvironmentName::new("main".to_owned()));
+        environment
+            .archive
+            .sessions
+            .push(krad_domain::ArchivedSession {
+                id: krad_domain::ArchivedSessionId(1),
+                group: krad_domain::GroupId(1),
+                name: "Refunds".to_owned(),
+                look: krad_domain::SessionLook::default(),
+                closed,
+                chats: Vec::new(),
+                shells: Vec::new(),
+                files: Vec::new(),
+                lead: None,
+                workers: Vec::new(),
+            });
+        let kept = environment.archive.clone();
+        let layout = PersistedLayout {
+            version: LAYOUT_SCHEMA_VERSION,
+            active: environment.name.clone(),
+            environments: vec![environment],
+            unreadable: Vec::new(),
+            work_mode: WorkMode::default(),
+            sidebar_width: SidebarWidth::default(),
+            toolchains: krad_domain::ToolchainChoices::default(),
+        };
+        let back = known_layout(&serde_json::to_vec(&layout)?);
+        assert_eq!(
+            back.and_then(|layout| layout.environments.into_iter().next())
+                .map(|environment| environment.archive),
+            Some(kept)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn writer_lands_the_newest_snapshot() {
         let dir = std::env::temp_dir().join(format!("krad-ade-writer-{}", std::process::id()));
         let path = dir.join(LAYOUT_FILE_NAME);

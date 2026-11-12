@@ -210,6 +210,7 @@ mod tests {
         assert_eq!(
             switches(&entries),
             [
+                ("Notes", true),
                 ("Automations", true),
                 ("Kraddies", false),
                 ("Review", true),
@@ -219,7 +220,7 @@ mod tests {
                 (COMPACT_LABEL, true),
             ]
         );
-        assert!(matches!(entries.get(3), Some(MenuEntry::Separator)));
+        assert!(matches!(entries.get(4), Some(MenuEntry::Separator)));
         assert!(entries
             .iter()
             .all(|entry| matches!(entry, MenuEntry::Separator) || entry.is_switch()));

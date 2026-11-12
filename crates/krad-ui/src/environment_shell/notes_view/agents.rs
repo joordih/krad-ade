@@ -1,5 +1,5 @@
 use gpui_kit::Context;
-use krad_domain::{continue_note_prompt, VAULT_DIR};
+use krad_domain::{continue_note_prompt, ToastKind, VAULT_DIR};
 
 use super::super::sessions::Launch;
 use super::super::EnvironmentShell;
@@ -28,7 +28,7 @@ impl EnvironmentShell {
             None,
             cx,
         );
-        self.push_toast(ASKED_TEXT.to_owned());
+        self.push_toast(ToastKind::Success, ASKED_TEXT.to_owned());
         cx.notify();
     }
 }
