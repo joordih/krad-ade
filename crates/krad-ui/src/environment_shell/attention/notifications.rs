@@ -107,7 +107,13 @@ impl Announcement {
 impl EnvironmentShell {
     pub(super) fn deliver_notifications(&mut self, cx: &mut App) {
         for announcement in std::mem::take(&mut self.attention.outbox) {
-            if !self.attention.queue.contains(&announcement.target) {
+            if !self
+                .runtime
+                .view
+                .attention
+                .queue
+                .contains(&announcement.target)
+            {
                 continue;
             }
             cx.show_system_notification(announcement.notification());
@@ -119,7 +125,7 @@ impl EnvironmentShell {
                 },
             );
         }
-        let queue = &self.attention.queue;
+        let queue = &self.runtime.view.attention.queue;
         let answered: Vec<AttentionTarget> = self
             .attention
             .delivered

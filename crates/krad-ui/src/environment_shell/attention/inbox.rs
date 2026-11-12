@@ -6,6 +6,7 @@ use gpui_kit::{
 use krad_domain::{
     relative_age, AttentionKind, AttentionTarget, InboxFilter, SessionId, Visibility,
 };
+use krad_protocol::AttentionCommand;
 use std::time::Instant;
 
 use super::super::dialog_parts::{segment, SegmentSize};
@@ -78,7 +79,7 @@ impl EnvironmentShell {
     }
 
     pub(in crate::environment_shell) fn attention_waiting(&self) -> bool {
-        !self.attention.queue.is_empty()
+        !self.runtime.view.attention.queue.is_empty()
     }
 
     pub(in crate::environment_shell) const fn attention_inbox_open(&self) -> bool {
@@ -90,7 +91,7 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    fn agent_title(&self, target: &AttentionTarget) -> Option<String> {
+    pub(super) fn agent_title(&self, target: &AttentionTarget) -> Option<String> {
         self.envs
             .get(&target.environment)?
             .data
@@ -102,7 +103,9 @@ impl EnvironmentShell {
 
     fn waiting_rows(&self, now: Instant) -> Vec<InboxRow> {
         let filter = self.attention.filter;
-        self.attention
+        self.runtime
+            .view
+            .attention
             .queue
             .ordered()
             .into_iter()
@@ -117,7 +120,9 @@ impl EnvironmentShell {
     }
 
     fn history_rows(&self, now: Instant) -> Vec<InboxRow> {
-        self.attention
+        self.runtime
+            .view
+            .attention
             .log
             .filtered(self.attention.filter)
             .map(|record| InboxRow {
@@ -225,7 +230,7 @@ impl EnvironmentShell {
                     .text_color(rgb(pal.text_strong))
                     .child(INBOX_TITLE),
             )
-            .when(!self.attention.log.is_empty(), |header| {
+            .when(!self.runtime.view.attention.log.is_empty(), |header| {
                 header.child(
                     div()
                         .id(CLEAR_ID)
@@ -237,9 +242,8 @@ impl EnvironmentShell {
                         .text_color(rgb(pal.text_muted))
                         .hover(|style| style.bg(pal.bg_hover))
                         .child(CLEAR_LABEL)
-                        .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                            this.attention.log.clear();
-                            cx.notify();
+                        .on_click(cx.listener(|this: &mut Self, _, _, _| {
+                            this.tell_attention(AttentionCommand::ClearHistory);
                         })),
                 )
             })

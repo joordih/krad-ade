@@ -37,7 +37,7 @@ pub use cloud_runner_token::{
     write_cloud_claude_token, write_cloud_opencode_password, write_cloud_runner_token,
 };
 pub use config_dir::{acp_adapters_dir, config_dir, gateway_sessions_dir, APP_NAME};
-pub use event_journal::{EventJournal, JournalSend};
+pub use event_journal::{events_dir, EventJournal, JournalSend};
 pub use extension_secret::{
     delete_extension_secret, find_extension_secret, write_extension_secret,
 };

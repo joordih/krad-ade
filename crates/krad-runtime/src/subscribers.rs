@@ -91,6 +91,7 @@ mod tests {
             scope: Scope::Runtime,
             seq: Seq(seq),
             bus: krad_protocol::BusSnapshot::default(),
+            attention: krad_protocol::AttentionSnapshot::default(),
         }
     }
 

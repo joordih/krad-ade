@@ -39,7 +39,8 @@ fn hex(bytes: &[u8]) -> String {
         .collect()
 }
 
-pub(crate) fn signature_header(secret: &WebhookSecret, sent_at: &str, body: &[u8]) -> String {
+#[must_use]
+pub fn signature_header(secret: &WebhookSecret, sent_at: &str, body: &[u8]) -> String {
     let signed = [sent_at.as_bytes(), SIGNED_SEPARATOR, body].concat();
     let digest = hmac_sha256(secret.expose().as_bytes(), &signed);
     format!("{SIGNATURE_PREFIX}{}", hex(&digest))

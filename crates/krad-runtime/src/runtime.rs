@@ -10,6 +10,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::app_events::{AppEvents, EventsSetup};
+use crate::attention::Attention;
 use crate::bus::{open, Bus, BusSetup};
 use crate::handle::RuntimeHandle;
 use crate::input::Input;
@@ -21,9 +23,10 @@ const TICK_INTERVAL: Duration = Duration::from_millis(100);
 const UNSUPPORTED_COMMAND: &str = "this runtime does not know the command";
 const NO_BUS: &str = "this runtime serves no agent bus";
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default)]
 pub struct RuntimeSetup {
     pub bus: Option<BusSetup>,
+    pub events: Option<EventsSetup>,
 }
 
 #[derive(Debug)]
@@ -32,6 +35,8 @@ pub struct Runtime {
     outbox: Vec<EventKind>,
     subscribers: Subscribers,
     bus: Option<Bus>,
+    events: AppEvents,
+    attention: Attention,
     stopped: Arc<AtomicBool>,
 }
 
@@ -55,7 +60,8 @@ impl Runtime {
                 .ok()
                 .map(Arc::new)
         });
-        let runtime = Self::idle(access.clone(), &inbox, stopped);
+        let events = AppEvents::start(setup.events, &inbox);
+        let runtime = Self::idle(access.clone(), events, &inbox, stopped);
         thread::Builder::new()
             .name(THREAD_NAME.to_owned())
             .spawn(move || runtime.run(&input))?;
@@ -65,6 +71,7 @@ impl Runtime {
 
     fn idle(
         access: Option<Arc<crate::bus::BusAccess>>,
+        events: AppEvents,
         inbox: &SyncSender<Input>,
         stopped: Arc<AtomicBool>,
     ) -> Self {
@@ -73,6 +80,8 @@ impl Runtime {
             outbox: Vec::new(),
             subscribers: Subscribers::default(),
             bus: access.map(|access| Bus::new(access, inbox.clone())),
+            events,
+            attention: Attention::default(),
             stopped,
         }
     }
@@ -115,6 +124,7 @@ impl Runtime {
             Input::Subscribe(feed) => self.subscribers.add(feed),
             Input::Snapshot { scope, reply } => answer_to(reply, self.snapshot(scope)),
             Input::Stop => return Flow::Stopping,
+            Input::WebhookTested(tested) => self.outbox.push(EventKind::WebhookTested(tested)),
             Input::Tick => {
                 if let Some(bus) = &mut self.bus {
                     bus.tick(&mut self.outbox);
@@ -154,6 +164,7 @@ impl Runtime {
             | Input::Subscribe(_)
             | Input::Snapshot { .. }
             | Input::Bus(_)
+            | Input::WebhookTested(_)
             | Input::Tick
             | Input::Stop => {}
         }
@@ -172,6 +183,14 @@ impl Runtime {
                 bus.execute(command, &mut self.outbox)
                     .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND))
             }
+            Command::Events(command) => self
+                .events
+                .execute(command, &mut self.outbox)
+                .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
+            Command::Attention(command) => self
+                .attention
+                .execute(command, &mut self.outbox)
+                .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Runtime(RuntimeCommand::Unknown) | Command::Unknown => {
                 refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)
             }
@@ -190,25 +209,27 @@ impl Runtime {
                 }
             })
             .collect();
-        let (seq, bus) = (self.seq, &self.bus);
-        self.subscribers
-            .publish(&events, || snapshot_of(seq, bus.as_ref(), Scope::Runtime));
+        let (seq, bus, attention) = (self.seq, &self.bus, &self.attention);
+        self.subscribers.publish(&events, || {
+            snapshot_of(seq, bus.as_ref(), attention, Scope::Runtime)
+        });
     }
 
     fn snapshot(&self, scope: Scope) -> Snapshot {
-        snapshot_of(self.seq, self.bus.as_ref(), scope)
+        snapshot_of(self.seq, self.bus.as_ref(), &self.attention, scope)
     }
 }
 
-fn snapshot_of(seq: Seq, bus: Option<&Bus>, scope: Scope) -> Snapshot {
+fn snapshot_of(seq: Seq, bus: Option<&Bus>, attention: &Attention, scope: Scope) -> Snapshot {
     Snapshot {
         scope,
         seq,
         bus: bus.map_or_else(BusSnapshot::default, Bus::snapshot),
+        attention: attention.snapshot(),
     }
 }
 
-fn refused(code: ErrorCode, message: &str) -> Reply {
+pub(crate) fn refused(code: ErrorCode, message: &str) -> Reply {
     Reply::Refused {
         code,
         message: message.to_owned(),

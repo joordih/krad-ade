@@ -2,46 +2,23 @@ mod code_host;
 
 use gpui_kit::Task;
 use krad_domain::{
-    AppEvent, EnvironmentName, EventRecord, GroupId, Host, Session, SessionId, Webhook, WebhookId,
+    AppEvent, EnvironmentName, EventRecord, GroupId, Host, Session, SessionId, WebhookId,
 };
-use krad_store::{EventJournal, JournalSend};
+use krad_protocol::{Command, EventsCommand};
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
-use std::time::SystemTime;
 
 use super::groups::{GitKey, GroupGit};
 use super::EnvironmentShell;
-use crate::webhook::{Delivery, WebhookSender};
 
 type SessionKey = (SessionId, Option<GroupId>);
 
-pub(super) struct AppEvents {
-    journal: Option<EventJournal>,
-    pub(super) webhooks: Option<WebhookSender>,
-    pub(super) webhook_secrets: Option<Task<()>>,
+#[derive(Default)]
+pub(super) struct AppEventsUi {
     sessions: HashMap<EnvironmentName, Vec<SessionKey>>,
     code_hosts: code_host::CodeHostWatch,
     delivered: BTreeSet<WebhookId>,
-}
-
-impl AppEvents {
-    pub(super) fn start() -> Self {
-        Self {
-            journal: EventJournal::spawn(),
-            webhooks: WebhookSender::spawn(),
-            webhook_secrets: None,
-            sessions: HashMap::new(),
-            code_hosts: code_host::CodeHostWatch::default(),
-            delivered: BTreeSet::new(),
-        }
-    }
-}
-
-fn undelivered<'a>(
-    wanting: impl Iterator<Item = &'a Webhook>,
-    delivered: &'a BTreeSet<WebhookId>,
-) -> impl Iterator<Item = &'a Webhook> {
-    wanting.filter(move |hook| !delivered.contains(&hook.id))
+    pub(super) webhook_secrets: Option<Task<()>>,
 }
 
 fn same_sessions(seen: Option<&Vec<SessionKey>>, sessions: &[Session]) -> bool {
@@ -84,28 +61,27 @@ impl EnvironmentShell {
         group: Option<GroupId>,
         event: AppEvent,
     ) {
-        let record = EventRecord::new(SystemTime::now(), environment.clone(), group, event);
-        let kind = record.event.kind();
-        tracing::trace!(?kind, "app event");
-        self.observe_kraddie_event(environment, group, &record.event);
-        self.announce_app_event(&record);
-        if let Some(sender) = &self.app_events.webhooks {
-            let wanting = self.settings.webhooks.wanting(kind);
-            for hook in undelivered(wanting, &self.app_events.delivered) {
-                sender.send(Delivery {
-                    hook: hook.clone(),
-                    record: record.clone(),
-                });
-            }
-        }
-        let Some(journal) = &self.app_events.journal else {
-            return;
-        };
-        match journal.record(record) {
-            JournalSend::Queued => {}
-            JournalSend::Full => tracing::warn!(?kind, "event journal full; event not kept"),
-            JournalSend::Stopped => tracing::debug!("event journal stopped"),
-        }
+        self.runtime
+            .handle
+            .post(Command::Events(EventsCommand::Publish {
+                environment: environment.clone(),
+                group,
+                event,
+                delivered: self.app_events.delivered.clone(),
+            }));
+    }
+
+    pub(super) fn use_webhooks(&self) {
+        self.runtime
+            .handle
+            .post(Command::Events(EventsCommand::UseWebhooks {
+                webhooks: self.settings.webhooks.clone(),
+            }));
+    }
+
+    pub(super) fn app_event_heard(&mut self, record: &EventRecord) {
+        self.observe_kraddie_event(&record.environment, record.group, &record.event);
+        self.announce_app_event(record);
     }
 
     pub(super) fn with_webhooks_delivered(
@@ -177,31 +153,6 @@ fn is_changed(roots: &[GitKey], host: &Host, root: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn webhooks_the_runner_delivered_are_left_out() -> Result<(), Box<dyn std::error::Error>> {
-        let hook = |id: u64| -> Result<Webhook, Box<dyn std::error::Error>> {
-            Ok(Webhook {
-                id: WebhookId(id),
-                name: "ci".parse()?,
-                url: "https://hooks.example.test/krad".parse()?,
-                kinds: BTreeSet::new(),
-                signing: krad_domain::WebhookSigning::Unsigned,
-            })
-        };
-        let hooks = [hook(1)?, hook(2)?];
-        let left = |delivered: &BTreeSet<WebhookId>| -> Vec<WebhookId> {
-            undelivered(hooks.iter(), delivered)
-                .map(|hook| hook.id)
-                .collect()
-        };
-        assert_eq!(left(&BTreeSet::new()), vec![WebhookId(1), WebhookId(2)]);
-        assert_eq!(
-            left(&[WebhookId(2)].into_iter().collect()),
-            vec![WebhookId(1)]
-        );
-        Ok(())
-    }
 
     #[test]
     fn sessions_that_appear_open_and_those_that_vanish_close() {

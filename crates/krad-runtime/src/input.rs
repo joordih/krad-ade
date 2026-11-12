@@ -1,6 +1,6 @@
 use futures::channel::{mpsc, oneshot};
 use krad_agents::{AgentInfo, AgentKey, Incoming, Response, StateReason};
-use krad_protocol::{Command, Feed, Reply, RequestId, Scope, Snapshot};
+use krad_protocol::{Command, Feed, Reply, RequestId, Scope, Snapshot, WebhookTest};
 
 use crate::bus::{Delegated, DelegationId, Mail};
 
@@ -36,6 +36,7 @@ pub(crate) enum Input {
         environments: Vec<String>,
         agents: Vec<AgentInfo>,
     },
+    WebhookTested(WebhookTest),
     Tick,
     Stop,
 }

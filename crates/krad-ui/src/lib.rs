@@ -24,7 +24,6 @@ mod theme;
 mod title_bar;
 mod traffic_lights;
 mod typed_text;
-mod webhook;
 mod window_frame;
 
 pub use actions::*;

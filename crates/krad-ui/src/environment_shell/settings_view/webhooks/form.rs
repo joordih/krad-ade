@@ -5,6 +5,7 @@ use gpui_kit::{
     Window,
 };
 use krad_domain::{EventKind, ToastKind, Webhook, WebhookSigning};
+use krad_protocol::{Command, EventsCommand};
 use krad_store::write_webhook_secret;
 use std::collections::BTreeSet;
 
@@ -211,9 +212,10 @@ impl EnvironmentShell {
                 shell.settings.webhooks.save(hook.clone());
                 shell.save_settings(cx);
                 shell.resync_runner_webhooks();
-                if let Some(sender) = &shell.app_events.webhooks {
-                    sender.changed(id, Some(hook));
-                }
+                shell
+                    .runtime
+                    .handle
+                    .post(Command::Events(EventsCommand::SaveWebhook { hook }));
                 shell.toast(ToastKind::Success, SAVED_TOAST, cx);
             })
             .unwrap_or_default();

@@ -10,8 +10,10 @@ futures.workspace = true
 krad-agents.workspace = true
 krad-domain.workspace = true
 krad-protocol.workspace = true
+krad-store.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+ureq.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

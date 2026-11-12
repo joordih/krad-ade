@@ -20,6 +20,12 @@ impl From<SystemTime> for Timestamp {
     }
 }
 
+impl From<Timestamp> for SystemTime {
+    fn from(at: Timestamp) -> Self {
+        Self::from(at.0)
+    }
+}
+
 impl fmt::Display for Timestamp {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.0.to_rfc3339_opts(SecondsFormat::Millis, true))
@@ -46,6 +52,12 @@ mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
     const A_DAY_AND_A_BIT: Duration = Duration::from_millis(86_400_123);
+
+    #[test]
+    fn a_timestamp_goes_back_to_the_same_system_time() {
+        let at = UNIX_EPOCH + A_DAY_AND_A_BIT;
+        assert_eq!(SystemTime::from(Timestamp::from(at)), at);
+    }
 
     #[test]
     fn timestamps_travel_as_rfc_3339_in_utc_with_milliseconds() -> Result<(), serde_json::Error> {

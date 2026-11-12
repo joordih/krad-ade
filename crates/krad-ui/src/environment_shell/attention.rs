@@ -1,19 +1,20 @@
 mod inbox;
 mod jump;
+mod mirror;
 mod notifications;
 
 use gpui_kit::{AnyWindowHandle, App};
 use krad_domain::{
-    AgentState, AttentionKind, AttentionLog, AttentionQueue, AttentionRecord, AttentionTarget,
-    Circumstances, EnvironmentName, EnvironmentView, InboxFilter, SessionAttention, Sight,
-    StateChange, TerminalId, Visibility, WindowFocus,
+    AgentState, AttentionKind, AttentionTarget, Circumstances, EnvironmentName, EnvironmentView,
+    InboxFilter, SessionAttention, Sight, TerminalId, Visibility, WindowFocus,
 };
+use krad_protocol::{AttentionCommand, AttentionNotice, Command};
 use std::collections::HashMap;
-use std::time::Instant;
 
 use super::EnvironmentShell;
 use crate::app_badge::{self, BadgeSignal};
 use crate::{attention_sound, local_clock};
+pub(super) use mirror::AttentionMirror;
 use notifications::{Announcement, Answers, Delivered};
 
 const NO_BADGE: usize = 0;
@@ -26,8 +27,6 @@ enum Flash {
 }
 
 pub(super) struct AttentionUi {
-    queue: AttentionQueue,
-    log: AttentionLog,
     window: WindowFocus,
     window_handle: Option<AnyWindowHandle>,
     outbox: Vec<Announcement>,
@@ -41,8 +40,6 @@ pub(super) struct AttentionUi {
 impl Default for AttentionUi {
     fn default() -> Self {
         Self {
-            queue: AttentionQueue::default(),
-            log: AttentionLog::default(),
             window: WindowFocus::default(),
             window_handle: None,
             outbox: Vec::new(),
@@ -66,18 +63,15 @@ impl EnvironmentShell {
         let waiting_for = self
             .front_ask(env, id)
             .map_or(AttentionKind::Ask, |front| front.kind);
-        let change = StateChange {
-            target: AttentionTarget::new(env.clone(), id),
+        let target = AttentionTarget::new(env.clone(), id);
+        self.tell_attention(AttentionCommand::Observe {
+            title: self.agent_title(&target).unwrap_or_default(),
+            target,
             previous,
             next,
             waiting_for,
             sight: self.sight_of(env, id),
-            at: Instant::now(),
-        };
-        let target = change.target.clone();
-        if let Some(kind) = self.attention.queue.observe(change) {
-            self.announce(target, kind);
-        }
+        });
     }
 
     pub(super) fn raise_attention(
@@ -87,14 +81,12 @@ impl EnvironmentShell {
         kind: AttentionKind,
     ) {
         let target = AttentionTarget::new(env.clone(), id);
-        let sight = self.sight_of(env, id);
-        if let Some(kind) = self
-            .attention
-            .queue
-            .raise(target.clone(), kind, sight, Instant::now())
-        {
-            self.announce(target, kind);
-        }
+        self.tell_attention(AttentionCommand::Raise {
+            title: self.agent_title(&target).unwrap_or_default(),
+            target,
+            kind,
+            sight: self.sight_of(env, id),
+        });
     }
 
     pub(super) fn raise_front_ask(&mut self, env: &EnvironmentName, id: TerminalId) {
@@ -103,23 +95,19 @@ impl EnvironmentShell {
         }
     }
 
-    fn announce(&mut self, target: AttentionTarget, kind: AttentionKind) {
-        let live = self.envs.get(&target.environment);
-        let title = live
-            .and_then(|live| {
-                live.data
-                    .nodes
-                    .iter()
-                    .find(|node| node.id == target.terminal)
-            })
-            .map_or_else(String::new, |node| node.title.clone());
-        let session = self.session_attention_of(&target);
-        self.attention.log.record(AttentionRecord {
-            target: target.clone(),
+    fn tell_attention(&self, command: AttentionCommand) {
+        self.runtime.handle.post(Command::Attention(command));
+    }
+
+    pub(super) fn attention_raised(&mut self, notice: AttentionNotice) {
+        self.runtime.view.attention.raised(&notice);
+        let AttentionNotice {
+            target,
             kind,
-            title: title.clone(),
-            at: Instant::now(),
-        });
+            title,
+            ..
+        } = notice;
+        let session = self.session_attention_of(&target);
         let circumstances = Circumstances {
             window: self.attention.window,
             session,
@@ -165,11 +153,15 @@ impl EnvironmentShell {
 
     pub(super) fn attention_seen(&mut self, env: &EnvironmentName, id: TerminalId) {
         let target = AttentionTarget::new(env.clone(), id);
-        self.attention.queue.seen(&target);
+        if self.runtime.view.attention.queue.contains(&target) {
+            self.tell_attention(AttentionCommand::Seen { target });
+        }
     }
 
     pub(super) fn attention_records(&self) -> impl Iterator<Item = (&'static str, &str)> {
-        self.attention
+        self.runtime
+            .view
+            .attention
             .log
             .filtered(InboxFilter::All)
             .map(|record| (record.kind.display_name(), record.title.as_str()))
@@ -177,7 +169,19 @@ impl EnvironmentShell {
 
     pub(super) fn forget_attention(&mut self, env: &EnvironmentName, id: TerminalId) {
         let target = AttentionTarget::new(env.clone(), id);
-        self.attention.queue.forget(&target);
+        if self.runtime.view.attention.queue.contains(&target) {
+            self.runtime.view.attention.left(&target);
+            self.tell_attention(AttentionCommand::Dismiss { target });
+        }
+    }
+
+    fn is_open(&self, target: &AttentionTarget) -> bool {
+        self.envs.get(&target.environment).is_some_and(|live| {
+            live.data
+                .nodes
+                .iter()
+                .any(|node| node.id == target.terminal)
+        })
     }
 
     fn sight_of(&self, env: &EnvironmentName, id: TerminalId) -> Sight {
@@ -210,15 +214,20 @@ impl EnvironmentShell {
     }
 
     pub(super) fn flush_attention(&mut self, cx: &mut App) {
-        let envs = &self.envs;
-        self.attention.queue.retain(|target| {
-            envs.get(&target.environment).is_some_and(|live| {
-                live.data
-                    .nodes
-                    .iter()
-                    .any(|node| node.id == target.terminal)
-            })
-        });
+        let closed: Vec<AttentionTarget> = self
+            .runtime
+            .view
+            .attention
+            .queue
+            .ordered()
+            .into_iter()
+            .map(|entry| &entry.target)
+            .filter(|target| !self.is_open(target))
+            .cloned()
+            .collect();
+        for target in closed {
+            self.forget_attention(&target.environment, target.terminal);
+        }
         self.deliver_notifications(cx);
         self.show_badge();
         self.flash_window(cx);
@@ -227,7 +236,9 @@ impl EnvironmentShell {
     fn show_badge(&mut self) {
         let settings = self.settings.attention;
         let count = if settings.badge.is_on() {
-            self.attention
+            self.runtime
+                .view
+                .attention
                 .queue
                 .ordered()
                 .into_iter()

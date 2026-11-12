@@ -222,7 +222,7 @@ pub struct EnvironmentShell {
     app_updates: app_update::AppUpdates,
     extensions: extensions::Extensions,
     attention: attention::AttentionUi,
-    app_events: app_events::AppEvents,
+    app_events: app_events::AppEventsUi,
     kraddies: kraddies::KraddiesUi,
     automations: automations::AutomationsUi,
     variants: variants::VariantsUi,
@@ -382,7 +382,7 @@ impl EnvironmentShell {
             app_updates: app_update::AppUpdates::default(),
             extensions: extensions::Extensions::default(),
             attention: attention::AttentionUi::default(),
-            app_events: app_events::AppEvents::start(),
+            app_events: app_events::AppEventsUi::default(),
             kraddies: kraddies::KraddiesUi::default(),
             automations: automations::AutomationsUi::default(),
             variants: variants::VariantsUi::default(),
@@ -415,6 +415,7 @@ impl EnvironmentShell {
         cx.observe(&self.copy_feedback, |_, _, cx| cx.notify())
             .detach();
         self.follow_runtime(cx);
+        self.use_webhooks();
         self.start_agent_bus(cx);
         self.check_gateway(cx);
         self.start_app_updates(cx);

@@ -24,18 +24,20 @@ pub enum JournalSend {
     Stopped,
 }
 
+#[derive(Debug)]
 pub struct EventJournal {
     queue: Option<SyncSender<EventRecord>>,
     worker: Option<JoinHandle<()>>,
 }
 
+#[must_use]
+pub fn events_dir() -> Option<PathBuf> {
+    Some(config_dir()?.join(EVENTS_DIR))
+}
+
 impl EventJournal {
     #[must_use]
-    pub fn spawn() -> Option<Self> {
-        Self::spawn_in(config_dir()?.join(EVENTS_DIR))
-    }
-
-    fn spawn_in(dir: PathBuf) -> Option<Self> {
+    pub fn spawn(dir: PathBuf) -> Option<Self> {
         let (queue, inbox) = sync_channel::<EventRecord>(JOURNAL_QUEUE);
         let worker = std::thread::Builder::new()
             .name(JOURNAL_THREAD_NAME.to_owned())
@@ -282,7 +284,7 @@ mod tests {
     #[test]
     fn the_writer_thread_appends_what_it_is_sent() {
         let folder = Folder::new("writer");
-        let journal = EventJournal::spawn_in(folder.0.clone());
+        let journal = EventJournal::spawn(folder.0.clone());
         assert!(journal.is_some(), "a journal thread starts");
         if let Some(journal) = journal {
             assert_eq!(journal.record(record(1)), JournalSend::Queued);

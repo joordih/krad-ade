@@ -28,7 +28,13 @@ impl EnvironmentShell {
             .get(&self.active)
             .and_then(|live| live.focused)
             .map(|id| AttentionTarget::new(self.active.clone(), id));
-        let next = self.attention.queue.next_after(current.as_ref()).cloned();
+        let next = self
+            .runtime
+            .view
+            .attention
+            .queue
+            .next_after(current.as_ref())
+            .cloned();
         match next {
             Some(target) => self.open_attention(&target, window, cx),
             None => self.push_toast(ToastKind::Warning, NOTHING_WAITING.to_owned()),
@@ -42,13 +48,7 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let open = self.envs.get(&target.environment).is_some_and(|live| {
-            live.data
-                .nodes
-                .iter()
-                .any(|node| node.id == target.terminal)
-        });
-        if !open {
+        if !self.is_open(target) {
             self.push_toast(ToastKind::Warning, AGENT_GONE.to_owned());
             cx.notify();
             return;

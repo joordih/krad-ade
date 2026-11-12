@@ -5,17 +5,14 @@ use futures::channel::oneshot;
 use gpui_kit::{
     div, px, AnyElement, AppContext as _, Context, IntoElement, ParentElement, Styled, Window,
 };
-use krad_domain::{
-    AppEvent, DeliveryOutcome, EventRecord, ToastKind, Webhook, WebhookId, WebhookSigning,
-};
+use krad_domain::{DeliveryOutcome, ToastKind, Webhook, WebhookId, WebhookSigning};
+use krad_protocol::{Command, EventsCommand, WebhookTest};
 use krad_store::delete_webhook_secret;
-use std::time::SystemTime;
 
 use super::sections::{empty_row, footnote, pane_column, settings_section};
 use super::{form_row, panel_card, EnvironmentShell};
 use crate::components::{Button, ButtonVariant, IconName};
 use crate::theme::{palette, Palette, SPACE_2};
-use crate::webhook::{deliver_once, Delivery};
 use form::WebhookForm;
 
 const HOOKS_TITLE: &str = "Webhooks";
@@ -101,9 +98,9 @@ impl EnvironmentShell {
             return;
         }
         self.save_settings(cx);
-        if let Some(sender) = &self.app_events.webhooks {
-            sender.changed(id, None);
-        }
+        self.runtime
+            .handle
+            .post(Command::Events(EventsCommand::RemoveWebhook { hook: id }));
         cx.notify();
         let removed = self.queue_secret_change(move || delete_webhook_secret(id), cx);
         cx.spawn(async move |this, cx| {
@@ -119,21 +116,25 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn test_webhook(&mut self, id: WebhookId, cx: &mut Context<Self>) {
-        let Some(hook) = self.settings.webhooks.find(id).cloned() else {
+    fn test_webhook(&self, id: WebhookId) {
+        if self.settings.webhooks.find(id).is_none() {
             return;
-        };
-        let record = EventRecord::new(SystemTime::now(), self.active.clone(), None, AppEvent::Ping);
-        let delivery = Delivery { hook, record };
-        let sent = cx.background_spawn(async move { deliver_once(&delivery) });
-        cx.spawn(async move |this, cx| {
-            let outcome = sent.await;
-            this.update(cx, |shell, cx| {
-                shell.toast(ToastKind::Info, test_toast(outcome), cx);
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+        }
+        self.runtime
+            .handle
+            .post(Command::Events(EventsCommand::TestWebhook {
+                hook: id,
+                environment: self.active.clone(),
+            }));
+    }
+
+    pub(in crate::environment_shell) fn webhook_tested(
+        &mut self,
+        tested: WebhookTest,
+        cx: &mut Context<Self>,
+    ) {
+        tracing::debug!(webhook = %tested.hook, outcome = ?tested.outcome, "webhook tested");
+        self.toast(ToastKind::Info, test_toast(tested.outcome), cx);
     }
 
     fn webhook_row(hook: &Webhook, pal: &Palette, cx: &mut Context<Self>) -> AnyElement {
@@ -145,24 +146,24 @@ impl EnvironmentShell {
                 .small()
                 .variant(ButtonVariant::Secondary)
         };
-        let controls =
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(SPACE_2))
-                .child(button(TEST_PREFIX, TEST_LABEL).on_click(
-                    cx.listener(move |this: &mut Self, _, _, cx| this.test_webhook(id, cx)),
-                ))
-                .child(button(EDIT_PREFIX, EDIT_LABEL).on_click(cx.listener(
-                    move |this: &mut Self, _, window, cx| {
-                        this.open_webhook_form(Some(edited.clone()), window, cx);
-                    },
-                )))
-                .child(button(REMOVE_PREFIX, REMOVE_LABEL).on_click(
-                    cx.listener(move |this: &mut Self, _, _, cx| this.remove_webhook(id, cx)),
-                ))
-                .into_any_element();
+        let controls = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(SPACE_2))
+            .child(
+                button(TEST_PREFIX, TEST_LABEL)
+                    .on_click(cx.listener(move |this: &mut Self, _, _, _| this.test_webhook(id))),
+            )
+            .child(button(EDIT_PREFIX, EDIT_LABEL).on_click(cx.listener(
+                move |this: &mut Self, _, window, cx| {
+                    this.open_webhook_form(Some(edited.clone()), window, cx);
+                },
+            )))
+            .child(button(REMOVE_PREFIX, REMOVE_LABEL).on_click(
+                cx.listener(move |this: &mut Self, _, _, cx| this.remove_webhook(id, cx)),
+            ))
+            .into_any_element();
         form_row(hook.name.as_str(), Some(&hook_detail(hook)), controls, pal)
     }
 

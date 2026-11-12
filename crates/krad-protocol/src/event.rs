@@ -1,5 +1,8 @@
+use krad_domain::{AttentionTarget, EventRecord};
 use serde::{Deserialize, Serialize};
 
+use crate::app_events::WebhookTest;
+use crate::attention::{AttentionNotice, AttentionSnapshot};
 use crate::bus::{AskId, AskSettlement, BusSnapshot, MailCount, PendingAsk, StatusReport};
 use crate::ids::{RequestId, Seq};
 
@@ -22,6 +25,13 @@ pub enum EventKind {
         ask: AskId,
         settlement: AskSettlement,
     },
+    AppEvent(EventRecord),
+    WebhookTested(WebhookTest),
+    AttentionRaised(AttentionNotice),
+    AttentionLeft {
+        target: AttentionTarget,
+    },
+    AttentionHistoryCleared,
     #[serde(other)]
     Unknown,
 }
@@ -38,6 +48,8 @@ pub struct Snapshot {
     pub seq: Seq,
     #[serde(default)]
     pub bus: BusSnapshot,
+    #[serde(default)]
+    pub attention: AttentionSnapshot,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -86,6 +98,7 @@ mod tests {
                 scope: Scope::Runtime,
                 seq: Seq(2),
                 bus: BusSnapshot::default(),
+                attention: AttentionSnapshot::default(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

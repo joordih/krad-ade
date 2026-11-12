@@ -28,6 +28,7 @@ const NO_DELEGATION: &str = "no request was delegated";
 fn with_bus() -> Result<RuntimeHandle, Box<dyn Error>> {
     Ok(Runtime::start(RuntimeSetup {
         bus: Some(BusSetup::default()),
+        ..RuntimeSetup::default()
     })?)
 }
 

@@ -53,4 +53,5 @@ pub use protocol::{
 };
 pub use server::{serve, Endpoint, Incoming, RequestSink, SinkClosed, HEARTBEAT_INTERVAL};
 pub use token::new_token;
+pub use webhook::signature::signature_header as webhook_signature;
 pub use webhook::{webhook_request, WebhookPostError, WebhookRequest};

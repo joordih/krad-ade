@@ -5,6 +5,7 @@ use krad_protocol::{AgentRef, AskId, BusSnapshot, EventKind, Feed, MailCount, St
 use krad_runtime::RuntimeHandle;
 use std::collections::{BTreeSet, HashMap};
 
+use super::attention::AttentionMirror;
 use super::EnvironmentShell;
 
 type AgentSpot = (EnvironmentName, TerminalId);
@@ -32,6 +33,7 @@ pub(super) struct RuntimeView {
     statuses: HashMap<AgentSpot, AgentStatus>,
     asks: BTreeSet<AskId>,
     pub(super) mail: MailNotices,
+    pub(super) attention: AttentionMirror,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -113,14 +115,24 @@ impl EnvironmentShell {
 
     fn apply_runtime_feed(&mut self, feed: Feed, cx: &mut Context<Self>) {
         match feed {
-            Feed::Snapshot(snapshot) => self.apply_bus_snapshot(snapshot.bus),
-            Feed::Event(event) => self.apply_runtime_event(event.kind),
+            Feed::Snapshot(snapshot) => {
+                self.apply_bus_snapshot(snapshot.bus);
+                self.runtime.view.attention.replace(snapshot.attention);
+            }
+            Feed::Event(event) => self.apply_runtime_event(event.kind, cx),
         }
+        self.flush_attention(cx);
+        self.flush_kraddies(cx);
         cx.notify();
     }
 
-    fn apply_runtime_event(&mut self, kind: EventKind) {
+    fn apply_runtime_event(&mut self, kind: EventKind, cx: &mut Context<Self>) {
         match kind {
+            EventKind::AppEvent(record) => self.app_event_heard(&record),
+            EventKind::WebhookTested(tested) => self.webhook_tested(tested, cx),
+            EventKind::AttentionRaised(notice) => self.attention_raised(notice),
+            EventKind::AttentionLeft { target } => self.runtime.view.attention.left(&target),
+            EventKind::AttentionHistoryCleared => self.runtime.view.attention.history_cleared(),
             EventKind::AgentStatus(report) => self.agent_status_heard(report),
             EventKind::Mail(mail) => self.runtime.view.mail.set(mail),
             EventKind::AskPending(pending) => {

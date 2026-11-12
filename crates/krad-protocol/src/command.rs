@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::app_events::EventsCommand;
+use crate::attention::AttentionCommand;
 use crate::bus::BusCommand;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -7,6 +9,8 @@ use crate::bus::BusCommand;
 pub enum Command {
     Runtime(RuntimeCommand),
     Bus(BusCommand),
+    Events(EventsCommand),
+    Attention(AttentionCommand),
     #[serde(other)]
     Unknown,
 }

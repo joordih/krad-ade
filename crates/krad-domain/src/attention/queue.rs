@@ -1,5 +1,6 @@
 use crate::agent::AgentState;
 use crate::ids::{EnvironmentName, TerminalId};
+use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -9,13 +10,15 @@ pub enum WindowFocus {
     Background,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Sight {
     Watched,
     Unwatched,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AttentionKind {
     Permission,
     Ask,
@@ -73,7 +76,7 @@ impl Transition {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AttentionTarget {
     pub environment: EnvironmentName,
     pub terminal: TerminalId,
@@ -150,6 +153,11 @@ impl AttentionQueue {
             since: at,
         });
         Some(kind)
+    }
+
+    pub fn insert(&mut self, entry: AttentionEntry) {
+        self.forget(&entry.target);
+        self.entries.push(entry);
     }
 
     pub fn seen(&mut self, target: &AttentionTarget) {
@@ -416,5 +424,18 @@ mod tests {
         );
         assert_eq!(queue.next_after(None), Some(&second));
         assert_eq!(queue.len(), 2);
+    }
+
+    #[test]
+    fn an_inserted_entry_replaces_the_one_of_its_target() {
+        let first = target("main", 1);
+        let mut queue = queue_of(&[(first.clone(), AttentionKind::Finished)]);
+        queue.insert(AttentionEntry {
+            target: first.clone(),
+            kind: AttentionKind::Permission,
+            since: Instant::now(),
+        });
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue.kind_of(&first), Some(AttentionKind::Permission));
     }
 }

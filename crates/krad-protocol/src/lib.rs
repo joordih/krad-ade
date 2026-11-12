@@ -1,9 +1,13 @@
+mod app_events;
+mod attention;
 mod bus;
 mod command;
 mod event;
 mod frame;
 mod ids;
 
+pub use app_events::{EventsCommand, WebhookTest};
+pub use attention::{AttentionCommand, AttentionNotice, AttentionSnapshot, AttentionWaiting};
 pub use bus::{
     AgentRef, AskId, AskRequest, AskSettlement, BusCommand, BusSnapshot, MailCount, PendingAsk,
     StatusReport,

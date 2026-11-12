@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::ops::RangeInclusive;
 use std::time::Duration;
 
@@ -10,7 +11,8 @@ const CLIENT_ERROR_STATUSES: RangeInclusive<u16> = 400..=499;
 const REQUEST_TIMEOUT_STATUS: u16 = 408;
 const TOO_MANY_REQUESTS_STATUS: u16 = 429;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DeliveryOutcome {
     Delivered,
     Refused,

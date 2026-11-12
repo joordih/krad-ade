@@ -3,11 +3,15 @@ use krad_domain::{
     next_delivery_step, DeliveryOutcome, DeliveryStep, EventRecord, Webhook, WebhookId,
     WebhookSecret, WebhookSigning,
 };
-use krad_store::find_webhook_secret;
+use krad_protocol::WebhookTest;
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use ureq::Agent;
+
+use super::WebhookSecrets;
+use crate::input::Input;
 
 const SENDER_THREAD_NAME: &str = "krad-ade-webhooks";
 const SENDER_QUEUE: usize = 128;
@@ -22,19 +26,24 @@ pub(crate) struct Delivery {
 
 enum Order {
     Deliver(Delivery),
+    Test(Delivery),
     Changed(WebhookId, Option<Webhook>),
 }
 
+#[derive(Debug)]
 pub(crate) struct WebhookSender {
     queue: SyncSender<Order>,
 }
 
 impl WebhookSender {
-    pub(crate) fn spawn() -> Option<Self> {
+    pub(crate) fn spawn(
+        secrets: Arc<dyn WebhookSecrets>,
+        report: SyncSender<Input>,
+    ) -> Option<Self> {
         let (queue, inbox) = sync_channel::<Order>(SENDER_QUEUE);
         std::thread::Builder::new()
             .name(SENDER_THREAD_NAME.to_owned())
-            .spawn(move || serve(&inbox))
+            .spawn(move || serve(&inbox, secrets, &report))
             .map_err(|error| tracing::warn!(%error, "the webhook sender did not start"))
             .ok()?;
         Some(Self { queue })
@@ -44,6 +53,13 @@ impl WebhookSender {
         let hook = delivery.hook.id;
         if self.queue.try_send(Order::Deliver(delivery)).is_err() {
             tracing::warn!(webhook = %hook, "webhook queue full; event dropped");
+        }
+    }
+
+    pub(crate) fn test(&self, delivery: Delivery) {
+        let hook = delivery.hook.id;
+        if self.queue.try_send(Order::Test(delivery)).is_err() {
+            tracing::warn!(webhook = %hook, "webhook queue full; test dropped");
         }
     }
 
@@ -109,27 +125,31 @@ impl Retries {
     }
 }
 
-#[derive(Default)]
 struct Secrets {
+    store: Arc<dyn WebhookSecrets>,
     known: HashMap<WebhookId, Option<WebhookSecret>>,
 }
 
 impl Secrets {
+    fn new(store: Arc<dyn WebhookSecrets>) -> Self {
+        Self {
+            store,
+            known: HashMap::new(),
+        }
+    }
+
     fn of(&mut self, hook: WebhookId) -> Option<WebhookSecret> {
+        let store = &self.store;
         self.known
             .entry(hook)
-            .or_insert_with(|| read_secret(hook))
+            .or_insert_with(|| store.find(hook))
             .clone()
     }
-}
 
-fn read_secret(hook: WebhookId) -> Option<WebhookSecret> {
-    match find_webhook_secret(hook) {
-        Ok(found) => found.map(|(secret, _)| secret),
-        Err(error) => {
-            tracing::warn!(webhook = %hook, %error, "webhook secret unreadable");
-            None
-        }
+    fn fresh(&self, hook: &Webhook) -> Option<WebhookSecret> {
+        (hook.signing == WebhookSigning::Signed)
+            .then(|| self.store.find(hook.id))
+            .flatten()
     }
 }
 
@@ -151,27 +171,24 @@ struct Outbox {
 }
 
 impl Outbox {
-    fn take(&mut self, order: Order, secrets: &mut Secrets, now: Instant) {
-        match order {
-            Order::Deliver(Delivery { hook, record }) => {
-                let id = hook.id;
-                self.hooks.insert(id, hook);
-                self.retries.push(Pending {
-                    hook: id,
-                    record,
-                    attempt: 1,
-                    due: now,
-                });
-            }
-            Order::Changed(id, Some(hook)) => {
-                secrets.known.remove(&id);
-                self.hooks.insert(id, hook);
-            }
-            Order::Changed(id, None) => {
-                secrets.known.remove(&id);
-                self.hooks.remove(&id);
-                self.retries.forget(id);
-            }
+    fn deliver(&mut self, Delivery { hook, record }: Delivery, now: Instant) {
+        let id = hook.id;
+        self.hooks.insert(id, hook);
+        self.retries.push(Pending {
+            hook: id,
+            record,
+            attempt: 1,
+            due: now,
+        });
+    }
+
+    fn changed(&mut self, id: WebhookId, now: Option<Webhook>, secrets: &mut Secrets) {
+        secrets.known.remove(&id);
+        if let Some(hook) = now {
+            self.hooks.insert(id, hook);
+        } else {
+            self.hooks.remove(&id);
+            self.retries.forget(id);
         }
     }
 
@@ -184,13 +201,28 @@ impl Outbox {
     }
 }
 
-fn serve(inbox: &Receiver<Order>) {
+fn test(agent: &Agent, delivery: &Delivery, secrets: &Secrets, report: &SyncSender<Input>) {
+    let secret = secrets.fresh(&delivery.hook);
+    let outcome = post(agent, &delivery.hook, &delivery.record, secret.as_ref());
+    let tested = WebhookTest {
+        hook: delivery.hook.id,
+        outcome,
+    };
+    if report.send(Input::WebhookTested(tested)).is_err() {
+        tracing::debug!("a webhook test ended after the runtime stopped");
+    }
+}
+
+fn serve(inbox: &Receiver<Order>, store: Arc<dyn WebhookSecrets>, report: &SyncSender<Input>) {
     let agent = webhook_agent(REQUEST_TIMEOUT);
     let mut outbox = Outbox::default();
-    let mut secrets = Secrets::default();
+    let mut secrets = Secrets::new(store);
     while let Ok(order) = next_order(inbox, outbox.retries.wait(Instant::now())) {
-        if let Some(order) = order {
-            outbox.take(order, &mut secrets, Instant::now());
+        match order {
+            Some(Order::Test(delivery)) => test(&agent, &delivery, &secrets, report),
+            Some(Order::Deliver(delivery)) => outbox.deliver(delivery, Instant::now()),
+            Some(Order::Changed(id, now)) => outbox.changed(id, now, &mut secrets),
+            None => {}
         }
         for (hook, pending) in outbox.due(Instant::now()) {
             let secret = secrets.of(hook.id);
@@ -250,22 +282,20 @@ fn post(
     }
 }
 
-pub(crate) fn deliver_once(delivery: &Delivery) -> DeliveryOutcome {
-    let signed = delivery.hook.signing == WebhookSigning::Signed;
-    let secret = signed.then(|| read_secret(delivery.hook.id)).flatten();
-    post(
-        &webhook_agent(REQUEST_TIMEOUT),
-        &delivery.hook,
-        &delivery.record,
-        secret.as_ref(),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use krad_domain::{AppEvent, EnvironmentName, WEBHOOK_FIRST_BACKOFF, WEBHOOK_MAX_ATTEMPTS};
     use std::time::SystemTime;
+
+    #[derive(Debug)]
+    struct NoSecrets;
+
+    impl WebhookSecrets for NoSecrets {
+        fn find(&self, _: WebhookId) -> Option<WebhookSecret> {
+            None
+        }
+    }
 
     fn delivery(id: u64) -> Delivery {
         Delivery {
@@ -346,15 +376,15 @@ mod tests {
     fn a_retry_goes_to_the_hook_as_it_is_now_and_a_removed_hook_gets_none() {
         let now = Instant::now();
         let mut outbox = Outbox::default();
-        let mut secrets = Secrets::default();
-        outbox.take(Order::Deliver(delivery(1)), &mut secrets, now);
-        outbox.take(Order::Deliver(delivery(2)), &mut secrets, now);
+        let mut secrets = Secrets::new(Arc::new(NoSecrets));
+        outbox.deliver(delivery(1), now);
+        outbox.deliver(delivery(2), now);
         let mut moved = delivery(1).hook;
         moved.url = "https://hooks.example.test/moved"
             .parse()
             .unwrap_or_else(|_| unreachable!("a url"));
-        outbox.take(Order::Changed(WebhookId(1), Some(moved)), &mut secrets, now);
-        outbox.take(Order::Changed(WebhookId(2), None), &mut secrets, now);
+        outbox.changed(WebhookId(1), Some(moved), &mut secrets);
+        outbox.changed(WebhookId(2), None, &mut secrets);
         let due = outbox.due(now);
         let sent: Vec<(WebhookId, &str)> = due
             .iter()
