@@ -1,9 +1,9 @@
-use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
 use krad_agents::{terminal_env, Caller, ErrorCode, PromptAnswer, Request, Response, ASKPASS_WAIT};
 use krad_domain::{parse_wsl_path, EnvironmentName};
 use krad_host::mux::{askpass_alias, PromptAsker, SignInPrompt};
 use krad_repo::Askpass;
+use krad_runtime::BusReply;
 use krad_store::config_dir;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -44,12 +44,7 @@ impl AskpassPlan {
 }
 
 impl EnvironmentShell {
-    pub(super) fn answer_git(
-        &mut self,
-        request: Request,
-        reply: ReplySender<Response>,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn answer_git(&mut self, request: Request, reply: BusReply, cx: &mut Context<Self>) {
         let Request::Askpass { prompt } = request else {
             reply.send(git_only()).unwrap_or_default();
             return;
@@ -84,7 +79,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         root: &Path,
     ) -> AskpassPlan {
-        let (Some(bus), Some(live)) = (&self.agent_bus, self.envs.get(env)) else {
+        let (Some(bus), Some(live)) = (self.runtime.handle.bus(), self.envs.get(env)) else {
             return AskpassPlan::Off;
         };
         let caller = Caller::Git(env.as_str().to_owned());

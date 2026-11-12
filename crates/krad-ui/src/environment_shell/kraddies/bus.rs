@@ -1,10 +1,10 @@
-use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
 use krad_agents::{
     AutomationInfo, AutomationRunInfo, ErrorCode, KraddieInfo, KraddieMemoryInfo, KraddieRunInfo,
     Request, Response,
 };
 use krad_domain::{AutomationKey, AutomationQuery, KraddieId, KraddieWake, Switch, ToastKind};
+use krad_runtime::BusReply;
 
 use super::super::EnvironmentShell;
 use super::clock::{next_run, next_run_stamp, trigger_label};
@@ -25,7 +25,7 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn answer_kraddies(
         &mut self,
         request: Request,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let response = match request {

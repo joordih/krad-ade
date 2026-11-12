@@ -1,12 +1,16 @@
 use futures::channel::oneshot;
 use krad_protocol::{
-    Command, ErrorCode, Event, EventKind, Reply, RequestId, RuntimeCommand, Scope, Seq, Snapshot,
+    BusSnapshot, Command, ErrorCode, Event, EventKind, Reply, RequestId, RuntimeCommand, Scope,
+    Seq, Snapshot,
 };
 use std::io;
-use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::bus::{open, Bus, BusSetup};
 use crate::handle::RuntimeHandle;
 use crate::input::Input;
 use crate::subscribers::Subscribers;
@@ -15,12 +19,26 @@ const THREAD_NAME: &str = "krad-runtime";
 const INPUT_CAPACITY: usize = 1024;
 const TICK_INTERVAL: Duration = Duration::from_millis(100);
 const UNSUPPORTED_COMMAND: &str = "this runtime does not know the command";
+const NO_BUS: &str = "this runtime serves no agent bus";
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RuntimeSetup {
+    pub bus: Option<BusSetup>,
+}
 
 #[derive(Debug)]
 pub struct Runtime {
     seq: Seq,
     outbox: Vec<EventKind>,
     subscribers: Subscribers,
+    bus: Option<Bus>,
+    stopped: Arc<AtomicBool>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Flow {
+    Running,
+    Stopping,
 }
 
 impl Runtime {
@@ -28,20 +46,34 @@ impl Runtime {
     ///
     /// Fails when the runtime's thread cannot be spawned.
     #[tracing::instrument(skip_all)]
-    pub fn start() -> io::Result<RuntimeHandle> {
+    pub fn start(setup: RuntimeSetup) -> io::Result<RuntimeHandle> {
         let (inbox, input) = sync_channel(INPUT_CAPACITY);
+        let stopped = Arc::new(AtomicBool::new(false));
+        let access = setup.bus.and_then(|bus| {
+            open(bus, inbox.clone(), Arc::clone(&stopped))
+                .inspect_err(|error| tracing::warn!(%error, "the agent bus could not start"))
+                .ok()
+                .map(Arc::new)
+        });
+        let runtime = Self::idle(access.clone(), &inbox, stopped);
         thread::Builder::new()
             .name(THREAD_NAME.to_owned())
-            .spawn(move || Self::idle().run(&input))?;
+            .spawn(move || runtime.run(&input))?;
         tracing::info!("runtime started");
-        Ok(RuntimeHandle::new(inbox))
+        Ok(RuntimeHandle::new(inbox, access))
     }
 
-    fn idle() -> Self {
+    fn idle(
+        access: Option<Arc<crate::bus::BusAccess>>,
+        inbox: &SyncSender<Input>,
+        stopped: Arc<AtomicBool>,
+    ) -> Self {
         Self {
             seq: Seq::default(),
             outbox: Vec::new(),
             subscribers: Subscribers::default(),
+            bus: access.map(|access| Bus::new(access, inbox.clone())),
+            stopped,
         }
     }
 
@@ -59,15 +91,22 @@ impl Runtime {
                 next_tick = Instant::now() + TICK_INTERVAL;
                 batch.push(Input::Tick);
             }
+            let mut flow = Flow::Running;
             for input in batch {
-                self.apply(input);
+                if self.apply(input) == Flow::Stopping {
+                    flow = Flow::Stopping;
+                }
             }
             self.flush();
+            if flow == Flow::Stopping {
+                break;
+            }
         }
+        self.stopped.store(true, Ordering::Release);
         tracing::info!("runtime stopped");
     }
 
-    fn apply(&mut self, input: Input) {
+    fn apply(&mut self, input: Input) -> Flow {
         match input {
             Input::Command { id, command, reply } => {
                 let answer = self.execute(id, &command);
@@ -75,7 +114,48 @@ impl Runtime {
             }
             Input::Subscribe(feed) => self.subscribers.add(feed),
             Input::Snapshot { scope, reply } => answer_to(reply, self.snapshot(scope)),
-            Input::Tick => {}
+            Input::Stop => return Flow::Stopping,
+            Input::Tick => {
+                if let Some(bus) = &mut self.bus {
+                    bus.tick(&mut self.outbox);
+                }
+            }
+            Input::Bus(incoming) => {
+                let Some(bus) = &mut self.bus else {
+                    tracing::debug!("a bus request reached a runtime without a bus");
+                    return Flow::Running;
+                };
+                bus.answer(incoming, &mut self.outbox);
+            }
+            bus_input => self.apply_bus(bus_input),
+        }
+        Flow::Running
+    }
+
+    fn apply_bus(&mut self, input: Input) {
+        let Some(bus) = &mut self.bus else {
+            return;
+        };
+        let outbox = &mut self.outbox;
+        match input {
+            Input::BusRespond {
+                delegation,
+                response,
+            } => bus.respond(delegation, response),
+            Input::BusMail { delegation, mail } => bus.post_mail(delegation, mail, outbox),
+            Input::BusDropped(delegation) => bus.dropped(delegation),
+            Input::Delegate(delegate) => bus.delegate_to(delegate),
+            Input::ObserveAgent { key, seen, hint } => bus.observe(&key, seen, hint, outbox),
+            Input::ReconcileAgents {
+                environments,
+                agents,
+            } => bus.reconcile(&environments, agents, outbox),
+            Input::Command { .. }
+            | Input::Subscribe(_)
+            | Input::Snapshot { .. }
+            | Input::Bus(_)
+            | Input::Tick
+            | Input::Stop => {}
         }
     }
 
@@ -85,10 +165,16 @@ impl Runtime {
                 self.outbox.push(EventKind::Pong { request: id });
                 Reply::Accepted
             }
-            Command::Runtime(RuntimeCommand::Unknown) | Command::Unknown => Reply::Refused {
-                code: ErrorCode::Unsupported,
-                message: UNSUPPORTED_COMMAND.to_owned(),
-            },
+            Command::Bus(command) => {
+                let Some(bus) = &mut self.bus else {
+                    return refused(ErrorCode::Unsupported, NO_BUS);
+                };
+                bus.execute(command, &mut self.outbox)
+                    .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND))
+            }
+            Command::Runtime(RuntimeCommand::Unknown) | Command::Unknown => {
+                refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)
+            }
         }
     }
 
@@ -104,20 +190,33 @@ impl Runtime {
                 }
             })
             .collect();
-        let snapshot = self.snapshot(Scope::Runtime);
-        self.subscribers.publish(&events, &snapshot);
+        let (seq, bus) = (self.seq, &self.bus);
+        self.subscribers
+            .publish(&events, || snapshot_of(seq, bus.as_ref(), Scope::Runtime));
     }
 
     fn snapshot(&self, scope: Scope) -> Snapshot {
-        Snapshot {
-            scope,
-            seq: self.seq,
-        }
+        snapshot_of(self.seq, self.bus.as_ref(), scope)
     }
 }
 
-fn answer_to<T>(reply: oneshot::Sender<T>, answer: T) {
-    if reply.send(answer).is_err() {
-        tracing::trace!("a client left before its answer");
+fn snapshot_of(seq: Seq, bus: Option<&Bus>, scope: Scope) -> Snapshot {
+    Snapshot {
+        scope,
+        seq,
+        bus: bus.map_or_else(BusSnapshot::default, Bus::snapshot),
+    }
+}
+
+fn refused(code: ErrorCode, message: &str) -> Reply {
+    Reply::Refused {
+        code,
+        message: message.to_owned(),
+    }
+}
+
+fn answer_to<T: std::fmt::Debug>(reply: oneshot::Sender<T>, answer: T) {
+    if let Err(unheard) = reply.send(answer) {
+        tracing::trace!(?unheard, "a client left before its answer");
     }
 }

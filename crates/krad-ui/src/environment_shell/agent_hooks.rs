@@ -1,6 +1,5 @@
-use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::{AppContext as _, Context};
-use krad_agents::{AgentStatus, ErrorCode, Response, TerminalHandle};
+use krad_agents::{ErrorCode, Response, TerminalHandle};
 use krad_domain::{
     code_tools_launch_args, hook_launch_args, hook_state, launch_with_prompt, quote_for_shell,
     worker_brief, AgentPreset, CloudPlacement, EnvironmentName, ModelDelivery, ModelId,
@@ -8,6 +7,7 @@ use krad_domain::{
     WorktreeOrigin,
 };
 use krad_repo::sanitize_worktree_name;
+use krad_runtime::BusReply;
 use std::time::{Duration, Instant};
 
 use super::agent_bus::{cli_name, BUS_HINT};
@@ -95,14 +95,13 @@ impl EnvironmentShell {
             .cloud_hook_settings(env, id)
             .filter(|_| site == ShellSite::Cloud);
         let reaches = site.reaches_bus() || remote.is_some() || cloud.is_some();
-        if self.agent_bus.is_some() && reaches {
+        if let Some(bus) = self.runtime.handle.bus().filter(|_| reaches) {
             let settings = match (remote, cloud) {
                 (Some(remote), _) => Some(remote.claude_settings.to_string_lossy().into_owned()),
                 (None, Some(cloud)) => Some(cloud),
-                (None, None) => self
-                    .agent_bus
+                (None, None) => bus
+                    .claude_settings
                     .as_ref()
-                    .and_then(|bus| bus.claude_settings.as_ref())
                     .filter(|_| site.reads_local_files())
                     .map(|path| path.to_string_lossy().into_owned()),
             };
@@ -126,26 +125,17 @@ impl EnvironmentShell {
     }
 
     pub(super) fn queue_prompt(&mut self, env: &EnvironmentName, id: TerminalId, text: String) {
-        if let Some(bus) = &mut self.agent_bus {
-            bus.pending_prompts.push(PendingPrompt {
-                target: TerminalHandle {
-                    environment: env.as_str().to_owned(),
-                    terminal: id.as_u64(),
-                },
-                text,
-                due: Instant::now() + PROMPT_DELAY,
-            });
+        if self.runtime.handle.bus().is_none() {
+            return;
         }
-    }
-
-    pub(super) fn apply_status(&mut self, from: &TerminalHandle, status: AgentStatus) -> Response {
-        let env = EnvironmentName::new(from.environment.clone());
-        let host = self.env_link(&env).host();
-        self.statusline_heard(host, &status);
-        if let Some(live) = self.envs.get_mut(&env) {
-            live.statuses.insert(TerminalId(from.terminal), status);
-        }
-        Response::Noted
+        self.bus_work.pending_prompts.push(PendingPrompt {
+            target: TerminalHandle {
+                environment: env.as_str().to_owned(),
+                terminal: id.as_u64(),
+            },
+            text,
+            due: Instant::now() + PROMPT_DELAY,
+        });
     }
 
     pub(super) fn apply_live_hook(
@@ -226,7 +216,7 @@ impl EnvironmentShell {
         preset: AgentPreset,
         worktree: Option<String>,
         text: &str,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let env = EnvironmentName::new(from.environment.clone());
@@ -260,7 +250,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         group: &TerminalGroup,
         order: WorkerOrder,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let env = env.clone();

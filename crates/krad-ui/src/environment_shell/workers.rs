@@ -2,7 +2,6 @@ mod card;
 mod ending;
 mod mode;
 
-use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
 use krad_agents::{ErrorCode, Response};
 use krad_chat::{new_session_id, LiveEvent, LiveSession};
@@ -10,6 +9,7 @@ use krad_domain::{
     AgentPreset, ChatEvent, CloudPlacement, EnvironmentName, GroupId, PermissionMode, Prompt,
     TerminalId, WorkerSpawn, WorkerSurface,
 };
+use krad_runtime::BusReply;
 
 use super::agent_hooks::NO_GROUP;
 use super::terminal_lifecycle::WorkerChat;
@@ -22,7 +22,7 @@ const WORKER_FAILED: &str = "The worker could not start";
 const WORKER_CLOSED_EARLY: &str = "The worker was closed before it started";
 const NOT_A_WORKER: &str = "That agent cannot work as a worker";
 
-pub(super) type LaunchReply = ReplySender<Response>;
+pub(super) type LaunchReply = BusReply;
 
 pub(super) struct WorkerLaunch {
     pub(super) group: Option<GroupId>,

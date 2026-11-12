@@ -1,4 +1,3 @@
-use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::{AppContext as _, Context};
 use krad_agents::{
     extension_tool_name, ErrorCode, ExtensionToolAnswer, ExtensionToolEffect, ExtensionToolInfo,
@@ -10,6 +9,7 @@ use krad_extensions::api::protocol::{
     CallTool, CallToolParams, CallToolResult, ToolContent, ToolOutcome,
 };
 use krad_extensions::api::{ExtensionId, ToolName};
+use krad_runtime::BusReply;
 use std::collections::HashSet;
 
 use super::super::language_servers::CodeCaller;
@@ -24,7 +24,7 @@ const CONTENT_SEPARATOR: &str = "\n";
 
 pub(in crate::environment_shell) struct ToolCall {
     params: CallToolParams,
-    reply: ReplySender<Response>,
+    reply: BusReply,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -119,10 +119,10 @@ impl EnvironmentShell {
         environment: &str,
         caller: &CodeCaller,
         request: Request,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
-        let refuse = |reply: ReplySender<Response>, code: ErrorCode, message: &str| {
+        let refuse = |reply: BusReply, code: ErrorCode, message: &str| {
             reply
                 .send(Response::error(code, message))
                 .unwrap_or_default();

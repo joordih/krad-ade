@@ -59,8 +59,31 @@ pub struct Incoming {
     pub reply: oneshot::Sender<Response>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("the app no longer takes agent requests")]
+pub struct SinkClosed;
+
+pub trait RequestSink: Clone + Send + 'static {
+    /// # Errors
+    ///
+    /// Fails when the app no longer takes requests.
+    fn deliver(&self, incoming: Incoming) -> Result<(), SinkClosed>;
+
+    fn is_closed(&self) -> bool;
+}
+
+impl RequestSink for mpsc::Sender<Incoming> {
+    fn deliver(&self, incoming: Incoming) -> Result<(), SinkClosed> {
+        block_on(self.clone().send(incoming)).map_err(|_| SinkClosed)
+    }
+
+    fn is_closed(&self) -> bool {
+        mpsc::Sender::is_closed(self)
+    }
+}
+
 /// # Errors
-pub fn serve(requests: mpsc::Sender<Incoming>) -> Result<Endpoint, AgentsError> {
+pub fn serve(requests: impl RequestSink) -> Result<Endpoint, AgentsError> {
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
     let endpoint = Endpoint {
         address: listener.local_addr()?,
@@ -75,7 +98,7 @@ pub fn serve(requests: mpsc::Sender<Incoming>) -> Result<Endpoint, AgentsError> 
     Ok(endpoint)
 }
 
-fn accept_loop(listener: &TcpListener, endpoint: &Endpoint, requests: &mpsc::Sender<Incoming>) {
+fn accept_loop(listener: &TcpListener, endpoint: &Endpoint, requests: &impl RequestSink) {
     for stream in listener.incoming() {
         if requests.is_closed() {
             break;
@@ -85,11 +108,11 @@ fn accept_loop(listener: &TcpListener, endpoint: &Endpoint, requests: &mpsc::Sen
         let requests = requests.clone();
         let _spawned = thread::Builder::new()
             .name(CONNECTION_THREAD_NAME.to_owned())
-            .spawn(move || serve_connection(&stream, &endpoint, requests));
+            .spawn(move || serve_connection(&stream, &endpoint, &requests));
     }
 }
 
-fn serve_connection(stream: &TcpStream, endpoint: &Endpoint, requests: mpsc::Sender<Incoming>) {
+fn serve_connection(stream: &TcpStream, endpoint: &Endpoint, requests: &impl RequestSink) {
     let response = match read_envelope(stream) {
         Ok(envelope) => match endpoint.refusal(&envelope) {
             None => answer(stream, envelope, endpoint, requests),
@@ -106,7 +129,7 @@ fn answer(
     stream: &TcpStream,
     envelope: Envelope,
     endpoint: &Endpoint,
-    requests: mpsc::Sender<Incoming>,
+    requests: &impl RequestSink,
 ) -> Option<Response> {
     if envelope.api_version != API_VERSION {
         return Some(Response::Error(ApiError::unsupported_version(
@@ -139,11 +162,7 @@ fn read_envelope(stream: &TcpStream) -> Result<Envelope, ApiError> {
     serde_json::from_str(&line).map_err(|error| bad_request(&error))
 }
 
-fn dispatch(
-    stream: &TcpStream,
-    envelope: Envelope,
-    mut requests: mpsc::Sender<Incoming>,
-) -> Response {
+fn dispatch(stream: &TcpStream, envelope: Envelope, requests: &impl RequestSink) -> Response {
     let deadline = envelope.request.deadline();
     let (reply, reply_rx) = oneshot::channel();
     let incoming = Incoming {
@@ -151,7 +170,7 @@ fn dispatch(
         request: envelope.request,
         reply,
     };
-    if block_on(requests.send(incoming)).is_err() {
+    if requests.deliver(incoming).is_err() {
         return Response::error(ErrorCode::Unavailable, APP_GONE);
     }
     await_reply(stream, reply_rx, deadline)

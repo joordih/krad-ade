@@ -1,4 +1,3 @@
-use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::{AppContext as _, Context};
 use krad_agents::{ErrorCode, Request, Response, VariantsRequest};
 use krad_domain::{
@@ -6,6 +5,7 @@ use krad_domain::{
     VariantsOrderError,
 };
 use krad_repo::{detect_tasks, VariantRemoval};
+use krad_runtime::BusReply;
 
 use super::super::agent_bus::target_group;
 use super::super::EnvironmentShell;
@@ -40,7 +40,7 @@ impl EnvironmentShell {
         environment: &str,
         caller: Option<GroupId>,
         request: Request,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let env = EnvironmentName::new(environment.to_owned());
@@ -96,7 +96,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         group: GroupId,
         asked: VariantsRequest,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let VariantsRequest {
@@ -139,7 +139,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         group: GroupId,
         order: Result<VariantsOrder, VariantsOrderError>,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let response = order

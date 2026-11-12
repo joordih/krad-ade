@@ -368,9 +368,7 @@ impl EnvironmentShell {
             return;
         }
         let live = transcript.read > 0;
-        let mut asks_changed = view.asks.drop_left_callers();
-        asks_changed |= transcript.settle_marked(&read.chunk, &mut view.asks, live);
-        if asks_changed {
+        if transcript.settle_marked(&read.chunk, &mut view.asks, live) {
             cx.notify();
         }
         transcript.home.clone_from(&read.home);

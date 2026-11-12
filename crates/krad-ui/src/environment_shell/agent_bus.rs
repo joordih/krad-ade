@@ -14,20 +14,15 @@ pub(in crate::environment_shell) use askpass::AskpassPlan;
 pub(super) use remote::{RemoteBus, RemoteBusPlan, RemoteBusSlot};
 pub(super) use workspace::target_group;
 
-use futures::channel::mpsc::{channel, Receiver};
-use futures::channel::oneshot::Sender as ReplySender;
 use futures::StreamExt as _;
 use gpui_kit::Context;
 use krad_agents::{
-    lead_refusal, serve, terminal_env, Caller, Endpoint, ErrorCode, Incoming, Request, Response,
-    TerminalHandle, TerminalState, Timestamp, CLI_PROGRAM,
+    lead_refusal, terminal_env, Caller, ErrorCode, Request, Response, TerminalHandle,
+    TerminalState, CLI_PROGRAM,
 };
-use krad_chat::ToolAsk;
-use krad_domain::{
-    claude_hook_settings, parse_wsl_path, ApiDiscoveryFile, EnvironmentName, TerminalId,
-};
-use krad_session::find_program;
-use krad_store::config_dir;
+use krad_domain::{parse_wsl_path, EnvironmentName, Host, TerminalId};
+use krad_runtime::{BusAccess, BusReply, Delegated};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -35,9 +30,7 @@ use super::agent_hooks::{HookReport, PendingPrompt};
 use super::language_servers::CodeCaller;
 use super::EnvironmentShell;
 
-const BUS_CAPACITY: usize = 64;
 const PATH_ENV: &str = "PATH";
-const CLAUDE_SETTINGS_FILE: &str = "claude-hooks.json";
 const NOTICE_ENTER_DELAY: Duration = Duration::from_millis(500);
 pub(super) const ENTER: &[u8] = b"\r";
 const KEY_STEP_DELAY: Duration = Duration::from_secs(1);
@@ -50,18 +43,15 @@ pub(super) const BUS_HINT: &str = "You run inside Krad ADE next to other coding 
 const NO_SUCH_TERMINAL: &str = "No terminal with that id in your environment";
 const ONLY_LEADS_CLOSE: &str = "Only a session's lead can close workers and sessions";
 
-pub(super) struct AgentBus {
-    endpoint: Endpoint,
-    cli_dir: Option<PathBuf>,
-    inbox_waiters: Vec<(TerminalHandle, ReplySender<Response>)>,
-    settle_waiters: Vec<(TerminalHandle, ReplySender<Response>)>,
+const ANSWERED_BY_RUNTIME: &str = "The runtime answers this request before it reaches the app";
+
+#[derive(Default)]
+pub(super) struct BusWork {
+    settle_waiters: Vec<(TerminalHandle, BusReply)>,
     enters_due: Vec<PendingEnter>,
     keys_due: Vec<PendingKeys>,
     pub(super) pending_prompts: Vec<PendingPrompt>,
-    pub(super) claude_settings: Option<PathBuf>,
-    pub(super) remote_unavailable_told: std::collections::HashSet<krad_domain::Host>,
-    started_at: Timestamp,
-    api_file: discovery::LatestWins<ApiDiscoveryFile>,
+    pub(super) remote_unavailable_told: HashSet<Host>,
 }
 
 struct PendingKeys {
@@ -97,11 +87,7 @@ impl PendingEnter {
     }
 }
 
-impl AgentBus {
-    pub(super) const fn endpoint(&self) -> &Endpoint {
-        &self.endpoint
-    }
-
+impl BusWork {
     fn is_starting(&self, target: &TerminalHandle) -> bool {
         self.pending_prompts
             .iter()
@@ -126,12 +112,8 @@ pub(super) fn cli_name(in_wsl: bool) -> &'static str {
 
 const CLI_WSL_NAME: &str = "krad-ade-agents.exe";
 
-fn write_claude_settings() -> Option<PathBuf> {
-    let path = config_dir()?.join(CLAUDE_SETTINGS_FILE);
-    let folder = path.parent()?;
-    std::fs::create_dir_all(folder).ok()?;
-    std::fs::write(&path, claude_hook_settings(CLI_PROGRAM)).ok()?;
-    Some(path)
+fn answered_by_runtime() -> Response {
+    Response::error(ErrorCode::Unsupported, ANSWERED_BY_RUNTIME)
 }
 
 fn handle(env: &EnvironmentName, id: TerminalId) -> TerminalHandle {
@@ -143,35 +125,13 @@ fn handle(env: &EnvironmentName, id: TerminalId) -> TerminalHandle {
 
 impl EnvironmentShell {
     pub(super) fn start_agent_bus(&mut self, cx: &mut Context<Self>) {
-        let cli_file = format!("{CLI_PROGRAM}{}", std::env::consts::EXE_SUFFIX);
-        let cli_dir = std::env::current_exe()
-            .ok()
-            .and_then(|exe| exe.parent().map(PathBuf::from))
-            .filter(|dir| dir.join(&cli_file).is_file());
-        if cli_dir.is_none() && find_program(CLI_PROGRAM).is_none() {
+        if self.runtime.handle.bus().is_none() {
             return;
         }
-        let (requests, incoming) = channel(BUS_CAPACITY);
-        let Ok(endpoint) = serve(requests) else {
-            return;
-        };
-        self.agent_bus = Some(AgentBus {
-            endpoint,
-            cli_dir,
-            inbox_waiters: Vec::new(),
-            settle_waiters: Vec::new(),
-            enters_due: Vec::new(),
-            keys_due: Vec::new(),
-            pending_prompts: Vec::new(),
-            claude_settings: write_claude_settings(),
-            remote_unavailable_told: std::collections::HashSet::new(),
-            started_at: Timestamp::now(),
-            api_file: discovery::LatestWins::default(),
-        });
-        self.sync_api_file(cx);
+        self.sync_api_file();
+        let mut delegated = self.runtime.handle.delegate_bus();
         cx.spawn(async move |this, cx| {
-            let mut incoming: Receiver<Incoming> = incoming;
-            while let Some(request) = incoming.next().await {
+            while let Some(request) = delegated.next().await {
                 if this
                     .update(cx, |shell, cx| shell.answer(request, cx))
                     .is_err()
@@ -184,7 +144,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn bus_vars(&self, env: &EnvironmentName, id: TerminalId) -> Vec<(String, String)> {
-        let Some(bus) = &self.agent_bus else {
+        let Some(bus) = self.runtime.handle.bus() else {
             return Vec::new();
         };
         if self.cloud_placement_of(env, id).is_some() {
@@ -208,7 +168,7 @@ impl EnvironmentShell {
         vars
     }
 
-    fn caller_vars(bus: &AgentBus, caller: &Caller) -> Vec<(String, String)> {
+    fn caller_vars(bus: &BusAccess, caller: &Caller) -> Vec<(String, String)> {
         let mut vars = terminal_env(&bus.endpoint, caller);
         let mut search: Vec<PathBuf> = bus.cli_dir.iter().cloned().collect();
         search.extend(
@@ -229,12 +189,12 @@ impl EnvironmentShell {
             .is_some_and(|group| parse_wsl_path(&group.root).is_some())
     }
 
-    fn answer(&mut self, incoming: Incoming, cx: &mut Context<Self>) {
-        let Incoming {
+    fn answer(&mut self, delegated: Delegated, cx: &mut Context<Self>) {
+        let Delegated {
             from,
             request,
             reply,
-        } = incoming;
+        } = delegated;
         let from = self.as_lead(from, &request);
         if let Some(refusal) = lead_refusal(&from, &request) {
             reply.send(refusal).unwrap_or_default();
@@ -245,7 +205,7 @@ impl EnvironmentShell {
             return;
         }
         match from {
-            Caller::Terminal(from) => self.answer_terminal(from, request, reply, cx),
+            Caller::Terminal(from) => self.answer_terminal(&from, request, reply, cx),
             Caller::Lead(lead) => self.answer_lead(&lead, request, reply, cx),
             Caller::Git(_) => self.answer_git(request, reply, cx),
             Caller::Client => reply
@@ -259,7 +219,7 @@ impl EnvironmentShell {
         &mut self,
         from: &TerminalHandle,
         request: Request,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         match request {
@@ -295,9 +255,9 @@ impl EnvironmentShell {
 
     fn answer_terminal(
         &mut self,
-        from: TerminalHandle,
+        from: &TerminalHandle,
         request: Request,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let caller = CodeCaller::Terminal(TerminalId(from.terminal));
@@ -306,16 +266,15 @@ impl EnvironmentShell {
                 self.answer_code(&from.environment, &caller, code, reply, cx);
                 return;
             }
-            Request::List => Some(Response::Agents(
-                self.agent_infos(&from.environment, Some(from.terminal)),
-            )),
+            Request::List | Request::Check { .. } | Request::Status(_) | Request::Ask { .. } => {
+                Some(answered_by_runtime())
+            }
             Request::ListAll => Some(Response::Agents(
                 self.all_agent_infos(&from.environment, Some(from.terminal)),
             )),
             Request::Close(_) => Some(Response::error(ErrorCode::Forbidden, ONLY_LEADS_CLOSE)),
-            Request::Send { to, body } => Some(self.post(&from, to, body)),
-            Request::Check { wait_secs } => {
-                self.answer_check(from, wait_secs, reply);
+            Request::Send { to, body } => {
+                self.post(from, to, body, reply);
                 return;
             }
             Request::Wait { target, .. } => {
@@ -341,26 +300,14 @@ impl EnvironmentShell {
                     resume: resume.as_deref(),
                     mode,
                 };
-                Some(self.apply_live_hook(&from, report))
-            }
-            Request::Status(status) => Some(self.apply_status(&from, status)),
-            Request::Ask {
-                tool,
-                input,
-                suggestions,
-                call,
-            } => {
-                let ask = ToolAsk::held(tool.clone(), input, suggestions);
-                self.hold_ask(&from, ask, tool, call, reply);
-                cx.notify();
-                return;
+                Some(self.apply_live_hook(from, report))
             }
             Request::Spawn {
                 agent,
                 worktree,
                 task,
             } => {
-                self.spawn_worker(&from, agent, worktree, &task, reply, cx);
+                self.spawn_worker(from, agent, worktree, &task, reply, cx);
                 return;
             }
             Request::Askpass { .. } => Some(askpass::git_only()),
@@ -392,7 +339,7 @@ impl EnvironmentShell {
             | Request::RunVariants(_)
             | Request::Variants { .. }
             | Request::PickVariant { .. }) => {
-                self.answer_group_request(&from, request, reply, cx);
+                self.answer_group_request(from, request, reply, cx);
                 return;
             }
         };
@@ -401,31 +348,12 @@ impl EnvironmentShell {
         }
     }
 
-    fn answer_check(
-        &mut self,
-        from: TerminalHandle,
-        wait_secs: Option<u64>,
-        reply: ReplySender<Response>,
-    ) {
-        let messages = self.take_mail(&from);
-        if messages.is_empty() && wait_secs.is_some() {
-            if let Some(bus) = &mut self.agent_bus {
-                bus.inbox_waiters.push((from, reply));
-            }
-            return;
-        }
-        reply.send(Response::Messages(messages)).unwrap_or_default();
-    }
-
-    fn wait_for(&mut self, environment: &str, target: u64, reply: ReplySender<Response>) {
+    fn wait_for(&mut self, environment: &str, target: u64, reply: BusReply) {
         let target = TerminalHandle {
             environment: environment.to_owned(),
             terminal: target,
         };
-        let starting = self
-            .agent_bus
-            .as_ref()
-            .is_some_and(|bus| bus.is_starting(&target));
+        let starting = self.bus_work.is_starting(&target);
         match self.settled_state(&target) {
             Settlement::Settled(state) if !starting => reply
                 .send(Response::Settled {
@@ -437,9 +365,7 @@ impl EnvironmentShell {
                 .send(Response::error(ErrorCode::NotFound, NO_SUCH_TERMINAL))
                 .unwrap_or_default(),
             Settlement::Settled(_) | Settlement::Working => {
-                if let Some(bus) = &mut self.agent_bus {
-                    bus.settle_waiters.push((target, reply));
-                }
+                self.bus_work.settle_waiters.push((target, reply));
             }
         }
     }

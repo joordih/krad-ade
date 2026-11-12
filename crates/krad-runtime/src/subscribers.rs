@@ -31,16 +31,16 @@ impl Subscribers {
         });
     }
 
-    pub(crate) fn publish(&mut self, events: &[Event], snapshot: &Snapshot) {
+    pub(crate) fn publish(&mut self, events: &[Event], snapshot: impl Fn() -> Snapshot) {
         self.0
-            .retain_mut(|subscriber| subscriber.catch_up(events, snapshot) != Delivery::Gone);
+            .retain_mut(|subscriber| subscriber.catch_up(events, &snapshot) != Delivery::Gone);
     }
 }
 
 impl Subscriber {
-    fn catch_up(&mut self, events: &[Event], snapshot: &Snapshot) -> Delivery {
+    fn catch_up(&mut self, events: &[Event], snapshot: &impl Fn() -> Snapshot) -> Delivery {
         if self.standing == Standing::Behind {
-            let delivery = self.offer(Feed::Snapshot(snapshot.clone()));
+            let delivery = self.offer(Feed::Snapshot(snapshot()));
             if delivery == Delivery::Sent {
                 self.standing = Standing::Current;
             }
@@ -90,6 +90,7 @@ mod tests {
         Snapshot {
             scope: Scope::Runtime,
             seq: Seq(seq),
+            bus: krad_protocol::BusSnapshot::default(),
         }
     }
 
@@ -102,8 +103,8 @@ mod tests {
         let (feed, mut receiver) = mpsc::channel(8);
         let mut subscribers = Subscribers::default();
         subscribers.add(feed);
-        subscribers.publish(&[pong(1)], &at(1));
-        subscribers.publish(&[pong(2), pong(3)], &at(3));
+        subscribers.publish(&[pong(1)], || at(1));
+        subscribers.publish(&[pong(2), pong(3)], || at(3));
         assert_eq!(
             drain(&mut receiver),
             vec![
@@ -119,16 +120,16 @@ mod tests {
         let (feed, mut receiver) = mpsc::channel(0);
         let mut subscribers = Subscribers::default();
         subscribers.add(feed);
-        subscribers.publish(&[], &at(0));
-        subscribers.publish(&[pong(1), pong(2)], &at(2));
+        subscribers.publish(&[], || at(0));
+        subscribers.publish(&[pong(1), pong(2)], || at(2));
         assert_eq!(subscribers.0[0].standing, Standing::Behind);
         assert_eq!(drain(&mut receiver), vec![Feed::Snapshot(at(0))]);
 
-        subscribers.publish(&[pong(3)], &at(3));
+        subscribers.publish(&[pong(3)], || at(3));
         assert_eq!(subscribers.0[0].standing, Standing::Current);
         assert_eq!(drain(&mut receiver), vec![Feed::Snapshot(at(3))]);
 
-        subscribers.publish(&[pong(4)], &at(4));
+        subscribers.publish(&[pong(4)], || at(4));
         assert_eq!(drain(&mut receiver), vec![Feed::Event(pong(4))]);
     }
 
@@ -139,8 +140,8 @@ mod tests {
         let mut subscribers = Subscribers::default();
         subscribers.add(slow);
         subscribers.add(fast);
-        subscribers.publish(&[], &at(0));
-        subscribers.publish(&[pong(1), pong(2)], &at(2));
+        subscribers.publish(&[], || at(0));
+        subscribers.publish(&[pong(1), pong(2)], || at(2));
         assert_eq!(
             drain(&mut receiver),
             vec![
@@ -157,7 +158,7 @@ mod tests {
         let mut subscribers = Subscribers::default();
         subscribers.add(feed);
         drop(receiver);
-        subscribers.publish(&[pong(1)], &at(1));
+        subscribers.publish(&[pong(1)], || at(1));
         assert!(subscribers.0.is_empty());
     }
 }

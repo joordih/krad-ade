@@ -1,4 +1,3 @@
-use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::{AppContext as _, Context};
 use krad_agents::{CodeAnswer, CodeLine, CodePosition, CodeRequest, CodeTool, ErrorCode, Response};
 use krad_domain::{EnvironmentName, GroupId, TerminalId};
@@ -13,6 +12,7 @@ use krad_lsp::lsp_types::{
     WorkDoneProgressParams, WorkspaceEdit,
 };
 use krad_lsp::{file_uri, uri_path, LspClient, LspError};
+use krad_runtime::BusReply;
 use std::path::{Path, PathBuf};
 
 use super::super::EnvironmentShell;
@@ -268,7 +268,7 @@ impl EnvironmentShell {
         environment: &str,
         caller: &CodeCaller,
         request: CodeRequest,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let env = EnvironmentName::new(environment.to_owned());

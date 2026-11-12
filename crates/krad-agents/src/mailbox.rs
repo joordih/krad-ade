@@ -32,6 +32,13 @@ impl Mailbox {
         self.inbox.get(&terminal).map_or(0, Vec::len)
     }
 
+    pub fn unread_counts(&self) -> impl Iterator<Item = (u64, usize)> + '_ {
+        self.inbox
+            .iter()
+            .map(|(terminal, messages)| (*terminal, messages.len()))
+            .filter(|(_, unread)| *unread > 0)
+    }
+
     pub fn notify(&mut self, terminal: u64) -> Option<usize> {
         let unread = self.unread(terminal);
         (unread > 0 && self.notified.insert(terminal)).then_some(unread)

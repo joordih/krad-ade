@@ -1,9 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+use crate::bus::BusCommand;
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "area", rename_all = "snake_case")]
 pub enum Command {
     Runtime(RuntimeCommand),
+    Bus(BusCommand),
     #[serde(other)]
     Unknown,
 }
@@ -27,6 +30,8 @@ pub enum Reply {
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
     Unsupported,
+    NotFound,
+    AlreadyAnswered,
     #[serde(other)]
     Unknown,
 }

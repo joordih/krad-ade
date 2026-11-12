@@ -1,10 +1,10 @@
 use futures::executor::block_on;
 use futures::StreamExt as _;
 use krad_protocol::{
-    Command, ErrorCode, Event, EventKind, Feed, Reply, RequestId, RuntimeCommand, Scope, Seq,
-    Snapshot,
+    BusSnapshot, Command, ErrorCode, Event, EventKind, Feed, Reply, RequestId, RuntimeCommand,
+    Scope, Seq, Snapshot,
 };
-use krad_runtime::{EventReceiver, Runtime, RuntimeHandle};
+use krad_runtime::{EventReceiver, Runtime, RuntimeHandle, RuntimeSetup};
 use std::error::Error;
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -42,7 +42,7 @@ fn pong(seq: u64, request: u64) -> Feed {
 
 #[test]
 fn a_known_command_is_accepted_and_an_unknown_one_refused_as_unsupported() -> TestResult {
-    let runtime = Runtime::start()?;
+    let runtime = Runtime::start(RuntimeSetup::default())?;
     assert_eq!(ping(&runtime, 1)?, Reply::Accepted);
     for command in [Command::Unknown, Command::Runtime(RuntimeCommand::Unknown)] {
         let reply = block_on(runtime.send(RequestId(2), command))?;
@@ -59,7 +59,7 @@ fn a_known_command_is_accepted_and_an_unknown_one_refused_as_unsupported() -> Te
 
 #[test]
 fn a_subscriber_starts_from_a_snapshot_and_receives_events_with_rising_seqs() -> TestResult {
-    let runtime = Runtime::start()?;
+    let runtime = Runtime::start(RuntimeSetup::default())?;
     ping(&runtime, 1)?;
     let mut events = runtime.subscribe();
     assert_eq!(start_seq(&mut events)?, Seq(1));
@@ -75,6 +75,7 @@ fn a_subscriber_starts_from_a_snapshot_and_receives_events_with_rising_seqs() ->
         Snapshot {
             scope: Scope::Runtime,
             seq: Seq(4),
+            bus: BusSnapshot::default(),
         }
     );
     Ok(())
@@ -82,7 +83,7 @@ fn a_subscriber_starts_from_a_snapshot_and_receives_events_with_rising_seqs() ->
 
 #[test]
 fn every_subscriber_receives_the_same_events() -> TestResult {
-    let runtime = Runtime::start()?;
+    let runtime = Runtime::start(RuntimeSetup::default())?;
     let mut first = runtime.subscribe();
     let mut second = runtime.clone().subscribe();
     for events in [&mut first, &mut second] {
@@ -97,7 +98,7 @@ fn every_subscriber_receives_the_same_events() -> TestResult {
 
 #[test]
 fn a_subscriber_that_falls_behind_resyncs_from_a_fresh_snapshot() -> TestResult {
-    let runtime = Runtime::start()?;
+    let runtime = Runtime::start(RuntimeSetup::default())?;
     let mut events = runtime.subscribe();
     let mut delivered = start_seq(&mut events)?;
     for id in 1..=FLOOD {
@@ -123,7 +124,7 @@ fn a_subscriber_that_falls_behind_resyncs_from_a_fresh_snapshot() -> TestResult 
 
 #[test]
 fn the_runtime_stops_when_every_handle_is_dropped() -> TestResult {
-    let runtime = Runtime::start()?;
+    let runtime = Runtime::start(RuntimeSetup::default())?;
     let copy = runtime.clone();
     let mut events = runtime.subscribe();
     start_seq(&mut events)?;

@@ -1,4 +1,3 @@
-use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::{AppContext as _, Context};
 use krad_agents::{
     AgentInfo, ApiError, CloseOrder, CloseTarget, Closed, ClosedTarget, ErrorCode, Response,
@@ -9,6 +8,7 @@ use krad_domain::{
     EnvironmentData, EnvironmentName, GroupId, SessionId, TerminalId, WhenWorking,
 };
 use krad_repo::{remove_settled_worktree, RepoError};
+use krad_runtime::BusReply;
 use std::path::PathBuf;
 
 use super::super::EnvironmentShell;
@@ -122,10 +122,7 @@ struct ClosedEntry {
 impl EnvironmentShell {
     pub(super) fn is_busy(&self, env: &EnvironmentName, terminal: TerminalId) -> bool {
         let target = handle(env, terminal);
-        let starting = self
-            .agent_bus
-            .as_ref()
-            .is_some_and(|bus| bus.is_starting(&target));
+        let starting = self.bus_work.is_starting(&target);
         let settlement = self.settled_state(&target);
         let working = matches!(
             settlement,
@@ -140,7 +137,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         lead: SessionId,
         order: CloseOrder,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         match self.close_plans(env, lead, order) {
@@ -231,7 +228,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         plans: &[ClosePlan],
         fate: WorktreeFate,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         for plan in plans {
@@ -331,7 +328,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         entries: Vec<ClosedEntry>,
         removed: Vec<(GroupId, Result<(), RepoError>)>,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let mut outcomes: Vec<(GroupId, WorktreeOutcome)> = Vec::new();

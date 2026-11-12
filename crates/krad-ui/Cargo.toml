@@ -18,6 +18,7 @@ krad-extensions.workspace = true
 krad-github.workspace = true
 krad-gitlab.workspace = true
 krad-lsp.workspace = true
+krad-protocol.workspace = true
 krad-host.workspace = true
 krad-repo.workspace = true
 krad-runtime.workspace = true

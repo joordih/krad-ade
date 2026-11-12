@@ -1,6 +1,4 @@
-use krad_agents::{
-    AgentInfo, AgentKey, ErrorCode, Request, Response, StateReason, TerminalState, Timestamp,
-};
+use krad_agents::{AgentInfo, AgentKey, ErrorCode, Request, Response, StateReason, TerminalState};
 use krad_domain::{AgentState, AttentionKind, EnvironmentName, NodeKind, TerminalId, TerminalNode};
 
 use super::super::live_env::LiveEnv;
@@ -25,7 +23,6 @@ fn client_refusal() -> Response {
 
 pub(super) fn client_answer(shell: &EnvironmentShell, request: &Request) -> Response {
     match request {
-        Request::List => Response::Agents(shell.every_agent_info()),
         Request::ListAll => Response::Agents(
             shell
                 .envs
@@ -81,34 +78,31 @@ impl EnvironmentShell {
         id: TerminalId,
         hint: Option<StateReason>,
     ) {
-        let Some(bus) = &self.agent_bus else {
+        if self.runtime.handle.bus().is_none() {
             return;
-        };
+        }
         let seen = self.envs.get(env).and_then(|live| {
             let node = live.data.nodes.iter().find(|node| node.id == id)?;
             lists_as_agent(node).then(|| self.agent_info(env, live, node))
         });
         let hint = hint.or_else(|| self.waiting_reason(env, id, seen.as_ref()));
-        bus.endpoint().feed.observe(
-            AgentKey::new(env.as_str(), id.as_u64()),
-            seen,
-            hint,
-            Timestamp::now(),
-        );
+        self.runtime
+            .handle
+            .observe_agent(AgentKey::new(env.as_str(), id.as_u64()), seen, hint);
     }
 
     pub(in crate::environment_shell) fn reconcile_agent_feed(&self) {
-        let Some(bus) = &self.agent_bus else {
+        if self.runtime.handle.bus().is_none() {
             return;
-        };
+        }
         let environments: Vec<String> = self
             .envs
             .keys()
             .map(|name| name.as_str().to_owned())
             .collect();
-        bus.endpoint()
-            .feed
-            .reconcile(&environments, self.every_agent_info(), Timestamp::now());
+        self.runtime
+            .handle
+            .reconcile_agents(environments, self.every_agent_info());
     }
 
     fn waiting_reason(

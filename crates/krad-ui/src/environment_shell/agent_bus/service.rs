@@ -3,14 +3,16 @@ use krad_domain::{parse_wsl_path, AgentState, EnvironmentName, TerminalId};
 use krad_session::PtyInput;
 use std::time::Instant;
 
+use super::super::runtime_view::MailNotices;
 use super::super::{EnvironmentShell, LiveEnv};
-use super::{cli_name, handle, AgentBus, PendingEnter, Settlement, ENTER, NO_SUCH_TERMINAL};
+use super::{cli_name, handle, PendingEnter, Settlement, ENTER, NO_SUCH_TERMINAL};
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn service_agent_bus(&mut self, now: Instant) {
-        let Some(mut bus) = self.agent_bus.take() else {
+        if self.runtime.handle.bus().is_none() {
             return;
-        };
+        }
+        let mut bus = std::mem::take(&mut self.bus_work);
         bus.settle_waiters.retain(|(_, reply)| !reply.is_canceled());
         let waiters = std::mem::take(&mut bus.settle_waiters);
         for (target, reply) in waiters {
@@ -72,18 +74,11 @@ impl EnvironmentShell {
                 .collect();
             for id in settled {
                 let target = handle(env, id);
-                let blocked = bus
-                    .inbox_waiters
-                    .iter()
-                    .any(|(waiter, _)| *waiter == target);
-                if blocked {
-                    continue;
-                }
                 let in_wsl = live
                     .data
                     .group_of(id)
                     .is_some_and(|group| parse_wsl_path(&group.root).is_some());
-                if let Some(count) = live.mailbox.notify(id.as_u64()) {
+                if let Some(count) = self.runtime.view.mail.notify(env, id) {
                     if let Some(session) = live.sessions.get(&id) {
                         let notice = notice_text(cli_name(in_wsl), count).into_bytes();
                         session
@@ -94,12 +89,16 @@ impl EnvironmentShell {
                     bus.enters_due.push(PendingEnter::new(target, now));
                 }
             }
-            Self::notice_free_chats(env, live, &bus);
+            Self::notice_free_chats(env, live, &mut self.runtime.view.mail);
         }
-        self.agent_bus = Some(bus);
+        self.bus_work = bus;
     }
 
-    pub(super) fn notice_free_chats(env: &EnvironmentName, live: &mut LiveEnv, bus: &AgentBus) {
+    pub(super) fn notice_free_chats(
+        env: &EnvironmentName,
+        live: &mut LiveEnv,
+        mail: &mut MailNotices,
+    ) {
         let free: Vec<TerminalId> = live
             .chats
             .iter()
@@ -107,15 +106,7 @@ impl EnvironmentShell {
             .map(|(id, _)| *id)
             .collect();
         for id in free {
-            let target = handle(env, id);
-            if bus
-                .inbox_waiters
-                .iter()
-                .any(|(waiter, _)| *waiter == target)
-            {
-                continue;
-            }
-            let Some(count) = live.mailbox.notify(id.as_u64()) else {
+            let Some(count) = mail.notify(env, id) else {
                 continue;
             };
             let in_wsl = live

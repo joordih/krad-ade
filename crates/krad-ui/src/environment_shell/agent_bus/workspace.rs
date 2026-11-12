@@ -1,6 +1,5 @@
 mod git;
 
-use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::{AppContext as _, Context};
 use krad_agents::{
     ApiError, ApiInfo, ErrorCode, FilePosition, Request, Response, SessionInfo, TerminalHandle,
@@ -8,6 +7,7 @@ use krad_agents::{
 use krad_domain::{EnvironmentData, EnvironmentName, GroupId, SessionId, SessionSpec, TerminalId};
 use krad_host::HostLink;
 use krad_lsp::lsp_types::Position;
+use krad_runtime::BusReply;
 use std::path::{Component, Path, PathBuf};
 
 use super::super::sessions_view::session_terminals;
@@ -132,7 +132,7 @@ impl EnvironmentShell {
         environment: &str,
         caller: Option<GroupId>,
         request: Request,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let env = EnvironmentName::new(environment.to_owned());
@@ -242,7 +242,7 @@ impl EnvironmentShell {
         env: EnvironmentName,
         checked: CheckedFile,
         position: Option<FilePosition>,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let resolved = cx.background_spawn(async move {

@@ -5,6 +5,7 @@ use crate::protocol::{BusToken, API_VERSION};
 use crate::server::Endpoint;
 use krad_domain::AgentPreset;
 use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const ENV_ENDPOINT: &str = "KRAD_ADE_ENDPOINT";
@@ -18,6 +19,39 @@ const LEAD_WAIT_TIMEOUT: Duration = Duration::from_mins(25);
 const LEAD_READ_LINES: usize = 80;
 const PROGRAM_SEPARATOR: &str = "|";
 const ACP_AGENT_CHOICE: &str = "acp-agent-id";
+const PATH_VAR: &str = "PATH";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CliPlace {
+    BesideApp(PathBuf),
+    OnPath,
+}
+
+impl CliPlace {
+    #[must_use]
+    pub fn find() -> Option<Self> {
+        let file = format!("{CLI_PROGRAM}{}", std::env::consts::EXE_SUFFIX);
+        let beside = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(Path::to_path_buf))
+            .filter(|dir| dir.join(&file).is_file());
+        if let Some(dir) = beside {
+            return Some(Self::BesideApp(dir));
+        }
+        let search = std::env::var_os(PATH_VAR)?;
+        std::env::split_paths(&search)
+            .any(|dir| dir.join(&file).is_file())
+            .then_some(Self::OnPath)
+    }
+
+    #[must_use]
+    pub fn dir(self) -> Option<PathBuf> {
+        match self {
+            Self::BesideApp(dir) => Some(dir),
+            Self::OnPath => None,
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum BusSource {

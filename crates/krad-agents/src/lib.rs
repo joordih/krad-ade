@@ -28,7 +28,8 @@ pub use code::{CodeAnswer, CodeError, CodeLine, CodePosition, CodeRequest, CodeT
 pub use discovery::{liveness, ApiDiscovery, ApiFile, Liveness, API_FILE_NAME};
 pub use env::{
     endpoint_file_env, guide, member_token, orchestrator_guide, terminal_env, token_file_env,
-    CLI_PROGRAM, ENV_ENDPOINT, ENV_ENDPOINT_FILE, ENV_TERMINAL, ENV_TOKEN, ENV_TOKEN_FILE,
+    CliPlace, CLI_PROGRAM, ENV_ENDPOINT, ENV_ENDPOINT_FILE, ENV_TERMINAL, ENV_TOKEN,
+    ENV_TOKEN_FILE,
 };
 pub use error::{AgentsError, HandleError};
 pub use extension_tools::{
@@ -50,6 +51,6 @@ pub use protocol::{
     VariantsRequest, WhenWorking, WorktreeFate, WorktreeInfo, WorktreeLeft, WorktreeOutcome,
     API_VERSION, ASKPASS_WAIT, MAX_WAIT,
 };
-pub use server::{serve, Endpoint, Incoming, HEARTBEAT_INTERVAL};
+pub use server::{serve, Endpoint, Incoming, RequestSink, SinkClosed, HEARTBEAT_INTERVAL};
 pub use token::new_token;
 pub use webhook::{webhook_request, WebhookPostError, WebhookRequest};

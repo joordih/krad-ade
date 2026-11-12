@@ -1,8 +1,8 @@
-use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::{AppContext as _, Context};
 use krad_agents::{ChangeSet, ChangedFile, ErrorCode, Response, WorktreeInfo};
 use krad_domain::{EnvironmentName, GroupId, SessionId, WorktreeOrigin};
 use krad_repo::{sanitize_worktree_name, status, working_patch, Worktree};
+use krad_runtime::BusReply;
 use std::path::PathBuf;
 
 use super::super::super::agent_hooks::{BAD_WORKTREE_NAME, NOT_A_REPO};
@@ -17,7 +17,7 @@ impl EnvironmentShell {
         env: EnvironmentName,
         caller: Option<GroupId>,
         name: &str,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let repo_root = self
@@ -100,7 +100,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         caller: Option<GroupId>,
         session: Option<SessionId>,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let group = self

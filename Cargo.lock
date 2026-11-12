@@ -3980,7 +3980,10 @@ name = "krad-runtime"
 version = "0.4.1"
 dependencies = [
  "futures",
+ "krad-agents",
+ "krad-domain",
  "krad-protocol",
+ "serde_json",
  "thiserror 2.0.21",
  "tracing",
 ]
@@ -4032,6 +4035,7 @@ dependencies = [
  "krad-gitlab",
  "krad-host",
  "krad-lsp",
+ "krad-protocol",
  "krad-repo",
  "krad-runtime",
  "krad-session",

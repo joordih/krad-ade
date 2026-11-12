@@ -1,7 +1,7 @@
-use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
 use krad_agents::{Caller, ErrorCode, LeadHandle, Request, Response, TerminalState};
 use krad_domain::{AgentState, EnvironmentName, SessionId, TerminalId, VariantRunId};
+use krad_runtime::BusReply;
 
 use super::super::EnvironmentShell;
 use super::chat::ChatSpawn;
@@ -49,7 +49,7 @@ impl EnvironmentShell {
         &mut self,
         lead: &LeadHandle,
         request: Request,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let session = SessionId(lead.session);

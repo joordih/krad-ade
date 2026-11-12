@@ -7,16 +7,16 @@ mod progress;
 mod view;
 mod view_columns;
 
-use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
 use krad_agents::Response;
 use krad_domain::{EnvironmentName, VariantId, VariantRun, VariantRunId};
+use krad_runtime::BusReply;
 
 use super::EnvironmentShell;
 
 const NO_GROUP_TEXT: &str = "Select a group to compare variants of a task";
 
-type VariantsReply = Option<ReplySender<Response>>;
+type VariantsReply = Option<BusReply>;
 
 #[derive(Default)]
 pub(super) struct VariantsUi {

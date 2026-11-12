@@ -32,7 +32,7 @@ impl EnvironmentShell {
     }
 
     fn remote_bus_plan(&self, env: &EnvironmentName) -> Option<RemoteBusPlan> {
-        let bus = self.agent_bus.as_ref()?;
+        let bus = self.runtime.handle.bus()?;
         let live = self.envs.get(env)?;
         let HostLink::Remote(ssh) = &live.link else {
             return None;
@@ -41,7 +41,7 @@ impl EnvironmentShell {
             ssh.clone(),
             live.link.clone(),
             env.as_str(),
-            bus.endpoint(),
+            &bus.endpoint,
             live.remote_bus_port,
         ))
     }
@@ -60,10 +60,7 @@ impl EnvironmentShell {
         };
         live.remote_bus = RemoteBusSlot::Absent;
         let host = live.data.host.clone();
-        let Some(bus) = &mut self.agent_bus else {
-            return;
-        };
-        if !bus.remote_unavailable_told.insert(host) {
+        if !self.bus_work.remote_unavailable_told.insert(host) {
             return;
         }
         self.push_toast(ToastKind::Error, format!("{BUS_UNAVAILABLE}: {reason}"));

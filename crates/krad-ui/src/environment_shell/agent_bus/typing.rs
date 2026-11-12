@@ -16,11 +16,12 @@ impl EnvironmentShell {
     ) {
         let target = handle(env, id);
         self.paste_text_into(&target, text);
-        match &mut self.agent_bus {
-            Some(bus) => bus
+        if self.runtime.handle.bus().is_some() {
+            self.bus_work
                 .enters_due
-                .push(PendingEnter::new(target, Instant::now())),
-            None => self.type_into(&target, ENTER.to_vec()),
+                .push(PendingEnter::new(target, Instant::now()));
+        } else {
+            self.type_into(&target, ENTER.to_vec());
         }
     }
 
@@ -64,14 +65,13 @@ impl EnvironmentShell {
         if let Some(first) = steps.next() {
             self.type_into(&target, first);
         }
-        let Some(bus) = &mut self.agent_bus else {
+        if self.runtime.handle.bus().is_none() {
             return;
-        };
-        let now = Instant::now();
-        let mut due = now;
+        }
+        let mut due = Instant::now();
         for keys in steps {
             due += KEY_STEP_DELAY;
-            bus.keys_due.push(PendingKeys {
+            self.bus_work.keys_due.push(PendingKeys {
                 target: target.clone(),
                 keys,
                 due,

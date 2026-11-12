@@ -1,4 +1,3 @@
-use krad_agents::{AgentStatus, Mailbox};
 use krad_domain::{
     EnvironmentData, GroupId, PermissionMode, TerminalId, TerminalMeta, SCROLLBACK_PERSIST_LINES,
 };
@@ -22,9 +21,7 @@ pub(super) struct LiveEnv {
     pub(super) chats: HashMap<TerminalId, surface::SurfaceChat>,
     pub(super) focused: Option<TerminalId>,
     pub(super) selected_group: Option<GroupId>,
-    pub(super) mailbox: Mailbox,
     pub(super) working_since: HashMap<TerminalId, Instant>,
-    pub(super) statuses: HashMap<TerminalId, AgentStatus>,
     pub(super) pending_chats: HashMap<TerminalId, krad_chat::LiveSession>,
     pub(super) waiting_prompts: HashMap<TerminalId, Vec<Prompt>>,
     pub(super) waiting_modes: HashMap<TerminalId, PermissionMode>,
@@ -72,9 +69,7 @@ impl LiveEnv {
             chats: HashMap::new(),
             focused,
             selected_group,
-            mailbox: Mailbox::default(),
             working_since: HashMap::new(),
-            statuses: HashMap::new(),
             pending_chats,
             waiting_prompts: HashMap::new(),
             waiting_modes: HashMap::new(),

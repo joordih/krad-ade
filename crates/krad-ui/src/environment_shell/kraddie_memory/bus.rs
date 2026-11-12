@@ -1,4 +1,3 @@
-use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
 use krad_agents::{
     memory_hit_limit, ApiError, Caller, DigestInfo, ErrorCode, KraddieRecallInfo,
@@ -8,6 +7,7 @@ use krad_domain::{
     memory_reach, EnvironmentName, KraddieId, MemoryAccessError, MemoryLibrary, MemoryOwner,
     MemoryReach, MemoryRef, NodeKind, SessionId, Switch, TerminalId,
 };
+use krad_runtime::BusReply;
 
 use super::super::EnvironmentShell;
 
@@ -145,7 +145,7 @@ impl EnvironmentShell {
         environment: &str,
         chat: Option<TerminalId>,
         request: Request,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         if matches!(
@@ -162,7 +162,7 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn answer_kraddie_memory(
         &mut self,
         request: Request,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let response = match request {

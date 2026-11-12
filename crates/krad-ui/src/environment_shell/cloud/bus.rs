@@ -36,7 +36,7 @@ fn take_events(link: &HostLink, command: Option<HostCommand>) -> Vec<QueuedEvent
 
 impl EnvironmentShell {
     fn runner_bus_plan(&self, runner: CloudRunnerId) -> Option<RemoteBusPlan> {
-        let bus = self.agent_bus.as_ref()?;
+        let bus = self.runtime.handle.bus()?;
         let live = self.cloud.live.get(&runner)?;
         let HostLink::Remote(ssh) = &live.link else {
             return None;
@@ -45,7 +45,7 @@ impl EnvironmentShell {
             ssh.clone(),
             live.link.clone(),
             runner,
-            bus.endpoint(),
+            &bus.endpoint,
             live.bus_port,
         ))
     }

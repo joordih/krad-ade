@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::bus::{AskId, AskSettlement, BusSnapshot, MailCount, PendingAsk, StatusReport};
 use crate::ids::{RequestId, Seq};
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -13,6 +14,13 @@ pub struct Event {
 pub enum EventKind {
     Pong {
         request: RequestId,
+    },
+    AgentStatus(StatusReport),
+    Mail(MailCount),
+    AskPending(PendingAsk),
+    AskSettled {
+        ask: AskId,
+        settlement: AskSettlement,
     },
     #[serde(other)]
     Unknown,
@@ -28,6 +36,8 @@ pub enum Scope {
 pub struct Snapshot {
     pub scope: Scope,
     pub seq: Seq,
+    #[serde(default)]
+    pub bus: BusSnapshot,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -75,6 +85,7 @@ mod tests {
             Feed::Snapshot(Snapshot {
                 scope: Scope::Runtime,
                 seq: Seq(2),
+                bus: BusSnapshot::default(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

@@ -60,6 +60,7 @@ mod performance;
 mod rename;
 mod review_view;
 mod rubber_band;
+mod runtime_view;
 mod session_changes;
 mod session_look;
 mod session_pane;
@@ -192,7 +193,7 @@ pub struct EnvironmentShell {
     detected_acp: Vec<krad_domain::AcpAgent>,
     settings: Settings,
     settings_ui: Option<settings_view::SettingsUi>,
-    agent_bus: Option<agent_bus::AgentBus>,
+    bus_work: agent_bus::BusWork,
     opencode: opencode::Opencode,
     gateway: gateway::Gateway,
     listed_models: harness_models::ListedModels,
@@ -226,7 +227,7 @@ pub struct EnvironmentShell {
     automations: automations::AutomationsUi,
     variants: variants::VariantsUi,
     cloud: cloud::CloudRunners,
-    _runtime: RuntimeHandle,
+    runtime: runtime_view::RuntimeLink,
 }
 
 impl EnvironmentShell {
@@ -352,7 +353,7 @@ impl EnvironmentShell {
             detected_acp: settings.acp.all_agents(),
             settings,
             settings_ui: None,
-            agent_bus: None,
+            bus_work: agent_bus::BusWork::default(),
             opencode: opencode::Opencode::default(),
             gateway: gateway::Gateway::default(),
             listed_models: harness_models::ListedModels::default(),
@@ -386,7 +387,7 @@ impl EnvironmentShell {
             automations: automations::AutomationsUi::default(),
             variants: variants::VariantsUi::default(),
             cloud: cloud::CloudRunners::default(),
-            _runtime: runtime,
+            runtime: runtime_view::RuntimeLink::new(runtime),
         }
     }
 
@@ -413,6 +414,7 @@ impl EnvironmentShell {
     fn start_services(&mut self, cx: &mut Context<Self>) {
         cx.observe(&self.copy_feedback, |_, _, cx| cx.notify())
             .detach();
+        self.follow_runtime(cx);
         self.start_agent_bus(cx);
         self.check_gateway(cx);
         self.start_app_updates(cx);

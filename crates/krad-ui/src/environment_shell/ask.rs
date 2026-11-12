@@ -7,7 +7,6 @@ mod worker;
 
 use gpui_kit::component::input::{InputEvent, TextareaState};
 use gpui_kit::{AppContext as _, Context, Entity, Focusable as _, Subscription, Window};
-use krad_agents::Response;
 use krad_chat::{AskAnswer, AskKind, LiveChat, Question};
 use krad_domain::{
     AcpPermissionKind, AcpPermissionOption, AgentState, AskOutcome, AskVerdict, ChatEntry,
@@ -316,9 +315,7 @@ impl EnvironmentShell {
                     live.answer(&ask, answer);
                 }
             }
-            AskReply::Hook(sender) => sender
-                .send(Response::Decided(ask.decision(answer)))
-                .unwrap_or_default(),
+            AskReply::Hook(held) => held.decide(ask.decision(answer)),
             AskReply::Keys => self.type_plan_answer(owner, answer),
         }
         self.record_ask(owner, outcome(&ask.kind, verdict(&ask.kind, answer)));
@@ -434,12 +431,11 @@ impl EnvironmentShell {
                 else {
                     return;
                 };
-                if let AskReply::Hook(sender) = reply {
-                    let decision = ToolDecision::Deny {
+                if let AskReply::Hook(held) = reply {
+                    held.decide(ToolDecision::Deny {
                         message: DENIED_TEXT.to_owned(),
                         interrupt: true,
-                    };
-                    sender.send(Response::Decided(decision)).unwrap_or_default();
+                    });
                 }
                 if matches!(ask.kind, AskKind::Questions(_)) {
                     self.type_into_owner(owner, ESCAPE);

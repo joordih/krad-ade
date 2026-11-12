@@ -32,7 +32,7 @@ impl EnvironmentShell {
                 }
                 this.settings.api_discovery_file = choice;
                 this.save_settings(cx);
-                this.sync_api_file(cx);
+                this.sync_api_file();
                 cx.notify();
             }))
         };

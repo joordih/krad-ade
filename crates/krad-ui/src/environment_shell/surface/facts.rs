@@ -295,9 +295,7 @@ impl EnvironmentShell {
         match &chat.backend {
             Backend::Transcript(_) => {
                 let status = self
-                    .envs
-                    .get(&self.active)
-                    .and_then(|live| live.statuses.get(&id))
+                    .agent_status(&self.active, id)
                     .cloned()
                     .unwrap_or_default();
                 transcript_facts(&status, self.settings_models(TRANSCRIPT_HARNESS))

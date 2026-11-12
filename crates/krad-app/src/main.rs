@@ -7,7 +7,8 @@ mod rounded_corners;
 use gpui_kit::component::command::CommandState;
 use gpui_kit::component::TitleBar;
 use gpui_kit::{application, init, open_window, AppContext, WindowDecorations, WindowOptions};
-use krad_runtime::Runtime;
+use krad_agents::CliPlace;
+use krad_runtime::{BusSetup, Runtime, RuntimeSetup};
 use krad_store::{config_dir, read_layout_snapshot, read_settings, read_user_themes, APP_NAME};
 use krad_ui::{
     active_appearance, apply_editor_font, apply_interface_font, apply_settings_theme,
@@ -31,7 +32,11 @@ fn main() {
     settings.migrate_themes();
     let user_themes = read_user_themes();
     let host_tools = HostTools::discover();
-    let runtime = match Runtime::start() {
+    let bus = CliPlace::find().map(|cli| BusSetup {
+        cli_dir: cli.dir(),
+        config_dir: config_dir(),
+    });
+    let runtime = match Runtime::start(RuntimeSetup { bus }) {
         Ok(runtime) => runtime,
         Err(error) => {
             tracing::error!(%error, "could not start the runtime");

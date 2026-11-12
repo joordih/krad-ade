@@ -1,10 +1,10 @@
-use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::Context;
 use krad_agents::{ErrorCode, Request, Response};
 use krad_domain::{
     chat_worker_brief, AgentPreset, EnvironmentName, GroupId, PermissionMode, SessionId,
     TerminalGroup, TerminalId,
 };
+use krad_runtime::BusReply;
 
 use super::super::agent_hooks::{WorkerOf, WorkerOrder};
 use super::super::language_servers::CodeCaller;
@@ -29,7 +29,7 @@ impl EnvironmentShell {
         environment: &str,
         group: GroupId,
         request: Request,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let response = match request {
@@ -141,7 +141,7 @@ impl EnvironmentShell {
         environment: &str,
         group: GroupId,
         spawn: ChatSpawn,
-        reply: ReplySender<Response>,
+        reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let env = EnvironmentName::new(environment.to_owned());

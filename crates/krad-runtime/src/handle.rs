@@ -1,11 +1,16 @@
 use futures::channel::{mpsc, oneshot};
 use futures::{Stream, StreamExt as _};
-use krad_protocol::{Command, Feed, Reply, RequestId, Scope, Snapshot};
+use krad_agents::{AgentInfo, AgentKey, StateReason};
+use krad_domain::ToolDecision;
+use krad_protocol::{AskId, BusCommand, Command, Feed, Reply, RequestId, Scope, Snapshot};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::SyncSender;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use crate::bus::{BusAccess, DelegationReceiver, DELEGATION_BUFFER};
 use crate::input::Input;
 
 const SUBSCRIBER_BUFFER: usize = 256;
@@ -14,20 +19,50 @@ const SUBSCRIBER_BUFFER: usize = 256;
 #[error("the runtime has stopped")]
 pub struct RuntimeStopped;
 
+#[derive(Debug)]
+struct Alive(SyncSender<Input>);
+
+impl Drop for Alive {
+    fn drop(&mut self) {
+        if self.0.send(Input::Stop).is_err() {
+            tracing::trace!("the runtime had already stopped");
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct RuntimeHandle {
     inbox: SyncSender<Input>,
+    bus: Option<Arc<BusAccess>>,
+    requests: Arc<AtomicU64>,
+    _alive: Arc<Alive>,
 }
 
 impl RuntimeHandle {
-    pub(crate) fn new(inbox: SyncSender<Input>) -> Self {
-        Self { inbox }
+    pub(crate) fn new(inbox: SyncSender<Input>, bus: Option<Arc<BusAccess>>) -> Self {
+        Self {
+            _alive: Arc::new(Alive(inbox.clone())),
+            inbox,
+            bus,
+            requests: Arc::new(AtomicU64::new(0)),
+        }
     }
 
     pub fn send(&self, id: RequestId, command: Command) -> Pending<Reply> {
         let (reply, answer) = oneshot::channel();
         self.deliver(Input::Command { id, command, reply });
         Pending(answer)
+    }
+
+    pub fn post(&self, command: Command) {
+        let (reply, _unheard) = oneshot::channel();
+        let id = self.next_request();
+        self.deliver(Input::Command { id, command, reply });
+    }
+
+    #[must_use]
+    pub fn next_request(&self) -> RequestId {
+        RequestId(self.requests.fetch_add(1, Ordering::Relaxed) + 1)
     }
 
     pub fn subscribe(&self) -> EventReceiver {
@@ -42,10 +77,55 @@ impl RuntimeHandle {
         Pending(answer)
     }
 
+    #[must_use]
+    pub fn bus(&self) -> Option<&BusAccess> {
+        self.bus.as_deref()
+    }
+
+    pub fn delegate_bus(&self) -> DelegationReceiver {
+        let (delegate, receiver) = mpsc::channel(DELEGATION_BUFFER);
+        self.deliver(Input::Delegate(delegate));
+        DelegationReceiver(receiver)
+    }
+
+    pub fn observe_agent(&self, key: AgentKey, seen: Option<AgentInfo>, hint: Option<StateReason>) {
+        self.deliver(Input::ObserveAgent { key, seen, hint });
+    }
+
+    pub fn reconcile_agents(&self, environments: Vec<String>, agents: Vec<AgentInfo>) {
+        self.deliver(Input::ReconcileAgents {
+            environments,
+            agents,
+        });
+    }
+
+    #[must_use]
+    pub fn held_ask(&self, ask: AskId) -> HeldAsk {
+        HeldAsk {
+            ask,
+            runtime: self.clone(),
+        }
+    }
+
     fn deliver(&self, input: Input) {
         if self.inbox.send(input).is_err() {
             tracing::debug!("input reached a stopped runtime");
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct HeldAsk {
+    pub ask: AskId,
+    runtime: RuntimeHandle,
+}
+
+impl HeldAsk {
+    pub fn decide(self, decision: ToolDecision) {
+        self.runtime.post(Command::Bus(BusCommand::AnswerAsk {
+            ask: self.ask,
+            decision,
+        }));
     }
 }
 

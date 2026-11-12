@@ -1,5 +1,6 @@
 mod acp;
 mod agent;
+mod agent_status;
 mod arcade;
 mod archive;
 mod attention;
@@ -81,6 +82,7 @@ mod wsl;
 
 pub use acp::*;
 pub use agent::*;
+pub use agent_status::*;
 pub use arcade::*;
 pub use archive::*;
 pub use attention::*;

@@ -396,7 +396,6 @@ impl EnvironmentShell {
         live.waiting_modes.remove(&id);
         live.waiting_choices.remove(&id);
         live.data.drop_terminal(id);
-        live.mailbox.forget(id.as_u64());
         if live.focused == Some(id) {
             live.focused = None;
             show_current_session(live);

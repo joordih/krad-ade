@@ -133,13 +133,17 @@ impl EnvironmentShell {
     }
 
     fn bus_hint(&self, in_wsl: bool) -> Option<String> {
-        self.agent_bus
+        self.runtime
+            .handle
+            .bus()
             .is_some()
             .then(|| BUS_HINT.replace(krad_agents::CLI_PROGRAM, cli_name(in_wsl)))
     }
 
     fn lead_hint(&self, in_wsl: bool) -> Option<String> {
-        self.agent_bus
+        self.runtime
+            .handle
+            .bus()
             .is_some()
             .then(|| LEAD_HINT.replace(krad_agents::CLI_PROGRAM, cli_name(in_wsl)))
     }

@@ -1,10 +1,9 @@
-use futures::channel::oneshot::Sender as ReplySender;
-use krad_agents::{Response, TerminalHandle};
 use krad_chat::{AskAnswer, AskKind, ToolAsk};
 use krad_domain::{
     AgentPreset, EnvironmentName, PermissionMode, PlanDialogKeys, SettledAsks, TerminalId,
-    ToolDecision, ToolUseId,
+    ToolDecision,
 };
+use krad_protocol::{AskId, AskRequest, PendingAsk};
 
 use super::super::agent_bus::ENTER;
 use super::super::surface::Backend;
@@ -43,36 +42,48 @@ impl HeldAskReport<'_> {
 }
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn hold_ask(
-        &mut self,
-        from: &TerminalHandle,
-        ask: ToolAsk,
-        tool: String,
-        call: Option<ToolUseId>,
-        reply: ReplySender<Response>,
-    ) {
-        let env = EnvironmentName::new(from.environment.clone());
+    pub(in crate::environment_shell) fn hold_ask(&mut self, pending: PendingAsk) {
+        let PendingAsk {
+            ask,
+            agent,
+            request:
+                AskRequest {
+                    tool,
+                    input,
+                    suggestions,
+                    call,
+                },
+        } = pending;
+        let held = self.runtime.handle.held_ask(ask);
+        let asked = ToolAsk::held(tool.clone(), input, suggestions);
         let chat = self
             .envs
-            .get_mut(&env)
-            .and_then(|live| live.chats.get_mut(&TerminalId(from.terminal)))
+            .get_mut(&agent.environment)
+            .and_then(|live| live.chats.get_mut(&agent.terminal))
             .filter(|chat| matches!(chat.backend, Backend::Transcript(_)));
         let Some(chat) = chat else {
-            reply
-                .send(Response::Decided(ToolDecision::Pass))
-                .unwrap_or_default();
+            held.decide(ToolDecision::Pass);
             return;
         };
-        let reply = if matches!(ask.kind, AskKind::Plan { .. }) {
-            reply
-                .send(Response::Decided(ToolDecision::Pass))
-                .unwrap_or_default();
+        let reply = if matches!(asked.kind, AskKind::Plan { .. }) {
+            held.decide(ToolDecision::Pass);
             AskReply::Keys
         } else {
-            AskReply::Hook(reply)
+            AskReply::Hook(held)
         };
-        chat.asks_mut().push(Waiting::held(ask, reply, tool, call));
-        self.raise_front_ask(&env, TerminalId(from.terminal));
+        chat.asks_mut()
+            .push(Waiting::held(asked, reply, tool, call));
+        self.raise_front_ask(&agent.environment, agent.terminal);
+    }
+
+    pub(in crate::environment_shell) fn forget_held_ask(&mut self, ask: AskId) -> bool {
+        let mut forgotten = false;
+        for live in self.envs.values_mut() {
+            for chat in live.chats.values_mut() {
+                forgotten |= chat.asks_mut().forget_ask(ask);
+            }
+        }
+        forgotten
     }
 
     pub(in crate::environment_shell) fn settle_held_asks(

@@ -1,14 +1,14 @@
-use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::FocusHandle;
-use krad_agents::Response;
 use krad_chat::{AskKind, ToolAsk};
 use krad_domain::{AskOutcome, AskVerdict, ToolDecision, ToolUseId};
+use krad_protocol::AskId;
+use krad_runtime::HeldAsk;
 
 use super::{outcome, Note, NotePurpose, Picks};
 
 pub(in crate::environment_shell) enum AskReply {
     Live,
-    Hook(ReplySender<Response>),
+    Hook(HeldAsk),
     Keys,
 }
 
@@ -75,15 +75,13 @@ impl Waiting {
         matches!(self.reply, AskReply::Keys)
     }
 
-    fn caller_left(&self) -> bool {
-        matches!(&self.reply, AskReply::Hook(sender) if sender.is_canceled())
+    fn is_ask(&self, ask: AskId) -> bool {
+        matches!(&self.reply, AskReply::Hook(held) if held.ask == ask)
     }
 
     fn let_go(self) {
-        if let AskReply::Hook(sender) = self.reply {
-            sender
-                .send(Response::Decided(ToolDecision::Pass))
-                .unwrap_or_default();
+        if let AskReply::Hook(held) = self.reply {
+            held.decide(ToolDecision::Pass);
         }
     }
 }
@@ -155,8 +153,18 @@ impl AskQueue {
         self.drop_where(|waiting| settled.covers(waiting))
     }
 
-    pub(in crate::environment_shell) fn drop_left_callers(&mut self) -> bool {
-        self.drop_where(Waiting::caller_left)
+    pub(in crate::environment_shell) fn forget_ask(&mut self, ask: AskId) -> bool {
+        let front_gone = self
+            .waiting
+            .first()
+            .is_some_and(|waiting| waiting.is_ask(ask));
+        let before = self.waiting.len();
+        self.waiting.retain(|waiting| !waiting.is_ask(ask));
+        if front_gone {
+            self.picks = Picks::default();
+            self.note = None;
+        }
+        self.waiting.len() != before
     }
 
     fn drop_where(&mut self, gone: impl Fn(&Waiting) -> bool) -> bool {
@@ -177,7 +185,7 @@ impl AskQueue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::channel::oneshot;
+    use krad_runtime::{Runtime, RuntimeHandle, RuntimeSetup};
 
     const PLAN_TOOL: &str = "ExitPlanMode";
     const BASH_TOOL: &str = "Bash";
@@ -192,16 +200,23 @@ mod tests {
         )
     }
 
-    fn bash(call: Option<&str>) -> (Waiting, oneshot::Receiver<Response>) {
-        let (sender, receiver) = oneshot::channel();
-        let ask = ToolAsk::held(BASH_TOOL.to_owned(), <_>::default(), Vec::new());
-        let waiting = Waiting::held(
-            ask,
-            AskReply::Hook(sender),
+    fn runtime() -> RuntimeHandle {
+        let started = Runtime::start(RuntimeSetup::default());
+        let Ok(runtime) = started else {
+            unreachable!("the test runtime starts its thread");
+        };
+        runtime
+    }
+
+    fn bash(runtime: &RuntimeHandle, ask: u64, call: Option<&str>) -> Waiting {
+        let held = runtime.held_ask(AskId(ask));
+        let asked = ToolAsk::held(BASH_TOOL.to_owned(), <_>::default(), Vec::new());
+        Waiting::held(
+            asked,
+            AskReply::Hook(held),
             BASH_TOOL.to_owned(),
             call.map(ToolUseId::from),
-        );
-        (waiting, receiver)
+        )
     }
 
     fn tools(queue: &AskQueue) -> Vec<Option<&str>> {
@@ -214,10 +229,10 @@ mod tests {
 
     #[test]
     fn a_plan_answered_in_the_terminal_settles_once_another_tool_runs() {
+        let runtime = runtime();
         let mut queue = AskQueue::default();
-        let (permission, _reply) = bash(None);
         queue.push(plan());
-        queue.push(permission);
+        queue.push(bash(&runtime, 1, None));
         assert!(!queue.settle(Settled::PastTool(PLAN_TOOL)));
         assert!(queue.settle(Settled::PastTool("Read")));
         assert_eq!(
@@ -229,28 +244,22 @@ mod tests {
 
     #[test]
     fn a_tool_that_ran_settles_its_asks_and_the_plans_behind_it() {
+        let runtime = runtime();
         let mut queue = AskQueue::default();
-        let (permission, mut reply) = bash(None);
-        queue.push(permission);
+        queue.push(bash(&runtime, 1, None));
         queue.push(plan());
         assert!(queue.settle(Settled::OfTool("Read")));
         assert_eq!(tools(&queue), [Some(BASH_TOOL)]);
         assert!(queue.settle(Settled::OfTool(BASH_TOOL)));
         assert!(queue.is_empty());
-        assert_eq!(
-            reply.try_recv(),
-            Ok(Some(Response::Decided(ToolDecision::Pass))),
-            "the settled hook lets Claude Code go on by itself"
-        );
     }
 
     #[test]
     fn a_tool_result_settles_the_ask_of_its_own_call() {
+        let runtime = runtime();
         let mut queue = AskQueue::default();
-        let (first, _first_reply) = bash(Some("toolu_1"));
-        let (second, _second_reply) = bash(Some("toolu_2"));
-        queue.push(first);
-        queue.push(second);
+        queue.push(bash(&runtime, 1, Some("toolu_1")));
+        queue.push(bash(&runtime, 2, Some("toolu_2")));
         let finished = ToolUseId::from("toolu_2");
         assert!(queue.settle(Settled::Call {
             call: &finished,
@@ -264,8 +273,7 @@ mod tests {
                 .and_then(|waiting| waiting.call.as_ref()),
             Some(&ToolUseId::from("toolu_1"))
         );
-        let (unnamed, _unnamed_reply) = bash(None);
-        queue.push(unnamed);
+        queue.push(bash(&runtime, 3, None));
         let other = ToolUseId::from("toolu_3");
         assert!(queue.settle(Settled::Call {
             call: &other,
@@ -280,9 +288,9 @@ mod tests {
 
     #[test]
     fn leaving_plan_mode_settles_the_plan() {
+        let runtime = runtime();
         let mut queue = AskQueue::default();
-        let (permission, _reply) = bash(None);
-        queue.push(permission);
+        queue.push(bash(&runtime, 1, None));
         queue.push(plan());
         assert!(queue.settle(Settled::Plans));
         assert_eq!(tools(&queue), [Some(BASH_TOOL)]);
@@ -291,16 +299,14 @@ mod tests {
     }
 
     #[test]
-    fn a_hook_that_went_away_drops_its_ask() {
+    fn an_ask_the_runtime_settled_leaves_the_queue() {
+        let runtime = runtime();
         let mut queue = AskQueue::default();
-        let (gone, reply) = bash(None);
-        let (kept, _kept_reply) = bash(None);
-        queue.push(gone);
-        queue.push(kept);
+        queue.push(bash(&runtime, 1, None));
+        queue.push(bash(&runtime, 2, None));
         queue.push(plan());
-        assert!(!queue.drop_left_callers());
-        drop(reply);
-        assert!(queue.drop_left_callers());
+        assert!(!queue.forget_ask(AskId(9)));
+        assert!(queue.forget_ask(AskId(1)));
         assert_eq!(tools(&queue), [Some(BASH_TOOL), Some(PLAN_TOOL)]);
     }
 }

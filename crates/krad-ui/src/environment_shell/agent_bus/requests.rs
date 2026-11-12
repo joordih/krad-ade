@@ -1,11 +1,12 @@
 use krad_agents::{AgentInfo, ErrorCode, Response, TerminalHandle, TerminalState};
 use krad_domain::{AgentState, EnvironmentName, TerminalId};
+use krad_runtime::{BusReply, Mail};
 
 use super::super::surface::ChatPresence;
 use super::super::EnvironmentShell;
 use super::close::closed_worker_infos;
 use super::feed::lists_as_agent;
-use super::{handle, Settlement, NO_SUCH_TERMINAL};
+use super::{Settlement, NO_SUCH_TERMINAL};
 
 pub(super) const CLOSED_TERMINAL: &str = "That terminal has no running session";
 
@@ -34,46 +35,27 @@ impl EnvironmentShell {
         agents
     }
 
-    pub(super) fn post(&mut self, from: &TerminalHandle, to: u64, body: String) -> Response {
+    pub(super) fn post(&self, from: &TerminalHandle, to: u64, body: String, reply: BusReply) {
         let env = EnvironmentName::new(from.environment.clone());
-        let Some(live) = self.envs.get_mut(&env) else {
-            return Response::error(ErrorCode::NotFound, NO_SUCH_TERMINAL);
+        let nodes = self.envs.get(&env).map(|live| &live.data.nodes);
+        let Some(nodes) = nodes.filter(|nodes| nodes.iter().any(|node| node.id.as_u64() == to))
+        else {
+            reply
+                .send(Response::error(ErrorCode::NotFound, NO_SUCH_TERMINAL))
+                .unwrap_or_default();
+            return;
         };
-        if !live.data.nodes.iter().any(|node| node.id.as_u64() == to) {
-            return Response::error(ErrorCode::NotFound, NO_SUCH_TERMINAL);
-        }
-        let from_title = live
-            .data
-            .nodes
+        let from_title = nodes
             .iter()
             .find(|node| node.id.as_u64() == from.terminal)
             .map_or_default(|node| node.title.clone());
-        let id = live.mailbox.post(from.terminal, from_title, to, body);
-        self.wake_inbox_waiter(&handle(&env, TerminalId(to)));
-        Response::Sent { id }
-    }
-
-    pub(super) fn take_mail(&mut self, terminal: &TerminalHandle) -> Vec<krad_agents::Message> {
-        self.envs
-            .get_mut(&EnvironmentName::new(terminal.environment.clone()))
-            .map_or_default(|live| live.mailbox.take(terminal.terminal))
-    }
-
-    fn wake_inbox_waiter(&mut self, recipient: &TerminalHandle) {
-        let Some(bus) = &mut self.agent_bus else {
-            return;
+        let mail = Mail {
+            from: from.clone(),
+            from_title,
+            to,
+            body,
         };
-        bus.inbox_waiters.retain(|(_, reply)| !reply.is_canceled());
-        let Some(index) = bus
-            .inbox_waiters
-            .iter()
-            .position(|(waiter, _)| waiter == recipient)
-        else {
-            return;
-        };
-        let (_, reply) = bus.inbox_waiters.swap_remove(index);
-        let messages = self.take_mail(recipient);
-        reply.send(Response::Messages(messages)).unwrap_or_default();
+        reply.post_mail(mail).unwrap_or_default();
     }
 
     pub(super) fn settled_state(&self, target: &TerminalHandle) -> Settlement {
