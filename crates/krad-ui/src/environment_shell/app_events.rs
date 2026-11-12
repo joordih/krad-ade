@@ -2,11 +2,10 @@ mod code_host;
 
 use gpui_kit::Task;
 use krad_domain::{
-    AgentPreset, AgentState, AppEvent, EnvironmentName, EventRecord, GroupId, Host, Session,
-    SessionId, TerminalId,
+    AppEvent, EnvironmentName, EventRecord, GroupId, Host, Session, SessionId, Webhook, WebhookId,
 };
 use krad_store::{EventJournal, JournalSend};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -22,6 +21,7 @@ pub(super) struct AppEvents {
     pub(super) webhook_secrets: Option<Task<()>>,
     sessions: HashMap<EnvironmentName, Vec<SessionKey>>,
     code_hosts: code_host::CodeHostWatch,
+    delivered: BTreeSet<WebhookId>,
 }
 
 impl AppEvents {
@@ -32,28 +32,16 @@ impl AppEvents {
             webhook_secrets: None,
             sessions: HashMap::new(),
             code_hosts: code_host::CodeHostWatch::default(),
+            delivered: BTreeSet::new(),
         }
     }
 }
 
-pub(super) fn agent_event(
-    terminal: TerminalId,
-    harness: Option<AgentPreset>,
-    before: AgentState,
-    after: AgentState,
-) -> Option<AppEvent> {
-    if !harness.is_some_and(|harness| harness != AgentPreset::Shell) {
-        return None;
-    }
-    match (before, after) {
-        (AgentState::Working, AgentState::Working) => None,
-        (_, AgentState::Working) => Some(AppEvent::AgentStarted { terminal, harness }),
-        (_, AgentState::WaitingForInput) => Some(AppEvent::AgentWaiting { terminal }),
-        (_, AgentState::Done) | (AgentState::Working, AgentState::Idle) => {
-            Some(AppEvent::AgentFinished { terminal })
-        }
-        _ => None,
-    }
+fn undelivered<'a>(
+    wanting: impl Iterator<Item = &'a Webhook>,
+    delivered: &'a BTreeSet<WebhookId>,
+) -> impl Iterator<Item = &'a Webhook> {
+    wanting.filter(move |hook| !delivered.contains(&hook.id))
 }
 
 fn same_sessions(seen: Option<&Vec<SessionKey>>, sessions: &[Session]) -> bool {
@@ -102,7 +90,8 @@ impl EnvironmentShell {
         self.observe_kraddie_event(environment, group, &record.event);
         self.announce_app_event(&record);
         if let Some(sender) = &self.app_events.webhooks {
-            for hook in self.settings.webhooks.wanting(kind) {
+            let wanting = self.settings.webhooks.wanting(kind);
+            for hook in undelivered(wanting, &self.app_events.delivered) {
                 sender.send(Delivery {
                     hook: hook.clone(),
                     record: record.clone(),
@@ -117,6 +106,16 @@ impl EnvironmentShell {
             JournalSend::Full => tracing::warn!(?kind, "event journal full; event not kept"),
             JournalSend::Stopped => tracing::debug!("event journal stopped"),
         }
+    }
+
+    pub(super) fn with_webhooks_delivered(
+        &mut self,
+        delivered: BTreeSet<WebhookId>,
+        publish: impl FnOnce(&mut Self),
+    ) {
+        self.app_events.delivered = delivered;
+        publish(self);
+        self.app_events.delivered.clear();
     }
 
     pub(super) fn sync_app_events(&mut self) {
@@ -179,35 +178,29 @@ fn is_changed(roots: &[GitKey], host: &Host, root: &Path) -> bool {
 mod tests {
     use super::*;
 
-    const TERMINAL: TerminalId = TerminalId(5);
-
     #[test]
-    fn agent_states_become_started_waiting_and_finished() {
-        let claude = Some(AgentPreset::ClaudeCode);
-        let event = |before, after| agent_event(TERMINAL, claude, before, after);
-        assert_eq!(
-            event(AgentState::Idle, AgentState::Working),
-            Some(AppEvent::AgentStarted {
-                terminal: TERMINAL,
-                harness: claude,
+    fn webhooks_the_runner_delivered_are_left_out() -> Result<(), Box<dyn std::error::Error>> {
+        let hook = |id: u64| -> Result<Webhook, Box<dyn std::error::Error>> {
+            Ok(Webhook {
+                id: WebhookId(id),
+                name: "ci".parse()?,
+                url: "https://hooks.example.test/krad".parse()?,
+                kinds: BTreeSet::new(),
+                signing: krad_domain::WebhookSigning::Unsigned,
             })
-        );
+        };
+        let hooks = [hook(1)?, hook(2)?];
+        let left = |delivered: &BTreeSet<WebhookId>| -> Vec<WebhookId> {
+            undelivered(hooks.iter(), delivered)
+                .map(|hook| hook.id)
+                .collect()
+        };
+        assert_eq!(left(&BTreeSet::new()), vec![WebhookId(1), WebhookId(2)]);
         assert_eq!(
-            event(AgentState::Working, AgentState::WaitingForInput),
-            Some(AppEvent::AgentWaiting { terminal: TERMINAL })
+            left(&[WebhookId(2)].into_iter().collect()),
+            vec![WebhookId(1)]
         );
-        let finished = Some(AppEvent::AgentFinished { terminal: TERMINAL });
-        assert_eq!(event(AgentState::Working, AgentState::Done), finished);
-        assert_eq!(event(AgentState::Working, AgentState::Idle), finished);
-        assert_eq!(event(AgentState::Done, AgentState::Idle), None);
-        assert_eq!(event(AgentState::Working, AgentState::Working), None);
-    }
-
-    #[test]
-    fn plain_shells_raise_no_agent_events() {
-        let shell = |harness| agent_event(TERMINAL, harness, AgentState::Idle, AgentState::Working);
-        assert_eq!(shell(None), None);
-        assert_eq!(shell(Some(AgentPreset::Shell)), None);
+        Ok(())
     }
 
     #[test]

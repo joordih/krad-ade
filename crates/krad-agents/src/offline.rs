@@ -62,7 +62,7 @@ impl OfflineEvent {
             return;
         };
         let installs = krad_host::runner::paired_installs(&runner_dir);
-        let lines = send::queue_lines(&runner_dir, &installs, self.0);
+        let lines = send::queue_lines(&runner_dir, &installs, &self.0);
         krad_host::runner::queue_events(&runner_dir, &lines);
     }
 

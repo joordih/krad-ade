@@ -1,7 +1,7 @@
+use krad_domain::InstallId;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::os::unix::fs::OpenOptionsExt;
-use krad_domain::InstallId;
 use std::path::{Path, PathBuf};
 
 use super::super::clients::ensure_private_dir;

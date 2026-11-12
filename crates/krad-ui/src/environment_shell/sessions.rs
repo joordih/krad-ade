@@ -4,8 +4,8 @@ pub(super) use launch::Launch;
 
 use krad_chat::{prepare_opencode_session, OpencodeServer};
 use krad_domain::{
-    attach_line, classify_agent_state, AgentPreset, AgentState, AppEvent, EnvironmentName, ModelId,
-    ResumeId, TerminalId, ToastKind,
+    agent_event, attach_line, classify_agent_state, AgentPreset, AgentState, AppEvent,
+    EnvironmentName, ModelId, ResumeId, TerminalId, ToastKind,
 };
 use krad_session::{
     run_spawn_job, FirstInput, LiveSession, PtyInput, PumpMsg, SessionState, SharedKiller,
@@ -19,7 +19,6 @@ use std::time::Instant;
 
 use self::launch::{LaunchShell, Placed, ResolvedLaunch};
 use super::agent_hooks::AgentRole;
-use super::app_events::agent_event;
 use super::cloud::CloudShell;
 use super::shell_site::ShellSite;
 use super::EnvironmentShell;

@@ -1,6 +1,8 @@
-mod signature;
+pub(crate) mod signature;
 
-use krad_domain::{DeliveryOutcome, EventRecord, Timestamp, Webhook, WebhookSecret, WebhookSigning};
+use krad_domain::{
+    DeliveryOutcome, EventRecord, Timestamp, Webhook, WebhookSecret, WebhookSigning,
+};
 use std::time::Duration;
 use ureq::Agent;
 

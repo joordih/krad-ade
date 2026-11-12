@@ -2,8 +2,8 @@ use futures::channel::oneshot::Sender as ReplySender;
 use gpui_kit::{AppContext as _, Context};
 use krad_agents::{AgentStatus, ErrorCode, Response, TerminalHandle};
 use krad_domain::{
-    code_tools_launch_args, hook_launch_args, launch_with_prompt, quote_for_shell, worker_brief,
-    AgentPreset, AgentState, CloudPlacement, EnvironmentName, ModelDelivery, ModelId,
+    code_tools_launch_args, hook_launch_args, hook_state, launch_with_prompt, quote_for_shell,
+    worker_brief, AgentPreset, CloudPlacement, EnvironmentName, ModelDelivery, ModelId,
     PermissionMode, ResumeId, SessionId, TerminalGroup, TerminalId, ToastKind, WorkerSpawn,
     WorktreeOrigin,
 };
@@ -162,14 +162,14 @@ impl EnvironmentShell {
         let env = EnvironmentName::new(from.environment.clone());
         let id = TerminalId(from.terminal);
         let preset = report.harness;
-        let signal = preset.hook_signal(report.event, report.tool);
+        let state = hook_state(preset, report.event, report.tool);
         if let Some(session) = self
             .envs
             .get_mut(&env)
             .and_then(|live| live.sessions.get_mut(&id))
         {
             session.hooked = true;
-            if signal.is_some() {
+            if state.is_some() {
                 session.activity = report.detail;
             }
         }
@@ -183,8 +183,8 @@ impl EnvironmentShell {
         let resume = report.resume.and_then(|raw| raw.parse::<ResumeId>().ok());
         let fresh = preset.started_fresh(report.event, report.tool);
         self.note_resume_id(&env, id, preset, resume, fresh);
-        if let Some(signal) = signal {
-            self.set_agent_state(&env, id, AgentState::from(signal));
+        if let Some(state) = state {
+            self.set_agent_state(&env, id, state);
         }
         Response::Noted
     }

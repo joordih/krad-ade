@@ -21,6 +21,7 @@ mod stops;
 mod terminal;
 mod token;
 mod tray;
+mod webhooks;
 mod workspace;
 
 pub(in crate::environment_shell) use actions::CloudAction;
@@ -43,6 +44,7 @@ use self::install::PreparedRunner;
 use self::process::{Liveness, LivenessCheck};
 use self::sessions::{PatchQuestion, PendingCloudSession};
 use self::sign_in::{LoopbackCallback, SignInWatch};
+use self::webhooks::WebhooksPlan;
 use super::agent_bus::RemoteBusSlot;
 use super::opencode::OpencodeLink;
 use super::EnvironmentShell;
@@ -80,6 +82,8 @@ pub(super) struct CloudRunners {
     forward_asks: Vec<(NodeKey, LoopbackCallback)>,
     finished: Vec<SignInWatch>,
     heard: HashMap<NodeKey, Instant>,
+    webhooks: HashMap<CloudRunnerId, WebhooksPlan>,
+    webhooks_checked: Option<Instant>,
 }
 
 impl EnvironmentShell {

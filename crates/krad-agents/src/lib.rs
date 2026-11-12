@@ -19,6 +19,7 @@ mod server;
 mod statusline;
 mod token;
 mod toolchains;
+mod webhook;
 
 pub use askpass::ASKPASS_VERB;
 pub use cli::{run_cli, run_invoked, run_process, CLI_NAME};
@@ -37,7 +38,7 @@ pub use extension_tools::{
 pub use feed::{AgentFeed, AgentKey, EVENT_RING_CAPACITY, SUBSCRIBER_QUEUE};
 pub use handle::{Caller, LeadHandle, TerminalHandle};
 pub use mailbox::{notice_text, Mailbox};
-pub use offline::{queued_events, QueuedEvent};
+pub use offline::{queued_events, runner_record, QueuedEvent};
 pub use protocol::{
     lead_refusal, memory_hit_limit, AgentChangeKind, AgentEvent, AgentFilter, AgentInfo,
     AgentSnapshot, AgentStatus, AgentSubscription, ApiError, ApiInfo, ApiVersion, AutomationInfo,
@@ -51,3 +52,4 @@ pub use protocol::{
 };
 pub use server::{serve, Endpoint, Incoming, HEARTBEAT_INTERVAL};
 pub use token::new_token;
+pub use webhook::{post_webhook, webhook_agent, WebhookPostError};

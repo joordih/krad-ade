@@ -80,6 +80,7 @@ impl EnvironmentShell {
             }
             return;
         }
+        self.forget_runner_webhooks(runner);
         self.start_runner_return(runner, cx);
         self.start_pending_cloud_sessions(runner, cx);
         self.run_queued_stops(runner, cx);

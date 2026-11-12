@@ -85,9 +85,12 @@ impl EnvironmentShell {
             if heard_since {
                 continue;
             }
-            if let Some(replay) = replay_of(event.request) {
-                self.replay(&node.0, node.1, replay);
-            }
+            let Some(replay) = replay_of(event.request) else {
+                continue;
+            };
+            self.with_webhooks_delivered(event.webhooked, |shell| {
+                shell.replay(&node.0, node.1, replay);
+            });
         }
     }
 
@@ -122,10 +125,13 @@ impl EnvironmentShell {
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::app_events::agent_event;
+    use super::super::webhooks::webhook_target;
     use super::*;
-    use krad_agents::queued_events;
-    use krad_domain::{AgentState, AppEvent, CloudProcess, JournalOffset, NodeKind};
+    use krad_agents::{queued_events, runner_record};
+    use krad_domain::{
+        agent_event, hook_state, AgentState, AppEvent, CloudProcess, JournalOffset, NodeKind,
+        RunnerWebhooks,
+    };
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -208,6 +214,58 @@ mod tests {
                 terminal: TerminalId(2)
             })
         );
+        Ok(())
+    }
+
+    fn app_events(node: &TerminalNode, events: &[QueuedEvent]) -> Vec<AppEvent> {
+        let mut state = node.state;
+        events
+            .iter()
+            .filter_map(|queued| {
+                let Request::Hook {
+                    harness,
+                    event,
+                    tool,
+                    ..
+                } = &queued.request
+                else {
+                    return None;
+                };
+                let after = hook_state(*harness, event, tool.as_deref())?;
+                let before = std::mem::replace(&mut state, after);
+                (before != after)
+                    .then(|| agent_event(node.id, node.harness, before, after))
+                    .flatten()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_runner_maps_queued_hooks_to_the_events_the_app_publishes() -> TestResult {
+        let env = EnvironmentName::new("api".to_owned());
+        let lines = [
+            r#"{"process":"api-2-a1b2c3","at":"2026-11-12T10:00:00.000Z","request":{"Hook":{"harness":"claude","event":"Stop"}}}"#,
+            r#"{"process":"api-2-a1b2c3","at":"2026-11-12T10:00:01.000Z","request":{"Hook":{"harness":"claude","event":"Stop"}}}"#,
+            r#"{"process":"api-2-a1b2c3","at":"2026-11-12T10:00:02.000Z","request":{"Hook":{"harness":"claude","event":"UserPromptSubmit"}}}"#,
+            r#"{"process":"api-2-a1b2c3","at":"2026-11-12T10:00:03.000Z","request":{"Hook":{"harness":"claude","event":"PreToolUse","tool":"Bash"}}}"#,
+            r#"{"process":"api-2-a1b2c3","at":"2026-11-12T10:00:04.000Z","request":{"Hook":{"harness":"claude","event":"Notification","tool":"permission_prompt"}}}"#,
+            r#"{"process":"api-2-a1b2c3","at":"2026-11-12T10:00:05.000Z","request":{"Ask":{"tool":"Bash","input":null,"suggestions":[],"call":null}}}"#,
+            r#"{"process":"api-2-a1b2c3","at":"2026-11-12T10:00:06.000Z","request":{"Hook":{"harness":"claude","event":"Stop"}}}"#,
+        ]
+        .join("\n");
+        let events = queued_events(&lines);
+        let node = node(2, Some("api-2-a1b2c3"))?;
+        let webhooks = RunnerWebhooks {
+            hooks: Vec::new(),
+            targets: vec![webhook_target(&env, &node).ok_or("no target")?],
+        };
+        let runner: Vec<AppEvent> = (0..events.len())
+            .filter_map(|at| runner_record(&webhooks, &events[..at], &events[at]))
+            .map(|record| record.event)
+            .collect();
+        let app = app_events(&node, &events);
+        assert_eq!(runner, app);
+        assert_eq!(app.len(), 4);
         Ok(())
     }
 }

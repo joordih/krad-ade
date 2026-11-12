@@ -87,6 +87,7 @@ impl EnvironmentShell {
         self.check_cloud_processes(cx);
         self.service_runner_sign_ins(cx);
         self.watch_runner_buses(cx);
+        self.sync_runner_webhooks(cx);
     }
 
     pub(in crate::environment_shell) fn report_cloud_shell(&mut self, error: String) {

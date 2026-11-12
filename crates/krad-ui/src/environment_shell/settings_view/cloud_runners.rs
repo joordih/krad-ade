@@ -3,8 +3,9 @@ mod form;
 mod logins;
 mod token;
 
+use gpui_kit::component::switch::Switch;
 use gpui_kit::{div, px, AnyElement, Context, IntoElement, ParentElement, Styled, Window};
-use krad_domain::CloudRunner;
+use krad_domain::{CloudRunner, OfflineWebhooks};
 
 use super::super::cloud::RunnerState;
 use super::super::dialog_parts::sheet_padded;
@@ -25,6 +26,9 @@ const DETAIL_SEPARATOR: &str = " · ";
 const BTN_OPEN_FORM: &str = "cloud-runner-open-form";
 const RECONNECT_PREFIX: &str = "cloud-runner-reconnect";
 const REMOVE_PREFIX: &str = "cloud-runner-remove";
+const OFFLINE_WEBHOOKS_PREFIX: &str = "cloud-runner-offline-webhooks";
+const OFFLINE_WEBHOOKS_LABEL: &str = "Send webhooks while the app is closed";
+const OFFLINE_WEBHOOKS_DETAIL: &str = "The runner keeps a copy of the webhooks that want agent events, with their secrets, in a file only you can read, and sends those events itself while no app is connected.";
 const RUNNERS_NOTE: &str = "The app copies its host program to ~/.krad-ade on the runner, installs a user service named krad-cloud-runner and pairs with it. The pairing token is kept in the system keyring, or in the config folder readable only by you, and reaches the runner only through the SSH connection, never on a command line. Removing a runner stops and removes that service and its pairing; the clones on the host stay.";
 
 pub(in crate::environment_shell) struct CloudRunnersUi {
@@ -87,8 +91,35 @@ impl EnvironmentShell {
         std::iter::once(row)
             .chain(warning)
             .chain(logins)
+            .chain(std::iter::once(Self::offline_webhooks_row(runner, pal, cx)))
             .chain(self.runner_token_rows(id, token, pal, cx))
             .collect()
+    }
+
+    fn offline_webhooks_row(
+        runner: &CloudRunner,
+        pal: &Palette,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let id = runner.id;
+        let sending = runner.offline_webhooks == OfflineWebhooks::Send;
+        let wanted = if sending {
+            OfflineWebhooks::Off
+        } else {
+            OfflineWebhooks::Send
+        };
+        let control = Switch::new((OFFLINE_WEBHOOKS_PREFIX, id.0))
+            .checked(sending)
+            .on_click(cx.listener(move |this: &mut Self, _: &bool, _, cx| {
+                this.set_runner_offline_webhooks(id, wanted, cx);
+            }))
+            .into_any_element();
+        form_row(
+            OFFLINE_WEBHOOKS_LABEL,
+            Some(OFFLINE_WEBHOOKS_DETAIL),
+            control,
+            pal,
+        )
     }
 
     fn cloud_runners_card(&self, ui: &CloudRunnersUi, cx: &mut Context<Self>) -> AnyElement {
@@ -156,6 +187,7 @@ mod tests {
             id: CloudRunnerId(1),
             name: "GPU".parse()?,
             destination: "me@gpu:2200".parse()?,
+            offline_webhooks: OfflineWebhooks::Off,
         };
         assert_eq!(
             runner_detail(&runner, &RunnerState::Connecting),

@@ -36,13 +36,23 @@ pub struct RunnerWebhooks {
 impl RunnerWebhooks {
     #[must_use]
     pub fn target(&self, process: &CloudProcessId) -> Option<&WebhookTarget> {
-        self.targets.iter().find(|target| target.process == *process)
+        self.targets
+            .iter()
+            .find(|target| target.process == *process)
     }
 
     pub fn wanting(&self, kind: EventKind) -> impl Iterator<Item = &SyncedWebhook> {
         self.hooks
             .iter()
             .filter(move |synced| kind != EventKind::Ping && synced.hook.wants(kind))
+    }
+}
+
+impl TryFrom<&RunnerWebhooks> for String {
+    type Error = serde_json::Error;
+
+    fn try_from(webhooks: &RunnerWebhooks) -> Result<Self, Self::Error> {
+        serde_json::to_string(webhooks)
     }
 }
 
@@ -86,7 +96,7 @@ mod tests {
                 state: AgentState::Working,
             }],
         };
-        let text = serde_json::to_string(&file)?;
+        let text = String::try_from(&file)?;
         assert!(text.contains(r#""secret":"s3cr3t""#));
         assert_eq!(serde_json::from_str::<RunnerWebhooks>(&text)?, file);
         assert_eq!(

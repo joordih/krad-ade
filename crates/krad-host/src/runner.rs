@@ -28,17 +28,17 @@ mod wire;
 pub use attach::{attach, list, resize, stop};
 #[cfg(unix)]
 pub use cli::run_runner_verb;
+#[cfg(unix)]
+pub use clients::paired_installs;
 pub use commands::{
     attach_terminal_command, authorize, pair_command, resize_command, run_authorized,
     status_command, stop_command, unpair_command, TerminalAttach,
 };
 #[cfg(unix)]
 pub use daemon::{runner_socket, RunnerDaemon};
-#[cfg(unix)]
-pub use clients::paired_installs;
+pub use events::{events_file, take_events_command, webhooks_dir, webhooks_file};
 #[cfg(unix)]
 pub use events::{home_runner_dir, queue_events};
-pub use events::{events_file, take_events_command, webhooks_dir, webhooks_file};
 pub use header::{InvalidJournalHeader, JournalHeader, PastEndNotice};
 pub use service::{
     install_command, install_script, service_unit, uninstall_command, uninstall_script,

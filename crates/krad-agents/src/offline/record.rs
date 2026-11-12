@@ -54,9 +54,7 @@ pub fn runner_record(
 mod tests {
     use super::*;
     use crate::offline::queued_events;
-    use krad_domain::{
-        AgentPreset, AppEvent, EnvironmentName, GroupId, TerminalId, WebhookTarget,
-    };
+    use krad_domain::{AgentPreset, AppEvent, EnvironmentName, GroupId, TerminalId, WebhookTarget};
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
 

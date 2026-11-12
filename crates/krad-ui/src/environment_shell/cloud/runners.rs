@@ -211,6 +211,7 @@ impl EnvironmentShell {
         let paired = self.runner_cli(id).zip(self.runner_pairing(id));
         let live = self.cloud.live.remove(&id);
         self.forget_runner_logins(id);
+        self.forget_runner_webhooks(id);
         self.keep_runner_claude_token(id, None);
         self.mark_runner_removed(id);
         let host = Host::Ssh {
