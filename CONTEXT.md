@@ -110,6 +110,18 @@ _Avoid_: jump list, breadcrumbs, undo
 A line of work the user opens inside a group, holding its own tabs; it opens on a chat. Every group keeps at least one, and removing a group removes its sessions.
 _Avoid_: workspace, thread, PTY session
 
+**Cloud session**:
+A session that runs on a cloud runner instead of the environment's host, so its chats, workers and terminals keep working while the app is closed. It works in its own clone of the group's repository, on its own branch, and the user opens it from any group of any environment or sends an existing session there. A question or permission it raises while nobody is connected waits for the user.
+_Avoid_: background agent, remote session, cloud agent
+
+**Cloud runner**:
+A Linux machine of the user's where the app installed the `cloud-runner` daemon of its host CLI as a user service, reached through the system `ssh`, which runs cloud sessions and keeps them alive without the app. Every installation of the app paired with it sees all its cloud sessions. It carries the agent configuration the user chose to sync, and its harnesses and git sign in on the runner itself, started from the app.
+_Avoid_: runner, cloud, server, worker, remote host
+
+**Pairing**:
+Giving one installation of the app a revocable token for a cloud runner, created over SSH on the runner. The daemon only listens on the runner's loopback, so the token is never the only barrier.
+_Avoid_: login, linking, registration
+
 **Archive**:
 The closed sessions of a group with their chats, and the chats closed from sessions still open, kept so the user can look through them and reopen them, until the user deletes them or the archive retention removes them. A reopened session gets its chats and file tabs back; its shells start afresh. A lead's session is archived and reopened with its Workers; removing a group deletes its Archive. A session with nothing worth reopening (no used chat, pinned file or Worker) is not kept.
 _Avoid_: history, trash, recently closed

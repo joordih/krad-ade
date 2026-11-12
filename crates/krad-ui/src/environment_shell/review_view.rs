@@ -35,7 +35,7 @@ use crate::theme::{palette, Palette};
 pub(super) use changes::{diff_row, DIFF_GUTTER_W};
 use detail::{RequestDetail, ReviewTab};
 pub(super) use diff::{highlight_diff, numbered_lines, DiffLine, LineHighlights, LineKind};
-pub(super) use host::{origin_repo, HostClient};
+pub(super) use host::{origin_repo, repo_of_remote, HostClient, HostError as CodeHostError};
 use layout::{review_frame, ReviewFrame};
 use marks::{
     avatar, ci_color, ci_glyph, ci_label, merge_status_label, meta_line, state_color, state_label,

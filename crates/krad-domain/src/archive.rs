@@ -9,6 +9,7 @@ pub use retention::*;
 use crate::agent::AgentPreset;
 use crate::bookmark::ChatBookmarks;
 use crate::checkpoint::ChatCheckpoints;
+use crate::cloud::CloudPlacement;
 use crate::group::{OpenFile, SessionLead, SessionLook};
 use crate::ids::{GroupId, ResumeId, SessionId, TerminalId};
 use crate::model::ChatChoice;
@@ -65,6 +66,8 @@ pub struct ArchivedSession {
     pub lead: Option<SessionLead>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub workers: Vec<ArchivedChat>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloud: Option<CloudPlacement>,
 }
 
 impl ArchivedSession {
@@ -169,6 +172,7 @@ pub(crate) mod fixtures {
             files: Vec::new(),
             lead: None,
             workers: Vec::new(),
+            cloud: None,
         }
     }
 
@@ -204,6 +208,7 @@ pub(crate) mod fixtures {
                 usage: ChatUsage::default(),
                 checkpoints: ChatCheckpoints::default(),
                 choice: ChatChoice::default(),
+                cloud: None,
             });
             self.data.place_terminal(id, None);
             id

@@ -13,6 +13,7 @@ pub(in crate::environment_shell) enum SettingsPane {
     Acp,
     Mcp,
     Skills,
+    CloudRunners,
     Worktrees,
     Integrations,
     Webhooks,
@@ -54,6 +55,7 @@ impl SettingsSection {
                 SettingsPane::Acp,
                 SettingsPane::Mcp,
                 SettingsPane::Skills,
+                SettingsPane::CloudRunners,
             ],
             Self::Workspace => &[
                 SettingsPane::Worktrees,
@@ -80,6 +82,7 @@ impl SettingsPane {
             Self::Acp => "ACP agents",
             Self::Mcp => "MCP",
             Self::Skills => "Skills",
+            Self::CloudRunners => "Cloud runners",
             Self::Worktrees => "Worktrees",
             Self::Integrations => "Integrations",
             Self::Webhooks => "Webhooks",
@@ -109,6 +112,9 @@ impl SettingsPane {
             Self::Acp => "Agents the app talks to over the Agent Client Protocol.",
             Self::Mcp => "The MCP servers whose tools Gateway chats can use.",
             Self::Skills => "The skills agents can call, and which of them are on.",
+            Self::CloudRunners => {
+                "Linux machines over SSH where sessions keep running while this computer sleeps."
+            }
             Self::Worktrees => {
                 "Where new worktrees go, what they start from, and when finished ones are removed."
             }
@@ -134,6 +140,7 @@ impl SettingsPane {
             Self::Acp => IconName::UserGroup,
             Self::Mcp => IconName::Plug,
             Self::Skills => IconName::Magic,
+            Self::CloudRunners => IconName::Cloud,
             Self::Worktrees => IconName::GitBranch,
             Self::Integrations => IconName::Merge,
             Self::Webhooks => IconName::Send,
@@ -195,6 +202,7 @@ impl SettingsPane {
             Self::Acp => &["Known agents", "Your agents", "Add agent", "Packages"],
             Self::Mcp => &["Servers", "Add server", "Project servers", "Tools"],
             Self::Skills => &["Skill library", "Enabled skills"],
+            Self::CloudRunners => &["Add cloud runner", "Reconnect", "Lingering", "SSH"],
             Self::Worktrees => &[
                 "Remove merged worktrees",
                 "Worktree folder",

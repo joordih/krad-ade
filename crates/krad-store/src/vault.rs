@@ -118,7 +118,7 @@ fn fallback_path(vault: &Vault, host: &str) -> Result<PathBuf, LoginStoreError> 
     Ok(fallback_path_in(&dir, vault, host))
 }
 
-fn fallback_path_in(dir: &Path, vault: &Vault, host: &str) -> PathBuf {
+pub(crate) fn fallback_path_in(dir: &Path, vault: &Vault, host: &str) -> PathBuf {
     let name: String = host
         .chars()
         .map(|char| {

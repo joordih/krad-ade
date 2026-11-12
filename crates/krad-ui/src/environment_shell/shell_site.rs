@@ -7,6 +7,7 @@ pub(super) enum ShellSite {
     Native,
     Wsl,
     Ssh,
+    Cloud,
 }
 
 impl ShellSite {
@@ -21,7 +22,7 @@ impl ShellSite {
     pub(super) const fn quoting(self) -> ShellQuoting {
         match self {
             Self::Native => SHELL_QUOTING,
-            Self::Wsl | Self::Ssh => ShellQuoting::Posix,
+            Self::Wsl | Self::Ssh | Self::Cloud => ShellQuoting::Posix,
         }
     }
 
@@ -34,7 +35,7 @@ impl ShellSite {
     }
 
     pub(super) const fn reaches_bus(self) -> bool {
-        !matches!(self, Self::Ssh)
+        !matches!(self, Self::Ssh | Self::Cloud)
     }
 
     pub(super) const fn reads_local_files(self) -> bool {
@@ -56,6 +57,9 @@ mod tests {
     #[test]
     fn only_remote_shells_lose_the_local_bus_and_files() {
         assert!(!ShellSite::Ssh.reaches_bus());
+        assert!(!ShellSite::Cloud.reaches_bus());
+        assert!(!ShellSite::Cloud.reads_local_files());
+        assert_eq!(ShellSite::Cloud.quoting(), ShellQuoting::Posix);
         assert!(ShellSite::Wsl.reaches_bus());
         assert!(ShellSite::Native.reads_local_files());
         assert!(!ShellSite::Wsl.reads_local_files());

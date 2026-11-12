@@ -3,6 +3,7 @@ mod api_file;
 mod backdrop_image;
 mod beta;
 mod chat;
+mod cloud_runners;
 mod editor;
 mod extensions;
 mod flat_pane;
@@ -78,6 +79,7 @@ pub(super) struct SettingsUi {
     mcp: McpUi,
     acp: AcpUi,
     webhooks: WebhooksUi,
+    cloud_runners: cloud_runners::CloudRunnersUi,
     tint: material::TintUi,
     tuning: tuning::TuningUi,
     backdrop: backdrop_image::BackdropUi,
@@ -195,6 +197,7 @@ impl EnvironmentShell {
         let mcp = Self::mcp_ui(window, cx);
         let acp = Self::acp_ui(window, cx);
         let webhooks = Self::webhooks_ui(window, cx);
+        let cloud_runners = Self::cloud_runners_ui(window, cx);
         let tint = self.tint_ui(cx);
         let tuning = self.tuning_ui(window, cx);
         let backdrop = self.backdrop_ui(cx);
@@ -213,6 +216,7 @@ impl EnvironmentShell {
             mcp,
             acp,
             webhooks,
+            cloud_runners,
             tint,
             tuning,
             backdrop,
@@ -305,6 +309,9 @@ impl EnvironmentShell {
         }
         if pane == SettingsPane::Skills {
             self.refresh_skill_library(cx);
+        }
+        if pane == SettingsPane::CloudRunners {
+            self.show_cloud_runners(cx);
         }
         cx.notify();
     }

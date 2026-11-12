@@ -71,6 +71,8 @@ pub enum AgentPreset {
 }
 
 pub const ACP_AGENT_LABEL: &str = "ACP agent";
+const GATEWAY_NOT_IN_CLOUD: &str =
+    "Gateway chats run inside the app, so cloud sessions cannot keep them going";
 
 impl AgentPreset {
     pub const NATIVE: [Self; 5] = [
@@ -132,6 +134,14 @@ impl AgentPreset {
             Self::Codex => Some(ModelDelivery::Flag(CODEX_MODEL_FLAG)),
             Self::Opencode => Some(ModelDelivery::AttachedSession),
             Self::Shell | Self::Gateway | Self::Acp(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn unavailable_in_cloud(self) -> Option<&'static str> {
+        match self {
+            Self::Gateway => Some(GATEWAY_NOT_IN_CLOUD),
+            Self::Shell | Self::ClaudeCode | Self::Codex | Self::Opencode | Self::Acp(_) => None,
         }
     }
 
@@ -207,6 +217,15 @@ mod tests {
             assert_eq!(state.label().parse(), Ok(state));
         }
         assert_eq!("exited".parse::<AgentState>(), Err(UnknownAgentState));
+    }
+
+    #[test]
+    fn only_gateway_chats_cannot_run_in_a_cloud_session() {
+        let unavailable: Vec<AgentPreset> = AgentPreset::NATIVE
+            .into_iter()
+            .filter(|preset| preset.unavailable_in_cloud().is_some())
+            .collect();
+        assert_eq!(unavailable, [AgentPreset::Gateway]);
     }
 
     #[test]

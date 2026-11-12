@@ -1,8 +1,14 @@
+mod spawn;
+
 use krad_domain::{parse_wsl_path, wsl_login_exec_args, INHERITED_SESSION_VARS, WSL_PROGRAM};
 use krad_host::{hide_console_window, remote_path, HostCommand, HostLink};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+pub(crate) use spawn::{spawn_fed, spawn_harness, Harness};
+
+use crate::cloud::CloudRun;
 
 const WSLENV_VAR: &str = "WSLENV";
 const WSLENV_SEPARATOR: &str = ":";
@@ -13,6 +19,7 @@ pub enum Runner {
     Native(PathBuf),
     Wsl { distro: String, program: String },
     Ssh { link: HostLink, program: String },
+    Cloud(CloudRun),
 }
 
 impl Runner {
@@ -23,13 +30,18 @@ impl Runner {
 
     #[must_use]
     pub const fn on_ssh(&self) -> bool {
-        matches!(self, Self::Ssh { .. })
+        matches!(self, Self::Ssh { .. } | Self::Cloud(_))
+    }
+
+    #[must_use]
+    pub const fn in_cloud(&self) -> bool {
+        matches!(self, Self::Cloud(_))
     }
 
     #[must_use]
     pub fn link(&self) -> HostLink {
         match self {
-            Self::Ssh { link, .. } => link.clone(),
+            Self::Ssh { link, .. } | Self::Cloud(CloudRun { link, .. }) => link.clone(),
             Self::Native(_) | Self::Wsl { .. } => HostLink::Local,
         }
     }
@@ -38,7 +50,7 @@ impl Runner {
         match self {
             Self::Wsl { .. } => parse_wsl_path(cwd).map_or_default(|inside| inside.linux),
             Self::Native(_) => cwd.to_string_lossy().into_owned(),
-            Self::Ssh { .. } => remote_path(cwd),
+            Self::Ssh { .. } | Self::Cloud(_) => remote_path(cwd),
         }
     }
 }
@@ -50,7 +62,9 @@ pub(crate) fn harness_command(
     env: &[(String, String)],
 ) -> io::Result<Command> {
     match runner {
-        Runner::Ssh { link, program } => ssh_command(link, program, cwd, args, env),
+        Runner::Ssh { link, program } | Runner::Cloud(CloudRun { link, program, .. }) => {
+            ssh_command(link, program, cwd, args, env)
+        }
         Runner::Native(program) => {
             let mut command = platform::command(program);
             command.current_dir(cwd).args(args);

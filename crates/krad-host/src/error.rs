@@ -48,6 +48,10 @@ pub enum HostError {
     Mux(#[from] MuxError),
     #[error("`{0}` is not a valid environment variable name")]
     InvalidEnvName(String),
+    #[error("the command reads {expected} secrets from stdin but was given {given}")]
+    SecretCount { expected: usize, given: usize },
+    #[error("the secret for `{0}` spans more than one line")]
+    MultilineSecret(String),
     #[error("refusing to remove {0}")]
     UnsafeRemoval(String),
     #[error("the extension that reaches this machine has not opened a channel to it")]

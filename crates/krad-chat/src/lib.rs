@@ -1,8 +1,10 @@
 pub mod acp;
 mod checklist;
+mod cloud;
 mod codex;
 mod command;
 mod control;
+mod conversation_copy;
 mod edits;
 mod engine;
 mod error;
@@ -29,10 +31,14 @@ pub use acp::{
     managed_adapter_program, managed_adapter_update_due, AcpConfig, AcpPackageError, AcpWanted,
     MissingSecret, Variables,
 };
+pub use cloud::{stop_cloud_process, AttachRefusal, CloudRun};
 pub use codex::{codex_models, read_codex_transcript, read_codex_usage, CodexError};
 pub use control::{
     AcpEvent, AskAnswer, AskKind, Catalog, CommandOffer, LiveEvent, ModelOffer, ModelSource,
     PickedAnswer, Question, QuestionOption, SourceRank, ToolAsk,
+};
+pub use conversation_copy::{
+    claude_project_dir, copy_claude_conversation, ConversationCopyError, ConversationMove,
 };
 pub use engine::{
     engine_subagents, forget_engine_session, read_engine_subagent, read_engine_transcript,
@@ -52,8 +58,9 @@ pub use live::{
 pub use message::SlashCommand;
 pub use models::{acp_offers, claude_models, AcpOffered};
 pub use opencode::{
-    new_opencode_session_id, opencode_models, prepare_opencode_session, read_opencode_transcript,
-    read_opencode_usage, watch_opencode_session, OpencodeError, OpencodeServer,
+    new_opencode_password, new_opencode_session_id, opencode_cloud_process, opencode_models,
+    prepare_opencode_session, read_opencode_transcript, read_opencode_usage,
+    watch_opencode_session, OpencodeError, OpencodeServer,
 };
 pub use process::Runner;
 pub use prompt::{shared_skill_message, Speaker};

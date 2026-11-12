@@ -8,7 +8,6 @@ use krad_session::{default_shell, wsl_shell_in, PtyOpener};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use super::super::agent_hooks::AgentRole;
 use super::super::host::{remote_terminal, remote_terminal_opener};
 use super::super::shell_site::ShellSite;
 use super::super::EnvironmentShell;
@@ -89,6 +88,15 @@ pub(super) struct Placed {
 }
 
 impl Placed {
+    pub(super) fn in_cloud(self, opener: PtyOpener) -> Self {
+        Self {
+            cwd: None,
+            vars: Vec::new(),
+            opener: Some(opener),
+            ..self
+        }
+    }
+
     pub(super) fn on(
         self,
         link: &HostLink,
@@ -183,11 +191,10 @@ impl EnvironmentShell {
 
     pub(super) fn resolve_launch(
         &self,
-        env: &EnvironmentName,
+        (env, id): (&EnvironmentName, TerminalId),
         launch: Launch,
         wsl: Option<&WslPath>,
         site: ShellSite,
-        role: AgentRole,
     ) -> ResolvedLaunch {
         let shell = || match wsl {
             Some(folder) => wsl_shell_in(&folder.distro, &folder.linux),
@@ -199,7 +206,7 @@ impl EnvironmentShell {
                 ResolvedLaunch {
                     program,
                     args,
-                    agent: self.agent_launch_line(env, preset, site, "", None, role),
+                    agent: self.agent_launch_line((env, id), preset, site, "", None),
                     vars: Vec::new(),
                     shell: LaunchShell::Login,
                 }
@@ -213,7 +220,7 @@ impl EnvironmentShell {
                 ResolvedLaunch {
                     program,
                     args,
-                    agent: self.agent_launch_line(env, preset, site, &prompt, model.as_ref(), role),
+                    agent: self.agent_launch_line((env, id), preset, site, &prompt, model.as_ref()),
                     vars: Vec::new(),
                     shell: LaunchShell::Login,
                 }
@@ -222,7 +229,7 @@ impl EnvironmentShell {
                 let (program, args) = shell();
                 let quoting = site.quoting();
                 let agent = self
-                    .agent_launch_line(env, preset, site, "", None, role)
+                    .agent_launch_line((env, id), preset, site, "", None)
                     .map(|(line, after_start)| match &resume {
                         Some(id) => (resume_line(&line, preset, id, quoting), after_start),
                         None => (line, after_start),

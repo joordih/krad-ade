@@ -46,6 +46,7 @@ fn node(id: u64, group: GroupId, state: AgentState) -> TerminalNode {
         usage: ChatUsage::default(),
         checkpoints: ChatCheckpoints::default(),
         choice: krad_domain::ChatChoice::default(),
+        cloud: None,
     }
 }
 

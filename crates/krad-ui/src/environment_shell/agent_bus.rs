@@ -11,7 +11,7 @@ mod typing;
 mod workspace;
 
 pub(in crate::environment_shell) use askpass::AskpassPlan;
-pub(super) use remote::{bundled_cli, RemoteBus, RemoteBusPlan, RemoteBusSlot};
+pub(super) use remote::{RemoteBus, RemoteBusPlan, RemoteBusSlot};
 pub(super) use workspace::target_group;
 
 use futures::channel::mpsc::{channel, Receiver};
@@ -187,6 +187,9 @@ impl EnvironmentShell {
         let Some(bus) = &self.agent_bus else {
             return Vec::new();
         };
+        if self.cloud_placement_of(env, id).is_some() {
+            return self.cloud_bus_vars(env, id);
+        }
         if let Some(live) = self.envs.get(env).filter(|live| !live.link.is_local()) {
             return live
                 .remote_bus
@@ -338,7 +341,7 @@ impl EnvironmentShell {
                     resume: resume.as_deref(),
                     mode,
                 };
-                Some(self.apply_hook(&from, report))
+                Some(self.apply_live_hook(&from, report))
             }
             Request::Status(status) => Some(self.apply_status(&from, status)),
             Request::Ask {

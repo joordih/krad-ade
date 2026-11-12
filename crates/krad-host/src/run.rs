@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::io::{ErrorKind, Read, Write};
 use std::process::{Command, Output, Stdio};
 use std::sync::mpsc;
 use std::thread;
@@ -22,14 +22,36 @@ pub fn local_output_within(command: Command, timeout: Duration) -> Result<Output
 }
 
 pub(crate) fn output_within(
-    mut command: Command,
+    command: Command,
     timeout: Duration,
     waited: Waited,
 ) -> Result<Output, HostError> {
+    output_fed_within(command, None, timeout, waited)
+}
+
+pub(crate) fn output_fed_within(
+    mut command: Command,
+    input: Option<&[u8]>,
+    timeout: Duration,
+    waited: Waited,
+) -> Result<Output, HostError> {
+    if input.is_some() {
+        command.stdin(Stdio::piped());
+    }
     let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
+    if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
+        match stdin.write_all(input).and_then(|()| stdin.flush()) {
+            Err(error) if error.kind() != ErrorKind::BrokenPipe => {
+                child.kill().ok();
+                child.wait().ok();
+                return Err(error.into());
+            }
+            _ => {}
+        }
+    }
     let (sender, streams) = mpsc::channel();
     let mut readers = 0;
     if let Some(mut stdout) = child.stdout.take() {
@@ -92,6 +114,20 @@ mod tests {
         let result = output_within(command, Duration::from_millis(300), Waited::Command);
         assert!(matches!(result, Err(HostError::TimedOut(Waited::Command))));
         assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn the_input_is_written_then_closed() -> Result<(), HostError> {
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "cat"]);
+        let output = output_fed_within(
+            command,
+            Some(b"fed\n"),
+            Duration::from_secs(10),
+            Waited::Command,
+        )?;
+        assert_eq!(output.stdout, b"fed\n");
+        Ok(())
     }
 
     #[test]

@@ -251,6 +251,9 @@ impl EnvironmentShell {
     }
 
     pub(super) fn chat_folder(&self, env: &EnvironmentName, id: TerminalId) -> PathBuf {
+        if let Some(placement) = self.cloud_placement_of(env, id) {
+            return placement.worktree;
+        }
         self.envs
             .get(env)
             .and_then(|live| live.data.group_of(id))

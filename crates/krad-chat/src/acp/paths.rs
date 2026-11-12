@@ -36,7 +36,7 @@ impl AgentPaths {
             Runner::Wsl { distro, .. } => Place::Wsl {
                 distro: distro.clone(),
             },
-            Runner::Native(_) | Runner::Ssh { .. } => Place::Host,
+            Runner::Native(_) | Runner::Ssh { .. } | Runner::Cloud(_) => Place::Host,
         };
         Self {
             place,

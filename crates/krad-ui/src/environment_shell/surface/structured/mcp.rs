@@ -3,6 +3,7 @@ use krad_domain::{EnvironmentName, McpProjectFile, McpProjectTrust, McpServer, T
 use krad_host::HostLink;
 use std::path::{Path, PathBuf};
 
+use super::super::super::cloud::NodeSite;
 use super::super::super::mcp::{McpLaunch, McpTrust};
 use super::super::super::EnvironmentShell;
 use super::super::{Backend, SurfaceChat};
@@ -28,7 +29,10 @@ impl EnvironmentShell {
         folder: &Path,
         cx: &mut Context<Self>,
     ) -> Option<McpLaunch> {
-        let link = self.env_link(env);
+        let link = match self.node_site(env, id) {
+            NodeSite::Cloud(site) => site.link,
+            NodeSite::Env | NodeSite::Waiting(_) => self.env_link(env),
+        };
         let structured = structured_mut(self, env, id)?;
         match std::mem::take(&mut structured.mcp) {
             McpPrep::Ready(launch) => Some(launch),

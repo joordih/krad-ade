@@ -5,6 +5,7 @@ mod forks;
 mod mcp;
 mod open;
 mod orchestrator;
+mod reattach;
 mod rewind;
 
 use gpui_kit::Context;
@@ -436,6 +437,9 @@ impl EnvironmentShell {
         event: LiveEvent,
         cx: &mut Context<Self>,
     ) {
+        if self.reattach_past_end(env, id, &event, cx) {
+            return;
+        }
         if self.follow_worker_launch(env, id, &event, cx) {
             return;
         }

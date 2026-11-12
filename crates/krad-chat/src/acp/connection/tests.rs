@@ -350,3 +350,44 @@ fn when_the_agent_exits_waiting_calls_end_and_the_client_hears_it() -> TestResul
     assert!(matches!(late.wait_timeout(WAIT), Err(AcpError::Gone)));
     Ok(())
 }
+
+#[test]
+fn a_replayed_journal_answers_pending_requests_but_shows_no_old_updates() -> TestResult {
+    let replayed = [
+        r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123def456","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"old"}}}}"#,
+        r#"{"jsonrpc":"2.0","id":5,"method":"session/request_permission","params":{"sessionId":"sess_abc123def456","toolCall":{"toolCallId":"call_001"},"options":[{"optionId":"allow-once","name":"Allow once","kind":"allow_once"}]}}"#,
+        r#"{"jsonrpc":"2.0","id":0,"result":{"stopReason":"end_turn"}}"#,
+    ]
+    .map(|line| format!("{line}\n"))
+    .concat();
+    let live = r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123def456","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"new"}}}}"#;
+    let journal = format!("krad-journal 0 {}\n{replayed}{live}\n", replayed.len());
+    let cursor = Arc::new(crate::cloud::CloudCursor::starting_at(
+        krad_domain::JournalOffset(0),
+    ));
+    let (agent_reads, client_writes) = pipe()?;
+    let (seen, events) = channel();
+    let _connection = AcpConnection::start_lines(
+        HarnessLines::cloud(std::io::Cursor::new(journal.into_bytes()), cursor),
+        client_writes,
+        FakeClient { seen },
+    );
+    let mut agent = BufReader::new(agent_reads);
+    let mut reply = String::new();
+    agent.read_line(&mut reply)?;
+    assert_eq!(
+        serde_json::from_str::<Value>(&reply)?,
+        json!({
+            "jsonrpc": "2.0",
+            "id": 5,
+            "result": {"outcome": {"outcome": "selected", "optionId": "allow-once"}}
+        })
+    );
+    assert!(matches!(
+        next_update(&events)?,
+        SessionUpdate::AgentMessageChunk(chunk)
+            if chunk.content == ContentBlock::Text(TextContent { text: "new".to_owned() })
+    ));
+    assert!(matches!(events.recv_timeout(WAIT)?, Seen::Closed));
+    Ok(())
+}

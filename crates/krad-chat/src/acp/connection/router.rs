@@ -1,6 +1,6 @@
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use std::io::{BufRead, BufReader, Read};
+use std::io::Read;
 use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Mutex, PoisonError};
 use tracing::{debug, trace};
@@ -11,6 +11,7 @@ use super::AcpClient;
 use crate::acp::methods;
 use crate::acp::rpc::{ErrorCode, Incoming, RequestId, RpcError};
 use crate::acp::update::{SessionNotification, SessionUpdate};
+use crate::cloud::{HarnessLines, LineOrigin};
 
 const UPDATE_KIND_POINTER: &str = "/update/sessionUpdate";
 const UNKNOWN_METHOD_TEXT: &str = "Krad ADE does not handle this method";
@@ -34,10 +35,10 @@ impl<C: AcpClient> Router<C> {
         }
     }
 
-    pub(super) fn read(mut self, input: impl Read) {
-        for line in BufReader::new(input).lines() {
+    pub(super) fn read(mut self, input: HarnessLines<impl Read>) {
+        for line in input {
             match line {
-                Ok(line) => self.route(&line),
+                Ok(line) => self.route(&line.text, line.origin),
                 Err(error) => {
                     debug!(%error, "the ACP agent output ended with an error");
                     break;
@@ -51,7 +52,7 @@ impl<C: AcpClient> Router<C> {
         self.client.closed();
     }
 
-    fn route(&mut self, line: &str) {
+    fn route(&mut self, line: &str, origin: LineOrigin) {
         let line = line.trim();
         if line.is_empty() {
             return;
@@ -63,6 +64,10 @@ impl<C: AcpClient> Router<C> {
                 return;
             }
         };
+        if origin.is_replayed() && !matches!(incoming, Incoming::Request { .. }) {
+            trace!("skipped a replayed ACP message that is not a request");
+            return;
+        }
         match incoming {
             Incoming::Success { id, result } => self.settle(&id, Ok(result)),
             Incoming::Failure { id, error } => self.settle(&id, Err(error)),

@@ -7,8 +7,8 @@ use gpui_kit::Context;
 use krad_agents::{ErrorCode, Response};
 use krad_chat::{new_session_id, LiveEvent, LiveSession};
 use krad_domain::{
-    AgentPreset, ChatEvent, EnvironmentName, GroupId, PermissionMode, Prompt, TerminalId,
-    WorkerSpawn, WorkerSurface,
+    AgentPreset, ChatEvent, CloudPlacement, EnvironmentName, GroupId, PermissionMode, Prompt,
+    TerminalId, WorkerSpawn, WorkerSurface,
 };
 
 use super::agent_hooks::NO_GROUP;
@@ -30,6 +30,7 @@ pub(super) struct WorkerLaunch {
     pub(super) brief: String,
     pub(super) spawn: WorkerSpawn,
     pub(super) mode: Option<PermissionMode>,
+    pub(super) cloud: Option<CloudPlacement>,
 }
 
 enum LaunchProgress {
@@ -66,6 +67,7 @@ impl EnvironmentShell {
             brief,
             spawn,
             mode,
+            cloud,
         } = launch;
         if preset.worker_surface() != WorkerSurface::Chat {
             reply
@@ -80,6 +82,7 @@ impl EnvironmentShell {
             session: LiveSession::Start(new_session_id()),
             prompts: vec![Prompt::from(brief)],
             mode: mode::worker_mode(mode, preset),
+            cloud,
         };
         let opened = self
             .alloc_terminal_id(env)
@@ -202,6 +205,11 @@ impl EnvironmentShell {
         let Some(reopen) = worker.reopen.clone() else {
             return false;
         };
+        let cloud = self
+            .envs
+            .get(env)
+            .and_then(|live| live.data.session(lead))
+            .and_then(|session| session.cloud.clone());
         let chat = WorkerChat {
             group: reopen.group,
             preset: reopen.harness,
@@ -212,6 +220,7 @@ impl EnvironmentShell {
             session: LiveSession::Resume(reopen.resume.clone()),
             prompts: Vec::new(),
             mode: None,
+            cloud,
         };
         if self.open_worker_chat(env, terminal, chat, cx).is_none() {
             return false;

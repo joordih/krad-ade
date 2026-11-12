@@ -10,6 +10,7 @@ use std::time::Duration;
 pub const ENV_ENDPOINT: &str = "KRAD_ADE_ENDPOINT";
 pub const ENV_TOKEN: &str = "KRAD_ADE_TOKEN";
 pub const ENV_TOKEN_FILE: &str = "KRAD_ADE_TOKEN_FILE";
+pub const ENV_ENDPOINT_FILE: &str = "KRAD_ADE_ENDPOINT_FILE";
 pub const ENV_TERMINAL: &str = "KRAD_ADE_TERMINAL";
 pub const CLI_PROGRAM: &str = krad_host::HOST_CLI_PROGRAM;
 const WORKER_REPORT_WAIT: Duration = Duration::from_mins(15);
@@ -49,16 +50,21 @@ fn discovered_env(file: &ApiFile) -> Option<BusEnv> {
     })
 }
 
+fn file_text(path: OsString) -> Option<String> {
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|text| text.trim().to_owned())
+        .filter(|text| !text.is_empty())
+}
+
 fn bus_env_from(var: impl Fn(&str) -> Option<OsString>) -> Option<BusEnv> {
     let text = |name: &str| var(name).and_then(|value| value.into_string().ok());
-    let endpoint = text(ENV_ENDPOINT)?;
+    let endpoint = match var(ENV_ENDPOINT_FILE) {
+        Some(path) => file_text(path)?,
+        None => text(ENV_ENDPOINT)?,
+    };
     let terminal = text(ENV_TERMINAL)?;
-    let token = text(ENV_TOKEN).or_else(|| {
-        var(ENV_TOKEN_FILE)
-            .and_then(|path| std::fs::read_to_string(path).ok())
-            .map(|token| token.trim().to_owned())
-            .filter(|token| !token.is_empty())
-    })?;
+    let token = text(ENV_TOKEN).or_else(|| var(ENV_TOKEN_FILE).and_then(file_text))?;
     Some(BusEnv {
         endpoint,
         token: BusToken::from(token),
@@ -85,6 +91,22 @@ pub fn token_file_env(
     ]
     .into_iter()
     .map(|(name, value)| (name.to_owned(), value))
+    .collect()
+}
+
+#[must_use]
+pub fn endpoint_file_env(
+    endpoint_file: &std::path::Path,
+    token_file: &std::path::Path,
+    caller: &Caller,
+) -> Vec<(String, String)> {
+    [
+        (ENV_ENDPOINT_FILE, endpoint_file),
+        (ENV_TOKEN_FILE, token_file),
+    ]
+    .into_iter()
+    .map(|(name, path)| (name.to_owned(), path.to_string_lossy().into_owned()))
+    .chain([(ENV_TERMINAL.to_owned(), caller.to_string())])
     .collect()
 }
 
@@ -293,6 +315,33 @@ mod tests {
         assert_eq!(env.source, BusSource::Environment);
         assert_eq!(env.endpoint, "127.0.0.1:4000");
         assert!(bus_env_from(|name| (name == ENV_ENDPOINT).then(|| OsString::from("x"))).is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn a_cloud_agent_reads_the_current_endpoint_from_its_file_on_every_call() -> TestResult {
+        let dir = std::env::temp_dir().join(format!("krad-bus-endpoint-{}", std::process::id()));
+        std::fs::create_dir_all(&dir)?;
+        let (endpoint, token) = (dir.join("runner-3.endpoint"), dir.join("runner-3.token"));
+        std::fs::write(&token, "secret")?;
+        let caller = Caller::Terminal(crate::handle::TerminalHandle {
+            environment: "api".to_owned(),
+            terminal: 4,
+        });
+        let vars: HashMap<String, OsString> = endpoint_file_env(&endpoint, &token, &caller)
+            .into_iter()
+            .map(|(name, value)| (name, OsString::from(value)))
+            .collect();
+        let resolve = || bus_env_from(|name| vars.get(name).cloned());
+        assert!(resolve().is_none());
+        std::fs::write(&endpoint, "127.0.0.1:41000\n")?;
+        assert_eq!(resolve().ok_or("no bus env")?.endpoint, "127.0.0.1:41000");
+        std::fs::write(&endpoint, "127.0.0.1:42017")?;
+        let moved = resolve().ok_or("no bus env")?;
+        std::fs::remove_dir_all(&dir)?;
+        assert_eq!(moved.endpoint, "127.0.0.1:42017");
+        assert_eq!(moved.token, BusToken::from("secret"));
+        assert_eq!(moved.terminal, "api:4");
         Ok(())
     }
 

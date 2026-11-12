@@ -4,6 +4,7 @@ use crate::archive::ArchiveRetention;
 use crate::attention::AttentionSettings;
 use crate::backdrop_image::BackdropImage;
 use crate::beta::BetaSettings;
+use crate::cloud::CloudSettings;
 use crate::composer_height::ComposerHeight;
 use crate::event::WebhookSettings;
 use crate::extension_index::{lenient_index_repository, IndexRepository};
@@ -410,6 +411,8 @@ pub struct Settings {
     pub toasts: ToastSettings,
     #[serde(default, skip_serializing_if = "BetaSettings::is_default")]
     pub beta: BetaSettings,
+    #[serde(default, skip_serializing_if = "CloudSettings::is_default")]
+    pub cloud: CloudSettings,
     #[serde(default, skip_serializing_if = "ArchiveRetention::is_default")]
     pub archive_retention: ArchiveRetention,
 }

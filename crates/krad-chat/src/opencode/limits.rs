@@ -88,7 +88,8 @@ fn opencode_failure(error: &OpencodeError) -> UsageFailure {
         OpencodeError::Http(_)
         | OpencodeError::Io(_)
         | OpencodeError::NotStarted(_)
-        | OpencodeError::Host(_) => UsageFailure::Unreachable,
+        | OpencodeError::Host(_)
+        | OpencodeError::CloudPassword => UsageFailure::Unreachable,
     }
 }
 

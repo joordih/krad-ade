@@ -35,7 +35,7 @@ enum DigestReply {
 }
 
 #[must_use]
-pub(super) fn history_of(messages: &[ChatMessage]) -> Vec<HistoryMessage> {
+pub(in crate::environment_shell) fn history_of(messages: &[ChatMessage]) -> Vec<HistoryMessage> {
     messages
         .iter()
         .filter_map(|message| {

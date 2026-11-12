@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use crate::parse::{claude, permission_mode};
 use crate::skills::CLAUDE_DIR;
 
-const PROJECTS_DIR: &str = "projects";
-const CONVERSATION_EXTENSION: &str = "jsonl";
+pub(crate) const PROJECTS_DIR: &str = "projects";
+pub(crate) const CONVERSATION_EXTENSION: &str = "jsonl";
 const TEXT_BLOCK: &str = "text";
 const TOOL_RESULT_BLOCK: &str = "tool_result";
 const BLOCK_SEPARATOR: &str = "\n\n";

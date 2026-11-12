@@ -24,6 +24,7 @@ use super::setup::{
     SetSessionModelRequest,
 };
 use super::update::SessionNotification;
+use crate::cloud::HarnessLines;
 use crate::control::json_line;
 use pending::Waiters;
 use router::Router;
@@ -55,8 +56,17 @@ pub struct AcpConnection {
 }
 
 impl AcpConnection {
-    #[tracing::instrument(skip_all)]
     pub fn start<R, W, C>(input: R, output: W, client: C) -> Self
+    where
+        R: Read + Send + 'static,
+        W: Write + Send + 'static,
+        C: AcpClient,
+    {
+        Self::start_lines(HarnessLines::plain(input), output, client)
+    }
+
+    #[tracing::instrument(skip_all)]
+    pub(crate) fn start_lines<R, W, C>(input: HarnessLines<R>, output: W, client: C) -> Self
     where
         R: Read + Send + 'static,
         W: Write + Send + 'static,

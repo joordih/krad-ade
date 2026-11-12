@@ -2,7 +2,7 @@ use krad_domain::InstallId;
 use krad_host::HostPlatform;
 use std::path::PathBuf;
 
-use super::super::agent_bus::bundled_cli;
+use super::super::host_cli::bundled_cli;
 use super::local_cli;
 
 #[derive(Clone, Debug, Default)]

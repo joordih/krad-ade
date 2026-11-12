@@ -295,6 +295,7 @@ impl EnvironmentShell {
             session,
             prompts: vec![Prompt::from(brief)],
             mode: plan.mode,
+            cloud: None,
         };
         let opened = self
             .alloc_terminal_id(&env)

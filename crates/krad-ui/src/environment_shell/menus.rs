@@ -65,6 +65,7 @@ impl EnvironmentShell {
                 Some(IconName::Book),
                 MenuAction::OpenArchive(id),
             ));
+            entries.push(self.cloud_session_entry(group));
             entries.push(MenuEntry::Separator);
         }
         if is_worktree {

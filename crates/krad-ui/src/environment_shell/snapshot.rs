@@ -69,7 +69,7 @@ impl EnvironmentShell {
         EnvironmentData {
             name: live.data.name.clone(),
             host: live.data.host.clone(),
-            nodes: live.data.nodes.clone(),
+            nodes: self.nodes_with_offsets(name, &live.data.nodes),
             meta,
             next_id: live.data.next_id,
             view: live.data.view,
@@ -91,6 +91,9 @@ impl EnvironmentShell {
         let mut side_panel = live.data.side_panel.clone();
         if let Some(sign_in) = self.sign_in_terminal_of(name) {
             side_panel.remove_terminal(sign_in);
+        }
+        for helper in self.runner_helper_terminals(name) {
+            side_panel.remove_terminal(helper);
         }
         side_panel
     }

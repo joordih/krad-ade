@@ -1,35 +1,26 @@
-use krad_agents::{member_token, token_file_env, Caller, Endpoint, ASKPASS_VERB, CLI_PROGRAM};
-use krad_domain::claude_hook_settings;
-use krad_host::mux::ASKPASS_PROGRAM;
-use krad_host::{
-    FileMode, HostCommand, HostError, HostLink, HostPlatform, RemoteForward, RemoteLink,
-    HOST_CLI_BUILD, LOOPBACK,
+use krad_agents::{
+    endpoint_file_env, member_token, token_file_env, Caller, Endpoint, ASKPASS_VERB, CLI_PROGRAM,
 };
-use sha2::{Digest, Sha256};
-use std::fmt;
-use std::path::{Path, PathBuf};
+use krad_domain::{claude_hook_settings, CloudRunnerId};
+use krad_host::mux::ASKPASS_PROGRAM;
+use krad_host::{FileMode, HostError, HostLink, RemoteForward, RemoteLink, LOOPBACK};
+use std::path::PathBuf;
 use std::sync::Arc;
 
-const VERSION_FLAG: &str = "--version";
+use super::super::host_cli::{upload_host_cli, HostCliError};
+
 const TOKEN_SUFFIX: &str = ".token";
-const BUNDLE_AGENTS_DIR: &str = "agents";
-const MACOS_RESOURCES: [&str; 2] = ["..", "Resources"];
-const BUILD_PROFILES: [&str; 2] = ["release", "debug"];
+const ENDPOINT_EXTENSION: &str = "endpoint";
+const RUNNER_SLUG_PREFIX: &str = "runner-";
 const PATH_VAR: &str = "PATH";
 const SLUG_ESCAPE: char = '_';
 const SCRIPT_SHEBANG: &str = "#!/bin/sh";
-const BUILD_HOST_CLI: &str = "just agents-linux";
-const DIGEST_SUFFIX: &str = ".sha256";
-const STAGED_EXTENSION: &str = "new";
-const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
-const NIBBLE_BITS: u8 = 4;
-const LOW_NIBBLE: u8 = 0x0f;
-const DIGEST_LIMIT: u64 = 128;
 
 pub(in crate::environment_shell) struct RemoteBus {
     forward: RemoteForward,
     bin_dir: PathBuf,
     token_file: PathBuf,
+    endpoint_file: PathBuf,
     pub(in crate::environment_shell) claude_settings: PathBuf,
 }
 
@@ -51,38 +42,6 @@ impl RemoteBusSlot {
 
     pub(in crate::environment_shell) const fn is_preparing(&self) -> bool {
         matches!(self, Self::Preparing)
-    }
-}
-
-#[derive(Debug)]
-pub(in crate::environment_shell) enum RemoteBusError {
-    NoBundledCli(HostPlatform),
-    Host(HostError),
-    Bundle(std::io::Error),
-}
-
-impl fmt::Display for RemoteBusError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NoBundledCli(platform) => write!(
-                f,
-                "this build has no {CLI_PROGRAM} for {platform} hosts; run `{BUILD_HOST_CLI}` and reconnect"
-            ),
-            Self::Host(error) => error.fmt(f),
-            Self::Bundle(error) => write!(f, "could not read the bundled {CLI_PROGRAM}: {error}"),
-        }
-    }
-}
-
-impl From<HostError> for RemoteBusError {
-    fn from(error: HostError) -> Self {
-        Self::Host(error)
-    }
-}
-
-impl From<std::io::Error> for RemoteBusError {
-    fn from(error: std::io::Error) -> Self {
-        Self::Bundle(error)
     }
 }
 
@@ -113,32 +72,34 @@ impl RemoteBusPlan {
         }
     }
 
-    pub(in crate::environment_shell) fn prepare(self) -> Result<RemoteBus, RemoteBusError> {
+    pub(in crate::environment_shell) fn for_runner(
+        ssh: Arc<RemoteLink>,
+        link: HostLink,
+        runner: CloudRunnerId,
+        endpoint: &Endpoint,
+        preferred_port: Option<u16>,
+    ) -> Self {
+        Self {
+            ssh,
+            link,
+            slug: runner_slug(runner),
+            local_port: endpoint.address.port(),
+            token: member_token(endpoint).to_owned(),
+            preferred_port,
+        }
+    }
+
+    pub(in crate::environment_shell) fn prepare(self) -> Result<RemoteBus, HostCliError> {
         let platform = self
             .ssh
             .platform()
-            .ok_or(RemoteBusError::Host(HostError::NotConnected))?;
+            .ok_or(HostCliError::Host(HostError::NotConnected))?;
         let layout = self
             .ssh
             .layout()
-            .ok_or(RemoteBusError::Host(HostError::NotConnected))?;
+            .ok_or(HostCliError::Host(HostError::NotConnected))?;
         let bin_dir = layout.bin_dir();
-        let cli = bin_dir.join(CLI_PROGRAM);
-        let digest_file = bin_dir.join(format!("{CLI_PROGRAM}{DIGEST_SUFFIX}"));
-        match bundled_cli(platform) {
-            Some(bundled) => {
-                let binary = std::fs::read(bundled)?;
-                let digest = digest_hex(&binary);
-                if !self.has_cli_with_digest(&cli, &digest_file, &digest) {
-                    self.link
-                        .create_dir_with_mode(&bin_dir, FileMode::PRIVATE_DIR)?;
-                    self.replace_cli(&cli, &binary)?;
-                    self.link.write(&digest_file, digest.as_bytes())?;
-                }
-            }
-            None if self.has_current_cli(&cli) => {}
-            None => return Err(RemoteBusError::NoBundledCli(platform)),
-        }
+        upload_host_cli(&self.link, platform, &bin_dir)?;
         self.link.write_with_mode(
             &bin_dir.join(ASKPASS_PROGRAM),
             askpass_script().as_bytes(),
@@ -159,38 +120,18 @@ impl RemoteBusPlan {
         let forward = self
             .ssh
             .forward_remote(self.local_port, self.preferred_port)?;
+        let endpoint_file = token_file.with_extension(ENDPOINT_EXTENSION);
+        self.link.write_with_mode(
+            &endpoint_file,
+            loopback_address(forward.remote_port).as_bytes(),
+            FileMode::PRIVATE_FILE,
+        )?;
         Ok(RemoteBus {
             forward,
             bin_dir,
             token_file,
+            endpoint_file,
             claude_settings,
-        })
-    }
-
-    fn replace_cli(&self, cli: &Path, binary: &[u8]) -> Result<(), HostError> {
-        let staged = cli.with_extension(STAGED_EXTENSION);
-        self.link.write(&staged, binary)?;
-        self.link.set_permissions(&staged, FileMode::EXECUTABLE)?;
-        if self.link.rename(&staged, cli).is_ok() {
-            return Ok(());
-        }
-        if self.link.exists(cli) {
-            self.link.remove_file(cli)?;
-        }
-        self.link.rename(&staged, cli)
-    }
-
-    fn has_cli_with_digest(&self, cli: &Path, digest_file: &Path, digest: &str) -> bool {
-        let uploaded = self.link.read(digest_file, DIGEST_LIMIT);
-        uploaded.is_ok_and(|uploaded| uploaded == digest.as_bytes()) && self.has_current_cli(cli)
-    }
-
-    fn has_current_cli(&self, cli: &Path) -> bool {
-        let mut version = HostCommand::new(cli);
-        version.arg(VERSION_FLAG);
-        self.link.output(&version).is_ok_and(|output| {
-            output.status.success()
-                && String::from_utf8_lossy(&output.stdout).trim() == HOST_CLI_BUILD
         })
     }
 }
@@ -200,20 +141,33 @@ impl RemoteBus {
         &self,
         caller: &Caller,
     ) -> Vec<(String, String)> {
-        let address = format!("{LOOPBACK}:{}", self.forward.remote_port);
+        let address = loopback_address(self.forward.remote_port);
         let mut vars = token_file_env(&address, &self.token_file, caller);
-        vars.push((
+        vars.push(self.path_var());
+        vars
+    }
+
+    pub(in crate::environment_shell) fn detached_caller_vars(
+        &self,
+        caller: &Caller,
+    ) -> Vec<(String, String)> {
+        let mut vars = endpoint_file_env(&self.endpoint_file, &self.token_file, caller);
+        vars.push(self.path_var());
+        vars
+    }
+
+    fn path_var(&self) -> (String, String) {
+        (
             PATH_VAR.to_owned(),
             self.bin_dir.to_string_lossy().into_owned(),
-        ));
-        vars
+        )
     }
 
     pub(in crate::environment_shell) fn askpass(
         &self,
         caller: &Caller,
     ) -> (PathBuf, Vec<(String, String)>) {
-        let address = format!("{LOOPBACK}:{}", self.forward.remote_port);
+        let address = loopback_address(self.forward.remote_port);
         (
             self.bin_dir.join(ASKPASS_PROGRAM),
             token_file_env(&address, &self.token_file, caller),
@@ -229,17 +183,12 @@ impl RemoteBus {
     }
 }
 
-fn digest_hex(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .flat_map(|byte| {
-            [
-                HEX_DIGITS[usize::from(byte >> NIBBLE_BITS)],
-                HEX_DIGITS[usize::from(byte & LOW_NIBBLE)],
-            ]
-        })
-        .map(char::from)
-        .collect()
+fn loopback_address(port: u16) -> String {
+    format!("{LOOPBACK}:{port}")
+}
+
+fn runner_slug(runner: CloudRunnerId) -> String {
+    format!("{RUNNER_SLUG_PREFIX}{runner}")
 }
 
 fn askpass_script() -> String {
@@ -259,39 +208,6 @@ fn environment_slug(environment: &str) -> String {
         .collect()
 }
 
-pub(in crate::environment_shell) fn bundled_cli(platform: HostPlatform) -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let exe_dir = exe.parent()?;
-    bundle_candidates(exe_dir, platform)
-        .into_iter()
-        .find(|candidate| candidate.is_file())
-}
-
-fn bundle_candidates(exe_dir: &Path, platform: HostPlatform) -> Vec<PathBuf> {
-    let platform_dir = platform.to_string();
-    let mut resources = exe_dir.to_path_buf();
-    resources.extend(MACOS_RESOURCES);
-    let mut candidates = vec![
-        exe_dir
-            .join(BUNDLE_AGENTS_DIR)
-            .join(&platform_dir)
-            .join(CLI_PROGRAM),
-        resources
-            .join(BUNDLE_AGENTS_DIR)
-            .join(&platform_dir)
-            .join(CLI_PROGRAM),
-    ];
-    if let Some(target_dir) = exe_dir.parent() {
-        candidates.extend(BUILD_PROFILES.iter().map(|profile| {
-            target_dir
-                .join(platform.musl_target())
-                .join(profile)
-                .join(CLI_PROGRAM)
-        }));
-    }
-    candidates
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,15 +218,6 @@ mod tests {
             askpass_script(),
             "#!/bin/sh\nexec \"${0%/*}/krad-ade-agents\" askpass \"$@\"\n"
         );
-    }
-
-    #[test]
-    fn a_cli_is_told_apart_by_the_digest_of_its_bytes() {
-        assert_eq!(
-            digest_hex(b"abc"),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
-        assert_ne!(digest_hex(b"build one"), digest_hex(b"build two"));
     }
 
     #[test]
@@ -329,19 +236,10 @@ mod tests {
     }
 
     #[test]
-    fn the_cli_is_looked_for_in_the_bundle_then_in_the_cross_builds() {
-        let candidates =
-            bundle_candidates(Path::new("/repo/target/debug"), HostPlatform::LinuxAarch64);
-        assert_eq!(
-            candidates,
-            [
-                PathBuf::from("/repo/target/debug/agents/linux-aarch64/krad-ade-agents"),
-                PathBuf::from(
-                    "/repo/target/debug/../Resources/agents/linux-aarch64/krad-ade-agents"
-                ),
-                PathBuf::from("/repo/target/aarch64-unknown-linux-musl/release/krad-ade-agents"),
-                PathBuf::from("/repo/target/aarch64-unknown-linux-musl/debug/krad-ade-agents"),
-            ]
-        );
+    fn a_runner_slug_never_matches_an_environment_slug() {
+        let runner = runner_slug(CloudRunnerId(7));
+        assert_eq!(runner, "runner-7");
+        assert_ne!(environment_slug("runner-7"), runner);
+        assert_eq!(loopback_address(41_000), "127.0.0.1:41000");
     }
 }

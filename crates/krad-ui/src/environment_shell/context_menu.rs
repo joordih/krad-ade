@@ -76,6 +76,7 @@ pub(super) enum MenuAction {
     ChatHit(super::chat_search::ChatHitAction),
     Automation(super::automations::AutomationMenu),
     OpenArchive(GroupId),
+    Cloud(super::cloud::CloudMenu),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -553,6 +554,7 @@ impl EnvironmentShell {
             MenuAction::Extension(menu) => self.run_extension_menu(*menu, window, cx),
             MenuAction::Automation(choice) => self.run_automation_menu(choice, window, cx),
             MenuAction::OpenArchive(group) => self.open_archive(group, window, cx),
+            MenuAction::Cloud(menu) => self.run_cloud_menu(menu, window, cx),
         }
         if let Some(menu) = closed {
             menu.restore_focus(window, cx);

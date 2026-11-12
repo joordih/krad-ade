@@ -12,6 +12,7 @@ mod backdrop;
 mod changes_tab;
 mod chat;
 mod chat_search;
+mod cloud;
 mod code_viewer;
 mod content_shift;
 mod context_menu;
@@ -36,6 +37,7 @@ mod groups;
 mod harness_health;
 mod harness_models;
 mod host;
+mod host_cli;
 mod template_popup;
 pub use host::HostTools;
 mod automations;
@@ -217,6 +219,7 @@ pub struct EnvironmentShell {
     kraddies: kraddies::KraddiesUi,
     automations: automations::AutomationsUi,
     variants: variants::VariantsUi,
+    cloud: cloud::CloudRunners,
 }
 
 impl EnvironmentShell {
@@ -239,6 +242,7 @@ impl EnvironmentShell {
                     shell.flush_variant_progress(cx);
                     shell.service_hosts(cx);
                     shell.watch_new_opencode_terminals(cx);
+                    shell.connect_wanted_runners(cx);
                     if changed {
                         cx.notify();
                     }
@@ -368,6 +372,7 @@ impl EnvironmentShell {
             kraddies: kraddies::KraddiesUi::default(),
             automations: automations::AutomationsUi::default(),
             variants: variants::VariantsUi::default(),
+            cloud: cloud::CloudRunners::default(),
         }
     }
 

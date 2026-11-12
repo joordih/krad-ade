@@ -265,6 +265,7 @@ mod tests {
             usage: crate::usage::ChatUsage::default(),
             checkpoints: crate::checkpoint::ChatCheckpoints::default(),
             choice: crate::model::ChatChoice::default(),
+            cloud: None,
         }
     }
 

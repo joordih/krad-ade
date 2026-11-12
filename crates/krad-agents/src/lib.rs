@@ -2,6 +2,7 @@ mod askpass;
 mod cli;
 mod client;
 mod code;
+mod delivery;
 mod discovery;
 mod env;
 mod error;
@@ -12,6 +13,7 @@ mod hook;
 mod host_verbs;
 mod mailbox;
 mod mcp;
+mod offline;
 mod protocol;
 mod server;
 mod statusline;
@@ -24,8 +26,8 @@ pub use client::{call, watch};
 pub use code::{CodeAnswer, CodeError, CodeLine, CodePosition, CodeRequest, CodeTool};
 pub use discovery::{liveness, ApiDiscovery, ApiFile, Liveness, API_FILE_NAME};
 pub use env::{
-    guide, member_token, orchestrator_guide, terminal_env, token_file_env, CLI_PROGRAM,
-    ENV_ENDPOINT, ENV_TERMINAL, ENV_TOKEN, ENV_TOKEN_FILE,
+    endpoint_file_env, guide, member_token, orchestrator_guide, terminal_env, token_file_env,
+    CLI_PROGRAM, ENV_ENDPOINT, ENV_ENDPOINT_FILE, ENV_TERMINAL, ENV_TOKEN, ENV_TOKEN_FILE,
 };
 pub use error::{AgentsError, HandleError};
 pub use extension_tools::{
@@ -35,6 +37,7 @@ pub use extension_tools::{
 pub use feed::{AgentFeed, AgentKey, EVENT_RING_CAPACITY, SUBSCRIBER_QUEUE};
 pub use handle::{Caller, LeadHandle, TerminalHandle};
 pub use mailbox::{notice_text, Mailbox};
+pub use offline::{queued_events, QueuedEvent};
 pub use protocol::{
     lead_refusal, memory_hit_limit, AgentChangeKind, AgentEvent, AgentFilter, AgentInfo,
     AgentSnapshot, AgentStatus, AgentSubscription, ApiError, ApiInfo, ApiVersion, AutomationInfo,

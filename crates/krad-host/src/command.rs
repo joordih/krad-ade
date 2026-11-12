@@ -42,6 +42,7 @@ pub struct HostCommand {
     pub path_prefix: Option<PathBuf>,
     pub env_file: Option<PathBuf>,
     pub ends_with_stdin: bool,
+    pub env_from_stdin: Vec<OsString>,
 }
 
 impl HostCommand {
@@ -72,6 +73,7 @@ impl HostCommand {
             path_prefix: None,
             env_file: None,
             ends_with_stdin: false,
+            env_from_stdin: Vec::new(),
         }
     }
 
@@ -82,6 +84,11 @@ impl HostCommand {
 
     pub const fn end_with_stdin(&mut self) -> &mut Self {
         self.ends_with_stdin = true;
+        self
+    }
+
+    pub fn read_env_from_stdin(&mut self, name: impl AsRef<OsStr>) -> &mut Self {
+        self.env_from_stdin.push(name.as_ref().to_owned());
         self
     }
 

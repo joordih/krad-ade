@@ -187,6 +187,7 @@ impl EnvironmentShell {
             session: LiveSession::Start(new_session_id()),
             prompts: vec![Prompt::from(brief)],
             mode: None,
+            cloud: None,
         };
         let terminal = self
             .alloc_terminal_id(env)

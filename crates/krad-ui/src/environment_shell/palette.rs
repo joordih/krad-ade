@@ -19,6 +19,7 @@ use files::file_group;
 use row::{command_row, palette_footer, Glyph};
 use tasks::task_group;
 
+use super::cloud::CloudAction;
 use super::extensions::{ExtensionPick, PaletteEntry};
 use super::notes_view::{note_line_label, NoteLine};
 use super::EnvironmentShell;
@@ -58,9 +59,26 @@ const PALETTE_PLACEHOLDER: &str = "Search files, commands, tasks, notes, chats a
 const NOTE_GLYPH: Glyph = (IconName::Note, None);
 const NOTE_LINE_GLYPH: Glyph = (IconName::Search, None);
 
-const PALETTE_GROUPS: [(&str, PaletteCmd); 9] = [
+const PALETTE_GROUPS: [(&str, PaletteCmd); 14] = [
     ("Review session changes…", PaletteCmd::SessionChanges),
     ("Open the group's Archive…", PaletteCmd::OpenArchive),
+    ("New cloud session…", PaletteCmd::NewCloudSession),
+    (
+        "Send session to cloud…",
+        PaletteCmd::Cloud(CloudAction::Send),
+    ),
+    (
+        "Push the cloud session's branch",
+        PaletteCmd::Cloud(CloudAction::Push),
+    ),
+    (
+        "Open a pull request from the cloud session",
+        PaletteCmd::Cloud(CloudAction::OpenRequest),
+    ),
+    (
+        "Bring the cloud session to local",
+        PaletteCmd::Cloud(CloudAction::BringHome),
+    ),
     ("Run the task as variants…", PaletteCmd::RunVariants),
     ("Compare variants", PaletteCmd::ShowVariants),
     ("New group from a folder…", PaletteCmd::NewGroup),
@@ -128,6 +146,8 @@ enum PaletteCmd {
     NewGroup,
     RemoveGroup,
     OpenArchive,
+    NewCloudSession,
+    Cloud(CloudAction),
     NewWorktree,
     RemoveWorktree,
     CloseViewer,
@@ -202,6 +222,7 @@ impl PaletteCmd {
             Self::ToggleKraddies | Self::NewKraddie => IconName::Kraddie,
             Self::RenameFocused | Self::RenameEnv | Self::OpenNote(_, None) => IconName::Note,
             Self::OpenArchive => IconName::Book,
+            Self::NewCloudSession | Self::Cloud(_) => IconName::Cloud,
             Self::OpenNote(_, Some(_)) => IconName::Search,
             Self::Extension(_) => IconName::Plug,
             Self::ChatHit(..) => IconName::Chat,
@@ -365,6 +386,10 @@ impl EnvironmentShell {
             PaletteCmd::NewGroup => self.prompt_new_group(window, cx),
             PaletteCmd::RemoveGroup => self.remove_selected_group(cx),
             PaletteCmd::OpenArchive => self.open_selected_archive(window, cx),
+            PaletteCmd::NewCloudSession => self.new_cloud_session_in_selected(window, cx),
+            PaletteCmd::Cloud(action) => {
+                self.run_cloud_action(action, None, (PALETTE_W, PALETTE_TOP), window, cx);
+            }
             PaletteCmd::NewWorktree => self.start_new_worktree(cx),
             PaletteCmd::RemoveWorktree => self.remove_selected_worktree(cx),
             PaletteCmd::CloseViewer => self.close_viewer(cx),

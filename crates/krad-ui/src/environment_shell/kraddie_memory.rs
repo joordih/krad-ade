@@ -23,6 +23,7 @@ use std::time::{Instant, SystemTime};
 use super::EnvironmentShell;
 use crate::kraddie_avatar::KraddieSprite;
 
+pub(super) use digests::history_of;
 pub(super) use mention::KraddieSuggestion;
 
 const PROMPT_SEPARATOR: &str = "\n\n";

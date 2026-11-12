@@ -72,6 +72,7 @@ impl EnvironmentData {
             usage: crate::usage::ChatUsage::default(),
             checkpoints: crate::checkpoint::ChatCheckpoints::default(),
             choice: crate::model::ChatChoice::default(),
+            cloud: None,
         });
         self.place_terminal(id, None);
         self.reveal_terminal(id);

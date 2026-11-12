@@ -1,7 +1,6 @@
-mod signature;
-
+use krad_agents::{post_webhook, webhook_agent, WebhookPostError};
 use krad_domain::{
-    next_delivery_step, DeliveryOutcome, DeliveryStep, EventRecord, Timestamp, Webhook, WebhookId,
+    next_delivery_step, DeliveryOutcome, DeliveryStep, EventRecord, Webhook, WebhookId,
     WebhookSecret, WebhookSigning,
 };
 use krad_store::find_webhook_secret;
@@ -10,18 +9,10 @@ use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender};
 use std::time::{Duration, Instant};
 use ureq::Agent;
 
-use signature::signature_header;
-
 const SENDER_THREAD_NAME: &str = "krad-ade-webhooks";
 const SENDER_QUEUE: usize = 128;
 const PENDING_LIMIT: usize = 256;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
-const CONTENT_TYPE_HEADER: &str = "content-type";
-const JSON_MEDIA: &str = "application/json";
-const USER_AGENT_HEADER: &str = "user-agent";
-const USER_AGENT: &str = "krad-ade-webhooks";
-const SIGNATURE_HEADER: &str = "x-krad-signature-256";
-const TIMESTAMP_HEADER: &str = "x-krad-timestamp";
 
 #[derive(Clone, Debug)]
 pub(crate) struct Delivery {
@@ -194,7 +185,7 @@ impl Outbox {
 }
 
 fn serve(inbox: &Receiver<Order>) {
-    let agent = webhook_agent();
+    let agent = webhook_agent(REQUEST_TIMEOUT);
     let mut outbox = Outbox::default();
     let mut secrets = Secrets::default();
     while let Ok(order) = next_order(inbox, outbox.retries.wait(Instant::now())) {
@@ -217,14 +208,6 @@ fn serve(inbox: &Receiver<Order>) {
     }
 }
 
-fn webhook_agent() -> Agent {
-    Agent::config_builder()
-        .timeout_global(Some(REQUEST_TIMEOUT))
-        .http_status_as_error(false)
-        .build()
-        .into()
-}
-
 #[tracing::instrument(skip_all, fields(webhook = %hook.id))]
 fn post(
     agent: &Agent,
@@ -232,28 +215,15 @@ fn post(
     record: &EventRecord,
     secret: Option<&WebhookSecret>,
 ) -> DeliveryOutcome {
-    let Ok(body) = String::try_from(record) else {
-        return DeliveryOutcome::Refused;
-    };
-    let sent_at = Timestamp::now().to_string();
-    let mut request = agent
-        .post(hook.url.as_str())
-        .header(CONTENT_TYPE_HEADER, JSON_MEDIA)
-        .header(USER_AGENT_HEADER, USER_AGENT)
-        .header(TIMESTAMP_HEADER, &sent_at);
-    if hook.signing == WebhookSigning::Signed {
-        let Some(secret) = secret else {
-            tracing::warn!("signed webhook has no secret; not sent");
-            return DeliveryOutcome::Refused;
-        };
-        let signature = signature_header(secret, &sent_at, body.as_bytes());
-        request = request.header(SIGNATURE_HEADER, signature);
-    }
-    match request.send(body.as_bytes()) {
-        Ok(response) => DeliveryOutcome::of_status(response.status().as_u16()),
+    match post_webhook(agent, hook, record, secret) {
+        Ok(outcome) => outcome,
+        Err(error @ WebhookPostError::NoSecret) => {
+            tracing::warn!(%error, "webhook not sent");
+            DeliveryOutcome::from(&error)
+        }
         Err(error) => {
-            tracing::debug!(%error, "webhook not reached");
-            DeliveryOutcome::Failed
+            tracing::debug!(%error, "webhook not sent");
+            DeliveryOutcome::from(&error)
         }
     }
 }
@@ -262,7 +232,7 @@ pub(crate) fn deliver_once(delivery: &Delivery) -> DeliveryOutcome {
     let signed = delivery.hook.signing == WebhookSigning::Signed;
     let secret = signed.then(|| read_secret(delivery.hook.id)).flatten();
     post(
-        &webhook_agent(),
+        &webhook_agent(REQUEST_TIMEOUT),
         &delivery.hook,
         &delivery.record,
         secret.as_ref(),

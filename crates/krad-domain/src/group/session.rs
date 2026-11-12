@@ -1,5 +1,6 @@
 use super::{DiffComment, SessionChanges, SessionLead, SessionLook, SessionMemory, SessionPanes};
 use crate::attention::SessionAttention;
+use crate::cloud::CloudPlacement;
 use crate::environment::{EnvironmentData, TerminalNode};
 use crate::ids::{GroupId, SessionId, TerminalId};
 use crate::mosaic::MosaicState;
@@ -35,6 +36,8 @@ pub struct Session {
     pub diff_comments: Vec<DiffComment>,
     #[serde(default, skip_serializing_if = "SessionMemory::is_plain")]
     pub memory: SessionMemory,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloud: Option<CloudPlacement>,
 }
 
 impl EnvironmentData {
@@ -197,6 +200,7 @@ impl EnvironmentData {
             attention: SessionAttention::default(),
             diff_comments: Vec::new(),
             memory: SessionMemory::default(),
+            cloud: None,
         });
         id
     }

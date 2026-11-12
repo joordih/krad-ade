@@ -149,6 +149,7 @@ mod tests {
             usage: krad_domain::ChatUsage::default(),
             checkpoints: krad_domain::ChatCheckpoints::default(),
             choice: krad_domain::ChatChoice::default(),
+            cloud: None,
         }
     }
 

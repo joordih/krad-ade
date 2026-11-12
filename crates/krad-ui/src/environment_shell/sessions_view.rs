@@ -11,6 +11,7 @@ use krad_domain::{
 use std::borrow::Cow;
 use std::rc::Rc;
 
+use super::cloud::{cloud_marker, CloudBadge};
 use super::session_look::session_icon;
 use super::spending::spend_caption;
 use super::terminal_status::CardStatus;
@@ -90,6 +91,10 @@ impl EnvironmentShell {
                         .map(|harness| self.settings.acp.harness_name(harness)),
                     spent: spend_caption(&live.data.session_spend(session)),
                     density: self.settings.sidebar.density,
+                    cloud: session.cloud.as_ref().map(|placement| {
+                        let waiting = status == CardStatus::Agent(AgentState::WaitingForInput);
+                        self.cloud_badge(placement.runner, waiting)
+                    }),
                 };
                 Self::session_row(&row, cx)
             })
@@ -173,6 +178,7 @@ impl EnvironmentShell {
                 None => element.child(icon(glyph, ICON_SM, tone)),
             })
             .child(Self::session_title(row, &tabs, cx))
+            .children(row.cloud.clone().map(|badge| cloud_marker(raw, badge, cx)))
             .child(Self::session_hover_tools(row, tabs, reveal, cx))
             .when(
                 row.session.attention == SessionAttention::Muted,
@@ -369,6 +375,7 @@ struct SessionRow<'a> {
     harness: Option<Cow<'static, str>>,
     spent: Option<String>,
     density: SidebarDensity,
+    cloud: Option<CloudBadge>,
 }
 
 pub(super) fn show_current_session(live: &mut LiveEnv) {

@@ -117,8 +117,8 @@ fn quiet(args: &[OsString]) -> Command {
     command
 }
 
-fn free_local_port() -> Result<u16, HostError> {
-    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, ANY_PORT))?;
+fn free_local_port(wanted: u16) -> Result<u16, HostError> {
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, wanted))?;
     Ok(listener.local_addr()?.port())
 }
 
@@ -158,7 +158,7 @@ impl RemoteLink {
     pub fn forward_local(&self, remote_port: u16) -> Result<Forward, HostError> {
         let mut last = HostError::Forward(ForwardFailure::Rejected);
         for _ in 0..LOCAL_ATTEMPTS {
-            match self.try_forward_local(remote_port) {
+            match self.try_forward_local(ANY_PORT, remote_port) {
                 Ok(forward) => return Ok(forward),
                 Err(error) => {
                     tracing::debug!(%error, "local forward attempt failed");
@@ -169,17 +169,30 @@ impl RemoteLink {
         Err(last)
     }
 
-    fn try_forward_local(&self, remote_port: u16) -> Result<Forward, HostError> {
+    /// # Errors
+    ///
+    /// [`HostError::Io`] when `port` is already taken on this computer, and
+    /// the errors of [`RemoteLink::forward_local`].
+    #[tracing::instrument(skip_all, fields(destination = %self.args.destination, port))]
+    pub fn forward_local_at(&self, port: u16) -> Result<Forward, HostError> {
+        self.try_forward_local(port, port)
+    }
+
+    fn try_forward_local(&self, wanted: u16, remote_port: u16) -> Result<Forward, HostError> {
         if let Some(mux) = self.multiplexed() {
-            let (forward, local_port) =
-                MuxForward::local(&mux, remote_port, self.args.timeouts.forward.duration())?;
+            let (forward, local_port) = MuxForward::local(
+                &mux,
+                wanted,
+                remote_port,
+                self.args.timeouts.forward.duration(),
+            )?;
             return Ok(Forward {
                 local_port,
                 carrier: Carrier::Session(forward),
             });
         }
         self.refuse_ssh()?;
-        let local_port = free_local_port()?;
+        let local_port = free_local_port(wanted)?;
         let spec = local_spec(local_port, remote_port);
         let wait = self.args.timeouts.forward.duration();
         if let Some(open) =
@@ -303,6 +316,17 @@ fn wait_until_listening(forward: &mut Forward, wait: Duration) -> Result<(), Hos
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_wanted_local_port_is_only_free_when_nobody_listens_there() -> Result<(), HostError> {
+        let taken = TcpListener::bind((Ipv4Addr::LOCALHOST, ANY_PORT))?;
+        let port = taken.local_addr()?.port();
+        assert!(matches!(free_local_port(port), Err(HostError::Io(_))));
+        drop(taken);
+        assert_eq!(free_local_port(port)?, port);
+        assert_ne!(free_local_port(ANY_PORT)?, ANY_PORT);
+        Ok(())
+    }
 
     #[test]
     fn the_master_prints_the_allocated_port_alone() {

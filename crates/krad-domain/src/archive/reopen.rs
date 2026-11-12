@@ -54,6 +54,7 @@ impl EnvironmentData {
             usage: ChatUsage::default(),
             checkpoints: chat.checkpoints,
             choice: chat.choice,
+            cloud: None,
         });
         self.place_terminal(terminal, None);
         ResumedChat { terminal, resume }
@@ -102,6 +103,7 @@ impl EnvironmentData {
             session.look = archived.look;
             session.lead = lead;
             session.last_chat = first;
+            session.cloud = archived.cloud;
         }
         self.active_session = Some(id);
         if let Some(first) = first {
@@ -159,9 +161,10 @@ mod tests {
     use super::super::fixtures::{now, Workbench};
     use super::*;
     use crate::agent::AgentPreset;
+    use crate::cloud::{CloudPlacement, CloudRunnerId};
     use crate::group::{SessionLead, SessionLook, WorkerSpawn};
     use crate::hue::Hue;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     fn tab_ids(data: &EnvironmentData, session: SessionId) -> Vec<TerminalId> {
         data.session(session).map_or_default(|session| {
@@ -260,6 +263,40 @@ mod tests {
         let shown = bench.data.session(reopened.session);
         assert_eq!(shown.map(|found| found.name.as_str()), Some("Refunds"));
         assert_eq!(shown.and_then(|found| found.look.color), Some(Hue::Teal));
+    }
+
+    #[test]
+    fn a_cloud_session_reopens_on_its_runner_and_worktree() {
+        let mut bench = Workbench::new();
+        bench.push(NodeKind::Chat, Some("chat-1"));
+        let session = bench.current();
+        let placement = CloudPlacement {
+            runner: CloudRunnerId(3),
+            repo_dir: PathBuf::from("/home/me/.krad-ade/runner/repos/api-1a2b3c4d"),
+            worktree: PathBuf::from("/home/me/.krad-ade/runner/worktrees/api-1a2b3c4d/api-77"),
+            branch: "krad/api-77".to_owned(),
+        };
+        if let Some(found) = bench
+            .data
+            .sessions
+            .iter_mut()
+            .find(|found| found.id == session)
+        {
+            found.cloud = Some(placement.clone());
+        }
+        close_into(&mut bench, session);
+        let first = bench.data.archive.sessions[0].id;
+        let Some(archived) = bench.data.archive.take_session(first) else {
+            unreachable!("the session was archived");
+        };
+        let Some(reopened) = bench.data.reopen_session(archived) else {
+            unreachable!("its group is still there");
+        };
+        let shown = bench.data.session(reopened.session);
+        assert_eq!(
+            shown.and_then(|found| found.cloud.as_ref()),
+            Some(&placement)
+        );
     }
 
     #[test]

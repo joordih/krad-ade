@@ -3,8 +3,8 @@ use krad_agents::StateReason;
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::SessionSpec;
 use krad_domain::{
-    AgentPreset, AgentState, EnvironmentName, GroupId, NodeKind, PermissionMode, Prompt,
-    TerminalId, TerminalNode, TextScale, WorkerSpawn, DEFAULT_CHAT_HARNESS,
+    AgentPreset, AgentState, CloudPlacement, EnvironmentName, GroupId, NodeKind, PermissionMode,
+    Prompt, TerminalId, TerminalNode, TextScale, WorkerSpawn, DEFAULT_CHAT_HARNESS,
 };
 use krad_session::wsl_shell;
 use std::path::PathBuf;
@@ -30,6 +30,7 @@ pub(super) struct WorkerChat {
     pub(super) session: LiveSession,
     pub(super) prompts: Vec<Prompt>,
     pub(super) mode: Option<PermissionMode>,
+    pub(super) cloud: Option<CloudPlacement>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -246,6 +247,7 @@ impl EnvironmentShell {
             session,
             prompts,
             mode,
+            cloud,
         } = chat;
         let spec = NodeSpec {
             kind: NodeKind::Chat,
@@ -255,7 +257,10 @@ impl EnvironmentShell {
         };
         self.push_node(env, id, &spec, None)?;
         let live = self.envs.get_mut(env)?;
-        live.data.open_worker_session(id, spawn);
+        let opened = live.data.open_worker_session(id, spawn);
+        if let Some(opened) = opened.and_then(|opened| live.data.session_mut(opened)) {
+            opened.cloud = cloud;
+        }
         live.pending_chats.insert(id, session);
         if !prompts.is_empty() {
             live.waiting_prompts.insert(id, prompts);
@@ -339,6 +344,7 @@ impl EnvironmentShell {
             usage: krad_domain::ChatUsage::default(),
             checkpoints: krad_domain::ChatCheckpoints::default(),
             choice: krad_domain::ChatChoice::default(),
+            cloud: None,
         });
         Some((cwd, anchor_node.map(|node| node.id)))
     }
@@ -364,6 +370,7 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &mut Context<Self>,
     ) {
+        self.stop_cloud_node(env, id, cx);
         self.digest_ended_chat(env, id, cx);
         self.end_worker_launch(env, id);
         let workers = self

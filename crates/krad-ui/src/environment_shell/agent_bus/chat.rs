@@ -165,6 +165,9 @@ impl EnvironmentShell {
             .and_then(|live| live.data.group(group))
             .cloned()
             .ok_or_else(|| Response::error(ErrorCode::NotFound, NO_CHAT_GROUP))?;
+        let cloud = spawn
+            .lead
+            .and_then(|lead| self.envs.get(env)?.data.session(lead)?.cloud.clone());
         let order = WorkerOrder {
             preset,
             worktree: spawn.worktree,
@@ -174,6 +177,7 @@ impl EnvironmentShell {
                 task: text,
             }),
             mode: spawn.mode,
+            cloud,
         };
         Ok((group, order))
     }

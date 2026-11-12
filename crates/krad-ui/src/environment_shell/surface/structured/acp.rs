@@ -9,6 +9,7 @@ use krad_store::find_acp_secret;
 use std::collections::HashMap;
 
 use super::super::super::chat::StartError;
+use super::super::super::cloud::NodeSite;
 use super::super::super::EnvironmentShell;
 use super::super::SurfaceChat;
 use super::structured_mut;
@@ -71,9 +72,18 @@ impl EnvironmentShell {
             .get(env)
             .and_then(|live| live.data.group_of(id))
             .map(|group| group.root.clone());
-        let link = self.env_link(env);
-        let started = self.acp_runner(&link, &agent, root.as_deref(), cx);
-        self.note_adapter_install(env, id, agent.id);
+        let started = match self.node_site(env, id) {
+            NodeSite::Env => {
+                let link = self.env_link(env);
+                let started = self.acp_runner(&link, &agent, root.as_deref(), cx);
+                self.note_adapter_install(env, id, agent.id);
+                started
+            }
+            NodeSite::Cloud(site) => {
+                self.cloud_chat_runner(env, id, &site, preset, agent.program.clone())
+            }
+            NodeSite::Waiting(_) => Err(StartError::Waiting),
+        };
         let (runner, cwd) = started?;
         if !self.acp_secrets_ready(env, id, &agent, cx) {
             return Err(StartError::Waiting);
@@ -82,7 +92,7 @@ impl EnvironmentShell {
         let launch = self
             .gateway_mcp(env, id, &folder, cx)
             .ok_or(StartError::Waiting)?;
-        let bus_vars = if runner.on_ssh() && self.remote_bus(env).is_none() {
+        let bus_vars = if !runner.in_cloud() && runner.on_ssh() && self.remote_bus(env).is_none() {
             BusVars(Vec::new())
         } else {
             BusVars(self.bus_vars(env, id))

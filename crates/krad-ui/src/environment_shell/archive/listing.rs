@@ -104,6 +104,7 @@ mod tests {
             files: Vec::new(),
             lead: None,
             workers: Vec::new(),
+            cloud: None,
         }
     }
 

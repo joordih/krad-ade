@@ -12,6 +12,7 @@ use std::time::Instant;
 use super::super::super::agent_bus::{cli_name, BUS_HINT};
 use super::super::super::agent_hooks::LEAD_HINT;
 use super::super::super::chat::{LiveProcess, StartError};
+use super::super::super::cloud::NodeSite;
 use super::super::super::gateway::GatewayReach;
 use super::super::super::kraddie_memory::joined_prompt;
 use super::super::super::opencode::OpencodeLink;
@@ -117,6 +118,7 @@ impl EnvironmentShell {
             return true;
         };
         if matches!(error, StartError::Waiting) {
+            self.check_cloud_processes(cx);
             return false;
         }
         if let Some(chat) = self
@@ -160,8 +162,16 @@ impl EnvironmentShell {
         else {
             return Ok(());
         };
-        if self.awaits_remote_bus(env) {
-            return Err(StartError::Waiting);
+        match self.node_site(env, id) {
+            NodeSite::Waiting(runner) => {
+                self.note_cloud_wait(env, id, runner, cx);
+                return Err(StartError::Waiting);
+            }
+            NodeSite::Env if self.awaits_remote_bus(env) => return Err(StartError::Waiting),
+            NodeSite::Cloud(_) if self.awaits_runner_bus(env, id) => {
+                return Err(StartError::Waiting)
+            }
+            NodeSite::Cloud(_) | NodeSite::Env => {}
         }
         let backend = self.chat_backend(env, id, harness, cx)?;
         let owner = env.clone();
@@ -183,12 +193,21 @@ impl EnvironmentShell {
         harness: AgentPreset,
         cx: &mut Context<Self>,
     ) -> Result<ChatBackend, StartError> {
+        let site = self.node_site(env, id);
+        if let (true, Some(reason)) = (site.is_cloud(), harness.unavailable_in_cloud()) {
+            return Err(StartError::Cloud(reason.to_owned()));
+        }
         Ok(match harness {
             AgentPreset::ClaudeCode => ChatBackend::Claude(self.live_config(env, id, harness)?),
             AgentPreset::Codex => ChatBackend::Codex(self.live_config(env, id, harness)?),
             AgentPreset::Opencode => {
                 let config = self.live_config(env, id, harness)?;
-                let server = self.opencode_for(&config.runner, &config.cwd, harness, cx)?;
+                let server = match &site {
+                    NodeSite::Cloud(cloud) => self.cloud_opencode_for(cloud, cx)?,
+                    NodeSite::Env | NodeSite::Waiting(_) => {
+                        self.opencode_for(&config.runner, &config.cwd, harness, cx)?
+                    }
+                };
                 ChatBackend::Opencode(server, config)
             }
             AgentPreset::Gateway => ChatBackend::Gateway(self.gateway_config(env, id, cx)?),
@@ -214,20 +233,36 @@ impl EnvironmentShell {
         id: TerminalId,
         harness: AgentPreset,
     ) -> Result<LiveConfig, StartError> {
-        let root = self
-            .envs
-            .get(env)
-            .and_then(|live| live.data.group_of(id))
-            .map(|group| group.root.clone());
-        let (runner, cwd) = self.harness_runner(&self.env_link(env), harness, root.as_deref())?;
-        let (system_prompt, bus_vars) = if runner.on_ssh() && self.remote_bus(env).is_none() {
+        let (runner, cwd) = match self.node_site(env, id) {
+            NodeSite::Env => {
+                let root = self
+                    .envs
+                    .get(env)
+                    .and_then(|live| live.data.group_of(id))
+                    .map(|group| group.root.clone());
+                self.harness_runner(&self.env_link(env), harness, root.as_deref())?
+            }
+            NodeSite::Cloud(site) => {
+                let program = self.launch_program(harness)?;
+                self.cloud_chat_runner(env, id, &site, harness, program)?
+            }
+            NodeSite::Waiting(_) => return Err(StartError::Waiting),
+        };
+        let vars = self.bus_vars(env, id);
+        let off_bus = if runner.in_cloud() {
+            vars.is_empty()
+        } else {
+            runner.on_ssh() && self.remote_bus(env).is_none()
+        };
+        let (system_prompt, mut bus_vars) = if off_bus {
             (self.memory_preamble(env, id), BusVars(Vec::new()))
         } else {
-            (
-                self.system_prompt(env, id, runner.in_wsl()),
-                BusVars(self.bus_vars(env, id)),
-            )
+            (self.system_prompt(env, id, runner.in_wsl()), BusVars(vars))
         };
+        bus_vars.0.extend(
+            self.cloud_claude_env(env, id, harness)
+                .filter(|_| runner.in_cloud()),
+        );
         let (model, notice) = self.offered_choice(env, id, harness);
         let usage_budget = self.claude_usage_budget();
         let structured = structured_mut(self, env, id).ok_or(StartError::Waiting)?;

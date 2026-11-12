@@ -177,6 +177,7 @@ mod tests {
                 files: Vec::new(),
                 lead: None,
                 workers: Vec::new(),
+                cloud: None,
             });
         let kept = environment.archive.clone();
         let layout = PersistedLayout {

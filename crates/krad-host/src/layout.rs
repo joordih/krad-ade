@@ -18,6 +18,7 @@ pub const HOST_CLI_BUILD: &str =
 pub(crate) const BIN_DIR: &str = "bin";
 pub const HOST_CLI_PROGRAM: &str = "krad-ade-agents";
 const CLIENTS_DIR: &str = "clients";
+const RUNNER_DIR: &str = "runner";
 const LANGUAGES_DIR: &str = "languages";
 const ENV_DIR: &str = "env";
 const RUN_DIR: &str = "run";
@@ -54,6 +55,11 @@ impl HostLayout {
     #[must_use]
     pub fn bin_dir(&self) -> PathBuf {
         self.app_dir().join(HOST_CLI_BUILD).join(BIN_DIR)
+    }
+
+    #[must_use]
+    pub fn runner_dir(&self) -> PathBuf {
+        self.app_dir().join(RUNNER_DIR)
     }
 
     #[must_use]
@@ -117,6 +123,7 @@ mod tests {
             layout.bus_dir()?,
             Path::new("/home/me/.krad-ade/clients/0123456789abcdef/bus")
         );
+        assert_eq!(layout.runner_dir(), Path::new("/home/me/.krad-ade/runner"));
         assert_eq!(
             layout.languages_dir(),
             Path::new("/home/me/.krad-ade/languages")

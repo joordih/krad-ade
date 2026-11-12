@@ -1,12 +1,13 @@
 use std::io;
 use std::path::Path;
-use std::process::{Child, ChildStdin, ChildStdout, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use tracing::{debug, info};
 
+use crate::cloud::HarnessLines;
 use crate::live::keep_stderr_tail;
-use crate::process::{harness_command, Runner};
+use crate::process::{spawn_harness, Harness, Runner};
 
 const NO_PIPE_TEXT: &str = "the agent started without its standard pipes";
 const STOPPED_BEFORE_START_TEXT: &str = "the chat stopped before the agent started";
@@ -24,7 +25,7 @@ pub(super) struct AgentProcess {
 }
 
 pub(super) struct Pipes {
-    pub(super) stdout: ChildStdout,
+    pub(super) stdout: HarnessLines<ChildStdout>,
     pub(super) stdin: ChildStdin,
 }
 
@@ -48,19 +49,18 @@ impl AgentProcess {
                 STOPPED_BEFORE_START_TEXT,
             ));
         }
-        let mut child = harness_command(runner, cwd, args, env)?
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-        if let Some(stderr) = child.stderr.take() {
+        let Harness {
+            child,
+            stdin,
+            stdout,
+            stderr,
+        } = spawn_harness(runner, cwd, args, env)?;
+        if let Some(stderr) = stderr {
             let tail = Arc::clone(&self.stderr_tail);
             thread::spawn(move || keep_stderr_tail(stderr, &tail));
         }
-        let pipes = child
-            .stdout
-            .take()
-            .zip(child.stdin.take())
+        let pipes = stdout
+            .zip(stdin)
             .map(|(stdout, stdin)| Pipes { stdout, stdin });
         info!(pid = child.id(), "ACP agent started");
         slot.child = Some(child);

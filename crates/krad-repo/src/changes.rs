@@ -1,3 +1,7 @@
+mod untracked;
+
+pub use untracked::working_patch_with_untracked;
+
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};

@@ -30,6 +30,7 @@ pub(in crate::environment_shell) enum StartError {
     Gateway(String),
     Secret(String),
     Adapter(String),
+    Cloud(String),
     NoConfigFolder,
     Chat(ChatError),
 }
@@ -44,7 +45,8 @@ impl fmt::Display for StartError {
             Self::Opencode(error)
             | Self::Gateway(error)
             | Self::Secret(error)
-            | Self::Adapter(error) => formatter.write_str(error),
+            | Self::Adapter(error)
+            | Self::Cloud(error) => formatter.write_str(error),
             Self::NoConfigFolder => formatter.write_str(NO_CONFIG_FOLDER_TEXT),
             Self::Chat(error) => error.fmt(formatter),
         }
@@ -111,12 +113,18 @@ impl EnvironmentShell {
         preset: AgentPreset,
         root: Option<&Path>,
     ) -> Result<(Runner, PathBuf), StartError> {
-        let program = self
-            .settings
+        let program = self.launch_program(preset)?;
+        self.program_runner(link, preset, program, root)
+    }
+
+    pub(in crate::environment_shell) fn launch_program(
+        &self,
+        preset: AgentPreset,
+    ) -> Result<String, StartError> {
+        self.settings
             .launch_line(preset)
             .and_then(|line| line.split_whitespace().next().map(str::to_owned))
-            .ok_or_else(|| StartError::NoProgram(self.settings.acp.harness_name(preset)))?;
-        self.program_runner(link, preset, program, root)
+            .ok_or_else(|| StartError::NoProgram(self.settings.acp.harness_name(preset)))
     }
 
     pub(in crate::environment_shell) fn program_runner(

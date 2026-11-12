@@ -1,7 +1,7 @@
 use krad_domain::review::{
     project_on_host, Approvals, Change, Commit, Discussion, DiscussionId, Issue, Job, JobId,
-    JobLog, MergeOptions, MergeRequest, MergeRequestIid, MergeRequestQuery, Note, Pipeline,
-    PipelineId, ProjectPath, User,
+    JobLog, MergeOptions, MergeRequest, MergeRequestIid, MergeRequestQuery, NewMergeRequest, Note,
+    Pipeline, PipelineId, ProjectPath, User,
 };
 use krad_domain::CodeHost;
 use krad_github::{GithubClient, GithubError, GITHUB_HOST};
@@ -50,7 +50,10 @@ pub(in crate::environment_shell) struct HostRepo {
     pub(in crate::environment_shell) project: ProjectPath,
 }
 
-fn repo_of_remote(remote: &str, gitlab: Option<GitlabConfig>) -> Option<HostRepo> {
+pub(in crate::environment_shell) fn repo_of_remote(
+    remote: &str,
+    gitlab: Option<GitlabConfig>,
+) -> Option<HostRepo> {
     let on_gitlab = gitlab.and_then(|config| {
         Some(HostRepo {
             project: project_on_host(remote, &config.host)?,
@@ -256,6 +259,21 @@ impl HostClient {
         options: &MergeOptions,
     ) -> Result<MergeRequest, HostError> {
         on_host!(self, merge(project, iid, options))
+    }
+
+    pub(in crate::environment_shell) fn create_merge_request(
+        &self,
+        project: &ProjectPath,
+        request: &NewMergeRequest,
+    ) -> Result<MergeRequest, HostError> {
+        match self {
+            Self::Gitlab(client) => client
+                .create_merge_request(project, request)
+                .map_err(HostError::from),
+            Self::Github(client) => client
+                .create_pull_request(project, request)
+                .map_err(HostError::from),
+        }
     }
 
     pub(in crate::environment_shell) fn pipelines(

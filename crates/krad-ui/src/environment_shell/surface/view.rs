@@ -198,27 +198,34 @@ impl EnvironmentShell {
                             div()
                                 .relative()
                                 .w_full()
-                                .children(
-                                    self.ask_tray(id, cx)
-                                        .or_else(|| self.acp_sign_in_tray(id, chat, cx))
-                                        .or_else(|| self.mcp_tray(id, chat, cx))
-                                        .or_else(|| self.agent_notice(id, chat, cx))
-                                        .or_else(|| Self::checklist_tray(id, chat, cx))
-                                        .map(|tray| {
-                                            div()
-                                                .absolute()
-                                                .left(px(TRAY_INSET))
-                                                .right(px(TRAY_INSET))
-                                                .bottom(relative(1.0))
-                                                .child(tray)
-                                        }),
-                                )
+                                .children(self.composer_tray(id, chat, cx).map(|tray| {
+                                    div()
+                                        .absolute()
+                                        .left(px(TRAY_INSET))
+                                        .right(px(TRAY_INSET))
+                                        .bottom(relative(1.0))
+                                        .child(tray)
+                                }))
                                 .child(self.surface_composer(id, chat, cx)),
                         ),
                 ),
             )
             .child(div().flex_1().min_h_0().flex_grow(1.0 - landed))
             .into_any_element()
+    }
+
+    fn composer_tray(
+        &self,
+        id: TerminalId,
+        chat: &SurfaceChat,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        self.ask_tray(id, cx)
+            .or_else(|| self.acp_sign_in_tray(id, chat, cx))
+            .or_else(|| self.cloud_chat_tray(id, chat.harness(), cx))
+            .or_else(|| self.mcp_tray(id, chat, cx))
+            .or_else(|| self.agent_notice(id, chat, cx))
+            .or_else(|| Self::checklist_tray(id, chat, cx))
     }
 
     fn bouncing_thread(

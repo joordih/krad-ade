@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use thiserror::Error;
 
+use crate::cloud::CloudRun;
 use crate::process::Runner;
 
 use crate::acp::setup::{
@@ -44,7 +45,7 @@ impl<'a> From<&'a HostLink> for Variables<'a> {
 impl<'a> From<&'a Runner> for Variables<'a> {
     fn from(runner: &'a Runner) -> Self {
         match runner {
-            Runner::Ssh { link, .. } => Self::from(link),
+            Runner::Ssh { link, .. } | Runner::Cloud(CloudRun { link, .. }) => Self::from(link),
             Runner::Native(_) | Runner::Wsl { .. } => Self::Here,
         }
     }

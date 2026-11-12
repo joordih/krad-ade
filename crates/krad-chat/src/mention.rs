@@ -48,7 +48,7 @@ pub(crate) fn served_path(runner: &Runner, path: &Path) -> String {
             wsl_linux_path(distro, path).unwrap_or_else(|| shown_path(path))
         }
         Runner::Native(_) => shown_path(path),
-        Runner::Ssh { .. } => krad_host::remote_path(path),
+        Runner::Ssh { .. } | Runner::Cloud(_) => krad_host::remote_path(path),
     }
 }
 
@@ -57,10 +57,12 @@ pub(crate) fn attachment_path(attachments: &Path, image: &Path) -> Option<PathBu
 }
 
 pub(crate) fn served_image(runner: &Runner, image: &ChatImage) -> io::Result<String> {
-    let Runner::Ssh { link, .. } = runner else {
-        return Ok(served_path(runner, &image.path));
-    };
-    upload_image(link, &image.path)
+    match runner {
+        Runner::Ssh { link, .. } | Runner::Cloud(crate::cloud::CloudRun { link, .. }) => {
+            upload_image(link, &image.path)
+        }
+        Runner::Native(_) | Runner::Wsl { .. } => Ok(served_path(runner, &image.path)),
+    }
 }
 
 fn upload_image(link: &krad_host::HostLink, image: &Path) -> io::Result<String> {

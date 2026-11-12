@@ -1,43 +1,42 @@
-use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
-use base64::Engine as _;
 use serde::Deserialize;
-use std::collections::hash_map::RandomState;
 use std::fmt;
-use std::hash::{BuildHasher, Hasher};
-use std::io::{BufRead, BufReader, Write as _};
+use std::io::BufReader;
 use std::path::Path;
-use std::process::{Child, ChildStdin, Stdio};
+use std::process::{Child, ChildStdin};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::thread;
 use std::time::Duration;
 use thiserror::Error;
-use ureq::{Agent, RequestBuilder};
+use ureq::Agent;
 
 use super::service;
 
+mod endpoint;
 mod requests;
 mod routes;
 
+use crate::cloud::CloudRun;
 use crate::live::keep_stderr_tail;
-use crate::process::{harness_command, ssh_command_reading_secret, Runner};
+use crate::process::{spawn_fed, spawn_harness, ssh_command_reading_secret, Harness, Runner};
+pub use endpoint::new_opencode_password;
+use endpoint::new_password;
+pub(super) use endpoint::{Endpoint, Secret};
+use krad_domain::OpencodePassword;
 use routes::{pump, Routes};
 pub(crate) use routes::{Delivery, Sink};
 
 const SERVE_ARGS: [&str; 4] = ["serve", "--stdio", "--port", "0"];
 const PASSWORD_VAR: &str = "OPENCODE_PASSWORD";
 const QUIET_VARS: [(&str, &str); 1] = [("OPENCODE_DISABLE_AUTOUPDATE", "1")];
-const USER: &str = "opencode";
-const BASIC: &str = "Basic ";
-const AUTHORIZATION: &str = "authorization";
 const EVENT_PATH: &str = "/api/event";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const RECONNECT_DELAY: Duration = Duration::from_secs(1);
-const PASSWORD_WORDS: usize = 4;
 const LOCAL_URL_PREFIX: &str = "http://127.0.0.1:";
 const PORT_SEPARATOR: char = ':';
 const PATH_SEPARATOR: char = '/';
-const LINE_END: &[u8] = b"\n";
+const LINE_END: char = '\n';
+const CLOUD_PROCESS_PREFIX: &str = "opencode-";
 
 #[derive(Debug, Error)]
 pub enum OpencodeError {
@@ -49,6 +48,8 @@ pub enum OpencodeError {
     Http(#[from] ureq::Error),
     #[error("cannot reach opencode on the host: {0}")]
     Host(#[from] krad_host::HostError),
+    #[error("opencode on a cloud runner starts with the runner's own password")]
+    CloudPassword,
 }
 
 fn port_of(url: &str) -> Option<u16> {
@@ -63,45 +64,30 @@ fn local_url(port: u16) -> String {
     format!("{LOCAL_URL_PREFIX}{port}")
 }
 
-#[derive(Clone, PartialEq, Eq, Deserialize)]
-pub(super) struct Secret(String);
-
-impl fmt::Debug for Secret {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("[REDACTED]")
-    }
+fn serve_args() -> Vec<String> {
+    SERVE_ARGS.iter().map(|arg| (*arg).to_owned()).collect()
 }
 
-fn new_password() -> Secret {
-    let bytes: Vec<u8> = (0..PASSWORD_WORDS)
-        .flat_map(|_| RandomState::new().build_hasher().finish().to_le_bytes())
-        .collect();
-    Secret(URL_SAFE_NO_PAD.encode(bytes))
+fn quiet(env: &[(String, String)]) -> Vec<(String, String)> {
+    let mut env = env.to_vec();
+    env.extend(
+        QUIET_VARS
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned())),
+    );
+    env
+}
+
+#[must_use]
+pub fn opencode_cloud_process(runner: krad_domain::CloudRunnerId) -> krad_domain::CloudProcessId {
+    format!("{CLOUD_PROCESS_PREFIX}{runner}")
+        .parse()
+        .unwrap_or_else(|_| unreachable!("a runner id is digits, so the process id is valid"))
 }
 
 #[derive(Deserialize)]
 struct Ready {
     url: String,
-}
-
-#[derive(Clone)]
-pub(super) struct Endpoint {
-    pub(super) url: String,
-    password: Option<Secret>,
-}
-
-impl Endpoint {
-    pub(super) const fn new(url: String, password: Option<Secret>) -> Self {
-        Self { url, password }
-    }
-
-    pub(super) fn sign<B>(&self, request: RequestBuilder<B>) -> RequestBuilder<B> {
-        let Some(password) = &self.password else {
-            return request;
-        };
-        let credentials = STANDARD.encode(format!("{USER}:{}", password.0));
-        request.header(AUTHORIZATION, format!("{BASIC}{credentials}"))
-    }
 }
 
 enum Host {
@@ -145,12 +131,7 @@ impl OpencodeServer {
         cwd: &Path,
         env: &[(String, String)],
     ) -> Result<Arc<Self>, OpencodeError> {
-        let mut env = env.to_vec();
-        env.extend(
-            QUIET_VARS
-                .iter()
-                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned())),
-        );
+        let env = quiet(env);
         if !runner.in_wsl() && !runner.on_ssh() {
             if let Ok(endpoint) = service::attach(runner, cwd, &env) {
                 return Ok(Self::serve(endpoint, Host::Shared, service::discover));
@@ -159,46 +140,64 @@ impl OpencodeServer {
         Self::start_private(runner, cwd, env)
     }
 
+    /// # Errors
+    ///
+    /// Fails when the runner refuses the attach or opencode never reports where it listens.
+    pub fn start_cloud(
+        cloud: &CloudRun,
+        cwd: &Path,
+        env: &[(String, String)],
+        password: &OpencodePassword,
+    ) -> Result<Arc<Self>, OpencodeError> {
+        let mut env = quiet(env);
+        env.push((PASSWORD_VAR.to_owned(), password.expose().to_owned()));
+        let runner = Runner::Cloud(cloud.clone());
+        let harness = spawn_harness(&runner, cwd, &serve_args(), &env)?;
+        Self::listen_on(&runner, harness, Secret::from(password))
+    }
+
     fn start_private(
         runner: &Runner,
         cwd: &Path,
         mut env: Vec<(String, String)>,
     ) -> Result<Arc<Self>, OpencodeError> {
         let password = new_password();
-        let args: Vec<String> = SERVE_ARGS.iter().map(|arg| (*arg).to_owned()).collect();
-        let mut command = match runner {
-            Runner::Ssh { link, program } => {
-                ssh_command_reading_secret(link, program, cwd, &args, &env, PASSWORD_VAR)?
-            }
+        let args = serve_args();
+        let harness = match runner {
+            Runner::Ssh { link, program } => spawn_fed(
+                ssh_command_reading_secret(link, program, cwd, &args, &env, PASSWORD_VAR)?,
+                &format!("{}{LINE_END}", password.0),
+            )?,
             Runner::Native(_) | Runner::Wsl { .. } => {
                 env.push((PASSWORD_VAR.to_owned(), password.0.clone()));
-                harness_command(runner, cwd, &args, &env)?
+                spawn_harness(runner, cwd, &args, &env)?
             }
+            Runner::Cloud(_) => return Err(OpencodeError::CloudPassword),
         };
-        let mut child = command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-        let mut lease = child.stdin.take();
-        if runner.on_ssh() {
-            if let Some(stdin) = lease.as_mut() {
-                stdin.write_all(password.0.as_bytes())?;
-                stdin.write_all(LINE_END)?;
-                stdin.flush()?;
-            }
-        }
+        Self::listen_on(runner, harness, password)
+    }
+
+    fn listen_on(
+        runner: &Runner,
+        harness: Harness,
+        password: Secret,
+    ) -> Result<Arc<Self>, OpencodeError> {
+        let Harness {
+            mut child,
+            stdin: lease,
+            stdout,
+            stderr,
+        } = harness;
         let stderr_tail = Arc::new(Mutex::new(String::new()));
-        if let Some(stderr) = child.stderr.take() {
+        if let Some(stderr) = stderr {
             let tail = Arc::clone(&stderr_tail);
             thread::spawn(move || keep_stderr_tail(stderr, &tail));
         }
-        let ready = child.stdout.take().and_then(|stdout| {
-            let mut lines = BufReader::new(stdout).lines();
+        let ready = stdout.and_then(|mut lines| {
             let ready = lines
                 .by_ref()
                 .map_while(Result::ok)
-                .find_map(|line| serde_json::from_str::<Ready>(line.trim()).ok());
+                .find_map(|line| serde_json::from_str::<Ready>(line.text.trim()).ok());
             thread::spawn(move || lines.map_while(Result::ok).for_each(drop));
             ready
         });
@@ -212,11 +211,8 @@ impl OpencodeServer {
                 .to_owned();
             return Err(OpencodeError::NotStarted(tail));
         };
-        let (url, forward) = match runner {
-            Runner::Ssh {
-                link: krad_host::HostLink::Remote(ssh),
-                ..
-            } => {
+        let (url, forward) = match runner.link() {
+            krad_host::HostLink::Remote(ssh) if runner.on_ssh() => {
                 let remote = port_of(&ready.url)
                     .ok_or_else(|| OpencodeError::NotStarted(ready.url.clone()))?;
                 let forward = ssh.forward_local(remote)?;
@@ -365,10 +361,12 @@ mod tests {
         assert_eq!(port_of("http://localhost"), None);
         assert_eq!(local_url(5000), "http://127.0.0.1:5000");
     }
+
     #[test]
-    fn the_password_never_shows_in_debug_output() {
-        let password = new_password();
-        assert_eq!(format!("{password:?}"), "[REDACTED]");
-        assert!(password.0.len() > PASSWORD_WORDS * 8);
+    fn each_runner_keeps_one_opencode_server_process() {
+        assert_eq!(
+            opencode_cloud_process(krad_domain::CloudRunnerId(42)).as_str(),
+            "opencode-42"
+        );
     }
 }

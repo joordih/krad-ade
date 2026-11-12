@@ -176,7 +176,7 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    fn close_name_dialog(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn close_name_dialog(&mut self, cx: &mut Context<Self>) {
         let closed = std::mem::take(&mut self.name_dialogs);
         match closed {
             NameDialogs::Name(NameDialog {

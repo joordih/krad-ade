@@ -41,7 +41,7 @@ pub(in crate::environment_shell) struct SshDialog {
     _events: Subscription,
 }
 
-fn read_suggestions() -> Vec<String> {
+pub(in crate::environment_shell) fn ssh_config_suggestions() -> Vec<String> {
     let Some(home) = home_dir() else {
         return Vec::new();
     };
@@ -78,7 +78,7 @@ impl EnvironmentShell {
             suggestions: Vec::new(),
             _events: events,
         });
-        let read = cx.background_spawn(async move { read_suggestions() });
+        let read = cx.background_spawn(async move { ssh_config_suggestions() });
         cx.spawn(async move |this, cx| {
             let suggestions = read.await;
             this.update(cx, |shell, cx| {

@@ -1,6 +1,4 @@
-use crate::client::call;
-use crate::env::{bus_env, BusEnv};
-use crate::handle::Caller;
+use crate::delivery::{ask_app, send};
 use crate::protocol::{Request, Response};
 use krad_domain::{
     AgentPreset, ToolDecision, ToolUseId, CLAUDE_PERMISSION_REQUEST, CLAUDE_PRE_TOOL_USE,
@@ -239,21 +237,6 @@ fn opencode_request(args: &[String]) -> Option<Request> {
         resume: None,
         mode: None,
     })
-}
-
-pub(crate) fn send(request: Request) {
-    ask_app(request).map_or_default(drop);
-}
-
-fn ask_app(request: Request) -> Option<Response> {
-    let BusEnv {
-        endpoint,
-        token,
-        terminal,
-        ..
-    } = bus_env(None)?;
-    let from = terminal.parse::<Caller>().ok()?;
-    call(&endpoint, &token, &from, request).ok()
 }
 
 #[cfg(test)]

@@ -71,6 +71,7 @@ fn closed_workers_are_listed_only_as_closed() {
         usage: krad_domain::ChatUsage::default(),
         checkpoints: krad_domain::ChatCheckpoints::default(),
         choice: krad_domain::ChatChoice::default(),
+        cloud: None,
     };
     data.nodes.push(node);
     let spawn = WorkerSpawn {

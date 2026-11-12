@@ -1,5 +1,6 @@
 use super::claude::{live_event, Routing};
 use super::*;
+use crate::cloud::LineOrigin;
 use crate::control::AskKind;
 use crate::refused::ResumeRefused;
 use krad_domain::ChatEvent;
@@ -11,7 +12,7 @@ const INIT_ID: &str = "krad_0";
 fn routed(lines: &[&str], routing: &Routing) -> Vec<LiveEvent> {
     let mut events = Vec::new();
     for line in lines {
-        routing.route_line(line, &mut |event| events.push(event));
+        routing.route_line(line, LineOrigin::Live, &mut |event| events.push(event));
     }
     events
 }
@@ -158,4 +159,35 @@ fn a_usage_reply_reaches_the_chat_as_its_plan_usage_and_a_failed_one_is_left_out
     assert_eq!(read.plan.as_deref(), Some("pro"));
     assert_eq!(read.windows.len(), 1);
     assert_eq!(alert.status, krad_domain::LimitStatus::Reached);
+}
+
+#[test]
+fn a_replayed_claude_journal_shows_only_the_asks_still_pending() {
+    let routing = Routing::new(INIT_ID, 0);
+    let mut events = Vec::new();
+    for line in [
+        r#"{"type":"control_response","response":{"subtype":"success","request_id":"krad_0","response":{"models":[]}}}"#,
+        r#"{"type":"assistant","message":{"content":[{"type":"text","text":"old"}]}}"#,
+        r#"{"type":"control_request","request_id":"r9","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"rm -rf build"}}}"#,
+        r#"{"type":"result","subtype":"success","result":"old"}"#,
+    ] {
+        routing.route_line(line, LineOrigin::Replayed, &mut |event| events.push(event));
+    }
+    assert!(
+        matches!(
+            events.as_slice(),
+            [LiveEvent::Ask(ask)] if matches!(&ask.kind, AskKind::Permission { tool, .. } if tool == "Bash")
+        ),
+        "{events:?}"
+    );
+    assert_eq!(routing.pending.load(Ordering::SeqCst), 0);
+    routing.route_line(
+        r#"{"type":"assistant","message":{"content":[{"type":"text","text":"new"}]}}"#,
+        LineOrigin::Live,
+        &mut |event| events.push(event),
+    );
+    assert_eq!(
+        events.last(),
+        Some(&LiveEvent::Chat(ChatEvent::Text("new".to_owned())))
+    );
 }

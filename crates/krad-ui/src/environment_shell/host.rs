@@ -12,7 +12,8 @@ mod terminal;
 mod tools;
 
 pub(super) use folder_browser::{FolderBrowser, FolderPurpose};
-pub(super) use ssh_dialog::SshDialog;
+pub(super) use problem::explain as explain_host_problem;
+pub(super) use ssh_dialog::{ssh_config_suggestions, SshDialog};
 pub(super) use state::HostState;
 pub(super) use terminal::{remote_terminal, remote_terminal_opener};
 pub use tools::HostTools;
@@ -76,7 +77,7 @@ impl EnvironmentShell {
             )
     }
 
-    fn host_context(&self) -> HostContext {
+    pub(super) fn host_context(&self) -> HostContext {
         HostContext {
             config_dir: krad_store::config_dir(),
             install_id: self.host_tools.install_id.clone(),

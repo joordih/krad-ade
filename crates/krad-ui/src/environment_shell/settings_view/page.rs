@@ -59,6 +59,7 @@ impl EnvironmentShell {
             SettingsPane::Mcp => self.mcp_pane(&ui.mcp, cx),
             SettingsPane::Acp => self.acp_pane(&ui.acp, cx),
             SettingsPane::Skills => self.skills_pane(&ui.skills, cx),
+            SettingsPane::CloudRunners => self.cloud_runners_pane(&ui.cloud_runners, cx),
             SettingsPane::Webhooks => self.webhooks_pane(&ui.webhooks, cx),
             SettingsPane::Languages => self.languages_pane(&ui.languages, cx),
             SettingsPane::Extensions => self.extensions_pane(cx),

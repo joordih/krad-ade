@@ -1,29 +1,32 @@
 use krad_domain::{
     AgentPreset, ChatEvent, Prompt, ResumeId, RewindId, RewindPoint, UsageBudget, UsageCadence,
 };
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdin, Stdio};
+use std::io::Write;
+use std::process::{Child, ChildStdin};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 use super::{keep_stderr_tail, new_uuid, LiveConfig, LiveHarness, Order};
 use crate::command::live_chat_command;
 use crate::control::{
-    answer_line, initialize_line, interrupt_line, rewind_files_line, route, set_model_line,
-    set_permission_mode_line, usage_line, LiveEvent, Responder, Routed,
+    answer_line, initialize_line, interrupt_line, rewind_files_line, set_model_line,
+    set_permission_mode_line, usage_line, LiveEvent, Responder,
 };
 use crate::error::ChatError;
 use crate::exit::closing_event;
 use crate::history::claude_conversation_file;
 use crate::live::LiveSession;
 use crate::message::{user_message_line, SlashCommand};
-use crate::parse::{claude, claude_limit_alert, claude_plan_usage, claude_spend, usage_failure_of};
-use crate::process::harness_command;
+use crate::process::{spawn_harness, Harness};
 use crate::refused::ResumeRefused;
-use crate::rewind::{files_reply, transcript_cut, RewindError, RewindRequest, Rewound};
+use crate::rewind::{transcript_cut, RewindError, RewindRequest, Rewound};
+
+mod routing;
+
+pub(super) use routing::Routing;
 
 const REQUEST_ID_PREFIX: &str = "krad_";
 const USAGE_REQUEST_PREFIX: &str = "krad_usage_";
@@ -259,14 +262,12 @@ pub(super) fn spawn_claude(
     let args = live_chat_command(config, session);
     let mut env = config.bus_vars.0.clone();
     env.push((CHECKPOINTING_VAR.to_owned(), CHECKPOINTING_ON.to_owned()));
-    let mut child = harness_command(&config.runner, &config.cwd, &args, &env)?
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    let stdin = child.stdin.take();
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
+    let Harness {
+        child,
+        stdin,
+        stdout,
+        stderr,
+    } = spawn_harness(&config.runner, &config.cwd, &args, &env)?;
     let (outbox, inbox) = channel();
     if let Some(stdin) = stdin {
         thread::spawn(move || write_messages(stdin, &inbox));
@@ -309,9 +310,9 @@ pub(super) fn spawn_claude(
     thread::spawn(move || {
         let mut emit = |event| events.send(event).unwrap_or_default();
         if let Some(stdout) = stdout {
-            for line in BufReader::new(stdout).lines() {
+            for line in stdout {
                 let Ok(line) = line else { break };
-                routing.route_line(&line, &mut emit);
+                routing.route_line(&line.text, line.origin, &mut emit);
             }
         }
         if let Some(reader) = stderr_reader {
@@ -336,99 +337,6 @@ pub(super) fn spawn_claude(
         }
     });
     Ok(claude)
-}
-
-pub(super) struct Routing {
-    pub(super) init_id: String,
-    pub(super) pending: Arc<AtomicUsize>,
-    awaited: AwaitedReply,
-    session: KnownSession,
-    usage: UsageAsk,
-}
-
-impl Routing {
-    #[cfg(test)]
-    pub(super) fn new(init_id: &str, pending: usize) -> Self {
-        Self {
-            init_id: init_id.to_owned(),
-            pending: Arc::new(AtomicUsize::new(pending)),
-            awaited: Arc::default(),
-            session: Arc::default(),
-            usage: UsageAsk::default(),
-        }
-    }
-
-    fn take_awaited(&self, request_id: &str) -> Option<Awaited> {
-        let mut awaited = self.awaited.lock().unwrap_or_else(PoisonError::into_inner);
-        awaited.take_if(|awaited| awaited.request_id == request_id)
-    }
-
-    fn abandon_reply(&self) {
-        let awaited = self
-            .awaited
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .take();
-        if let Some(awaited) = awaited {
-            awaited
-                .reply
-                .send(Err(RewindError::Stopped))
-                .unwrap_or_default();
-        }
-    }
-
-    pub(super) fn route_line(&self, line: &str, sink: &mut impl FnMut(LiveEvent)) {
-        let value = match route(line, &self.init_id) {
-            None | Some(Routed::Control) => return,
-            Some(Routed::Ask(ask)) => return sink(LiveEvent::Ask(ask)),
-            Some(Routed::Ready(catalog)) => return sink(LiveEvent::Ready(catalog)),
-            Some(Routed::Replied { request_id, reply }) if UsageAsk::answers(&request_id) => {
-                let read = reply
-                    .map_err(|error| usage_failure_of(&error))
-                    .and_then(|reply| claude_plan_usage(&reply));
-                match read {
-                    Ok(usage) => sink(LiveEvent::Usage(usage)),
-                    Err(failure) => tracing::debug!(?failure, "the chat could not read plan usage"),
-                }
-                return;
-            }
-            Some(Routed::Replied { request_id, reply }) => {
-                if let Some(awaited) = self.take_awaited(&request_id) {
-                    awaited.reply.send(files_reply(reply)).unwrap_or_default();
-                }
-                return;
-            }
-            Some(Routed::Conversation(value)) => value,
-        };
-        if let Some(spent) = claude_spend(&value) {
-            sink(LiveEvent::Spent(spent));
-        }
-        if let Some(alert) = claude_limit_alert(&value, SystemTime::now()) {
-            return sink(LiveEvent::Limit(alert.into()));
-        }
-        for event in claude(&value) {
-            match &event {
-                ChatEvent::Done | ChatEvent::Error(_) => {
-                    self.usage.ask();
-                    self.pending
-                        .try_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
-                            count.checked_sub(1)
-                        })
-                        .unwrap_or_default();
-                }
-                ChatEvent::TurnStarted => {
-                    self.pending
-                        .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
-                        .unwrap_or_default();
-                }
-                ChatEvent::Session(id) => {
-                    *self.session.lock().unwrap_or_else(PoisonError::into_inner) = Some(id.clone());
-                }
-                _ => {}
-            }
-            sink(live_event(event));
-        }
-    }
 }
 
 fn write_messages(mut stdin: ChildStdin, inbox: &Receiver<Outbound>) {

@@ -132,6 +132,7 @@ impl EnvironmentData {
             files,
             lead,
             workers,
+            cloud: session.cloud.clone(),
         })
     }
 

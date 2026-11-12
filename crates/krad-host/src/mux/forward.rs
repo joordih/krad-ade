@@ -41,10 +41,11 @@ pub(crate) struct MuxForward {
 impl MuxForward {
     pub(crate) fn local(
         carrier: &Arc<MuxCarrier>,
+        local_port: u16,
         remote_port: u16,
         wait: Duration,
     ) -> Result<(Self, u16), HostError> {
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, local_port))?;
         listener.set_nonblocking(true)?;
         let local_port = listener.local_addr()?.port();
         let stop = Arc::new(AtomicBool::new(false));

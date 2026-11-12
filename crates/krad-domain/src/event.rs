@@ -1,8 +1,10 @@
+mod agent;
 mod code_host_watch;
 mod delivery;
 mod timestamp;
 mod webhook;
 
+pub use agent::{agent_event, hook_state};
 pub use code_host_watch::{code_host_events, CodeHostSnapshot, PipelineWatch};
 pub use delivery::{
     backoff_after, next_delivery_step, DeliveryOutcome, DeliveryStep, WEBHOOK_FIRST_BACKOFF,

@@ -2,7 +2,7 @@ use gpui_kit::{Context, PromptButton, PromptLevel, Window};
 
 use super::EnvironmentShell;
 
-const NATIVE_ALERTS: bool = cfg!(target_os = "macos");
+pub(super) const NATIVE_ALERTS: bool = cfg!(target_os = "macos");
 const CONFIRMED: usize = 0;
 
 pub(super) struct Confirmation<'a> {

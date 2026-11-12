@@ -2,6 +2,7 @@ use crate::agent::{AgentPreset, AgentState};
 use crate::archive::Archive;
 use crate::bookmark::ChatBookmarks;
 use crate::checkpoint::ChatCheckpoints;
+use crate::cloud::CloudProcess;
 use crate::group::{Session, ShownExtensionViews, TerminalGroup};
 use crate::host::Host;
 use crate::ids::{EnvironmentName, ResumeId, SessionId, TerminalId};
@@ -45,6 +46,8 @@ pub struct TerminalNode {
     pub checkpoints: ChatCheckpoints,
     #[serde(default, skip_serializing_if = "ChatChoice::is_empty")]
     pub choice: ChatChoice,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloud: Option<CloudProcess>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -183,6 +186,7 @@ pub(crate) fn seed_terminals() -> (Vec<TerminalNode>, u64) {
             usage: ChatUsage::default(),
             checkpoints: ChatCheckpoints::default(),
             choice: ChatChoice::default(),
+            cloud: None,
         })
         .collect();
     (terminals, SEED_NEXT_ID)

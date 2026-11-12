@@ -2,9 +2,9 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::Write;
 use std::path::Path;
-use std::process::{Child, ChildStdin, Stdio};
+use std::process::{Child, ChildStdin};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -12,9 +12,12 @@ use std::thread;
 use std::time::Duration;
 use thiserror::Error;
 
+mod incoming;
+
 use crate::control::json_line;
 use crate::live::keep_stderr_tail;
-use crate::process::{harness_command, Runner};
+use crate::process::{spawn_harness, Harness, Runner};
+use incoming::route;
 
 const APP_SERVER_ARGS: [&str; 1] = ["app-server"];
 const CONFIG_FLAG: &str = "-c";
@@ -44,36 +47,6 @@ pub enum CodexError {
 pub(crate) enum RpcId {
     Number(i64),
     Text(String),
-}
-
-#[derive(Debug, Deserialize)]
-struct RpcFailure {
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum Incoming {
-    Request {
-        id: RpcId,
-        method: String,
-        #[serde(default)]
-        params: Value,
-    },
-    Notification {
-        method: String,
-        #[serde(default)]
-        params: Value,
-    },
-    Failure {
-        id: RpcId,
-        error: RpcFailure,
-    },
-    Success {
-        id: RpcId,
-        #[serde(default)]
-        result: Value,
-    },
 }
 
 #[derive(Debug)]
@@ -168,15 +141,14 @@ impl AppServer {
             .flat_map(|value| [CONFIG_FLAG.to_owned(), value.clone()])
             .collect();
         args.extend(APP_SERVER_ARGS.iter().map(|arg| (*arg).to_owned()));
-        let mut child = harness_command(runner, cwd, &args, env)?
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-        let stdin = child.stdin.take();
-        let stdout = child.stdout.take();
+        let Harness {
+            child,
+            stdin,
+            stdout,
+            stderr,
+        } = spawn_harness(runner, cwd, &args, env)?;
         let stderr_tail = Arc::new(Mutex::new(String::new()));
-        if let Some(stderr) = child.stderr.take() {
+        if let Some(stderr) = stderr {
             let tail = Arc::clone(&stderr_tail);
             thread::spawn(move || keep_stderr_tail(stderr, &tail));
         }
@@ -188,8 +160,8 @@ impl AppServer {
         if let Some(stdout) = stdout {
             let waiters = Arc::clone(&waiters);
             thread::spawn(move || {
-                for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                    route(&line, &waiters, &pushed);
+                for line in stdout.map_while(Result::ok) {
+                    route(&line.text, line.origin, &waiters, &pushed);
                 }
                 waiters
                     .lock()
@@ -205,7 +177,7 @@ impl AppServer {
             child: Arc::new(Mutex::new(Some(child))),
             stderr_tail,
         };
-        server.call::<_, Value>(
+        let initialized = server.call::<_, Value>(
             INITIALIZE,
             &InitializeParams {
                 client_info: ClientInfo {
@@ -217,7 +189,14 @@ impl AppServer {
                     experimental_api: true,
                 },
             },
-        )?;
+        );
+        match initialized {
+            Ok(_) => {}
+            Err(CodexError::Refused(reason)) if runner.in_cloud() => {
+                tracing::debug!(%reason, "the cloud app server was initialized before this attach");
+            }
+            Err(error) => return Err(error),
+        }
         server.write(&Notice {
             jsonrpc: JSONRPC_VERSION,
             method: INITIALIZED,
@@ -299,41 +278,6 @@ impl Drop for AppServer {
     }
 }
 
-fn route(line: &str, waiters: &Waiters, pushed: &Sender<Pushed>) {
-    let Ok(incoming) = serde_json::from_str::<Incoming>(line.trim()) else {
-        return;
-    };
-    let settle = |id: RpcId, answer: Result<Value, String>| {
-        let RpcId::Number(id) = id else {
-            return;
-        };
-        let Ok(id) = u64::try_from(id) else {
-            return;
-        };
-        let waiter = waiters
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(&id);
-        if let Some(waiter) = waiter {
-            waiter.send(answer).unwrap_or_default();
-        }
-    };
-    match incoming {
-        Incoming::Request { id, method, params } => {
-            pushed
-                .send(Pushed::Request { id, method, params })
-                .unwrap_or_default();
-        }
-        Incoming::Notification { method, params } => {
-            pushed
-                .send(Pushed::Notification { method, params })
-                .unwrap_or_default();
-        }
-        Incoming::Failure { id, error } => settle(id, Err(error.message)),
-        Incoming::Success { id, result } => settle(id, Ok(result)),
-    }
-}
-
 fn write_lines(mut stdin: ChildStdin, lines: &Receiver<String>) {
     while let Ok(line) = lines.recv() {
         if stdin
@@ -343,72 +287,5 @@ fn write_lines(mut stdin: ChildStdin, lines: &Receiver<String>) {
         {
             break;
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn requests_notifications_and_answers_go_where_they_belong() {
-        let waiters: Waiters = Mutex::new(HashMap::new());
-        let (answered, answer) = channel();
-        waiters
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(3, answered);
-        let (pushed, received) = channel();
-        route(r#"{"id":3,"result":{"ok":true}}"#, &waiters, &pushed);
-        route(
-            r#"{"method":"item/commandExecution/requestApproval","id":0,"params":{"command":"ls"}}"#,
-            &waiters,
-            &pushed,
-        );
-        route(
-            r#"{"method":"turn/started","params":{"threadId":"t"}}"#,
-            &waiters,
-            &pushed,
-        );
-        route("not json", &waiters, &pushed);
-        assert_eq!(
-            answer.try_recv().ok(),
-            Some(Ok(serde_json::json!({"ok": true})))
-        );
-        let pushed: Vec<String> = received
-            .try_iter()
-            .map(|message| match message {
-                Pushed::Request { id, method, .. } => format!("{method} {id:?}"),
-                Pushed::Notification { method, .. } => method,
-                Pushed::Closed => String::new(),
-            })
-            .collect();
-        assert_eq!(
-            pushed,
-            [
-                "item/commandExecution/requestApproval Number(0)",
-                "turn/started"
-            ]
-        );
-    }
-
-    #[test]
-    fn a_refused_call_carries_the_reason() {
-        let waiters: Waiters = Mutex::new(HashMap::new());
-        let (answered, answer) = channel();
-        waiters
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(1, answered);
-        let (pushed, _) = channel();
-        route(
-            r#"{"id":1,"error":{"code":-32600,"message":"thread not found"}}"#,
-            &waiters,
-            &pushed,
-        );
-        assert_eq!(
-            answer.try_recv().ok(),
-            Some(Err("thread not found".to_owned()))
-        );
     }
 }

@@ -86,6 +86,7 @@ impl<'de> Deserialize<'de> for PersistedLayout {
 mod tests {
     use super::*;
     use crate::agent::AgentPreset;
+    use crate::cloud::{CloudPlacement, CloudProcess, CloudRunnerId, JournalOffset};
     use crate::environment::DEFAULT_ENVIRONMENT;
     use crate::group::SessionSpec;
     use crate::host::Host;
@@ -267,6 +268,76 @@ mod tests {
             again.environments[0].nodes[1].harness,
             snapshot.environments[0].nodes[1].harness
         );
+        Ok(())
+    }
+
+    #[test]
+    fn a_cloud_session_keeps_its_runner_and_each_chat_its_journal_offset(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut environment = crate::environment::seed_environment();
+        let group = environment.add_group(PathBuf::from("/work/api"), None);
+        environment.enter_sessions();
+        environment.new_session(Some(group), SessionSpec::default());
+        let placement = CloudPlacement {
+            runner: CloudRunnerId(7),
+            repo_dir: PathBuf::from("/home/me/.krad-ade/runner/repos/api"),
+            worktree: PathBuf::from("/home/me/.krad-ade/runner/worktrees/api/fix"),
+            branch: "krad/fix".to_owned(),
+        };
+        let process = CloudProcess {
+            id: "chat-1".parse()?,
+            offset: JournalOffset(4096),
+        };
+        if let Some(session) = environment.current_session_mut() {
+            session.cloud = Some(placement.clone());
+        }
+        environment.nodes[0].cloud = Some(process.clone());
+        let snapshot = PersistedLayout {
+            version: LAYOUT_SCHEMA_VERSION,
+            active: environment.name.clone(),
+            environments: vec![environment],
+            unreadable: Vec::new(),
+            work_mode: WorkMode::Editor,
+            sidebar_width: SidebarWidth::new(320.0),
+            toolchains: ToolchainChoices::default(),
+        };
+        let text = serde_json::to_string(&snapshot)?;
+        assert!(text.contains(r#""offset":4096"#), "{text}");
+        let back: PersistedLayout = serde_json::from_str(&text)?;
+        let env = &back.environments[0];
+        assert_eq!(
+            env.current_session()
+                .and_then(|session| session.cloud.clone()),
+            Some(placement)
+        );
+        assert_eq!(env.nodes[0].cloud, Some(process));
+        assert_eq!(env.nodes[1].cloud, None);
+        Ok(())
+    }
+
+    #[test]
+    fn a_layout_written_before_cloud_sessions_loads_and_stays_without_them(
+    ) -> serde_json::Result<()> {
+        let mut environment = crate::environment::seed_environment();
+        let group = environment.add_group(PathBuf::from("/work/api"), None);
+        environment.enter_sessions();
+        environment.new_session(Some(group), SessionSpec::default());
+        let snapshot = PersistedLayout {
+            version: LAYOUT_SCHEMA_VERSION,
+            active: environment.name.clone(),
+            environments: vec![environment],
+            unreadable: Vec::new(),
+            work_mode: WorkMode::Editor,
+            sidebar_width: SidebarWidth::new(320.0),
+            toolchains: ToolchainChoices::default(),
+        };
+        let older = serde_json::to_string(&snapshot)?;
+        assert!(!older.contains("cloud"), "{older}");
+        let back: PersistedLayout = serde_json::from_str(&older)?;
+        let env = &back.environments[0];
+        assert_ne!(env.sessions.len(), 0);
+        assert!(env.sessions.iter().all(|session| session.cloud.is_none()));
+        assert!(env.nodes.iter().all(|node| node.cloud.is_none()));
         Ok(())
     }
 }

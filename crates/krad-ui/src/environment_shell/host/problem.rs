@@ -25,7 +25,10 @@ pub(super) const fn recovery(error: &HostError) -> Recovery {
 }
 
 #[must_use]
-pub(super) fn explain(error: &HostError, destination: &SshDestination) -> String {
+pub(in crate::environment_shell) fn explain(
+    error: &HostError,
+    destination: &SshDestination,
+) -> String {
     match error {
         HostError::Ssh(failure) => explain_ssh(failure, destination),
         HostError::TimedOut(Waited::Connect) => timed_out(destination),

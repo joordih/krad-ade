@@ -28,7 +28,9 @@ mod variant;
 mod worktree;
 
 pub use branch::{diff_between, remote_url, resolved_remote_url, ORIGIN_REMOTE};
-pub use changes::{line_counts, working_diff, working_patch, LineCount};
+pub use changes::{
+    line_counts, working_diff, working_patch, working_patch_with_untracked, LineCount,
+};
 pub use checkpoint::{
     checkpoint_changes, restore_checkpoint, snapshot_checkpoint, CheckpointChange,
     CheckpointChangeKind, RestoredCheckpoint,

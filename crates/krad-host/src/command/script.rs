@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use super::{quote, watcher, HostCommand, Program};
+use super::{is_env_name, quote, watcher, HostCommand, Program};
 use crate::path::remote_path;
 
 const LOGIN_SHELL: &str = r#""${SHELL:-/bin/sh}" -l"#;
@@ -21,6 +21,10 @@ const SOURCE: &str = ".";
 const REMOVE_FILE: &str = "rm -f";
 const QUIET: &str = ">/dev/null 2>&1";
 const ASSIGN: char = '=';
+const READ_LINE: &str = "IFS= read -r";
+const EXPORT: &str = "export";
+const OR_EXIT: &str = "|| exit 1";
+const REFUSE: &str = "exit 1";
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ScriptContext<'a> {
@@ -98,6 +102,25 @@ impl HostCommand {
         Some(format!("{CD} {}{AND}", quote(&remote_path(cwd))))
     }
 
+    fn stdin_env_step(&self) -> Option<String> {
+        if self.env_from_stdin.is_empty() {
+            return None;
+        }
+        let names: Vec<_> = self
+            .env_from_stdin
+            .iter()
+            .map(|name| name.to_string_lossy())
+            .collect();
+        if !names.iter().all(|name| is_env_name(name)) {
+            return Some(format!("{REFUSE}{THEN}"));
+        }
+        let steps: Vec<String> = names
+            .iter()
+            .map(|name| format!("{READ_LINE} {name} {OR_EXIT}{THEN}{EXPORT} {name}{THEN}"))
+            .collect();
+        Some(steps.concat())
+    }
+
     pub(crate) fn script_with(&self, context: ScriptContext<'_>) -> String {
         let run = match self.env_words() {
             Some(env) => format!("{env} {}", self.program_words(context)),
@@ -112,10 +135,15 @@ impl HostCommand {
         .into_iter()
         .flatten()
         .collect();
-        if self.ends_with_stdin {
-            return watcher::bound_to_stdin(&script);
+        let script = if self.ends_with_stdin {
+            watcher::bound_to_stdin(&script)
+        } else {
+            script
+        };
+        match self.stdin_env_step() {
+            Some(step) => format!("{step}{script}"),
+            None => script,
         }
-        script
     }
 
     #[must_use]
@@ -137,6 +165,47 @@ mod tests {
             .env("PATH", "/usr/bin:/bin")
             .output()?;
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+
+    #[test]
+    fn a_secret_is_read_from_the_first_line_of_stdin_never_written_in_the_script() {
+        let mut command = HostCommand::new("tool");
+        command
+            .env("PUBLIC", "1")
+            .read_env_from_stdin("SECRET_TOKEN");
+        assert_eq!(
+            command.posix_script(),
+            "IFS= read -r SECRET_TOKEN || exit 1; export SECRET_TOKEN; exec env 'PUBLIC=1' 'tool'"
+        );
+        let mut refused = HostCommand::new("tool");
+        refused.read_env_from_stdin("A;rm -rf /");
+        assert_eq!(refused.posix_script(), "exit 1; exec 'tool'");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_program_gets_the_secret_and_the_rest_of_stdin() -> std::io::Result<()> {
+        use std::io::Write as _;
+        let mut command =
+            HostCommand::posix_shell(r#"printf '%s|%s|' "$SECRET_TOKEN" "$OTHER_KEY"; cat"#);
+        command
+            .read_env_from_stdin("SECRET_TOKEN")
+            .read_env_from_stdin("OTHER_KEY");
+        let mut child = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(command.posix_script())
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(b"s3cr3t\nk3y\nrest of input\n")?;
+        }
+        let output = child.wait_with_output()?;
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "s3cr3t|k3y|rest of input\n"
+        );
+        Ok(())
     }
 
     #[test]

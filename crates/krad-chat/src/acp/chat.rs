@@ -192,7 +192,11 @@ fn connect(
             agent: config.agent.agent.display_name(),
             error,
         })?;
-    Ok(AcpConnection::start(pipes.stdout, pipes.stdin, forward))
+    Ok(AcpConnection::start_lines(
+        pipes.stdout,
+        pipes.stdin,
+        forward,
+    ))
 }
 
 pub(crate) fn spawn_acp(

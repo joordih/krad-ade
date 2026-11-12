@@ -316,6 +316,14 @@ pub struct MergeRequestQuery {
     pub reviewer: Option<UserId>,
 }
 
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct NewMergeRequest {
+    pub source_branch: String,
+    pub target_branch: String,
+    pub title: String,
+    pub description: String,
+}
+
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct MergeOptions {
     pub sha: Option<CommitSha>,

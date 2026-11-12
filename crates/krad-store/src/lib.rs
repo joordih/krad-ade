@@ -5,6 +5,7 @@ mod archive;
 mod backdrop_image;
 mod chat_digests;
 mod chat_images;
+mod cloud_runner_token;
 mod config_dir;
 mod event_journal;
 mod extension_secret;
@@ -30,6 +31,11 @@ pub use backdrop_image::{
 };
 pub use chat_digests::{DigestStoreError, OrdinaryDigests};
 pub use chat_images::{chat_images_dir, delete_chat_images, save_pasted_image, ChatImageError};
+pub use cloud_runner_token::{
+    delete_cloud_claude_token, delete_cloud_opencode_password, delete_cloud_runner_token,
+    find_cloud_claude_token, find_cloud_opencode_password, find_cloud_runner_token,
+    write_cloud_claude_token, write_cloud_opencode_password, write_cloud_runner_token,
+};
 pub use config_dir::{acp_adapters_dir, config_dir, gateway_sessions_dir, APP_NAME};
 pub use event_journal::{EventJournal, JournalSend};
 pub use extension_secret::{

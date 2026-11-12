@@ -3,8 +3,9 @@ use gpui_kit::{AppContext as _, Context};
 use krad_agents::{AgentStatus, ErrorCode, Response, TerminalHandle};
 use krad_domain::{
     code_tools_launch_args, hook_launch_args, launch_with_prompt, quote_for_shell, worker_brief,
-    AgentPreset, AgentState, EnvironmentName, ModelDelivery, ModelId, PermissionMode, ResumeId,
-    SessionId, TerminalGroup, TerminalId, ToastKind, WorkerSpawn, WorktreeOrigin,
+    AgentPreset, AgentState, CloudPlacement, EnvironmentName, ModelDelivery, ModelId,
+    PermissionMode, ResumeId, SessionId, TerminalGroup, TerminalId, ToastKind, WorkerSpawn,
+    WorktreeOrigin,
 };
 use krad_repo::sanitize_worktree_name;
 use std::time::{Duration, Instant};
@@ -22,6 +23,8 @@ pub(super) const NO_GROUP: &str = "Run spawn from a terminal that belongs to a g
 const UNKNOWN_ACP_AGENT: &str = "is not an ACP agent; add it in Settings, ACP agents";
 pub(super) const NOT_A_REPO: &str =
     "The caller's group is not in a git repository, so it cannot branch a worktree";
+const CLOUD_WORKTREE: &str =
+    "Workers of a cloud session run in its worktree on the cloud runner; start them without --worktree";
 pub(super) const BAD_WORKTREE_NAME: &str =
     "Use letters, digits, '-', '_' or '.' for the worktree name";
 
@@ -46,6 +49,7 @@ pub(super) struct WorkerOrder {
     pub(super) brief: String,
     pub(super) lead: Option<WorkerOf>,
     pub(super) mode: Option<PermissionMode>,
+    pub(super) cloud: Option<CloudPlacement>,
 }
 
 pub(super) struct WorkerOf {
@@ -73,12 +77,11 @@ pub(super) const LEAD_HINT: &str = "You lead this Krad ADE session: you split th
 impl EnvironmentShell {
     pub(super) fn agent_launch_line(
         &self,
-        env: &EnvironmentName,
+        (env, id): (&EnvironmentName, TerminalId),
         preset: AgentPreset,
         site: ShellSite,
         prompt: &str,
         model: Option<&ModelId>,
-        role: AgentRole,
     ) -> Option<(String, Option<String>)> {
         let mut line = self.settings.launch_line(preset)?;
         let quoting = site.quoting();
@@ -88,11 +91,15 @@ impl EnvironmentShell {
         }
         let cli = cli_name(site.is_wsl());
         let remote = self.remote_bus(env).filter(|_| site == ShellSite::Ssh);
-        let reaches = site.reaches_bus() || remote.is_some();
+        let cloud = self
+            .cloud_hook_settings(env, id)
+            .filter(|_| site == ShellSite::Cloud);
+        let reaches = site.reaches_bus() || remote.is_some() || cloud.is_some();
         if self.agent_bus.is_some() && reaches {
-            let settings = match remote {
-                Some(remote) => Some(remote.claude_settings.to_string_lossy().into_owned()),
-                None => self
+            let settings = match (remote, cloud) {
+                (Some(remote), _) => Some(remote.claude_settings.to_string_lossy().into_owned()),
+                (None, Some(cloud)) => Some(cloud),
+                (None, None) => self
                     .agent_bus
                     .as_ref()
                     .and_then(|bus| bus.claude_settings.as_ref())
@@ -108,7 +115,10 @@ impl EnvironmentShell {
                 }
             }
             if let Some(flag) = preset.system_prompt_flag() {
-                let hint = role.hint().replace(krad_agents::CLI_PROGRAM, cli);
+                let hint = self
+                    .role_of(env, id)
+                    .hint()
+                    .replace(krad_agents::CLI_PROGRAM, cli);
                 line = format!("{line} {flag} {}", quote_for_shell(&hint, quoting));
             }
         }
@@ -136,6 +146,16 @@ impl EnvironmentShell {
             live.statuses.insert(TerminalId(from.terminal), status);
         }
         Response::Noted
+    }
+
+    pub(super) fn apply_live_hook(
+        &mut self,
+        from: &TerminalHandle,
+        report: HookReport<'_>,
+    ) -> Response {
+        let env = EnvironmentName::new(from.environment.clone());
+        self.note_live_cloud_report(&env, TerminalId(from.terminal));
+        self.apply_hook(from, report)
     }
 
     pub(super) fn apply_hook(&mut self, from: &TerminalHandle, report: HookReport<'_>) -> Response {
@@ -230,6 +250,7 @@ impl EnvironmentShell {
             brief,
             lead: None,
             mode: self.chat_permission_mode(&env, caller),
+            cloud: self.cloud_placement_of(&env, caller),
         };
         self.start_worker(&env, &group, order, reply, cx);
     }
@@ -249,6 +270,7 @@ impl EnvironmentShell {
             brief,
             lead,
             mode,
+            cloud,
         } = order;
         if let Some(id) = preset
             .acp_agent()
@@ -267,6 +289,12 @@ impl EnvironmentShell {
             lead: lead.map(|lead| lead.session),
             task: lead_task.unwrap_or_default(),
         };
+        if cloud.is_some() && worktree.is_some() {
+            reply
+                .send(Response::error(ErrorCode::Unsupported, CLOUD_WORKTREE))
+                .unwrap_or_default();
+            return;
+        }
         let Some(name) = worktree else {
             let launch = WorkerLaunch {
                 group: Some(group.id),
@@ -274,6 +302,7 @@ impl EnvironmentShell {
                 brief,
                 spawn,
                 mode,
+                cloud,
             };
             self.launch_worker(&env, launch, reply, cx);
             return;
@@ -318,6 +347,7 @@ impl EnvironmentShell {
                         brief,
                         spawn,
                         mode,
+                        cloud: None,
                     };
                     shell.launch_worker(&env, launch, reply, cx);
                 }

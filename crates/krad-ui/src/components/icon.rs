@@ -113,6 +113,7 @@ icons! {
     Undo => "arrow-turn-backward",
     Pencil => "pencil-edit-01",
     Lock => "square-lock-02",
+    Cloud => "cloud",
     BrandClaude => "brand-claude",
     BrandOpenai => "brand-openai",
     BrandOpencode => "brand-opencode",

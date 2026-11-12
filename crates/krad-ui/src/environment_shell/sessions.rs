@@ -20,8 +20,11 @@ use std::time::Instant;
 use self::launch::{LaunchShell, Placed, ResolvedLaunch};
 use super::agent_hooks::AgentRole;
 use super::app_events::agent_event;
+use super::cloud::CloudShell;
 use super::shell_site::ShellSite;
 use super::EnvironmentShell;
+
+type CloudOpener = (krad_session::PtyOpener, bool);
 
 const SHELL_SUBMIT: &str = "\r";
 const ENGINE_FAILED_TEXT: &str = "The terminal could not start";
@@ -164,7 +167,8 @@ impl EnvironmentShell {
         cwd: Option<PathBuf>,
         prefill: &[String],
     ) {
-        if launch.harness().is_some() && self.awaits_remote_bus(env) {
+        let awaits_bus = self.awaits_remote_bus(env) || self.awaits_runner_bus(env, id);
+        if launch.harness().is_some() && awaits_bus {
             self.defer_launch(
                 env,
                 DeferredLaunch {
@@ -176,36 +180,48 @@ impl EnvironmentShell {
             );
             return;
         }
-        self.spawn_session(env, id, launch, cwd, prefill);
+        let cloud = match self.cloud_shell(env, id, &launch) {
+            CloudShell::Env => None,
+            CloudShell::Waiting => {
+                let prefill = prefill.to_vec();
+                let deferred = DeferredLaunch {
+                    id,
+                    launch,
+                    cwd,
+                    prefill,
+                };
+                return self.defer_launch(env, deferred);
+            }
+            CloudShell::Failed(error) => return self.report_cloud_shell(error),
+            CloudShell::Ready { opener, types_line } => Some((opener, types_line)),
+        };
+        self.spawn_session(env, id, (launch, cwd, prefill), cloud);
     }
 
     fn spawn_session(
         &mut self,
         env: &EnvironmentName,
         id: TerminalId,
-        launch: Launch,
-        cwd: Option<PathBuf>,
-        prefill: &[String],
+        (launch, cwd, prefill): (Launch, Option<PathBuf>, &[String]),
+        cloud: Option<CloudOpener>,
     ) {
         let Some(pump) = self.pump_tx.clone() else {
             return;
         };
         let signs_in = matches!(launch, Launch::SignIn { .. });
-        if !signs_in && !self.host_ready(env) {
+        if !signs_in && cloud.is_none() && !self.host_ready(env) {
             self.push_toast(ToastKind::Error, HOST_NOT_READY_TEXT.to_owned());
             return;
         }
-        let mut engine = match VtEngine::new(DEFAULT_COLS.into(), DEFAULT_ROWS.into()) {
-            Ok(engine) => engine,
-            Err(error) => {
-                self.push_toast(ToastKind::Error, format!("{ENGINE_FAILED_TEXT}: {error}"));
-                return;
-            }
+        let Some(engine) = self.new_engine(prefill) else {
+            return;
         };
-        engine.push_text_lines(prefill);
         let harness = launch.harness();
-        let role = self.role_of(env, id);
-        let (link, wsl, site) = self.launch_site(env, signs_in, cwd.as_deref());
+        let (link, wsl, site) = if cloud.is_some() {
+            (krad_host::HostLink::Local, None, ShellSite::Cloud)
+        } else {
+            self.launch_site(env, signs_in, cwd.as_deref())
+        };
         let model = launch.model();
         let attached = self.opencode_attach(&launch, harness, site);
         let ResolvedLaunch {
@@ -214,9 +230,12 @@ impl EnvironmentShell {
             agent,
             vars: extra_vars,
             shell,
-        } = self.resolve_launch(env, launch, wsl.as_ref(), site, role);
-        let vars = self.launch_vars(env, id, extra_vars, attached.as_ref());
+        } = self.resolve_launch((env, id), launch, wsl.as_ref(), site);
         let typed_cwd = cwd.clone();
+        let vars = match cloud {
+            Some(_) => Vec::new(),
+            None => self.launch_vars(env, id, extra_vars, attached.as_ref()),
+        };
         let placement = Placed {
             program,
             args,
@@ -224,12 +243,18 @@ impl EnvironmentShell {
             vars,
             opener: None,
         };
-        let Some(placed) = self.place(placement, &link, shell, wsl.is_some()) else {
-            return;
+        let (placed, agent) = if let Some((opener, types_line)) = cloud {
+            (placement.in_cloud(opener), agent.filter(|_| types_line))
+        } else {
+            let Some(placed) = self.place(placement, &link, shell, wsl.is_some()) else {
+                return;
+            };
+            (placed, agent)
         };
         let (writer_tx, writer_rx) = channel();
         let first_input = FirstInput::default();
-        if agent.is_none() && harness.is_none() && shell == LaunchShell::Login {
+        let plain_shell = agent.is_none() && harness.is_none() && shell == LaunchShell::Login;
+        if plain_shell && site != ShellSite::Cloud {
             self.activate_toolchains(env, id, writer_tx.clone(), first_input.clone(), site);
         }
         if let Some((agent, after_start)) = agent {
@@ -238,32 +263,22 @@ impl EnvironmentShell {
             self.start_agent_line(env, id, &writer_tx, typed, after_start, attached.as_ref());
         }
         let cancelled = Arc::new(AtomicBool::new(false));
-        if let Some(live) = self.envs.get_mut(env) {
-            if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
-                node.harness = harness;
-            }
-            live.sessions.insert(
-                id,
-                LiveSession {
-                    engine,
-                    writer_tx,
-                    killer: None,
-                    cancelled: Arc::clone(&cancelled),
-                    state: SessionState::Running,
-                    last_output: Instant::now(),
-                    spawned_at: Instant::now(),
-                    is_agent: harness.is_some(),
-                    harness,
-                    hooked: false,
-                    activity: None,
-                    cwd: None,
-                    first_input,
-                },
-            );
-            if live.focused.is_none() {
-                live.focused = Some(id);
-            }
-        }
+        let session = LiveSession {
+            engine,
+            writer_tx,
+            killer: None,
+            cancelled: Arc::clone(&cancelled),
+            state: SessionState::Running,
+            last_output: Instant::now(),
+            spawned_at: Instant::now(),
+            is_agent: harness.is_some(),
+            harness,
+            hooked: false,
+            activity: None,
+            cwd: None,
+            first_input,
+        };
+        self.keep_live_session(env, id, session);
         if let Some((_, resume)) = attached {
             self.keep_opencode_resume(env, id, resume);
         }
@@ -287,7 +302,33 @@ impl EnvironmentShell {
         }
     }
 
-    fn role_of(&self, env: &EnvironmentName, id: TerminalId) -> AgentRole {
+    fn new_engine(&mut self, prefill: &[String]) -> Option<VtEngine> {
+        match VtEngine::new(DEFAULT_COLS.into(), DEFAULT_ROWS.into()) {
+            Ok(mut engine) => {
+                engine.push_text_lines(prefill);
+                Some(engine)
+            }
+            Err(error) => {
+                self.push_toast(ToastKind::Error, format!("{ENGINE_FAILED_TEXT}: {error}"));
+                None
+            }
+        }
+    }
+
+    fn keep_live_session(&mut self, env: &EnvironmentName, id: TerminalId, session: LiveSession) {
+        let Some(live) = self.envs.get_mut(env) else {
+            return;
+        };
+        if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
+            node.harness = session.harness;
+        }
+        live.sessions.insert(id, session);
+        if live.focused.is_none() {
+            live.focused = Some(id);
+        }
+    }
+
+    pub(super) fn role_of(&self, env: &EnvironmentName, id: TerminalId) -> AgentRole {
         let leads = self
             .envs
             .get(env)
@@ -323,6 +364,7 @@ impl EnvironmentShell {
     }
 
     fn apply_output(&mut self, env: &EnvironmentName, id: TerminalId, bytes: &[u8]) -> bool {
+        self.watch_runner_sign_in(env, id, bytes);
         let Some(live) = self.envs.get_mut(env) else {
             return false;
         };
@@ -366,6 +408,7 @@ impl EnvironmentShell {
     fn apply_exit(&mut self, env: &EnvironmentName, id: TerminalId, code: Option<i32>) -> bool {
         let signed_in = self.sign_in_ended(env, id, code);
         self.acp_sign_in_ended(env, id);
+        self.runner_helper_exited(env, id);
         let Some(live) = self.envs.get_mut(env) else {
             return signed_in;
         };

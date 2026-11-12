@@ -23,6 +23,7 @@ const POPOVER_ID: &str = "session-look";
 const POPOVER_MOTION_ID: &str = "session-look-motion";
 const POPOVER_W: f32 = 312.0;
 const POPOVER_H: f32 = 236.0;
+const ACTION_ROW_H: f32 = 32.0;
 const GLYPH_CELL: f32 = 32.0;
 const SWATCH: f32 = 22.0;
 const SELECTED_RING: f32 = 2.0;
@@ -134,10 +135,12 @@ impl EnvironmentShell {
         let look = live.data.session(popover.session)?.look;
         let pal = palette(cx);
         let (root_w, root_h) = self.root_size(window);
+        let actions = self.session_cloud_rows(popover.session, popover.origin, cx);
+        let actions_h: f32 = actions.iter().map(|_| ACTION_ROW_H).sum();
         let placed = place(
             Anchor::Point(point(px(popover.origin.0), px(popover.origin.1)))
                 .relative_to(self.frame_inset),
-            size(px(POPOVER_W), px(POPOVER_H)),
+            size(px(POPOVER_W), px(POPOVER_H + actions_h)),
             size(px(root_w), px(root_h)),
             Side::Below,
         );
@@ -151,6 +154,7 @@ impl EnvironmentShell {
             .child(Self::glyph_picks(session, look, pal, cx))
             .child(Self::color_picks(session, look, pal, cx))
             .child(div().h(px(RULE)).mx(px(SPACE_1)).bg(pal.divider))
+            .children(actions)
             .child(Self::close_row(session, pal, cx));
         Some(
             div()
