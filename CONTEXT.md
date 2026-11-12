@@ -462,6 +462,32 @@ _Avoid_: skin, color scheme, terminal theme
 The themes the user can pick from: the app's own, well-known editor themes shipped with the app under their authors' licenses and credited to them, and the user's themes made from one of those in the app.
 _Avoid_: theme store, marketplace, gallery
 
+### Runtime and clients
+
+**Runtime**:
+The part of the app that owns its live state without a window: environments, sessions, chats, terminals, agents, attention, Kraddies, automations, variants and cloud runners. The app runs one, and each cloud runner runs its own. It changes only through commands and tells its clients what happened through events.
+_Avoid_: store, backend, core, engine, server, daemon
+
+**Client**:
+What drives a runtime: the app's window for its own runtime and for each cloud runner it is paired with, or any other program. It starts from a snapshot, follows the events and sends commands; it never changes the runtime's state directly.
+_Avoid_: frontend, UI, consumer, view
+
+**Command**:
+What a client asks a runtime to do, such as opening a session, sending a message or answering an ask. The runtime accepts or refuses it at once, a refusal with a stable code; what it did arrives later as events, which every client sees.
+_Avoid_: action, request, message, intent
+
+**Event**:
+A fact a runtime reports to its clients, numbered by its seq: a session opened, a chat received a message, an agent changed state, a problem happened. A chat's events are already read from its harness, never the harness's raw output. Not to be confused with an app event, the smaller fact sent to webhooks, the event journal and extensions.
+_Avoid_: notification, update, message, signal
+
+**Snapshot**:
+The whole state of a runtime, of one of its environments or of one session at one seq, which a client starts from, or falls back to when it fell too far behind the events. A chat's messages come in pages, never whole.
+_Avoid_: dump, sync, cache, state
+
+**Seq**:
+The number a runtime gives each event, always rising, so a client that reconnects asks for the events after the last one it saw.
+_Avoid_: offset, cursor, version, revision
+
 ### Interaction
 
 **Focus**:

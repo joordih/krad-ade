@@ -5,6 +5,9 @@ ghostty_libs := "target/ghostty-vt"
 conpty_version := "1.25.260930003"
 conpty_dir := "target/conpty"
 
+ui_source := "crates/krad-ui/src"
+ui_coupled_crates := "krad_chat krad_repo krad_host krad_agents"
+
 lints := "-D warnings -W clippy::pedantic -W clippy::unwrap_used -W clippy::expect_used -W clippy::panic -W clippy::dbg_macro -W clippy::print_stdout -W clippy::print_stderr -W clippy::todo -W clippy::undocumented_unsafe_blocks"
 
 format:
@@ -18,6 +21,10 @@ lint:
 
 release-preflight: format-check lint
     cargo test --workspace
+
+ui-coupling:
+    @for crate in {{ui_coupled_crates}}; do printf '%-12s %s\n' "$crate" "$(grep -rlw "$crate" {{ui_source}} | wc -l | tr -d ' ')"; done
+    @printf '%-12s %s\n' total "$(grep -rlw $(printf ' -e %s' {{ui_coupled_crates}}) {{ui_source}} | wc -l | tr -d ' ')"
 
 ghostty-libs target=`rustc -vV | sed -n 's/^host: //p'`:
     mkdir -p {{ghostty_libs}}

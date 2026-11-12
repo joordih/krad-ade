@@ -7,7 +7,7 @@ use krad_agents::{
     TerminalState, WorktreeInfo, API_VERSION,
 };
 use krad_domain::ChangeKind;
-use krad_domain::{AgentPreset, AgentState};
+use krad_domain::{AgentPreset, AgentState, ToolDecision};
 use std::io::Write as _;
 use std::io::{BufRead as _, BufReader};
 use std::net::TcpStream;
@@ -18,6 +18,10 @@ use std::time::Duration;
 
 const CHANNEL_CAPACITY: usize = 8;
 const LEFT_CALLER_NOTICE: Duration = Duration::from_secs(5);
+const ASK_STILL_WAITING: Duration = Duration::from_millis(300);
+const ASK_ANSWERED: Duration = Duration::from_secs(5);
+const ASKED_TOOL: &str = "Bash";
+const ASKED_COMMAND: &str = "rm -rf build";
 
 fn agents() -> Vec<AgentInfo> {
     vec![AgentInfo {
@@ -167,6 +171,49 @@ fn a_caller_that_leaves_cancels_its_waiting_request() -> Result<(), krad_agents:
         gone.recv_timeout(LEFT_CALLER_NOTICE).is_ok(),
         "the app learns the hook is gone"
     );
+    Ok(())
+}
+
+#[test]
+fn an_ask_waits_for_the_app_and_returns_its_decision() -> Result<(), krad_agents::AgentsError> {
+    let (sender, mut receiver) = mpsc::channel(CHANNEL_CAPACITY);
+    let endpoint = serve(sender)?;
+    let address = endpoint.address.to_string();
+    let token = endpoint.token.clone();
+    let asked = Request::Ask {
+        tool: ASKED_TOOL.to_owned(),
+        input: serde_json::json!({ "command": ASKED_COMMAND }),
+        suggestions: Vec::new(),
+        call: None,
+    };
+    let (answered, answer) = std_mpsc::channel();
+    let pending = asked.clone();
+    thread::spawn(move || {
+        answered
+            .send(call(&address, &token, &caller(), pending))
+            .unwrap_or_default();
+    });
+    let Some(incoming) = block_on(receiver.next()) else {
+        unreachable!("the server hands the ask to the app");
+    };
+    assert_eq!(incoming.request, asked);
+    assert_eq!(incoming.from, caller());
+    assert!(
+        answer.recv_timeout(ASK_STILL_WAITING).is_err(),
+        "the agent waits until the app answers"
+    );
+    let allowed = ToolDecision::Allow {
+        updated_input: None,
+        permissions: Vec::new(),
+    };
+    assert!(incoming
+        .reply
+        .send(Response::Decided(allowed.clone()))
+        .is_ok());
+    let Ok(decided) = answer.recv_timeout(ASK_ANSWERED) else {
+        unreachable!("the agent gets the app's answer");
+    };
+    assert_eq!(decided?, Response::Decided(allowed));
     Ok(())
 }
 
