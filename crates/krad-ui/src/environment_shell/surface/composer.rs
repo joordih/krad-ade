@@ -1,4 +1,5 @@
 mod effort_slider;
+mod tray;
 mod usage;
 
 use gpui_kit::component::input::Textarea;
@@ -8,7 +9,7 @@ use gpui_kit::{
     InteractiveElement, IntoElement, MouseButton, ParentElement, StatefulInteractiveElement,
     Styled,
 };
-use krad_domain::TerminalId;
+use krad_domain::{ComposerDesign, TerminalId};
 
 use super::super::context_menu::{MenuEntry, MenuPlacement};
 use super::super::model_picker::{grouped, ModelChoice, PickFor};
@@ -49,6 +50,9 @@ impl EnvironmentShell {
         chat: &SurfaceChat,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        if self.settings.beta.composer == ComposerDesign::Tray {
+            return self.tray_composer(id, chat, cx);
+        }
         let pal = palette(cx);
         let mut ring = row_shadow(pal, cx);
         ring.push(

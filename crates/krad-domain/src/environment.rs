@@ -1,4 +1,5 @@
 use crate::agent::{AgentPreset, AgentState};
+use crate::archive::Archive;
 use crate::bookmark::ChatBookmarks;
 use crate::checkpoint::ChatCheckpoints;
 use crate::group::{Session, ShownExtensionViews, TerminalGroup};
@@ -105,6 +106,8 @@ pub struct EnvironmentData {
     pub retired_spend: RetiredSpend,
     #[serde(default, skip_serializing_if = "VariantRuns::is_empty")]
     pub variant_runs: VariantRuns,
+    #[serde(default, skip_serializing_if = "Archive::is_empty")]
+    pub archive: Archive,
 }
 
 impl EnvironmentData {
@@ -136,6 +139,7 @@ impl EnvironmentData {
             extension_views: ShownExtensionViews::default(),
             retired_spend: RetiredSpend::default(),
             variant_runs: VariantRuns::default(),
+            archive: Archive::default(),
         }
     }
 }

@@ -58,8 +58,9 @@ const PALETTE_PLACEHOLDER: &str = "Search files, commands, tasks, notes, chats a
 const NOTE_GLYPH: Glyph = (IconName::Note, None);
 const NOTE_LINE_GLYPH: Glyph = (IconName::Search, None);
 
-const PALETTE_GROUPS: [(&str, PaletteCmd); 8] = [
+const PALETTE_GROUPS: [(&str, PaletteCmd); 9] = [
     ("Review session changes…", PaletteCmd::SessionChanges),
+    ("Open the group's Archive…", PaletteCmd::OpenArchive),
     ("Run the task as variants…", PaletteCmd::RunVariants),
     ("Compare variants", PaletteCmd::ShowVariants),
     ("New group from a folder…", PaletteCmd::NewGroup),
@@ -126,6 +127,7 @@ enum PaletteCmd {
     CloseEnv,
     NewGroup,
     RemoveGroup,
+    OpenArchive,
     NewWorktree,
     RemoveWorktree,
     CloseViewer,
@@ -199,6 +201,7 @@ impl PaletteCmd {
             Self::ToggleAutomations => IconName::Flash,
             Self::ToggleKraddies | Self::NewKraddie => IconName::Kraddie,
             Self::RenameFocused | Self::RenameEnv | Self::OpenNote(_, None) => IconName::Note,
+            Self::OpenArchive => IconName::Book,
             Self::OpenNote(_, Some(_)) => IconName::Search,
             Self::Extension(_) => IconName::Plug,
             Self::ChatHit(..) => IconName::Chat,
@@ -361,6 +364,7 @@ impl EnvironmentShell {
             }
             PaletteCmd::NewGroup => self.prompt_new_group(window, cx),
             PaletteCmd::RemoveGroup => self.remove_selected_group(cx),
+            PaletteCmd::OpenArchive => self.open_selected_archive(window, cx),
             PaletteCmd::NewWorktree => self.start_new_worktree(cx),
             PaletteCmd::RemoveWorktree => self.remove_selected_worktree(cx),
             PaletteCmd::CloseViewer => self.close_viewer(cx),

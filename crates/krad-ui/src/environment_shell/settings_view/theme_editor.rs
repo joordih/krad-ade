@@ -8,7 +8,7 @@ use gpui_kit::{
     IntoElement, ParentElement, Pixels, Point, StatefulInteractiveElement, Styled, Subscription,
     Window,
 };
-use krad_domain::{Theme, ThemeColor, ThemeId};
+use krad_domain::{Theme, ThemeColor, ThemeId, ToastKind};
 use krad_store::write_user_theme;
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuSearch};
@@ -203,7 +203,7 @@ impl EnvironmentShell {
                 return;
             };
             this.update(cx, |shell, cx| {
-                shell.push_toast(format!("{SAVE_FAILED}: {error}"));
+                shell.push_toast(ToastKind::Error, format!("{SAVE_FAILED}: {error}"));
                 cx.notify();
             })
             .unwrap_or_default();

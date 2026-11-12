@@ -6,6 +6,8 @@ use gpui_kit::{
 use krad_github::{DeviceLogin, GithubClient, GithubError, GithubToken};
 use krad_store::{delete_github_login, find_github_login, write_github_login, LoginPlace};
 
+use krad_domain::ToastKind;
+
 use super::sections::{account_row, AccountRow};
 use super::EnvironmentShell;
 use crate::components::{Button, ButtonVariant, IconName};
@@ -106,7 +108,7 @@ impl EnvironmentShell {
             let checked = check.await;
             this.update(cx, |shell, cx| {
                 let status = checked.unwrap_or_else(|error| {
-                    shell.toast(&error, cx);
+                    shell.toast(ToastKind::Error, &error, cx);
                     GithubStatus::SignedOut
                 });
                 shell.set_github_status(status, cx);
@@ -146,7 +148,7 @@ impl EnvironmentShell {
                             shell.set_github_status(waiting, cx);
                             cx.write_to_clipboard(ClipboardItem::new_string(code));
                             cx.open_url(&page);
-                            shell.toast(CODE_COPIED_TOAST, cx);
+                            shell.toast(ToastKind::Success, CODE_COPIED_TOAST, cx);
                         }
                     })
                     .unwrap_or_default();
@@ -166,8 +168,12 @@ impl EnvironmentShell {
             };
             this.update(cx, |shell, cx| {
                 match kept {
-                    Ok(username) => shell.toast(&format!("Signed in to GitHub as @{username}"), cx),
-                    Err(text) => shell.toast(&text, cx),
+                    Ok(username) => shell.toast(
+                        ToastKind::Success,
+                        &format!("Signed in to GitHub as @{username}"),
+                        cx,
+                    ),
+                    Err(text) => shell.toast(ToastKind::Error, &text, cx),
                 }
                 shell.refresh_github_status(cx);
             })
@@ -182,8 +188,8 @@ impl EnvironmentShell {
             let deleted = delete.await;
             this.update(cx, |shell, cx| {
                 match deleted {
-                    Ok(()) => shell.toast(SIGNED_OUT_TOAST, cx),
-                    Err(error) => shell.toast(&error.to_string(), cx),
+                    Ok(()) => shell.toast(ToastKind::Success, SIGNED_OUT_TOAST, cx),
+                    Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
                 }
                 shell.refresh_github_status(cx);
             })

@@ -3,7 +3,7 @@ use gpui_kit::{
     div, px, rgb, Animation, AnimationExt as _, AnyElement, AppContext as _, Context, IntoElement,
     ParentElement, SharedString, Styled, Window,
 };
-use krad_domain::{KraddieCompass, KraddieId, MAX_COMPASS_CHARS};
+use krad_domain::{KraddieCompass, KraddieId, ToastKind, MAX_COMPASS_CHARS};
 
 use super::super::super::EnvironmentShell;
 use super::super::layout::PageLayout;
@@ -57,7 +57,7 @@ impl EnvironmentShell {
         let text = draft.text.read(cx).value().to_string();
         let Ok(compass) = KraddieCompass::try_from(text) else {
             self.kraddies.profile.compass_refused += 1;
-            return self.toast(COMPASS_TOO_LONG, cx);
+            return self.toast(ToastKind::Warning, COMPASS_TOO_LONG, cx);
         };
         self.kraddies.profile.compass_saves += 1;
         self.edit_mind(&kraddie, |mind| mind.compass = compass, cx);

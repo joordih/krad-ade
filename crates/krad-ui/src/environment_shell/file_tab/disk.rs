@@ -1,5 +1,5 @@
 use gpui_kit::{AppContext as _, Context, PromptButton, PromptLevel, Window};
-use krad_domain::{EnvironmentName, TerminalId};
+use krad_domain::{EnvironmentName, TerminalId, ToastKind};
 use krad_host::HostLink;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -101,7 +101,9 @@ impl EnvironmentShell {
                             editor.modified = modified;
                         }
                     }
-                    Err(error) => shell.push_toast(format!("{SAVE_FAILED_TEXT}: {error}")),
+                    Err(error) => {
+                        shell.push_toast(ToastKind::Error, format!("{SAVE_FAILED_TEXT}: {error}"));
+                    }
                 }
                 cx.notify();
             })

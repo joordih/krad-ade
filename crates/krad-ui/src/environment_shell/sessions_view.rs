@@ -341,12 +341,17 @@ impl EnvironmentShell {
 
     pub(super) fn close_session(&mut self, id: SessionId, cx: &mut Context<Self>) {
         let env = self.active.clone();
+        self.archive_session(&env, id);
+        let workers = self
+            .envs
+            .get(&env)
+            .map_or_else(Vec::new, |live| live.data.open_workers(id));
         let held: Vec<TerminalId> = self
             .envs
             .get(&env)
             .and_then(|live| live.data.session(id))
             .map_or_default(|session| session_terminals(session).collect());
-        for terminal in held {
+        for terminal in workers.into_iter().chain(held) {
             self.close_terminal_in(&env, terminal, cx);
         }
         self.with_sessions(cx, |live| {

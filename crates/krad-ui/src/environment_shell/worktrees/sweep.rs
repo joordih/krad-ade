@@ -1,7 +1,7 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_domain::{
-    removes_automatically, AgentRun, AppEvent, EnvironmentName, GroupId, WorktreeCleanup,
-    WorktreeOccupancy, WorktreeState,
+    removes_automatically, AgentRun, AppEvent, EnvironmentName, GroupId, ToastKind,
+    WorktreeCleanup, WorktreeOccupancy, WorktreeState,
 };
 use krad_repo::{remove_merged_worktree, worktree_state, RepoError};
 use std::collections::{HashMap, HashSet};
@@ -203,7 +203,10 @@ impl EnvironmentShell {
                     self.worktree_sweep.checked.remove(&key);
                     self.publish_event(env, Some(candidate.group), AppEvent::WorktreeRemoved);
                     self.remove_group_in(env, candidate.group, cx);
-                    self.push_toast(format!("{REMOVED_PREFIX}{}", candidate.name));
+                    self.push_toast(
+                        ToastKind::Success,
+                        format!("{REMOVED_PREFIX}{}", candidate.name),
+                    );
                 }
                 Ok(_) => {}
                 Err(error) => tracing::warn!(%error, "merged worktree not removed"),

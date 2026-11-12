@@ -26,8 +26,8 @@ pub(in crate::environment_shell) fn mark(
 
 impl Choosing {
     fn marked_model(&self, index: usize) -> Option<(AgentPreset, ModelId)> {
-        let id = self.shown().get(index)?.id.clone()?;
-        Some((self.harness, id))
+        let (harness, choice) = self.entries().get(index).copied()?;
+        Some((harness, choice.id.clone()?))
     }
 
     fn remark(&mut self, preferences: &ModelPreferences) {

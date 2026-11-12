@@ -139,13 +139,13 @@ mod tests {
     }
 
     #[test]
-    fn sessions_and_notes_always_stay_while_optional_views_switch_off() {
+    fn sessions_always_stays_while_optional_views_switch_off() {
         let mut layout = SidebarLayout::default();
         for view in EnvironmentView::ALL {
             layout.toggle_view(view);
         }
         assert!(layout.shows_view(EnvironmentView::Sessions));
-        assert!(layout.shows_view(EnvironmentView::Notes));
+        assert!(!layout.shows_view(EnvironmentView::Notes));
         assert!(!layout.shows_view(EnvironmentView::Automations));
         assert!(!layout.shows_view(EnvironmentView::Kraddies));
         assert!(!layout.shows_view(EnvironmentView::Review));
@@ -165,9 +165,10 @@ mod tests {
             layout.reachable_view(EnvironmentView::Kraddies),
             EnvironmentView::Sessions
         );
+        layout.toggle_view(EnvironmentView::Notes);
         assert_eq!(
             layout.reachable_view(EnvironmentView::Notes),
-            EnvironmentView::Notes
+            EnvironmentView::Sessions
         );
     }
 }

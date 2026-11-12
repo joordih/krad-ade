@@ -10,7 +10,9 @@ mod workspace;
 
 use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::{AppContext as _, Context, Entity, Window};
-use krad_domain::{AutomationDraft, AutomationId, AutomationKey, Switch, Trigger, WorkingCopy};
+use krad_domain::{
+    AutomationDraft, AutomationId, AutomationKey, Switch, ToastKind, Trigger, WorkingCopy,
+};
 use std::time::Duration;
 
 use super::super::EnvironmentShell;
@@ -259,9 +261,13 @@ impl EnvironmentShell {
             }
         };
         let Some(key) = self.save_automation(&kraddie, automation, editing.as_ref(), cx) else {
-            return self.toast(OWNER_GONE, cx);
+            return self.toast(ToastKind::Warning, OWNER_GONE, cx);
         };
-        self.toast(if editing.is_some() { SAVED } else { LAUNCHED }, cx);
+        self.toast(
+            ToastKind::Success,
+            if editing.is_some() { SAVED } else { LAUNCHED },
+            cx,
+        );
         let Some(editor) = &mut self.automations.editor else {
             return;
         };

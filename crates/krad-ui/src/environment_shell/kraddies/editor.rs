@@ -3,7 +3,7 @@ mod form;
 use gpui_kit::component::input::InputState;
 use gpui_kit::{AppContext as _, Context, Entity, Window};
 use krad_domain::{
-    name_ideas, AgentPreset, Kraddie, KraddieId, KraddieName, KraddieWorkspace, ModelId,
+    name_ideas, AgentPreset, Kraddie, KraddieId, KraddieName, KraddieWorkspace, ModelId, ToastKind,
     WorkerSurface, NAME_IDEAS_SHOWN,
 };
 use std::collections::hash_map::RandomState;
@@ -69,7 +69,7 @@ impl EnvironmentShell {
             .map(|kraddie| kraddie.harness)
             .or_else(|| agents.first().copied())
         else {
-            return self.toast(NO_AGENT, cx);
+            return self.toast(ToastKind::Warning, NO_AGENT, cx);
         };
         let workspace = existing.as_ref().map_or_else(
             || self.active_kraddie_workspace(),

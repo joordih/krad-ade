@@ -1,6 +1,6 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_chat::{new_session_id, LiveSession};
-use krad_domain::review::Issue;
+use krad_domain::{review::Issue, ToastKind};
 use krad_domain::{
     EnvironmentName, GroupId, Prompt, SessionSpec, SessionTemplate, TemplateLaunch, WorktreeOrigin,
 };
@@ -24,7 +24,7 @@ impl EnvironmentShell {
     ) {
         let launch = match template.launch(issue) {
             Ok(launch) => launch,
-            Err(error) => return self.toast(&error.to_string(), cx),
+            Err(error) => return self.toast(ToastKind::Error, &error.to_string(), cx),
         };
         let env = self.active.clone();
         let Some(branch) = launch.worktree.clone() else {
@@ -32,7 +32,7 @@ impl EnvironmentShell {
             return;
         };
         let Some(repo_root) = self.group_repo_root(group) else {
-            return self.toast(NOT_A_REPO_TEXT, cx);
+            return self.toast(ToastKind::Warning, NOT_A_REPO_TEXT, cx);
         };
         let link = self.env_link(&env);
         let create = cx.background_spawn({
@@ -49,7 +49,7 @@ impl EnvironmentShell {
                     let group = shell.add_group_to(&env, worktree.path, origin, cx);
                     shell.open_template_session(&env, group, launch, cx);
                 }
-                Err(error) => shell.toast(&error.to_string(), cx),
+                Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
             })
             .unwrap_or_default();
         })

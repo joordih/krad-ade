@@ -14,7 +14,7 @@ use super::layout::{
     dot_alpha, dot_columns, fill_width, level_share, popover_left, snap_bounce, thumb_left,
     DOT_PITCH, DOT_ROWS, KEY_HELP, POPOVER_W, THUMB_W, TRACK_W,
 };
-use super::{current_step, level_color, DEFAULT_EFFORT_LABEL};
+use super::{current_step, level_color, EffortPlacement, DEFAULT_EFFORT_LABEL};
 use crate::components::floating::floating_surface;
 use crate::components::tooltip_view;
 use crate::theme::{
@@ -58,8 +58,8 @@ const STEP_SLOTS: u64 = 16;
 const EFFORT_TITLE: &str = "Effort";
 const HELP_GLYPH: &str = "?";
 const TOOLTIP_HELP: &str = "What each level means for this model";
-const LOW_END: &str = "Lighter, quicker";
-const HIGH_END: &str = "Deeper, slower";
+pub(super) const LOW_END: &str = "Lighter, quicker";
+pub(super) const HIGH_END: &str = "Deeper, slower";
 const HELP_INTRO: &str = "Levels this model offers";
 
 fn slot(index: usize) -> u64 {
@@ -127,7 +127,7 @@ fn shimmer(pal: &Palette) -> AnyElement {
         .into_any_element()
 }
 
-struct Track {
+pub(super) struct Track {
     chat: TerminalId,
     from: usize,
     to: usize,
@@ -137,7 +137,7 @@ struct Track {
 }
 
 impl EnvironmentShell {
-    fn effort_track(
+    pub(super) fn effort_track(
         track: &Track,
         facts: &Facts,
         pal: &Palette,
@@ -231,7 +231,7 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    fn effort_header(
+    pub(super) fn effort_header(
         facts: &Facts,
         track: &Track,
         was: Option<Effort>,
@@ -311,28 +311,14 @@ impl EnvironmentShell {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let popover = self.effort_popover.as_ref()?;
+        let popover = self
+            .effort_popover
+            .as_ref()
+            .filter(|popover| popover.placement == EffortPlacement::Floating)?;
         let chat = popover.state.chat;
-        let facts = self.chat_facts(chat)?;
-        let steps = facts.efforts.len();
-        if steps < 2 {
-            return None;
-        }
-        let pal = palette(cx);
         let reduced = cx.reduce_motion();
-        let to = current_step(&facts).unwrap_or_default();
-        let was = self.effort_was(chat);
-        let from = was
-            .and_then(|was| facts.efforts.iter().position(|step| *step == was))
-            .unwrap_or(to);
-        let track = Track {
-            chat,
-            from,
-            to,
-            steps,
-            chosen: facts.effort.is_some(),
-            reduced,
-        };
+        let (facts, track, was) = self.effort_track_of(chat, reduced)?;
+        let pal = palette(cx);
         let (root_w, root_h) = self.root_size(window);
         let x = popover.origin.0 - self.frame_inset.0;
         let bottom = root_h - (popover.origin.1 - self.frame_inset.1) + ANCHOR_GAP;
@@ -407,7 +393,33 @@ impl EnvironmentShell {
         )
     }
 
-    fn effort_help(facts: &Facts, pal: &Palette) -> AnyElement {
+    pub(super) fn effort_track_of(
+        &self,
+        chat: TerminalId,
+        reduced: bool,
+    ) -> Option<(Facts, Track, Option<Effort>)> {
+        let facts = self.chat_facts(chat)?;
+        let steps = facts.efforts.len();
+        if steps < 2 {
+            return None;
+        }
+        let to = current_step(&facts).unwrap_or_default();
+        let was = self.effort_was(chat);
+        let from = was
+            .and_then(|was| facts.efforts.iter().position(|step| *step == was))
+            .unwrap_or(to);
+        let track = Track {
+            chat,
+            from,
+            to,
+            steps,
+            chosen: facts.effort.is_some(),
+            reduced,
+        };
+        Some((facts, track, was))
+    }
+
+    pub(super) fn effort_help(facts: &Facts, pal: &Palette) -> AnyElement {
         let rows = facts.efforts.iter().map(|effort| {
             let current = facts.effort == Some(*effort);
             div()
@@ -494,7 +506,7 @@ impl EnvironmentShell {
         self.follow_popover(step, cx);
     }
 
-    fn release_effort(&mut self) {
+    pub(super) fn release_effort(&mut self) {
         if let Some(popover) = self.effort_popover.as_mut() {
             popover.state.release();
         }

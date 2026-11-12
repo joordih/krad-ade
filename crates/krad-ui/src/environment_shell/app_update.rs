@@ -4,12 +4,13 @@ use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, FontWeight, InteractiveElement,
     IntoElement, ParentElement, StatefulInteractiveElement, Styled, Task, Window,
 };
-use krad_domain::AppUpdateCheck;
+use krad_domain::{AppUpdateCheck, ToastKind};
 use krad_update::{
     latest_update, AfterInstall, AppVersion, AvailableUpdate, Installation, Reach, StagedUpdate,
     UpdateError,
 };
 
+use super::toasts::ToastAction;
 use super::EnvironmentShell;
 use crate::components::{icon, IconName};
 use crate::theme::{palette, ICON_SM, LINE_SM, RADIUS_MD, SPACE_1, SPACE_2, TEXT_SM};
@@ -19,6 +20,8 @@ const CHECK_INTERVAL: Duration = Duration::from_hours(6);
 const PILL_ID: &str = "app-update-pill";
 const RESTART_LABEL: &str = "Restart to update";
 const AVAILABLE_LABEL: &str = "Update available";
+const OPEN_RELEASE_LABEL: &str = "View";
+const RESTART_ACTION_LABEL: &str = "Restart";
 const UP_TO_DATE_TOAST: &str = "Krad ADE is up to date";
 const NOT_INSTALLED_TOAST: &str = "Only installed releases of Krad ADE update themselves";
 const CHECK_FAILED_TOAST: &str = "Couldn't check for updates";
@@ -87,15 +90,19 @@ fn check_notice(
     outcome: &Result<CheckOutcome, UpdateError>,
     origin: CheckOrigin,
     announced: Option<AppVersion>,
-) -> Option<String> {
+) -> Option<(ToastKind, String)> {
     let asked = origin == CheckOrigin::Asked;
     match outcome {
         Ok(CheckOutcome::ReadOnly(update)) if asked || announced != Some(update.version) => {
-            Some(available_toast(update.version))
+            Some((ToastKind::Info, available_toast(update.version)))
         }
-        Ok(CheckOutcome::NotInstalled) if asked => Some(NOT_INSTALLED_TOAST.to_owned()),
-        Ok(CheckOutcome::UpToDate) if asked => Some(UP_TO_DATE_TOAST.to_owned()),
-        Err(error) if asked => Some(format!("{CHECK_FAILED_TOAST}: {error}")),
+        Ok(CheckOutcome::NotInstalled) if asked => {
+            Some((ToastKind::Info, NOT_INSTALLED_TOAST.to_owned()))
+        }
+        Ok(CheckOutcome::UpToDate) if asked => {
+            Some((ToastKind::Success, UP_TO_DATE_TOAST.to_owned()))
+        }
+        Err(error) if asked => Some((ToastKind::Error, format!("{CHECK_FAILED_TOAST}: {error}"))),
         Ok(_) | Err(_) => None,
     }
 }
@@ -136,13 +143,13 @@ impl EnvironmentShell {
             AppUpdateState::Checking | AppUpdateState::Installing => return,
             AppUpdateState::Downloading(version) => {
                 if origin == CheckOrigin::Asked {
-                    self.toast(&downloading_toast(*version), cx);
+                    self.toast(ToastKind::Info, &downloading_toast(*version), cx);
                 }
                 return;
             }
             AppUpdateState::Ready(staged) => {
                 if origin == CheckOrigin::Asked {
-                    self.toast(&ready_toast(staged.version), cx);
+                    self.toast_ready_update(staged.version, cx);
                 }
                 return;
             }
@@ -172,8 +179,17 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         self.app_updates.state = AppUpdateState::Idle;
-        if let Some(notice) = check_notice(&outcome, origin, announced) {
-            self.toast(&notice, cx);
+        if let Some((kind, notice)) = check_notice(&outcome, origin, announced) {
+            match &outcome {
+                Ok(CheckOutcome::ReadOnly(update)) => {
+                    let page = update.page.clone();
+                    let open = ToastAction::new(OPEN_RELEASE_LABEL, move |_, _, cx| {
+                        cx.open_url(&page);
+                    });
+                    self.toast_with_action(kind, &notice, open, cx);
+                }
+                _ => self.toast(kind, &notice, cx),
+            }
         }
         match outcome {
             Ok(CheckOutcome::ReadOnly(update)) => {
@@ -196,12 +212,16 @@ impl EnvironmentShell {
             this.update(cx, |shell, cx| {
                 match staged {
                     Ok(staged) => {
-                        shell.toast(&ready_toast(staged.version), cx);
+                        shell.toast(ToastKind::Success, &ready_toast(staged.version), cx);
                         shell.app_updates.state = AppUpdateState::Ready(staged);
                     }
                     Err(error) => {
                         shell.app_updates.state = AppUpdateState::Idle;
-                        shell.toast(&format!("{DOWNLOAD_FAILED_TOAST}: {error}"), cx);
+                        shell.toast(
+                            ToastKind::Error,
+                            &format!("{DOWNLOAD_FAILED_TOAST}: {error}"),
+                            cx,
+                        );
                     }
                 }
                 cx.notify();
@@ -209,6 +229,13 @@ impl EnvironmentShell {
             .unwrap_or_default();
         })
         .detach();
+    }
+
+    fn toast_ready_update(&mut self, version: AppVersion, cx: &mut Context<Self>) {
+        let restart = ToastAction::new(RESTART_ACTION_LABEL, |shell, window, cx| {
+            shell.restart_to_update(window, cx);
+        });
+        self.toast_with_action(ToastKind::Success, &ready_toast(version), restart, cx);
     }
 
     pub(super) const fn app_update_ready(&self) -> bool {
@@ -241,7 +268,11 @@ impl EnvironmentShell {
                     return true;
                 };
                 shell.app_updates.state = AppUpdateState::Ready(staged);
-                shell.toast(&format!("{INSTALL_FAILED_TOAST}: {error}"), cx);
+                shell.toast(
+                    ToastKind::Error,
+                    &format!("{INSTALL_FAILED_TOAST}: {error}"),
+                    cx,
+                );
                 let quit_anyway = after == AfterInstall::Exit;
                 if !quit_anyway {
                     shell.cancel_close(cx);
@@ -326,14 +357,16 @@ mod tests {
     #[test]
     fn an_asked_check_always_answers() {
         assert_eq!(
-            check_notice(&Ok(CheckOutcome::UpToDate), CheckOrigin::Asked, None).as_deref(),
-            Some(UP_TO_DATE_TOAST)
+            check_notice(&Ok(CheckOutcome::UpToDate), CheckOrigin::Asked, None),
+            Some((ToastKind::Success, UP_TO_DATE_TOAST.to_owned()))
         );
         assert_eq!(
-            check_notice(&Ok(CheckOutcome::NotInstalled), CheckOrigin::Asked, None).as_deref(),
-            Some(NOT_INSTALLED_TOAST)
+            check_notice(&Ok(CheckOutcome::NotInstalled), CheckOrigin::Asked, None),
+            Some((ToastKind::Info, NOT_INSTALLED_TOAST.to_owned()))
         );
         let failed = check_notice(&Err(UpdateError::NoBuild), CheckOrigin::Asked, None);
-        assert!(failed.is_some_and(|text| text.starts_with(CHECK_FAILED_TOAST)));
+        assert!(failed.is_some_and(|(kind, text)| {
+            kind == ToastKind::Error && text.starts_with(CHECK_FAILED_TOAST)
+        }));
     }
 }

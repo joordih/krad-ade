@@ -8,6 +8,7 @@ use krad_domain::{
 
 use super::super::dialog_parts::{segment, SegmentSize};
 use super::flat_pane::FlatPane;
+use super::toasts::{TOASTS_DETAIL, TOASTS_TITLE};
 use super::{form_row, hint, panel_card, segmented_track, EnvironmentShell};
 use crate::app_badge::{BadgeSignal, BADGE_LABEL, SIGNAL};
 use crate::attention_sound;
@@ -181,6 +182,8 @@ impl EnvironmentShell {
             pane.heading(kind.display_name(), pal);
             pane.item(self.kind_card(kind, cx));
         }
+        pane.section(TOASTS_TITLE, Some(TOASTS_DETAIL), pal);
+        pane.item(self.toasts_card(cx));
         pane.section(SOUNDS_TITLE, None, pal);
         for sound in sounds {
             pane.item(sound);

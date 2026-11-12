@@ -4,7 +4,8 @@ mod rows;
 use gpui_kit::{AppContext as _, ClipboardItem, Context};
 use krad_chat::{harness_health, harness_off_path};
 use krad_domain::{
-    parse_wsl_path, AgentPreset, HarnessHealth, HarnessOnboarding, Host, CHECKED_HARNESSES,
+    parse_wsl_path, AgentPreset, HarnessHealth, HarnessOnboarding, Host, ToastKind,
+    CHECKED_HARNESSES,
 };
 use krad_host::HostLink;
 use std::collections::HashMap;
@@ -146,7 +147,7 @@ impl EnvironmentShell {
 
     pub(super) fn copy_harness_fix(&mut self, text: &str, cx: &mut Context<Self>) {
         cx.write_to_clipboard(ClipboardItem::new_string(text.to_owned()));
-        self.toast(COPIED_TOAST, cx);
+        self.toast(ToastKind::Success, COPIED_TOAST, cx);
     }
 
     fn check_harnesses_at(

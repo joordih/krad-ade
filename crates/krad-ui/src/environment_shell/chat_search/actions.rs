@@ -2,7 +2,7 @@ use gpui_kit::{AppContext as _, Context, Window};
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
     chat_note_markdown, chat_note_stem, exchange_of, fork_plan, EnvironmentView, ForkPlan, Prompt,
-    TerminalId, CHAT_NOTES_FOLDER, VAULT_DIR,
+    TerminalId, ToastKind, CHAT_NOTES_FOLDER, VAULT_DIR,
 };
 use krad_repo::add_note;
 
@@ -99,12 +99,13 @@ impl EnvironmentShell {
 
     fn reopen_chat(&mut self, id: TerminalId, window: &mut Window, cx: &mut Context<Self>) {
         self.set_view(EnvironmentView::Sessions, cx);
+        self.reopen_from_archive(id, cx);
         self.show_terminal_tab(id, window, cx);
     }
 
     fn fork_chat(&mut self, id: TerminalId, message: usize, cx: &mut Context<Self>) {
         let (Some(chat), Some(document)) = (self.group_chat(id), self.indexed_chat(id)) else {
-            self.push_toast(NOT_INDEXED_TEXT.to_owned());
+            self.push_toast(ToastKind::Warning, NOT_INDEXED_TEXT.to_owned());
             return;
         };
         let harness_name = self.settings.acp.harness_name(chat.harness);
@@ -130,11 +131,11 @@ impl EnvironmentShell {
 
     fn export_chat(&mut self, id: TerminalId, exported: Exported, cx: &mut Context<Self>) {
         let (Some(chat), Some(document)) = (self.group_chat(id), self.indexed_chat(id)) else {
-            self.push_toast(NOT_INDEXED_TEXT.to_owned());
+            self.push_toast(ToastKind::Warning, NOT_INDEXED_TEXT.to_owned());
             return;
         };
         let Some(root) = self.active_group().map(|group| group.root.clone()) else {
-            self.push_toast(NO_GROUP_TEXT.to_owned());
+            self.push_toast(ToastKind::Warning, NO_GROUP_TEXT.to_owned());
             return;
         };
         let messages = document.messages();
@@ -160,7 +161,10 @@ impl EnvironmentShell {
             this.update(cx, |shell, cx| {
                 match written {
                     Ok(path) => {
-                        shell.push_toast(format!("{EXPORTED_TEXT} {VAULT_DIR}/{path}"));
+                        shell.push_toast(
+                            ToastKind::Success,
+                            format!("{EXPORTED_TEXT} {VAULT_DIR}/{path}"),
+                        );
                         shell.refresh_vault(cx);
                     }
                     Err(error) => shell.toast_failure(&error),

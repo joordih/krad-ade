@@ -4,7 +4,7 @@ mod row;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{AnyElement, AppContext as _, Context, Entity, Subscription, Window};
 use krad_chat::{enabled_count, skill_library, LibraryFilter, LibrarySkill, SkillHarness};
-use krad_domain::{SkillKey, SkillKind};
+use krad_domain::{SkillKey, SkillKind, ToastKind};
 use krad_repo::{reveal_in_file_manager, RepoError};
 use std::path::PathBuf;
 
@@ -145,7 +145,7 @@ impl EnvironmentShell {
                 return;
             };
             this.update(cx, |shell, cx| {
-                shell.push_toast(format!("{REVEAL_FAILED}: {error}"));
+                shell.push_toast(ToastKind::Error, format!("{REVEAL_FAILED}: {error}"));
                 cx.notify();
             })
             .unwrap_or_default();

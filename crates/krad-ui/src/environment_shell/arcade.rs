@@ -12,6 +12,8 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Instant;
 
+use krad_domain::ToastKind;
+
 use self::cabinet::Cabinet;
 use super::EnvironmentShell;
 
@@ -56,7 +58,7 @@ impl EnvironmentShell {
                 return;
             };
             this.update(cx, |shell, cx| {
-                shell.push_toast(format!("{SCORES_NOT_SAVED}: {error}"));
+                shell.push_toast(ToastKind::Error, format!("{SCORES_NOT_SAVED}: {error}"));
                 cx.notify();
             })
             .unwrap_or_default();

@@ -6,7 +6,7 @@ use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
     AgentPreset, Conversation, Effort, EnvironmentName, GroupId, KraddieOutcome, KraddieRunId,
     KraddieSessionLink, KraddieWorkspace, ModelId, PermissionMode, Prompt, ResumeId, RunRefusal,
-    TerminalId, WorkerSpawn, WorkerSurface, WorkingCopy, WorktreeOrigin,
+    TerminalId, ToastKind, WorkerSpawn, WorkerSurface, WorkingCopy, WorktreeOrigin,
 };
 use krad_repo::add_worktree;
 use std::collections::hash_map::RandomState;
@@ -371,7 +371,7 @@ impl EnvironmentShell {
             reason: reason.to_owned(),
         };
         self.kraddies.settle(&plan.owner, plan.run, outcome);
-        self.toast(&format!("{}: {reason}", plan.task), cx);
+        self.toast(ToastKind::Error, &format!("{}: {reason}", plan.task), cx);
         self.save_histories(cx);
     }
 }

@@ -1,5 +1,5 @@
 use gpui_kit::{Context, Window};
-use krad_domain::FileOpening;
+use krad_domain::{FileOpening, ToastKind};
 use krad_lsp::lsp_types::request::References;
 use krad_lsp::lsp_types::{
     Location, PartialResultParams, Position, ReferenceContext, ReferenceParams,
@@ -117,7 +117,7 @@ impl EnvironmentShell {
             })
             .collect();
         if entries.is_empty() {
-            self.toast(NO_REFERENCES_TEXT, cx);
+            self.toast(ToastKind::Warning, NO_REFERENCES_TEXT, cx);
             return;
         }
         self.open_menu(origin, MenuPlacement::Below, entries, cx);

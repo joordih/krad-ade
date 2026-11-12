@@ -4,7 +4,7 @@ use gpui_kit::{
     Styled, Window,
 };
 use krad_domain::{
-    GroupId, RunTotals, TerminalId, VariantId, VariantRun, VariantRunId, WinnerOutcome,
+    GroupId, RunTotals, TerminalId, ToastKind, VariantId, VariantRun, VariantRunId, WinnerOutcome,
 };
 use krad_repo::VariantRemoval;
 use std::time::SystemTime;
@@ -83,7 +83,7 @@ fn totals_text(totals: &RunTotals) -> String {
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn open_variants_view(&mut self, cx: &mut Context<Self>) {
         let Some(group) = self.active_group().map(|group| group.id) else {
-            return self.toast(NO_GROUP_TEXT, cx);
+            return self.toast(ToastKind::Warning, NO_GROUP_TEXT, cx);
         };
         let base = self.envs.get(&self.active).and_then(|live| {
             live.data.variant_runs.all().iter().find_map(|run| {

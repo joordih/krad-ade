@@ -3,7 +3,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, FontWeight, IntoElement, ParentElement,
     SharedString, Styled, Window,
 };
-use krad_domain::{AppEvent, RemovalConfirm, WorktreeState};
+use krad_domain::{AppEvent, RemovalConfirm, ToastKind, WorktreeState};
 use krad_repo::{discard_worktree, remove_worktree, worktree_state, RepoError};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -241,7 +241,7 @@ impl EnvironmentShell {
                             shell.remove_group_in(&env, group, cx);
                         }
                     }
-                    Err(error) => shell.toast(&error.to_string(), cx),
+                    Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
                 }
                 shell.refresh_git(cx);
                 cx.notify();

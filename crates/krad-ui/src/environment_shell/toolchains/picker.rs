@@ -1,5 +1,5 @@
 use gpui_kit::Context;
-use krad_domain::{EffectiveToolchain, Toolchain, ToolchainChoice, ToolchainScope};
+use krad_domain::{EffectiveToolchain, ToastKind, Toolchain, ToolchainChoice, ToolchainScope};
 use krad_extensions::ToolchainFamilyManifest;
 use std::path::Path;
 
@@ -84,7 +84,7 @@ impl EnvironmentShell {
                 .find_map(|family| self.toolchains.scope_of(&document, &family.id).cloned())
         });
         let Some(scope) = scope else {
-            self.push_toast(NO_FILE_TEXT.to_owned());
+            self.push_toast(ToastKind::Warning, NO_FILE_TEXT.to_owned());
             cx.notify();
             return;
         };

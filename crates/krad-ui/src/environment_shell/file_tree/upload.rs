@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use krad_domain::ToastKind;
+
 use crate::components::{Button, ButtonVariant};
 use crate::environment_shell::EnvironmentShell;
 use crate::theme::{palette, LINE_XS, SPACE_1, SPACE_2, TEXT_XS};
@@ -147,9 +149,11 @@ impl EnvironmentShell {
             this.update(cx, |shell, cx| {
                 shell.file_tree.upload = None;
                 match uploaded {
-                    Ok(()) => shell.toast(UPLOADED_TEXT, cx),
-                    Err(_) if progress.is_cancelled() => shell.toast(CANCELLED_TEXT, cx),
-                    Err(error) => shell.toast(&error.to_string(), cx),
+                    Ok(()) => shell.toast(ToastKind::Success, UPLOADED_TEXT, cx),
+                    Err(_) if progress.is_cancelled() => {
+                        shell.toast(ToastKind::Info, CANCELLED_TEXT, cx);
+                    }
+                    Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
                 }
                 shell.reload_file_tree(cx);
             })

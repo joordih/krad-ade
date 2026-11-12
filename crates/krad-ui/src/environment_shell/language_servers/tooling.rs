@@ -1,6 +1,6 @@
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{AppContext as _, Context, Entity, PathPromptOptions, SharedString};
-use krad_domain::JavaEngine;
+use krad_domain::{JavaEngine, ToastKind};
 use krad_domain::{ServerRuntimeId, TerminalId};
 use krad_extensions::{trusted_manifest_folders, BundledManifest, LanguageTools, Registry};
 use std::path::PathBuf;
@@ -65,7 +65,11 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         if let Some(problem) = tools.problems().first() {
-            self.toast(&format!("{MANIFEST_PROBLEM_TEXT}: {problem}"), cx);
+            self.toast(
+                ToastKind::Error,
+                &format!("{MANIFEST_PROBLEM_TEXT}: {problem}"),
+                cx,
+            );
         }
         let stale = tools.registry_is_stale();
         self.language_servers.catalog = tools.catalog().clone();

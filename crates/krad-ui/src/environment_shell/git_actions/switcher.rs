@@ -2,6 +2,8 @@ use gpui_kit::Context;
 use krad_repo::Branch;
 use std::collections::HashSet;
 
+use krad_domain::ToastKind;
+
 use super::super::context_menu::{MenuAction, MenuCreate, MenuEntry, MenuSearch};
 use super::super::groups::GroupGit;
 use super::super::EnvironmentShell;
@@ -85,7 +87,7 @@ impl EnvironmentShell {
                 };
                 self.open_menu_searching(origin, entries, search, cx);
             }
-            Err(note) => self.toast(note, cx),
+            Err(note) => self.toast(ToastKind::Warning, note, cx),
         }
     }
 }

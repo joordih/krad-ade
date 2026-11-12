@@ -1,5 +1,5 @@
 use gpui_kit::{Context, PathPromptOptions, SharedString};
-use krad_domain::{Automation, KraddieHistory, KraddieId, KRADDIE_FILE_EXTENSION};
+use krad_domain::{Automation, KraddieHistory, KraddieId, ToastKind, KRADDIE_FILE_EXTENSION};
 use krad_store::{export_kraddie, import_kraddie};
 use std::path::PathBuf;
 
@@ -35,8 +35,8 @@ impl EnvironmentShell {
                 .spawn(async move { export_kraddie(&kraddie, &automations, &path) })
                 .await;
             this.update(cx, |shell, cx| match written {
-                Ok(()) => shell.toast(EXPORTED, cx),
-                Err(error) => shell.toast(&error.to_string(), cx),
+                Ok(()) => shell.toast(ToastKind::Success, EXPORTED, cx),
+                Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
             })
             .unwrap_or_default();
         })
@@ -63,7 +63,7 @@ impl EnvironmentShell {
                 .await;
             this.update(cx, |shell, cx| match read {
                 Ok(read) if shell.kraddies.entry(&read.kraddie.id()).is_some() => {
-                    shell.toast(NAME_TAKEN, cx);
+                    shell.toast(ToastKind::Warning, NAME_TAKEN, cx);
                 }
                 Ok(read) => {
                     let automations = read
@@ -75,9 +75,9 @@ impl EnvironmentShell {
                         })
                         .collect();
                     shell.adopt_new_kraddie(read.kraddie, automations, None, cx);
-                    shell.toast(IMPORTED, cx);
+                    shell.toast(ToastKind::Success, IMPORTED, cx);
                 }
-                Err(error) => shell.toast(&error.to_string(), cx),
+                Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
             })
             .unwrap_or_default();
         })

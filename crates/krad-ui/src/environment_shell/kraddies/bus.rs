@@ -4,7 +4,7 @@ use krad_agents::{
     AutomationInfo, AutomationRunInfo, ErrorCode, KraddieInfo, KraddieMemoryInfo, KraddieRunInfo,
     Request, Response,
 };
-use krad_domain::{AutomationKey, AutomationQuery, KraddieId, KraddieWake, Switch};
+use krad_domain::{AutomationKey, AutomationQuery, KraddieId, KraddieWake, Switch, ToastKind};
 
 use super::super::EnvironmentShell;
 use super::clock::{next_run, next_run_stamp, trigger_label};
@@ -243,7 +243,7 @@ impl EnvironmentShell {
             prompt: None,
         };
         if let Err(refusal) = self.wake_kraddie(&order, cx) {
-            self.toast(&refusal.to_string(), cx);
+            self.toast(ToastKind::Error, &refusal.to_string(), cx);
         }
         self.save_histories(cx);
     }
@@ -258,7 +258,7 @@ impl EnvironmentShell {
                 .default_automation()
                 .map(|entry| kraddie.key(entry.automation.id))
         }) else {
-            return self.toast(NO_AUTOMATIONS, cx);
+            return self.toast(ToastKind::Warning, NO_AUTOMATIONS, cx);
         };
         self.run_automation_now(&key, cx);
     }

@@ -110,6 +110,14 @@ _Avoid_: jump list, breadcrumbs, undo
 A line of work the user opens inside a group, holding its own tabs; it opens on a chat. Every group keeps at least one, and removing a group removes its sessions.
 _Avoid_: workspace, thread, PTY session
 
+**Archive**:
+The closed sessions of a group with their chats, and the chats closed from sessions still open, kept so the user can look through them and reopen them, until the user deletes them or the archive retention removes them. A reopened session gets its chats and file tabs back; its shells start afresh. A lead's session is archived and reopened with its Workers; removing a group deletes its Archive. A session with nothing worth reopening (no used chat, pinned file or Worker) is not kept.
+_Avoid_: history, trash, recently closed
+
+**Archive retention**:
+How long the Archive keeps what it holds before deleting it: always, a number of days, or not at all. Deleting removes what the app keeps of a chat, never the harness's own files.
+_Avoid_: cleanup, expiry, TTL
+
 **Session look**:
 A session's own icon and the colour it is drawn in before the session's name in the sidebar, both picked by the user from the session's right-click popover, where it is also renamed.
 _Avoid_: theme, style, label colour
@@ -471,6 +479,18 @@ _Avoid_: UI shell, frame, decoration
 **Top bar**:
 Row above the work area with the tabs of a single-pane session or the open notes, and the side panel toggle.
 _Avoid_: header, toolbar, title bar
+
+**Toast**:
+Short message the app shows over the window, of one kind (error, warning, success or info), optionally with one action such as updating a harness. Every toast lasts the same time the user sets and waits while the pointer is over it; what belongs to the attention queue stays in the attention inbox after it goes.
+_Avoid_: notification, alert, snackbar, banner
+
+**Toast placement**:
+Where toasts appear in the window, chosen by dragging a sample toast in placement mode, snapping to the window's edges, its centre lines, the sidebar, the top bar and a grid. Placed in the left half, a toast carries its icon on the right and stacks from the left; in the right half, the other way round.
+_Avoid_: toast position, corner, anchor
+
+**Beta**:
+A switch in Settings that turns on a redesigned part of the app beside the current one, such as the new composer, keeping every feature of the current one; the current one stays the default until the redesign is promoted.
+_Avoid_: experiment, feature flag, labs
 
 **Arcade**:
 Dot-matrix banner above a new Chat's empty view, gone once the conversation starts. Each new Chat draws one Arcade game at random, never the one shown last; the banner's next-game control cycles to another. One Arcade serves the whole app, so every empty Chat on screen shows the same game.

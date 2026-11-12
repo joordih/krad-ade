@@ -2,7 +2,7 @@ mod sheet;
 
 use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::{AppContext as _, Context, Entity, Window};
-use krad_domain::{AgentPreset, GroupId, WorktreeOrigin};
+use krad_domain::{AgentPreset, GroupId, ToastKind, WorktreeOrigin};
 use krad_repo::sanitize_worktree_name;
 
 use super::sessions::Launch;
@@ -110,7 +110,7 @@ impl EnvironmentShell {
                             let group = shell.add_group_to(&env, worktree.path, origin, cx);
                             shell.spawn_terminal_in(&env, group, &label, launch, None, cx);
                         }
-                        Err(error) => shell.toast(&error.to_string(), cx),
+                        Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
                     })
                     .unwrap_or_default();
                 })

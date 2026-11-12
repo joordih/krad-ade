@@ -1,6 +1,7 @@
 mod acp;
 mod api_file;
 mod backdrop_image;
+mod beta;
 mod chat;
 mod editor;
 mod extensions;
@@ -27,6 +28,7 @@ mod spending;
 mod terminal;
 mod theme_editor;
 mod themes;
+mod toasts;
 mod toolchains;
 mod tuning;
 mod webhooks;
@@ -37,7 +39,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, BoxShadow, Context, Div, ElementId,
     InteractiveElement, IntoElement, ParentElement, SharedString, Stateful, Styled, Window,
 };
-use krad_domain::AppearanceMode;
+use krad_domain::{AppearanceMode, ToastKind};
 use krad_store::write_settings;
 
 use super::dialog_parts::{sheet_group, sheet_row};
@@ -256,7 +258,7 @@ impl EnvironmentShell {
                 return;
             };
             this.update(cx, |shell, cx| {
-                shell.push_toast(format!("{SETTINGS_NOT_SAVED}: {error}"));
+                shell.push_toast(ToastKind::Error, format!("{SETTINGS_NOT_SAVED}: {error}"));
                 cx.notify();
             })
             .unwrap_or_default();

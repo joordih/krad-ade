@@ -1,7 +1,7 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_domain::{
-    EffectiveToolchain, Host, ProjectFolder, ToolchainChoices, ToolchainFamilyId, ToolchainScope,
-    ToolchainSelection,
+    EffectiveToolchain, Host, ProjectFolder, ToastKind, ToolchainChoices, ToolchainFamilyId,
+    ToolchainScope, ToolchainSelection,
 };
 use krad_extensions::{
     project_folder_for, Discovery, DiscoveryRequest, SharedLocatorManifest, ToolchainCache,
@@ -234,11 +234,9 @@ impl EnvironmentShell {
             || super::label::NO_FALLBACK_TEXT.to_owned(),
             |fallback| format!("{} {}", super::label::USING_TEXT, fallback.name),
         );
-        self.push_toast(format!(
-            "{} {} {}",
-            chosen.name,
-            super::label::VANISHED_TEXT,
-            using
-        ));
+        self.push_toast(
+            ToastKind::Info,
+            format!("{} {} {}", chosen.name, super::label::VANISHED_TEXT, using),
+        );
     }
 }

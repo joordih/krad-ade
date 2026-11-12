@@ -2,6 +2,7 @@ use gpui_kit::{AppContext as _, Context};
 use krad_chat::{acp_package_state, install_acp_package, Runner};
 use krad_domain::{
     acp_package, built_in_acp_agents, AcpAgentId, AcpPackage, AcpPackageState, NpmPackage,
+    ToastKind,
 };
 use krad_host::HostLink;
 use krad_session::find_program;
@@ -155,7 +156,11 @@ impl EnvironmentShell {
                 match installed {
                     Ok(state) => {
                         shell.set_acp_package(key, state);
-                        shell.toast(&format!("{} {INSTALLED_TOAST}", package.name), cx);
+                        shell.toast(
+                            ToastKind::Success,
+                            &format!("{} {INSTALLED_TOAST}", package.name),
+                            cx,
+                        );
                         shell.redetect_acp_agents(cx);
                     }
                     Err(error) => {

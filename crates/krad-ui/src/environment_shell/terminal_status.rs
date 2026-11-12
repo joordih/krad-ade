@@ -36,10 +36,6 @@ impl CardStatus {
             Self::Failed => StatusKind::Failed,
         }
     }
-
-    pub(super) const fn is_quiet(self) -> bool {
-        matches!(self, Self::Agent(AgentState::Idle))
-    }
 }
 
 #[cfg(test)]
@@ -47,12 +43,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn exited_shells_rest_like_idle_ones_but_still_say_so() {
+    fn exited_shells_rest_like_idle_ones() {
         assert_eq!(
             CardStatus::Exited.kind(),
             StatusKind::Agent(AgentState::Idle)
         );
-        assert!(!CardStatus::Exited.is_quiet());
         assert_eq!(CardStatus::Failed.kind(), StatusKind::Failed);
     }
 }

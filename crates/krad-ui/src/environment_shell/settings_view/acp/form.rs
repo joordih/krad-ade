@@ -4,7 +4,7 @@ use gpui_kit::{
     div, px, AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement, Styled,
     Window,
 };
-use krad_domain::{AcpAgent, AcpAgentId, McpValue};
+use krad_domain::{AcpAgent, AcpAgentId, McpValue, ToastKind};
 use krad_store::{delete_acp_secret, write_acp_secret};
 
 use super::super::super::dialog_parts::{sheet_group, sheet_padded};
@@ -315,12 +315,12 @@ impl EnvironmentShell {
             let stored = stored.await;
             this.update(cx, |shell, cx| {
                 if let Err(error) = stored {
-                    return shell.toast(&error.to_string(), cx);
+                    return shell.toast(ToastKind::Error, &error.to_string(), cx);
                 }
                 shell.settings.acp = acp;
                 shell.save_settings(cx);
                 shell.detect_agents(cx);
-                shell.toast(ADDED_TOAST, cx);
+                shell.toast(ToastKind::Success, ADDED_TOAST, cx);
             })
             .unwrap_or_default();
         })

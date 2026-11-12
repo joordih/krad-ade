@@ -5,6 +5,8 @@ use krad_repo::{
 };
 use std::path::Path;
 
+use krad_domain::ToastKind;
+
 use super::super::super::EnvironmentShell;
 use super::SearchResults;
 
@@ -171,7 +173,9 @@ impl EnvironmentShell {
         };
         match plan_replace_all(matches) {
             Ok(plan) => self.side_search.confirm_replace = Some(plan),
-            Err(ReplaceRefusal::Truncated) => self.push_toast(TRUNCATED_TEXT.to_owned()),
+            Err(ReplaceRefusal::Truncated) => {
+                self.push_toast(ToastKind::Warning, TRUNCATED_TEXT.to_owned());
+            }
             Err(ReplaceRefusal::NothingFound) => {}
         }
         cx.notify();
@@ -224,7 +228,7 @@ impl EnvironmentShell {
                 shell.side_search.replacing = false;
                 let undo = bounded_undo(report.undos.clone());
                 for message in report.messages(undo.is_some()) {
-                    shell.push_toast(message);
+                    shell.push_toast(ToastKind::Info, message);
                 }
                 shell.side_search.last_replace = undo;
                 shell.rerun_side_search(cx);
@@ -263,7 +267,7 @@ impl EnvironmentShell {
             this.update(cx, |shell, cx| {
                 shell.side_search.replacing = false;
                 for message in report.messages() {
-                    shell.push_toast(message);
+                    shell.push_toast(ToastKind::Info, message);
                 }
                 shell.rerun_side_search(cx);
             })

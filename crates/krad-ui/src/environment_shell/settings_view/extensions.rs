@@ -6,7 +6,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement,
     SharedString, Styled, Subscription, Window,
 };
-use krad_domain::{ExtensionSecret, ExtensionSecretKey, ExtensionSettingValue};
+use krad_domain::{ExtensionSecret, ExtensionSecretKey, ExtensionSettingValue, ToastKind};
 use krad_extensions::api::manifest::{ExtensionManifest, SettingContribution, SettingKind};
 use krad_extensions::api::protocol::SettingValue;
 use krad_extensions::api::ExtensionId;
@@ -202,8 +202,8 @@ impl EnvironmentShell {
                 cx.spawn(async move |this, cx| {
                     let written = writing.await;
                     this.update(cx, |shell, cx| match written {
-                        Ok(()) => shell.toast(SECRET_SAVED, cx),
-                        Err(error) => shell.toast(&error.to_string(), cx),
+                        Ok(()) => shell.toast(ToastKind::Success, SECRET_SAVED, cx),
+                        Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
                     })
                     .unwrap_or_default();
                 })

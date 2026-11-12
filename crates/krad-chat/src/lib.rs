@@ -34,7 +34,10 @@ pub use control::{
     AcpEvent, AskAnswer, AskKind, Catalog, CommandOffer, LiveEvent, ModelOffer, ModelSource,
     PickedAnswer, Question, QuestionOption, SourceRank, ToolAsk,
 };
-pub use engine::{engine_subagents, read_engine_subagent, read_engine_transcript, EngineConfig};
+pub use engine::{
+    engine_subagents, forget_engine_session, read_engine_subagent, read_engine_transcript,
+    EngineConfig,
+};
 pub use error::ChatError;
 pub use gateway::{gateway_models, GatewayError, GatewayModel, Vendor};
 pub use health::{harness_health, harness_off_path};

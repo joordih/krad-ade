@@ -2,7 +2,8 @@ use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::{AppContext as _, Context, Entity, Window};
 use krad_domain::{
     launch_budget_warning, AgentPreset, BudgetStatus, GroupId, LaunchBudgetWarning, LaunchEstimate,
-    ModelId, ProjectTask, VariantSpec, VariantsOrder, WorkerSurface, MAX_VARIANTS, MIN_VARIANTS,
+    ModelId, ProjectTask, ToastKind, VariantSpec, VariantsOrder, WorkerSurface, MAX_VARIANTS,
+    MIN_VARIANTS,
 };
 use krad_repo::detect_tasks;
 
@@ -78,7 +79,7 @@ impl EnvironmentShell {
             .active_group()
             .map(|group| (group.id, group.root.clone()))
         else {
-            return self.toast(NO_GROUP_TEXT, cx);
+            return self.toast(ToastKind::Warning, NO_GROUP_TEXT, cx);
         };
         let harnesses = self.variant_harnesses();
         let Some(first) = harnesses
@@ -87,7 +88,7 @@ impl EnvironmentShell {
             .find(|preset| *preset == self.offered_default_harness())
             .or_else(|| harnesses.first().copied())
         else {
-            return self.toast(NO_AGENTS_TEXT, cx);
+            return self.toast(ToastKind::Warning, NO_AGENTS_TEXT, cx);
         };
         let second = harnesses
             .iter()

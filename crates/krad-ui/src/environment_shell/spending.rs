@@ -1,6 +1,6 @@
 use gpui_kit::Context;
 use krad_domain::{
-    BudgetStatus, EnvironmentData, EnvironmentName, GroupId, ModelId, Spend, TerminalId,
+    BudgetStatus, EnvironmentData, EnvironmentName, GroupId, ModelId, Spend, TerminalId, ToastKind,
     UsageReport, UsdCost,
 };
 
@@ -113,7 +113,7 @@ impl EnvironmentShell {
                 budget_warning(&group_name(&live.data, group), status, after, budget)
             });
         if let Some(warning) = warning {
-            self.push_toast(warning);
+            self.push_toast(ToastKind::Warning, warning);
         }
         cx.notify();
         self.store();

@@ -357,11 +357,17 @@ impl Render for EnvironmentShell {
             .children(self.usage_bar(cx))
             .children(self.sidebar_chrome(cx))
             .children(self.extension_popover_backdrop(cx))
-            .child(self.toast_stack(cx))
+            .child(self.toast_stack(viewport.width.as_f32(), viewport.height.as_f32(), cx))
+            .children(self.toast_placing_overlay(
+                viewport.width.as_f32(),
+                viewport.height.as_f32(),
+                cx,
+            ))
             .children(self.extension_progress(cx))
             .child(self.palette_overlay(viewport.width.as_f32(), pal, cx))
             .children(self.agent_composer_sheet(cx))
             .children(self.template_picker_sheet(cx))
+            .children(self.archive_sheet(cx))
             .children(self.variants_draft_sheet(cx))
             .children(self.variants_view_sheet(cx))
             .children(self.docs_generate_sheet(cx))

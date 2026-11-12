@@ -29,7 +29,7 @@ pub(crate) fn environment_folder(env: &EnvironmentName) -> String {
         })
 }
 
-fn images_folder(root: &Path, env: &EnvironmentName, chat: TerminalId) -> PathBuf {
+pub(crate) fn images_folder(root: &Path, env: &EnvironmentName, chat: TerminalId) -> PathBuf {
     root.join(CHAT_IMAGES_DIR_NAME)
         .join(environment_folder(env))
         .join(chat.as_u64().to_string())

@@ -1,7 +1,7 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_agents::{ErrorCode, Response};
 use krad_domain::{
-    AppEvent, CleanupPlan, DiscardStep, EnvironmentName, GroupId, TerminalId, VariantId,
+    AppEvent, CleanupPlan, DiscardStep, EnvironmentName, GroupId, TerminalId, ToastKind, VariantId,
     VariantRunId, WinnerOutcome,
 };
 use krad_repo::{apply_variant, discard_variant, VariantRemoval};
@@ -49,7 +49,7 @@ impl EnvironmentShell {
             Ok(plan) => plan,
             Err(error) => {
                 answer(reply, Response::error(ErrorCode::BadRequest, error.clone()));
-                return self.toast(&error, cx);
+                return self.toast(ToastKind::Error, &error, cx);
             }
         };
         let Some(apply) = plan.apply.clone() else {
@@ -69,7 +69,7 @@ impl EnvironmentShell {
                     }
                     let error = error.to_string();
                     answer(reply, Response::error(ErrorCode::Failed, error.clone()));
-                    shell.toast(&error, cx);
+                    shell.toast(ToastKind::Error, &error, cx);
                 }
             })
             .unwrap_or_default();
@@ -93,7 +93,7 @@ impl EnvironmentShell {
                 reply,
                 Response::error(ErrorCode::BadRequest, ALREADY_DECIDED_TEXT),
             );
-            return self.toast(ALREADY_DECIDED_TEXT, cx);
+            return self.toast(ToastKind::Warning, ALREADY_DECIDED_TEXT, cx);
         }
         found.record_pick(plan);
         let base_root = found.base_root.clone();
@@ -118,7 +118,7 @@ impl EnvironmentShell {
             WinnerOutcome::KeepWorktree => KEPT_TEXT,
             WinnerOutcome::ApplyOntoBase => APPLIED_TEXT,
         };
-        self.push_toast(format!("{winner} {how}"));
+        self.push_toast(ToastKind::Success, format!("{winner} {how}"));
         tracing::info!(
             run = plan.run.0,
             winner = plan.winner.0,
@@ -205,7 +205,7 @@ impl EnvironmentShell {
             this.update(cx, |shell, cx| {
                 for error in &errors {
                     tracing::warn!(%error, "variant worktree not removed");
-                    shell.push_toast(error.clone());
+                    shell.push_toast(ToastKind::Error, error.clone());
                 }
                 shell.publish_event(&env, None, AppEvent::WorktreeRemoved);
                 cx.notify();

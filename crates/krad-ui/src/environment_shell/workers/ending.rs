@@ -9,7 +9,7 @@ use crate::theme::{palette, LINE_SM, SPACE_5, SPACE_6, TEXT_SM};
 
 const STOP_TITLE: &str = "Stop its workers?";
 const STOP_TEXT: &str = "Workers of this lead are still working. They stop and their sessions close; their chats can be reopened later from the lead.";
-const STOP_CLOSING_TEXT: &str = "Workers of this lead are still working. They stop, and this session closes with all its terminals and chats, which are deleted.";
+const STOP_CLOSING_TEXT: &str = "Workers of this lead are still working. They stop, and this session closes with all its terminals and chats.";
 const STOP_CONFIRM: &str = "Stop workers";
 const CANCEL: &str = "Cancel";
 const BTN_CLOSE: &str = "lead-ending-close";
@@ -80,10 +80,12 @@ impl EnvironmentShell {
             .envs
             .get(&self.active)
             .and_then(|live| live.data.session_led_by(tab));
-        match led {
-            Some(session) => self.ask_end_lead(LeadEnding::CloseTab { session, tab }, window, cx),
-            None => self.close_terminal(tab, cx),
-        }
+        let Some(session) = led else {
+            let env = self.active.clone();
+            self.close_chat_tab(&env, tab, cx);
+            return;
+        };
+        self.ask_end_lead(LeadEnding::CloseTab { session, tab }, window, cx);
     }
 
     pub(in crate::environment_shell) fn ask_end_lead(
@@ -118,14 +120,18 @@ impl EnvironmentShell {
 
     fn end_lead(&mut self, ending: LeadEnding, cx: &mut Context<Self>) {
         let env = self.active.clone();
-        let session = ending.session();
-        for terminal in self.open_workers_of(session) {
+        if let LeadEnding::CloseSession(session) = ending {
+            self.close_session(session, cx);
+            self.sweep_merged_worktrees(cx);
+            return;
+        }
+        for terminal in self.open_workers_of(ending.session()) {
             self.close_terminal_in(&env, terminal, cx);
         }
         match ending {
             LeadEnding::Dismiss(session) => self.dismiss_lead(session, cx),
-            LeadEnding::CloseSession(session) => self.close_session(session, cx),
-            LeadEnding::CloseTab { tab, .. } => self.close_terminal_in(&env, tab, cx),
+            LeadEnding::CloseSession(_) => {}
+            LeadEnding::CloseTab { tab, .. } => self.close_chat_tab(&env, tab, cx),
         }
         self.sweep_merged_worktrees(cx);
     }
@@ -187,7 +193,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn closing_a_session_warns_that_its_chats_are_deleted() {
+    fn closing_a_session_warns_that_the_session_closes_too() {
         let session = SessionId(1);
         let tab = TerminalId(1);
         assert_eq!(

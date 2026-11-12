@@ -3,7 +3,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, Context, Div, ElementId, FontWeight, InteractiveElement, IntoElement,
     ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
-use krad_domain::{ChatDigests, KraddieId, KraddieMood, KraddieWorkspace, Switch};
+use krad_domain::{ChatDigests, KraddieId, KraddieMood, KraddieWorkspace, Switch, ToastKind};
 
 use super::super::super::EnvironmentShell;
 use super::super::layout::AreaLayout;
@@ -272,7 +272,7 @@ impl EnvironmentShell {
 
     fn use_open_group_as_folder(&mut self, id: &KraddieId, cx: &mut Context<Self>) {
         let Some(root) = self.active_group().map(|group| group.root.clone()) else {
-            return self.toast(NO_GROUP_OPEN, cx);
+            return self.toast(ToastKind::Warning, NO_GROUP_OPEN, cx);
         };
         let place = KraddieWorkspace {
             environment: self.active.clone(),

@@ -3,7 +3,7 @@ mod menu;
 mod switcher;
 
 use gpui_kit::{AppContext as _, Context, Window};
-use krad_domain::WorktreeOrigin;
+use krad_domain::{ToastKind, WorktreeOrigin};
 use krad_host::HostLink;
 use krad_repo::{
     add_branch_worktree, check_out, commit, create_branch, create_tag, delete_tag, fetch,
@@ -210,11 +210,11 @@ impl EnvironmentShell {
     fn commit_changes(&mut self, intent: CommitIntent, cx: &mut Context<Self>) {
         let message = self.git_ui.commit_message(cx);
         if message.trim().is_empty() && intent != CommitIntent::Amend {
-            self.toast(EMPTY_MESSAGE_TEXT, cx);
+            self.toast(ToastKind::Warning, EMPTY_MESSAGE_TEXT, cx);
             return;
         }
         let Some(git) = self.group_git() else {
-            self.toast(NO_REPO_TEXT, cx);
+            self.toast(ToastKind::Warning, NO_REPO_TEXT, cx);
             return;
         };
         let scope = if git.status.staged.is_empty() {
@@ -254,14 +254,14 @@ impl EnvironmentShell {
 
     fn push_target(&mut self, cx: &mut Context<Self>) -> Option<PushTarget> {
         let Some(git) = self.group_git() else {
-            self.toast(NO_REPO_TEXT, cx);
+            self.toast(ToastKind::Warning, NO_REPO_TEXT, cx);
             return None;
         };
         if git.status.upstream.is_some() {
             return Some(PushTarget::Upstream);
         }
         let Some(branch) = git.status.branch.clone() else {
-            self.toast(DETACHED_PUSH_TEXT, cx);
+            self.toast(ToastKind::Warning, DETACHED_PUSH_TEXT, cx);
             return None;
         };
         Some(PushTarget::Publish {
@@ -272,7 +272,7 @@ impl EnvironmentShell {
 
     fn open_branch_worktree(&mut self, branch: Branch, cx: &mut Context<Self>) {
         let Some(repo_root) = self.group_git().map(|git| git.repo_root.clone()) else {
-            self.toast(NO_REPO_TEXT, cx);
+            self.toast(ToastKind::Warning, NO_REPO_TEXT, cx);
             return;
         };
         let link = self.active_link();
@@ -289,7 +289,7 @@ impl EnvironmentShell {
                         .map(|branch| WorktreeOrigin { repo_root, branch });
                     shell.add_group(worktree.path, origin, cx);
                 }
-                Err(error) => shell.toast(&error.to_string(), cx),
+                Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
             })
             .unwrap_or_default();
         })
@@ -301,7 +301,7 @@ impl EnvironmentShell {
         F: FnOnce(&HostLink, &Path, &Askpass) -> Result<(), RepoError> + Send + 'static,
     {
         let Some(repo) = self.group_git().map(|git| git.repo_root.clone()) else {
-            self.toast(NO_REPO_TEXT, cx);
+            self.toast(ToastKind::Warning, NO_REPO_TEXT, cx);
             return;
         };
         let env = self.active.clone();
@@ -317,10 +317,10 @@ impl EnvironmentShell {
                             shell.git_ui.clear_message();
                         }
                         if let Some(told) = end.told {
-                            shell.toast(told, cx);
+                            shell.toast(ToastKind::Info, told, cx);
                         }
                     }
-                    Err(error) => shell.toast(&error.to_string(), cx),
+                    Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
                 }
                 shell.refresh_git(cx);
             })

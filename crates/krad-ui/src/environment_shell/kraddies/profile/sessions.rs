@@ -3,7 +3,7 @@ use gpui_kit::{
     div, px, AnyElement, AppContext as _, Context, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, Window,
 };
-use krad_domain::{KraddieId, ModelId, QuietSpan};
+use krad_domain::{KraddieId, ModelId, QuietSpan, ToastKind};
 
 use super::super::super::native_alert::Confirmation;
 use super::super::super::EnvironmentShell;
@@ -164,7 +164,7 @@ impl EnvironmentShell {
             None
         } else {
             let Some(model) = ModelId::parse(&text) else {
-                return self.toast(BAD_MODEL, cx);
+                return self.toast(ToastKind::Warning, BAD_MODEL, cx);
             };
             Some(model)
         };

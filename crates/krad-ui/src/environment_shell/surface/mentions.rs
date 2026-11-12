@@ -3,7 +3,7 @@ use gpui_kit::{
     ElementId, InteractiveElement, IntoElement, ObjectFit, ParentElement, PathPromptOptions,
     SharedString, StatefulInteractiveElement, Styled, StyledImage,
 };
-use krad_domain::{EnvironmentName, ImageFormat, Mention, TerminalId};
+use krad_domain::{EnvironmentName, ImageFormat, Mention, TerminalId, ToastKind};
 use krad_store::{chat_images_dir, delete_chat_images, save_pasted_image};
 use std::path::{Path, PathBuf};
 
@@ -215,7 +215,7 @@ impl EnvironmentShell {
             let saved = save.await;
             this.update(cx, |shell, cx| match saved {
                 Ok(image) => shell.attach(&env, id, vec![Mention::Image(image)], cx),
-                Err(error) => shell.push_toast(error.to_string()),
+                Err(error) => shell.push_toast(ToastKind::Error, error.to_string()),
             })
             .unwrap_or_default();
         })
@@ -247,8 +247,10 @@ impl EnvironmentShell {
         let delete = cx.background_spawn(async move { delete_chat_images(&dir) });
         cx.spawn(async move |this, cx| {
             if let Err(error) = delete.await {
-                this.update(cx, |shell, _| shell.push_toast(error.to_string()))
-                    .unwrap_or_default();
+                this.update(cx, |shell, _| {
+                    shell.push_toast(ToastKind::Error, error.to_string());
+                })
+                .unwrap_or_default();
             }
         })
         .detach();

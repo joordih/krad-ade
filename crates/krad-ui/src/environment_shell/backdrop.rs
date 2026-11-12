@@ -9,7 +9,7 @@ use gpui_kit::{
 };
 use image::imageops::fast_blur;
 use image::{DynamicImage, Frame, ImageError, RgbaImage};
-use krad_domain::{BackdropImage, BackdropPercent, BackdropPlace};
+use krad_domain::{BackdropImage, BackdropPercent, BackdropPlace, ToastKind};
 use krad_store::{forget_backdrop_image, import_backdrop_image};
 
 use super::EnvironmentShell;
@@ -207,7 +207,7 @@ impl EnvironmentShell {
                 tracing::warn!(%error, ?place, "backdrop image not shown");
                 slot.wanted = None;
                 slot.retire_shown();
-                self.push_toast(format!("{NOT_SHOWN_TEXT}: {error}"));
+                self.push_toast(ToastKind::Error, format!("{NOT_SHOWN_TEXT}: {error}"));
                 *self.settings.backdrop_mut(place) = None;
                 self.save_settings(cx);
             }
@@ -272,7 +272,7 @@ impl EnvironmentShell {
                 Ok(copy) => shell.use_backdrop_copy(place, &copy, cx),
                 Err(error) => {
                     tracing::warn!(%error, ?place, "backdrop image not copied");
-                    shell.push_toast(format!("{NOT_COPIED_TEXT}: {error}"));
+                    shell.push_toast(ToastKind::Error, format!("{NOT_COPIED_TEXT}: {error}"));
                     cx.notify();
                 }
             })
@@ -308,7 +308,7 @@ impl EnvironmentShell {
             };
             tracing::warn!(%error, ?place, "backdrop image not removed");
             this.update(cx, |shell, cx| {
-                shell.push_toast(format!("{NOT_REMOVED_TEXT}: {error}"));
+                shell.push_toast(ToastKind::Error, format!("{NOT_REMOVED_TEXT}: {error}"));
                 cx.notify();
             })
             .unwrap_or_default();

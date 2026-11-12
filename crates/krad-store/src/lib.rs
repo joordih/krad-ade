@@ -1,6 +1,7 @@
 mod acp_secret;
 mod acp_transcript;
 mod arcade;
+mod archive;
 mod backdrop_image;
 mod chat_digests;
 mod chat_images;
@@ -23,6 +24,7 @@ mod webhook_secret;
 pub use acp_secret::{delete_acp_secret, find_acp_secret, write_acp_secret};
 pub use acp_transcript::{acp_transcript_file, read_acp_transcript, AcpTranscript, AcpTranscripts};
 pub use arcade::{read_arcade_scores, write_arcade_scores};
+pub use archive::{forget_archived_chat_files, ArchiveStoreError};
 pub use backdrop_image::{
     backdrop_image_dir, forget_backdrop_image, import_backdrop_image, BackdropImageError,
 };

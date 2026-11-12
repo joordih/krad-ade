@@ -2,7 +2,7 @@ mod sheet;
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::{AppContext as _, Context, Entity, Window};
-use krad_domain::{docs_prompt, AgentPreset, ModelId, DEFAULT_DOCS_FOLDER, VAULT_DIR};
+use krad_domain::{docs_prompt, AgentPreset, ModelId, ToastKind, DEFAULT_DOCS_FOLDER, VAULT_DIR};
 use krad_repo::{docs_source_candidates, read_docs_sources, write_docs_sources, SourceEntry};
 
 use super::model_picker::{grouped, ModelChoice, PickFor};
@@ -199,7 +199,7 @@ impl EnvironmentShell {
             None,
             cx,
         );
-        self.push_toast(STARTED_TEXT.to_owned());
+        self.push_toast(ToastKind::Success, STARTED_TEXT.to_owned());
         cx.notify();
     }
 }

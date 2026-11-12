@@ -1,5 +1,5 @@
 use gpui_kit::{Context, Window};
-use krad_domain::{AttentionTarget, EnvironmentView};
+use krad_domain::{AttentionTarget, EnvironmentView, ToastKind};
 
 use super::super::EnvironmentShell;
 use crate::actions::NextWaitingAgent;
@@ -31,7 +31,7 @@ impl EnvironmentShell {
         let next = self.attention.queue.next_after(current.as_ref()).cloned();
         match next {
             Some(target) => self.open_attention(&target, window, cx),
-            None => self.push_toast(NOTHING_WAITING.to_owned()),
+            None => self.push_toast(ToastKind::Warning, NOTHING_WAITING.to_owned()),
         }
         cx.notify();
     }
@@ -49,7 +49,7 @@ impl EnvironmentShell {
                 .any(|node| node.id == target.terminal)
         });
         if !open {
-            self.push_toast(AGENT_GONE.to_owned());
+            self.push_toast(ToastKind::Warning, AGENT_GONE.to_owned());
             cx.notify();
             return;
         }

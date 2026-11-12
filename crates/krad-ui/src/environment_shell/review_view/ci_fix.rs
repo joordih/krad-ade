@@ -7,7 +7,7 @@ use gpui_kit::{
 use krad_domain::review::{
     ci_fix_prompt, ChangeStat, CiFailure, CiStatus, HeadRepository, Job, JobId, ProjectPath,
 };
-use krad_domain::{EnvironmentName, GroupId, NodeKind, WorktreeOrigin};
+use krad_domain::{EnvironmentName, GroupId, NodeKind, ToastKind, WorktreeOrigin};
 use krad_repo::add_branch_worktree;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -126,7 +126,7 @@ impl EnvironmentShell {
                 let log = match log {
                     Ok(log) => log,
                     Err(error) => {
-                        shell.toast(&error.to_string(), cx);
+                        shell.toast(ToastKind::Error, &error.to_string(), cx);
                         return;
                     }
                 };
@@ -154,7 +154,7 @@ impl EnvironmentShell {
 
     fn deliver_ci_fix(&mut self, order: FixOrder, cx: &mut Context<Self>) {
         if order.env != self.active {
-            self.toast(MOVED_ON_TEXT, cx);
+            self.toast(ToastKind::Info, MOVED_ON_TEXT, cx);
             return;
         }
         if !order.head.lives_in(&order.project) {
@@ -162,13 +162,17 @@ impl EnvironmentShell {
                 HeadRepository::Fork(Some(fork)) => fork.to_string(),
                 HeadRepository::Fork(None) | HeadRepository::Same => UNNAMED_FORK.to_owned(),
             };
-            self.toast(&format!("{FORK_PREFIX}{fork}"), cx);
+            self.toast(ToastKind::Info, &format!("{FORK_PREFIX}{fork}"), cx);
             return;
         }
         match self.ci_fix_owner(&order.env, &order.root, &order.branch) {
             FixOwner::Chat(id) => {
                 if self.queue_chat_prompt(&order.env, id, &order.prompt, cx) {
-                    self.toast(&format!("{SENT_PREFIX}{}", order.branch), cx);
+                    self.toast(
+                        ToastKind::Info,
+                        &format!("{SENT_PREFIX}{}", order.branch),
+                        cx,
+                    );
                     return;
                 }
                 let group = self
@@ -217,23 +221,31 @@ impl EnvironmentShell {
 
     fn start_fix_chat(&mut self, group: Option<GroupId>, order: &FixOrder, cx: &mut Context<Self>) {
         let Some(id) = self.start_chat_session(group, cx) else {
-            self.toast(NO_CHAT_TEXT, cx);
+            self.toast(ToastKind::Warning, NO_CHAT_TEXT, cx);
             return;
         };
         if self.queue_chat_prompt(&order.env, id, &order.prompt, cx) {
-            self.toast(&format!("{STARTED_PREFIX}{}", order.branch), cx);
+            self.toast(
+                ToastKind::Success,
+                &format!("{STARTED_PREFIX}{}", order.branch),
+                cx,
+            );
         } else {
-            self.toast(NO_CHAT_TEXT, cx);
+            self.toast(ToastKind::Warning, NO_CHAT_TEXT, cx);
         }
     }
 
     fn open_fix_worktree(&mut self, order: FixOrder, cx: &mut Context<Self>) {
         let Some(git) = self.git_at(&order.env, &order.root) else {
-            self.toast(NO_REPO_TEXT, cx);
+            self.toast(ToastKind::Warning, NO_REPO_TEXT, cx);
             return;
         };
         let Some(branch) = pick_branch(&git.refs.branches, &order.branch).cloned() else {
-            self.toast(&format!("{NO_BRANCH_PREFIX}{}", order.branch), cx);
+            self.toast(
+                ToastKind::Warning,
+                &format!("{NO_BRANCH_PREFIX}{}", order.branch),
+                cx,
+            );
             return;
         };
         let repo_root = git.repo_root.clone();
@@ -248,7 +260,7 @@ impl EnvironmentShell {
                 let worktree = match created {
                     Ok(worktree) => worktree,
                     Err(error) => {
-                        shell.toast(&error.to_string(), cx);
+                        shell.toast(ToastKind::Error, &error.to_string(), cx);
                         return;
                     }
                 };

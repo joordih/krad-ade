@@ -55,6 +55,10 @@ pub(super) fn context_view(context: Option<u16>, reports: bool) -> Option<Contex
     })
 }
 
+pub(super) fn context_percent(facts: &Facts) -> Option<u16> {
+    context_view(facts.context, facts.reports_context).map(|view| view.used)
+}
+
 pub(super) fn usage_ring(id: TerminalId, facts: &Facts, pal: &Palette) -> Option<AnyElement> {
     let view = context_view(facts.context, facts.reports_context)?;
     let text = SharedString::from(view.details);

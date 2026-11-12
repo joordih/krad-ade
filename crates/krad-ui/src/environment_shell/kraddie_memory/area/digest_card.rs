@@ -3,7 +3,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, ElementId, FontWeight, IntoElement,
     ParentElement, Styled, Window,
 };
-use krad_domain::{relative_age, ChatDigest, DigestAuthor, DigestId, MemoryOwner};
+use krad_domain::{relative_age, ChatDigest, DigestAuthor, DigestId, MemoryOwner, ToastKind};
 use std::time::SystemTime;
 
 use super::super::super::EnvironmentShell;
@@ -239,7 +239,7 @@ impl EnvironmentShell {
         match edited {
             Ok(()) => self.save_digests(&edit.owner, cx),
             Err(error) => {
-                self.toast(&error.to_string(), cx);
+                self.toast(ToastKind::Error, &error.to_string(), cx);
                 self.kraddies.memory.editing = Some(edit);
             }
         }

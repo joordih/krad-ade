@@ -1,7 +1,7 @@
 mod values;
 
 use gpui_kit::Context;
-use krad_domain::ExtensionSettingValue;
+use krad_domain::{ExtensionSettingValue, ToastKind};
 use krad_extensions::api::limits::TOAST_INTERVAL;
 use krad_extensions::api::manifest::SettingKind;
 use krad_extensions::api::protocol::{
@@ -20,9 +20,6 @@ use super::SlotKey;
 
 const NO_SUCH_COMMAND: &str = "no enabled extension declares that command";
 const NO_SUCH_VIEW: &str = "the extension declares no such view";
-const WARNING_MARK: &str = "⚠";
-const ERROR_MARK: &str = "✕";
-const SUCCESS_MARK: &str = "✓";
 
 impl EnvironmentShell {
     pub(super) fn answer_call<R: Request>(&self, key: &SlotKey, id: CallId, result: &R::Result) {
@@ -155,11 +152,10 @@ impl EnvironmentShell {
                     return;
                 }
                 self.extensions.toast_times.insert(key.clone(), now);
-                let text = match tone_mark(params.tone) {
-                    Some(mark) => format!("{mark} {title}: {}", params.message),
-                    None => format!("{title}: {}", params.message),
-                };
-                self.push_toast(text);
+                self.push_toast(
+                    toast_kind(params.tone),
+                    format!("{title}: {}", params.message),
+                );
             }
             AppNotice::Progress(params) => self.track_progress(key, &title, params),
             AppNotice::SendTerminal(params) => {
@@ -224,12 +220,12 @@ fn toast_allowed(last: Option<std::time::Instant>, now: std::time::Instant) -> b
     last.is_none_or(|last| now.saturating_duration_since(last) >= TOAST_INTERVAL)
 }
 
-const fn tone_mark(tone: Tone) -> Option<&'static str> {
+const fn toast_kind(tone: Tone) -> ToastKind {
     match tone {
-        Tone::Warning => Some(WARNING_MARK),
-        Tone::Error => Some(ERROR_MARK),
-        Tone::Success => Some(SUCCESS_MARK),
-        Tone::Neutral | Tone::Info => None,
+        Tone::Warning => ToastKind::Warning,
+        Tone::Error => ToastKind::Error,
+        Tone::Success => ToastKind::Success,
+        Tone::Neutral | Tone::Info => ToastKind::Info,
     }
 }
 
@@ -288,8 +284,8 @@ mod tests {
     }
 
     #[test]
-    fn toasts_mark_only_the_tones_that_need_attention() {
-        assert_eq!(tone_mark(Tone::Error), Some(ERROR_MARK));
-        assert_eq!(tone_mark(Tone::Neutral), None);
+    fn an_extension_toast_takes_the_kind_of_its_tone() {
+        assert_eq!(toast_kind(Tone::Error), ToastKind::Error);
+        assert_eq!(toast_kind(Tone::Neutral), ToastKind::Info);
     }
 }

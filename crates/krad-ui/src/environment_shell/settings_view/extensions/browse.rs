@@ -3,7 +3,7 @@ mod view;
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{AppContext as _, Context, Entity, Subscription, Window};
-use krad_domain::{ExtensionEntry, IndexRepository};
+use krad_domain::{ExtensionEntry, IndexRepository, ToastKind};
 use krad_extensions::index::{
     add_from_index, cached_index, load_index, update_from_index, Freshness, LoadedIndex,
 };
@@ -173,7 +173,7 @@ impl EnvironmentShell {
                 self.save_settings(cx);
                 self.load_extension_index(Freshness::Refresh, cx);
             }
-            Err(error) => self.toast(&error.to_string(), cx),
+            Err(error) => self.toast(ToastKind::Error, &error.to_string(), cx),
         }
     }
 
@@ -210,7 +210,11 @@ impl EnvironmentShell {
                 shell.set_working(&id, false);
                 match installed {
                     Ok(entry) => shell.add_extension(Ok(entry), cx),
-                    Err(error) => shell.toast(&format!("{id} {INSTALL_FAILED_TEXT}: {error}"), cx),
+                    Err(error) => shell.toast(
+                        ToastKind::Error,
+                        &format!("{id} {INSTALL_FAILED_TEXT}: {error}"),
+                        cx,
+                    ),
                 }
             })
             .unwrap_or_default();
@@ -258,13 +262,13 @@ impl EnvironmentShell {
                         {
                             *slot = moved;
                         }
-                        shell.toast(&format!("{id} {UPDATED_TEXT}"), cx);
+                        shell.toast(ToastKind::Success, &format!("{id} {UPDATED_TEXT}"), cx);
                         shell.extensions_changed(cx);
                     }
                     Ok(PinnedUpdate::Current) => {
-                        shell.toast(&format!("{id} {UP_TO_DATE_TEXT}"), cx);
+                        shell.toast(ToastKind::Success, &format!("{id} {UP_TO_DATE_TEXT}"), cx);
                     }
-                    Err(error) => shell.toast(&error, cx),
+                    Err(error) => shell.toast(ToastKind::Error, &error, cx),
                 }
             })
             .unwrap_or_default();

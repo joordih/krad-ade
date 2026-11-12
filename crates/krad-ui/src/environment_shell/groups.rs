@@ -1,7 +1,7 @@
 use gpui_kit::{AppContext as _, Context, PathPromptOptions, SharedString, Window};
 use krad_domain::{
     parse_wsl_path, AcpAgent, AgentPreset, EnvironmentName, GroupId, TerminalGroup, TerminalId,
-    WorktreeOrigin,
+    ToastKind, WorktreeOrigin,
 };
 use krad_host::HostLink;
 use krad_repo::{host_programs, wsl_programs};
@@ -220,7 +220,7 @@ impl EnvironmentShell {
             if self.host_ready(&self.active) {
                 self.open_folder_browser(window, cx);
             } else {
-                self.toast(HOST_NOT_READY_TEXT, cx);
+                self.toast(ToastKind::Error, HOST_NOT_READY_TEXT, cx);
             }
             return;
         }
@@ -277,7 +277,7 @@ impl EnvironmentShell {
             return;
         };
         let Some(id) = live.selected_group.take() else {
-            self.push_toast(NO_GROUP_TEXT.to_owned());
+            self.push_toast(ToastKind::Warning, NO_GROUP_TEXT.to_owned());
             cx.notify();
             return;
         };
@@ -312,6 +312,7 @@ impl EnvironmentShell {
         if let Some(removed) = removed {
             self.forget_group_toolchains(&host, &removed.root);
         }
+        self.forget_group_archive(env, id, cx);
         cx.notify();
         self.store();
     }

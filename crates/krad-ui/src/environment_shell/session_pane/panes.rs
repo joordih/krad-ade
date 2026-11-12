@@ -5,13 +5,14 @@ use gpui_kit::{
     Render, SharedString, StatefulInteractiveElement, Styled, WeakEntity, Window,
 };
 use krad_domain::{
-    Axis, DividerId, LayoutTemplate, PaneId, SessionPanes, SnapZone, TerminalId, UnitRect,
+    Axis, DividerId, LayoutTemplate, PaneId, SessionPanes, SnapZone, TerminalId, ToastKind,
+    UnitRect,
 };
 use std::time::Instant;
 
 use super::super::drag::DragState;
 use super::super::{EnvironmentShell, LiveEnv};
-use super::{tab_shell, StripPlace};
+use super::{tab_badge, tab_tile, BadgeLook, StripPlace};
 use crate::components::{card, icon, Button, IconName};
 use crate::motion::Spring;
 use crate::theme::{
@@ -368,39 +369,35 @@ impl EnvironmentShell {
             cx.entity().downgrade(),
         );
         Some(
-            tab_shell(
-                (GUEST_TAB_PREFIX, id.as_u64()),
-                shown,
-                super::TabWidth::Fill,
-                pal,
-                cx,
-            )
-            .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
-            .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
-                this.show_terminal_tab(id, window, cx);
-            }))
-            .child(super::tab_badge(
-                icon(IconName::Terminal, ICON_SM, pal.text_muted),
-                pal,
-            ))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .child(terminal.title.clone()),
-            )
-            .child(
-                Button::new((GUEST_BACK_PREFIX, id.as_u64()))
-                    .icon(IconName::SidebarRight)
-                    .small()
-                    .tooltip(GUEST_BACK_TOOLTIP)
-                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                        cx.stop_propagation();
-                        this.edit_panes(cx, |panes| panes.release(id));
-                    })),
-            )
-            .into_any_element(),
+            tab_tile((GUEST_TAB_PREFIX, id.as_u64()), shown, cx)
+                .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
+                .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                    this.show_terminal_tab(id, window, cx);
+                }))
+                .child(tab_badge(
+                    BadgeLook::Neutral(IconName::Terminal),
+                    None,
+                    shown,
+                    pal,
+                ))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .child(terminal.title.clone()),
+                )
+                .child(
+                    Button::new((GUEST_BACK_PREFIX, id.as_u64()))
+                        .icon(IconName::SidebarRight)
+                        .small()
+                        .tooltip(GUEST_BACK_TOOLTIP)
+                        .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
+                            cx.stop_propagation();
+                            this.edit_panes(cx, |panes| panes.release(id));
+                        })),
+                )
+                .into_any_element(),
         )
     }
 
@@ -601,7 +598,7 @@ impl EnvironmentShell {
             DropTarget::Template(template, slot) => panes.apply_template(template, id, slot),
         });
         if refused {
-            self.toast(PANES_FULL_TEXT, cx);
+            self.toast(ToastKind::Warning, PANES_FULL_TEXT, cx);
         }
         self.focus_terminal(id);
     }

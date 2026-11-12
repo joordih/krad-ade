@@ -1,6 +1,6 @@
 use krad_domain::{
     AgentState, EnvironmentData, EnvironmentName, PersistedLayout, SidePanelLayout, TerminalId,
-    DEFAULT_ENVIRONMENT, LAYOUT_SCHEMA_VERSION,
+    ToastKind, DEFAULT_ENVIRONMENT, LAYOUT_SCHEMA_VERSION,
 };
 
 use super::{live_meta, EnvironmentShell, LiveEnv};
@@ -47,7 +47,7 @@ impl EnvironmentShell {
             self.active = first;
         }
         if restored > 0 {
-            self.push_toast(format!("Restored {restored} terminals"));
+            self.push_toast(ToastKind::Success, format!("Restored {restored} terminals"));
         }
     }
 
@@ -83,6 +83,7 @@ impl EnvironmentShell {
             extension_views: live.data.extension_views.clone(),
             retired_spend: live.data.retired_spend.clone(),
             variant_runs: live.data.variant_runs.clone(),
+            archive: live.data.archive.clone(),
         }
     }
 

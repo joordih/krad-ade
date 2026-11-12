@@ -1,7 +1,7 @@
 use gpui_kit::component::input::{CodeActionProvider, EditorState, Rope, RopeExt as _};
 use gpui_kit::http_client::Result;
 use gpui_kit::{App, Context, Entity, SharedString, Task, Window};
-use krad_domain::Host;
+use krad_domain::{Host, ToastKind};
 use krad_lsp::lsp_types::request::{
     CodeActionRequest, CodeActionResolveRequest, ExecuteCommand, Formatting, Rename,
 };
@@ -191,7 +191,10 @@ impl EnvironmentShell {
         cx.spawn(async move |this, cx| {
             if let Err(error) = performing.await {
                 this.update(cx, |shell, _| {
-                    shell.push_toast(format!("{CODE_ACTION_FAILED_TEXT}: {error}"));
+                    shell.push_toast(
+                        ToastKind::Error,
+                        format!("{CODE_ACTION_FAILED_TEXT}: {error}"),
+                    );
                 })
                 .unwrap_or_default();
             }
@@ -226,7 +229,7 @@ impl EnvironmentShell {
                 .client_of(&self.active_document(&path))
                 .is_none()
         {
-            self.toast(NOTHING_TO_RENAME_TEXT, cx);
+            self.toast(ToastKind::Warning, NOTHING_TO_RENAME_TEXT, cx);
             return;
         }
         self.ask_name(NameTarget::Symbol { path, at, word }, window, cx);
@@ -298,8 +301,12 @@ impl EnvironmentShell {
             let renamed = answer.await;
             this.update(cx, |shell, cx| match renamed {
                 Ok(Some(edit)) => shell.queue_workspace_edit(host, edit, cx),
-                Ok(None) => shell.toast(NOTHING_TO_RENAME_TEXT, cx),
-                Err(error) => shell.toast(&format!("{RENAME_FAILED_TEXT}: {error}"), cx),
+                Ok(None) => shell.toast(ToastKind::Warning, NOTHING_TO_RENAME_TEXT, cx),
+                Err(error) => shell.toast(
+                    ToastKind::Error,
+                    &format!("{RENAME_FAILED_TEXT}: {error}"),
+                    cx,
+                ),
             })
             .unwrap_or_default();
         })
@@ -343,7 +350,11 @@ impl EnvironmentShell {
                     cx,
                 ),
                 Ok(None) => {}
-                Err(error) => shell.toast(&format!("{FORMAT_FAILED_TEXT}: {error}"), cx),
+                Err(error) => shell.toast(
+                    ToastKind::Error,
+                    &format!("{FORMAT_FAILED_TEXT}: {error}"),
+                    cx,
+                ),
             })
             .unwrap_or_default();
         })

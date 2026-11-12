@@ -75,6 +75,7 @@ pub(super) enum MenuAction {
     CopyChat(ChatCopy),
     ChatHit(super::chat_search::ChatHitAction),
     Automation(super::automations::AutomationMenu),
+    OpenArchive(GroupId),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -551,6 +552,7 @@ impl EnvironmentShell {
             MenuAction::CloseTabs(tab, closing) => self.close_tabs(tab, closing, window, cx),
             MenuAction::Extension(menu) => self.run_extension_menu(*menu, window, cx),
             MenuAction::Automation(choice) => self.run_automation_menu(choice, window, cx),
+            MenuAction::OpenArchive(group) => self.open_archive(group, window, cx),
         }
         if let Some(menu) = closed {
             menu.restore_focus(window, cx);

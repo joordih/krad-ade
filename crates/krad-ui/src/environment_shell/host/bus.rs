@@ -1,5 +1,5 @@
 use gpui_kit::{AppContext as _, Context};
-use krad_domain::{AgentPreset, EnvironmentName};
+use krad_domain::{AgentPreset, EnvironmentName, ToastKind};
 use krad_host::HostLink;
 
 use super::super::agent_bus::{RemoteBus, RemoteBusPlan, RemoteBusSlot};
@@ -66,7 +66,7 @@ impl EnvironmentShell {
         if !bus.remote_unavailable_told.insert(host) {
             return;
         }
-        self.push_toast(format!("{BUS_UNAVAILABLE}: {reason}"));
+        self.push_toast(ToastKind::Error, format!("{BUS_UNAVAILABLE}: {reason}"));
     }
 
     fn remote_bus_settled(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {

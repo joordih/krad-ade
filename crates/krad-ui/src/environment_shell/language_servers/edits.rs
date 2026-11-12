@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use super::super::EnvironmentShell;
 use super::Document;
-use krad_domain::Host;
+use krad_domain::{Host, ToastKind};
 
 const WRITE_FAILED_TEXT: &str = "Couldn't apply the change to";
 
@@ -173,7 +173,11 @@ impl EnvironmentShell {
                 continue;
             }
             let Some(link) = link.clone() else {
-                self.toast(&format!("{WRITE_FAILED_TEXT} {}", path.display()), cx);
+                self.toast(
+                    ToastKind::Error,
+                    &format!("{WRITE_FAILED_TEXT} {}", path.display()),
+                    cx,
+                );
                 continue;
             };
             let rename = changes.renamed_to(path).map(Path::to_path_buf);
@@ -225,6 +229,7 @@ impl EnvironmentShell {
                     }
                 }
                 Err(error) => shell.toast(
+                    ToastKind::Error,
                     &format!("{WRITE_FAILED_TEXT} {}: {error}", path.display()),
                     cx,
                 ),

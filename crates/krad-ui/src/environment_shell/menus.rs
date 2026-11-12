@@ -7,6 +7,7 @@ use crate::components::IconName;
 
 const REMOVE_WORKTREE_LABEL: &str = "Remove worktree";
 const REMOVE_GROUP_LABEL: &str = "Remove group";
+const ARCHIVE_LABEL: &str = "Archive…";
 const NEW_TERMINAL_HEADER: &str = "Open with";
 const NEW_AGENT_LABEL: &str = "New agent with a prompt…";
 
@@ -59,6 +60,11 @@ impl EnvironmentShell {
         let mut entries = Vec::new();
         if let Some(group) = group {
             entries.push(self.activation_submenu(group));
+            entries.push(MenuEntry::item(
+                ARCHIVE_LABEL,
+                Some(IconName::Book),
+                MenuAction::OpenArchive(id),
+            ));
             entries.push(MenuEntry::Separator);
         }
         if is_worktree {

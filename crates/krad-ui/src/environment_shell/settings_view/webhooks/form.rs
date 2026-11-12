@@ -4,7 +4,7 @@ use gpui_kit::{
     div, px, AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement, Styled,
     Window,
 };
-use krad_domain::{EventKind, Webhook, WebhookSigning};
+use krad_domain::{EventKind, ToastKind, Webhook, WebhookSigning};
 use krad_store::write_webhook_secret;
 use std::collections::BTreeSet;
 
@@ -201,7 +201,7 @@ impl EnvironmentShell {
             };
             this.update(cx, |shell, cx| {
                 if let Err(error) = written {
-                    return shell.toast(&error.to_string(), cx);
+                    return shell.toast(ToastKind::Error, &error.to_string(), cx);
                 }
                 let removed_meanwhile =
                     target == DraftTarget::Existing && shell.settings.webhooks.find(id).is_none();
@@ -213,7 +213,7 @@ impl EnvironmentShell {
                 if let Some(sender) = &shell.app_events.webhooks {
                     sender.changed(id, Some(hook));
                 }
-                shell.toast(SAVED_TOAST, cx);
+                shell.toast(ToastKind::Success, SAVED_TOAST, cx);
             })
             .unwrap_or_default();
         })

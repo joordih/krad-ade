@@ -2,7 +2,7 @@ use gpui_kit::{
     div, px, AnyElement, Context, IntoElement, ParentElement, SharedString,
     StatefulInteractiveElement, Styled,
 };
-use krad_domain::{Effort, KraddieId, KraddieSettings, PermissionMode, Switch};
+use krad_domain::{Effort, KraddieId, KraddieSettings, PermissionMode, Switch, ToastKind};
 
 use super::super::super::ask::{mode_label, OFFERED_MODES};
 use super::super::super::EnvironmentShell;
@@ -339,7 +339,7 @@ impl EnvironmentShell {
             .variant(ButtonVariant::Secondary)
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                 let Some(project) = this.active_kraddie_workspace() else {
-                    this.toast(NO_PROJECT_GROUP, cx);
+                    this.toast(ToastKind::Warning, NO_PROJECT_GROUP, cx);
                     return;
                 };
                 this.edit_kraddie_settings(

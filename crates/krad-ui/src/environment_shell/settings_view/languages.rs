@@ -4,7 +4,7 @@ use gpui_kit::{
     div, px, AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement,
     PathPromptOptions, SharedString, Styled, Window,
 };
-use krad_domain::{ExtensionEntry, ExtensionSource, ServerRuntimeId};
+use krad_domain::{ExtensionEntry, ExtensionSource, ServerRuntimeId, ToastKind};
 use krad_extensions::{
     add_folder, add_git, remove, update, user_manifests_dir, ServerRuntimeStatus,
 };
@@ -110,7 +110,11 @@ impl EnvironmentShell {
                     shell.settings.server_runtimes.choose(id, folder);
                     shell.server_runtimes_changed(cx);
                 } else {
-                    shell.toast(&format!("{NOT_A_SERVER_RUNTIME_TEXT} {name}"), cx);
+                    shell.toast(
+                        ToastKind::Warning,
+                        &format!("{NOT_A_SERVER_RUNTIME_TEXT} {name}"),
+                        cx,
+                    );
                 }
             })
             .unwrap_or_default();
@@ -133,7 +137,7 @@ impl EnvironmentShell {
             let installed = installing.await;
             this.update(cx, |shell, cx| {
                 if let Err(error) = installed {
-                    shell.toast(&error.to_string(), cx);
+                    shell.toast(ToastKind::Error, &error.to_string(), cx);
                 }
                 shell.server_runtimes_changed(cx);
             })
@@ -162,7 +166,11 @@ impl EnvironmentShell {
                 self.settings.extensions.push(entry);
                 self.extensions_changed(cx);
             }
-            Err(error) => self.toast(&format!("{EXTENSION_FAILED_TEXT}: {error}"), cx),
+            Err(error) => self.toast(
+                ToastKind::Error,
+                &format!("{EXTENSION_FAILED_TEXT}: {error}"),
+                cx,
+            ),
         }
     }
 
@@ -248,7 +256,7 @@ impl EnvironmentShell {
                     this.update(cx, |shell, cx| {
                         match done {
                             Ok(updated) => shell.replace_extension_entry(updated),
-                            Err(error) => shell.toast(&error.to_string(), cx),
+                            Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
                         }
                         shell.extensions_changed(cx);
                     })
@@ -264,7 +272,7 @@ impl EnvironmentShell {
                     let done = working.await;
                     this.update(cx, |shell, cx| {
                         if let Err(error) = done {
-                            shell.toast(&error.to_string(), cx);
+                            shell.toast(ToastKind::Error, &error.to_string(), cx);
                         }
                         shell.settings.extensions.retain(|known| known.id != id);
                         shell.extensions_changed(cx);

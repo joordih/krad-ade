@@ -2,6 +2,8 @@ use krad_host::HostError;
 use krad_repo::RepoError;
 use std::fmt::Display;
 
+use krad_domain::ToastKind;
+
 use super::super::EnvironmentShell;
 
 pub(in crate::environment_shell) trait HostFailure: Display {
@@ -34,6 +36,6 @@ impl EnvironmentShell {
             tracing::debug!(error = %error, "host operation skipped while the host is unavailable");
             return;
         }
-        self.push_toast(error.to_string());
+        self.push_toast(ToastKind::Error, error.to_string());
     }
 }

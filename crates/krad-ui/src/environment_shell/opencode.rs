@@ -1,7 +1,9 @@
 use gpui_kit::{AppContext as _, Context, Task};
 use krad_chat::Runner;
 use krad_chat::{opencode_models, ModelOffer, OpencodeError, OpencodeServer};
-use krad_domain::{AgentPreset, AgentState, EnvironmentName, Host, ResumeId, TerminalId};
+use krad_domain::{
+    AgentPreset, AgentState, EnvironmentName, Host, ResumeId, TerminalId, ToastKind,
+};
 use krad_host::HostLink;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -114,7 +116,7 @@ impl EnvironmentShell {
         self.opencode.refresh = Refresh::Idle;
         match listed {
             Ok(fresh) => self.keep_opencode_models(fresh),
-            Err(error) => self.toast(&error.to_string(), cx),
+            Err(error) => self.toast(ToastKind::Error, &error.to_string(), cx),
         }
         if queued {
             self.refresh_opencode_models(cx);

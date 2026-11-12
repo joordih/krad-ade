@@ -1,6 +1,6 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_chat::{acp_offers, claude_models, codex_models, ModelOffer, Runner};
-use krad_domain::{AcpAgentId, AcpAgentStart, AgentPreset, EnvironmentName, Host};
+use krad_domain::{AcpAgentId, AcpAgentStart, AgentPreset, EnvironmentName, Host, ToastKind};
 use krad_host::HostLink;
 use std::collections::HashMap;
 use std::path::Path;
@@ -128,7 +128,7 @@ impl EnvironmentShell {
                         shell.listed_models.keep(host, harness, models);
                         shell.forget_unoffered_models(harness);
                     }
-                    Err(error) => shell.toast(&error, cx),
+                    Err(error) => shell.toast(ToastKind::Error, &error, cx),
                 }
                 cx.notify();
             })
