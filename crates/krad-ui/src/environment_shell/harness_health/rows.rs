@@ -3,9 +3,10 @@ use krad_domain::{AgentPreset, HarnessHealth, HarnessSetup, HealthIssue, CHECKED
 
 use super::super::dialog_parts::sheet_row_with;
 use super::super::EnvironmentShell;
-use super::{Checked, HealthPlace};
+use super::HealthPlace;
 use crate::components::{harness_icon, icon, Button, ButtonVariant, IconName};
 use crate::theme::{palette, ICON_LG};
+use krad_protocol::HarnessCheck;
 
 const NOT_CHECKED: &str = "Not checked yet";
 const CHECKING: &str = "Checking…";
@@ -72,21 +73,21 @@ fn ready_detail(health: &HarnessHealth) -> String {
     }
 }
 
-pub(super) fn health_line(setup: &HarnessSetup, checked: Option<&Checked>) -> HealthLine {
+pub(super) fn health_line(setup: &HarnessSetup, checked: Option<&HarnessCheck>) -> HealthLine {
     let health = match checked {
-        None => {
+        None | Some(HarnessCheck::Forgotten) => {
             return HealthLine {
                 detail: NOT_CHECKED.to_owned(),
                 fix: None,
             }
         }
-        Some(Checked::Checking) => {
+        Some(HarnessCheck::Checking) => {
             return HealthLine {
                 detail: CHECKING.to_owned(),
                 fix: None,
             }
         }
-        Some(Checked::Done(health)) => health,
+        Some(HarnessCheck::Done(health)) => health,
     };
     let issues = health.issues(setup.minimum);
     if issues.is_empty() {
@@ -168,7 +169,7 @@ mod tests {
     }
 
     fn line_of(health: HarnessHealth) -> HealthLine {
-        health_line(&claude(), Some(&Checked::Done(health)))
+        health_line(&claude(), Some(&HarnessCheck::Done(health)))
     }
 
     #[test]
@@ -221,7 +222,7 @@ mod tests {
     fn checks_in_flight_or_not_run_say_so() {
         assert_eq!(health_line(&claude(), None).detail, NOT_CHECKED);
         assert_eq!(
-            health_line(&claude(), Some(&Checked::Checking)).detail,
+            health_line(&claude(), Some(&HarnessCheck::Checking)).detail,
             CHECKING
         );
     }

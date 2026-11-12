@@ -3981,7 +3981,9 @@ version = "0.4.1"
 dependencies = [
  "futures",
  "krad-agents",
+ "krad-chat",
  "krad-domain",
+ "krad-host",
  "krad-protocol",
  "krad-store",
  "serde_json",

@@ -19,8 +19,8 @@ const COPY_PREFIX: &str = "harness-health-copy";
 fn place_hint(place: &HealthPlace) -> String {
     match place {
         HealthPlace::ThisComputer => format!("{ON_HOST} {THIS_COMPUTER}: {CHECKS_HINT}"),
-        HealthPlace::Wsl(distro) => format!("{IN_WSL} {distro}: {CHECKS_HINT}"),
-        HealthPlace::Ssh(host) => format!("{ON_HOST} {host}: {CHECKS_HINT}"),
+        HealthPlace::Wsl { distro } => format!("{IN_WSL} {distro}: {CHECKS_HINT}"),
+        HealthPlace::Ssh { host } => format!("{ON_HOST} {host}: {CHECKS_HINT}"),
     }
 }
 
@@ -59,12 +59,14 @@ mod tests {
         assert!(
             place_hint(&HealthPlace::ThisComputer).starts_with("Each agent CLI on this computer:")
         );
-        assert!(place_hint(&HealthPlace::Wsl("Ubuntu".to_owned()))
-            .starts_with("Each agent CLI in WSL Ubuntu:"));
+        assert!(place_hint(&HealthPlace::Wsl {
+            distro: "Ubuntu".to_owned()
+        })
+        .starts_with("Each agent CLI in WSL Ubuntu:"));
         let host = Host::Ssh {
             destination: "devbox".parse()?,
         };
-        assert!(place_hint(&HealthPlace::Ssh(host)).starts_with("Each agent CLI on devbox:"));
+        assert!(place_hint(&HealthPlace::Ssh { host }).starts_with("Each agent CLI on devbox:"));
         Ok(())
     }
 }

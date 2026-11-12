@@ -1,5 +1,6 @@
 use krad_domain::{
-    claude_alias_name, humanize_model_id, split_context, ContextSize, Effort, CLAUDE_BRAND,
+    claude_alias_name, humanize_model_id, split_context, Effort, ModelOffer, ModelSource,
+    CLAUDE_BRAND,
 };
 use serde::Deserialize;
 
@@ -9,53 +10,6 @@ const DEFAULT_MODEL: &str = "default";
 const CLAUDE_ID_PREFIX: &str = "claude";
 const ANTHROPIC: &str = "Anthropic";
 const SUMMARY_SEPARATOR: &str = "\u{b7}";
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum ModelSource {
-    Plan { name: String, order: usize },
-    Provider(String),
-    Free,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum SourceRank {
-    Plan(usize),
-    Provider,
-    Free,
-}
-
-impl ModelSource {
-    #[must_use]
-    pub const fn rank(&self) -> SourceRank {
-        match self {
-            Self::Plan { order, .. } => SourceRank::Plan(*order),
-            Self::Provider(_) => SourceRank::Provider,
-            Self::Free => SourceRank::Free,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
-#[serde(from = "ModelOfferLine")]
-pub struct ModelOffer {
-    pub value: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub efforts: Vec<Effort>,
-    pub default_effort: Option<Effort>,
-    pub thinking_off: bool,
-    pub source: Option<ModelSource>,
-    pub context: Option<ContextSize>,
-    pub recommended: bool,
-    pub aliases: Vec<String>,
-}
-
-impl ModelOffer {
-    #[must_use]
-    pub fn answers_to(&self, value: &str) -> bool {
-        self.value == value || self.aliases.iter().any(|alias| alias == value)
-    }
-}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

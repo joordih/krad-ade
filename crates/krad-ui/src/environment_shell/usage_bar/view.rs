@@ -129,10 +129,11 @@ impl EnvironmentShell {
             .enumerate()
             .map(|(index, harness)| {
                 let key = (host.clone(), harness);
+                let shown = self.runtime.view.usage.get(&key);
                 let input = BlockInput {
                     harness,
-                    reading: self.usage.readings.get(&key),
-                    note: self.usage.notes.get(&key),
+                    reading: shown.and_then(|shown| shown.reading.as_ref()),
+                    note: shown.and_then(|shown| shown.note.as_ref()),
                 };
                 block_view(index, usage_block(input, warn_at, now), pal)
             })

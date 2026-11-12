@@ -1,0 +1,6 @@
+#!/bin/sh
+case "$1" in
+  --version) echo "codex-cli 9.1.0" ;;
+  login) echo "Logged in using ChatGPT" ;;
+  *) exit 2 ;;
+esac

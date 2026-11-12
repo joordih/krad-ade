@@ -17,7 +17,8 @@ use crate::rewind::{RewindError, Rewound};
 mod catalog;
 mod held;
 
-pub use catalog::{Catalog, CommandOffer, ModelOffer, ModelSource, SourceRank};
+pub use catalog::{Catalog, CommandOffer};
+pub use krad_domain::{ModelOffer, ModelSource, SourceRank};
 
 const ANSWERS_KEY: &str = "answers";
 const LABEL_SEPARATOR: &str = ", ";

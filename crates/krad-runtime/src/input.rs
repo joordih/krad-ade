@@ -1,8 +1,14 @@
 use futures::channel::{mpsc, oneshot};
 use krad_agents::{AgentInfo, AgentKey, Incoming, Response, StateReason};
-use krad_protocol::{Command, Feed, Reply, RequestId, Scope, Snapshot, WebhookTest};
+use krad_chat::Runner;
+use krad_domain::{AgentPreset, Host};
+use krad_protocol::{Command, Feed, HealthPlace, Reply, RequestId, Scope, Snapshot, WebhookTest};
+use std::path::PathBuf;
 
 use crate::bus::{Delegated, DelegationId, Mail};
+use crate::harness_health::HarnessProbe;
+use crate::jobs::JobDone;
+use crate::usage::UsagePlace;
 
 #[derive(Debug)]
 pub(crate) enum Input {
@@ -37,6 +43,18 @@ pub(crate) enum Input {
         agents: Vec<AgentInfo>,
     },
     WebhookTested(WebhookTest),
+    CheckHarnesses {
+        place: HealthPlace,
+        probes: Vec<(AgentPreset, Option<HarnessProbe>)>,
+    },
+    PlaceUsage(Option<UsagePlace>),
+    ListModels {
+        host: Host,
+        harness: AgentPreset,
+        runner: Runner,
+        cwd: PathBuf,
+    },
+    JobDone(JobDone),
     Tick,
     Stop,
 }

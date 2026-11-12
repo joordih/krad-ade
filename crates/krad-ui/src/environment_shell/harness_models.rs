@@ -1,9 +1,9 @@
 use gpui_kit::{AppContext as _, Context};
-use krad_chat::{acp_offers, claude_models, codex_models, ModelOffer, Runner};
+use krad_chat::{acp_offers, ModelOffer};
 use krad_domain::{AcpAgentId, AcpAgentStart, AgentPreset, EnvironmentName, Host, ToastKind};
 use krad_host::HostLink;
+use krad_protocol::{Command, ListedModels as Listed, ModelsCommand, ModelsOrigin};
 use std::collections::HashMap;
-use std::path::Path;
 
 use super::chat::StartError;
 use super::surface::{read_acp_secrets, AcpSeed};
@@ -16,61 +16,13 @@ pub(super) enum AcpListing {
     Failed(String),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Listing {
-    Claude,
-    Codex,
-}
-
-impl Listing {
-    const fn of(harness: AgentPreset) -> Option<Self> {
-        match harness {
-            AgentPreset::ClaudeCode => Some(Self::Claude),
-            AgentPreset::Codex => Some(Self::Codex),
-            AgentPreset::Shell
-            | AgentPreset::Opencode
-            | AgentPreset::Gateway
-            | AgentPreset::Acp(_) => None,
-        }
-    }
-
-    fn run(self, runner: &Runner, cwd: &Path) -> Result<Vec<ModelOffer>, String> {
-        match self {
-            Self::Claude => claude_models(runner, cwd).map_err(|error| error.to_string()),
-            Self::Codex => codex_models(runner, cwd).map_err(|error| error.to_string()),
-        }
-    }
-}
-
 #[derive(Default)]
 pub(super) struct ListedModels {
-    listed: HashMap<(Host, AgentPreset), Vec<ModelOffer>>,
-    asked: Vec<(Host, AgentPreset)>,
     acp: HashMap<(Host, AcpAgentId), AcpListing>,
     acp_seeds: HashMap<(Host, AcpAgentId), AcpSeed>,
 }
 
-const fn keeps(harness: AgentPreset) -> bool {
-    matches!(harness, AgentPreset::Acp(_)) || Listing::of(harness).is_some()
-}
-
 impl ListedModels {
-    pub(super) fn of(&self, host: &Host, harness: AgentPreset) -> &[ModelOffer] {
-        self.listed
-            .get(&(host.clone(), harness))
-            .map_or(&[], Vec::as_slice)
-    }
-
-    fn keep(&mut self, host: Host, harness: AgentPreset, models: Vec<ModelOffer>) {
-        if models.is_empty() || !keeps(harness) {
-            return;
-        }
-        if let AgentPreset::Acp(agent) = harness {
-            self.acp.remove(&(host.clone(), agent));
-        }
-        self.listed.insert((host, harness), models);
-    }
-
     pub(super) fn acp_listing(&self, host: &Host, agent: AcpAgentId) -> Option<&AcpListing> {
         self.acp.get(&(host.clone(), agent))
     }
@@ -80,61 +32,82 @@ impl ListedModels {
     }
 }
 
+#[derive(Default)]
+pub(super) struct ModelsMirror(HashMap<(Host, AgentPreset), Vec<ModelOffer>>);
+
+impl ModelsMirror {
+    pub(super) fn of(&self, host: &Host, harness: AgentPreset) -> &[ModelOffer] {
+        self.0
+            .get(&(host.clone(), harness))
+            .map_or(&[], Vec::as_slice)
+    }
+
+    fn apply(&mut self, listed: Listed) {
+        self.0.insert((listed.host, listed.harness), listed.models);
+    }
+
+    pub(super) fn replace(&mut self, listed: Vec<Listed>) {
+        self.0.clear();
+        for listed in listed {
+            self.apply(listed);
+        }
+    }
+}
+
 impl EnvironmentShell {
-    pub(super) fn list_harness_models(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn list_harness_models(&self) {
         for harness in AgentPreset::NATIVE {
-            if let Some(listing) = Listing::of(harness) {
-                if self.native_agents.contains(&harness) {
-                    self.list_models_of(&HostLink::Local, harness, listing, cx);
-                }
+            if self.native_agents.contains(&harness) {
+                self.list_models_of(&HostLink::Local, harness);
             }
         }
     }
 
-    pub(super) fn list_host_models(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
+    pub(super) fn list_host_models(&self, env: &EnvironmentName) {
         let link = self.env_link(env);
         let Some(found) = self.host_agents.get(&link.host()).cloned() else {
             return;
         };
         for harness in found {
-            if let Some(listing) = Listing::of(harness) {
-                self.list_models_of(&link, harness, listing, cx);
-            }
+            self.list_models_of(&link, harness);
         }
     }
 
-    fn list_models_of(
-        &mut self,
-        link: &HostLink,
-        harness: AgentPreset,
-        listing: Listing,
-        cx: &mut Context<Self>,
-    ) {
-        let host = link.host();
-        let asked = (host.clone(), harness);
-        if self.listed_models.asked.contains(&asked) {
-            return;
-        }
+    fn list_models_of(&self, link: &HostLink, harness: AgentPreset) {
         let Ok((runner, cwd)) = self.harness_runner(link, harness, None) else {
             return;
         };
-        self.listed_models.asked.push(asked);
-        let listed = cx.background_spawn(async move { listing.run(&runner, &cwd) });
-        cx.spawn(async move |this, cx| {
-            let listed = listed.await;
-            this.update(cx, |shell, cx| {
-                match listed {
-                    Ok(models) => {
-                        shell.listed_models.keep(host, harness, models);
-                        shell.forget_unoffered_models(harness);
-                    }
-                    Err(error) => shell.toast(ToastKind::Error, &error, cx),
-                }
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+        self.runtime
+            .handle
+            .list_models(link.host(), harness, runner, cwd);
+    }
+
+    pub(super) fn models_listed(
+        &mut self,
+        listed: Listed,
+        origin: ModelsOrigin,
+        cx: &mut Context<Self>,
+    ) {
+        let harness = listed.harness;
+        self.runtime.view.models.apply(listed);
+        if origin == ModelsOrigin::Listing {
+            self.forget_unoffered_models(harness);
+        }
+        cx.notify();
+    }
+
+    pub(super) fn model_list_failed(&mut self, error: &str, cx: &mut Context<Self>) {
+        self.toast(ToastKind::Error, error, cx);
+    }
+
+    fn keep_models(&self, host: Host, harness: AgentPreset, models: Vec<ModelOffer>) {
+        self.runtime
+            .handle
+            .post(Command::Models(ModelsCommand::Keep {
+                host,
+                harness,
+                models,
+            }));
     }
 
     pub(super) fn list_acp_models(&mut self, agent: AcpAgentId, cx: &mut Context<Self>) {
@@ -145,7 +118,7 @@ impl EnvironmentShell {
         let busy_or_known = matches!(
             self.listed_models.acp.get(&key),
             Some(AcpListing::Listing | AcpListing::NoModels)
-        ) || (!self.listed_models.of(&host, preset).is_empty()
+        ) || (!self.runtime.view.models.of(&host, preset).is_empty()
             && self.listed_models.acp_seeds.contains_key(&key));
         if busy_or_known || !self.installed_agents().contains(&preset) {
             return;
@@ -192,7 +165,10 @@ impl EnvironmentShell {
                     Ok(models) if models.is_empty() => {
                         shell.listed_models.acp.insert(key, AcpListing::NoModels);
                     }
-                    Ok(models) => shell.listed_models.keep(host, preset, models),
+                    Ok(models) => {
+                        shell.listed_models.acp.remove(&key);
+                        shell.keep_models(host, preset, models);
+                    }
                     Err(error) => {
                         shell
                             .listed_models
@@ -215,6 +191,6 @@ impl EnvironmentShell {
         models: &[ModelOffer],
     ) {
         let host = self.env_link(env).host();
-        self.listed_models.keep(host, harness, models.to_vec());
+        self.keep_models(host, harness, models.to_vec());
     }
 }

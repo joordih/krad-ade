@@ -52,7 +52,7 @@ impl EnvironmentShell {
         let Some(root) = self.active_group().map(|group| group.root.clone()) else {
             return;
         };
-        self.list_harness_models(cx);
+        self.list_harness_models();
         self.ensure_opencode(cx);
         let preset = self.default_agent();
         let link = self.active_link();

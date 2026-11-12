@@ -6,6 +6,9 @@ use krad_runtime::RuntimeHandle;
 use std::collections::{BTreeSet, HashMap};
 
 use super::attention::AttentionMirror;
+use super::harness_health::HealthMirror;
+use super::harness_models::ModelsMirror;
+use super::usage_bar::UsageMirror;
 use super::EnvironmentShell;
 
 type AgentSpot = (EnvironmentName, TerminalId);
@@ -34,6 +37,9 @@ pub(super) struct RuntimeView {
     asks: BTreeSet<AskId>,
     pub(super) mail: MailNotices,
     pub(super) attention: AttentionMirror,
+    pub(super) health: HealthMirror,
+    pub(super) usage: UsageMirror,
+    pub(super) models: ModelsMirror,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -118,6 +124,10 @@ impl EnvironmentShell {
             Feed::Snapshot(snapshot) => {
                 self.apply_bus_snapshot(snapshot.bus);
                 self.runtime.view.attention.replace(snapshot.attention);
+                self.runtime.view.health.replace(snapshot.health.checks);
+                self.runtime.view.usage.replace(snapshot.usage.shown);
+                self.runtime.view.models.replace(snapshot.models.listed);
+                self.advance_harness_onboarding(cx);
             }
             Feed::Event(event) => self.apply_runtime_event(event.kind, cx),
         }
@@ -145,6 +155,13 @@ impl EnvironmentShell {
                     self.forget_held_ask(ask);
                 }
             }
+            EventKind::HarnessChecked(checked) => {
+                self.runtime.view.health.apply(checked);
+                self.advance_harness_onboarding(cx);
+            }
+            EventKind::UsageShown(shown) => self.runtime.view.usage.apply(shown),
+            EventKind::ModelsListed { listed, origin } => self.models_listed(listed, origin, cx),
+            EventKind::ModelListFailed { error, .. } => self.model_list_failed(&error, cx),
             EventKind::Pong { .. } | EventKind::Unknown => {}
         }
     }

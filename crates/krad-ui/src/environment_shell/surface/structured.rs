@@ -17,12 +17,12 @@ use krad_domain::{
     AgentPreset, AgentState, AttentionKind, ChatEntry, Effort, EffortSnap, EnvironmentName,
     McpServerName, Mention, ModelId, PermissionMode, Prompt, ResumeId, TerminalId, UsageReport,
 };
+use krad_protocol::UsageNews;
 use krad_store::{acp_transcript_file, AcpTranscript};
 use std::time::Instant;
 
 use super::super::ask::{AskQueue, Waiting};
 use super::super::chat::{fold_entry, fold_prompt, ChatMessage, LiveProcess};
-use super::super::usage_bar::UsageNews;
 use super::super::EnvironmentShell;
 use super::acp::{AcpChoice, AcpOffers};
 use super::outbox::Outbox;
@@ -395,8 +395,8 @@ impl EnvironmentShell {
             return;
         };
         let news = match event {
-            LiveEvent::Usage(usage) => UsageNews::Read(usage),
-            LiveEvent::Limit(alert) => UsageNews::Alert(alert),
+            LiveEvent::Usage(usage) => UsageNews::Read { usage },
+            LiveEvent::Limit(alert) => UsageNews::Alert { alert },
             _ => return,
         };
         let host = self.env_link(env).host();

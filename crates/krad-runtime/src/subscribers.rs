@@ -92,6 +92,9 @@ mod tests {
             seq: Seq(seq),
             bus: krad_protocol::BusSnapshot::default(),
             attention: krad_protocol::AttentionSnapshot::default(),
+            health: krad_protocol::HealthSnapshot::default(),
+            usage: krad_protocol::UsageSnapshot::default(),
+            models: krad_protocol::ModelsSnapshot::default(),
         }
     }
 

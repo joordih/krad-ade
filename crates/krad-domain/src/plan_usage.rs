@@ -17,7 +17,8 @@ const WEEK: Duration = Duration::from_hours(168);
 const DEFAULT_PLAN_WARNING: WarnPercent = WarnPercent::known(80);
 pub const UNTIMED_ALERT_LASTS: Duration = Duration::from_mins(30);
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum WindowSpan {
     FiveHours,
     Weekly,
@@ -49,7 +50,7 @@ impl WindowSpan {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UsageWindow {
     pub span: WindowSpan,
     pub scope: Option<String>,
@@ -58,13 +59,14 @@ pub struct UsageWindow {
     pub limited: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum LimitStatus {
     Warning,
     Reached,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LimitAlert {
     pub status: LimitStatus,
     pub resets_at: Option<ResetTime>,
@@ -83,7 +85,7 @@ impl LimitAlert {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlanUsage {
     pub plan: Option<String>,
     pub windows: Vec<UsageWindow>,

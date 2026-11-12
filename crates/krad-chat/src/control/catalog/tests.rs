@@ -1,4 +1,5 @@
 use super::*;
+use krad_domain::ContextSize;
 use serde_json::json;
 
 const LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];

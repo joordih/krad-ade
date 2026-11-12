@@ -1,6 +1,4 @@
-use krad_domain::{
-    humanize_model_id, AcpAgentStart, AcpConfigOption, AcpModel, AcpModes, ChatEvent,
-};
+use krad_domain::{AcpAgentStart, AcpConfigOption, AcpModes, ChatEvent};
 use std::path::Path;
 use std::sync::mpsc::channel;
 use std::sync::Arc;
@@ -45,22 +43,6 @@ pub fn claude_models(runner: &Runner, cwd: &Path) -> Result<Vec<ModelOffer>, Cha
     let models = receiver.recv_timeout(CATALOG_WAIT).unwrap_or_default();
     chat.stop();
     Ok(models)
-}
-
-impl From<&AcpModel> for ModelOffer {
-    fn from(model: &AcpModel) -> Self {
-        let name = Some(model.name.trim())
-            .filter(|name| !name.is_empty())
-            .map(str::to_owned)
-            .or_else(|| humanize_model_id(&model.id.0))
-            .unwrap_or_else(|| model.id.0.clone());
-        Self {
-            value: model.id.0.clone(),
-            name,
-            description: model.description.clone(),
-            ..Self::default()
-        }
-    }
 }
 
 struct NoBuffers;
@@ -167,7 +149,7 @@ pub fn acp_offers(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_domain::{AcpModelId, AcpModels};
+    use krad_domain::{AcpModel, AcpModelId, AcpModels};
 
     fn model(id: &str, name: &str) -> AcpModel {
         AcpModel {
@@ -207,12 +189,6 @@ mod tests {
                 ("opus", "Opus", Some("about opus")),
             ]
         );
-    }
-
-    #[test]
-    fn an_unnamed_acp_model_shows_its_id() {
-        let shown = humanize_model_id("x-1").unwrap_or_else(|| "x-1".to_owned());
-        assert_eq!(ModelOffer::from(&model("x-1", " ")).name, shown);
     }
 
     #[test]

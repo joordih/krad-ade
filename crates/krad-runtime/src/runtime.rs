@@ -1,4 +1,5 @@
 use futures::channel::oneshot;
+use krad_domain::UsageBudget;
 use krad_protocol::{
     BusSnapshot, Command, ErrorCode, Event, EventKind, Reply, RequestId, RuntimeCommand, Scope,
     Seq, Snapshot,
@@ -14,8 +15,12 @@ use crate::app_events::{AppEvents, EventsSetup};
 use crate::attention::Attention;
 use crate::bus::{open, Bus, BusSetup};
 use crate::handle::RuntimeHandle;
+use crate::harness_health::Health;
 use crate::input::Input;
+use crate::jobs::{JobDone, Jobs};
+use crate::models::Models;
 use crate::subscribers::Subscribers;
+use crate::usage::Usage;
 
 const THREAD_NAME: &str = "krad-runtime";
 const INPUT_CAPACITY: usize = 1024;
@@ -37,6 +42,10 @@ pub struct Runtime {
     bus: Option<Bus>,
     events: AppEvents,
     attention: Attention,
+    jobs: Jobs,
+    health: Health,
+    usage: Usage,
+    models: Models,
     stopped: Arc<AtomicBool>,
 }
 
@@ -61,17 +70,20 @@ impl Runtime {
                 .map(Arc::new)
         });
         let events = AppEvents::start(setup.events, &inbox);
-        let runtime = Self::idle(access.clone(), events, &inbox, stopped);
+        let usage_budget = Arc::new(UsageBudget::default());
+        let usage = Usage::new(Arc::clone(&usage_budget));
+        let runtime = Self::idle(access.clone(), events, usage, &inbox, stopped);
         thread::Builder::new()
             .name(THREAD_NAME.to_owned())
             .spawn(move || runtime.run(&input))?;
         tracing::info!("runtime started");
-        Ok(RuntimeHandle::new(inbox, access))
+        Ok(RuntimeHandle::new(inbox, access, usage_budget))
     }
 
     fn idle(
         access: Option<Arc<crate::bus::BusAccess>>,
         events: AppEvents,
+        usage: Usage,
         inbox: &SyncSender<Input>,
         stopped: Arc<AtomicBool>,
     ) -> Self {
@@ -82,6 +94,10 @@ impl Runtime {
             bus: access.map(|access| Bus::new(access, inbox.clone())),
             events,
             attention: Attention::default(),
+            jobs: Jobs::new(inbox.clone()),
+            health: Health::default(),
+            usage,
+            models: Models::default(),
             stopped,
         }
     }
@@ -129,7 +145,20 @@ impl Runtime {
                 if let Some(bus) = &mut self.bus {
                     bus.tick(&mut self.outbox);
                 }
+                self.usage.tick(&self.jobs, &mut self.outbox);
             }
+            Input::CheckHarnesses { place, probes } => {
+                self.health
+                    .check(&place, probes, &self.jobs, &mut self.outbox);
+            }
+            Input::PlaceUsage(place) => self.usage.place(place, &self.jobs, &mut self.outbox),
+            Input::ListModels {
+                host,
+                harness,
+                runner,
+                cwd,
+            } => self.models.list((host, harness), runner, cwd, &self.jobs),
+            Input::JobDone(done) => self.job_done(done),
             Input::Bus(incoming) => {
                 let Some(bus) = &mut self.bus else {
                     tracing::debug!("a bus request reached a runtime without a bus");
@@ -165,8 +194,28 @@ impl Runtime {
             | Input::Snapshot { .. }
             | Input::Bus(_)
             | Input::WebhookTested(_)
+            | Input::CheckHarnesses { .. }
+            | Input::PlaceUsage(_)
+            | Input::ListModels { .. }
+            | Input::JobDone(_)
             | Input::Tick
             | Input::Stop => {}
+        }
+    }
+
+    fn job_done(&mut self, done: JobDone) {
+        match done {
+            JobDone::HarnessChecked {
+                place,
+                harness,
+                health,
+            } => self
+                .health
+                .checked(place, harness, health, &mut self.outbox),
+            JobDone::ModelsListed { key, listed } => {
+                self.models.listed(key, listed, &mut self.outbox);
+            }
+            JobDone::UsageRead { key, read } => self.usage.read(&key, read, &mut self.outbox),
         }
     }
 
@@ -191,6 +240,14 @@ impl Runtime {
                 .attention
                 .execute(command, &mut self.outbox)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
+            Command::Usage(command) => self
+                .usage
+                .execute(command, &self.jobs, &mut self.outbox)
+                .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
+            Command::Models(command) => self
+                .models
+                .execute(command, &mut self.outbox)
+                .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Runtime(RuntimeCommand::Unknown) | Command::Unknown => {
                 refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)
             }
@@ -209,23 +266,49 @@ impl Runtime {
                 }
             })
             .collect();
-        let (seq, bus, attention) = (self.seq, &self.bus, &self.attention);
-        self.subscribers.publish(&events, || {
-            snapshot_of(seq, bus.as_ref(), attention, Scope::Runtime)
-        });
+        let parts = Parts {
+            bus: self.bus.as_ref(),
+            attention: &self.attention,
+            health: &self.health,
+            usage: &self.usage,
+            models: &self.models,
+        };
+        let seq = self.seq;
+        self.subscribers
+            .publish(&events, || parts.snapshot(seq, Scope::Runtime));
     }
 
     fn snapshot(&self, scope: Scope) -> Snapshot {
-        snapshot_of(self.seq, self.bus.as_ref(), &self.attention, scope)
+        Parts {
+            bus: self.bus.as_ref(),
+            attention: &self.attention,
+            health: &self.health,
+            usage: &self.usage,
+            models: &self.models,
+        }
+        .snapshot(self.seq, scope)
     }
 }
 
-fn snapshot_of(seq: Seq, bus: Option<&Bus>, attention: &Attention, scope: Scope) -> Snapshot {
-    Snapshot {
-        scope,
-        seq,
-        bus: bus.map_or_else(BusSnapshot::default, Bus::snapshot),
-        attention: attention.snapshot(),
+struct Parts<'a> {
+    bus: Option<&'a Bus>,
+    attention: &'a Attention,
+    health: &'a Health,
+    usage: &'a Usage,
+    models: &'a Models,
+}
+
+impl Parts<'_> {
+    fn snapshot(&self, seq: Seq, scope: Scope) -> Snapshot {
+        Snapshot {
+            scope,
+            seq,
+            bus: self.bus.map_or_else(BusSnapshot::default, Bus::snapshot),
+            attention: self.attention.snapshot(),
+            health: self.health.snapshot(),
+            usage: self.usage.snapshot(),
+            models: self.models.snapshot(),
+        }
     }
 }
 

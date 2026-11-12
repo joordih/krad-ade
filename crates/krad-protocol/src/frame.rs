@@ -48,7 +48,7 @@ pub struct TerminalBytes {
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Frame {
-    Message(Message),
+    Message(Box<Message>),
     Terminal(TerminalBytes),
 }
 
@@ -87,7 +87,9 @@ pub fn read_frame(input: &mut impl Read) -> Result<Option<Frame>, FrameError> {
     input.read_exact(&mut body).map_err(ended_inside)?;
     let (&kind, payload) = body.split_first().ok_or(FrameError::Empty)?;
     match FrameKind::try_from(kind)? {
-        FrameKind::Message => Ok(Some(Frame::Message(serde_json::from_slice(payload)?))),
+        FrameKind::Message => Ok(Some(Frame::Message(Box::new(serde_json::from_slice(
+            payload,
+        )?)))),
         FrameKind::Terminal => read_terminal(payload).map(|bytes| Some(Frame::Terminal(bytes))),
     }
 }

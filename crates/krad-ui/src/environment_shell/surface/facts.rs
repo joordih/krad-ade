@@ -257,7 +257,7 @@ impl EnvironmentShell {
             AgentPreset::Opencode => self.opencode_models_on(&host),
             AgentPreset::Gateway => self.gateway_offers(),
             AgentPreset::ClaudeCode | AgentPreset::Codex | AgentPreset::Acp(_) => {
-                self.listed_models.of(&host, harness)
+                self.runtime.view.models.of(&host, harness)
             }
             AgentPreset::Shell => &[],
         };

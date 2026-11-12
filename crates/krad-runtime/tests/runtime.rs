@@ -1,8 +1,8 @@
 use futures::executor::block_on;
 use futures::StreamExt as _;
 use krad_protocol::{
-    AttentionSnapshot, BusSnapshot, Command, ErrorCode, Event, EventKind, Feed, Reply, RequestId,
-    RuntimeCommand, Scope, Seq, Snapshot,
+    AttentionSnapshot, BusSnapshot, Command, ErrorCode, Event, EventKind, Feed, HealthSnapshot,
+    ModelsSnapshot, Reply, RequestId, RuntimeCommand, Scope, Seq, Snapshot, UsageSnapshot,
 };
 use krad_runtime::{EventReceiver, Runtime, RuntimeHandle, RuntimeSetup};
 use std::error::Error;
@@ -77,6 +77,9 @@ fn a_subscriber_starts_from_a_snapshot_and_receives_events_with_rising_seqs() ->
             seq: Seq(4),
             bus: BusSnapshot::default(),
             attention: AttentionSnapshot::default(),
+            health: HealthSnapshot::default(),
+            usage: UsageSnapshot::default(),
+            models: ModelsSnapshot::default(),
         }
     );
     Ok(())

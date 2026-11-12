@@ -1,10 +1,13 @@
-use krad_domain::{AttentionTarget, EventRecord};
+use krad_domain::{AgentPreset, AttentionTarget, EventRecord, Host};
 use serde::{Deserialize, Serialize};
 
 use crate::app_events::WebhookTest;
 use crate::attention::{AttentionNotice, AttentionSnapshot};
 use crate::bus::{AskId, AskSettlement, BusSnapshot, MailCount, PendingAsk, StatusReport};
+use crate::harness_health::{HarnessChecked, HealthSnapshot};
 use crate::ids::{RequestId, Seq};
+use crate::models::{ListedModels, ModelsOrigin, ModelsSnapshot};
+use crate::usage::{UsageShown, UsageSnapshot};
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Event {
@@ -32,6 +35,17 @@ pub enum EventKind {
         target: AttentionTarget,
     },
     AttentionHistoryCleared,
+    HarnessChecked(HarnessChecked),
+    UsageShown(UsageShown),
+    ModelsListed {
+        listed: ListedModels,
+        origin: ModelsOrigin,
+    },
+    ModelListFailed {
+        host: Host,
+        harness: AgentPreset,
+        error: String,
+    },
     #[serde(other)]
     Unknown,
 }
@@ -50,6 +64,12 @@ pub struct Snapshot {
     pub bus: BusSnapshot,
     #[serde(default)]
     pub attention: AttentionSnapshot,
+    #[serde(default)]
+    pub health: HealthSnapshot,
+    #[serde(default)]
+    pub usage: UsageSnapshot,
+    #[serde(default)]
+    pub models: ModelsSnapshot,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -99,6 +119,9 @@ mod tests {
                 seq: Seq(2),
                 bus: BusSnapshot::default(),
                 attention: AttentionSnapshot::default(),
+                health: HealthSnapshot::default(),
+                usage: UsageSnapshot::default(),
+                models: ModelsSnapshot::default(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

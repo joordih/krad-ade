@@ -8,7 +8,9 @@ repository.workspace = true
 [dependencies]
 futures.workspace = true
 krad-agents.workspace = true
+krad-chat.workspace = true
 krad-domain.workspace = true
+krad-host.workspace = true
 krad-protocol.workspace = true
 krad-store.workspace = true
 thiserror.workspace = true

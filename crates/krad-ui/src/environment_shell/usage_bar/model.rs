@@ -2,6 +2,7 @@ use krad_domain::{
     AgentPreset, LimitAlert, LimitStatus, PlanUsage, ResetTime, UsageFailure, UsageReading,
     UsageWindow, WarnPercent, WindowSpan,
 };
+use krad_protocol::UsageNote;
 use std::borrow::Cow;
 use std::time::{Duration, SystemTime};
 
@@ -55,13 +56,6 @@ pub(super) enum Tone {
     Calm,
     Warn,
     Limit,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::environment_shell) enum UsageNote {
-    Starting,
-    HostNotReady,
-    Broken(String),
 }
 
 #[derive(Debug, PartialEq, Eq)]

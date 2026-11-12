@@ -1,7 +1,9 @@
 use super::{LimitAlert, PlanUsage, ResetTime};
+use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum UsageFailure {
     SignedOut,
     NoSubscription,
@@ -10,7 +12,8 @@ pub enum UsageFailure {
     Unrecognised,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum UsageReading {
     Fresh(PlanUsage),
     Failed {

@@ -1,9 +1,13 @@
 use futures::channel::{mpsc, oneshot};
 use futures::{Stream, StreamExt as _};
 use krad_agents::{AgentInfo, AgentKey, StateReason};
-use krad_domain::ToolDecision;
-use krad_protocol::{AskId, BusCommand, Command, Feed, Reply, RequestId, Scope, Snapshot};
+use krad_chat::Runner;
+use krad_domain::{AgentPreset, Host, ToolDecision, UsageBudget};
+use krad_protocol::{
+    AskId, BusCommand, Command, Feed, HealthPlace, Reply, RequestId, Scope, Snapshot,
+};
 use std::future::Future;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::SyncSender;
@@ -11,7 +15,9 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use crate::bus::{BusAccess, DelegationReceiver, DELEGATION_BUFFER};
+use crate::harness_health::HarnessProbe;
 use crate::input::Input;
+use crate::usage::UsagePlace;
 
 const SUBSCRIBER_BUFFER: usize = 256;
 
@@ -34,16 +40,22 @@ impl Drop for Alive {
 pub struct RuntimeHandle {
     inbox: SyncSender<Input>,
     bus: Option<Arc<BusAccess>>,
+    usage_budget: Arc<UsageBudget>,
     requests: Arc<AtomicU64>,
     _alive: Arc<Alive>,
 }
 
 impl RuntimeHandle {
-    pub(crate) fn new(inbox: SyncSender<Input>, bus: Option<Arc<BusAccess>>) -> Self {
+    pub(crate) fn new(
+        inbox: SyncSender<Input>,
+        bus: Option<Arc<BusAccess>>,
+        usage_budget: Arc<UsageBudget>,
+    ) -> Self {
         Self {
             _alive: Arc::new(Alive(inbox.clone())),
             inbox,
             bus,
+            usage_budget,
             requests: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -97,6 +109,32 @@ impl RuntimeHandle {
             environments,
             agents,
         });
+    }
+
+    pub fn check_harnesses(
+        &self,
+        place: HealthPlace,
+        probes: Vec<(AgentPreset, Option<HarnessProbe>)>,
+    ) {
+        self.deliver(Input::CheckHarnesses { place, probes });
+    }
+
+    pub fn place_usage(&self, place: Option<UsagePlace>) {
+        self.deliver(Input::PlaceUsage(place));
+    }
+
+    pub fn list_models(&self, host: Host, harness: AgentPreset, runner: Runner, cwd: PathBuf) {
+        self.deliver(Input::ListModels {
+            host,
+            harness,
+            runner,
+            cwd,
+        });
+    }
+
+    #[must_use]
+    pub fn usage_budget(&self) -> Arc<UsageBudget> {
+        Arc::clone(&self.usage_budget)
     }
 
     #[must_use]

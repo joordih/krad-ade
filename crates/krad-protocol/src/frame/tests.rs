@@ -26,32 +26,35 @@ fn framed(body: &[u8]) -> Vec<u8> {
 #[test]
 fn frames_round_trip_in_order_and_the_stream_ends_cleanly() -> Result<(), FrameError> {
     let frames = vec![
-        Frame::Message(Message::Hello {
+        Frame::Message(Box::new(Message::Hello {
             version: ProtocolVersion::CURRENT,
-        }),
-        Frame::Message(Message::Command {
+        })),
+        Frame::Message(Box::new(Message::Command {
             id: RequestId(1),
             command: Command::Runtime(RuntimeCommand::Ping),
-        }),
-        Frame::Message(Message::Reply {
+        })),
+        Frame::Message(Box::new(Message::Reply {
             id: RequestId(1),
             reply: Reply::Refused {
                 code: ErrorCode::Unsupported,
                 message: "unknown".to_owned(),
             },
-        }),
-        Frame::Message(Message::Feed(Feed::Snapshot(Snapshot {
+        })),
+        Frame::Message(Box::new(Message::Feed(Feed::Snapshot(Snapshot {
             scope: Scope::Runtime,
             seq: Seq(1),
             bus: crate::bus::BusSnapshot::default(),
             attention: crate::attention::AttentionSnapshot::default(),
-        }))),
-        Frame::Message(Message::Feed(Feed::Event(Event {
+            health: crate::HealthSnapshot::default(),
+            usage: crate::UsageSnapshot::default(),
+            models: crate::ModelsSnapshot::default(),
+        })))),
+        Frame::Message(Box::new(Message::Feed(Feed::Event(Event {
             seq: Seq(2),
             kind: EventKind::Pong {
                 request: RequestId(1),
             },
-        }))),
+        })))),
         Frame::Terminal(TerminalBytes {
             terminal: TerminalId(42),
             bytes: b"\x1b[31mred\x1b[0m\r\n\xff".to_vec(),
@@ -71,9 +74,9 @@ fn frames_round_trip_in_order_and_the_stream_ends_cleanly() -> Result<(), FrameE
 
 #[test]
 fn a_message_frame_carries_json() -> Result<(), FrameError> {
-    let bytes = encoded(&[Frame::Message(Message::Hello {
+    let bytes = encoded(&[Frame::Message(Box::new(Message::Hello {
         version: ProtocolVersion(1),
-    })])?;
+    }))])?;
     assert_eq!(bytes[LENGTH_BYTES], FrameKind::Message as u8);
     assert_eq!(
         &bytes[LENGTH_BYTES + 1..],

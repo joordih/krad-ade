@@ -199,7 +199,6 @@ pub struct EnvironmentShell {
     listed_models: harness_models::ListedModels,
     acp_adapters: HashMap<krad_domain::AcpAgentId, krad_domain::ManagedAdapter>,
     harness_checks: harness_health::HarnessChecks,
-    usage: usage_bar::UsageBoard,
     context_menu: Option<context_menu::ContextMenu>,
     focus_returns: focus_return::FocusReturns,
     copy_feedback: Entity<CopyFeedback>,
@@ -359,7 +358,6 @@ impl EnvironmentShell {
             listed_models: harness_models::ListedModels::default(),
             acp_adapters: HashMap::new(),
             harness_checks: harness_health::HarnessChecks::default(),
-            usage: usage_bar::UsageBoard::default(),
             context_menu: None,
             focus_returns: focus_return::FocusReturns::default(),
             copy_feedback: new_copy_feedback(cx),
@@ -459,6 +457,7 @@ impl EnvironmentShell {
             self.active = name.clone();
             self.unseen.remove(name);
             self.show_host(name, cx);
+            self.place_usage(cx);
             cx.notify();
             self.store();
         }
