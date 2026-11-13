@@ -45,6 +45,12 @@ pub(crate) struct Models {
 }
 
 impl Models {
+    pub(crate) fn offers(&self, host: &Host, harness: AgentPreset) -> &[ModelOffer] {
+        self.listed
+            .get(&(host.clone(), harness))
+            .map_or(&[], Vec::as_slice)
+    }
+
     pub(crate) fn execute(
         &mut self,
         command: &ModelsCommand,

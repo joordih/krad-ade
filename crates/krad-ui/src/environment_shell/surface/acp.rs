@@ -9,7 +9,7 @@ use krad_domain::{
 };
 use krad_protocol::AcpShown;
 
-pub(in crate::environment_shell) use adapter::{app_kept_adapter_present, KeptAdapterView};
+pub(in crate::environment_shell) use adapter::KeptAdapterView;
 pub(in crate::environment_shell) use sign_in::SignInAsk;
 
 #[derive(Clone, Debug, PartialEq, Eq)]

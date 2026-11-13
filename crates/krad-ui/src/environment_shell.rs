@@ -387,7 +387,7 @@ impl EnvironmentShell {
     }
 
     fn start_loading(&mut self, cx: &mut Context<Self>) {
-        self.detect_agents(cx);
+        self.detect_agents();
         self.start_harness_onboarding(cx);
         self.start_watches(cx);
         self.load_language_tools(cx);

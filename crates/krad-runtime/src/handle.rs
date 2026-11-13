@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use crate::bus::{BusAccess, DelegationReceiver, DELEGATION_BUFFER};
-use crate::chats::{ChatLaunch, ChatStart, LiveStarted};
+use crate::chats::{ChatBrief, ChatStart, LiveStarted};
 use crate::harness_health::HarnessProbe;
 use crate::hosts::HostLinks;
 use crate::input::{Input, LiveStart};
@@ -227,13 +227,16 @@ impl RuntimeHandle {
 
     pub fn start_live_chat(
         &self,
-        launch: ChatLaunch,
+        (chat, harness): (AgentRef, AgentPreset),
+        brief: ChatBrief,
         session: LiveSession,
         sink: impl FnMut(LiveEvent) + Send + 'static,
     ) -> Pending<LiveStarted> {
         let (reply, answer) = oneshot::channel();
         self.deliver(Input::StartLiveChat(Box::new(LiveStart {
-            launch,
+            chat,
+            harness,
+            brief,
             session,
             sink: Box::new(sink),
             reply,

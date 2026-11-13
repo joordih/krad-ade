@@ -2,13 +2,12 @@ use gpui_kit::{
     div, px, rgb, AnyElement, Context, ElementId, InteractiveElement as _, IntoElement,
     ParentElement, StatefulInteractiveElement as _, Styled, Window,
 };
-use krad_domain::{McpProjectFile, McpProjectTrust, PROJECT_MCP_FILE};
-use std::path::Path;
+use krad_domain::{McpProjectTrust, PROJECT_MCP_FILE};
+use krad_protocol::McpTrustAsk;
 use std::rc::Rc;
 
 use super::super::ask::{tray, tray_button};
 use super::super::EnvironmentShell;
-use super::server_summary;
 use crate::components::{icon, IconName};
 use crate::theme::{palette, Palette, ICON, LINE_XS, SPACE_0_5, SPACE_1, SPACE_2, TEXT_XS};
 
@@ -29,8 +28,8 @@ const DIVIDER_H: f32 = 1.0;
 type TrustChoice =
     dyn Fn(&mut EnvironmentShell, McpProjectTrust, &mut Window, &mut Context<EnvironmentShell>);
 
-fn server_lines(file: &McpProjectFile, pal: &Palette) -> AnyElement {
-    let offered = file.servers.iter().map(|server| {
+fn server_lines(asked: &McpTrustAsk, pal: &Palette) -> AnyElement {
+    let offered = asked.servers.iter().map(|server| {
         div()
             .flex()
             .flex_row()
@@ -40,7 +39,7 @@ fn server_lines(file: &McpProjectFile, pal: &Palette) -> AnyElement {
                 div()
                     .flex_none()
                     .text_color(rgb(pal.text_strong))
-                    .child(server.name.to_string()),
+                    .child(server.name.clone()),
             )
             .child(
                 div()
@@ -48,11 +47,11 @@ fn server_lines(file: &McpProjectFile, pal: &Palette) -> AnyElement {
                     .min_w_0()
                     .truncate()
                     .text_color(rgb(pal.text_muted))
-                    .child(format!("{SUMMARY_SEPARATOR}{}", server_summary(server))),
+                    .child(format!("{SUMMARY_SEPARATOR}{}", server.summary)),
             )
             .into_any_element()
     });
-    let skipped = file.skipped.iter().map(|skipped| {
+    let skipped = asked.skipped.iter().map(|skipped| {
         div()
             .text_color(rgb(pal.text_subtle))
             .child(format!(
@@ -83,15 +82,13 @@ fn server_lines(file: &McpProjectFile, pal: &Palette) -> AnyElement {
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn mcp_trust_tray(
-        folder: &Path,
-        file: &McpProjectFile,
+        asked: &McpTrustAsk,
         on_choice: impl Fn(&mut Self, McpProjectTrust, &mut Window, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
         let on_choice: Rc<TrustChoice> = Rc::new(on_choice);
         let button = |id: &'static str, label: &'static str, trust: McpProjectTrust| {
-            let folder = folder.to_path_buf();
             let on_choice = Rc::clone(&on_choice);
             tray_button(
                 ElementId::Name(id.into()),
@@ -99,7 +96,6 @@ impl EnvironmentShell {
                 pal,
             )
             .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
-                this.set_mcp_project_trust(&folder, trust, cx);
                 on_choice(this, trust, window, cx);
             }))
             .child(label)
@@ -124,7 +120,7 @@ impl EnvironmentShell {
         tray(pal)
             .child(header)
             .child(div().h(px(DIVIDER_H)).bg(pal.divider))
-            .child(server_lines(file, pal))
+            .child(server_lines(asked, pal))
             .into_any_element()
     }
 }

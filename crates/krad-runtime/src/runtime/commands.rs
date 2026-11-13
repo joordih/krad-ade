@@ -1,6 +1,9 @@
+use krad_agents::{Caller, Incoming};
+use krad_domain::EnvironmentName;
 use krad_protocol::{Command, ErrorCode, EventKind, Reply, RequestId, RuntimeCommand};
 
 use super::{refused, Runtime, NO_BUS, UNSUPPORTED_COMMAND};
+use crate::bus::{as_lead, closed_worker_answer};
 use crate::input::Input;
 
 impl Runtime {
@@ -46,10 +49,11 @@ impl Runtime {
                 .gateway
                 .execute(command, &self.jobs, &mut self.outbox)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
-            Command::Settings(command) => self
-                .settings
-                .execute(command, &mut self.outbox)
-                .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
+            Command::Settings(command) => {
+                let reply = self.settings.execute(command, &mut self.outbox);
+                self.flush_chats();
+                reply.unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND))
+            }
             Command::Terminal(command) => self
                 .execute_terminal(command)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
@@ -57,6 +61,37 @@ impl Runtime {
                 refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)
             }
         }
+    }
+
+    pub(super) fn answer_bus(&mut self, incoming: Incoming) {
+        let Some(bus) = &mut self.bus else {
+            tracing::debug!("a bus request reached a runtime without a bus");
+            return;
+        };
+        let Incoming {
+            from,
+            request,
+            reply,
+        } = incoming;
+        let data = match &from {
+            Caller::Terminal(terminal) => self
+                .environments
+                .data(&EnvironmentName::new(terminal.environment.clone())),
+            Caller::Lead(_) | Caller::Git(_) | Caller::Client => None,
+        };
+        let from = as_lead(from, &request, data);
+        if let Some(answer) = closed_worker_answer(&from, &request, data) {
+            if reply.send(answer).is_err() {
+                tracing::trace!("a bus caller left before its answer");
+            }
+            return;
+        }
+        let incoming = Incoming {
+            from,
+            request,
+            reply,
+        };
+        bus.answer(incoming, &mut self.outbox);
     }
 
     pub(super) fn apply_bus(&mut self, input: Input) {

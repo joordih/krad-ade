@@ -163,6 +163,21 @@ pub struct HostsSnapshot {
     pub hosts: Vec<EnvironmentHost>,
     #[serde(default)]
     pub prompts: Vec<HostPrompt>,
+    #[serde(default)]
+    pub local: Vec<LocalAgents>,
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
+#[serde(tag = "place", rename_all = "snake_case")]
+pub enum AgentPlace {
+    Native,
+    Wsl { distro: String },
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct LocalAgents {
+    pub place: AgentPlace,
+    pub agents: Vec<AgentPreset>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -180,6 +195,9 @@ pub enum HostCommand {
     },
     DetectAgents {
         environment: EnvironmentName,
+    },
+    DetectLocalAgents {
+        place: AgentPlace,
     },
     #[serde(other)]
     Unknown,
@@ -295,5 +313,30 @@ mod tests {
         );
         assert!(RemoteBusState::Preparing.is_preparing());
         assert!(RemoteBusState::Preparing.ready().is_none());
+    }
+
+    #[test]
+    fn local_agents_are_detected_per_place_and_read_from_older_snapshots() -> serde_json::Result<()>
+    {
+        let detect = Command::Host(HostCommand::DetectLocalAgents {
+            place: AgentPlace::Wsl {
+                distro: "Ubuntu".to_owned(),
+            },
+        });
+        let json = serde_json::to_string(&detect)?;
+        assert_eq!(
+            json,
+            r#"{"area":"host","verb":"detect_local_agents","place":{"place":"wsl","distro":"Ubuntu"}}"#
+        );
+        assert_eq!(serde_json::from_str::<Command>(&json)?, detect);
+        let found = EventKind::LocalAgentsFound(LocalAgents {
+            place: AgentPlace::Native,
+            agents: vec![AgentPreset::ClaudeCode],
+        });
+        let json = serde_json::to_string(&found)?;
+        assert_eq!(serde_json::from_str::<EventKind>(&json)?, found);
+        let older: HostsSnapshot = serde_json::from_str(r#"{"hosts":[],"prompts":[]}"#)?;
+        assert_eq!(older.local, Vec::new());
+        Ok(())
     }
 }

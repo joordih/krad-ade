@@ -38,6 +38,10 @@ enum Heard {
 }
 
 impl Usage {
+    pub(crate) const fn budget(&self) -> &Arc<UsageBudget> {
+        &self.budget
+    }
+
     pub(crate) fn new(budget: Arc<UsageBudget>) -> Self {
         Self {
             readings: HashMap::new(),

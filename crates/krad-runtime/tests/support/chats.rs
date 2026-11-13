@@ -4,7 +4,10 @@ use krad_chat::{BusVars, ChatBackend, LiveConfig, LiveSession, Runner};
 use krad_domain::{AgentPreset, EnvironmentName, Host, TerminalId};
 use krad_host::HostLink;
 use krad_protocol::{AgentRef, ChatMirror, ChatSummary, Command, EventKind, Feed, Reply, Scope};
-use krad_runtime::{ChatLaunch, ChatPlace, ChatStart, Runtime, RuntimeHandle, RuntimeSetup};
+use krad_runtime::{
+    ChatBrief, ChatLaunch, ChatPlace, ChatStart, PreparedLaunch, Runtime, RuntimeHandle,
+    RuntimeSetup,
+};
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::PathBuf;
@@ -46,13 +49,16 @@ pub fn live_config(runner: Runner) -> LiveConfig {
 pub fn start_with(harness: AgentPreset, launch: ChatLaunch, session: LiveSession) -> ChatStart {
     ChatStart {
         harness,
-        launch,
+        brief: ChatBrief::default(),
+        prepared: Some(PreparedLaunch {
+            launch,
+            place: ChatPlace {
+                host: Host::Local,
+                link: HostLink::Local,
+                root: None,
+            },
+        }),
         session,
-        place: ChatPlace {
-            host: Host::Local,
-            link: HostLink::Local,
-            root: None,
-        },
         messages: Vec::new(),
         queued: Vec::new(),
         notices: Vec::new(),

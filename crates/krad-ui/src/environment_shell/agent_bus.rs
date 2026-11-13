@@ -14,9 +14,7 @@ pub(super) use workspace::target_group;
 
 use futures::StreamExt as _;
 use gpui_kit::Context;
-use krad_agents::{
-    lead_refusal, Caller, ErrorCode, Request, Response, TerminalHandle, TerminalState,
-};
+use krad_agents::{Caller, ErrorCode, Request, Response, TerminalHandle, TerminalState};
 use krad_domain::{parse_wsl_path, EnvironmentName, Host, TerminalId};
 use krad_runtime::{local_caller_vars, remote_caller_vars, BusReply, Delegated};
 use std::collections::HashSet;
@@ -158,11 +156,6 @@ impl EnvironmentShell {
             request,
             reply,
         } = delegated;
-        let from = self.as_lead(from, &request);
-        if let Some(refusal) = lead_refusal(&from, &request) {
-            reply.send(refusal).unwrap_or_default();
-            return;
-        }
         if let Some(refusal) = self.memory_gate(&from, &request) {
             reply.send(Response::Error(refusal)).unwrap_or_default();
             return;

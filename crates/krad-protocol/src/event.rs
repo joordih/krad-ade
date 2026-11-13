@@ -13,7 +13,7 @@ use crate::chats::{ChatAsk, ChatAskId, ChatState, ChatSummary};
 use crate::environments::SpendingCrossed;
 use crate::gateway::GatewayState;
 use crate::harness_health::{HarnessChecked, HealthSnapshot};
-use crate::hosts::{HostPrompt, HostState, HostsSnapshot, PromptId, RemoteBusState};
+use crate::hosts::{HostPrompt, HostState, HostsSnapshot, LocalAgents, PromptId, RemoteBusState};
 use crate::ids::{RequestId, Seq};
 use crate::launches::TerminalLaunched;
 use crate::models::{ListedModels, ModelsOrigin, ModelsSnapshot};
@@ -114,6 +114,7 @@ pub enum EventKind {
         host: Host,
         agents: Vec<AgentPreset>,
     },
+    LocalAgentsFound(LocalAgents),
     ChatOpened {
         chat: AgentRef,
         state: Box<ChatState>,

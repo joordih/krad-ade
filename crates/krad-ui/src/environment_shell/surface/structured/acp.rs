@@ -5,6 +5,7 @@ use krad_domain::{
     TerminalId,
 };
 use krad_host::HostLink;
+use krad_runtime::McpLaunch;
 use krad_store::AcpSecrets;
 use std::collections::HashMap;
 
@@ -78,10 +79,13 @@ impl EnvironmentShell {
         if !in_runtime && !self.acp_secrets_ready(env, id, &agent, cx) {
             return Err(StartError::Waiting);
         }
-        let folder = self.chat_folder(env, id);
-        let launch = self
-            .gateway_mcp(env, id, &folder, cx)
-            .ok_or(StartError::Waiting)?;
+        let launch = if in_runtime {
+            McpLaunch::default()
+        } else {
+            let folder = self.chat_folder(env, id);
+            self.gateway_mcp(env, id, &folder, cx)
+                .ok_or(StartError::Waiting)?
+        };
         let bus_vars = if !runner.in_cloud() && runner.on_ssh() && self.remote_bus(env).is_none() {
             BusVars(Vec::new())
         } else {

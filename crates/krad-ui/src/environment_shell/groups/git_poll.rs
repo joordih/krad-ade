@@ -184,7 +184,7 @@ impl EnvironmentShell {
             loop {
                 let Ok((link, roots)) = this.update(cx, |shell, cx| {
                     let (link, roots) = shell.group_roots();
-                    shell.detect_wsl_agents(&roots, cx);
+                    shell.detect_wsl_agents(&roots);
                     shell.ensure_project_checks(cx);
                     (link, roots)
                 }) else {

@@ -10,6 +10,7 @@ mod hosts;
 mod input;
 mod jobs;
 mod launches;
+mod mcp;
 mod models;
 mod opencode;
 mod runtime;
@@ -20,7 +21,9 @@ mod usage;
 
 pub use app_events::{EventsSetup, WebhookSecrets};
 pub use bus::{BusAccess, BusReply, BusSetup, Delegated, DelegationReceiver, Mail};
-pub use chats::{runs_in_runtime, ChatLaunch, ChatPlace, ChatStart};
+pub use chats::{
+    runs_in_runtime, ChatBrief, ChatLaunch, ChatPlace, ChatRole, ChatStart, PreparedLaunch,
+};
 pub use environments::EnvironmentsSetup;
 pub use handle::{EventReceiver, HeldAsk, Pending, RuntimeHandle, RuntimeStopped};
 pub use harness_health::HarnessProbe;
@@ -29,6 +32,10 @@ pub use hosts::{
     remote_detached_caller_vars, upload_host_cli, HostCliError, RemoteBus, RemoteBusPlan,
 };
 pub use launches::{cli_name, local_caller_vars, AgentRole, BUS_HINT, LEAD_HINT};
+pub use mcp::{
+    code_tools_server, mcp_servers, read_project_mcp, trust_of, trusted_servers, with_secrets,
+    McpLaunch, McpTrust,
+};
 pub use runtime::{Runtime, RuntimeSetup};
 pub use settings::SettingsSetup;
 pub use terminals::{

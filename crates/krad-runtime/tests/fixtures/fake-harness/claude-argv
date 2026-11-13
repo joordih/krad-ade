@@ -1,0 +1,8 @@
+#!/bin/sh
+printf '%s\n' "$*" >> "$KRAD_TEST_ARGV_FILE"
+turn="$(dirname "$0")/../../../../krad-chat/tests/fixtures/fake-harness/claude-turn.jsonl"
+while IFS= read -r line; do
+    case "$line" in
+        *'"type":"user"'*) cat "$turn" ;;
+    esac
+done

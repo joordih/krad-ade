@@ -13,7 +13,6 @@ use super::super::terminal_card::home_dir;
 use super::super::EnvironmentShell;
 
 const NO_PROGRAM_TEXT: &str = "is not on PATH";
-const NOT_IN_WSL_TEXT: &str = "chats do not run in WSL folders yet";
 const WAITING_TEXT: &str = "opencode is still starting";
 const NO_CONFIG_FOLDER_TEXT: &str = "Krad ADE has no config folder to keep the chat in";
 const NO_CHAT_TEXT: &str = "has no chat";
@@ -24,10 +23,8 @@ pub(in crate::environment_shell) type HarnessName = Cow<'static, str>;
 pub(in crate::environment_shell) enum StartError {
     NoProgram(HarnessName),
     NoChat(HarnessName),
-    NotInWsl(HarnessName),
     Waiting,
     Opencode(String),
-    Gateway(String),
     Secret(String),
     Adapter(String),
     Cloud(String),
@@ -40,10 +37,8 @@ impl fmt::Display for StartError {
         match self {
             Self::NoProgram(name) => write!(formatter, "{name} {NO_PROGRAM_TEXT}"),
             Self::NoChat(name) => write!(formatter, "{name} {NO_CHAT_TEXT}"),
-            Self::NotInWsl(name) => write!(formatter, "{name} {NOT_IN_WSL_TEXT}"),
             Self::Waiting => formatter.write_str(WAITING_TEXT),
             Self::Opencode(error)
-            | Self::Gateway(error)
             | Self::Secret(error)
             | Self::Adapter(error)
             | Self::Cloud(error) => formatter.write_str(error),

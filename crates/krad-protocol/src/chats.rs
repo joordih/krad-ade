@@ -1,7 +1,7 @@
 use krad_domain::{
     AcpAuthMethod, AcpAuthMethodId, AcpConfigOption, AcpConfigOptionId, AcpConfigValue, AcpModeId,
     AcpModels, AcpModes, AgentPreset, AskAnswer, AskKind, ChatMessage, ChatOrigin, CommandOffer,
-    Effort, ModelId, PermissionMode, PickedAnswer, Prompt, ResumeId, RewindScope,
+    Effort, McpProjectTrust, ModelId, PermissionMode, PickedAnswer, Prompt, ResumeId, RewindScope,
 };
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
@@ -9,8 +9,10 @@ use std::time::SystemTime;
 use crate::bus::AgentRef;
 use crate::event::EventKind;
 
+mod mcp_trust;
 mod mirror;
 
+pub use mcp_trust::{McpOffered, McpSkippedShown, McpTrustAsk};
 pub use mirror::{ChatMirror, MirrorChange};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
@@ -88,6 +90,10 @@ pub enum ChatCommand {
         chat: AgentRef,
         method: AcpAuthMethodId,
     },
+    TrustMcp {
+        chat: AgentRef,
+        trust: McpProjectTrust,
+    },
     #[serde(other)]
     Unknown,
 }
@@ -111,7 +117,8 @@ impl ChatCommand {
             | Self::ApprovePlan { chat, .. }
             | Self::SetAcpMode { chat, .. }
             | Self::SetAcpOption { chat, .. }
-            | Self::SignIn { chat, .. } => Some(chat),
+            | Self::SignIn { chat, .. }
+            | Self::TrustMcp { chat, .. } => Some(chat),
             Self::Unknown => None,
         }
     }
@@ -189,6 +196,8 @@ pub struct ChatState {
     pub account: Option<String>,
     #[serde(default)]
     pub acp: Option<AcpShown>,
+    #[serde(default)]
+    pub mcp_trust: Option<McpTrustAsk>,
 }
 
 impl ChatState {
@@ -216,6 +225,7 @@ impl ChatState {
             commands: Vec::new(),
             account: None,
             acp: None,
+            mcp_trust: None,
         }
     }
 }

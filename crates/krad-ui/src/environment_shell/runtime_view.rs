@@ -270,7 +270,8 @@ impl EnvironmentShell {
             | EventKind::RemoteBusChanged { .. }
             | EventKind::HostPrompted(_)
             | EventKind::HostPromptSettled { .. }
-            | EventKind::HostAgentsFound { .. }) => self.host_event_heard(host, cx),
+            | EventKind::HostAgentsFound { .. }
+            | EventKind::LocalAgentsFound(_)) => self.host_event_heard(host, cx),
             EventKind::EnvironmentOpened { .. }
             | EventKind::EnvironmentClosed { .. }
             | EventKind::EnvironmentsOrdered { .. }

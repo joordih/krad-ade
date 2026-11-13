@@ -3,13 +3,13 @@
 use futures::executor::block_on;
 use futures::StreamExt as _;
 use krad_domain::{
-    EnvironmentData, EnvironmentName, Host, ProcessRun, PromptAsker, RuntimeState, SshDestination,
-    TerminalId,
+    AgentPreset, EnvironmentData, EnvironmentName, Host, ProcessRun, PromptAsker, RuntimeState,
+    SshDestination, TerminalId,
 };
 use krad_host::mux::SignInPrompt;
 use krad_protocol::{
-    AgentRef, Command, EnvironmentCommand, ErrorCode, EventKind, Feed, HostCommand, HostState,
-    PromptAnswer, Reply, Scope, TerminalSummary,
+    AgentPlace, AgentRef, Command, EnvironmentCommand, ErrorCode, EventKind, Feed, HostCommand,
+    HostState, PromptAnswer, Reply, Scope, TerminalSummary,
 };
 use krad_runtime::{EnvironmentsSetup, Runtime, RuntimeHandle, RuntimeSetup};
 use std::error::Error;
@@ -318,5 +318,28 @@ fn a_closed_environment_leaves_the_hosts() -> TestResult {
     assert_eq!(closed, Reply::Accepted);
     let snapshot = block_on(runtime.snapshot(Scope::Runtime))?;
     assert_eq!(snapshot.hosts.hosts, Vec::new());
+    Ok(())
+}
+
+#[test]
+fn agents_on_this_computer_are_found_by_the_runtime_and_kept_in_its_snapshot() -> TestResult {
+    let runtime = runtime_with(vec![on("here", None)?])?;
+    let feed = follow(&runtime)?;
+    let detect = HostCommand::DetectLocalAgents {
+        place: AgentPlace::Native,
+    };
+    assert_eq!(
+        block_on(runtime.send(runtime.next_request(), host(detect)))?,
+        Reply::Accepted
+    );
+    let EventKind::LocalAgentsFound(found) =
+        until(&feed, |kind| matches!(kind, EventKind::LocalAgentsFound(_)))?
+    else {
+        return Err(TIMED_OUT.into());
+    };
+    assert_eq!(found.place, AgentPlace::Native);
+    assert!(found.agents.contains(&AgentPreset::Shell));
+    let snapshot = block_on(runtime.snapshot(Scope::Runtime))?;
+    assert_eq!(snapshot.hosts.local, vec![found]);
     Ok(())
 }

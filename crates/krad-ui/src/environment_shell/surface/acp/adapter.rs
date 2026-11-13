@@ -89,16 +89,6 @@ fn keeps_adapter_here(link: &HostLink, root: Option<&Path>) -> bool {
     link.is_local() && root.and_then(parse_wsl_path).is_none()
 }
 
-pub(in crate::environment_shell) fn app_kept_adapter_present(agent: &AcpAgent) -> bool {
-    let Some(package) = app_kept_acp_package(agent.id) else {
-        return false;
-    };
-    let kept = acp_adapters_dir()
-        .map(|dir| dir.join(agent.id.as_str()))
-        .and_then(|folder| managed_adapter_program(&folder, package));
-    kept.is_some() || find_program(NPM_PROGRAM).is_some()
-}
-
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn acp_runner(
         &mut self,
@@ -194,7 +184,7 @@ impl EnvironmentShell {
         if let Some(adapter) = self.acp_adapters.get_mut(&agent) {
             adapter.retry();
         }
-        self.detect_agents(cx);
+        self.detect_agents();
         self.adapter_moved(agent, cx);
     }
 

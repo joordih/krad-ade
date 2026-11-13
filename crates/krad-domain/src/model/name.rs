@@ -134,6 +134,14 @@ fn gpt_name(words: &[&str]) -> String {
 }
 
 #[must_use]
+pub fn model_label(id: &str) -> String {
+    claude_alias_name(id)
+        .map(str::to_owned)
+        .or_else(|| humanize_model_id(id))
+        .unwrap_or_else(|| id.to_owned())
+}
+
+#[must_use]
 pub fn humanize_model_id(id: &str) -> Option<String> {
     let (base, _) = split_context(id.trim());
     let base = base.rsplit(PROVIDER_SEPARATOR).next().unwrap_or(base);

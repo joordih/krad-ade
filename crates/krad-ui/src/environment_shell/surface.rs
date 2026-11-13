@@ -60,7 +60,7 @@ use subagents::Subagents;
 use timeline::Timeline;
 use transcript::{TranscriptView, TRANSCRIPT_HARNESS};
 
-pub(super) use acp::{app_kept_adapter_present, AcpChoice, AcpSeed, KeptAdapterView};
+pub(super) use acp::{AcpChoice, AcpSeed, KeptAdapterView};
 pub(super) use answer::{names_its_tool, tool_question, tool_request};
 pub(super) use bus::ChatPresence;
 pub(super) use chat_menu::ChatCopy;

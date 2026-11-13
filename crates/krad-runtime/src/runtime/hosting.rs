@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use super::{refused, Runtime};
 use crate::gateway::Gateway;
-use crate::hosts::HostWork;
+use crate::hosts::{HostWork, Hosts};
 use crate::jobs::JobDone;
 use crate::terminals::Shared;
 
@@ -36,6 +36,14 @@ impl Runtime {
                     return Some(refused(ErrorCode::NotFound, UNKNOWN_ENVIRONMENT));
                 }
                 self.detect_host_agents(environment);
+                return Some(Reply::Accepted);
+            }
+            HostCommand::DetectLocalAgents { place } => {
+                Hosts::detect_local_agents(
+                    place.clone(),
+                    self.settings.current.acp.all_agents(),
+                    &self.jobs,
+                );
                 return Some(Reply::Accepted);
             }
             HostCommand::AnswerPrompt { .. } | HostCommand::Unknown => None,
@@ -123,7 +131,17 @@ impl Runtime {
             JobDone::OpencodeListed(listed) => self.opencode_listed(listed),
             JobDone::AcpSecretsRead(read) => self.acp_secrets_read(read),
             JobDone::AttachedLine(line) => self.attached_line_ready(line),
-            JobDone::HostAgentsFound(found) => self.hosts.agents_found(found, &mut self.outbox),
+            JobDone::HostAgentsFound(found) => {
+                self.hosts.agents_found(found, &mut self.outbox);
+                self.flush_chats();
+            }
+            JobDone::LocalAgentsFound(found) => {
+                self.hosts.local_agents_found(found, &mut self.outbox);
+            }
+            JobDone::McpRead(read) => self.with_chat_work(|chats, work| chats.mcp_read(read, work)),
+            JobDone::McpLaunched(launched) => {
+                self.with_chat_work(|chats, work| chats.mcp_launched(launched, work));
+            }
             JobDone::HarnessChecked { .. }
             | JobDone::ModelsListed { .. }
             | JobDone::UsageRead { .. } => {}

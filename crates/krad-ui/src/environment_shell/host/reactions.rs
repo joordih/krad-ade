@@ -43,6 +43,7 @@ impl EnvironmentShell {
                 host,
                 agents,
             } => self.host_agents_found(&environment, (host, agents), cx),
+            EventKind::LocalAgentsFound(found) => self.local_agents_found(found, cx),
             _ => {}
         }
     }
@@ -61,6 +62,9 @@ impl EnvironmentShell {
                 self.host_agents
                     .insert(live.data.host.clone(), entry.agents.clone());
             }
+        }
+        for found in snapshot.local.clone() {
+            self.local_agents_found(found, cx);
         }
         for moved in self.runtime.view.hosts.replace(snapshot) {
             self.host_moved(&moved, cx);

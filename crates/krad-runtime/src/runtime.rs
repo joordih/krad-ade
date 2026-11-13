@@ -263,13 +263,7 @@ impl Runtime {
             }
             Input::SettingsNotSaved(error) => AppSettings::not_saved(error, &mut self.outbox),
             Input::OfferMemoryTools(offered) => self.offer_memory_tools(offered),
-            Input::Bus(incoming) => {
-                let Some(bus) = &mut self.bus else {
-                    tracing::debug!("a bus request reached a runtime without a bus");
-                    return Flow::Running;
-                };
-                bus.answer(incoming, &mut self.outbox);
-            }
+            Input::Bus(incoming) => self.answer_bus(incoming),
             bus_input => self.apply_bus(bus_input),
         }
         Flow::Running

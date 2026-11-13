@@ -25,12 +25,6 @@ pub(in crate::environment_shell) enum NodeSite {
     Waiting(CloudRunnerId),
 }
 
-impl NodeSite {
-    pub(in crate::environment_shell) const fn is_cloud(&self) -> bool {
-        matches!(self, Self::Cloud(_) | Self::Waiting(_))
-    }
-}
-
 type ReadyRunner = (HostLink, PathBuf, Pairing);
 
 fn site_of(
@@ -233,14 +227,12 @@ mod tests {
     fn nodes_outside_cloud_sessions_stay_on_their_environment() {
         let site = site_of(None, |_| unreachable!("no runner is asked for"));
         assert!(matches!(site, NodeSite::Env));
-        assert!(!site.is_cloud());
     }
 
     #[test]
     fn a_cloud_node_waits_for_its_runner_and_then_runs_there() -> TestResult {
         let waiting = site_of(Some(placement()), |_| None);
         assert!(matches!(waiting, NodeSite::Waiting(CloudRunnerId(5))));
-        assert!(waiting.is_cloud());
         let pairing = pairing()?;
         let ready = site_of(Some(placement()), |runner| {
             assert_eq!(runner, CloudRunnerId(5));

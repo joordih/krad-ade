@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::bus::{Delegated, DelegationId, Mail};
-use crate::chats::{ChatLaunch, ChatStart, IndexAnswer, LiveStarted};
+use crate::chats::{ChatBrief, ChatStart, IndexAnswer, LiveStarted};
 use crate::harness_health::HarnessProbe;
 use crate::jobs::JobDone;
 use crate::opencode::OpencodeInput;
@@ -19,7 +19,9 @@ use crate::terminals::{Shared, TerminalAction, TerminalLaunch};
 use crate::usage::UsagePlace;
 
 pub(crate) struct LiveStart {
-    pub(crate) launch: ChatLaunch,
+    pub(crate) chat: AgentRef,
+    pub(crate) harness: AgentPreset,
+    pub(crate) brief: ChatBrief,
     pub(crate) session: LiveSession,
     pub(crate) sink: Box<dyn FnMut(LiveEvent) + Send>,
     pub(crate) reply: oneshot::Sender<LiveStarted>,
@@ -29,6 +31,7 @@ impl std::fmt::Debug for LiveStart {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("LiveStart")
+            .field("harness", &self.harness)
             .field("session", &self.session)
             .finish_non_exhaustive()
     }

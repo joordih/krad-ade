@@ -1,11 +1,11 @@
 use gpui_kit::Context;
 use krad_domain::{
-    snap_effort, AgentPreset, ChatChoice, Effort, EffortSnap, EnvironmentName, ModelId, TerminalId,
-    TerminalNode,
+    model_label, snap_effort, AgentPreset, ChatChoice, Effort, EffortSnap, EnvironmentName,
+    ModelId, TerminalId, TerminalNode,
 };
 
 use super::super::EnvironmentShell;
-use super::facts::model_label;
+
 use super::structured::StructuredChat;
 use super::{Backend, SurfaceCommand};
 

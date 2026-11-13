@@ -1,8 +1,7 @@
 use krad_agents::AgentStatus;
 use krad_chat::{ModelOffer, ModelSource};
 use krad_domain::{
-    claude_alias_name, humanize_model_id, AgentPreset, ContextSize, Effort, EffortSnap,
-    EnvironmentName, ModelId, TerminalId,
+    model_label, AgentPreset, ContextSize, Effort, EffortSnap, EnvironmentName, ModelId, TerminalId,
 };
 use std::path::Path;
 
@@ -39,13 +38,6 @@ pub(super) struct Facts {
     pub(super) reports_context: bool,
     pub(super) context_window: Option<u64>,
     pub(super) account: Option<String>,
-}
-
-pub(in crate::environment_shell) fn model_label(id: &str) -> String {
-    claude_alias_name(id)
-        .map(str::to_owned)
-        .or_else(|| humanize_model_id(id))
-        .unwrap_or_else(|| id.to_owned())
 }
 
 fn settings_picks(

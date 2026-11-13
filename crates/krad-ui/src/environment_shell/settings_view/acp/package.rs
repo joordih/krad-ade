@@ -161,7 +161,7 @@ impl EnvironmentShell {
                             &format!("{} {INSTALLED_TOAST}", package.name),
                             cx,
                         );
-                        shell.redetect_acp_agents(cx);
+                        shell.redetect_acp_agents();
                     }
                     Err(error) => {
                         shell.set_acp_package(key, AcpPackageState::Failed(error.to_string()));
@@ -175,8 +175,8 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    fn redetect_acp_agents(&mut self, cx: &mut Context<Self>) {
-        self.detect_agents(cx);
+    fn redetect_acp_agents(&mut self) {
+        self.detect_agents();
         let remote = self
             .envs
             .get(&self.active)

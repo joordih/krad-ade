@@ -8,9 +8,11 @@ use std::io;
 use std::sync::mpsc::SyncSender;
 use std::thread;
 
-use crate::chats::{AcpSecretsRead, ChatCheckpoint, ChatEarlier, ChatOpening, FilesIndexed};
+use crate::chats::{
+    AcpSecretsRead, ChatCheckpoint, ChatEarlier, ChatOpening, FilesIndexed, McpLaunched, McpRead,
+};
 use crate::gateway::{GatewayForgotten, GatewayRead};
-use crate::hosts::{AgentsFound, Attempt, RemoteBus};
+use crate::hosts::{AgentsFound, Attempt, LocalFound, RemoteBus};
 use crate::input::Input;
 use crate::opencode::{OpencodeListed, OpencodeStarted};
 use crate::runtime::AttachedLine;
@@ -55,6 +57,9 @@ pub(crate) enum JobDone {
     AcpSecretsRead(AcpSecretsRead),
     AttachedLine(AttachedLine),
     HostAgentsFound(AgentsFound),
+    LocalAgentsFound(LocalFound),
+    McpRead(McpRead),
+    McpLaunched(McpLaunched),
 }
 
 #[derive(Clone, Debug)]

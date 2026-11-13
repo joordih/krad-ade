@@ -1,13 +1,20 @@
 use krad_chat::{start_chat, AcpConfig, ChatBackend, EngineConfig, LiveChat, LiveConfig, Runner};
 use krad_domain::{AgentPreset, Effort, ModelId, PermissionMode};
 use krad_host::HostLink;
+use krad_protocol::AgentRef;
+use krad_store::gateway_sessions_dir;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use super::brief::ChatBrief;
 use super::chat::Chat;
+use super::mcp_prep::{ready_mcp, McpPrep};
 use super::queue::ChatQueue;
+use super::resolve::{chat_folder, LaunchFacts};
 use super::ChatWork;
 use crate::gateway::GatewayReached;
+use crate::launches::AgentRole;
+use crate::mcp::McpLaunch;
 use crate::opencode::Reach;
 
 #[must_use]
@@ -26,6 +33,7 @@ const GATEWAY_UNREACHED: &str =
     "The Gateway is not reachable yet: check its address and key in Settings › Gateway";
 pub(crate) const OPENCODE_STARTING: &str = "opencode is still starting";
 const ACP_UNPREPARED: &str = "an ACP agent starts only inside an open chat";
+const UNKNOWN_PLACE: &str = "the chat's environment is not open in the runtime";
 
 pub type LiveStarted = Result<LiveChat, String>;
 
@@ -104,7 +112,7 @@ fn served(mut config: EngineConfig, reached: GatewayReached<'_>) -> EngineConfig
     config
 }
 
-pub(crate) fn reach_opencode(config: &LiveConfig, work: &mut ChatWork<'_>) -> Reach {
+pub(super) fn reach_opencode(config: &LiveConfig, work: &mut ChatWork<'_>) -> Reach {
     work.opencode.reach(
         &config.runner.link().host(),
         (&config.runner, &config.cwd),
@@ -210,28 +218,28 @@ pub(super) enum HistorySource {
         sessions: PathBuf,
         cwd: PathBuf,
     },
-    OpencodeOn(Box<LiveConfig>),
+    OpencodeOn(Runner, PathBuf),
     Opencode(Arc<krad_chat::OpencodeServer>),
     Acp(PathBuf),
     Unread,
 }
 
 impl HistorySource {
-    pub(super) fn of(chat: &Chat) -> Self {
-        let config = match &chat.launch {
+    pub(super) fn of(chat: &Chat, facts: &LaunchFacts<'_>) -> Self {
+        let Some(launch) = &chat.prepared else {
+            return Self::briefed(chat, facts);
+        };
+        let config = match launch {
             ChatLaunch::Gateway(config) => &**config,
-            ChatLaunch::Opencode(config) => return Self::OpencodeOn(config.clone()),
+            ChatLaunch::Opencode(config) => {
+                return Self::OpencodeOn(config.runner.clone(), config.cwd.clone())
+            }
             ChatLaunch::Acp(_) => {
                 return krad_store::acp_transcript_file(&chat.id.environment, chat.id.terminal)
                     .map_or(Self::Unread, Self::Acp);
             }
             ChatLaunch::Backend(backend) => match &**backend {
-                ChatBackend::Claude(_) => {
-                    return Self::Claude {
-                        link: chat.place.link.clone(),
-                        root: chat.place.root.clone(),
-                    }
-                }
+                ChatBackend::Claude(_) => return Self::claude(chat),
                 ChatBackend::Codex(config) => {
                     return Self::Codex {
                         runner: config.runner.clone(),
@@ -248,6 +256,79 @@ impl HistorySource {
             cwd: config.cwd.clone(),
         }
     }
+
+    fn claude(chat: &Chat) -> Self {
+        Self::Claude {
+            link: chat.place.link.clone(),
+            root: chat.place.root.clone(),
+        }
+    }
+
+    fn briefed(chat: &Chat, facts: &LaunchFacts<'_>) -> Self {
+        let runner = || facts.history_runner(&chat.id, chat.harness, &chat.place);
+        match chat.harness {
+            AgentPreset::ClaudeCode => Self::claude(chat),
+            AgentPreset::Codex => {
+                runner().map_or(Self::Unread, |(runner, cwd)| Self::Codex { runner, cwd })
+            }
+            AgentPreset::Opencode => {
+                runner().map_or(Self::Unread, |(runner, cwd)| Self::OpencodeOn(runner, cwd))
+            }
+            AgentPreset::Gateway => {
+                gateway_sessions_dir().map_or(Self::Unread, |sessions| Self::Gateway {
+                    sessions,
+                    cwd: chat_folder(&chat.place),
+                })
+            }
+            AgentPreset::Acp(_) | AgentPreset::Shell => Self::Unread,
+        }
+    }
+}
+
+fn planned(chat: &mut Chat, mcp: McpLaunch, work: &ChatWork<'_>) -> Result<ChatLaunch, Unready> {
+    let Some(prepared) = &chat.prepared else {
+        let resolved = work.facts.resolve(
+            (&chat.id, chat.harness, &chat.place),
+            (&chat.brief, &chat.choices),
+            mcp.starts,
+        )?;
+        if resolved.model_dropped {
+            chat.choices.model = None;
+        }
+        chat.start_notices.extend(resolved.notices);
+        chat.start_notices.extend(mcp.problems);
+        return Ok(chosen(resolved.launch, &chat.choices));
+    };
+    let mut launch = chosen(prepared.clone(), &chat.choices);
+    if let ChatLaunch::Acp(config) = &mut launch {
+        config.mcp = mcp.starts;
+        chat.start_notices.extend(mcp.problems);
+    }
+    Ok(launch)
+}
+
+fn changed_role(chat: &Chat, role: AgentRole) -> bool {
+    chat.prepared.is_none() && chat.started_as.is_some_and(|started| started != role)
+}
+
+pub(crate) fn resolve_once(
+    (chat, harness): (&AgentRef, AgentPreset),
+    brief: &ChatBrief,
+    work: &mut ChatWork<'_>,
+) -> Result<ChatBackend, Unready> {
+    let place = work
+        .facts
+        .place(chat)
+        .ok_or_else(|| Unready::Problem(UNKNOWN_PLACE.to_owned()))?;
+    let resolved = work.facts.resolve(
+        (chat, harness, &place),
+        (brief, &Choices::from(brief)),
+        Vec::new(),
+    )?;
+    let gateway = work.gateway;
+    resolved
+        .launch
+        .resolve(gateway, |config| reach_opencode(config, work))
 }
 
 pub(super) fn ensure_live(
@@ -256,27 +337,28 @@ pub(super) fn ensure_live(
     generation: u64,
     work: &mut ChatWork<'_>,
 ) -> bool {
+    let role = work.facts.role(&chat.id);
     if chat.live().is_some() {
-        return true;
-    }
-    let gateway = work.gateway;
-    let launch = match (
-        chosen(chat.launch.clone(), &chat.choices),
-        chat.acp.as_mut(),
-    ) {
-        (ChatLaunch::Acp(config), Some(acp)) => {
-            match acp.prepared(*config, (&chat.id, chat.opened), work.jobs) {
-                Ok(backend) => ChatLaunch::from(backend),
-                Err(Unready::Waiting) => return false,
-                Err(Unready::Problem(problem)) => {
-                    chat.problem = Some(problem);
-                    return false;
-                }
-            }
+        if !changed_role(chat, role) {
+            return true;
         }
-        (launch, _) => launch,
+        if let Some(live) = chat.live.take() {
+            live.stop();
+        }
+    }
+    let Some(mcp) = ready_mcp(chat, work) else {
+        return false;
     };
-    let backend = match launch.resolve(gateway, |config| reach_opencode(config, work)) {
+    let gateway = work.gateway;
+    let launch = match (planned(chat, mcp, work), chat.acp.as_mut()) {
+        (Ok(ChatLaunch::Acp(config)), Some(acp)) => acp
+            .prepared(*config, (&chat.id, chat.opened), work.jobs)
+            .map(ChatLaunch::from),
+        (planned, _) => planned,
+    };
+    let backend =
+        launch.and_then(|launch| launch.resolve(gateway, |config| reach_opencode(config, work)));
+    let backend = match backend {
         Ok(backend) => backend,
         Err(Unready::Waiting) => return false,
         Err(Unready::Problem(problem)) => {
@@ -288,6 +370,8 @@ pub(super) fn ensure_live(
     match start_chat(backend, &chat.session, sink) {
         Ok(live) => {
             chat.live = Some(live);
+            chat.started_as = Some(role);
+            chat.mcp = McpPrep::Unread;
             chat.generation = generation;
             chat.confirmed = false;
             true

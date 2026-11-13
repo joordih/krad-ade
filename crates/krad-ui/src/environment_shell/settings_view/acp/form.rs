@@ -319,7 +319,7 @@ impl EnvironmentShell {
                 }
                 shell.settings.acp = acp;
                 shell.save_settings(cx);
-                shell.detect_agents(cx);
+                shell.detect_agents();
                 shell.toast(ToastKind::Success, ADDED_TOAST, cx);
             })
             .unwrap_or_default();

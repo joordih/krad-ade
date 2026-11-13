@@ -248,3 +248,30 @@ fn an_acp_chat_state_carries_its_offers_sign_in_and_commands() -> serde_json::Re
     assert_eq!(serde_json::from_str::<ChatState>(&json)?, state);
     Ok(())
 }
+
+#[test]
+fn an_mcp_trust_ask_shows_servers_without_their_variables() -> serde_json::Result<()> {
+    let trust = Command::Chat(ChatCommand::TrustMcp {
+        chat: chat(),
+        trust: McpProjectTrust::Trusted,
+    });
+    let json = serde_json::to_string(&trust)?;
+    assert_eq!(
+        json,
+        r#"{"area":"chat","verb":"trust_mcp","chat":{"environment":"main","terminal":4},"trust":"trusted"}"#
+    );
+    assert_eq!(serde_json::from_str::<Command>(&json)?, trust);
+    let file: krad_domain::McpProjectFile =
+        r#"{"mcpServers":{"files":{"command":"npx","args":["files"],"env":{"TOKEN":"hidden"}}}}"#
+            .parse()
+            .unwrap_or_default();
+    let ask = McpTrustAsk::new(std::path::PathBuf::from("/work"), &file);
+    assert_eq!(ask.servers.len(), 1);
+    assert_eq!(ask.servers[0].summary, "npx files");
+    let mut state = ChatState::new(AgentPreset::Gateway);
+    state.mcp_trust = Some(ask);
+    let json = serde_json::to_string(&state)?;
+    assert!(!json.contains("hidden"));
+    assert_eq!(serde_json::from_str::<ChatState>(&json)?, state);
+    Ok(())
+}

@@ -10,7 +10,9 @@ mod preference;
 
 pub use choice::ChatChoice;
 pub use effort_scale::{snap_effort, EffortSnap};
-pub use name::{claude_alias_name, humanize_model_id, split_context, ContextSize, CLAUDE_BRAND};
+pub use name::{
+    claude_alias_name, humanize_model_id, model_label, split_context, ContextSize, CLAUDE_BRAND,
+};
 pub use offer::{ModelOffer, ModelSource, SourceRank};
 pub use preference::{Marked, ModelPreferences};
 

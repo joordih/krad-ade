@@ -1,6 +1,6 @@
 use gpui_kit::Context;
 use krad_domain::{EnvironmentName, Prompt, TerminalId};
-use krad_protocol::{ChatCommand, ChatPage, ChatState, Command};
+use krad_protocol::{ChatCommand, ChatPage, ChatState, Command, McpTrustAsk};
 use std::time::{Instant, SystemTime};
 
 use super::super::super::super::EnvironmentShell;
@@ -13,6 +13,7 @@ const NOTICE_SEPARATOR: &str = "\n";
 #[derive(Debug, Default)]
 pub(in crate::environment_shell::surface) struct RuntimeShown {
     pub(in crate::environment_shell::surface) queued: Vec<Outgoing>,
+    pub(in crate::environment_shell::surface) mcp_trust: Option<McpTrustAsk>,
     from: usize,
     earlier: bool,
     paging: bool,
@@ -31,6 +32,7 @@ impl RuntimeShown {
             })
             .collect();
         self.earlier = state.earlier;
+        self.mcp_trust.clone_from(&state.mcp_trust);
         self.working_since = match (state.working_since, self.working_since) {
             (Some(since), Some(known)) if known.0 == since => Some(known),
             (Some(since), _) => Some((since, as_instant(since, Instant::now(), SystemTime::now()))),

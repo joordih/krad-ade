@@ -9,7 +9,7 @@ use krad_store::read_acp_transcript;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use super::backend::{reach_opencode, HistorySource};
+use super::backend::HistorySource;
 use super::chat::{Chat, Earlier, HistoryWait, Shown};
 use super::{ChatWork, Chats, UNKNOWN_CHAT};
 use crate::jobs::{JobDone, Jobs};
@@ -49,9 +49,14 @@ pub(super) fn read(chat: &mut Chat, work: &mut ChatWork<'_>) {
         .is_empty()
         .then(|| chat.session.history().cloned())
         .flatten();
-    let source = match HistorySource::of(chat) {
-        HistorySource::OpencodeOn(_) if resume.is_none() => return,
-        HistorySource::OpencodeOn(config) => match reach_opencode(&config, work) {
+    let source = match HistorySource::of(chat, &work.facts) {
+        HistorySource::OpencodeOn(..) if resume.is_none() => return,
+        HistorySource::OpencodeOn(runner, cwd) => match work.opencode.reach(
+            &runner.link().host(),
+            (&runner, &cwd),
+            work.jobs,
+            work.outbox,
+        ) {
             Reach::Ready(server) => HistorySource::Opencode(server),
             Reach::Waiting => {
                 chat.history = HistoryWait::ForServer;
@@ -122,7 +127,7 @@ fn look(
                     .map_err(|error| error.to_string())
             }),
         ),
-        HistorySource::OpencodeOn(_) | HistorySource::Unread => (None, None),
+        HistorySource::OpencodeOn(..) | HistorySource::Unread => (None, None),
     }
 }
 

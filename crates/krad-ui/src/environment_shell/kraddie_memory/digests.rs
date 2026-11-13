@@ -9,12 +9,12 @@ use krad_domain::{
 };
 use std::time::{Duration, Instant, SystemTime};
 
+use krad_protocol::AgentRef;
+use krad_runtime::{ChatBrief, ChatRole};
+
 use super::super::chat::{AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
 use super::ChatKey;
-use quiet::quiet_launch;
-
-mod quiet;
 
 pub(super) const DIGEST_CHECK_EVERY: Duration = Duration::from_mins(1);
 const DIGEST_TIMEOUT: Duration = Duration::from_mins(4);
@@ -236,6 +236,21 @@ impl EnvironmentShell {
         })
     }
 
+    fn digest_brief(&self, (env, chat): &ChatKey) -> ChatBrief {
+        let structured = self
+            .envs
+            .get(env)
+            .and_then(|live| live.chats.get(chat))
+            .and_then(|surface| surface.structured());
+        ChatBrief {
+            model: structured.and_then(|structured| structured.chosen_model.clone()),
+            effort: structured.and_then(|structured| structured.effort),
+            permission_mode: Some(DIGEST_MODE),
+            role: ChatRole::Digest,
+            ..ChatBrief::default()
+        }
+    }
+
     fn write_digest(&mut self, key: &ChatKey, cx: &mut Context<Self>) {
         let Some(job) = self.digest_job(key) else {
             return;
@@ -244,22 +259,19 @@ impl EnvironmentShell {
             .memory
             .attempted
             .insert(key.clone(), job.messages.len());
-        let launch = match self.chat_launch(&key.0, key.1, job.harness, cx) {
-            Ok(launch) => quiet_launch(launch),
-            Err(error) => {
-                tracing::debug!(%error, "no harness free to write a chat digest");
-                None
-            }
-        };
-        let Some(launch) = launch else {
-            return;
-        };
+        let brief = self.digest_brief(key);
         let (sender, receiver) = oneshot::channel();
         let session = LiveSession::Start(new_session_id());
-        let started = self
-            .runtime
-            .handle
-            .start_live_chat(launch, session, reply_sink(sender));
+        let chat = AgentRef {
+            environment: key.0.clone(),
+            terminal: key.1,
+        };
+        let started = self.runtime.handle.start_live_chat(
+            (chat, job.harness),
+            brief,
+            session,
+            reply_sink(sender),
+        );
         let prompt = Prompt::from(digest_prompt(&job.chat.title, &job.messages));
         self.kraddies.memory.writing.insert(key.clone(), None);
         let key = key.clone();

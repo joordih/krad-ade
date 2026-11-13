@@ -1,5 +1,5 @@
 use gpui_kit::Context;
-use krad_agents::{Caller, ErrorCode, LeadHandle, Request, Response, TerminalState};
+use krad_agents::{ErrorCode, LeadHandle, Request, Response, TerminalState};
 use krad_domain::{AgentState, EnvironmentName, SessionId, TerminalId, VariantRunId};
 use krad_runtime::BusReply;
 
@@ -11,7 +11,6 @@ use super::{handle, Settlement};
 
 const NOT_A_LEAD_ANYMORE: &str = "This chat is no longer its session's lead";
 const NO_LEAD_GROUP: &str = "The lead's session belongs to no group, so it cannot start workers";
-const WORKER_RETIRED: &str = "That worker finished and was closed; send it a message to reopen it";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum WorkerPlace {
@@ -20,32 +19,6 @@ enum WorkerPlace {
 }
 
 impl EnvironmentShell {
-    pub(super) fn as_lead(&self, from: Caller, request: &Request) -> Caller {
-        let Caller::Terminal(terminal) = &from else {
-            return from;
-        };
-        let Some(live) = self
-            .envs
-            .get(&EnvironmentName::new(terminal.environment.clone()))
-        else {
-            return from;
-        };
-        let Some(session) = live.data.session_led_by(TerminalId(terminal.terminal)) else {
-            return from;
-        };
-        let follows_own_worker = request
-            .followed_terminal()
-            .and_then(|target| live.data.worker(TerminalId(target)))
-            .is_some_and(|(owner, _)| owner == session);
-        if !request.directs_workers() && !follows_own_worker {
-            return from;
-        }
-        Caller::Lead(LeadHandle {
-            environment: terminal.environment.clone(),
-            session: session.as_u64(),
-        })
-    }
-
     pub(super) fn answer_lead(
         &mut self,
         lead: &LeadHandle,
@@ -161,28 +134,13 @@ impl EnvironmentShell {
         match request {
             Request::Read { target, lines } => {
                 let terminal = TerminalId(*target);
-                match self.worker_place(env, lead, terminal)? {
-                    WorkerPlace::Closed => {
-                        Some(Response::error(ErrorCode::NotFound, WORKER_RETIRED).into())
-                    }
-                    WorkerPlace::Open if self.has_finished(env, terminal) => {
-                        let tail = self.screen_tail(env.as_str(), *target, *lines);
-                        self.close_finished_worker(env, lead, terminal, cx);
-                        Some(tail)
-                    }
-                    WorkerPlace::Open => None,
+                let open = self.worker_place(env, lead, terminal)? == WorkerPlace::Open;
+                if !open || !self.has_finished(env, terminal) {
+                    return None;
                 }
-            }
-            Request::Wait { target, .. } => {
-                let closed =
-                    self.worker_place(env, lead, TerminalId(*target)) == Some(WorkerPlace::Closed);
-                closed.then(|| {
-                    Response::Settled {
-                        target: *target,
-                        state: TerminalState::Closed,
-                    }
-                    .into()
-                })
+                let tail = self.screen_tail(env.as_str(), *target, *lines);
+                self.close_finished_worker(env, lead, terminal, cx);
+                Some(tail)
             }
             Request::Send { to, .. } => {
                 let terminal = TerminalId(*to);

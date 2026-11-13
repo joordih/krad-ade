@@ -9,7 +9,6 @@ use krad_domain::{McpProjectTrust, McpServer, McpServerName, McpServerState, Toa
 use krad_store::delete_mcp_secret;
 use std::path::{Path, PathBuf};
 
-use super::super::mcp::server_summary;
 use super::sections::{empty_row, footnote, pane_column, settings_section};
 use super::{form_row, panel_card, EnvironmentShell};
 use crate::components::{Button, ButtonVariant, IconName};
@@ -123,12 +122,7 @@ impl EnvironmentShell {
                     })),
             )
             .into_any_element();
-        form_row(
-            server.name.as_str(),
-            Some(&server_summary(server)),
-            controls,
-            pal,
-        )
+        form_row(server.name.as_str(), Some(&server.summary()), controls, pal)
     }
 
     fn mcp_servers_card(&self, form_open: bool, cx: &mut Context<Self>) -> AnyElement {

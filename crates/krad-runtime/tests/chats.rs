@@ -1,5 +1,7 @@
 #![cfg(unix)]
 
+#[path = "chats/briefed.rs"]
+mod briefed;
 #[path = "support/chats.rs"]
 mod chat_support;
 

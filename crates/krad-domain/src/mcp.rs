@@ -14,6 +14,7 @@ use std::fmt;
 
 const REDACTED: &str = "[REDACTED]";
 const SECRET_KEY_SEPARATOR: char = '/';
+const ARGUMENT_JOINER: &str = " ";
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -91,6 +92,17 @@ pub struct McpServer {
 }
 
 impl McpServer {
+    #[must_use]
+    pub fn summary(&self) -> String {
+        match &self.transport {
+            McpTransport::Stdio { command, args, .. } => std::iter::once(command.as_str())
+                .chain(args.iter().map(String::as_str))
+                .collect::<Vec<_>>()
+                .join(ARGUMENT_JOINER),
+            McpTransport::Http { url, .. } => url.to_string(),
+        }
+    }
+
     #[must_use]
     pub fn secret_keys(&self) -> Vec<McpSecretKey> {
         self.transport
@@ -188,6 +200,8 @@ mod tests {
         assert_eq!(keys.len(), 1);
         assert_eq!(keys[0].to_string(), "github/GITHUB_TOKEN");
         assert!(!format!("{server:?}").contains("debug"));
+        assert_eq!(server.summary(), "npx");
+        assert!(!server.summary().contains("debug"));
     }
 
     #[test]

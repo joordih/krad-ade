@@ -1,12 +1,14 @@
 use gpui_kit::{AnyElement, Context};
 use krad_domain::{EnvironmentName, McpProjectFile, McpProjectTrust, McpServer, TerminalId};
 use krad_host::HostLink;
+use krad_protocol::{ChatCommand, Command, McpTrustAsk};
+use krad_runtime::{trusted_servers, McpLaunch, McpTrust};
 use std::path::{Path, PathBuf};
 
 use super::super::super::cloud::NodeSite;
-use super::super::super::mcp::{McpLaunch, McpTrust};
 use super::super::super::EnvironmentShell;
 use super::super::{Backend, SurfaceChat};
+use super::runtime_chat::chat_ref;
 use super::structured_mut;
 
 const READ_FAILED_LEAD: &str = "The project's MCP file could not be read: ";
@@ -16,7 +18,10 @@ pub(in crate::environment_shell) enum McpPrep {
     #[default]
     Unread,
     Reading,
-    Asking(McpProjectFile),
+    Asking {
+        file: McpProjectFile,
+        asked: McpTrustAsk,
+    },
     Launching,
     Ready(McpLaunch),
 }
@@ -41,7 +46,7 @@ impl EnvironmentShell {
                 Self::read_project_mcp(link, env.clone(), id, folder.to_path_buf(), cx);
                 None
             }
-            waiting @ (McpPrep::Reading | McpPrep::Asking(_) | McpPrep::Launching) => {
+            waiting @ (McpPrep::Reading | McpPrep::Asking { .. } | McpPrep::Launching) => {
                 structured.mcp = waiting;
                 None
             }
@@ -89,8 +94,9 @@ impl EnvironmentShell {
             McpTrust::Trusted(servers) => self.launch_mcp(env, id, servers, cx),
             McpTrust::Ignored => self.launch_mcp(env, id, Vec::new(), cx),
             McpTrust::Unknown(file) => {
+                let asked = McpTrustAsk::new(folder.to_path_buf(), &file);
                 if let Some(structured) = structured_mut(self, env, id) {
-                    structured.mcp = McpPrep::Asking(file);
+                    structured.mcp = McpPrep::Asking { file, asked };
                 }
                 cx.notify();
             }
@@ -129,6 +135,7 @@ impl EnvironmentShell {
     }
 
     fn mcp_trust_chosen(&mut self, folder: &Path, trust: McpProjectTrust, cx: &mut Context<Self>) {
+        self.set_mcp_project_trust(folder, trust, cx);
         let asking: Vec<(EnvironmentName, TerminalId)> = self
             .envs
             .iter()
@@ -136,8 +143,9 @@ impl EnvironmentShell {
                 live.chats
                     .iter()
                     .filter(|(_, chat)| {
-                        chat.structured()
-                            .is_some_and(|structured| matches!(structured.mcp, McpPrep::Asking(_)))
+                        chat.structured().is_some_and(|structured| {
+                            matches!(structured.mcp, McpPrep::Asking { .. })
+                        })
                     })
                     .map(move |(id, _)| (env.clone(), *id))
             })
@@ -147,14 +155,10 @@ impl EnvironmentShell {
             let Some(structured) = structured_mut(self, &env, id) else {
                 continue;
             };
-            let McpPrep::Asking(file) = std::mem::take(&mut structured.mcp) else {
+            let McpPrep::Asking { file, .. } = std::mem::take(&mut structured.mcp) else {
                 continue;
             };
-            let servers = match trust {
-                McpProjectTrust::Trusted => file.servers,
-                McpProjectTrust::Ignored => Vec::new(),
-            };
-            self.launch_mcp(&env, id, servers, cx);
+            self.launch_mcp(&env, id, trusted_servers(file, trust), cx);
         }
     }
 
@@ -167,15 +171,28 @@ impl EnvironmentShell {
         let Backend::Structured(structured) = &chat.backend else {
             return None;
         };
-        let McpPrep::Asking(file) = &structured.mcp else {
+        if structured.in_runtime() {
+            let asked = structured.shown.mcp_trust.as_ref()?;
+            let chat = chat_ref(&self.active, id);
+            return Some(Self::mcp_trust_tray(
+                asked,
+                move |this, trust, _, _| {
+                    let trust = ChatCommand::TrustMcp {
+                        chat: chat.clone(),
+                        trust,
+                    };
+                    this.runtime.handle.post(Command::Chat(trust));
+                },
+                cx,
+            ));
+        }
+        let McpPrep::Asking { asked, .. } = &structured.mcp else {
             return None;
         };
-        let folder = self.chat_folder(&self.active, id);
-        let chosen = folder.clone();
+        let folder = asked.folder.clone();
         Some(Self::mcp_trust_tray(
-            &folder,
-            file,
-            move |this, trust, _, cx| this.mcp_trust_chosen(&chosen, trust, cx),
+            asked,
+            move |this, trust, _, cx| this.mcp_trust_chosen(&folder, trust, cx),
             cx,
         ))
     }

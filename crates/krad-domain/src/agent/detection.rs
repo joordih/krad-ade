@@ -30,6 +30,7 @@ pub fn presets_found(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::built_in_acp_agents;
 
     #[test]
     fn only_installed_programs_offer_their_presets() {
@@ -40,5 +41,31 @@ mod tests {
         assert!(!found.contains(&AgentPreset::ClaudeCode));
         let everything = presets_found(&[], |_| true);
         assert!(everything.contains(&AgentPreset::ClaudeCode));
+    }
+
+    #[test]
+    fn acp_agents_are_listed_once_their_program_is_found() {
+        let agents = built_in_acp_agents();
+        let found = ["claude", "codex-acp", "opencode"];
+        let presets = presets_found(&agents, |program| found.contains(&program));
+        let acp: Vec<String> = presets
+            .iter()
+            .filter_map(|preset| preset.acp_agent())
+            .map(|id| id.to_string())
+            .collect();
+        assert_eq!(acp, ["codex-acp", "opencode"]);
+        assert!(presets.contains(&AgentPreset::ClaudeCode));
+        assert!(!presets.contains(&AgentPreset::Codex));
+        assert_eq!(
+            agent_programs(&agents),
+            [
+                "claude",
+                "claude-agent-acp",
+                "codex",
+                "codex-acp",
+                "gemini",
+                "opencode"
+            ]
+        );
     }
 }

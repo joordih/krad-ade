@@ -7,6 +7,7 @@ use krad_protocol::{
 use super::{answer_to, Runtime};
 use crate::chats::{
     ChatCheckpoint, ChatEarlier, ChatEffect, ChatOpening, ChatStart, ChatWork, Chats, FilesIndexed,
+    LaunchFacts,
 };
 use crate::input::{Input, LiveStart};
 use crate::opencode::{OpencodeListed, OpencodeStarted};
@@ -14,16 +15,15 @@ use crate::opencode::{OpencodeListed, OpencodeStarted};
 impl Runtime {
     fn start_live_chat(&mut self, start: LiveStart) {
         let LiveStart {
-            launch,
+            chat,
+            harness,
+            brief,
             session,
             sink,
             reply,
         } = start;
-        let started = self.with_chat_work(|_, work| {
-            launch.resolve(work.gateway, |config| {
-                crate::chats::reach_opencode(config, work)
-            })
-        });
+        let started = self
+            .with_chat_work(|_, work| crate::chats::resolve_once((&chat, harness), &brief, work));
         let started = started.map_err(String::from).and_then(|backend| {
             start_chat(backend, &session, sink).map_err(|error| error.to_string())
         });
@@ -32,7 +32,10 @@ impl Runtime {
         }
     }
 
-    fn with_chat_work<T>(&mut self, act: impl FnOnce(&mut Chats, &mut ChatWork<'_>) -> T) -> T {
+    pub(super) fn with_chat_work<T>(
+        &mut self,
+        act: impl FnOnce(&mut Chats, &mut ChatWork<'_>) -> T,
+    ) -> T {
         let mut effects = Vec::new();
         let mut work = ChatWork {
             jobs: &self.jobs,
@@ -40,6 +43,15 @@ impl Runtime {
             opencode: &mut self.opencode,
             outbox: &mut self.outbox,
             effects: &mut effects,
+            facts: LaunchFacts {
+                settings: &self.settings.current,
+                environments: &self.environments,
+                hosts: &self.hosts,
+                models: &self.models,
+                bus: self.bus.as_ref().map(crate::bus::Bus::access),
+                usage_budget: self.usage.budget(),
+                memory_tools: self.launches.memory_tools,
+            },
         };
         let done = act(&mut self.chats, &mut work);
         for effect in effects {
@@ -138,6 +150,11 @@ impl Runtime {
 
     fn chat_effect(&mut self, effect: ChatEffect) {
         let reply = match effect {
+            ChatEffect::McpTrust { folder, trust } => {
+                self.settings
+                    .trust_mcp_project(&folder, trust, &mut self.outbox);
+                return;
+            }
             ChatEffect::Raise { chat, kind } => {
                 let title = self.environments.node_title(&chat).unwrap_or_default();
                 let command = AttentionCommand::Raise {

@@ -3,6 +3,7 @@ mod backoff;
 mod bus_slot;
 mod host_cli;
 mod links;
+mod local_agents;
 mod problem;
 mod prompts;
 mod remote_bus;
@@ -18,14 +19,15 @@ pub use remote_bus::{
 pub(crate) use agents::AgentsFound;
 pub(crate) use bus_slot::Reach;
 pub(crate) use links::HostLinks;
+pub(crate) use local_agents::LocalFound;
 pub(crate) use state::Attempt;
 
 use krad_domain::{AgentPreset, EnvironmentName, Host, HostPlatform};
 use krad_host::{HostError, HostLink, MachineChannel};
 use krad_protocol::{
-    EnvironmentHost, ErrorCode, EventKind, HostCommand, HostState, HostsSnapshot, Reply,
+    AgentPlace, EnvironmentHost, ErrorCode, EventKind, HostCommand, HostState, HostsSnapshot, Reply,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -54,7 +56,7 @@ struct Entry {
     waiting: Waiting,
     bus: BusSlot,
     bus_port: Option<u16>,
-    agents: Vec<AgentPreset>,
+    agents: Option<Vec<AgentPreset>>,
 }
 
 pub(crate) struct HostWork<'a> {
@@ -69,6 +71,7 @@ pub(crate) struct Hosts {
     prompts: Prompts,
     bus: Option<Arc<BusAccess>>,
     envs: HashMap<EnvironmentName, Entry>,
+    local: BTreeMap<AgentPlace, Vec<AgentPreset>>,
 }
 
 impl Hosts {
@@ -80,6 +83,7 @@ impl Hosts {
             prompts,
             bus,
             envs: HashMap::new(),
+            local: BTreeMap::new(),
         };
         (hosts, links)
     }
@@ -96,7 +100,9 @@ impl Hosts {
             HostCommand::AnswerPrompt { prompt, answer } => {
                 return Some(self.prompts.answer(prompt, answer, work.outbox));
             }
-            HostCommand::DetectAgents { .. } | HostCommand::Unknown => return None,
+            HostCommand::DetectAgents { .. }
+            | HostCommand::DetectLocalAgents { .. }
+            | HostCommand::Unknown => return None,
         };
         let Some(host) = host_of else {
             return Some(refused(ErrorCode::NotFound, UNKNOWN_ENVIRONMENT));
@@ -120,7 +126,7 @@ impl Hosts {
                 waiting: Waiting::Nothing,
                 bus: BusSlot::Absent,
                 bus_port: None,
-                agents: Vec::new(),
+                agents: None,
             });
         if entry.host != host {
             *entry = Entry {
@@ -129,7 +135,7 @@ impl Hosts {
                 waiting: Waiting::Nothing,
                 bus: BusSlot::Absent,
                 bus_port: None,
-                agents: Vec::new(),
+                agents: None,
             };
         }
         entry
@@ -323,10 +329,11 @@ impl Hosts {
                     environment: environment.clone(),
                     state: entry.tracked.state.clone(),
                     bus: entry.bus.shown(),
-                    agents: entry.agents.clone(),
+                    agents: entry.agents.clone().unwrap_or_default(),
                 })
                 .collect(),
             prompts: self.prompts.snapshot(),
+            local: self.local_snapshot(),
         }
     }
 }

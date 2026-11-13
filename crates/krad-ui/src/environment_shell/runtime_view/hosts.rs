@@ -166,6 +166,7 @@ mod tests {
                 agents: Vec::new(),
             }],
             prompts: vec![prompt.clone()],
+            local: Vec::new(),
         });
         assert!(unchanged.is_empty());
         mirror.prompt_settled(PromptId(9));

@@ -25,7 +25,7 @@ pub use bus::{
 };
 pub use chats::{
     AcpShown, AcpSignInAsk, ChatAsk, ChatAskId, ChatCommand, ChatContext, ChatMirror, ChatPage,
-    ChatState, ChatSummary, MirrorChange,
+    ChatState, ChatSummary, McpOffered, McpSkippedShown, McpTrustAsk, MirrorChange,
 };
 pub use command::{Command, ErrorCode, Reply, RuntimeCommand};
 pub use environments::{EnvironmentCommand, SpendingCrossed};
@@ -34,8 +34,8 @@ pub use frame::{read_frame, write_frame, Frame, FrameError, Message, TerminalByt
 pub use gateway::{GatewayCommand, GatewayState};
 pub use harness_health::{HarnessCheck, HarnessChecked, HealthPlace, HealthSnapshot};
 pub use hosts::{
-    EnvironmentHost, HostCommand, HostPrompt, HostState, HostsSnapshot, PromptAnswer, PromptId,
-    RemoteBusInfo, RemoteBusState,
+    AgentPlace, EnvironmentHost, HostCommand, HostPrompt, HostState, HostsSnapshot, LocalAgents,
+    PromptAnswer, PromptId, RemoteBusInfo, RemoteBusState,
 };
 pub use ids::{ProtocolVersion, RequestId, Seq};
 pub use launches::{LaunchedAs, TerminalLaunched};

@@ -1,7 +1,7 @@
-use krad_domain::Settings;
+use krad_domain::{McpProjectTrust, Settings};
 use krad_protocol::{EventKind, Reply, SettingsCommand};
 use krad_store::{config_dir, settings_file_in, LayoutWriter};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::SyncSender;
 
 use crate::input::Input;
@@ -63,6 +63,22 @@ impl AppSettings {
             outbox.push(EventKind::SettingsChanged { settings });
         }
         Some(Reply::Accepted)
+    }
+
+    pub(crate) fn trust_mcp_project(
+        &mut self,
+        folder: &Path,
+        trust: McpProjectTrust,
+        outbox: &mut Vec<EventKind>,
+    ) {
+        if self.current.mcp.project_trust(folder) == Some(trust) {
+            return;
+        }
+        self.current.mcp.set_project_trust(folder, trust);
+        self.dirty = true;
+        outbox.push(EventKind::SettingsChanged {
+            settings: Box::new(self.current.clone()),
+        });
     }
 
     pub(crate) fn not_saved(error: String, outbox: &mut Vec<EventKind>) {

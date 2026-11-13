@@ -1,8 +1,6 @@
 use gpui_kit::Context;
 use krad_chat::{GatewayModel, ModelOffer};
-use krad_domain::{
-    AgentPreset, EnvironmentName, GatewayKey, GatewayUrl, ModelId, TerminalId, ToastKind,
-};
+use krad_domain::{AgentPreset, EnvironmentName, GatewayKey, GatewayUrl, TerminalId, ToastKind};
 use krad_host::HostLink;
 use krad_protocol::{Command, EventKind, GatewayCommand, GatewayState};
 use std::path::{Path, PathBuf};
@@ -12,7 +10,6 @@ use super::terminal_card::home_dir;
 use super::EnvironmentShell;
 
 const CHECK_DELAY: Duration = Duration::from_millis(600);
-const NO_MODEL_TEXT: &str = "Pick the Gateway models to offer in Settings › Gateway";
 const KEY_SAVED_TOAST: &str = "Gateway key saved";
 const KEY_FORGOTTEN_TOAST: &str = "Gateway key removed";
 
@@ -126,10 +123,6 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn gateway_checking(&self) -> bool {
-        self.gateway.link == GatewayState::Checking
-    }
-
     pub(super) fn gateway_served(&self) -> &[GatewayModel] {
         match &self.gateway.link {
             GatewayState::Ready { models, .. } => models,
@@ -160,18 +153,6 @@ impl EnvironmentShell {
 
     pub(super) fn gateway_ready(&self) -> bool {
         matches!(self.gateway.link, GatewayState::Ready { .. })
-    }
-
-    pub(super) fn gateway_model(&self, chosen: Option<&ModelId>) -> Option<ModelId> {
-        chosen.cloned().or_else(|| {
-            self.gateway_offers()
-                .first()
-                .and_then(|offer| ModelId::parse(&offer.value))
-        })
-    }
-
-    pub(super) const fn no_gateway_model_text() -> &'static str {
-        NO_MODEL_TEXT
     }
 
     pub(super) fn chat_folder(&self, env: &EnvironmentName, id: TerminalId) -> PathBuf {

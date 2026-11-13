@@ -51,6 +51,14 @@ impl Hosts {
         }
     }
 
+    pub(crate) fn agents(&self, environment: &EnvironmentName) -> Option<&[AgentPreset]> {
+        self.envs
+            .get(environment)
+            .filter(|entry| entry.tracked.state.is_connected())?
+            .agents
+            .as_deref()
+    }
+
     pub(crate) fn agents_found(&mut self, found: AgentsFound, outbox: &mut Vec<EventKind>) {
         let AgentsFound {
             environment,
@@ -64,7 +72,7 @@ impl Hosts {
         else {
             return;
         };
-        entry.agents.clone_from(&agents);
+        entry.agents = Some(agents.clone());
         outbox.push(EventKind::HostAgentsFound {
             environment,
             host,

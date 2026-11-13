@@ -1,15 +1,12 @@
-use gpui_kit::{AppContext as _, Context, PathPromptOptions, SharedString, Window};
+use gpui_kit::{Context, PathPromptOptions, SharedString, Window};
 use krad_domain::{
-    agent_programs, parse_wsl_path, presets_found, AcpAgent, AgentPreset, EnvironmentName, GroupId,
-    Host, TerminalGroup, TerminalId, ToastKind, WorktreeOrigin,
+    parse_wsl_path, AgentPreset, EnvironmentName, GroupId, Host, TerminalGroup, TerminalId,
+    ToastKind, WorktreeOrigin,
 };
 use krad_host::HostLink;
-use krad_protocol::{Command, HostCommand};
-use krad_repo::wsl_programs;
-use krad_session::find_program;
+use krad_protocol::{AgentPlace, Command, HostCommand, LocalAgents};
 use std::path::{Path, PathBuf};
 
-use super::surface::app_kept_adapter_present;
 use super::EnvironmentShell;
 
 mod git_poll;
@@ -20,11 +17,6 @@ const SHELL_ONLY: &[AgentPreset] = &[AgentPreset::Shell];
 const FOLDER_PROMPT: &str = "Choose the group's root folder";
 const NO_GROUP_TEXT: &str = "Select a group first";
 const HOST_NOT_READY_TEXT: &str = "Connect to the environment's host before adding a group";
-
-fn presets_in_wsl(distro: &str, acp_agents: &[AcpAgent]) -> Vec<AgentPreset> {
-    let found = wsl_programs(distro, &agent_programs(acp_agents)).unwrap_or_default();
-    presets_found(acp_agents, |program| found.contains(&program))
-}
 
 impl EnvironmentShell {
     pub(super) fn installed_agents(&self) -> &[AgentPreset] {
@@ -66,7 +58,7 @@ impl EnvironmentShell {
             .unwrap_or(&self.native_agents)
     }
 
-    fn detect_wsl_agents(&mut self, roots: &[PathBuf], cx: &mut Context<Self>) {
+    fn detect_wsl_agents(&mut self, roots: &[PathBuf]) {
         let distros: Vec<String> = roots
             .iter()
             .filter_map(|root| parse_wsl_path(root))
@@ -76,7 +68,7 @@ impl EnvironmentShell {
             if !self.wsl_agents.contains_key(&distro) {
                 self.wsl_agents
                     .insert(distro.clone(), vec![AgentPreset::Shell]);
-                Self::detect_agents_in(distro, self.settings.acp.all_agents(), cx);
+                self.detect_agents_in(distro);
             }
         }
     }
@@ -110,15 +102,15 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    pub(super) fn redetect_after_acp_change(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn redetect_after_acp_change(&mut self) {
         let agents = self.settings.acp.all_agents();
         if agents == self.detected_acp {
             return;
         }
-        self.detect_agents(cx);
+        self.detect_agents();
         let distros: Vec<String> = self.wsl_agents.keys().cloned().collect();
         for distro in distros {
-            Self::detect_agents_in(distro, agents.clone(), cx);
+            self.detect_agents_in(distro);
         }
         let remote: Vec<EnvironmentName> = self
             .envs
@@ -132,20 +124,26 @@ impl EnvironmentShell {
         self.detected_acp = agents;
     }
 
-    fn detect_agents_in(distro: String, acp_agents: Vec<AcpAgent>, cx: &mut Context<Self>) {
-        let lookup = cx.background_spawn({
-            let distro = distro.clone();
-            async move { presets_in_wsl(&distro, &acp_agents) }
-        });
-        cx.spawn(async move |this, cx| {
-            let installed = lookup.await;
-            this.update(cx, |shell, cx| {
-                shell.wsl_agents.insert(distro, installed);
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+    fn detect_agents_in(&self, distro: String) {
+        let place = AgentPlace::Wsl { distro };
+        self.runtime
+            .handle
+            .post(Command::Host(HostCommand::DetectLocalAgents { place }));
+    }
+
+    pub(super) fn local_agents_found(&mut self, found: LocalAgents, cx: &mut Context<Self>) {
+        match found.place {
+            AgentPlace::Wsl { distro } => {
+                self.wsl_agents.insert(distro, found.agents);
+            }
+            AgentPlace::Native => {
+                self.native_agents = found.agents;
+                self.ensure_opencode();
+                self.list_harness_models();
+                self.place_usage();
+            }
+        }
+        cx.notify();
     }
 
     pub(super) fn active_link(&self) -> HostLink {
@@ -293,31 +291,12 @@ impl EnvironmentShell {
         self.store();
     }
 
-    pub(super) fn detect_agents(&self, cx: &mut Context<Self>) {
-        let acp_agents = self.settings.acp.all_agents();
-        let lookup = cx.background_spawn(async move {
-            let mut found = presets_found(&acp_agents, |program| find_program(program).is_some());
-            let kept = acp_agents
-                .iter()
-                .filter(|agent| app_kept_adapter_present(agent))
-                .map(|agent| AgentPreset::Acp(agent.id))
-                .filter(|preset| !found.contains(preset))
-                .collect::<Vec<_>>();
-            found.extend(kept);
-            found
-        });
-        cx.spawn(async move |this, cx| {
-            let installed = lookup.await;
-            this.update(cx, |shell, cx| {
-                shell.native_agents = installed;
-                shell.ensure_opencode();
-                shell.list_harness_models();
-                shell.place_usage();
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+    pub(super) fn detect_agents(&self) {
+        self.runtime
+            .handle
+            .post(Command::Host(HostCommand::DetectLocalAgents {
+                place: AgentPlace::Native,
+            }));
     }
 
     pub(super) fn group_roots(&self) -> (HostLink, Vec<PathBuf>) {
@@ -342,37 +321,5 @@ impl EnvironmentShell {
 
     pub(super) fn active_git(&self, root: &Path) -> Option<&GroupGit> {
         self.git_at(&self.active, root)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use krad_domain::built_in_acp_agents;
-
-    #[test]
-    fn acp_agents_are_listed_once_their_program_is_found() {
-        let agents = built_in_acp_agents();
-        let found = ["claude", "codex-acp", "opencode"];
-        let presets = presets_found(&agents, |program| found.contains(&program));
-        let acp: Vec<String> = presets
-            .iter()
-            .filter_map(|preset| preset.acp_agent())
-            .map(|id| id.to_string())
-            .collect();
-        assert_eq!(acp, ["codex-acp", "opencode"]);
-        assert!(presets.contains(&AgentPreset::ClaudeCode));
-        assert!(!presets.contains(&AgentPreset::Codex));
-        assert_eq!(
-            agent_programs(&agents),
-            [
-                "claude",
-                "claude-agent-acp",
-                "codex",
-                "codex-acp",
-                "gemini",
-                "opencode"
-            ]
-        );
     }
 }

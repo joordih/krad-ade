@@ -11,7 +11,12 @@ use std::time::SystemTime;
 
 use super::acp::AcpChat;
 use super::backend::{ChatLaunch, Choices};
+use super::brief::ChatBrief;
+use super::mcp_prep::McpPrep;
 use super::ChatPlace;
+use crate::launches::AgentRole;
+
+mod log;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Batch {
@@ -55,7 +60,10 @@ pub(super) struct Chat {
     pub(super) id: AgentRef,
     pub(super) place: ChatPlace,
     pub(super) harness: AgentPreset,
-    pub(super) launch: ChatLaunch,
+    pub(super) prepared: Option<ChatLaunch>,
+    pub(super) brief: ChatBrief,
+    pub(super) mcp: McpPrep,
+    pub(super) started_as: Option<AgentRole>,
     pub(super) choices: Choices,
     pub(super) session: LiveSession,
     pub(super) live: Option<LiveChat>,
@@ -92,15 +100,21 @@ pub(super) struct Chat {
 }
 
 impl Chat {
-    pub(super) fn new(id: AgentRef, start: super::ChatStart) -> Self {
+    pub(super) fn new(id: AgentRef, start: super::ChatStart, place: ChatPlace) -> Self {
         let resume = start.session.history().cloned();
+        let prepared = start.prepared.map(|prepared| prepared.launch);
         Self {
             id,
-            place: start.place,
+            place,
             harness: start.harness,
-            choices: Choices::from(&start.launch),
-            acp: AcpChat::of(&start.launch),
-            launch: start.launch,
+            choices: prepared
+                .as_ref()
+                .map_or_else(|| Choices::from(&start.brief), Choices::from),
+            acp: prepared.as_ref().and_then(AcpChat::of),
+            prepared,
+            brief: start.brief,
+            mcp: McpPrep::Unread,
+            started_as: None,
             session: start.session,
             live: None,
             generation: 0,
@@ -155,6 +169,7 @@ impl Chat {
             commands: self.offered.clone(),
             account: self.account.clone(),
             acp: self.acp.as_ref().map(|acp| acp.shown.clone()),
+            mcp_trust: self.mcp.asked(),
         }
     }
 
@@ -221,77 +236,6 @@ impl Chat {
     pub(super) fn end_work(&mut self) {
         self.working = false;
         self.working_since = None;
-    }
-
-    pub(super) fn prepend(&mut self, mut earlier: Vec<ChatMessage>, outbox: &mut Vec<EventKind>) {
-        let count = earlier.len();
-        if count == 0 {
-            return;
-        }
-        earlier.append(&mut self.messages);
-        self.messages = earlier;
-        if let Some(rewinding) = self.rewinding.as_mut() {
-            rewinding.index += count;
-        }
-        outbox.push(EventKind::ChatMessagesPrepended {
-            chat: self.id.clone(),
-            count,
-        });
-    }
-
-    pub(super) fn replace_messages(
-        &mut self,
-        messages: Vec<ChatMessage>,
-        outbox: &mut Vec<EventKind>,
-    ) {
-        let before = self.messages.len();
-        self.messages = messages;
-        if before > 0 {
-            outbox.push(EventKind::ChatMessagesCut {
-                chat: self.id.clone(),
-                len: 0,
-            });
-        }
-        self.tell_messages(0, Some(0), outbox);
-    }
-
-    pub(super) fn cut(&mut self, len: usize, outbox: &mut Vec<EventKind>) {
-        let before = self.messages.len();
-        self.messages.truncate(len);
-        self.tell_messages(before, None, outbox);
-    }
-
-    fn tell_messages(&self, before: usize, touched: Option<usize>, outbox: &mut Vec<EventKind>) {
-        self.tell_changes(
-            ChatLogChange::since(&self.messages, before, touched),
-            outbox,
-        );
-    }
-
-    fn tell_changes(&self, changes: Vec<ChatLogChange>, outbox: &mut Vec<EventKind>) {
-        for change in changes {
-            outbox.push(match change {
-                ChatLogChange::Added { index, message } => EventKind::ChatMessageAdded {
-                    chat: self.id.clone(),
-                    index,
-                    message: Box::new(message),
-                },
-                ChatLogChange::Changed { index, message } => EventKind::ChatMessageChanged {
-                    chat: self.id.clone(),
-                    index,
-                    message: Box::new(message),
-                },
-                ChatLogChange::Appended { index, text } => EventKind::ChatMessageAppended {
-                    chat: self.id.clone(),
-                    index,
-                    text,
-                },
-                ChatLogChange::Cut { len } => EventKind::ChatMessagesCut {
-                    chat: self.id.clone(),
-                    len,
-                },
-            });
-        }
     }
 
     pub(super) fn is_free(&self) -> bool {

@@ -1,16 +1,20 @@
 mod acp;
 mod answers;
 mod backend;
+mod brief;
 mod chat;
 mod checkpoints;
 mod heard;
 mod history;
+mod mcp_prep;
 mod mentions;
 mod queue;
+mod resolve;
 
 use krad_chat::LiveSession;
 use krad_domain::{
-    AcpAuthMethodId, AgentPreset, AttentionKind, ChatMessage, Host, ModelOffer, Prompt, UsageReport,
+    AcpAuthMethodId, AgentPreset, AttentionKind, ChatMessage, Host, McpProjectTrust, ModelOffer,
+    Prompt, UsageReport,
 };
 use krad_host::HostLink;
 use krad_protocol::{
@@ -28,15 +32,18 @@ use crate::runtime::refused;
 use acp::AcpChoice;
 pub(crate) use acp::AcpSecretsRead;
 use backend::ensure_live;
-pub(crate) use backend::reach_opencode;
+pub(crate) use backend::resolve_once;
 pub use backend::{runs_in_runtime, ChatLaunch, LiveStarted};
+pub use brief::{ChatBrief, ChatRole, PreparedLaunch};
 use chat::{Chat, HistoryWait};
 pub(crate) use checkpoints::ChatCheckpoint;
 pub(crate) use history::{ChatEarlier, ChatOpening};
 use krad_store::{acp_transcript_file, AcpTranscripts};
+pub(crate) use mcp_prep::{McpLaunched, McpRead};
 use mentions::MentionIndexes;
 pub(crate) use mentions::{FilesIndexed, IndexAnswer};
 use queue::{ChatQueue, Heard};
+pub(crate) use resolve::LaunchFacts;
 
 const CHAT_PAGE: usize = 64;
 const UNKNOWN_CHAT: &str = "no chat with this id";
@@ -52,9 +59,9 @@ pub struct ChatPlace {
 
 pub struct ChatStart {
     pub harness: AgentPreset,
-    pub launch: ChatLaunch,
+    pub brief: ChatBrief,
+    pub prepared: Option<PreparedLaunch>,
     pub session: LiveSession,
-    pub place: ChatPlace,
     pub messages: Vec<ChatMessage>,
     pub queued: Vec<Prompt>,
     pub notices: Vec<String>,
@@ -65,7 +72,7 @@ impl std::fmt::Debug for ChatStart {
         formatter
             .debug_struct("ChatStart")
             .field("harness", &self.harness)
-            .field("place", &self.place)
+            .field("brief", &self.brief)
             .finish_non_exhaustive()
     }
 }
@@ -85,6 +92,10 @@ pub(crate) enum ChatEffect {
         host: Host,
         harness: AgentPreset,
         models: Vec<ModelOffer>,
+    },
+    McpTrust {
+        folder: PathBuf,
+        trust: McpProjectTrust,
     },
 }
 
@@ -113,6 +124,7 @@ pub(crate) struct ChatWork<'a> {
     pub(crate) opencode: &'a mut OpencodeServers,
     pub(crate) outbox: &'a mut Vec<EventKind>,
     pub(crate) effects: &'a mut Vec<ChatEffect>,
+    pub(crate) facts: LaunchFacts<'a>,
 }
 
 impl Chats {
@@ -140,7 +152,15 @@ impl Chats {
             tracing::warn!("a chat the runtime cannot run was handed to it");
             return;
         }
-        let mut chat = Chat::new(id.clone(), start);
+        let place = match &start.prepared {
+            Some(prepared) => Some(prepared.place.clone()),
+            None => work.facts.place(id),
+        };
+        let Some(place) = place else {
+            tracing::warn!("a chat of an environment the runtime does not know was handed to it");
+            return;
+        };
+        let mut chat = Chat::new(id.clone(), start, place);
         chat.opened = self.next_generation();
         if chat.acp.is_some() {
             chat.transcript = acp_transcript_file(&id.environment, id.terminal)
@@ -219,6 +239,7 @@ impl Chats {
                 self.choose_acp(&id, AcpChoice::Option(option, value))
             }
             ChatCommand::SignIn { method, .. } => self.sign_in(&id, method),
+            ChatCommand::TrustMcp { trust, .. } => self.trust_mcp(&id, trust, work),
             ChatCommand::Unknown => return None,
         };
         self.flush(&id, work);

@@ -3,17 +3,19 @@ mod asks;
 mod delegation;
 mod directory;
 mod discovery;
+mod lead;
 mod mail;
 
 pub(crate) use access::open;
 pub use access::{BusAccess, BusSetup};
 pub use delegation::{BusReply, Delegated, DelegationReceiver, Mail};
 pub(crate) use delegation::{DelegationId, DELEGATION_BUFFER};
+pub(crate) use lead::{as_lead, closed_worker_answer};
 
 use futures::channel::{mpsc, oneshot};
 use krad_agents::{
-    AgentInfo, AgentKey, AgentStatus, Caller, Incoming, Request, Response, StateReason,
-    TerminalHandle,
+    lead_refusal, AgentInfo, AgentKey, AgentStatus, Caller, Incoming, Request, Response,
+    StateReason, TerminalHandle,
 };
 use krad_domain::{EnvironmentName, TerminalId};
 use krad_protocol::{
@@ -81,7 +83,7 @@ impl Bus {
                 reply_with(reply, Response::Agents(self.directory.every_agent()));
                 return;
             }
-            self.delegations.delegate(from, request, reply);
+            self.delegate(from, request, reply);
             return;
         };
         match request {
@@ -117,8 +119,16 @@ impl Bus {
                     .agents_in(&terminal.environment, Some(terminal.terminal));
                 reply_with(reply, Response::Agents(agents));
             }
-            request => self.delegations.delegate(from, request, reply),
+            request => self.delegate(from, request, reply),
         }
+    }
+
+    fn delegate(&mut self, from: Caller, request: Request, reply: oneshot::Sender<Response>) {
+        if let Some(refusal) = lead_refusal(&from, &request) {
+            reply_with(reply, refusal);
+            return;
+        }
+        self.delegations.delegate(from, request, reply);
     }
 
     pub(crate) fn execute(

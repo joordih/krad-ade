@@ -170,7 +170,9 @@ fn opening_a_codex_chat_sends_a_message_emits_the_reply_and_keeps_a_checkpoint()
         ChatLaunch::from(ChatBackend::Codex(config)),
         LiveSession::Start(new_session_id()),
     );
-    start.place.root = Some(repo.clone());
+    if let Some(prepared) = start.prepared.as_mut() {
+        prepared.place.root = Some(repo.clone());
+    }
     runtime.open_chat(id.clone(), start);
     assert_eq!(runtime.send_now(send(&id, PROMPT))?, Reply::Accepted);
     feed.until_chat(&id, |mirror| answered(mirror, RECORDED_ANSWER))?;

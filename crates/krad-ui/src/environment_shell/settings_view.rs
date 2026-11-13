@@ -261,7 +261,8 @@ impl EnvironmentShell {
                 .handle
                 .post(Command::Settings(SettingsCommand::Save { settings }));
         }
-        self.redetect_after_acp_change(cx);
+        self.redetect_after_acp_change();
+        cx.notify();
     }
 
     pub(super) fn settings_heard(&mut self, settings: Settings, cx: &mut Context<Self>) {
