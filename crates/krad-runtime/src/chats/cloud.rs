@@ -36,7 +36,11 @@ pub(super) fn cloud_place(site: &CloudSite) -> ChatPlace {
     }
 }
 
-pub(super) fn runner_wait(runner: CloudRunnerId, chat: &mut Chat, work: &mut ChatWork<'_>) -> Unready {
+pub(super) fn runner_wait(
+    runner: CloudRunnerId,
+    chat: &mut Chat,
+    work: &mut ChatWork<'_>,
+) -> Unready {
     let Some(found) = work.facts.settings.cloud.find(runner) else {
         return Unready::Problem(REMOVED_RUNNER.to_owned());
     };

@@ -13,7 +13,7 @@ use super::answer::{AnswerPlace, ShownAnswer};
 use super::status_line::{status_line, TurnPhase};
 use super::subagents::SubagentRun;
 use super::view::{column, muted_line};
-use super::SurfaceChat;
+use super::ChatView;
 use crate::components::{agent_status, icon, CopyFeedback, IconName, StatusKind};
 use crate::theme::{
     level_fill, palette, Palette, SurfaceLevel, ICON_SM, LINE_SM, LINE_XS, RADIUS_MD, SPACE_1_5,
@@ -159,13 +159,13 @@ impl EnvironmentShell {
     pub(super) fn subagent_view(
         id: TerminalId,
         tool: &ToolUseId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         started: Instant,
         copies: &Entity<CopyFeedback>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let run = chat.subagents.runs.get(tool);
+        let run = chat.chat.subagents.runs.get(tool);
         let finished = run.is_some_and(|run| run.meta.finished);
         let mut thread: Vec<AnyElement> = Vec::new();
         for (index, message) in run.map_or(&[][..], |run| &run.messages).iter().enumerate() {
@@ -220,7 +220,7 @@ impl EnvironmentShell {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
-                    .track_scroll(&chat.subagents.scroll)
+                    .track_scroll(&chat.chat.subagents.scroll)
                     .flex()
                     .flex_col()
                     .items_center()

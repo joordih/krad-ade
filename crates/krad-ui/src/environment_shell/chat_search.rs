@@ -107,8 +107,12 @@ impl EnvironmentShell {
     fn chat_revision(&self, env: &EnvironmentName, id: TerminalId) -> Option<Revision> {
         let chat = self.envs.get(env)?.chats.get(&id)?;
         Some(Revision {
-            messages: chat.messages.len(),
-            last_text: chat.messages.last().map_or(0, |message| message.text.len()),
+            messages: chat.chat.messages.len(),
+            last_text: chat
+                .chat
+                .messages
+                .last()
+                .map_or(0, |message| message.text.len()),
         })
     }
 

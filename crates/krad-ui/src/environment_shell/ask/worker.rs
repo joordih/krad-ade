@@ -130,7 +130,7 @@ pub(in crate::environment_shell) struct WorkerAsk {
 impl WorkerAsk {
     fn of(worker: TerminalId, queue: &AskQueue) -> Option<Self> {
         let waiting = queue.front()?;
-        let kind = &waiting.ask.kind;
+        let kind = &waiting.kind;
         let mut choices: Vec<CardChoice> = match kind {
             AskKind::Permission { .. } | AskKind::AcpPermission { .. } => {
                 Choice::of_waiting(waiting)
@@ -246,15 +246,13 @@ impl EnvironmentShell {
 mod tests {
     use super::super::{AskReply, Waiting};
     use super::*;
-    use krad_chat::{Question, ToolAsk};
+    use krad_chat::Question;
     use krad_domain::{AcpPermissionKind, AcpPermissionOption, AcpPermissionOptionId, ToolCall};
 
     const WORKER: TerminalId = TerminalId(7);
 
     fn waiting(kind: AskKind) -> Waiting {
-        let mut ask = ToolAsk::held(String::new(), <_>::default(), Vec::new());
-        ask.kind = kind;
-        Waiting::held(ask, AskReply::Keys, String::new(), None)
+        Waiting::held(kind, false, AskReply::Keys, String::new(), None)
     }
 
     fn front(kinds: impl IntoIterator<Item = AskKind>) -> Option<WorkerAsk> {

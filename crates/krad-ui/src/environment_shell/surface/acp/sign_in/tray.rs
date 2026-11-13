@@ -7,7 +7,7 @@ use krad_domain::{AcpSignIn, TerminalId};
 
 use super::super::super::super::ask::{tray, tray_button};
 use super::super::super::super::EnvironmentShell;
-use super::super::super::SurfaceChat;
+use super::super::super::ChatView;
 use super::{SignInAsk, SignInStep};
 use crate::components::{icon, tooltip_view, IconName};
 use crate::theme::{palette, ICON, LINE_XS, SPACE_1, SPACE_2, TEXT_XS};
@@ -38,10 +38,10 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn acp_sign_in_tray(
         &self,
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let asked: &SignInAsk = chat.structured()?.acp.sign_in.as_ref()?;
+        let asked: &SignInAsk = chat.chat.structured()?.acp.sign_in.as_ref()?;
         let pal = palette(cx);
         let waits = matches!(
             asked.step,
@@ -49,6 +49,7 @@ impl EnvironmentShell {
         );
         let failed = matches!(asked.step, SignInStep::Failed(_))
             && chat
+                .chat
                 .harness()
                 .acp_agent()
                 .and_then(|agent| self.settings.acp.agent(agent))

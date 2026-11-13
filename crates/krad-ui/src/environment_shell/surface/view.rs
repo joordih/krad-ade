@@ -13,7 +13,7 @@ use super::super::rubber_band::{band_watch, BandKey, ScrollEdges};
 use super::super::sidebar::PanelReveal;
 use super::super::EnvironmentShell;
 use super::dot_field::dot_field;
-use super::SurfaceChat;
+use super::ChatView;
 use crate::components::{icon, tooltip_view, IconName};
 use crate::theme::{floating_shadow, palette, Palette, ICON, LINE_XS, SPACE_2, SPACE_3, TEXT_XS};
 
@@ -65,7 +65,7 @@ impl EnvironmentShell {
         let started: Vec<(TerminalId, bool)> = live
             .chats
             .iter()
-            .map(|(id, chat)| (*id, !chat.messages.is_empty()))
+            .map(|(id, chat)| (*id, !chat.chat.messages.is_empty()))
             .collect();
         let mut moving = false;
         for (id, started) in started {
@@ -85,7 +85,7 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get(&self.active) else {
             return AgentNow::Exited;
         };
-        if let Some(structured) = live.chats.get(&id).and_then(SurfaceChat::structured) {
+        if let Some(structured) = live.chats.get(&id).and_then(|view| view.chat.structured()) {
             return if !structured.asks.is_empty() {
                 AgentNow::Waiting
             } else if structured.working {
@@ -114,10 +114,10 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn surface_chat_body(
         &self,
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        if let Some(tool) = chat.subagents.trail.last() {
+        if let Some(tool) = chat.chat.subagents.trail.last() {
             let started = self.turn_started(id, chat);
             return Self::subagent_view(id, tool, chat, started, &self.copy_feedback, cx);
         }
@@ -133,7 +133,7 @@ impl EnvironmentShell {
         }
         let now = self.agent_now(id);
         if now != AgentNow::Working {
-            chat.working_since.set(None);
+            chat.chat.working_since.set(None);
         }
         let following = following(&chat.thread);
         let landed = self
@@ -167,7 +167,7 @@ impl EnvironmentShell {
             .flex_1()
             .min_h_0()
             .font_family(cx.theme().font_family.clone())
-            .when(chat.structured().is_some(), |view| {
+            .when(chat.chat.structured().is_some(), |view| {
                 view.on_drop(
                     cx.listener(move |this: &mut Self, dropped: &ExternalPaths, _, cx| {
                         this.attach_paths(id, dropped.paths(), cx);
@@ -215,12 +215,12 @@ impl EnvironmentShell {
     fn composer_tray(
         &self,
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         self.ask_tray(id, cx)
             .or_else(|| self.acp_sign_in_tray(id, chat, cx))
-            .or_else(|| self.cloud_chat_tray(id, chat.harness(), cx))
+            .or_else(|| self.cloud_chat_tray(id, chat.chat.harness(), cx))
             .or_else(|| self.mcp_tray(id, chat, cx))
             .or_else(|| self.agent_notice(id, chat, cx))
             .or_else(|| Self::checklist_tray(id, chat, cx))
@@ -229,7 +229,7 @@ impl EnvironmentShell {
     fn bouncing_thread(
         &self,
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         now: AgentNow,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -255,12 +255,12 @@ impl EnvironmentShell {
     fn agent_notice(
         &self,
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let now = self.agent_now(id);
-        let terminal_backed = chat.structured().is_none();
-        let waits_unseen = now == AgentNow::Waiting && chat.asks().is_empty();
+        let terminal_backed = chat.chat.structured().is_none();
+        let waits_unseen = now == AgentNow::Waiting && chat.chat.asks().is_empty();
         if !terminal_backed {
             return None;
         }
@@ -268,7 +268,7 @@ impl EnvironmentShell {
             AgentNow::Waiting if waits_unseen => {
                 format!(
                     "{} {WAITING_TEXT}",
-                    self.settings.acp.harness_name(chat.harness())
+                    self.settings.acp.harness_name(chat.chat.harness())
                 )
             }
             AgentNow::Exited => EXITED_TEXT.to_owned(),

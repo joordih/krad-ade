@@ -16,7 +16,7 @@ use krad_domain::{
 use krad_protocol::ChatCommand;
 
 use super::chat::fold_entry;
-use super::surface::{StructuredChat, SurfaceChat};
+use super::surface::StructuredChat;
 use super::EnvironmentShell;
 pub(super) use from_notification::PermissionReply;
 pub(super) use held::HeldAskReport;
@@ -75,11 +75,7 @@ enum Choice {
 
 impl Choice {
     fn of_waiting(waiting: &Waiting) -> Vec<Self> {
-        Self::of(
-            &waiting.ask.kind,
-            waiting.can_allow_always(),
-            waiting.by_keys(),
-        )
+        Self::of(&waiting.kind, waiting.can_allow_always(), waiting.by_keys())
     }
 
     fn of(kind: &AskKind, can_allow_always: bool, by_keys: bool) -> Vec<Self> {
@@ -170,7 +166,7 @@ struct Note {
 }
 
 fn front_question(waiting: &[Waiting], text: &str) -> Option<(Vec<Question>, Question)> {
-    let AskKind::Questions(questions) = &waiting.first()?.ask.kind else {
+    let AskKind::Questions(questions) = &waiting.first()?.kind else {
         return None;
     };
     let asked = questions.iter().find(|asked| asked.text == text)?.clone();
@@ -187,7 +183,12 @@ fn outcome(kind: &AskKind, verdict: AskVerdict) -> AskOutcome {
 
 impl EnvironmentShell {
     fn structured_of(&self, id: TerminalId) -> Option<&StructuredChat> {
-        self.envs.get(&self.active)?.chats.get(&id)?.structured()
+        self.envs
+            .get(&self.active)?
+            .chats
+            .get(&id)?
+            .chat
+            .structured()
     }
 
     fn structured_of_mut(&mut self, id: TerminalId) -> Option<&mut StructuredChat> {
@@ -196,6 +197,7 @@ impl EnvironmentShell {
             .get_mut(&env)?
             .chats
             .get_mut(&id)?
+            .chat
             .structured_mut()
     }
 
@@ -204,7 +206,7 @@ impl EnvironmentShell {
             .get(&self.active)?
             .chats
             .get(&owner)
-            .map(SurfaceChat::asks)
+            .map(|view| view.chat.asks())
     }
 
     fn ask_queue_mut(&mut self, owner: TerminalId) -> Option<&mut AskQueue> {
@@ -213,7 +215,7 @@ impl EnvironmentShell {
             .get_mut(&env)?
             .chats
             .get_mut(&owner)
-            .map(SurfaceChat::asks_mut)
+            .map(|view| view.chat.asks_mut())
     }
 
     pub(super) fn permission_mode(&self, owner: TerminalId) -> Option<PermissionMode> {
@@ -245,21 +247,21 @@ impl EnvironmentShell {
             .get_mut(&env)
             .and_then(|live| live.chats.get_mut(&owner))
         {
-            fold_entry(&mut chat.messages, &entry);
+            fold_entry(&mut chat.chat.messages, &entry);
         }
     }
 
     fn answer_ask(&mut self, owner: TerminalId, answer: &AskAnswer, cx: &mut Context<Self>) {
-        let Some(Waiting { ask, reply, .. }) =
+        let Some(Waiting { kind, reply, .. }) =
             self.ask_queue_mut(owner).and_then(AskQueue::take_front)
         else {
             return;
         };
-        let answered_elsewhere = matches!(reply, AskReply::Runtime { .. });
+        let answered_elsewhere = matches!(reply, AskReply::Runtime(_));
         match reply {
-            AskReply::Hook(held) => held.decide(ask.decision(answer)),
+            AskReply::Hook(held) => held.answer(answer.clone()),
             AskReply::Keys => self.type_plan_answer(owner, answer),
-            AskReply::Runtime { ask: asked, .. } => {
+            AskReply::Runtime(asked) => {
                 let env = self.active.clone();
                 let answer = answer.clone();
                 self.post_runtime_chat(&env, owner, |chat| ChatCommand::AnswerAsk {
@@ -270,7 +272,7 @@ impl EnvironmentShell {
             }
         }
         if !answered_elsewhere {
-            self.record_ask(owner, outcome(&ask.kind, verdict(&ask.kind, answer)));
+            self.record_ask(owner, outcome(&kind, verdict(&kind, answer)));
         }
         let waits = self.ask_queue(owner).is_some_and(|queue| !queue.is_empty());
         let state = if waits {
@@ -293,7 +295,7 @@ impl EnvironmentShell {
         let answer = self
             .ask_queue(owner)
             .and_then(AskQueue::front)
-            .and_then(|waiting| choice.answer(&waiting.ask.kind));
+            .and_then(|waiting| choice.answer(&waiting.kind));
         if let Some(answer) = answer {
             self.answer_ask(owner, &answer, cx);
         } else if let Some(purpose) = choice.note() {
@@ -317,7 +319,7 @@ impl EnvironmentShell {
         let Some(waiting) = queue.waiting.first() else {
             return;
         };
-        let AskKind::Questions(questions) = &waiting.ask.kind else {
+        let AskKind::Questions(questions) = &waiting.kind else {
             let choice = Choice::of_waiting(waiting).get(index).copied();
             if let Some(choice) = choice {
                 self.choose(owner, choice, window, cx);
@@ -351,7 +353,7 @@ impl EnvironmentShell {
         let Some(waiting) = queue.waiting.first() else {
             return;
         };
-        match &waiting.ask.kind {
+        match &waiting.kind {
             AskKind::Questions(_) => self.next_question(owner, cx),
             AskKind::Permission { .. } | AskKind::AcpPermission { .. } | AskKind::Plan { .. } => {
                 let first = Choice::of_waiting(waiting).first().copied();
@@ -372,13 +374,13 @@ impl EnvironmentShell {
             .map(|waiting| &waiting.reply);
         match reply {
             None => {}
-            Some(AskReply::Runtime { .. }) => {
+            Some(AskReply::Runtime(_)) => {
                 self.answer_ask(owner, &answer, cx);
                 let env = self.active.clone();
                 self.post_runtime_chat(&env, owner, |chat| ChatCommand::Interrupt { chat });
             }
             Some(AskReply::Hook(_)) => {
-                let Some(Waiting { ask, reply, .. }) =
+                let Some(Waiting { kind, reply, .. }) =
                     self.ask_queue_mut(owner).and_then(AskQueue::take_front)
                 else {
                     return;
@@ -389,18 +391,18 @@ impl EnvironmentShell {
                         interrupt: true,
                     });
                 }
-                if matches!(ask.kind, AskKind::Questions(_)) {
+                if matches!(kind, AskKind::Questions(_)) {
                     self.type_into_owner(owner, ESCAPE);
                 }
-                self.record_ask(owner, outcome(&ask.kind, verdict(&ask.kind, &answer)));
+                self.record_ask(owner, outcome(&kind, verdict(&kind, &answer)));
                 cx.notify();
             }
             Some(AskReply::Keys) => {
-                if let Some(Waiting { ask, .. }) =
+                if let Some(Waiting { kind, .. }) =
                     self.ask_queue_mut(owner).and_then(AskQueue::take_front)
                 {
                     self.type_into_owner(owner, ESCAPE);
-                    self.record_ask(owner, outcome(&ask.kind, verdict(&ask.kind, &answer)));
+                    self.record_ask(owner, outcome(&kind, verdict(&kind, &answer)));
                 }
                 cx.notify();
             }
@@ -430,7 +432,7 @@ impl EnvironmentShell {
             return;
         };
         if let Some(AskKind::Questions(questions)) =
-            queue.waiting.first().map(|waiting| &waiting.ask.kind)
+            queue.waiting.first().map(|waiting| &waiting.kind)
         {
             let count = questions.len();
             queue.picks.show(step, count);
@@ -464,7 +466,7 @@ impl EnvironmentShell {
             return;
         };
         let Some(AskKind::Questions(questions)) =
-            queue.waiting.first().map(|waiting| &waiting.ask.kind)
+            queue.waiting.first().map(|waiting| &waiting.kind)
         else {
             return;
         };

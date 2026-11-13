@@ -295,7 +295,6 @@ impl EnvironmentShell {
                     .runner_buses
                     .insert(shown.runner, shown.bus);
             }
-            EventKind::RunnerReturned { .. } => {}
             EventKind::CloudAskReplayed(asked) => self.cloud_ask_replayed(asked),
             EventKind::RunnerLoginsChanged(shown) => {
                 self.runtime.view.runner_logins.insert(shown.runner, shown);
@@ -333,6 +332,7 @@ impl EnvironmentShell {
             | EventKind::ChatAskSettled { .. }
             | EventKind::ChatClosed { .. }
             | EventKind::ChatSpent { .. }
+            | EventKind::RunnerReturned { .. }
             | EventKind::Pong { .. }
             | EventKind::Unknown => {}
         }

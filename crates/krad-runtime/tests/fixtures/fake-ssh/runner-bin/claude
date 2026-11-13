@@ -2,5 +2,5 @@
 case "$1" in
   --version) echo "9.0.0 (Claude Code)" ;;
   auth) echo '{"loggedIn":false}' ;;
-  *) exec "$(dirname "$0")/../../../../../krad-chat/tests/fixtures/fake-harness/claude" "$@" ;;
+  *) exec "$(dirname "$0")/../../fake-harness/claude-cloud" "$@" ;;
 esac

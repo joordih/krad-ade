@@ -17,7 +17,11 @@ use crate::terminals::{TerminalLaunch, TerminalPlace};
 const SHELL_SUBMIT: &str = "\r";
 
 impl Runtime {
-    pub(in crate::runtime) fn launch_in_cloud(&mut self, waiting: WaitingLaunch, placement: CloudPlacement) {
+    pub(in crate::runtime) fn launch_in_cloud(
+        &mut self,
+        waiting: WaitingLaunch,
+        placement: CloudPlacement,
+    ) {
         let site = match site_of(Some(placement), &self.runners) {
             NodeSite::Cloud(site) => site,
             NodeSite::Env => return,
@@ -48,8 +52,14 @@ impl Runtime {
             let placement = self
                 .environments
                 .data(&waiting.terminal.environment)
-                .filter(|data| data.nodes.iter().any(|node| node.id == waiting.terminal.terminal))
-                .and_then(|_| crate::cloud_runs::placement_of(&self.environments, &waiting.terminal));
+                .filter(|data| {
+                    data.nodes
+                        .iter()
+                        .any(|node| node.id == waiting.terminal.terminal)
+                })
+                .and_then(|_| {
+                    crate::cloud_runs::placement_of(&self.environments, &waiting.terminal)
+                });
             if let Some(placement) = placement {
                 self.launch_in_cloud(waiting, placement);
             }

@@ -16,7 +16,7 @@ use super::super::model_picker::{grouped, ModelChoice, PickFor};
 use super::super::EnvironmentShell;
 use super::facts::Facts;
 use super::view::{AgentNow, ROUND_BUTTON};
-use super::{SurfaceChat, SurfaceCommand, THINKING_LABEL};
+use super::{ChatView, SurfaceCommand, THINKING_LABEL};
 use crate::components::{harness_icon, icon, tooltip_view, IconName};
 use crate::theme::{
     level_fill, palette, row_fill, row_shadow, Palette, SurfaceLevel, ICON_SM, ICON_XS, LINE_SM,
@@ -47,7 +47,7 @@ impl EnvironmentShell {
     pub(super) fn surface_composer(
         &self,
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         if self.settings.beta.composer == ComposerDesign::Tray {
@@ -87,7 +87,7 @@ impl EnvironmentShell {
                                 .update(cx, |shell, cx| shell.paste_chat_attachment(id, item, cx))
                                 .unwrap_or_default()
                         })
-                        .disabled(chat.asks().blocks_typing()),
+                        .disabled(chat.chat.asks().blocks_typing()),
                 ),
             )
             .child(Self::send_control(id, chat, now, cx))
@@ -100,13 +100,15 @@ impl EnvironmentShell {
             .gap(px(SPACE_1))
             .px(px(SPACE_1))
             .children(
-                chat.structured()
+                chat.chat
+                    .structured()
                     .is_some()
                     .then(|| Self::attach_control(id, cx)),
             )
             .children(self.chat_mode_control(id, chat, cx))
             .children(
-                chat.structured()
+                chat.chat
+                    .structured()
                     .is_some()
                     .then(|| self.orchestrator_control(id, cx)),
             )
@@ -126,12 +128,12 @@ impl EnvironmentShell {
     fn model_controls(
         &self,
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         facts: &Facts,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let (mark, mark_color) = harness_icon(chat.harness(), pal);
+        let (mark, mark_color) = harness_icon(chat.chat.harness(), pal);
         div()
             .flex()
             .flex_row()
@@ -165,10 +167,10 @@ impl EnvironmentShell {
     fn chat_mode_control(
         &self,
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let structured = chat.structured()?;
+        let structured = chat.chat.structured()?;
         if structured.harness.acp_agent().is_some() {
             return Self::acp_mode_control(id, chat, cx);
         }
@@ -177,11 +179,12 @@ impl EnvironmentShell {
 
     fn chat_model_control(
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         facts: &Facts,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let acp = chat
+            .chat
             .structured()
             .is_some_and(|structured| structured.harness.acp_agent().is_some());
         if !acp {
@@ -311,7 +314,7 @@ impl EnvironmentShell {
 
     fn send_control(
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         now: AgentNow,
         cx: &mut Context<Self>,
     ) -> AnyElement {

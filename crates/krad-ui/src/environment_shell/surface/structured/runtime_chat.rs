@@ -9,7 +9,7 @@ use krad_runtime::{runs_in_runtime, ChatBrief, ChatRole, ChatStart};
 
 use super::super::super::chat::StartError;
 use super::super::super::EnvironmentShell;
-use super::super::{SurfaceChat, SurfaceCommand};
+use super::super::{Chat, ChatView, SurfaceCommand};
 use super::{structured_chat, structured_mut, StructuredChat};
 
 pub(super) use shown::RuntimeShown;
@@ -81,11 +81,11 @@ impl EnvironmentShell {
         else {
             return Ok(());
         };
-        let Some(SurfaceChat {
+        let Some(Chat {
             backend: super::super::Backend::Structured(structured),
             messages,
             ..
-        }) = structured_chat(self, env, id)
+        }) = structured_chat(self, env, id).map(|view| &mut view.chat)
         else {
             return Ok(());
         };
@@ -206,10 +206,10 @@ impl EnvironmentShell {
         &self,
         env: &EnvironmentName,
         id: TerminalId,
-        chat: Option<&SurfaceChat>,
+        chat: Option<&ChatView>,
     ) {
         if chat
-            .and_then(SurfaceChat::structured)
+            .and_then(|view| view.chat.structured())
             .is_some_and(StructuredChat::in_runtime)
         {
             self.runtime.handle.close_chat(chat_ref(env, id));
@@ -232,7 +232,7 @@ impl EnvironmentShell {
             (Err(StartError::Waiting), Some(_)) => self.note_history_waits_for_host(env, id),
             (Err(error), _) => {
                 if let Some(chat) = structured_chat(self, env, id) {
-                    chat.problem = Some(error.to_string());
+                    chat.chat.problem = Some(error.to_string());
                 }
             }
         }
@@ -245,7 +245,7 @@ fn structured_of<'a>(
     env: &EnvironmentName,
     id: TerminalId,
 ) -> Option<&'a StructuredChat> {
-    shell.envs.get(env)?.chats.get(&id)?.structured()
+    shell.envs.get(env)?.chats.get(&id)?.chat.structured()
 }
 
 #[cfg(test)]

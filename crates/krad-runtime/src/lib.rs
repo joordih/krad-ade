@@ -45,17 +45,13 @@ pub use code_hosts::{
 pub use environments::EnvironmentsSetup;
 pub use handle::{EventReceiver, HeldAsk, Pending, RuntimeHandle, RuntimeStopped};
 pub use harness_health::HarnessProbe;
-pub use hosts::{
-    bundled_cli, explain_host_problem, remote_askpass, remote_caller_vars,
-    remote_detached_caller_vars, upload_host_cli, HostCliError, RemoteBus, RemoteBusPlan,
-};
+pub use hosts::{bundled_cli, remote_caller_vars};
 pub use kraddies::{Clock, KraddiesSetup};
 pub use launches::{cli_name, local_caller_vars, AgentRole, BUS_HINT, LEAD_HINT};
 pub use mcp::{
     code_tools_server, mcp_servers, read_project_mcp, trust_of, trusted_servers, with_secrets,
     McpLaunch, McpTrust,
 };
-pub use runners::ReadyRunner;
 pub use runtime::{Runtime, RuntimeSetup};
 pub use settings::SettingsSetup;
 pub use terminals::{

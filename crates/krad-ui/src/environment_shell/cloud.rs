@@ -21,8 +21,6 @@ pub(in crate::environment_shell) use sign_in::cli_label;
 pub(in crate::environment_shell) use state::{linger_warning, runner_label};
 
 use krad_domain::{CloudPlacement, CloudRunnerId, EnvironmentName, TerminalId};
-use krad_host::HostLink;
-use krad_runtime::ReadyRunner;
 use std::collections::HashSet;
 
 use super::EnvironmentShell;
@@ -59,19 +57,5 @@ impl EnvironmentShell {
             .get(&id)
             .cloned()
             .unwrap_or_default()
-    }
-
-    pub(in crate::environment_shell) fn runner_link(&self, id: CloudRunnerId) -> Option<HostLink> {
-        self.ready_runner(id).map(|ready| ready.link)
-    }
-
-    pub(in crate::environment_shell) fn ready_runner(
-        &self,
-        id: CloudRunnerId,
-    ) -> Option<ReadyRunner> {
-        self.runner_state(id)
-            .is_ready()
-            .then(|| self.runtime.handle.runner(id))
-            .flatten()
     }
 }

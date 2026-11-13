@@ -41,11 +41,13 @@ fn adapter_runner(
     }
 }
 
+type EnvRunner = (Runner, PathBuf, Vec<(String, String)>);
+
 fn env_runner(
     (chat, agent, place): (&AgentRef, &krad_domain::AcpAgent, &ChatPlace),
     brief: &ChatBrief,
     work: &mut ChatWork<'_>,
-) -> Result<(Runner, PathBuf, Vec<(String, String)>), Unready> {
+) -> Result<EnvRunner, Unready> {
     let preset = AgentPreset::Acp(agent.id);
     let name = work.facts.settings.acp.harness_name(preset);
     let remote = work.facts.site(chat, place)?.remote.is_some();

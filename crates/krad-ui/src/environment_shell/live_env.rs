@@ -8,14 +8,14 @@ pub(super) use environment_copy::{EnvironmentCopy, NodesMoved};
 
 use super::live_terminal::LiveTerminal;
 use super::{
-    activity, archive, changes_tab, file_tab, session_templates, surface,
-    terminal_images, workers, Prompt,
+    activity, archive, changes_tab, file_tab, session_templates, surface, terminal_images, workers,
+    Prompt,
 };
 
 pub(super) struct LiveEnv {
     pub(super) data: EnvironmentCopy,
     pub(super) sessions: HashMap<TerminalId, LiveTerminal>,
-    pub(super) chats: HashMap<TerminalId, surface::SurfaceChat>,
+    pub(super) chats: HashMap<TerminalId, surface::ChatView>,
     pub(super) focused: Option<TerminalId>,
     pub(super) selected_group: Option<GroupId>,
     pub(super) working_since: HashMap<TerminalId, Instant>,

@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "claude-agent-acp is not on this fake runner" >&2
+exit 127

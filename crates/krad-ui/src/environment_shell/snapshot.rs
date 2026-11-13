@@ -1,8 +1,8 @@
 use gpui_kit::Context;
 use krad_domain::{
-    EnvironmentData, EnvironmentName, EnvironmentViewPreferences, Layout,
-    SessionEdit, SidePanelLayout, TerminalId, ToastKind, ViewPreferences,
-    DEFAULT_ENVIRONMENT, LAYOUT_SCHEMA_VERSION,
+    EnvironmentData, EnvironmentName, EnvironmentViewPreferences, Layout, SessionEdit,
+    SidePanelLayout, TerminalId, ToastKind, ViewPreferences, DEFAULT_ENVIRONMENT,
+    LAYOUT_SCHEMA_VERSION,
 };
 use krad_protocol::Command;
 

@@ -23,7 +23,6 @@ use crate::hosts::HostLinks;
 use crate::input::{Input, LiveStart};
 use crate::launches::LaunchedViews;
 use crate::opencode::{OpencodeDirectory, OpencodeInput};
-use crate::runners::RunnerDirectory;
 use crate::terminals::{Shared, TerminalAction, TerminalLaunch, TerminalView};
 use crate::usage::UsagePlace;
 
@@ -55,7 +54,6 @@ pub struct RuntimeHandle {
     bus: Option<Arc<BusAccess>>,
     usage_budget: Arc<UsageBudget>,
     links: HostLinks,
-    runners: RunnerDirectory,
     opencode: OpencodeDirectory,
     views: LaunchedViews,
     secrets: Secrets,
@@ -68,13 +66,7 @@ impl RuntimeHandle {
         inbox: SyncSender<Input>,
         bus: Option<Arc<BusAccess>>,
         usage_budget: Arc<UsageBudget>,
-        (links, runners, opencode, views, secrets): (
-            HostLinks,
-            RunnerDirectory,
-            OpencodeDirectory,
-            LaunchedViews,
-            Secrets,
-        ),
+        (links, opencode, views, secrets): (HostLinks, OpencodeDirectory, LaunchedViews, Secrets),
     ) -> Self {
         Self {
             _alive: Arc::new(Alive(inbox.clone())),
@@ -82,7 +74,6 @@ impl RuntimeHandle {
             bus,
             usage_budget,
             links,
-            runners,
             opencode,
             views,
             secrets,

@@ -4,8 +4,8 @@ mod terminal_events;
 pub(super) use launch::Launch;
 
 use krad_domain::{
-    agent_event, AgentState, EnvironmentName, LaunchIntent, NodeField, ResumeId,
-    TerminalId, ToastKind,
+    agent_event, AgentState, EnvironmentName, LaunchIntent, NodeField, ResumeId, TerminalId,
+    ToastKind,
 };
 use krad_protocol::{Command, TerminalCommand};
 use krad_runtime::{HostShell, TerminalLaunch, TerminalPlace};

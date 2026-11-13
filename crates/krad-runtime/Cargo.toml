@@ -24,3 +24,7 @@ ureq.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+
+[[test]]
+name = "cloud_chats"
+harness = false

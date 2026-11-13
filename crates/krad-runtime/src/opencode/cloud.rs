@@ -45,7 +45,11 @@ fn runner_password(secrets: &Secrets, runner: CloudRunnerId) -> Result<OpencodeP
     Ok(password)
 }
 
-fn start_on(site: &CloudSite, program: String, secrets: &Secrets) -> Result<Arc<OpencodeServer>, String> {
+fn start_on(
+    site: &CloudSite,
+    program: String,
+    secrets: &Secrets,
+) -> Result<Arc<OpencodeServer>, String> {
     let HostLink::Remote(ssh) = &site.link else {
         return Err(NO_HOME.to_owned());
     };

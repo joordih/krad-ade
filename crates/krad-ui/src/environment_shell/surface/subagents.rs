@@ -17,7 +17,7 @@ use super::super::chat::{fold_entry, workplace_home, AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
 use super::anchor::follows_tail;
 use super::view::at_bottom;
-use super::SurfaceChat;
+use super::{Chat, ChatView};
 
 const SUBAGENT_POLL: Duration = Duration::from_secs(1);
 
@@ -224,7 +224,7 @@ impl EnvironmentShell {
             .get_mut(env)
             .and_then(|live| live.chats.get_mut(&id))
         {
-            chat.subagents.watch = Some(watch);
+            chat.chat.subagents.watch = Some(watch);
         }
     }
 
@@ -235,8 +235,8 @@ impl EnvironmentShell {
         let Some(chat) = live.chats.get(&id) else {
             return Look::Gone;
         };
-        let subagents = &chat.subagents;
-        let following = agent_calls(&chat.messages).any(|call| {
+        let subagents = &chat.chat.subagents;
+        let following = agent_calls(&chat.chat.messages).any(|call| {
             subagents
                 .runs
                 .get(call)
@@ -251,7 +251,7 @@ impl EnvironmentShell {
         let (true, Some(resume)) = (following, resume) else {
             return Look::Idle;
         };
-        let source = match chat.harness() {
+        let source = match chat.chat.harness() {
             AgentPreset::Gateway => {
                 let Some(sessions) = gateway_sessions_dir() else {
                     return Look::Idle;
@@ -297,8 +297,8 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let SurfaceChat {
-            subagents,
+        let ChatView {
+            chat: Chat { subagents, .. },
             thread,
             anchor,
             ..
@@ -370,10 +370,10 @@ impl EnvironmentShell {
         else {
             return;
         };
-        step(&mut chat.subagents.trail);
+        step(&mut chat.chat.subagents.trail);
         chat.opened_thoughts.clear();
         chat.thread.remeasure();
-        chat.subagents.scroll.scroll_to_bottom();
+        chat.chat.subagents.scroll.scroll_to_bottom();
         cx.notify();
     }
 }

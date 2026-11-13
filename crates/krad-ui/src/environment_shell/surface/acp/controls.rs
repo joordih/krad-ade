@@ -9,7 +9,7 @@ use std::rc::Rc;
 use super::super::super::context_menu::{MenuAction, MenuEntry};
 use super::super::super::EnvironmentShell;
 use super::super::composer::control_pill;
-use super::super::SurfaceChat;
+use super::super::ChatView;
 use super::{AcpChoice, AcpOffers};
 use crate::components::{icon, tooltip_view, IconName};
 use crate::theme::{palette, ICON_XS};
@@ -112,19 +112,19 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn acp_mode_control(
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let picker = chat.structured()?.acp.mode_picker(id)?;
+        let picker = chat.chat.structured()?.acp.mode_picker(id)?;
         Some(Self::picker_pill(picker, cx))
     }
 
     pub(in crate::environment_shell) fn acp_option_controls(
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let Some(structured) = chat.structured() else {
+        let Some(structured) = chat.chat.structured() else {
             return Vec::new();
         };
         let pickers: Vec<Picker> = structured.acp.option_pickers(id).collect();
@@ -139,6 +139,7 @@ impl EnvironmentShell {
             .get(&self.active)?
             .chats
             .get(&id)?
+            .chat
             .structured()
             .map(|structured| &structured.acp)
     }
@@ -187,7 +188,7 @@ impl EnvironmentShell {
             .envs
             .get_mut(&env)
             .and_then(|live| live.chats.get_mut(&id))
-            .and_then(SurfaceChat::structured_mut)
+            .and_then(|view| view.chat.structured_mut())
         else {
             return;
         };

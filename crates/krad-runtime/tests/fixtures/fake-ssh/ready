@@ -2,7 +2,8 @@
 [ -n "${KRAD_FAKE_RUNNER_HOME:-}" ] || exit 255
 fixtures="$(cd "$(dirname "$0")" && pwd)"
 cd "$KRAD_FAKE_RUNNER_HOME" || exit 255
-[ -f .profile ] || printf 'PATH="%s/runner-bin:%s/host-bin:$PATH"\nexport PATH\n' "$fixtures" "$fixtures" > .profile
+system="/usr/bin:/bin:/usr/sbin:/sbin"
+[ -f .profile ] || printf 'PATH="%s/runner-bin:%s/host-bin:%s"\nexport PATH\n' "$fixtures" "$fixtures" "$system" > .profile
 options=""
 while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do options="$options $1"; shift; done
 shift 2
@@ -15,4 +16,4 @@ case "$options " in
     exit 127
     ;;
 esac
-HOME="$KRAD_FAKE_RUNNER_HOME" SHELL=/bin/sh PATH="$fixtures/runner-bin:$fixtures/host-bin:$PATH" exec /bin/sh -c "$*"
+HOME="$KRAD_FAKE_RUNNER_HOME" SHELL=/bin/sh PATH="$fixtures/runner-bin:$fixtures/host-bin:$system" exec /bin/sh -c "$*"

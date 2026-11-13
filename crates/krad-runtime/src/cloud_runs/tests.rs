@@ -76,7 +76,7 @@ fn a_kept_process_is_checked_once_then_attached_from_its_offset_or_replaced() ->
         runs.start(&node(), &site, Some(saved(40)?), &jobs),
         Err(StartWait::Waiting)
     );
-    assert!(runs.checked(LivenessChecked {
+    assert!(runs.checked(&LivenessChecked {
         node: node(),
         liveness: Liveness::Running,
     }));
@@ -93,7 +93,7 @@ fn a_kept_process_is_checked_once_then_attached_from_its_offset_or_replaced() ->
         runs.start(&node(), &site, Some(saved(40)?), &jobs),
         Err(StartWait::Waiting)
     );
-    runs.checked(LivenessChecked {
+    runs.checked(&LivenessChecked {
         node: node(),
         liveness: Liveness::Gone,
     });

@@ -8,7 +8,7 @@ use std::rc::Rc;
 use super::super::chat::{AnswerPart, ChatMessage};
 use super::bookmarks::bookmarks_of;
 use super::thread::first_message_row;
-use super::SurfaceChat;
+use super::ChatView;
 
 mod hover;
 mod strip;
@@ -130,7 +130,7 @@ fn messages_print(messages: &[ChatMessage]) -> u64 {
     hasher.finish()
 }
 
-fn timeline_print(chat: &SurfaceChat, marks_print: u64, bookmarks: &ChatBookmarks) -> u64 {
+fn timeline_print(chat: &ChatView, marks_print: u64, bookmarks: &ChatBookmarks) -> u64 {
     let mut hasher = DefaultHasher::new();
     chat.thread.item_count().hash(&mut hasher);
     first_message_row(chat).hash(&mut hasher);
@@ -139,13 +139,10 @@ fn timeline_print(chat: &SurfaceChat, marks_print: u64, bookmarks: &ChatBookmark
     hasher.finish()
 }
 
-fn chat_ticks(
-    chat: &SurfaceChat,
-    marks: &[Option<Bookmark>],
-    bookmarks: &ChatBookmarks,
-) -> Vec<Tick> {
+fn chat_ticks(chat: &ChatView, marks: &[Option<Bookmark>], bookmarks: &ChatBookmarks) -> Vec<Tick> {
     let first = first_message_row(chat);
     let turns = chat
+        .chat
         .messages
         .iter()
         .enumerate()
@@ -162,12 +159,12 @@ fn chat_ticks(
     ticks(turns)
 }
 
-impl SurfaceChat {
+impl ChatView {
     fn refreshed_marks(&self) -> Ref<'_, Timeline> {
-        let print = messages_print(&self.messages);
+        let print = messages_print(&self.chat.messages);
         if self.timeline.borrow().marks_print != print {
             let mut timeline = self.timeline.borrow_mut();
-            timeline.marks = bookmarks_of(&self.messages);
+            timeline.marks = bookmarks_of(&self.chat.messages);
             timeline.marks_print = print;
         }
         self.timeline.borrow()

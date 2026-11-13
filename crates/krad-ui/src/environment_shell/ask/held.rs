@@ -1,4 +1,4 @@
-use krad_chat::{AskAnswer, AskKind, ToolAsk};
+use krad_chat::{AskAnswer, AskKind};
 use krad_domain::{
     AgentPreset, EnvironmentName, PermissionMode, PlanDialogKeys, SettledAsks, TerminalId,
     ToolDecision,
@@ -46,33 +46,29 @@ impl EnvironmentShell {
         let PendingAsk {
             ask,
             agent,
-            request:
-                AskRequest {
-                    tool,
-                    input,
-                    suggestions,
-                    call,
-                },
+            request: AskRequest { tool, call, .. },
+            kind,
+            can_allow_always,
         } = pending;
         let held = self.runtime.handle.held_ask(ask);
-        let asked = ToolAsk::held(tool.clone(), input, suggestions);
         let chat = self
             .envs
             .get_mut(&agent.environment)
             .and_then(|live| live.chats.get_mut(&agent.terminal))
-            .filter(|chat| matches!(chat.backend, Backend::Transcript(_)));
+            .filter(|chat| matches!(chat.chat.backend, Backend::Transcript(_)));
         let Some(chat) = chat else {
             held.decide(ToolDecision::Pass);
             return;
         };
-        let reply = if matches!(asked.kind, AskKind::Plan { .. }) {
+        let reply = if matches!(kind, AskKind::Plan { .. }) {
             held.decide(ToolDecision::Pass);
             AskReply::Keys
         } else {
             AskReply::Hook(held)
         };
-        chat.asks_mut()
-            .push(Waiting::held(asked, reply, tool, call));
+        chat.chat
+            .asks_mut()
+            .push(Waiting::held(kind, can_allow_always, reply, tool, call));
         self.raise_front_ask(&agent.environment, agent.terminal);
     }
 
@@ -80,7 +76,7 @@ impl EnvironmentShell {
         let mut forgotten = false;
         for live in self.envs.values_mut() {
             for chat in live.chats.values_mut() {
-                forgotten |= chat.asks_mut().forget_ask(ask);
+                forgotten |= chat.chat.asks_mut().forget_ask(ask);
             }
         }
         forgotten
@@ -99,7 +95,7 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let asks = chat.asks_mut();
+        let asks = chat.chat.asks_mut();
         if report.left_plan() {
             asks.settle(Settled::Plans);
         }
@@ -118,7 +114,7 @@ impl EnvironmentShell {
             .envs
             .get(&env)
             .and_then(|live| live.chats.get(&owner))
-            .and_then(|chat| chat.harness().plan_dialog_keys());
+            .and_then(|chat| chat.chat.harness().plan_dialog_keys());
         let Some(keys) = keys else {
             return;
         };

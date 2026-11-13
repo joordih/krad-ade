@@ -7,7 +7,6 @@ use krad_protocol::{AgentRef, RunnerLogins, RunnerShown};
 use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::{Arc, PoisonError, RwLock};
 
 mod bus;
 mod explain;
@@ -27,11 +26,11 @@ pub(crate) use logins::{git_program, login_args, probe_login, Logins};
 pub(crate) use sign_in::{forward_failure, login_script, LoopbackCallback, SignInWatch, SignIns};
 
 #[derive(Clone)]
-pub struct ReadyRunner {
-    pub link: HostLink,
-    pub cli: PathBuf,
-    pub pairing: Pairing,
-    pub claude_token: Option<ClaudeOauthToken>,
+pub(crate) struct ReadyRunner {
+    pub(crate) link: HostLink,
+    pub(crate) cli: PathBuf,
+    pub(crate) pairing: Pairing,
+    pub(crate) claude_token: Option<ClaudeOauthToken>,
 }
 
 impl fmt::Debug for ReadyRunner {
@@ -42,41 +41,30 @@ impl fmt::Debug for ReadyRunner {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub(crate) struct RunnerDirectory(Arc<RwLock<HashMap<CloudRunnerId, ReadyRunner>>>);
+#[derive(Debug, Default)]
+pub(crate) struct RunnerDirectory(HashMap<CloudRunnerId, ReadyRunner>);
 
 impl RunnerDirectory {
     pub(crate) fn get(&self, runner: CloudRunnerId) -> Option<ReadyRunner> {
-        self.0
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(&runner)
-            .cloned()
+        self.0.get(&runner).cloned()
     }
 
-    fn put(&self, runner: CloudRunnerId, ready: ReadyRunner) {
-        self.0
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(runner, ready);
+    fn put(&mut self, runner: CloudRunnerId, ready: ReadyRunner) {
+        self.0.insert(runner, ready);
     }
 
-    pub(crate) fn keep_claude_token(&self, runner: CloudRunnerId, token: Option<ClaudeOauthToken>) {
-        if let Some(ready) = self
-            .0
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get_mut(&runner)
-        {
+    pub(crate) fn keep_claude_token(
+        &mut self,
+        runner: CloudRunnerId,
+        token: Option<ClaudeOauthToken>,
+    ) {
+        if let Some(ready) = self.0.get_mut(&runner) {
             ready.claude_token = token;
         }
     }
 
-    fn take(&self, runner: CloudRunnerId) -> Option<ReadyRunner> {
-        self.0
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(&runner)
+    fn take(&mut self, runner: CloudRunnerId) -> Option<ReadyRunner> {
+        self.0.remove(&runner)
     }
 }
 
@@ -127,7 +115,7 @@ struct LiveRunner {
     state: RunnerState,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct Runners {
     live: HashMap<CloudRunnerId, LiveRunner>,
     pub(crate) directory: RunnerDirectory,
@@ -138,17 +126,6 @@ pub(crate) struct Runners {
 }
 
 impl Runners {
-    pub(crate) fn with_directory(directory: RunnerDirectory) -> Self {
-        Self {
-            live: HashMap::new(),
-            directory,
-            buses: RunnerBuses::default(),
-            webhooks: RunnerWebhooksSync::default(),
-            logins: Logins::default(),
-            sign_ins: SignIns::default(),
-        }
-    }
-
     pub(crate) fn state(&self, runner: CloudRunnerId) -> RunnerState {
         self.live
             .get(&runner)

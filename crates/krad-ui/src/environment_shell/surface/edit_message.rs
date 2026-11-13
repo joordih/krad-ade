@@ -12,7 +12,7 @@ use super::super::EnvironmentShell;
 use super::files_restore::FilesRewind;
 use super::mentions::sent_mentions;
 use super::message_actions::action_button;
-use super::SurfaceChat;
+use super::ChatView;
 use crate::components::{Button, ButtonVariant, IconName};
 use crate::theme::{
     level_fill, Palette, SurfaceLevel, RADIUS_LG, SPACE_1, SPACE_2, SPACE_3, TEXT_SM,
@@ -56,17 +56,18 @@ pub(super) fn changed_files_after(messages: &[ChatMessage], index: usize) -> boo
         .any(|tool| !tool.edits.is_empty())
 }
 
-impl SurfaceChat {
+impl ChatView {
     pub(super) fn takes_edits(&self) -> bool {
         self.editing.is_none()
             && self.pending_len() == 0
             && self
+                .chat
                 .structured()
                 .is_some_and(|structured| structured.is_free() && !structured.is_rewinding())
     }
 
     pub(super) fn offers_edit(&self, index: usize) -> bool {
-        editable(&self.messages, index, self.takes_edits())
+        editable(&self.chat.messages, index, self.takes_edits())
     }
 }
 
@@ -106,7 +107,7 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let Some(message) = chat.messages.get(index) else {
+        let Some(message) = chat.chat.messages.get(index) else {
             return;
         };
         let (text, mentions) = (message.text.clone(), message.mentions.clone());
@@ -165,6 +166,7 @@ impl EnvironmentShell {
         };
         let free = chat.pending_len() == 0
             && chat
+                .chat
                 .structured()
                 .is_some_and(|structured| structured.is_free() && !structured.is_rewinding());
         let text = editor.input.read(cx).value().trim().to_owned();
@@ -172,9 +174,11 @@ impl EnvironmentShell {
             return;
         }
         let index = editor.index;
-        let harness = chat.harness();
-        let asks_files = harness.restores_files() && changed_files_after(&chat.messages, index);
+        let harness = chat.chat.harness();
+        let asks_files =
+            harness.restores_files() && changed_files_after(&chat.chat.messages, index);
         let point = chat
+            .chat
             .messages
             .get(index)
             .and_then(|message| message.rewind.clone());
@@ -225,12 +229,13 @@ impl EnvironmentShell {
 
     pub(super) fn message_editor(
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         pal: &Palette,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let editor = chat.editing.as_ref()?;
         let rewinding = chat
+            .chat
             .structured()
             .is_some_and(super::structured::StructuredChat::is_rewinding);
         let raw = id.as_u64();
@@ -286,7 +291,7 @@ impl EnvironmentShell {
     }
 }
 
-pub(super) fn is_edited(chat: &SurfaceChat, index: usize) -> bool {
+pub(super) fn is_edited(chat: &ChatView, index: usize) -> bool {
     chat.editing
         .as_ref()
         .is_some_and(|editor| editor.index == index)

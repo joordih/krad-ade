@@ -7,7 +7,6 @@ use std::path::Path;
 use super::EnvironmentShell;
 
 impl EnvironmentShell {
-
     pub(super) fn set_mcp_project_trust(
         &mut self,
         folder: &Path,
@@ -24,5 +23,4 @@ impl EnvironmentShell {
         self.save_settings(cx);
         cx.notify();
     }
-
 }

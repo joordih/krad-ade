@@ -32,7 +32,7 @@ impl EnvironmentShell {
         let Some(chat) = surface_chat(self, env, id) else {
             return;
         };
-        let Some(files) = chat.files_undo.as_mut() else {
+        let Some(files) = chat.chat.files_undo.as_mut() else {
             return;
         };
         if files.rewind == RewindProgress::Settled {
@@ -43,7 +43,7 @@ impl EnvironmentShell {
             return;
         }
         let undo = files.undo.clone();
-        chat.files_undo = None;
+        chat.chat.files_undo = None;
         self.put_files_back(env, id, undo, Some(PUT_BACK_TEXT), cx);
     }
 
@@ -71,7 +71,7 @@ impl EnvironmentShell {
                     Err(error) => Some(error.to_string()),
                 };
                 if let Some(shown) = shown {
-                    chat.problem = Some(shown);
+                    chat.chat.problem = Some(shown);
                 }
                 cx.notify();
             })
@@ -88,7 +88,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let Some(undo) = surface_chat(self, env, id)
-            .and_then(|chat| chat.files_undo.as_ref())
+            .and_then(|chat| chat.chat.files_undo.as_ref())
             .map(|files| files.undo.clone())
         else {
             return;
@@ -105,14 +105,14 @@ impl EnvironmentShell {
                 match listed {
                     Ok(changes) if changes.is_empty() => {
                         if let Some(chat) = surface_chat(shell, &env, id) {
-                            chat.files_undo = None;
-                            chat.problem = Some(NOTHING_TO_UNDO_TEXT.to_owned());
+                            chat.chat.files_undo = None;
+                            chat.chat.problem = Some(NOTHING_TO_UNDO_TEXT.to_owned());
                         }
                     }
                     Ok(changes) => Self::confirm_undo(&env, id, undo, &changes, window, cx),
                     Err(error) => {
                         if let Some(chat) = surface_chat(shell, &env, id) {
-                            chat.problem = Some(error.to_string());
+                            chat.chat.problem = Some(error.to_string());
                         }
                     }
                 }
@@ -149,7 +149,7 @@ impl EnvironmentShell {
             }
             this.update(cx, |shell, cx| {
                 if let Some(chat) = surface_chat(shell, &env, id) {
-                    chat.files_undo = None;
+                    chat.chat.files_undo = None;
                 }
                 shell.put_files_back(&env, id, undo, None, cx);
                 cx.notify();
@@ -192,7 +192,7 @@ impl EnvironmentShell {
                     .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                         let env = this.active.clone();
                         if let Some(chat) = surface_chat(this, &env, id) {
-                            chat.files_undo = None;
+                            chat.chat.files_undo = None;
                         }
                         cx.notify();
                     })),

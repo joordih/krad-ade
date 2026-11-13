@@ -243,7 +243,7 @@ impl EnvironmentShell {
         let waiting = queue.front()?;
         let pal = palette(cx);
         let mono = cx.theme().mono_font_family.clone();
-        let (question, detail) = match &waiting.ask.kind {
+        let (question, detail) = match &waiting.kind {
             AskKind::Questions(questions) => {
                 return Some(Self::question_tray(owner, questions, queue, cx));
             }
@@ -371,7 +371,7 @@ impl EnvironmentShell {
             .enumerate()
             .rev()
             .map(|(index, choice)| {
-                let kind = &waiting.ask.kind;
+                let kind = &waiting.kind;
                 let key = format!("{} ({})", choice.label(kind), index + 1);
                 let rejects = choice.rejects(kind);
                 tray_button(owned_id(CHOICE_PREFIX, owner, index), index == 0, pal)

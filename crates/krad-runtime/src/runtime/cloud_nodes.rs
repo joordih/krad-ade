@@ -20,7 +20,10 @@ impl Runtime {
     pub(super) fn settle_cloud_runs(&mut self) {
         for runner in self.cloud_runs.take_wanted() {
             let state = self.runners.state(runner);
-            if matches!(state, RunnerState::NotConnected | RunnerState::Failed { .. }) {
+            if matches!(
+                state,
+                RunnerState::NotConnected | RunnerState::Failed { .. }
+            ) {
                 drop(self.ensure_runner(runner));
             }
         }
@@ -71,7 +74,7 @@ impl Runtime {
         self.retry_cloud_launches();
     }
 
-    pub(super) fn cloud_liveness_checked(&mut self, checked: LivenessChecked) {
+    pub(super) fn cloud_liveness_checked(&mut self, checked: &LivenessChecked) {
         if !self.cloud_runs.checked(checked) {
             return;
         }
@@ -88,14 +91,13 @@ impl Runtime {
 
     pub(super) fn cloud_runner_turned(&mut self, runner: CloudRunnerId, state: &RunnerState) {
         if let RunnerState::Failed { reason } = state {
-            let name = self
-                .settings
-                .current
-                .cloud
-                .find(runner)
-                .map_or_else(|| runner.to_string(), |found| found.name.as_str().to_owned());
+            let name = self.settings.current.cloud.find(runner).map_or_else(
+                || runner.to_string(),
+                |found| found.name.as_str().to_owned(),
+            );
             let problem = format!("{RUNNER_PREFIX} {name}: {FAILED_PREFIX}{reason}");
-            self.chats.runner_problem(runner, &problem, &mut self.outbox);
+            self.chats
+                .runner_problem(runner, &problem, &mut self.outbox);
         }
         if !state.is_ready() {
             self.opencode.cloud.forget(runner);

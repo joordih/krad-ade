@@ -222,7 +222,7 @@ impl CloudRuns {
         }
     }
 
-    pub(crate) fn checked(&mut self, checked: LivenessChecked) -> bool {
+    pub(crate) fn checked(&mut self, checked: &LivenessChecked) -> bool {
         let Some(known) = self.liveness.get_mut(&checked.node) else {
             return false;
         };

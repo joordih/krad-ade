@@ -58,7 +58,7 @@ impl EnvironmentShell {
         cli: RunnerCli,
         cx: &mut Context<Self>,
     ) {
-        if self.runner_link(runner).is_none() {
+        if !self.runner_state(runner).is_ready() {
             self.ensure_runner_ready(runner);
             return self.toast(ToastKind::Warning, NOT_READY, cx);
         }

@@ -8,12 +8,10 @@ mod orchestrator;
 mod rewind;
 mod runtime_chat;
 
-use krad_chat::{
-    new_session_id, Catalog, CommandOffer, LiveSession, SlashCommand,
-};
+use krad_chat::{new_session_id, Catalog, CommandOffer, LiveSession, SlashCommand};
 use krad_domain::{
-    AgentPreset, Effort, EffortSnap, EnvironmentName,
-    McpServerName, ModelId, PermissionMode, ResumeId, TerminalId,
+    AgentPreset, Effort, EffortSnap, EnvironmentName, McpServerName, ModelId, PermissionMode,
+    ResumeId, TerminalId,
 };
 use krad_store::acp_transcript_file;
 
@@ -21,7 +19,7 @@ use super::super::ask::AskQueue;
 use super::super::EnvironmentShell;
 use super::acp::AcpOffers;
 use super::outbox::Outbox;
-use super::{Backend, SurfaceChat, SurfaceCommand};
+use super::{Backend, ChatView, SurfaceCommand};
 
 pub(super) use acp::read_acp_env;
 pub(in crate::environment_shell) use acp::read_acp_secrets;
@@ -163,13 +161,13 @@ fn structured_chat<'a>(
     shell: &'a mut EnvironmentShell,
     env: &EnvironmentName,
     id: TerminalId,
-) -> Option<&'a mut SurfaceChat> {
+) -> Option<&'a mut ChatView> {
     shell
         .envs
         .get_mut(env)?
         .chats
         .get_mut(&id)
-        .filter(|chat| matches!(chat.backend, Backend::Structured(_)))
+        .filter(|chat| matches!(chat.chat.backend, Backend::Structured(_)))
 }
 
 fn structured_mut<'a>(
@@ -177,7 +175,7 @@ fn structured_mut<'a>(
     env: &EnvironmentName,
     id: TerminalId,
 ) -> Option<&'a mut StructuredChat> {
-    match &mut structured_chat(shell, env, id)?.backend {
+    match &mut structured_chat(shell, env, id)?.chat.backend {
         Backend::Structured(structured) => Some(structured),
         Backend::Transcript(_) => None,
     }

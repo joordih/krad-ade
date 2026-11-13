@@ -9,7 +9,7 @@ use krad_domain::TerminalId;
 
 use super::super::super::model_picker::{grouped, ModelChoice, PickFor};
 use super::super::facts::Facts;
-use super::super::{SurfaceChat, SurfaceCommand};
+use super::super::{ChatView, SurfaceCommand};
 use super::usage::{context_percent, usage_ring};
 use super::EnvironmentShell;
 use crate::components::{harness_icon, icon, tooltip_view, IconName};
@@ -52,7 +52,7 @@ impl EnvironmentShell {
     pub(super) fn tray_composer(
         &self,
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
@@ -74,7 +74,7 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    fn tray_card(&self, id: TerminalId, chat: &SurfaceChat, cx: &mut Context<Self>) -> AnyElement {
+    fn tray_card(&self, id: TerminalId, chat: &ChatView, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let now = self.agent_now(id);
         let shell = cx.entity().downgrade();
@@ -90,9 +90,9 @@ impl EnvironmentShell {
                             .update(cx, |shell, cx| shell.paste_chat_attachment(id, item, cx))
                             .unwrap_or_default()
                     })
-                    .disabled(chat.asks().blocks_typing()),
+                    .disabled(chat.chat.asks().blocks_typing()),
             );
-        let structured = chat.structured().is_some();
+        let structured = chat.chat.structured().is_some();
         let tools = div()
             .flex()
             .flex_row()
@@ -200,12 +200,12 @@ impl EnvironmentShell {
     fn tray_foot(
         &self,
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         facts: &Facts,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let structured = chat.structured().is_some();
+        let structured = chat.chat.structured().is_some();
         let switches = div()
             .flex()
             .flex_row()
@@ -251,18 +251,19 @@ impl EnvironmentShell {
 
     fn tray_model_pill(
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         facts: &Facts,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let acp = chat
+            .chat
             .structured()
             .is_some_and(|structured| structured.harness.acp_agent().is_some());
         if acp && facts.models.is_empty() {
             return None;
         }
         let pal = palette(cx);
-        let (mark, mark_color) = harness_icon(chat.harness(), pal);
+        let (mark, mark_color) = harness_icon(chat.chat.harness(), pal);
         let label = facts
             .model
             .clone()

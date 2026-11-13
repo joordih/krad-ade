@@ -110,6 +110,7 @@ impl EnvironmentShell {
             .get_mut(&env)?
             .chats
             .get_mut(&id)?
+            .chat
             .structured_mut()
     }
 
@@ -255,7 +256,7 @@ impl EnvironmentShell {
             return;
         };
         for (id, chat) in &mut live.chats {
-            let Some(structured) = chat.structured_mut() else {
+            let Some(structured) = chat.chat.structured_mut() else {
                 continue;
             };
             let Some(retry) = structured

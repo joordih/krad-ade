@@ -14,7 +14,10 @@ impl Runtime {
         starts: &[CloudChatStart],
     ) {
         for start in starts {
-            if self.open_carried_chat((environment, session, group), start).is_none() {
+            if self
+                .open_carried_chat((environment, session, group), start)
+                .is_none()
+            {
                 tracing::warn!(session = session.as_u64(), "a carried chat could not open");
             }
         }

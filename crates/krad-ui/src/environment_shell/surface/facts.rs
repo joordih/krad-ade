@@ -9,7 +9,7 @@ use super::super::model_picker::{ModelChoice, ModelMarks};
 use super::super::EnvironmentShell;
 use super::structured::StructuredChat;
 use super::transcript::TRANSCRIPT_HARNESS;
-use super::{Backend, SurfaceChat};
+use super::{Backend, ChatView};
 
 pub(super) struct ModelPick {
     pub(super) id: ModelId,
@@ -284,8 +284,8 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn composer_facts(&self, id: TerminalId, chat: &SurfaceChat) -> Facts {
-        match &chat.backend {
+    pub(super) fn composer_facts(&self, id: TerminalId, chat: &ChatView) -> Facts {
+        match &chat.chat.backend {
             Backend::Transcript(_) => {
                 let status = self
                     .agent_status(&self.active, id)
@@ -295,7 +295,7 @@ impl EnvironmentShell {
             }
             Backend::Structured(structured) => {
                 let harness = structured.harness;
-                let fresh = chat.messages.is_empty() && structured.is_fresh();
+                let fresh = chat.chat.messages.is_empty() && structured.is_fresh();
                 let root = self.active_group().map(|group| group.root.as_path());
                 let others = if fresh {
                     let available = self.agents_for(&self.active, root);

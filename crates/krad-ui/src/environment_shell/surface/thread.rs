@@ -19,7 +19,7 @@ use super::message_actions::{copy_button, message_actions, message_group, Bookma
 use super::origin::origin_line;
 use super::status_line::{status_line, TurnPhase};
 use super::view::{column, error_line, muted_line, AgentNow, LOADING_TEXT};
-use super::{Backend, SurfaceChat};
+use super::{Backend, ChatView};
 use crate::components::{Button, ButtonVariant, CopyFeedback};
 use crate::theme::{palette, SPACE_0_5};
 
@@ -46,24 +46,24 @@ enum ThreadItem {
     Runway,
 }
 
-fn thread_items(chat: &SurfaceChat, now: AgentNow) -> Vec<ThreadItem> {
+fn thread_items(chat: &ChatView, now: AgentNow) -> Vec<ThreadItem> {
     let mut items: Vec<ThreadItem> = Vec::new();
     if chat.skips_history() {
         items.push(ThreadItem::Earlier);
     }
-    items.extend(chat.origin.map(ThreadItem::Origin));
-    items.extend((0..chat.messages.len()).map(ThreadItem::Message));
-    if chat.messages.is_empty() && chat.problem.is_none() && chat.pending_len() == 0 {
+    items.extend(chat.chat.origin.map(ThreadItem::Origin));
+    items.extend((0..chat.chat.messages.len()).map(ThreadItem::Message));
+    if chat.chat.messages.is_empty() && chat.chat.problem.is_none() && chat.pending_len() == 0 {
         items.push(ThreadItem::Loading);
     }
     items.extend((0..chat.pending_len()).map(ThreadItem::Pending));
     if now == AgentNow::Working {
         items.push(ThreadItem::Status);
     }
-    if chat.problem.is_some() {
+    if chat.chat.problem.is_some() {
         items.push(ThreadItem::Problem);
     }
-    if chat.files_undo.is_some() {
+    if chat.chat.files_undo.is_some() {
         items.push(ThreadItem::FilesRestored);
     }
     if chat.pins_latest && latest_question(chat, &items).is_some() {
@@ -72,9 +72,10 @@ fn thread_items(chat: &SurfaceChat, now: AgentNow) -> Vec<ThreadItem> {
     items
 }
 
-fn latest_question(chat: &SurfaceChat, items: &[ThreadItem]) -> Option<usize> {
+fn latest_question(chat: &ChatView, items: &[ThreadItem]) -> Option<usize> {
     items.iter().rposition(|item| match item {
         ThreadItem::Message(index) => chat
+            .chat
             .messages
             .get(*index)
             .is_some_and(|message| message.speaker == Speaker::User),
@@ -83,9 +84,10 @@ fn latest_question(chat: &SurfaceChat, items: &[ThreadItem]) -> Option<usize> {
     })
 }
 
-fn first_question(chat: &SurfaceChat, items: &[ThreadItem]) -> Option<usize> {
+fn first_question(chat: &ChatView, items: &[ThreadItem]) -> Option<usize> {
     items.iter().position(|item| match item {
         ThreadItem::Message(index) => chat
+            .chat
             .messages
             .get(*index)
             .is_some_and(|message| message.speaker == Speaker::User),
@@ -94,8 +96,8 @@ fn first_question(chat: &SurfaceChat, items: &[ThreadItem]) -> Option<usize> {
     })
 }
 
-pub(super) fn first_message_row(chat: &SurfaceChat) -> usize {
-    usize::from(chat.skips_history()) + usize::from(chat.origin.is_some())
+pub(super) fn first_message_row(chat: &ChatView) -> usize {
+    usize::from(chat.skips_history()) + usize::from(chat.chat.origin.is_some())
 }
 
 pub(super) fn question_text(text: &str) -> Option<&str> {
@@ -106,12 +108,12 @@ fn question_copy(
     id: TerminalId,
     index: usize,
     message: &ChatMessage,
-    chat: &SurfaceChat,
+    chat: &ChatView,
     copies: &Entity<CopyFeedback>,
     cx: &App,
 ) -> Option<AnyElement> {
-    let text =
-        question_text(&message.text).filter(|_| matches!(chat.backend, Backend::Structured(_)))?;
+    let text = question_text(&message.text)
+        .filter(|_| matches!(chat.chat.backend, Backend::Structured(_)))?;
     let key = SharedString::from(format!("{QUESTION_COPY_PREFIX}-{}-{index}", id.as_u64()));
     Some(copy_button(
         copies,
@@ -126,7 +128,7 @@ fn question_row(
     id: TerminalId,
     index: usize,
     message: &ChatMessage,
-    chat: &SurfaceChat,
+    chat: &ChatView,
     actions: Vec<AnyElement>,
     bookmark: Option<BookmarkAction>,
     cx: &App,
@@ -171,10 +173,10 @@ fn volatile_start(items: &[ThreadItem]) -> usize {
         .unwrap_or(0)
 }
 
-fn tail_fingerprint(chat: &SurfaceChat, items: &[ThreadItem]) -> u64 {
+fn tail_fingerprint(chat: &ChatView, items: &[ThreadItem]) -> u64 {
     let mut hasher = DefaultHasher::new();
     items.hash(&mut hasher);
-    if let Some(message) = chat.messages.last() {
+    if let Some(message) = chat.chat.messages.last() {
         message.text.len().hash(&mut hasher);
         message.running.hash(&mut hasher);
         message.error.is_some().hash(&mut hasher);
@@ -186,7 +188,7 @@ fn tail_fingerprint(chat: &SurfaceChat, items: &[ThreadItem]) -> u64 {
     hasher.finish()
 }
 
-fn sync_thread(chat: &SurfaceChat, items: &[ThreadItem]) {
+fn sync_thread(chat: &ChatView, items: &[ThreadItem]) {
     let thread = &chat.thread;
     let known = thread.item_count();
     let count = items.len();
@@ -204,7 +206,7 @@ fn sync_thread(chat: &SurfaceChat, items: &[ThreadItem]) {
 impl EnvironmentShell {
     pub(super) fn surface_thread(
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         now: AgentNow,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -243,7 +245,7 @@ impl EnvironmentShell {
         .into_any_element()
     }
 
-    fn size_runway(chat: &SurfaceChat, items: &[ThreadItem]) -> f32 {
+    fn size_runway(chat: &ChatView, items: &[ThreadItem]) -> f32 {
         let Some(runway) = items.iter().position(|item| *item == ThreadItem::Runway) else {
             return 0.0;
         };
@@ -300,7 +302,7 @@ impl EnvironmentShell {
                 .into_any_element(),
             ThreadItem::Origin(origin) => origin_line(origin, pal),
             ThreadItem::Message(index) => {
-                let message = chat.messages.get(index)?;
+                let message = chat.chat.messages.get(index)?;
                 let copies = &self.copy_feedback;
                 let row = match message.speaker {
                     Speaker::User if is_edited(chat, index) => {
@@ -355,14 +357,14 @@ impl EnvironmentShell {
                 let mono = cx.theme().mono_font_family.clone();
                 status_line(
                     id.as_u64(),
-                    TurnPhase::of(chat.messages.last()),
+                    TurnPhase::of(chat.chat.messages.last()),
                     started,
                     activity,
                     mono,
                     pal,
                 )
             }
-            ThreadItem::Problem => error_line(chat.problem.as_deref()?, pal),
+            ThreadItem::Problem => error_line(chat.chat.problem.as_deref()?, pal),
             ThreadItem::FilesRestored => Self::files_restored_row(id, pal, cx),
             ThreadItem::Runway => div().into_any_element(),
         })

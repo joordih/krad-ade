@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use super::RuntimeHandle;
 use crate::input::{Input, RunnerInput};
-use crate::runners::ReadyRunner;
 use crate::terminals::{Shared, TerminalView};
 
 impl RuntimeHandle {
@@ -74,10 +73,5 @@ impl RuntimeHandle {
             environment,
             channel,
         });
-    }
-
-    #[must_use]
-    pub fn runner(&self, runner: CloudRunnerId) -> Option<ReadyRunner> {
-        self.runners.get(runner)
     }
 }

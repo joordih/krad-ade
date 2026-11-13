@@ -1,6 +1,6 @@
 use futures::channel::{mpsc, oneshot};
 use futures::{Stream, StreamExt as _};
-use krad_domain::ToolDecision;
+use krad_domain::{AskAnswer, ToolDecision};
 use krad_protocol::{AskId, BusCommand, Command, Feed};
 use std::future::Future;
 use std::pin::Pin;
@@ -19,6 +19,13 @@ impl HeldAsk {
         self.runtime.post(Command::Bus(BusCommand::AnswerAsk {
             ask: self.ask,
             decision,
+        }));
+    }
+
+    pub fn answer(self, answer: AskAnswer) {
+        self.runtime.post(Command::Bus(BusCommand::Answer {
+            ask: self.ask,
+            answer,
         }));
     }
 }

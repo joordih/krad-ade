@@ -8,7 +8,7 @@ use krad_domain::{ChatBookmarks, TerminalId};
 use std::rc::Rc;
 
 use super::super::super::EnvironmentShell;
-use super::super::SurfaceChat;
+use super::super::ChatView;
 use super::hover::Area;
 use super::{current_question, Tick, TickKind, View};
 use crate::components::floating::floating_surface;
@@ -146,7 +146,7 @@ impl EnvironmentShell {
     pub(in crate::environment_shell::surface) fn timeline_strip(
         &self,
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let empty = ChatBookmarks::default();
@@ -284,7 +284,7 @@ impl EnvironmentShell {
         }
     }
 
-    fn active_chat(&self, id: TerminalId) -> Option<&SurfaceChat> {
+    fn active_chat(&self, id: TerminalId) -> Option<&ChatView> {
         self.envs.get(&self.active)?.chats.get(&id)
     }
 

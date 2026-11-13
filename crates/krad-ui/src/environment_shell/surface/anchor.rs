@@ -3,7 +3,7 @@ use krad_domain::{MosaicState, TerminalId};
 
 use super::super::EnvironmentShell;
 use super::view::following;
-use super::SurfaceChat;
+use super::ChatView;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum Anchor {
@@ -28,7 +28,7 @@ fn landing_offset(scrolled: f32, question_from_view: f32, lead: f32) -> f32 {
     scrolled + question_from_view - lead
 }
 
-impl SurfaceChat {
+impl ChatView {
     pub(super) fn scrolled(&self) -> f32 {
         -self.thread.scroll_px_offset_for_scrollbar().y.as_f32()
     }
@@ -86,7 +86,7 @@ impl SurfaceChat {
 }
 
 impl EnvironmentShell {
-    fn active_chat_mut(&mut self, id: TerminalId) -> Option<&mut SurfaceChat> {
+    fn active_chat_mut(&mut self, id: TerminalId) -> Option<&mut ChatView> {
         self.envs.get_mut(&self.active)?.chats.get_mut(&id)
     }
 

@@ -1,15 +1,14 @@
 use gpui_kit::{Context, Window};
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
-    AgentPreset, ChatChoice, EnvironmentName, NodeKind, TerminalId,
-    TerminalNode, DEFAULT_CHAT_HARNESS,
+    AgentPreset, ChatChoice, EnvironmentName, NodeKind, TerminalId, TerminalNode,
+    DEFAULT_CHAT_HARNESS,
 };
 use std::collections::HashMap;
 
 use super::super::super::EnvironmentShell;
-use super::super::{Backend, SurfaceChat};
+use super::super::{Backend, ChatView};
 use super::{structured_chat, StructuredChat};
-
 
 pub(in crate::environment_shell) fn restored_chats(
     nodes: &[TerminalNode],
@@ -99,11 +98,10 @@ impl EnvironmentShell {
             structured.chosen_model = choice.model;
             structured.mcp_servers = choices.mcp_servers;
             structured.effort = choice.effort;
-            let mut chat =
-                SurfaceChat::new(input, events, Backend::Structured(Box::new(structured)));
+            let mut chat = ChatView::new(input, events, Backend::Structured(Box::new(structured)));
             let prompted = !waiting.is_empty();
             for prompt in waiting {
-                chat.outbox.push(prompt);
+                chat.chat.outbox.push(prompt);
             }
             if let Some(live) = self.envs.get_mut(env) {
                 live.chats.insert(id, chat);
@@ -125,7 +123,7 @@ impl EnvironmentShell {
             return;
         };
         if let Some(chat) = structured_chat(self, env, id) {
-            chat.problem = Some(format!("{CONNECTING_TEXT} {destination}"));
+            chat.chat.problem = Some(format!("{CONNECTING_TEXT} {destination}"));
         }
     }
 
@@ -142,5 +140,4 @@ impl EnvironmentShell {
             self.runtime_chat_opened(env, id, cx);
         }
     }
-
 }

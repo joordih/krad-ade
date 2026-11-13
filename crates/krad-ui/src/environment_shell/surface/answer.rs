@@ -20,7 +20,7 @@ use super::message_actions::{copy_button, message_actions, message_group, Bookma
 use super::prose_views::ProseKey;
 use super::tool_group::{ToolLook, ToolRows};
 use super::view::error_line;
-use super::{SurfaceChat, THINKING_LABEL};
+use super::{ChatView, THINKING_LABEL};
 use crate::components::{icon, CopyFeedback, IconName};
 use crate::theme::{palette, ICON_XS, LINE_SM, LINE_XS, SPACE_1_5, SPACE_3, TEXT_BASE, TEXT_XS};
 
@@ -124,7 +124,7 @@ impl ShownAnswer<'_> {
 impl EnvironmentShell {
     pub(super) fn surface_answer(
         answer: ShownAnswer<'_>,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         workers: &[WorkerCard],
         bookmark: Option<BookmarkAction>,
         copies: &Entity<CopyFeedback>,
@@ -166,7 +166,7 @@ impl EnvironmentShell {
                 match call.id.as_ref().filter(|_| call.kind == ToolKind::Subagent) {
                     Some(tool) => {
                         group(&mut calls, false, &mut parts, cx);
-                        let run = chat.subagents.runs.get(tool);
+                        let run = chat.chat.subagents.runs.get(tool);
                         parts.push(Self::subagent_card(id, call, tool, run, cx));
                     }
                     None => calls.push((part_index, call)),
@@ -213,7 +213,7 @@ impl EnvironmentShell {
         answer: ShownAnswer<'_>,
         part: usize,
         text: &str,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         copies: &Entity<CopyFeedback>,
         cx: &mut Context<Self>,
     ) -> AnyElement {

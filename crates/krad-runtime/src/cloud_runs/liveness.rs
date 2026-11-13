@@ -52,7 +52,10 @@ pub(super) fn check(node: AgentRef, site: &CloudSite, process: CloudProcessId, j
     let (link, cli, pairing) = (site.link.clone(), site.cli.clone(), site.pairing.clone());
     let started = jobs.run(move || {
         let status = status_command(&cli, &pairing);
-        let liveness = liveness_from(listing_of(run_authorized(&link, &status, &pairing)), &process);
+        let liveness = liveness_from(
+            listing_of(run_authorized(&link, &status, &pairing)),
+            &process,
+        );
         JobDone::CloudLiveness(LivenessChecked { node, liveness })
     });
     if let Err(error) = started {

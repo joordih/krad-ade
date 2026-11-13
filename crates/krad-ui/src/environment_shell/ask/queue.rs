@@ -1,5 +1,5 @@
 use gpui_kit::FocusHandle;
-use krad_chat::{AskKind, ToolAsk};
+use krad_chat::AskKind;
 use krad_domain::{ToolDecision, ToolUseId};
 use krad_protocol::{AskId, ChatAsk, ChatAskId};
 use krad_runtime::HeldAsk;
@@ -9,11 +9,12 @@ use super::{Note, NotePurpose, Picks};
 pub(in crate::environment_shell) enum AskReply {
     Hook(HeldAsk),
     Keys,
-    Runtime { ask: ChatAskId, allows_always: bool },
+    Runtime(ChatAskId),
 }
 
 pub(in crate::environment_shell) struct Waiting {
-    pub(super) ask: ToolAsk,
+    pub(super) kind: AskKind,
+    allows_always: bool,
     pub(super) reply: AskReply,
     tool: Option<String>,
     call: Option<ToolUseId>,
@@ -42,20 +43,22 @@ impl Settled<'_> {
                 Some(asked) => asked == call,
                 None => tool.is_some_and(of),
             },
-            Self::Plans => waiting.by_keys() && matches!(waiting.ask.kind, AskKind::Plan { .. }),
+            Self::Plans => waiting.by_keys() && matches!(waiting.kind, AskKind::Plan { .. }),
         }
     }
 }
 
 impl Waiting {
     pub(in crate::environment_shell) const fn held(
-        ask: ToolAsk,
+        kind: AskKind,
+        allows_always: bool,
         reply: AskReply,
         tool: String,
         call: Option<ToolUseId>,
     ) -> Self {
         Self {
-            ask,
+            kind,
+            allows_always,
             reply,
             tool: Some(tool),
             call,
@@ -63,28 +66,21 @@ impl Waiting {
     }
 
     pub(in crate::environment_shell) fn of_runtime(asked: ChatAsk) -> Self {
-        let mut ask = ToolAsk::held(String::new(), <_>::default(), Vec::new());
-        ask.kind = asked.kind;
         Self {
-            ask,
-            reply: AskReply::Runtime {
-                ask: asked.ask,
-                allows_always: asked.can_allow_always,
-            },
+            kind: asked.kind,
+            allows_always: asked.can_allow_always,
+            reply: AskReply::Runtime(asked.ask),
             tool: None,
             call: None,
         }
     }
 
-    pub(super) fn can_allow_always(&self) -> bool {
-        match &self.reply {
-            AskReply::Runtime { allows_always, .. } => *allows_always,
-            AskReply::Hook(_) | AskReply::Keys => self.ask.can_allow_always(),
-        }
+    pub(super) const fn can_allow_always(&self) -> bool {
+        self.allows_always
     }
 
     fn is_chat_ask(&self, ask: ChatAskId) -> bool {
-        matches!(&self.reply, AskReply::Runtime { ask: held, .. } if *held == ask)
+        matches!(&self.reply, AskReply::Runtime(held) if *held == ask)
     }
 
     pub(super) const fn by_keys(&self) -> bool {
@@ -136,7 +132,7 @@ impl AskQueue {
 
     pub(in crate::environment_shell) fn blocks_typing(&self) -> bool {
         self.front()
-            .is_some_and(|waiting| matches!(waiting.ask.kind, AskKind::Questions(_)))
+            .is_some_and(|waiting| matches!(waiting.kind, AskKind::Questions(_)))
     }
 
     pub(super) fn front(&self) -> Option<&Waiting> {
@@ -202,9 +198,12 @@ mod tests {
     const BASH_TOOL: &str = "Bash";
 
     fn plan() -> Waiting {
-        let ask = ToolAsk::held(PLAN_TOOL.to_owned(), <_>::default(), Vec::new());
+        let kind = AskKind::Plan {
+            plan: String::new(),
+        };
         Waiting::held(
-            ask,
+            kind,
+            false,
             AskReply::Keys,
             PLAN_TOOL.to_owned(),
             Some(ToolUseId::from("toolu_plan")),
@@ -221,9 +220,16 @@ mod tests {
 
     fn bash(runtime: &RuntimeHandle, ask: u64, call: Option<&str>) -> Waiting {
         let held = runtime.held_ask(AskId(ask));
-        let asked = ToolAsk::held(BASH_TOOL.to_owned(), <_>::default(), Vec::new());
+        let kind = AskKind::Permission {
+            tool: BASH_TOOL.to_owned(),
+            kind: krad_domain::ToolKind::Shell,
+            summary: String::new(),
+            title: None,
+            edit: None,
+        };
         Waiting::held(
-            asked,
+            kind,
+            true,
             AskReply::Hook(held),
             BASH_TOOL.to_owned(),
             call.map(ToolUseId::from),

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use super::super::chat::ChatMessage;
 use super::super::EnvironmentShell;
 use super::message_actions::{tinted_action_button, BookmarkAction};
-use super::SurfaceChat;
+use super::ChatView;
 use crate::components::IconName;
 use crate::theme::Palette;
 
@@ -74,7 +74,7 @@ impl EnvironmentShell {
         &self,
         id: TerminalId,
         index: usize,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         pal: &Palette,
         cx: &mut Context<Self>,
     ) -> Option<BookmarkAction> {

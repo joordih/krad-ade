@@ -1,7 +1,7 @@
 use gpui_kit::Context;
 use krad_domain::{
-    snap_effort, AgentPreset, ChatChoice, Effort, EffortSnap, EnvironmentName,
-    ModelId, NodeField, TerminalId,
+    snap_effort, AgentPreset, ChatChoice, Effort, EffortSnap, EnvironmentName, ModelId, NodeField,
+    TerminalId,
 };
 
 use super::super::EnvironmentShell;
@@ -58,7 +58,7 @@ fn structured_mut<'a>(
     env: &EnvironmentName,
     id: TerminalId,
 ) -> Option<&'a mut StructuredChat> {
-    match &mut shell.envs.get_mut(env)?.chats.get_mut(&id)?.backend {
+    match &mut shell.envs.get_mut(env)?.chats.get_mut(&id)?.chat.backend {
         Backend::Structured(structured) => Some(structured),
         Backend::Transcript(_) => None,
     }
@@ -67,7 +67,7 @@ fn structured_mut<'a>(
 impl EnvironmentShell {
     fn chat_harness_of(&self, env: &EnvironmentName, id: TerminalId) -> Option<AgentPreset> {
         let live = self.envs.get(env)?;
-        match &live.chats.get(&id)?.backend {
+        match &live.chats.get(&id)?.chat.backend {
             Backend::Structured(structured) => Some(structured.harness),
             Backend::Transcript(_) => live
                 .data
@@ -197,10 +197,10 @@ impl EnvironmentShell {
         let stale: Vec<TerminalId> = self.envs.get(&env).map_or_default(|live| {
             live.chats
                 .iter()
-                .filter_map(|(id, chat)| match &chat.backend {
+                .filter_map(|(id, chat)| match &chat.chat.backend {
                     Backend::Structured(structured)
                         if structured.harness == harness
-                            && chat.messages.is_empty()
+                            && chat.chat.messages.is_empty()
                             && structured.is_fresh()
                             && structured
                                 .chosen_model
@@ -229,5 +229,4 @@ impl EnvironmentShell {
     ) {
         edit_choice(self, env, id, |kept| *kept = choice);
     }
-
 }

@@ -1,0 +1,11 @@
+#!/bin/sh
+here="$(dirname "$0")"
+turn="$here/../../../../krad-chat/tests/fixtures/fake-harness/claude-turn.jsonl"
+while IFS= read -r line; do
+    case "$line" in
+        *'"behavior":"allow"'*) cat "$here/claude-ask-answer.jsonl" ;;
+        *'"type":"user"'*'Carry on'*) ;;
+        *'"type":"user"'*'List it'*) cat "$here/claude-ask-request.jsonl" ;;
+        *'"type":"user"'*) cat "$turn" ;;
+    esac
+done

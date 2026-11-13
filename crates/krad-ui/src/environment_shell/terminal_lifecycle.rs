@@ -432,6 +432,6 @@ impl EnvironmentShell {
         self.forget_attention(env, id);
         self.publish_agent(env, id, Some(StateReason::UserClosed));
         cx.notify();
-        chat.is_some_and(|chat| chat.structured().is_some())
+        chat.is_some_and(|chat| chat.chat.structured().is_some())
     }
 }

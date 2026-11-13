@@ -2,7 +2,6 @@ use gpui_kit::Context;
 use krad_chat::{AskAnswer, AskKind};
 use krad_domain::{AcpPermissionKind, AttentionKind, EnvironmentName, TerminalId};
 
-use super::super::surface::SurfaceChat;
 use super::super::EnvironmentShell;
 use super::{AskQueue, DENIED_TEXT};
 
@@ -56,11 +55,11 @@ impl EnvironmentShell {
             .get(env)?
             .chats
             .get(&owner)
-            .map(SurfaceChat::asks)
+            .map(|view| view.chat.asks())
             .and_then(AskQueue::front)?;
         Some(FrontAsk {
-            kind: attention_kind(&waiting.ask.kind),
-            subject: waiting.ask.kind.subject(),
+            kind: attention_kind(&waiting.kind),
+            subject: waiting.kind.subject(),
         })
     }
 
@@ -73,7 +72,7 @@ impl EnvironmentShell {
         let answer = self
             .ask_queue(owner)
             .and_then(AskQueue::front)
-            .and_then(|waiting| permission_answer(&waiting.ask.kind, reply));
+            .and_then(|waiting| permission_answer(&waiting.kind, reply));
         let Some(answer) = answer else {
             return false;
         };

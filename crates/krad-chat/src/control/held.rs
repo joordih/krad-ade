@@ -5,7 +5,7 @@ use super::{answered_input, ask_of, AskAnswer, Responder, ToolAsk};
 
 impl ToolAsk {
     #[must_use]
-    pub fn held(tool: String, input: Value, suggestions: Vec<Value>) -> Self {
+    pub fn of_hook(tool: String, input: Value, suggestions: Vec<Value>) -> Self {
         ask_of(String::new(), tool, input, None, suggestions)
     }
 
@@ -45,7 +45,7 @@ mod tests {
     #[test]
     fn a_held_question_is_answered_with_the_picked_labels_in_its_input() {
         let input = json!({ "questions": [{ "question": "Pick a color", "options": [{ "label": "Blue" }] }] });
-        let asked = ToolAsk::held("AskUserQuestion".to_owned(), input, Vec::new());
+        let asked = ToolAsk::of_hook("AskUserQuestion".to_owned(), input, Vec::new());
         assert!(matches!(asked.kind, AskKind::Questions(ref questions) if questions.len() == 1));
         let answer = AskAnswer::Answers(vec![PickedAnswer {
             question: "Pick a color".to_owned(),
@@ -64,7 +64,7 @@ mod tests {
     #[test]
     fn allowing_a_held_permission_always_hands_back_its_suggestions() {
         let rule = json!({ "type": "addRules" });
-        let asked = ToolAsk::held(
+        let asked = ToolAsk::of_hook(
             "Bash".to_owned(),
             json!({ "command": "ls" }),
             vec![rule.clone()],

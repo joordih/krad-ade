@@ -249,7 +249,10 @@ fn choices_made_before_the_session_opened_are_wanted_until_the_runtime_reports_i
         Some(Effort::High),
         "a late probe never undoes what the user chose"
     );
-    heard(&mut offers, AcpEvent::Modes(modes("plan", &["default", "plan"])));
+    heard(
+        &mut offers,
+        AcpEvent::Modes(modes("plan", &["default", "plan"])),
+    );
     assert_eq!(shown_mode(&offers).as_deref(), Some("PLAN"));
     assert_eq!(offers.wanted(), AcpWanted::default());
 }

@@ -88,7 +88,6 @@ fn answer_of(result: CallToolResult) -> ExtensionToolAnswer {
 }
 
 impl EnvironmentShell {
-
     pub(in crate::environment_shell) fn tool_catalog(&self) -> ToolCatalog {
         let extension_tools = if self.settings.extension_tools == ExtensionTools::On {
             offered_tools(&self.usable_manifests())

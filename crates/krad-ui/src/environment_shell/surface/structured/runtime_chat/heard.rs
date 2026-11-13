@@ -8,7 +8,7 @@ use std::time::Instant;
 use super::super::super::super::ask::Waiting;
 use super::super::super::super::workers::LaunchProgress;
 use super::super::super::super::EnvironmentShell;
-use super::super::super::{anchor, Backend, SurfaceChat};
+use super::super::super::{anchor, Backend, ChatView};
 use super::super::{structured_chat, structured_mut, StructuredChat};
 use super::shown::shown_problem;
 
@@ -16,9 +16,12 @@ fn runtime_chat<'a>(
     shell: &'a mut EnvironmentShell,
     env: &EnvironmentName,
     id: TerminalId,
-) -> Option<&'a mut SurfaceChat> {
-    structured_chat(shell, env, id)
-        .filter(|chat| chat.structured().is_some_and(StructuredChat::in_runtime))
+) -> Option<&'a mut ChatView> {
+    structured_chat(shell, env, id).filter(|chat| {
+        chat.chat
+            .structured()
+            .is_some_and(StructuredChat::in_runtime)
+    })
 }
 
 fn progress_of(message: &ChatMessage) -> LaunchProgress {
@@ -68,7 +71,7 @@ impl EnvironmentShell {
             EventKind::ChatAsk(ask) => self.runtime_chat_ask(ask, cx),
             EventKind::ChatAskSettled { chat, ask } => {
                 if let Some(chat) = runtime_chat(self, &chat.environment, chat.terminal) {
-                    chat.asks_mut().forget_chat_ask(ask);
+                    chat.chat.asks_mut().forget_chat_ask(ask);
                 }
             }
             EventKind::ChatSpent { chat, report } => {
@@ -87,11 +90,11 @@ impl EnvironmentShell {
             let ChatSummary { state, tail, asks } = summary;
             let chat = tail.chat.clone();
             if let Some(shown) = runtime_chat(self, &chat.environment, chat.terminal) {
-                shown.messages = tail.messages;
+                shown.chat.messages = tail.messages;
                 shown.opened_thoughts.clear();
                 shown.tool_groups.clear();
                 shown.thread.remeasure();
-                if let Some(structured) = shown.structured_mut() {
+                if let Some(structured) = shown.chat.structured_mut() {
                     structured.shown.starts_at(tail.from);
                 }
             }
@@ -112,13 +115,13 @@ impl EnvironmentShell {
         let (env, id) = (&chat.environment, chat.terminal);
         let progress = progress_of(&message);
         let Some((shown, index)) = runtime_chat(self, env, id).and_then(|shown| {
-            let index = shown.structured()?.shown.local(index)?;
+            let index = shown.chat.structured()?.shown.local(index)?;
             Some((shown, index))
         }) else {
             return;
         };
         let followed = anchor::follows_tail(shown.anchor, &shown.thread);
-        ChatLogChange::Changed { index, message }.apply(&mut shown.messages);
+        ChatLogChange::Changed { index, message }.apply(&mut shown.chat.messages);
         if followed {
             shown.thread.scroll_to_end();
         }
@@ -128,14 +131,14 @@ impl EnvironmentShell {
     fn runtime_chat_appended(&mut self, chat: &AgentRef, index: usize, text: String) {
         let Some((shown, index)) =
             runtime_chat(self, &chat.environment, chat.terminal).and_then(|shown| {
-                let index = shown.structured()?.shown.local(index)?;
+                let index = shown.chat.structured()?.shown.local(index)?;
                 Some((shown, index))
             })
         else {
             return;
         };
         let followed = anchor::follows_tail(shown.anchor, &shown.thread);
-        ChatLogChange::Appended { index, text }.apply(&mut shown.messages);
+        ChatLogChange::Appended { index, text }.apply(&mut shown.chat.messages);
         if followed {
             shown.thread.scroll_to_end();
         }
@@ -144,17 +147,23 @@ impl EnvironmentShell {
     fn runtime_chat_cut(&mut self, chat: &AgentRef, len: usize, cx: &mut Context<Self>) {
         let Some((shown, len)) =
             runtime_chat(self, &chat.environment, chat.terminal).and_then(|shown| {
-                let len = shown.structured()?.shown.local(len).unwrap_or_default();
+                let len = shown
+                    .chat
+                    .structured()?
+                    .shown
+                    .local(len)
+                    .unwrap_or_default();
                 Some((shown, len))
             })
         else {
             return;
         };
-        shown.messages.truncate(len);
+        shown.chat.messages.truncate(len);
         shown.opened_thoughts.retain(|(message, _)| *message < len);
         shown.tool_groups.retain(|(message, _), _| *message < len);
         shown.thread.remeasure();
         let rewound = shown
+            .chat
             .structured_mut()
             .is_some_and(|structured| std::mem::take(&mut structured.rewinding));
         if rewound {
@@ -170,10 +179,10 @@ impl EnvironmentShell {
         let Some(shown) = runtime_chat(self, &env, id) else {
             return;
         };
-        if shown.asks().holds_chat_ask(ask.ask) {
+        if shown.chat.asks().holds_chat_ask(ask.ask) {
             return;
         }
-        shown.asks_mut().push(Waiting::of_runtime(ask));
+        shown.chat.asks_mut().push(Waiting::of_runtime(ask));
         self.set_agent_state(&env, id, AgentState::WaitingForInput);
         self.follow_launch_progress(&env, id, LaunchProgress::Started, cx);
     }
@@ -186,16 +195,17 @@ impl EnvironmentShell {
         let Some(shown) = runtime_chat(self, env, id) else {
             return;
         };
-        shown.problem = shown_problem(&state);
+        shown.chat.problem = shown_problem(&state);
         if state.origin.is_some() {
-            shown.origin = state.origin;
+            shown.chat.origin = state.origin;
         }
         let failed = shown
+            .chat
             .messages
             .last()
             .is_some_and(|last| last.error.is_some());
-        let waits = !shown.asks().is_empty();
-        let Backend::Structured(structured) = &mut shown.backend else {
+        let waits = !shown.chat.asks().is_empty();
+        let Backend::Structured(structured) = &mut shown.chat.backend else {
             return;
         };
         structured.shown.take_state(&state);

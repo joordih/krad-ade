@@ -6,7 +6,7 @@ use krad_repo::{
 };
 
 use super::super::EnvironmentShell;
-use super::{Backend, SurfaceChat};
+use super::{Backend, ChatView};
 use krad_chat::RewindScope;
 
 mod undo;
@@ -78,13 +78,13 @@ fn surface_chat<'a>(
     shell: &'a mut EnvironmentShell,
     env: &EnvironmentName,
     id: TerminalId,
-) -> Option<&'a mut SurfaceChat> {
+) -> Option<&'a mut ChatView> {
     shell.envs.get_mut(env)?.chats.get_mut(&id)
 }
 
 fn set_busy(shell: &mut EnvironmentShell, env: &EnvironmentName, id: TerminalId, busy: bool) {
     if let Some(Backend::Structured(structured)) =
-        surface_chat(shell, env, id).map(|chat| &mut chat.backend)
+        surface_chat(shell, env, id).map(|chat| &mut chat.chat.backend)
     {
         structured.working = busy;
     }
@@ -219,13 +219,13 @@ impl EnvironmentShell {
         };
         match restored {
             Ok(restored) => {
-                chat.files_undo = Some(FilesUndo {
+                chat.chat.files_undo = Some(FilesUndo {
                     undo: restored.undo,
                     rewind: RewindProgress::Waiting,
                 });
                 self.rewind_conversation(env, id, rewind, cx);
             }
-            Err(error) => chat.problem = Some(error.to_string()),
+            Err(error) => chat.chat.problem = Some(error.to_string()),
         }
     }
 }

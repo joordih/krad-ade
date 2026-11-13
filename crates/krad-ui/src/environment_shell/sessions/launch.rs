@@ -96,5 +96,4 @@ impl EnvironmentShell {
         let site = ShellSite::of(&link, wsl.is_some());
         (link, wsl, site)
     }
-
 }

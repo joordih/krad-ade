@@ -2,7 +2,7 @@ use gpui_kit::px;
 use std::time::Instant;
 
 use super::super::EnvironmentShell;
-use super::SurfaceChat;
+use super::ChatView;
 use crate::motion::Spring;
 
 const GLIDE_RESPONSE_S: f32 = 0.35;
@@ -13,7 +13,7 @@ pub(super) struct Glide {
     last: Instant,
 }
 
-impl SurfaceChat {
+impl ChatView {
     pub(super) fn start_glide(&mut self, now: Instant) {
         self.anchor_question();
         self.glide = Some(Glide {

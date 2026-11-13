@@ -1,8 +1,6 @@
 use gpui_kit::{Context, PromptButton, PromptLevel};
 use krad_domain::{CloudRunnerId, EnvironmentView, GroupId, SessionId, ToastKind};
-use krad_protocol::{
-    CloudCommand, CloudDraftId, CloudNews, CloudOpened, Command, PatchAnswer,
-};
+use krad_protocol::{CloudCommand, CloudDraftId, CloudNews, CloudOpened, Command, PatchAnswer};
 
 use super::super::native_alert::NATIVE_ALERTS;
 use super::super::EnvironmentShell;

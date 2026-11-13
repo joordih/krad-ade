@@ -139,7 +139,7 @@ impl EnvironmentShell {
             return Some(STARTING_LABEL.to_owned());
         }
         let chat = self.envs.get(env)?.chats.get(&terminal)?;
-        latest_activity(&chat.messages)
+        latest_activity(&chat.chat.messages)
     }
 
     pub(in crate::environment_shell) fn worker_card(

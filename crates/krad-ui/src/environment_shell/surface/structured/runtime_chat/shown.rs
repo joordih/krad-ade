@@ -175,7 +175,7 @@ impl EnvironmentShell {
         let Some(chat) = structured_chat(self, env, id) else {
             return;
         };
-        let Some(structured) = chat.structured_mut() else {
+        let Some(structured) = chat.chat.structured_mut() else {
             return;
         };
         structured.shown.paging = false;
@@ -187,8 +187,8 @@ impl EnvironmentShell {
         }
         structured.shown.from = page.from;
         let mut messages = page.messages;
-        messages.append(&mut chat.messages);
-        chat.messages = messages;
+        messages.append(&mut chat.chat.messages);
+        chat.chat.messages = messages;
         chat.opened_thoughts.clear();
         chat.tool_groups.clear();
         chat.editing = None;

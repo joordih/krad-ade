@@ -253,7 +253,7 @@ impl EnvironmentShell {
     }
 
     fn effort_was(&self, id: TerminalId) -> Option<Effort> {
-        match &self.envs.get(&self.active)?.chats.get(&id)?.backend {
+        match &self.envs.get(&self.active)?.chats.get(&id)?.chat.backend {
             Backend::Structured(structured) => structured.effort_was,
             Backend::Transcript(_) => None,
         }

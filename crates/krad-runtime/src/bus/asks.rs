@@ -1,6 +1,7 @@
 use futures::channel::oneshot;
 use krad_agents::Response;
-use krad_domain::ToolDecision;
+use krad_chat::ToolAsk;
+use krad_domain::{AskAnswer, ToolDecision};
 use krad_protocol::{
     AgentRef, AskId, AskRequest, AskSettlement, ErrorCode, EventKind, PendingAsk, Reply,
 };
@@ -14,6 +15,7 @@ const NO_SUCH_ASK: &str = "no ask with that id";
 #[derive(Debug)]
 struct Held {
     pending: PendingAsk,
+    asked: ToolAsk,
     reply: oneshot::Sender<Response>,
 }
 
@@ -32,13 +34,39 @@ impl Asks {
         outbox: &mut Vec<EventKind>,
     ) {
         self.last = self.last.next();
+        let asked = ToolAsk::of_hook(
+            request.tool.clone(),
+            request.input.clone(),
+            request.suggestions.clone(),
+        );
         let pending = PendingAsk {
             ask: self.last,
             agent,
             request,
+            kind: asked.kind.clone(),
+            can_allow_always: asked.can_allow_always(),
         };
         outbox.push(EventKind::AskPending(pending.clone()));
-        self.held.insert(self.last, Held { pending, reply });
+        self.held.insert(
+            self.last,
+            Held {
+                pending,
+                asked,
+                reply,
+            },
+        );
+    }
+
+    pub(crate) fn answer_with(
+        &mut self,
+        ask: AskId,
+        answer: &AskAnswer,
+        outbox: &mut Vec<EventKind>,
+    ) -> Reply {
+        let Some(decision) = self.held.get(&ask).map(|held| held.asked.decision(answer)) else {
+            return self.refusal(ask);
+        };
+        self.answer(ask, &decision, outbox)
     }
 
     pub(crate) fn answer(

@@ -3,7 +3,7 @@ use krad_domain::{AgentPreset, EnvironmentName, TerminalId};
 
 use super::super::super::chat::StartError;
 use super::super::super::EnvironmentShell;
-use super::super::{Backend, SurfaceChat};
+use super::super::{Backend, Chat};
 use super::{structured_chat, structured_mut};
 
 impl EnvironmentShell {
@@ -13,18 +13,19 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &mut Context<Self>,
     ) {
-        let has_work = structured_chat(self, env, id).is_some_and(|chat| match &chat.backend {
-            Backend::Structured(structured) => structured.has_work(&chat.outbox),
-            Backend::Transcript(_) => false,
-        });
+        let has_work =
+            structured_chat(self, env, id).is_some_and(|chat| match &chat.chat.backend {
+                Backend::Structured(structured) => structured.has_work(&chat.chat.outbox),
+                Backend::Transcript(_) => false,
+            });
         if !has_work || !self.start_or_report(env, id, cx) {
             return;
         }
-        let Some(SurfaceChat {
+        let Some(Chat {
             backend: Backend::Structured(structured),
             outbox,
             ..
-        }) = structured_chat(self, env, id)
+        }) = structured_chat(self, env, id).map(|view| &mut view.chat)
         else {
             return;
         };
@@ -53,7 +54,7 @@ impl EnvironmentShell {
             .get_mut(env)
             .and_then(|live| live.chats.get_mut(&id))
         {
-            chat.problem = Some(error.to_string());
+            chat.chat.problem = Some(error.to_string());
         }
         self.fail_worker_launch(env, id, &error.to_string(), cx);
         false
@@ -84,7 +85,8 @@ impl EnvironmentShell {
                 live.chats
                     .iter()
                     .filter(|(_, chat)| {
-                        chat.structured()
+                        chat.chat
+                            .structured()
                             .is_some_and(|structured| structured.harness == harness)
                     })
                     .map(move |(id, _)| (env.clone(), *id))

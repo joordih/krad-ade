@@ -5,6 +5,7 @@ mod answer_blocks;
 mod bookmarks;
 mod bus;
 mod chat_menu;
+mod chat_model;
 mod checklist;
 mod choice;
 mod composer;
@@ -46,19 +47,16 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
-use super::ask::AskQueue;
-use super::chat::ChatMessage;
 use super::EnvironmentShell;
 use anchor::Anchor;
+pub(super) use chat_model::Chat;
 use checklist::ChecklistView;
 pub(super) use composer::EffortPopover;
 use edit_message::MessageEditor;
 use glide::Glide;
 pub(super) use origin::age_label;
-use outbox::Outbox;
-use subagents::Subagents;
 use timeline::Timeline;
-use transcript::{TranscriptView, TRANSCRIPT_HARNESS};
+use transcript::TranscriptView;
 
 pub(super) use acp::{AcpChoice, AcpSeed, KeptAdapterView};
 pub(super) use answer::{names_its_tool, tool_question, tool_request};
@@ -100,9 +98,8 @@ pub(super) enum Backend {
     Structured(Box<StructuredChat>),
 }
 
-pub(super) struct SurfaceChat {
-    pub(super) messages: Vec<ChatMessage>,
-    pub(super) origin: Option<krad_domain::ChatOrigin>,
+pub(super) struct ChatView {
+    pub(super) chat: Chat,
     pub(super) input: Entity<TextareaState>,
     composer_rows: u16,
     _input_events: Subscription,
@@ -121,30 +118,24 @@ pub(super) struct SurfaceChat {
     landing: Cell<Option<f32>>,
     timeline: RefCell<Timeline>,
     glide: Option<Glide>,
-    pub(super) working_since: Cell<Option<Instant>>,
-    outbox: Outbox,
-    pub(super) problem: Option<String>,
-    pub(super) backend: Backend,
-    subagents: Subagents,
     checklist_view: ChecklistView,
     editing: Option<MessageEditor>,
-    files_undo: Option<files_restore::FilesUndo>,
 }
 
-impl SurfaceChat {
+impl ChatView {
     pub(super) fn takes_bus_notice(&self) -> bool {
-        self.structured()
-            .is_some_and(|structured| structured.takes_bus_notice(&self.outbox))
+        self.chat
+            .structured()
+            .is_some_and(|structured| structured.takes_bus_notice(&self.chat.outbox))
     }
 
     pub(super) fn queue_bus_notice(&mut self, notice: String) {
-        self.outbox.push(Prompt::from(notice));
+        self.chat.outbox.push(Prompt::from(notice));
     }
 
     fn new(input: Entity<TextareaState>, input_events: Subscription, backend: Backend) -> Self {
         Self {
-            messages: Vec::new(),
-            origin: None,
+            chat: Chat::new(backend),
             input,
             composer_rows: COMPOSER_MIN_ROWS,
             _input_events: input_events,
@@ -163,49 +154,8 @@ impl SurfaceChat {
             landing: Cell::new(None),
             timeline: RefCell::default(),
             glide: None,
-            working_since: Cell::new(None),
-            outbox: Outbox::default(),
-            problem: None,
-            backend,
-            subagents: Subagents::default(),
             checklist_view: ChecklistView::default(),
             editing: None,
-            files_undo: None,
-        }
-    }
-
-    pub(super) const fn harness(&self) -> AgentPreset {
-        match &self.backend {
-            Backend::Structured(structured) => structured.harness,
-            Backend::Transcript(_) => TRANSCRIPT_HARNESS,
-        }
-    }
-
-    pub(super) const fn structured(&self) -> Option<&StructuredChat> {
-        match &self.backend {
-            Backend::Structured(structured) => Some(structured),
-            Backend::Transcript(_) => None,
-        }
-    }
-
-    pub(super) const fn asks(&self) -> &AskQueue {
-        match &self.backend {
-            Backend::Structured(structured) => &structured.asks,
-            Backend::Transcript(view) => &view.asks,
-        }
-    }
-
-    pub(super) fn asks_mut(&mut self) -> &mut AskQueue {
-        match &mut self.backend {
-            Backend::Structured(structured) => &mut structured.asks,
-            Backend::Transcript(view) => &mut view.asks,
-        }
-    }
-
-    pub(super) fn structured_mut(&mut self) -> Option<&mut StructuredChat> {
-        match &mut self.backend {
-            Backend::Structured(structured) => Some(structured),
-            Backend::Transcript(_) => None,
         }
     }
 }
@@ -248,7 +198,7 @@ impl EnvironmentShell {
             .envs
             .get(&env)
             .and_then(|live| live.chats.get(&id))
-            .is_some_and(|chat| chat.asks().blocks_typing());
+            .is_some_and(|chat| chat.chat.asks().blocks_typing());
         if blocked {
             return;
         }
@@ -269,7 +219,7 @@ impl EnvironmentShell {
             .envs
             .get(&env)
             .and_then(|live| live.chats.get(&id))
-            .map_or(DEFAULT_CHAT_HARNESS, SurfaceChat::harness);
+            .map_or(DEFAULT_CHAT_HARNESS, |view| view.chat.harness());
         if harness.chats_through_gateway() {
             self.recheck_failed_gateway(cx);
         }
@@ -282,7 +232,7 @@ impl EnvironmentShell {
         {
             chat.mentions.clear();
             let prompt = Prompt::new(&text, std::mem::take(&mut chat.attached));
-            chat.outbox.push(prompt);
+            chat.chat.outbox.push(prompt);
             chat.pins_latest = true;
             chat.start_glide(Instant::now());
         }
@@ -310,7 +260,7 @@ impl EnvironmentShell {
             .envs
             .get(env)
             .and_then(|live| live.chats.get(&id))
-            .is_some_and(|chat| chat.structured().is_some());
+            .is_some_and(|chat| chat.chat.structured().is_some());
         if structured {
             self.flush_structured(env, id, cx);
         } else {
@@ -327,7 +277,7 @@ impl EnvironmentShell {
             .envs
             .get(&self.active)
             .and_then(|live| live.chats.get(&id))
-            .is_some_and(|chat| chat.structured().is_some());
+            .is_some_and(|chat| chat.chat.structured().is_some());
         if !structured {
             self.show_whole_transcript(id, cx);
         }
@@ -358,11 +308,11 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get_mut(env) else {
             return HarnessChange::Kept;
         };
-        let Some(SurfaceChat {
+        let Some(Chat {
             backend: Backend::Structured(structured),
             messages,
             ..
-        }) = live.chats.get_mut(&id)
+        }) = live.chats.get_mut(&id).map(|view| &mut view.chat)
         else {
             return HarnessChange::Kept;
         };
@@ -373,13 +323,11 @@ impl EnvironmentShell {
             return HarnessChange::Refused;
         }
         self.leave_runtime(env, id);
-        let Some(SurfaceChat {
-            backend: Backend::Structured(structured),
-            ..
-        }) = self
+        let Some(Backend::Structured(structured)) = self
             .envs
             .get_mut(env)
             .and_then(|live| live.chats.get_mut(&id))
+            .map(|view| &mut view.chat.backend)
         else {
             return HarnessChange::Kept;
         };
@@ -430,7 +378,7 @@ impl EnvironmentShell {
             .envs
             .get_mut(env)
             .and_then(|live| live.chats.get_mut(&id))
-            .map(|chat| &mut chat.backend)
+            .map(|chat| &mut chat.chat.backend)
         {
             Some(Backend::Structured(structured)) => structured.command(command),
             Some(Backend::Transcript(_)) | None => self.command_transcript(env, id, &command),

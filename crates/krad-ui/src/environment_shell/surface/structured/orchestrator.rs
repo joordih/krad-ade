@@ -1,7 +1,5 @@
 use gpui_kit::{Context, Window};
-use krad_domain::{
-    SessionEdit, SessionId, SessionLead, TerminalId, DEFAULT_CHAT_HARNESS,
-};
+use krad_domain::{SessionEdit, SessionId, SessionLead, TerminalId, DEFAULT_CHAT_HARNESS};
 
 use super::super::super::workers::LeadEnding;
 use super::super::super::EnvironmentShell;

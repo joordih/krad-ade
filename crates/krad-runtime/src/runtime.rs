@@ -29,7 +29,7 @@ use crate::launches::{LaunchedViews, Launches};
 use crate::models::Models;
 use crate::opencode::{OpencodeDirectory, OpencodeServers};
 use crate::reviews::Reviews;
-use crate::runners::{RunnerDirectory, Runners};
+use crate::runners::Runners;
 use crate::settings::AppSettings;
 use crate::subscribers::Subscribers;
 use crate::terminals::{Settling, Terminals};
@@ -40,8 +40,8 @@ use crate::workers::Workers;
 mod bus_git;
 mod chatting;
 mod ci_fixing;
-mod cloud_results;
 mod cloud_nodes;
+mod cloud_results;
 mod clouding;
 mod code_host_watch;
 mod commands;
@@ -139,7 +139,6 @@ struct Owned {
     opencode: OpencodeDirectory,
     settings: AppSettings,
     views: LaunchedViews,
-    runners: RunnerDirectory,
     kraddies: KraddiesSetup,
     secrets: Secrets,
 }
@@ -172,7 +171,6 @@ impl Runtime {
         let opencode = OpencodeDirectory::default();
         let settings = AppSettings::start(setup.settings, &inbox);
         let views = LaunchedViews::default();
-        let runners = RunnerDirectory::default();
         let owned = Owned {
             events,
             usage,
@@ -181,7 +179,6 @@ impl Runtime {
             opencode: opencode.clone(),
             settings,
             views: views.clone(),
-            runners: runners.clone(),
             kraddies: setup.kraddies,
             secrets: setup.secrets,
         };
@@ -196,7 +193,7 @@ impl Runtime {
             inbox,
             access,
             usage_budget,
-            (links, runners, opencode, views, secrets),
+            (links, opencode, views, secrets),
         ))
     }
 
@@ -225,7 +222,7 @@ impl Runtime {
             buffers: EditorBuffers::default(),
             code_hosts: CodeHostWatch::default(),
             reviews: Reviews::default(),
-            runners: Runners::with_directory(owned.runners),
+            runners: Runners::default(),
             cloud: CloudSessions::default(),
             cloud_runs: CloudRuns::default(),
             gateway: Gateway::default(),

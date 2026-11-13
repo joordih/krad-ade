@@ -4,9 +4,7 @@ mod live;
 mod panel;
 mod suggest;
 
-pub(super) use krad_domain::{
-    fold_entry, AnswerPart, ChatMessage, ShownOutput,
-};
+pub(super) use krad_domain::{fold_entry, AnswerPart, ChatMessage, ShownOutput};
 pub(super) use live::StartError;
 pub(super) use panel::question_bubble;
 pub(super) use suggest::workplace_home;

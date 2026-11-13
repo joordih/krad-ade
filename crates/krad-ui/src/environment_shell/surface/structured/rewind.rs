@@ -24,14 +24,16 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let rewinds = structured_chat(self, env, id)
-            .and_then(|chat| chat.messages.get(index))
+            .and_then(|chat| chat.chat.messages.get(index))
             .is_some_and(|message| message.rewind.is_some());
         if !rewinds {
             return;
         }
         if !self.start_or_report(env, id, cx) {
             if let Some(chat) = structured_chat(self, env, id) {
-                chat.problem.get_or_insert_with(|| STARTING_TEXT.to_owned());
+                chat.chat
+                    .problem
+                    .get_or_insert_with(|| STARTING_TEXT.to_owned());
             }
             return;
         }

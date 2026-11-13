@@ -20,7 +20,7 @@ impl EnvironmentShell {
             return Some(ChatPresence::Queued);
         }
         if let Some(chat) = live.chats.get(&id) {
-            return Some(if chat.outbox.has_queued() {
+            return Some(if chat.chat.outbox.has_queued() {
                 ChatPresence::Queued
             } else {
                 ChatPresence::Open
@@ -41,7 +41,7 @@ impl EnvironmentShell {
         let Some(chat) = live.chats.get(&id) else {
             return live.pending_chats.contains_key(&id).then(String::new);
         };
-        let all = conversation_lines(&chat.messages);
+        let all = conversation_lines(&chat.chat.messages);
         let start = all.len().saturating_sub(lines);
         Some(all[start..].join("\n"))
     }
@@ -57,7 +57,7 @@ impl EnvironmentShell {
             return false;
         };
         if let Some(chat) = live.chats.get_mut(&id) {
-            chat.outbox.push(Prompt::from(text));
+            chat.chat.outbox.push(Prompt::from(text));
             self.flush_outbox(env, id, cx);
             return true;
         }

@@ -82,7 +82,7 @@ impl EnvironmentShell {
             .envs
             .get(&self.active)
             .and_then(|live| live.chats.get(&spot.chat))
-            .and_then(|chat| chat.messages.get(spot.message))
+            .and_then(|chat| chat.chat.messages.get(spot.message))
         else {
             return (None, None);
         };

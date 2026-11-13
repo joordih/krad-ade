@@ -4,7 +4,9 @@ use krad_agents::{
     call, AgentInfo, AgentKey, AgentStatus, AgentsError, Caller, Request, Response, TerminalHandle,
     TerminalState,
 };
-use krad_domain::{AgentPreset, AgentState, EnvironmentName, TerminalId, ToolDecision};
+use krad_domain::{
+    AgentPreset, AgentState, AskAnswer, AskKind, EnvironmentName, TerminalId, ToolDecision,
+};
 use krad_protocol::{
     AgentRef, AskSettlement, BusCommand, Command, ErrorCode, EventKind, Feed, PendingAsk, Reply,
     StatusReport,
@@ -126,6 +128,46 @@ fn a_bus_ask_waits_for_an_answer_and_the_first_answer_wins() -> TestResult {
             ask: pending.ask,
             settlement: AskSettlement::Answered,
         }
+    );
+    Ok(())
+}
+
+#[test]
+fn an_ask_answered_always_hands_its_caller_the_suggested_rules() -> TestResult {
+    let runtime = with_bus()?;
+    let mut events = runtime.subscribe();
+    let rule = serde_json::json!({ "type": "addRules" });
+    let asked = call_in_background(
+        &runtime,
+        Request::Ask {
+            tool: ASKED_TOOL.to_owned(),
+            input: serde_json::json!({ "command": ASKED_COMMAND }),
+            suggestions: vec![rule.clone()],
+            call: None,
+        },
+    )?;
+    let EventKind::AskPending(pending) = next_event(&mut events)? else {
+        return Err("the ask was not reported".into());
+    };
+    assert!(pending.can_allow_always);
+    assert!(matches!(
+        &pending.kind,
+        AskKind::Permission { tool, summary, .. } if tool == ASKED_TOOL && summary == ASKED_COMMAND
+    ));
+    let always = Command::Bus(BusCommand::Answer {
+        ask: pending.ask,
+        answer: AskAnswer::AllowAlways,
+    });
+    assert_eq!(
+        block_on(runtime.send(runtime.next_request(), always))?,
+        Reply::Accepted
+    );
+    assert_eq!(
+        asked.join().map_err(|_| "the caller panicked")??,
+        Response::Decided(ToolDecision::Allow {
+            updated_input: None,
+            permissions: vec![rule],
+        })
     );
     Ok(())
 }

@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "gemini is not on this fake runner" >&2
+exit 127

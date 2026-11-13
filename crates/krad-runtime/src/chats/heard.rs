@@ -2,8 +2,8 @@ use krad_chat::{AcpEvent, Catalog, ChatEvent, LiveEvent, ResumeRefused, Rewound}
 use krad_domain::{ChatEntry, ModelOffer};
 use krad_protocol::{AgentRef, ChatAsk, ChatAskId, EventKind, UsageNews};
 
-use super::{acp, cloud};
 use super::chat::{Batch, Chat};
+use super::{acp, cloud};
 use super::{checkpoints, ensure_live, hand_over, ChatEffect, ChatWork, Chats};
 
 enum Outcome {

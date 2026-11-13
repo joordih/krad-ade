@@ -11,9 +11,8 @@ use gpui_kit::component::input::TextareaState;
 use gpui_kit::{Context, Entity, Task};
 use krad_chat::LiveChat;
 use krad_domain::{
-    DigestBook, DigestId, EnvironmentName, KraddieChip, KraddieId,
-    KraddieMood, MemoryLibrary, MemoryOwner, MemorySize,
-    SessionId, TerminalId,
+    DigestBook, DigestId, EnvironmentName, KraddieChip, KraddieId, KraddieMood, MemoryLibrary,
+    MemoryOwner, MemorySize, SessionId, TerminalId,
 };
 use krad_protocol::OwnedDigests;
 use std::collections::{HashMap, HashSet};

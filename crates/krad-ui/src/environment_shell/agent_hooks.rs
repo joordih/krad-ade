@@ -1,8 +1,8 @@
 use gpui_kit::Context;
 use krad_agents::{ErrorCode, Response, TerminalHandle};
 use krad_domain::{
-    sanitize_worktree_name, worker_brief, AgentPreset, CloudPlacement, EnvironmentName, PermissionMode, SessionId, TerminalGroup, TerminalId, ToastKind,
-    WorkerSpawn,
+    sanitize_worktree_name, worker_brief, AgentPreset, CloudPlacement, EnvironmentName,
+    PermissionMode, SessionId, TerminalGroup, TerminalId, ToastKind, WorkerSpawn,
 };
 use krad_protocol::{Conversation, HookHeard, HookOrigin};
 use krad_runtime::{cli_name, BusReply};
@@ -39,7 +39,6 @@ pub(super) struct WorkerOf {
 }
 
 impl EnvironmentShell {
-
     pub(super) fn hook_heard(&mut self, heard: HookHeard) {
         let HookHeard {
             agent,

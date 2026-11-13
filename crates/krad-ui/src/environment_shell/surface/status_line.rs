@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use super::super::chat::{AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
 use super::structured::StructuredChat;
-use super::SurfaceChat;
+use super::ChatView;
 use crate::components::thinking_indicator;
 use crate::theme::{Palette, LINE_XS, SPACE_2, TEXT_XS};
 
@@ -167,8 +167,9 @@ pub(super) fn status_line(
 }
 
 impl EnvironmentShell {
-    pub(super) fn turn_started(&self, id: TerminalId, chat: &SurfaceChat) -> Instant {
+    pub(super) fn turn_started(&self, id: TerminalId, chat: &ChatView) -> Instant {
         let tracked = chat
+            .chat
             .structured()
             .and_then(StructuredChat::runtime_working_since)
             .or_else(|| {
@@ -178,9 +179,9 @@ impl EnvironmentShell {
                     .copied()
             });
         let started = tracked
-            .or_else(|| chat.working_since.get())
+            .or_else(|| chat.chat.working_since.get())
             .unwrap_or_else(Instant::now);
-        chat.working_since.set(Some(started));
+        chat.chat.working_since.set(Some(started));
         started
     }
 }

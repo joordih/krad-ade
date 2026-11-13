@@ -73,7 +73,7 @@ impl EnvironmentShell {
         let (env, chat) = key;
         let live = self.envs.get(env)?;
         let surface = live.chats.get(chat)?;
-        if surface.structured()?.in_runtime() || !self.kraddies.memory.known {
+        if surface.chat.structured()?.in_runtime() || !self.kraddies.memory.known {
             return None;
         }
         let owner = self.chat_owner(env, *chat);
@@ -102,7 +102,7 @@ impl EnvironmentShell {
         let group = live.data.group_of_chat(*chat);
         Some(DigestCheck {
             phase,
-            messages: history_of(&surface.messages).len(),
+            messages: history_of(&surface.chat.messages).len(),
             covered,
             digests,
             budget: self
@@ -137,11 +137,15 @@ impl EnvironmentShell {
                     .iter()
                     .filter(|(_, surface)| {
                         surface
+                            .chat
                             .structured()
                             .is_some_and(|structured| !structured.in_runtime())
                     })
                     .map(move |(chat, surface)| {
-                        ((env.clone(), *chat), surface.working_since.get().is_some())
+                        (
+                            (env.clone(), *chat),
+                            surface.chat.working_since.get().is_some(),
+                        )
                     })
             })
             .map(|(key, working)| {
@@ -205,8 +209,8 @@ impl EnvironmentShell {
         Some(DigestJob {
             owner: self.chat_owner(env, *chat),
             chat: self.digest_chat(env, *chat)?,
-            harness: surface.harness(),
-            messages: history_of(&surface.messages),
+            harness: surface.chat.harness(),
+            messages: history_of(&surface.chat.messages),
         })
     }
 
@@ -215,7 +219,7 @@ impl EnvironmentShell {
             .envs
             .get(env)
             .and_then(|live| live.chats.get(chat))
-            .and_then(|surface| surface.structured());
+            .and_then(|surface| surface.chat.structured());
         ChatBrief {
             model: structured.and_then(|structured| structured.chosen_model.clone()),
             effort: structured.and_then(|structured| structured.effort),

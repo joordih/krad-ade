@@ -1,6 +1,6 @@
 use krad_agents::{Caller, TerminalHandle, CLI_PROGRAM};
 use krad_chat::{BusVars, ChatBackend, EngineConfig, LiveConfig, Runner};
-use krad_domain::{model_label, parse_wsl_path, AgentPreset, Settings, UsageBudget};
+use krad_domain::{parse_wsl_path, AgentPreset, Settings, UsageBudget};
 use krad_host::HostLink;
 use krad_protocol::{AgentRef, RemoteBusInfo};
 use krad_session::find_program;
@@ -13,8 +13,8 @@ use super::backend::{ChatLaunch, Choices, Unready};
 use super::brief::{ChatBrief, ChatRole};
 use super::cloud::{cloud_place, CloudChat};
 use super::{ChatPlace, EditorBuffers};
-use crate::cloud_runs::{placement_of, site_of, NodeSite};
 use crate::bus::BusAccess;
+use crate::cloud_runs::{placement_of, site_of, NodeSite};
 use crate::environments::Environments;
 use crate::hosts::{remote_caller_vars, Hosts, Reach};
 use crate::kraddies::Kraddies;
@@ -24,15 +24,15 @@ use crate::runners::Runners;
 
 mod acp;
 mod cloud;
+mod offered;
 
 pub(super) use acp::resolve_acp;
+use offered::Offered;
 
 const NO_PROGRAM_TEXT: &str = "is not on PATH";
 const NO_CHAT_TEXT: &str = "has no chat";
 const NOT_IN_WSL_TEXT: &str = "chats do not run in WSL folders yet";
 const NO_CONFIG_FOLDER_TEXT: &str = "Krad ADE has no config folder to keep the chat in";
-const UNAVAILABLE_MODEL_NOTICE: &str =
-    "is no longer offered here, so this message uses the default model";
 const PROMPT_SEPARATOR: &str = "\n\n";
 
 pub(crate) struct LaunchFacts<'a> {
@@ -247,20 +247,6 @@ impl LaunchFacts<'_> {
         self.runner(chat, harness, place).ok()
     }
 
-    fn offered(&self, harness: AgentPreset, place: &ChatPlace, choices: &Choices) -> Offered {
-        let Some(model) = choices.model.clone() else {
-            return Offered::Kept(None);
-        };
-        let offers = self.models.offers(&place.host, harness);
-        if offers.is_empty() || offers.iter().any(|offer| offer.answers_to(model.as_str())) {
-            return Offered::Kept(Some(model));
-        }
-        Offered::Dropped(format!(
-            "{} {UNAVAILABLE_MODEL_NOTICE}",
-            model_label(model.as_str())
-        ))
-    }
-
     fn live_config(
         &self,
         (chat, harness, place, cloud): (&AgentRef, AgentPreset, &ChatPlace, Option<&CloudChat>),
@@ -379,27 +365,6 @@ impl LaunchFacts<'_> {
             notices,
             model_dropped,
         })
-    }
-}
-
-enum Offered {
-    Kept(Option<krad_domain::ModelId>),
-    Dropped(String),
-}
-
-impl Offered {
-    fn model(&self) -> Option<krad_domain::ModelId> {
-        match self {
-            Self::Kept(model) => model.clone(),
-            Self::Dropped(_) => None,
-        }
-    }
-
-    fn notice(self) -> Option<String> {
-        match self {
-            Self::Kept(_) => None,
-            Self::Dropped(notice) => Some(notice),
-        }
     }
 }
 

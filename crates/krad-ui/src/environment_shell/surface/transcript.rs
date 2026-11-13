@@ -15,7 +15,7 @@ use super::super::ask::{AskQueue, Settled};
 use super::super::chat::{fold_entry, workplace_home, ChatMessage};
 use super::super::live_terminal::LiveTerminal;
 use super::super::EnvironmentShell;
-use super::{anchor, Backend, SurfaceChat, SurfaceCommand};
+use super::{anchor, Backend, ChatView, SurfaceCommand};
 
 pub(super) const TRANSCRIPT_HARNESS: AgentPreset = AgentPreset::ClaudeCode;
 const TAIL_INTERVAL: Duration = Duration::from_millis(400);
@@ -165,19 +165,19 @@ fn open_answer() -> ChatMessage {
     }
 }
 
-pub(super) fn fold_history(chat: &mut SurfaceChat, read: &TailRead, opened: bool) {
+pub(super) fn fold_history(chat: &mut ChatView, read: &TailRead, opened: bool) {
     if opened {
-        chat.origin = krad_domain::ChatOrigin::of(&read.chunk.entries, read.started);
+        chat.chat.origin = krad_domain::ChatOrigin::of(&read.chunk.entries, read.started);
     }
     let starts_mid_answer = matches!(read.chunk.entries.first(), Some(ChatEntry::Event(_)));
-    if chat.messages.is_empty() && starts_mid_answer {
-        chat.messages.push(open_answer());
+    if chat.chat.messages.is_empty() && starts_mid_answer {
+        chat.chat.messages.push(open_answer());
     }
     for entry in &read.chunk.entries {
         if matches!(entry, ChatEntry::User { .. }) {
-            chat.outbox.delivered();
+            chat.chat.outbox.delivered();
         }
-        fold_entry(&mut chat.messages, entry);
+        fold_entry(&mut chat.chat.messages, entry);
     }
 }
 
@@ -212,7 +212,7 @@ impl EnvironmentShell {
         };
         live.chats.insert(
             id,
-            SurfaceChat::new(input, input_events, Backend::Transcript(Box::new(view))),
+            ChatView::new(input, input_events, Backend::Transcript(Box::new(view))),
         );
         self.watch_subagents(&env, id, cx);
         cx.notify();
@@ -258,9 +258,9 @@ impl EnvironmentShell {
             state,
             Some(AgentState::Working | AgentState::WaitingForInput)
         );
-        chat.outbox.settle(working, now);
+        chat.chat.outbox.settle(working, now);
         let free = running && matches!(state, Some(AgentState::Idle | AgentState::Done));
-        if let Some(prompt) = chat.outbox.next_to_send(free, now) {
+        if let Some(prompt) = chat.chat.outbox.next_to_send(free, now) {
             self.submit_text_into(env, id, &prompt.text);
         }
     }
@@ -320,7 +320,7 @@ impl EnvironmentShell {
             .clone()?;
         let root = live.data.group_of(id).map(|group| group.root.clone());
         let chat = live.chats.get_mut(&id)?;
-        let Backend::Transcript(view) = &mut chat.backend else {
+        let Backend::Transcript(view) = &mut chat.chat.backend else {
             return None;
         };
         let transcript = &mut view.transcript;
@@ -329,10 +329,10 @@ impl EnvironmentShell {
             transcript.file = None;
             transcript.read = 0;
             transcript.calls.clear();
-            chat.messages.clear();
+            chat.chat.messages.clear();
             chat.opened_thoughts.clear();
             chat.thread.remeasure();
-            chat.origin = None;
+            chat.chat.origin = None;
         }
         Some(TailJob {
             link: self.runtime.handle.host_link(&live.data.host),
@@ -359,7 +359,7 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let Backend::Transcript(view) = &mut chat.backend else {
+        let Backend::Transcript(view) = &mut chat.chat.backend else {
             return;
         };
         let transcript = &mut view.transcript;
@@ -377,7 +377,7 @@ impl EnvironmentShell {
         if opened {
             transcript.skipped = read.skips_history();
         }
-        chat.problem.clone_from(&read.problem);
+        chat.chat.problem.clone_from(&read.problem);
         if read.chunk.entries.is_empty() {
             return;
         }
@@ -398,28 +398,26 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let Backend::Transcript(view) = &mut chat.backend else {
+        let Backend::Transcript(view) = &mut chat.chat.backend else {
             return;
         };
         let transcript = &mut view.transcript;
         transcript.whole = true;
         transcript.skipped = false;
         transcript.read = 0;
-        chat.messages.clear();
+        chat.chat.messages.clear();
         chat.opened_thoughts.clear();
-        chat.origin = None;
+        chat.chat.origin = None;
         chat.thread.remeasure();
         cx.notify();
     }
 }
 
-impl SurfaceChat {
+impl ChatView {
     pub(super) fn skips_history(&self) -> bool {
-        match &self.backend {
+        match &self.chat.backend {
             Backend::Transcript(view) => view.transcript.skipped,
-            Backend::Structured(structured) => {
-                structured.runtime_skips_history()
-            }
+            Backend::Structured(structured) => structured.runtime_skips_history(),
         }
     }
 }

@@ -283,10 +283,10 @@ impl EnvironmentShell {
 
     fn harness_skills(&self, composer: TerminalId) -> Option<Vec<Skill>> {
         let chat = self.envs.get(&self.active)?.chats.get(&composer)?;
-        if chat.harness().reads_shared_skills() {
+        if chat.chat.harness().reads_shared_skills() {
             return None;
         }
-        let catalog = chat.structured()?.catalog.as_ref()?;
+        let catalog = chat.chat.structured()?.catalog.as_ref()?;
         Some(
             catalog
                 .commands

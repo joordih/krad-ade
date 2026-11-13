@@ -3,7 +3,6 @@ use krad_protocol::CloudAskReplayed;
 use super::super::EnvironmentShell;
 
 impl EnvironmentShell {
-
     pub(in crate::environment_shell) fn cloud_ask_replayed(&mut self, asked: CloudAskReplayed) {
         let CloudAskReplayed {
             agent,

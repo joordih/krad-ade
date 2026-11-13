@@ -1,5 +1,6 @@
 use krad_domain::{
-    AgentStatus, ApiDiscoveryFile, EnvironmentName, TerminalId, ToolDecision, ToolUseId, WebhookId,
+    AgentStatus, ApiDiscoveryFile, AskAnswer, AskKind, EnvironmentName, TerminalId, ToolDecision,
+    ToolUseId, WebhookId,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -40,6 +41,9 @@ pub struct PendingAsk {
     pub ask: AskId,
     pub agent: AgentRef,
     pub request: AskRequest,
+    pub kind: AskKind,
+    #[serde(default)]
+    pub can_allow_always: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
@@ -77,6 +81,10 @@ pub enum BusCommand {
     AnswerAsk {
         ask: AskId,
         decision: ToolDecision,
+    },
+    Answer {
+        ask: AskId,
+        answer: AskAnswer,
     },
     PublishDiscovery {
         file: ApiDiscoveryFile,
@@ -146,6 +154,14 @@ mod tests {
                     suggestions: Vec::new(),
                     call: Some(ToolUseId::from("toolu_1")),
                 },
+                kind: AskKind::Permission {
+                    tool: "Bash".to_owned(),
+                    kind: krad_domain::ToolKind::Shell,
+                    summary: "ls".to_owned(),
+                    title: None,
+                    edit: None,
+                },
+                can_allow_always: true,
             }),
             EventKind::AskSettled {
                 ask: AskId(1),

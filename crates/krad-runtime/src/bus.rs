@@ -141,6 +141,7 @@ impl Bus {
             BusCommand::AnswerAsk { ask, decision } => {
                 Some(self.asks.answer(*ask, decision, outbox))
             }
+            BusCommand::Answer { ask, answer } => Some(self.asks.answer_with(*ask, answer, outbox)),
             BusCommand::PublishDiscovery { file } => Some(discovery::publish(&self.access, *file)),
             BusCommand::ReplayHook { .. } | BusCommand::Unknown => None,
         }

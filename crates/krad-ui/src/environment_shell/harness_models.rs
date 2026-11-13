@@ -183,5 +183,4 @@ impl EnvironmentShell {
         })
         .detach();
     }
-
 }

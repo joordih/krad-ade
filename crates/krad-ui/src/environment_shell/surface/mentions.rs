@@ -8,7 +8,7 @@ use krad_store::{chat_images_dir, delete_chat_images, save_pasted_image};
 use std::path::{Path, PathBuf};
 
 use super::super::EnvironmentShell;
-use super::SurfaceChat;
+use super::ChatView;
 use crate::components::{icon, tooltip_view, IconName};
 use crate::theme::{
     level_fill, palette, Palette, SurfaceLevel, ICON_SM, ICON_XS, LINE_XS, RADIUS_MD, RADIUS_SM,
@@ -144,7 +144,7 @@ impl EnvironmentShell {
             .envs
             .get_mut(env)
             .and_then(|live| live.chats.get_mut(&id))
-            .filter(|chat| chat.structured().is_some())
+            .filter(|chat| chat.chat.structured().is_some())
         else {
             return;
         };
@@ -193,7 +193,7 @@ impl EnvironmentShell {
             .envs
             .get(&env)
             .and_then(|live| live.chats.get(&id))
-            .is_some_and(|chat| chat.structured().is_some());
+            .is_some_and(|chat| chat.chat.structured().is_some());
         if !structured {
             return false;
         }
@@ -278,7 +278,7 @@ impl EnvironmentShell {
 
     pub(super) fn attached_tray(
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         if chat.attached.is_empty() {

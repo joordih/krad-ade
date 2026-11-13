@@ -10,10 +10,10 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use super::backend::{reach_server, HistorySource, Unready};
-use super::cloud::{cloud_place, runner_wait};
-use crate::cloud_runs::{site_of, CloudSite, NodeSite};
 use super::chat::{Chat, Earlier, HistoryWait, Shown};
+use super::cloud::{cloud_place, runner_wait};
 use super::{ChatWork, Chats, UNKNOWN_CHAT};
+use crate::cloud_runs::{site_of, CloudSite, NodeSite};
 use crate::jobs::{JobDone, Jobs};
 use crate::opencode::Reach;
 use crate::runtime::refused;
@@ -56,17 +56,19 @@ pub(super) fn read(chat: &mut Chat, work: &mut ChatWork<'_>) {
     };
     let source = match HistorySource::of(chat, &work.facts) {
         HistorySource::OpencodeOn(..) if resume.is_none() => return,
-        HistorySource::OpencodeOn(runner, cwd) => match reach_server((&runner, &cwd), cloud.as_ref(), work) {
-            Reach::Ready(server) => HistorySource::Opencode(server),
-            Reach::Waiting => {
-                chat.history = HistoryWait::ForServer;
-                return;
+        HistorySource::OpencodeOn(runner, cwd) => {
+            match reach_server((&runner, &cwd), cloud.as_ref(), work) {
+                Reach::Ready(server) => HistorySource::Opencode(server),
+                Reach::Waiting => {
+                    chat.history = HistoryWait::ForServer;
+                    return;
+                }
+                Reach::Failed(problem) => {
+                    chat.problem = Some(problem);
+                    return;
+                }
             }
-            Reach::Failed(problem) => {
-                chat.problem = Some(problem);
-                return;
-            }
-        },
+        }
         source => source,
     };
     let (id, opened) = (chat.id.clone(), chat.opened);

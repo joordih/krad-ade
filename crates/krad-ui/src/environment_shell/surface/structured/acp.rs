@@ -1,12 +1,9 @@
 use krad_chat::{acp_agent_env, Variables};
-use krad_domain::{
-    AcpAgent, AcpAgentStart, EnvironmentName, Host,
-};
+use krad_domain::{AcpAgent, AcpAgentStart, EnvironmentName, Host};
 use krad_host::HostLink;
 use krad_store::AcpSecrets;
 
 use super::super::super::EnvironmentShell;
-use super::super::SurfaceChat;
 
 pub(in crate::environment_shell) fn read_acp_secrets(
     agent: &AcpAgent,
@@ -37,7 +34,7 @@ impl EnvironmentShell {
             for structured in live
                 .chats
                 .values_mut()
-                .filter_map(SurfaceChat::structured_mut)
+                .filter_map(|view| view.chat.structured_mut())
             {
                 let seed = structured
                     .harness

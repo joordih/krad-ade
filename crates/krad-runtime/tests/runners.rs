@@ -211,7 +211,6 @@ fn runners_connect_install_fail_with_a_reason_and_are_removed() -> TestResult {
         failure(&installed).is_some_and(|reason| reason.contains("no id")),
         "{installed:?}"
     );
-    assert!(runtime.runner(connects).is_none());
 
     let shown = block_on(runtime.snapshot(Scope::Runtime))?.runners.shown;
     assert_eq!(

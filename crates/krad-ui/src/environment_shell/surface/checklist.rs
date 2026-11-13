@@ -8,7 +8,7 @@ use krad_domain::{Checklist, ChecklistItem, ChecklistStatus, TerminalId};
 use super::super::ask::tray;
 use super::super::chat::ChatMessage;
 use super::super::EnvironmentShell;
-use super::SurfaceChat;
+use super::ChatView;
 use crate::components::{icon, IconName};
 use crate::theme::{palette, Palette, ICON_SM, LINE_XS, SPACE_1, SPACE_1_5, SPACE_2, TEXT_XS};
 
@@ -101,10 +101,10 @@ fn item_row(item: &ChecklistItem, pal: &Palette) -> AnyElement {
 impl EnvironmentShell {
     pub(super) fn checklist_tray(
         id: TerminalId,
-        chat: &SurfaceChat,
+        chat: &ChatView,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let list = shown_checklist(&chat.messages)?;
+        let list = shown_checklist(&chat.chat.messages)?;
         let pal = palette(cx);
         let view = chat.checklist_view;
         let foldable = list.items.len() > COLLAPSE_AFTER;
