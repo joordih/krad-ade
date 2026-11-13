@@ -6,6 +6,7 @@ mod environments;
 mod event;
 mod frame;
 mod harness_health;
+mod hosts;
 mod ids;
 mod models;
 mod terminals;
@@ -22,6 +23,10 @@ pub use environments::{EnvironmentCommand, SpendingCrossed};
 pub use event::{Event, EventKind, Feed, Scope, Snapshot};
 pub use frame::{read_frame, write_frame, Frame, FrameError, Message, TerminalBytes};
 pub use harness_health::{HarnessCheck, HarnessChecked, HealthPlace, HealthSnapshot};
+pub use hosts::{
+    EnvironmentHost, HostCommand, HostPrompt, HostState, HostsSnapshot, PromptAnswer, PromptId,
+    RemoteBusInfo, RemoteBusState,
+};
 pub use ids::{ProtocolVersion, RequestId, Seq};
 pub use models::{ListedModels, ModelsCommand, ModelsOrigin, ModelsSnapshot};
 pub use terminals::{

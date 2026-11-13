@@ -19,12 +19,10 @@ impl EnvironmentShell {
         if host.is_local() {
             return Some((HostLink::Local, None));
         }
-        let link = self
-            .envs
-            .values()
-            .find(|live| live.data.host == *host)?
-            .link
-            .clone();
+        if !self.envs.values().any(|live| live.data.host == *host) {
+            return None;
+        }
+        let link = self.link_for(host);
         let platform = match &link {
             HostLink::Local => None,
             HostLink::Remote(ssh) => ssh.platform(),

@@ -4,14 +4,12 @@ mod close;
 mod discovery;
 mod feed;
 mod lead;
-mod remote;
 mod requests;
 mod service;
 mod typing;
 mod workspace;
 
 pub(in crate::environment_shell) use askpass::AskpassPlan;
-pub(super) use remote::{RemoteBus, RemoteBusPlan, RemoteBusSlot};
 pub(super) use workspace::target_group;
 
 use futures::StreamExt as _;
@@ -21,7 +19,7 @@ use krad_agents::{
     TerminalState, CLI_PROGRAM,
 };
 use krad_domain::{parse_wsl_path, EnvironmentName, Host, TerminalId};
-use krad_runtime::{BusAccess, BusReply, Delegated};
+use krad_runtime::{remote_caller_vars, BusAccess, BusReply, Delegated};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -150,11 +148,14 @@ impl EnvironmentShell {
         if self.cloud_placement_of(env, id).is_some() {
             return self.cloud_bus_vars(env, id);
         }
-        if let Some(live) = self.envs.get(env).filter(|live| !live.link.is_local()) {
-            return live
-                .remote_bus
-                .ready()
-                .map_or_default(|remote| remote.caller_vars(&Caller::Terminal(handle(env, id))));
+        if self
+            .envs
+            .get(env)
+            .is_some_and(|live| !live.data.host.is_local())
+        {
+            return self.remote_bus(env).map_or_default(|remote| {
+                remote_caller_vars(remote, &Caller::Terminal(handle(env, id)))
+            });
         }
         let mut vars = Self::caller_vars(bus, &Caller::Terminal(handle(env, id)));
         if self.terminal_in_wsl(env, id) {
@@ -207,7 +208,7 @@ impl EnvironmentShell {
         match from {
             Caller::Terminal(from) => self.answer_terminal(&from, request, reply, cx),
             Caller::Lead(lead) => self.answer_lead(&lead, request, reply, cx),
-            Caller::Git(_) => self.answer_git(request, reply, cx),
+            Caller::Git(_) => self.answer_git(request, reply),
             Caller::Client => reply
                 .send(feed::client_answer(self, &request))
                 .unwrap_or_default(),

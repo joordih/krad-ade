@@ -75,8 +75,9 @@ impl EnvironmentShell {
 
     pub(super) fn host_agents_known(&self, env: &EnvironmentName) -> bool {
         self.envs.get(env).is_some_and(|live| {
-            live.link.is_local()
-                || (live.host.is_connected() && self.host_agents.contains_key(&live.data.host))
+            live.data.host.is_local()
+                || (self.host_state(env).is_connected()
+                    && self.host_agents.contains_key(&live.data.host))
         })
     }
 
@@ -150,7 +151,7 @@ impl EnvironmentShell {
         let remote: Vec<EnvironmentName> = self
             .envs
             .iter()
-            .filter(|(_, live)| !live.link.is_local())
+            .filter(|(_, live)| !live.data.host.is_local())
             .map(|(env, _)| env.clone())
             .collect();
         for env in remote {
@@ -180,7 +181,9 @@ impl EnvironmentShell {
     }
 
     pub(super) fn env_link(&self, env: &EnvironmentName) -> HostLink {
-        self.envs.get(env).map_or_default(|live| live.link.clone())
+        self.envs
+            .get(env)
+            .map_or_default(|live| self.runtime.handle.host_link(&live.data.host))
     }
 
     pub(super) fn active_group(&self) -> Option<&TerminalGroup> {
@@ -350,7 +353,7 @@ impl EnvironmentShell {
             .get(&self.active)
             .map_or_else(Default::default, |live| {
                 (
-                    live.link.clone(),
+                    self.runtime.handle.host_link(&live.data.host),
                     live.data
                         .groups
                         .iter()

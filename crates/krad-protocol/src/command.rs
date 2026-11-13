@@ -4,6 +4,7 @@ use crate::app_events::EventsCommand;
 use crate::attention::AttentionCommand;
 use crate::bus::BusCommand;
 use crate::environments::EnvironmentCommand;
+use crate::hosts::HostCommand;
 use crate::models::ModelsCommand;
 use crate::terminals::TerminalCommand;
 use crate::usage::UsageCommand;
@@ -19,6 +20,7 @@ pub enum Command {
     Models(ModelsCommand),
     Environments(EnvironmentCommand),
     Terminal(TerminalCommand),
+    Host(HostCommand),
     #[serde(other)]
     Unknown,
 }

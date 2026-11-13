@@ -1,8 +1,7 @@
 use futures::channel::oneshot;
 use krad_domain::UsageBudget;
 use krad_protocol::{
-    BusSnapshot, Command, ErrorCode, Event, EventKind, Reply, RequestId, RuntimeCommand, Scope,
-    Seq, Snapshot,
+    Command, ErrorCode, Event, EventKind, Reply, RequestId, RuntimeCommand, Scope, Seq, Snapshot,
 };
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,12 +16,18 @@ use crate::bus::{open, Bus, BusSetup};
 use crate::environments::{Environments, EnvironmentsSetup};
 use crate::handle::RuntimeHandle;
 use crate::harness_health::Health;
+use crate::hosts::Hosts;
 use crate::input::Input;
 use crate::jobs::{JobDone, Jobs};
 use crate::models::Models;
 use crate::subscribers::Subscribers;
 use crate::terminals::{Settling, Terminals};
 use crate::usage::Usage;
+
+mod hosting;
+mod parts;
+
+use self::parts::Parts;
 
 const THREAD_NAME: &str = "krad-runtime";
 const INPUT_CAPACITY: usize = 1024;
@@ -51,6 +56,7 @@ pub struct Runtime {
     models: Models,
     environments: Environments,
     terminals: Terminals,
+    hosts: Hosts,
     stopped: Arc<AtomicBool>,
 }
 
@@ -58,6 +64,7 @@ struct Owned {
     events: AppEvents,
     usage: Usage,
     environments: Environments,
+    hosts: Hosts,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -84,10 +91,12 @@ impl Runtime {
         let usage_budget = Arc::new(UsageBudget::default());
         let usage = Usage::new(Arc::clone(&usage_budget));
         let environments = Environments::start(setup.environments);
+        let (hosts, links) = Hosts::new(access.clone());
         let owned = Owned {
             events,
             usage,
             environments,
+            hosts,
         };
         let shared_access = access.clone();
         let runtime_inbox = inbox.clone();
@@ -95,7 +104,7 @@ impl Runtime {
             .name(THREAD_NAME.to_owned())
             .spawn(move || Self::idle(shared_access, owned, &runtime_inbox, stopped).run(&input))?;
         tracing::info!("runtime started");
-        Ok(RuntimeHandle::new(inbox, access, usage_budget))
+        Ok(RuntimeHandle::new(inbox, access, usage_budget, links))
     }
 
     fn idle(
@@ -117,6 +126,7 @@ impl Runtime {
             models: Models::default(),
             environments: owned.environments,
             terminals: Terminals::new(inbox.clone()),
+            hosts: owned.hosts,
             stopped,
         }
     }
@@ -131,6 +141,7 @@ impl Runtime {
                 Err(RecvTimeoutError::Disconnected) => break,
             };
             batch.extend(input.try_iter());
+            let unread = self.outbox.len();
             if Instant::now() >= next_tick {
                 next_tick = Instant::now() + TICK_INTERVAL;
                 batch.push(Input::Tick);
@@ -142,6 +153,7 @@ impl Runtime {
                 }
             }
             self.terminals.pumped(&mut self.outbox);
+            self.hear_ended_terminals(unread);
             self.flush();
             if flow == Flow::Stopping {
                 break;
@@ -168,6 +180,7 @@ impl Runtime {
                 }
                 self.usage.tick(&self.jobs, &mut self.outbox);
                 self.terminals.tick(Instant::now(), &mut self.outbox);
+                self.tick_hosts();
             }
             Input::OpenTerminal {
                 terminal,
@@ -180,6 +193,11 @@ impl Runtime {
                 self.terminals.act(&terminal, action, &mut self.outbox);
             }
             Input::TerminalPalette(palette) => self.terminals.recolor(palette),
+            Input::OpenSignIn { terminal, shared } => self.open_sign_in(terminal, shared),
+            Input::MachineChannel {
+                environment,
+                channel,
+            } => self.hand_machine_channel(&environment, channel),
             Input::Wake => {}
             Input::CheckHarnesses { place, probes } => {
                 self.health
@@ -240,6 +258,8 @@ impl Runtime {
             | Input::OpenTerminal { .. }
             | Input::TerminalAction { .. }
             | Input::TerminalPalette(_)
+            | Input::OpenSignIn { .. }
+            | Input::MachineChannel { .. }
             | Input::Wake
             | Input::Tick
             | Input::Stop => {}
@@ -259,6 +279,7 @@ impl Runtime {
                 self.models.listed(key, listed, &mut self.outbox);
             }
             JobDone::UsageRead { key, read } => self.usage.read(&key, read, &mut self.outbox),
+            host_job => self.host_job_done(host_job),
         }
     }
 
@@ -292,8 +313,10 @@ impl Runtime {
                 .execute(&command, &mut self.outbox)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Environments(command) => self
-                .environments
-                .execute(command, &mut self.outbox)
+                .execute_environments(command)
+                .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
+            Command::Host(command) => self
+                .execute_host(command)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Terminal(command) => self
                 .terminals
@@ -338,6 +361,7 @@ impl Runtime {
             models: &self.models,
             environments: &self.environments,
             terminals: &self.terminals,
+            hosts: &self.hosts,
         };
         let seq = self.seq;
         self.subscribers
@@ -353,34 +377,9 @@ impl Runtime {
             models: &self.models,
             environments: &self.environments,
             terminals: &self.terminals,
+            hosts: &self.hosts,
         }
         .snapshot(self.seq, scope)
-    }
-}
-
-struct Parts<'a> {
-    bus: Option<&'a Bus>,
-    attention: &'a Attention,
-    health: &'a Health,
-    usage: &'a Usage,
-    models: &'a Models,
-    environments: &'a Environments,
-    terminals: &'a Terminals,
-}
-
-impl Parts<'_> {
-    fn snapshot(&self, seq: Seq, scope: Scope) -> Snapshot {
-        Snapshot {
-            scope,
-            seq,
-            bus: self.bus.map_or_else(BusSnapshot::default, Bus::snapshot),
-            attention: self.attention.snapshot(),
-            health: self.health.snapshot(),
-            usage: self.usage.snapshot(),
-            models: self.models.snapshot(),
-            environments: self.environments.snapshot(),
-            terminals: self.terminals.snapshot(),
-        }
     }
 }
 

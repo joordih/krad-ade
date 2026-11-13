@@ -3988,6 +3988,7 @@ dependencies = [
  "krad-session",
  "krad-store",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.21",
  "tracing",
  "ureq",
@@ -4054,7 +4055,6 @@ dependencies = [
  "ratex-svg",
  "ratex-types",
  "raw-window-handle",
- "sha2 0.10.9",
  "tracing",
  "ureq",
 ]

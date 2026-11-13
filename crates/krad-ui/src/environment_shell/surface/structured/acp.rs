@@ -122,7 +122,7 @@ impl EnvironmentShell {
         let hosts: Vec<(EnvironmentName, Host)> = self
             .envs
             .iter()
-            .map(|(env, live)| (env.clone(), live.link.host()))
+            .map(|(env, live)| (env.clone(), live.data.host.clone()))
             .collect();
         for (env, host) in hosts {
             let Some(live) = self.envs.get_mut(&env) else {

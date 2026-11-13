@@ -88,15 +88,8 @@ impl Terminals {
         let mut engine = match VtEngine::new(DEFAULT_COLS.into(), DEFAULT_ROWS.into()) {
             Ok(engine) => engine,
             Err(error) => {
-                let run = ProcessRun::Failed {
-                    error: format!("{ENGINE_FAILED}: {error}"),
-                };
-                shared.set_status(TerminalStatus {
-                    run: run.clone(),
-                    ..TerminalStatus::default()
-                });
-                outbox.push(EventKind::TerminalEnded(TerminalSummary { terminal, run }));
-                return;
+                let error = format!("{ENGINE_FAILED}: {error}");
+                return Self::refuse(terminal, &shared, &error, outbox);
             }
         };
         engine.push_text_lines(&launch.prefill);
@@ -160,6 +153,26 @@ impl Terminals {
         if let Err(error) = spawned {
             self.ended(&terminal, outbox, |live| live.fail(error.to_string()));
         }
+    }
+
+    pub(crate) fn refuse(
+        terminal: AgentRef,
+        shared: &Shared,
+        error: &str,
+        outbox: &mut Vec<EventKind>,
+    ) {
+        let run = ProcessRun::Failed {
+            error: error.to_owned(),
+        };
+        shared.set_status(TerminalStatus {
+            run: run.clone(),
+            ..TerminalStatus::default()
+        });
+        outbox.push(EventKind::TerminalEnded(TerminalSummary { terminal, run }));
+    }
+
+    pub(crate) fn close(&mut self, terminal: &AgentRef) -> bool {
+        self.live.remove(terminal).map(Terminal::kill).is_some()
     }
 
     pub(crate) fn pumped(&mut self, outbox: &mut Vec<EventKind>) {
@@ -234,12 +247,10 @@ impl Terminals {
             TerminalCommand::Unknown => return None,
         };
         if let TerminalCommand::Close { terminal } = command {
-            return Some(match self.live.remove(&terminal) {
-                Some(closed) => {
-                    closed.kill();
-                    Reply::Accepted
-                }
-                None => refused(ErrorCode::NotFound, UNKNOWN_TERMINAL),
+            return Some(if self.close(&terminal) {
+                Reply::Accepted
+            } else {
+                refused(ErrorCode::NotFound, UNKNOWN_TERMINAL)
             });
         }
         let Some(live) = self.live.get_mut(&terminal) else {

@@ -4,7 +4,7 @@ use gpui_kit::{
 };
 
 use super::super::EnvironmentShell;
-use super::state::HostTone;
+use super::look::{detail, label, tone, HostTone};
 use crate::components::{tooltip_view, Button, ButtonVariant, IconName};
 use crate::theme::{palette, Palette, LINE_XS, SPACE_1, SPACE_1_5, SPACE_2, TEXT_XS};
 
@@ -34,13 +34,13 @@ impl EnvironmentShell {
         }
         let destination = live.data.host.to_string();
         let pal = palette(cx);
-        let state = &live.host;
-        let tooltip: SharedString = match state.detail() {
+        let state = self.host_state(&self.active);
+        let tooltip: SharedString = match detail(state) {
             Some(detail) => format!(
                 "{destination}{SEPARATOR}{}{SEPARATOR}{detail}",
-                state.label()
+                label(state)
             ),
-            None => format!("{destination}{SEPARATOR}{}", state.label()),
+            None => format!("{destination}{SEPARATOR}{}", label(state)),
         }
         .into();
         let reconnect = state.can_reconnect().then(|| {
@@ -69,7 +69,7 @@ impl EnvironmentShell {
                         .flex_none()
                         .size(px(DOT))
                         .rounded_full()
-                        .bg(rgb(tone_color(state.tone(), pal))),
+                        .bg(rgb(tone_color(tone(state), pal))),
                 )
                 .child(
                     div()
@@ -86,7 +86,7 @@ impl EnvironmentShell {
                         .text_size(px(TEXT_XS))
                         .line_height(px(LINE_XS))
                         .text_color(rgb(pal.text_muted))
-                        .child(state.label()),
+                        .child(label(state)),
                 )
                 .children(reconnect)
                 .into_any_element(),

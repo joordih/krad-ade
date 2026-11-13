@@ -10,8 +10,10 @@ use krad_session::AnsiPalette;
 use std::collections::{BTreeSet, HashMap};
 
 mod environments;
+mod hosts;
 
 pub(super) use environments::EnvironmentsMirror;
+pub(super) use hosts::{HostMove, HostsMirror};
 
 use super::attention::AttentionMirror;
 use super::harness_health::HealthMirror;
@@ -57,6 +59,7 @@ pub(super) struct RuntimeView {
     pub(super) usage: UsageMirror,
     pub(super) models: ModelsMirror,
     pub(super) environments: EnvironmentsMirror,
+    pub(super) hosts: HostsMirror,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -179,6 +182,7 @@ impl EnvironmentShell {
                     .environments
                     .replace(snapshot.environments);
                 self.advance_harness_onboarding(cx);
+                self.hosts_replaced(snapshot.hosts, cx);
                 for summary in snapshot.terminals {
                     self.terminal_summary_heard(summary);
                 }
@@ -286,6 +290,12 @@ impl EnvironmentShell {
             EventKind::ModelsListed { listed, origin } => self.models_listed(listed, origin, cx),
             EventKind::ModelListFailed { error, .. } => self.model_list_failed(&error, cx),
             EventKind::SpendingCrossed(crossed) => self.spending_crossed(&crossed),
+            host @ (EventKind::HostChanged { .. }
+            | EventKind::SignInWanted { .. }
+            | EventKind::MachineChannelWanted { .. }
+            | EventKind::RemoteBusChanged { .. }
+            | EventKind::HostPrompted(_)
+            | EventKind::HostPromptSettled { .. }) => self.host_event_heard(host, cx),
             EventKind::EnvironmentOpened { .. }
             | EventKind::EnvironmentClosed { .. }
             | EventKind::EnvironmentsOrdered { .. }

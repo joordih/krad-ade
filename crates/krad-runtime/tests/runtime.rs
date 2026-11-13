@@ -82,6 +82,7 @@ fn a_subscriber_starts_from_a_snapshot_and_receives_events_with_rising_seqs() ->
             models: ModelsSnapshot::default(),
             environments: Vec::new(),
             terminals: Vec::new(),
+            hosts: krad_protocol::HostsSnapshot::default(),
         }
     );
     Ok(())

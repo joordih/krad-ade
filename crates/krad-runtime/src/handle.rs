@@ -2,7 +2,9 @@ use futures::channel::{mpsc, oneshot};
 use futures::{Stream, StreamExt as _};
 use krad_agents::{AgentInfo, AgentKey, StateReason};
 use krad_chat::Runner;
-use krad_domain::{AgentPreset, Host, ToolDecision, UsageBudget};
+use krad_domain::{AgentPreset, EnvironmentName, Host, ToolDecision, UsageBudget};
+use krad_host::mux::PromptSender;
+use krad_host::{HostContext, HostLink, MachineChannel};
 use krad_protocol::{
     AgentRef, AskId, BusCommand, Command, Feed, HealthPlace, Reply, RequestId, Scope, Snapshot,
     TerminalCommand, WriteBy,
@@ -18,6 +20,7 @@ use std::task::{Context, Poll};
 
 use crate::bus::{BusAccess, DelegationReceiver, DELEGATION_BUFFER};
 use crate::harness_health::HarnessProbe;
+use crate::hosts::HostLinks;
 use crate::input::Input;
 use crate::terminals::{Shared, TerminalAction, TerminalLaunch, TerminalView};
 use crate::usage::UsagePlace;
@@ -44,6 +47,7 @@ pub struct RuntimeHandle {
     inbox: SyncSender<Input>,
     bus: Option<Arc<BusAccess>>,
     usage_budget: Arc<UsageBudget>,
+    links: HostLinks,
     requests: Arc<AtomicU64>,
     _alive: Arc<Alive>,
 }
@@ -53,12 +57,14 @@ impl RuntimeHandle {
         inbox: SyncSender<Input>,
         bus: Option<Arc<BusAccess>>,
         usage_budget: Arc<UsageBudget>,
+        links: HostLinks,
     ) -> Self {
         Self {
             _alive: Arc::new(Alive(inbox.clone())),
             inbox,
             bus,
             usage_budget,
+            links,
             requests: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -198,6 +204,43 @@ impl RuntimeHandle {
         let (tail, answer) = oneshot::channel();
         self.act_on_terminal(terminal, TerminalAction::RecentLines { lines, tail });
         Pending(answer)
+    }
+
+    #[must_use]
+    pub fn host_link(&self, host: &Host) -> HostLink {
+        self.links.link(host)
+    }
+
+    pub fn use_host_context(&self, context: HostContext) {
+        self.links.use_context(context);
+    }
+
+    #[must_use]
+    pub fn prompt_sender(&self) -> Option<PromptSender> {
+        self.links.prompts()
+    }
+
+    pub fn close_hosts(&self) {
+        self.links.close_all();
+    }
+
+    #[must_use]
+    pub fn open_sign_in(&self, terminal: AgentRef) -> TerminalView {
+        let shared = Shared::new(self.inbox.clone());
+        let view = TerminalView::new(Arc::clone(&shared));
+        self.deliver(Input::OpenSignIn { terminal, shared });
+        view
+    }
+
+    pub fn hand_machine_channel(
+        &self,
+        environment: EnvironmentName,
+        channel: Result<MachineChannel, String>,
+    ) {
+        self.deliver(Input::MachineChannel {
+            environment,
+            channel,
+        });
     }
 
     pub fn terminal_palette(&self, palette: AnsiPalette) {

@@ -1,8 +1,7 @@
-use krad_domain::SshDestination;
+pub use krad_domain::{PromptAsker, PromptKind};
 use std::fmt;
 use std::sync::mpsc;
 
-const CONFIRM_MARKER: &str = "(yes/no";
 const REDACTED: &str = "[REDACTED]";
 
 #[derive(Clone, PartialEq, Eq)]
@@ -24,29 +23,6 @@ impl fmt::Debug for Secret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(REDACTED)
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PromptKind {
-    Secret,
-    Confirm,
-}
-
-impl PromptKind {
-    #[must_use]
-    pub fn of(text: &str) -> Self {
-        if text.contains(CONFIRM_MARKER) {
-            Self::Confirm
-        } else {
-            Self::Secret
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PromptAsker {
-    Host(SshDestination),
-    Git,
 }
 
 #[derive(Debug)]
@@ -78,15 +54,6 @@ pub type PromptSender = mpsc::Sender<SignInPrompt>;
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn host_key_questions_are_confirmations_and_the_rest_secrets() {
-        assert_eq!(
-            PromptKind::of("Are you sure you want to continue connecting (yes/no/[fingerprint])? "),
-            PromptKind::Confirm
-        );
-        assert_eq!(PromptKind::of("me@devbox's password: "), PromptKind::Secret);
-    }
 
     #[test]
     fn secrets_never_print() {

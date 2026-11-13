@@ -97,6 +97,7 @@ mod tests {
             models: krad_protocol::ModelsSnapshot::default(),
             environments: Vec::new(),
             terminals: Vec::new(),
+            hosts: krad_protocol::HostsSnapshot::default(),
         }
     }
 

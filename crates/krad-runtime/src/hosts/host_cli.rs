@@ -17,7 +17,7 @@ const LOW_NIBBLE: u8 = 0x0f;
 const DIGEST_LIMIT: u64 = 128;
 
 #[derive(Debug)]
-pub(in crate::environment_shell) enum HostCliError {
+pub enum HostCliError {
     NoBundledCli(HostPlatform),
     Host(HostError),
     Bundle(std::io::Error),
@@ -48,7 +48,11 @@ impl From<std::io::Error> for HostCliError {
     }
 }
 
-pub(in crate::environment_shell) fn upload_host_cli(
+/// # Errors
+///
+/// Fails when the bundled CLI cannot be read, when there is none for the platform and the host
+/// has no current one, or when the host refuses the upload.
+pub fn upload_host_cli(
     link: &HostLink,
     platform: HostPlatform,
     bin_dir: &Path,
@@ -110,7 +114,8 @@ fn digest_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
-pub(in crate::environment_shell) fn bundled_cli(platform: HostPlatform) -> Option<PathBuf> {
+#[must_use]
+pub fn bundled_cli(platform: HostPlatform) -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let exe_dir = exe.parent()?;
     bundle_candidates(exe_dir, platform)

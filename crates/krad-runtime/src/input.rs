@@ -1,7 +1,8 @@
 use futures::channel::{mpsc, oneshot};
 use krad_agents::{AgentInfo, AgentKey, Incoming, Response, StateReason};
 use krad_chat::Runner;
-use krad_domain::{AgentPreset, Host};
+use krad_domain::{AgentPreset, EnvironmentName, Host};
+use krad_host::MachineChannel;
 use krad_protocol::{
     AgentRef, Command, Feed, HealthPlace, Reply, RequestId, Scope, Snapshot, WebhookTest,
 };
@@ -71,6 +72,14 @@ pub(crate) enum Input {
         action: TerminalAction,
     },
     TerminalPalette(AnsiPalette),
+    OpenSignIn {
+        terminal: AgentRef,
+        shared: Arc<Shared>,
+    },
+    MachineChannel {
+        environment: EnvironmentName,
+        channel: Result<MachineChannel, String>,
+    },
     Wake,
     Tick,
     Stop,

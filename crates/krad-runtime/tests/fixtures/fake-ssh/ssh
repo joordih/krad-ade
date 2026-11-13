@@ -1,0 +1,22 @@
+#!/bin/sh
+for word in "$@"; do destination="$word"; done
+case " $* " in
+  *" -O check "*) exit 255 ;;
+  *BatchMode=yes*) batch=yes ;;
+  *) batch=no ;;
+esac
+case "$destination" in
+  refuses.invalid)
+    echo "ssh: connect to host refuses.invalid port 22: Connection refused" >&2
+    exit 255
+    ;;
+  asks.invalid | declines.invalid)
+    if [ "$batch" = yes ]; then
+      echo "me@$destination: Permission denied (publickey,password)." >&2
+      exit 255
+    fi
+    [ "$destination" = asks.invalid ] && exit 0
+    exit 255
+    ;;
+esac
+exit 255

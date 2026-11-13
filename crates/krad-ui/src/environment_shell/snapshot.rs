@@ -27,18 +27,15 @@ impl EnvironmentShell {
             }
             let name = data.name.clone();
             self.order.push(name.clone());
-            let link = self.link_for(&data.host);
             self.envs
-                .insert(name.clone(), LiveEnv::new(data, data_focus, link));
+                .insert(name.clone(), LiveEnv::new(data, data_focus));
             restored += self.spawn_missing_sessions(&name);
         }
         if self.order.is_empty() {
             let data = EnvironmentData::empty(EnvironmentName::new(DEFAULT_ENVIRONMENT.to_owned()));
             let name = data.name.clone();
             self.order.push(name.clone());
-            let link = self.link_for(&data.host);
-            self.envs
-                .insert(name.clone(), LiveEnv::new(data, None, link));
+            self.envs.insert(name.clone(), LiveEnv::new(data, None));
             restored += self.spawn_missing_sessions(&name);
         }
         self.work_mode = view.work_mode;

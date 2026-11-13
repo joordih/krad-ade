@@ -111,7 +111,7 @@ impl EnvironmentShell {
         group_root: PathBuf,
     ) -> Option<DiscoveryInputs> {
         let (name, live) = self.envs.iter().find(|(_, live)| live.data.host == *host)?;
-        let link = live.link.clone();
+        let link = self.runtime.handle.host_link(&live.data.host);
         let host_cli = match &link {
             HostLink::Local => self.host_tools.local_cli.clone(),
             HostLink::Remote(ssh) => ssh

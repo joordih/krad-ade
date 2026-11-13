@@ -11,7 +11,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
-use super::super::host_cli::{upload_host_cli, HostCliError};
+use krad_runtime::{upload_host_cli, HostCliError};
 
 const INSTALL_SCRIPT: &str = "the cloud runner's install script";
 const NO_INSTALL_ID: &str = "this installation has no id, so no cloud runner can pair with it";

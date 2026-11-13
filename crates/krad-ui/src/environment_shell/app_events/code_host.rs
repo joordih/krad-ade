@@ -124,7 +124,7 @@ impl EnvironmentShell {
                     environment: name.clone(),
                     group: group.id,
                     root: group.root.clone(),
-                    link: live.link.clone(),
+                    link: self.runtime.handle.host_link(&live.data.host),
                 })
             })
             .collect();

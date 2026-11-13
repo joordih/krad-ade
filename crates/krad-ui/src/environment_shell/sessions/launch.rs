@@ -1,7 +1,7 @@
 use krad_chat::{new_opencode_session_id, OpencodeServer};
 use krad_domain::{
-    parse_wsl_path, resume_line, AgentPreset, EnvironmentName, ModelId, ProjectTask, ResumeId,
-    TerminalId, WslPath,
+    parse_wsl_path, resume_line, AgentPreset, EnvironmentName, ModelId, ProjectTask,
+    RelaunchIntent, ResumeId, TerminalId, WslPath,
 };
 use krad_host::HostLink;
 use krad_runtime::{HostShell, TerminalPlace};
@@ -33,6 +33,15 @@ pub(in crate::environment_shell) enum Launch {
         args: Vec<String>,
     },
     Task(ProjectTask),
+}
+
+impl From<RelaunchIntent> for Launch {
+    fn from(intent: RelaunchIntent) -> Self {
+        match intent {
+            RelaunchIntent::Shell => Self::Preset(AgentPreset::Shell),
+            RelaunchIntent::Resume { preset, resume } => Self::Resume { preset, resume },
+        }
+    }
 }
 
 impl Launch {

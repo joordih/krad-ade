@@ -50,6 +50,7 @@ fn frames_round_trip_in_order_and_the_stream_ends_cleanly() -> Result<(), FrameE
             models: crate::ModelsSnapshot::default(),
             environments: Vec::new(),
             terminals: Vec::new(),
+            hosts: crate::HostsSnapshot::default(),
         })))),
         Frame::Message(Box::new(Message::Feed(Feed::Event(Event {
             seq: Seq(2),

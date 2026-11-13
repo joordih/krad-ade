@@ -262,7 +262,7 @@ impl EnvironmentShell {
                 }
             }
             AgentPreset::ClaudeCode => SubagentSource::Claude {
-                link: live.link.clone(),
+                link: self.runtime.handle.host_link(&live.data.host),
                 root: live.data.group_of(id).map(|group| group.root.clone()),
                 home: subagents.home.clone(),
                 conversation: subagents.conversation.clone(),

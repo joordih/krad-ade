@@ -16,8 +16,10 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
 mod change;
+mod relaunch;
 
 pub use change::EnvironmentChange;
+pub use relaunch::{Relaunch, RelaunchIntent, RESTORE_MARKER};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TerminalNode {

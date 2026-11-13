@@ -41,14 +41,16 @@ impl EnvironmentShell {
     }
 
     fn apply_exit(&mut self, env: &EnvironmentName, id: TerminalId, code: Option<i32>) -> bool {
-        let signed_in = self.sign_in_ended(env, id, code);
+        if self.sign_in_terminal_of(env) == Some(id) {
+            return true;
+        }
         self.acp_sign_in_ended(env, id);
         self.runner_helper_exited(env, id);
         let Some(live) = self.envs.get_mut(env) else {
-            return signed_in;
+            return false;
         };
         if !live.sessions.contains_key(&id) {
-            return signed_in;
+            return false;
         }
         if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
             node.state = AgentState::Idle;

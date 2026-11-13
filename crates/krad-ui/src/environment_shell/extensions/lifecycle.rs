@@ -204,11 +204,12 @@ impl EnvironmentShell {
         if matches!(live.data.host, Host::Local) {
             return Some((HostLink::Local, None));
         }
-        let platform = match &live.link {
+        let link = self.runtime.handle.host_link(&live.data.host);
+        let platform = match &link {
             HostLink::Local => None,
             HostLink::Remote(remote) => remote.platform(),
         };
-        Some((live.link.clone(), platform))
+        Some((link, platform))
     }
 
     fn program_started(

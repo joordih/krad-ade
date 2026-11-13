@@ -5,8 +5,7 @@ mod typed_line;
 pub(super) use launch::Launch;
 
 use krad_domain::{
-    agent_event, AgentPreset, AgentState, AppEvent, EnvironmentName, ResumeId, TerminalId,
-    ToastKind,
+    agent_event, AgentState, AppEvent, EnvironmentName, Relaunch, ResumeId, TerminalId, ToastKind,
 };
 use krad_runtime::{TerminalLaunch, TerminalPlace};
 use std::path::PathBuf;
@@ -23,7 +22,6 @@ use super::EnvironmentShell;
 type CloudOpener = (krad_session::PtyOpener, bool);
 
 const HOST_NOT_READY_TEXT: &str = "Connect to the environment's host first";
-const RESTORE_MARKER: &str = "── restored session ──";
 
 pub(super) struct DeferredLaunch {
     id: TerminalId,
@@ -73,45 +71,18 @@ impl EnvironmentShell {
         if !self.host_ready(env) {
             return 0;
         }
-        let relaunches: Vec<(TerminalId, Launch, Option<PathBuf>, Vec<String>)> =
-            match self.envs.get(env) {
-                Some(live) => live
-                    .data
-                    .nodes
-                    .iter()
-                    .filter(|node| node.kind.is_terminal() && !live.sessions.contains_key(&node.id))
-                    .map(|node| {
-                        let meta = live.data.meta.get(&node.id);
-                        let group_root = node
-                            .group
-                            .and_then(|group| live.data.group(group))
-                            .map(|group| group.root.clone());
-                        let cwd = meta
-                            .filter(|meta| !meta.cwd.is_empty())
-                            .map(|meta| PathBuf::from(&meta.cwd))
-                            .or(group_root);
-                        let harness = node.harness.filter(|preset| preset.is_agent());
-                        let prefill =
-                            meta.filter(|_| harness.is_none())
-                                .map_or(Vec::new(), |meta| {
-                                    let mut lines = meta.scrollback.clone();
-                                    lines.push(RESTORE_MARKER.to_owned());
-                                    lines
-                                });
-                        let launch = harness.map_or(Launch::Preset(AgentPreset::Shell), |preset| {
-                            Launch::Resume {
-                                preset,
-                                resume: node.resume.clone(),
-                            }
-                        });
-                        (node.id, launch, cwd, prefill)
-                    })
-                    .collect(),
-                None => Vec::new(),
-            };
+        let relaunches = self.envs.get(env).map_or_else(Vec::new, |live| {
+            live.data.relaunches(|id| live.sessions.contains_key(&id))
+        });
         let mut spawned = 0;
-        for (id, launch, cwd, prefill) in relaunches {
-            self.start_session(env, id, launch, cwd, &prefill);
+        for Relaunch {
+            id,
+            intent,
+            cwd,
+            prefill,
+        } in relaunches
+        {
+            self.start_session(env, id, intent.into(), cwd, &prefill);
             spawned += 1;
         }
         spawned
@@ -234,7 +205,12 @@ impl EnvironmentShell {
         }
     }
 
-    fn keep_live_session(&mut self, env: &EnvironmentName, id: TerminalId, session: LiveTerminal) {
+    pub(super) fn keep_live_session(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        session: LiveTerminal,
+    ) {
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };

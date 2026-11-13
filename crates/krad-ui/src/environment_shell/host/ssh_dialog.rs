@@ -127,9 +127,7 @@ impl EnvironmentShell {
         data.title = Some(destination.to_string());
         data.host = Host::Ssh { destination };
         self.order.push(name.clone());
-        let link = self.link_for(&data.host);
-        self.envs
-            .insert(name.clone(), LiveEnv::new(data, None, link));
+        self.envs.insert(name.clone(), LiveEnv::new(data, None));
         self.switch_env(&name, cx);
     }
 

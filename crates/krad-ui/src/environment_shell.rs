@@ -37,7 +37,6 @@ mod groups;
 mod harness_health;
 mod harness_models;
 mod host;
-mod host_cli;
 mod template_popup;
 pub use host::HostTools;
 mod automations;
@@ -364,6 +363,7 @@ impl EnvironmentShell {
     }
 
     fn start(&mut self, layout: Layout, cx: &mut Context<Self>) {
+        self.runtime.handle.use_host_context(self.host_context());
         self.start_services(cx);
         self.restore_layout(layout);
         let active = self.active.clone();
@@ -427,13 +427,6 @@ impl EnvironmentShell {
     fn close_env(&mut self, name: &EnvironmentName, cx: &mut Context<Self>) {
         self.forget_environment_archive(name, cx);
         if let Some(live) = self.envs.remove(name) {
-            if !self
-                .envs
-                .values()
-                .any(|other| other.data.host == live.data.host)
-            {
-                host::close_link(&live.link);
-            }
             for id in live.sessions.keys() {
                 self.end_terminal(name, *id);
             }
@@ -444,9 +437,7 @@ impl EnvironmentShell {
             let data = EnvironmentData::empty(EnvironmentName::new(DEFAULT_ENVIRONMENT.to_owned()));
             let fresh = data.name.clone();
             self.order.push(fresh.clone());
-            let link = self.link_for(&data.host);
-            self.envs
-                .insert(fresh.clone(), LiveEnv::new(data, None, link));
+            self.envs.insert(fresh.clone(), LiveEnv::new(data, None));
         }
         if &self.active == name {
             if let Some(first) = self.order.first().cloned() {

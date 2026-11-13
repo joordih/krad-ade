@@ -99,7 +99,7 @@ impl EnvironmentShell {
             return;
         }
         let host = live.data.host.clone();
-        let link = live.link.clone();
+        let link = self.runtime.handle.host_link(&live.data.host);
         let roots: Vec<PathBuf> = live
             .data
             .groups

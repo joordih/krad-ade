@@ -11,6 +11,7 @@ use crate::bus::{
 };
 use crate::environments::SpendingCrossed;
 use crate::harness_health::{HarnessChecked, HealthSnapshot};
+use crate::hosts::{HostPrompt, HostState, HostsSnapshot, PromptId, RemoteBusState};
 use crate::ids::{RequestId, Seq};
 use crate::models::{ListedModels, ModelsOrigin, ModelsSnapshot};
 use crate::terminals::{TerminalClassified, TerminalSummary};
@@ -72,6 +73,24 @@ pub enum EventKind {
     },
     TerminalEnded(TerminalSummary),
     TerminalClassified(TerminalClassified),
+    HostChanged {
+        environment: EnvironmentName,
+        state: HostState,
+    },
+    SignInWanted {
+        environment: EnvironmentName,
+    },
+    MachineChannelWanted {
+        environment: EnvironmentName,
+    },
+    RemoteBusChanged {
+        environment: EnvironmentName,
+        bus: RemoteBusState,
+    },
+    HostPrompted(HostPrompt),
+    HostPromptSettled {
+        prompt: PromptId,
+    },
     #[serde(other)]
     Unknown,
 }
@@ -100,6 +119,8 @@ pub struct Snapshot {
     pub environments: Vec<EnvironmentData>,
     #[serde(default)]
     pub terminals: Vec<TerminalSummary>,
+    #[serde(default)]
+    pub hosts: HostsSnapshot,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -154,6 +175,7 @@ mod tests {
                 models: ModelsSnapshot::default(),
                 environments: Vec::new(),
                 terminals: Vec::new(),
+                hosts: HostsSnapshot::default(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

@@ -4,9 +4,9 @@ use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, Entity, ParentElement, Styled,
     Subscription, Window,
 };
-use krad_host::mux::{PromptAsker, PromptKind, PromptSender, Secret, SignInPrompt};
-use std::collections::VecDeque;
-use std::sync::mpsc;
+use krad_domain::{PromptAsker, PromptKind};
+use krad_protocol::{Command, HostCommand, HostPrompt, PromptAnswer};
+use krad_runtime::RuntimeHandle;
 
 use super::super::dialog_parts::{sheet_footer, sheet_overlay, sheet_panel, sheet_title};
 use super::super::EnvironmentShell;
@@ -27,46 +27,28 @@ const BTN_CLOSE: &str = "sign-in-close";
 const BTN_CANCEL: &str = "sign-in-cancel";
 const BTN_ANSWER: &str = "sign-in-answer";
 
-pub(in crate::environment_shell) struct PromptInbox {
-    sender: PromptSender,
-    arriving: mpsc::Receiver<SignInPrompt>,
-    waiting: VecDeque<SignInPrompt>,
-}
-
-impl Default for PromptInbox {
-    fn default() -> Self {
-        let (sender, arriving) = mpsc::channel();
-        Self {
-            sender,
-            arriving,
-            waiting: VecDeque::new(),
-        }
-    }
-}
-
-impl PromptInbox {
-    pub(in crate::environment_shell) fn sender(&self) -> PromptSender {
-        self.sender.clone()
-    }
-
-    fn collect(&mut self) -> bool {
-        let before = self.waiting.len();
-        self.waiting.extend(self.arriving.try_iter());
-        self.waiting.len() != before
-    }
-}
-
 pub(in crate::environment_shell) struct SignInDialog {
-    prompt: Option<SignInPrompt>,
+    prompt: Option<HostPrompt>,
+    runtime: RuntimeHandle,
     field: Entity<InputState>,
     _events: Subscription,
 }
 
+impl SignInDialog {
+    fn answer(&mut self, answer: Option<PromptAnswer>) {
+        let Some(prompt) = self.prompt.take() else {
+            return;
+        };
+        self.runtime.post(Command::Host(HostCommand::AnswerPrompt {
+            prompt: prompt.prompt,
+            answer,
+        }));
+    }
+}
+
 impl Drop for SignInDialog {
     fn drop(&mut self) {
-        if let Some(prompt) = self.prompt.take() {
-            prompt.answer(None);
-        }
+        self.answer(None);
     }
 }
 
@@ -76,29 +58,19 @@ fn dismiss(this: &mut EnvironmentShell, _: &mut Window, cx: &mut Context<Environ
 
 fn title_of(asker: &PromptAsker) -> String {
     match asker {
-        PromptAsker::Host(destination) => format!("{TITLE} {destination}"),
+        PromptAsker::Host { destination } => format!("{TITLE} {destination}"),
         PromptAsker::Git => GIT_TITLE.to_owned(),
     }
 }
 
 const fn placeholder_of(asker: &PromptAsker) -> &'static str {
     match asker {
-        PromptAsker::Host(_) => SECRET_PLACEHOLDER,
+        PromptAsker::Host { .. } => SECRET_PLACEHOLDER,
         PromptAsker::Git => GIT_SECRET_PLACEHOLDER,
     }
 }
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn prompt_sender(&self) -> PromptSender {
-        self.hosts.prompts.sender()
-    }
-
-    pub(in crate::environment_shell) fn collect_sign_in_prompts(&mut self, cx: &mut Context<Self>) {
-        if self.hosts.prompts.collect() {
-            cx.notify();
-        }
-    }
-
     pub(in crate::environment_shell) fn show_waiting_prompt(
         &mut self,
         window: &mut Window,
@@ -107,7 +79,7 @@ impl EnvironmentShell {
         if !matches!(self.hosts.dialog, HostDialog::Closed) {
             return;
         }
-        let Some(prompt) = self.hosts.prompts.waiting.pop_front() else {
+        let Some(prompt) = self.runtime.view.hosts.next_prompt() else {
             return;
         };
         let masked = prompt.kind == PromptKind::Secret;
@@ -132,6 +104,7 @@ impl EnvironmentShell {
         );
         self.hosts.dialog = HostDialog::SignIn(SignInDialog {
             prompt: Some(prompt),
+            runtime: self.runtime.handle.clone(),
             field,
             _events: events,
         });
@@ -141,14 +114,14 @@ impl EnvironmentShell {
         let HostDialog::SignIn(dialog) = &mut self.hosts.dialog else {
             return;
         };
-        let Some(prompt) = dialog.prompt.take() else {
+        let Some(kind) = dialog.prompt.as_ref().map(|prompt| prompt.kind) else {
             return;
         };
-        let answer = given.then(|| match prompt.kind {
-            PromptKind::Secret => Secret::new(dialog.field.read(cx).value().to_string()),
-            PromptKind::Confirm => Secret::new(TRUSTED_ANSWER.to_owned()),
+        let answer = given.then(|| match kind {
+            PromptKind::Secret => PromptAnswer::new(dialog.field.read(cx).value().to_string()),
+            PromptKind::Confirm => PromptAnswer::new(TRUSTED_ANSWER.to_owned()),
         });
-        prompt.answer(answer);
+        dialog.answer(answer);
         self.hosts.dialog = HostDialog::Closed;
         cx.notify();
     }

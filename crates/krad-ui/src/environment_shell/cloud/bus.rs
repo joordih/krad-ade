@@ -5,10 +5,31 @@ use krad_host::runner::take_events_command;
 use krad_host::{HostCommand, HostLink};
 use std::time::Instant;
 
-use super::super::agent_bus::{RemoteBus, RemoteBusPlan, RemoteBusSlot};
-use super::super::host_cli::HostCliError;
+use krad_runtime::{remote_detached_caller_vars, HostCliError, RemoteBus, RemoteBusPlan};
+
 use super::super::EnvironmentShell;
 use super::NodeSite;
+
+#[derive(Default)]
+pub(in crate::environment_shell) enum RemoteBusSlot {
+    #[default]
+    Absent,
+    Preparing,
+    Ready(RemoteBus),
+}
+
+impl RemoteBusSlot {
+    const fn ready(&self) -> Option<&RemoteBus> {
+        match self {
+            Self::Ready(bus) => Some(bus),
+            Self::Absent | Self::Preparing => None,
+        }
+    }
+
+    const fn is_preparing(&self) -> bool {
+        matches!(self, Self::Preparing)
+    }
+}
 
 struct RunnerReturn {
     events: Vec<QueuedEvent>,
@@ -170,7 +191,7 @@ impl EnvironmentShell {
             terminal: id.as_u64(),
         });
         self.ready_runner_bus(env, id)
-            .map_or_default(|bus| bus.detached_caller_vars(&caller))
+            .map_or_default(|bus| remote_detached_caller_vars(bus.info(), &caller))
     }
 
     pub(in crate::environment_shell) fn cloud_hook_settings(
@@ -179,7 +200,7 @@ impl EnvironmentShell {
         id: TerminalId,
     ) -> Option<String> {
         self.ready_runner_bus(env, id)
-            .map(|bus| bus.claude_settings.to_string_lossy().into_owned())
+            .map(|bus| bus.info().claude_settings.to_string_lossy().into_owned())
     }
 
     pub(in crate::environment_shell) fn note_live_cloud_report(

@@ -334,7 +334,7 @@ impl EnvironmentShell {
             chat.origin = None;
         }
         Some(TailJob {
-            link: live.link.clone(),
+            link: self.runtime.handle.host_link(&live.data.host),
             resume,
             root,
             home: transcript.home.clone(),

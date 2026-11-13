@@ -5,11 +5,12 @@ use krad_store::{
     delete_cloud_claude_token, delete_cloud_opencode_password, delete_cloud_runner_token,
 };
 
-use super::super::agent_bus::RemoteBusSlot;
-use super::super::host::{close_link, explain_host_problem};
+use super::super::host::close_link;
 use super::super::EnvironmentShell;
+use super::bus::RemoteBusSlot;
 use super::install::{prepare_runner, retire_runner, PreparedRunner, RunnerSetupError};
 use super::{LiveRunner, RunnerState};
+use krad_runtime::explain_host_problem;
 
 const ADDED_TOAST: &str = "Cloud runner added";
 const REMOVED_TOAST: &str = "Cloud runner removed";

@@ -31,8 +31,8 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get(&self.active) else {
             return;
         };
-        let remote = !live.link.is_local();
-        if remote && (live.host.is_pending() || error.host_unavailable()) {
+        let remote = !live.data.host.is_local();
+        if remote && (self.host_state(&self.active).is_pending() || error.host_unavailable()) {
             tracing::debug!(error = %error, "host operation skipped while the host is unavailable");
             return;
         }

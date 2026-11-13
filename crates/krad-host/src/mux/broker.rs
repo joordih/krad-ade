@@ -190,7 +190,9 @@ fn ask(shared: &Shared, text: String) -> Option<Secret> {
     let (answer, answered) = mpsc::channel();
     prompts
         .send(SignInPrompt::new(
-            PromptAsker::Host(shared.destination.clone()),
+            PromptAsker::Host {
+                destination: shared.destination.clone(),
+            },
             text,
             answer,
         ))

@@ -10,10 +10,9 @@ use krad_extensions::api::protocol::{
     ConnectMachine, ConnectMachineParams, ListMachines, ListMachinesParams, Machine,
 };
 use krad_extensions::api::{ExtensionId, HostKindId, MachineId};
-use krad_host::HostLink;
 use std::collections::HashMap;
 
-use super::super::host::{Attempt, HostDialog, HostState};
+use super::super::host::HostDialog;
 use super::super::{EnvironmentShell, LiveEnv};
 use super::{Deferred, Slot, SlotKey};
 
@@ -35,8 +34,8 @@ pub(in crate::environment_shell) enum MachineRequest {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Pending {
-    WaitingForExtensions(Attempt),
-    Asking(Attempt),
+    WaitingForExtensions,
+    Asking,
 }
 
 #[derive(Default)]
@@ -134,16 +133,13 @@ impl EnvironmentShell {
             },
         };
         self.order.push(name.clone());
-        let link = self.link_for(&data.host);
-        self.envs
-            .insert(name.clone(), LiveEnv::new(data, None, link));
+        self.envs.insert(name.clone(), LiveEnv::new(data, None));
         self.switch_env(&name, cx);
     }
 
     pub(in crate::environment_shell) fn connect_machine(
         &mut self,
         env: &EnvironmentName,
-        attempt: Attempt,
         cx: &mut Context<Self>,
     ) {
         let Some(machine) = self.machine_of(env) else {
@@ -153,7 +149,7 @@ impl EnvironmentShell {
             self.extensions
                 .machines
                 .pending
-                .insert(env.clone(), (Pending::WaitingForExtensions(attempt), None));
+                .insert(env.clone(), (Pending::WaitingForExtensions, None));
             return;
         }
         let extension = machine.extension.parse::<ExtensionId>().ok();
@@ -181,7 +177,7 @@ impl EnvironmentShell {
         self.extensions
             .machines
             .pending
-            .insert(env.clone(), (Pending::Asking(attempt), Some(key.clone())));
+            .insert(env.clone(), (Pending::Asking, Some(key.clone())));
         self.ensure_running(
             key,
             Deferred::Machines(MachineRequest::Connect(env.clone())),
@@ -198,7 +194,9 @@ impl EnvironmentShell {
 
     fn machine_failed(&mut self, env: &EnvironmentName, reason: String) {
         self.extensions.machines.pending.remove(env);
-        self.set_host(env, HostState::Failed(reason));
+        self.runtime
+            .handle
+            .hand_machine_channel(env.clone(), Err(reason));
     }
 
     fn ask_for_channel(&mut self, key: &SlotKey, env: &EnvironmentName, cx: &mut Context<Self>) {
@@ -239,8 +237,7 @@ impl EnvironmentShell {
         >,
         cx: &mut Context<Self>,
     ) {
-        let Some((Pending::Asking(attempt), _)) = self.extensions.machines.pending.remove(env)
-        else {
+        let Some((Pending::Asking, _)) = self.extensions.machines.pending.remove(env) else {
             return;
         };
         let channel = match answered {
@@ -254,33 +251,29 @@ impl EnvironmentShell {
                 return;
             }
         };
-        let Some(HostLink::Remote(remote)) = self.envs.get(env).map(|live| live.link.clone())
-        else {
-            return;
-        };
-        remote.set_machine_channel(machine_channel(channel.command));
-        self.connect_link(env, attempt, cx);
+        let channel = machine_channel(channel.command);
+        self.runtime
+            .handle
+            .hand_machine_channel(env.clone(), Ok(channel));
     }
 
     pub(in crate::environment_shell) fn service_machine_connections(
         &mut self,
         cx: &mut Context<Self>,
     ) {
-        let waiting: Vec<(EnvironmentName, Attempt)> = self
+        let waiting: Vec<EnvironmentName> = self
             .extensions
             .machines
             .pending
             .iter()
             .filter_map(|(env, (pending, _))| match pending {
-                Pending::WaitingForExtensions(attempt) if self.extensions.loaded => {
-                    Some((env.clone(), *attempt))
-                }
-                Pending::WaitingForExtensions(_) | Pending::Asking(_) => None,
+                Pending::WaitingForExtensions if self.extensions.loaded => Some(env.clone()),
+                Pending::WaitingForExtensions | Pending::Asking => None,
             })
             .collect();
-        for (env, attempt) in waiting {
+        for env in waiting {
             self.extensions.machines.pending.remove(&env);
-            self.connect_machine(&env, attempt, cx);
+            self.connect_machine(&env, cx);
         }
         let lost: Vec<(EnvironmentName, String)> = self
             .extensions
@@ -289,7 +282,7 @@ impl EnvironmentShell {
             .iter()
             .filter_map(|(env, (pending, key))| {
                 let key = key.as_ref()?;
-                if !matches!(pending, Pending::Asking(_)) {
+                if *pending != Pending::Asking {
                     return None;
                 }
                 let title = self.extensions.title_of(&key.extension);

@@ -1,9 +1,8 @@
-use gpui_kit::Context;
 use krad_agents::{terminal_env, Caller, ErrorCode, PromptAnswer, Request, Response, ASKPASS_WAIT};
 use krad_domain::{parse_wsl_path, EnvironmentName};
 use krad_host::mux::{askpass_alias, PromptAsker, SignInPrompt};
 use krad_repo::Askpass;
-use krad_runtime::BusReply;
+use krad_runtime::{remote_askpass, BusReply};
 use krad_store::config_dir;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -44,21 +43,21 @@ impl AskpassPlan {
 }
 
 impl EnvironmentShell {
-    pub(super) fn answer_git(&mut self, request: Request, reply: BusReply, cx: &mut Context<Self>) {
+    pub(super) fn answer_git(&self, request: Request, reply: BusReply) {
         let Request::Askpass { prompt } = request else {
             reply.send(git_only()).unwrap_or_default();
             return;
         };
         let (answer, answered) = mpsc::channel();
-        if self
-            .prompt_sender()
-            .send(SignInPrompt::new(PromptAsker::Git, prompt, answer))
-            .is_err()
-        {
+        let sent = self.runtime.handle.prompt_sender().is_some_and(|prompts| {
+            prompts
+                .send(SignInPrompt::new(PromptAsker::Git, prompt, answer))
+                .is_ok()
+        });
+        if !sent {
             reply.send(Response::Answered(None)).unwrap_or_default();
             return;
         }
-        self.collect_sign_in_prompts(cx);
         let waiting = std::thread::Builder::new()
             .name(ANSWER_THREAD.to_owned())
             .spawn(move || {
@@ -83,9 +82,9 @@ impl EnvironmentShell {
             return AskpassPlan::Off;
         };
         let caller = Caller::Git(env.as_str().to_owned());
-        if !live.link.is_local() {
-            return live.remote_bus.ready().map_or(AskpassPlan::Off, |remote| {
-                let (program, vars) = remote.askpass(&caller);
+        if !live.data.host.is_local() {
+            return self.remote_bus(env).map_or(AskpassPlan::Off, |remote| {
+                let (program, vars) = remote_askpass(remote, &caller);
                 AskpassPlan::Ready(Askpass::new(program, vars))
             });
         }

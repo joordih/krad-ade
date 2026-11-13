@@ -1,7 +1,7 @@
 use futures::channel::oneshot;
 use krad_domain::{
-    BudgetStatus, EnvironmentChange, EnvironmentData, EnvironmentName, RuntimeState, SpendSettings,
-    TerminalId, TerminalMeta, UsageReport,
+    BudgetStatus, EnvironmentChange, EnvironmentData, EnvironmentName, Host, RuntimeState,
+    SpendSettings, TerminalId, TerminalMeta, UsageReport,
 };
 use krad_protocol::{AgentRef, EnvironmentCommand, ErrorCode, EventKind, Reply, SpendingCrossed};
 use krad_store::{config_dir, LayoutFile, LayoutWriter};
@@ -124,6 +124,21 @@ impl Environments {
             .environments
             .iter()
             .any(|environment| environment.name == *name)
+    }
+
+    pub(crate) fn host_of(&self, name: &EnvironmentName) -> Option<Host> {
+        self.state
+            .environments
+            .iter()
+            .find(|environment| environment.name == *name)
+            .map(|environment| environment.host.clone())
+    }
+
+    pub(crate) fn uses_host(&self, host: &Host) -> bool {
+        self.state
+            .environments
+            .iter()
+            .any(|environment| environment.host == *host)
     }
 
     fn find_mut(&mut self, name: &EnvironmentName) -> Option<&mut EnvironmentData> {

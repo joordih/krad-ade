@@ -566,9 +566,7 @@ impl EnvironmentShell {
         let name = self.unused_env_name();
         let data = EnvironmentData::empty(name.clone());
         self.order.push(name.clone());
-        let link = self.link_for(&data.host);
-        self.envs
-            .insert(name.clone(), LiveEnv::new(data, None, link));
+        self.envs.insert(name.clone(), LiveEnv::new(data, None));
         self.switch_env(&name, cx);
         self.prompt_new_group(window, cx);
     }

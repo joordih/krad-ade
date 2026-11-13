@@ -4,10 +4,11 @@ use krad_agents::{
 use krad_domain::{claude_hook_settings, CloudRunnerId};
 use krad_host::mux::ASKPASS_PROGRAM;
 use krad_host::{FileMode, HostError, HostLink, RemoteForward, RemoteLink, LOOPBACK};
+use krad_protocol::RemoteBusInfo;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::super::host_cli::{upload_host_cli, HostCliError};
+use super::host_cli::{upload_host_cli, HostCliError};
 
 const TOKEN_SUFFIX: &str = ".token";
 const ENDPOINT_EXTENSION: &str = "endpoint";
@@ -16,46 +17,23 @@ const PATH_VAR: &str = "PATH";
 const SLUG_ESCAPE: char = '_';
 const SCRIPT_SHEBANG: &str = "#!/bin/sh";
 
-pub(in crate::environment_shell) struct RemoteBus {
+pub struct RemoteBus {
     forward: RemoteForward,
-    bin_dir: PathBuf,
-    token_file: PathBuf,
-    endpoint_file: PathBuf,
-    pub(in crate::environment_shell) claude_settings: PathBuf,
+    info: RemoteBusInfo,
 }
 
-#[derive(Default)]
-pub(in crate::environment_shell) enum RemoteBusSlot {
-    #[default]
-    Absent,
-    Preparing,
-    Ready(RemoteBus),
-}
-
-impl RemoteBusSlot {
-    pub(in crate::environment_shell) const fn ready(&self) -> Option<&RemoteBus> {
-        match self {
-            Self::Ready(bus) => Some(bus),
-            Self::Absent | Self::Preparing => None,
-        }
-    }
-
-    pub(in crate::environment_shell) const fn is_preparing(&self) -> bool {
-        matches!(self, Self::Preparing)
-    }
-}
-
-pub(in crate::environment_shell) struct RemoteBusPlan {
-    pub(in crate::environment_shell) ssh: Arc<RemoteLink>,
-    pub(in crate::environment_shell) link: HostLink,
-    pub(in crate::environment_shell) slug: String,
-    pub(in crate::environment_shell) local_port: u16,
-    pub(in crate::environment_shell) token: String,
-    pub(in crate::environment_shell) preferred_port: Option<u16>,
+pub struct RemoteBusPlan {
+    ssh: Arc<RemoteLink>,
+    link: HostLink,
+    slug: String,
+    local_port: u16,
+    token: String,
+    preferred_port: Option<u16>,
 }
 
 impl RemoteBusPlan {
-    pub(in crate::environment_shell) fn new(
+    #[must_use]
+    pub fn new(
         ssh: Arc<RemoteLink>,
         link: HostLink,
         environment: &str,
@@ -72,7 +50,8 @@ impl RemoteBusPlan {
         }
     }
 
-    pub(in crate::environment_shell) fn for_runner(
+    #[must_use]
+    pub fn for_runner(
         ssh: Arc<RemoteLink>,
         link: HostLink,
         runner: CloudRunnerId,
@@ -89,7 +68,11 @@ impl RemoteBusPlan {
         }
     }
 
-    pub(in crate::environment_shell) fn prepare(self) -> Result<RemoteBus, HostCliError> {
+    /// # Errors
+    ///
+    /// Fails when the host is not connected, the host CLI cannot be uploaded, the bus files
+    /// cannot be written or the reverse forward cannot be opened.
+    pub fn prepare(self) -> Result<RemoteBus, HostCliError> {
         let platform = self
             .ssh
             .platform()
@@ -126,61 +109,71 @@ impl RemoteBusPlan {
             loopback_address(forward.remote_port).as_bytes(),
             FileMode::PRIVATE_FILE,
         )?;
-        Ok(RemoteBus {
-            forward,
+        let info = RemoteBusInfo {
+            remote_port: forward.remote_port,
             bin_dir,
             token_file,
             endpoint_file,
             claude_settings,
-        })
+        };
+        Ok(RemoteBus { forward, info })
+    }
+}
+
+impl std::fmt::Debug for RemoteBus {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RemoteBus")
+            .field("remote_port", &self.info.remote_port)
+            .finish_non_exhaustive()
     }
 }
 
 impl RemoteBus {
-    pub(in crate::environment_shell) fn caller_vars(
-        &self,
-        caller: &Caller,
-    ) -> Vec<(String, String)> {
-        let address = loopback_address(self.forward.remote_port);
-        let mut vars = token_file_env(&address, &self.token_file, caller);
-        vars.push(self.path_var());
-        vars
+    #[must_use]
+    pub const fn info(&self) -> &RemoteBusInfo {
+        &self.info
     }
 
-    pub(in crate::environment_shell) fn detached_caller_vars(
-        &self,
-        caller: &Caller,
-    ) -> Vec<(String, String)> {
-        let mut vars = endpoint_file_env(&self.endpoint_file, &self.token_file, caller);
-        vars.push(self.path_var());
-        vars
-    }
-
-    fn path_var(&self) -> (String, String) {
-        (
-            PATH_VAR.to_owned(),
-            self.bin_dir.to_string_lossy().into_owned(),
-        )
-    }
-
-    pub(in crate::environment_shell) fn askpass(
-        &self,
-        caller: &Caller,
-    ) -> (PathBuf, Vec<(String, String)>) {
-        let address = loopback_address(self.forward.remote_port);
-        (
-            self.bin_dir.join(ASKPASS_PROGRAM),
-            token_file_env(&address, &self.token_file, caller),
-        )
-    }
-
-    pub(in crate::environment_shell) const fn remote_port(&self) -> u16 {
+    #[must_use]
+    pub const fn remote_port(&self) -> u16 {
         self.forward.remote_port
     }
 
-    pub(in crate::environment_shell) fn is_alive(&mut self) -> bool {
+    pub fn is_alive(&mut self) -> bool {
         self.forward.is_alive()
     }
+}
+
+#[must_use]
+pub fn remote_caller_vars(bus: &RemoteBusInfo, caller: &Caller) -> Vec<(String, String)> {
+    let address = loopback_address(bus.remote_port);
+    let mut vars = token_file_env(&address, &bus.token_file, caller);
+    vars.push(path_var(bus));
+    vars
+}
+
+#[must_use]
+pub fn remote_detached_caller_vars(bus: &RemoteBusInfo, caller: &Caller) -> Vec<(String, String)> {
+    let mut vars = endpoint_file_env(&bus.endpoint_file, &bus.token_file, caller);
+    vars.push(path_var(bus));
+    vars
+}
+
+#[must_use]
+pub fn remote_askpass(bus: &RemoteBusInfo, caller: &Caller) -> (PathBuf, Vec<(String, String)>) {
+    let address = loopback_address(bus.remote_port);
+    (
+        bus.bin_dir.join(ASKPASS_PROGRAM),
+        token_file_env(&address, &bus.token_file, caller),
+    )
+}
+
+fn path_var(bus: &RemoteBusInfo) -> (String, String) {
+    (
+        PATH_VAR.to_owned(),
+        bus.bin_dir.to_string_lossy().into_owned(),
+    )
 }
 
 fn loopback_address(port: u16) -> String {
@@ -218,13 +211,6 @@ mod tests {
             askpass_script(),
             "#!/bin/sh\nexec \"${0%/*}/krad-ade-agents\" askpass \"$@\"\n"
         );
-    }
-
-    #[test]
-    fn only_a_preparing_bus_holds_agents_back() {
-        assert!(RemoteBusSlot::Preparing.is_preparing());
-        assert!(!RemoteBusSlot::Absent.is_preparing());
-        assert!(RemoteBusSlot::Preparing.ready().is_none());
     }
 
     #[test]

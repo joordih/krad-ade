@@ -197,7 +197,7 @@ impl EnvironmentShell {
         let Some((id, path)) = live.shown_file() else {
             return;
         };
-        let link = live.link.clone();
+        let link = self.runtime.handle.host_link(&live.data.host);
         let editor = live
             .editors
             .entry(id)

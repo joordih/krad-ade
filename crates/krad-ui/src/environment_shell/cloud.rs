@@ -40,12 +40,12 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Instant;
 
+use self::bus::RemoteBusSlot;
 use self::install::PreparedRunner;
 use self::process::{Liveness, LivenessCheck};
 use self::sessions::{PatchQuestion, PendingCloudSession};
 use self::sign_in::{LoopbackCallback, SignInWatch};
 use self::webhooks::WebhooksPlan;
-use super::agent_bus::RemoteBusSlot;
 use super::opencode::OpencodeLink;
 use super::EnvironmentShell;
 

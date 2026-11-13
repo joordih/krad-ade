@@ -1,9 +1,14 @@
-use krad_domain::{AgentPreset, HarnessHealth, Host, ModelOffer, PlanUsage, UsageFailure};
+use krad_domain::{
+    AgentPreset, EnvironmentName, HarnessHealth, Host, HostPlatform, ModelOffer, PlanUsage,
+    UsageFailure,
+};
+use krad_host::HostError;
 use krad_protocol::HealthPlace;
 use std::io;
 use std::sync::mpsc::SyncSender;
 use std::thread;
 
+use crate::hosts::{Attempt, RemoteBus};
 use crate::input::Input;
 use crate::usage::UsageKey;
 
@@ -23,6 +28,17 @@ pub(crate) enum JobDone {
     UsageRead {
         key: UsageKey,
         read: Result<PlanUsage, UsageFailure>,
+    },
+    HostConnected {
+        environment: EnvironmentName,
+        host: Host,
+        attempt: Attempt,
+        outcome: Result<HostPlatform, HostError>,
+    },
+    RemoteBusPrepared {
+        environment: EnvironmentName,
+        host: Host,
+        prepared: Result<RemoteBus, String>,
     },
 }
 

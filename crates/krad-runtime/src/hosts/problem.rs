@@ -4,13 +4,13 @@ use krad_host::{HostError, SshFailure, Waited};
 const KNOWN_HOSTS_REMOVE: &str = "ssh-keygen -R";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Recovery {
+pub(crate) enum Recovery {
     RetryAlone,
     WaitForUser,
 }
 
 #[must_use]
-pub(super) const fn recovery(error: &HostError) -> Recovery {
+pub(crate) const fn recovery(error: &HostError) -> Recovery {
     match error {
         HostError::Ssh(
             SshFailure::HostKeyChanged
@@ -25,10 +25,7 @@ pub(super) const fn recovery(error: &HostError) -> Recovery {
 }
 
 #[must_use]
-pub(in crate::environment_shell) fn explain(
-    error: &HostError,
-    destination: &SshDestination,
-) -> String {
+pub fn explain_host_problem(error: &HostError, destination: &SshDestination) -> String {
     match error {
         HostError::Ssh(failure) => explain_ssh(failure, destination),
         HostError::TimedOut(Waited::Connect) => timed_out(destination),
@@ -105,7 +102,7 @@ mod tests {
     #[test]
     fn a_changed_key_names_the_risk_and_the_fix() -> TestResult {
         let destination: SshDestination = "me@devbox:2200".parse()?;
-        let text = explain(&HostError::Ssh(SshFailure::HostKeyChanged), &destination);
+        let text = explain_host_problem(&HostError::Ssh(SshFailure::HostKeyChanged), &destination);
         assert!(text.contains("intercepting"));
         assert!(text.contains("ssh-keygen -R '[devbox]:2200'"));
         Ok(())
@@ -114,7 +111,7 @@ mod tests {
     #[test]
     fn password_hosts_are_told_to_sign_in_not_to_use_an_agent() -> TestResult {
         let destination: SshDestination = "devbox".parse()?;
-        let text = explain(
+        let text = explain_host_problem(
             &HostError::Ssh(SshFailure::NeedsInteractiveSignIn),
             &destination,
         );
