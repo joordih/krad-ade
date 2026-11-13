@@ -19,6 +19,8 @@ use crate::jobs::JobDone;
 const UNKNOWN_SESSION: &str = "this environment has no session of that id";
 const NOT_A_REPO: &str = "The session's group is not inside a git repository";
 const NOT_STARTED: &str = "Could not start reading the session's changes";
+const NO_CHANGES: &str = "the session has no captured changes";
+const ALREADY_REVIEWED: &str = "these hunks are already marked that way";
 
 fn present_prints(files: &[FilePatch]) -> BTreeSet<HunkFingerprint> {
     files.iter().flat_map(FilePatch::fingerprints).collect()
@@ -95,8 +97,46 @@ impl Runtime {
                 };
                 self.start_act(order)
             }
+            ChangesAct::Accept { hunks } => {
+                self.mark_reviewed(environment, session, (&hunks, true))
+            }
+            ChangesAct::Unaccept { hunks } => {
+                self.mark_reviewed(environment, session, (&hunks, false))
+            }
             ChangesAct::Unknown => refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND),
         }
+    }
+
+    fn mark_reviewed(
+        &mut self,
+        environment: EnvironmentName,
+        session: SessionId,
+        (hunks, reviewed): (&[HunkFingerprint], bool),
+    ) -> Reply {
+        let changes = self
+            .environments
+            .data(&environment)
+            .and_then(|data| data.session(session))
+            .and_then(|found| found.changes.clone());
+        let Some(mut changes) = changes else {
+            return refused(ErrorCode::NotFound, NO_CHANGES);
+        };
+        let already = if reviewed {
+            changes.is_reviewed(hunks)
+        } else {
+            hunks.iter().all(|hunk| !changes.reviewed.contains(hunk))
+        };
+        if already || hunks.is_empty() {
+            return refused(ErrorCode::AlreadyAnswered, ALREADY_REVIEWED);
+        }
+        changes.set_reviewed(hunks, reviewed);
+        let edit = SessionEdit::SetChanges {
+            session,
+            changes: Some(changes),
+        };
+        self.environments
+            .edit(environment, &edit.into(), None, &mut self.outbox);
+        Reply::Accepted
     }
 
     fn read_changes(

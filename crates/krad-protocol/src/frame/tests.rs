@@ -26,8 +26,9 @@ fn framed(body: &[u8]) -> Vec<u8> {
 #[test]
 fn frames_round_trip_in_order_and_the_stream_ends_cleanly() -> Result<(), FrameError> {
     let frames = vec![
-        Frame::Message(Box::new(Message::Hello {
-            version: ProtocolVersion::CURRENT,
+        Frame::Message(Box::new(Message::Hello(crate::Hello::new("0.3.3")))),
+        Frame::Message(Box::new(Message::Subscribe {
+            since: Some(Seq(41)),
         })),
         Frame::Message(Box::new(Message::Command {
             id: RequestId(1),
@@ -84,13 +85,25 @@ fn frames_round_trip_in_order_and_the_stream_ends_cleanly() -> Result<(), FrameE
 
 #[test]
 fn a_message_frame_carries_json() -> Result<(), FrameError> {
-    let bytes = encoded(&[Frame::Message(Box::new(Message::Hello {
-        version: ProtocolVersion(1),
-    }))])?;
+    let bytes = encoded(&[Frame::Message(Box::new(Message::Hello(crate::Hello::new(
+        "0.3.3",
+    ))))])?;
     assert_eq!(bytes[LENGTH_BYTES], FrameKind::Message as u8);
     assert_eq!(
         &bytes[LENGTH_BYTES + 1..],
-        br#"{"type":"hello","version":1}"#
+        br#"{"type":"hello","protocol":1,"build":"0.3.3"}"#
+    );
+    Ok(())
+}
+
+#[test]
+fn a_message_from_a_newer_peer_reads_as_unknown() -> Result<(), FrameError> {
+    let mut body = vec![FrameKind::Message as u8];
+    body.extend_from_slice(br#"{"type":"pair","code":"1234"}"#);
+    let mut input = Cursor::new(framed(&body));
+    assert_eq!(
+        read_frame(&mut input)?,
+        Some(Frame::Message(Box::new(Message::Unknown)))
     );
     Ok(())
 }

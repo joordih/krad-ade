@@ -220,6 +220,8 @@ pub enum EventKind {
 #[serde(rename_all = "snake_case")]
 pub enum Scope {
     Runtime,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]

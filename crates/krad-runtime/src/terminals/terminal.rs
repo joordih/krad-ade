@@ -217,6 +217,7 @@ impl Terminal {
         match scroll {
             TerminalScroll::Lines { lines } => self.session.engine.scroll_lines(lines),
             TerminalScroll::Bottom => self.session.engine.scroll_to_bottom(),
+            TerminalScroll::Unknown => return,
         }
         self.dirty = true;
     }

@@ -5,16 +5,18 @@ use krad_chat::{LiveEvent, LiveSession, OpencodeServer, Runner};
 use krad_domain::{AgentPreset, EnvironmentName, Host, UsageBudget};
 use krad_host::HostLink;
 use krad_protocol::{
-    AgentRef, AskId, ChatPage, Command, HealthPlace, Reply, RequestId, Scope, Snapshot,
-    TerminalCommand, WriteBy,
+    AgentRef, AskId, ChatPage, Command, HealthPlace, Hello, Reply, RequestId, RuntimeRun, Scope,
+    Seq, Snapshot, TerminalCommand, Welcome, WriteBy,
 };
 use krad_repo::{FileIndex, RepoError};
 use krad_session::{AnsiPalette, SearchDirection};
 use krad_store::Secrets;
+use std::hash::{BuildHasher as _, RandomState};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use crate::bus::{BusAccess, DelegationReceiver, DELEGATION_BUFFER};
 use crate::chats::{ChatBrief, ChatStart, LiveStarted, OfferedBuffers};
@@ -32,6 +34,11 @@ mod waits;
 pub use waits::{EventReceiver, HeldAsk, Pending};
 
 const SUBSCRIBER_BUFFER: usize = 256;
+const BUILD: &str = env!("CARGO_PKG_VERSION");
+
+fn fresh_run() -> RuntimeRun {
+    RuntimeRun(RandomState::new().hash_one(SystemTime::now()))
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, thiserror::Error)]
 #[error("the runtime has stopped")]
@@ -58,6 +65,7 @@ pub struct RuntimeHandle {
     views: LaunchedViews,
     secrets: Secrets,
     requests: Arc<AtomicU64>,
+    run: RuntimeRun,
     _alive: Arc<Alive>,
 }
 
@@ -78,7 +86,15 @@ impl RuntimeHandle {
             views,
             secrets,
             requests: Arc::new(AtomicU64::new(0)),
+            run: fresh_run(),
         }
+    }
+
+    /// # Errors
+    ///
+    /// Refuses a client that speaks another major version of the protocol.
+    pub fn hello(&self, hello: &Hello) -> Result<Welcome, Reply> {
+        hello.welcome(BUILD, self.run)
     }
 
     #[must_use]
@@ -93,8 +109,11 @@ impl RuntimeHandle {
     }
 
     pub fn post(&self, command: Command) {
+        self.post_as(self.next_request(), command);
+    }
+
+    pub fn post_as(&self, id: RequestId, command: Command) {
         let (reply, _unheard) = oneshot::channel();
-        let id = self.next_request();
         self.deliver(Input::Command { id, command, reply });
     }
 
@@ -104,8 +123,16 @@ impl RuntimeHandle {
     }
 
     pub fn subscribe(&self) -> EventReceiver {
+        self.subscribe_since(None)
+    }
+
+    pub fn resume(&self, since: Seq) -> EventReceiver {
+        self.subscribe_since(Some(since))
+    }
+
+    fn subscribe_since(&self, since: Option<Seq>) -> EventReceiver {
         let (feed, receiver) = mpsc::channel(SUBSCRIBER_BUFFER);
-        self.deliver(Input::Subscribe(feed));
+        self.deliver(Input::Subscribe { feed, since });
         EventReceiver(receiver)
     }
 

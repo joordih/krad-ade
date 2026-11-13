@@ -24,6 +24,7 @@ impl EnvironmentShell {
     ) {
         let command = KraddieCommand::RunKraddie {
             kraddie: id.clone(),
+            prompt: None,
         };
         self.tell_kraddies(command, cx);
     }

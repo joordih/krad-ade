@@ -128,6 +128,8 @@ pub enum KraddieCommand {
     },
     RunKraddie {
         kraddie: KraddieId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prompt: Option<String>,
     },
     OpenChat {
         kraddie: KraddieId,
@@ -152,6 +154,11 @@ pub enum KraddieCommand {
     },
     ResetConversation {
         kraddie: KraddieId,
+    },
+    ShareMemory {
+        reader: KraddieId,
+        from: KraddieId,
+        switch: Switch,
     },
     ReviseDigest {
         owner: MemoryOwner,
@@ -190,6 +197,7 @@ mod tests {
     fn kraddie_commands_have_a_stable_wire_shape() -> serde_json::Result<()> {
         let command = Command::Kraddie(KraddieCommand::RunKraddie {
             kraddie: kraddie().id(),
+            prompt: None,
         });
         let json = serde_json::to_string(&command)?;
         assert_eq!(

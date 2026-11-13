@@ -11,7 +11,7 @@ use super::working::reply_with;
 use super::Runtime;
 use crate::kraddies::{automation_info, kraddie_infos, memory_answer, WakeOrder};
 
-const OWN_MEMORY: &str = "A Kraddie always reads its own memory";
+pub(super) const OWN_MEMORY: &str = "A Kraddie always reads its own memory";
 
 const fn memory_code(error: MemoryError) -> ErrorCode {
     match error {

@@ -37,6 +37,7 @@ use crate::typing::Typist;
 use crate::usage::Usage;
 use crate::workers::Workers;
 
+mod agent_commands;
 mod bus_git;
 mod chatting;
 mod ci_fixing;
@@ -289,7 +290,7 @@ impl Runtime {
                 let answer = self.execute(id, command);
                 answer_to(reply, answer);
             }
-            Input::Subscribe(feed) => self.subscribers.add(feed),
+            Input::Subscribe { feed, since } => self.subscribers.add(feed, since, self.seq),
             Input::Snapshot { scope, reply } => answer_to(reply, self.snapshot(scope)),
             Input::Stop => return Flow::Stopping,
             Input::WebhookTested(tested) => self.outbox.push(EventKind::WebhookTested(tested)),

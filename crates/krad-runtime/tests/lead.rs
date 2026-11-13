@@ -188,3 +188,5 @@ fn a_closed_worker_is_settled_and_retired_without_asking_the_app() -> TestResult
 mod acp_worker;
 #[path = "lead/worker.rs"]
 mod worker;
+#[path = "lead/worker_commands.rs"]
+mod worker_commands;

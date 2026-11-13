@@ -11,6 +11,14 @@ pub enum WhenWorking {
     CancelTurn,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorktreeFate {
+    #[default]
+    Keep,
+    Remove,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CloseSubject {
     Worker(TerminalId),

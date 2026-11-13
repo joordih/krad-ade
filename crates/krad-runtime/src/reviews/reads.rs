@@ -275,6 +275,7 @@ pub(crate) fn write(
         ReviewWrite::Approve => client.approve(project, iid),
         ReviewWrite::Revoke => client.unapprove(project, iid),
         ReviewWrite::Merge { options } => client.merge(project, iid, options).map(drop),
+        ReviewWrite::Unknown => return answered(reply, ReviewAnswer::Unknown),
     };
     let failure = written.err().map(|error| error.to_string());
     answered(reply, ReviewAnswer::Written { failure })

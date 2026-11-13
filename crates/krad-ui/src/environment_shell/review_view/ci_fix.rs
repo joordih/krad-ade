@@ -107,6 +107,7 @@ impl EnvironmentShell {
             }
             FixOutcome::NoChat => (ToastKind::Warning, NO_CHAT_TEXT.to_owned()),
             FixOutcome::Failed { message } => (ToastKind::Error, message),
+            FixOutcome::Unknown => return cx.notify(),
         };
         self.toast(kind, &text, cx);
     }

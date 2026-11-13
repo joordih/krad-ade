@@ -5,7 +5,7 @@ mod sheet;
 pub(super) use generation::LoadGeneration;
 
 use gpui_kit::{Context, Window};
-use krad_domain::{EnvironmentName, HunkFingerprint, SessionChanges, SessionEdit, SessionId};
+use krad_domain::{EnvironmentName, HunkFingerprint, SessionChanges, SessionId};
 use krad_protocol::{
     ChangesAct, ChangesCommand, ChangesRead, Command, RequestId, SessionChangesRead,
 };
@@ -62,28 +62,6 @@ impl EnvironmentShell {
         session: SessionId,
     ) -> Option<&SessionChanges> {
         self.envs.get(env)?.data.session(session)?.changes.as_ref()
-    }
-
-    fn edit_session_changes(
-        &mut self,
-        env: &EnvironmentName,
-        session: SessionId,
-        edit: impl FnOnce(&mut Option<SessionChanges>),
-    ) {
-        let Some(before) = self
-            .envs
-            .get(env)
-            .and_then(|live| live.data.session(session))
-            .map(|found| found.changes.clone())
-        else {
-            return;
-        };
-        let mut changes = before.clone();
-        edit(&mut changes);
-        if changes != before {
-            self.edit_environment(env, SessionEdit::SetChanges { session, changes });
-            self.store();
-        }
     }
 
     pub(super) fn capture_session_baseline(&mut self, _: &mut Context<Self>) {
@@ -174,12 +152,20 @@ impl EnvironmentShell {
             return;
         };
         let (env, session) = (review.env.clone(), review.session);
-        self.edit_session_changes(&env, session, |changes| {
-            if let Some(changes) = changes {
-                let reviewed = !changes.is_reviewed(prints);
-                changes.set_reviewed(prints, reviewed);
-            }
-        });
+        let Some(changes) = self.session_changes_of(&env, session) else {
+            return;
+        };
+        let hunks = prints.to_vec();
+        let act = if changes.is_reviewed(prints) {
+            ChangesAct::Unaccept { hunks }
+        } else {
+            ChangesAct::Accept { hunks }
+        };
+        self.runtime.handle.post(Command::Changes(ChangesCommand {
+            environment: env,
+            session,
+            act,
+        }));
         cx.notify();
     }
 

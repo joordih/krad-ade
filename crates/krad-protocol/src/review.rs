@@ -69,6 +69,8 @@ pub enum ReviewWrite {
     Merge {
         options: MergeOptions,
     },
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -119,13 +121,25 @@ pub struct RequestDetailRead {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "fix", rename_all = "snake_case")]
 pub enum FixOutcome {
-    Sent { branch: String },
-    Started { branch: String },
-    InFork { fork: Option<ProjectPath> },
+    Sent {
+        branch: String,
+    },
+    Started {
+        branch: String,
+    },
+    InFork {
+        fork: Option<ProjectPath>,
+    },
     NoRepository,
-    NoBranch { branch: String },
+    NoBranch {
+        branch: String,
+    },
     NoChat,
-    Failed { message: String },
+    Failed {
+        message: String,
+    },
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -229,9 +243,15 @@ pub enum LoginState {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "news", rename_all = "snake_case")]
 pub enum LoginNews {
-    SignedIn { username: String },
+    SignedIn {
+        username: String,
+    },
     SignedOut,
-    Failed { message: String },
+    Failed {
+        message: String,
+    },
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]

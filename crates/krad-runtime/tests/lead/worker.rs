@@ -188,7 +188,7 @@ fn spawned(runtime: &RuntimeHandle) -> Result<TerminalId, Box<dyn Error>> {
     }
 }
 
-fn led_runtime(folder: &Folder) -> Result<RuntimeHandle, Box<dyn Error>> {
+pub(super) fn led_runtime(folder: &Folder) -> Result<RuntimeHandle, Box<dyn Error>> {
     let data = lead_environment(&folder.0)?;
     let session = data
         .active_session

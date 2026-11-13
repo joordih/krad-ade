@@ -12,8 +12,14 @@ pub enum UsageNote {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "news", rename_all = "snake_case")]
 pub enum UsageNews {
-    Read { usage: PlanUsage },
-    Alert { alert: Option<LimitAlert> },
+    Read {
+        usage: PlanUsage,
+    },
+    Alert {
+        alert: Option<LimitAlert>,
+    },
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]

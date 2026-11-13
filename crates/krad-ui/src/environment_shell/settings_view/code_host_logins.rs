@@ -27,15 +27,18 @@ impl EnvironmentShell {
         let CodeHostLogin { host, state, news } = login;
         if let Some(news) = news {
             let name = host_name(host);
-            let (kind, text) = match news {
-                LoginNews::SignedIn { username } => (
+            let shown = match news {
+                LoginNews::SignedIn { username } => Some((
                     ToastKind::Success,
                     format!("Signed in to {name} as @{username}"),
-                ),
-                LoginNews::SignedOut => (ToastKind::Success, format!("Signed out of {name}")),
-                LoginNews::Failed { message } => (ToastKind::Error, message),
+                )),
+                LoginNews::SignedOut => Some((ToastKind::Success, format!("Signed out of {name}"))),
+                LoginNews::Failed { message } => Some((ToastKind::Error, message)),
+                LoginNews::Unknown => None,
             };
-            self.toast(kind, &text, cx);
+            if let Some((kind, text)) = shown {
+                self.toast(kind, &text, cx);
+            }
             self.review.forget_login();
         }
         match host {

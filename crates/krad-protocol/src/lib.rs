@@ -1,3 +1,4 @@
+mod agents;
 mod app_events;
 mod attention;
 mod bus;
@@ -10,6 +11,7 @@ mod frame;
 mod gateway;
 mod git;
 mod harness_health;
+mod hello;
 mod hooks;
 mod hosts;
 mod ids;
@@ -19,12 +21,15 @@ mod models;
 mod opencode;
 mod review;
 mod runners;
+#[cfg(test)]
+mod schema;
 mod sessions;
 mod settings;
 mod terminals;
 mod usage;
 mod variants;
 
+pub use agents::{AgentAct, AgentCommand};
 pub use app_events::{EventsCommand, WebhookTest};
 pub use attention::{AttentionCommand, AttentionNotice, AttentionSnapshot, AttentionWaiting};
 pub use bus::{
@@ -49,6 +54,7 @@ pub use git::{
     SessionChangesRead, WorktreeSwept,
 };
 pub use harness_health::{HarnessCheck, HarnessChecked, HealthPlace, HealthSnapshot};
+pub use hello::{Hello, RuntimeRun, Welcome};
 pub use hooks::{Conversation, HookHeard, HookOrigin, HookReport};
 pub use hosts::{
     AgentPlace, EnvironmentHost, HostCommand, HostPrompt, HostState, HostsSnapshot, KeptAdapter,

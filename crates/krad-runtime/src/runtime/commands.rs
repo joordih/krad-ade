@@ -85,6 +85,7 @@ impl Runtime {
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Git(command) => self.execute_git(id, command),
             Command::Changes(command) => self.execute_changes(id, command),
+            Command::Agent(command) => self.execute_agent(command),
             Command::Kraddie(command) => self.execute_kraddie(command),
             Command::Variant(command) => self.execute_variant(command),
             Command::Review(command) => self.execute_review(id, command),
@@ -213,7 +214,7 @@ impl Runtime {
                 agents,
             } => bus.reconcile(&environments, agents, outbox),
             Input::Command { .. }
-            | Input::Subscribe(_)
+            | Input::Subscribe { .. }
             | Input::Snapshot { .. }
             | Input::Bus(_)
             | Input::WebhookTested(_)

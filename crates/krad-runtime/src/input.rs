@@ -4,7 +4,8 @@ use krad_chat::{LiveEvent, LiveSession, Runner};
 use krad_domain::{AgentPreset, CloudRunnerId, EnvironmentName, Host, RunnerCli};
 use krad_host::{HostLink, MachineChannel};
 use krad_protocol::{
-    AgentRef, ChatPage, Command, Feed, HealthPlace, Reply, RequestId, Scope, Snapshot, WebhookTest,
+    AgentRef, ChatPage, Command, Feed, HealthPlace, Reply, RequestId, Scope, Seq, Snapshot,
+    WebhookTest,
 };
 use krad_session::AnsiPalette;
 use std::path::PathBuf;
@@ -59,7 +60,10 @@ pub(crate) enum Input {
         command: Command,
         reply: oneshot::Sender<Reply>,
     },
-    Subscribe(mpsc::Sender<Feed>),
+    Subscribe {
+        feed: mpsc::Sender<Feed>,
+        since: Option<Seq>,
+    },
     Snapshot {
         scope: Scope,
         reply: oneshot::Sender<Snapshot>,

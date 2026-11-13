@@ -69,6 +69,7 @@ impl Usage {
                 let heard = match news {
                     UsageNews::Read { usage } => Heard::Read(usage.clone()),
                     UsageNews::Alert { alert } => Heard::Alert(*alert),
+                    UsageNews::Unknown => return None,
                 };
                 self.heard(&(host.clone(), *harness), heard, outbox);
             }

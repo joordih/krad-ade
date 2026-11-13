@@ -294,6 +294,27 @@ fn the_runtime_keeps_a_sessions_baseline_reads_its_changes_and_reverts_them() ->
         return Err(format!("one changed file was expected: {files:?}").into());
     };
     assert_eq!(patch.path, Path::new(TRACKED));
+    let hunks = patch.fingerprints();
+    let accept = || ChangesAct::Accept {
+        hunks: hunks.clone(),
+    };
+    assert_eq!(changes(&runtime, session, accept())?.1, Reply::Accepted);
+    let reviewed = environment(&runtime)?
+        .session(session)
+        .and_then(|found| found.changes.clone())
+        .ok_or("the session lost its changes")?;
+    assert!(reviewed.is_reviewed(&hunks));
+    assert!(matches!(
+        changes(&runtime, session, accept())?.1,
+        Reply::Refused {
+            code: ErrorCode::AlreadyAnswered,
+            ..
+        }
+    ));
+    let unaccept = ChangesAct::Unaccept {
+        hunks: hunks.clone(),
+    };
+    assert_eq!(changes(&runtime, session, unaccept)?.1, Reply::Accepted);
     let (request, reply) = changes(
         &runtime,
         session,

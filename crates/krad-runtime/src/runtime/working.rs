@@ -17,7 +17,7 @@ use crate::chats::{ChatBrief, ChatRole, ChatStart};
 use crate::environments::UNKNOWN_ENVIRONMENT;
 use crate::workers::{closed_target, plan_spawn, refusal_error, worker_node, PendingWorker};
 
-enum LeadClose {
+pub(super) enum LeadClose {
     Removing(Vec<ClosePlan>),
     Refused(CloseRefusal),
     Closed(Vec<Closed>),
@@ -95,32 +95,52 @@ impl Runtime {
     fn spawn_worker(
         &mut self,
         lead: &LeadHandle,
-        (preset, worktree, task): (AgentPreset, Option<&str>, &str),
+        worker: (AgentPreset, Option<&str>, &str),
         incoming: Incoming,
     ) -> Option<Incoming> {
+        let Incoming {
+            from,
+            request,
+            reply,
+        } = incoming;
+        self.start_worker(lead, worker, reply)
+            .err()
+            .map(|reply| Incoming {
+                from,
+                request,
+                reply,
+            })
+    }
+
+    pub(super) fn start_worker(
+        &mut self,
+        lead: &LeadHandle,
+        (preset, worktree, task): (AgentPreset, Option<&str>, &str),
+        reply: oneshot::Sender<Response>,
+    ) -> Result<(), oneshot::Sender<Response>> {
         let environment = EnvironmentName::new(lead.environment.clone());
         let session = SessionId(lead.session);
         let Some(data) = self.environments.data(&environment) else {
-            return Some(incoming);
+            return Err(reply);
         };
         let Some(plan) = plan_spawn(data, session, preset) else {
-            return Some(incoming);
+            return Err(reply);
         };
         if plan.in_cloud && worktree.is_some() {
-            return Some(incoming);
+            return Err(reply);
         }
         let pending = PendingWorker {
             lead: session,
             lead_terminal: plan.lead_terminal,
             preset,
             task: task.to_owned(),
-            reply: incoming.reply,
+            reply,
         };
         match worktree {
             Some(name) => self.spawn_in_worktree(&environment, plan.group, name, pending),
             None => self.open_worker(&environment, pending, plan.group),
         }
-        None
+        Ok(())
     }
 
     pub(super) fn open_worker(
@@ -260,7 +280,7 @@ impl Runtime {
             .collect()
     }
 
-    fn close_as_lead(&mut self, lead: &LeadHandle, order: CloseOrder) -> LeadClose {
+    pub(super) fn close_as_lead(&mut self, lead: &LeadHandle, order: CloseOrder) -> LeadClose {
         let environment = EnvironmentName::new(lead.environment.clone());
         let plans = match self.close_plans(&environment, SessionId(lead.session), order) {
             Ok(plans) => plans,

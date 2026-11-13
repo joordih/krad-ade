@@ -7,15 +7,16 @@ use std::io::{self, Read, Write};
 
 use crate::command::{Command, Reply};
 use crate::event::Feed;
-use crate::ids::{ProtocolVersion, RequestId};
+use crate::hello::{Hello, Welcome};
+use crate::ids::{RequestId, Seq};
 
-const LENGTH_BYTES: usize = 4;
-const TERMINAL_ID_BYTES: usize = 8;
-const MAX_FRAME_BYTES: u32 = 8 * 1024 * 1024;
+pub(crate) const LENGTH_BYTES: usize = 4;
+pub(crate) const TERMINAL_ID_BYTES: usize = 8;
+pub(crate) const MAX_FRAME_BYTES: u32 = 8 * 1024 * 1024;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
-enum FrameKind {
+pub(crate) enum FrameKind {
     Message = 1,
     Terminal = 2,
 }
@@ -34,10 +35,23 @@ impl TryFrom<u8> for FrameKind {
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Message {
-    Hello { version: ProtocolVersion },
-    Command { id: RequestId, command: Command },
-    Reply { id: RequestId, reply: Reply },
+    Hello(Hello),
+    Welcome(Welcome),
+    Subscribe {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        since: Option<Seq>,
+    },
+    Command {
+        id: RequestId,
+        command: Command,
+    },
+    Reply {
+        id: RequestId,
+        reply: Reply,
+    },
     Feed(Feed),
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]

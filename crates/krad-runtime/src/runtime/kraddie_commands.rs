@@ -1,8 +1,11 @@
-use krad_domain::{AutomationKey, KraddieId, KraddieWake, SessionEdit};
+use krad_domain::{AutomationKey, KraddieId, KraddieWake, SessionEdit, Switch};
 use krad_protocol::{ErrorCode, KraddieCommand, Reply};
 
+use super::kraddie_bus::OWN_MEMORY;
 use super::{refused, Runtime, UNSUPPORTED_COMMAND};
 use crate::kraddies::{KraddieWakeError, WakeOrder};
+
+const NO_KRADDIE: &str = "no Kraddie with that id";
 
 impl Runtime {
     pub(super) fn execute_kraddie(&mut self, command: KraddieCommand) -> Reply {
@@ -40,7 +43,9 @@ impl Runtime {
             KraddieCommand::Run { automation, prompt } => {
                 self.run_now(automation, KraddieWake::Manual, prompt)
             }
-            KraddieCommand::RunKraddie { kraddie } => self.run_kraddie_now(&kraddie),
+            KraddieCommand::RunKraddie { kraddie, prompt } => {
+                self.run_kraddie_now(&kraddie, prompt)
+            }
             KraddieCommand::OpenChat {
                 kraddie,
                 environment,
@@ -64,6 +69,11 @@ impl Runtime {
             KraddieCommand::ResetConversation { kraddie } => {
                 self.kraddies.reset_conversation(&kraddie)
             }
+            KraddieCommand::ShareMemory {
+                reader,
+                from,
+                switch,
+            } => self.share_memory(&reader, &from, switch),
             KraddieCommand::ReviseDigest {
                 owner,
                 digest,
@@ -92,12 +102,23 @@ impl Runtime {
         }
     }
 
-    fn run_kraddie_now(&mut self, kraddie: &KraddieId) -> Reply {
+    fn share_memory(&mut self, reader: &KraddieId, from: &KraddieId, switch: Switch) -> Reply {
+        if reader == from {
+            return refused(ErrorCode::Invalid, OWN_MEMORY);
+        }
+        if self.kraddies.state(reader).is_none() || self.kraddies.state(from).is_none() {
+            return refused(ErrorCode::NotFound, NO_KRADDIE);
+        }
+        self.kraddies.share_memory(reader, from, switch);
+        Reply::Accepted
+    }
+
+    fn run_kraddie_now(&mut self, kraddie: &KraddieId, prompt: Option<String>) -> Reply {
         let Some(key) = self.kraddies.default_key(kraddie) else {
             let refusal = KraddieWakeError::NoAutomations;
             return refused(refusal.reply_code(), &refusal.to_string());
         };
-        self.run_now(key, KraddieWake::Manual, None)
+        self.run_now(key, KraddieWake::Manual, prompt)
     }
 
     fn rename_kraddie_sessions(&mut self, old: &KraddieId, new: &KraddieId) {

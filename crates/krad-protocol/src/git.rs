@@ -1,5 +1,6 @@
 use krad_domain::{
-    Branch, CommitMode, EnvironmentName, FileChange, FilePatch, GroupGit, GroupId, Host, SessionId,
+    Branch, CommitMode, EnvironmentName, FileChange, FilePatch, GroupGit, GroupId, Host,
+    HunkFingerprint, SessionId,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -83,6 +84,12 @@ pub enum ChangesAct {
     Revert {
         patch: Box<FilePatch>,
         hunk: Option<usize>,
+    },
+    Accept {
+        hunks: Vec<HunkFingerprint>,
+    },
+    Unaccept {
+        hunks: Vec<HunkFingerprint>,
     },
     #[serde(other)]
     Unknown,

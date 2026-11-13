@@ -1,5 +1,6 @@
 use super::ApiError;
 use krad_domain::WhenWorking;
+pub use krad_domain::WorktreeFate;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -9,14 +10,6 @@ pub enum CloseTarget {
     Agent(u64),
     Session(u64),
     AllIdle,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WorktreeFate {
-    #[default]
-    Keep,
-    Remove,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

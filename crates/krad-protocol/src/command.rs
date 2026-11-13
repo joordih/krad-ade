@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::agents::AgentCommand;
 use crate::app_events::EventsCommand;
 use crate::attention::AttentionCommand;
 use crate::bus::BusCommand;
@@ -35,6 +36,7 @@ pub enum Command {
     Terminal(TerminalCommand),
     Host(HostCommand),
     Chat(ChatCommand),
+    Agent(AgentCommand),
     Gateway(GatewayCommand),
     Settings(SettingsCommand),
     Git(GitCommand),
@@ -72,6 +74,8 @@ pub enum ErrorCode {
     AlreadyAnswered,
     Invalid,
     Unavailable,
+    Busy,
+    Forbidden,
     #[serde(other)]
     Unknown,
 }

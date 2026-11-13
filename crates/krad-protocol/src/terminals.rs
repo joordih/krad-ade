@@ -69,8 +69,12 @@ pub enum WriteBy {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "to", rename_all = "snake_case")]
 pub enum TerminalScroll {
-    Lines { lines: i32 },
+    Lines {
+        lines: i32,
+    },
     Bottom,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]

@@ -24,7 +24,10 @@ const fn verdict_of(write: &ReviewWrite) -> Option<ReviewVerdict> {
         ReviewWrite::Comment { .. } => Some(ReviewVerdict::Commented),
         ReviewWrite::Reply { .. } => Some(ReviewVerdict::Replied),
         ReviewWrite::Approve => Some(ReviewVerdict::Approved),
-        ReviewWrite::Resolve { .. } | ReviewWrite::Revoke | ReviewWrite::Merge { .. } => None,
+        ReviewWrite::Resolve { .. }
+        | ReviewWrite::Revoke
+        | ReviewWrite::Merge { .. }
+        | ReviewWrite::Unknown => None,
     }
 }
 
@@ -57,7 +60,11 @@ impl Runtime {
             ReviewAct::Issues => self
                 .jobs
                 .run(move || issues(reply, (&link, &secrets), gitlab)),
-            ReviewAct::Unknown => return refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND),
+            ReviewAct::Unknown
+            | ReviewAct::Write {
+                write: ReviewWrite::Unknown,
+                ..
+            } => return refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND),
             connected_act => match connected {
                 Some(client) => self.start_connected(reply, (client, link), connected_act),
                 None => return refused(ErrorCode::Unavailable, NOT_CONNECTED),

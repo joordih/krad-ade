@@ -1,8 +1,15 @@
 use futures::channel::mpsc;
-use krad_protocol::{Event, Feed, Snapshot};
+use krad_protocol::{Event, Feed, Seq, Snapshot};
+
+use self::recent::Recent;
+
+mod recent;
 
 #[derive(Debug, Default)]
-pub(crate) struct Subscribers(Vec<Subscriber>);
+pub(crate) struct Subscribers {
+    following: Vec<Subscriber>,
+    recent: Recent,
+}
 
 #[derive(Debug)]
 struct Subscriber {
@@ -24,15 +31,28 @@ enum Delivery {
 }
 
 impl Subscribers {
-    pub(crate) fn add(&mut self, feed: mpsc::Sender<Feed>) {
-        self.0.push(Subscriber {
+    pub(crate) fn add(&mut self, feed: mpsc::Sender<Feed>, since: Option<Seq>, now: Seq) {
+        let mut subscriber = Subscriber {
             feed,
             standing: Standing::Behind,
-        });
+        };
+        let missed = since.and_then(|since| self.recent.after(since, now));
+        if let Some(missed) = missed {
+            tracing::debug!(
+                missed = missed.len(),
+                "a subscriber resumes from the recent events"
+            );
+            subscriber.standing = Standing::Current;
+            if subscriber.follow(&missed) == Delivery::Gone {
+                return;
+            }
+        }
+        self.following.push(subscriber);
     }
 
     pub(crate) fn publish(&mut self, events: &[Event], snapshot: impl Fn() -> Snapshot) {
-        self.0
+        self.recent.keep(events);
+        self.following
             .retain_mut(|subscriber| subscriber.catch_up(events, &snapshot) != Delivery::Gone);
     }
 }
@@ -46,6 +66,10 @@ impl Subscriber {
             }
             return delivery;
         }
+        self.follow(events)
+    }
+
+    fn follow(&mut self, events: &[Event]) -> Delivery {
         for event in events {
             match self.offer(Feed::Event(event.clone())) {
                 Delivery::Sent => {}
@@ -116,7 +140,7 @@ mod tests {
     fn a_new_subscriber_starts_from_a_snapshot_then_follows_the_events() {
         let (feed, mut receiver) = mpsc::channel(8);
         let mut subscribers = Subscribers::default();
-        subscribers.add(feed);
+        subscribers.add(feed, None, Seq(0));
         subscribers.publish(&[pong(1)], || at(1));
         subscribers.publish(&[pong(2), pong(3)], || at(3));
         assert_eq!(
@@ -133,14 +157,14 @@ mod tests {
     fn a_full_subscriber_is_marked_behind_and_resyncs_with_a_fresh_snapshot() {
         let (feed, mut receiver) = mpsc::channel(0);
         let mut subscribers = Subscribers::default();
-        subscribers.add(feed);
+        subscribers.add(feed, None, Seq(0));
         subscribers.publish(&[], || at(0));
         subscribers.publish(&[pong(1), pong(2)], || at(2));
-        assert_eq!(subscribers.0[0].standing, Standing::Behind);
+        assert_eq!(subscribers.following[0].standing, Standing::Behind);
         assert_eq!(drain(&mut receiver), vec![Feed::Snapshot(at(0))]);
 
         subscribers.publish(&[pong(3)], || at(3));
-        assert_eq!(subscribers.0[0].standing, Standing::Current);
+        assert_eq!(subscribers.following[0].standing, Standing::Current);
         assert_eq!(drain(&mut receiver), vec![Feed::Snapshot(at(3))]);
 
         subscribers.publish(&[pong(4)], || at(4));
@@ -152,8 +176,8 @@ mod tests {
         let (slow, _unread) = mpsc::channel(0);
         let (fast, mut receiver) = mpsc::channel(8);
         let mut subscribers = Subscribers::default();
-        subscribers.add(slow);
-        subscribers.add(fast);
+        subscribers.add(slow, None, Seq(0));
+        subscribers.add(fast, None, Seq(0));
         subscribers.publish(&[], || at(0));
         subscribers.publish(&[pong(1), pong(2)], || at(2));
         assert_eq!(
@@ -167,12 +191,44 @@ mod tests {
     }
 
     #[test]
+    fn a_subscriber_resuming_inside_the_ring_gets_only_the_missed_events() {
+        let mut subscribers = Subscribers::default();
+        subscribers.publish(&[pong(1), pong(2), pong(3)], || at(3));
+        let (feed, mut receiver) = mpsc::channel(8);
+        subscribers.add(feed, Some(Seq(1)), Seq(3));
+        subscribers.publish(&[pong(4)], || at(4));
+        assert_eq!(
+            drain(&mut receiver),
+            vec![
+                Feed::Event(pong(2)),
+                Feed::Event(pong(3)),
+                Feed::Event(pong(4)),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_subscriber_resuming_from_before_the_ring_starts_from_a_snapshot() {
+        let mut subscribers = Subscribers {
+            following: Vec::new(),
+            recent: Recent::with_capacity(1),
+        };
+        subscribers.publish(&[pong(1), pong(2), pong(3)], || at(3));
+        let (feed, mut receiver) = mpsc::channel(8);
+        subscribers.add(feed, Some(Seq(1)), Seq(3));
+        subscribers.publish(&[pong(4)], || at(4));
+        assert_eq!(drain(&mut receiver), vec![Feed::Snapshot(at(4))]);
+        subscribers.publish(&[pong(5)], || at(5));
+        assert_eq!(drain(&mut receiver), vec![Feed::Event(pong(5))]);
+    }
+
+    #[test]
     fn a_subscriber_that_left_is_dropped() {
         let (feed, receiver) = mpsc::channel(8);
         let mut subscribers = Subscribers::default();
-        subscribers.add(feed);
+        subscribers.add(feed, None, Seq(0));
         drop(receiver);
         subscribers.publish(&[pong(1)], || at(1));
-        assert!(subscribers.0.is_empty());
+        assert!(subscribers.following.is_empty());
     }
 }
