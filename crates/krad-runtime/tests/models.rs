@@ -98,7 +98,7 @@ fn a_chat_keeps_the_models_of_its_harness_on_its_host_unless_none_are_offered() 
     let runtime = Runtime::start(RuntimeSetup::default())?;
     let mut events = subscribed(&runtime)?;
     keep(&runtime, AgentPreset::ClaudeCode, Vec::new())?;
-    keep(&runtime, AgentPreset::Opencode, vec![offer("big-pickle")])?;
+    keep(&runtime, AgentPreset::Shell, vec![offer("big-pickle")])?;
     keep(&runtime, AgentPreset::ClaudeCode, vec![offer("opus")])?;
     let EventKind::ModelsListed { listed, origin } = next_model_event(&mut events)? else {
         return Err("a model list was expected".into());

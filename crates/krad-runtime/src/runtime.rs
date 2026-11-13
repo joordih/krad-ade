@@ -22,6 +22,7 @@ use crate::hosts::Hosts;
 use crate::input::Input;
 use crate::jobs::{JobDone, Jobs};
 use crate::models::Models;
+use crate::opencode::{OpencodeDirectory, OpencodeServers};
 use crate::subscribers::Subscribers;
 use crate::terminals::{Settling, Terminals};
 use crate::usage::Usage;
@@ -62,6 +63,7 @@ pub struct Runtime {
     hosts: Hosts,
     chats: Chats,
     gateway: Gateway,
+    opencode: OpencodeServers,
     stopped: Arc<AtomicBool>,
 }
 
@@ -70,6 +72,7 @@ struct Owned {
     usage: Usage,
     environments: Environments,
     hosts: Hosts,
+    opencode: OpencodeDirectory,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -97,11 +100,13 @@ impl Runtime {
         let usage = Usage::new(Arc::clone(&usage_budget));
         let environments = Environments::start(setup.environments);
         let (hosts, links) = Hosts::new(access.clone());
+        let opencode = OpencodeDirectory::default();
         let owned = Owned {
             events,
             usage,
             environments,
             hosts,
+            opencode: opencode.clone(),
         };
         let shared_access = access.clone();
         let runtime_inbox = inbox.clone();
@@ -109,7 +114,12 @@ impl Runtime {
             .name(THREAD_NAME.to_owned())
             .spawn(move || Self::idle(shared_access, owned, &runtime_inbox, stopped).run(&input))?;
         tracing::info!("runtime started");
-        Ok(RuntimeHandle::new(inbox, access, usage_budget, links))
+        Ok(RuntimeHandle::new(
+            inbox,
+            access,
+            usage_budget,
+            (links, opencode),
+        ))
     }
 
     fn idle(
@@ -134,6 +144,7 @@ impl Runtime {
             hosts: owned.hosts,
             chats: Chats::new(inbox.clone()),
             gateway: Gateway::default(),
+            opencode: OpencodeServers::new(inbox.clone(), owned.opencode),
             stopped,
         }
     }
@@ -213,7 +224,7 @@ impl Runtime {
             | Input::MentionIndex { .. }
             | Input::ForgetMentionIndexes
             | Input::StartLiveChat(_)
-            | Input::Gateway(_)) => {
+            | Input::Opencode(_)) => {
                 self.apply_chat_input(chat);
             }
             Input::CheckHarnesses { place, probes } => {
@@ -283,7 +294,7 @@ impl Runtime {
             | Input::MentionIndex { .. }
             | Input::ForgetMentionIndexes
             | Input::StartLiveChat(_)
-            | Input::Gateway(_)
+            | Input::Opencode(_)
             | Input::Wake
             | Input::Tick
             | Input::Stop => {}
@@ -345,6 +356,10 @@ impl Runtime {
             Command::Chat(command) => self
                 .execute_chat(command)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
+            Command::Gateway(command) => self
+                .gateway
+                .execute(command, &self.jobs, &mut self.outbox)
+                .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Terminal(command) => self
                 .terminals
                 .execute(command, &mut self.outbox)
@@ -390,6 +405,8 @@ impl Runtime {
             terminals: &self.terminals,
             hosts: &self.hosts,
             chats: &self.chats,
+            opencode: &self.opencode,
+            gateway: &self.gateway,
         };
         let seq = self.seq;
         self.subscribers
@@ -407,6 +424,8 @@ impl Runtime {
             terminals: &self.terminals,
             hosts: &self.hosts,
             chats: &self.chats,
+            opencode: &self.opencode,
+            gateway: &self.gateway,
         }
         .snapshot(self.seq, scope)
     }

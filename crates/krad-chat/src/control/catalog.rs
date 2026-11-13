@@ -1,3 +1,4 @@
+pub use krad_domain::CommandOffer;
 use krad_domain::{
     claude_alias_name, humanize_model_id, split_context, Effort, ModelOffer, ModelSource,
     CLAUDE_BRAND,
@@ -116,13 +117,6 @@ fn claude_offers(lines: Vec<ModelOfferLine>) -> Vec<ModelOffer> {
             offer
         })
         .collect()
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
-pub struct CommandOffer {
-    pub name: String,
-    #[serde(default)]
-    pub description: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]

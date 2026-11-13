@@ -1,10 +1,8 @@
-use gpui_kit::{AppContext as _, Context, Task};
-use krad_chat::Runner;
-use krad_chat::{opencode_models, ModelOffer, OpencodeError, OpencodeServer};
-use krad_domain::{
-    AgentPreset, AgentState, EnvironmentName, Host, ResumeId, TerminalId, ToastKind,
-};
+use gpui_kit::Context;
+use krad_chat::{OpencodeServer, Runner};
+use krad_domain::{AgentPreset, AgentState, EnvironmentName, Host, ResumeId, TerminalId};
 use krad_host::HostLink;
+use krad_protocol::{OpencodeShown, OpencodeSnapshot, OpencodeStatus};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -12,217 +10,78 @@ use std::sync::Arc;
 use super::EnvironmentShell;
 
 #[derive(Default)]
-pub(super) enum OpencodeLink {
-    #[default]
-    Absent,
-    Starting,
-    Ready {
-        server: Arc<OpencodeServer>,
-        models: Vec<ModelOffer>,
-    },
-    Failed(String),
-}
+pub(super) struct OpencodeMirror(HashMap<Host, OpencodeStatus>);
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum Refresh {
-    #[default]
-    Idle,
-    Running,
-    Queued,
+impl OpencodeMirror {
+    pub(super) fn replace(&mut self, snapshot: OpencodeSnapshot) {
+        self.0 = snapshot
+            .servers
+            .into_iter()
+            .map(|shown| (shown.host, shown.status))
+            .collect();
+    }
+
+    fn apply(&mut self, shown: OpencodeShown) {
+        match shown.status {
+            OpencodeStatus::Stopped => self.0.remove(&shown.host),
+            status => self.0.insert(shown.host, status),
+        };
+    }
+
+    pub(super) fn of(&self, host: &Host) -> Option<&OpencodeStatus> {
+        self.0.get(host)
+    }
 }
 
 #[derive(Default)]
 pub(super) struct Opencode {
-    pub(super) link: OpencodeLink,
-    pub(super) hosts: HashMap<Host, OpencodeLink>,
-    refresh: Refresh,
-    catalog_watch: Option<Task<()>>,
     unwatched: Vec<(EnvironmentName, TerminalId, ResumeId)>,
     pub(super) waiting_histories: Vec<(EnvironmentName, TerminalId, ResumeId)>,
-    watches: HashMap<(EnvironmentName, TerminalId), Task<()>>,
+    watches: HashMap<(EnvironmentName, TerminalId), gpui_kit::Task<()>>,
 }
 
 impl EnvironmentShell {
-    pub(super) fn ensure_opencode(&mut self, cx: &mut Context<Self>) {
-        let installed = self.native_agents.contains(&AgentPreset::Opencode);
-        if !installed || !matches!(self.opencode.link, OpencodeLink::Absent) {
+    pub(super) fn ensure_opencode(&mut self) {
+        if !self.native_agents.contains(&AgentPreset::Opencode) {
+            return;
+        }
+        if self.runtime.view.opencode.of(&Host::Local).is_some() {
             return;
         }
         let Ok((runner, cwd)) = self.harness_runner(&HostLink::Local, AgentPreset::Opencode, None)
         else {
             return;
         };
-        self.opencode.link = OpencodeLink::Starting;
-        let started = cx.background_spawn(async move {
-            let server = OpencodeServer::start(&runner, &cwd, &[])?;
-            let models = opencode_models(&server, None)?;
-            Ok::<_, OpencodeError>((server, models))
-        });
-        cx.spawn(async move |this, cx| {
-            let started = started.await;
-            this.update(cx, |shell, cx| {
-                shell.opencode.link = match started {
-                    Ok((server, models)) => {
-                        shell.watch_opencode_catalog(&server, cx);
-                        OpencodeLink::Ready { server, models }
-                    }
-                    Err(error) => OpencodeLink::Failed(error.to_string()),
-                };
-                shell.load_waiting_histories(cx);
-                shell.flush_chats_of(AgentPreset::Opencode, cx);
-                shell.place_usage(cx);
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+        self.ensure_host_opencode(runner, cwd);
     }
 
-    fn watch_opencode_catalog(&mut self, server: &OpencodeServer, cx: &mut Context<Self>) {
-        let (sender, receiver) = futures::channel::mpsc::unbounded();
-        server.watch_catalog(move || {
-            sender.unbounded_send(()).unwrap_or_default();
-        });
-        let task = Self::listen(receiver, cx, |shell, (), cx| {
-            shell.refresh_opencode_models(cx);
-        });
-        self.opencode.catalog_watch = Some(task);
-    }
-
-    pub(super) fn refresh_opencode_models(&mut self, cx: &mut Context<Self>) {
-        let Some(server) = self.opencode_server().cloned() else {
-            return;
-        };
-        if self.opencode.refresh != Refresh::Idle {
-            self.opencode.refresh = Refresh::Queued;
-            return;
-        }
-        self.opencode.refresh = Refresh::Running;
-        let listed = cx.background_spawn(async move { opencode_models(&server, None) });
-        cx.spawn(async move |this, cx| {
-            let listed = listed.await;
-            this.update(cx, |shell, cx| shell.opencode_models_listed(listed, cx))
-                .unwrap_or_default();
-        })
-        .detach();
-    }
-
-    fn opencode_models_listed(
-        &mut self,
-        listed: Result<Vec<ModelOffer>, OpencodeError>,
-        cx: &mut Context<Self>,
-    ) {
-        let queued = self.opencode.refresh == Refresh::Queued;
-        self.opencode.refresh = Refresh::Idle;
-        match listed {
-            Ok(fresh) => self.keep_opencode_models(fresh),
-            Err(error) => self.toast(ToastKind::Error, &error.to_string(), cx),
-        }
-        if queued {
-            self.refresh_opencode_models(cx);
-        }
-        cx.notify();
-    }
-
-    fn keep_opencode_models(&mut self, fresh: Vec<ModelOffer>) {
-        if fresh.is_empty() {
-            return;
-        }
-        if let OpencodeLink::Ready { models, .. } = &mut self.opencode.link {
-            *models = fresh;
-        }
-    }
-
-    pub(super) fn ensure_host_opencode(
-        &mut self,
-        runner: Runner,
-        cwd: PathBuf,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn ensure_host_opencode(&self, runner: Runner, cwd: PathBuf) {
         let host = runner.link().host();
-        if self.opencode.hosts.contains_key(&host) {
-            return;
-        }
-        self.opencode
-            .hosts
-            .insert(host.clone(), OpencodeLink::Starting);
-        let started = cx.background_spawn(async move {
-            let server = OpencodeServer::start(&runner, &cwd, &[])?;
-            let models = opencode_models(&server, None)?;
-            Ok::<_, OpencodeError>((server, models))
-        });
-        cx.spawn(async move |this, cx| {
-            let started = started.await;
-            this.update(cx, |shell, cx| {
-                let link = match started {
-                    Ok((server, models)) => OpencodeLink::Ready { server, models },
-                    Err(error) => OpencodeLink::Failed(error.to_string()),
-                };
-                shell.opencode.hosts.insert(host, link);
-                shell.load_waiting_histories(cx);
-                shell.flush_chats_of(AgentPreset::Opencode, cx);
-                shell.place_usage(cx);
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
-    }
-
-    pub(super) fn start_host_opencode_for(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        cx: &mut Context<Self>,
-    ) {
-        let link = self.env_link(env);
-        if link.is_local() {
-            return;
-        }
-        let root = self
-            .envs
-            .get(env)
-            .and_then(|live| live.data.group_of(id))
-            .map(|group| group.root.clone());
-        match self.harness_runner(&link, AgentPreset::Opencode, root.as_deref()) {
-            Ok((runner, cwd)) => self.ensure_host_opencode(runner, cwd, cx),
-            Err(error) => tracing::debug!(%error, "opencode cannot start on the host yet"),
+        if self.runtime.view.opencode.of(&host).is_none() {
+            self.runtime.handle.start_opencode(host, runner, cwd);
         }
     }
 
-    pub(super) fn opencode_link_of(&self, env: &EnvironmentName) -> Option<&OpencodeLink> {
+    pub(super) fn opencode_heard(&mut self, shown: OpencodeShown, cx: &mut Context<Self>) {
+        let ready = shown.status == OpencodeStatus::Ready;
+        self.runtime.view.opencode.apply(shown);
+        if ready {
+            self.watch_new_opencode_terminals(cx);
+            self.place_usage();
+        }
+    }
+
+    pub(super) fn refresh_opencode_models(&self) {
+        self.runtime.handle.refresh_opencode_models(Host::Local);
+    }
+
+    pub(super) fn opencode_server_of(&self, env: &EnvironmentName) -> Option<Arc<OpencodeServer>> {
         let host = &self.envs.get(env)?.data.host;
-        if host.is_local() {
-            return Some(&self.opencode.link);
-        }
-        self.opencode.hosts.get(host)
+        self.runtime.handle.opencode_server(host)
     }
 
-    pub(super) fn opencode_server_of(&self, env: &EnvironmentName) -> Option<&Arc<OpencodeServer>> {
-        match self.opencode_link_of(env)? {
-            OpencodeLink::Ready { server, .. } => Some(server),
-            OpencodeLink::Absent | OpencodeLink::Starting | OpencodeLink::Failed(_) => None,
-        }
-    }
-
-    pub(super) const fn opencode_server(&self) -> Option<&Arc<OpencodeServer>> {
-        match &self.opencode.link {
-            OpencodeLink::Ready { server, .. } => Some(server),
-            OpencodeLink::Absent | OpencodeLink::Starting | OpencodeLink::Failed(_) => None,
-        }
-    }
-
-    pub(super) fn opencode_models_on(&self, host: &Host) -> &[ModelOffer] {
-        let link = if host.is_local() {
-            Some(&self.opencode.link)
-        } else {
-            self.opencode.hosts.get(host)
-        };
-        match link {
-            Some(OpencodeLink::Ready { models, .. }) => models,
-            Some(OpencodeLink::Absent | OpencodeLink::Starting | OpencodeLink::Failed(_))
-            | None => &[],
-        }
+    pub(super) fn opencode_server(&self) -> Option<Arc<OpencodeServer>> {
+        self.runtime.handle.opencode_server(&Host::Local)
     }
 
     pub(super) fn note_opencode_terminal(
@@ -235,23 +94,23 @@ impl EnvironmentShell {
     }
 
     pub(super) fn watch_new_opencode_terminals(&mut self, cx: &mut Context<Self>) {
+        let Some(server) = self.opencode_server() else {
+            return;
+        };
         for (env, id, resume) in std::mem::take(&mut self.opencode.unwatched) {
-            self.watch_opencode_terminal(&env, id, &resume, cx);
+            self.watch_opencode_terminal(&server, (&env, id), &resume, cx);
         }
     }
 
     fn watch_opencode_terminal(
         &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
+        server: &OpencodeServer,
+        (env, id): (&EnvironmentName, TerminalId),
         resume: &ResumeId,
         cx: &mut Context<Self>,
     ) {
-        let Some(server) = self.opencode_server().cloned() else {
-            return;
-        };
         let (sender, receiver) = futures::channel::mpsc::unbounded();
-        krad_chat::watch_opencode_session(&server, resume, move |state| {
+        krad_chat::watch_opencode_session(server, resume, move |state| {
             sender.unbounded_send(state).unwrap_or_default();
         });
         let owner = env.clone();
@@ -275,5 +134,31 @@ impl EnvironmentShell {
 
     pub(super) fn forget_opencode_terminal(&mut self, env: &EnvironmentName, id: TerminalId) {
         self.opencode.watches.remove(&(env.clone(), id));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shown(status: OpencodeStatus) -> OpencodeShown {
+        OpencodeShown {
+            host: Host::Local,
+            status,
+        }
+    }
+
+    #[test]
+    fn the_mirror_follows_the_runtime_servers_and_forgets_a_stopped_one() {
+        let mut mirror = OpencodeMirror::default();
+        mirror.apply(shown(OpencodeStatus::Starting));
+        mirror.apply(shown(OpencodeStatus::Ready));
+        assert_eq!(mirror.of(&Host::Local), Some(&OpencodeStatus::Ready));
+        mirror.apply(shown(OpencodeStatus::Stopped));
+        assert_eq!(mirror.of(&Host::Local), None);
+        mirror.replace(OpencodeSnapshot {
+            servers: vec![shown(OpencodeStatus::Starting)],
+        });
+        assert_eq!(mirror.of(&Host::Local), Some(&OpencodeStatus::Starting));
     }
 }

@@ -53,7 +53,7 @@ impl EnvironmentShell {
             return;
         };
         self.list_harness_models();
-        self.ensure_opencode(cx);
+        self.ensure_opencode();
         let preset = self.default_agent();
         let link = self.active_link();
         let picked = read_docs_sources(&link, &root).unwrap_or_default();

@@ -199,6 +199,11 @@ impl EnvironmentShell {
             return;
         };
         structured.shown.take_state(&state);
+        let asks_sign_in = state
+            .acp
+            .as_ref()
+            .is_some_and(|acp| structured.acp.adopt(acp));
+        structured.adopt_catalog(state.commands.clone(), state.account.clone());
         let was_working = structured.working;
         if state.working {
             structured.working = true;
@@ -217,6 +222,9 @@ impl EnvironmentShell {
         }
         if let Some(resume) = resumed {
             self.note_chat_resume(env, id, resume);
+        }
+        if asks_sign_in {
+            self.set_agent_state(env, id, AgentState::WaitingForInput);
         }
         if was_working == state.working {
             return;

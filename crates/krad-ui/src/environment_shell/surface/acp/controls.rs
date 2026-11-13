@@ -3,6 +3,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _,
 };
 use krad_domain::{Effort, TerminalId};
+use krad_protocol::ChatCommand;
 use std::rc::Rc;
 
 use super::super::super::context_menu::{MenuAction, MenuEntry};
@@ -193,7 +194,16 @@ impl EnvironmentShell {
         if !structured.acp.chose(&choice) {
             return;
         }
-        if let Some(live) = structured.live() {
+        if structured.in_runtime() {
+            self.post_runtime_chat(&env, id, |chat| match choice {
+                AcpChoice::Mode(mode) => ChatCommand::SetAcpMode { chat, mode },
+                AcpChoice::Option(option, value) => ChatCommand::SetAcpOption {
+                    chat,
+                    option,
+                    value,
+                },
+            });
+        } else if let Some(live) = structured.live() {
             match choice {
                 AcpChoice::Mode(mode) => live.set_acp_mode(mode),
                 AcpChoice::Option(option, value) => live.set_acp_option(option, value),

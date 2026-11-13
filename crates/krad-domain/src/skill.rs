@@ -34,6 +34,13 @@ impl fmt::Display for SkillKind {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommandOffer {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+}
+
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct SkillKey {
     pub kind: SkillKind,

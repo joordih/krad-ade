@@ -124,7 +124,7 @@ impl EnvironmentShell {
             this.update(cx, |shell, cx| {
                 shell.host_agents.insert(host, installed);
                 shell.list_host_models(&env);
-                shell.place_usage(cx);
+                shell.place_usage();
                 shell.load_missing_histories(&env, cx);
                 let harnesses: Vec<AgentPreset> =
                     AgentPreset::listed(&shell.settings.acp.all_agents()).collect();
@@ -338,9 +338,9 @@ impl EnvironmentShell {
             let installed = lookup.await;
             this.update(cx, |shell, cx| {
                 shell.native_agents = installed;
-                shell.ensure_opencode(cx);
+                shell.ensure_opencode();
                 shell.list_harness_models();
-                shell.place_usage(cx);
+                shell.place_usage();
                 cx.notify();
             })
             .unwrap_or_default();

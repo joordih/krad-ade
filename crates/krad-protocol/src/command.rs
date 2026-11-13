@@ -5,6 +5,7 @@ use crate::attention::AttentionCommand;
 use crate::bus::BusCommand;
 use crate::chats::ChatCommand;
 use crate::environments::EnvironmentCommand;
+use crate::gateway::GatewayCommand;
 use crate::hosts::HostCommand;
 use crate::models::ModelsCommand;
 use crate::terminals::TerminalCommand;
@@ -23,6 +24,7 @@ pub enum Command {
     Terminal(TerminalCommand),
     Host(HostCommand),
     Chat(ChatCommand),
+    Gateway(GatewayCommand),
     #[serde(other)]
     Unknown,
 }

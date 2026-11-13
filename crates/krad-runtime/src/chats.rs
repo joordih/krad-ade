@@ -1,3 +1,4 @@
+mod acp;
 mod answers;
 mod backend;
 mod chat;
@@ -9,7 +10,7 @@ mod queue;
 
 use krad_chat::LiveSession;
 use krad_domain::{
-    AgentPreset, AttentionKind, ChatMessage, GatewayAccess, Host, ModelOffer, Prompt, UsageReport,
+    AcpAuthMethodId, AgentPreset, AttentionKind, ChatMessage, Host, ModelOffer, Prompt, UsageReport,
 };
 use krad_host::HostLink;
 use krad_protocol::{
@@ -19,20 +20,28 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, SyncSender};
 
+use crate::gateway::GatewayReached;
 use crate::input::Input;
 use crate::jobs::Jobs;
+use crate::opencode::OpencodeServers;
 use crate::runtime::refused;
+use acp::AcpChoice;
+pub(crate) use acp::AcpSecretsRead;
 use backend::ensure_live;
+pub(crate) use backend::reach_opencode;
 pub use backend::{runs_in_runtime, ChatLaunch, LiveStarted};
-use chat::Chat;
+use chat::{Chat, HistoryWait};
 pub(crate) use checkpoints::ChatCheckpoint;
 pub(crate) use history::{ChatEarlier, ChatOpening};
+use krad_store::{acp_transcript_file, AcpTranscripts};
 use mentions::MentionIndexes;
 pub(crate) use mentions::{FilesIndexed, IndexAnswer};
 use queue::{ChatQueue, Heard};
 
 const CHAT_PAGE: usize = 64;
 const UNKNOWN_CHAT: &str = "no chat with this id";
+const NOT_ACP: &str = "only an ACP agent's chat takes this command";
+const NOT_STARTED: &str = "the agent has not started yet";
 
 #[derive(Clone, Debug)]
 pub struct ChatPlace {
@@ -81,6 +90,7 @@ pub(crate) enum ChatEffect {
 
 pub(crate) struct Chats {
     open: HashMap<AgentRef, Chat>,
+    transcripts: Option<AcpTranscripts>,
     queue: ChatQueue,
     heard: Receiver<Heard>,
     next_ask: u64,
@@ -99,7 +109,8 @@ impl std::fmt::Debug for Chats {
 
 pub(crate) struct ChatWork<'a> {
     pub(crate) jobs: &'a Jobs,
-    pub(crate) gateway: Option<&'a GatewayAccess>,
+    pub(crate) gateway: Option<GatewayReached<'a>>,
+    pub(crate) opencode: &'a mut OpencodeServers,
     pub(crate) outbox: &'a mut Vec<EventKind>,
     pub(crate) effects: &'a mut Vec<ChatEffect>,
 }
@@ -109,6 +120,7 @@ impl Chats {
         let (queue, heard) = ChatQueue::open(wake);
         Self {
             open: HashMap::new(),
+            transcripts: AcpTranscripts::spawn(),
             queue,
             heard,
             next_ask: 0,
@@ -130,11 +142,15 @@ impl Chats {
         }
         let mut chat = Chat::new(id.clone(), start);
         chat.opened = self.next_generation();
+        if chat.acp.is_some() {
+            chat.transcript = acp_transcript_file(&id.environment, id.terminal)
+                .and_then(|file| self.transcripts.as_ref()?.transcript(file));
+        }
         work.outbox.push(EventKind::ChatOpened {
             chat: id.clone(),
             state: Box::new(chat.state()),
         });
-        history::read(&chat, work.jobs);
+        history::read(&mut chat, work);
         tracing::info!("chat opened in the runtime");
         self.open.insert(id.clone(), chat);
         self.flush(id, work);
@@ -198,10 +214,66 @@ impl Chats {
                 &krad_domain::AskAnswer::ApprovePlan { mode },
                 work,
             ),
+            ChatCommand::SetAcpMode { mode, .. } => self.choose_acp(&id, AcpChoice::Mode(mode)),
+            ChatCommand::SetAcpOption { option, value, .. } => {
+                self.choose_acp(&id, AcpChoice::Option(option, value))
+            }
+            ChatCommand::SignIn { method, .. } => self.sign_in(&id, method),
             ChatCommand::Unknown => return None,
         };
         self.flush(&id, work);
         Some(reply)
+    }
+
+    pub(crate) fn acp_secrets_read(&mut self, read: AcpSecretsRead, work: &mut ChatWork<'_>) {
+        let Some(acp) = self
+            .open
+            .get_mut(&read.chat)
+            .filter(|chat| chat.opened == read.opened)
+            .and_then(|chat| chat.acp.as_mut())
+        else {
+            return;
+        };
+        acp.secrets_read(read.read);
+        self.flush(&read.chat, work);
+    }
+
+    fn choose_acp(&mut self, id: &AgentRef, choice: AcpChoice) -> Reply {
+        let Some(chat) = self.open.get_mut(id) else {
+            return refused(ErrorCode::NotFound, UNKNOWN_CHAT);
+        };
+        let Some(acp) = chat.acp.as_mut() else {
+            return refused(ErrorCode::Unsupported, NOT_ACP);
+        };
+        acp.chose(&choice);
+        if let Some(live) = chat.live.as_ref().filter(|live| live.is_alive()) {
+            acp::tell(live, choice);
+        }
+        Reply::Accepted
+    }
+
+    fn sign_in(&mut self, id: &AgentRef, method: AcpAuthMethodId) -> Reply {
+        let Some(chat) = self.open.get(id) else {
+            return refused(ErrorCode::NotFound, UNKNOWN_CHAT);
+        };
+        if chat.acp.is_none() {
+            return refused(ErrorCode::Unsupported, NOT_ACP);
+        }
+        let Some(live) = chat.live() else {
+            return refused(ErrorCode::NotFound, NOT_STARTED);
+        };
+        live.sign_in(method);
+        Reply::Accepted
+    }
+
+    pub(crate) fn opencode_ready(&mut self, host: &Host, work: &mut ChatWork<'_>) {
+        for chat in self.open.values_mut() {
+            if chat.history == HistoryWait::ForServer && chat.place.host == *host {
+                chat.history = HistoryWait::No;
+                history::read(chat, work);
+            }
+        }
+        self.flush_all(work);
     }
 
     pub(crate) fn flush_all(&mut self, work: &mut ChatWork<'_>) {
@@ -216,7 +288,7 @@ impl Chats {
         let Some(chat) = self.open.get_mut(id) else {
             return;
         };
-        if chat.has_work() && ensure_live(chat, &self.queue, generation, work.gateway) {
+        if chat.has_work() && ensure_live(chat, &self.queue, generation, work) {
             if chat.generation == generation {
                 self.next_generation = generation;
             }

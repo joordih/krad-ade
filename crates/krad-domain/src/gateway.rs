@@ -1,5 +1,5 @@
 use crate::http_url::{checked_http_url, HttpUrlError, PATH_SEPARATOR};
-use crate::model::{lenient_models, ModelId};
+use crate::model::{lenient_models, ModelId, ModelOffer};
 use serde::de::IgnoredAny;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
@@ -10,6 +10,12 @@ pub const EXAMPLE_GATEWAY_URL: &str = "http://127.0.0.1:8317";
 const REDACTED: &str = "[REDACTED]";
 const API_VERSION_SUFFIX: &str = "/v1";
 const DEFAULT_CONTEXT_TOKENS: u64 = 200_000;
+const ANTHROPIC_OWNERS: [&str; 2] = ["anthropic", "claude"];
+const OPENAI_OWNERS: [&str; 3] = ["openai", "codex", "azure-openai"];
+const GOOGLE_OWNERS: [&str; 2] = ["google", "gemini"];
+const ANTHROPIC_LABEL: &str = "Anthropic";
+const OPENAI_LABEL: &str = "OpenAI";
+const GOOGLE_LABEL: &str = "Google";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -194,6 +200,53 @@ impl GatewaySettings {
             None => self.models.push(model.clone()),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Vendor {
+    Anthropic,
+    OpenAi,
+    Google,
+    #[default]
+    Other,
+}
+
+impl Vendor {
+    #[must_use]
+    pub const fn label(self) -> Option<&'static str> {
+        match self {
+            Self::Anthropic => Some(ANTHROPIC_LABEL),
+            Self::OpenAi => Some(OPENAI_LABEL),
+            Self::Google => Some(GOOGLE_LABEL),
+            Self::Other => None,
+        }
+    }
+}
+
+fn owned_by(owner: &str, known: &[&str]) -> bool {
+    known.iter().any(|name| owner.eq_ignore_ascii_case(name))
+}
+
+impl From<&str> for Vendor {
+    fn from(owner: &str) -> Self {
+        let owner = owner.trim();
+        if owned_by(owner, &ANTHROPIC_OWNERS) {
+            Self::Anthropic
+        } else if owned_by(owner, &OPENAI_OWNERS) {
+            Self::OpenAi
+        } else if owned_by(owner, &GOOGLE_OWNERS) {
+            Self::Google
+        } else {
+            Self::Other
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GatewayModel {
+    pub offer: ModelOffer,
+    pub vendor: Vendor,
 }
 
 #[cfg(test)]

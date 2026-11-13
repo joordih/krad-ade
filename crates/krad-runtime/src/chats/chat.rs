@@ -1,13 +1,15 @@
 use krad_chat::{new_session_id, LiveChat, LiveSession, ResumeRefused, SlashCommand, ToolAsk};
 use krad_domain::{
     fold_entry, fold_prompt, AgentPreset, AskVerdict, ChatEntry, ChatLogChange, ChatMessage,
-    ChatOrigin, GitObjectId, Prompt, ResumeId,
+    ChatOrigin, CommandOffer, GitObjectId, Mention, Prompt, ResumeId,
 };
 use krad_protocol::{AgentRef, ChatAskId, ChatContext, ChatState, EventKind};
+use krad_store::AcpTranscript;
 use std::collections::{BTreeMap, VecDeque};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+use super::acp::AcpChat;
 use super::backend::{ChatLaunch, Choices};
 use super::ChatPlace;
 
@@ -42,6 +44,13 @@ pub(super) enum Shown {
     ReadingEarlier(Earlier),
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum HistoryWait {
+    #[default]
+    No,
+    ForServer,
+}
+
 pub(super) struct Chat {
     pub(super) id: AgentRef,
     pub(super) place: ChatPlace,
@@ -74,6 +83,11 @@ pub(super) struct Chat {
     pub(super) origin: Option<ChatOrigin>,
     pub(super) checkpoints: VecDeque<Option<GitObjectId>>,
     pub(super) checkpointing: Option<Batch>,
+    pub(super) history: HistoryWait,
+    pub(super) acp: Option<AcpChat>,
+    pub(super) transcript: Option<AcpTranscript>,
+    pub(super) offered: Vec<CommandOffer>,
+    pub(super) account: Option<String>,
     told: Option<ChatState>,
 }
 
@@ -85,6 +99,7 @@ impl Chat {
             place: start.place,
             harness: start.harness,
             choices: Choices::from(&start.launch),
+            acp: AcpChat::of(&start.launch),
             launch: start.launch,
             session: start.session,
             live: None,
@@ -112,6 +127,10 @@ impl Chat {
             origin: None,
             checkpoints: VecDeque::new(),
             checkpointing: None,
+            history: HistoryWait::No,
+            transcript: None,
+            offered: Vec::new(),
+            account: None,
             told: None,
         }
     }
@@ -133,6 +152,9 @@ impl Chat {
             working_since: self.working_since,
             earlier: self.shown != Shown::Whole,
             origin: self.origin,
+            commands: self.offered.clone(),
+            account: self.account.clone(),
+            acp: self.acp.as_ref().map(|acp| acp.shown.clone()),
         }
     }
 
@@ -153,6 +175,9 @@ impl Chat {
     }
 
     pub(super) fn fold(&mut self, entry: &ChatEntry, outbox: &mut Vec<EventKind>) {
+        if let Some(transcript) = &self.transcript {
+            transcript.keep(entry);
+        }
         let before = self.messages.len();
         let touched = fold_entry(&mut self.messages, entry);
         let changes = ChatLogChange::after(entry, &self.messages, before, touched);
@@ -160,11 +185,30 @@ impl Chat {
     }
 
     pub(super) fn fold_sent(&mut self, prompt: &Prompt, outbox: &mut Vec<EventKind>) {
+        if let Some(transcript) = &self.transcript {
+            transcript.keep(&self.user_entry(prompt));
+        }
         let before = self.messages.len();
         let touched = fold_prompt(&mut self.messages, prompt, self.harness);
         self.tell_messages(before, touched, outbox);
         self.problem = None;
         self.notices = std::mem::take(&mut self.start_notices);
+    }
+
+    fn user_entry(&self, prompt: &Prompt) -> ChatEntry {
+        ChatEntry::User {
+            text: prompt.text.clone(),
+            preset: self.harness,
+            model: self.choices.model.clone(),
+            images: prompt
+                .mentions
+                .iter()
+                .filter_map(|mention| match mention {
+                    Mention::Image(image) => Some(image.clone()),
+                    Mention::Path(_) => None,
+                })
+                .collect(),
+        }
     }
 
     pub(super) fn begin_work(&mut self) {
@@ -305,7 +349,13 @@ impl Chat {
 
     pub(super) fn retries(&mut self, refused: &ResumeRefused) -> Option<Batch> {
         match refused {
-            ResumeRefused::MissingConversation(_) => self.falls_back(),
+            ResumeRefused::MissingConversation(_) => {
+                let batch = self.falls_back()?;
+                if self.acp.is_some() {
+                    self.notices.push(refused.to_string());
+                }
+                Some(batch)
+            }
             ResumeRefused::TurnNotDropped(_) => self.drops_turn_again(),
         }
     }

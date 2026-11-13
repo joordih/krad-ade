@@ -144,7 +144,7 @@ impl EnvironmentShell {
         if !harness.is_some_and(AgentPreset::attaches_to_server) || site != ShellSite::Native {
             return None;
         }
-        let server = self.opencode_server()?.clone();
+        let server = self.opencode_server()?;
         let resume = match launch {
             Launch::Resume {
                 resume: Some(resume),

@@ -10,7 +10,6 @@ use std::time::SystemTime;
 
 use super::super::super::super::chat::{fold_entry, last_permission_mode};
 use super::super::super::super::cloud::NodeSite;
-use super::super::super::super::opencode::OpencodeLink;
 use super::super::super::super::EnvironmentShell;
 use super::super::super::transcript::{fold_history, started_at, TailJob, TailRead};
 use super::super::super::{Backend, SurfaceChat};
@@ -73,15 +72,8 @@ impl EnvironmentShell {
         resume: ResumeId,
         cx: &mut Context<Self>,
     ) {
-        if let Some(OpencodeLink::Failed(error)) = self.opencode_link_of(&env) {
-            let error = error.clone();
-            if let Some(chat) = structured_chat(self, &env, id) {
-                chat.problem = Some(error);
-            }
-            return;
-        }
         let server = match self.node_site(&env, id) {
-            NodeSite::Env => self.opencode_server_of(&env).cloned(),
+            NodeSite::Env => self.opencode_server_of(&env),
             NodeSite::Cloud(site) => {
                 let server = self.cloud_opencode_server(site.placement.runner).cloned();
                 if server.is_none() {
@@ -94,8 +86,6 @@ impl EnvironmentShell {
             NodeSite::Waiting(runner) => return self.note_cloud_wait(&env, id, runner, cx),
         };
         let Some(server) = server else {
-            self.start_host_opencode_for(&env, id, cx);
-            self.opencode.waiting_histories.push((env, id, resume));
             return;
         };
         let read = cx.background_spawn(async move {

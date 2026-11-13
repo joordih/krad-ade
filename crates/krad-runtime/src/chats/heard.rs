@@ -1,7 +1,8 @@
-use krad_chat::{ChatEvent, LiveEvent, ResumeRefused, Rewound};
+use krad_chat::{AcpEvent, Catalog, ChatEvent, LiveEvent, ResumeRefused, Rewound};
 use krad_domain::{ChatEntry, ModelOffer};
 use krad_protocol::{AgentRef, ChatAsk, ChatAskId, EventKind, UsageNews};
 
+use super::acp;
 use super::chat::{Batch, Chat};
 use super::{checkpoints, ensure_live, hand_over, ChatEffect, ChatWork, Chats};
 
@@ -64,7 +65,7 @@ fn retry(
     failure: ChatEvent,
     work: &mut ChatWork<'_>,
 ) {
-    if ensure_live(chat, queue, generation, work.gateway) {
+    if ensure_live(chat, queue, generation, work) {
         hand_over(chat, batch);
         return;
     }
@@ -76,7 +77,8 @@ fn retry(
 fn hear_one(chat: &mut Chat, event: LiveEvent, ask: ChatAskId, work: &mut ChatWork<'_>) -> Outcome {
     let (event, refused) = split_refusal(event);
     match event {
-        LiveEvent::Ready(catalog) => keep_models(chat, catalog.models, work),
+        LiveEvent::Ready(catalog) => ready(chat, catalog, work),
+        LiveEvent::Acp(event) => acp_heard(chat, event, work),
         LiveEvent::Rewound(outcome) => rewound(chat, outcome, work.outbox),
         LiveEvent::Notice(notice) => chat.notices.push(notice),
         LiveEvent::Ask(held) => {
@@ -97,7 +99,7 @@ fn hear_one(chat: &mut Chat, event: LiveEvent, ask: ChatAskId, work: &mut ChatWo
         LiveEvent::Spent(report) => work.outbox.push(Chats::spent(chat, report)),
         LiveEvent::Usage(usage) => usage_heard(chat, UsageNews::Read { usage }, work),
         LiveEvent::Limit(alert) => usage_heard(chat, UsageNews::Alert { alert }, work),
-        LiveEvent::Acp(_) | LiveEvent::Refused(_) => {}
+        LiveEvent::Refused(_) => {}
         LiveEvent::Chat(event) => return hear_chat(chat, event, refused, work.outbox),
     }
     Outcome::Applied
@@ -164,6 +166,32 @@ fn rewound(
     chat.cut(rewinding.index, outbox);
     chat.problem = None;
     chat.outbox.push_front(rewinding.prompt);
+}
+
+fn ready(chat: &mut Chat, catalog: Catalog, work: &mut ChatWork<'_>) {
+    chat.offered = catalog.commands;
+    chat.account = catalog.subscription;
+    if let Some(acp) = chat.acp.as_mut() {
+        acp.opened();
+    }
+    keep_models(chat, catalog.models, work);
+}
+
+fn acp_heard(chat: &mut Chat, event: AcpEvent, work: &mut ChatWork<'_>) {
+    let Some(acp) = chat.acp.as_mut() else {
+        return;
+    };
+    let models = matches!(event, AcpEvent::Models(_));
+    let early = acp.reported(event);
+    let offered = models.then(|| acp.models());
+    if let Some(live) = chat.live() {
+        for choice in early {
+            acp::tell(live, choice);
+        }
+    }
+    if let Some(offered) = offered {
+        keep_models(chat, offered, work);
+    }
 }
 
 fn keep_models(chat: &Chat, models: Vec<ModelOffer>, work: &mut ChatWork<'_>) {

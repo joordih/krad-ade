@@ -11,10 +11,12 @@ use crate::bus::{
 };
 use crate::chats::{ChatAsk, ChatAskId, ChatState, ChatSummary};
 use crate::environments::SpendingCrossed;
+use crate::gateway::GatewayState;
 use crate::harness_health::{HarnessChecked, HealthSnapshot};
 use crate::hosts::{HostPrompt, HostState, HostsSnapshot, PromptId, RemoteBusState};
 use crate::ids::{RequestId, Seq};
 use crate::models::{ListedModels, ModelsOrigin, ModelsSnapshot};
+use crate::opencode::{OpencodeShown, OpencodeSnapshot};
 use crate::terminals::{TerminalClassified, TerminalSummary};
 use crate::usage::{UsageShown, UsageSnapshot};
 
@@ -54,6 +56,13 @@ pub enum EventKind {
         host: Host,
         harness: AgentPreset,
         error: String,
+    },
+    OpencodeServer(OpencodeShown),
+    GatewayChanged {
+        state: GatewayState,
+    },
+    GatewayKeyForgotten {
+        error: Option<String>,
     },
     EnvironmentOpened {
         environment: Box<EnvironmentData>,
@@ -172,6 +181,10 @@ pub struct Snapshot {
     pub hosts: HostsSnapshot,
     #[serde(default)]
     pub chats: Vec<ChatSummary>,
+    #[serde(default)]
+    pub opencode: OpencodeSnapshot,
+    #[serde(default)]
+    pub gateway: GatewayState,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -228,6 +241,8 @@ mod tests {
                 terminals: Vec::new(),
                 hosts: HostsSnapshot::default(),
                 chats: Vec::new(),
+                opencode: OpencodeSnapshot::default(),
+                gateway: GatewayState::default(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

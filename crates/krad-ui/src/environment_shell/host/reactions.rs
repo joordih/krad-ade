@@ -108,7 +108,7 @@ impl EnvironmentShell {
         });
         self.forget_review_offers(&host, &roots);
         if !shared {
-            self.opencode.hosts.remove(&host);
+            self.runtime.handle.forget_opencode(host.clone());
         }
         self.tell_missing_login_env(env);
         self.detect_host_agents(env, cx);

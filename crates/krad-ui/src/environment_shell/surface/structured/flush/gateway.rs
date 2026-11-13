@@ -6,7 +6,6 @@ use krad_store::gateway_sessions_dir;
 use std::path::{Path, PathBuf};
 
 use super::super::super::super::chat::StartError;
-use super::super::super::super::gateway::GatewayReach;
 use super::super::super::super::terminal_card::home_dir;
 use super::super::super::super::EnvironmentShell;
 use super::super::structured_mut;
@@ -21,10 +20,8 @@ impl EnvironmentShell {
         if !self.env_link(env).is_ready() {
             return Err(StartError::Waiting);
         }
-        match self.gateway_reach() {
-            GatewayReach::Ready => {}
-            GatewayReach::Waiting => return Err(StartError::Waiting),
-            GatewayReach::Unavailable(error) => return Err(StartError::Gateway(error)),
+        if self.gateway_checking() {
+            return Err(StartError::Waiting);
         }
         let sessions = gateway_sessions_dir().ok_or(StartError::NoConfigFolder)?;
         let cwd = self.chat_folder(env, id);
@@ -52,9 +49,12 @@ impl EnvironmentShell {
             }
         };
         let chosen = structured_mut(self, env, id).and_then(|chat| chat.chosen_model.clone());
-        let model = self
-            .gateway_model(chosen.as_ref())
-            .ok_or_else(|| StartError::Gateway(Self::no_gateway_model_text().to_owned()))?;
+        let model = self.gateway_model(chosen.as_ref());
+        if model.is_none() && self.gateway_ready() {
+            return Err(StartError::Gateway(
+                Self::no_gateway_model_text().to_owned(),
+            ));
+        }
         let served = self.gateway_served().to_vec();
         let context_windows = self.settings.gateway.context_windows.clone();
         let structured = structured_mut(self, env, id).ok_or(StartError::Waiting)?;
@@ -63,7 +63,7 @@ impl EnvironmentShell {
             sessions,
             home,
             cwd,
-            model: Some(model),
+            model,
             models: served,
             context_windows,
             system_prompt,

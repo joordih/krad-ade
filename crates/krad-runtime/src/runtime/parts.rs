@@ -4,9 +4,11 @@ use crate::attention::Attention;
 use crate::bus::Bus;
 use crate::chats::Chats;
 use crate::environments::Environments;
+use crate::gateway::Gateway;
 use crate::harness_health::Health;
 use crate::hosts::Hosts;
 use crate::models::Models;
+use crate::opencode::OpencodeServers;
 use crate::terminals::Terminals;
 use crate::usage::Usage;
 
@@ -20,6 +22,8 @@ pub(super) struct Parts<'a> {
     pub(super) terminals: &'a Terminals,
     pub(super) hosts: &'a Hosts,
     pub(super) chats: &'a Chats,
+    pub(super) opencode: &'a OpencodeServers,
+    pub(super) gateway: &'a Gateway,
 }
 
 impl Parts<'_> {
@@ -36,6 +40,8 @@ impl Parts<'_> {
             terminals: self.terminals.snapshot(),
             hosts: self.hosts.snapshot(),
             chats: self.chats.snapshot(),
+            opencode: self.opencode.snapshot(),
+            gateway: self.gateway.snapshot(),
         }
     }
 }

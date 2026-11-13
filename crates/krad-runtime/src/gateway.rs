@@ -1,120 +1,151 @@
-use futures::channel::oneshot;
-use krad_chat::{gateway_models, GatewayModel};
-use krad_domain::{GatewayAccess, GatewayKey, GatewayUrl};
-use krad_store::{delete_gateway_key, find_gateway_key, write_gateway_key, LoginPlace};
+use krad_chat::gateway_models;
+use krad_domain::{GatewayAccess, GatewayKey, GatewayModel, GatewayUrl};
+use krad_protocol::{EventKind, GatewayCommand, GatewayState, Reply};
+use krad_store::{delete_gateway_key, find_gateway_key, write_gateway_key};
 
 use crate::jobs::{JobDone, Jobs};
-use crate::runtime::answer_to;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct GatewayCheck {
-    pub place: LoginPlace,
-    pub models: Result<Vec<GatewayModel>, String>,
-}
-
-pub type GatewayChecked = Result<Option<GatewayCheck>, String>;
-
-#[derive(Debug)]
-pub(crate) enum GatewayInput {
-    Check {
-        url: Option<GatewayUrl>,
-        key: Option<GatewayKey>,
-        reply: oneshot::Sender<GatewayChecked>,
-    },
-    Forget {
-        url: GatewayUrl,
-        reply: oneshot::Sender<Result<(), String>>,
-    },
-}
+const JOB_FAILED: &str = "the Gateway check could not start";
 
 #[derive(Debug)]
 pub(crate) struct GatewayRead {
     attempt: u64,
     access: Option<GatewayAccess>,
-    checked: GatewayChecked,
-    reply: oneshot::Sender<GatewayChecked>,
+    state: GatewayState,
 }
 
 #[derive(Debug)]
 pub(crate) struct GatewayForgotten {
     removed: Result<(), String>,
-    reply: oneshot::Sender<Result<(), String>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct GatewayReached<'a> {
+    pub(crate) access: &'a GatewayAccess,
+    pub(crate) models: &'a [GatewayModel],
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct Gateway {
     attempt: u64,
     pub(crate) access: Option<GatewayAccess>,
+    state: GatewayState,
 }
 
-fn check(url: GatewayUrl, key: Option<&GatewayKey>) -> (Option<GatewayAccess>, GatewayChecked) {
+fn failed(has_key: bool, error: String) -> GatewayState {
+    GatewayState::Failed { has_key, error }
+}
+
+fn check(url: GatewayUrl, key: Option<&GatewayKey>) -> (Option<GatewayAccess>, GatewayState) {
     if let Some(key) = key {
         if let Err(error) = write_gateway_key(&url, key) {
-            return (None, Err(error.to_string()));
+            return (None, failed(false, error.to_string()));
         }
     }
     let (key, place) = match find_gateway_key(&url) {
         Ok(Some(found)) => found,
-        Ok(None) => return (None, Ok(None)),
-        Err(error) => return (None, Err(error.to_string())),
+        Ok(None) => return (None, GatewayState::Unset),
+        Err(error) => return (None, failed(false, error.to_string())),
     };
     let access = GatewayAccess { url, key };
-    let models = gateway_models(&access).map_err(|error| error.to_string());
-    let reachable = models.is_ok().then_some(access);
-    (reachable, Ok(Some(GatewayCheck { place, models })))
+    match gateway_models(&access) {
+        Ok(models) => (Some(access), GatewayState::Ready { place, models }),
+        Err(error) => (None, failed(true, error.to_string())),
+    }
 }
 
 impl Gateway {
-    pub(crate) fn apply(&mut self, input: GatewayInput, jobs: &Jobs) {
-        self.attempt += 1;
-        self.access = None;
-        match input {
-            GatewayInput::Check { url, key, reply } => {
-                let Some(url) = url else {
-                    return answer_to(reply, Ok(None));
-                };
+    pub(crate) fn execute(
+        &mut self,
+        command: GatewayCommand,
+        jobs: &Jobs,
+        outbox: &mut Vec<EventKind>,
+    ) -> Option<Reply> {
+        match command {
+            GatewayCommand::Check { url: None, .. } => {
+                self.restart();
+                self.tell(GatewayState::Unset, outbox);
+            }
+            GatewayCommand::Check {
+                url: Some(url),
+                key,
+            } => {
+                self.restart();
                 let attempt = self.attempt;
                 let started = jobs.run(move || {
-                    let (access, checked) = check(url, key.as_ref());
+                    let (access, state) = check(url, key.as_ref());
                     JobDone::GatewayChecked(GatewayRead {
                         attempt,
                         access,
-                        checked,
-                        reply,
+                        state,
                     })
                 });
-                if let Err(error) = started {
-                    tracing::warn!(%error, "the Gateway check could not start");
-                }
+                let state = match started {
+                    Ok(()) => GatewayState::Checking,
+                    Err(error) => failed(false, format!("{JOB_FAILED}: {error}")),
+                };
+                self.tell(state, outbox);
             }
-            GatewayInput::Forget { url, reply } => {
+            GatewayCommand::ForgetKey { url } => {
+                self.restart();
                 let started = jobs.run(move || {
                     let removed = delete_gateway_key(&url).map_err(|error| error.to_string());
-                    JobDone::GatewayForgotten(GatewayForgotten { removed, reply })
+                    JobDone::GatewayForgotten(GatewayForgotten { removed })
                 });
                 if let Err(error) = started {
-                    tracing::warn!(%error, "the Gateway key could not be removed");
+                    outbox.push(EventKind::GatewayKeyForgotten {
+                        error: Some(error.to_string()),
+                    });
                 }
             }
+            GatewayCommand::Unknown => return None,
         }
+        Some(Reply::Accepted)
     }
 
-    pub(crate) fn checked(&mut self, read: GatewayRead) {
-        if read.attempt == self.attempt {
-            self.access = read.access;
-        }
-        answer_to(read.reply, read.checked);
+    fn restart(&mut self) {
+        self.attempt += 1;
+        self.access = None;
     }
 
-    pub(crate) fn forgotten(forgotten: GatewayForgotten) {
-        answer_to(forgotten.reply, forgotten.removed);
+    fn tell(&mut self, state: GatewayState, outbox: &mut Vec<EventKind>) {
+        self.state = state.clone();
+        outbox.push(EventKind::GatewayChanged { state });
+    }
+
+    pub(crate) fn checked(&mut self, read: GatewayRead, outbox: &mut Vec<EventKind>) -> bool {
+        if read.attempt != self.attempt {
+            return false;
+        }
+        self.access = read.access;
+        self.tell(read.state, outbox);
+        self.access.is_some()
+    }
+
+    pub(crate) fn forgotten(forgotten: GatewayForgotten, outbox: &mut Vec<EventKind>) {
+        outbox.push(EventKind::GatewayKeyForgotten {
+            error: forgotten.removed.err(),
+        });
+    }
+
+    pub(crate) fn reached(&self) -> Option<GatewayReached<'_>> {
+        let models = match &self.state {
+            GatewayState::Ready { models, .. } => models.as_slice(),
+            GatewayState::Unset | GatewayState::Checking | GatewayState::Failed { .. } => &[],
+        };
+        self.access
+            .as_ref()
+            .map(|access| GatewayReached { access, models })
+    }
+
+    pub(crate) fn snapshot(&self) -> GatewayState {
+        self.state.clone()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::executor::block_on;
 
     fn access() -> Option<GatewayAccess> {
         Some(GatewayAccess {
@@ -124,27 +155,38 @@ mod tests {
     }
 
     #[test]
-    fn only_the_latest_check_keeps_its_access_and_every_check_is_answered() {
+    fn only_the_latest_check_keeps_its_access_and_tells_its_state() {
         let mut gateway = Gateway {
             attempt: 2,
-            access: None,
+            ..Gateway::default()
         };
-        let (reply, answer) = oneshot::channel();
-        gateway.checked(GatewayRead {
+        let mut outbox = Vec::new();
+        let ready = GatewayState::Ready {
+            place: krad_domain::LoginPlace::Keyring,
+            models: Vec::new(),
+        };
+        let stale = GatewayRead {
             attempt: 1,
             access: access(),
-            checked: Ok(None),
-            reply,
-        });
+            state: ready.clone(),
+        };
+        assert!(!gateway.checked(stale, &mut outbox));
         assert_eq!(gateway.access, None);
-        assert_eq!(block_on(answer).ok(), Some(Ok(None)));
-        let (reply, _answer) = oneshot::channel();
-        gateway.checked(GatewayRead {
+        assert_eq!(outbox, Vec::new());
+        let latest = GatewayRead {
             attempt: 2,
             access: access(),
-            checked: Ok(None),
-            reply,
-        });
+            state: ready.clone(),
+        };
+        assert!(gateway.checked(latest, &mut outbox));
         assert_eq!(gateway.access, access());
+        assert_eq!(
+            outbox,
+            [EventKind::GatewayChanged {
+                state: ready.clone()
+            }]
+        );
+        assert_eq!(gateway.snapshot(), ready);
+        assert!(!format!("{outbox:?}").contains("sk-test"));
     }
 }

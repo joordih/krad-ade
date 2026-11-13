@@ -261,7 +261,7 @@ impl EnvironmentShell {
             .iter()
             .any(|group| group.harness == AgentPreset::Opencode)
         {
-            self.refresh_opencode_models(cx);
+            self.refresh_opencode_models();
         }
         let Some(choosing) = Choosing::new(groups) else {
             return;

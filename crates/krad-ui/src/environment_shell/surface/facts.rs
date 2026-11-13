@@ -160,6 +160,7 @@ impl StructuredChat {
                 self.catalog
                     .as_ref()
                     .map(|catalog| catalog.models.as_slice())
+                    .filter(|models| !models.is_empty())
             })
             .or(offered.fallback);
         let chosen = live
@@ -254,11 +255,11 @@ impl EnvironmentShell {
     pub(super) fn harness_offers(&self, harness: AgentPreset) -> Option<&[ModelOffer]> {
         let host = self.active_link().host();
         let offers = match harness {
-            AgentPreset::Opencode => self.opencode_models_on(&host),
             AgentPreset::Gateway => self.gateway_offers(),
-            AgentPreset::ClaudeCode | AgentPreset::Codex | AgentPreset::Acp(_) => {
-                self.runtime.view.models.of(&host, harness)
-            }
+            AgentPreset::ClaudeCode
+            | AgentPreset::Codex
+            | AgentPreset::Opencode
+            | AgentPreset::Acp(_) => self.runtime.view.models.of(&host, harness),
             AgentPreset::Shell => &[],
         };
         (!offers.is_empty()).then_some(offers)

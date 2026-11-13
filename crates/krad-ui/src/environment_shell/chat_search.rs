@@ -146,7 +146,7 @@ impl EnvironmentShell {
                 })
             }
             AgentPreset::Opencode => Some(HistorySource::Opencode {
-                server: self.opencode_server_of(env)?.clone(),
+                server: self.opencode_server_of(env)?,
                 resume,
             }),
             AgentPreset::Shell => None,

@@ -283,3 +283,39 @@ fn a_seed_never_replaces_what_the_agent_reported() {
     assert_eq!(shown_mode(&offers).as_deref(), Some("CODE"));
     assert_eq!(offers.effort(), None);
 }
+
+#[test]
+fn a_runtime_chat_adopts_what_the_runtime_heard_and_each_sign_in_ask_once() {
+    let mut offers = AcpOffers::default();
+    let methods = vec![krad_domain::AcpAuthMethod {
+        id: krad_domain::AcpAuthMethodId("login".to_owned()),
+        name: "Log in".to_owned(),
+        description: None,
+        sign_in: krad_domain::AcpSignIn::ByAgent,
+    }];
+    let asked = |asked| krad_protocol::AcpShown {
+        sign_in: Some(krad_protocol::AcpSignInAsk {
+            methods: methods.clone(),
+            asked,
+        }),
+        ..krad_protocol::AcpShown::default()
+    };
+    assert!(offers.adopt(&asked(1)));
+    assert!(!offers.adopt(&asked(1)), "the same ask is not asked again");
+    if let Some(ask) = offers.sign_in.as_mut() {
+        ask.step = sign_in::SignInStep::Signing(methods[0].id.clone());
+    }
+    assert!(offers.adopt(&asked(2)));
+    assert_eq!(
+        offers.sign_in.as_ref().map(|ask| ask.step.clone()),
+        Some(sign_in::SignInStep::Failed(methods[0].id.clone()))
+    );
+    let reported = krad_protocol::AcpShown {
+        modes: Some(modes("code", &["ask", "code"])),
+        reported: true,
+        ..krad_protocol::AcpShown::default()
+    };
+    assert!(!offers.adopt(&reported));
+    assert!(offers.sign_in.is_none());
+    assert_eq!(shown_mode(&offers).as_deref(), Some("CODE"));
+}

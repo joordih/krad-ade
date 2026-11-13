@@ -10,6 +10,7 @@ mod hosts;
 mod input;
 mod jobs;
 mod models;
+mod opencode;
 mod runtime;
 mod subscribers;
 mod terminals;
@@ -19,7 +20,6 @@ pub use app_events::{EventsSetup, WebhookSecrets};
 pub use bus::{BusAccess, BusReply, BusSetup, Delegated, DelegationReceiver, Mail};
 pub use chats::{runs_in_runtime, ChatLaunch, ChatPlace, ChatStart};
 pub use environments::EnvironmentsSetup;
-pub use gateway::{GatewayCheck, GatewayChecked};
 pub use handle::{EventReceiver, HeldAsk, Pending, RuntimeHandle, RuntimeStopped};
 pub use harness_health::HarnessProbe;
 pub use hosts::{

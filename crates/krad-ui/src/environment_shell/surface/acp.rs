@@ -7,6 +7,7 @@ use krad_domain::{
     AcpConfigOption, AcpConfigOptionId, AcpConfigValue, AcpEffort, AcpModeId, AcpModels, AcpModes,
     Effort, ModelId,
 };
+use krad_protocol::AcpShown;
 
 pub(in crate::environment_shell) use adapter::{app_kept_adapter_present, KeptAdapterView};
 pub(in crate::environment_shell) use sign_in::SignInAsk;
@@ -47,6 +48,7 @@ pub(in crate::environment_shell) struct AcpOffers {
     source: Source,
     chosen_early: Vec<AcpChoice>,
     pub(in crate::environment_shell) sign_in: Option<SignInAsk>,
+    sign_in_asked: u32,
 }
 
 impl AcpChoice {
@@ -98,6 +100,29 @@ impl AcpOffers {
             },
         }
         early
+    }
+
+    pub(in crate::environment_shell) fn adopt(&mut self, shown: &AcpShown) -> bool {
+        if shown.reported {
+            self.source = Source::Agent;
+            self.chosen_early.clear();
+            self.modes.clone_from(&shown.modes);
+            self.models.clone_from(&shown.models);
+            self.options.clone_from(&shown.options);
+        }
+        let Some(asked) = &shown.sign_in else {
+            self.sign_in = None;
+            return false;
+        };
+        if asked.asked <= self.sign_in_asked {
+            return false;
+        }
+        self.sign_in_asked = asked.asked;
+        match &mut self.sign_in {
+            Some(ask) => ask.asked_again(asked.methods.clone()),
+            None => self.sign_in = Some(SignInAsk::new(asked.methods.clone())),
+        }
+        true
     }
 
     pub(super) fn opened(&mut self) {

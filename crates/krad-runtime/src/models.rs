@@ -35,7 +35,7 @@ impl Listing {
 }
 
 const fn keeps(harness: AgentPreset) -> bool {
-    matches!(harness, AgentPreset::Acp(_)) || Listing::of(harness).is_some()
+    matches!(harness, AgentPreset::Acp(_) | AgentPreset::Opencode) || Listing::of(harness).is_some()
 }
 
 #[derive(Debug, Default)]

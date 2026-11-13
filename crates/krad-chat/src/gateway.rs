@@ -1,5 +1,6 @@
 use krad_domain::{humanize_model_id, split_context, GatewayAccess, ModelId};
-use serde::{Deserialize, Serialize};
+pub use krad_domain::{GatewayModel, Vendor};
+use serde::Deserialize;
 use std::time::Duration;
 use thiserror::Error;
 use ureq::Agent;
@@ -14,12 +15,6 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const UNAUTHORIZED: u16 = 401;
 const FORBIDDEN: u16 = 403;
 const DETAIL_SEPARATOR: &str = ": ";
-const ANTHROPIC_OWNERS: [&str; 2] = ["anthropic", "claude"];
-const OPENAI_OWNERS: [&str; 3] = ["openai", "codex", "azure-openai"];
-const GOOGLE_OWNERS: [&str; 2] = ["google", "gemini"];
-const ANTHROPIC_LABEL: &str = "Anthropic";
-const OPENAI_LABEL: &str = "OpenAI";
-const GOOGLE_LABEL: &str = "Google";
 
 #[derive(Debug, Error)]
 pub enum GatewayError {
@@ -68,53 +63,6 @@ impl From<serde_json::Error> for GatewayError {
     fn from(error: serde_json::Error) -> Self {
         Self::Unreadable(error.to_string())
     }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Vendor {
-    Anthropic,
-    OpenAi,
-    Google,
-    #[default]
-    Other,
-}
-
-impl Vendor {
-    #[must_use]
-    pub const fn label(self) -> Option<&'static str> {
-        match self {
-            Self::Anthropic => Some(ANTHROPIC_LABEL),
-            Self::OpenAi => Some(OPENAI_LABEL),
-            Self::Google => Some(GOOGLE_LABEL),
-            Self::Other => None,
-        }
-    }
-}
-
-fn owned_by(owner: &str, known: &[&str]) -> bool {
-    known.iter().any(|name| owner.eq_ignore_ascii_case(name))
-}
-
-impl From<&str> for Vendor {
-    fn from(owner: &str) -> Self {
-        let owner = owner.trim();
-        if owned_by(owner, &ANTHROPIC_OWNERS) {
-            Self::Anthropic
-        } else if owned_by(owner, &OPENAI_OWNERS) {
-            Self::OpenAi
-        } else if owned_by(owner, &GOOGLE_OWNERS) {
-            Self::Google
-        } else {
-            Self::Other
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct GatewayModel {
-    pub offer: ModelOffer,
-    pub vendor: Vendor,
 }
 
 #[derive(Deserialize)]
@@ -215,7 +163,9 @@ mod tests {
         assert_eq!(ids, ["gpt-5"]);
         assert_eq!(
             models[0].offer.source,
-            Some(ModelSource::Provider(OPENAI_LABEL.to_owned()))
+            Vendor::OpenAi
+                .label()
+                .map(|label| ModelSource::Provider(label.to_owned()))
         );
         assert_eq!(models[0].offer.name, "GPT-5");
         Ok(())

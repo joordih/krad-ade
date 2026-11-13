@@ -1,34 +1,43 @@
 use krad_chat::start_chat;
-use krad_domain::{AttentionTarget, GatewayAccess, Sight};
-use krad_protocol::{AgentRef, AttentionCommand, ChatCommand, ModelsCommand, Reply, UsageCommand};
+use krad_domain::{AgentPreset, AttentionTarget, Host, ModelOffer, Sight};
+use krad_protocol::{
+    AgentRef, AttentionCommand, ChatCommand, EventKind, ModelsCommand, Reply, UsageCommand,
+};
 
 use super::{answer_to, Runtime};
 use crate::chats::{
     ChatCheckpoint, ChatEarlier, ChatEffect, ChatOpening, ChatStart, ChatWork, Chats, FilesIndexed,
 };
 use crate::input::{Input, LiveStart};
-
-fn start_live_chat(start: LiveStart, gateway: Option<&GatewayAccess>) {
-    let LiveStart {
-        launch,
-        session,
-        sink,
-        reply,
-    } = start;
-    let started = launch
-        .resolve(gateway)
-        .and_then(|backend| start_chat(backend, &session, sink).map_err(|error| error.to_string()));
-    if reply.send(started).is_err() {
-        tracing::trace!("a client left before its chat started");
-    }
-}
+use crate::opencode::{OpencodeListed, OpencodeStarted};
 
 impl Runtime {
+    fn start_live_chat(&mut self, start: LiveStart) {
+        let LiveStart {
+            launch,
+            session,
+            sink,
+            reply,
+        } = start;
+        let started = self.with_chat_work(|_, work| {
+            launch.resolve(work.gateway, |config| {
+                crate::chats::reach_opencode(config, work)
+            })
+        });
+        let started = started.map_err(String::from).and_then(|backend| {
+            start_chat(backend, &session, sink).map_err(|error| error.to_string())
+        });
+        if reply.send(started).is_err() {
+            tracing::trace!("a client left before its chat started");
+        }
+    }
+
     fn with_chat_work<T>(&mut self, act: impl FnOnce(&mut Chats, &mut ChatWork<'_>) -> T) -> T {
         let mut effects = Vec::new();
         let mut work = ChatWork {
             jobs: &self.jobs,
-            gateway: self.gateway.access.as_ref(),
+            gateway: self.gateway.reached(),
+            opencode: &mut self.opencode,
             outbox: &mut self.outbox,
             effects: &mut effects,
         };
@@ -53,10 +62,8 @@ impl Runtime {
                 self.chats.mentions.ask(place, reply, &self.jobs);
             }
             Input::ForgetMentionIndexes => self.chats.mentions.forget(),
-            Input::StartLiveChat(start) => {
-                start_live_chat(*start, self.gateway.access.as_ref());
-            }
-            Input::Gateway(input) => self.gateway.apply(input, &self.jobs),
+            Input::StartLiveChat(start) => self.start_live_chat(*start),
+            Input::Opencode(input) => self.opencode.apply(input, &self.jobs, &mut self.outbox),
             _ => {}
         }
     }
@@ -93,6 +100,40 @@ impl Runtime {
         self.chats
             .mentions
             .indexed(indexed, std::time::Instant::now());
+    }
+
+    pub(super) fn acp_secrets_read(&mut self, read: crate::chats::AcpSecretsRead) {
+        self.with_chat_work(|chats, work| chats.acp_secrets_read(read, work));
+    }
+
+    pub(super) fn opencode_started(&mut self, started: OpencodeStarted) {
+        let Some(heard) = self.opencode.started(started, &mut self.outbox) else {
+            return;
+        };
+        self.keep_opencode_models(heard.host.clone(), heard.models);
+        self.with_chat_work(|chats, work| chats.opencode_ready(&heard.host, work));
+    }
+
+    pub(super) fn opencode_listed(&mut self, listed: OpencodeListed) {
+        let Some(host) = self.opencode.listed(&listed, &self.jobs) else {
+            return;
+        };
+        match listed.listed {
+            Ok(models) => self.keep_opencode_models(host, models),
+            Err(error) => self.outbox.push(EventKind::ModelListFailed {
+                host,
+                harness: AgentPreset::Opencode,
+                error,
+            }),
+        }
+    }
+
+    fn keep_opencode_models(&mut self, host: Host, models: Vec<ModelOffer>) {
+        self.chat_effect(ChatEffect::Models {
+            host,
+            harness: AgentPreset::Opencode,
+            models,
+        });
     }
 
     fn chat_effect(&mut self, effect: ChatEffect) {

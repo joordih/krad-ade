@@ -6,6 +6,7 @@ use krad_domain::{
     AcpAgent, AcpAuthMethod, AcpAuthMethodId, AcpSignIn, CommandLine, EnvironmentName, NodeKind,
     TerminalId, ToastKind,
 };
+use krad_protocol::{AgentRef, ChatCommand, Command};
 use std::collections::BTreeMap;
 
 use super::super::super::sessions::Launch;
@@ -131,7 +132,10 @@ impl EnvironmentShell {
         };
         match action {
             SignInAction::Authenticate(method) => {
-                if let Some(live) = structured.live() {
+                if structured.in_runtime() {
+                    let env = self.active.clone();
+                    self.post_runtime_chat(&env, id, |chat| ChatCommand::SignIn { chat, method });
+                } else if let Some(live) = structured.live() {
                     live.sign_in(method);
                 }
             }
@@ -252,7 +256,7 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
-        for chat in live.chats.values_mut() {
+        for (id, chat) in &mut live.chats {
             let Some(structured) = chat.structured_mut() else {
                 continue;
             };
@@ -264,7 +268,16 @@ impl EnvironmentShell {
             else {
                 continue;
             };
-            if let Some(chat) = structured.live() {
+            if structured.in_runtime() {
+                let chat = AgentRef {
+                    environment: env.clone(),
+                    terminal: *id,
+                };
+                self.runtime.handle.post(Command::Chat(ChatCommand::SignIn {
+                    chat,
+                    method: retry,
+                }));
+            } else if let Some(chat) = structured.live() {
                 chat.sign_in(retry);
             }
             return;

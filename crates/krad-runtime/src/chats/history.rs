@@ -1,17 +1,19 @@
 use krad_chat::{
     claude_conversation_file, read_claude_transcript_before, read_claude_transcript_tail,
-    read_codex_transcript, read_engine_transcript, transcript_started,
+    read_codex_transcript, read_engine_transcript, read_opencode_transcript, transcript_started,
 };
 use krad_domain::{fold_entry, last_permission_mode, ChatEntry, ChatMessage, ChatOrigin, ResumeId};
 use krad_host::HostLink;
 use krad_protocol::{AgentRef, ErrorCode, Reply};
+use krad_store::read_acp_transcript;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use super::backend::HistorySource;
-use super::chat::{Chat, Earlier, Shown};
+use super::backend::{reach_opencode, HistorySource};
+use super::chat::{Chat, Earlier, HistoryWait, Shown};
 use super::{ChatWork, Chats, UNKNOWN_CHAT};
 use crate::jobs::{JobDone, Jobs};
+use crate::opencode::Reach;
 use crate::runtime::refused;
 
 const FIRST_LOOK_BYTES: u64 = 2 * 1024 * 1024;
@@ -41,15 +43,29 @@ pub(crate) struct ChatEarlier {
     pub(crate) read: Result<(Vec<ChatEntry>, Option<SystemTime>), String>,
 }
 
-pub(super) fn read(chat: &Chat, jobs: &Jobs) {
-    let source = HistorySource::of(chat);
+pub(super) fn read(chat: &mut Chat, work: &mut ChatWork<'_>) {
     let resume = chat
         .messages
         .is_empty()
         .then(|| chat.session.history().cloned())
         .flatten();
+    let source = match HistorySource::of(chat) {
+        HistorySource::OpencodeOn(_) if resume.is_none() => return,
+        HistorySource::OpencodeOn(config) => match reach_opencode(&config, work) {
+            Reach::Ready(server) => HistorySource::Opencode(server),
+            Reach::Waiting => {
+                chat.history = HistoryWait::ForServer;
+                return;
+            }
+            Reach::Failed(problem) => {
+                chat.problem = Some(problem);
+                return;
+            }
+        },
+        source => source,
+    };
     let (id, opened) = (chat.id.clone(), chat.opened);
-    let started = jobs.run(move || {
+    let started = work.jobs.run(move || {
         let (home, history) = look(&source, resume.as_ref());
         JobDone::ChatOpened(ChatOpening {
             chat: id,
@@ -90,7 +106,23 @@ fn look(
                     .map_err(|error| error.to_string())
             }),
         ),
-        HistorySource::Unread => (None, None),
+        HistorySource::Opencode(server) => (
+            None,
+            resume.map(|resume| {
+                read_opencode_transcript(server, resume)
+                    .map(whole)
+                    .map_err(|error| error.to_string())
+            }),
+        ),
+        HistorySource::Acp(file) => (
+            None,
+            resume.map(|_| {
+                read_acp_transcript(file)
+                    .map(whole)
+                    .map_err(|error| error.to_string())
+            }),
+        ),
+        HistorySource::OpencodeOn(_) | HistorySource::Unread => (None, None),
     }
 }
 

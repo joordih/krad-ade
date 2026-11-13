@@ -99,6 +99,8 @@ mod tests {
             terminals: Vec::new(),
             hosts: krad_protocol::HostsSnapshot::default(),
             chats: Vec::new(),
+            opencode: krad_protocol::OpencodeSnapshot::default(),
+            gateway: krad_protocol::GatewayState::default(),
         }
     }
 

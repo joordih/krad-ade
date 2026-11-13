@@ -4,15 +4,21 @@
 mod chat_support;
 #[path = "support/gateway.rs"]
 mod gateway;
+#[path = "support/opencode.rs"]
+mod opencode;
 
 use chat_support::{
     chat, claude_start, fake_runner, live_config, start_runtime, start_with, Ask as _, ChatFeed,
     TestResult, CLAUDE_HARNESS,
 };
-use krad_chat::{new_session_id, ChatBackend, LiveSession};
-use krad_domain::{AgentPreset, AskAnswer, Prompt, Speaker};
-use krad_protocol::{AgentRef, ChatCommand, ChatMirror, Command, ErrorCode, EventKind, Reply};
+use krad_chat::{new_opencode_session_id, new_session_id, ChatBackend, LiveSession, Runner};
+use krad_domain::{AgentPreset, AskAnswer, Host, Prompt, Speaker};
+use krad_protocol::{
+    AgentRef, ChatCommand, ChatMirror, Command, ErrorCode, EventKind, OpencodeShown,
+    OpencodeStatus, Reply,
+};
 use krad_runtime::ChatLaunch;
+use std::path::PathBuf;
 use std::process::Command as Process;
 
 const ASK_HARNESS: &str = "tests/fixtures/fake-harness/claude-ask";
@@ -21,6 +27,9 @@ const RECORDED_ANSWER: &str = "Two tabs rotate at once.";
 const CODEX_HARNESS: &str = "../krad-chat/tests/fixtures/fake-harness/codex";
 const CODEX_THREAD: &str = "019a3c5e-7b21-7d40-9c1e-5f2a8b6d4e10";
 const NOTICE: &str = "The chosen model is not offered here; the default one answers";
+const OPENCODE_PROGRAM: &str = "opencode";
+const OPENCODE_PROMPT: &str = "ping";
+const NO_RESUME: &str = "the chat never told its session";
 
 fn send(id: &AgentRef, text: &str) -> Command {
     Command::Chat(ChatCommand::Send {
@@ -233,5 +242,89 @@ fn a_gateway_chat_waits_for_the_runtime_to_reach_the_gateway_before_it_asks_anyt
     assert!(!mirror.state.working && !mirror.state.alive);
     assert_eq!(queued(&mirror), ["say it"]);
     drop(std::fs::remove_dir_all(root));
+    Ok(())
+}
+
+fn opencode_launch() -> ChatLaunch {
+    ChatLaunch::Opencode(Box::new(live_config(Runner::Native(PathBuf::from(
+        OPENCODE_PROGRAM,
+    )))))
+}
+
+fn said(mirror: &ChatMirror, speaker: Speaker, text: &str) -> bool {
+    mirror
+        .messages
+        .iter()
+        .any(|message| message.speaker == speaker && message.text == text)
+}
+
+#[test]
+fn an_opencode_chat_starts_its_host_server_answers_and_reads_its_history_back() -> TestResult {
+    let state_home = std::env::temp_dir().join(format!(
+        "krad-runtime-opencode-{}",
+        new_opencode_session_id().as_str()
+    ));
+    let url = opencode::serve()?;
+    opencode::register(&state_home, &url)?;
+    let runtime = start_runtime()?;
+    let mut feed = ChatFeed::follow(&runtime)?;
+    let id = chat(21);
+    runtime.open_chat(
+        id.clone(),
+        start_with(
+            AgentPreset::Opencode,
+            opencode_launch(),
+            LiveSession::Start(new_opencode_session_id()),
+        ),
+    );
+    let sent = runtime.send_now(Command::Chat(ChatCommand::Send {
+        chat: id.clone(),
+        prompt: Prompt::from(OPENCODE_PROMPT),
+    }))?;
+    assert_eq!(sent, Reply::Accepted);
+    feed.until_chat(&id, |mirror| {
+        !mirror.state.working && said(mirror, Speaker::Assistant, opencode::ANSWER)
+    })?;
+    assert!(feed.saw(|event| matches!(
+        event,
+        EventKind::OpencodeServer(OpencodeShown {
+            host: Host::Local,
+            status: OpencodeStatus::Ready,
+        })
+    )));
+    assert!(feed.saw(|event| matches!(
+        event,
+        EventKind::ModelsListed { listed, .. }
+            if listed.harness == AgentPreset::Opencode
+                && listed.models.iter().any(|offer| offer.value == opencode::MODEL)
+    )));
+    assert!(runtime.opencode_server(&Host::Local).is_some());
+    let state = feed.mirror(&id)?.state;
+    assert!(state
+        .commands
+        .iter()
+        .any(|offered| offered.name == opencode::COMMAND));
+    let resume = state.resume.ok_or(NO_RESUME)?;
+    assert!(resume.as_str().starts_with("ses_"));
+
+    let again = chat(22);
+    runtime.open_chat(
+        again.clone(),
+        start_with(
+            AgentPreset::Opencode,
+            opencode_launch(),
+            LiveSession::Resume(resume),
+        ),
+    );
+    feed.until_chat(&again, |mirror| {
+        mirror.state.origin.is_some()
+            && said(mirror, Speaker::User, OPENCODE_PROMPT)
+            && said(mirror, Speaker::Assistant, opencode::ANSWER)
+    })?;
+    assert_eq!(
+        feed.mirror(&again)?,
+        ChatMirror::from(runtime.chat_snapshot(&again)?)
+    );
+    std::fs::remove_dir_all(&state_home)?;
     Ok(())
 }

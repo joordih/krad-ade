@@ -418,7 +418,7 @@ impl EnvironmentShell {
             self.active = name.clone();
             self.unseen.remove(name);
             self.show_host(name, cx);
-            self.place_usage(cx);
+            self.place_usage();
             cx.notify();
             self.store();
         }

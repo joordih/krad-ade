@@ -1,5 +1,6 @@
 use crate::config_dir::config_dir;
 use keyring::{Entry, Error as KeyringError};
+pub use krad_domain::LoginPlace;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fs::OpenOptions;
@@ -36,12 +37,6 @@ impl From<KeyringError> for LoginStoreError {
             error => Self::Keyring(error),
         }
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum LoginPlace {
-    Keyring,
-    ConfigFolder,
 }
 
 pub(crate) fn find_login<T: DeserializeOwned>(

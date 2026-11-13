@@ -4,16 +4,21 @@
 mod chat_support;
 
 use chat_support::{
-    chat, claude_start, fake_runner, start_runtime, Ask as _, ChatFeed, TestResult, CLAUDE_HARNESS,
+    chat, claude_start, fake_runner, start_runtime, start_with, Ask as _, ChatFeed, TestResult,
+    CLAUDE_HARNESS,
 };
-use krad_chat::{new_session_id, LiveSession};
+use krad_chat::acp::OpenBuffers;
+use krad_chat::{new_session_id, AcpConfig, AcpWanted, BusVars, LiveSession};
 use krad_domain::{
-    AnswerPart, AskAnswer, AskKind, AskVerdict, AttentionKind, Prompt, ResumeId, Speaker,
+    AcpAgent, AcpAgentStart, AcpModeId, AgentPreset, AnswerPart, AskAnswer, AskKind, AskVerdict,
+    AttentionKind, ChatEntry, ChatEvent, Prompt, ResumeId, Speaker,
 };
 use krad_protocol::{
     AgentRef, ChatAskId, ChatCommand, ChatMirror, Command, ErrorCode, EventKind, Reply,
 };
-use std::path::PathBuf;
+use krad_runtime::ChatLaunch;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 const ASK_HARNESS: &str = "tests/fixtures/fake-harness/claude-ask";
 const PROMPT: &str = "Why does it race?";
@@ -24,6 +29,22 @@ const HOME_VAR: &str = "HOME";
 const RECORDED_TURN: &str = "../krad-chat/tests/fixtures/fake-harness/claude-turn.jsonl";
 const PROJECTS: &str = ".claude/projects/fake-project";
 const CONVERSATION_EXTENSION: &str = "jsonl";
+const ACP_AGENT: &str = "tests/fixtures/fake-harness/acp-agent";
+const ACP_ANSWER: &str = "pong in code mode";
+const CONFIG_HOME_VAR: &str = "XDG_CONFIG_HOME";
+const NO_AGENT_ID: &str = "the fake agent id is valid";
+const NO_RESUME: &str = "the ACP chat never told its session";
+const NO_TRANSCRIPT: &str = "the runtime keeps no ACP transcript without a config folder";
+
+struct NoBuffers;
+
+impl OpenBuffers for NoBuffers {
+    fn unsaved_text(&self, _: &Path) -> Option<String> {
+        None
+    }
+
+    fn written(&self, _: &Path, _: &str) {}
+}
 
 fn send(id: &AgentRef, text: &str) -> Command {
     Command::Chat(ChatCommand::Send {
@@ -252,5 +273,82 @@ fn a_chat_resumed_after_a_restart_shows_its_history_and_answers_again() -> TestR
     assert_eq!(mirror.messages[3].text, RECORDED_ANSWER);
     assert_eq!(mirror.state.resume, Some(resume));
     assert_eq!(ChatMirror::from(runtime.chat_snapshot(&id)?), mirror);
+    Ok(())
+}
+
+fn acp_start() -> Result<krad_runtime::ChatStart, Box<dyn std::error::Error>> {
+    let agent = AcpAgent {
+        id: "fake".parse().map_err(|_| NO_AGENT_ID)?,
+        name: "Fake".to_owned(),
+        program: "acp-agent".to_owned(),
+        args: Vec::new(),
+        env: Vec::new(),
+        terminal: None,
+    };
+    let harness = AgentPreset::Acp(agent.id);
+    let config = AcpConfig {
+        runner: fake_runner(ACP_AGENT),
+        agent: AcpAgentStart {
+            agent,
+            secrets: std::collections::HashMap::new(),
+        },
+        cwd: std::env::temp_dir(),
+        mcp: Vec::new(),
+        bus_vars: BusVars::default(),
+        buffers: Arc::new(NoBuffers),
+        model: None,
+        wanted: AcpWanted::default(),
+    };
+    Ok(start_with(
+        harness,
+        ChatLaunch::Acp(Box::new(config)),
+        LiveSession::Start(new_session_id()),
+    ))
+}
+
+#[test]
+fn an_acp_chat_sends_the_mode_chosen_early_reads_its_secrets_and_keeps_a_transcript() -> TestResult
+{
+    let config_home = Home(std::env::temp_dir().join(format!("krad-acp-{}", std::process::id())));
+    std::env::set_var(CONFIG_HOME_VAR, &config_home.0);
+    let runtime = start_runtime()?;
+    let mut feed = ChatFeed::follow(&runtime)?;
+    let id = chat(31);
+    runtime.open_chat(id.clone(), acp_start()?);
+    let chose = runtime.send_now(Command::Chat(ChatCommand::SetAcpMode {
+        chat: id.clone(),
+        mode: AcpModeId("code".to_owned()),
+    }))?;
+    assert_eq!(chose, Reply::Accepted);
+    assert_eq!(runtime.send_now(send(&id, PROMPT))?, Reply::Accepted);
+    feed.until_chat(&id, |mirror| answered(mirror, ACP_ANSWER))?;
+    let state = feed.mirror(&id)?.state;
+    let resume = state.resume.ok_or(NO_RESUME)?;
+    let acp = state.acp.unwrap_or_default();
+    assert!(acp.reported);
+    assert_eq!(
+        acp.modes.map(|modes| modes.current),
+        Some(AcpModeId("code".to_owned()))
+    );
+    runtime.close_chat(id.clone());
+    feed.until(|event| matches!(event, EventKind::ChatClosed { .. }))?;
+    let file =
+        krad_store::acp_transcript_file(&id.environment, id.terminal).ok_or(NO_TRANSCRIPT)?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let kept = loop {
+        let kept = krad_store::read_acp_transcript(&file).unwrap_or_default();
+        let done = kept.contains(&ChatEntry::Event(ChatEvent::Done));
+        if done || std::time::Instant::now() > deadline {
+            break kept;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    assert!(matches!(kept.first(), Some(ChatEntry::User { text, .. }) if text == PROMPT));
+    let mut reopened = acp_start()?;
+    reopened.session = LiveSession::Resume(resume);
+    runtime.open_chat(id.clone(), reopened);
+    feed.until_chat(&id, |mirror| {
+        mirror.messages.len() == 2 && mirror.messages[1].text == ACP_ANSWER
+    })?;
     Ok(())
 }

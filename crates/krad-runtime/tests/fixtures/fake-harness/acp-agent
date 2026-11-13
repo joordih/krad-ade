@@ -1,0 +1,20 @@
+#!/bin/sh
+mode="ask"
+answer() {
+    printf '{"jsonrpc":"2.0","id":%s,"result":%s}\n' "$1" "$2"
+}
+while IFS= read -r line; do
+    id="$(printf '%s' "$line" | sed -n 's/^{"jsonrpc":"2.0","id":\([0-9]*\),.*/\1/p')"
+    case "$line" in
+        *'"method":"initialize"'*)
+            answer "$id" '{"protocolVersion":1,"agentCapabilities":{},"authMethods":[]}' ;;
+        *'"method":"session/new"'*)
+            answer "$id" '{"sessionId":"sess_fake","modes":{"currentModeId":"ask","availableModes":[{"id":"ask","name":"Ask"},{"id":"code","name":"Code"}]}}' ;;
+        *'"method":"session/set_mode"'*)
+            mode="code"
+            answer "$id" '{}' ;;
+        *'"method":"session/prompt"'*)
+            printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_fake","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"pong in %s mode"}}}}\n' "$mode"
+            answer "$id" '{"stopReason":"end_turn"}' ;;
+    esac
+done

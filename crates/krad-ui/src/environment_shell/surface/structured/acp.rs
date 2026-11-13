@@ -1,11 +1,11 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_chat::{acp_agent_env, AcpConfig, BusVars, ModelOffer, Variables};
 use krad_domain::{
-    AcpAgent, AcpAgentId, AcpAgentStart, AcpModelId, AgentPreset, EnvironmentName, Host, McpSecret,
-    McpVariableName, ModelId, TerminalId,
+    AcpAgent, AcpAgentId, AcpAgentStart, AcpModelId, AgentPreset, EnvironmentName, Host, ModelId,
+    TerminalId,
 };
 use krad_host::HostLink;
-use krad_store::find_acp_secret;
+use krad_store::AcpSecrets;
 use std::collections::HashMap;
 
 use super::super::super::chat::StartError;
@@ -13,10 +13,6 @@ use super::super::super::cloud::NodeSite;
 use super::super::super::EnvironmentShell;
 use super::super::SurfaceChat;
 use super::structured_mut;
-
-const SECRETS_UNREAD_TEXT: &str = "The agent's secrets could not be read";
-
-type AcpSecrets = HashMap<McpVariableName, McpSecret>;
 
 #[derive(Debug, Default)]
 pub(in crate::environment_shell) enum AcpSecretsPrep {
@@ -29,15 +25,7 @@ pub(in crate::environment_shell) enum AcpSecretsPrep {
 pub(in crate::environment_shell) fn read_acp_secrets(
     agent: &AcpAgent,
 ) -> Result<AcpSecrets, String> {
-    let mut secrets = HashMap::new();
-    for key in agent.secret_keys() {
-        let found =
-            find_acp_secret(&key).map_err(|error| format!("{SECRETS_UNREAD_TEXT}: {error}"))?;
-        if let Some((secret, _)) = found {
-            secrets.insert(key.variable, secret);
-        }
-    }
-    Ok(secrets)
+    krad_store::read_acp_secrets(agent).map_err(|error| error.to_string())
 }
 
 pub(in crate::environment_shell::surface) fn read_acp_env(
@@ -72,7 +60,9 @@ impl EnvironmentShell {
             .get(env)
             .and_then(|live| live.data.group_of(id))
             .map(|group| group.root.clone());
-        let started = match self.node_site(env, id) {
+        let site = self.node_site(env, id);
+        let in_runtime = matches!(site, NodeSite::Env);
+        let started = match site {
             NodeSite::Env => {
                 let link = self.env_link(env);
                 let started = self.acp_runner(&link, &agent, root.as_deref(), cx);
@@ -85,7 +75,7 @@ impl EnvironmentShell {
             NodeSite::Waiting(_) => Err(StartError::Waiting),
         };
         let (runner, cwd) = started?;
-        if !self.acp_secrets_ready(env, id, &agent, cx) {
+        if !in_runtime && !self.acp_secrets_ready(env, id, &agent, cx) {
             return Err(StartError::Waiting);
         }
         let folder = self.chat_folder(env, id);
@@ -101,6 +91,7 @@ impl EnvironmentShell {
         let model = self.acp_model(env, id, preset);
         let structured = structured_mut(self, env, id).ok_or(StartError::Waiting)?;
         let secrets = match std::mem::take(&mut structured.acp_secrets) {
+            _ if in_runtime => HashMap::new(),
             AcpSecretsPrep::Ready(secrets) => secrets.map_err(StartError::Secret)?,
             AcpSecretsPrep::Unread | AcpSecretsPrep::Reading => return Err(StartError::Waiting),
         };

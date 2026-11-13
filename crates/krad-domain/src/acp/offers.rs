@@ -20,14 +20,14 @@ agent_reported_id!(
     AcpConfigValue
 );
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcpMode {
     pub id: AcpModeId,
     pub name: String,
     pub description: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcpModes {
     pub current: AcpModeId,
     pub available: Vec<AcpMode>,
@@ -40,14 +40,14 @@ impl AcpModes {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcpModel {
     pub id: AcpModelId,
     pub name: String,
     pub description: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcpModels {
     pub current: AcpModelId,
     pub available: Vec<AcpModel>,
@@ -78,7 +78,7 @@ impl AcpModels {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcpConfigChoice {
     pub value: AcpConfigValue,
     pub name: String,
@@ -96,7 +96,7 @@ pub enum AcpConfigCategory {
     Other,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcpConfigOption {
     pub id: AcpConfigOptionId,
     pub name: String,
@@ -143,7 +143,8 @@ pub struct AcpPermissionOption {
     pub kind: AcpPermissionKind,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AcpSignIn {
     ByAgent,
     InTerminal {
@@ -152,7 +153,7 @@ pub enum AcpSignIn {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcpAuthMethod {
     pub id: AcpAuthMethodId,
     pub name: String,

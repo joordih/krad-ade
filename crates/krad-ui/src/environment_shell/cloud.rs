@@ -46,7 +46,6 @@ use self::process::{Liveness, LivenessCheck};
 use self::sessions::{PatchQuestion, PendingCloudSession};
 use self::sign_in::{LoopbackCallback, SignInWatch};
 use self::webhooks::WebhooksPlan;
-use super::opencode::OpencodeLink;
 use super::EnvironmentShell;
 
 type NodeKey = (EnvironmentName, TerminalId);
@@ -71,7 +70,7 @@ pub(super) struct CloudRunners {
     reattached: HashSet<NodeKey>,
     pending: Vec<PendingCloudSession>,
     asking: Option<PatchQuestion>,
-    opencode: HashMap<CloudRunnerId, OpencodeLink>,
+    opencode: HashMap<CloudRunnerId, opencode::CloudOpencode>,
     wanted: HashSet<CloudRunnerId>,
     liveness: HashMap<NodeKey, Liveness>,
     unchecked: Vec<LivenessCheck>,

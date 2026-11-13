@@ -1,9 +1,7 @@
 use gpui_kit::Context;
-use krad_chat::{BusVars, ChatBackend, ChatEvent, LiveConfig, OpencodeServer, Runner};
+use krad_chat::{BusVars, ChatBackend, ChatEvent, LiveConfig};
 use krad_domain::{AgentPreset, AgentState, AttentionKind, ChatEntry, EnvironmentName, TerminalId};
 use krad_runtime::ChatLaunch;
-use std::path::Path;
-use std::sync::Arc;
 use std::time::Instant;
 
 use super::super::super::agent_bus::{cli_name, BUS_HINT};
@@ -11,7 +9,6 @@ use super::super::super::agent_hooks::LEAD_HINT;
 use super::super::super::chat::{LiveProcess, StartError};
 use super::super::super::cloud::NodeSite;
 use super::super::super::kraddie_memory::joined_prompt;
-use super::super::super::opencode::OpencodeLink;
 use super::super::super::EnvironmentShell;
 use super::super::{Backend, SurfaceChat};
 use super::{add_notice, structured_chat, structured_mut, Batch};
@@ -225,15 +222,23 @@ impl EnvironmentShell {
             AgentPreset::Codex => ChatBackend::Codex(self.live_config(env, id, harness)?),
             AgentPreset::Opencode => {
                 let config = self.live_config(env, id, harness)?;
-                let server = match &site {
-                    NodeSite::Cloud(cloud) => self.cloud_opencode_for(cloud, cx)?,
-                    NodeSite::Env | NodeSite::Waiting(_) => {
-                        self.opencode_for(&config.runner, &config.cwd, harness, cx)?
+                let NodeSite::Cloud(cloud) = &site else {
+                    if config.runner.in_wsl() {
+                        return Err(StartError::NotInWsl(
+                            self.settings.acp.harness_name(harness),
+                        ));
                     }
+                    return Ok(ChatLaunch::Opencode(Box::new(config)));
                 };
-                ChatBackend::Opencode(server, config)
+                ChatBackend::Opencode(self.cloud_opencode_for(cloud, cx)?, config)
             }
-            AgentPreset::Acp(agent) => ChatBackend::Acp(self.acp_config(env, id, agent, cx)?),
+            AgentPreset::Acp(agent) => {
+                let config = self.acp_config(env, id, agent, cx)?;
+                if !site.is_cloud() {
+                    return Ok(ChatLaunch::Acp(Box::new(config)));
+                }
+                ChatBackend::Acp(config)
+            }
             AgentPreset::Gateway | AgentPreset::Shell => {
                 return Err(StartError::NoChat(self.settings.acp.harness_name(harness)))
             }
@@ -299,39 +304,6 @@ impl EnvironmentShell {
             bus_vars,
             usage_budget,
         })
-    }
-
-    fn opencode_for(
-        &mut self,
-        runner: &Runner,
-        cwd: &Path,
-        harness: AgentPreset,
-        cx: &mut Context<Self>,
-    ) -> Result<Arc<OpencodeServer>, StartError> {
-        if runner.in_wsl() {
-            return Err(StartError::NotInWsl(
-                self.settings.acp.harness_name(harness),
-            ));
-        }
-        if runner.on_ssh() {
-            return match self.opencode.hosts.get(&runner.link().host()) {
-                Some(OpencodeLink::Ready { server, .. }) => Ok(Arc::clone(server)),
-                Some(OpencodeLink::Failed(error)) => Err(StartError::Opencode(error.clone())),
-                Some(OpencodeLink::Absent | OpencodeLink::Starting) => Err(StartError::Waiting),
-                None => {
-                    self.ensure_host_opencode(runner.clone(), cwd.to_path_buf(), cx);
-                    Err(StartError::Waiting)
-                }
-            };
-        }
-        match &self.opencode.link {
-            OpencodeLink::Ready { server, .. } => Ok(Arc::clone(server)),
-            OpencodeLink::Failed(error) => Err(StartError::Opencode(error.clone())),
-            OpencodeLink::Absent | OpencodeLink::Starting => {
-                self.ensure_opencode(cx);
-                Err(StartError::Waiting)
-            }
-        }
     }
 
     pub(in crate::environment_shell) fn flush_chats_of(

@@ -1,10 +1,8 @@
 use futures::channel::{mpsc, oneshot};
 use futures::{Stream, StreamExt as _};
 use krad_agents::{AgentInfo, AgentKey, StateReason};
-use krad_chat::{LiveEvent, LiveSession, Runner};
-use krad_domain::{
-    AgentPreset, EnvironmentName, GatewayKey, GatewayUrl, Host, ToolDecision, UsageBudget,
-};
+use krad_chat::{LiveEvent, LiveSession, OpencodeServer, Runner};
+use krad_domain::{AgentPreset, EnvironmentName, Host, ToolDecision, UsageBudget};
 use krad_host::mux::PromptSender;
 use krad_host::{HostContext, HostLink, MachineChannel};
 use krad_protocol::{
@@ -23,10 +21,10 @@ use std::task::{Context, Poll};
 
 use crate::bus::{BusAccess, DelegationReceiver, DELEGATION_BUFFER};
 use crate::chats::{ChatLaunch, ChatStart, LiveStarted};
-use crate::gateway::{GatewayChecked, GatewayInput};
 use crate::harness_health::HarnessProbe;
 use crate::hosts::HostLinks;
 use crate::input::{Input, LiveStart};
+use crate::opencode::{OpencodeDirectory, OpencodeInput};
 use crate::terminals::{Shared, TerminalAction, TerminalLaunch, TerminalView};
 use crate::usage::UsagePlace;
 
@@ -53,6 +51,7 @@ pub struct RuntimeHandle {
     bus: Option<Arc<BusAccess>>,
     usage_budget: Arc<UsageBudget>,
     links: HostLinks,
+    opencode: OpencodeDirectory,
     requests: Arc<AtomicU64>,
     _alive: Arc<Alive>,
 }
@@ -62,7 +61,7 @@ impl RuntimeHandle {
         inbox: SyncSender<Input>,
         bus: Option<Arc<BusAccess>>,
         usage_budget: Arc<UsageBudget>,
-        links: HostLinks,
+        (links, opencode): (HostLinks, OpencodeDirectory),
     ) -> Self {
         Self {
             _alive: Arc::new(Alive(inbox.clone())),
@@ -70,6 +69,7 @@ impl RuntimeHandle {
             bus,
             usage_budget,
             links,
+            opencode,
             requests: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -229,20 +229,21 @@ impl RuntimeHandle {
         Pending(answer)
     }
 
-    pub fn check_gateway(
-        &self,
-        url: Option<GatewayUrl>,
-        key: Option<GatewayKey>,
-    ) -> Pending<GatewayChecked> {
-        let (reply, answer) = oneshot::channel();
-        self.deliver(Input::Gateway(GatewayInput::Check { url, key, reply }));
-        Pending(answer)
+    pub fn start_opencode(&self, host: Host, runner: Runner, cwd: PathBuf) {
+        self.deliver(Input::Opencode(OpencodeInput::Start { host, runner, cwd }));
     }
 
-    pub fn forget_gateway_key(&self, url: GatewayUrl) -> Pending<Result<(), String>> {
-        let (reply, answer) = oneshot::channel();
-        self.deliver(Input::Gateway(GatewayInput::Forget { url, reply }));
-        Pending(answer)
+    pub fn refresh_opencode_models(&self, host: Host) {
+        self.deliver(Input::Opencode(OpencodeInput::Refresh(host)));
+    }
+
+    pub fn forget_opencode(&self, host: Host) {
+        self.deliver(Input::Opencode(OpencodeInput::Forget(host)));
+    }
+
+    #[must_use]
+    pub fn opencode_server(&self, host: &Host) -> Option<Arc<OpencodeServer>> {
+        self.opencode.server(host)
     }
 
     pub fn write_terminal(&self, terminal: AgentRef, bytes: Vec<u8>, by: WriteBy) {

@@ -13,8 +13,8 @@ use super::sections::{
 };
 use super::{hint, panel_card, EnvironmentShell};
 use crate::components::{Button, ButtonVariant, IconName};
-use crate::environment_shell::gateway::GatewayLink;
 use crate::theme::{palette, SPACE_1, SPACE_2};
+use krad_protocol::GatewayState;
 
 const KEY_PLACEHOLDER: &str = "An API key the gateway accepts";
 const GATEWAY_NAME: &str = "Gateway";
@@ -129,19 +129,19 @@ impl EnvironmentShell {
         let pal = palette(cx);
         let configured = self.settings.gateway.url.is_some();
         let (mark, connected, state, detail) = match &self.gateway.link {
-            GatewayLink::Unset => (
+            GatewayState::Unset => (
                 IconName::Key,
                 false,
                 UNSET_TITLE.to_owned(),
                 UNSET_DETAIL.to_owned(),
             ),
-            GatewayLink::Checking => (
+            GatewayState::Checking => (
                 IconName::Loading,
                 false,
                 CHECKING_TITLE.to_owned(),
                 String::new(),
             ),
-            GatewayLink::Ready { place, models, .. } => (
+            GatewayState::Ready { place, models, .. } => (
                 IconName::CheckCircle,
                 true,
                 format!(
@@ -150,7 +150,7 @@ impl EnvironmentShell {
                 ),
                 place_text(*place).to_owned(),
             ),
-            GatewayLink::Failed { error, .. } => (
+            GatewayState::Failed { error, .. } => (
                 IconName::CancelCircle,
                 false,
                 FAILED_TITLE.to_owned(),
@@ -159,7 +159,7 @@ impl EnvironmentShell {
         };
         let has_key = matches!(
             self.gateway.link,
-            GatewayLink::Ready { .. } | GatewayLink::Failed { has_key: true, .. }
+            GatewayState::Ready { .. } | GatewayState::Failed { has_key: true, .. }
         );
         let mut actions = Vec::new();
         if configured {
@@ -178,7 +178,7 @@ impl EnvironmentShell {
                     .label(FORGET_LABEL)
                     .small()
                     .variant(ButtonVariant::Secondary)
-                    .on_click(cx.listener(|this: &mut Self, _, _, cx| this.forget_gateway_key(cx)))
+                    .on_click(cx.listener(|this: &mut Self, _, _, _| this.forget_gateway_key()))
                     .into_any_element(),
             );
         }

@@ -95,10 +95,15 @@ impl Runtime {
             JobDone::ChatCheckpoint(taken) => self.chat_checkpoint_taken(taken),
             JobDone::FilesIndexed(indexed) => self.files_indexed(indexed),
             JobDone::GatewayChecked(read) => {
-                self.gateway.checked(read);
+                self.gateway.checked(read, &mut self.outbox);
                 self.flush_chats();
             }
-            JobDone::GatewayForgotten(forgotten) => Gateway::forgotten(forgotten),
+            JobDone::GatewayForgotten(forgotten) => {
+                Gateway::forgotten(forgotten, &mut self.outbox);
+            }
+            JobDone::OpencodeStarted(started) => self.opencode_started(started),
+            JobDone::OpencodeListed(listed) => self.opencode_listed(listed),
+            JobDone::AcpSecretsRead(read) => self.acp_secrets_read(read),
             JobDone::HarnessChecked { .. }
             | JobDone::ModelsListed { .. }
             | JobDone::UsageRead { .. } => {}

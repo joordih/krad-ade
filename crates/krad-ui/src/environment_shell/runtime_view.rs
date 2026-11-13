@@ -18,6 +18,7 @@ pub(super) use hosts::{HostMove, HostsMirror};
 use super::attention::AttentionMirror;
 use super::harness_health::HealthMirror;
 use super::harness_models::ModelsMirror;
+use super::opencode::OpencodeMirror;
 use super::usage_bar::UsageMirror;
 use super::EnvironmentShell;
 
@@ -58,6 +59,7 @@ pub(super) struct RuntimeView {
     pub(super) health: HealthMirror,
     pub(super) usage: UsageMirror,
     pub(super) models: ModelsMirror,
+    pub(super) opencode: OpencodeMirror,
     pub(super) environments: EnvironmentsMirror,
     pub(super) hosts: HostsMirror,
 }
@@ -176,6 +178,8 @@ impl EnvironmentShell {
                 self.runtime.view.health.replace(snapshot.health.checks);
                 self.runtime.view.usage.replace(snapshot.usage.shown);
                 self.runtime.view.models.replace(snapshot.models.listed);
+                self.runtime.view.opencode.replace(snapshot.opencode);
+                self.gateway_replaced(snapshot.gateway);
                 self.adopt_runtime_meta(&snapshot.environments);
                 self.runtime
                     .view
@@ -294,6 +298,11 @@ impl EnvironmentShell {
             EventKind::UsageShown(shown) => self.runtime.view.usage.apply(shown),
             EventKind::ModelsListed { listed, origin } => self.models_listed(listed, origin, cx),
             EventKind::ModelListFailed { error, .. } => self.model_list_failed(&error, cx),
+            EventKind::OpencodeServer(shown) => self.opencode_heard(shown, cx),
+            gateway
+            @ (EventKind::GatewayChanged { .. } | EventKind::GatewayKeyForgotten { .. }) => {
+                self.gateway_heard(gateway, cx);
+            }
             EventKind::SpendingCrossed(crossed) => self.spending_crossed(&crossed),
             host @ (EventKind::HostChanged { .. }
             | EventKind::SignInWanted { .. }

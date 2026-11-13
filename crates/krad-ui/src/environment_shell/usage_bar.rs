@@ -5,14 +5,13 @@ use gpui_kit::Context;
 use krad_chat::Runner;
 use krad_domain::{AgentPreset, AgentStatus, Host, UsageBudget, UsageIndicator};
 use krad_host::HostLink;
-use krad_protocol::{Command, UsageCommand, UsageNews, UsageNote, UsageShown};
+use krad_protocol::{Command, OpencodeStatus, UsageCommand, UsageNews, UsageNote, UsageShown};
 use krad_runtime::{SourceState, UsagePlace, UsageSource};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::chat::StartError;
-use super::opencode::OpencodeLink;
 use super::EnvironmentShell;
 
 pub(super) use view::USAGE_BAR_H;
@@ -70,7 +69,7 @@ impl EnvironmentShell {
             UsageIndicator::Shown
         };
         self.save_settings(cx);
-        self.place_usage(cx);
+        self.place_usage();
         cx.notify();
     }
 
@@ -78,13 +77,13 @@ impl EnvironmentShell {
         self.runtime.handle.usage_budget()
     }
 
-    pub(super) fn place_usage(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn place_usage(&mut self) {
         let place = self.usage_bar_shown().then(|| {
             let link = self.active_link();
             let sources = self
                 .usage_harnesses(&link)
                 .into_iter()
-                .map(|harness| (harness, self.usage_source(&link, harness, cx)))
+                .map(|harness| (harness, self.usage_source(&link, harness)))
                 .collect();
             UsagePlace {
                 host: link.host(),
@@ -95,7 +94,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn refresh_usage(&mut self, cx: &mut Context<Self>) {
-        self.place_usage(cx);
+        self.place_usage();
         self.runtime
             .handle
             .post(Command::Usage(UsageCommand::Refresh));
@@ -122,33 +121,33 @@ impl EnvironmentShell {
             .collect()
     }
 
-    fn opencode_usage_source(&mut self, link: &HostLink, cx: &mut Context<Self>) -> SourceState {
-        let opened = if link.is_local() {
-            Some(&self.opencode.link)
-        } else {
-            self.opencode.hosts.get(&link.host())
-        };
-        match opened {
-            Some(OpencodeLink::Ready { server, .. }) => {
-                SourceState::Ready(UsageSource::Opencode(Arc::clone(server)))
-            }
-            Some(OpencodeLink::Starting) => SourceState::Waiting(UsageNote::Starting),
-            Some(OpencodeLink::Failed(error)) => {
+    fn opencode_usage_source(&mut self, link: &HostLink) -> SourceState {
+        let host = link.host();
+        match self.runtime.view.opencode.of(&host) {
+            Some(OpencodeStatus::Ready) => self
+                .runtime
+                .handle
+                .opencode_server(&host)
+                .map_or(SourceState::Waiting(UsageNote::Starting), |server| {
+                    SourceState::Ready(UsageSource::Opencode(server))
+                }),
+            Some(OpencodeStatus::Starting) => SourceState::Waiting(UsageNote::Starting),
+            Some(OpencodeStatus::Failed { error }) => {
                 SourceState::Broken(format!("{OPENCODE_FAILED_TEXT}: {error}"))
             }
-            Some(OpencodeLink::Absent) | None => {
-                self.start_opencode_for_usage(link, cx);
+            Some(OpencodeStatus::Stopped) | None => {
+                self.start_opencode_for_usage(link);
                 SourceState::Waiting(UsageNote::Starting)
             }
         }
     }
 
-    fn start_opencode_for_usage(&mut self, link: &HostLink, cx: &mut Context<Self>) {
+    fn start_opencode_for_usage(&mut self, link: &HostLink) {
         if link.is_local() {
-            return self.ensure_opencode(cx);
+            return self.ensure_opencode();
         }
         match self.harness_runner(link, AgentPreset::Opencode, None) {
-            Ok((runner, cwd)) => self.ensure_host_opencode(runner, cwd, cx),
+            Ok((runner, cwd)) => self.ensure_host_opencode(runner, cwd),
             Err(error) => {
                 tracing::debug!(%error, "opencode cannot start on the host for usage yet");
             }
@@ -168,14 +167,9 @@ impl EnvironmentShell {
         }
     }
 
-    fn usage_source(
-        &mut self,
-        link: &HostLink,
-        harness: AgentPreset,
-        cx: &mut Context<Self>,
-    ) -> SourceState {
+    fn usage_source(&mut self, link: &HostLink, harness: AgentPreset) -> SourceState {
         match harness {
-            AgentPreset::Opencode => self.opencode_usage_source(link, cx),
+            AgentPreset::Opencode => self.opencode_usage_source(link),
             AgentPreset::ClaudeCode => self.runner_source(link, harness, UsageSource::Claude),
             AgentPreset::Codex => self.runner_source(link, harness, UsageSource::Codex),
             AgentPreset::Gateway | AgentPreset::Shell | AgentPreset::Acp(_) => {

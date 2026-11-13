@@ -22,7 +22,10 @@ mod themes;
 mod vault;
 mod webhook_secret;
 
-pub use acp_secret::{delete_acp_secret, find_acp_secret, write_acp_secret};
+pub use acp_secret::{
+    delete_acp_secret, find_acp_secret, read_acp_secrets, write_acp_secret, AcpSecrets,
+    AcpSecretsUnread,
+};
 pub use acp_transcript::{acp_transcript_file, read_acp_transcript, AcpTranscript, AcpTranscripts};
 pub use arcade::{read_arcade_scores, write_arcade_scores};
 pub use archive::{forget_archived_chat_files, ArchiveStoreError};

@@ -11,8 +11,8 @@ mod runtime_chat;
 
 use gpui_kit::Context;
 use krad_chat::{
-    new_session_id, AcpEvent, Catalog, ChatEvent, LiveChat, LiveEvent, LiveSession, ModelOffer,
-    ResumeRefused, SlashCommand,
+    new_session_id, AcpEvent, Catalog, ChatEvent, CommandOffer, LiveChat, LiveEvent, LiveSession,
+    ModelOffer, ResumeRefused, SlashCommand,
 };
 use krad_domain::{
     AgentPreset, AgentState, AttentionKind, ChatEntry, Effort, EffortSnap, EnvironmentName,
@@ -189,6 +189,18 @@ impl StructuredChat {
         self.acp = AcpOffers::default();
         self.pending_checkpoints.clear();
         self.session = LiveSession::Start(new_session_id());
+    }
+
+    pub(in crate::environment_shell) fn adopt_catalog(
+        &mut self,
+        commands: Vec<CommandOffer>,
+        account: Option<String>,
+    ) {
+        self.catalog = Some(Catalog {
+            models: Vec::new(),
+            commands,
+            subscription: account,
+        });
     }
 
     pub(super) fn reports_context(&self) -> bool {

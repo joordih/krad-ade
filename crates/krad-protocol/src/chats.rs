@@ -1,6 +1,7 @@
 use krad_domain::{
-    AgentPreset, AskAnswer, AskKind, ChatMessage, ChatOrigin, Effort, ModelId, PermissionMode,
-    PickedAnswer, Prompt, ResumeId, RewindScope,
+    AcpAuthMethod, AcpAuthMethodId, AcpConfigOption, AcpConfigOptionId, AcpConfigValue, AcpModeId,
+    AcpModels, AcpModes, AgentPreset, AskAnswer, AskKind, ChatMessage, ChatOrigin, CommandOffer,
+    Effort, ModelId, PermissionMode, PickedAnswer, Prompt, ResumeId, RewindScope,
 };
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
@@ -74,6 +75,19 @@ pub enum ChatCommand {
         ask: ChatAskId,
         mode: PermissionMode,
     },
+    SetAcpMode {
+        chat: AgentRef,
+        mode: AcpModeId,
+    },
+    SetAcpOption {
+        chat: AgentRef,
+        option: AcpConfigOptionId,
+        value: AcpConfigValue,
+    },
+    SignIn {
+        chat: AgentRef,
+        method: AcpAuthMethodId,
+    },
     #[serde(other)]
     Unknown,
 }
@@ -94,7 +108,10 @@ impl ChatCommand {
             | Self::SetThinking { chat, .. }
             | Self::AnswerAsk { chat, .. }
             | Self::AnswerQuestion { chat, .. }
-            | Self::ApprovePlan { chat, .. } => Some(chat),
+            | Self::ApprovePlan { chat, .. }
+            | Self::SetAcpMode { chat, .. }
+            | Self::SetAcpOption { chat, .. }
+            | Self::SignIn { chat, .. } => Some(chat),
             Self::Unknown => None,
         }
     }
@@ -128,6 +145,24 @@ pub struct ChatContext {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct AcpSignInAsk {
+    pub methods: Vec<AcpAuthMethod>,
+    pub asked: u32,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub struct AcpShown {
+    pub modes: Option<AcpModes>,
+    pub models: Option<AcpModels>,
+    #[serde(default)]
+    pub options: Vec<AcpConfigOption>,
+    #[serde(default)]
+    pub reported: bool,
+    #[serde(default)]
+    pub sign_in: Option<AcpSignInAsk>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct ChatState {
     pub harness: AgentPreset,
     pub working: bool,
@@ -148,6 +183,12 @@ pub struct ChatState {
     pub earlier: bool,
     #[serde(default)]
     pub origin: Option<ChatOrigin>,
+    #[serde(default)]
+    pub commands: Vec<CommandOffer>,
+    #[serde(default)]
+    pub account: Option<String>,
+    #[serde(default)]
+    pub acp: Option<AcpShown>,
 }
 
 impl ChatState {
@@ -172,6 +213,9 @@ impl ChatState {
             working_since: None,
             earlier: false,
             origin: None,
+            commands: Vec::new(),
+            account: None,
+            acp: None,
         }
     }
 }

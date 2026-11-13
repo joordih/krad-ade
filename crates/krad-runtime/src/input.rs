@@ -12,9 +12,9 @@ use std::sync::Arc;
 
 use crate::bus::{Delegated, DelegationId, Mail};
 use crate::chats::{ChatLaunch, ChatStart, IndexAnswer, LiveStarted};
-use crate::gateway::GatewayInput;
 use crate::harness_health::HarnessProbe;
 use crate::jobs::JobDone;
+use crate::opencode::OpencodeInput;
 use crate::terminals::{Shared, TerminalAction, TerminalLaunch};
 use crate::usage::UsagePlace;
 
@@ -115,7 +115,7 @@ pub(crate) enum Input {
     },
     ForgetMentionIndexes,
     StartLiveChat(Box<LiveStart>),
-    Gateway(GatewayInput),
+    Opencode(OpencodeInput),
     Wake,
     Tick,
     Stop,

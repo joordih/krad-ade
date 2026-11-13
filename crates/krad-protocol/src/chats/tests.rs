@@ -209,3 +209,42 @@ fn a_mirror_appends_streamed_text_and_makes_room_for_earlier_messages() {
     assert_eq!(mirror.from, 0);
     assert_eq!(mirror.messages[2].text, "Two tabs");
 }
+
+#[test]
+fn an_acp_chat_state_carries_its_offers_sign_in_and_commands() -> serde_json::Result<()> {
+    let sign_in = Command::Chat(ChatCommand::SignIn {
+        chat: chat(),
+        method: AcpAuthMethodId("login".to_owned()),
+    });
+    let json = serde_json::to_string(&sign_in)?;
+    assert_eq!(
+        json,
+        r#"{"area":"chat","verb":"sign_in","chat":{"environment":"main","terminal":4},"method":"login"}"#
+    );
+    assert_eq!(serde_json::from_str::<Command>(&json)?, sign_in);
+    let mut state = ChatState::new(AgentPreset::ClaudeCode);
+    state.commands = vec![CommandOffer {
+        name: "review".to_owned(),
+        description: "Review the changes".to_owned(),
+    }];
+    state.acp = Some(AcpShown {
+        modes: Some(AcpModes {
+            current: AcpModeId("ask".to_owned()),
+            available: Vec::new(),
+        }),
+        reported: true,
+        sign_in: Some(AcpSignInAsk {
+            methods: vec![krad_domain::AcpAuthMethod {
+                id: AcpAuthMethodId("login".to_owned()),
+                name: "Log in".to_owned(),
+                description: None,
+                sign_in: krad_domain::AcpSignIn::ByAgent,
+            }],
+            asked: 1,
+        }),
+        ..AcpShown::default()
+    });
+    let json = serde_json::to_string(&state)?;
+    assert_eq!(serde_json::from_str::<ChatState>(&json)?, state);
+    Ok(())
+}
