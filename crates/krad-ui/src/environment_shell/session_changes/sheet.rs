@@ -4,7 +4,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
     SharedString, StatefulInteractiveElement, Styled, Window,
 };
-use krad_repo::{ChangeKind, LineCount, PatchBody};
+use krad_domain::{ChangeKind, LineCount, PatchBody};
 
 use super::super::dialog_parts::{sheet_overlay, sheet_panel, sheet_title};
 use super::super::discard::Discard;
@@ -463,7 +463,7 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(ReviewLoad::Ready { repo, files }) = self
+        let Some(ReviewLoad::Ready { files, .. }) = self
             .session_changes
             .review
             .as_ref()
@@ -474,11 +474,7 @@ impl EnvironmentShell {
         let Some(patch) = files.get(file).map(|file| file.patch.clone()) else {
             return;
         };
-        let discard = Discard::Session {
-            repo: repo.clone(),
-            patch,
-            hunk,
-        };
+        let discard = Discard::Session { patch, hunk };
         self.ask_discard(discard, window, cx);
     }
 }

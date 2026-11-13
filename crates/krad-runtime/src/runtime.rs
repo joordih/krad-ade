@@ -14,6 +14,7 @@ use crate::bus::{open, Bus, BusSetup};
 use crate::chats::Chats;
 use crate::environments::{Environments, EnvironmentsSetup};
 use crate::gateway::Gateway;
+use crate::git::Git;
 use crate::handle::RuntimeHandle;
 use crate::harness_health::Health;
 use crate::hosts::Hosts;
@@ -28,12 +29,18 @@ use crate::terminals::{Settling, Terminals};
 use crate::usage::Usage;
 use crate::workers::Workers;
 
+mod bus_git;
 mod chatting;
 mod commands;
 mod following;
+mod git_acts;
+mod gitting;
 mod hosting;
 mod launching;
 mod parts;
+mod removing;
+mod session_changes;
+mod worker_worktrees;
 mod working;
 
 pub(crate) use self::launching::AttachedLine;
@@ -74,6 +81,7 @@ pub struct Runtime {
     settings: AppSettings,
     launches: Launches,
     workers: Workers,
+    git: Git,
     stopped: Arc<AtomicBool>,
 }
 
@@ -164,6 +172,7 @@ impl Runtime {
             settings: owned.settings,
             launches: Launches::new(owned.views, inbox.clone()),
             workers: Workers::default(),
+            git: Git::default(),
             stopped,
         }
     }
@@ -223,6 +232,7 @@ impl Runtime {
                 self.usage.tick(&self.jobs, &mut self.outbox);
                 self.terminals.tick(Instant::now(), &mut self.outbox);
                 self.tick_hosts();
+                self.tick_git();
             }
             Input::OpenTerminal {
                 terminal,
@@ -290,6 +300,7 @@ impl Runtime {
                 self.models.listed(key, listed, &mut self.outbox);
             }
             JobDone::UsageRead { key, read } => self.usage.read(&key, read, &mut self.outbox),
+            JobDone::Git(job) => self.git_job_done(job),
             host_job => self.host_job_done(host_job),
         }
     }
@@ -333,6 +344,7 @@ impl Runtime {
             opencode: &self.opencode,
             gateway: &self.gateway,
             settings: &self.settings,
+            git: &self.git,
         };
         let seq = self.seq;
         self.subscribers
@@ -353,6 +365,7 @@ impl Runtime {
             opencode: &self.opencode,
             gateway: &self.gateway,
             settings: &self.settings,
+            git: &self.git,
         }
         .snapshot(self.seq, scope)
     }

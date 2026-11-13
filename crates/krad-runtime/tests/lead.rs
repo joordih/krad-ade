@@ -24,6 +24,8 @@ const NO_BUS: &str = "the runtime serves no bus";
 const NO_DELEGATION: &str = "no request was delegated";
 const NO_SESSION: &str = "sessions mode opened no session";
 const CALLER_PANICKED: &str = "the caller panicked";
+const ACP_WORKER: &str = "fake";
+const NO_ACP_ID: &str = "the ACP agent id did not parse";
 
 fn node(id: TerminalId) -> Result<TerminalNode, serde_json::Error> {
     serde_json::from_value(serde_json::json!({"id": id.0, "title": "agent", "state": "Idle"}))
@@ -109,8 +111,8 @@ fn a_leads_orders_the_runtime_cannot_carry_reach_the_app_as_the_lead_and_anyone_
     let (runtime, session) = start()?;
     let mut delegations = runtime.delegate_bus();
     let spawn = Request::Spawn {
-        agent: AgentPreset::ClaudeCode,
-        worktree: Some("write-the-tests".to_owned()),
+        agent: AgentPreset::Acp(ACP_WORKER.parse().map_err(|_| NO_ACP_ID)?),
+        worktree: None,
         task: "Write the tests".to_owned(),
     };
     let refused = answered(call_from(&runtime, MEMBER, spawn.clone())?)?;

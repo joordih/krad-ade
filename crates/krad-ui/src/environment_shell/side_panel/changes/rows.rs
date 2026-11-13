@@ -1,5 +1,4 @@
-use krad_domain::ChangesLayout;
-use krad_repo::FileChange;
+use krad_domain::{ChangesLayout, FileChange};
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -158,7 +157,7 @@ pub(super) fn change_rows(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_repo::ChangeKind;
+    use krad_domain::ChangeKind;
 
     fn changes(paths: &[&str]) -> Vec<FileChange> {
         paths

@@ -6,7 +6,8 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use crate::process::{git_path, host_path};
-use crate::refs::{Branch, BranchPlace};
+pub use krad_domain::{sanitize_worktree_name, Worktree};
+use krad_domain::{Branch, BranchPlace};
 use krad_host::HostLink;
 
 use crate::git::run_git;
@@ -19,10 +20,6 @@ pub use state::worktree_state;
 
 const WORKTREES_FOLDER_SUFFIX: &str = ".worktrees";
 const START_POINT: &str = "HEAD";
-const NAME_SEPARATOR: char = '-';
-const ALLOWED_NAME_PUNCTUATION: [char; 3] = ['-', '_', '.'];
-const EDGE_TRIMMED: [char; 2] = ['-', '.'];
-const PARENT_DIR_MARKER: &str = "..";
 const PRUNE_ARGS: [&str; 2] = ["worktree", "prune"];
 const LIST_ARGS: [&str; 3] = ["worktree", "list", "--porcelain"];
 const RECORD_SEPARATOR: &str = "\n\n";
@@ -34,26 +31,6 @@ const PRUNABLE_FIELD: &str = "prunable";
 const ARG_SEPARATOR: &str = " ";
 const HEAD_ARGS: [&str; 2] = ["rev-parse", START_POINT];
 const COUNT_UNMERGED_ARGS: [&str; 4] = ["rev-list", "--count", START_POINT, "--not"];
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Worktree {
-    pub path: PathBuf,
-    pub branch: Option<String>,
-}
-
-#[must_use]
-pub fn sanitize_worktree_name(raw: &str) -> Option<String> {
-    let mut name = String::with_capacity(raw.len());
-    for character in raw.chars() {
-        if character.is_ascii_alphanumeric() || ALLOWED_NAME_PUNCTUATION.contains(&character) {
-            name.push(character);
-        } else if !name.ends_with(NAME_SEPARATOR) {
-            name.push(NAME_SEPARATOR);
-        }
-    }
-    let name = name.trim_matches(EDGE_TRIMMED.as_slice());
-    (!name.is_empty() && !name.contains(PARENT_DIR_MARKER)).then(|| name.to_owned())
-}
 
 #[must_use]
 pub fn worktree_path(repo_root: &Path, name: &str) -> PathBuf {
@@ -210,25 +187,6 @@ fn parse_worktrees(output: &str, path_of: impl Fn(&str) -> PathBuf) -> Vec<Workt
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn sanitize_worktree_name_handles_edge_cases() {
-        let cases = [
-            ("Fix login bug!", Some("Fix-login-bug")),
-            ("../x", Some("x")),
-            ("feature/auth", Some("feature-auth")),
-            ("a..b", None),
-            ("---", None),
-            ("", None),
-        ];
-        for (raw, expected) in cases {
-            assert_eq!(
-                sanitize_worktree_name(raw).as_deref(),
-                expected,
-                "input {raw:?}"
-            );
-        }
-    }
 
     #[test]
     fn the_worktree_list_keeps_checked_out_folders_and_their_branches() {

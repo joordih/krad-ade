@@ -1,6 +1,5 @@
 use gpui_kit::Context;
-use krad_domain::{EnvironmentData, GroupId, TerminalGroup, WorktreeOrigin};
-use krad_repo::Worktree;
+use krad_domain::{EnvironmentData, GroupId, TerminalGroup, Worktree, WorktreeOrigin};
 use std::path::{Path, PathBuf};
 
 use super::context_menu::{MenuAction, MenuCreate, MenuEntry, MenuPlacement};

@@ -122,7 +122,7 @@ impl EnvironmentShell {
         let env = self.active.clone();
         if let LeadEnding::CloseSession(session) = ending {
             self.close_session(session, cx);
-            self.sweep_merged_worktrees(cx);
+            self.refresh_git(cx);
             return;
         }
         for terminal in self.open_workers_of(ending.session()) {
@@ -133,7 +133,7 @@ impl EnvironmentShell {
             LeadEnding::CloseSession(_) => {}
             LeadEnding::CloseTab { tab, .. } => self.close_chat_tab(&env, tab, cx),
         }
-        self.sweep_merged_worktrees(cx);
+        self.refresh_git(cx);
     }
 
     fn confirm_lead_ending(&mut self, cx: &mut Context<Self>) {

@@ -6,6 +6,7 @@ use crate::bus::BusCommand;
 use crate::chats::ChatCommand;
 use crate::environments::EnvironmentCommand;
 use crate::gateway::GatewayCommand;
+use crate::git::{ChangesCommand, GitCommand};
 use crate::hosts::HostCommand;
 use crate::models::ModelsCommand;
 use crate::sessions::{GroupCommand, NodeCommand, SessionCommand};
@@ -31,6 +32,8 @@ pub enum Command {
     Chat(ChatCommand),
     Gateway(GatewayCommand),
     Settings(SettingsCommand),
+    Git(GitCommand),
+    Changes(ChangesCommand),
     #[serde(other)]
     Unknown,
 }
@@ -56,6 +59,7 @@ pub enum ErrorCode {
     Unsupported,
     NotFound,
     AlreadyAnswered,
+    Invalid,
     #[serde(other)]
     Unknown,
 }

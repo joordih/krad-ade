@@ -64,6 +64,24 @@ impl EnvironmentShell {
         };
         let moved = live.data.heard(changes, answers, runtime);
         self.nodes_moved(env, moved, cx);
+        self.groups_moved(env);
+    }
+
+    fn groups_moved(&mut self, env: &EnvironmentName) {
+        let Some(live) = self.envs.get_mut(env) else {
+            return;
+        };
+        let gone = |group| live.data.group(group).is_none();
+        if live.selected_group.is_some_and(gone) {
+            live.selected_group = live.data.groups.first().map(|group| group.id);
+        }
+        if live
+            .archive_sheet
+            .as_ref()
+            .is_some_and(|sheet| live.data.group(sheet.group).is_none())
+        {
+            live.archive_sheet = None;
+        }
     }
 
     pub(super) fn adopt_runtime_environments(&mut self, cx: &mut Context<Self>) {

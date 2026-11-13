@@ -4,6 +4,8 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+pub use krad_domain::PushTarget;
+
 use crate::git::run_git_within;
 use crate::process::git_path;
 use crate::RepoError;
@@ -65,12 +67,6 @@ impl fmt::Debug for Askpass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(REDACTED)
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PushTarget {
-    Upstream,
-    Publish { remote: String, branch: String },
 }
 
 fn network<S: AsRef<std::ffi::OsStr>>(

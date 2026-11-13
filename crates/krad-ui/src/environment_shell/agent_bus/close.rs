@@ -7,8 +7,9 @@ use krad_domain::{
     AgentState, AppEvent, ClosePlan, CloseRefusal, CloseSubject, EnvironmentData, EnvironmentName,
     GroupId, SessionId, TerminalId, WhenWorking,
 };
+use krad_protocol::{Command, GitAct, GitCommand};
 use krad_repo::{remove_settled_worktree, RepoError};
-use krad_runtime::{closed_target, refusal_error, BusReply};
+use krad_runtime::{closed_target, refusal_error, removal_outcome, BusReply};
 use std::path::PathBuf;
 
 use super::super::EnvironmentShell;
@@ -43,20 +44,6 @@ pub(super) fn pick_refusal(run_group: Option<GroupId>, lead_group: GroupId) -> O
             Some(ApiError::new(ErrorCode::NotOwned, FOREIGN_VARIANTS_RUN))
         }
         Some(_) => None,
-    }
-}
-
-#[must_use]
-pub(super) fn removal_outcome(removed: Result<(), RepoError>) -> WorktreeOutcome {
-    match removed {
-        Ok(()) => WorktreeOutcome::Removed,
-        Err(error @ (RepoError::UncommittedChanges | RepoError::UnmergedCommits(_))) => {
-            WorktreeOutcome::Refused(ApiError::new(
-                ErrorCode::WorktreeNotClean,
-                error.to_string(),
-            ))
-        }
-        Err(error) => WorktreeOutcome::Refused(ApiError::new(ErrorCode::Failed, error.to_string())),
     }
 }
 
@@ -169,9 +156,14 @@ impl EnvironmentShell {
                 .ok()
         });
         if let Some(plan) = plan {
-            self.note_agent_finished_in(env, plan.worktree);
+            if let Some(group) = plan.worktree {
+                self.runtime.handle.post(Command::Git(GitCommand {
+                    environment: env.clone(),
+                    group,
+                    act: GitAct::AgentsFinished,
+                }));
+            }
             self.close_planned(env, &plan, cx);
-            self.sweep_merged_worktrees(cx);
         }
     }
 

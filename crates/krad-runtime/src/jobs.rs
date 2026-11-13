@@ -12,6 +12,7 @@ use crate::chats::{
     AcpSecretsRead, ChatCheckpoint, ChatEarlier, ChatOpening, FilesIndexed, McpLaunched, McpRead,
 };
 use crate::gateway::{GatewayForgotten, GatewayRead};
+use crate::git::GitJob;
 use crate::hosts::{AgentsFound, Attempt, LocalFound, RemoteBus};
 use crate::input::Input;
 use crate::opencode::{OpencodeListed, OpencodeStarted};
@@ -60,6 +61,7 @@ pub(crate) enum JobDone {
     LocalAgentsFound(LocalFound),
     McpRead(McpRead),
     McpLaunched(McpLaunched),
+    Git(GitJob),
 }
 
 #[derive(Clone, Debug)]

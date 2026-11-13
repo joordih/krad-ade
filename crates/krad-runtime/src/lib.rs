@@ -4,6 +4,7 @@ mod bus;
 mod chats;
 mod environments;
 mod gateway;
+mod git;
 mod handle;
 mod harness_health;
 mod hosts;
@@ -46,4 +47,4 @@ pub use terminals::{
     TerminalFrame, TerminalLaunch, TerminalPlace, TerminalStatus, TerminalView,
 };
 pub use usage::{SourceState, UsagePlace, UsageSource};
-pub use workers::{closed_target, refusal_error};
+pub use workers::{closed_target, refusal_error, removal_outcome};

@@ -2,28 +2,6 @@ use super::*;
 use krad_domain::{AgentPreset, SessionLead};
 
 #[test]
-fn a_worktree_with_work_left_is_refused_and_other_failures_say_so() {
-    assert_eq!(removal_outcome(Ok(())), WorktreeOutcome::Removed);
-    for unsettled in [RepoError::UncommittedChanges, RepoError::UnmergedCommits(2)] {
-        assert!(matches!(
-            removal_outcome(Err(unsettled)),
-            WorktreeOutcome::Refused(ApiError {
-                code: ErrorCode::WorktreeNotClean,
-                ..
-            })
-        ));
-    }
-    let failed = removal_outcome(Err(RepoError::Unsupported("x".to_owned())));
-    assert!(matches!(
-        failed,
-        WorktreeOutcome::Refused(ApiError {
-            code: ErrorCode::Failed,
-            ..
-        })
-    ));
-}
-
-#[test]
 fn a_lead_closes_only_the_sessions_the_close_rules_give_it() {
     let mut data = EnvironmentData::empty(EnvironmentName::new("main".to_owned()));
     let api = data.add_group(PathBuf::from("/work/api"), None);

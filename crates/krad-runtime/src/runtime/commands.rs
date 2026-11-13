@@ -1,10 +1,13 @@
 use krad_agents::{Caller, Incoming};
-use krad_domain::{EnvironmentEdit, EnvironmentName, NodeEdit};
-use krad_protocol::{AgentRef, Command, ErrorCode, EventKind, Reply, RequestId, RuntimeCommand};
+use krad_domain::{AppEvent, EnvironmentEdit, EnvironmentName, NodeEdit};
+use krad_protocol::{
+    AgentRef, Command, ErrorCode, EventKind, EventsCommand, Reply, RequestId, RuntimeCommand,
+};
 
 use super::{refused, Runtime, NO_BUS, UNSUPPORTED_COMMAND};
 use crate::bus::{as_lead, closed_worker_answer};
 use crate::environments::UNKNOWN_ENVIRONMENT;
+use crate::git::answer_git;
 use crate::input::Input;
 
 impl Runtime {
@@ -21,10 +24,12 @@ impl Runtime {
                 bus.execute(&command, &mut self.outbox)
                     .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND))
             }
-            Command::Events(command) => self
-                .events
-                .execute(&command, &mut self.outbox)
-                .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
+            Command::Events(command) => {
+                self.note_finished_agent(&command);
+                self.events
+                    .execute(&command, &mut self.outbox)
+                    .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND))
+            }
             Command::Attention(command) => self
                 .attention
                 .execute(&command, &mut self.outbox)
@@ -61,6 +66,8 @@ impl Runtime {
             Command::Terminal(command) => self
                 .execute_terminal(command)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
+            Command::Git(command) => self.execute_git(id, command),
+            Command::Changes(command) => self.execute_changes(id, command),
             Command::Runtime(RuntimeCommand::Unknown) | Command::Unknown => {
                 refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)
             }
@@ -92,6 +99,18 @@ impl Runtime {
         }
     }
 
+    fn note_finished_agent(&mut self, command: &EventsCommand) {
+        if let EventsCommand::Publish {
+            environment,
+            group: Some(group),
+            event: AppEvent::AgentFinished { .. },
+            ..
+        } = command
+        {
+            self.git.sweep.note_finished(environment, *group);
+        }
+    }
+
     pub(super) fn answer_bus(&mut self, incoming: Incoming) {
         if self.bus.is_none() {
             tracing::debug!("a bus request reached a runtime without a bus");
@@ -102,6 +121,10 @@ impl Runtime {
             request,
             reply,
         } = incoming;
+        if let Caller::Git(_) = &from {
+            answer_git(request, reply, self.hosts.prompts());
+            return;
+        }
         let data = match &from {
             Caller::Terminal(terminal) => self
                 .environments
@@ -122,6 +145,7 @@ impl Runtime {
         };
         let Some(incoming) = self
             .list_all(incoming)
+            .and_then(|incoming| self.answer_git_requests(incoming))
             .and_then(|incoming| self.answer_for_leads(incoming))
             .and_then(|incoming| self.answer_on_chats(incoming))
         else {

@@ -1,8 +1,6 @@
 use gpui_kit::Context;
-use krad_repo::Branch;
+use krad_domain::{Branch, ToastKind};
 use std::collections::HashSet;
-
-use krad_domain::ToastKind;
 
 use super::super::context_menu::{MenuAction, MenuCreate, MenuEntry, MenuSearch};
 use super::super::groups::GroupGit;
@@ -95,7 +93,7 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_repo::{BranchPlace, GitStatus, Refs, Worktree};
+    use krad_domain::{BranchPlace, GitStatus, Refs, Worktree};
     use std::collections::HashMap;
     use std::path::PathBuf;
 

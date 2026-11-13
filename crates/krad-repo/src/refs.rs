@@ -1,6 +1,7 @@
 use krad_host::HostLink;
-use std::fmt;
 use std::path::Path;
+
+pub use krad_domain::{Branch, BranchPlace, Refs};
 
 use crate::git::run_git;
 use crate::RepoError;
@@ -26,49 +27,6 @@ const TRACK_FLAG: &str = "--track";
 const TAG: &str = "tag";
 const DELETE_FLAG: &str = "--delete";
 const ALREADY_EXISTS: &str = "already exists";
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum BranchPlace {
-    Local,
-    Remote(String),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Branch {
-    pub name: String,
-    pub place: BranchPlace,
-    pub upstream: Option<String>,
-    pub is_head: bool,
-}
-
-impl fmt::Display for Branch {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.place {
-            BranchPlace::Local => f.write_str(&self.name),
-            BranchPlace::Remote(remote) => write!(f, "{remote}{REMOTE_SEPARATOR}{}", self.name),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Refs {
-    pub branches: Vec<Branch>,
-    pub tags: Vec<String>,
-}
-
-impl Refs {
-    pub fn local(&self) -> impl Iterator<Item = &Branch> {
-        self.branches
-            .iter()
-            .filter(|branch| branch.place == BranchPlace::Local)
-    }
-
-    pub fn remote(&self) -> impl Iterator<Item = &Branch> {
-        self.branches
-            .iter()
-            .filter(|branch| matches!(branch.place, BranchPlace::Remote(_)))
-    }
-}
 
 /// # Errors
 ///

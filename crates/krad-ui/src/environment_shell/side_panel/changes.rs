@@ -9,8 +9,7 @@ use gpui_kit::{
     IntoElement, MouseButton, MouseDownEvent, ParentElement, StatefulInteractiveElement, Styled,
     Window,
 };
-use krad_domain::{ChangesLayout, FileOpening};
-use krad_repo::{FileChange, LineCount};
+use krad_domain::{ChangesLayout, FileChange, FileOpening, LineCount};
 use std::ops::Range;
 use std::path::Path;
 
@@ -420,8 +419,7 @@ impl EnvironmentShell {
         let opened = path.clone();
         let pinned = path.clone();
         let menu = change_menu(&git.repo_root, change);
-        let discard = (side == ChangeSide::Unstaged)
-            .then(|| Self::discard_button(git.repo_root.clone(), change, cx));
+        let discard = (side == ChangeSide::Unstaged).then(|| Self::discard_button(change, cx));
         let staging = side_button(ROW_GROUP, side, Some(change.path.clone()), cx);
         div()
             .id((CHANGE_ROW_PREFIX, row_key(side, &path)))

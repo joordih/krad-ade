@@ -11,8 +11,11 @@ use std::collections::HashMap;
 use crate::chats::{runs_in_runtime, Launch};
 
 mod closing;
+mod removal;
 
 pub use closing::{closed_target, refusal_error};
+pub use removal::removal_outcome;
+pub(crate) use removal::{remove_settled, LeadRemovals, Removal, WORKTREE_IN_USE};
 
 const WORKER_FAILED: &str = "The worker could not start";
 const WORKER_CLOSED_EARLY: &str = "The worker was closed before it started";
@@ -23,18 +26,25 @@ pub(crate) struct WorkerPlan {
     pub(crate) lead_terminal: Option<TerminalId>,
 }
 
+#[derive(Debug)]
+pub(crate) struct PendingWorker {
+    pub(crate) lead: SessionId,
+    pub(crate) lead_terminal: Option<TerminalId>,
+    pub(crate) preset: AgentPreset,
+    pub(crate) task: String,
+    pub(crate) reply: oneshot::Sender<Response>,
+}
+
 #[must_use]
 pub(crate) fn plan_spawn(
     data: &EnvironmentData,
     lead: SessionId,
     agent: AgentPreset,
-    worktree: Option<&str>,
 ) -> Option<WorkerPlan> {
     let session = data.session(lead)?;
     let lead_terminal = session.lead.as_ref()?.terminal;
     let group = session.group.filter(|group| data.group(*group).is_some())?;
-    let runs_here = worktree.is_none()
-        && session.cloud.is_none()
+    let runs_here = session.cloud.is_none()
         && agent.acp_agent().is_none()
         && agent.worker_surface() == WorkerSurface::Chat
         && runs_in_runtime(agent);

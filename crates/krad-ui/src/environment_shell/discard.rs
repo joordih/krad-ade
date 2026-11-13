@@ -1,16 +1,16 @@
 use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, FontWeight, ParentElement, Styled, Window,
 };
+use krad_domain::{ChangeKind, FileChange, FilePatch, PatchStatus};
 use krad_domain::{TerminalId, ToastKind};
-use krad_repo::{
-    discard_change, discard_folder, read_text, revert_session_file, revert_session_hunk,
-    ChangeKind, FileChange, FilePatch, PatchStatus, RepoError,
-};
+use krad_protocol::{ChangesAct, GitAct};
+use krad_repo::{read_text, RepoError};
 use std::borrow::Cow;
 use std::path::PathBuf;
 
 use super::changes_tab::reverted_block;
 use super::dialog_parts::{sheet_footer, sheet_overlay, sheet_panel, sheet_title};
+use super::git_actions::GitFollowUp;
 use super::native_alert::Confirmation;
 use super::EnvironmentShell;
 use crate::components::{Button, ButtonVariant};
@@ -48,7 +48,6 @@ const MAX_REVERT_BYTES: u64 = 8 * 1024 * 1024;
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Discard {
     File {
-        repo: PathBuf,
         change: FileChange,
     },
     Block {
@@ -56,12 +55,10 @@ pub(super) enum Discard {
         start: usize,
     },
     Session {
-        repo: PathBuf,
         patch: FilePatch,
         hunk: Option<usize>,
     },
     Folder {
-        repo: PathBuf,
         folder: PathBuf,
         files: usize,
     },
@@ -182,47 +179,50 @@ impl EnvironmentShell {
     }
 
     fn run_discard(&mut self, discard: Discard, cx: &mut Context<Self>) {
-        let link = self.active_link();
-        let task =
-            match discard {
-                Discard::File { repo, change } => cx.background_spawn(async move {
-                    discard_change(&link, &repo, &change).map(|()| true)
-                }),
-                Discard::Session { repo, patch, hunk } => cx.background_spawn(async move {
-                    let reverted = match hunk {
-                        Some(hunk) => revert_session_hunk(&link, &repo, &patch, hunk),
-                        None => revert_session_file(&link, &repo, &patch),
-                    };
-                    match reverted {
-                        Ok(()) => Ok(true),
-                        Err(RepoError::Stale(_)) => Ok(false),
-                        Err(error) => Err(error),
-                    }
-                }),
-                Discard::Folder { repo, folder, .. } => cx.background_spawn(async move {
-                    discard_folder(&link, &repo, &folder).map(|_| true)
-                }),
-                Discard::Block { tab, start } => {
-                    let Some((path, lines)) = self
-                        .envs
-                        .get(&self.active)
-                        .and_then(|live| live.diff_lines(tab))
-                    else {
-                        return;
-                    };
-                    cx.background_spawn(async move {
-                        let current = read_text(&link, &path, MAX_REVERT_BYTES)?;
-                        let Some(text) = reverted_block(&lines, start, &current.text)
-                            .filter(|_| !current.truncated)
-                        else {
-                            return Ok(false);
-                        };
-                        link.write(&path, text.as_bytes())
-                            .map_err(RepoError::from)
-                            .map(|()| true)
-                    })
+        match discard {
+            Discard::File { change } => self.git_in_group(
+                GitAct::Discard { change },
+                GitFollowUp::ReloadSessionChanges,
+                cx,
+            ),
+            Discard::Folder { folder, .. } => self.git_in_group(
+                GitAct::DiscardFolder { folder },
+                GitFollowUp::ReloadSessionChanges,
+                cx,
+            ),
+            Discard::Session { patch, hunk } => {
+                let act = ChangesAct::Revert {
+                    patch: Box::new(patch),
+                    hunk,
+                };
+                if let Some(command) = self.session_changes_command(act) {
+                    self.post_git(command, GitFollowUp::ReloadSessionChanges, cx);
                 }
+            }
+            Discard::Block { tab, start } => self.revert_block(tab, start, cx),
+        }
+    }
+
+    fn revert_block(&mut self, tab: TerminalId, start: usize, cx: &mut Context<Self>) {
+        let link = self.active_link();
+        let Some((path, lines)) = self
+            .envs
+            .get(&self.active)
+            .and_then(|live| live.diff_lines(tab))
+        else {
+            return;
+        };
+        let task = cx.background_spawn(async move {
+            let current = read_text(&link, &path, MAX_REVERT_BYTES)?;
+            let Some(text) =
+                reverted_block(&lines, start, &current.text).filter(|_| !current.truncated)
+            else {
+                return Ok(false);
             };
+            link.write(&path, text.as_bytes())
+                .map_err(RepoError::from)
+                .map(|()| true)
+        });
         cx.spawn(async move |this, cx| {
             let result = task.await;
             this.update(cx, |shell, cx| {
@@ -312,11 +312,7 @@ mod tests {
     fn session(status: PatchStatus, hunk: Option<usize>) -> Option<Discard> {
         let mut patch = parse_patch(DIFF).into_iter().next()?;
         patch.status = status;
-        Some(Discard::Session {
-            repo: PathBuf::from("/w"),
-            patch,
-            hunk,
-        })
+        Some(Discard::Session { patch, hunk })
     }
 
     fn title(discard: Option<Discard>) -> Option<&'static str> {

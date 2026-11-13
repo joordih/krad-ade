@@ -87,6 +87,7 @@ fn a_subscriber_starts_from_a_snapshot_and_receives_events_with_rising_seqs() ->
             opencode: krad_protocol::OpencodeSnapshot::default(),
             gateway: krad_protocol::GatewayState::default(),
             settings: Box::default(),
+            git: Vec::new(),
         }
     );
     Ok(())

@@ -1,6 +1,6 @@
+use krad_domain::{FilePatch, Hunk, HunkLineKind, LineCount};
 use krad_domain::{HunkFingerprint, SessionChanges};
-use krad_repo::{FilePatch, Hunk, HunkLineKind, LineCount};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use super::super::review_view::{DiffLine, LineKind};
@@ -69,13 +69,6 @@ pub(super) fn hunk_lines(hunk: &Hunk) -> Vec<DiffLine> {
                 text: line.text.clone(),
             }
         })
-        .collect()
-}
-
-pub(super) fn present_prints(files: &[ReviewedFile]) -> BTreeSet<HunkFingerprint> {
-    files
-        .iter()
-        .flat_map(|file| file.prints.iter().copied())
         .collect()
 }
 
@@ -195,7 +188,6 @@ mod tests {
         );
         changes.set_reviewed(&files[0].prints, true);
         assert!(review_rows(&files, Some(&changes), &HashSet::new())[0].reviewed);
-        assert_eq!(present_prints(&files).len(), 3);
         Ok(())
     }
 }

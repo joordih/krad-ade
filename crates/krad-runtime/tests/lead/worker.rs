@@ -3,6 +3,7 @@ use futures::executor::block_on;
 use futures::StreamExt as _;
 use krad_agents::{
     CloseOrder, CloseTarget, Closed, ClosedTarget, Request, Response, TerminalState, WorktreeFate,
+    WorktreeLeft, WorktreeOutcome,
 };
 use krad_chat::new_session_id;
 use krad_domain::{
@@ -16,6 +17,9 @@ use krad_runtime::{
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+
+#[path = "../support/repo.rs"]
+mod repo;
 
 const FAKE_CLAUDE: &str = "../krad-chat/tests/fixtures/fake-harness/claude";
 const RECORDED_ANSWER: &str = "Two tabs rotate at once.";
@@ -263,5 +267,90 @@ fn a_lead_waits_reads_its_finished_worker_lists_it_closed_and_reopens_it() -> Te
         .worker(worker)
         .ok_or("the lead forgot its worker")?;
     assert!(record.session.is_some());
+    Ok(())
+}
+
+fn git_read(events: &mut EventReceiver, root: &Path) -> TestResult {
+    until(
+        events,
+        |kind| matches!(kind, EventKind::GitRead(read) if read.root == root && read.git.is_some()),
+    )
+}
+
+#[test]
+fn a_lead_starts_a_worker_in_its_own_worktree_and_removes_it_when_closing() -> TestResult {
+    let repo = repo::committed_repo("lead-worktree")?;
+    let data = lead_environment(&repo.0)?;
+    let session = data
+        .active_session
+        .ok_or("sessions mode opened no session")?;
+    let runtime = start(data)?;
+    let mut events = runtime.subscribe();
+    let made_lead: Command = (
+        EnvironmentName::new(ENVIRONMENT.to_owned()),
+        EnvironmentEdit::from(SessionEdit::MakeLead {
+            session,
+            lead: SessionLead {
+                terminal: Some(LEAD),
+                ..SessionLead::new(AgentPreset::ClaudeCode, None)
+            },
+        }),
+    )
+        .into();
+    block_on(runtime.send(runtime.next_request(), made_lead))?;
+    git_read(&mut events, &repo.0)?;
+    let spawn = Request::Spawn {
+        agent: AgentPreset::ClaudeCode,
+        worktree: Some("race fix".to_owned()),
+        task: TASK.to_owned(),
+    };
+    let Response::Spawned { terminal } = answered(call_from(&runtime, LEAD, spawn)?)? else {
+        return Err("the lead's worker did not start".into());
+    };
+    let worker = TerminalId(terminal);
+    let started = main_environment(&runtime)?;
+    let group = started
+        .nodes
+        .iter()
+        .find(|node| node.id == worker)
+        .and_then(|node| node.group)
+        .and_then(|group| started.group(group))
+        .ok_or("the worker has no group")?
+        .clone();
+    let origin = group
+        .worktree
+        .clone()
+        .ok_or("the worker's group is no worktree")?;
+    assert_eq!(origin.repo_root, repo.0);
+    assert_eq!(origin.branch, "race-fix");
+    assert!(group.root.is_dir());
+    let waited = answered(call_from(
+        &runtime,
+        LEAD,
+        Request::Wait {
+            target: worker.0,
+            timeout_secs: 10,
+        },
+    )?)?;
+    assert!(matches!(waited, Response::Settled { .. }), "{waited:?}");
+    let order = CloseOrder {
+        target: CloseTarget::Agent(worker.0),
+        when_working: WhenWorking::Refuse,
+        worktree: WorktreeFate::Remove,
+    };
+    let closed = answered(call_from(&runtime, LEAD, Request::Close(order))?)?;
+    assert_eq!(
+        closed,
+        Response::Closed(vec![Closed {
+            target: ClosedTarget::Agent(worker.0),
+            worktree: Some(WorktreeLeft {
+                path: group.root.clone(),
+                outcome: WorktreeOutcome::Removed,
+            }),
+        }])
+    );
+    let ended = main_environment(&runtime)?;
+    assert!(ended.group(group.id).is_none());
+    assert!(!group.root.exists());
     Ok(())
 }

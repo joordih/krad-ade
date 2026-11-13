@@ -1,14 +1,10 @@
 mod code_host;
 
 use gpui_kit::Task;
-use krad_domain::{
-    AppEvent, EnvironmentName, EventRecord, GroupId, Host, Session, SessionId, WebhookId,
-};
+use krad_domain::{AppEvent, EnvironmentName, EventRecord, GroupId, Session, SessionId, WebhookId};
 use krad_protocol::{Command, EventsCommand};
 use std::collections::{BTreeSet, HashMap};
-use std::path::Path;
 
-use super::groups::{GitKey, GroupGit};
 use super::EnvironmentShell;
 
 type SessionKey = (SessionId, Option<GroupId>);
@@ -41,17 +37,6 @@ fn session_events(before: &[SessionKey], now: &[SessionKey]) -> Vec<(Option<Grou
         .filter(|key| !now.contains(key))
         .map(|&(session, group)| (group, AppEvent::SessionClosed { session }));
     opened.chain(closed).collect()
-}
-
-pub(super) fn changed_git_roots(
-    before: &HashMap<GitKey, GroupGit>,
-    after: &HashMap<GitKey, GroupGit>,
-) -> Vec<GitKey> {
-    after
-        .iter()
-        .filter(|(key, now)| before.get(*key).is_some_and(|was| was.status != now.status))
-        .map(|(key, _)| key.clone())
-        .collect()
 }
 
 impl EnvironmentShell {
@@ -125,29 +110,6 @@ impl EnvironmentShell {
                 .retain(|name, _| open.contains_key(name));
         }
     }
-
-    pub(super) fn announce_git_changes(&mut self, roots: &[GitKey]) {
-        let changed: Vec<(EnvironmentName, GroupId)> = self
-            .envs
-            .iter()
-            .flat_map(|(name, live)| {
-                live.data
-                    .groups
-                    .iter()
-                    .filter(|group| is_changed(roots, &live.data.host, &group.root))
-                    .map(|group| (name.clone(), group.id))
-            })
-            .collect();
-        for (name, group) in changed {
-            self.publish_event(&name, Some(group), AppEvent::GitChanged);
-        }
-    }
-}
-
-fn is_changed(roots: &[GitKey], host: &Host, root: &Path) -> bool {
-    roots
-        .iter()
-        .any(|(changed_host, changed_root)| changed_host == host && changed_root == root)
 }
 
 #[cfg(test)]

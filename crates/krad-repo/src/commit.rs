@@ -2,6 +2,8 @@ use krad_host::HostLink;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
+pub use krad_domain::{CommitMode, CommitScope};
+
 use crate::git::run_git;
 use crate::process::git_path;
 use crate::RepoError;
@@ -19,18 +21,6 @@ const NO_EDIT_FLAG: &str = "--no-edit";
 const STASH_ARGS: [&str; 3] = ["stash", "push", "--include-untracked"];
 const POP_STASH_ARGS: [&str; 2] = ["stash", "pop"];
 const NO_HEAD_ARGS: [&str; 3] = ["rev-parse", "--verify", "HEAD"];
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CommitMode {
-    New,
-    Amend,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CommitScope {
-    Staged,
-    Everything,
-}
 
 fn with_paths(host: &HostLink, repo: &Path, args: &[&str], paths: &[PathBuf]) -> Vec<OsString> {
     args.iter()

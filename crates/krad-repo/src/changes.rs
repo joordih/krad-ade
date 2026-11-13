@@ -10,6 +10,7 @@ use crate::files::read_text;
 use crate::git::run_git;
 use crate::status::{ChangeKind, FileChange};
 use crate::RepoError;
+pub use krad_domain::LineCount;
 use krad_host::HostLink;
 
 const HEAD: &str = "HEAD";
@@ -36,23 +37,6 @@ const HUNK_PREFIX: &str = "@@";
 const ADDED_PREFIX: char = '+';
 const NEWLINE: char = '\n';
 const MAX_UNTRACKED_BYTES: u64 = 2 * 1024 * 1024;
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct LineCount {
-    pub added: u32,
-    pub removed: u32,
-}
-
-impl std::ops::Add for LineCount {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self {
-        Self {
-            added: self.added.saturating_add(other.added),
-            removed: self.removed.saturating_add(other.removed),
-        }
-    }
-}
 
 /// # Errors
 ///

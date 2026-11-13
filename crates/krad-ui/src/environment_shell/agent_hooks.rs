@@ -1,16 +1,16 @@
-use gpui_kit::{AppContext as _, Context};
+use gpui_kit::Context;
 use krad_agents::{ErrorCode, Response, TerminalHandle};
 use krad_domain::{
     code_tools_launch_args, hook_launch_args, hook_state, launch_with_prompt, quote_for_shell,
-    worker_brief, AgentPreset, CloudPlacement, EnvironmentName, ModelDelivery, ModelId, NodeField,
-    PermissionMode, ResumeId, SessionId, TerminalGroup, TerminalId, ToastKind, WorkerSpawn,
-    WorktreeOrigin,
+    sanitize_worktree_name, worker_brief, AgentPreset, CloudPlacement, EnvironmentName,
+    ModelDelivery, ModelId, NodeField, PermissionMode, ResumeId, SessionId, TerminalGroup,
+    TerminalId, ToastKind, WorkerSpawn,
 };
-use krad_repo::sanitize_worktree_name;
 use krad_runtime::{cli_name, BusReply};
 use std::time::{Duration, Instant};
 
 use super::ask::HeldAskReport;
+use super::git_actions::GitFollowUp;
 use super::shell_site::ShellSite;
 use super::workers::WorkerLaunch;
 use super::EnvironmentShell;
@@ -284,56 +284,27 @@ impl EnvironmentShell {
             self.launch_worker(&env, launch, reply, cx);
             return;
         };
-        let Some(repo_root) = self
-            .git_at(&env, &group.root)
-            .map(|git| git.repo_root.clone())
-        else {
+        if self.git_at(&env, &group.root).is_none() {
             reply
                 .send(Response::error(ErrorCode::Unsupported, NOT_A_REPO))
                 .unwrap_or_default();
             return;
-        };
+        }
         let Some(name) = sanitize_worktree_name(&name) else {
             reply
                 .send(Response::error(ErrorCode::BadRequest, BAD_WORKTREE_NAME))
                 .unwrap_or_default();
             return;
         };
-        let link = self.env_link(&env);
-        let recipe = self.worktree_recipe(&env, &repo_root);
-        let create = cx.background_spawn({
-            let repo_root = repo_root.clone();
-            async move { recipe.add(&link, &repo_root, &name) }
+        let launch = Box::new(WorkerLaunch {
+            group: None,
+            preset,
+            brief,
+            spawn,
+            mode,
+            cloud: None,
         });
-        cx.spawn(async move |this, cx| {
-            let created = create.await;
-            this.update(cx, |shell, cx| match created {
-                Ok(worktree) => {
-                    let origin = worktree
-                        .branch
-                        .clone()
-                        .map(|branch| WorktreeOrigin { repo_root, branch });
-                    let selected = shell.envs.get(&env).and_then(|live| live.selected_group);
-                    let group = shell.add_group_to(&env, worktree.path, origin, cx);
-                    if let Some(live) = shell.envs.get_mut(&env) {
-                        live.selected_group = selected;
-                    }
-                    let launch = WorkerLaunch {
-                        group,
-                        preset,
-                        brief,
-                        spawn,
-                        mode,
-                        cloud: None,
-                    };
-                    shell.launch_worker(&env, launch, reply, cx);
-                }
-                Err(error) => reply
-                    .send(Response::error(ErrorCode::Failed, error.to_string()))
-                    .unwrap_or_default(),
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+        let follow = GitFollowUp::LaunchWorker { launch, reply };
+        self.create_worktree_then(&env, group.id, &name, follow, cx);
     }
 }

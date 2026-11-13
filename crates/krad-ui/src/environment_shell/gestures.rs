@@ -241,7 +241,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn start_watches(&mut self, cx: &mut Context<Self>) {
-        self.start_git_watch(cx);
+        self.start_group_checks(cx);
         self.start_swipe_watch(cx);
     }
 

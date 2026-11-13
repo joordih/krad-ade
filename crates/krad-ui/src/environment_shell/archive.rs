@@ -19,7 +19,7 @@ const SEARCH_PLACEHOLDER: &str = "Search archived sessions and chats…";
 const NO_GROUP_TEXT: &str = "Select a group to open its Archive";
 
 pub(super) struct ArchiveSheet {
-    group: GroupId,
+    pub(super) group: GroupId,
     search: Entity<InputState>,
     _typing: Subscription,
 }

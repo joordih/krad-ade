@@ -1,5 +1,4 @@
-use krad_domain::{GroupId, TerminalId};
-use krad_repo::{Branch, BranchPlace, ORIGIN_REMOTE};
+use krad_domain::{Branch, BranchPlace, GroupId, TerminalId, ORIGIN_REMOTE};
 use std::path::Path;
 
 use crate::environment_shell::groups::GroupGit;

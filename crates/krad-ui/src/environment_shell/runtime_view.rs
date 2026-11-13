@@ -141,6 +141,7 @@ impl EnvironmentShell {
                 self.advance_harness_onboarding(cx);
                 self.hosts_replaced(snapshot.hosts, cx);
                 self.runtime_chats_replaced(snapshot.chats, cx);
+                self.git_replaced(snapshot.git, cx);
                 for summary in snapshot.terminals {
                     self.adopt_launched_view(&summary.terminal);
                     self.terminal_summary_heard(summary);
@@ -244,6 +245,10 @@ impl EnvironmentShell {
             EventKind::SpendingCrossed(crossed) => self.spending_crossed(&crossed),
             EventKind::SettingsChanged { settings } => self.settings_heard(*settings, cx),
             EventKind::SettingsNotSaved { error } => self.settings_not_saved(&error),
+            EventKind::GitRead(read) => self.git_read_heard(read, cx),
+            EventKind::GitFinished(finished) => self.git_finished(finished, cx),
+            EventKind::SessionChangesRead(read) => self.session_changes_read(read),
+            EventKind::WorktreeSwept(swept) => self.worktree_swept(&swept),
             host @ (EventKind::HostChanged { .. }
             | EventKind::SignInWanted { .. }
             | EventKind::MachineChannelWanted { .. }

@@ -151,6 +151,10 @@ impl Environments {
         self.state.environments.clone()
     }
 
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &EnvironmentData> {
+        self.state.environments.iter()
+    }
+
     pub(crate) fn knows(&self, name: &EnvironmentName) -> bool {
         self.state
             .environments

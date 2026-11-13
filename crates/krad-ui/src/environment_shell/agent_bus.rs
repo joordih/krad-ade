@@ -163,7 +163,7 @@ impl EnvironmentShell {
         match from {
             Caller::Terminal(from) => self.answer_terminal(&from, request, reply, cx),
             Caller::Lead(lead) => self.answer_lead(&lead, request, reply, cx),
-            Caller::Git(_) => self.answer_git(request, reply),
+            Caller::Git(_) => reply.send(answered_by_runtime()).unwrap_or_default(),
             Caller::Client => reply.send(feed::client_refusal()).unwrap_or_default(),
         }
         cx.notify();
@@ -224,7 +224,9 @@ impl EnvironmentShell {
             | Request::ListAll
             | Request::Check { .. }
             | Request::Status(_)
-            | Request::Ask { .. } => Some(answered_by_runtime()),
+            | Request::Ask { .. }
+            | Request::CreateWorktree { .. }
+            | Request::Changes { .. } => Some(answered_by_runtime()),
             Request::Close(_) => Some(Response::error(ErrorCode::Forbidden, ONLY_LEADS_CLOSE)),
             Request::Send { to, body } => {
                 self.post(from, to, body, reply);
@@ -288,9 +290,7 @@ impl EnvironmentShell {
             | Request::Sessions
             | Request::CreateSession { .. }
             | Request::CloseSession { .. }
-            | Request::CreateWorktree { .. }
             | Request::OpenFile { .. }
-            | Request::Changes { .. }
             | Request::RunVariants(_)
             | Request::Variants { .. }
             | Request::PickVariant { .. }) => {

@@ -1,34 +1,35 @@
 use futures::channel::oneshot;
 use krad_agents::{
-    Caller, CloseOrder, CloseTarget, Closed, Incoming, LeadHandle, Request, Response, WorktreeFate,
-    WorktreeLeft, WorktreeOutcome,
+    Caller, CloseOrder, CloseTarget, Closed, ErrorCode, Incoming, LeadHandle, Request, Response,
+    WorktreeFate, WorktreeLeft, WorktreeOutcome,
 };
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
     chat_worker_brief, worker_mode, AgentPreset, AgentState, ClosePlan, CloseRefusal, CloseSubject,
-    EnvironmentName, NodeEdit, NodePlace, Prompt, SessionEdit, SessionId, TerminalId, WhenWorking,
-    WorkerSpawn,
+    EnvironmentName, GroupId, NodeEdit, NodePlace, Prompt, SessionEdit, SessionId, TerminalId,
+    WhenWorking, WorkerSpawn,
 };
 use krad_protocol::AgentRef;
 use std::time::SystemTime;
 
 use super::Runtime;
 use crate::chats::{ChatBrief, ChatRole, ChatStart};
-use crate::workers::{closed_target, plan_spawn, refusal_error, worker_node};
+use crate::environments::UNKNOWN_ENVIRONMENT;
+use crate::workers::{closed_target, plan_spawn, refusal_error, worker_node, PendingWorker};
 
 enum LeadClose {
-    Delegated,
+    Removing(Vec<ClosePlan>),
     Refused(CloseRefusal),
     Closed(Vec<Closed>),
 }
 
-fn reply_with(reply: oneshot::Sender<Response>, response: Response) {
+pub(super) fn reply_with(reply: oneshot::Sender<Response>, response: Response) {
     if reply.send(response).is_err() {
         tracing::trace!("a lead left before its answer");
     }
 }
 
-fn agent(environment: &EnvironmentName, terminal: TerminalId) -> AgentRef {
+pub(super) fn agent(environment: &EnvironmentName, terminal: TerminalId) -> AgentRef {
     AgentRef {
         environment: environment.clone(),
         terminal,
@@ -53,7 +54,11 @@ impl Runtime {
             Request::Close(order) => {
                 let order = *order;
                 match self.close_as_lead(&lead, order) {
-                    LeadClose::Delegated => Some(incoming),
+                    LeadClose::Removing(plans) => {
+                        let environment = EnvironmentName::new(lead.environment.clone());
+                        self.close_removing(&environment, &plans, incoming.reply);
+                        None
+                    }
                     LeadClose::Refused(refusal) => {
                         reply_with(incoming.reply, Response::Error(refusal_error(refusal)));
                         None
@@ -72,7 +77,7 @@ impl Runtime {
                     worktree: WorktreeFate::Keep,
                 };
                 match self.close_as_lead(&lead, order) {
-                    LeadClose::Delegated => Some(incoming),
+                    LeadClose::Removing(_) => Some(incoming),
                     LeadClose::Refused(refusal) => {
                         reply_with(incoming.reply, Response::Error(refusal_error(refusal)));
                         None
@@ -98,30 +103,63 @@ impl Runtime {
         let Some(data) = self.environments.data(&environment) else {
             return Some(incoming);
         };
-        let Some(plan) = plan_spawn(data, session, preset, worktree) else {
+        let Some(plan) = plan_spawn(data, session, preset) else {
             return Some(incoming);
         };
+        let pending = PendingWorker {
+            lead: session,
+            lead_terminal: plan.lead_terminal,
+            preset,
+            task: task.to_owned(),
+            reply: incoming.reply,
+        };
+        match worktree {
+            Some(name) => self.spawn_in_worktree(&environment, plan.group, name, pending),
+            None => self.open_worker(&environment, pending, plan.group),
+        }
+        None
+    }
+
+    pub(super) fn open_worker(
+        &mut self,
+        environment: &EnvironmentName,
+        pending: PendingWorker,
+        group: GroupId,
+    ) {
+        let Some(data) = self.environments.data(environment) else {
+            reply_with(
+                pending.reply,
+                Response::error(ErrorCode::NotFound, UNKNOWN_ENVIRONMENT),
+            );
+            return;
+        };
+        let PendingWorker {
+            lead,
+            lead_terminal,
+            preset,
+            task,
+            reply,
+        } = pending;
         let id = TerminalId(data.next_id);
         let opened_session = data.next_session_id();
         let label = self.settings.current.acp.harness_name(preset);
-        let node = worker_node(id, &label, preset, plan.group);
-        let lead_mode = plan
-            .lead_terminal
-            .and_then(|terminal| self.chats.permission_mode(&agent(&environment, terminal)));
+        let node = worker_node(id, &label, preset, group);
+        let lead_mode = lead_terminal
+            .and_then(|terminal| self.chats.permission_mode(&agent(environment, terminal)));
         let opened = NodeEdit::Open {
             node: Box::new(node),
             place: NodePlace::Worker {
                 session: opened_session,
                 spawn: WorkerSpawn {
-                    lead: Some(session),
-                    task: task.to_owned(),
+                    lead: Some(lead),
+                    task: task.clone(),
                 },
                 cloud: None,
             },
         };
         self.environments
             .edit(environment.clone(), &opened.into(), None, &mut self.outbox);
-        let worker = agent(&environment, id);
+        let worker = agent(environment, id);
         let start = ChatStart {
             harness: preset,
             brief: ChatBrief {
@@ -135,7 +173,7 @@ impl Runtime {
             prepared: None,
             session: LiveSession::Start(new_session_id()),
             messages: Vec::new(),
-            queued: vec![Prompt::from(chat_worker_brief(task))],
+            queued: vec![Prompt::from(chat_worker_brief(&task))],
             notices: Vec::new(),
         };
         tracing::info!(
@@ -143,8 +181,7 @@ impl Runtime {
             "a lead started a worker in the runtime"
         );
         self.open_chat(&worker, start);
-        self.workers.launching(worker, incoming.reply);
-        None
+        self.workers.launching(worker, reply);
     }
 
     pub(super) fn follow_workers(&mut self) {
@@ -154,7 +191,7 @@ impl Runtime {
         }
     }
 
-    fn close_worker(&mut self, worker: &AgentRef, forget: bool) {
+    pub(super) fn close_worker(&mut self, worker: &AgentRef, forget: bool) {
         self.workers.closed(worker);
         self.chats.close(worker, &mut self.outbox);
         self.terminals.close(worker);
@@ -227,7 +264,7 @@ impl Runtime {
         let removes = order.worktree == WorktreeFate::Remove
             && plans.iter().any(|plan| plan.worktree.is_some());
         if removes {
-            return LeadClose::Delegated;
+            return LeadClose::Removing(plans);
         }
         LeadClose::Closed(
             plans

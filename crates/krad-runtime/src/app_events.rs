@@ -110,6 +110,16 @@ impl AppEvents {
         Some(Reply::Accepted)
     }
 
+    pub(crate) fn publish_own(
+        &self,
+        environment: &EnvironmentName,
+        group: Option<GroupId>,
+        event: &AppEvent,
+        outbox: &mut Vec<EventKind>,
+    ) {
+        self.publish(environment, group, event, &BTreeSet::new(), outbox);
+    }
+
     fn publish(
         &self,
         environment: &EnvironmentName,

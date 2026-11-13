@@ -1,138 +1,27 @@
 mod parse;
 
-use krad_domain::{GitObjectId, HunkFingerprint};
-use std::path::PathBuf;
-
-use crate::{ChangeKind, LineCount};
+pub use krad_domain::{FilePatch, Hunk, HunkLine, HunkLineKind, PatchBody, PatchStatus};
 
 pub use parse::parse_patch;
 
 const NEWLINE: &str = "\n";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PatchStatus {
-    Added,
-    Deleted,
-    Modified,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum HunkLineKind {
-    Context,
-    Added,
-    Removed,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HunkLine {
-    pub kind: HunkLineKind,
-    pub text: String,
-    pub newline: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Hunk {
-    pub old_start: usize,
-    pub new_start: usize,
-    pub lines: Vec<HunkLine>,
-    pub fingerprint: HunkFingerprint,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PatchBody {
-    Text(Vec<Hunk>),
-    Binary,
-    Submodule,
-    Renamed { from: PathBuf },
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FilePatch {
-    pub path: PathBuf,
-    pub status: PatchStatus,
-    pub old_id: Option<GitObjectId>,
-    pub new_id: Option<GitObjectId>,
-    pub body: PatchBody,
-    pub fingerprint: HunkFingerprint,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StaleHunk;
 
-impl From<PatchStatus> for ChangeKind {
-    fn from(status: PatchStatus) -> Self {
-        match status {
-            PatchStatus::Added => Self::Added,
-            PatchStatus::Deleted => Self::Deleted,
-            PatchStatus::Modified => Self::Modified,
-        }
-    }
+fn side(hunk: &Hunk, kept: HunkLineKind) -> Vec<(&str, bool)> {
+    hunk.lines
+        .iter()
+        .filter(|line| line.kind == HunkLineKind::Context || line.kind == kept)
+        .map(|line| (line.text.as_str(), line.newline))
+        .collect()
 }
 
-impl FilePatch {
-    #[must_use]
-    pub fn hunks(&self) -> &[Hunk] {
-        match &self.body {
-            PatchBody::Text(hunks) => hunks,
-            PatchBody::Binary | PatchBody::Submodule | PatchBody::Renamed { .. } => &[],
-        }
-    }
-
-    #[must_use]
-    pub fn fingerprints(&self) -> Vec<HunkFingerprint> {
-        match &self.body {
-            PatchBody::Text(hunks) if !hunks.is_empty() => {
-                hunks.iter().map(|hunk| hunk.fingerprint).collect()
-            }
-            PatchBody::Text(_)
-            | PatchBody::Binary
-            | PatchBody::Submodule
-            | PatchBody::Renamed { .. } => {
-                vec![self.fingerprint]
-            }
-        }
-    }
-
-    #[must_use]
-    pub fn line_count(&self) -> LineCount {
-        self.hunks().iter().flat_map(|hunk| &hunk.lines).fold(
-            LineCount::default(),
-            |count, line| match line.kind {
-                HunkLineKind::Context => count,
-                HunkLineKind::Added => {
-                    count
-                        + LineCount {
-                            added: 1,
-                            removed: 0,
-                        }
-                }
-                HunkLineKind::Removed => {
-                    count
-                        + LineCount {
-                            added: 0,
-                            removed: 1,
-                        }
-                }
-            },
-        )
-    }
-}
-
-impl Hunk {
-    fn side(&self, kept: HunkLineKind) -> Vec<(&str, bool)> {
-        self.lines
-            .iter()
-            .filter(|line| line.kind == HunkLineKind::Context || line.kind == kept)
-            .map(|line| (line.text.as_str(), line.newline))
-            .collect()
-    }
-
-    fn anchor(&self, new_len: usize) -> usize {
-        if new_len == 0 {
-            self.new_start
-        } else {
-            self.new_start.saturating_sub(1)
-        }
+const fn anchor(hunk: &Hunk, new_len: usize) -> usize {
+    if new_len == 0 {
+        hunk.new_start
+    } else {
+        hunk.new_start.saturating_sub(1)
     }
 }
 
@@ -170,9 +59,9 @@ fn nearest_match(
 /// `current`, so reverting it would touch something else.
 pub fn revert_hunk(current: &str, hunk: &Hunk) -> Result<String, StaleHunk> {
     let lines = split_lines(current);
-    let new_side = hunk.side(HunkLineKind::Added);
-    let old_side = hunk.side(HunkLineKind::Removed);
-    let at = nearest_match(&lines, &new_side, hunk.anchor(new_side.len())).ok_or(StaleHunk)?;
+    let new_side = side(hunk, HunkLineKind::Added);
+    let old_side = side(hunk, HunkLineKind::Removed);
+    let at = nearest_match(&lines, &new_side, anchor(hunk, new_side.len())).ok_or(StaleHunk)?;
     let mut text = String::with_capacity(current.len());
     let before = lines.get(..at).unwrap_or_default();
     let after = lines.get(at + new_side.len()..).unwrap_or_default();
@@ -198,6 +87,7 @@ pub fn revert_hunks(current: &str, hunks: &[Hunk]) -> Result<String, StaleHunk> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::LineCount;
 
     const DIFF: &str = concat!(
         "diff --git a/src/lib.rs b/src/lib.rs\n",

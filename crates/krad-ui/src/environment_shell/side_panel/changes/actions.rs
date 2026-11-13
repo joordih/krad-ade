@@ -33,7 +33,7 @@ const COPY_PATH_LABEL: &str = "Copy path";
 #[derive(Clone, Debug, PartialEq)]
 pub(in crate::environment_shell) enum ChangesAction {
     Open(PathBuf),
-    Discard { repo: PathBuf, change: FileChange },
+    Discard { change: FileChange },
     DiscardFolder(PathBuf),
     Copy(String),
 }
@@ -48,7 +48,6 @@ fn discard_label(change: &FileChange) -> &'static str {
 
 pub(super) fn change_menu(repo: &std::path::Path, change: &FileChange) -> Vec<MenuEntry> {
     let discard = ChangesAction::Discard {
-        repo: repo.to_path_buf(),
         change: change.clone(),
     };
     vec![
@@ -92,7 +91,6 @@ impl EnvironmentShell {
         let git = self.group_git()?;
         let files = folder_changes(&git.status.changes, folder).len();
         (files > 0).then(|| Discard::Folder {
-            repo: git.repo_root.clone(),
             folder: folder.to_path_buf(),
             files,
         })
@@ -137,19 +135,15 @@ impl EnvironmentShell {
     ) {
         match action {
             ChangesAction::Open(path) => self.open_changes_tab(&path, FileOpening::Pinned, cx),
-            ChangesAction::Discard { repo, change } => {
-                self.ask_discard(Discard::File { repo, change }, window, cx);
+            ChangesAction::Discard { change } => {
+                self.ask_discard(Discard::File { change }, window, cx);
             }
             ChangesAction::DiscardFolder(folder) => self.ask_folder_discard(&folder, window, cx),
             ChangesAction::Copy(text) => cx.write_to_clipboard(ClipboardItem::new_string(text)),
         }
     }
 
-    pub(super) fn discard_button(
-        repo: PathBuf,
-        change: &FileChange,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    pub(super) fn discard_button(change: &FileChange, cx: &mut Context<Self>) -> impl IntoElement {
         let pal = palette(cx);
         let tooltip = discard_label(change);
         let discarded = change.clone();
@@ -172,7 +166,6 @@ impl EnvironmentShell {
                 cx.stop_propagation();
                 this.ask_discard(
                     Discard::File {
-                        repo: repo.clone(),
                         change: discarded.clone(),
                     },
                     window,

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::git::run_git;
 use crate::RepoError;
-pub use krad_domain::ChangeKind;
+pub use krad_domain::{ChangeKind, FileChange, GitStatus};
 use krad_host::HostLink;
 
 const STATUS_ARGS: [&str; 5] = [
@@ -40,25 +40,6 @@ const DELETED_CODE: char = 'D';
 const RENAMED_CODE: char = 'R';
 const COPIED_CODE: char = 'C';
 const UNMODIFIED_CODE: char = '.';
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FileChange {
-    pub path: PathBuf,
-    pub kind: ChangeKind,
-    pub origin: Option<PathBuf>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct GitStatus {
-    pub head: Option<String>,
-    pub branch: Option<String>,
-    pub upstream: Option<String>,
-    pub ahead: u32,
-    pub behind: u32,
-    pub changes: Vec<FileChange>,
-    pub staged: Vec<FileChange>,
-    pub unstaged: Vec<FileChange>,
-}
 
 /// # Errors
 pub fn status(host: &HostLink, repo: &Path) -> Result<GitStatus, RepoError> {

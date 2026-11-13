@@ -58,7 +58,7 @@ impl EnvironmentShell {
             .unwrap_or(&self.native_agents)
     }
 
-    fn detect_wsl_agents(&mut self, roots: &[PathBuf]) {
+    pub(in crate::environment_shell) fn detect_wsl_agents(&mut self, roots: &[PathBuf]) {
         let distros: Vec<String> = roots
             .iter()
             .filter_map(|root| parse_wsl_path(root))

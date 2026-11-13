@@ -274,7 +274,7 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_repo::GitStatus;
+    use krad_domain::{GitStatus, Refs};
     use std::path::PathBuf;
 
     #[test]
@@ -287,7 +287,7 @@ mod tests {
             },
             lines: std::collections::HashMap::new(),
             worktrees: Vec::new(),
-            refs: krad_repo::Refs::default(),
+            refs: Refs::default(),
         };
         assert_eq!(branch_caption(&git), "main");
         git.status.ahead = 2;

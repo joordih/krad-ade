@@ -97,13 +97,14 @@ impl EnvironmentShell {
             request @ (Request::MemorySearch { .. } | Request::MemoryRead { .. }) => {
                 self.answer_memory(environment, None, &request)
             }
+            Request::CreateWorktree { .. } | Request::Changes { .. } => {
+                super::answered_by_runtime()
+            }
             request @ (Request::Hello
             | Request::Sessions
             | Request::CreateSession { .. }
             | Request::CloseSession { .. }
-            | Request::CreateWorktree { .. }
-            | Request::OpenFile { .. }
-            | Request::Changes { .. }) => {
+            | Request::OpenFile { .. }) => {
                 self.answer_workspace(environment, Some(group), request, reply, cx);
                 return;
             }

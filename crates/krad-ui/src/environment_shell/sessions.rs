@@ -5,8 +5,8 @@ mod typed_line;
 pub(super) use launch::Launch;
 
 use krad_domain::{
-    agent_event, AgentState, AppEvent, EnvironmentName, LaunchIntent, NodeField, Relaunch,
-    ResumeId, TerminalId, ToastKind,
+    agent_event, AgentState, EnvironmentName, LaunchIntent, NodeField, Relaunch, ResumeId,
+    TerminalId, ToastKind,
 };
 use krad_protocol::{Command, TerminalCommand};
 use krad_runtime::{AgentRole, TerminalLaunch, TerminalPlace};
@@ -333,9 +333,6 @@ impl EnvironmentShell {
         self.observe_attention(env, id, previous, state);
         self.publish_agent(env, id, None);
         if let Some(event) = event {
-            if matches!(event, AppEvent::AgentFinished { .. }) {
-                self.note_agent_finished_in(env, group);
-            }
             self.note_variant_progress(env, &event);
             self.publish_event(env, group, event);
         }

@@ -12,6 +12,7 @@ use crate::bus::{
 use crate::chats::{ChatAsk, ChatAskId, ChatState, ChatSummary};
 use crate::environments::SpendingCrossed;
 use crate::gateway::GatewayState;
+use crate::git::{GitFinished, GitRead, SessionChangesRead, WorktreeSwept};
 use crate::harness_health::{HarnessChecked, HealthSnapshot};
 use crate::hosts::{HostPrompt, HostState, HostsSnapshot, LocalAgents, PromptId, RemoteBusState};
 use crate::ids::{RequestId, Seq};
@@ -165,6 +166,10 @@ pub enum EventKind {
         chat: AgentRef,
         report: UsageReport,
     },
+    GitRead(GitRead),
+    GitFinished(GitFinished),
+    SessionChangesRead(SessionChangesRead),
+    WorktreeSwept(WorktreeSwept),
     #[serde(other)]
     Unknown,
 }
@@ -203,6 +208,8 @@ pub struct Snapshot {
     pub gateway: GatewayState,
     #[serde(default)]
     pub settings: Box<Settings>,
+    #[serde(default)]
+    pub git: Vec<GitRead>,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -262,6 +269,7 @@ mod tests {
                 opencode: OpencodeSnapshot::default(),
                 gateway: GatewayState::default(),
                 settings: Box::default(),
+                git: Vec::new(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

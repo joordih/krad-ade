@@ -320,6 +320,10 @@ impl Hosts {
         }
     }
 
+    pub(crate) fn prompts(&self) -> Option<krad_host::mux::PromptSender> {
+        self.links.prompts()
+    }
+
     pub(crate) fn snapshot(&self) -> HostsSnapshot {
         HostsSnapshot {
             hosts: self

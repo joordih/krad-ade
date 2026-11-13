@@ -10,7 +10,7 @@ const DIFF_ARGS: [&str; 4] = ["diff", "--no-color", "--no-ext-diff", "--find-ren
 const PATHSPEC_SEPARATOR: &str = "--";
 const HUNK_PREFIX: &str = "@@";
 
-pub const ORIGIN_REMOTE: &str = "origin";
+pub use krad_domain::ORIGIN_REMOTE;
 
 /// # Errors
 ///

@@ -5,6 +5,7 @@ use crate::bus::Bus;
 use crate::chats::Chats;
 use crate::environments::Environments;
 use crate::gateway::Gateway;
+use crate::git::Git;
 use crate::harness_health::Health;
 use crate::hosts::Hosts;
 use crate::models::Models;
@@ -26,6 +27,7 @@ pub(super) struct Parts<'a> {
     pub(super) opencode: &'a OpencodeServers,
     pub(super) gateway: &'a Gateway,
     pub(super) settings: &'a AppSettings,
+    pub(super) git: &'a Git,
 }
 
 impl Parts<'_> {
@@ -45,6 +47,7 @@ impl Parts<'_> {
             opencode: self.opencode.snapshot(),
             gateway: self.gateway.snapshot(),
             settings: self.settings.snapshot(),
+            git: self.git.snapshot(),
         }
     }
 }

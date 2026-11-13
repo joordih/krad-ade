@@ -1,5 +1,3 @@
-mod git;
-
 use gpui_kit::{AppContext as _, Context};
 use krad_agents::{
     ApiError, ApiInfo, ErrorCode, FilePosition, Request, Response, SessionInfo, TerminalHandle,
@@ -18,7 +16,6 @@ const NO_ENVIRONMENT: &str = "The caller's environment is not open";
 const NO_SUCH_GROUP: &str = "No group with that name in your environment";
 const NO_CALLER_GROUP: &str = "The caller belongs to no group; name one with --group";
 const NO_SUCH_SESSION: &str = "No session with that id in your environment";
-const NO_SESSION_GROUP: &str = "That session belongs to no group";
 const NOT_ON_SCREEN: &str = "That environment is not the one on screen; open it in the app first";
 const OUTSIDE_GROUP: &str = "The file is not inside the caller's group folder";
 const UNRESOLVED_GROUP: &str = "The caller's group folder could not be read";
@@ -157,14 +154,6 @@ impl EnvironmentShell {
                     }
                     Err(error) => Err(error),
                 }
-            }
-            Request::CreateWorktree { name } => {
-                self.create_worktree_for(env, caller, &name, reply, cx);
-                return;
-            }
-            Request::Changes { session } => {
-                self.send_changes(&env, caller, session.map(SessionId), reply, cx);
-                return;
             }
             _ => Err(refusal(ErrorCode::BadRequest, NOT_A_WORKSPACE_REQUEST)),
         };

@@ -2,9 +2,9 @@ mod sheet;
 
 use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::{AppContext as _, Context, Entity, Window};
-use krad_domain::{AgentPreset, GroupId, ToastKind, WorktreeOrigin};
-use krad_repo::sanitize_worktree_name;
+use krad_domain::{sanitize_worktree_name, AgentPreset, GroupId};
 
+use super::git_actions::GitFollowUp;
 use super::sessions::Launch;
 use super::EnvironmentShell;
 use crate::actions::NewAgent;
@@ -83,48 +83,23 @@ impl EnvironmentShell {
             prompt: prompt.clone(),
             model: None,
         };
-        let repo_root = composer
-            .group
-            .and_then(|group| self.envs.get(&env).and_then(|live| live.data.group(group)))
-            .and_then(|group| self.git_at(&env, &group.root))
-            .map(|git| git.repo_root.clone());
+        let repo_group = composer.group.filter(|group| {
+            self.envs
+                .get(&env)
+                .and_then(|live| live.data.group(*group))
+                .and_then(|group| self.git_at(&env, &group.root))
+                .is_some()
+        });
         let typed_name = composer.worktree_name.read(cx).value().to_string();
         let name = sanitize_worktree_name(&typed_name).or_else(|| name_from_prompt(&prompt));
-        match (composer.new_worktree, repo_root, name) {
-            (true, Some(repo_root), Some(name)) => {
-                let label = self.settings.acp.harness_name(composer.preset);
-                let link = self.env_link(&env);
-                let recipe = self.worktree_recipe(&env, &repo_root);
-                let create = cx.background_spawn({
-                    let repo_root = repo_root.clone();
-                    async move { recipe.add(&link, &repo_root, &name) }
-                });
-                cx.spawn(async move |this, cx| {
-                    let created = create.await;
-                    this.update(cx, |shell, cx| match created {
-                        Ok(worktree) => {
-                            let origin = worktree
-                                .branch
-                                .clone()
-                                .map(|branch| WorktreeOrigin { repo_root, branch });
-                            let group = shell.add_group_to(&env, worktree.path, origin, cx);
-                            shell.spawn_terminal_in(&env, group, &label, launch, None, cx);
-                        }
-                        Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
-                    })
-                    .unwrap_or_default();
-                })
-                .detach();
+        let label = self.settings.acp.harness_name(composer.preset).into_owned();
+        match (composer.new_worktree, repo_group, name) {
+            (true, Some(group), Some(name)) => {
+                let follow = GitFollowUp::SpawnIn { label, launch };
+                self.create_worktree_then(&env, group, &name, follow, cx);
             }
             _ => {
-                self.spawn_terminal_in(
-                    &env,
-                    composer.group,
-                    &self.settings.acp.harness_name(composer.preset),
-                    launch,
-                    None,
-                    cx,
-                );
+                self.spawn_terminal_in(&env, composer.group, &label, launch, None, cx);
             }
         }
         cx.notify();

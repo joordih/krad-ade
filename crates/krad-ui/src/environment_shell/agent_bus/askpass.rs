@@ -1,16 +1,14 @@
-use krad_agents::{terminal_env, Caller, ErrorCode, PromptAnswer, Request, Response, ASKPASS_WAIT};
+use krad_agents::{terminal_env, Caller, ErrorCode, Response};
 use krad_domain::{parse_wsl_path, EnvironmentName};
-use krad_host::mux::{askpass_alias, PromptAsker, SignInPrompt};
+use krad_host::mux::askpass_alias;
 use krad_repo::Askpass;
-use krad_runtime::{remote_askpass, BusReply};
+use krad_runtime::remote_askpass;
 use krad_store::config_dir;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
 
 use super::super::EnvironmentShell;
 
 const GIT_ONLY: &str = "Only git asks for a sign-in through the bus";
-const ANSWER_THREAD: &str = "krad-ade-git-askpass";
 
 pub(super) fn git_only() -> Response {
     Response::error(ErrorCode::Forbidden, GIT_ONLY)
@@ -43,36 +41,6 @@ impl AskpassPlan {
 }
 
 impl EnvironmentShell {
-    pub(super) fn answer_git(&self, request: Request, reply: BusReply) {
-        let Request::Askpass { prompt } = request else {
-            reply.send(git_only()).unwrap_or_default();
-            return;
-        };
-        let (answer, answered) = mpsc::channel();
-        let sent = self.runtime.handle.prompt_sender().is_some_and(|prompts| {
-            prompts
-                .send(SignInPrompt::new(PromptAsker::Git, prompt, answer))
-                .is_ok()
-        });
-        if !sent {
-            reply.send(Response::Answered(None)).unwrap_or_default();
-            return;
-        }
-        let waiting = std::thread::Builder::new()
-            .name(ANSWER_THREAD.to_owned())
-            .spawn(move || {
-                let answer = answered.recv_timeout(ASKPASS_WAIT).ok().flatten();
-                reply
-                    .send(Response::Answered(
-                        answer.map(|secret| PromptAnswer::new(secret.expose().to_owned())),
-                    ))
-                    .unwrap_or_default();
-            });
-        if let Err(error) = waiting {
-            tracing::warn!(%error, "could not wait for a git sign-in answer");
-        }
-    }
-
     pub(in crate::environment_shell) fn git_askpass(
         &self,
         env: &EnvironmentName,

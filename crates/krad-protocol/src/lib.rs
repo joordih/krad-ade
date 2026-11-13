@@ -7,6 +7,7 @@ mod environments;
 mod event;
 mod frame;
 mod gateway;
+mod git;
 mod harness_health;
 mod hosts;
 mod ids;
@@ -33,6 +34,10 @@ pub use environments::{EnvironmentCommand, SpendingCrossed};
 pub use event::{Event, EventKind, Feed, Scope, Snapshot};
 pub use frame::{read_frame, write_frame, Frame, FrameError, Message, TerminalBytes};
 pub use gateway::{GatewayCommand, GatewayState};
+pub use git::{
+    ChangesAct, ChangesCommand, ChangesRead, GitAct, GitCommand, GitFinished, GitOutcome, GitRead,
+    SessionChangesRead, WorktreeSwept,
+};
 pub use harness_health::{HarnessCheck, HarnessChecked, HealthPlace, HealthSnapshot};
 pub use hosts::{
     AgentPlace, EnvironmentHost, HostCommand, HostPrompt, HostState, HostsSnapshot, LocalAgents,
