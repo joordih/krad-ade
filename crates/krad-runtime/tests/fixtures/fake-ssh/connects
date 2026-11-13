@@ -1,0 +1,13 @@
+#!/bin/sh
+case " $* " in
+  *" -O "*) exit 0 ;;
+  *" -s "*)
+    for server in /usr/libexec/sftp-server /usr/lib/openssh/sftp-server /usr/libexec/openssh/sftp-server /usr/lib/ssh/sftp-server; do
+      [ -x "$server" ] && exec "$server"
+    done
+    exit 127
+    ;;
+esac
+while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
+shift 2
+SHELL=/bin/sh PATH="$(dirname "$0")/host-bin:$PATH" exec /bin/sh -c "$*"

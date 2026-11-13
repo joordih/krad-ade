@@ -10,9 +10,10 @@ use std::thread;
 
 use crate::chats::{AcpSecretsRead, ChatCheckpoint, ChatEarlier, ChatOpening, FilesIndexed};
 use crate::gateway::{GatewayForgotten, GatewayRead};
-use crate::hosts::{Attempt, RemoteBus};
+use crate::hosts::{AgentsFound, Attempt, RemoteBus};
 use crate::input::Input;
 use crate::opencode::{OpencodeListed, OpencodeStarted};
+use crate::runtime::AttachedLine;
 use crate::usage::UsageKey;
 
 const JOB_THREAD: &str = "krad-runtime-job";
@@ -52,6 +53,8 @@ pub(crate) enum JobDone {
     OpencodeStarted(OpencodeStarted),
     OpencodeListed(OpencodeListed),
     AcpSecretsRead(AcpSecretsRead),
+    AttachedLine(AttachedLine),
+    HostAgentsFound(AgentsFound),
 }
 
 #[derive(Clone, Debug)]

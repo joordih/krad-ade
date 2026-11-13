@@ -1,10 +1,11 @@
 use gpui_kit::{AppContext as _, Context, PathPromptOptions, SharedString, Window};
 use krad_domain::{
-    parse_wsl_path, AcpAgent, AgentPreset, EnvironmentName, GroupId, TerminalGroup, TerminalId,
-    ToastKind, WorktreeOrigin,
+    agent_programs, parse_wsl_path, presets_found, AcpAgent, AgentPreset, EnvironmentName, GroupId,
+    Host, TerminalGroup, TerminalId, ToastKind, WorktreeOrigin,
 };
 use krad_host::HostLink;
-use krad_repo::{host_programs, wsl_programs};
+use krad_protocol::{Command, HostCommand};
+use krad_repo::wsl_programs;
 use krad_session::find_program;
 use std::path::{Path, PathBuf};
 
@@ -19,36 +20,6 @@ const SHELL_ONLY: &[AgentPreset] = &[AgentPreset::Shell];
 const FOLDER_PROMPT: &str = "Choose the group's root folder";
 const NO_GROUP_TEXT: &str = "Select a group first";
 const HOST_NOT_READY_TEXT: &str = "Connect to the environment's host before adding a group";
-
-fn presets_found(acp_agents: &[AcpAgent], is_installed: impl Fn(&str) -> bool) -> Vec<AgentPreset> {
-    let native = AgentPreset::NATIVE
-        .into_iter()
-        .filter(|preset| preset.program().is_none_or(&is_installed));
-    let acp = acp_agents
-        .iter()
-        .filter(|agent| is_installed(&agent.program))
-        .map(|agent| AgentPreset::Acp(agent.id));
-    native.chain(acp).collect()
-}
-
-fn agent_programs(acp_agents: &[AcpAgent]) -> Vec<&str> {
-    let mut programs: Vec<&str> = AgentPreset::NATIVE
-        .into_iter()
-        .filter_map(AgentPreset::program)
-        .collect();
-    programs.extend(acp_agents.iter().map(|agent| agent.program.as_str()));
-    programs.sort_unstable();
-    programs.dedup();
-    programs
-}
-
-fn presets_on_host(link: &HostLink, acp_agents: &[AcpAgent]) -> Vec<AgentPreset> {
-    let found = host_programs(link, &agent_programs(acp_agents)).unwrap_or_else(|error| {
-        tracing::warn!(%error, "could not look for agent CLIs on the host");
-        Vec::new()
-    });
-    presets_found(acp_agents, |program| found.contains(&program))
-}
 
 fn presets_in_wsl(distro: &str, acp_agents: &[AcpAgent]) -> Vec<AgentPreset> {
     let found = wsl_programs(distro, &agent_programs(acp_agents)).unwrap_or_default();
@@ -110,32 +81,33 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn detect_host_agents(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
-        let link = self.env_link(env);
-        if link.is_local() {
+    pub(super) fn detect_host_agents(&mut self, env: &EnvironmentName) {
+        if self.env_link(env).is_local() {
             return;
         }
-        let host = link.host();
-        let env = env.clone();
-        let acp_agents = self.settings.acp.all_agents();
-        let lookup = cx.background_spawn(async move { presets_on_host(&link, &acp_agents) });
-        cx.spawn(async move |this, cx| {
-            let installed = lookup.await;
-            this.update(cx, |shell, cx| {
-                shell.host_agents.insert(host, installed);
-                shell.list_host_models(&env);
-                shell.place_usage();
-                shell.load_missing_histories(&env, cx);
-                let harnesses: Vec<AgentPreset> =
-                    AgentPreset::listed(&shell.settings.acp.all_agents()).collect();
-                for harness in harnesses {
-                    shell.flush_chats_of(harness, cx);
-                }
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+        self.runtime
+            .handle
+            .post(Command::Host(HostCommand::DetectAgents {
+                environment: env.clone(),
+            }));
+    }
+
+    pub(super) fn host_agents_found(
+        &mut self,
+        env: &EnvironmentName,
+        (host, installed): (Host, Vec<AgentPreset>),
+        cx: &mut Context<Self>,
+    ) {
+        self.host_agents.insert(host, installed);
+        self.list_host_models(env);
+        self.place_usage();
+        self.load_missing_histories(env, cx);
+        let harnesses: Vec<AgentPreset> =
+            AgentPreset::listed(&self.settings.acp.all_agents()).collect();
+        for harness in harnesses {
+            self.flush_chats_of(harness, cx);
+        }
+        cx.notify();
     }
 
     pub(super) fn redetect_after_acp_change(&mut self, cx: &mut Context<Self>) {
@@ -155,7 +127,7 @@ impl EnvironmentShell {
             .map(|(env, _)| env.clone())
             .collect();
         for env in remote {
-            self.detect_host_agents(&env, cx);
+            self.detect_host_agents(&env);
         }
         self.detected_acp = agents;
     }

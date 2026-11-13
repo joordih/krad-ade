@@ -65,6 +65,10 @@ impl Bus {
         }
     }
 
+    pub(crate) fn access(&self) -> &BusAccess {
+        &self.access
+    }
+
     #[tracing::instrument(skip_all)]
     pub(crate) fn answer(&mut self, incoming: Incoming, outbox: &mut Vec<EventKind>) {
         let Incoming {

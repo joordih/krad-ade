@@ -1,6 +1,6 @@
 use krad_domain::{
     AgentPreset, AttentionTarget, ChatMessage, EnvironmentChange, EnvironmentData, EnvironmentName,
-    EventRecord, GitObjectId, Host, RewindPoint, UsageReport,
+    EventRecord, GitObjectId, Host, RewindPoint, Settings, UsageReport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +15,7 @@ use crate::gateway::GatewayState;
 use crate::harness_health::{HarnessChecked, HealthSnapshot};
 use crate::hosts::{HostPrompt, HostState, HostsSnapshot, PromptId, RemoteBusState};
 use crate::ids::{RequestId, Seq};
+use crate::launches::TerminalLaunched;
 use crate::models::{ListedModels, ModelsOrigin, ModelsSnapshot};
 use crate::opencode::{OpencodeShown, OpencodeSnapshot};
 use crate::terminals::{TerminalClassified, TerminalSummary};
@@ -64,6 +65,12 @@ pub enum EventKind {
     GatewayKeyForgotten {
         error: Option<String>,
     },
+    SettingsChanged {
+        settings: Box<Settings>,
+    },
+    SettingsNotSaved {
+        error: String,
+    },
     EnvironmentOpened {
         environment: Box<EnvironmentData>,
     },
@@ -82,6 +89,7 @@ pub enum EventKind {
         terminal: AgentRef,
     },
     TerminalEnded(TerminalSummary),
+    TerminalLaunched(TerminalLaunched),
     TerminalClassified(TerminalClassified),
     HostChanged {
         environment: EnvironmentName,
@@ -100,6 +108,11 @@ pub enum EventKind {
     HostPrompted(HostPrompt),
     HostPromptSettled {
         prompt: PromptId,
+    },
+    HostAgentsFound {
+        environment: EnvironmentName,
+        host: Host,
+        agents: Vec<AgentPreset>,
     },
     ChatOpened {
         chat: AgentRef,
@@ -185,6 +198,8 @@ pub struct Snapshot {
     pub opencode: OpencodeSnapshot,
     #[serde(default)]
     pub gateway: GatewayState,
+    #[serde(default)]
+    pub settings: Box<Settings>,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -243,6 +258,7 @@ mod tests {
                 chats: Vec::new(),
                 opencode: OpencodeSnapshot::default(),
                 gateway: GatewayState::default(),
+                settings: Box::default(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

@@ -1,6 +1,6 @@
 use krad_chat::{new_opencode_session_id, OpencodeServer};
 use krad_domain::{
-    parse_wsl_path, resume_line, AgentPreset, EnvironmentName, ModelId, ProjectTask,
+    parse_wsl_path, resume_line, AgentPreset, EnvironmentName, LaunchIntent, ModelId, ProjectTask,
     RelaunchIntent, ResumeId, TerminalId, WslPath,
 };
 use krad_host::HostLink;
@@ -37,9 +37,47 @@ pub(in crate::environment_shell) enum Launch {
 
 impl From<RelaunchIntent> for Launch {
     fn from(intent: RelaunchIntent) -> Self {
+        LaunchIntent::from(intent).into()
+    }
+}
+
+impl From<LaunchIntent> for Launch {
+    fn from(intent: LaunchIntent) -> Self {
         match intent {
-            RelaunchIntent::Shell => Self::Preset(AgentPreset::Shell),
-            RelaunchIntent::Resume { preset, resume } => Self::Resume { preset, resume },
+            LaunchIntent::Preset { preset } => Self::Preset(preset),
+            LaunchIntent::Agent {
+                preset,
+                prompt,
+                model,
+            } => Self::Agent {
+                preset,
+                prompt,
+                model,
+            },
+            LaunchIntent::Resume { preset, resume } => Self::Resume { preset, resume },
+            LaunchIntent::Task { task } => Self::Task(task),
+        }
+    }
+}
+
+impl TryFrom<Launch> for LaunchIntent {
+    type Error = Launch;
+
+    fn try_from(launch: Launch) -> Result<Self, Launch> {
+        match launch {
+            Launch::Preset(preset) => Ok(Self::Preset { preset }),
+            Launch::Agent {
+                preset,
+                prompt,
+                model,
+            } => Ok(Self::Agent {
+                preset,
+                prompt,
+                model,
+            }),
+            Launch::Resume { preset, resume } => Ok(Self::Resume { preset, resume }),
+            Launch::Task(task) => Ok(Self::Task { task }),
+            command @ (Launch::Command { .. } | Launch::SignIn { .. }) => Err(command),
         }
     }
 }

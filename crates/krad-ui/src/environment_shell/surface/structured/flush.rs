@@ -1,11 +1,9 @@
 use gpui_kit::Context;
 use krad_chat::{BusVars, ChatBackend, ChatEvent, LiveConfig};
 use krad_domain::{AgentPreset, AgentState, AttentionKind, ChatEntry, EnvironmentName, TerminalId};
-use krad_runtime::ChatLaunch;
+use krad_runtime::{cli_name, ChatLaunch, BUS_HINT, LEAD_HINT};
 use std::time::Instant;
 
-use super::super::super::agent_bus::{cli_name, BUS_HINT};
-use super::super::super::agent_hooks::LEAD_HINT;
 use super::super::super::chat::{LiveProcess, StartError};
 use super::super::super::cloud::NodeSite;
 use super::super::super::kraddie_memory::joined_prompt;

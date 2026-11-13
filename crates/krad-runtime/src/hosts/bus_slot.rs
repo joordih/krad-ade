@@ -1,6 +1,6 @@
 use krad_domain::{EnvironmentName, Host};
 use krad_host::HostLink;
-use krad_protocol::{EventKind, RemoteBusState};
+use krad_protocol::{EventKind, RemoteBusInfo, RemoteBusState};
 use std::fmt;
 use std::sync::Arc;
 
@@ -33,7 +33,35 @@ impl BusSlot {
     }
 }
 
+pub(crate) enum Reach<'a> {
+    Ready(Option<&'a RemoteBusInfo>),
+    BusPreparing,
+    Unreached,
+}
+
 impl Hosts {
+    pub(crate) fn reach(&self, environment: &EnvironmentName, host: &Host) -> Reach<'_> {
+        if host.is_local() {
+            return Reach::Ready(None);
+        }
+        let Some(entry) = self
+            .envs
+            .get(environment)
+            .filter(|entry| entry.host == *host && entry.tracked.state.is_connected())
+        else {
+            return Reach::Unreached;
+        };
+        match &entry.bus {
+            BusSlot::Preparing => Reach::BusPreparing,
+            BusSlot::Ready(bus) => Reach::Ready(Some(bus.info())),
+            BusSlot::Absent | BusSlot::Unavailable(_) => Reach::Ready(None),
+        }
+    }
+
+    pub(crate) fn link(&self, host: &Host) -> HostLink {
+        self.links.link(host)
+    }
+
     pub(super) fn set_bus(
         &mut self,
         environment: &EnvironmentName,

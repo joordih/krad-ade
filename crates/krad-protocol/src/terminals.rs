@@ -1,11 +1,20 @@
-use krad_domain::{AgentState, GridSize, ProcessRun};
+use krad_domain::{AgentState, EnvironmentName, GridSize, LaunchIntent, ProcessRun};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 use crate::bus::AgentRef;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum TerminalCommand {
+    Open {
+        terminal: AgentRef,
+        intent: LaunchIntent,
+        cwd: Option<PathBuf>,
+    },
+    OpenMissing {
+        environment: EnvironmentName,
+    },
     Write {
         terminal: AgentRef,
         bytes: Vec<u8>,

@@ -80,6 +80,8 @@ pub(crate) enum Input {
     },
     JobDone(JobDone),
     Settle(oneshot::Sender<()>),
+    SettingsNotSaved(String),
+    OfferMemoryTools(bool),
     OpenTerminal {
         terminal: AgentRef,
         launch: TerminalLaunch,

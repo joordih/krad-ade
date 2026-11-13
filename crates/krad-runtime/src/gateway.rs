@@ -1,5 +1,5 @@
 use krad_chat::gateway_models;
-use krad_domain::{GatewayAccess, GatewayKey, GatewayModel, GatewayUrl};
+use krad_domain::{GatewayAccess, GatewayKey, GatewayModel, GatewaySettings, GatewayUrl};
 use krad_protocol::{EventKind, GatewayCommand, GatewayState, Reply};
 use krad_store::{delete_gateway_key, find_gateway_key, write_gateway_key};
 
@@ -23,6 +23,7 @@ pub(crate) struct GatewayForgotten {
 pub(crate) struct GatewayReached<'a> {
     pub(crate) access: &'a GatewayAccess,
     pub(crate) models: &'a [GatewayModel],
+    pub(crate) settings: &'a GatewaySettings,
 }
 
 #[derive(Debug, Default)]
@@ -128,14 +129,19 @@ impl Gateway {
         });
     }
 
-    pub(crate) fn reached(&self) -> Option<GatewayReached<'_>> {
+    pub(crate) fn reached<'a>(
+        &'a self,
+        settings: &'a GatewaySettings,
+    ) -> Option<GatewayReached<'a>> {
         let models = match &self.state {
             GatewayState::Ready { models, .. } => models.as_slice(),
             GatewayState::Unset | GatewayState::Checking | GatewayState::Failed { .. } => &[],
         };
-        self.access
-            .as_ref()
-            .map(|access| GatewayReached { access, models })
+        self.access.as_ref().map(|access| GatewayReached {
+            access,
+            models,
+            settings,
+        })
     }
 
     pub(crate) fn snapshot(&self) -> GatewayState {

@@ -15,29 +15,23 @@ pub(super) use workspace::target_group;
 use futures::StreamExt as _;
 use gpui_kit::Context;
 use krad_agents::{
-    lead_refusal, terminal_env, Caller, ErrorCode, Request, Response, TerminalHandle,
-    TerminalState, CLI_PROGRAM,
+    lead_refusal, Caller, ErrorCode, Request, Response, TerminalHandle, TerminalState,
 };
 use krad_domain::{parse_wsl_path, EnvironmentName, Host, TerminalId};
-use krad_runtime::{remote_caller_vars, BusAccess, BusReply, Delegated};
+use krad_runtime::{local_caller_vars, remote_caller_vars, BusReply, Delegated};
 use std::collections::HashSet;
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use super::agent_hooks::{HookReport, PendingPrompt};
 use super::language_servers::CodeCaller;
 use super::EnvironmentShell;
 
-const PATH_ENV: &str = "PATH";
 const NOTICE_ENTER_DELAY: Duration = Duration::from_millis(500);
 pub(super) const ENTER: &[u8] = b"\r";
 const KEY_STEP_DELAY: Duration = Duration::from_secs(1);
 const ENTER_RETRY_DELAY: Duration = Duration::from_secs(2);
 const ENTER_RETRIES: u8 = 3;
-const WSLENV_VAR: &str = "WSLENV";
-const WSLENV_SEPARATOR: &str = ":";
 
-pub(super) const BUS_HINT: &str = "You run inside Krad ADE next to other coding agents. Run 'krad-ade-agents help' to see them, message them and wait for them.";
 const NO_SUCH_TERMINAL: &str = "No terminal with that id in your environment";
 const ONLY_LEADS_CLOSE: &str = "Only a session's lead can close workers and sessions";
 
@@ -100,16 +94,6 @@ enum Settlement {
     Settled(TerminalState),
 }
 
-pub(super) fn cli_name(in_wsl: bool) -> &'static str {
-    if in_wsl {
-        CLI_WSL_NAME
-    } else {
-        CLI_PROGRAM
-    }
-}
-
-const CLI_WSL_NAME: &str = "krad-ade-agents.exe";
-
 fn answered_by_runtime() -> Response {
     Response::error(ErrorCode::Unsupported, ANSWERED_BY_RUNTIME)
 }
@@ -157,30 +141,8 @@ impl EnvironmentShell {
                 remote_caller_vars(remote, &Caller::Terminal(handle(env, id)))
             });
         }
-        let mut vars = Self::caller_vars(bus, &Caller::Terminal(handle(env, id)));
-        if self.terminal_in_wsl(env, id) {
-            let shared: Vec<String> = vars
-                .iter()
-                .filter(|(name, _)| name != PATH_ENV)
-                .map(|(name, _)| name.clone())
-                .collect();
-            vars.push((WSLENV_VAR.to_owned(), shared.join(WSLENV_SEPARATOR)));
-        }
-        vars
-    }
-
-    fn caller_vars(bus: &BusAccess, caller: &Caller) -> Vec<(String, String)> {
-        let mut vars = terminal_env(&bus.endpoint, caller);
-        let mut search: Vec<PathBuf> = bus.cli_dir.iter().cloned().collect();
-        search.extend(
-            std::env::var_os(PATH_ENV)
-                .iter()
-                .flat_map(std::env::split_paths),
-        );
-        if let Ok(path) = std::env::join_paths(search) {
-            vars.push((PATH_ENV.to_owned(), path.to_string_lossy().into_owned()));
-        }
-        vars
+        let caller = Caller::Terminal(handle(env, id));
+        local_caller_vars(bus, &caller, self.terminal_in_wsl(env, id))
     }
 
     fn terminal_in_wsl(&self, env: &EnvironmentName, id: TerminalId) -> bool {

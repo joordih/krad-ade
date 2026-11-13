@@ -163,6 +163,7 @@ mod tests {
                 environment: main(),
                 state: HostState::Connecting,
                 bus: RemoteBusState::Absent,
+                agents: Vec::new(),
             }],
             prompts: vec![prompt.clone()],
         });

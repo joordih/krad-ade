@@ -1,14 +1,18 @@
 use krad_domain::EnvironmentName;
 use krad_host::MachineChannel;
-use krad_protocol::{AgentRef, EnvironmentCommand, EventKind, HostCommand, Reply, TerminalSummary};
+use krad_protocol::{
+    AgentRef, EnvironmentCommand, ErrorCode, EventKind, HostCommand, Reply, TerminalSummary,
+};
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::Runtime;
+use super::{refused, Runtime};
 use crate::gateway::Gateway;
 use crate::hosts::HostWork;
 use crate::jobs::JobDone;
 use crate::terminals::Shared;
+
+const UNKNOWN_ENVIRONMENT: &str = "this runtime has no environment of that name";
 
 impl Runtime {
     fn host_work(&mut self) -> (&mut crate::hosts::Hosts, HostWork<'_>) {
@@ -26,6 +30,13 @@ impl Runtime {
         let host = match &command {
             HostCommand::Show { environment } | HostCommand::Reconnect { environment } => {
                 self.environments.host_of(environment)
+            }
+            HostCommand::DetectAgents { environment } => {
+                if !self.environments.knows(environment) {
+                    return Some(refused(ErrorCode::NotFound, UNKNOWN_ENVIRONMENT));
+                }
+                self.detect_host_agents(environment);
+                return Some(Reply::Accepted);
             }
             HostCommand::AnswerPrompt { .. } | HostCommand::Unknown => None,
         };
@@ -45,12 +56,19 @@ impl Runtime {
         if let (Some((environment, _)), Reply::Accepted) = (&closed, &reply) {
             self.chats
                 .close_environment(environment.as_str(), &mut self.outbox);
+            self.launches.forget_environment(environment);
         }
         if let (Some((environment, host)), Reply::Accepted) = (closed, &reply) {
             let still_used = self.environments.uses_host(&host);
             self.hosts.environment_closed(&environment, still_used);
         }
         Some(reply)
+    }
+
+    pub(super) fn detect_host_agents(&self, environment: &EnvironmentName) {
+        let acp_agents = self.settings.current.acp.all_agents();
+        self.hosts
+            .detect_agents(environment, acp_agents, &self.jobs);
     }
 
     pub(super) fn tick_hosts(&mut self) {
@@ -104,6 +122,8 @@ impl Runtime {
             JobDone::OpencodeStarted(started) => self.opencode_started(started),
             JobDone::OpencodeListed(listed) => self.opencode_listed(listed),
             JobDone::AcpSecretsRead(read) => self.acp_secrets_read(read),
+            JobDone::AttachedLine(line) => self.attached_line_ready(line),
+            JobDone::HostAgentsFound(found) => self.hosts.agents_found(found, &mut self.outbox),
             JobDone::HarnessChecked { .. }
             | JobDone::ModelsListed { .. }
             | JobDone::UsageRead { .. } => {}

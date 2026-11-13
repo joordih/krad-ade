@@ -9,6 +9,7 @@ use crate::harness_health::Health;
 use crate::hosts::Hosts;
 use crate::models::Models;
 use crate::opencode::OpencodeServers;
+use crate::settings::AppSettings;
 use crate::terminals::Terminals;
 use crate::usage::Usage;
 
@@ -24,6 +25,7 @@ pub(super) struct Parts<'a> {
     pub(super) chats: &'a Chats,
     pub(super) opencode: &'a OpencodeServers,
     pub(super) gateway: &'a Gateway,
+    pub(super) settings: &'a AppSettings,
 }
 
 impl Parts<'_> {
@@ -42,6 +44,7 @@ impl Parts<'_> {
             chats: self.chats.snapshot(),
             opencode: self.opencode.snapshot(),
             gateway: self.gateway.snapshot(),
+            settings: self.settings.snapshot(),
         }
     }
 }

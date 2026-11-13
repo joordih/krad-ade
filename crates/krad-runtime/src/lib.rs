@@ -9,9 +9,11 @@ mod harness_health;
 mod hosts;
 mod input;
 mod jobs;
+mod launches;
 mod models;
 mod opencode;
 mod runtime;
+mod settings;
 mod subscribers;
 mod terminals;
 mod usage;
@@ -26,7 +28,9 @@ pub use hosts::{
     bundled_cli, explain_host_problem, remote_askpass, remote_caller_vars,
     remote_detached_caller_vars, upload_host_cli, HostCliError, RemoteBus, RemoteBusPlan,
 };
+pub use launches::{cli_name, local_caller_vars, AgentRole, BUS_HINT, LEAD_HINT};
 pub use runtime::{Runtime, RuntimeSetup};
+pub use settings::SettingsSetup;
 pub use terminals::{
     remote_terminal, remote_terminal_opener, HostShell, OutputTap, ShownImage, TerminalAction,
     TerminalFrame, TerminalLaunch, TerminalPlace, TerminalStatus, TerminalView,

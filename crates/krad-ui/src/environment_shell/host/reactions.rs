@@ -38,6 +38,11 @@ impl EnvironmentShell {
             }
             EventKind::HostPrompted(prompt) => hosts.prompted(prompt),
             EventKind::HostPromptSettled { prompt } => hosts.prompt_settled(prompt),
+            EventKind::HostAgentsFound {
+                environment,
+                host,
+                agents,
+            } => self.host_agents_found(&environment, (host, agents), cx),
             _ => {}
         }
     }
@@ -47,6 +52,16 @@ impl EnvironmentShell {
         snapshot: HostsSnapshot,
         cx: &mut Context<Self>,
     ) {
+        for entry in snapshot
+            .hosts
+            .iter()
+            .filter(|entry| !entry.agents.is_empty())
+        {
+            if let Some(live) = self.envs.get(&entry.environment) {
+                self.host_agents
+                    .insert(live.data.host.clone(), entry.agents.clone());
+            }
+        }
         for moved in self.runtime.view.hosts.replace(snapshot) {
             self.host_moved(&moved, cx);
         }
@@ -111,7 +126,6 @@ impl EnvironmentShell {
             self.runtime.handle.forget_opencode(host.clone());
         }
         self.tell_missing_login_env(env);
-        self.detect_host_agents(env, cx);
         self.finish_host_connection(env, cx);
     }
 
@@ -139,7 +153,7 @@ impl EnvironmentShell {
         if !self.host_ready(env) {
             return;
         }
-        self.spawn_missing_sessions(env);
+        self.relaunch_cloud_sessions(env);
         if *env == self.active {
             self.start_system_terminals();
             self.refresh_git(cx);

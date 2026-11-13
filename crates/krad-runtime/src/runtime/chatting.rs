@@ -36,7 +36,7 @@ impl Runtime {
         let mut effects = Vec::new();
         let mut work = ChatWork {
             jobs: &self.jobs,
-            gateway: self.gateway.reached(),
+            gateway: self.gateway.reached(&self.settings.current.gateway),
             opencode: &mut self.opencode,
             outbox: &mut self.outbox,
             effects: &mut effects,

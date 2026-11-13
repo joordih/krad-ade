@@ -24,6 +24,7 @@ use crate::chats::{ChatLaunch, ChatStart, LiveStarted};
 use crate::harness_health::HarnessProbe;
 use crate::hosts::HostLinks;
 use crate::input::{Input, LiveStart};
+use crate::launches::LaunchedViews;
 use crate::opencode::{OpencodeDirectory, OpencodeInput};
 use crate::terminals::{Shared, TerminalAction, TerminalLaunch, TerminalView};
 use crate::usage::UsagePlace;
@@ -52,6 +53,7 @@ pub struct RuntimeHandle {
     usage_budget: Arc<UsageBudget>,
     links: HostLinks,
     opencode: OpencodeDirectory,
+    views: LaunchedViews,
     requests: Arc<AtomicU64>,
     _alive: Arc<Alive>,
 }
@@ -61,7 +63,7 @@ impl RuntimeHandle {
         inbox: SyncSender<Input>,
         bus: Option<Arc<BusAccess>>,
         usage_budget: Arc<UsageBudget>,
-        (links, opencode): (HostLinks, OpencodeDirectory),
+        (links, opencode, views): (HostLinks, OpencodeDirectory, LaunchedViews),
     ) -> Self {
         Self {
             _alive: Arc::new(Alive(inbox.clone())),
@@ -70,6 +72,7 @@ impl RuntimeHandle {
             usage_budget,
             links,
             opencode,
+            views,
             requests: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -167,6 +170,15 @@ impl RuntimeHandle {
             shared,
         });
         view
+    }
+
+    #[must_use]
+    pub fn take_launched_view(&self, terminal: &AgentRef) -> Option<TerminalView> {
+        self.views.take(terminal)
+    }
+
+    pub fn offer_memory_tools(&self, offered: bool) {
+        self.deliver(Input::OfferMemoryTools(offered));
     }
 
     pub fn open_chat(&self, chat: AgentRef, start: ChatStart) {

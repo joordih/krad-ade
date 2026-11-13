@@ -171,6 +171,12 @@ impl Terminals {
         outbox.push(EventKind::TerminalEnded(TerminalSummary { terminal, run }));
     }
 
+    pub(crate) fn runs(&self, terminal: &AgentRef) -> bool {
+        self.live
+            .get(terminal)
+            .is_some_and(|live| live.run().is_running())
+    }
+
     pub(crate) fn close(&mut self, terminal: &AgentRef) -> bool {
         self.live.remove(terminal).map(Terminal::kill).is_some()
     }
@@ -244,7 +250,9 @@ impl Terminals {
             | TerminalCommand::Resize { terminal, .. }
             | TerminalCommand::Scroll { terminal, .. }
             | TerminalCommand::Close { terminal } => terminal.clone(),
-            TerminalCommand::Unknown => return None,
+            TerminalCommand::Open { .. }
+            | TerminalCommand::OpenMissing { .. }
+            | TerminalCommand::Unknown => return None,
         };
         if let TerminalCommand::Close { terminal } = command {
             return Some(if self.close(&terminal) {
@@ -264,7 +272,10 @@ impl Terminals {
             }
             TerminalCommand::Resize { size, .. } => live.resize(size),
             TerminalCommand::Scroll { scroll, .. } => live.scroll(scroll),
-            TerminalCommand::Close { .. } | TerminalCommand::Unknown => {}
+            TerminalCommand::Close { .. }
+            | TerminalCommand::Open { .. }
+            | TerminalCommand::OpenMissing { .. }
+            | TerminalCommand::Unknown => {}
         }
         Some(Reply::Accepted)
     }

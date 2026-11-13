@@ -7,10 +7,9 @@ use krad_domain::{
     WorktreeOrigin,
 };
 use krad_repo::sanitize_worktree_name;
-use krad_runtime::BusReply;
+use krad_runtime::{cli_name, BusReply};
 use std::time::{Duration, Instant};
 
-use super::agent_bus::{cli_name, BUS_HINT};
 use super::ask::HeldAskReport;
 use super::shell_site::ShellSite;
 use super::workers::WorkerLaunch;
@@ -56,23 +55,6 @@ pub(super) struct WorkerOf {
     pub(super) session: SessionId,
     pub(super) task: String,
 }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum AgentRole {
-    Member,
-    Lead,
-}
-
-impl AgentRole {
-    const fn hint(self) -> &'static str {
-        match self {
-            Self::Member => BUS_HINT,
-            Self::Lead => LEAD_HINT,
-        }
-    }
-}
-
-pub(super) const LEAD_HINT: &str = "You lead this Krad ADE session: you split the work and start and direct the other coding agents of its group. Run 'krad-ade-agents help lead' first to learn how, and follow it.";
 
 impl EnvironmentShell {
     pub(super) fn agent_launch_line(

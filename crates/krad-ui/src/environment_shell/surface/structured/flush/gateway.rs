@@ -3,6 +3,7 @@ use krad_chat::{BusVars, EngineConfig};
 use krad_domain::{EnvironmentName, TerminalId};
 use krad_host::HostLink;
 use krad_store::gateway_sessions_dir;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use super::super::super::super::chat::StartError;
@@ -49,23 +50,20 @@ impl EnvironmentShell {
             }
         };
         let chosen = structured_mut(self, env, id).and_then(|chat| chat.chosen_model.clone());
-        let model = self.gateway_model(chosen.as_ref());
-        if model.is_none() && self.gateway_ready() {
+        if self.gateway_model(chosen.as_ref()).is_none() && self.gateway_ready() {
             return Err(StartError::Gateway(
                 Self::no_gateway_model_text().to_owned(),
             ));
         }
-        let served = self.gateway_served().to_vec();
-        let context_windows = self.settings.gateway.context_windows.clone();
         let structured = structured_mut(self, env, id).ok_or(StartError::Waiting)?;
         structured.notices.extend(launch.problems);
         Ok(EngineConfig {
             sessions,
             home,
             cwd,
-            model,
-            models: served,
-            context_windows,
+            model: chosen,
+            models: Vec::new(),
+            context_windows: HashMap::new(),
             system_prompt,
             effort: structured.effort,
             permission_mode: structured.permission_mode,

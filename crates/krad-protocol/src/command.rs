@@ -8,6 +8,7 @@ use crate::environments::EnvironmentCommand;
 use crate::gateway::GatewayCommand;
 use crate::hosts::HostCommand;
 use crate::models::ModelsCommand;
+use crate::settings::SettingsCommand;
 use crate::terminals::TerminalCommand;
 use crate::usage::UsageCommand;
 
@@ -25,6 +26,7 @@ pub enum Command {
     Host(HostCommand),
     Chat(ChatCommand),
     Gateway(GatewayCommand),
+    Settings(SettingsCommand),
     #[serde(other)]
     Unknown,
 }

@@ -183,7 +183,7 @@ impl EnvironmentShell {
             .filter(|live| !live.data.host.is_local())
             .map(|_| self.active.clone());
         if let Some(env) = remote {
-            self.detect_host_agents(&env, cx);
+            self.detect_host_agents(&env);
         }
     }
 }

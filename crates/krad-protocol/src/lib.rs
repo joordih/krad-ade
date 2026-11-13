@@ -10,8 +10,10 @@ mod gateway;
 mod harness_health;
 mod hosts;
 mod ids;
+mod launches;
 mod models;
 mod opencode;
+mod settings;
 mod terminals;
 mod usage;
 
@@ -36,8 +38,10 @@ pub use hosts::{
     RemoteBusInfo, RemoteBusState,
 };
 pub use ids::{ProtocolVersion, RequestId, Seq};
+pub use launches::{LaunchedAs, TerminalLaunched};
 pub use models::{ListedModels, ModelsCommand, ModelsOrigin, ModelsSnapshot};
 pub use opencode::{OpencodeShown, OpencodeSnapshot, OpencodeStatus};
+pub use settings::SettingsCommand;
 pub use terminals::{
     TerminalClassified, TerminalCommand, TerminalScroll, TerminalSummary, WriteBy,
 };

@@ -8,7 +8,9 @@ use gpui_kit::component::command::CommandState;
 use gpui_kit::component::TitleBar;
 use gpui_kit::{application, init, open_window, AppContext, WindowDecorations, WindowOptions};
 use krad_agents::CliPlace;
-use krad_runtime::{BusSetup, EnvironmentsSetup, EventsSetup, Runtime, RuntimeSetup};
+use krad_runtime::{
+    BusSetup, EnvironmentsSetup, EventsSetup, Runtime, RuntimeSetup, SettingsSetup,
+};
 use krad_store::{
     config_dir, open_layout, read_settings, read_user_themes, LayoutOpening, OpenedLayout, APP_NAME,
 };
@@ -73,6 +75,7 @@ fn main() {
         bus,
         events: Some(EventsSetup::in_config_folder()),
         environments,
+        settings: SettingsSetup::in_config_folder(settings.clone()),
     }) {
         Ok(runtime) => runtime,
         Err(error) => {

@@ -37,11 +37,12 @@ mod worktrees;
 
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, AppContext as _, BoxShadow, Context, Div, ElementId,
-    InteractiveElement, IntoElement, ParentElement, SharedString, Stateful, Styled, Window,
+    div, px, rgb, AnyElement, BoxShadow, Context, Div, ElementId, InteractiveElement, IntoElement,
+    ParentElement, SharedString, Stateful, Styled, Window,
 };
+use krad_domain::Settings;
 use krad_domain::{AppearanceMode, ToastKind};
-use krad_store::write_settings;
+use krad_protocol::{Command, SettingsCommand};
 
 use super::dialog_parts::{sheet_group, sheet_row};
 use super::EnvironmentShell;
@@ -254,20 +255,25 @@ impl EnvironmentShell {
     }
 
     pub(super) fn save_settings(&mut self, cx: &mut Context<Self>) {
+        if self.runtime.view.settings.send(&self.settings) {
+            let settings = Box::new(self.settings.clone());
+            self.runtime
+                .handle
+                .post(Command::Settings(SettingsCommand::Save { settings }));
+        }
         self.redetect_after_acp_change(cx);
-        let settings = self.settings.clone();
-        let writing = cx.background_spawn(async move { write_settings(&settings) });
-        cx.spawn(async move |this, cx| {
-            let Err(error) = writing.await else {
-                return;
-            };
-            this.update(cx, |shell, cx| {
-                shell.push_toast(ToastKind::Error, format!("{SETTINGS_NOT_SAVED}: {error}"));
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+    }
+
+    pub(super) fn settings_heard(&mut self, settings: Settings, cx: &mut Context<Self>) {
+        let Some(adopted) = self.runtime.view.settings.changed(settings) else {
+            return;
+        };
+        self.settings = adopted;
+        self.apply_active_theme(cx);
+    }
+
+    pub(super) fn settings_not_saved(&mut self, error: &str) {
+        self.push_toast(ToastKind::Error, format!("{SETTINGS_NOT_SAVED}: {error}"));
     }
 
     pub(super) fn sync_system_appearance(&mut self, cx: &mut Context<Self>) {

@@ -6,7 +6,8 @@ use std::time::Instant;
 use super::super::live_terminal::terminal_ref;
 use super::super::runtime_view::MailNotices;
 use super::super::{EnvironmentShell, LiveEnv};
-use super::{cli_name, handle, PendingEnter, Settlement, ENTER, NO_SUCH_TERMINAL};
+use super::{handle, PendingEnter, Settlement, ENTER, NO_SUCH_TERMINAL};
+use krad_runtime::cli_name;
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn service_agent_bus(&mut self, now: Instant) {

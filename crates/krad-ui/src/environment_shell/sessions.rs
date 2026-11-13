@@ -5,15 +5,16 @@ mod typed_line;
 pub(super) use launch::Launch;
 
 use krad_domain::{
-    agent_event, AgentState, AppEvent, EnvironmentName, Relaunch, ResumeId, TerminalId, ToastKind,
+    agent_event, AgentState, AppEvent, EnvironmentName, LaunchIntent, Relaunch, ResumeId,
+    TerminalId, ToastKind,
 };
-use krad_runtime::{TerminalLaunch, TerminalPlace};
+use krad_protocol::{Command, TerminalCommand};
+use krad_runtime::{AgentRole, TerminalLaunch, TerminalPlace};
 use std::path::PathBuf;
 use std::time::Instant;
 
 use self::launch::{LaunchShell, ResolvedLaunch};
 use self::typed_line::{type_attached_line, TypedLine};
-use super::agent_hooks::AgentRole;
 use super::cloud::CloudShell;
 use super::live_terminal::{terminal_ref, LiveTerminal};
 use super::shell_site::ShellSite;
@@ -71,10 +72,25 @@ impl EnvironmentShell {
         if !self.host_ready(env) {
             return 0;
         }
+        let missing = self.envs.get(env).map_or(0, |live| {
+            live.data
+                .relaunches(|id| live.sessions.contains_key(&id))
+                .len()
+        });
+        self.offer_memory_tools();
+        self.runtime
+            .handle
+            .post(Command::Terminal(TerminalCommand::OpenMissing {
+                environment: env.clone(),
+            }));
+        self.relaunch_cloud_sessions(env);
+        missing
+    }
+
+    pub(super) fn relaunch_cloud_sessions(&mut self, env: &EnvironmentName) {
         let relaunches = self.envs.get(env).map_or_else(Vec::new, |live| {
             live.data.relaunches(|id| live.sessions.contains_key(&id))
         });
-        let mut spawned = 0;
         for Relaunch {
             id,
             intent,
@@ -82,10 +98,34 @@ impl EnvironmentShell {
             prefill,
         } in relaunches
         {
-            self.start_session(env, id, intent.into(), cwd, &prefill);
-            spawned += 1;
+            if self.cloud_placement_of(env, id).is_some() {
+                self.start_session(env, id, intent.into(), cwd, &prefill);
+            }
         }
-        spawned
+    }
+
+    fn offer_memory_tools(&self) {
+        self.runtime
+            .handle
+            .offer_memory_tools(self.memory_tools_offered());
+    }
+
+    fn launch_in_runtime(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        intent: LaunchIntent,
+        cwd: Option<PathBuf>,
+    ) {
+        self.store();
+        self.offer_memory_tools();
+        self.runtime
+            .handle
+            .post(Command::Terminal(TerminalCommand::Open {
+                terminal: terminal_ref(env, id),
+                intent,
+                cwd,
+            }));
     }
 
     pub(super) fn start_session(
@@ -96,8 +136,7 @@ impl EnvironmentShell {
         cwd: Option<PathBuf>,
         prefill: &[String],
     ) {
-        let awaits_bus = self.awaits_remote_bus(env) || self.awaits_runner_bus(env, id);
-        if launch.harness().is_some() && awaits_bus {
+        if launch.harness().is_some() && self.awaits_runner_bus(env, id) {
             self.defer_launch(
                 env,
                 DeferredLaunch {
@@ -123,6 +162,11 @@ impl EnvironmentShell {
             }
             CloudShell::Failed(error) => return self.report_cloud_shell(error),
             CloudShell::Ready { opener, types_line } => Some((opener, types_line)),
+        };
+        let launch = match (&cloud, LaunchIntent::try_from(launch)) {
+            (None, Ok(intent)) => return self.launch_in_runtime(env, id, intent, cwd),
+            (Some(_), Ok(intent)) => intent.into(),
+            (_, Err(launch)) => launch,
         };
         self.spawn_session(env, id, (launch, cwd, prefill), cloud);
     }

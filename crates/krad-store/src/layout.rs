@@ -60,7 +60,7 @@ pub struct LayoutWriter {
     worker: Option<JoinHandle<()>>,
 }
 
-fn write_jobs(path: &Path, inbox: &Receiver<Job>) {
+fn write_jobs(path: &Path, inbox: &Receiver<Job>, report: &dyn Fn(std::io::Error)) {
     while let Ok(first) = inbox.recv() {
         let mut newest = None;
         let mut waiting = Vec::new();
@@ -70,8 +70,8 @@ fn write_jobs(path: &Path, inbox: &Receiver<Job>) {
                 Job::Then(done) => waiting.push(done),
             }
         }
-        if let Some(bytes) = newest {
-            drop(write_atomically(path, &bytes));
+        if let Some(Err(error)) = newest.map(|bytes| write_atomically(path, &bytes)) {
+            report(error);
         }
         for done in waiting {
             done();
@@ -87,10 +87,18 @@ impl LayoutWriter {
 
     #[must_use]
     pub fn spawn_at(path: PathBuf) -> Option<Self> {
+        Self::spawn_reporting(path, drop)
+    }
+
+    #[must_use]
+    pub fn spawn_reporting(
+        path: PathBuf,
+        report: impl Fn(std::io::Error) + Send + 'static,
+    ) -> Option<Self> {
         let (queue, inbox) = channel::<Job>();
         let worker = std::thread::Builder::new()
             .name(PERSIST_THREAD_NAME.to_owned())
-            .spawn(move || write_jobs(&path, &inbox))
+            .spawn(move || write_jobs(&path, &inbox, &report))
             .ok()?;
         Some(Self {
             queue: Some(queue),

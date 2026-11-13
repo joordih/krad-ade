@@ -232,3 +232,22 @@ fn a_waiter_hears_once_the_newest_snapshot_is_on_disk() -> std::io::Result<()> {
     drop(writer);
     std::fs::remove_dir_all(&dir)
 }
+
+#[test]
+fn a_reporting_writer_tells_a_failed_write() -> std::io::Result<()> {
+    let dir = fresh_dir("reporting");
+    std::fs::create_dir_all(&dir)?;
+    let blocker = dir.join("not-a-folder");
+    std::fs::write(&blocker, b"")?;
+    let (failed, hear) = std::sync::mpsc::channel();
+    let writer = LayoutWriter::spawn_reporting(blocker.join("settings.json"), move |error| {
+        failed.send(error.kind()).unwrap_or(());
+    });
+    assert!(writer.is_some(), "a writer thread starts");
+    if let Some(writer) = &writer {
+        writer.persist(&ViewPreferences::default());
+    }
+    assert!(hear.recv_timeout(Duration::from_secs(5)).is_ok());
+    drop(writer);
+    std::fs::remove_dir_all(&dir)
+}

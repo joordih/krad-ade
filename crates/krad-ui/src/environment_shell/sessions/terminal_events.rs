@@ -1,10 +1,55 @@
 use krad_domain::{AgentState, EnvironmentName, ProcessRun, TerminalId, ToastKind};
+use krad_protocol::{AgentRef, LaunchedAs, TerminalLaunched};
 use std::time::Instant;
 
 use super::super::live_terminal::LiveTerminal;
+use super::super::shell_site::ShellSite;
 use super::super::EnvironmentShell;
 
 impl EnvironmentShell {
+    pub(in crate::environment_shell) fn terminal_launched(&mut self, launched: TerminalLaunched) {
+        let TerminalLaunched {
+            terminal,
+            harness,
+            launched_as,
+            resume,
+            after_start,
+        } = launched;
+        let Some(view) = self.runtime.handle.take_launched_view(&terminal) else {
+            return;
+        };
+        let (env, id) = (terminal.environment, terminal.terminal);
+        if !self.envs.contains_key(&env) {
+            return;
+        }
+        self.keep_live_session(&env, id, LiveTerminal::new(view, harness));
+        if launched_as == LaunchedAs::Shell {
+            let site = ShellSite::of(&self.env_link(&env), false);
+            self.activate_toolchains(&env, id, site);
+        }
+        if let Some(resume) = resume {
+            self.keep_opencode_resume(&env, id, resume);
+        }
+        if let Some(prompt) = after_start {
+            self.queue_prompt(&env, id, prompt);
+        }
+    }
+
+    pub(in crate::environment_shell) fn adopt_launched_view(&mut self, terminal: &AgentRef) {
+        let Some(view) = self.runtime.handle.take_launched_view(terminal) else {
+            return;
+        };
+        let (env, id) = (&terminal.environment, terminal.terminal);
+        let harness = self.envs.get(env).and_then(|live| {
+            live.data
+                .nodes
+                .iter()
+                .find(|node| node.id == id)
+                .and_then(|node| node.harness)
+        });
+        self.keep_live_session(env, id, LiveTerminal::new(view, harness));
+    }
+
     pub(in crate::environment_shell) fn terminal_classified(
         &mut self,
         env: &EnvironmentName,

@@ -269,6 +269,10 @@ impl OpencodeServers {
         Some(done.host.clone())
     }
 
+    pub(crate) fn server(&self, host: &Host) -> Option<Arc<OpencodeServer>> {
+        self.directory.server(host)
+    }
+
     pub(crate) fn snapshot(&self) -> OpencodeSnapshot {
         let mut servers: Vec<OpencodeShown> = self
             .hosts

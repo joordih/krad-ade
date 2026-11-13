@@ -1,4 +1,7 @@
+mod detection;
 mod stored;
+
+pub use detection::{agent_programs, presets_found};
 
 use crate::acp::{AcpAgent, AcpAgentId};
 use serde::{Deserialize, Serialize};

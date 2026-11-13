@@ -1,4 +1,3 @@
-use futures::channel::oneshot;
 use krad_domain::{
     BudgetStatus, EnvironmentChange, EnvironmentData, EnvironmentName, Host, RuntimeState,
     SpendSettings, TerminalId, TerminalMeta, UsageReport,
@@ -102,13 +101,8 @@ impl Environments {
         }
     }
 
-    pub(crate) fn settle(&mut self, reply: oneshot::Sender<()>) {
+    pub(crate) fn settle(&mut self, settled: impl FnOnce() + Send + 'static) {
         self.flush();
-        let settled = move || {
-            if reply.send(()).is_err() {
-                tracing::trace!("nobody waited for the state to settle");
-            }
-        };
         match &self.writer {
             Some(writer) => writer.then(settled),
             None => settled(),
@@ -127,11 +121,14 @@ impl Environments {
     }
 
     pub(crate) fn host_of(&self, name: &EnvironmentName) -> Option<Host> {
+        self.data(name).map(|environment| environment.host.clone())
+    }
+
+    pub(crate) fn data(&self, name: &EnvironmentName) -> Option<&EnvironmentData> {
         self.state
             .environments
             .iter()
             .find(|environment| environment.name == *name)
-            .map(|environment| environment.host.clone())
     }
 
     pub(crate) fn node_title(&self, node: &AgentRef) -> Option<String> {

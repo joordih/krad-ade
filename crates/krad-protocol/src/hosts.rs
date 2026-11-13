@@ -1,4 +1,6 @@
-use krad_domain::{EnvironmentName, HostPlatform, PromptAsker, PromptKind, TerminalId};
+use krad_domain::{
+    AgentPreset, EnvironmentName, HostPlatform, PromptAsker, PromptKind, TerminalId,
+};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
@@ -151,6 +153,8 @@ pub struct EnvironmentHost {
     pub state: HostState,
     #[serde(default)]
     pub bus: RemoteBusState,
+    #[serde(default)]
+    pub agents: Vec<AgentPreset>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
@@ -173,6 +177,9 @@ pub enum HostCommand {
     AnswerPrompt {
         prompt: PromptId,
         answer: Option<PromptAnswer>,
+    },
+    DetectAgents {
+        environment: EnvironmentName,
     },
     #[serde(other)]
     Unknown,
