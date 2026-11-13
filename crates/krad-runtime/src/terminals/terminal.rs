@@ -84,6 +84,18 @@ impl Terminal {
         &self.session.state
     }
 
+    pub(crate) const fn is_hooked(&self) -> bool {
+        self.hooked
+    }
+
+    pub(crate) fn bracketed_paste(&self) -> bool {
+        self.session.engine.bracketed_paste()
+    }
+
+    pub(crate) fn recent_lines(&mut self, lines: usize) -> Vec<String> {
+        self.session.engine.recent_lines(lines)
+    }
+
     pub(crate) fn feed(&mut self, bytes: &[u8]) -> Option<AgentState> {
         self.tap_output(bytes);
         self.session.feed(bytes);

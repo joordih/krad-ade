@@ -12,6 +12,7 @@ use krad_repo::{
     add_branch_worktree, fetch, push, resolved_remote_url, Askpass, Branch, BranchPlace,
     PushTarget, RepoError, Worktree, ORIGIN_REMOTE,
 };
+use krad_store::Secrets;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -98,6 +99,7 @@ fn runner_home(link: &HostLink) -> Option<PathBuf> {
 fn open_request(
     work: &CloudWork,
     gitlab: Option<GitlabConfig>,
+    secrets: &Secrets,
 ) -> Result<MergeRequest, ResultError> {
     let CloudWork {
         link, placement, ..
@@ -110,7 +112,7 @@ fn open_request(
     let repo = repo_of_remote(&url, gitlab).ok_or(ResultError::NotOnHost)?;
     let client = repo
         .login
-        .client()
+        .client(secrets)
         .map_err(|error| ResultError::Vault(error.to_string()))?
         .ok_or_else(|| ResultError::SignedOut(repo.login.code_host()))?;
     let target = work
@@ -216,7 +218,8 @@ impl EnvironmentShell {
         self.toast(ToastKind::Info, OPENING, cx);
         let gitlab = GitlabConfig::try_from(&self.settings.gitlab).ok();
         let (env, group) = (work.env.clone(), work.group);
-        let opened = cx.background_spawn(async move { open_request(&work, gitlab) });
+        let secrets = self.runtime.handle.secrets().clone();
+        let opened = cx.background_spawn(async move { open_request(&work, gitlab, &secrets) });
         cx.spawn(async move |this, cx| {
             let opened = opened.await;
             this.update(cx, |shell, cx| match opened {

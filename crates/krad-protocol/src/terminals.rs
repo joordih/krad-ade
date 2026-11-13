@@ -31,6 +31,29 @@ pub enum TerminalCommand {
     Close {
         terminal: AgentRef,
     },
+    Type {
+        terminal: AgentRef,
+        typing: Typing,
+    },
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(tag = "how", rename_all = "snake_case")]
+pub enum Typing {
+    Prompt {
+        text: String,
+    },
+    Submit {
+        text: String,
+    },
+    Notice {
+        text: String,
+    },
+    Steps {
+        steps: Vec<Vec<u8>>,
+    },
     #[serde(other)]
     Unknown,
 }
@@ -92,6 +115,16 @@ mod tests {
         assert_eq!(serde_json::from_str::<Command>(&json)?, command);
         let newer: Command = serde_json::from_str(r#"{"area":"terminal","verb":"split"}"#)?;
         assert_eq!(newer, Command::Terminal(TerminalCommand::Unknown));
+        let typed: TerminalCommand = serde_json::from_str(
+            r#"{"verb":"type","terminal":{"environment":"main","terminal":4},"typing":{"how":"dictate"}}"#,
+        )?;
+        assert_eq!(
+            typed,
+            TerminalCommand::Type {
+                terminal: terminal(),
+                typing: Typing::Unknown
+            }
+        );
         Ok(())
     }
 
@@ -117,6 +150,18 @@ mod tests {
             },
             TerminalCommand::Close {
                 terminal: terminal(),
+            },
+            TerminalCommand::Type {
+                terminal: terminal(),
+                typing: Typing::Prompt {
+                    text: "fix it".to_owned(),
+                },
+            },
+            TerminalCommand::Type {
+                terminal: terminal(),
+                typing: Typing::Steps {
+                    steps: vec![b"\x1b[B".to_vec(), b"\r".to_vec()],
+                },
             },
         ];
         for command in commands {

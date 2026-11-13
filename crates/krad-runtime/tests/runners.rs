@@ -3,12 +3,14 @@
 use futures::executor::block_on;
 use futures::StreamExt as _;
 use krad_domain::{
-    CloudRunner, CloudRunnerId, CloudSettings, OfflineWebhooks, RunnerState, Settings,
+    ClaudeOauthToken, CloudRunner, CloudRunnerId, CloudSettings, OfflineWebhooks, PairingToken,
+    RunnerState, Settings,
 };
 use krad_protocol::{
     Command, ErrorCode, EventKind, Feed, Reply, RunnerCommand, RunnerRemoved, RunnerShown, Scope,
 };
 use krad_runtime::{Runtime, RuntimeHandle, RuntimeSetup, SettingsSetup};
+use krad_store::Secrets;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
@@ -26,7 +28,8 @@ const REFUSES: &str = "refuses.invalid";
 const ASKS: &str = "asks.invalid";
 const CONNECTS: &str = "connects.invalid";
 const UNKNOWN: CloudRunnerId = CloudRunnerId(99);
-const TEST_IDS_FROM: u64 = 7_000_000_000_000;
+const PAIRING: &str = "00112233445566778899aabbccddeeff";
+const CLAUDE_TOKEN: &str = "sk-ant-oat01-test";
 
 struct Folder(PathBuf);
 
@@ -52,8 +55,7 @@ fn use_fake_ssh_and_config(config: &Path) {
 
 fn runners_on(hosts: &[&str]) -> Result<(CloudSettings, Vec<CloudRunnerId>), Box<dyn Error>> {
     let mut cloud = CloudSettings::default();
-    let first = TEST_IDS_FROM + u64::from(std::process::id());
-    for (at, host) in (first..).zip(hosts) {
+    for (at, host) in (1..).zip(hosts) {
         cloud.runners.push(CloudRunner {
             id: CloudRunnerId(at),
             name: host.parse()?,
@@ -65,7 +67,10 @@ fn runners_on(hosts: &[&str]) -> Result<(CloudSettings, Vec<CloudRunnerId>), Box
     Ok((cloud, ids))
 }
 
-fn start(cloud: CloudSettings) -> Result<(RuntimeHandle, Receiver<Feed>), Box<dyn Error>> {
+fn start(
+    cloud: CloudSettings,
+    secrets: Secrets,
+) -> Result<(RuntimeHandle, Receiver<Feed>), Box<dyn Error>> {
     let settings = Settings {
         cloud,
         ..Settings::default()
@@ -75,6 +80,7 @@ fn start(cloud: CloudSettings) -> Result<(RuntimeHandle, Receiver<Feed>), Box<dy
             settings,
             file: None,
         },
+        secrets,
         ..RuntimeSetup::default()
     })?;
     let mut feed = runtime.subscribe();
@@ -158,7 +164,10 @@ fn runners_connect_install_fail_with_a_reason_and_are_removed() -> TestResult {
     let [refuses, asks, connects] = ids[..] else {
         return Err("three runners were not added".into());
     };
-    let (runtime, feed) = start(cloud)?;
+    let secrets = Secrets::in_memory();
+    secrets.write_cloud_runner_token(connects, &PAIRING.parse::<PairingToken>()?)?;
+    secrets.write_cloud_claude_token(connects, &CLAUDE_TOKEN.parse::<ClaudeOauthToken>()?)?;
+    let (runtime, feed) = start(cloud, secrets.clone())?;
 
     assert!(matches!(
         send(&runtime, RunnerCommand::Ensure { runner: UNKNOWN })?,
@@ -215,6 +224,8 @@ fn runners_connect_install_fail_with_a_reason_and_are_removed() -> TestResult {
         Reply::Accepted
     );
     assert_eq!(removal_of(&feed, connects)?.problem, None);
+    assert!(secrets.find_cloud_runner_token(connects)?.is_none());
+    assert!(secrets.find_cloud_claude_token(connects)?.is_none());
     let shown = block_on(runtime.snapshot(Scope::Runtime))?.runners;
     assert!(shown.iter().all(|shown| shown.runner != connects));
     Ok(())

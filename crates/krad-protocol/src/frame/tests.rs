@@ -58,6 +58,7 @@ fn frames_round_trip_in_order_and_the_stream_ends_cleanly() -> Result<(), FrameE
             git: Vec::new(),
             kraddies: Box::default(),
             runners: Vec::new(),
+            runner_buses: Vec::new(),
         })))),
         Frame::Message(Box::new(Message::Feed(Feed::Event(Event {
             seq: Seq(2),

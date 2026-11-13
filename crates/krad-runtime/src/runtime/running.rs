@@ -2,9 +2,7 @@ use krad_chat::stop_cloud_process;
 use krad_domain::{CloudRunnerId, Host, HostPlatform, RunnerState};
 use krad_host::{HostError, HostLink};
 use krad_protocol::{ErrorCode, EventKind, Reply, RunnerCommand, RunnerRemoved, RunnerShown};
-use krad_store::{
-    delete_cloud_claude_token, delete_cloud_opencode_password, delete_cloud_runner_token,
-};
+use krad_store::Secrets;
 
 use super::{refused, Runtime, UNSUPPORTED_COMMAND};
 use crate::jobs::JobDone;
@@ -75,9 +73,15 @@ impl Runtime {
     }
 
     fn show_runner(&mut self, shown: Option<RunnerShown>) {
-        if let Some(shown) = shown {
-            self.outbox.push(EventKind::RunnerChanged(shown));
+        let Some(shown) = shown else {
+            return;
+        };
+        if !shown.state.is_ready() {
+            if let Some(bus) = self.runners.buses.drop_bus(shown.runner) {
+                self.outbox.push(EventKind::RunnerBusChanged(bus));
+            }
         }
+        self.outbox.push(EventKind::RunnerChanged(shown));
     }
 
     fn runner_link(&self, runner: CloudRunnerId) -> Option<HostLink> {
@@ -118,6 +122,7 @@ impl Runtime {
                 self.outbox
                     .push(EventKind::RunnerRemoved(RunnerRemoved { runner, problem }));
             }
+            RunnerDone::Returned(back) => self.runner_returned(*back),
         }
     }
 
@@ -147,8 +152,9 @@ impl Runtime {
         let shown = self.runners.set(runner, RunnerState::Installing);
         self.show_runner(shown);
         let install_id = self.hosts.install_id();
+        let secrets = self.secrets.clone();
         let started = self.jobs.run(move || {
-            let prepared = prepare_runner(&link, &ssh, runner, install_id);
+            let prepared = prepare_runner((&link, &secrets), &ssh, runner, install_id);
             RunnerDone::Prepared { runner, prepared }.into()
         });
         if let Err(error) = started {
@@ -186,6 +192,10 @@ impl Runtime {
                 self.runners.set(runner, RunnerState::Failed { reason })
             }
         };
+        if ready {
+            self.runners.webhooks.forget(runner);
+            self.start_runner_return(runner);
+        }
         self.show_runner(shown);
         if ready {
             self.run_queued_stops(runner);
@@ -230,6 +240,10 @@ impl Runtime {
 
     #[tracing::instrument(skip_all, fields(%runner))]
     fn remove_runner(&mut self, runner: CloudRunnerId) -> Reply {
+        if let Some(bus) = self.runners.buses.forget(runner) {
+            self.outbox.push(EventKind::RunnerBusChanged(bus));
+        }
+        self.runners.webhooks.forget(runner);
         let (host, ready) = self
             .runners
             .forget(runner)
@@ -239,6 +253,7 @@ impl Runtime {
                 .iter()
                 .any(|environment| &environment.host == host)
         });
+        let secrets = self.secrets.clone();
         let started = self.jobs.run(move || {
             let retired =
                 ready
@@ -247,7 +262,7 @@ impl Runtime {
                         let paired = (ready.cli, ready.pairing);
                         retire_runner(&ready.link, Some(&paired))
                     });
-            let problem = forget_secrets(runner).or_else(|| {
+            let problem = forget_secrets(&secrets, runner).or_else(|| {
                 retired
                     .first()
                     .map(|error| format!("{RETIRE_FAILED}: {error}"))
@@ -269,10 +284,11 @@ impl Runtime {
     }
 }
 
-fn forget_secrets(runner: CloudRunnerId) -> Option<String> {
-    delete_cloud_runner_token(runner)
-        .and_then(|()| delete_cloud_opencode_password(runner))
-        .and_then(|()| delete_cloud_claude_token(runner))
+fn forget_secrets(secrets: &Secrets, runner: CloudRunnerId) -> Option<String> {
+    secrets
+        .delete_cloud_runner_token(runner)
+        .and_then(|()| secrets.delete_cloud_opencode_password(runner))
+        .and_then(|()| secrets.delete_cloud_claude_token(runner))
         .err()
         .map(|error| format!("{TOKEN_NOT_DELETED}: {error}"))
 }

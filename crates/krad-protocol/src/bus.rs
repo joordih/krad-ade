@@ -1,8 +1,11 @@
 use krad_domain::{
-    AgentStatus, ApiDiscoveryFile, EnvironmentName, TerminalId, ToolDecision, ToolUseId,
+    AgentStatus, ApiDiscoveryFile, EnvironmentName, TerminalId, ToolDecision, ToolUseId, WebhookId,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeSet;
+
+use crate::hooks::HookReport;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub struct AgentRef {
@@ -77,6 +80,12 @@ pub enum BusCommand {
     },
     PublishDiscovery {
         file: ApiDiscoveryFile,
+    },
+    ReplayHook {
+        agent: AgentRef,
+        report: HookReport,
+        #[serde(default)]
+        delivered: BTreeSet<WebhookId>,
     },
     #[serde(other)]
     Unknown,

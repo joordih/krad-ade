@@ -4,7 +4,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, ClipboardItem, Context, IntoElement, ParentElement, Styled, Window,
 };
 use krad_domain::{AgentPreset, TerminalId};
-use krad_runtime::TerminalAction;
+use krad_runtime::{paste_bytes, TerminalAction};
 use krad_session::SearchDirection;
 
 use super::live_terminal::terminal_ref;
@@ -17,8 +17,6 @@ use crate::theme::{
     TEXT_SM, TEXT_XS,
 };
 
-const BRACKETED_PASTE_START: &[u8] = b"\x1b[200~";
-const BRACKETED_PASTE_END: &[u8] = b"\x1b[201~";
 const SEARCH_PLACEHOLDER: &str = "Search terminal";
 const SEARCH_NO_MATCH: &str = "No matches";
 const SEARCH_HINT: &str = "↵ older · ⇧↵ newer · esc close";
@@ -31,13 +29,6 @@ const SEARCH_BAR_INSET: f32 = 12.0;
 const KEY_ESCAPE: &str = "escape";
 const KEY_ENTER: &str = "enter";
 const KEY_BACKSPACE: &str = "backspace";
-
-pub(super) fn paste_bytes(text: &str, bracketed: bool) -> Vec<u8> {
-    if !bracketed {
-        return text.as_bytes().to_vec();
-    }
-    [BRACKETED_PASTE_START, text.as_bytes(), BRACKETED_PASTE_END].concat()
-}
 
 #[derive(Default)]
 pub(super) struct SearchQuery {
@@ -312,16 +303,5 @@ impl EnvironmentShell {
                     })),
             )
             .into_any_element()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn pastes_are_bracketed_only_when_the_program_asked() {
-        assert_eq!(paste_bytes("fix it", false), b"fix it");
-        assert_eq!(paste_bytes("fix it", true), b"\x1b[200~fix it\x1b[201~");
     }
 }

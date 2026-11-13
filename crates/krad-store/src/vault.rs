@@ -3,9 +3,12 @@ use keyring::{Entry, Error as KeyringError};
 pub use krad_domain::LoginPlace;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::collections::HashMap;
+use std::fmt;
 use std::fs::OpenOptions;
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, PoisonError};
 
 const FALLBACK_EXTENSION: &str = "json";
 const TMP_SUFFIX: &str = ".tmp";
@@ -16,6 +19,49 @@ const OWNER_ONLY: u32 = 0o600;
 pub(crate) struct Vault {
     pub(crate) keyring_service: &'static str,
     pub(crate) fallback_dir: &'static str,
+}
+
+type Kept = HashMap<(&'static str, String), String>;
+
+#[derive(Clone)]
+pub struct Secrets {
+    backend: Backend,
+}
+
+#[derive(Clone)]
+enum Backend {
+    System,
+    Memory(Arc<Mutex<Kept>>),
+}
+
+impl Secrets {
+    #[must_use]
+    pub const fn system() -> Self {
+        Self {
+            backend: Backend::System,
+        }
+    }
+
+    #[must_use]
+    pub fn in_memory() -> Self {
+        Self {
+            backend: Backend::Memory(Arc::default()),
+        }
+    }
+}
+
+impl fmt::Debug for Secrets {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let backend = match self.backend {
+            Backend::System => "System",
+            Backend::Memory(_) => "Memory",
+        };
+        f.debug_tuple("Secrets").field(&backend).finish()
+    }
+}
+
+fn kept_in(kept: &Mutex<Kept>) -> std::sync::MutexGuard<'_, Kept> {
+    kept.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -40,9 +86,25 @@ impl From<KeyringError> for LoginStoreError {
 }
 
 pub(crate) fn find_login<T: DeserializeOwned>(
+    secrets: &Secrets,
     vault: &Vault,
     host: &str,
 ) -> Result<Option<(T, LoginPlace)>, LoginStoreError> {
+    let saved = match &secrets.backend {
+        Backend::System => find_text(vault, host)?,
+        Backend::Memory(kept) => kept_in(kept)
+            .get(&(vault.keyring_service, host.to_owned()))
+            .map(|text| (text.clone(), LoginPlace::Keyring)),
+    };
+    let Some((text, place)) = saved else {
+        return Ok(None);
+    };
+    serde_json::from_str(&text)
+        .map(|login| Some((login, place)))
+        .map_err(|_| LoginStoreError::Unreadable)
+}
+
+fn find_text(vault: &Vault, host: &str) -> Result<Option<(String, LoginPlace)>, LoginStoreError> {
     let saved = in_keyring(vault.keyring_service, host, saved_password)?.flatten();
     let (text, place) = match saved {
         Some(text) => (text, LoginPlace::Keyring),
@@ -52,17 +114,20 @@ pub(crate) fn find_login<T: DeserializeOwned>(
             Err(error) => return Err(error.into()),
         },
     };
-    serde_json::from_str(&text)
-        .map(|login| Some((login, place)))
-        .map_err(|_| LoginStoreError::Unreadable)
+    Ok(Some((text, place)))
 }
 
 pub(crate) fn write_login<T: Serialize>(
+    secrets: &Secrets,
     vault: &Vault,
     host: &str,
     login: &T,
 ) -> Result<(), LoginStoreError> {
     let text = serde_json::to_string(login).map_err(|_| LoginStoreError::Unreadable)?;
+    if let Backend::Memory(kept) = &secrets.backend {
+        kept_in(kept).insert((vault.keyring_service, host.to_owned()), text);
+        return Ok(());
+    }
     if in_keyring(vault.keyring_service, host, |entry| {
         entry.set_password(&text)
     })?
@@ -74,7 +139,15 @@ pub(crate) fn write_login<T: Serialize>(
     Ok(())
 }
 
-pub(crate) fn delete_login(vault: &Vault, host: &str) -> Result<(), LoginStoreError> {
+pub(crate) fn delete_login(
+    secrets: &Secrets,
+    vault: &Vault,
+    host: &str,
+) -> Result<(), LoginStoreError> {
+    if let Backend::Memory(kept) = &secrets.backend {
+        kept_in(kept).remove(&(vault.keyring_service, host.to_owned()));
+        return Ok(());
+    }
     in_keyring(vault.keyring_service, host, |entry| {
         match entry.delete_credential() {
             Err(KeyringError::NoEntry) => Ok(()),
@@ -200,6 +273,29 @@ mod tests {
             assert_eq!(mode & 0o777, OWNER_ONLY);
         }
         std::fs::remove_dir_all(dir)
+    }
+
+    #[test]
+    fn a_memory_vault_keeps_logins_apart_from_the_system_and_from_other_vaults(
+    ) -> Result<(), LoginStoreError> {
+        const OTHER: Vault = Vault {
+            keyring_service: "krad-ade-test-other",
+            fallback_dir: "other-logins",
+        };
+        let secrets = Secrets::in_memory();
+        write_login(&secrets, &VAULT, "host", &"kept".to_owned())?;
+        let found: Option<(String, LoginPlace)> = find_login(&secrets, &VAULT, "host")?;
+        assert_eq!(found, Some(("kept".to_owned(), LoginPlace::Keyring)));
+        let elsewhere: Option<(String, LoginPlace)> = find_login(&secrets, &OTHER, "host")?;
+        assert_eq!(elsewhere, None);
+        let fresh: Option<(String, LoginPlace)> =
+            find_login(&Secrets::in_memory(), &VAULT, "host")?;
+        assert_eq!(fresh, None);
+        delete_login(&secrets, &VAULT, "host")?;
+        let gone: Option<(String, LoginPlace)> = find_login(&secrets, &VAULT, "host")?;
+        assert_eq!(gone, None);
+        assert_eq!(format!("{secrets:?}"), "Secrets(\"Memory\")");
+        Ok(())
     }
 
     #[test]

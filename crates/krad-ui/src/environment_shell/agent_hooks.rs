@@ -1,13 +1,14 @@
 use gpui_kit::Context;
 use krad_agents::{ErrorCode, Response, TerminalHandle};
 use krad_domain::{
-    code_tools_launch_args, hook_launch_args, hook_state, launch_with_prompt, quote_for_shell,
+    code_tools_launch_args, hook_launch_args, launch_with_prompt, quote_for_shell,
     sanitize_worktree_name, worker_brief, AgentPreset, CloudPlacement, EnvironmentName,
-    ModelDelivery, ModelId, NodeField, PermissionMode, ResumeId, SessionId, TerminalGroup,
-    TerminalId, ToastKind, WorkerSpawn,
+    ModelDelivery, ModelId, PermissionMode, SessionId, TerminalGroup, TerminalId, ToastKind,
+    WorkerSpawn,
 };
+use krad_protocol::{Conversation, HookHeard, HookOrigin, Typing};
 use krad_runtime::{cli_name, BusReply};
-use std::time::{Duration, Instant};
+use std::collections::BTreeSet;
 
 use super::ask::HeldAskReport;
 use super::git_actions::GitFollowUp;
@@ -15,7 +16,6 @@ use super::shell_site::ShellSite;
 use super::workers::WorkerLaunch;
 use super::EnvironmentShell;
 
-const PROMPT_DELAY: Duration = Duration::from_secs(4);
 const FRESH_CONVERSATION: &str = "Fresh conversation";
 const FRESH_TOAST: &str = "could not resume its conversation and started a fresh one";
 pub(super) const NO_GROUP: &str = "Run spawn from a terminal that belongs to a group";
@@ -26,21 +26,6 @@ const CLOUD_WORKTREE: &str =
     "Workers of a cloud session run in its worktree on the cloud runner; start them without --worktree";
 pub(super) const BAD_WORKTREE_NAME: &str =
     "Use letters, digits, '-', '_' or '.' for the worktree name";
-
-pub(super) struct HookReport<'a> {
-    pub(super) harness: AgentPreset,
-    pub(super) event: &'a str,
-    pub(super) tool: Option<&'a str>,
-    pub(super) detail: Option<String>,
-    pub(super) resume: Option<&'a str>,
-    pub(super) mode: Option<PermissionMode>,
-}
-
-pub(super) struct PendingPrompt {
-    pub(super) target: TerminalHandle,
-    pub(super) text: String,
-    pub(super) due: Instant,
-}
 
 pub(super) struct WorkerOrder {
     pub(super) preset: AgentPreset,
@@ -106,35 +91,23 @@ impl EnvironmentShell {
         Some(launch_with_prompt(&line, preset, prompt, quoting))
     }
 
-    pub(super) fn queue_prompt(&mut self, env: &EnvironmentName, id: TerminalId, text: String) {
-        if self.runtime.handle.bus().is_none() {
-            return;
-        }
-        self.bus_work.pending_prompts.push(PendingPrompt {
-            target: TerminalHandle {
-                environment: env.as_str().to_owned(),
-                terminal: id.as_u64(),
-            },
-            text,
-            due: Instant::now() + PROMPT_DELAY,
-        });
+    pub(super) fn queue_prompt(&self, env: &EnvironmentName, id: TerminalId, text: String) {
+        self.type_typing(env, id, Typing::Prompt { text });
     }
 
-    pub(super) fn apply_live_hook(
-        &mut self,
-        from: &TerminalHandle,
-        report: HookReport<'_>,
-    ) -> Response {
-        let env = EnvironmentName::new(from.environment.clone());
-        self.note_live_cloud_report(&env, TerminalId(from.terminal));
-        self.apply_hook(from, report)
-    }
-
-    pub(super) fn apply_hook(&mut self, from: &TerminalHandle, report: HookReport<'_>) -> Response {
-        let env = EnvironmentName::new(from.environment.clone());
-        let id = TerminalId(from.terminal);
-        let preset = report.harness;
-        let state = hook_state(preset, report.event, report.tool);
+    pub(super) fn hook_heard(&mut self, heard: HookHeard) {
+        let HookHeard {
+            agent,
+            harness,
+            event,
+            tool,
+            mode,
+            state,
+            activity,
+            conversation,
+            origin,
+        } = heard;
+        let (env, id) = (agent.environment, agent.terminal);
         self.mark_terminal_hooked(&env, id);
         if let Some(session) = self
             .envs
@@ -142,59 +115,35 @@ impl EnvironmentShell {
             .and_then(|live| live.sessions.get_mut(&id))
         {
             if state.is_some() {
-                session.activity = report.detail;
+                session.activity = activity;
             }
-        }
-        let held = HeldAskReport {
-            preset,
-            event: report.event,
-            tool: report.tool,
-            mode: report.mode,
-        };
-        self.settle_held_asks(&env, id, &held);
-        let resume = report.resume.and_then(|raw| raw.parse::<ResumeId>().ok());
-        let fresh = preset.started_fresh(report.event, report.tool);
-        self.note_resume_id(&env, id, preset, resume, fresh);
-        if let Some(state) = state {
-            self.set_agent_state(&env, id, state);
-        }
-        Response::Noted
-    }
-
-    fn note_resume_id(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        preset: AgentPreset,
-        resume: Option<ResumeId>,
-        fresh: bool,
-    ) {
-        let Some(node) = self
-            .envs
-            .get(env)
-            .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
-        else {
-            return;
-        };
-        let Some(resume) = resume.filter(|resume| node.resume.as_ref() != Some(resume)) else {
-            return;
-        };
-        let replaced = node.resume.is_some();
-        self.set_node(env, id, NodeField::Resume(Some(resume)));
-        self.set_node(env, id, NodeField::Harness(Some(preset)));
-        let Some(live) = self.envs.get_mut(env) else {
-            return;
-        };
-        if fresh && replaced {
-            if let Some(session) = live.sessions.get_mut(&id) {
+            if conversation == Conversation::StartedFresh {
                 session.activity = Some(FRESH_CONVERSATION.to_owned());
             }
+        }
+        if conversation == Conversation::StartedFresh {
             self.push_toast(
                 ToastKind::Info,
                 format!("terminal #{} {FRESH_TOAST}", id.as_u64()),
             );
         }
-        self.store();
+        let held = HeldAskReport {
+            preset: harness,
+            event: &event,
+            tool: tool.as_deref(),
+            mode,
+        };
+        self.settle_held_asks(&env, id, &held);
+        let Some(state) = state else {
+            return;
+        };
+        let delivered = match origin {
+            HookOrigin::Replayed { delivered } => delivered,
+            HookOrigin::Live => BTreeSet::new(),
+        };
+        self.with_webhooks_delivered(delivered, |shell| {
+            shell.set_agent_state(&env, id, state);
+        });
     }
 
     pub(super) fn spawn_worker(

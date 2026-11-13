@@ -23,12 +23,13 @@ mod runtime;
 mod settings;
 mod subscribers;
 mod terminals;
+mod typing;
 mod usage;
 mod variants;
 mod workers;
 
 pub use adapters::kept_package;
-pub use app_events::{EventsSetup, WebhookSecrets};
+pub use app_events::EventsSetup;
 pub use bus::{
     closed_worker_infos, BusAccess, BusReply, BusSetup, Delegated, DelegationReceiver, Mail,
 };
@@ -58,5 +59,6 @@ pub use terminals::{
     remote_terminal, remote_terminal_opener, HostShell, OutputTap, ShownImage, TerminalAction,
     TerminalFrame, TerminalLaunch, TerminalPlace, TerminalStatus, TerminalView,
 };
+pub use typing::paste_bytes;
 pub use usage::{SourceState, UsagePlace, UsageSource};
 pub use workers::{closed_target, refusal_error, removal_outcome};

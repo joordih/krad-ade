@@ -1,16 +1,13 @@
 mod webhooks;
 
 use krad_domain::{
-    AppEvent, EnvironmentName, EventRecord, GroupId, Webhook, WebhookId, WebhookSecret,
-    WebhookSettings,
+    AppEvent, EnvironmentName, EventRecord, GroupId, Webhook, WebhookId, WebhookSettings,
 };
 use krad_protocol::{ErrorCode, EventKind, EventsCommand, Reply};
-use krad_store::{events_dir, find_webhook_secret, EventJournal, JournalSend};
+use krad_store::{events_dir, EventJournal, JournalSend, Secrets};
 use std::collections::BTreeSet;
-use std::fmt::Debug;
 use std::path::PathBuf;
 use std::sync::mpsc::SyncSender;
-use std::sync::Arc;
 use std::time::SystemTime;
 
 use crate::input::Input;
@@ -20,29 +17,9 @@ use webhooks::{Delivery, WebhookSender};
 const NO_SENDER: &str = "this runtime sends no webhooks";
 const NO_HOOK: &str = "no webhook has that id";
 
-pub trait WebhookSecrets: Send + Sync + Debug {
-    fn find(&self, hook: WebhookId) -> Option<WebhookSecret>;
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-struct StoredSecrets;
-
-impl WebhookSecrets for StoredSecrets {
-    fn find(&self, hook: WebhookId) -> Option<WebhookSecret> {
-        match find_webhook_secret(hook) {
-            Ok(found) => found.map(|(secret, _)| secret),
-            Err(error) => {
-                tracing::warn!(webhook = %hook, %error, "webhook secret unreadable");
-                None
-            }
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct EventsSetup {
     pub journal: Option<PathBuf>,
-    pub secrets: Arc<dyn WebhookSecrets>,
 }
 
 impl EventsSetup {
@@ -50,7 +27,6 @@ impl EventsSetup {
     pub fn in_config_folder() -> Self {
         Self {
             journal: events_dir(),
-            secrets: Arc::new(StoredSecrets),
         }
     }
 }
@@ -70,13 +46,17 @@ fn undelivered<'a>(
 }
 
 impl AppEvents {
-    pub(crate) fn start(setup: Option<EventsSetup>, report: &SyncSender<Input>) -> Self {
+    pub(crate) fn start(
+        setup: Option<EventsSetup>,
+        secrets: &Secrets,
+        report: &SyncSender<Input>,
+    ) -> Self {
         let Some(setup) = setup else {
             return Self::default();
         };
         Self {
             journal: setup.journal.and_then(EventJournal::spawn),
-            sender: WebhookSender::spawn(setup.secrets, report.clone()),
+            sender: WebhookSender::spawn(secrets.clone(), report.clone()),
             webhooks: WebhookSettings::default(),
         }
     }

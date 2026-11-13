@@ -105,6 +105,7 @@ mod tests {
             git: Vec::new(),
             kraddies: Box::default(),
             runners: Vec::new(),
+            runner_buses: Vec::new(),
         }
     }
 

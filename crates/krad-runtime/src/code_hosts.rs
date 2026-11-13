@@ -8,7 +8,7 @@ use krad_github::{GithubClient, GithubError, GITHUB_HOST};
 use krad_gitlab::{GitlabClient, GitlabConfig, GitlabError, OAuthError, TokenSaver};
 use krad_host::HostLink;
 use krad_repo::{resolved_remote_url, workplace_home, ORIGIN_REMOTE};
-use krad_store::{read_github_login, read_gitlab_login, write_gitlab_login, LoginStoreError};
+use krad_store::{LoginStoreError, Secrets};
 use std::fmt;
 use std::path::Path;
 
@@ -16,8 +16,12 @@ mod watch;
 
 pub(crate) use watch::{observe, CodeHostWatch, Observed, WatchTarget};
 
-pub fn gitlab_token_saver(host: String) -> TokenSaver {
-    Box::new(move |tokens| write_gitlab_login(&host, tokens).map_err(std::io::Error::other))
+pub fn gitlab_token_saver(secrets: Secrets, host: String) -> TokenSaver {
+    Box::new(move |tokens| {
+        secrets
+            .write_gitlab_login(&host, tokens)
+            .map_err(std::io::Error::other)
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -38,15 +42,15 @@ impl HostLogin {
     /// # Errors
     ///
     /// Fails when the saved login cannot be read.
-    pub fn client(&self) -> Result<Option<HostClient>, LoginStoreError> {
+    pub fn client(&self, secrets: &Secrets) -> Result<Option<HostClient>, LoginStoreError> {
         Ok(match self {
-            Self::Gitlab(config) => read_gitlab_login(&config.host)?.map(|tokens| {
-                let saver = gitlab_token_saver(config.host.clone());
+            Self::Gitlab(config) => secrets.read_gitlab_login(&config.host)?.map(|tokens| {
+                let saver = gitlab_token_saver(secrets.clone(), config.host.clone());
                 HostClient::Gitlab(GitlabClient::new(config.clone(), tokens, saver))
             }),
-            Self::Github => {
-                read_github_login()?.map(|token| HostClient::Github(GithubClient::new(&token)))
-            }
+            Self::Github => secrets
+                .read_github_login()?
+                .map(|token| HostClient::Github(GithubClient::new(&token))),
         })
     }
 }

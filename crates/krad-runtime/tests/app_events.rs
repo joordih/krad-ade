@@ -6,15 +6,13 @@ use krad_domain::{
     TerminalId, Webhook, WebhookId, WebhookSecret, WebhookSettings, WebhookSigning,
 };
 use krad_protocol::{Command, EventKind, EventsCommand, Feed, Reply, WebhookTest};
-use krad_runtime::{
-    EventReceiver, EventsSetup, Runtime, RuntimeHandle, RuntimeSetup, WebhookSecrets,
-};
+use krad_runtime::{EventReceiver, EventsSetup, Runtime, RuntimeHandle, RuntimeSetup};
+use krad_store::Secrets;
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -23,21 +21,13 @@ type TestResult = Result<(), Box<dyn Error>>;
 const ENVIRONMENT: &str = "main";
 const SECRET: &str = "s3cr3t";
 const GROUP: GroupId = GroupId(3);
+const HOOK: WebhookId = WebhookId(7);
 const JOURNAL_WAIT: Duration = Duration::from_secs(5);
 const JOURNAL_POLL: Duration = Duration::from_millis(20);
 const FEED_ENDED: &str = "the feed ended";
 const NOT_A_SNAPSHOT: &str = "the feed did not start from a snapshot";
 const NO_CONTENT: &[u8] =
     b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-
-#[derive(Debug)]
-struct KnownSecret;
-
-impl WebhookSecrets for KnownSecret {
-    fn find(&self, _: WebhookId) -> Option<WebhookSecret> {
-        WebhookSecret::parse(SECRET)
-    }
-}
 
 struct Received {
     head: Vec<String>,
@@ -100,7 +90,7 @@ fn serve_once(listener: TcpListener) -> JoinHandle<Option<Received>> {
 
 fn hook(url: &str, signing: WebhookSigning) -> Result<Webhook, Box<dyn Error>> {
     Ok(Webhook {
-        id: WebhookId(7),
+        id: HOOK,
         name: "ci".parse()?,
         url: url.parse()?,
         kinds: [AppEventKind::AgentFinished].into_iter().collect(),
@@ -109,11 +99,14 @@ fn hook(url: &str, signing: WebhookSigning) -> Result<Webhook, Box<dyn Error>> {
 }
 
 fn with_events(folder: &Folder) -> Result<RuntimeHandle, Box<dyn Error>> {
+    let secrets = Secrets::in_memory();
+    let secret = WebhookSecret::parse(SECRET).ok_or("the test secret is invalid")?;
+    secrets.write_webhook_secret(HOOK, &secret)?;
     Ok(Runtime::start(RuntimeSetup {
         events: Some(EventsSetup {
             journal: Some(folder.0.clone()),
-            secrets: Arc::new(KnownSecret),
         }),
+        secrets,
         ..RuntimeSetup::default()
     })?)
 }
@@ -229,14 +222,14 @@ fn a_webhook_test_reports_its_outcome_and_an_unknown_hook_is_refused() -> TestRe
     };
     assert!(matches!(send(&runtime, unknown)?, Reply::Refused { .. }));
     let known = EventsCommand::TestWebhook {
-        hook: WebhookId(7),
+        hook: HOOK,
         environment,
     };
     assert_eq!(send(&runtime, known)?, Reply::Accepted);
     assert_eq!(
         next_event(&mut events)?,
         EventKind::WebhookTested(WebhookTest {
-            hook: WebhookId(7),
+            hook: HOOK,
             outcome: DeliveryOutcome::Delivered,
         })
     );

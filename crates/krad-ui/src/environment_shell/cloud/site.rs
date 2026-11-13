@@ -185,7 +185,6 @@ impl EnvironmentShell {
         self.cloud.attached.remove(&key);
         self.cloud.reattached.remove(&key);
         self.cloud.liveness.remove(&key);
-        self.cloud.heard.remove(&key);
         let Some(process) = self
             .envs
             .get(env)

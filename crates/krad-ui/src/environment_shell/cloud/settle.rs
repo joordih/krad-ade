@@ -62,7 +62,6 @@ impl EnvironmentShell {
     ) {
         let chats = self.cloud_chats_on(runner);
         if self.runner_link(runner).is_none() {
-            self.drop_runner_bus(runner);
             self.fail_pending_cloud_sessions(runner, cx);
             let text = format!(
                 "{RUNNER_PREFIX} {}: {}",
@@ -80,8 +79,6 @@ impl EnvironmentShell {
             }
             return;
         }
-        self.forget_runner_webhooks(runner);
-        self.start_runner_return(runner, cx);
         self.start_pending_cloud_sessions(runner, cx);
         self.check_runner_logins(runner, cx);
         for (env, id) in chats {
@@ -98,7 +95,7 @@ impl EnvironmentShell {
         self.resume_cloud_work(cx);
     }
 
-    pub(super) fn resume_cloud_work(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::environment_shell) fn resume_cloud_work(&mut self, cx: &mut Context<Self>) {
         let harnesses: Vec<AgentPreset> =
             AgentPreset::listed(&self.settings.acp.all_agents()).collect();
         for harness in harnesses {

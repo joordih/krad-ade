@@ -1,9 +1,11 @@
-use krad_agents::{Caller, Incoming};
+use krad_agents::{Caller, Incoming, Request};
 use krad_domain::{AppEvent, EnvironmentEdit, EnvironmentName, NodeEdit};
 use krad_protocol::{
-    AgentRef, Command, ErrorCode, EventKind, EventsCommand, Reply, RequestId, RuntimeCommand,
+    AgentRef, BusCommand, Command, ErrorCode, EventKind, EventsCommand, HookOrigin, Reply,
+    RequestId, RuntimeCommand,
 };
 
+use super::hooking::{agent_of, hook_report};
 use super::{refused, Runtime, NO_BUS, UNSUPPORTED_COMMAND};
 use crate::bus::{as_lead, closed_worker_answer};
 use crate::environments::UNKNOWN_ENVIRONMENT;
@@ -15,6 +17,14 @@ impl Runtime {
         match command {
             Command::Runtime(RuntimeCommand::Ping) => {
                 self.outbox.push(EventKind::Pong { request: id });
+                Reply::Accepted
+            }
+            Command::Bus(BusCommand::ReplayHook {
+                agent,
+                report,
+                delivered,
+            }) => {
+                self.hear_hook(agent, report, HookOrigin::Replayed { delivered });
                 Reply::Accepted
             }
             Command::Bus(command) => {
@@ -30,6 +40,7 @@ impl Runtime {
             }
             Command::Events(command) => {
                 self.note_finished_agent(&command);
+                self.webhooks_edited(&command);
                 self.events
                     .execute(&command, &mut self.outbox)
                     .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND))
@@ -60,10 +71,11 @@ impl Runtime {
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Gateway(command) => self
                 .gateway
-                .execute(command, &self.jobs, &mut self.outbox)
+                .execute(command, (&self.jobs, &self.secrets), &mut self.outbox)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Settings(command) => {
                 let reply = self.settings.execute(command, &mut self.outbox);
+                self.runners.webhooks.check_soon();
                 self.flush_chats();
                 self.run_ready_stops();
                 reply.unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND))
@@ -135,6 +147,16 @@ impl Runtime {
             answer_git(request, reply, self.hosts.prompts());
             return;
         }
+        if let (Caller::Terminal(terminal), Request::Hook { .. }) = (&from, &request) {
+            let agent = agent_of(terminal);
+            if let Some(report) = hook_report(request) {
+                let answer = self.hear_hook(agent, report, HookOrigin::Live);
+                if reply.send(answer).is_err() {
+                    tracing::trace!("a hook left before its answer");
+                }
+            }
+            return;
+        }
         let data = match &from {
             Caller::Terminal(terminal) => self
                 .environments
@@ -160,6 +182,7 @@ impl Runtime {
             .and_then(|incoming| self.answer_variant_requests(incoming))
             .and_then(|incoming| self.answer_for_leads(incoming))
             .and_then(|incoming| self.answer_on_chats(incoming))
+            .and_then(|incoming| self.answer_on_terminals(incoming))
         else {
             return;
         };

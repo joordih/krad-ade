@@ -1,6 +1,6 @@
 use krad_domain::{
-    AgentPreset, AttentionTarget, ChatMessage, EnvironmentChange, EnvironmentData, EnvironmentName,
-    EventRecord, GitObjectId, Host, KraddieId, RewindPoint, Settings, UsageReport,
+    AgentPreset, AttentionTarget, ChatMessage, CloudRunnerId, EnvironmentChange, EnvironmentData,
+    EnvironmentName, EventRecord, GitObjectId, Host, KraddieId, RewindPoint, Settings, UsageReport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +14,7 @@ use crate::environments::SpendingCrossed;
 use crate::gateway::GatewayState;
 use crate::git::{GitFinished, GitRead, SessionChangesRead, WorktreeSwept};
 use crate::harness_health::{HarnessChecked, HealthSnapshot};
+use crate::hooks::HookHeard;
 use crate::hosts::{
     HostPrompt, HostState, HostsSnapshot, KeptAdapter, LocalAgents, PromptId, RemoteBusState,
 };
@@ -23,7 +24,7 @@ use crate::launches::TerminalLaunched;
 use crate::models::{ListedModels, ModelsOrigin, ModelsSnapshot};
 use crate::opencode::{OpencodeShown, OpencodeSnapshot};
 use crate::review::{CodeHostLogin, ReviewAnswered};
-use crate::runners::{RunnerRemoved, RunnerShown};
+use crate::runners::{CloudAskReplayed, RunnerBusShown, RunnerRemoved, RunnerShown};
 use crate::terminals::{TerminalClassified, TerminalSummary};
 use crate::usage::{UsageShown, UsageSnapshot};
 
@@ -42,6 +43,7 @@ pub enum EventKind {
     AgentStatus(StatusReport),
     Mail(MailCount),
     AskPending(PendingAsk),
+    AgentHooked(HookHeard),
     AskSettled {
         ask: AskId,
         settlement: AskSettlement,
@@ -194,6 +196,11 @@ pub enum EventKind {
     CodeHostLogin(CodeHostLogin),
     RunnerChanged(RunnerShown),
     RunnerRemoved(RunnerRemoved),
+    RunnerBusChanged(RunnerBusShown),
+    RunnerReturned {
+        runner: CloudRunnerId,
+    },
+    CloudAskReplayed(CloudAskReplayed),
     #[serde(other)]
     Unknown,
 }
@@ -238,6 +245,8 @@ pub struct Snapshot {
     pub kraddies: Box<KraddiesSnapshot>,
     #[serde(default)]
     pub runners: Vec<RunnerShown>,
+    #[serde(default)]
+    pub runner_buses: Vec<RunnerBusShown>,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -300,6 +309,7 @@ mod tests {
                 git: Vec::new(),
                 kraddies: Box::default(),
                 runners: Vec::new(),
+                runner_buses: Vec::new(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

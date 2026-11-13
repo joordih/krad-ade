@@ -4,6 +4,7 @@ use krad_domain::{
 };
 use krad_gitlab::GitlabConfig;
 use krad_host::HostLink;
+use krad_store::Secrets;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -65,14 +66,18 @@ fn snapshot_of(client: &HostClient, project: &ProjectPath) -> Option<CodeHostSna
 }
 
 #[tracing::instrument(skip_all, fields(groups = targets.len()))]
-pub(crate) fn observe(targets: Vec<WatchTarget>, gitlab: Option<&GitlabConfig>) -> Vec<Observed> {
+pub(crate) fn observe(
+    targets: Vec<WatchTarget>,
+    gitlab: Option<&GitlabConfig>,
+    secrets: &Secrets,
+) -> Vec<Observed> {
     let mut seen: HashSet<ProjectKey> = HashSet::new();
     let mut observed = Vec::new();
     for target in targets {
         let Some(repo) = origin_repo(&target.link, &target.root, gitlab.cloned()) else {
             continue;
         };
-        let Ok(Some(client)) = repo.login.client() else {
+        let Ok(Some(client)) = repo.login.client(secrets) else {
             continue;
         };
         let project: ProjectKey = (client.code_host(), client.host().to_owned(), repo.project);

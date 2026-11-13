@@ -50,10 +50,8 @@ impl EnvironmentShell {
         }
         self.save_settings(cx);
         self.forget_runner_logins(runner);
-        self.forget_runner_webhooks(runner);
         self.keep_runner_claude_token(runner, None);
         self.mark_runner_removed(runner);
-        self.drop_runner_bus(runner);
         self.runtime.view.runners.remove(&runner);
         self.post_runner(RunnerCommand::Remove { runner });
         cx.notify();
@@ -76,8 +74,6 @@ impl EnvironmentShell {
                 .runner(runner)
                 .and_then(|ready| ready.claude_token);
             self.keep_runner_claude_token(runner, token);
-        } else {
-            self.drop_runner_bus(runner);
         }
         self.runtime.view.runners.insert(runner, state);
         if settled {

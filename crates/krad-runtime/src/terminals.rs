@@ -3,6 +3,7 @@ mod launch;
 mod pump;
 mod remote_pty;
 mod terminal;
+mod typed;
 mod view;
 
 pub use action::TerminalAction;
@@ -11,6 +12,7 @@ pub use launch::{
 };
 pub use view::{ShownImage, TerminalFrame, TerminalStatus, TerminalView};
 
+pub(crate) use typed::Typed;
 pub(crate) use view::Shared;
 
 use krad_domain::{ProcessRun, TerminalMeta};
@@ -252,6 +254,7 @@ impl Terminals {
             | TerminalCommand::Close { terminal } => terminal.clone(),
             TerminalCommand::Open { .. }
             | TerminalCommand::OpenMissing { .. }
+            | TerminalCommand::Type { .. }
             | TerminalCommand::Unknown => return None,
         };
         if let TerminalCommand::Close { terminal } = command {
@@ -275,6 +278,7 @@ impl Terminals {
             TerminalCommand::Close { .. }
             | TerminalCommand::Open { .. }
             | TerminalCommand::OpenMissing { .. }
+            | TerminalCommand::Type { .. }
             | TerminalCommand::Unknown => {}
         }
         Some(Reply::Accepted)

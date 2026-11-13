@@ -1,6 +1,8 @@
 use krad_domain::{ClaudeOauthToken, CloudRunnerId, OpencodePassword, PairingToken};
 
-use crate::vault::{delete_login, find_login, write_login, LoginPlace, LoginStoreError, Vault};
+use crate::vault::{
+    delete_login, find_login, write_login, LoginPlace, LoginStoreError, Secrets, Vault,
+};
 
 const CLOUD_RUNNER_VAULT: Vault = Vault {
     keyring_service: "krad-ade-cloud-runner",
@@ -21,31 +23,92 @@ fn vault_key(id: CloudRunnerId) -> String {
     id.to_string()
 }
 
-/// # Errors
-///
-/// Fails when the keyring or the fallback file cannot be read, or holds
-/// something else than a pairing token.
-pub fn find_cloud_runner_token(
-    id: CloudRunnerId,
-) -> Result<Option<(PairingToken, LoginPlace)>, LoginStoreError> {
-    find_login(&CLOUD_RUNNER_VAULT, &vault_key(id))
-}
+impl Secrets {
+    /// # Errors
+    ///
+    /// Fails when the keyring or the fallback file cannot be read, or holds
+    /// something else than a pairing token.
+    pub fn find_cloud_runner_token(
+        &self,
+        id: CloudRunnerId,
+    ) -> Result<Option<(PairingToken, LoginPlace)>, LoginStoreError> {
+        find_login(self, &CLOUD_RUNNER_VAULT, &vault_key(id))
+    }
 
-/// # Errors
-///
-/// Fails when neither the keyring nor the config folder can be written.
-pub fn write_cloud_runner_token(
-    id: CloudRunnerId,
-    token: &PairingToken,
-) -> Result<(), LoginStoreError> {
-    write_login(&CLOUD_RUNNER_VAULT, &vault_key(id), token)
-}
+    /// # Errors
+    ///
+    /// Fails when neither the keyring nor the config folder can be written.
+    pub fn write_cloud_runner_token(
+        &self,
+        id: CloudRunnerId,
+        token: &PairingToken,
+    ) -> Result<(), LoginStoreError> {
+        write_login(self, &CLOUD_RUNNER_VAULT, &vault_key(id), token)
+    }
 
-/// # Errors
-///
-/// Fails when either holds a token that cannot be removed.
-pub fn delete_cloud_runner_token(id: CloudRunnerId) -> Result<(), LoginStoreError> {
-    delete_login(&CLOUD_RUNNER_VAULT, &vault_key(id))
+    /// # Errors
+    ///
+    /// Fails when either holds a token that cannot be removed.
+    pub fn delete_cloud_runner_token(&self, id: CloudRunnerId) -> Result<(), LoginStoreError> {
+        delete_login(self, &CLOUD_RUNNER_VAULT, &vault_key(id))
+    }
+
+    /// # Errors
+    ///
+    /// Fails when the keyring or the fallback file cannot be read.
+    pub fn find_cloud_opencode_password(
+        &self,
+        id: CloudRunnerId,
+    ) -> Result<Option<(OpencodePassword, LoginPlace)>, LoginStoreError> {
+        find_login(self, &OPENCODE_PASSWORD_VAULT, &vault_key(id))
+    }
+
+    /// # Errors
+    ///
+    /// Fails when neither the keyring nor the config folder can be written.
+    pub fn write_cloud_opencode_password(
+        &self,
+        id: CloudRunnerId,
+        password: &OpencodePassword,
+    ) -> Result<(), LoginStoreError> {
+        write_login(self, &OPENCODE_PASSWORD_VAULT, &vault_key(id), password)
+    }
+
+    /// # Errors
+    ///
+    /// Fails when either holds a password that cannot be removed.
+    pub fn delete_cloud_opencode_password(&self, id: CloudRunnerId) -> Result<(), LoginStoreError> {
+        delete_login(self, &OPENCODE_PASSWORD_VAULT, &vault_key(id))
+    }
+
+    /// # Errors
+    ///
+    /// Fails when the keyring or the fallback file cannot be read, or holds
+    /// something else than a Claude Code token.
+    pub fn find_cloud_claude_token(
+        &self,
+        id: CloudRunnerId,
+    ) -> Result<Option<(ClaudeOauthToken, LoginPlace)>, LoginStoreError> {
+        find_login(self, &CLAUDE_TOKEN_VAULT, &vault_key(id))
+    }
+
+    /// # Errors
+    ///
+    /// Fails when neither the keyring nor the config folder can be written.
+    pub fn write_cloud_claude_token(
+        &self,
+        id: CloudRunnerId,
+        token: &ClaudeOauthToken,
+    ) -> Result<(), LoginStoreError> {
+        write_login(self, &CLAUDE_TOKEN_VAULT, &vault_key(id), token)
+    }
+
+    /// # Errors
+    ///
+    /// Fails when either holds a token that cannot be removed.
+    pub fn delete_cloud_claude_token(&self, id: CloudRunnerId) -> Result<(), LoginStoreError> {
+        delete_login(self, &CLAUDE_TOKEN_VAULT, &vault_key(id))
+    }
 }
 
 /// # Errors
@@ -54,7 +117,7 @@ pub fn delete_cloud_runner_token(id: CloudRunnerId) -> Result<(), LoginStoreErro
 pub fn find_cloud_opencode_password(
     id: CloudRunnerId,
 ) -> Result<Option<(OpencodePassword, LoginPlace)>, LoginStoreError> {
-    find_login(&OPENCODE_PASSWORD_VAULT, &vault_key(id))
+    Secrets::system().find_cloud_opencode_password(id)
 }
 
 /// # Errors
@@ -64,24 +127,7 @@ pub fn write_cloud_opencode_password(
     id: CloudRunnerId,
     password: &OpencodePassword,
 ) -> Result<(), LoginStoreError> {
-    write_login(&OPENCODE_PASSWORD_VAULT, &vault_key(id), password)
-}
-
-/// # Errors
-///
-/// Fails when either holds a password that cannot be removed.
-pub fn delete_cloud_opencode_password(id: CloudRunnerId) -> Result<(), LoginStoreError> {
-    delete_login(&OPENCODE_PASSWORD_VAULT, &vault_key(id))
-}
-
-/// # Errors
-///
-/// Fails when the keyring or the fallback file cannot be read, or holds
-/// something else than a Claude Code token.
-pub fn find_cloud_claude_token(
-    id: CloudRunnerId,
-) -> Result<Option<(ClaudeOauthToken, LoginPlace)>, LoginStoreError> {
-    find_login(&CLAUDE_TOKEN_VAULT, &vault_key(id))
+    Secrets::system().write_cloud_opencode_password(id, password)
 }
 
 /// # Errors
@@ -91,14 +137,14 @@ pub fn write_cloud_claude_token(
     id: CloudRunnerId,
     token: &ClaudeOauthToken,
 ) -> Result<(), LoginStoreError> {
-    write_login(&CLAUDE_TOKEN_VAULT, &vault_key(id), token)
+    Secrets::system().write_cloud_claude_token(id, token)
 }
 
 /// # Errors
 ///
 /// Fails when either holds a token that cannot be removed.
 pub fn delete_cloud_claude_token(id: CloudRunnerId) -> Result<(), LoginStoreError> {
-    delete_login(&CLAUDE_TOKEN_VAULT, &vault_key(id))
+    Secrets::system().delete_cloud_claude_token(id)
 }
 
 #[cfg(test)]

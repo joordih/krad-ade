@@ -1,7 +1,7 @@
 use krad_chat::{AcpConfig, AcpEvent, AcpWanted, ChatBackend, LiveChat, ModelOffer};
 use krad_domain::{AcpConfigOptionId, AcpConfigValue, AcpModeId};
 use krad_protocol::{AcpShown, AcpSignInAsk, AgentRef};
-use krad_store::{read_acp_secrets, AcpSecrets};
+use krad_store::AcpSecrets;
 
 use super::backend::{ChatLaunch, Unready};
 use crate::jobs::{JobDone, Jobs};
@@ -58,7 +58,7 @@ impl AcpChat {
         &mut self,
         mut config: AcpConfig,
         (chat, opened): (&AgentRef, u64),
-        jobs: &Jobs,
+        (jobs, stored): (&Jobs, &krad_store::Secrets),
     ) -> Result<ChatBackend, Unready> {
         match &self.secrets {
             Secrets::Read(Ok(secrets)) => {
@@ -71,11 +71,14 @@ impl AcpChat {
             Secrets::Unread => {
                 let agent = config.agent.agent;
                 let chat = chat.clone();
+                let stored = stored.clone();
                 let started = jobs.run(move || {
                     JobDone::AcpSecretsRead(AcpSecretsRead {
                         chat,
                         opened,
-                        read: read_acp_secrets(&agent).map_err(|error| error.to_string()),
+                        read: stored
+                            .read_acp_secrets(&agent)
+                            .map_err(|error| error.to_string()),
                     })
                 });
                 self.secrets = match started {

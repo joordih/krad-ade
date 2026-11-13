@@ -4,13 +4,12 @@ use krad_domain::{
     WebhookSecret, WebhookSigning,
 };
 use krad_protocol::WebhookTest;
+use krad_store::Secrets;
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use ureq::Agent;
 
-use super::WebhookSecrets;
 use crate::input::Input;
 
 const SENDER_THREAD_NAME: &str = "krad-ade-webhooks";
@@ -36,10 +35,7 @@ pub(crate) struct WebhookSender {
 }
 
 impl WebhookSender {
-    pub(crate) fn spawn(
-        secrets: Arc<dyn WebhookSecrets>,
-        report: SyncSender<Input>,
-    ) -> Option<Self> {
+    pub(crate) fn spawn(secrets: Secrets, report: SyncSender<Input>) -> Option<Self> {
         let (queue, inbox) = sync_channel::<Order>(SENDER_QUEUE);
         std::thread::Builder::new()
             .name(SENDER_THREAD_NAME.to_owned())
@@ -125,13 +121,23 @@ impl Retries {
     }
 }
 
-struct Secrets {
-    store: Arc<dyn WebhookSecrets>,
+struct HookSecrets {
+    store: Secrets,
     known: HashMap<WebhookId, Option<WebhookSecret>>,
 }
 
-impl Secrets {
-    fn new(store: Arc<dyn WebhookSecrets>) -> Self {
+fn find_secret(store: &Secrets, hook: WebhookId) -> Option<WebhookSecret> {
+    match store.find_webhook_secret(hook) {
+        Ok(found) => found.map(|(secret, _)| secret),
+        Err(error) => {
+            tracing::warn!(webhook = %hook, %error, "webhook secret unreadable");
+            None
+        }
+    }
+}
+
+impl HookSecrets {
+    fn new(store: Secrets) -> Self {
         Self {
             store,
             known: HashMap::new(),
@@ -142,13 +148,13 @@ impl Secrets {
         let store = &self.store;
         self.known
             .entry(hook)
-            .or_insert_with(|| store.find(hook))
+            .or_insert_with(|| find_secret(store, hook))
             .clone()
     }
 
     fn fresh(&self, hook: &Webhook) -> Option<WebhookSecret> {
         (hook.signing == WebhookSigning::Signed)
-            .then(|| self.store.find(hook.id))
+            .then(|| find_secret(&self.store, hook.id))
             .flatten()
     }
 }
@@ -182,7 +188,7 @@ impl Outbox {
         });
     }
 
-    fn changed(&mut self, id: WebhookId, now: Option<Webhook>, secrets: &mut Secrets) {
+    fn changed(&mut self, id: WebhookId, now: Option<Webhook>, secrets: &mut HookSecrets) {
         secrets.known.remove(&id);
         if let Some(hook) = now {
             self.hooks.insert(id, hook);
@@ -201,7 +207,7 @@ impl Outbox {
     }
 }
 
-fn test(agent: &Agent, delivery: &Delivery, secrets: &Secrets, report: &SyncSender<Input>) {
+fn test(agent: &Agent, delivery: &Delivery, secrets: &HookSecrets, report: &SyncSender<Input>) {
     let secret = secrets.fresh(&delivery.hook);
     let outcome = post(agent, &delivery.hook, &delivery.record, secret.as_ref());
     let tested = WebhookTest {
@@ -213,10 +219,10 @@ fn test(agent: &Agent, delivery: &Delivery, secrets: &Secrets, report: &SyncSend
     }
 }
 
-fn serve(inbox: &Receiver<Order>, store: Arc<dyn WebhookSecrets>, report: &SyncSender<Input>) {
+fn serve(inbox: &Receiver<Order>, store: Secrets, report: &SyncSender<Input>) {
     let agent = webhook_agent(REQUEST_TIMEOUT);
     let mut outbox = Outbox::default();
-    let mut secrets = Secrets::new(store);
+    let mut secrets = HookSecrets::new(store);
     while let Ok(order) = next_order(inbox, outbox.retries.wait(Instant::now())) {
         match order {
             Some(Order::Test(delivery)) => test(&agent, &delivery, &secrets, report),
@@ -287,15 +293,6 @@ mod tests {
     use super::*;
     use krad_domain::{AppEvent, EnvironmentName, WEBHOOK_FIRST_BACKOFF, WEBHOOK_MAX_ATTEMPTS};
     use std::time::SystemTime;
-
-    #[derive(Debug)]
-    struct NoSecrets;
-
-    impl WebhookSecrets for NoSecrets {
-        fn find(&self, _: WebhookId) -> Option<WebhookSecret> {
-            None
-        }
-    }
 
     fn delivery(id: u64) -> Delivery {
         Delivery {
@@ -376,7 +373,7 @@ mod tests {
     fn a_retry_goes_to_the_hook_as_it_is_now_and_a_removed_hook_gets_none() {
         let now = Instant::now();
         let mut outbox = Outbox::default();
-        let mut secrets = Secrets::new(Arc::new(NoSecrets));
+        let mut secrets = HookSecrets::new(Secrets::in_memory());
         outbox.deliver(delivery(1), now);
         outbox.deliver(delivery(2), now);
         let mut moved = delivery(1).hook;

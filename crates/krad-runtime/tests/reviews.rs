@@ -18,6 +18,7 @@ use krad_protocol::{
     ReviewAnswered, ReviewCommand, ReviewConnection, ReviewWrite,
 };
 use krad_runtime::{EnvironmentsSetup, Runtime, RuntimeHandle, RuntimeSetup, SettingsSetup};
+use krad_store::Secrets;
 use repo::{committed_repo, git};
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -28,9 +29,6 @@ type TestResult = Result<(), Box<dyn Error>>;
 
 const ENVIRONMENT: &str = "main";
 const CONFIG_HOME_VAR: &str = "XDG_CONFIG_HOME";
-const APP_DIR: &str = "krad-ade";
-const LOGINS_DIR: &str = "gitlab-logins";
-const LOGIN_EXTENSION: &str = "json";
 const WAIT: Duration = Duration::from_secs(20);
 const POLL: Duration = Duration::from_millis(50);
 const TIMED_OUT: &str = "the awaited event never came";
@@ -79,37 +77,20 @@ fn routes() -> Vec<Route> {
     ]
 }
 
-fn login_file_name(host: &str) -> String {
-    let name: String = host
-        .chars()
-        .map(|char| {
-            if char.is_ascii_alphanumeric() || matches!(char, '-' | '.') {
-                char
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    format!("{name}.{LOGIN_EXTENSION}")
-}
-
-fn keep_login(config_home: &Path, host: &str) -> TestResult {
-    let logins = config_home.join(APP_DIR).join(LOGINS_DIR);
-    std::fs::create_dir_all(&logins)?;
+fn kept_login(host: &str) -> Result<Secrets, Box<dyn Error>> {
+    let secrets = Secrets::in_memory();
     let tokens = GitlabTokens {
         access_token: "fixture-access".to_owned(),
         refresh_token: "fixture-refresh".to_owned(),
     };
-    std::fs::write(
-        logins.join(login_file_name(host)),
-        serde_json::to_string(&tokens)?,
-    )?;
-    Ok(())
+    secrets.write_gitlab_login(host, &tokens)?;
+    Ok(secrets)
 }
 
 fn start(
     root: &Path,
     gitlab_host: &str,
+    secrets: Secrets,
 ) -> Result<(RuntimeHandle, Receiver<Feed>), Box<dyn Error>> {
     let mut data = EnvironmentData::empty(EnvironmentName::new(ENVIRONMENT.to_owned()));
     let group = data.add_group(root.to_path_buf(), None);
@@ -135,6 +116,7 @@ fn start(
             settings,
             file: None,
         },
+        secrets,
         ..RuntimeSetup::default()
     })?;
     let mut feed = runtime.subscribe();
@@ -230,11 +212,11 @@ fn a_gitlab_review_connects_lists_reads_facts_and_approves_through_the_runtime()
         std::process::id()
     )));
     std::env::set_var(CONFIG_HOME_VAR, &config.0);
-    keep_login(&config.0, &server.url)?;
+    let secrets = kept_login(&server.url)?;
     let repo = committed_repo("reviews")?;
     let remote = format!("{}/{PROJECT}.git", server.url);
     git(&repo.0, &["remote", "add", "origin", &remote])?;
-    let (runtime, feed) = start(&repo.0, &server.url)?;
+    let (runtime, feed) = start(&repo.0, &server.url, secrets)?;
 
     let refused = block_on(runtime.send(
         runtime.next_request(),

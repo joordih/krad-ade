@@ -126,11 +126,12 @@ fn launch(chat: &mut Chat, project: Vec<McpServer>, work: &ChatWork<'_>) {
         project,
     );
     let (chat_id, opened) = (chat.id.clone(), chat.opened);
+    let secrets = work.facts.secrets.clone();
     let started = work.jobs.run(move || {
         JobDone::McpLaunched(McpLaunched {
             chat: chat_id,
             opened,
-            launch: with_secrets(servers),
+            launch: with_secrets(servers, &secrets),
         })
     });
     if let Err(error) = started {

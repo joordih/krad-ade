@@ -13,7 +13,8 @@ use krad_runtime::{
     SettingsSetup,
 };
 use krad_store::{
-    config_dir, open_layout, read_settings, read_user_themes, LayoutOpening, OpenedLayout, APP_NAME,
+    config_dir, open_layout, read_settings, read_user_themes, LayoutOpening, OpenedLayout, Secrets,
+    APP_NAME,
 };
 use krad_ui::{
     active_appearance, apply_editor_font, apply_interface_font, apply_settings_theme,
@@ -78,6 +79,7 @@ fn main() {
         environments,
         settings: SettingsSetup::in_config_folder(settings.clone()),
         kraddies: KraddiesSetup::in_config_folder(Clock::new(local_moment)),
+        secrets: Secrets::system(),
     }) {
         Ok(runtime) => runtime,
         Err(error) => {

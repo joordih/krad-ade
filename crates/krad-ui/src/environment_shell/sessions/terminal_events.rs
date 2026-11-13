@@ -13,7 +13,6 @@ impl EnvironmentShell {
             harness,
             launched_as,
             resume,
-            after_start,
         } = launched;
         let Some(view) = self.runtime.handle.take_launched_view(&terminal) else {
             return;
@@ -29,9 +28,6 @@ impl EnvironmentShell {
         }
         if let Some(resume) = resume {
             self.keep_opencode_resume(&env, id, resume);
-        }
-        if let Some(prompt) = after_start {
-            self.queue_prompt(&env, id, prompt);
         }
     }
 
@@ -124,7 +120,7 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn apply_tick(&mut self) -> bool {
         let now = Instant::now();
         let changed = self.expire_toasts(now);
-        self.service_agent_bus(now);
+        self.service_agent_bus();
         self.reconcile_agent_feed();
         self.hear_runner_sign_ins();
         changed

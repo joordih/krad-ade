@@ -60,6 +60,7 @@ impl Parts<'_> {
             git: self.git.snapshot(),
             kraddies: Box::new(self.kraddies.snapshot()),
             runners: self.runners.snapshot(),
+            runner_buses: self.runners.buses.snapshot(),
         }
     }
 }

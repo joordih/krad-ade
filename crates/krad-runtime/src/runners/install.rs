@@ -4,9 +4,7 @@ use krad_host::runner::{
     unpair_command, InstallReport, UnreportedInstall,
 };
 use krad_host::{HostCommand, HostError, HostLink, RemoteLink};
-use krad_store::{
-    find_cloud_claude_token, find_cloud_runner_token, write_cloud_runner_token, LoginStoreError,
-};
+use krad_store::{LoginStoreError, Secrets};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Output;
@@ -84,7 +82,7 @@ fn succeeded(output: Output, program: &str) -> Result<Output, HostError> {
 }
 
 fn pair_anew(
-    link: &HostLink,
+    (link, secrets): (&HostLink, &Secrets),
     cli: &Path,
     runner: CloudRunnerId,
     install: InstallId,
@@ -94,7 +92,7 @@ fn pair_anew(
     let token: PairingToken = String::from_utf8_lossy(&output.stdout)
         .parse()
         .map_err(|_| RunnerSetupError::BadToken)?;
-    write_cloud_runner_token(runner, &token)?;
+    secrets.write_cloud_runner_token(runner, &token)?;
     tracing::info!(%runner, "paired with the cloud runner");
     Ok(Pairing { install, token })
 }
@@ -111,8 +109,9 @@ fn install(
     Ok(String::from_utf8_lossy(&output.stdout).parse()?)
 }
 
-fn kept_claude_token(runner: CloudRunnerId) -> Option<ClaudeOauthToken> {
-    find_cloud_claude_token(runner)
+fn kept_claude_token(secrets: &Secrets, runner: CloudRunnerId) -> Option<ClaudeOauthToken> {
+    secrets
+        .find_cloud_claude_token(runner)
         .inspect_err(
             |error| tracing::warn!(%runner, %error, "the Claude Code token could not be read"),
         )
@@ -128,7 +127,7 @@ fn is_authorized(link: &HostLink, cli: &Path, pairing: &Pairing) -> bool {
 
 #[tracing::instrument(skip_all, fields(%runner))]
 pub(crate) fn prepare_runner(
-    link: &HostLink,
+    (link, secrets): (&HostLink, &Secrets),
     ssh: &RemoteLink,
     runner: CloudRunnerId,
     install_id: Option<InstallId>,
@@ -137,15 +136,15 @@ pub(crate) fn prepare_runner(
     let platform = ssh.platform().ok_or(HostError::NotConnected)?;
     let layout = ssh.layout().ok_or(HostError::NotConnected)?;
     let cli = upload_host_cli(link, platform, &layout.bin_dir())?;
-    let kept = find_cloud_runner_token(runner)?;
+    let kept = secrets.find_cloud_runner_token(runner)?;
     let Some((token, _)) = kept else {
-        let pairing = pair_anew(link, &cli, runner, install_id)?;
+        let pairing = pair_anew((link, secrets), &cli, runner, install_id)?;
         let report = install(link, &cli, &pairing)?;
         return Ok(PreparedRunner {
             cli,
             pairing,
             report,
-            claude_token: kept_claude_token(runner),
+            claude_token: kept_claude_token(secrets, runner),
         });
     };
     let pairing = Pairing {
@@ -158,17 +157,17 @@ pub(crate) fn prepare_runner(
             cli,
             pairing,
             report,
-            claude_token: kept_claude_token(runner),
+            claude_token: kept_claude_token(secrets, runner),
         });
     }
     tracing::info!(%runner, "the cloud runner forgot this installation; pairing again");
-    let pairing = pair_anew(link, &cli, runner, pairing.install)?;
+    let pairing = pair_anew((link, secrets), &cli, runner, pairing.install)?;
     let report = install(link, &cli, &pairing)?;
     Ok(PreparedRunner {
         cli,
         pairing,
         report,
-        claude_token: kept_claude_token(runner),
+        claude_token: kept_claude_token(secrets, runner),
     })
 }
 

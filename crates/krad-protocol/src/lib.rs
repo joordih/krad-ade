@@ -9,6 +9,7 @@ mod frame;
 mod gateway;
 mod git;
 mod harness_health;
+mod hooks;
 mod hosts;
 mod ids;
 mod kraddies;
@@ -43,6 +44,7 @@ pub use git::{
     SessionChangesRead, WorktreeSwept,
 };
 pub use harness_health::{HarnessCheck, HarnessChecked, HealthPlace, HealthSnapshot};
+pub use hooks::{Conversation, HookHeard, HookOrigin, HookReport};
 pub use hosts::{
     AgentPlace, EnvironmentHost, HostCommand, HostPrompt, HostState, HostsSnapshot, KeptAdapter,
     LocalAgents, PromptAnswer, PromptId, RemoteBusInfo, RemoteBusState,
@@ -57,11 +59,11 @@ pub use review::{
     RequestDetailRead, RequestRef, ReviewAct, ReviewAnswer, ReviewAnswered, ReviewCommand,
     ReviewConnection, ReviewWrite, RowFacts, SignInWith,
 };
-pub use runners::{RunnerCommand, RunnerRemoved, RunnerShown};
+pub use runners::{CloudAskReplayed, RunnerBusShown, RunnerCommand, RunnerRemoved, RunnerShown};
 pub use sessions::{GroupCommand, NodeCommand, SessionCommand};
 pub use settings::SettingsCommand;
 pub use terminals::{
-    TerminalClassified, TerminalCommand, TerminalScroll, TerminalSummary, WriteBy,
+    TerminalClassified, TerminalCommand, TerminalScroll, TerminalSummary, Typing, WriteBy,
 };
 pub use usage::{UsageCommand, UsageNews, UsageNote, UsageShown, UsageSnapshot};
 pub use variants::{VariantAct, VariantCommand};

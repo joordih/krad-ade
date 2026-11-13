@@ -1,66 +1,34 @@
 use krad_agents::{notice_text, ErrorCode, Response};
 use krad_domain::{parse_wsl_path, AgentState, EnvironmentName, TerminalId};
-use krad_protocol::WriteBy;
-use std::time::Instant;
-
-use super::super::live_terminal::terminal_ref;
-use super::super::runtime_view::MailNotices;
-use super::super::{EnvironmentShell, LiveEnv};
-use super::{handle, PendingEnter, Settlement, ENTER, NO_SUCH_TERMINAL};
+use krad_protocol::Typing;
 use krad_runtime::cli_name;
 
+use super::super::runtime_view::MailNotices;
+use super::super::{EnvironmentShell, LiveEnv};
+use super::{Settlement, NO_SUCH_TERMINAL};
+
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn service_agent_bus(&mut self, now: Instant) {
+    pub(in crate::environment_shell) fn service_agent_bus(&mut self) {
         if self.runtime.handle.bus().is_none() {
             return;
         }
-        let mut bus = std::mem::take(&mut self.bus_work);
-        bus.settle_waiters.retain(|(_, reply)| !reply.is_canceled());
-        let waiters = std::mem::take(&mut bus.settle_waiters);
+        let mut waiters = std::mem::take(&mut self.bus_work.settle_waiters);
+        waiters.retain(|(_, reply)| !reply.is_canceled());
         for (target, reply) in waiters {
             match self.settled_state(&target) {
-                Settlement::Settled(_) if bus.is_starting(&target) => {
-                    bus.settle_waiters.push((target, reply));
-                }
                 Settlement::Settled(state) => reply
                     .send(Response::Settled {
                         target: target.terminal,
                         state,
                     })
                     .unwrap_or_default(),
-                Settlement::Working => bus.settle_waiters.push((target, reply)),
+                Settlement::Working => self.bus_work.settle_waiters.push((target, reply)),
                 Settlement::Missing => reply
                     .send(Response::error(ErrorCode::NotFound, NO_SUCH_TERMINAL))
                     .unwrap_or_default(),
             }
         }
-        let (keys_now, keys_later): (Vec<_>, Vec<_>) =
-            bus.keys_due.drain(..).partition(|keys| keys.due <= now);
-        bus.keys_due = keys_later;
-        for pending in keys_now {
-            self.type_into(&pending.target, pending.keys);
-        }
-        let (due, later): (Vec<_>, Vec<_>) =
-            bus.enters_due.drain(..).partition(|enter| enter.due <= now);
-        bus.enters_due = later;
-        for enter in due {
-            if enter.is_retry && !self.submit_unconfirmed(&enter.target) {
-                continue;
-            }
-            self.type_into(&enter.target, ENTER.to_vec());
-            if self.submit_unconfirmed(&enter.target) {
-                bus.enters_due.extend(enter.retry(now));
-            }
-        }
-        let (ready, waiting): (Vec<_>, Vec<_>) = bus
-            .pending_prompts
-            .drain(..)
-            .partition(|prompt| prompt.due <= now);
-        bus.pending_prompts = waiting;
-        for prompt in ready {
-            self.paste_text_into(&prompt.target, &prompt.text);
-            bus.enters_due.push(PendingEnter::new(prompt.target, now));
-        }
+        let mut notices = Vec::new();
         for (env, live) in &mut self.envs {
             let settled: Vec<TerminalId> = live
                 .data
@@ -75,26 +43,19 @@ impl EnvironmentShell {
                 .map(|node| node.id)
                 .collect();
             for id in settled {
-                let target = handle(env, id);
                 let in_wsl = live
                     .data
                     .group_of(id)
                     .is_some_and(|group| parse_wsl_path(&group.root).is_some());
                 if let Some(count) = self.runtime.view.mail.notify(env, id) {
-                    if live.sessions.contains_key(&id) {
-                        let notice = notice_text(cli_name(in_wsl), count).into_bytes();
-                        self.runtime.handle.write_terminal(
-                            terminal_ref(env, id),
-                            notice,
-                            WriteBy::App,
-                        );
-                    }
-                    bus.enters_due.push(PendingEnter::new(target, now));
+                    notices.push((env.clone(), id, notice_text(cli_name(in_wsl), count)));
                 }
             }
             Self::notice_free_chats(env, live, &mut self.runtime.view.mail);
         }
-        self.bus_work = bus;
+        for (env, id, text) in notices {
+            self.type_typing(&env, id, Typing::Notice { text });
+        }
     }
 
     pub(super) fn notice_free_chats(

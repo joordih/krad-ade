@@ -1,5 +1,6 @@
 use krad_domain::UsageBudget;
 use krad_protocol::{Event, EventKind, Scope, Seq};
+use krad_store::Secrets;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender};
@@ -8,12 +9,12 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::adapters::AcpAdapters;
-use crate::app_events::{AppEvents, EventsSetup};
+use crate::app_events::AppEvents;
 use crate::attention::Attention;
-use crate::bus::{open, Bus, BusSetup};
+use crate::bus::{open, Bus};
 use crate::chats::{Chats, EditorBuffers};
 use crate::code_hosts::CodeHostWatch;
-use crate::environments::{Environments, EnvironmentsSetup};
+use crate::environments::Environments;
 use crate::gateway::Gateway;
 use crate::git::Git;
 use crate::handle::RuntimeHandle;
@@ -27,9 +28,10 @@ use crate::models::Models;
 use crate::opencode::{OpencodeDirectory, OpencodeServers};
 use crate::reviews::Reviews;
 use crate::runners::{RunnerDirectory, Runners};
-use crate::settings::{AppSettings, SettingsSetup};
+use crate::settings::AppSettings;
 use crate::subscribers::Subscribers;
 use crate::terminals::{Settling, Terminals};
+use crate::typing::Typist;
 use crate::usage::Usage;
 use crate::workers::Workers;
 
@@ -43,7 +45,9 @@ mod finished_jobs;
 mod following;
 mod git_acts;
 mod gitting;
+mod hooking;
 mod hosting;
+mod keystrokes;
 mod kraddie_bus;
 mod kraddie_chats;
 mod kraddie_commands;
@@ -56,10 +60,14 @@ mod parts;
 mod removing;
 mod replies;
 mod reviewing;
+mod runner_return;
+mod runner_webhooks;
 mod running;
 mod session_changes;
 mod settling;
+mod setup;
 mod signing_in;
+mod terminal_targets;
 mod variant_bus;
 mod variant_picks;
 mod variant_progress;
@@ -73,21 +81,13 @@ pub(crate) use self::kraddie_runs::RunPlan;
 pub(crate) use self::launching::AttachedLine;
 use self::parts::Parts;
 pub(crate) use self::replies::{answer_to, refused};
+pub use self::setup::RuntimeSetup;
 
 const THREAD_NAME: &str = "krad-runtime";
 const INPUT_CAPACITY: usize = 1024;
 const TICK_INTERVAL: Duration = Duration::from_millis(100);
 const UNSUPPORTED_COMMAND: &str = "this runtime does not know the command";
 const NO_BUS: &str = "this runtime serves no agent bus";
-
-#[derive(Clone, Debug, Default)]
-pub struct RuntimeSetup {
-    pub bus: Option<BusSetup>,
-    pub events: Option<EventsSetup>,
-    pub environments: EnvironmentsSetup,
-    pub settings: SettingsSetup,
-    pub kraddies: KraddiesSetup,
-}
 
 #[derive(Debug)]
 pub struct Runtime {
@@ -117,6 +117,8 @@ pub struct Runtime {
     workers: Workers,
     git: Git,
     kraddies: Kraddies,
+    typist: Typist,
+    secrets: Secrets,
     stopped: Arc<AtomicBool>,
 }
 
@@ -130,6 +132,7 @@ struct Owned {
     views: LaunchedViews,
     runners: RunnerDirectory,
     kraddies: KraddiesSetup,
+    secrets: Secrets,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -152,7 +155,7 @@ impl Runtime {
                 .ok()
                 .map(Arc::new)
         });
-        let events = AppEvents::start(setup.events, &inbox);
+        let events = AppEvents::start(setup.events, &setup.secrets, &inbox);
         let usage_budget = Arc::new(UsageBudget::default());
         let usage = Usage::new(Arc::clone(&usage_budget));
         let environments = Environments::start(setup.environments);
@@ -171,7 +174,9 @@ impl Runtime {
             views: views.clone(),
             runners: runners.clone(),
             kraddies: setup.kraddies,
+            secrets: setup.secrets,
         };
+        let secrets = owned.secrets.clone();
         let shared_access = access.clone();
         let runtime_inbox = inbox.clone();
         thread::Builder::new()
@@ -182,7 +187,7 @@ impl Runtime {
             inbox,
             access,
             usage_budget,
-            (links, runners, opencode, views),
+            (links, runners, opencode, views, secrets),
         ))
     }
 
@@ -219,6 +224,8 @@ impl Runtime {
             workers: Workers::default(),
             git: Git::default(),
             kraddies: Kraddies::start(owned.kraddies, inbox.clone()),
+            typist: Typist::default(),
+            secrets: owned.secrets,
             stopped,
         }
     }
@@ -283,6 +290,9 @@ impl Runtime {
                 }
                 self.usage.tick(&self.jobs, &mut self.outbox);
                 self.terminals.tick(Instant::now(), &mut self.outbox);
+                self.type_due(Instant::now());
+                self.watch_runner_buses();
+                self.sync_runner_webhooks(Instant::now());
                 self.tick_hosts();
                 self.tick_git();
                 self.tick_kraddies();

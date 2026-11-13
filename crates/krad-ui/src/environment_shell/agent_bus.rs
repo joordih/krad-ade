@@ -17,17 +17,11 @@ use krad_agents::{Caller, ErrorCode, Request, Response, TerminalHandle, Terminal
 use krad_domain::{parse_wsl_path, EnvironmentName, Host, TerminalId};
 use krad_runtime::{local_caller_vars, remote_caller_vars, BusReply, Delegated};
 use std::collections::HashSet;
-use std::time::{Duration, Instant};
 
-use super::agent_hooks::{HookReport, PendingPrompt};
 use super::language_servers::CodeCaller;
 use super::EnvironmentShell;
 
-const NOTICE_ENTER_DELAY: Duration = Duration::from_millis(500);
 pub(super) const ENTER: &[u8] = b"\r";
-const KEY_STEP_DELAY: Duration = Duration::from_secs(1);
-const ENTER_RETRY_DELAY: Duration = Duration::from_secs(2);
-const ENTER_RETRIES: u8 = 3;
 
 const NO_SUCH_TERMINAL: &str = "No terminal with that id in your environment";
 const ONLY_LEADS_CLOSE: &str = "Only a session's lead can close workers and sessions";
@@ -37,52 +31,7 @@ const ANSWERED_BY_RUNTIME: &str = "The runtime answers this request before it re
 #[derive(Default)]
 pub(super) struct BusWork {
     settle_waiters: Vec<(TerminalHandle, BusReply)>,
-    enters_due: Vec<PendingEnter>,
-    keys_due: Vec<PendingKeys>,
-    pub(super) pending_prompts: Vec<PendingPrompt>,
     pub(super) remote_unavailable_told: HashSet<Host>,
-}
-
-struct PendingKeys {
-    target: TerminalHandle,
-    keys: Vec<u8>,
-    due: Instant,
-}
-
-struct PendingEnter {
-    target: TerminalHandle,
-    due: Instant,
-    retries_left: u8,
-    is_retry: bool,
-}
-
-impl PendingEnter {
-    fn new(target: TerminalHandle, now: Instant) -> Self {
-        Self {
-            target,
-            due: now + NOTICE_ENTER_DELAY,
-            retries_left: ENTER_RETRIES,
-            is_retry: false,
-        }
-    }
-
-    fn retry(self, now: Instant) -> Option<Self> {
-        Some(Self {
-            due: now + ENTER_RETRY_DELAY,
-            retries_left: self.retries_left.checked_sub(1)?,
-            is_retry: true,
-            target: self.target,
-        })
-    }
-}
-
-impl BusWork {
-    fn is_starting(&self, target: &TerminalHandle) -> bool {
-        self.pending_prompts
-            .iter()
-            .any(|prompt| prompt.target == *target)
-            || self.enters_due.iter().any(|enter| enter.target == *target)
-    }
 }
 
 enum Settlement {
@@ -213,7 +162,8 @@ impl EnvironmentShell {
             | Request::Status(_)
             | Request::Ask { .. }
             | Request::CreateWorktree { .. }
-            | Request::Changes { .. } => Some(answered_by_runtime()),
+            | Request::Changes { .. }
+            | Request::Hook { .. } => Some(answered_by_runtime()),
             Request::Close(_) => Some(Response::error(ErrorCode::Forbidden, ONLY_LEADS_CLOSE)),
             Request::Send { to, body } => {
                 self.post(from, to, body, reply);
@@ -227,24 +177,6 @@ impl EnvironmentShell {
                 let tail = self.screen_tail(&from.environment, target, lines);
                 Self::reply_tail(tail, reply, cx);
                 return;
-            }
-            Request::Hook {
-                harness,
-                event,
-                tool,
-                detail,
-                resume,
-                mode,
-            } => {
-                let report = HookReport {
-                    harness,
-                    event: &event,
-                    tool: tool.as_deref(),
-                    detail,
-                    resume: resume.as_deref(),
-                    mode,
-                };
-                Some(self.apply_live_hook(from, report))
             }
             Request::Spawn {
                 agent,
@@ -295,9 +227,8 @@ impl EnvironmentShell {
             environment: environment.to_owned(),
             terminal: target,
         };
-        let starting = self.bus_work.is_starting(&target);
         match self.settled_state(&target) {
-            Settlement::Settled(state) if !starting => reply
+            Settlement::Settled(state) => reply
                 .send(Response::Settled {
                     target: target.terminal,
                     state,
@@ -306,31 +237,7 @@ impl EnvironmentShell {
             Settlement::Missing => reply
                 .send(Response::error(ErrorCode::NotFound, NO_SUCH_TERMINAL))
                 .unwrap_or_default(),
-            Settlement::Settled(_) | Settlement::Working => {
-                self.bus_work.settle_waiters.push((target, reply));
-            }
+            Settlement::Working => self.bus_work.settle_waiters.push((target, reply)),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn an_unconfirmed_enter_is_retried_a_bounded_number_of_times() {
-        let now = Instant::now();
-        let target = TerminalHandle {
-            environment: "rag".to_owned(),
-            terminal: 7,
-        };
-        let mut enter = Some(PendingEnter::new(target, now));
-        let mut presses = 0;
-        while let Some(pending) = enter {
-            presses += 1;
-            enter = pending.retry(now);
-            assert!(enter.as_ref().is_none_or(|next| next.is_retry));
-        }
-        assert_eq!(presses, 1 + usize::from(ENTER_RETRIES));
     }
 }

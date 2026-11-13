@@ -18,8 +18,6 @@ pub struct TerminalLaunched {
     pub launched_as: LaunchedAs,
     #[serde(default)]
     pub resume: Option<ResumeId>,
-    #[serde(default)]
-    pub after_start: Option<String>,
 }
 
 #[cfg(test)]
@@ -65,7 +63,6 @@ mod tests {
                 harness: None,
                 launched_as: LaunchedAs::Shell,
                 resume: None,
-                after_start: None,
             }),
         };
         let json = serde_json::to_string(&event)?;

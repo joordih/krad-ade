@@ -1,7 +1,7 @@
 use krad_chat::gateway_models;
 use krad_domain::{GatewayAccess, GatewayKey, GatewayModel, GatewaySettings, GatewayUrl};
 use krad_protocol::{EventKind, GatewayCommand, GatewayState, Reply};
-use krad_store::{delete_gateway_key, find_gateway_key, write_gateway_key};
+use krad_store::Secrets;
 
 use crate::jobs::{JobDone, Jobs};
 
@@ -37,13 +37,17 @@ fn failed(has_key: bool, error: String) -> GatewayState {
     GatewayState::Failed { has_key, error }
 }
 
-fn check(url: GatewayUrl, key: Option<&GatewayKey>) -> (Option<GatewayAccess>, GatewayState) {
+fn check(
+    secrets: &Secrets,
+    url: GatewayUrl,
+    key: Option<&GatewayKey>,
+) -> (Option<GatewayAccess>, GatewayState) {
     if let Some(key) = key {
-        if let Err(error) = write_gateway_key(&url, key) {
+        if let Err(error) = secrets.write_gateway_key(&url, key) {
             return (None, failed(false, error.to_string()));
         }
     }
-    let (key, place) = match find_gateway_key(&url) {
+    let (key, place) = match secrets.find_gateway_key(&url) {
         Ok(Some(found)) => found,
         Ok(None) => return (None, GatewayState::Unset),
         Err(error) => return (None, failed(false, error.to_string())),
@@ -59,7 +63,7 @@ impl Gateway {
     pub(crate) fn execute(
         &mut self,
         command: GatewayCommand,
-        jobs: &Jobs,
+        (jobs, secrets): (&Jobs, &Secrets),
         outbox: &mut Vec<EventKind>,
     ) -> Option<Reply> {
         match command {
@@ -73,8 +77,9 @@ impl Gateway {
             } => {
                 self.restart();
                 let attempt = self.attempt;
+                let secrets = secrets.clone();
                 let started = jobs.run(move || {
-                    let (access, state) = check(url, key.as_ref());
+                    let (access, state) = check(&secrets, url, key.as_ref());
                     JobDone::GatewayChecked(GatewayRead {
                         attempt,
                         access,
@@ -89,8 +94,11 @@ impl Gateway {
             }
             GatewayCommand::ForgetKey { url } => {
                 self.restart();
+                let secrets = secrets.clone();
                 let started = jobs.run(move || {
-                    let removed = delete_gateway_key(&url).map_err(|error| error.to_string());
+                    let removed = secrets
+                        .delete_gateway_key(&url)
+                        .map_err(|error| error.to_string());
                     JobDone::GatewayForgotten(GatewayForgotten { removed })
                 });
                 if let Err(error) = started {

@@ -9,6 +9,7 @@ use krad_protocol::{
     ReviewWrite, RowFacts,
 };
 use krad_repo::{remote_url, ORIGIN_REMOTE};
+use krad_store::Secrets;
 use std::path::Path;
 use std::sync::Arc;
 use std::thread;
@@ -47,9 +48,13 @@ const fn no_issues_hint(host: CodeHost) -> &'static str {
     }
 }
 
-pub(crate) fn probe(reply: ReviewReply, link: &HostLink, gitlab: Option<GitlabConfig>) -> JobDone {
+pub(crate) fn probe(
+    reply: ReviewReply,
+    (link, secrets): (&HostLink, &Secrets),
+    gitlab: Option<GitlabConfig>,
+) -> JobDone {
     let host = origin_repo(link, &reply.root, gitlab).and_then(|repo| {
-        let signed_in = repo.login.client().ok().flatten().is_some();
+        let signed_in = repo.login.client(secrets).ok().flatten().is_some();
         signed_in.then(|| repo.login.code_host())
     });
     answered(reply, ReviewAnswer::Probed { host })
@@ -58,10 +63,10 @@ pub(crate) fn probe(reply: ReviewReply, link: &HostLink, gitlab: Option<GitlabCo
 #[tracing::instrument(skip_all, fields(environment = ?reply.environment))]
 pub(crate) fn connect(
     reply: ReviewReply,
-    link: &HostLink,
+    (link, secrets): (&HostLink, &Secrets),
     gitlab: Option<GitlabConfig>,
 ) -> JobDone {
-    let (client, connection) = signed_in(link, &reply.root, gitlab);
+    let (client, connection) = signed_in((link, secrets), &reply.root, gitlab);
     JobDone::Review(Box::new(ReviewDone::Connected {
         reply,
         client: client.map(Arc::new),
@@ -70,7 +75,7 @@ pub(crate) fn connect(
 }
 
 fn signed_in(
-    link: &HostLink,
+    (link, secrets): (&HostLink, &Secrets),
     root: &Path,
     gitlab: Option<GitlabConfig>,
 ) -> (Option<HostClient>, ReviewConnection) {
@@ -78,7 +83,7 @@ fn signed_in(
         let reason = NOT_A_PROJECT.to_owned();
         return (None, ReviewConnection::SignedOut { reason });
     };
-    let client = match repo.login.client() {
+    let client = match repo.login.client(secrets) {
         Ok(Some(client)) => client,
         Ok(None) => {
             let reason = signed_out_hint(repo.login.code_host()).to_owned();
@@ -223,26 +228,30 @@ fn joined<T, P>(joined: Result<Result<T, HostError>, P>) -> Fetched<T> {
     joined.map_or_else(|_| lost(), Fetched::from)
 }
 
-pub(crate) fn issues(reply: ReviewReply, link: &HostLink, gitlab: Option<GitlabConfig>) -> JobDone {
-    let issues = open_issues(link, &reply.root, gitlab).into();
+pub(crate) fn issues(
+    reply: ReviewReply,
+    (link, secrets): (&HostLink, &Secrets),
+    gitlab: Option<GitlabConfig>,
+) -> JobDone {
+    let issues = open_issues((link, secrets), &reply.root, gitlab).into();
     answered(reply, ReviewAnswer::Issues { issues })
 }
 
 fn open_issues(
-    link: &HostLink,
+    (link, secrets): (&HostLink, &Secrets),
     root: &Path,
     gitlab: Option<GitlabConfig>,
 ) -> Result<Vec<Issue>, String> {
     let repo = origin_repo(link, root, gitlab).ok_or_else(|| NOT_A_PROJECT.to_owned())?;
-    let client = signed_in_client(&repo.login)?;
+    let client = signed_in_client(&repo.login, secrets)?;
     client
         .issues(&repo.project)
         .map_err(|error| error.to_string())
 }
 
-fn signed_in_client(login: &HostLogin) -> Result<HostClient, String> {
+fn signed_in_client(login: &HostLogin, secrets: &Secrets) -> Result<HostClient, String> {
     login
-        .client()
+        .client(secrets)
         .map_err(|error| error.to_string())?
         .ok_or_else(|| no_issues_hint(login.code_host()).to_owned())
 }

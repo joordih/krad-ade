@@ -2,7 +2,6 @@ mod actions;
 mod badge;
 mod bus;
 mod carry;
-mod catch_up;
 mod entry;
 mod naming;
 mod opencode;
@@ -39,13 +38,10 @@ use krad_runtime::ReadyRunner;
 use krad_session::PtyOpener;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::time::Instant;
 
-use self::bus::RunnerBus;
 use self::process::{Liveness, LivenessCheck};
 use self::sessions::{PatchQuestion, PendingCloudSession};
 use self::sign_in::{LoopbackCallback, SignInWatch};
-use self::webhooks::WebhooksPlan;
 use super::EnvironmentShell;
 
 type NodeKey = (EnvironmentName, TerminalId);
@@ -57,7 +53,6 @@ enum HelperTerminal {
 
 #[derive(Default)]
 pub(super) struct CloudRunners {
-    buses: HashMap<CloudRunnerId, RunnerBus>,
     attached: HashMap<NodeKey, CloudRun>,
     reattached: HashSet<NodeKey>,
     pending: Vec<PendingCloudSession>,
@@ -72,9 +67,6 @@ pub(super) struct CloudRunners {
     openers: HashMap<NodeKey, PtyOpener>,
     forward_asks: Vec<(NodeKey, LoopbackCallback)>,
     finished: Vec<SignInWatch>,
-    heard: HashMap<NodeKey, Instant>,
-    webhooks: HashMap<CloudRunnerId, WebhooksPlan>,
-    webhooks_checked: Option<Instant>,
 }
 
 impl EnvironmentShell {

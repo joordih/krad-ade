@@ -6,8 +6,15 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::{Arc, PoisonError, RwLock};
 
+mod bus;
 mod explain;
 mod install;
+mod webhooks;
+
+pub(crate) use bus::RunnerBuses;
+#[cfg(test)]
+pub(crate) use webhooks::webhook_target;
+pub(crate) use webhooks::{runner_webhooks_plan, RunnerWebhooksSync};
 
 pub(crate) use explain::explain;
 pub(crate) use install::{prepare_runner, retire_runner, PreparedRunner, RunnerSetupError};
@@ -70,6 +77,15 @@ pub(crate) enum RunnerDone {
         host: Option<Host>,
         problem: Option<String>,
     },
+    Returned(Box<RunnerReturn>),
+}
+
+#[derive(Debug)]
+pub(crate) struct RunnerReturn {
+    pub(crate) runner: CloudRunnerId,
+    pub(crate) started: std::time::Instant,
+    pub(crate) events: Vec<krad_agents::QueuedEvent>,
+    pub(crate) bus: Option<Result<crate::hosts::RemoteBus, crate::hosts::HostCliError>>,
 }
 
 #[derive(Debug)]
@@ -82,6 +98,8 @@ struct LiveRunner {
 pub(crate) struct Runners {
     live: HashMap<CloudRunnerId, LiveRunner>,
     pub(crate) directory: RunnerDirectory,
+    pub(crate) buses: RunnerBuses,
+    pub(crate) webhooks: RunnerWebhooksSync,
 }
 
 impl Runners {
@@ -89,6 +107,8 @@ impl Runners {
         Self {
             live: HashMap::new(),
             directory,
+            buses: RunnerBuses::default(),
+            webhooks: RunnerWebhooksSync::default(),
         }
     }
 

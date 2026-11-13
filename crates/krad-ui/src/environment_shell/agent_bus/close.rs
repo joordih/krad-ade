@@ -60,15 +60,13 @@ struct ClosedEntry {
 
 impl EnvironmentShell {
     pub(super) fn is_busy(&self, env: &EnvironmentName, terminal: TerminalId) -> bool {
-        let target = handle(env, terminal);
-        let starting = self.bus_work.is_starting(&target);
-        let settlement = self.settled_state(&target);
+        let settlement = self.settled_state(&handle(env, terminal));
         let working = matches!(
             settlement,
             Settlement::Working
                 | Settlement::Settled(TerminalState::Running(AgentState::WaitingForInput))
         );
-        starting || working || self.is_launching(env, terminal)
+        working || self.is_launching(env, terminal)
     }
 
     pub(super) fn close_for_lead(

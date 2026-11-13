@@ -46,10 +46,17 @@ impl Runtime {
             root,
         };
         let connected = self.reviews.client(&reply.key());
+        let secrets = self.secrets.clone();
         let started = match act {
-            ReviewAct::Probe => self.jobs.run(move || probe(reply, &link, gitlab)),
-            ReviewAct::Connect => self.jobs.run(move || connect(reply, &link, gitlab)),
-            ReviewAct::Issues => self.jobs.run(move || issues(reply, &link, gitlab)),
+            ReviewAct::Probe => self
+                .jobs
+                .run(move || probe(reply, (&link, &secrets), gitlab)),
+            ReviewAct::Connect => self
+                .jobs
+                .run(move || connect(reply, (&link, &secrets), gitlab)),
+            ReviewAct::Issues => self
+                .jobs
+                .run(move || issues(reply, (&link, &secrets), gitlab)),
             ReviewAct::Unknown => return refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND),
             connected_act => match connected {
                 Some(client) => self.start_connected(reply, (client, link), connected_act),

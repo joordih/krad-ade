@@ -4,10 +4,7 @@ use krad_gitlab::{
     DeviceLogin as GitlabDevice, GitlabClient, GitlabConfig, GitlabError, LoopbackLogin, OAuthError,
 };
 use krad_protocol::{LoginState, SignInWith};
-use krad_store::{
-    delete_github_login, delete_gitlab_login, find_github_login, find_gitlab_login,
-    write_github_login, write_gitlab_login,
-};
+use krad_store::Secrets;
 
 use super::ReviewDone;
 use crate::code_hosts::gitlab_token_saver;
@@ -104,16 +101,25 @@ impl Logins {
 }
 
 #[tracing::instrument(skip_all, fields(?host))]
-pub(crate) fn check(host: CodeHost, check: u64, gitlab: Option<GitlabConfig>) -> JobDone {
+pub(crate) fn check(
+    (host, check): (CodeHost, u64),
+    gitlab: Option<GitlabConfig>,
+    secrets: &Secrets,
+) -> JobDone {
     let state = match host {
-        CodeHost::Github => check_github(),
-        CodeHost::Gitlab => gitlab.map_or(Ok(LoginState::SignedOut), check_gitlab),
+        CodeHost::Github => check_github(secrets),
+        CodeHost::Gitlab => gitlab.map_or(Ok(LoginState::SignedOut), |config| {
+            check_gitlab(config, secrets)
+        }),
     };
     LoginDone::Checked { host, check, state }.into()
 }
 
-fn check_github() -> Result<LoginState, String> {
-    let Some((token, place)) = find_github_login().map_err(|error| error.to_string())? else {
+fn check_github(secrets: &Secrets) -> Result<LoginState, String> {
+    let Some((token, place)) = secrets
+        .find_github_login()
+        .map_err(|error| error.to_string())?
+    else {
         return Ok(LoginState::SignedOut);
     };
     let username = match GithubClient::new(&token).current_user() {
@@ -124,12 +130,14 @@ fn check_github() -> Result<LoginState, String> {
     Ok(LoginState::SignedIn { username, place })
 }
 
-fn check_gitlab(config: GitlabConfig) -> Result<LoginState, String> {
-    let found = find_gitlab_login(&config.host).map_err(|error| error.to_string())?;
+fn check_gitlab(config: GitlabConfig, secrets: &Secrets) -> Result<LoginState, String> {
+    let found = secrets
+        .find_gitlab_login(&config.host)
+        .map_err(|error| error.to_string())?;
     let Some((tokens, place)) = found else {
         return Ok(LoginState::SignedOut);
     };
-    let saver = gitlab_token_saver(config.host.clone());
+    let saver = gitlab_token_saver(secrets.clone(), config.host.clone());
     let username = match GitlabClient::new(config, tokens, saver).current_user() {
         Ok(user) => Some(user.username),
         Err(GitlabError::Login(OAuthError::Expired)) => return Ok(LoginState::SignedOut),
@@ -209,25 +217,35 @@ fn gitlab_tokens(
 }
 
 #[tracing::instrument(skip_all)]
-pub(crate) fn keep(tokens: LoginTokens) -> JobDone {
+pub(crate) fn keep(tokens: LoginTokens, secrets: &Secrets) -> JobDone {
     let (host, kept) = match tokens {
-        LoginTokens::Github(token) => (CodeHost::Github, keep_github(&token)),
-        LoginTokens::Gitlab(config, tokens) => (CodeHost::Gitlab, keep_gitlab(config, tokens)),
+        LoginTokens::Github(token) => (CodeHost::Github, keep_github(&token, secrets)),
+        LoginTokens::Gitlab(config, tokens) => {
+            (CodeHost::Gitlab, keep_gitlab(config, tokens, secrets))
+        }
     };
     LoginDone::Kept { host, kept }.into()
 }
 
-fn keep_github(token: &GithubToken) -> Result<String, String> {
-    write_github_login(token).map_err(|error| error.to_string())?;
+fn keep_github(token: &GithubToken, secrets: &Secrets) -> Result<String, String> {
+    secrets
+        .write_github_login(token)
+        .map_err(|error| error.to_string())?;
     GithubClient::new(token)
         .current_user()
         .map(|user| user.username)
         .map_err(|error| error.to_string())
 }
 
-fn keep_gitlab(config: GitlabConfig, tokens: GitlabTokens) -> Result<String, String> {
-    write_gitlab_login(&config.host, &tokens).map_err(|error| error.to_string())?;
-    let saver = gitlab_token_saver(config.host.clone());
+fn keep_gitlab(
+    config: GitlabConfig,
+    tokens: GitlabTokens,
+    secrets: &Secrets,
+) -> Result<String, String> {
+    secrets
+        .write_gitlab_login(&config.host, &tokens)
+        .map_err(|error| error.to_string())?;
+    let saver = gitlab_token_saver(secrets.clone(), config.host.clone());
     GitlabClient::new(config, tokens, saver)
         .current_user()
         .map(|user| user.username)
@@ -235,11 +253,19 @@ fn keep_gitlab(config: GitlabConfig, tokens: GitlabTokens) -> Result<String, Str
 }
 
 #[tracing::instrument(skip_all, fields(?host))]
-pub(crate) fn sign_out(host: CodeHost, gitlab: Result<GitlabConfig, String>) -> JobDone {
+pub(crate) fn sign_out(
+    host: CodeHost,
+    gitlab: Result<GitlabConfig, String>,
+    secrets: &Secrets,
+) -> JobDone {
     let deleted = match host {
-        CodeHost::Github => delete_github_login().map_err(|error| error.to_string()),
+        CodeHost::Github => secrets
+            .delete_github_login()
+            .map_err(|error| error.to_string()),
         CodeHost::Gitlab => gitlab.and_then(|config| {
-            delete_gitlab_login(&config.host).map_err(|error| error.to_string())
+            secrets
+                .delete_gitlab_login(&config.host)
+                .map_err(|error| error.to_string())
         }),
     };
     LoginDone::SignedOut { host, deleted }.into()

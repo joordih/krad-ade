@@ -40,6 +40,7 @@ pub(crate) struct LaunchFacts<'a> {
     pub(crate) usage_budget: &'a Arc<UsageBudget>,
     pub(crate) kraddies: &'a Kraddies,
     pub(crate) buffers: &'a EditorBuffers,
+    pub(crate) secrets: &'a krad_store::Secrets,
 }
 
 pub(super) struct Resolved {

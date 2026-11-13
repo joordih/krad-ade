@@ -3,7 +3,7 @@ use krad_domain::{
     McpServerState, McpSettings, McpTransport, McpValue, McpVariable, PROJECT_MCP_FILE,
 };
 use krad_host::HostLink;
-use krad_store::find_mcp_secret;
+use krad_store::Secrets;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -89,12 +89,12 @@ pub fn mcp_servers(
 }
 
 #[must_use]
-pub fn with_secrets(servers: Vec<McpServer>) -> McpLaunch {
+pub fn with_secrets(servers: Vec<McpServer>, stored: &Secrets) -> McpLaunch {
     let mut launch = McpLaunch::default();
     for server in servers {
         let mut secrets = HashMap::new();
         for key in server.secret_keys() {
-            match find_mcp_secret(&key) {
+            match stored.find_mcp_secret(&key) {
                 Ok(Some((secret, _))) => {
                     secrets.insert(key.variable, secret);
                 }

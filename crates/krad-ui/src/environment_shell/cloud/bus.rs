@@ -1,173 +1,14 @@
-use gpui_kit::{AppContext as _, Context};
-use krad_agents::{queued_events, Caller, QueuedEvent, TerminalHandle};
+use krad_agents::{Caller, TerminalHandle};
 use krad_domain::{CloudRunnerId, EnvironmentName, TerminalId};
-use krad_host::runner::take_events_command;
-use krad_host::{HostCommand, HostLink};
-use std::time::Instant;
-
-use krad_runtime::{remote_detached_caller_vars, HostCliError, RemoteBus, RemoteBusPlan};
+use krad_protocol::{CloudAskReplayed, RemoteBusInfo, RemoteBusState};
+use krad_runtime::remote_detached_caller_vars;
 
 use super::super::EnvironmentShell;
 use super::NodeSite;
 
-#[derive(Default)]
-pub(in crate::environment_shell) enum RemoteBusSlot {
-    #[default]
-    Absent,
-    Preparing,
-    Ready(RemoteBus),
-}
-
-impl RemoteBusSlot {
-    const fn ready(&self) -> Option<&RemoteBus> {
-        match self {
-            Self::Ready(bus) => Some(bus),
-            Self::Absent | Self::Preparing => None,
-        }
-    }
-
-    const fn is_preparing(&self) -> bool {
-        matches!(self, Self::Preparing)
-    }
-}
-
-#[derive(Default)]
-pub(in crate::environment_shell) struct RunnerBus {
-    slot: RemoteBusSlot,
-    port: Option<u16>,
-}
-
-struct RunnerReturn {
-    events: Vec<QueuedEvent>,
-    bus: Option<Result<RemoteBus, HostCliError>>,
-}
-
-fn take_events(link: &HostLink, command: Option<HostCommand>) -> Vec<QueuedEvent> {
-    let Some(command) = command else {
-        return Vec::new();
-    };
-    match link.output(&command) {
-        Ok(output) if output.status.success() => {
-            queued_events(&String::from_utf8_lossy(&output.stdout))
-        }
-        Ok(output) => {
-            tracing::warn!(status = ?output.status.code(), "the runner's event queue could not be read");
-            Vec::new()
-        }
-        Err(error) => {
-            tracing::warn!(%error, "the runner's event queue could not be read");
-            Vec::new()
-        }
-    }
-}
-
 impl EnvironmentShell {
-    fn runner_bus_plan(&self, runner: CloudRunnerId) -> Option<RemoteBusPlan> {
-        let bus = self.runtime.handle.bus()?;
-        let link = self.runner_link(runner)?;
-        let HostLink::Remote(ssh) = &link else {
-            return None;
-        };
-        let port = self.cloud.buses.get(&runner).and_then(|bus| bus.port);
-        Some(RemoteBusPlan::for_runner(
-            ssh.clone(),
-            link.clone(),
-            runner,
-            &bus.endpoint,
-            port,
-        ))
-    }
-
-    pub(super) fn start_runner_return(&mut self, runner: CloudRunnerId, cx: &mut Context<Self>) {
-        let Some(link) = self.runner_link(runner) else {
-            return;
-        };
-        let take = match (&link, self.runner_pairing(runner)) {
-            (HostLink::Remote(ssh), Some(pairing)) => ssh
-                .layout()
-                .map(|layout| take_events_command(&layout.runner_dir(), &pairing.install)),
-            _ => None,
-        };
-        let plan = self.runner_bus_plan(runner);
-        self.cloud.buses.entry(runner).or_default().slot = if plan.is_some() {
-            RemoteBusSlot::Preparing
-        } else {
-            RemoteBusSlot::Absent
-        };
-        let started = Instant::now();
-        let back = cx.background_spawn(async move {
-            let events = take_events(&link, take);
-            let bus = plan.map(RemoteBusPlan::prepare);
-            RunnerReturn { events, bus }
-        });
-        cx.spawn(async move |this, cx| {
-            let back = back.await;
-            this.update(cx, |shell, cx| {
-                shell.runner_returned(runner, started, back, cx);
-            })
-            .unwrap_or_default();
-        })
-        .detach();
-    }
-
-    fn runner_returned(
-        &mut self,
-        runner: CloudRunnerId,
-        started: Instant,
-        back: RunnerReturn,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(kept) = self.cloud.buses.get_mut(&runner) {
-            kept.slot = match back.bus {
-                Some(Ok(bus)) => {
-                    kept.port = Some(bus.remote_port());
-                    RemoteBusSlot::Ready(bus)
-                }
-                Some(Err(error)) => {
-                    tracing::info!(%runner, %error, "the cloud runner's agent bus is unavailable");
-                    RemoteBusSlot::Absent
-                }
-                None => RemoteBusSlot::Absent,
-            };
-        }
-        self.catch_up(back.events, started);
-        self.resume_cloud_work(cx);
-    }
-
-    pub(in crate::environment_shell) fn watch_runner_buses(&mut self, cx: &mut Context<Self>) {
-        let dropped: Vec<CloudRunnerId> = self
-            .cloud
-            .buses
-            .iter_mut()
-            .filter_map(|(id, kept)| {
-                let RemoteBusSlot::Ready(bus) = &mut kept.slot else {
-                    return None;
-                };
-                if bus.is_alive() {
-                    return None;
-                }
-                kept.slot = RemoteBusSlot::Absent;
-                Some(*id)
-            })
-            .collect();
-        for runner in dropped {
-            if self.runner_link(runner).is_some_and(|link| link.is_ready()) {
-                self.start_runner_return(runner, cx);
-            }
-        }
-    }
-
-    pub(in crate::environment_shell) fn drop_runner_bus(&mut self, runner: CloudRunnerId) {
-        if let Some(kept) = self.cloud.buses.get_mut(&runner) {
-            kept.slot = RemoteBusSlot::Absent;
-        }
-    }
-
-    fn runner_bus(&self, runner: CloudRunnerId) -> &RemoteBusSlot {
-        self.cloud
-            .buses
-            .get(&runner)
-            .map_or(&RemoteBusSlot::Absent, |kept| &kept.slot)
+    fn runner_bus(&self, runner: CloudRunnerId) -> Option<&RemoteBusState> {
+        self.runtime.view.runner_buses.get(&runner)
     }
 
     pub(in crate::environment_shell) fn awaits_runner_bus(
@@ -175,13 +16,17 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
     ) -> bool {
-        self.cloud_placement_of(env, id)
-            .is_some_and(|placement| self.runner_bus(placement.runner).is_preparing())
+        self.cloud_placement_of(env, id).is_some_and(|placement| {
+            self.runner_bus(placement.runner)
+                .is_some_and(RemoteBusState::is_preparing)
+        })
     }
 
-    fn ready_runner_bus(&self, env: &EnvironmentName, id: TerminalId) -> Option<&RemoteBus> {
+    fn ready_runner_bus(&self, env: &EnvironmentName, id: TerminalId) -> Option<&RemoteBusInfo> {
         match self.node_site(env, id) {
-            NodeSite::Cloud(site) => self.runner_bus(site.placement.runner).ready(),
+            NodeSite::Cloud(site) => self
+                .runner_bus(site.placement.runner)
+                .and_then(RemoteBusState::ready),
             NodeSite::Env | NodeSite::Waiting(_) => None,
         }
     }
@@ -196,7 +41,7 @@ impl EnvironmentShell {
             terminal: id.as_u64(),
         });
         self.ready_runner_bus(env, id)
-            .map_or_default(|bus| remote_detached_caller_vars(bus.info(), &caller))
+            .map_or_default(|bus| remote_detached_caller_vars(bus, &caller))
     }
 
     pub(in crate::environment_shell) fn cloud_hook_settings(
@@ -205,16 +50,17 @@ impl EnvironmentShell {
         id: TerminalId,
     ) -> Option<String> {
         self.ready_runner_bus(env, id)
-            .map(|bus| bus.info().claude_settings.to_string_lossy().into_owned())
+            .map(|bus| bus.claude_settings.to_string_lossy().into_owned())
     }
 
-    pub(in crate::environment_shell) fn note_live_cloud_report(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-    ) {
-        if self.cloud_placement_of(env, id).is_some() {
-            self.cloud.heard.insert((env.clone(), id), Instant::now());
-        }
+    pub(in crate::environment_shell) fn cloud_ask_replayed(&mut self, asked: CloudAskReplayed) {
+        let CloudAskReplayed {
+            agent,
+            kind,
+            delivered,
+        } = asked;
+        self.with_webhooks_delivered(delivered, |shell| {
+            shell.raise_attention(&agent.environment, agent.terminal, kind);
+        });
     }
 }

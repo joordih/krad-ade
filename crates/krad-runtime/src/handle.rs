@@ -10,6 +10,7 @@ use krad_protocol::{
 };
 use krad_repo::{FileIndex, RepoError};
 use krad_session::{AnsiPalette, SearchDirection};
+use krad_store::Secrets;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::SyncSender;
@@ -57,6 +58,7 @@ pub struct RuntimeHandle {
     runners: RunnerDirectory,
     opencode: OpencodeDirectory,
     views: LaunchedViews,
+    secrets: Secrets,
     requests: Arc<AtomicU64>,
     _alive: Arc<Alive>,
 }
@@ -66,11 +68,12 @@ impl RuntimeHandle {
         inbox: SyncSender<Input>,
         bus: Option<Arc<BusAccess>>,
         usage_budget: Arc<UsageBudget>,
-        (links, runners, opencode, views): (
+        (links, runners, opencode, views, secrets): (
             HostLinks,
             RunnerDirectory,
             OpencodeDirectory,
             LaunchedViews,
+            Secrets,
         ),
     ) -> Self {
         Self {
@@ -82,8 +85,14 @@ impl RuntimeHandle {
             runners,
             opencode,
             views,
+            secrets,
             requests: Arc::new(AtomicU64::new(0)),
         }
+    }
+
+    #[must_use]
+    pub const fn secrets(&self) -> &Secrets {
+        &self.secrets
     }
 
     pub fn send(&self, id: RequestId, command: Command) -> Pending<Reply> {

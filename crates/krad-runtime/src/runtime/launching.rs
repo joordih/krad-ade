@@ -12,6 +12,7 @@ use krad_protocol::{
 use krad_session::{default_shell, wsl_shell_in};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 
 use super::{refused, Runtime};
 use crate::hosts::{remote_caller_vars, Reach};
@@ -41,6 +42,7 @@ struct Resolved {
     launch: TerminalLaunch,
     launched: TerminalLaunched,
     attached: Option<(Attached, String)>,
+    after_start: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -87,7 +89,9 @@ impl Runtime {
                 self.open_missing(&environment);
                 Some(Reply::Accepted)
             }
+            TerminalCommand::Type { terminal, typing } => Some(self.type_into(terminal, typing)),
             TerminalCommand::Close { terminal } => {
+                self.typist.forget(&terminal);
                 let waited = self.launches.is_waiting(&terminal);
                 self.launches.forget(&terminal);
                 let reply = self
@@ -194,11 +198,15 @@ impl Runtime {
             launch,
             launched,
             attached,
+            after_start,
         } = resolved;
         self.outbox.push(EventKind::TerminalLaunched(launched));
         let shared = self.launches.view(terminal.clone());
         self.terminals
             .open(terminal.clone(), launch, shared, &mut self.outbox);
+        if let Some(prompt) = after_start {
+            self.typist.prompt(terminal.clone(), prompt, Instant::now());
+        }
         let Some((attached, line)) = attached else {
             return;
         };
@@ -299,7 +307,6 @@ impl Runtime {
             harness,
             launched_as,
             resume: attached.as_ref().map(|attached| attached.resume.clone()),
-            after_start,
         };
         let (typed_now, attached) = match (line, attached) {
             (Some(line), Some(attached)) => (None, Some((attached, line))),
@@ -325,6 +332,7 @@ impl Runtime {
             launch,
             launched,
             attached,
+            after_start,
         })
     }
 

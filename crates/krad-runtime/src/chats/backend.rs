@@ -370,7 +370,11 @@ pub(super) fn ensure_live(
     let gateway = work.gateway;
     let launch = match (planned(chat, mcp, work), chat.acp.as_mut()) {
         (Ok(ChatLaunch::Acp(config)), Some(acp)) => acp
-            .prepared(*config, (&chat.id, chat.opened), work.jobs)
+            .prepared(
+                *config,
+                (&chat.id, chat.opened),
+                (work.jobs, work.facts.secrets),
+            )
             .map(ChatLaunch::from),
         (planned, _) => planned,
     };

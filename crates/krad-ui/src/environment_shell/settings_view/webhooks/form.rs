@@ -211,7 +211,6 @@ impl EnvironmentShell {
                 }
                 shell.settings.webhooks.save(hook.clone());
                 shell.save_settings(cx);
-                shell.resync_runner_webhooks();
                 shell
                     .runtime
                     .handle

@@ -83,6 +83,9 @@ impl Runtime {
     }
 
     pub(super) fn settled_state(&self, target: &AgentRef) -> Option<TerminalState> {
+        if self.terminals.knows(target) && !self.chats.is_open(target) {
+            return self.terminal_settled(target);
+        }
         let state = self
             .environments
             .data(&target.environment)
@@ -141,7 +144,7 @@ impl Runtime {
         None
     }
 
-    fn close_finished_worker(
+    pub(super) fn close_finished_worker(
         &mut self,
         environment: &EnvironmentName,
         lead: SessionId,

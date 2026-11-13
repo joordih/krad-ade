@@ -28,9 +28,10 @@ impl Runtime {
             })
             .collect();
         let gitlab = GitlabConfig::try_from(&self.settings.current.gitlab).ok();
+        let secrets = self.secrets.clone();
         let started = self
             .jobs
-            .run(move || JobDone::CodeHosts(observe(targets, gitlab.as_ref())));
+            .run(move || JobDone::CodeHosts(observe(targets, gitlab.as_ref(), &secrets)));
         if let Err(error) = started {
             tracing::warn!(%error, "could not start reading the code hosts");
             self.code_hosts.not_observed();

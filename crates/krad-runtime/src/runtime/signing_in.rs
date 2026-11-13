@@ -27,7 +27,11 @@ impl Runtime {
             CodeHostCommand::SignOut { host } => {
                 self.reviews.logins.begin(host, false);
                 let gitlab = gitlab_config(&self.settings.current.gitlab);
-                (host, self.jobs.run(move || sign_out(host, gitlab)))
+                let secrets = self.secrets.clone();
+                (
+                    host,
+                    self.jobs.run(move || sign_out(host, gitlab, &secrets)),
+                )
             }
             CodeHostCommand::Unknown => {
                 return refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND);
@@ -58,7 +62,11 @@ impl Runtime {
         };
         self.show_login(host, LoginState::Checking, None);
         let gitlab = gitlab_config(&self.settings.current.gitlab).ok();
-        if let Err(error) = self.jobs.run(move || check_login(host, check, gitlab)) {
+        let secrets = self.secrets.clone();
+        if let Err(error) = self
+            .jobs
+            .run(move || check_login((host, check), gitlab, &secrets))
+        {
             tracing::warn!(%error, "a code host login check could not start");
             self.show_login(host, LoginState::SignedOut, None);
         }
@@ -105,7 +113,10 @@ impl Runtime {
                 }
                 self.reviews.logins.settle(host);
                 match tokens {
-                    Ok(tokens) => self.keep_tokens(host, move || keep_login(tokens)),
+                    Ok(tokens) => {
+                        let secrets = self.secrets.clone();
+                        self.keep_tokens(host, move || keep_login(tokens, &secrets));
+                    }
                     Err(message) => self.login_settled(host, LoginNews::Failed { message }),
                 }
             }

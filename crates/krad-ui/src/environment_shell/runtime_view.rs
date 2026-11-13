@@ -2,8 +2,8 @@ use futures::{FutureExt as _, StreamExt as _};
 use gpui_kit::Context;
 use krad_domain::{AgentStatus, CloudRunnerId, EnvironmentName, RunnerState, TerminalId};
 use krad_protocol::{
-    AgentRef, AskId, BusSnapshot, EventKind, Feed, StatusReport, TerminalClassified,
-    TerminalSummary,
+    AgentRef, AskId, BusSnapshot, EventKind, Feed, RemoteBusState, StatusReport,
+    TerminalClassified, TerminalSummary,
 };
 use krad_runtime::RuntimeHandle;
 use krad_session::AnsiPalette;
@@ -68,6 +68,7 @@ pub(super) struct RuntimeView {
     pub(super) hosts: HostsMirror,
     pub(super) settings: SettingsMirror,
     pub(super) runners: HashMap<CloudRunnerId, RunnerState>,
+    pub(super) runner_buses: HashMap<CloudRunnerId, RemoteBusState>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -135,6 +136,11 @@ impl EnvironmentShell {
                     .runners
                     .into_iter()
                     .map(|shown| (shown.runner, shown.state))
+                    .collect();
+                self.runtime.view.runner_buses = snapshot
+                    .runner_buses
+                    .into_iter()
+                    .map(|shown| (shown.runner, shown.bus))
                     .collect();
                 for environment in &snapshot.environments {
                     self.offer_open_buffers(&environment.name, cx);
@@ -230,6 +236,7 @@ impl EnvironmentShell {
             EventKind::AttentionLeft { target } => self.runtime.view.attention.left(&target),
             EventKind::AttentionHistoryCleared => self.runtime.view.attention.history_cleared(),
             EventKind::AgentStatus(report) => self.agent_status_heard(report),
+            EventKind::AgentHooked(heard) => self.hook_heard(heard),
             EventKind::Mail(mail) => self.runtime.view.mail.set(mail),
             EventKind::AskPending(pending) => {
                 if self.runtime.view.asks.insert(pending.ask) {
@@ -275,6 +282,14 @@ impl EnvironmentShell {
             EventKind::CodeHostLogin(login) => self.code_host_login_heard(login, cx),
             EventKind::RunnerChanged(shown) => self.runner_changed(shown, cx),
             EventKind::RunnerRemoved(removed) => self.runner_removed(removed, cx),
+            EventKind::RunnerBusChanged(shown) => {
+                self.runtime
+                    .view
+                    .runner_buses
+                    .insert(shown.runner, shown.bus);
+            }
+            EventKind::RunnerReturned { .. } => self.resume_cloud_work(cx),
+            EventKind::CloudAskReplayed(asked) => self.cloud_ask_replayed(asked),
             host @ (EventKind::HostChanged { .. }
             | EventKind::SignInWanted { .. }
             | EventKind::MachineChannelWanted { .. }

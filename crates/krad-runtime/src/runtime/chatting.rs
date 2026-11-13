@@ -53,6 +53,7 @@ impl Runtime {
                 usage_budget: self.usage.budget(),
                 kraddies: &self.kraddies,
                 buffers: &self.buffers,
+                secrets: &self.secrets,
             },
         };
         let done = act(&mut self.chats, &mut work);

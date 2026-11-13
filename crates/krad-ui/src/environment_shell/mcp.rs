@@ -58,6 +58,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Task<McpLaunch> {
         let servers = mcp_servers(&self.settings.mcp, chosen, project);
-        cx.background_spawn(async move { with_secrets(servers) })
+        let secrets = self.runtime.handle.secrets().clone();
+        cx.background_spawn(async move { with_secrets(servers, &secrets) })
     }
 }

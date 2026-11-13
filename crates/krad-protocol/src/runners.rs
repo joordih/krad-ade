@@ -1,5 +1,9 @@
-use krad_domain::{CloudRunnerId, RunnerState};
+use krad_domain::{AttentionKind, CloudRunnerId, RunnerState, WebhookId};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+
+use crate::bus::AgentRef;
+use crate::hosts::RemoteBusState;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "verb", rename_all = "snake_case")]
@@ -21,6 +25,20 @@ pub enum RunnerCommand {
 pub struct RunnerShown {
     pub runner: CloudRunnerId,
     pub state: RunnerState,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct RunnerBusShown {
+    pub runner: CloudRunnerId,
+    pub bus: RemoteBusState,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct CloudAskReplayed {
+    pub agent: AgentRef,
+    pub kind: AttentionKind,
+    #[serde(default)]
+    pub delivered: BTreeSet<WebhookId>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -54,6 +72,27 @@ mod tests {
             serde_json::from_str::<RunnerCommand>(r#"{"verb":"pair_again","runner":3}"#)?,
             RunnerCommand::Unknown
         );
+        Ok(())
+    }
+
+    #[test]
+    fn a_runner_bus_and_a_replayed_cloud_ask_round_trip() -> serde_json::Result<()> {
+        let bus = RunnerBusShown {
+            runner: CloudRunnerId(3),
+            bus: RemoteBusState::Preparing,
+        };
+        let json = serde_json::to_string(&bus)?;
+        assert_eq!(serde_json::from_str::<RunnerBusShown>(&json)?, bus);
+        let asked = CloudAskReplayed {
+            agent: AgentRef {
+                environment: krad_domain::EnvironmentName::new("api".to_owned()),
+                terminal: krad_domain::TerminalId(2),
+            },
+            kind: AttentionKind::Permission,
+            delivered: [WebhookId(4)].into_iter().collect(),
+        };
+        let json = serde_json::to_string(&asked)?;
+        assert_eq!(serde_json::from_str::<CloudAskReplayed>(&json)?, asked);
         Ok(())
     }
 }
