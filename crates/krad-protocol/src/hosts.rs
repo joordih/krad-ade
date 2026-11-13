@@ -1,5 +1,6 @@
 use krad_domain::{
-    AgentPreset, EnvironmentName, HostPlatform, PromptAsker, PromptKind, TerminalId,
+    AcpAgentId, AgentPreset, EnvironmentName, HostPlatform, ManagedAdapter, PromptAsker,
+    PromptKind, TerminalId,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -165,6 +166,14 @@ pub struct HostsSnapshot {
     pub prompts: Vec<HostPrompt>,
     #[serde(default)]
     pub local: Vec<LocalAgents>,
+    #[serde(default)]
+    pub adapters: Vec<KeptAdapter>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct KeptAdapter {
+    pub agent: AcpAgentId,
+    pub adapter: ManagedAdapter,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
@@ -198,6 +207,12 @@ pub enum HostCommand {
     },
     DetectLocalAgents {
         place: AgentPlace,
+    },
+    CheckAcpAdapter {
+        agent: AcpAgentId,
+    },
+    RetryAcpAdapter {
+        agent: AcpAgentId,
     },
     #[serde(other)]
     Unknown,
@@ -337,6 +352,27 @@ mod tests {
         assert_eq!(serde_json::from_str::<EventKind>(&json)?, found);
         let older: HostsSnapshot = serde_json::from_str(r#"{"hosts":[],"prompts":[]}"#)?;
         assert_eq!(older.local, Vec::new());
+        Ok(())
+    }
+
+    #[test]
+    fn a_kept_adapter_tells_its_state_and_older_snapshots_have_none() -> serde_json::Result<()> {
+        let agent: AcpAgentId = serde_json::from_str(r#""claude-code-acp""#)?;
+        let changed = EventKind::AcpAdapterChanged(KeptAdapter {
+            agent,
+            adapter: ManagedAdapter::Failed("EACCES".to_owned()),
+        });
+        let json = serde_json::to_string(&changed)?;
+        assert_eq!(
+            json,
+            r#"{"type":"acp_adapter_changed","agent":"claude-code-acp","adapter":{"state":"failed","detail":"EACCES"}}"#
+        );
+        assert_eq!(serde_json::from_str::<EventKind>(&json)?, changed);
+        let retry = Command::Host(HostCommand::RetryAcpAdapter { agent });
+        let json = serde_json::to_string(&retry)?;
+        assert_eq!(serde_json::from_str::<Command>(&json)?, retry);
+        let older: HostsSnapshot = serde_json::from_str(r#"{"hosts":[]}"#)?;
+        assert_eq!(older.adapters, Vec::new());
         Ok(())
     }
 }

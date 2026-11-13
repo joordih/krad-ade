@@ -36,7 +36,7 @@ pub use heatmap::{
     HeatCell, HeatLevel, HeatMap, HeatMetric, HeatWeek, MonthLabel, DAYS_PER_WEEK, HEATMAP_MONTHS,
     HEAT_LEVELS,
 };
-pub use memory::{KraddieMemory, MemoryError, MAX_MEMORY_LINES, MAX_MEMORY_LINE_CHARS};
+pub use memory::{KraddieMemory, MemoryError, MemoryLine, MAX_MEMORY_LINES, MAX_MEMORY_LINE_CHARS};
 pub use mind::{is_quiet_reply, CheckInContext, KraddieMind, QUIET_REPLY};
 pub use rounds::{
     quiet_since, Hush, KraddieRounds, QuietSpan, RoundsCheck, RoundsMoment, RunSlot,

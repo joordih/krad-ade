@@ -27,7 +27,7 @@ const TASK: &str = "Find why the rotation races";
 const WAIT: Duration = Duration::from_secs(10);
 const TIMED_OUT: &str = "the awaited event never came";
 
-struct Folder(PathBuf);
+pub(super) struct Folder(pub(super) PathBuf);
 
 impl Drop for Folder {
     fn drop(&mut self) {
@@ -35,7 +35,7 @@ impl Drop for Folder {
     }
 }
 
-fn lead_environment(root: &Path) -> Result<EnvironmentData, Box<dyn Error>> {
+pub(super) fn lead_environment(root: &Path) -> Result<EnvironmentData, Box<dyn Error>> {
     let mut data = EnvironmentData::empty(EnvironmentName::new(ENVIRONMENT.to_owned()));
     let group = data.add_group(root.to_path_buf(), None);
     data.nodes = vec![serde_json::from_value(serde_json::json!({
@@ -71,7 +71,7 @@ fn start(data: EnvironmentData) -> Result<RuntimeHandle, Box<dyn Error>> {
     })?)
 }
 
-fn until(events: &mut EventReceiver, wanted: impl Fn(&EventKind) -> bool) -> TestResult {
+pub(super) fn until(events: &mut EventReceiver, wanted: impl Fn(&EventKind) -> bool) -> TestResult {
     let deadline = Instant::now() + WAIT;
     while Instant::now() < deadline {
         match block_on(events.next()) {
@@ -83,7 +83,7 @@ fn until(events: &mut EventReceiver, wanted: impl Fn(&EventKind) -> bool) -> Tes
     Err(TIMED_OUT.into())
 }
 
-fn main_environment(runtime: &RuntimeHandle) -> Result<EnvironmentData, Box<dyn Error>> {
+pub(super) fn main_environment(runtime: &RuntimeHandle) -> Result<EnvironmentData, Box<dyn Error>> {
     Ok(block_on(runtime.snapshot(Scope::Runtime))?
         .environments
         .into_iter()

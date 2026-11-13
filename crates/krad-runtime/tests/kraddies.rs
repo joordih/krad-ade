@@ -1,13 +1,19 @@
 #![cfg(unix)]
 
+#[path = "kraddies/chats.rs"]
+mod chats;
 #[path = "kraddies/digests.rs"]
 mod digests;
+#[path = "kraddies/memory.rs"]
+mod memory;
 #[path = "kraddies/preamble.rs"]
 mod preamble;
 #[path = "support/repo.rs"]
 mod repo;
 #[path = "kraddies/runs.rs"]
 mod runs;
+#[path = "kraddies/saving.rs"]
+mod saving;
 
 use futures::executor::block_on;
 use krad_chat::new_session_id;

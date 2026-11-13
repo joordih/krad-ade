@@ -102,6 +102,8 @@ impl Hosts {
             }
             HostCommand::DetectAgents { .. }
             | HostCommand::DetectLocalAgents { .. }
+            | HostCommand::CheckAcpAdapter { .. }
+            | HostCommand::RetryAcpAdapter { .. }
             | HostCommand::Unknown => return None,
         };
         let Some(host) = host_of else {
@@ -338,6 +340,7 @@ impl Hosts {
                 .collect(),
             prompts: self.prompts.snapshot(),
             local: self.local_snapshot(),
+            adapters: Vec::new(),
         }
     }
 }

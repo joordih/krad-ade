@@ -39,6 +39,19 @@ pub(crate) fn chat_owner(data: Option<&EnvironmentData>, chat: TerminalId) -> Me
 }
 
 impl Kraddies {
+    pub(crate) fn want_code_host(&self) -> bool {
+        self.states.iter().any(|state| {
+            state.automations.iter().any(|routine| {
+                routine.automation.switch.is_on()
+                    && routine
+                        .automation
+                        .triggers
+                        .iter()
+                        .any(|trigger| trigger.code_host().is_some())
+            })
+        })
+    }
+
     pub(crate) fn offers_memory_tools(&self) -> bool {
         !self.states.is_empty() || !self.ordinary.is_empty()
     }
@@ -205,8 +218,7 @@ pub(crate) fn memory_answer(
 mod tests {
     use super::*;
     use krad_domain::{
-        AgentPreset, DigestChat, DigestDraft, EnvironmentName, Kraddie, KraddieMemory, SessionId,
-        Switch,
+        AgentPreset, DigestChat, DigestDraft, EnvironmentName, Kraddie, SessionId, Switch,
     };
     use std::time::SystemTime;
 
@@ -224,16 +236,10 @@ mod tests {
             );
             assert!(kraddies.save(kraddie, None).is_ok());
         }
-        let mut memory = KraddieMemory::default();
-        assert!(memory
-            .add("B keeps the staging password rotation notes")
-            .is_ok());
-        let mind = krad_domain::KraddieMind {
-            memory,
-            ..krad_domain::KraddieMind::default()
-        };
         assert_eq!(
-            kraddies.set_mind(&id("b"), mind),
+            kraddies.edit_memory(&id("b"), |memory| memory
+                .add("B keeps the staging password rotation notes")
+                .map(drop)),
             krad_protocol::Reply::Accepted
         );
         kraddies.record_digest(

@@ -3983,6 +3983,8 @@ dependencies = [
  "krad-agents",
  "krad-chat",
  "krad-domain",
+ "krad-github",
+ "krad-gitlab",
  "krad-host",
  "krad-protocol",
  "krad-repo",

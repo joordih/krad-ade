@@ -238,7 +238,6 @@ impl EnvironmentShell {
     fn flush_live_work(&mut self, cx: &mut Context<Self>) {
         self.flush_noticed_chats(cx);
         self.flush_attention(cx);
-        self.flush_variant_progress(cx);
         self.service_hosts(cx);
         self.watch_new_opencode_terminals(cx);
         self.connect_wanted_runners(cx);
@@ -382,7 +381,6 @@ impl EnvironmentShell {
         self.start_agent_bus(cx);
         self.check_gateway(cx);
         self.start_app_updates(cx);
-        self.start_code_host_watch(cx);
         Self::load_arcade_scores(cx);
     }
 

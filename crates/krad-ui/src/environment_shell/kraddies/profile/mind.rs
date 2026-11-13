@@ -3,7 +3,8 @@ use gpui_kit::{
     div, px, rgb, AnimationExt as _, AnyElement, AppContext as _, Context, InteractiveElement,
     IntoElement, ParentElement, SharedString, SpringAnimation, Styled, Window,
 };
-use krad_domain::{KraddieId, ToastKind, MAX_MEMORY_LINES};
+use krad_domain::{KraddieId, MemoryLine, ToastKind, MAX_MEMORY_LINES};
+use krad_protocol::KraddieCommand;
 
 use super::super::super::EnvironmentShell;
 use super::super::layout::PageLayout;
@@ -50,7 +51,11 @@ impl EnvironmentShell {
         let mut memory = self.kraddie_mind(id).memory;
         match memory.add(&text) {
             Ok(_) => {
-                self.edit_mind(id, |mind| mind.memory = memory, cx);
+                let command = KraddieCommand::Remember {
+                    kraddie: id.clone(),
+                    text,
+                };
+                self.edit_mind(id, (|mind| mind.memory = memory, command), cx);
                 input.update(cx, |input, cx| input.set_value("", window, cx));
             }
             Err(error) => self.toast(ToastKind::Error, &error.to_string(), cx),
@@ -78,8 +83,21 @@ impl EnvironmentShell {
         };
         let text = draft.text.read(cx).value().to_string();
         let mut memory = self.kraddie_mind(id).memory;
+        let Some(was) = memory.lines().get(draft.index).cloned() else {
+            return;
+        };
         match memory.edit(draft.index, &text) {
-            Ok(()) => self.edit_mind(id, |mind| mind.memory = memory, cx),
+            Ok(()) => {
+                let command = KraddieCommand::ReviseMemory {
+                    kraddie: id.clone(),
+                    line: MemoryLine {
+                        index: draft.index,
+                        text: was,
+                    },
+                    text,
+                };
+                self.edit_mind(id, (|mind| mind.memory = memory, command), cx);
+            }
             Err(error) => {
                 self.kraddies.profile.editing_line = Some(draft);
                 self.toast(ToastKind::Error, &error.to_string(), cx);
@@ -89,10 +107,15 @@ impl EnvironmentShell {
 
     fn forget_line(&mut self, id: &KraddieId, index: usize, cx: &mut Context<Self>) {
         let mut memory = self.kraddie_mind(id).memory;
-        if memory.remove(index).is_ok() {
-            self.kraddies.profile.editing_line = None;
-            self.edit_mind(id, |mind| mind.memory = memory, cx);
-        }
+        let Ok(text) = memory.remove(index) else {
+            return;
+        };
+        self.kraddies.profile.editing_line = None;
+        let command = KraddieCommand::ForgetMemory {
+            kraddie: id.clone(),
+            line: MemoryLine { index, text },
+        };
+        self.edit_mind(id, (|mind| mind.memory = memory, command), cx);
     }
 
     pub(super) fn keepsakes_section(

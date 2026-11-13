@@ -1,7 +1,4 @@
-use krad_domain::{
-    AutomationEvent, AutomationKey, CodeHostTrigger, CodeHostWake, KraddieId, KraddieWake,
-    SessionEdit,
-};
+use krad_domain::{AutomationKey, KraddieId, KraddieWake, SessionEdit};
 use krad_protocol::{ErrorCode, KraddieCommand, Reply};
 
 use super::{refused, Runtime, UNSUPPORTED_COMMAND};
@@ -44,7 +41,26 @@ impl Runtime {
                 self.run_now(automation, KraddieWake::Manual, prompt)
             }
             KraddieCommand::RunKraddie { kraddie } => self.run_kraddie_now(&kraddie),
-            KraddieCommand::SetMind { kraddie, mind } => self.kraddies.set_mind(&kraddie, *mind),
+            KraddieCommand::OpenChat {
+                kraddie,
+                environment,
+            } => self.open_kraddie_chat_for(&kraddie, &environment),
+            KraddieCommand::SetCompass { kraddie, compass } => {
+                self.kraddies.set_compass(&kraddie, compass)
+            }
+            KraddieCommand::Remember { kraddie, text } => self
+                .kraddies
+                .edit_memory(&kraddie, |memory| memory.add(&text).map(drop)),
+            KraddieCommand::ReviseMemory {
+                kraddie,
+                line,
+                text,
+            } => self
+                .kraddies
+                .edit_memory(&kraddie, |memory| memory.revise(&line, &text)),
+            KraddieCommand::ForgetMemory { kraddie, line } => self
+                .kraddies
+                .edit_memory(&kraddie, |memory| memory.forget(&line).map(drop)),
             KraddieCommand::ResetConversation { kraddie } => {
                 self.kraddies.reset_conversation(&kraddie)
             }
@@ -58,18 +74,6 @@ impl Runtime {
             }
             KraddieCommand::RecordDigest { owner, draft } => {
                 self.kraddies.record_digest(&owner, *draft);
-                Reply::Accepted
-            }
-            KraddieCommand::CodeHostSeen {
-                environment,
-                group,
-                host,
-                event,
-            } => {
-                if let Some(event) = CodeHostTrigger::of(&event) {
-                    let wake = CodeHostWake { host, event };
-                    self.wake_on(&environment, Some(group), AutomationEvent::CodeHost(wake));
-                }
                 Reply::Accepted
             }
             KraddieCommand::UseNotes { titles } => {

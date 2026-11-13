@@ -160,7 +160,8 @@ impl Kraddies {
                 DigestBook::default()
             });
         }
-        kraddies.writer = ShelfWriter::spawn(setup.shelf, setup.ordinary);
+        let inbox = kraddies.inbox.clone();
+        kraddies.writer = ShelfWriter::spawn((setup.shelf, setup.ordinary), inbox);
         tracing::info!(kraddies = kraddies.states.len(), "kraddies loaded");
         kraddies
     }

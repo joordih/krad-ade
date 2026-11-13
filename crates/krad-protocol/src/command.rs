@@ -14,6 +14,7 @@ use crate::sessions::{GroupCommand, NodeCommand, SessionCommand};
 use crate::settings::SettingsCommand;
 use crate::terminals::TerminalCommand;
 use crate::usage::UsageCommand;
+use crate::variants::VariantCommand;
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(tag = "area", rename_all = "snake_case")]
@@ -36,6 +37,7 @@ pub enum Command {
     Git(GitCommand),
     Changes(ChangesCommand),
     Kraddie(KraddieCommand),
+    Variant(VariantCommand),
     #[serde(other)]
     Unknown,
 }
@@ -82,7 +84,7 @@ mod tests {
 
     #[test]
     fn a_command_from_a_newer_client_reads_as_unknown() -> serde_json::Result<()> {
-        let area: Command = serde_json::from_str(r#"{"area":"variant","verb":"run"}"#)?;
+        let area: Command = serde_json::from_str(r#"{"area":"workflow","verb":"run"}"#)?;
         assert_eq!(area, Command::Unknown);
         let verb: Command = serde_json::from_str(r#"{"area":"runtime","verb":"restart"}"#)?;
         assert_eq!(verb, Command::Runtime(RuntimeCommand::Unknown));

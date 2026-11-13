@@ -325,7 +325,6 @@ impl EnvironmentShell {
         self.observe_attention(env, id, previous, state);
         self.publish_agent(env, id, None);
         if let Some(event) = event {
-            self.note_variant_progress(env, &event);
             self.publish_event(env, group, event);
         }
         true

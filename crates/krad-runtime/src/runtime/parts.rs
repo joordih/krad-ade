@@ -1,6 +1,7 @@
-use krad_protocol::{BusSnapshot, Scope, Seq, Snapshot};
+use krad_protocol::{BusSnapshot, HostsSnapshot, Scope, Seq, Snapshot};
 
 use super::Runtime;
+use crate::adapters::AcpAdapters;
 use crate::attention::Attention;
 use crate::bus::Bus;
 use crate::chats::Chats;
@@ -26,6 +27,7 @@ pub(super) struct Parts<'a> {
     pub(super) terminals: &'a Terminals,
     pub(super) hosts: &'a Hosts,
     pub(super) chats: &'a Chats,
+    pub(super) adapters: &'a AcpAdapters,
     pub(super) opencode: &'a OpencodeServers,
     pub(super) gateway: &'a Gateway,
     pub(super) settings: &'a AppSettings,
@@ -45,7 +47,10 @@ impl Parts<'_> {
             models: self.models.snapshot(),
             environments: self.environments.snapshot(),
             terminals: self.terminals.snapshot(),
-            hosts: self.hosts.snapshot(),
+            hosts: Box::new(HostsSnapshot {
+                adapters: self.adapters.snapshot(),
+                ..self.hosts.snapshot()
+            }),
             chats: self.chats.snapshot(),
             opencode: self.opencode.snapshot(),
             gateway: self.gateway.snapshot(),
@@ -68,6 +73,7 @@ impl Runtime {
             terminals: &self.terminals,
             hosts: &self.hosts,
             chats: &self.chats,
+            adapters: &self.adapters,
             opencode: &self.opencode,
             gateway: &self.gateway,
             settings: &self.settings,

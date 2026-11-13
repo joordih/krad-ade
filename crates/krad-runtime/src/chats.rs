@@ -2,6 +2,7 @@ mod acp;
 mod answers;
 mod backend;
 mod brief;
+mod buffers;
 mod chat;
 mod checkpoints;
 mod digest_source;
@@ -25,6 +26,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, SyncSender};
 
+use crate::adapters::AcpAdapters;
 use crate::gateway::GatewayReached;
 use crate::input::Input;
 use crate::jobs::Jobs;
@@ -36,6 +38,7 @@ use backend::ensure_live;
 pub(crate) use backend::resolve_once;
 pub use backend::{runs_in_runtime, ChatLaunch, LiveStarted};
 pub use brief::{ChatBrief, ChatRole, PreparedLaunch};
+pub(crate) use buffers::{EditorBuffers, OfferedBuffers};
 use chat::{Chat, HistoryWait};
 pub(crate) use checkpoints::ChatCheckpoint;
 pub(crate) use digest_source::DigestSource;
@@ -125,6 +128,7 @@ impl std::fmt::Debug for Chats {
 
 pub(crate) struct ChatWork<'a> {
     pub(crate) jobs: &'a Jobs,
+    pub(crate) adapters: &'a mut AcpAdapters,
     pub(crate) gateway: Option<GatewayReached<'a>>,
     pub(crate) opencode: &'a mut OpencodeServers,
     pub(crate) outbox: &'a mut Vec<EventKind>,

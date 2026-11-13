@@ -4,16 +4,16 @@ use gpui_kit::{
     Styled, Window,
 };
 use krad_domain::{
-    GroupId, RunTotals, TerminalId, ToastKind, VariantId, VariantRun, VariantRunId, WinnerOutcome,
+    GroupId, RunTotals, TerminalId, ToastKind, VariantId, VariantRemoval, VariantRun, VariantRunId,
+    WinnerOutcome,
 };
-use krad_repo::VariantRemoval;
+use krad_protocol::VariantAct;
 use std::time::SystemTime;
 
 use super::super::dialog_parts::{
     segment, sheet_body, sheet_footer, sheet_overlay, sheet_panel, sheet_title, SegmentSize,
 };
 use super::super::EnvironmentShell;
-use super::pick::VariantPick;
 use super::NO_GROUP_TEXT;
 use crate::components::{Button, ButtonVariant, IconName};
 use crate::theme::{palette, LINE_SM, SPACE_1, SPACE_2, TEXT_SM};
@@ -117,7 +117,9 @@ impl EnvironmentShell {
             confirm: None,
         });
         let env = self.active.clone();
-        self.check_variant_worktrees(&env, cx);
+        self.tell_variants(&env, VariantAct::CheckWorktrees, cx, |_, error, _| {
+            tracing::debug!(%error, "variant worktrees not checked");
+        });
         cx.notify();
     }
 
@@ -157,13 +159,15 @@ impl EnvironmentShell {
             view.confirm = None;
         }
         let env = self.active.clone();
-        let pick = VariantPick {
+        let pick = VariantAct::Pick {
             run,
             winner: confirm.variant,
             outcome: confirm.outcome,
             removal: VariantRemoval::Forced,
         };
-        self.pick_variant(&env, pick, None, cx);
+        self.tell_variants(&env, pick, cx, |shell, error, cx| {
+            shell.toast(ToastKind::Error, &error, cx);
+        });
     }
 
     pub(in crate::environment_shell) fn variants_view_sheet(

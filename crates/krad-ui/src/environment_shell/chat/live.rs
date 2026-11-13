@@ -14,7 +14,6 @@ use super::super::EnvironmentShell;
 
 const NO_PROGRAM_TEXT: &str = "is not on PATH";
 const WAITING_TEXT: &str = "opencode is still starting";
-const NO_CONFIG_FOLDER_TEXT: &str = "Krad ADE has no config folder to keep the chat in";
 const NO_CHAT_TEXT: &str = "has no chat";
 
 pub(in crate::environment_shell) type HarnessName = Cow<'static, str>;
@@ -28,7 +27,6 @@ pub(in crate::environment_shell) enum StartError {
     Secret(String),
     Adapter(String),
     Cloud(String),
-    NoConfigFolder,
     Chat(ChatError),
 }
 
@@ -42,7 +40,6 @@ impl fmt::Display for StartError {
             | Self::Secret(error)
             | Self::Adapter(error)
             | Self::Cloud(error) => formatter.write_str(error),
-            Self::NoConfigFolder => formatter.write_str(NO_CONFIG_FOLDER_TEXT),
             Self::Chat(error) => error.fmt(formatter),
         }
     }

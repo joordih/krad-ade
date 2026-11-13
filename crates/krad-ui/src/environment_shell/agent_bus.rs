@@ -10,7 +10,6 @@ mod typing;
 mod workspace;
 
 pub(in crate::environment_shell) use askpass::AskpassPlan;
-pub(super) use workspace::target_group;
 
 use futures::StreamExt as _;
 use gpui_kit::Context;
@@ -173,7 +172,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         match request {
-            request @ (Request::Kraddies
+            Request::Kraddies
             | Request::RunKraddie { .. }
             | Request::Automations
             | Request::RunAutomation { .. }
@@ -184,14 +183,9 @@ impl EnvironmentShell {
             | Request::NewKraddieChat { .. }
             | Request::ShareKraddieMemory { .. }
             | Request::MemorySearch { .. }
-            | Request::MemoryRead { .. }) => {
-                self.answer_kraddie_request(request, reply, cx);
-            }
-            request @ (Request::RunVariants(_)
-            | Request::Variants { .. }
-            | Request::PickVariant { .. }) => {
-                let group = self.caller_group(from);
-                self.answer_variants(&from.environment, group, request, reply, cx);
+            | Request::MemoryRead { .. } => Self::answer_kraddie_request(reply),
+            Request::RunVariants(_) | Request::Variants { .. } | Request::PickVariant { .. } => {
+                reply.send(answered_by_runtime()).unwrap_or_default();
             }
             request => {
                 let group = self.caller_group(from);

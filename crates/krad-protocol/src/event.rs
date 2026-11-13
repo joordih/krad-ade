@@ -14,7 +14,9 @@ use crate::environments::SpendingCrossed;
 use crate::gateway::GatewayState;
 use crate::git::{GitFinished, GitRead, SessionChangesRead, WorktreeSwept};
 use crate::harness_health::{HarnessChecked, HealthSnapshot};
-use crate::hosts::{HostPrompt, HostState, HostsSnapshot, LocalAgents, PromptId, RemoteBusState};
+use crate::hosts::{
+    HostPrompt, HostState, HostsSnapshot, KeptAdapter, LocalAgents, PromptId, RemoteBusState,
+};
 use crate::ids::{RequestId, Seq};
 use crate::kraddies::{KraddieState, KraddiesSnapshot, OwnedDigests};
 use crate::launches::TerminalLaunched;
@@ -119,6 +121,7 @@ pub enum EventKind {
         agents: Vec<AgentPreset>,
     },
     LocalAgentsFound(LocalAgents),
+    AcpAdapterChanged(KeptAdapter),
     ChatOpened {
         chat: AgentRef,
         state: Box<ChatState>,
@@ -182,6 +185,9 @@ pub enum EventKind {
         task: String,
         reason: String,
     },
+    KraddieNotSaved {
+        error: String,
+    },
     #[serde(other)]
     Unknown,
 }
@@ -211,7 +217,7 @@ pub struct Snapshot {
     #[serde(default)]
     pub terminals: Vec<TerminalSummary>,
     #[serde(default)]
-    pub hosts: HostsSnapshot,
+    pub hosts: Box<HostsSnapshot>,
     #[serde(default)]
     pub chats: Vec<ChatSummary>,
     #[serde(default)]
@@ -278,7 +284,7 @@ mod tests {
                 models: ModelsSnapshot::default(),
                 environments: Vec::new(),
                 terminals: Vec::new(),
-                hosts: HostsSnapshot::default(),
+                hosts: Box::default(),
                 chats: Vec::new(),
                 opencode: OpencodeSnapshot::default(),
                 gateway: GatewayState::default(),

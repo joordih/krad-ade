@@ -56,6 +56,15 @@ impl EnvironmentShell {
         Arc::new(TabBuffers(asks))
     }
 
+    pub(in crate::environment_shell) fn offer_open_buffers(
+        &self,
+        env: &EnvironmentName,
+        cx: &mut Context<Self>,
+    ) {
+        let buffers = Self::tab_buffers(env, cx);
+        self.runtime.handle.offer_open_buffers(env.clone(), buffers);
+    }
+
     fn answer_buffer_asks(
         env: EnvironmentName,
         mut asked: Receiver<BufferAsk>,

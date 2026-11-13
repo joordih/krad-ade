@@ -92,7 +92,7 @@ impl Runtime {
             return None;
         }
         let answered = matches!(incoming.from, Caller::Terminal(_) | Caller::Lead(_))
-            && !matches!(incoming.request, Request::NewKraddieChat { .. });
+            || matches!(incoming.request, Request::NewKraddieChat { .. });
         if !answered {
             return Some(incoming);
         }
@@ -142,6 +142,7 @@ impl Runtime {
                 tracing::debug!(reader = %reach.reader(), "memory asked");
                 memory_answer(&self.kraddies.library(), &reach, &request)
             }
+            Request::NewKraddieChat { name } => self.kraddie_chat_from_bus(from, &name),
             _ => Response::error(ErrorCode::BadRequest, "Not a Kraddie or memory request"),
         }
     }

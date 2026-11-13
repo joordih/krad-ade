@@ -47,6 +47,13 @@ impl AcpChat {
         })
     }
 
+    pub(super) fn wanting(wanted: AcpWanted) -> Self {
+        Self {
+            wanted,
+            ..Self::default()
+        }
+    }
+
     pub(super) fn prepared(
         &mut self,
         mut config: AcpConfig,

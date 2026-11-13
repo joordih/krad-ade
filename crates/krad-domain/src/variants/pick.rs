@@ -22,6 +22,13 @@ impl WinnerOutcome {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VariantRemoval {
+    OnlyIfSettled,
+    Forced,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ApplyStep {
     pub from: PathBuf,

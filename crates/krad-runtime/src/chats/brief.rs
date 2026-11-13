@@ -1,3 +1,4 @@
+use krad_chat::AcpWanted;
 use krad_domain::{Effort, McpServerName, ModelId, PermissionMode};
 use std::fmt;
 
@@ -18,6 +19,7 @@ pub struct ChatBrief {
     pub permission_mode: Option<PermissionMode>,
     pub mcp_servers: Option<Vec<McpServerName>>,
     pub role: ChatRole,
+    pub acp: AcpWanted,
 }
 
 impl fmt::Debug for ChatBrief {
@@ -28,6 +30,7 @@ impl fmt::Debug for ChatBrief {
             .field("effort", &self.effort)
             .field("permission_mode", &self.permission_mode)
             .field("role", &self.role)
+            .field("acp", &self.acp)
             .finish_non_exhaustive()
     }
 }

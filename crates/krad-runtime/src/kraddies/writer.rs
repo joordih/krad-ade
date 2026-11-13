@@ -7,6 +7,8 @@ use std::fmt;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::thread;
 
+use crate::input::Input;
+
 const WRITER_THREAD: &str = "krad-runtime-kraddies";
 const WRITE_QUEUE: usize = 256;
 
@@ -54,15 +56,20 @@ pub(super) struct ShelfWriter(SyncSender<ShelfWrite>);
 struct Files {
     shelf: Option<KraddieShelf>,
     ordinary: Option<OrdinaryDigests>,
+    inbox: SyncSender<Input>,
 }
 
 impl ShelfWriter {
     pub(super) fn spawn(
-        shelf: Option<KraddieShelf>,
-        ordinary: Option<OrdinaryDigests>,
+        (shelf, ordinary): (Option<KraddieShelf>, Option<OrdinaryDigests>),
+        inbox: SyncSender<Input>,
     ) -> Option<Self> {
         let (sender, receiver) = sync_channel(WRITE_QUEUE);
-        let files = Files { shelf, ordinary };
+        let files = Files {
+            shelf,
+            ordinary,
+            inbox,
+        };
         thread::Builder::new()
             .name(WRITER_THREAD.to_owned())
             .spawn(move || files.serve(&receiver))
@@ -101,6 +108,9 @@ impl Files {
         };
         if let Err(error) = written {
             tracing::warn!(write = kind, %error, "a Kraddie change was not saved");
+            if self.inbox.send(Input::KraddieNotSaved(error)).is_err() {
+                tracing::trace!("a Kraddie change failed to save after the runtime stopped");
+            }
         }
     }
 

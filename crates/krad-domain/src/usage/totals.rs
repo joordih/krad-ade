@@ -69,6 +69,20 @@ impl EnvironmentData {
         if let Some(node) = self.nodes.iter_mut().find(|node| node.id == chat) {
             node.usage.record(report, prices);
         }
+        let spent = self.chat_spend(chat);
+        let Some((run, variant)) = self.variant_runs.of_terminal(chat) else {
+            return;
+        };
+        if spent.is_empty() {
+            return;
+        }
+        if let Some(target) = self
+            .variant_runs
+            .run_mut(run)
+            .and_then(|found| found.variant_mut(variant))
+        {
+            target.spent = spent;
+        }
     }
 
     #[must_use]

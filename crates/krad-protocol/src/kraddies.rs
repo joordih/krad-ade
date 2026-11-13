@@ -1,6 +1,6 @@
 use krad_domain::{
-    AppEvent, Automation, AutomationId, AutomationKey, CodeHost, DigestBook, DigestDraft, DigestId,
-    EnvironmentName, GroupId, Kraddie, KraddieActivity, KraddieHistory, KraddieId, KraddieMind,
+    Automation, AutomationId, AutomationKey, DigestBook, DigestDraft, DigestId, EnvironmentName,
+    Kraddie, KraddieActivity, KraddieCompass, KraddieHistory, KraddieId, KraddieMind, MemoryLine,
     MemoryOwner, Switch,
 };
 use serde::{Deserialize, Serialize};
@@ -129,9 +129,26 @@ pub enum KraddieCommand {
     RunKraddie {
         kraddie: KraddieId,
     },
-    SetMind {
+    OpenChat {
         kraddie: KraddieId,
-        mind: Box<KraddieMind>,
+        environment: EnvironmentName,
+    },
+    SetCompass {
+        kraddie: KraddieId,
+        compass: KraddieCompass,
+    },
+    Remember {
+        kraddie: KraddieId,
+        text: String,
+    },
+    ReviseMemory {
+        kraddie: KraddieId,
+        line: MemoryLine,
+        text: String,
+    },
+    ForgetMemory {
+        kraddie: KraddieId,
+        line: MemoryLine,
     },
     ResetConversation {
         kraddie: KraddieId,
@@ -148,12 +165,6 @@ pub enum KraddieCommand {
     RecordDigest {
         owner: MemoryOwner,
         draft: Box<DigestDraft>,
-    },
-    CodeHostSeen {
-        environment: EnvironmentName,
-        group: GroupId,
-        host: CodeHost,
-        event: AppEvent,
     },
     UseNotes {
         titles: Vec<String>,
@@ -186,6 +197,20 @@ mod tests {
             r#"{"area":"kraddie","verb":"run_kraddie","kraddie":"night-owl"}"#
         );
         assert_eq!(serde_json::from_str::<Command>(&json)?, command);
+        let revise = Command::Kraddie(KraddieCommand::ReviseMemory {
+            kraddie: kraddie().id(),
+            line: MemoryLine {
+                index: 0,
+                text: "old".to_owned(),
+            },
+            text: "new".to_owned(),
+        });
+        let json = serde_json::to_string(&revise)?;
+        assert_eq!(
+            json,
+            r#"{"area":"kraddie","verb":"revise_memory","kraddie":"night-owl","line":{"index":0,"text":"old"},"text":"new"}"#
+        );
+        assert_eq!(serde_json::from_str::<Command>(&json)?, revise);
         let newer: Command = serde_json::from_str(r#"{"area":"kraddie","verb":"hatch"}"#)?;
         assert_eq!(newer, Command::Kraddie(KraddieCommand::Unknown));
         Ok(())

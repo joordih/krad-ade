@@ -5,12 +5,10 @@ use krad_domain::{
     TerminalId,
 };
 use krad_host::HostLink;
-use krad_runtime::McpLaunch;
 use krad_store::AcpSecrets;
-use std::collections::HashMap;
 
 use super::super::super::chat::StartError;
-use super::super::super::cloud::NodeSite;
+use super::super::super::cloud::CloudSite;
 use super::super::super::EnvironmentShell;
 use super::super::SurfaceChat;
 use super::structured_mut;
@@ -45,9 +43,9 @@ fn acp_lists(offers: Option<&[ModelOffer]>, model: &ModelId) -> bool {
 impl EnvironmentShell {
     pub(super) fn acp_config(
         &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
+        (env, id): (&EnvironmentName, TerminalId),
         agent: AcpAgentId,
+        site: &CloudSite,
         cx: &mut Context<Self>,
     ) -> Result<AcpConfig, StartError> {
         let preset = AgentPreset::Acp(agent);
@@ -56,46 +54,19 @@ impl EnvironmentShell {
             .acp
             .agent(agent)
             .ok_or_else(|| StartError::NoProgram(self.settings.acp.harness_name(preset)))?;
-        let root = self
-            .envs
-            .get(env)
-            .and_then(|live| live.data.group_of(id))
-            .map(|group| group.root.clone());
-        let site = self.node_site(env, id);
-        let in_runtime = matches!(site, NodeSite::Env);
-        let started = match site {
-            NodeSite::Env => {
-                let link = self.env_link(env);
-                let started = self.acp_runner(&link, &agent, root.as_deref(), cx);
-                self.note_adapter_install(env, id, agent.id);
-                started
-            }
-            NodeSite::Cloud(site) => {
-                self.cloud_chat_runner(env, id, &site, preset, agent.program.clone())
-            }
-            NodeSite::Waiting(_) => Err(StartError::Waiting),
-        };
-        let (runner, cwd) = started?;
-        if !in_runtime && !self.acp_secrets_ready(env, id, &agent, cx) {
+        let (runner, cwd) = self.cloud_chat_runner(env, id, site, preset, agent.program.clone())?;
+        if !self.acp_secrets_ready(env, id, &agent, cx) {
             return Err(StartError::Waiting);
         }
-        let launch = if in_runtime {
-            McpLaunch::default()
-        } else {
-            let folder = self.chat_folder(env, id);
-            self.gateway_mcp(env, id, &folder, cx)
-                .ok_or(StartError::Waiting)?
-        };
-        let bus_vars = if !runner.in_cloud() && runner.on_ssh() && self.remote_bus(env).is_none() {
-            BusVars(Vec::new())
-        } else {
-            BusVars(self.bus_vars(env, id))
-        };
+        let folder = self.chat_folder(env, id);
+        let launch = self
+            .gateway_mcp(env, id, &folder, cx)
+            .ok_or(StartError::Waiting)?;
+        let bus_vars = BusVars(self.bus_vars(env, id));
         let buffers = Self::tab_buffers(env, cx);
         let model = self.acp_model(env, id, preset);
         let structured = structured_mut(self, env, id).ok_or(StartError::Waiting)?;
         let secrets = match std::mem::take(&mut structured.acp_secrets) {
-            _ if in_runtime => HashMap::new(),
             AcpSecretsPrep::Ready(secrets) => secrets.map_err(StartError::Secret)?,
             AcpSecretsPrep::Unread | AcpSecretsPrep::Reading => return Err(StartError::Waiting),
         };

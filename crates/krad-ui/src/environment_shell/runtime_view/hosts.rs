@@ -167,6 +167,7 @@ mod tests {
             }],
             prompts: vec![prompt.clone()],
             local: Vec::new(),
+            adapters: Vec::new(),
         });
         assert!(unchanged.is_empty());
         mirror.prompt_settled(PromptId(9));

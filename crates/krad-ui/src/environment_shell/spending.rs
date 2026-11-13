@@ -110,7 +110,6 @@ impl EnvironmentShell {
                 .handle
                 .send(request, Command::Environments(recorded)),
         );
-        self.note_variant_spend(env, chat);
         cx.notify();
         self.store();
     }

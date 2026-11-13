@@ -10,7 +10,7 @@ use super::brief::ChatBrief;
 use super::chat::Chat;
 use super::mcp_prep::{ready_mcp, McpPrep};
 use super::queue::ChatQueue;
-use super::resolve::{chat_folder, LaunchFacts};
+use super::resolve::{chat_folder, resolve_acp, LaunchFacts};
 use super::ChatWork;
 use crate::gateway::GatewayReached;
 use crate::launches::AgentRole;
@@ -280,18 +280,34 @@ impl HistorySource {
                     cwd: chat_folder(&chat.place),
                 })
             }
-            AgentPreset::Acp(_) | AgentPreset::Shell => Self::Unread,
+            AgentPreset::Acp(_) => {
+                krad_store::acp_transcript_file(&chat.id.environment, chat.id.terminal)
+                    .map_or(Self::Unread, Self::Acp)
+            }
+            AgentPreset::Shell => Self::Unread,
         }
     }
 }
 
-fn planned(chat: &mut Chat, mcp: McpLaunch, work: &ChatWork<'_>) -> Result<ChatLaunch, Unready> {
+fn planned(
+    chat: &mut Chat,
+    mcp: McpLaunch,
+    work: &mut ChatWork<'_>,
+) -> Result<ChatLaunch, Unready> {
     let Some(prepared) = &chat.prepared else {
-        let resolved = work.facts.resolve(
-            (&chat.id, chat.harness, &chat.place),
-            (&chat.brief, &chat.choices),
-            mcp.starts,
-        )?;
+        let resolved = match chat.harness {
+            AgentPreset::Acp(agent) => resolve_acp(
+                (&chat.id, agent, &chat.place),
+                (&chat.brief, &chat.choices),
+                mcp.starts,
+                work,
+            )?,
+            harness => work.facts.resolve(
+                (&chat.id, harness, &chat.place),
+                (&chat.brief, &chat.choices),
+                mcp.starts,
+            )?,
+        };
         if resolved.model_dropped {
             chat.choices.model = None;
         }
@@ -308,7 +324,9 @@ fn planned(chat: &mut Chat, mcp: McpLaunch, work: &ChatWork<'_>) -> Result<ChatL
 }
 
 fn changed_role(chat: &Chat, role: AgentRole) -> bool {
-    chat.prepared.is_none() && chat.started_as.is_some_and(|started| started != role)
+    chat.prepared.is_none()
+        && chat.harness.acp_agent().is_none()
+        && chat.started_as.is_some_and(|started| started != role)
 }
 
 pub(crate) fn resolve_once(

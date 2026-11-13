@@ -127,7 +127,7 @@ impl EnvironmentShell {
             return;
         };
         let root = self.active_group().map(|group| group.root.clone());
-        let started = self.acp_runner(&link, &found, root.as_deref(), cx);
+        let started = self.acp_runner(&link, &found, root.as_deref());
         let (runner, cwd) = match started {
             Ok(started) => started,
             Err(StartError::Waiting) => return,

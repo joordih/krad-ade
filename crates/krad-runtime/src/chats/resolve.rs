@@ -11,13 +11,17 @@ use std::sync::Arc;
 
 use super::backend::{ChatLaunch, Choices, Unready};
 use super::brief::{ChatBrief, ChatRole};
-use super::ChatPlace;
+use super::{ChatPlace, EditorBuffers};
 use crate::bus::BusAccess;
 use crate::environments::Environments;
 use crate::hosts::{remote_caller_vars, Hosts, Reach};
 use crate::kraddies::Kraddies;
 use crate::launches::{cli_name, local_caller_vars, AgentRole};
 use crate::models::Models;
+
+mod acp;
+
+pub(super) use acp::resolve_acp;
 
 const NO_PROGRAM_TEXT: &str = "is not on PATH";
 const NO_CHAT_TEXT: &str = "has no chat";
@@ -35,6 +39,7 @@ pub(crate) struct LaunchFacts<'a> {
     pub(crate) bus: Option<&'a BusAccess>,
     pub(crate) usage_budget: &'a Arc<UsageBudget>,
     pub(crate) kraddies: &'a Kraddies,
+    pub(crate) buffers: &'a EditorBuffers,
 }
 
 pub(super) struct Resolved {
@@ -171,6 +176,15 @@ impl LaunchFacts<'_> {
         place: &ChatPlace,
     ) -> Result<(Runner, PathBuf), Unready> {
         let program = self.program(harness)?;
+        self.program_runner(chat, (harness, program), place)
+    }
+
+    fn program_runner(
+        &self,
+        chat: &AgentRef,
+        (harness, program): (AgentPreset, String),
+        place: &ChatPlace,
+    ) -> Result<(Runner, PathBuf), Unready> {
         let name = self.settings.acp.harness_name(harness);
         if let HostLink::Remote(ssh) = &place.link {
             let found = self

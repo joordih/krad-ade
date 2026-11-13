@@ -8,10 +8,12 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::adapters::AcpAdapters;
 use crate::app_events::{AppEvents, EventsSetup};
 use crate::attention::Attention;
 use crate::bus::{open, Bus, BusSetup};
-use crate::chats::Chats;
+use crate::chats::{Chats, EditorBuffers};
+use crate::code_hosts::CodeHostWatch;
 use crate::environments::{Environments, EnvironmentsSetup};
 use crate::gateway::Gateway;
 use crate::git::Git;
@@ -32,6 +34,7 @@ use crate::workers::Workers;
 
 mod bus_git;
 mod chatting;
+mod code_host_watch;
 mod commands;
 mod digesting;
 mod finished_jobs;
@@ -40,6 +43,7 @@ mod git_acts;
 mod gitting;
 mod hosting;
 mod kraddie_bus;
+mod kraddie_chats;
 mod kraddie_commands;
 mod kraddie_following;
 mod kraddie_rounds;
@@ -49,6 +53,11 @@ mod launching;
 mod parts;
 mod removing;
 mod session_changes;
+mod settling;
+mod variant_bus;
+mod variant_picks;
+mod variant_progress;
+mod variant_runs;
 mod worker_worktrees;
 mod working;
 
@@ -88,6 +97,9 @@ pub struct Runtime {
     terminals: Terminals,
     hosts: Hosts,
     chats: Chats,
+    adapters: AcpAdapters,
+    buffers: EditorBuffers,
+    code_hosts: CodeHostWatch,
     gateway: Gateway,
     opencode: OpencodeServers,
     settings: AppSettings,
@@ -182,6 +194,9 @@ impl Runtime {
             terminals: Terminals::new(inbox.clone()),
             hosts: owned.hosts,
             chats: Chats::new(inbox.clone()),
+            adapters: AcpAdapters::default(),
+            buffers: EditorBuffers::default(),
+            code_hosts: CodeHostWatch::default(),
             gateway: Gateway::default(),
             opencode: OpencodeServers::new(inbox.clone(), owned.opencode),
             settings: owned.settings,
@@ -221,6 +236,7 @@ impl Runtime {
             self.keep_chat_resumes();
             self.follow_workers();
             self.follow_kraddie_runs();
+            self.follow_variants();
             self.digest_ended_chats();
             self.hear_kraddie_events(unread);
             self.settle_waiters();
@@ -255,6 +271,7 @@ impl Runtime {
                 self.tick_hosts();
                 self.tick_git();
                 self.tick_kraddies();
+                self.tick_code_hosts();
             }
             Input::OpenTerminal {
                 terminal,
@@ -278,6 +295,7 @@ impl Runtime {
             | Input::ChatPage { .. }
             | Input::MentionIndex { .. }
             | Input::ForgetMentionIndexes
+            | Input::OfferBuffers { .. }
             | Input::StartLiveChat(_)
             | Input::Opencode(_)) => {
                 self.apply_chat_input(chat);
@@ -294,17 +312,9 @@ impl Runtime {
                 cwd,
             } => self.models.list((host, harness), runner, cwd, &self.jobs),
             Input::JobDone(done) => self.job_done(done),
-            Input::Settle(reply) => {
-                self.save_terminal_metas(Settling::Now);
-                let settled = Arc::new(Settled(Some(reply)));
-                let waiting = Arc::clone(&settled);
-                self.settings.settle(move || drop(waiting));
-                let shelved = Arc::clone(&settled);
-                self.kraddies.flush(&mut self.outbox);
-                self.kraddies.settle(move || drop(shelved));
-                self.environments.settle(move || drop(settled));
-            }
+            Input::Settle(reply) => self.settle(reply),
             Input::SettingsNotSaved(error) => AppSettings::not_saved(error, &mut self.outbox),
+            Input::KraddieNotSaved(error) => self.outbox.push(EventKind::KraddieNotSaved { error }),
             Input::DigestHeard { chat, reply } => self.digest_heard(&chat, reply),
             Input::Bus(incoming) => self.answer_bus(incoming),
             bus_input => self.apply_bus(bus_input),
@@ -349,6 +359,7 @@ impl Runtime {
             terminals: &self.terminals,
             hosts: &self.hosts,
             chats: &self.chats,
+            adapters: &self.adapters,
             opencode: &self.opencode,
             gateway: &self.gateway,
             settings: &self.settings,
@@ -358,17 +369,6 @@ impl Runtime {
         let seq = self.seq;
         self.subscribers
             .publish(&events, || parts.snapshot(seq, Scope::Runtime));
-    }
-}
-
-#[derive(Debug)]
-struct Settled(Option<oneshot::Sender<()>>);
-
-impl Drop for Settled {
-    fn drop(&mut self) {
-        if let Some(reply) = self.0.take() {
-            answer_to(reply, ());
-        }
     }
 }
 

@@ -6,7 +6,7 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{AppContext as _, Context, Entity, Subscription, Window};
 use krad_domain::{GitlabSignIn, GitlabTokens, ToastKind};
 use krad_gitlab::{
-    DeviceLogin, GitlabClient, GitlabConfig, GitlabError, LoopbackLogin, OAuthError, TokenSaver,
+    DeviceLogin, GitlabClient, GitlabConfig, GitlabError, LoopbackLogin, OAuthError,
 };
 use krad_store::{delete_gitlab_login, find_gitlab_login, write_gitlab_login, LoginPlace};
 use std::time::{Duration, Instant};
@@ -62,9 +62,7 @@ pub(super) struct GitlabUi {
     _edits: [Subscription; 2],
 }
 
-pub(in crate::environment_shell) fn gitlab_token_saver(host: String) -> TokenSaver {
-    Box::new(move |tokens| write_gitlab_login(&host, tokens).map_err(std::io::Error::other))
-}
+use krad_runtime::gitlab_token_saver;
 
 fn keep_login(config: GitlabConfig, tokens: GitlabTokens) -> Result<String, String> {
     write_gitlab_login(&config.host, &tokens).map_err(|error| error.to_string())?;

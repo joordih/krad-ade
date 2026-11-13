@@ -153,6 +153,7 @@ impl Runtime {
             permission_mode: Some(DIGEST_MODE),
             mcp_servers: None,
             role: ChatRole::Digest,
+            ..ChatBrief::default()
         };
         let backend = self.with_chat_work(|_, work| {
             crate::chats::resolve_once((&source.chat, source.harness), &brief, work)

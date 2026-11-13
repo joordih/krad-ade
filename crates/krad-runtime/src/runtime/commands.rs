@@ -24,6 +24,10 @@ impl Runtime {
                 bus.execute(&command, &mut self.outbox)
                     .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND))
             }
+            Command::Events(EventsCommand::WatchCodeHosts { watch }) => {
+                self.code_hosts.asked = watch.is_on();
+                Reply::Accepted
+            }
             Command::Events(command) => {
                 self.note_finished_agent(&command);
                 self.events
@@ -69,6 +73,7 @@ impl Runtime {
             Command::Git(command) => self.execute_git(id, command),
             Command::Changes(command) => self.execute_changes(id, command),
             Command::Kraddie(command) => self.execute_kraddie(command),
+            Command::Variant(command) => self.execute_variant(command),
             Command::Runtime(RuntimeCommand::Unknown) | Command::Unknown => {
                 refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)
             }
@@ -148,6 +153,7 @@ impl Runtime {
             .list_all(incoming)
             .and_then(|incoming| self.answer_kraddie_requests(incoming))
             .and_then(|incoming| self.answer_git_requests(incoming))
+            .and_then(|incoming| self.answer_variant_requests(incoming))
             .and_then(|incoming| self.answer_for_leads(incoming))
             .and_then(|incoming| self.answer_on_chats(incoming))
         else {
@@ -187,6 +193,7 @@ impl Runtime {
             | Input::JobDone(_)
             | Input::Settle(_)
             | Input::SettingsNotSaved(_)
+            | Input::KraddieNotSaved(_)
             | Input::DigestHeard { .. }
             | Input::OpenTerminal { .. }
             | Input::TerminalAction { .. }
@@ -197,6 +204,7 @@ impl Runtime {
             | Input::CloseChat(_)
             | Input::ChatPage { .. }
             | Input::MentionIndex { .. }
+            | Input::OfferBuffers { .. }
             | Input::ForgetMentionIndexes
             | Input::StartLiveChat(_)
             | Input::Opencode(_)

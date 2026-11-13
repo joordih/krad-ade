@@ -10,7 +10,7 @@ mod totals;
 
 pub use budget::{launch_budget_warning, LaunchBudgetWarning, LaunchEstimate};
 pub use order::{VariantSpec, VariantsOrder, VariantsOrderError, MAX_VARIANTS, MIN_VARIANTS};
-pub use pick::{ApplyStep, CleanupPlan, DiscardStep, PickError, WinnerOutcome};
+pub use pick::{ApplyStep, CleanupPlan, DiscardStep, PickError, VariantRemoval, WinnerOutcome};
 pub use run::{
     ChangedLines, DiffSummary, RunDecision, RunPhase, Variant, VariantId, VariantRun, VariantRunId,
     VariantWorktree, MAX_DIFF_FILES,

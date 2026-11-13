@@ -1,5 +1,6 @@
 use krad_domain::{
-    AppEvent, DeliveryOutcome, EnvironmentName, GroupId, Webhook, WebhookId, WebhookSettings,
+    AppEvent, DeliveryOutcome, EnvironmentName, GroupId, Switch, Webhook, WebhookId,
+    WebhookSettings,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -27,6 +28,9 @@ pub enum EventsCommand {
     TestWebhook {
         hook: WebhookId,
         environment: EnvironmentName,
+    },
+    WatchCodeHosts {
+        watch: Switch,
     },
     #[serde(other)]
     Unknown,

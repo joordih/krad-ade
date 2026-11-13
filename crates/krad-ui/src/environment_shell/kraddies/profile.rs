@@ -238,15 +238,10 @@ impl EnvironmentShell {
     fn edit_mind(
         &mut self,
         id: &KraddieId,
-        edit: impl FnOnce(&mut KraddieMind),
+        (edit, command): (impl FnOnce(&mut KraddieMind), KraddieCommand),
         cx: &mut Context<Self>,
     ) {
-        let mind = self.kraddies.profile.minds.entry(id.clone()).or_default();
-        edit(mind);
-        let command = KraddieCommand::SetMind {
-            kraddie: id.clone(),
-            mind: Box::new(mind.clone()),
-        };
+        edit(self.kraddies.profile.minds.entry(id.clone()).or_default());
         self.tell_kraddies(command, cx);
         cx.notify();
     }

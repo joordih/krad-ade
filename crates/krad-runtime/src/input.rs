@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::bus::{Delegated, DelegationId, Mail};
-use crate::chats::{ChatBrief, ChatStart, IndexAnswer, LiveStarted};
+use crate::chats::{ChatBrief, ChatStart, IndexAnswer, LiveStarted, OfferedBuffers};
 use crate::harness_health::HarnessProbe;
 use crate::jobs::JobDone;
 use crate::kraddies::DigestReply;
@@ -85,6 +85,7 @@ pub(crate) enum Input {
     JobDone(JobDone),
     Settle(oneshot::Sender<()>),
     SettingsNotSaved(String),
+    KraddieNotSaved(String),
     DigestHeard {
         chat: AgentRef,
         reply: DigestReply,
@@ -123,6 +124,10 @@ pub(crate) enum Input {
         reply: oneshot::Sender<IndexAnswer>,
     },
     ForgetMentionIndexes,
+    OfferBuffers {
+        environment: EnvironmentName,
+        buffers: OfferedBuffers,
+    },
     StartLiveChat(Box<LiveStart>),
     Opencode(OpencodeInput),
     Wake,

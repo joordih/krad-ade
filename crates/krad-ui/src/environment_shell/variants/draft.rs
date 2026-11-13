@@ -5,6 +5,7 @@ use krad_domain::{
     ModelId, ProjectTask, ToastKind, VariantSpec, VariantsOrder, WorkerSurface, MAX_VARIANTS,
     MIN_VARIANTS,
 };
+use krad_protocol::VariantAct;
 use krad_repo::detect_tasks;
 
 use super::super::review_view::Remote;
@@ -225,12 +226,18 @@ impl EnvironmentShell {
             VariantsOrder::new(&prompt, specs, test).map_err(|error| error.to_string())
         });
         let env = self.active.clone();
-        let launched = order.and_then(|order| self.launch_variants(&env, group, order, cx));
-        match launched {
-            Ok(run) => {
+        match order {
+            Ok(order) => {
+                let act = VariantAct::Run {
+                    group,
+                    order: Box::new(order),
+                };
+                self.tell_variants(&env, act, cx, |shell, error, cx| {
+                    shell.toast(ToastKind::Error, &error, cx);
+                });
                 self.variants.draft = None;
                 window.focus(&self.focus, cx);
-                self.show_variant_run(group, Some(run), cx);
+                self.show_variant_run(group, None, cx);
             }
             Err(error) => {
                 if let Some(draft) = &mut self.variants.draft {

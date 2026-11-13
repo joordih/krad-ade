@@ -78,7 +78,7 @@ impl EnvironmentShell {
                 self.answer_extension_tool(environment, &caller, request, reply, cx);
                 return;
             }
-            request @ (Request::Kraddies
+            Request::Kraddies
             | Request::RunKraddie { .. }
             | Request::Automations
             | Request::RunAutomation { .. }
@@ -89,25 +89,21 @@ impl EnvironmentShell {
             | Request::NewKraddieChat { .. }
             | Request::ShareKraddieMemory { .. }
             | Request::MemorySearch { .. }
-            | Request::MemoryRead { .. }) => {
-                self.answer_kraddie_request(request, reply, cx);
+            | Request::MemoryRead { .. } => {
+                Self::answer_kraddie_request(reply);
                 return;
             }
-            Request::CreateWorktree { .. } | Request::Changes { .. } => {
-                super::answered_by_runtime()
-            }
+            Request::CreateWorktree { .. }
+            | Request::Changes { .. }
+            | Request::RunVariants(_)
+            | Request::Variants { .. }
+            | Request::PickVariant { .. } => super::answered_by_runtime(),
             request @ (Request::Hello
             | Request::Sessions
             | Request::CreateSession { .. }
             | Request::CloseSession { .. }
             | Request::OpenFile { .. }) => {
                 self.answer_workspace(environment, Some(group), request, reply, cx);
-                return;
-            }
-            request @ (Request::RunVariants(_)
-            | Request::Variants { .. }
-            | Request::PickVariant { .. }) => {
-                self.answer_variants(environment, Some(group), request, reply, cx);
                 return;
             }
         };

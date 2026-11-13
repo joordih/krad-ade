@@ -1,5 +1,3 @@
-mod code_host;
-
 use gpui_kit::Task;
 use krad_domain::{AppEvent, EnvironmentName, EventRecord, GroupId, Session, SessionId, WebhookId};
 use krad_protocol::{Command, EventsCommand};
@@ -12,7 +10,6 @@ type SessionKey = (SessionId, Option<GroupId>);
 #[derive(Default)]
 pub(super) struct AppEventsUi {
     sessions: HashMap<EnvironmentName, Vec<SessionKey>>,
-    code_hosts: code_host::CodeHostWatch,
     delivered: BTreeSet<WebhookId>,
     pub(super) webhook_secrets: Option<Task<()>>,
 }
@@ -66,6 +63,7 @@ impl EnvironmentShell {
 
     pub(super) fn app_event_heard(&mut self, record: &EventRecord) {
         self.announce_app_event(record);
+        self.variant_event_heard(record);
     }
 
     pub(super) fn with_webhooks_delivered(

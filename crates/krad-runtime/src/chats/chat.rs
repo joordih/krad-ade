@@ -110,7 +110,15 @@ impl Chat {
             choices: prepared
                 .as_ref()
                 .map_or_else(|| Choices::from(&start.brief), Choices::from),
-            acp: prepared.as_ref().and_then(AcpChat::of),
+            acp: prepared.as_ref().map_or_else(
+                || {
+                    start
+                        .harness
+                        .acp_agent()
+                        .map(|_| AcpChat::wanting(start.brief.acp.clone()))
+                },
+                AcpChat::of,
+            ),
             prepared,
             brief: start.brief,
             mcp: McpPrep::Unread,

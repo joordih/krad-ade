@@ -10,6 +10,8 @@ use std::path::PathBuf;
 
 use crate::runtime::refused;
 
+mod variants;
+
 pub(crate) const UNKNOWN_ENVIRONMENT: &str = "this runtime has no environment of that name";
 
 #[derive(Clone, Debug, Default)]
@@ -322,7 +324,11 @@ impl Environments {
         };
         let group = kept.group_of_chat(record.chat);
         let before = kept.group_spend(group).cost;
+        let runs_before = kept.variant_runs.clone();
         kept.record_usage(record.chat, &record.report, &record.spending.model_prices());
+        let runs = (kept.variant_runs != runs_before).then(|| EnvironmentChange::VariantRuns {
+            runs: kept.variant_runs.clone(),
+        });
         let after = kept.group_spend(group).cost;
         let Some((index, node)) = kept
             .nodes
@@ -337,10 +343,12 @@ impl Environments {
             });
             return Reply::Accepted;
         };
-        let changes = vec![EnvironmentChange::Node {
+        let changes = std::iter::once(EnvironmentChange::Node {
             index,
             node: node.clone(),
-        }];
+        })
+        .chain(runs)
+        .collect();
         self.dirty = true;
         let spending = &record.spending;
         let crossed = spending

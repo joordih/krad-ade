@@ -69,10 +69,7 @@ impl EnvironmentChange {
 
     #[must_use]
     pub const fn is_runtime_owned(&self) -> bool {
-        !matches!(
-            self,
-            Self::Title { .. } | Self::Host { .. } | Self::VariantRuns { .. }
-        )
+        !matches!(self, Self::Title { .. } | Self::Host { .. })
     }
 }
 
@@ -86,6 +83,7 @@ impl EnvironmentData {
         self.active_session = runtime.active_session;
         self.retired_spend.clone_from(&runtime.retired_spend);
         self.archive.clone_from(&runtime.archive);
+        self.variant_runs.clone_from(&runtime.variant_runs);
     }
 }
 

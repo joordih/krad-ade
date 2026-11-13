@@ -54,7 +54,6 @@ use crate::theme::{
 use acp::AcpUi;
 use gateway::GatewayUi;
 use github::GithubUi;
-pub(super) use gitlab::gitlab_token_saver;
 use gitlab::GitlabUi;
 use mcp::McpUi;
 use webhooks::WebhooksUi;

@@ -162,7 +162,7 @@ impl EnvironmentShell {
             return Ok(());
         };
         if self.opens_in_runtime(env, id) {
-            return self.open_in_runtime(env, id, cx);
+            return self.open_in_runtime(env, id);
         }
         let site = match self.node_site(env, id) {
             NodeSite::Waiting(runner) => {
@@ -209,7 +209,9 @@ impl EnvironmentShell {
                 let config = self.live_config(env, id, harness, site)?;
                 ChatBackend::Opencode(self.cloud_opencode_for(site, cx)?, config)
             }
-            AgentPreset::Acp(agent) => ChatBackend::Acp(self.acp_config(env, id, agent, cx)?),
+            AgentPreset::Acp(agent) => {
+                ChatBackend::Acp(self.acp_config((env, id), agent, site, cx)?)
+            }
             AgentPreset::Gateway | AgentPreset::Shell => {
                 return Err(StartError::NoChat(self.settings.acp.harness_name(harness)))
             }

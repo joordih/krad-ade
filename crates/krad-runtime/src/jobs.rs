@@ -8,9 +8,11 @@ use std::io;
 use std::sync::mpsc::SyncSender;
 use std::thread;
 
+use crate::adapters::AdapterDone;
 use crate::chats::{
     AcpSecretsRead, ChatCheckpoint, ChatEarlier, ChatOpening, FilesIndexed, McpLaunched, McpRead,
 };
+use crate::code_hosts::Observed;
 use crate::gateway::{GatewayForgotten, GatewayRead};
 use crate::git::GitJob;
 use crate::hosts::{AgentsFound, Attempt, LocalFound, RemoteBus};
@@ -18,6 +20,7 @@ use crate::input::Input;
 use crate::opencode::{OpencodeListed, OpencodeStarted};
 use crate::runtime::{AttachedLine, LinesCounted};
 use crate::usage::UsageKey;
+use crate::variants::VariantJob;
 
 const JOB_THREAD: &str = "krad-runtime-job";
 
@@ -63,6 +66,9 @@ pub(crate) enum JobDone {
     McpLaunched(McpLaunched),
     Git(GitJob),
     KraddieLines(LinesCounted),
+    Adapter(AdapterDone),
+    Variant(VariantJob),
+    CodeHosts(Vec<Observed>),
 }
 
 #[derive(Clone, Debug)]

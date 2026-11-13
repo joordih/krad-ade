@@ -1,127 +1,18 @@
 use gpui_kit::Context;
-use krad_agents::{ErrorCode, KraddieChatInfo, Response};
-use krad_chat::{new_session_id, LiveSession};
-use krad_domain::{
-    EnvironmentName, EnvironmentView, GroupId, KraddieId, Session, SessionEdit, SessionId,
-    SessionSpec, TerminalId, ToastKind, WorkerSurface,
-};
+use krad_domain::{EnvironmentName, EnvironmentView, KraddieId, Session, SessionEdit, SessionId};
+use krad_protocol::KraddieCommand;
 
-use super::super::session_templates::ChatChoices;
-use super::super::terminal_lifecycle::NodeGroup;
 use super::super::EnvironmentShell;
 
-const CHAT_NAME_SUFFIX: &str = " chat";
-const NOT_A_CHAT_KRADDIE: &str = "This Kraddie's agent cannot open a chat; pick another in Tuning";
-const NO_ENVIRONMENT: &str = "No environment is open for the chat";
-const NO_KRADDIE: &str = "That Kraddie is no longer here";
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct OpenedChat {
-    pub(super) session: SessionId,
-    pub(super) terminal: TerminalId,
-}
-
 impl EnvironmentShell {
-    fn kraddie_chat_group(&mut self, id: &KraddieId, cx: &mut Context<Self>) -> Option<GroupId> {
-        let env = self.active.clone();
-        let own = self
-            .kraddies
-            .entry(id)
-            .and_then(|entry| entry.kraddie.workspace.clone())
-            .filter(|place| place.environment == env);
-        let Some(place) = own else {
-            return self.active_group().map(|group| group.id);
-        };
-        let known = self.envs.get(&env).and_then(|live| {
-            live.data
-                .groups
-                .iter()
-                .find(|group| group.root == place.repo)
-                .map(|group| group.id)
-        });
-        known.or_else(|| self.add_group_to(&env, place.repo, None, cx))
-    }
-
-    pub(super) fn open_kraddie_chat(
-        &mut self,
-        id: &KraddieId,
-        cx: &mut Context<Self>,
-    ) -> Result<OpenedChat, &'static str> {
-        let entry = self.kraddies.entry(id).ok_or(NO_KRADDIE)?;
-        let kraddie = entry.kraddie.clone();
-        if kraddie.harness.worker_surface() != WorkerSurface::Chat {
-            return Err(NOT_A_CHAT_KRADDIE);
-        }
-        let env = self.active.clone();
-        let group = self.kraddie_chat_group(id, cx);
-        let spec = SessionSpec {
-            name: format!("{}{CHAT_NAME_SUFFIX}", kraddie.name),
-        };
-        let session = self
-            .envs
-            .get(&env)
-            .map(|live| live.data.next_session_id())
-            .ok_or(NO_ENVIRONMENT)?;
-        let opened = SessionEdit::OpenForKraddie {
-            session,
-            group,
-            kraddie: id.clone(),
-            name: spec.name,
-        };
-        self.edit_environment(&env, opened);
-        self.capture_session_baseline(cx);
-        let terminal = self
-            .spawn_chat_as(
-                &env,
-                NodeGroup::Exactly(group),
-                kraddie.harness,
-                LiveSession::Start(new_session_id()),
-                cx,
-            )
-            .ok_or(NO_ENVIRONMENT)?;
-        let settings = &kraddie.settings;
-        let model = settings.session_model.clone().or(kraddie.model.clone());
-        if let Some(live) = self.envs.get_mut(&env) {
-            if model.is_some() || settings.effort.is_some() {
-                live.waiting_choices.insert(
-                    terminal,
-                    ChatChoices {
-                        model,
-                        mcp_servers: None,
-                        effort: settings.effort,
-                    },
-                );
-            }
-            if let Some(mode) = settings.permissions {
-                live.waiting_modes.insert(terminal, mode);
-            }
-        }
-        tracing::info!(kraddie = %id, session = session.as_u64(), "kraddie chat opened");
-        self.set_view(EnvironmentView::Sessions, cx);
-        self.store();
-        cx.notify();
-        Ok(OpenedChat { session, terminal })
-    }
-
     pub(super) fn start_kraddie_chat(&mut self, id: &KraddieId, cx: &mut Context<Self>) {
-        if let Err(reason) = self.open_kraddie_chat(id, cx) {
-            self.toast(ToastKind::Error, reason, cx);
-        }
-    }
-
-    pub(super) fn kraddie_chat_from_bus(&mut self, name: &str, cx: &mut Context<Self>) -> Response {
-        let id = match self.kraddie_by_name(name) {
-            Ok(id) => id,
-            Err(response) => return response,
+        let command = KraddieCommand::OpenChat {
+            kraddie: id.clone(),
+            environment: self.active.clone(),
         };
-        match self.open_kraddie_chat(&id, cx) {
-            Ok(opened) => Response::KraddieChatOpened(KraddieChatInfo {
-                kraddie: id.to_string(),
-                session: opened.session.as_u64(),
-                terminal: opened.terminal.as_u64(),
-            }),
-            Err(reason) => Response::error(ErrorCode::Unavailable, reason),
-        }
+        self.tell_kraddies(command, cx);
+        self.set_view(EnvironmentView::Sessions, cx);
+        cx.notify();
     }
 
     pub(super) fn kraddie_chats<'a>(

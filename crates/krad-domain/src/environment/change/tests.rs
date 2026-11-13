@@ -98,6 +98,10 @@ fn only_the_title_the_host_and_variant_runs_belong_to_clients() {
     assert!(EnvironmentChange::NextId { next: 2 }.is_runtime_owned());
     assert!(!EnvironmentChange::Title { title: None }.is_runtime_owned());
     assert!(!EnvironmentChange::Host { host: Host::Local }.is_runtime_owned());
+    assert!(EnvironmentChange::VariantRuns {
+        runs: crate::VariantRuns::default()
+    }
+    .is_runtime_owned());
 }
 
 #[test]

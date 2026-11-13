@@ -24,8 +24,6 @@ const NO_BUS: &str = "the runtime serves no bus";
 const NO_DELEGATION: &str = "no request was delegated";
 const NO_SESSION: &str = "sessions mode opened no session";
 const CALLER_PANICKED: &str = "the caller panicked";
-const ACP_WORKER: &str = "fake";
-const NO_ACP_ID: &str = "the ACP agent id did not parse";
 
 fn node(id: TerminalId) -> Result<TerminalNode, serde_json::Error> {
     serde_json::from_value(serde_json::json!({"id": id.0, "title": "agent", "state": "Idle"}))
@@ -110,10 +108,9 @@ fn a_leads_orders_the_runtime_cannot_carry_reach_the_app_as_the_lead_and_anyone_
 ) -> TestResult {
     let (runtime, session) = start()?;
     let mut delegations = runtime.delegate_bus();
-    let spawn = Request::Spawn {
-        agent: AgentPreset::Acp(ACP_WORKER.parse().map_err(|_| NO_ACP_ID)?),
-        worktree: None,
-        task: "Write the tests".to_owned(),
+    let spawn = Request::Send {
+        to: OPEN_WORKER.0,
+        body: "Write the tests".to_owned(),
     };
     let refused = answered(call_from(&runtime, MEMBER, spawn.clone())?)?;
     assert!(matches!(
@@ -130,8 +127,15 @@ fn a_leads_orders_the_runtime_cannot_carry_reach_the_app_as_the_lead_and_anyone_
         })
     );
     assert_eq!(delegated.request, spawn);
-    delegated.reply.send(Response::Spawned { terminal: 9 })?;
-    assert_eq!(answered(asked)?, Response::Spawned { terminal: 9 });
+    delegated.reply.send(Response::Submitted {
+        terminal: OPEN_WORKER.0,
+    })?;
+    assert_eq!(
+        answered(asked)?,
+        Response::Submitted {
+            terminal: OPEN_WORKER.0
+        }
+    );
     let follows = call_from(
         &runtime,
         LEAD,
@@ -180,5 +184,7 @@ fn a_closed_worker_is_settled_and_retired_without_asking_the_app() -> TestResult
     Ok(())
 }
 
+#[path = "lead/acp_worker.rs"]
+mod acp_worker;
 #[path = "lead/worker.rs"]
 mod worker;

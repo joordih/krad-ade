@@ -2,7 +2,8 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, Context, FontWeight, IntoElement, ParentElement, SharedString, Styled,
 };
-use krad_domain::{RunTotals, TestVerdict, Variant, VariantRun, VariantStatus};
+use krad_domain::{RunTotals, TestVerdict, ToastKind, Variant, VariantRun, VariantStatus};
+use krad_protocol::VariantAct;
 use std::time::SystemTime;
 
 use super::super::spending::token_count;
@@ -214,7 +215,15 @@ impl EnvironmentShell {
                         .small()
                         .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                             let env = this.active.clone();
-                            this.retest_variant(&env, run_id, id, cx);
+                            this.tell_variants(
+                                &env,
+                                VariantAct::Retest {
+                                    run: run_id,
+                                    variant: id,
+                                },
+                                cx,
+                                |shell, error, cx| shell.toast(ToastKind::Error, &error, cx),
+                            );
                         })),
                 )
             })

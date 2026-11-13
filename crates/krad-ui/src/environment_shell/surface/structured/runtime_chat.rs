@@ -3,11 +3,9 @@ mod shown;
 
 use gpui_kit::Context;
 use krad_chat::SlashCommand;
-use krad_domain::{AgentPreset, AgentState, EnvironmentName, Prompt, RewindScope, TerminalId};
+use krad_domain::{AgentState, EnvironmentName, Prompt, RewindScope, TerminalId};
 use krad_protocol::{AgentRef, ChatCommand, Command};
-use krad_runtime::{
-    runs_in_runtime, ChatBrief, ChatLaunch, ChatPlace, ChatRole, ChatStart, PreparedLaunch,
-};
+use krad_runtime::{runs_in_runtime, ChatBrief, ChatRole, ChatStart};
 
 use super::super::super::chat::StartError;
 use super::super::super::cloud::NodeSite;
@@ -77,7 +75,6 @@ impl EnvironmentShell {
         &mut self,
         env: &EnvironmentName,
         id: TerminalId,
-        cx: &mut Context<Self>,
     ) -> Result<(), StartError> {
         if self.runtime_chat_waits(env) {
             return Err(StartError::Waiting);
@@ -85,13 +82,6 @@ impl EnvironmentShell {
         let Some(harness) = structured_of(self, env, id).map(|structured| structured.harness)
         else {
             return Ok(());
-        };
-        let prepared = match harness {
-            AgentPreset::Acp(agent) => Some(PreparedLaunch {
-                launch: ChatLaunch::Acp(Box::new(self.acp_config(env, id, agent, cx)?)),
-                place: self.chat_place(env, id),
-            }),
-            _ => None,
         };
         let Some(SurfaceChat {
             backend: super::super::Backend::Structured(structured),
@@ -109,8 +99,9 @@ impl EnvironmentShell {
                 permission_mode: structured.permission_mode,
                 mcp_servers: structured.mcp_servers.clone(),
                 role: ChatRole::Agent,
+                acp: structured.acp.wanted(),
             },
-            prepared,
+            prepared: None,
             session: structured.session.clone(),
             messages: messages.clone(),
             queued: Vec::new(),
@@ -125,20 +116,6 @@ impl EnvironmentShell {
         let link = self.env_link(env);
         let agents_unknown = !link.is_local() && !self.host_agents.contains_key(&link.host());
         self.awaits_remote_bus(env) || !link.is_ready() || agents_unknown
-    }
-
-    fn chat_place(&self, env: &EnvironmentName, id: TerminalId) -> ChatPlace {
-        let link = self.env_link(env);
-        let root = self
-            .envs
-            .get(env)
-            .and_then(|live| live.data.group_of(id))
-            .map(|group| group.root.clone());
-        ChatPlace {
-            host: link.host(),
-            link,
-            root,
-        }
     }
 
     pub(super) fn hand_to_runtime(
@@ -252,7 +229,7 @@ impl EnvironmentShell {
         }
         let resume = structured_of(self, env, id)
             .and_then(|structured| structured.session.history().cloned());
-        match (self.open_in_runtime(env, id, cx), resume) {
+        match (self.open_in_runtime(env, id), resume) {
             (Ok(()), _) | (Err(StartError::Waiting), None) => {}
             (Err(StartError::Waiting), Some(_)) => self.note_history_waits_for_host(env, id),
             (Err(_), Some(resume)) => {

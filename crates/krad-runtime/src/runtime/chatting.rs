@@ -39,6 +39,7 @@ impl Runtime {
         let mut effects = Vec::new();
         let mut work = ChatWork {
             jobs: &self.jobs,
+            adapters: &mut self.adapters,
             gateway: self.gateway.reached(&self.settings.current.gateway),
             opencode: &mut self.opencode,
             outbox: &mut self.outbox,
@@ -51,6 +52,7 @@ impl Runtime {
                 bus: self.bus.as_ref().map(crate::bus::Bus::access),
                 usage_budget: self.usage.budget(),
                 kraddies: &self.kraddies,
+                buffers: &self.buffers,
             },
         };
         let done = act(&mut self.chats, &mut work);
@@ -73,6 +75,10 @@ impl Runtime {
             Input::MentionIndex { place, reply } => {
                 self.chats.mentions.ask(place, reply, &self.jobs);
             }
+            Input::OfferBuffers {
+                environment,
+                buffers,
+            } => self.buffers.offer(environment, buffers),
             Input::ForgetMentionIndexes => self.chats.mentions.forget(),
             Input::StartLiveChat(start) => self.start_live_chat(*start),
             Input::Opencode(input) => self.opencode.apply(input, &self.jobs, &mut self.outbox),

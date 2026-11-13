@@ -1,3 +1,4 @@
+pub use krad_domain::VariantRemoval;
 use krad_domain::{ChangedLines, DiffSummary, GitObjectId};
 use krad_host::HostLink;
 use std::ffi::OsStr;
@@ -40,12 +41,6 @@ const BRANCH_REF_PREFIX: &str = "refs/heads/";
 const FIELD_SEPARATOR: char = '\t';
 const RECORD_SEPARATOR: char = '\0';
 const BINARY_COUNT: &str = "-";
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum VariantRemoval {
-    OnlyIfSettled,
-    Forced,
-}
 
 static PATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
 

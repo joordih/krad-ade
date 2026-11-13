@@ -2,7 +2,6 @@ mod bus;
 mod clock;
 mod den_card;
 mod editor;
-mod events;
 mod farewell;
 mod layout;
 mod mirror;

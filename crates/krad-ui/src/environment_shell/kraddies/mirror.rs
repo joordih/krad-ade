@@ -7,6 +7,7 @@ use super::{AutomationEntry, KraddieEntry};
 
 const FAILED_RUN_SEPARATOR: &str = ": ";
 const NOTES_TOLD: usize = 12;
+const KRADDIE_NOT_SAVED: &str = "A Kraddie change was not saved";
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn tell_kraddies(
@@ -119,6 +120,15 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let told = format!("{task}{FAILED_RUN_SEPARATOR}{reason}");
+        self.toast(ToastKind::Error, &told, cx);
+    }
+
+    pub(in crate::environment_shell) fn kraddie_not_saved(
+        &mut self,
+        error: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let told = format!("{KRADDIE_NOT_SAVED}{FAILED_RUN_SEPARATOR}{error}");
         self.toast(ToastKind::Error, &told, cx);
     }
 }

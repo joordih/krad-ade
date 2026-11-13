@@ -226,7 +226,7 @@ impl Runtime {
         let session = data.next_session_id();
         let label = self.settings.current.acp.harness_name(reopen.harness);
         let opened = NodeEdit::Open {
-            node: Box::new(worker_node(terminal, &label, reopen.harness, group)),
+            node: Box::new(worker_node(terminal, &label, reopen.harness, Some(group))),
             place: NodePlace::Worker {
                 session,
                 spawn: WorkerSpawn {

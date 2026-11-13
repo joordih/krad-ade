@@ -105,9 +105,13 @@ impl AppEvents {
             EventsCommand::TestWebhook { hook, environment } => {
                 return Some(self.test(*hook, environment));
             }
-            EventsCommand::Unknown => return None,
+            EventsCommand::WatchCodeHosts { .. } | EventsCommand::Unknown => return None,
         }
         Some(Reply::Accepted)
+    }
+
+    pub(crate) fn wants_code_host(&self) -> bool {
+        self.webhooks.wants_code_host()
     }
 
     pub(crate) fn publish_own(

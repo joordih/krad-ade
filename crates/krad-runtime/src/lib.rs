@@ -1,7 +1,9 @@
+mod adapters;
 mod app_events;
 mod attention;
 mod bus;
 mod chats;
+mod code_hosts;
 mod environments;
 mod gateway;
 mod git;
@@ -20,14 +22,19 @@ mod settings;
 mod subscribers;
 mod terminals;
 mod usage;
+mod variants;
 mod workers;
 
+pub use adapters::kept_package;
 pub use app_events::{EventsSetup, WebhookSecrets};
 pub use bus::{
     closed_worker_infos, BusAccess, BusReply, BusSetup, Delegated, DelegationReceiver, Mail,
 };
 pub use chats::{
     runs_in_runtime, ChatBrief, ChatLaunch, ChatPlace, ChatRole, ChatStart, PreparedLaunch,
+};
+pub use code_hosts::{
+    gitlab_token_saver, origin_repo, repo_of_remote, HostClient, HostError, HostLogin, HostRepo,
 };
 pub use environments::EnvironmentsSetup;
 pub use handle::{EventReceiver, HeldAsk, Pending, RuntimeHandle, RuntimeStopped};

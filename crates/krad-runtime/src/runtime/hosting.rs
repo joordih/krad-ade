@@ -47,6 +47,17 @@ impl Runtime {
                 );
                 return Some(Reply::Accepted);
             }
+            HostCommand::CheckAcpAdapter { agent } => {
+                if let Some(agent) = self.settings.current.acp.agent(*agent) {
+                    self.adapters.check(&agent, &self.jobs, &mut self.outbox);
+                }
+                return Some(Reply::Accepted);
+            }
+            HostCommand::RetryAcpAdapter { agent } => {
+                self.adapters.retry(*agent, &mut self.outbox);
+                self.flush_chats();
+                return Some(Reply::Accepted);
+            }
             HostCommand::AnswerPrompt { .. } | HostCommand::Unknown => None,
         };
         let (hosts, mut work) = self.host_work();
@@ -153,7 +164,10 @@ impl Runtime {
             | JobDone::ModelsListed { .. }
             | JobDone::UsageRead { .. }
             | JobDone::Git(_)
-            | JobDone::KraddieLines(_) => {}
+            | JobDone::KraddieLines(_)
+            | JobDone::Adapter(_)
+            | JobDone::Variant(_)
+            | JobDone::CodeHosts(_) => {}
         }
     }
 

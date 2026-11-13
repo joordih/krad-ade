@@ -1,6 +1,6 @@
 use krad_domain::{
-    Automation, AutomationKey, DigestDraft, DigestId, Kraddie, KraddieHistory, KraddieId,
-    KraddieMind, MemoryError, MemoryOwner, Switch,
+    Automation, AutomationKey, DigestDraft, DigestId, Kraddie, KraddieCompass, KraddieHistory,
+    KraddieId, KraddieMemory, MemoryError, MemoryOwner, Switch,
 };
 use krad_protocol::{AutomationState, ErrorCode, KraddieState, Reply};
 
@@ -214,11 +214,30 @@ impl Kraddies {
         Reply::Accepted
     }
 
-    pub(crate) fn set_mind(&mut self, id: &KraddieId, mind: KraddieMind) -> Reply {
+    pub(crate) fn set_compass(&mut self, id: &KraddieId, compass: KraddieCompass) -> Reply {
         let Some(state) = self.state_mut(id) else {
             return refused(ErrorCode::NotFound, NO_KRADDIE);
         };
-        state.mind = mind;
+        state.mind.compass = compass;
+        self.dirty.insert(Dirty::Mind(id.clone()));
+        Reply::Accepted
+    }
+
+    pub(crate) fn edit_memory(
+        &mut self,
+        id: &KraddieId,
+        edit: impl FnOnce(&mut KraddieMemory) -> Result<(), MemoryError>,
+    ) -> Reply {
+        let Some(state) = self.state_mut(id) else {
+            return refused(ErrorCode::NotFound, NO_KRADDIE);
+        };
+        if let Err(error) = edit(&mut state.mind.memory) {
+            let code = match error {
+                MemoryError::NoSuchLine => ErrorCode::NotFound,
+                MemoryError::Empty | MemoryError::TooLong | MemoryError::Full => ErrorCode::Invalid,
+            };
+            return refused(code, &error.to_string());
+        }
         self.dirty.insert(Dirty::Mind(id.clone()));
         Reply::Accepted
     }

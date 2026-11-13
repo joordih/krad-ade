@@ -17,6 +17,12 @@ impl Runtime {
             JobDone::UsageRead { key, read } => self.usage.read(&key, read, &mut self.outbox),
             JobDone::Git(job) => self.git_job_done(job),
             JobDone::KraddieLines(counted) => self.kraddie_lines_counted(counted),
+            JobDone::Variant(job) => self.variant_job_done(job),
+            JobDone::CodeHosts(observed) => self.code_hosts_observed(observed),
+            JobDone::Adapter(done) => {
+                self.adapters.done(done, &self.jobs, &mut self.outbox);
+                self.flush_chats();
+            }
             host_job => self.host_job_done(host_job),
         }
     }

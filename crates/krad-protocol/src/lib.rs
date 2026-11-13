@@ -19,6 +19,7 @@ mod sessions;
 mod settings;
 mod terminals;
 mod usage;
+mod variants;
 
 pub use app_events::{EventsCommand, WebhookTest};
 pub use attention::{AttentionCommand, AttentionNotice, AttentionSnapshot, AttentionWaiting};
@@ -41,8 +42,8 @@ pub use git::{
 };
 pub use harness_health::{HarnessCheck, HarnessChecked, HealthPlace, HealthSnapshot};
 pub use hosts::{
-    AgentPlace, EnvironmentHost, HostCommand, HostPrompt, HostState, HostsSnapshot, LocalAgents,
-    PromptAnswer, PromptId, RemoteBusInfo, RemoteBusState,
+    AgentPlace, EnvironmentHost, HostCommand, HostPrompt, HostState, HostsSnapshot, KeptAdapter,
+    LocalAgents, PromptAnswer, PromptId, RemoteBusInfo, RemoteBusState,
 };
 pub use ids::{ProtocolVersion, RequestId, Seq};
 pub use kraddies::{AutomationState, KraddieCommand, KraddieState, KraddiesSnapshot, OwnedDigests};
@@ -55,3 +56,4 @@ pub use terminals::{
     TerminalClassified, TerminalCommand, TerminalScroll, TerminalSummary, WriteBy,
 };
 pub use usage::{UsageCommand, UsageNews, UsageNote, UsageShown, UsageSnapshot};
+pub use variants::{VariantAct, VariantCommand};

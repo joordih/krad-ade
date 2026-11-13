@@ -130,13 +130,16 @@ impl EnvironmentShell {
                 self.runtime.view.opencode.replace(snapshot.opencode);
                 self.gateway_replaced(snapshot.gateway);
                 self.runtime.view.settings.replace(*snapshot.settings);
+                for environment in &snapshot.environments {
+                    self.offer_open_buffers(&environment.name, cx);
+                }
                 self.runtime
                     .view
                     .environments
                     .replace(snapshot.environments);
                 self.adopt_runtime_environments(cx);
                 self.advance_harness_onboarding(cx);
-                self.hosts_replaced(snapshot.hosts, cx);
+                self.hosts_replaced(*snapshot.hosts, cx);
                 self.runtime_chats_replaced(snapshot.chats, cx);
                 self.git_replaced(snapshot.git, cx);
                 self.kraddies_replaced(*snapshot.kraddies);
@@ -153,7 +156,11 @@ impl EnvironmentShell {
     fn apply_runtime_event(&mut self, kind: EventKind, cx: &mut Context<Self>) -> Heard {
         let environments = &mut self.runtime.view.environments;
         match kind {
-            EventKind::EnvironmentOpened { environment } => environments.opened(*environment),
+            EventKind::EnvironmentOpened { environment } => {
+                let name = environment.name.clone();
+                environments.opened(*environment);
+                self.offer_open_buffers(&name, cx);
+            }
             EventKind::EnvironmentClosed { environment } => environments.closed(&environment),
             EventKind::EnvironmentsOrdered { order } => environments.ordered(&order),
             EventKind::EnvironmentChanged {
@@ -253,6 +260,7 @@ impl EnvironmentShell {
             EventKind::KraddieRunFailed { task, reason } => {
                 self.kraddie_run_failed(&task, &reason, cx);
             }
+            EventKind::KraddieNotSaved { error } => self.kraddie_not_saved(&error, cx),
             host @ (EventKind::HostChanged { .. }
             | EventKind::SignInWanted { .. }
             | EventKind::MachineChannelWanted { .. }
@@ -260,7 +268,8 @@ impl EnvironmentShell {
             | EventKind::HostPrompted(_)
             | EventKind::HostPromptSettled { .. }
             | EventKind::HostAgentsFound { .. }
-            | EventKind::LocalAgentsFound(_)) => self.host_event_heard(host, cx),
+            | EventKind::LocalAgentsFound(_)
+            | EventKind::AcpAdapterChanged(_)) => self.host_event_heard(host, cx),
             EventKind::EnvironmentOpened { .. }
             | EventKind::EnvironmentClosed { .. }
             | EventKind::EnvironmentsOrdered { .. }

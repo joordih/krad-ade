@@ -1,6 +1,7 @@
 use futures::channel::{mpsc, oneshot};
 use futures::{Stream, StreamExt as _};
 use krad_agents::{AgentInfo, AgentKey, StateReason};
+use krad_chat::acp::OpenBuffers;
 use krad_chat::{LiveEvent, LiveSession, OpencodeServer, Runner};
 use krad_domain::{AgentPreset, EnvironmentName, Host, ToolDecision, UsageBudget};
 use krad_host::mux::PromptSender;
@@ -20,7 +21,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use crate::bus::{BusAccess, DelegationReceiver, DELEGATION_BUFFER};
-use crate::chats::{ChatBrief, ChatStart, LiveStarted};
+use crate::chats::{ChatBrief, ChatStart, LiveStarted, OfferedBuffers};
 use crate::harness_health::HarnessProbe;
 use crate::hosts::HostLinks;
 use crate::input::{Input, LiveStart};
@@ -181,6 +182,14 @@ impl RuntimeHandle {
         self.deliver(Input::OpenChat {
             chat,
             start: Box::new(start),
+        });
+    }
+
+    pub fn offer_open_buffers(&self, environment: EnvironmentName, buffers: Arc<dyn OpenBuffers>) {
+        let buffers = OfferedBuffers(buffers);
+        self.deliver(Input::OfferBuffers {
+            environment,
+            buffers,
         });
     }
 

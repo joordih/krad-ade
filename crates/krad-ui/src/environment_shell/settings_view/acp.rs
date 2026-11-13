@@ -247,8 +247,8 @@ impl EnvironmentShell {
                 .small()
                 .variant(ButtonVariant::Primary)
                 .tooltip(KEPT_RETRY_TOOLTIP)
-                .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                    this.retry_acp_adapter(id, cx);
+                .on_click(cx.listener(move |this: &mut Self, _, _, _| {
+                    this.retry_acp_adapter(id);
                 }))
         });
         let control = div()

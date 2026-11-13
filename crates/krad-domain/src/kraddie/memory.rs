@@ -40,6 +40,12 @@ fn one_line(text: &str) -> Result<String, MemoryError> {
     Ok(line)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryLine {
+    pub index: usize,
+    pub text: String,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct KraddieMemory {
@@ -97,6 +103,32 @@ impl KraddieMemory {
     }
 
     #[must_use]
+    pub fn find(&self, line: &MemoryLine) -> Option<usize> {
+        let at_index = self
+            .lines
+            .get(line.index)
+            .is_some_and(|kept| *kept == line.text);
+        if at_index {
+            return Some(line.index);
+        }
+        self.lines.iter().position(|kept| *kept == line.text)
+    }
+
+    /// # Errors
+    /// Refuses a line that is no longer kept and blank or overlong text.
+    pub fn revise(&mut self, line: &MemoryLine, text: &str) -> Result<(), MemoryError> {
+        let index = self.find(line).ok_or(MemoryError::NoSuchLine)?;
+        self.edit(index, text)
+    }
+
+    /// # Errors
+    /// Refuses a line that is no longer kept.
+    pub fn forget(&mut self, line: &MemoryLine) -> Result<String, MemoryError> {
+        let index = self.find(line).ok_or(MemoryError::NoSuchLine)?;
+        self.remove(index)
+    }
+
+    #[must_use]
     pub fn sanitized(self) -> Self {
         let mut memory = Self::default();
         for line in &self.lines {
@@ -111,6 +143,28 @@ impl KraddieMemory {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_line_is_found_by_its_text_when_others_moved_it() {
+        let mut memory = KraddieMemory::default();
+        for text in ["first", "second", "third"] {
+            assert!(memory.add(text).is_ok());
+        }
+        let third = MemoryLine {
+            index: 2,
+            text: "third".to_owned(),
+        };
+        assert_eq!(memory.remove(0), Ok("first".to_owned()));
+        assert_eq!(memory.find(&third), Some(1));
+        assert_eq!(memory.revise(&third, "the third"), Ok(()));
+        assert_eq!(memory.forget(&third), Err(MemoryError::NoSuchLine));
+        let revised = MemoryLine {
+            index: 1,
+            text: "the third".to_owned(),
+        };
+        assert_eq!(memory.forget(&revised), Ok("the third".to_owned()));
+        assert_eq!(memory.lines(), ["second"]);
+    }
 
     #[test]
     fn lines_are_added_edited_and_removed() {

@@ -37,9 +37,7 @@ pub(crate) struct PendingWorker {
 
 #[must_use]
 pub(crate) fn runs_as_worker(agent: AgentPreset) -> bool {
-    agent.acp_agent().is_none()
-        && agent.worker_surface() == WorkerSurface::Chat
-        && runs_in_runtime(agent)
+    agent.worker_surface() == WorkerSurface::Chat && runs_in_runtime(agent)
 }
 
 #[must_use]
@@ -63,7 +61,7 @@ pub(crate) fn worker_node(
     id: TerminalId,
     label: &str,
     agent: AgentPreset,
-    group: GroupId,
+    group: Option<GroupId>,
 ) -> TerminalNode {
     TerminalNode {
         id,
@@ -71,7 +69,7 @@ pub(crate) fn worker_node(
         state: AgentState::Idle,
         harness: Some(agent),
         resume: None,
-        group: Some(group),
+        group,
         text_scale: TextScale::default(),
         kind: NodeKind::Chat,
         file: None,

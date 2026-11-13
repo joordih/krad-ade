@@ -1,8 +1,9 @@
-use krad_domain::{AppEvent, EventKind, EventRecord, ReviewVerdict};
+use krad_domain::{AppEvent, EventKind, EventRecord, ReviewVerdict, Switch};
 use krad_extensions::api::protocol::{
     AppEvent as WireEvent, AppEventKind, AppEventNotification, AppEventParams,
     ReviewVerdict as WireVerdict,
 };
+use krad_protocol::{Command, EventsCommand};
 use std::collections::{BTreeSet, HashMap};
 
 use super::super::EnvironmentShell;
@@ -109,9 +110,21 @@ impl EnvironmentShell {
         } else {
             self.extensions.subscriptions.insert(key.clone(), kinds);
         }
+        self.tell_code_host_watch();
     }
 
-    pub(in crate::environment_shell) fn wants_code_host_events(&self) -> bool {
+    fn tell_code_host_watch(&self) {
+        let watch = if self.wants_code_host_events() {
+            Switch::On
+        } else {
+            Switch::Off
+        };
+        self.runtime
+            .handle
+            .post(Command::Events(EventsCommand::WatchCodeHosts { watch }));
+    }
+
+    fn wants_code_host_events(&self) -> bool {
         self.extensions.subscriptions.values().any(|kinds| {
             kinds.iter().any(|kind| {
                 matches!(
@@ -148,9 +161,13 @@ impl EnvironmentShell {
                 tracing::debug!(%error, "app event not delivered");
             }
         }
+        if gone.is_empty() {
+            return;
+        }
         for key in gone {
             self.extensions.subscriptions.remove(&key);
         }
+        self.tell_code_host_watch();
     }
 }
 

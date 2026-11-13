@@ -214,7 +214,7 @@ impl Runtime {
         let terminal = TerminalId(data.next_id);
         let session = data.next_session_id();
         let label = self.settings.current.acp.harness_name(plan.harness);
-        let node = worker_node(terminal, &label, plan.harness, group);
+        let node = worker_node(terminal, &label, plan.harness, Some(group));
         let opened = NodeEdit::Open {
             node: Box::new(node),
             place: NodePlace::Worker {
@@ -249,6 +249,7 @@ impl Runtime {
                 permission_mode: plan.mode,
                 mcp_servers: None,
                 role: ChatRole::Agent,
+                ..ChatBrief::default()
             },
             prepared: None,
             session: live,

@@ -4,6 +4,7 @@ use gpui_kit::{
     ParentElement, SharedString, Styled, Window,
 };
 use krad_domain::{KraddieCompass, KraddieId, ToastKind, MAX_COMPASS_CHARS};
+use krad_protocol::KraddieCommand;
 
 use super::super::super::EnvironmentShell;
 use super::super::layout::PageLayout;
@@ -60,7 +61,11 @@ impl EnvironmentShell {
             return self.toast(ToastKind::Warning, COMPASS_TOO_LONG, cx);
         };
         self.kraddies.profile.compass_saves += 1;
-        self.edit_mind(&kraddie, |mind| mind.compass = compass, cx);
+        let command = KraddieCommand::SetCompass {
+            kraddie: kraddie.clone(),
+            compass: compass.clone(),
+        };
+        self.edit_mind(&kraddie, (|mind| mind.compass = compass, command), cx);
     }
 
     pub(super) fn compass_section(

@@ -143,7 +143,7 @@ impl Runtime {
         let id = TerminalId(data.next_id);
         let opened_session = data.next_session_id();
         let label = self.settings.current.acp.harness_name(preset);
-        let node = worker_node(id, &label, preset, group);
+        let node = worker_node(id, &label, preset, Some(group));
         let lead_mode = lead_terminal
             .and_then(|terminal| self.chats.permission_mode(&agent(environment, terminal)));
         let opened = NodeEdit::Open {
@@ -168,6 +168,7 @@ impl Runtime {
                 permission_mode: worker_mode(lead_mode, preset),
                 mcp_servers: None,
                 role: ChatRole::Agent,
+                ..ChatBrief::default()
             },
             prepared: None,
             session: LiveSession::Start(new_session_id()),

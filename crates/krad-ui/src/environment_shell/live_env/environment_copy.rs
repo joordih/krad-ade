@@ -1,6 +1,6 @@
 use krad_domain::{
     Edited, EnvironmentChange, EnvironmentData, EnvironmentEdit, EnvironmentView, ModelPrices,
-    NodeKind, NoteTabs, ShownExtensionViews, SidePanelLayout, TerminalId, UsageReport, VariantRuns,
+    NodeKind, NoteTabs, ShownExtensionViews, SidePanelLayout, TerminalId, UsageReport,
 };
 use krad_protocol::RequestId;
 use std::ops::Deref;
@@ -144,10 +144,6 @@ impl EnvironmentCopy {
 
     pub(in crate::environment_shell) fn set_extension_views(&mut self, shown: ShownExtensionViews) {
         self.data.extension_views = shown;
-    }
-
-    pub(in crate::environment_shell) const fn variant_runs_mut(&mut self) -> &mut VariantRuns {
-        &mut self.data.variant_runs
     }
 }
 
