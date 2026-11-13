@@ -1,3 +1,4 @@
+use gpui_kit::App;
 use krad_domain::{AgentState, EnvironmentName, NodeField, ProcessRun, TerminalId, ToastKind};
 use krad_protocol::{AgentRef, LaunchedAs, TerminalLaunched};
 use std::time::Instant;
@@ -23,7 +24,7 @@ impl EnvironmentShell {
         }
         self.keep_live_session(&env, id, LiveTerminal::new(view, harness));
         if launched_as == LaunchedAs::Shell {
-            let site = ShellSite::of(&self.env_link(&env), false);
+            let site = ShellSite::of(&self.env_host(&env), false);
             self.activate_toolchains(&env, id, site);
         }
         if let Some(resume) = resume {
@@ -116,10 +117,10 @@ impl EnvironmentShell {
         true
     }
 
-    pub(in crate::environment_shell) fn apply_tick(&mut self) -> bool {
+    pub(in crate::environment_shell) fn apply_tick(&mut self, cx: &mut App) -> bool {
         let now = Instant::now();
         let changed = self.expire_toasts(now);
-        self.service_agent_bus();
+        self.service_agent_bus(cx);
         self.reconcile_agent_feed();
         changed
     }

@@ -1,4 +1,6 @@
 use krad_domain::{ChatImage, EnvironmentName, ImageFormat, TerminalId};
+
+use crate::archive::{forget_chat_files_under, ArchiveStoreError};
 use std::fmt::Write as _;
 use std::fs::{self, OpenOptions};
 use std::io::{self, ErrorKind, Write as _};
@@ -60,6 +62,17 @@ impl ChatImages {
         bytes: &[u8],
     ) -> Result<ChatImage, ChatImageError> {
         save_chat_image(&images_folder(&self.root, env, chat), format, bytes)
+    }
+
+    /// # Errors
+    ///
+    /// Fails when a file the app kept for the archived chat cannot be removed.
+    pub fn forget_archived(
+        &self,
+        env: &EnvironmentName,
+        chat: TerminalId,
+    ) -> Result<(), ArchiveStoreError> {
+        forget_chat_files_under(&self.root, env, chat)
     }
 
     /// # Errors

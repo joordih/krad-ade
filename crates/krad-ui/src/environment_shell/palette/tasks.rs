@@ -1,8 +1,9 @@
 use gpui_kit::component::command::CommandGroup;
-use gpui_kit::{AppContext as _, Context};
+use gpui_kit::Context;
 use krad_domain::ProjectTask;
-use krad_repo::detect_tasks;
+use krad_protocol::RepoAsk;
 
+use super::super::repo_asks::tasks_of;
 use super::super::sessions::Launch;
 use super::super::EnvironmentShell;
 use super::row::{command_row, Glyph};
@@ -30,20 +31,17 @@ impl EnvironmentShell {
         let Some(root) = self.palette_root() else {
             return;
         };
-        let link = self.active_link();
-        let searched = root.clone();
+        let detected = self.ask_active_repo(RepoAsk::Tasks { root: root.clone() }, tasks_of, cx);
         cx.spawn(async move |this, cx| {
-            let detection = cx
-                .background_spawn(async move { detect_tasks(&link, &searched) })
-                .await;
-            for (_, error) in &detection.unreadable {
-                tracing::warn!(%error, "project task file unreadable");
-            }
+            let tasks = detected.await.unwrap_or_else(|error| {
+                tracing::debug!(%error, "project tasks could not be detected");
+                Vec::new()
+            });
             this.update(cx, |shell, cx| {
                 if shell.palette_root().as_deref() != Some(root.as_path()) {
                     return;
                 }
-                shell.palette_tasks = detection.tasks;
+                shell.palette_tasks = tasks;
                 cx.notify();
             })
             .unwrap_or_default();

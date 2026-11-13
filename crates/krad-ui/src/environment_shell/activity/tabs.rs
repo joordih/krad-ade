@@ -1,6 +1,6 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, AppContext as _, Context, FontWeight, InteractiveElement,
+    div, px, rgb, AnyElement, App, AppContext as _, Context, FontWeight, InteractiveElement,
     IntoElement, MouseButton, MouseDownEvent, ParentElement, SharedString,
     StatefulInteractiveElement, Styled, Window,
 };
@@ -232,7 +232,7 @@ impl EnvironmentShell {
             .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                 this.set_utility_tab(UtilityTab::Docked(id), cx);
-                this.focus_terminal(id);
+                this.focus_terminal(id, cx);
             }))
             .child(icon(IconName::Terminal, ICON_SM, pal.text_muted))
             .child(div().max_w(px(TAB_LABEL_MAX_W)).truncate().child(title))
@@ -381,7 +381,7 @@ impl EnvironmentShell {
                 MouseButton::Left,
                 cx.listener(move |this: &mut Self, _: &MouseDownEvent, window, cx| {
                     this.focus_pane(window, cx);
-                    this.focus_terminal(id);
+                    this.focus_terminal(id, cx);
                     cx.notify();
                 }),
             )
@@ -404,12 +404,16 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    pub(in crate::environment_shell) fn sync_activity_grid(&mut self, window: &mut Window) {
+    pub(in crate::environment_shell) fn sync_activity_grid(
+        &mut self,
+        window: &mut Window,
+        cx: &App,
+    ) {
         if !self.activity.is_visible() {
             return;
         }
         if self.utility_tab() == UtilityTab::Terminals {
-            self.start_system_terminals();
+            self.start_system_terminals(cx);
         }
         let Some(id) = self.activity_terminal() else {
             return;

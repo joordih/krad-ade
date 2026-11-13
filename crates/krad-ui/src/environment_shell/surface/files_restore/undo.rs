@@ -1,9 +1,8 @@
 use gpui_kit::{
-    div, px, rgb, AnyElement, AppContext as _, Context, IntoElement, ParentElement, PromptButton,
-    PromptLevel, Styled, Window,
+    div, px, rgb, AnyElement, Context, IntoElement, ParentElement, PromptButton, PromptLevel,
+    Styled, Window,
 };
-use krad_domain::{EnvironmentName, GitObjectId, TerminalId};
-use krad_repo::{checkpoint_changes, restore_checkpoint, CheckpointChange};
+use krad_domain::{CheckpointChange, EnvironmentName, GitObjectId, TerminalId};
 
 use super::super::super::EnvironmentShell;
 use super::{files_detail, surface_chat, RewindProgress, CANCEL_LABEL, KEPT_NOTE};
@@ -55,10 +54,9 @@ impl EnvironmentShell {
         notice: Option<&'static str>,
         cx: &mut Context<Self>,
     ) {
-        let Some((link, root)) = self.group_folder(env, id) else {
+        let Some(restored) = self.ask_restore(env, id, undo, cx) else {
             return;
         };
-        let restored = cx.background_spawn(async move { restore_checkpoint(&link, &root, &undo) });
         let env = env.clone();
         cx.spawn(async move |this, cx| {
             let restored = restored.await;
@@ -93,11 +91,9 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let Some((link, root)) = self.group_folder(env, id) else {
+        let Some(listed) = self.ask_checkpoint_changes(env, id, undo.clone(), cx) else {
             return;
         };
-        let target = undo.clone();
-        let listed = cx.background_spawn(async move { checkpoint_changes(&link, &root, &target) });
         let env = env.clone();
         cx.spawn_in(window, async move |this, cx| {
             let listed = listed.await;

@@ -1,3 +1,4 @@
+use gpui_kit::App;
 mod actions;
 mod badge;
 mod bus;
@@ -50,9 +51,14 @@ impl EnvironmentShell {
             .map_or_else(|| id.to_string(), |runner| runner.name.as_str().to_owned())
     }
 
-    pub(in crate::environment_shell) fn runner_state(&self, id: CloudRunnerId) -> RunnerState {
+    pub(in crate::environment_shell) fn runner_state(
+        &self,
+        id: CloudRunnerId,
+        cx: &App,
+    ) -> RunnerState {
         self.runtime
             .view
+            .read(cx)
             .runners
             .get(&id)
             .cloned()

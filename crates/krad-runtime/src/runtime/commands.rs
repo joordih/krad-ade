@@ -1,8 +1,8 @@
-use krad_agents::{Caller, Incoming, Request};
-use krad_domain::{AppEvent, EnvironmentEdit, EnvironmentName, NodeEdit};
+use krad_agents::{AgentKey, Caller, Incoming, Request};
+use krad_domain::{AppEvent, Edited, EnvironmentEdit, EnvironmentName, NodeEdit};
 use krad_protocol::{
-    AgentRef, BusCommand, Command, ErrorCode, EventKind, EventsCommand, HookOrigin, Reply,
-    RequestId, RuntimeCommand,
+    AgentRef, BusCommand, Command, ErrorCode, EventKind, EventsCommand, HookOrigin, HostCommand,
+    Reply, RequestId, RuntimeCommand, UsageCommand,
 };
 
 use super::hooking::{agent_of, hook_report};
@@ -19,21 +19,7 @@ impl Runtime {
                 self.outbox.push(EventKind::Pong { request: id });
                 Reply::Accepted
             }
-            Command::Bus(BusCommand::ReplayHook {
-                agent,
-                report,
-                delivered,
-            }) => {
-                self.hear_hook(agent, report, HookOrigin::Replayed { delivered });
-                Reply::Accepted
-            }
-            Command::Bus(command) => {
-                let Some(bus) = &mut self.bus else {
-                    return refused(ErrorCode::Unsupported, NO_BUS);
-                };
-                bus.execute(&command, &mut self.outbox)
-                    .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND))
-            }
+            Command::Bus(command) => self.execute_bus(command),
             Command::Events(EventsCommand::WatchCodeHosts { watch }) => {
                 self.code_hosts.asked = watch.is_on();
                 Reply::Accepted
@@ -49,13 +35,20 @@ impl Runtime {
                 .attention
                 .execute(&command, &mut self.outbox)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
+            Command::Usage(UsageCommand::Place { spot }) => self.place_usage(spot.as_ref()),
             Command::Usage(command) => self
                 .usage
                 .execute(&command, &self.jobs, &mut self.outbox)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Models(command) => self
-                .models
-                .execute(&command, &mut self.outbox)
+                .list_models(&command)
+                .or_else(|| self.models.execute(&command, &mut self.outbox))
+                .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
+            Command::Health(command) => self
+                .execute_health(command)
+                .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
+            Command::Opencode(command) => self
+                .execute_opencode(command)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Environments(command) => self
                 .execute_environments(command, id)
@@ -63,11 +56,18 @@ impl Runtime {
             Command::Session(command) => self.execute_edit(id, command.into()),
             Command::Group(command) => self.execute_edit(id, command.into()),
             Command::Node(command) => self.execute_edit(id, command.into()),
+            Command::Host(
+                ask @ (HostCommand::SshHosts
+                | HostCommand::AcpPackages { .. }
+                | HostCommand::InstallAcpPackage { .. }),
+            ) => self.execute_host_ask(id, ask),
+            Command::Repo(command) => self.execute_repo(id, command),
+            Command::File(command) => self.execute_file(id, command),
             Command::Host(command) => self
                 .execute_host(command)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Chat(command) => self
-                .execute_chat(command)
+                .execute_chat(id, command)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Gateway(command) => self
                 .gateway
@@ -75,6 +75,7 @@ impl Runtime {
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Settings(command) => {
                 let reply = self.settings.execute(command, &mut self.outbox);
+                self.hosts.use_timeouts(self.settings.current.host_timeouts);
                 self.runners.webhooks.check_soon();
                 self.flush_chats();
                 self.run_ready_stops();
@@ -92,10 +93,47 @@ impl Runtime {
             Command::CodeHost(command) => self.execute_code_host(command),
             Command::Runner(command) => self.execute_runner(command),
             Command::Cloud(command) => self.execute_cloud(command),
-            Command::Runtime(RuntimeCommand::Unknown) | Command::Unknown => {
-                refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)
+            Command::Runtime(RuntimeCommand::Settle | RuntimeCommand::Unknown)
+            | Command::Unknown => refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND),
+        }
+    }
+
+    fn execute_bus(&mut self, command: BusCommand) -> Reply {
+        if let BusCommand::ReplayHook {
+            agent,
+            report,
+            delivered,
+        } = command
+        {
+            self.hear_hook(agent, report, HookOrigin::Replayed { delivered });
+            return Reply::Accepted;
+        }
+        let Some(bus) = &mut self.bus else {
+            return refused(ErrorCode::Unsupported, NO_BUS);
+        };
+        let outbox = &mut self.outbox;
+        match command {
+            BusCommand::ObserveAgent { agent, seen, hint } => {
+                let key = AgentKey::new(agent.environment.as_str(), agent.terminal.as_u64());
+                bus.observe(&key, seen, hint, outbox);
+            }
+            BusCommand::ReconcileAgents {
+                environments,
+                agents,
+            } => {
+                let environments: Vec<String> = environments
+                    .iter()
+                    .map(|name| name.as_str().to_owned())
+                    .collect();
+                bus.reconcile(&environments, agents, outbox);
+            }
+            command => {
+                return bus
+                    .execute(&command, outbox)
+                    .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND));
             }
         }
+        Reply::Accepted
     }
 
     fn execute_edit(
@@ -118,8 +156,12 @@ impl Runtime {
         }
         match self
             .environments
-            .edit(environment, &edit, Some(id), &mut self.outbox)
+            .edit(environment.clone(), &edit, Some(id), &mut self.outbox)
         {
+            Some(Edited::Deleted(chats)) => {
+                self.forget_archived(environment, chats);
+                Reply::Accepted
+            }
             Some(_) => Reply::Accepted,
             None => refused(ErrorCode::NotFound, UNKNOWN_ENVIRONMENT),
         }
@@ -208,21 +250,12 @@ impl Runtime {
             Input::BusMail { delegation, mail } => bus.post_mail(delegation, mail, outbox),
             Input::BusDropped(delegation) => bus.dropped(delegation),
             Input::Delegate(delegate) => bus.delegate_to(delegate),
-            Input::ObserveAgent { key, seen, hint } => bus.observe(&key, seen, hint, outbox),
-            Input::ReconcileAgents {
-                environments,
-                agents,
-            } => bus.reconcile(&environments, agents, outbox),
             Input::Command { .. }
             | Input::Subscribe { .. }
             | Input::Snapshot { .. }
             | Input::Bus(_)
             | Input::WebhookTested(_)
-            | Input::CheckHarnesses { .. }
-            | Input::PlaceUsage(_)
-            | Input::ListModels { .. }
             | Input::JobDone(_)
-            | Input::Settle(_)
             | Input::SettingsNotSaved(_)
             | Input::KraddieNotSaved(_)
             | Input::DigestHeard { .. }
@@ -233,11 +266,7 @@ impl Runtime {
             | Input::Runner(_)
             | Input::MachineChannel { .. }
             | Input::OpenChat { .. }
-            | Input::CloseChat(_)
-            | Input::ChatPage { .. }
-            | Input::MentionIndex { .. }
             | Input::OfferBuffers { .. }
-            | Input::ForgetMentionIndexes
             | Input::StartLiveChat(_)
             | Input::Opencode(_)
             | Input::Wake

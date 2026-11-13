@@ -7,8 +7,7 @@ use gpui_kit::{
     KeyDownEvent, MouseButton, ParentElement, SharedString, StatefulInteractiveElement, Styled,
     Subscription, Window,
 };
-use krad_domain::{Host, LanguageId};
-use krad_repo::EntryKind;
+use krad_domain::{EntryKind, Host, LanguageId};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 

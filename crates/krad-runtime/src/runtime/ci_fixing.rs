@@ -112,7 +112,7 @@ impl Runtime {
             chat: agent(environment, terminal),
             prompt: Prompt::from(read.prompt.clone()),
         };
-        if self.execute_chat(queued) == Some(Reply::Accepted) {
+        if self.with_chat_work(|chats, work| chats.execute(queued, work)) == Some(Reply::Accepted) {
             return FixOutcome::Sent {
                 branch: read.branch.clone(),
             };

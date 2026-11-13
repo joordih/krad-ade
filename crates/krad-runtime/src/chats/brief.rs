@@ -3,7 +3,8 @@ use krad_domain::{Effort, McpServerName, ModelId, PermissionMode};
 use std::fmt;
 
 use super::backend::{ChatLaunch, Choices};
-use super::ChatPlace;
+use super::{ChatPlace, ChatStart};
+use krad_protocol::ChatOpen;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ChatRole {
@@ -49,4 +50,25 @@ impl From<&ChatBrief> for Choices {
 pub struct PreparedLaunch {
     pub launch: ChatLaunch,
     pub place: ChatPlace,
+}
+
+impl From<ChatOpen> for ChatStart {
+    fn from(open: ChatOpen) -> Self {
+        Self {
+            harness: open.harness,
+            brief: ChatBrief {
+                model: open.model,
+                effort: open.effort,
+                permission_mode: open.permission_mode,
+                mcp_servers: open.mcp_servers,
+                role: ChatRole::Agent,
+                acp: open.acp,
+            },
+            prepared: None,
+            session: open.session,
+            messages: open.messages,
+            queued: Vec::new(),
+            notices: open.notices,
+        }
+    }
 }

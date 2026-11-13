@@ -1,5 +1,6 @@
-use gpui_kit::{AppContext as _, Context};
-use krad_repo::EntryKind;
+use gpui_kit::Context;
+use krad_domain::{DirEntry, EntryKind};
+use krad_protocol::{Answer, FileAsk};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -109,11 +110,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn load_dir(&self, dir: PathBuf, cx: &mut Context<Self>) {
-        let link = self.active_link();
-        let listing = cx.background_spawn({
-            let dir = dir.clone();
-            async move { krad_repo::list_dir(&link, &dir) }
-        });
+        let listing = self.ask_active_file(FileAsk::List { dir: dir.clone() }, entries_of, cx);
         cx.spawn(async move |this, cx| {
             let listing = listing.await;
             this.update(cx, |shell, cx| {
@@ -122,7 +119,7 @@ impl EnvironmentShell {
                         shell.file_tree.children.insert(dir.clone(), entries);
                         shell.load_package_chain(&dir, cx);
                     }
-                    Err(error) => shell.toast_failure(&error),
+                    Err(error) => shell.toast_failure(&error, cx),
                 }
                 cx.notify();
             })
@@ -165,5 +162,12 @@ impl EnvironmentShell {
             }
         }
         cx.notify();
+    }
+}
+
+fn entries_of(answer: Answer) -> Option<Vec<DirEntry>> {
+    match answer {
+        Answer::Entries { entries } => Some(entries),
+        _ => None,
     }
 }

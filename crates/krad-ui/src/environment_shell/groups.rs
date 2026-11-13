@@ -1,9 +1,9 @@
-use gpui_kit::{Context, PathPromptOptions, SharedString, Window};
+use gpui_kit::{App, Context, PathPromptOptions, SharedString, Window};
 use krad_domain::{
     parse_wsl_path, AgentPreset, EnvironmentName, GroupEdit, GroupId, Host, TerminalGroup,
     TerminalId, ToastKind, WorktreeOrigin,
 };
-use krad_host::HostLink;
+use krad_extensions::host::HostLink;
 use krad_protocol::{AgentPlace, Command, HostCommand, LocalAgents};
 use std::path::{Path, PathBuf};
 
@@ -36,10 +36,10 @@ impl EnvironmentShell {
             .as_offered(self.installed_agents())
     }
 
-    pub(super) fn host_agents_known(&self, env: &EnvironmentName) -> bool {
+    pub(super) fn host_agents_known(&self, env: &EnvironmentName, cx: &App) -> bool {
         self.envs.get(env).is_some_and(|live| {
             live.data.host.is_local()
-                || (self.host_state(env).is_connected()
+                || (self.host_state(env, cx).is_connected()
                     && self.host_agents.contains_key(&live.data.host))
         })
     }
@@ -74,7 +74,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn detect_host_agents(&mut self, env: &EnvironmentName) {
-        if self.env_link(env).is_local() {
+        if self.env_is_local(env) {
             return;
         }
         self.runtime
@@ -138,12 +138,35 @@ impl EnvironmentShell {
             }
             AgentPlace::Native => {
                 self.native_agents = found.agents;
-                self.ensure_opencode();
+                self.ensure_opencode(cx);
                 self.list_harness_models();
                 self.place_usage();
             }
         }
         cx.notify();
+    }
+
+    pub(super) fn env_host(&self, env: &EnvironmentName) -> Host {
+        self.envs
+            .get(env)
+            .map_or_default(|live| live.data.host.clone())
+    }
+
+    pub(super) fn env_on_host(&self, host: &Host) -> Option<EnvironmentName> {
+        self.envs
+            .iter()
+            .find(|(_, live)| live.data.host == *host)
+            .map(|(name, _)| name.clone())
+    }
+
+    pub(super) fn active_host(&self) -> Host {
+        self.env_host(&self.active)
+    }
+
+    pub(super) fn env_is_local(&self, env: &EnvironmentName) -> bool {
+        self.envs
+            .get(env)
+            .is_none_or(|live| live.data.host.is_local())
     }
 
     pub(super) fn active_link(&self) -> HostLink {
@@ -190,8 +213,8 @@ impl EnvironmentShell {
     }
 
     pub(super) fn prompt_new_group(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.active_link().is_local() {
-            if self.host_ready(&self.active) {
+        if !self.env_is_local(&self.active) {
+            if self.host_ready(&self.active, cx) {
                 self.open_folder_browser(window, cx);
             } else {
                 self.toast(ToastKind::Error, HOST_NOT_READY_TEXT, cx);
@@ -300,7 +323,7 @@ impl EnvironmentShell {
         if let Some(removed) = removed {
             self.forget_group_toolchains(&host, &removed.root);
         }
-        self.forget_group_archive(env, id, cx);
+        self.forget_group_archive(env, id);
         cx.notify();
         self.store();
     }
@@ -313,19 +336,14 @@ impl EnvironmentShell {
             }));
     }
 
-    pub(super) fn group_roots(&self) -> (HostLink, Vec<PathBuf>) {
-        self.envs
-            .get(&self.active)
-            .map_or_else(Default::default, |live| {
-                (
-                    self.runtime.handle.host_link(&live.data.host),
-                    live.data
-                        .groups
-                        .iter()
-                        .map(|group| group.root.clone())
-                        .collect(),
-                )
-            })
+    pub(super) fn group_roots(&self) -> Vec<PathBuf> {
+        self.envs.get(&self.active).map_or_default(|live| {
+            live.data
+                .groups
+                .iter()
+                .map(|group| group.root.clone())
+                .collect()
+        })
     }
 
     pub(super) fn git_at(&self, env: &EnvironmentName, root: &Path) -> Option<&GroupGit> {

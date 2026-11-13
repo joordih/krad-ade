@@ -27,7 +27,7 @@ pub use acp_secret::{
 };
 pub use acp_transcript::{acp_transcript_file, read_acp_transcript, AcpTranscript, AcpTranscripts};
 pub use arcade::{read_arcade_scores, write_arcade_scores};
-pub use archive::{forget_archived_chat_files, ArchiveStoreError};
+pub use archive::ArchiveStoreError;
 pub use backdrop_image::{
     backdrop_image_dir, forget_backdrop_image, import_backdrop_image, BackdropImageError,
 };

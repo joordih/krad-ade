@@ -18,5 +18,6 @@ impl Runtime {
         self.tick_git();
         self.tick_kraddies();
         self.tick_code_hosts();
+        self.uploads.tick(&mut self.outbox);
     }
 }

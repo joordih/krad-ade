@@ -34,7 +34,7 @@ impl EnvironmentShell {
         }
         let destination = live.data.host.to_string();
         let pal = palette(cx);
-        let state = self.host_state(&self.active);
+        let state = self.host_state(&self.active, cx);
         let tooltip: SharedString = match detail(state) {
             Some(detail) => format!(
                 "{destination}{SEPARATOR}{}{SEPARATOR}{detail}",

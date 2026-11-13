@@ -20,7 +20,8 @@ const ISSUE_TEMPLATE_NAME: &str = "Issue";
 const ID_PUNCTUATION: &str = "-_.";
 const HIDDEN_PREFIX: char = '.';
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub struct TemplateId(String);
 
 impl TemplateId {
@@ -51,6 +52,20 @@ impl FromStr for TemplateId {
         valid
             .then(|| Self(stem.to_owned()))
             .ok_or(InvalidTemplateId)
+    }
+}
+
+impl TryFrom<String> for TemplateId {
+    type Error = InvalidTemplateId;
+
+    fn try_from(stem: String) -> Result<Self, Self::Error> {
+        stem.parse()
+    }
+}
+
+impl From<TemplateId> for String {
+    fn from(id: TemplateId) -> Self {
+        id.0
     }
 }
 
@@ -117,13 +132,20 @@ impl SessionTemplate {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TemplateError {
     Json(String),
     Format(u32),
     EmptyName,
     NotAChatHarness(AgentPreset),
     BranchInBranch,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredTemplate {
+    pub id: TemplateId,
+    pub template: Result<SessionTemplate, TemplateError>,
 }
 
 impl fmt::Display for TemplateError {

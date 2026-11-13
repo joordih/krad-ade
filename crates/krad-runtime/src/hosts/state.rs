@@ -110,6 +110,8 @@ mod tests {
         let now = Instant::now();
         let connected = Tracked::from(HostState::Connected {
             platform: HostPlatform::LinuxX86_64,
+            home: None,
+            login_env: krad_protocol::LoginEnv::Read,
         });
         let dropped = connected.dropped(now).ok_or("a connected host retries")?;
         assert_eq!(

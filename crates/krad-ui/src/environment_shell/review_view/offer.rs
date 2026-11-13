@@ -18,7 +18,7 @@ impl EnvironmentShell {
         let Some(root) = self.active_group().map(|group| group.root.clone()) else {
             return;
         };
-        let key = (self.active_link().host(), root);
+        let key = (self.active_host(), root);
         match self.review.offers.get(&key) {
             Some(Offer::Withheld) => self.leave_review(cx),
             Some(Offer::Probing | Offer::On(_)) => {}
@@ -28,7 +28,7 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn review_host(&self) -> Option<CodeHost> {
         let root = self.active_group().map(|group| group.root.clone())?;
-        match self.review.offers.get(&(self.active_link().host(), root)) {
+        match self.review.offers.get(&(self.active_host(), root)) {
             Some(Offer::On(host)) => Some(*host),
             Some(Offer::Probing | Offer::Withheld) | None => None,
         }

@@ -3,7 +3,7 @@ mod source;
 
 pub(super) use actions::ChatHitAction;
 
-use gpui_kit::{AppContext as _, Context, Task};
+use gpui_kit::{App, AppContext as _, Context, Task};
 use krad_domain::{
     search_chats, AgentPreset, Archive, ArchivedSession, ChatDocument, ChatHit, EnvironmentName,
     GroupId, HistoryQuery, ResumeId, TerminalId,
@@ -116,7 +116,12 @@ impl EnvironmentShell {
         })
     }
 
-    fn history_source(&self, env: &EnvironmentName, chat: &GroupChat) -> Option<HistorySource> {
+    fn history_source(
+        &self,
+        env: &EnvironmentName,
+        chat: &GroupChat,
+        cx: &App,
+    ) -> Option<HistorySource> {
         let resume = chat.resume.clone();
         let root = self.active_group().map(|group| group.root.clone());
         let link = self.env_link(env);
@@ -133,7 +138,7 @@ impl EnvironmentShell {
             }),
             AgentPreset::Gateway => Some(HistorySource::Gateway {
                 sessions: gateway_sessions_dir()?,
-                cwd: root.unwrap_or_else(|| self.chat_folder(env, chat.id)),
+                cwd: root.unwrap_or_else(|| self.chat_folder(env, chat.id, cx)),
                 resume,
             }),
             AgentPreset::Acp(_) => Some(HistorySource::Acp {
@@ -178,7 +183,7 @@ impl EnvironmentShell {
             if !self.needs_reading(&key, chat.place) {
                 continue;
             }
-            let Some(source) = self.history_source(&env, &chat) else {
+            let Some(source) = self.history_source(&env, &chat, cx) else {
                 continue;
             };
             self.read_chat_history(key, chat, source, cx);

@@ -1,8 +1,7 @@
 use gpui_kit::Context;
-use krad_chat::LiveSession;
 use krad_domain::{
     AgentPreset, ArchivedSessionId, ArchivedShell, Edited, EnvironmentName, EnvironmentView,
-    GroupId, NodeEdit, NodeField, NodeKind, ResumedChat, SessionEdit, TerminalId,
+    GroupId, LiveSession, NodeEdit, NodeField, NodeKind, ResumedChat, SessionEdit, TerminalId,
 };
 
 use super::super::sessions::Launch;

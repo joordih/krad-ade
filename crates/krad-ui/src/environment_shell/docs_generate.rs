@@ -2,10 +2,14 @@ mod sheet;
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::{AppContext as _, Context, Entity, Window};
-use krad_domain::{docs_prompt, AgentPreset, ModelId, ToastKind, DEFAULT_DOCS_FOLDER, VAULT_DIR};
-use krad_repo::{docs_source_candidates, read_docs_sources, write_docs_sources, SourceEntry};
+use krad_domain::{
+    docs_prompt, AgentPreset, ModelId, SourceEntry, ToastKind, DEFAULT_DOCS_FOLDER, VAULT_DIR,
+};
+use krad_protocol::{Answer, RepoAsk};
+use std::path::PathBuf;
 
 use super::model_picker::{grouped, ModelChoice, PickFor};
+use super::repo_asks::done;
 use super::sessions::Launch;
 use super::EnvironmentShell;
 
@@ -53,27 +57,16 @@ impl EnvironmentShell {
             return;
         };
         self.list_harness_models();
-        self.ensure_opencode();
+        self.ensure_opencode(cx);
         let preset = self.default_agent();
-        let link = self.active_link();
-        let picked = read_docs_sources(&link, &root).unwrap_or_default();
-        let sources = docs_source_candidates(&link, &root)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|entry| {
-                let chosen = picked
-                    .as_ref()
-                    .is_none_or(|picked| picked.contains(&entry.relative));
-                (entry, chosen)
-            })
-            .collect();
+        self.read_docs_sources(root, cx);
         let folder = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder(FOLDER_PLACEHOLDER)
                 .default_value(DEFAULT_DOCS_FOLDER)
         });
         self.docs_dialog = Some(DocsDialog {
-            sources,
+            sources: Vec::new(),
             notes: NOTE_CHOICES
                 .iter()
                 .enumerate()
@@ -85,6 +78,41 @@ impl EnvironmentShell {
             model: None,
         });
         cx.notify();
+    }
+
+    fn read_docs_sources(&self, root: PathBuf, cx: &mut Context<Self>) {
+        let reading = self.ask_active_repo(
+            RepoAsk::DocsSources { root },
+            |answer| match answer {
+                Answer::DocsSources { picked, candidates } => Some((picked, candidates)),
+                _ => None,
+            },
+            cx,
+        );
+        cx.spawn(async move |this, cx| {
+            let read = reading.await;
+            this.update(cx, |shell, cx| {
+                let (picked, candidates) = match read {
+                    Ok(read) => read,
+                    Err(error) => return shell.toast_failure(&error, cx),
+                };
+                let Some(dialog) = shell.docs_dialog.as_mut() else {
+                    return;
+                };
+                dialog.sources = candidates
+                    .into_iter()
+                    .map(|entry| {
+                        let chosen = picked
+                            .as_ref()
+                            .is_none_or(|picked| picked.contains(&entry.relative));
+                        (entry, chosen)
+                    })
+                    .collect();
+                cx.notify();
+            })
+            .unwrap_or_default();
+        })
+        .detach();
     }
 
     fn briefed_agents(&self) -> Vec<AgentPreset> {
@@ -111,7 +139,7 @@ impl EnvironmentShell {
         let picks = self.briefed_agents().into_iter().flat_map(|harness| {
             let chosen = current.0 == Some(harness);
             let model = current.1.as_ref().filter(|_| chosen);
-            let mut choices = self.model_choices(harness, model);
+            let mut choices = self.model_choices(harness, model, cx);
             if choices.is_empty() {
                 choices.push(ModelChoice {
                     id: None,
@@ -174,12 +202,17 @@ impl EnvironmentShell {
         );
         if let Some(root) = self.active_group().map(|group| group.root.clone()) {
             let saved = sources.clone();
-            let link = self.active_link();
-            let write =
-                cx.background_spawn(async move { write_docs_sources(&link, &root, &saved) });
+            let write = self.ask_active_repo(
+                RepoAsk::SaveDocsSources {
+                    root,
+                    sources: saved,
+                },
+                done,
+                cx,
+            );
             cx.spawn(async move |this, cx| {
                 if let Err(error) = write.await {
-                    this.update(cx, |shell, _| shell.toast_failure(&error))
+                    this.update(cx, |shell, cx| shell.toast_failure(&error, cx))
                         .unwrap_or_default();
                 }
             })

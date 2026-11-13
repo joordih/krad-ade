@@ -1,4 +1,4 @@
-use krad_domain::DOCS_SOURCES_FILE;
+use krad_domain::{SourceEntry, DOCS_SOURCES_FILE};
 use krad_host::{FileKind, HostLink};
 use std::path::Path;
 
@@ -12,13 +12,6 @@ const SOURCES_CLOSE: char = ']';
 const SOURCES_SEPARATOR: char = ',';
 const QUOTE: char = '"';
 const SKIPPED_SOURCES: [&str; 3] = ["target", "node_modules", "dist"];
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SourceEntry {
-    pub relative: String,
-    pub is_dir: bool,
-    pub children: usize,
-}
 
 /// # Errors
 ///

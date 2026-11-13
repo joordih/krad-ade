@@ -4,8 +4,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, ParentElement, StatefulInteractiveElement, Styled,
 };
-use krad_domain::{CommitLabel, FileOpening, GraphRow, HistoryCommit};
-use krad_repo::CommitFile;
+use krad_domain::{CommitFile, CommitLabel, FileOpening, GraphRow, HistoryCommit};
 use std::path::Path;
 use std::time::SystemTime;
 

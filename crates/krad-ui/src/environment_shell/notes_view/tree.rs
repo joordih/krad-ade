@@ -6,7 +6,7 @@ use gpui_kit::{
     StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::FileOpening;
-use krad_repo::{VaultEntry, VaultEntryKind};
+use krad_domain::{VaultEntry, VaultEntryKind};
 use std::ops::Range;
 
 use super::super::context_menu::{MenuAction, MenuEntry};

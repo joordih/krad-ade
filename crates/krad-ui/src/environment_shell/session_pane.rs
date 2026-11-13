@@ -563,7 +563,7 @@ impl EnvironmentShell {
                 MouseButton::Left,
                 cx.listener(move |this: &mut Self, _: &MouseDownEvent, window, cx| {
                     this.focus_pane(window, cx);
-                    this.focus_terminal(id);
+                    this.focus_terminal(id, cx);
                     cx.notify();
                 }),
             )
@@ -638,7 +638,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         self.focus_pane(window, cx);
-        self.focus_terminal(id);
+        self.focus_terminal(id, cx);
         cx.notify();
     }
 

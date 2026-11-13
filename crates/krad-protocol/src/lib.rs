@@ -1,4 +1,5 @@
 mod agents;
+mod answers;
 mod app_events;
 mod attention;
 mod bus;
@@ -7,6 +8,7 @@ mod cloud;
 mod command;
 mod environments;
 mod event;
+mod files;
 mod frame;
 mod gateway;
 mod git;
@@ -20,17 +22,20 @@ mod launches;
 mod models;
 mod opencode;
 mod problems;
+mod repo;
 mod review;
 mod runners;
 #[cfg(test)]
 mod schema;
 mod sessions;
 mod settings;
+mod spots;
 mod terminals;
 mod usage;
 mod variants;
 
 pub use agents::{AgentAct, AgentCommand};
+pub use answers::{AcpPackageShown, Answer, FoundMentions, WorktreeChecked};
 pub use app_events::{EventsCommand, WebhookTest};
 pub use attention::{AttentionCommand, AttentionNotice, AttentionSnapshot, AttentionWaiting};
 pub use bus::{
@@ -38,8 +43,10 @@ pub use bus::{
     StatusReport,
 };
 pub use chats::{
-    AcpShown, AcpSignInAsk, ChatAsk, ChatAskId, ChatCommand, ChatContext, ChatMirror, ChatPage,
-    ChatState, ChatSummary, McpOffered, McpSkippedShown, McpTrustAsk, MirrorChange, PastedImage,
+    AcpShown, AcpSignInAsk, ChatAsk, ChatAskId, ChatCommand, ChatContext, ChatMirror, ChatOpen,
+    ChatPage, ChatState, ChatSummary, KnownRecord, McpOffered, McpSkippedShown, McpTrustAsk,
+    MirrorChange, PastedImage, SubagentUpdate, SubagentsAsk, SubagentsFrom, SubagentsRead,
+    TranscriptAsk, TranscriptRead,
 };
 pub use cloud::{
     CarriedConversation, CloudChatStart, CloudCommand, CloudDraftId, CloudNews, CloudOpened,
@@ -48,25 +55,32 @@ pub use cloud::{
 pub use command::{Command, ErrorCode, Reply, RuntimeCommand};
 pub use environments::{EnvironmentCommand, SpendingCrossed};
 pub use event::{Event, EventKind, Feed, Scope, Snapshot};
+pub use files::{
+    FileAsk, FileCommand, NewFile, OverLimit, TextRead, Unreadable, UploadShown, VaultNoteText,
+    MAX_ATTACHMENT_BYTES, MAX_FOUND_LINES, MAX_READ_BYTES, MAX_TEXTS_READ, MAX_WRITE_BYTES,
+};
 pub use frame::{read_frame, write_frame, Frame, FrameError, Message, TerminalBytes};
 pub use gateway::{GatewayCommand, GatewayState};
 pub use git::{
     ChangesAct, ChangesCommand, ChangesRead, GitAct, GitCommand, GitFinished, GitOutcome, GitRead,
     SessionChangesRead, WorktreeSwept,
 };
-pub use harness_health::{HarnessCheck, HarnessChecked, HealthPlace, HealthSnapshot};
+pub use harness_health::{
+    HarnessCheck, HarnessChecked, HealthCommand, HealthPlace, HealthSnapshot,
+};
 pub use hello::{Hello, RuntimeRun, Welcome};
 pub use hooks::{Conversation, HookHeard, HookOrigin, HookReport};
 pub use hosts::{
     AgentPlace, EnvironmentHost, HostCommand, HostPrompt, HostState, HostsSnapshot, KeptAdapter,
-    LocalAgents, PromptAnswer, PromptId, RemoteBusInfo, RemoteBusState,
+    LocalAgents, LoginEnv, PromptAnswer, PromptId, RemoteBusInfo, RemoteBusState,
 };
 pub use ids::{ProtocolVersion, RequestId, Seq};
 pub use kraddies::{AutomationState, KraddieCommand, KraddieState, KraddiesSnapshot, OwnedDigests};
 pub use launches::{LaunchedAs, TerminalLaunched};
 pub use models::{ListedModels, ModelsCommand, ModelsOrigin, ModelsSnapshot};
-pub use opencode::{OpencodeShown, OpencodeSnapshot, OpencodeStatus};
+pub use opencode::{OpencodeCommand, OpencodeShown, OpencodeSnapshot, OpencodeStatus};
 pub use problems::{Problem, ProblemScope};
+pub use repo::{DiffOf, RepoAsk, RepoCommand, WorktreeProbe, WorktreeRemoval};
 pub use review::{
     CodeHostCommand, CodeHostLogin, Fetched, FixOutcome, ListedRequests, LoginNews, LoginState,
     RequestDetailRead, RequestRef, ReviewAct, ReviewAnswer, ReviewAnswered, ReviewCommand,
@@ -78,6 +92,7 @@ pub use runners::{
 };
 pub use sessions::{GroupCommand, NodeCommand, SessionCommand};
 pub use settings::SettingsCommand;
+pub use spots::HarnessSpot;
 pub use terminals::{
     TerminalClassified, TerminalCommand, TerminalScroll, TerminalSummary, Typing, WriteBy,
 };

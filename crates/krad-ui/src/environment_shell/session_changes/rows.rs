@@ -109,7 +109,7 @@ pub(super) fn review_rows(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_repo::parse_patch;
+    use krad_domain::parse_patch;
 
     const DIFF: &str = concat!(
         "diff --git a/a.rs b/a.rs\n",

@@ -2,15 +2,12 @@ mod claude;
 
 use krad_domain::{
     AcpAuthMethodId, AcpConfigOptionId, AcpConfigValue, AcpModeId, Effort, GatewayAccess, ModelId,
-    PermissionMode, Prompt, ResumeId, UsageBudget,
+    PermissionMode, Prompt, UsageBudget,
 };
-use std::collections::hash_map::RandomState;
 use std::fmt;
-use std::hash::{BuildHasher, Hash, Hasher};
 use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::acp::{spawn_acp, AcpConfig};
 use crate::codex::spawn_codex;
@@ -20,41 +17,12 @@ use crate::error::ChatError;
 use crate::message::SlashCommand;
 use crate::opencode::{spawn_opencode, OpencodeServer};
 use crate::process::Runner;
-use crate::rewind::{ResumeCut, RewindRequest};
+use crate::rewind::RewindRequest;
 use claude::spawn_claude;
+pub(crate) use krad_domain::new_uuid;
+pub use krad_domain::{new_session_id, LiveSession};
 
 const STDERR_TAIL_CHARS: usize = 600;
-const UUID_VERSION_MASK: u128 = 0xffff_ffff_ffff_0fff_3fff_ffff_ffff_ffff;
-const UUID_VERSION_BITS: u128 = 0x0000_0000_0000_4000_8000_0000_0000_0000;
-const UUID_GROUP_ENDS: [usize; 4] = [8, 12, 16, 20];
-const UUID_HEX_DIGITS: usize = 32;
-#[must_use]
-pub fn new_session_id() -> ResumeId {
-    ResumeId::try_from(new_uuid()).unwrap_or_else(|_| unreachable!("a uuid is a valid resume id"))
-}
-
-pub(crate) fn new_uuid() -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or_default(|elapsed| elapsed.as_nanos());
-    let halves = [RandomState::new(), RandomState::new()].map(|state| {
-        let mut hasher = state.build_hasher();
-        std::process::id().hash(&mut hasher);
-        nanos.hash(&mut hasher);
-        u128::from(hasher.finish())
-    });
-    let bits = ((halves[0] << u64::BITS) | halves[1]) & UUID_VERSION_MASK | UUID_VERSION_BITS;
-    let hex = format!("{bits:0UUID_HEX_DIGITS$x}");
-    let mut uuid = String::with_capacity(UUID_HEX_DIGITS + UUID_GROUP_ENDS.len());
-    for (at, digit) in hex.chars().enumerate() {
-        if UUID_GROUP_ENDS.contains(&at) {
-            uuid.push('-');
-        }
-        uuid.push(digit);
-    }
-    uuid
-}
-
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct BusVars(pub Vec<(String, String)>);
 
@@ -64,24 +32,6 @@ impl fmt::Debug for BusVars {
             .debug_list()
             .entries(self.0.iter().map(|(name, _)| name))
             .finish()
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum LiveSession {
-    Start(ResumeId),
-    Resume(ResumeId),
-    Fork(ResumeId),
-    Cut(ResumeCut),
-}
-
-impl LiveSession {
-    #[must_use]
-    pub const fn history(&self) -> Option<&ResumeId> {
-        match self {
-            Self::Start(_) => None,
-            Self::Resume(id) | Self::Fork(id) | Self::Cut(ResumeCut { from: id, .. }) => Some(id),
-        }
     }
 }
 

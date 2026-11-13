@@ -4,7 +4,7 @@ use gpui_kit::{
     div, px, AnyElement, Context, ElementId, IntoElement, ParentElement, SharedString,
     StatefulInteractiveElement, Styled,
 };
-use krad_chat::SkillHarness;
+use krad_domain::SkillHarness;
 use krad_domain::{AgentPreset, SkillKind};
 
 use super::super::super::dialog_parts::{segment, SegmentSize};

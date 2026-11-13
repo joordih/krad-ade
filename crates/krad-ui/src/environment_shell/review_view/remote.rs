@@ -1,10 +1,10 @@
 mod answers;
 
-use gpui_kit::{AppContext as _, Context, Window};
-use krad_domain::review::{DiffRefs, DiscussionId, MergeOptions, MergeRequest, MergeRequestIid};
-use krad_host::HostLink;
-use krad_protocol::{Command, Reply, RequestId, RequestRef, ReviewAct, ReviewCommand, ReviewWrite};
-use krad_repo::diff_between;
+use gpui_kit::{Context, Window};
+use krad_domain::review::{DiscussionId, MergeOptions, MergeRequest, MergeRequestIid};
+use krad_protocol::{
+    Answer, Command, Reply, RepoAsk, RequestId, RequestRef, ReviewAct, ReviewCommand, ReviewWrite,
+};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -171,14 +171,25 @@ impl EnvironmentShell {
         let iid = detail.request.iid;
         let root = detail.root.clone();
         let refs = refs.clone();
-        let paths: Vec<(String, String)> = files
+        let files = files
             .iter()
-            .map(|file| (file.change.old_path.clone(), file.change.new_path.clone()))
+            .map(|file| diff_paths(&file.change.old_path, &file.change.new_path))
             .collect();
-        let link = self.active_link();
-        let read = cx.background_spawn(async move { local_diffs(&link, &root, &refs, &paths) });
+        let read = self.ask_active_repo(
+            RepoAsk::DiffsBetween {
+                repo: root,
+                base: refs.base_sha,
+                head: refs.head_sha,
+                files,
+            },
+            |answer| match answer {
+                Answer::Diffs { texts } => Some(texts),
+                _ => None,
+            },
+            cx,
+        );
         cx.spawn(async move |this, cx| {
-            let Some(diffs) = read.await else {
+            let Ok(diffs) = read.await else {
                 return;
             };
             this.update(cx, |shell, cx| {
@@ -284,21 +295,10 @@ pub(super) enum Approval {
     Revoke,
 }
 
-fn local_diffs(
-    link: &HostLink,
-    root: &Path,
-    refs: &DiffRefs,
-    paths: &[(String, String)],
-) -> Option<Vec<String>> {
-    paths
-        .iter()
-        .map(|(old, new)| {
-            let paths: Vec<&str> = if old == new {
-                vec![new.as_str()]
-            } else {
-                vec![old.as_str(), new.as_str()]
-            };
-            diff_between(link, root, &refs.base_sha.0, &refs.head_sha.0, &paths).ok()
-        })
-        .collect()
+fn diff_paths(old: &str, new: &str) -> Vec<String> {
+    if old == new {
+        vec![new.to_owned()]
+    } else {
+        vec![old.to_owned(), new.to_owned()]
+    }
 }

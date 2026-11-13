@@ -118,6 +118,7 @@ impl Runtime {
             })
             .collect();
         for environment in connected {
+            self.forget_unshared_opencode(&environment);
             self.detect_host_agents(&environment);
             self.open_missing(&environment);
         }

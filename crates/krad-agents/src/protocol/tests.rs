@@ -1,5 +1,6 @@
 use super::*;
 use crate::handle::{LeadHandle, TerminalHandle};
+use krad_domain::AgentState;
 
 #[test]
 fn envelope_roundtrips_through_json() -> Result<(), serde_json::Error> {

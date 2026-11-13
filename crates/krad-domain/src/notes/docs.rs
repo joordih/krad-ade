@@ -1,5 +1,14 @@
+use serde::{Deserialize, Serialize};
+
 use super::{KEY_GENERATED_BY, KEY_MODEL, KEY_SOURCES, NOTE_EXTENSION, VAULT_DIR};
 use crate::model::ModelId;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceEntry {
+    pub relative: String,
+    pub is_dir: bool,
+    pub children: usize,
+}
 
 const SLUG_SEPARATOR: char = '-';
 const FENCE: &str = "---";

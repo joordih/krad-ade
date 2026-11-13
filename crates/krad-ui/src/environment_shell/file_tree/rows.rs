@@ -5,8 +5,7 @@ use gpui_kit::{
     FontWeight, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement,
     Stateful, StatefulInteractiveElement, Styled, Window,
 };
-use krad_domain::{ChangeKind, FileOpening, FolderKind, ProblemSeverity};
-use krad_repo::{DirEntry, EntryKind};
+use krad_domain::{ChangeKind, DirEntry, EntryKind, FileOpening, FolderKind, ProblemSeverity};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;

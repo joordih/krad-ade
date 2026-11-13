@@ -56,7 +56,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let facts = self.composer_facts(id, chat);
+        let facts = self.composer_facts(id, chat, cx);
         let card = self.tray_card(id, chat, cx);
         let foot = self.tray_foot(id, chat, &facts, cx);
         let ring = BoxShadow::new(px(0.0), px(0.0), pal.border.into()).spread_radius(px(TRAY_RING));

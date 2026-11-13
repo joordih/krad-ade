@@ -1,8 +1,12 @@
+mod parse;
+
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use super::LineCount;
 use crate::{ChangeKind, GitObjectId, HunkFingerprint};
+
+pub use parse::parse_patch;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

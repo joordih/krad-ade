@@ -1,3 +1,4 @@
+use gpui_kit::App;
 mod launch;
 mod terminal_events;
 
@@ -8,7 +9,7 @@ use krad_domain::{
     ToastKind,
 };
 use krad_protocol::{Command, TerminalCommand};
-use krad_runtime::{HostShell, TerminalLaunch, TerminalPlace};
+use krad_runtime::{HostShell, TerminalLaunch};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -18,8 +19,8 @@ use super::EnvironmentShell;
 const HOST_NOT_READY_TEXT: &str = "Connect to the environment's host first";
 
 impl EnvironmentShell {
-    pub(super) fn spawn_missing_sessions(&mut self, env: &EnvironmentName) -> usize {
-        if !self.host_ready(env) {
+    pub(super) fn spawn_missing_sessions(&mut self, env: &EnvironmentName, cx: &App) -> usize {
+        if !self.host_ready(env, cx) {
             return 0;
         }
         let missing = self.envs.get(env).map_or(0, |live| {
@@ -59,10 +60,11 @@ impl EnvironmentShell {
         launch: Launch,
         cwd: Option<PathBuf>,
         prefill: &[String],
+        cx: &App,
     ) {
         match LaunchIntent::try_from(launch) {
             Ok(intent) => self.launch_in_runtime(env, id, intent, cwd),
-            Err(launch) => self.spawn_session(env, id, (launch, cwd, prefill)),
+            Err(launch) => self.spawn_session(env, id, (launch, cwd, prefill), cx),
         }
     }
 
@@ -71,6 +73,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
         (launch, cwd, prefill): (Launch, Option<PathBuf>, &[String]),
+        cx: &App,
     ) {
         let Launch::Command {
             program,
@@ -80,21 +83,21 @@ impl EnvironmentShell {
         else {
             return;
         };
-        if !self.host_ready(env) {
+        if !self.host_ready(env, cx) {
             self.push_toast(ToastKind::Error, HOST_NOT_READY_TEXT.to_owned());
             return;
         }
-        let (link, wsl, _) = self.launch_site(env, cwd.as_deref());
+        let (wsl, _) = self.launch_site(env, cwd.as_deref());
+        let place =
+            self.runtime
+                .handle
+                .host_place(&self.env_host(env), HostShell::Given, wsl.is_some());
         let launch = TerminalLaunch {
             program,
             args,
             cwd,
-            vars: self.launch_vars(env, id, vars),
-            place: TerminalPlace::Host {
-                link,
-                shell: HostShell::Given,
-                in_wsl: wsl.is_some(),
-            },
+            vars: self.launch_vars(env, id, vars, cx),
+            place,
             harness: None,
             prefill: prefill.to_vec(),
             typed: None,

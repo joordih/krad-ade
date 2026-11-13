@@ -6,12 +6,12 @@ use krad_domain::{
     Timestamp,
 };
 use krad_protocol::{
-    AgentRef, AttentionSnapshot, AttentionWaiting, BusSnapshot, Event, EventKind, Feed,
-    GatewayState, HealthSnapshot, ModelsSnapshot, OpencodeSnapshot, RemoteBusState, RunnerBusShown,
-    RunnersSnapshot, Scope, Seq, Snapshot, UsageSnapshot,
+    AgentRef, AskId, AskSettlement, AttentionSnapshot, AttentionWaiting, BusSnapshot, Event,
+    EventKind, Feed, GatewayState, HealthSnapshot, ModelsSnapshot, OpencodeSnapshot,
+    RemoteBusState, RunnerBusShown, RunnersSnapshot, Scope, Seq, Snapshot, UsageSnapshot,
 };
 
-use super::ViewModel;
+use super::{Area, Heard, News, ViewModel};
 use crate::fake_client::RecordedClient;
 
 const MAIN: &str = "main";
@@ -108,23 +108,30 @@ fn recorded() -> Vec<Feed> {
     ]
 }
 
-fn followed(client: &RecordedClient, since: Option<Seq>) -> (ViewModel, Vec<EventKind>) {
+fn followed(client: &RecordedClient, since: Option<Seq>) -> (ViewModel, News) {
     let mut model = ViewModel::default();
-    let mut unfolded = Vec::new();
     let mut feeds = client.subscribe(since);
     while let Some(feed) = block_on(feeds.next()) {
-        match feed {
-            Feed::Snapshot(mut snapshot) => model.adopt_snapshot(&mut snapshot),
-            Feed::Event(event) => unfolded.extend(model.fold_event(event.kind)),
-        }
+        model.feed(feed);
     }
-    (model, unfolded)
+    let news = model.take_news();
+    (model, news)
+}
+
+fn events(news: News) -> Vec<EventKind> {
+    news.heard
+        .into_iter()
+        .filter_map(|heard| match heard {
+            Heard::Event(kind) => Some(kind),
+            _ => None,
+        })
+        .collect()
 }
 
 #[test]
 fn recorded_events_fold_into_the_read_copy_after_its_snapshot() {
     let client = RecordedClient::new(recorded());
-    let (model, unfolded) = followed(&client, None);
+    let (model, news) = followed(&client, None);
     assert!(!model.attention.queue.contains(&target(1)));
     assert!(model.attention.queue.contains(&target(2)));
     assert_eq!(
@@ -133,10 +140,15 @@ fn recorded_events_fold_into_the_read_copy_after_its_snapshot() {
             reason: UNREACHABLE.to_owned()
         })
     );
-    assert_eq!(model.environments.names(), [name(SIDE), name(MAIN)]);
+    assert!(matches!(news.heard.first(), Some(Heard::Snapshot { .. })));
     assert_eq!(
-        unfolded,
-        [closed()],
+        events(news),
+        [
+            EventKind::EnvironmentsOrdered {
+                order: vec![name(SIDE), name(MAIN)],
+            },
+            closed()
+        ],
         "what the view model does not keep goes to the shell"
     );
 }
@@ -147,12 +159,31 @@ fn a_view_model_resumed_after_its_snapshot_only_folds_the_later_events() {
     let (mut model, _) = followed(&client, None);
     model.runner_buses.clear();
     let mut feeds = client.subscribe(Some(Seq(12)));
-    while let Some(Feed::Event(event)) = block_on(feeds.next()) {
-        drop(model.fold_event(event.kind));
+    while let Some(feed) = block_on(feeds.next()) {
+        model.feed(feed);
     }
     assert!(
         model.runner_buses.is_empty(),
         "the bus change came before the resume point"
     );
-    assert_eq!(model.environments.names(), [name(SIDE), name(MAIN)]);
+    let news = model.take_news();
+    assert!(news.areas.is_empty());
+    assert_eq!(events(news).len(), 2);
+}
+
+#[test]
+fn a_folded_event_names_its_area_and_hands_its_side_effects_over_once() {
+    let mut model = ViewModel::default();
+    model.fold_event(EventKind::AttentionLeft { target: target(1) });
+    model.fold_event(EventKind::AskSettled {
+        ask: AskId(1),
+        settlement: AskSettlement::Answered,
+    });
+    let news = model.take_news();
+    assert_eq!(
+        news.areas.into_iter().collect::<Vec<_>>(),
+        [Area::Attention]
+    );
+    assert!(news.heard.is_empty(), "an ask never held is not let go");
+    assert!(model.take_news().areas.is_empty());
 }

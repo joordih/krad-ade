@@ -120,7 +120,7 @@ pub(in crate::environment_shell) fn health_rows(
         .enumerate()
         .filter_map(|(index, harness)| {
             let setup = harness.setup()?;
-            let line = health_line(&setup, shell.harness_check(place, harness));
+            let line = health_line(&setup, shell.harness_check(place, harness, cx));
             Some(health_row(index, harness, line, id_prefix, cx))
         })
         .collect()

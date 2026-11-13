@@ -1,6 +1,14 @@
+mod library;
+mod offered;
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt;
+
+pub use library::{
+    enabled_count, LibraryFilter, LibrarySkill, SkillHarness, SkillPlace, SkillScope,
+};
+pub use offered::{search_skills, Skill, SkillSource};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

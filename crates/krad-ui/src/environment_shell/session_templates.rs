@@ -1,10 +1,11 @@
 mod launch;
 mod sheet;
 
-use gpui_kit::{AppContext as _, Context};
-use krad_domain::{review::Issue, GroupId, McpServerName, ModelId, SessionTemplate, ToastKind};
-use krad_protocol::ReviewAct;
-use krad_repo::{read_session_templates, StoredTemplate};
+use gpui_kit::Context;
+use krad_domain::{
+    review::Issue, GroupId, McpServerName, ModelId, SessionTemplate, StoredTemplate, ToastKind,
+};
+use krad_protocol::{Answer, RepoAsk, ReviewAct};
 use std::path::{Path, PathBuf};
 
 use super::review_view::Remote;
@@ -75,11 +76,14 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let link = self.active_link();
-        let read = cx.background_spawn({
-            let root = root.clone();
-            async move { read_session_templates(&link, &root) }
-        });
+        let read = self.ask_active_repo(
+            RepoAsk::SessionTemplates { root: root.clone() },
+            |answer| match answer {
+                Answer::Templates { templates } => Some(templates),
+                _ => None,
+            },
+            cx,
+        );
         cx.spawn(async move |this, cx| {
             let templates = read.await;
             this.update(cx, |shell, cx| {

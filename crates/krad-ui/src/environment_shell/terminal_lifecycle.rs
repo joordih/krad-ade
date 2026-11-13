@@ -1,10 +1,8 @@
 use gpui_kit::Context;
-use krad_agents::StateReason;
-use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
-    AgentPreset, AgentState, CloudPlacement, EnvironmentName, GroupId, NodeEdit, NodeKind,
-    NodePlace, PermissionMode, Prompt, SessionEdit, SessionSpec, TerminalId, TerminalNode,
-    TextScale, WorkerSpawn, DEFAULT_CHAT_HARNESS,
+    new_session_id, AgentPreset, AgentState, CloudPlacement, EnvironmentName, GroupId, LiveSession,
+    NodeEdit, NodeKind, NodePlace, PermissionMode, Prompt, SessionEdit, SessionSpec, StateReason,
+    TerminalId, TerminalNode, TextScale, WorkerSpawn, DEFAULT_CHAT_HARNESS,
 };
 use krad_session::wsl_shell;
 use std::path::PathBuf;
@@ -153,7 +151,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Option<TerminalId> {
         let (id, cwd) = self.add_node(env, spec, after)?;
-        self.start_session(env, id, launch, cwd, &[]);
+        self.start_session(env, id, launch, cwd, &[], cx);
         self.settle_new_node(cx);
         Some(id)
     }
@@ -167,7 +165,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Option<TerminalId> {
         let (id, default_cwd) = self.add_node(env, spec, None)?;
-        self.start_session(env, id, launch, cwd.or(default_cwd), &[]);
+        self.start_session(env, id, launch, cwd.or(default_cwd), &[], cx);
         self.settle_new_node(cx);
         Some(id)
     }
@@ -429,7 +427,7 @@ impl EnvironmentShell {
         if ran {
             self.end_terminal(env, id);
         }
-        self.forget_attention(env, id);
+        self.forget_attention(env, id, cx);
         self.publish_agent(env, id, Some(StateReason::UserClosed));
         cx.notify();
         chat.is_some_and(|chat| chat.chat.structured().is_some())

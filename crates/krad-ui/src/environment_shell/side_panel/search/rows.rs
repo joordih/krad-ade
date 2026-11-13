@@ -3,8 +3,8 @@ use gpui_kit::{
     IntoElement, ParentElement, Stateful, StatefulInteractiveElement, StrikethroughStyle, Styled,
     StyledText,
 };
+use krad_domain::{FileMatches, FoundLine};
 use krad_lsp::lsp_types::Position;
-use krad_repo::{FileMatches, FoundLine};
 use std::ops::Range;
 use std::path::Path;
 

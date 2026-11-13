@@ -206,7 +206,7 @@ impl EnvironmentShell {
                     .on_mouse_down(
                         MouseButton::Right,
                         cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
-                            let entries = this.group_menu(id);
+                            let entries = this.group_menu(id, cx);
                             this.open_menu_at(event, entries, cx);
                         }),
                     )

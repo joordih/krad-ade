@@ -44,4 +44,4 @@ pub use sftp::FileKind;
 pub use ssh::{SshArgs, Transport, LOOPBACK};
 pub use ssh_config::read_ssh_config;
 pub use terminal::{RemoteTerminal, TerminalControl};
-pub use upload::{local_size, Existing, UploadProgress};
+pub use upload::{local_size, UploadProgress};

@@ -1,5 +1,9 @@
-use krad_agents::{AgentInfo, AgentKey, ErrorCode, Response, StateReason, TerminalState};
-use krad_domain::{AgentState, AttentionKind, EnvironmentName, NodeKind, TerminalId, TerminalNode};
+use krad_agents::{ErrorCode, Response};
+use krad_domain::{
+    AgentInfo, AgentState, AttentionKind, EnvironmentName, NodeKind, StateReason, TerminalId,
+    TerminalNode, TerminalState,
+};
+use krad_protocol::{AgentRef, BusCommand, Command};
 
 use super::super::live_env::LiveEnv;
 use super::super::live_terminal::LiveTerminal;
@@ -66,31 +70,31 @@ impl EnvironmentShell {
         id: TerminalId,
         hint: Option<StateReason>,
     ) {
-        if self.runtime.handle.bus().is_none() {
-            return;
-        }
         let seen = self.envs.get(env).and_then(|live| {
             let node = live.data.nodes.iter().find(|node| node.id == id)?;
             lists_as_agent(node).then(|| self.agent_info(env, live, node))
         });
         let hint = hint.or_else(|| self.waiting_reason(env, id, seen.as_ref()));
         self.runtime
-            .handle
-            .observe_agent(AgentKey::new(env.as_str(), id.as_u64()), seen, hint);
+            .client
+            .post(Command::Bus(BusCommand::ObserveAgent {
+                agent: AgentRef {
+                    environment: env.clone(),
+                    terminal: id,
+                },
+                seen,
+                hint,
+            }));
     }
 
     pub(in crate::environment_shell) fn reconcile_agent_feed(&self) {
-        if self.runtime.handle.bus().is_none() {
-            return;
-        }
-        let environments: Vec<String> = self
-            .envs
-            .keys()
-            .map(|name| name.as_str().to_owned())
-            .collect();
+        let environments: Vec<EnvironmentName> = self.envs.keys().cloned().collect();
         self.runtime
-            .handle
-            .reconcile_agents(environments, self.every_agent_info());
+            .client
+            .post(Command::Bus(BusCommand::ReconcileAgents {
+                environments,
+                agents: self.every_agent_info(),
+            }));
     }
 
     fn waiting_reason(

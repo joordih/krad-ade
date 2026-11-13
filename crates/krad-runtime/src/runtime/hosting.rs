@@ -4,6 +4,7 @@ use krad_protocol::{
     AgentRef, EnvironmentCommand, ErrorCode, EventKind, HostCommand, Reply, RequestId,
     TerminalSummary,
 };
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -58,7 +59,15 @@ impl Runtime {
                 self.flush_chats();
                 return Some(Reply::Accepted);
             }
-            HostCommand::AnswerPrompt { .. } | HostCommand::Unknown => None,
+            HostCommand::CloseAll => {
+                self.hosts.close_all();
+                return Some(Reply::Accepted);
+            }
+            HostCommand::AnswerPrompt { .. }
+            | HostCommand::SshHosts
+            | HostCommand::AcpPackages { .. }
+            | HostCommand::InstallAcpPackage { .. }
+            | HostCommand::Unknown => None,
         };
         let (hosts, mut work) = self.host_work();
         hosts.execute(command, host, &mut work)
@@ -76,6 +85,10 @@ impl Runtime {
                 .map(|host| (environment.clone(), host)),
             _ => None,
         };
+        let roots: Vec<PathBuf> = closed
+            .as_ref()
+            .and_then(|(environment, _)| self.environments.data(environment))
+            .map_or_default(|data| data.groups.iter().map(|group| group.root.clone()).collect());
         let reply = self
             .environments
             .execute(command, request, &mut self.outbox)?;
@@ -85,6 +98,7 @@ impl Runtime {
             self.launches.forget_environment(environment);
         }
         if let (Some((environment, host)), Reply::Accepted) = (closed, &reply) {
+            self.chats.mentions.drop_roots(&host, &roots);
             let still_used = self.environments.uses_host(&host);
             self.hosts.environment_closed(&environment, still_used);
         }
@@ -134,6 +148,13 @@ impl Runtime {
             } => self
                 .hosts
                 .bus_prepared(&environment, &host, prepared, &mut self.outbox),
+            JobDone::Answered { request, answer } => {
+                self.outbox.push(EventKind::Answered { request, answer });
+            }
+            JobDone::Uploaded { request, answer } => {
+                self.uploads.finished(request, &mut self.outbox);
+                self.outbox.push(EventKind::Answered { request, answer });
+            }
             JobDone::ChatOpened(opening) => self.chat_opened(opening),
             JobDone::ChatEarlier(earlier) => self.chat_earlier_read(earlier),
             JobDone::ChatCheckpoint(taken) => self.chat_checkpoint_taken(taken),

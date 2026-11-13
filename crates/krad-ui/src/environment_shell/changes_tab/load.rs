@@ -1,13 +1,13 @@
-use gpui_kit::{AppContext as _, Context};
+use gpui_kit::Context;
+use krad_client::ClientError;
 use krad_domain::review::CommitSha;
 use krad_domain::{
     ChangeKind, EnvironmentName, FileChange, FileOpening, FileView, NodeEdit, TerminalId,
 };
-use krad_host::HostLink;
-use krad_repo::{commit_diff, working_diff, RepoError};
+use krad_protocol::{Answer, DiffOf, RepoAsk};
 use std::path::{Path, PathBuf};
 
-use super::super::review_view::{numbered_lines, DiffLine};
+use super::super::review_view::numbered_lines;
 use super::super::session_changes::LoadGeneration;
 use super::super::EnvironmentShell;
 use super::revert::block_starts;
@@ -23,13 +23,13 @@ enum DiffSource {
 }
 
 impl DiffSource {
-    fn read(self, link: &HostLink) -> Result<Vec<DiffLine>, RepoError> {
-        let diff = match self {
-            Self::Working(None) => return Ok(Vec::new()),
-            Self::Working(Some((repo, change))) => working_diff(link, &repo, &change)?,
-            Self::Commit { repo, sha, change } => commit_diff(link, &repo, &sha, &change)?,
+    fn ask(self) -> Option<RepoAsk> {
+        let (repo, of) = match self {
+            Self::Working(None) => return None,
+            Self::Working(Some((repo, change))) => (repo, DiffOf::Working { change }),
+            Self::Commit { repo, sha, change } => (repo, DiffOf::Commit { sha, change }),
         };
-        Ok(numbered_lines(&diff))
+        Some(RepoAsk::Diff { repo, of })
     }
 }
 
@@ -114,8 +114,7 @@ impl EnvironmentShell {
             }
             FileView::Changes | FileView::Edit => DiffSource::Working(self.change_at(&path)),
         };
-        let link = self.env_link(&env);
-        Self::read_diff(link, env, id, generation, source, cx);
+        self.read_diff(env, id, generation, source, cx);
     }
 
     pub(in crate::environment_shell) fn forget_diffs(&mut self) {
@@ -152,14 +151,32 @@ impl EnvironmentShell {
     }
 
     fn read_diff(
-        link: HostLink,
+        &self,
         env: EnvironmentName,
         id: TerminalId,
         generation: LoadGeneration,
         source: DiffSource,
         cx: &mut Context<Self>,
     ) {
-        let reading = cx.background_spawn(async move { source.read(&link) });
+        let asked = source.ask().map(|ask| {
+            self.ask_repo(
+                &env,
+                ask,
+                |answer| match answer {
+                    Answer::Diff { text } => Some(text),
+                    _ => None,
+                },
+                cx,
+            )
+        });
+        let executor = cx.background_executor().clone();
+        let reading = async move {
+            let Some(asked) = asked else {
+                return Ok(Vec::new());
+            };
+            let text = asked.await?;
+            Ok::<_, ClientError>(executor.spawn(async move { numbered_lines(&text) }).await)
+        };
         cx.spawn(async move |this, cx| {
             let read = reading.await;
             this.update(cx, |shell, cx| {

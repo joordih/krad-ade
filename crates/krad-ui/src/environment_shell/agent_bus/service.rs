@@ -1,3 +1,4 @@
+use gpui_kit::App;
 use krad_agents::{notice_text, ErrorCode, Response};
 use krad_domain::{parse_wsl_path, AgentState, EnvironmentName, TerminalId};
 use krad_protocol::Typing;
@@ -8,7 +9,7 @@ use super::super::{EnvironmentShell, LiveEnv};
 use super::{Settlement, NO_SUCH_TERMINAL};
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn service_agent_bus(&mut self) {
+    pub(in crate::environment_shell) fn service_agent_bus(&mut self, cx: &mut App) {
         if self.runtime.handle.bus().is_none() {
             return;
         }
@@ -29,30 +30,33 @@ impl EnvironmentShell {
             }
         }
         let mut notices = Vec::new();
-        for (env, live) in &mut self.envs {
-            let settled: Vec<TerminalId> = live
-                .data
-                .nodes
-                .iter()
-                .filter(|node| node.state != AgentState::Working)
-                .filter(|node| {
-                    live.sessions
-                        .get(&node.id)
-                        .is_some_and(|session| session.is_agent() && session.is_running())
-                })
-                .map(|node| node.id)
-                .collect();
-            for id in settled {
-                let in_wsl = live
+        let envs = &mut self.envs;
+        self.runtime.view.update(cx, |model, _| {
+            for (env, live) in envs {
+                let settled: Vec<TerminalId> = live
                     .data
-                    .group_of(id)
-                    .is_some_and(|group| parse_wsl_path(&group.root).is_some());
-                if let Some(count) = self.runtime.view.mail.notify(env, id) {
-                    notices.push((env.clone(), id, notice_text(cli_name(in_wsl), count)));
+                    .nodes
+                    .iter()
+                    .filter(|node| node.state != AgentState::Working)
+                    .filter(|node| {
+                        live.sessions
+                            .get(&node.id)
+                            .is_some_and(|session| session.is_agent() && session.is_running())
+                    })
+                    .map(|node| node.id)
+                    .collect();
+                for id in settled {
+                    let in_wsl = live
+                        .data
+                        .group_of(id)
+                        .is_some_and(|group| parse_wsl_path(&group.root).is_some());
+                    if let Some(count) = model.mail.notify(env, id) {
+                        notices.push((env.clone(), id, notice_text(cli_name(in_wsl), count)));
+                    }
                 }
+                Self::notice_free_chats(env, live, &mut model.mail);
             }
-            Self::notice_free_chats(env, live, &mut self.runtime.view.mail);
-        }
+        });
         for (env, id, text) in notices {
             self.type_typing(&env, id, Typing::Notice { text });
         }

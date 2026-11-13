@@ -3,8 +3,8 @@ use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, Entity, FontWeight, InteractiveElement,
     IntoElement, ParentElement, StatefulInteractiveElement, Styled, Subscription, Window,
 };
-use krad_domain::{EnvironmentName, ToastKind, ToolchainScope};
-use krad_host::{HostError, HostLink};
+use krad_domain::{EnvironmentName, Host, ToolchainScope};
+use krad_protocol::{Answer, RepoAsk};
 use std::path::{Path, PathBuf};
 
 use super::super::dialog_parts::{
@@ -27,7 +27,6 @@ const GO_TO_PLACEHOLDER: &str = "/absolute/path on the host";
 const LOADING_TEXT: &str = "Reading the folder…";
 const EMPTY_TEXT: &str = "No folders here";
 const NOT_A_FOLDER_TEXT: &str = "That path is not a folder on the host";
-const NO_HOME_TEXT: &str = "The host's home folder is not known yet";
 const UP_LABEL: &str = "Up";
 const CHOOSE_LABEL: &str = "Use this folder";
 const CANCEL_LABEL: &str = "Cancel";
@@ -62,23 +61,12 @@ impl FolderPurpose {
 pub(in crate::environment_shell) struct FolderBrowser {
     purpose: FolderPurpose,
     env: EnvironmentName,
-    link: HostLink,
+    host_label: String,
     dir: PathBuf,
     listing: Listing,
     field: Entity<InputState>,
     error: Option<String>,
     _events: Subscription,
-}
-
-fn folders_in(link: &HostLink, dir: &Path) -> Result<Vec<String>, HostError> {
-    let mut names: Vec<String> = link
-        .read_dir(dir)?
-        .into_iter()
-        .filter(|entry| entry.metadata.is_dir())
-        .map(|entry| entry.name)
-        .collect();
-    names.sort_by_cached_key(|name| name.to_lowercase());
-    Ok(names)
 }
 
 fn dismiss(this: &mut EnvironmentShell, _: &mut Window, cx: &mut Context<EnvironmentShell>) {
@@ -101,12 +89,13 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        let link = self.env_link(&env);
-        let HostLink::Remote(ssh) = &link else {
-            return;
-        };
-        let Some(home) = ssh.home().map(Path::to_path_buf) else {
-            self.toast(ToastKind::Warning, NO_HOME_TEXT, cx);
+        let Some(host_label) = self
+            .envs
+            .get(&env)
+            .map(|live| &live.data.host)
+            .filter(|host| !host.is_local())
+            .map(Host::to_string)
+        else {
             return;
         };
         let field = cx.new(|cx| InputState::new(window, cx).placeholder(GO_TO_PLACEHOLDER));
@@ -117,7 +106,7 @@ impl EnvironmentShell {
                 if let InputEvent::PressEnter { .. } = event {
                     let typed = field.read(cx).value().trim().to_owned();
                     if !typed.is_empty() {
-                        this.browse_to(PathBuf::from(typed), cx);
+                        this.browse_to(Some(PathBuf::from(typed)), cx);
                     }
                 }
             },
@@ -125,43 +114,42 @@ impl EnvironmentShell {
         self.hosts.dialog = HostDialog::Folder(FolderBrowser {
             purpose,
             env,
-            link,
-            dir: home.clone(),
+            host_label,
+            dir: PathBuf::new(),
             listing: Listing::Loading,
             field,
             error: None,
             _events: events,
         });
-        self.browse_to(home, cx);
+        self.browse_to(None, cx);
     }
 
-    fn browse_to(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
+    fn browse_to(&mut self, dir: Option<PathBuf>, cx: &mut Context<Self>) {
         let HostDialog::Folder(browser) = &mut self.hosts.dialog else {
             return;
         };
-        let link = browser.link.clone();
         browser.error = None;
+        let env = browser.env.clone();
         cx.notify();
-        let read = cx.background_spawn({
-            let dir = dir.clone();
-            async move {
-                let metadata = link.metadata(&dir)?;
-                if !metadata.is_dir() {
-                    return Ok(None);
-                }
-                folders_in(&link, &dir).map(Some)
-            }
-        });
+        let read = self.ask_repo(
+            &env,
+            RepoAsk::Folders { dir },
+            |answer| match answer {
+                Answer::Folders { dir, names } => Some((dir, names)),
+                _ => None,
+            },
+            cx,
+        );
         cx.spawn(async move |this, cx| {
             let listed = read.await;
             this.update(cx, |shell, cx| {
                 if let HostDialog::Folder(browser) = &mut shell.hosts.dialog {
                     match listed {
-                        Ok(Some(folders)) => {
+                        Ok((dir, Some(folders))) => {
                             browser.dir = dir;
                             browser.listing = Listing::Folders(folders);
                         }
-                        Ok(None) => browser.error = Some(NOT_A_FOLDER_TEXT.to_owned()),
+                        Ok((_, None)) => browser.error = Some(NOT_A_FOLDER_TEXT.to_owned()),
                         Err(error) if matches!(browser.listing, Listing::Loading) => {
                             browser.listing = Listing::Failed(error.to_string());
                         }
@@ -180,7 +168,7 @@ impl EnvironmentShell {
             return;
         };
         if let Some(parent) = browser.dir.parent().map(Path::to_path_buf) {
-            self.browse_to(parent, cx);
+            self.browse_to(Some(parent), cx);
         }
     }
 
@@ -234,7 +222,7 @@ impl EnvironmentShell {
                         .child(icon(IconName::Folder, ICON_SM, pal.text_muted))
                         .child(name.clone())
                         .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                            this.browse_to(target.clone(), cx);
+                            this.browse_to(Some(target.clone()), cx);
                         }))
                         .into_any_element()
                 })
@@ -299,7 +287,7 @@ impl EnvironmentShell {
         let sheet = sheet_panel(DIALOG_W, pal)
             .child(sheet_title(
                 browser.purpose.title(),
-                Some(browser.link.host().to_string()),
+                Some(browser.host_label.clone()),
                 BTN_CLOSE,
                 dismiss,
                 cx,
@@ -326,28 +314,5 @@ impl EnvironmentShell {
                     ),
             );
         sheet_overlay(sheet, dismiss, cx)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    type TestResult = Result<(), Box<dyn std::error::Error>>;
-
-    #[test]
-    fn only_folders_are_listed_sorted_without_case() -> TestResult {
-        let dir = std::env::temp_dir().join(format!("krad-ui-browser-{}", std::process::id()));
-        if dir.exists() {
-            std::fs::remove_dir_all(&dir)?;
-        }
-        for folder in ["beta", "Alpha", "gamma"] {
-            std::fs::create_dir_all(dir.join(folder))?;
-        }
-        std::fs::write(dir.join("notes.txt"), "x")?;
-        let listed = folders_in(&HostLink::Local, &dir)?;
-        std::fs::remove_dir_all(&dir)?;
-        assert_eq!(listed, ["Alpha", "beta", "gamma"]);
-        Ok(())
     }
 }

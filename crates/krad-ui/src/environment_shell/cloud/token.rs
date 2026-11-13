@@ -1,4 +1,4 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::{ClaudeOauthToken, CloudRunnerId};
 use krad_protocol::{Command, RunnerCommand};
 
@@ -12,9 +12,11 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn runner_has_claude_token(
         &self,
         runner: CloudRunnerId,
+        cx: &App,
     ) -> bool {
         self.runtime
             .view
+            .read(cx)
             .runner_logins
             .get(&runner)
             .is_some_and(|shown| shown.claude_token)

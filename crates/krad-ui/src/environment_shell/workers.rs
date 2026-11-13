@@ -3,10 +3,9 @@ mod ending;
 
 use gpui_kit::Context;
 use krad_agents::{ErrorCode, Response};
-use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
-    worker_mode, AgentPreset, CloudPlacement, EnvironmentName, GroupId, NodeEdit, PermissionMode,
-    Prompt, TerminalId, WorkerSpawn, WorkerSurface,
+    new_session_id, worker_mode, AgentPreset, CloudPlacement, EnvironmentName, GroupId,
+    LiveSession, NodeEdit, PermissionMode, Prompt, TerminalId, WorkerSpawn, WorkerSurface,
 };
 use krad_runtime::BusReply;
 

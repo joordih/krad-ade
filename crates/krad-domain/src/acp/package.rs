@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 const NPM_GLOBAL_INSTALL: &str = "npm i -g";
@@ -41,7 +42,8 @@ impl fmt::Display for AcpPackage {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AcpPackageState {
     Unchecked,
     Checking,

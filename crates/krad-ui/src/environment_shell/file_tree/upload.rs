@@ -1,13 +1,12 @@
 use gpui_kit::{
-    div, px, rgb, AnyElement, AppContext as _, Context, IntoElement, ParentElement, PromptButton,
-    PromptLevel, Styled, Window,
+    div, px, rgb, AnyElement, Context, IntoElement, ParentElement, PromptButton, PromptLevel,
+    Styled, Window,
 };
-use krad_host::{Existing, UploadProgress};
+use krad_domain::{ToastKind, UploadExisting};
+use krad_protocol::{Answer, Command, FileAsk, FileCommand, RequestId, UploadShown};
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
 
-use krad_domain::ToastKind;
+use super::super::repo_asks::done;
 
 use crate::components::{Button, ButtonVariant};
 use crate::environment_shell::EnvironmentShell;
@@ -23,12 +22,14 @@ const UPLOADING_TEXT: &str = "Uploading";
 const BTN_CANCEL_UPLOAD: &str = "file-tree-cancel-upload";
 const REPLACE_ANSWER: usize = 0;
 const SKIP_ANSWER: usize = 1;
-const PROGRESS_TICK: Duration = Duration::from_millis(250);
 const PERCENT: u64 = 100;
 
 pub(in crate::environment_shell) struct UploadJob {
-    progress: Arc<UploadProgress>,
+    upload: RequestId,
     items: usize,
+    sent: u64,
+    total: u64,
+    cancelled: bool,
 }
 
 fn percent(sent: u64, total: u64) -> u64 {
@@ -55,29 +56,27 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let link = self.active_link();
-        if link.is_local() || paths.is_empty() || self.file_tree.upload.is_some() {
+        if self.env_is_local(&self.active) || paths.is_empty() || self.file_tree.upload.is_some() {
             return;
         }
         let paths = paths.to_vec();
-        let checked = paths.clone();
-        let target = dir.clone();
-        let taken = cx.background_spawn(async move {
-            checked
-                .iter()
-                .filter_map(|path| {
-                    let name = path.file_name()?;
-                    link.symlink_metadata(&target.join(name))
-                        .is_ok()
-                        .then(|| name.to_string_lossy().into_owned())
-                })
-                .collect::<Vec<String>>()
-        });
+        let names = paths
+            .iter()
+            .filter_map(|path| Some(path.file_name()?.to_string_lossy().into_owned()))
+            .collect();
+        let taken = self.ask_active_file(
+            FileAsk::Taken {
+                dir: dir.clone(),
+                names,
+            },
+            taken_of,
+            cx,
+        );
         cx.spawn_in(window, async move |this, cx| {
-            let taken = taken.await;
+            let taken = taken.await.unwrap_or_default();
             this.update_in(cx, |shell, window, cx| {
                 if taken.is_empty() {
-                    shell.start_upload(dir, paths, Existing::Replace, cx);
+                    shell.start_upload(dir, paths, UploadExisting::Replace, cx);
                 } else {
                     Self::ask_to_replace(dir, paths, &taken, window, cx);
                 }
@@ -108,8 +107,8 @@ impl EnvironmentShell {
         );
         cx.spawn(async move |this, cx| {
             let existing = match answer.await {
-                Ok(REPLACE_ANSWER) => Existing::Replace,
-                Ok(SKIP_ANSWER) => Existing::Skip,
+                Ok(REPLACE_ANSWER) => UploadExisting::Replace,
+                Ok(SKIP_ANSWER) => UploadExisting::Skip,
                 _ => return,
             };
             this.update(cx, |shell, cx| shell.start_upload(dir, paths, existing, cx))
@@ -121,38 +120,35 @@ impl EnvironmentShell {
     fn start_upload(
         &mut self,
         dir: PathBuf,
-        paths: Vec<PathBuf>,
-        existing: Existing,
+        sources: Vec<PathBuf>,
+        existing: UploadExisting,
         cx: &mut Context<Self>,
     ) {
-        let link = self.active_link();
-        let progress = UploadProgress::new();
+        let upload = self.runtime.client.next_request();
         self.file_tree.upload = Some(UploadJob {
-            progress: progress.clone(),
-            items: paths.len(),
+            upload,
+            items: sources.len(),
+            sent: 0,
+            total: 0,
+            cancelled: false,
         });
-        let sending = progress.clone();
-        let uploaded = cx.background_spawn(async move {
-            paths
-                .iter()
-                .try_for_each(|path| link.upload_with(path, &dir, &sending, existing).map(drop))
-        });
-        let ticker = cx.spawn(async move |this, cx| loop {
-            cx.background_executor().timer(PROGRESS_TICK).await;
-            if this.update(cx, |_, cx| cx.notify()).is_err() {
-                break;
-            }
-        });
+        let ask = FileAsk::Upload {
+            dir,
+            sources,
+            existing,
+        };
+        let uploaded = self.ask_file_as(upload, &self.active.clone(), ask, done, cx);
         cx.spawn(async move |this, cx| {
             let uploaded = uploaded.await;
-            drop(ticker);
             this.update(cx, |shell, cx| {
-                shell.file_tree.upload = None;
+                let cancelled = shell
+                    .file_tree
+                    .upload
+                    .take()
+                    .is_some_and(|job| job.cancelled);
                 match uploaded {
                     Ok(()) => shell.toast(ToastKind::Success, UPLOADED_TEXT, cx),
-                    Err(_) if progress.is_cancelled() => {
-                        shell.toast(ToastKind::Info, CANCELLED_TEXT, cx);
-                    }
+                    Err(_) if cancelled => shell.toast(ToastKind::Info, CANCELLED_TEXT, cx),
                     Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
                 }
                 shell.reload_file_tree(cx);
@@ -163,14 +159,43 @@ impl EnvironmentShell {
         cx.notify();
     }
 
+    pub(in crate::environment_shell) fn upload_progressed(
+        &mut self,
+        shown: UploadShown,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(job) = self
+            .file_tree
+            .upload
+            .as_mut()
+            .filter(|job| job.upload == shown.upload)
+        else {
+            return;
+        };
+        job.sent = shown.sent;
+        job.total = shown.total;
+        cx.notify();
+    }
+
+    fn cancel_upload(&mut self, cx: &mut Context<Self>) {
+        let Some(job) = self.file_tree.upload.as_mut() else {
+            return;
+        };
+        job.cancelled = true;
+        self.runtime.client.post(Command::File(FileCommand {
+            environment: self.active.clone(),
+            ask: FileAsk::CancelUpload { upload: job.upload },
+        }));
+        cx.notify();
+    }
+
     pub(in crate::environment_shell) fn upload_bar(
         &self,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let job = self.file_tree.upload.as_ref()?;
         let pal = palette(cx);
-        let done = percent(job.progress.sent(), job.progress.total());
-        let progress = job.progress.clone();
+        let done = percent(job.sent, job.total);
         Some(
             div()
                 .flex()
@@ -194,10 +219,17 @@ impl EnvironmentShell {
                         .label(CANCEL_LABEL)
                         .variant(ButtonVariant::Secondary)
                         .small()
-                        .on_click(move |_, _, _| progress.cancel()),
+                        .on_click(cx.listener(|shell, _, _, cx| shell.cancel_upload(cx))),
                 )
                 .into_any_element(),
         )
+    }
+}
+
+fn taken_of(answer: Answer) -> Option<Vec<String>> {
+    match answer {
+        Answer::Taken { names } => Some(names),
+        _ => None,
     }
 }
 

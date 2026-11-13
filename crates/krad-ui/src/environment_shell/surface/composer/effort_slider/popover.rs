@@ -1,7 +1,7 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, ease_out_quint, linear_color_stop, linear_gradient, px, rgb, transparent_black, Animation,
-    AnimationExt as _, AnyElement, Context, FontWeight, Hsla, InteractiveElement, IntoElement,
+    AnimationExt as _, AnyElement, App, Context, FontWeight, Hsla, InteractiveElement, IntoElement,
     KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement,
     StatefulInteractiveElement, Styled, Window,
 };
@@ -317,7 +317,7 @@ impl EnvironmentShell {
             .filter(|popover| popover.placement == EffortPlacement::Floating)?;
         let chat = popover.state.chat;
         let reduced = cx.reduce_motion();
-        let (facts, track, was) = self.effort_track_of(chat, reduced)?;
+        let (facts, track, was) = self.effort_track_of(chat, reduced, cx)?;
         let pal = palette(cx);
         let (root_w, root_h) = self.root_size(window);
         let x = popover.origin.0 - self.frame_inset.0;
@@ -397,8 +397,9 @@ impl EnvironmentShell {
         &self,
         chat: TerminalId,
         reduced: bool,
+        cx: &App,
     ) -> Option<(Facts, Track, Option<Effort>)> {
-        let facts = self.chat_facts(chat)?;
+        let facts = self.chat_facts(chat, cx)?;
         let steps = facts.efforts.len();
         if steps < 2 {
             return None;
@@ -464,7 +465,7 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let Some(facts) = self.chat_facts(chat) else {
+        let Some(facts) = self.chat_facts(chat, cx) else {
             return;
         };
         let current = facts.effort.or(facts.default_effort);
@@ -476,7 +477,7 @@ impl EnvironmentShell {
     }
 
     fn grab_effort(&mut self, chat: TerminalId, effort: Effort, cx: &mut Context<Self>) {
-        let current = self.chat_facts(chat).and_then(|facts| facts.effort);
+        let current = self.chat_facts(chat, cx).and_then(|facts| facts.effort);
         let Some(popover) = self.effort_popover.as_mut() else {
             return;
         };
@@ -498,7 +499,7 @@ impl EnvironmentShell {
         if !dragging {
             return;
         }
-        let current = self.chat_facts(chat).and_then(|facts| facts.effort);
+        let current = self.chat_facts(chat, cx).and_then(|facts| facts.effort);
         let Some(popover) = self.effort_popover.as_ref() else {
             return;
         };

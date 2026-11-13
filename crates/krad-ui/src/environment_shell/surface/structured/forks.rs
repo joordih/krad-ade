@@ -1,7 +1,6 @@
 use gpui_kit::Context;
-use krad_chat::LiveSession;
 use krad_domain::{
-    AgentPreset, EnvironmentName, GroupId, NodeField, NodeKind, ResumeId, TerminalId,
+    AgentPreset, EnvironmentName, GroupId, LiveSession, NodeField, NodeKind, ResumeId, TerminalId,
 };
 
 use super::super::super::live_terminal::end_terminal_on;
@@ -49,7 +48,7 @@ impl EnvironmentShell {
             preset: harness,
             resume: Some(resume),
         };
-        self.start_session(&env, id, launch, cwd, &[]);
+        self.start_session(&env, id, launch, cwd, &[], cx);
         self.store();
         cx.notify();
     }

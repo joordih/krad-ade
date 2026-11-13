@@ -3,8 +3,7 @@ use gpui_kit::{
     div, px, relative, rgb, AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled,
 };
-use krad_domain::TerminalId;
-use krad_repo::EntryKind;
+use krad_domain::{EntryKind, TerminalId};
 
 use super::super::suggest::{entry_labels, SuggestKind, Suggestion};
 use super::super::EnvironmentShell;

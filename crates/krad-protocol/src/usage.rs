@@ -1,6 +1,8 @@
 use krad_domain::{AgentPreset, AgentStatus, Host, LimitAlert, PlanUsage, UsageReading};
 use serde::{Deserialize, Serialize};
 
+use crate::spots::HarnessSpot;
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UsageNote {
@@ -26,6 +28,10 @@ pub enum UsageNews {
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum UsageCommand {
     Refresh,
+    Place {
+        #[serde(default)]
+        spot: Option<HarnessSpot>,
+    },
     Heard {
         host: Host,
         harness: AgentPreset,

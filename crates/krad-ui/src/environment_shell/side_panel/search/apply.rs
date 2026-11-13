@@ -1,14 +1,16 @@
-use gpui_kit::{AppContext as _, Context};
-use krad_repo::{
-    replace_in_file, undo_replace, FileMatches, ProjectMatches, ReplaceUndo, ReplacedFile,
-    UndoOutcome,
-};
+use gpui_kit::Context;
+use krad_domain::{FileMatches, ProjectMatches, ReplaceUndo, ReplacedFile};
+use krad_protocol::FileAsk;
 use std::path::Path;
 
 use krad_domain::ToastKind;
 
 use super::super::super::EnvironmentShell;
 use super::SearchResults;
+
+mod outcome;
+
+use outcome::{replace_report, replaced_of, undo_report, undone_of};
 
 const UNDO_LIMIT_BYTES: usize = 16 * 1024 * 1024;
 const REPLACED_TEXT: &str = "Replaced";
@@ -208,22 +210,11 @@ impl EnvironmentShell {
         self.side_search.replacing = true;
         self.side_search.last_replace = None;
         let replacement = self.side_search.replacement.clone();
-        let link = self.active_link();
+        let paths: Vec<_> = files.iter().map(|file| file.path.clone()).collect();
+        let replacing =
+            self.ask_active_file(FileAsk::Replace { files, replacement }, replaced_of, cx);
         cx.spawn(async move |this, cx| {
-            let report = cx
-                .background_spawn(async move {
-                    let mut report = ReplaceReport::default();
-                    for file in &files {
-                        match replace_in_file(&link, file, &replacement) {
-                            Ok(replaced) => report.add(replaced),
-                            Err(error) => report
-                                .failures
-                                .push(format!("{}: {error}", file.path.display())),
-                        }
-                    }
-                    report
-                })
-                .await;
+            let report = replace_report(&paths, replacing.await);
             this.update(cx, |shell, cx| {
                 shell.side_search.replacing = false;
                 let undo = bounded_undo(report.undos.clone());
@@ -247,23 +238,10 @@ impl EnvironmentShell {
             return;
         };
         self.side_search.replacing = true;
-        let link = self.active_link();
+        let paths: Vec<_> = undos.iter().map(|undo| undo.path.clone()).collect();
+        let undoing = self.ask_active_file(FileAsk::UndoReplace { undos }, undone_of, cx);
         cx.spawn(async move |this, cx| {
-            let report = cx
-                .background_spawn(async move {
-                    let mut report = UndoReport::default();
-                    for undo in &undos {
-                        match undo_replace(&link, undo) {
-                            Ok(UndoOutcome::Restored) => report.restored += 1,
-                            Ok(UndoOutcome::ChangedSince) => report.changed_since += 1,
-                            Err(error) => report
-                                .failures
-                                .push(format!("{}: {error}", undo.path.display())),
-                        }
-                    }
-                    report
-                })
-                .await;
+            let report = undo_report(&paths, undoing.await);
             this.update(cx, |shell, cx| {
                 shell.side_search.replacing = false;
                 for message in report.messages() {
@@ -281,7 +259,7 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_repo::{FoundLine, Replacement};
+    use krad_domain::{FoundLine, Replacement};
     use std::path::PathBuf;
 
     fn file(path: &str, matches: usize) -> FileMatches {

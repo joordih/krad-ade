@@ -155,7 +155,8 @@ pub struct WorktreeCheck {
     pub committed: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum WorktreeState {
     Dirty,
     Ahead(usize),

@@ -7,10 +7,12 @@ mod cloud;
 mod cloud_runs;
 mod code_hosts;
 mod environments;
+mod file_asks;
 mod gateway;
 mod git;
 mod handle;
 mod harness_health;
+mod harness_sites;
 mod hosts;
 mod input;
 mod jobs;
@@ -19,6 +21,7 @@ mod launches;
 mod mcp;
 mod models;
 mod opencode;
+mod repo_asks;
 mod reviews;
 mod runners;
 mod runtime;
@@ -44,8 +47,7 @@ pub use code_hosts::{
 };
 pub use environments::EnvironmentsSetup;
 pub use handle::{EventReceiver, Pending, RuntimeHandle, RuntimeStopped};
-pub use harness_health::HarnessProbe;
-pub use hosts::{bundled_cli, remote_caller_vars};
+pub use hosts::{bundled_cli, remote_caller_vars, HostTools};
 pub use kraddies::{Clock, KraddiesSetup};
 pub use launches::{cli_name, local_caller_vars, AgentRole, BUS_HINT, LEAD_HINT};
 pub use mcp::{
@@ -59,5 +61,4 @@ pub use terminals::{
     TerminalFrame, TerminalLaunch, TerminalPlace, TerminalStatus, TerminalView,
 };
 pub use typing::paste_bytes;
-pub use usage::{SourceState, UsagePlace, UsageSource};
 pub use workers::{closed_target, refusal_error, removal_outcome};

@@ -32,18 +32,7 @@ const DESCRIPTION_KEY: &str = "description";
 const BLOCK_SCALARS: [&str; 6] = [">", ">-", ">+", "|", "|-", "|+"];
 const QUOTES: [char; 2] = ['"', '\''];
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Skill {
-    pub name: String,
-    pub description: String,
-    pub source: SkillSource,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SkillSource {
-    Claude,
-    Shared(PathBuf),
-}
+pub use krad_domain::{search_skills, Skill, SkillSource};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct SkillFile {
@@ -103,31 +92,6 @@ pub(crate) fn skill_files(
         .into_iter()
         .map(|found| found.skill)
         .filter(|skill| settings.allows_call(&skill.name))
-        .collect()
-}
-
-#[must_use]
-pub fn search_skills<'a>(
-    skills: &'a [Skill],
-    settings: &SkillSettings,
-    query: &str,
-    limit: usize,
-) -> Vec<&'a Skill> {
-    let query = query.to_lowercase();
-    let mut found: Vec<(bool, &Skill)> = skills
-        .iter()
-        .filter(|skill| settings.allows_call(&skill.name))
-        .filter_map(|skill| {
-            let name = skill.name.to_lowercase();
-            name.contains(&query)
-                .then(|| (!name.starts_with(&query), skill))
-        })
-        .collect();
-    found.sort_by_key(|(later, _)| *later);
-    found
-        .into_iter()
-        .take(limit)
-        .map(|(_, skill)| skill)
         .collect()
 }
 

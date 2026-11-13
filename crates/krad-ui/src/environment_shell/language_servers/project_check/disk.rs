@@ -1,9 +1,10 @@
-use gpui_kit::{AppContext as _, Context};
+use gpui_kit::Context;
 use krad_domain::Host;
 use krad_extensions::ProjectCheck;
 use krad_lsp::lsp_types::notification::DidChangeWatchedFiles;
 use krad_lsp::lsp_types::{DidChangeWatchedFilesParams, FileEvent};
 use krad_lsp::{file_uri, DocumentChange};
+use krad_protocol::{Answer, FileAsk, TextRead};
 use std::path::PathBuf;
 
 use super::super::super::EnvironmentShell;
@@ -94,7 +95,7 @@ impl EnvironmentShell {
     }
 
     fn reread_background(&self, key: &ServerKey, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
-        let Some((link, _)) = self.server_link(&key.host) else {
+        let Some(env) = self.env_on_host(&key.host) else {
             return;
         };
         if paths.is_empty() {
@@ -102,17 +103,18 @@ impl EnvironmentShell {
         }
         let host = key.host.clone();
         let served = key.clone();
-        let reading = cx.background_spawn(async move {
-            paths
-                .into_iter()
-                .filter_map(|path| {
-                    let file = krad_repo::read_text(&link, &path, MAX_FILE_BYTES).ok()?;
-                    Some((path, file.text))
-                })
-                .collect::<Vec<_>>()
-        });
+        let ask = FileAsk::ReadTexts {
+            paths,
+            limit: MAX_FILE_BYTES,
+        };
+        let reading = self.ask_file(&env, ask, texts_of, cx);
         cx.spawn(async move |this, cx| {
-            let texts = reading.await;
+            let texts: Vec<(PathBuf, String)> = reading
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|read| (read.path, read.text))
+                .collect();
             this.update(cx, |shell, cx| {
                 let mut fresh = Vec::new();
                 for (path, text) in texts {
@@ -150,8 +152,7 @@ impl EnvironmentShell {
     }
 
     pub(in crate::environment_shell) fn forget_missing_problems(&mut self, cx: &mut Context<Self>) {
-        let link = self.active_link();
-        let host = link.host();
+        let host = self.active_host();
         let paths: Vec<PathBuf> = self
             .language_servers
             .diagnostics
@@ -162,15 +163,23 @@ impl EnvironmentShell {
         if paths.is_empty() {
             return;
         }
-        let checking = cx.background_spawn(async move {
-            paths
-                .into_iter()
-                .filter(|path| !link.exists(path))
-                .map(|path| (path, DiskChange::Deleted))
-                .collect::<Vec<_>>()
-        });
+        let checking = self.ask_active_file(
+            FileAsk::Present {
+                paths: paths.clone(),
+            },
+            present_of,
+            cx,
+        );
         cx.spawn(async move |this, cx| {
-            let gone = checking.await;
+            let Ok(present) = checking.await else {
+                return;
+            };
+            let gone: Vec<(PathBuf, DiskChange)> = paths
+                .into_iter()
+                .zip(present)
+                .filter(|(_, present)| !present)
+                .map(|(path, _)| (path, DiskChange::Deleted))
+                .collect();
             if gone.is_empty() {
                 return;
             }
@@ -223,5 +232,19 @@ impl EnvironmentShell {
         self.language_servers.documents.remove(document);
         self.language_servers.diagnostics.forget_pulled(document);
         true
+    }
+}
+
+pub(super) fn texts_of(answer: Answer) -> Option<Vec<TextRead>> {
+    match answer {
+        Answer::Texts { texts } => Some(texts),
+        _ => None,
+    }
+}
+
+fn present_of(answer: Answer) -> Option<Vec<bool>> {
+    match answer {
+        Answer::Present { present } => Some(present),
+        _ => None,
     }
 }

@@ -1,6 +1,6 @@
 use gpui_kit::component::input::{EditorState, Rope, RopeExt as _};
 use gpui_kit::{AppContext as _, Context, Entity, Window};
-use krad_host::HostLink;
+use krad_extensions::host::HostLink;
 use krad_lsp::lsp_types::{
     DocumentChangeOperation, DocumentChanges, OneOf, ResourceOp, TextDocumentEdit, TextEdit,
     WorkspaceEdit,

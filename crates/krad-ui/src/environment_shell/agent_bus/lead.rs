@@ -1,5 +1,6 @@
 use gpui_kit::Context;
-use krad_agents::{ErrorCode, LeadHandle, Request, Response, TerminalState};
+use krad_agents::{ErrorCode, LeadHandle, Request, Response};
+use krad_domain::TerminalState;
 use krad_domain::{AgentState, EnvironmentName, SessionId, TerminalId, VariantRunId};
 use krad_runtime::BusReply;
 

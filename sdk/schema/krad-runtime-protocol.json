@@ -6,6 +6,8 @@
     "attention",
     "usage",
     "models",
+    "health",
+    "opencode",
     "environments",
     "session",
     "group",
@@ -23,7 +25,9 @@
     "review",
     "code_host",
     "runner",
-    "cloud"
+    "cloud",
+    "repo",
+    "file"
   ],
   "commands": {
     "agent_close_worker": {
@@ -60,6 +64,15 @@
       "ask": 3,
       "decision": "Pass",
       "verb": "answer_ask"
+    },
+    "bus_observe_agent": {
+      "agent": {
+        "environment": "main",
+        "terminal": 4
+      },
+      "area": "bus",
+      "hint": "permission_pending",
+      "verb": "observe_agent"
     },
     "changes_accept": {
       "act": {
@@ -108,6 +121,49 @@
       },
       "verb": "interrupt"
     },
+    "chat_mentions": {
+      "area": "chat",
+      "environment": "main",
+      "limit": 20,
+      "query": "main",
+      "root": "/home/dev/app",
+      "verb": "mentions"
+    },
+    "chat_open": {
+      "area": "chat",
+      "chat": {
+        "environment": "main",
+        "terminal": 4
+      },
+      "start": {
+        "acp": {
+          "mode": null,
+          "options": []
+        },
+        "effort": null,
+        "harness": "ClaudeCode",
+        "mcp_servers": null,
+        "messages": [],
+        "model": null,
+        "notices": [],
+        "permission_mode": null,
+        "session": {
+          "from": "4f2c0b7c-a91e-4c1d-9e0f-2b7a1d3c5e8f",
+          "kind": "resume"
+        }
+      },
+      "verb": "open"
+    },
+    "chat_page": {
+      "area": "chat",
+      "before": 64,
+      "chat": {
+        "environment": "main",
+        "terminal": 4
+      },
+      "count": 64,
+      "verb": "page"
+    },
     "chat_send": {
       "area": "chat",
       "chat": {
@@ -145,6 +201,57 @@
       "verb": "watch_code_hosts",
       "watch": "on"
     },
+    "file_read": {
+      "area": "file",
+      "ask": {
+        "from": 0,
+        "limit": 2097152,
+        "over": "refuse",
+        "path": "/home/dev/app/src/main.rs",
+        "verb": "read"
+      },
+      "environment": "main"
+    },
+    "file_search": {
+      "area": "file",
+      "ask": {
+        "limit": 2000,
+        "query": {
+          "case": "insensitive",
+          "exclude": [],
+          "include": [
+            "*.rs"
+          ],
+          "pattern": "todo",
+          "syntax": "literal",
+          "word": "anywhere"
+        },
+        "root": "/home/dev/app",
+        "verb": "search"
+      },
+      "environment": "main"
+    },
+    "file_upload": {
+      "area": "file",
+      "ask": {
+        "dir": "/home/dev/app/assets",
+        "existing": "skip",
+        "sources": [
+          "/Users/dev/Desktop/logo.png"
+        ],
+        "verb": "upload"
+      },
+      "environment": "main"
+    },
+    "file_write": {
+      "area": "file",
+      "ask": {
+        "path": "/home/dev/app/src/main.rs",
+        "text": "fn main() {}\n",
+        "verb": "write"
+      },
+      "environment": "main"
+    },
     "gateway_check": {
       "area": "gateway",
       "key": null,
@@ -181,10 +288,31 @@
       },
       "environment": "main"
     },
+    "health_check": {
+      "area": "health",
+      "spot": {},
+      "verb": "check"
+    },
+    "host_close_all": {
+      "area": "host",
+      "verb": "close_all"
+    },
+    "host_install_acp_package": {
+      "agent": "codex-acp",
+      "area": "host",
+      "spot": {
+        "environment": "main"
+      },
+      "verb": "install_acp_package"
+    },
     "host_reconnect": {
       "area": "host",
       "environment": "main",
       "verb": "reconnect"
+    },
+    "host_ssh_hosts": {
+      "area": "host",
+      "verb": "ssh_hosts"
     },
     "kraddie_run_kraddie": {
       "area": "kraddie",
@@ -208,11 +336,75 @@
       "models": [],
       "verb": "keep"
     },
+    "models_list": {
+      "area": "models",
+      "harness": "Codex",
+      "spot": {
+        "environment": "main"
+      },
+      "verb": "list"
+    },
     "node_close": {
       "area": "node",
       "edit": {
         "terminal": 4,
         "verb": "close"
+      },
+      "environment": "main"
+    },
+    "opencode_start": {
+      "area": "opencode",
+      "spot": {
+        "environment": "main",
+        "root": "/home/dev/krad"
+      },
+      "verb": "start"
+    },
+    "repo_commit_log": {
+      "area": "repo",
+      "ask": {
+        "limit": 400,
+        "repo": "/home/dev/app",
+        "revisions": [
+          "HEAD"
+        ],
+        "verb": "commit_log"
+      },
+      "environment": "main"
+    },
+    "repo_diff": {
+      "area": "repo",
+      "ask": {
+        "of": {
+          "change": {
+            "kind": "modified",
+            "origin": null,
+            "path": "src/main.rs"
+          },
+          "kind": "working"
+        },
+        "repo": "/home/dev/app",
+        "verb": "diff"
+      },
+      "environment": "main"
+    },
+    "repo_remove_worktree": {
+      "area": "repo",
+      "ask": {
+        "path": "/home/dev/app-fix",
+        "removal": "discard",
+        "repo": "/home/dev/app",
+        "verb": "remove_worktree"
+      },
+      "environment": "main"
+    },
+    "repo_replace_text": {
+      "area": "repo",
+      "ask": {
+        "expected": "fn main() {}\n",
+        "path": "/home/dev/app/src/main.rs",
+        "text": "fn main() {\n}\n",
+        "verb": "replace_text"
       },
       "environment": "main"
     },
@@ -232,6 +424,10 @@
     "runtime_ping": {
       "area": "runtime",
       "verb": "ping"
+    },
+    "runtime_settle": {
+      "area": "runtime",
+      "verb": "settle"
     },
     "session_close": {
       "area": "session",
@@ -298,6 +494,13 @@
       },
       "verb": "scroll"
     },
+    "usage_place": {
+      "area": "usage",
+      "spot": {
+        "environment": "main"
+      },
+      "verb": "place"
+    },
     "usage_refresh": {
       "area": "usage",
       "verb": "refresh"
@@ -321,9 +524,86 @@
     "invalid",
     "unavailable",
     "busy",
-    "forbidden"
+    "forbidden",
+    "failed"
   ],
   "events": {
+    "answered": {
+      "feed": "event",
+      "kind": {
+        "answer": {
+          "entries": [
+            {
+              "kind": "file",
+              "path": "src/main.rs"
+            }
+          ],
+          "kind": "mentions"
+        },
+        "request": 15,
+        "type": "answered"
+      },
+      "seq": 50
+    },
+    "answered_failed": {
+      "feed": "event",
+      "kind": {
+        "answer": {
+          "code": "failed",
+          "kind": "failed",
+          "message": "`git log` failed: not a repository"
+        },
+        "request": 16,
+        "type": "answered"
+      },
+      "seq": 51
+    },
+    "answered_file_text": {
+      "feed": "event",
+      "kind": {
+        "answer": {
+          "kind": "file_text",
+          "len": 13,
+          "modified": {
+            "nanos_since_epoch": 0,
+            "secs_since_epoch": 1700000000
+          },
+          "text": "fn main() {}\n",
+          "truncated": false
+        },
+        "request": 18,
+        "type": "answered"
+      },
+      "seq": 53
+    },
+    "answered_text_replaced": {
+      "feed": "event",
+      "kind": {
+        "answer": {
+          "kind": "text_replaced",
+          "replaced": false
+        },
+        "request": 17,
+        "type": "answered"
+      },
+      "seq": 52
+    },
+    "answered_unreadable": {
+      "feed": "event",
+      "kind": {
+        "answer": {
+          "kind": "unreadable",
+          "unreadable": {
+            "len": 9000000,
+            "limit": 2097152,
+            "reason": "too_large"
+          }
+        },
+        "request": 19,
+        "type": "answered"
+      },
+      "seq": 54
+    },
     "attention_left": {
       "feed": "event",
       "kind": {
@@ -417,6 +697,16 @@
         "type": "terminal_changed"
       },
       "seq": 45
+    },
+    "upload_progress": {
+      "feed": "event",
+      "kind": {
+        "sent": 4096,
+        "total": 8192,
+        "type": "upload_progress",
+        "upload": 20
+      },
+      "seq": 55
     }
   },
   "example_session": [

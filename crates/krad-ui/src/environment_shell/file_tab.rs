@@ -14,11 +14,10 @@ use gpui_kit::{
     ParentElement, Styled, Subscription, Window,
 };
 use krad_domain::{EnvironmentName, FileOpening, FileView, NodeEdit, TerminalId, TextScale};
-use krad_host::HostLink;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use super::disk_text::{read_file, ReadError, ReadFile};
+use super::disk_text::{read_ask, read_of, ReadError, ReadFile};
 use super::language_servers::Document;
 use super::{EnvironmentShell, LiveEnv};
 use crate::actions::FILE_TAB_KEY_CONTEXT;
@@ -176,7 +175,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn show_file_tab(&mut self, id: TerminalId, cx: &mut Context<Self>) {
-        self.focus_terminal(id);
+        self.focus_terminal(id, cx);
         if let Some(editor) = self
             .envs
             .get_mut(&self.active)
@@ -207,7 +206,6 @@ impl EnvironmentShell {
         let Some((id, path)) = live.shown_file() else {
             return;
         };
-        let link = self.runtime.handle.host_link(&live.data.host);
         let editor = live
             .editors
             .entry(id)
@@ -218,7 +216,7 @@ impl EnvironmentShell {
         match std::mem::replace(&mut editor.load, Load::Ready) {
             Load::Pending => {
                 editor.load = Load::Reading;
-                Self::read_into_tab(link, env, id, path, cx);
+                self.read_into_tab(env, id, path, cx);
                 return;
             }
             Load::Read(file) => self.fill_editor(&env, id, file, window, cx),
@@ -248,7 +246,7 @@ impl EnvironmentShell {
         };
         if matches!(editor.load, Load::Ready) && editor.disk == DiskWatch::Idle {
             editor.disk = DiskWatch::Checking;
-            Self::check_disk(link, env, id, path, cx);
+            Self::check_disk(env, id, path, cx);
         }
     }
 
@@ -257,15 +255,15 @@ impl EnvironmentShell {
     }
 
     fn read_into_tab(
-        link: HostLink,
+        &self,
         env: EnvironmentName,
         id: TerminalId,
         path: PathBuf,
         cx: &mut Context<Self>,
     ) {
-        let reading = cx.background_spawn(async move { read_file(&link, &path) });
+        let reading = self.ask_file(&env, read_ask(path), Some, cx);
         cx.spawn(async move |this, cx| {
-            let read = reading.await;
+            let read = read_of(reading.await);
             this.update(cx, |shell, cx| {
                 if let Some(editor) = shell.editor_mut(&env, id) {
                     editor.load = match read {

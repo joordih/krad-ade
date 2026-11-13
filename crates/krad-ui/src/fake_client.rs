@@ -4,8 +4,8 @@ use krad_protocol::{
     Command, Feed, Hello, ProtocolVersion, Reply, RequestId, RuntimeRun, Scope, Seq, Snapshot,
     Welcome,
 };
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 const BUILD: &str = "recorded";
 const RUN: RuntimeRun = RuntimeRun(7);
@@ -19,7 +19,8 @@ fn seq(feed: &Feed) -> Seq {
 
 #[derive(Debug, Default)]
 pub(crate) struct RecordedClient {
-    feeds: Vec<Feed>,
+    feeds: Mutex<Vec<Feed>>,
+    stopped: AtomicBool,
     sent: Mutex<Vec<(RequestId, Command)>>,
     requests: AtomicU64,
 }
@@ -27,9 +28,21 @@ pub(crate) struct RecordedClient {
 impl RecordedClient {
     pub(crate) fn new(feeds: Vec<Feed>) -> Arc<Self> {
         Arc::new(Self {
-            feeds,
+            feeds: Mutex::new(feeds),
             ..Self::default()
         })
+    }
+
+    pub(crate) fn record(&self, feed: Feed) {
+        self.recorded().push(feed);
+    }
+
+    pub(crate) fn stop(&self) {
+        self.stopped.store(true, Ordering::Relaxed);
+    }
+
+    fn recorded(&self) -> MutexGuard<'_, Vec<Feed>> {
+        self.feeds.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     pub(crate) fn sent(&self) -> Vec<Command> {
@@ -44,6 +57,9 @@ impl RecordedClient {
 
 impl RuntimeClient for RecordedClient {
     fn hello(&self, _hello: Hello) -> Answer<Welcome> {
+        if self.stopped.load(Ordering::Relaxed) {
+            return futures::future::ready(Err(ClientError::Stopped)).boxed();
+        }
         let welcome = Welcome {
             protocol: ProtocolVersion::CURRENT,
             build: BUILD.to_owned(),
@@ -67,7 +83,7 @@ impl RuntimeClient for RecordedClient {
     fn subscribe(&self, since: Option<Seq>) -> Feeds {
         let after = |feed: &Feed| since.is_none_or(|since| seq(feed) > since);
         let feeds: Vec<Feed> = self
-            .feeds
+            .recorded()
             .iter()
             .filter(|feed| after(feed))
             .cloned()
@@ -76,7 +92,7 @@ impl RuntimeClient for RecordedClient {
     }
 
     fn snapshot(&self, _scope: Scope) -> Answer<Snapshot> {
-        let snapshot = self.feeds.iter().find_map(|feed| match feed {
+        let snapshot = self.recorded().iter().find_map(|feed| match feed {
             Feed::Snapshot(snapshot) => Some(snapshot.clone()),
             Feed::Event(_) => None,
         });

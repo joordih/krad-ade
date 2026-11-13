@@ -190,7 +190,8 @@ fn a_closed_chat_leaves_the_snapshot() -> TestResult {
         ),
     );
     feed.until(|event| matches!(event, EventKind::ChatOpened { .. }))?;
-    runtime.close_chat(id.clone());
+    let closing = Command::Chat(ChatCommand::Close { chat: id.clone() });
+    assert_eq!(runtime.send_now(closing)?, Reply::Accepted);
     feed.until(|event| matches!(event, EventKind::ChatClosed { .. }))?;
     assert!(runtime.chat_snapshot(&id).is_err());
     Ok(())
@@ -332,7 +333,8 @@ fn an_acp_chat_sends_the_mode_chosen_early_reads_its_secrets_and_keeps_a_transcr
         acp.modes.map(|modes| modes.current),
         Some(AcpModeId("code".to_owned()))
     );
-    runtime.close_chat(id.clone());
+    let closing = Command::Chat(ChatCommand::Close { chat: id.clone() });
+    assert_eq!(runtime.send_now(closing)?, Reply::Accepted);
     feed.until(|event| matches!(event, EventKind::ChatClosed { .. }))?;
     let file =
         krad_store::acp_transcript_file(&id.environment, id.terminal).ok_or(NO_TRANSCRIPT)?;

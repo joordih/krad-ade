@@ -1,6 +1,6 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::{CloudRunnerId, CloudRunnerName, RunnerState, SshDestination, ToastKind};
-use krad_protocol::{Command, RunnerCommand, RunnerNews, RunnerNotice, RunnerRemoved, RunnerShown};
+use krad_protocol::{Command, RunnerCommand, RunnerNews, RunnerNotice, RunnerRemoved};
 
 use super::super::EnvironmentShell;
 
@@ -22,9 +22,9 @@ impl EnvironmentShell {
         self.post_runner(RunnerCommand::Ensure { runner });
     }
 
-    pub(in crate::environment_shell) fn show_cloud_runners(&self) {
+    pub(in crate::environment_shell) fn show_cloud_runners(&self, cx: &App) {
         for runner in &self.settings.cloud.runners {
-            if self.runner_state(runner.id) == RunnerState::NotConnected {
+            if self.runner_state(runner.id, cx) == RunnerState::NotConnected {
                 self.ensure_runner_ready(runner.id);
             }
         }
@@ -55,23 +55,24 @@ impl EnvironmentShell {
             return;
         }
         self.save_settings(cx);
-        self.runtime.view.runner_logins.remove(&runner);
-        self.runtime.view.runners.remove(&runner);
+        self.runtime.view.update(cx, |model, _| {
+            model.runner_logins.remove(&runner);
+            model.runners.remove(&runner);
+        });
         self.post_runner(RunnerCommand::Remove { runner });
         cx.notify();
     }
 
     pub(in crate::environment_shell) fn runner_changed(
         &mut self,
-        shown: RunnerShown,
+        runner: CloudRunnerId,
         cx: &mut Context<Self>,
     ) {
-        let RunnerShown { runner, state } = shown;
         if self.runner_removed_from_settings(runner) {
-            return;
+            self.runtime.view.update(cx, |model, _| {
+                model.runners.remove(&runner);
+            });
         }
-        self.runtime.view.runners.insert(runner, state);
-        cx.notify();
     }
 
     pub(in crate::environment_shell) fn runner_removed(

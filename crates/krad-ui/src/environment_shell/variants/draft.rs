@@ -5,9 +5,10 @@ use krad_domain::{
     ModelId, ProjectTask, ToastKind, VariantSpec, VariantsOrder, WorkerSurface, MAX_VARIANTS,
     MIN_VARIANTS,
 };
+use krad_protocol::RepoAsk;
 use krad_protocol::VariantAct;
-use krad_repo::detect_tasks;
 
+use super::super::repo_asks::tasks_of;
 use super::super::review_view::Remote;
 use super::super::EnvironmentShell;
 use super::NO_GROUP_TEXT;
@@ -122,17 +123,16 @@ impl EnvironmentShell {
     }
 
     fn detect_variant_tasks(&self, root: std::path::PathBuf, cx: &mut Context<Self>) {
-        let link = self.active_link();
-        let detected = cx.background_spawn(async move { detect_tasks(&link, &root) });
+        let detected = self.ask_active_repo(RepoAsk::Tasks { root }, tasks_of, cx);
         cx.spawn(async move |this, cx| {
-            let detection = detected.await;
+            let tasks = detected.await.unwrap_or_else(|error| {
+                tracing::debug!(%error, "project tasks could not be detected");
+                Vec::new()
+            });
             this.update(cx, |shell, cx| {
                 if let Some(draft) = &mut shell.variants.draft {
-                    draft.test = detection
-                        .tasks
-                        .iter()
-                        .position(|task| task.name == TEST_TASK_NAME);
-                    draft.tasks = Remote::Ready(detection.tasks);
+                    draft.test = tasks.iter().position(|task| task.name == TEST_TASK_NAME);
+                    draft.tasks = Remote::Ready(tasks);
                 }
                 cx.notify();
             })

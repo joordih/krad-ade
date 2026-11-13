@@ -66,7 +66,7 @@ impl Models {
                 self.keep(key, models.clone(), ModelsOrigin::Chat, outbox);
                 Some(Reply::Accepted)
             }
-            ModelsCommand::Unknown => None,
+            ModelsCommand::List { .. } | ModelsCommand::Unknown => None,
         }
     }
 

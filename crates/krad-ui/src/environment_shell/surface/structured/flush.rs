@@ -1,4 +1,4 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::{AgentPreset, EnvironmentName, TerminalId};
 
 use super::super::super::chat::StartError;
@@ -43,7 +43,7 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Err(error) = self.ensure_live(env, id) else {
+        let Err(error) = self.ensure_live(env, id, cx) else {
             return true;
         };
         if matches!(error, StartError::Waiting) {
@@ -60,7 +60,12 @@ impl EnvironmentShell {
         false
     }
 
-    fn ensure_live(&mut self, env: &EnvironmentName, id: TerminalId) -> Result<(), StartError> {
+    fn ensure_live(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        cx: &App,
+    ) -> Result<(), StartError> {
         let Some(harness) = structured_mut(self, env, id)
             .filter(|structured| !structured.in_runtime())
             .map(|structured| structured.harness)
@@ -68,7 +73,7 @@ impl EnvironmentShell {
             return Ok(());
         };
         if self.opens_in_runtime(env, id) {
-            return self.open_in_runtime(env, id);
+            return self.open_in_runtime(env, id, cx);
         }
         Err(StartError::NoChat(self.settings.acp.harness_name(harness)))
     }

@@ -1,7 +1,7 @@
 use futures::executor::block_on;
 use futures::StreamExt as _;
 use krad_agents::{
-    call, AgentInfo, AgentKey, AgentStatus, AgentsError, Caller, Request, Response, TerminalHandle,
+    call, AgentInfo, AgentStatus, AgentsError, Caller, Request, Response, TerminalHandle,
     TerminalState,
 };
 use krad_domain::{
@@ -228,11 +228,18 @@ fn agents_list_the_directory_the_app_reports() -> TestResult {
         harness: Some(AgentPreset::Codex),
         is_self: false,
     };
-    runtime.observe_agent(
-        AgentKey::new(ENVIRONMENT, CALLER),
-        Some(agent.clone()),
-        None,
-    );
+    let observed = block_on(runtime.send(
+        runtime.next_request(),
+        Command::Bus(BusCommand::ObserveAgent {
+            agent: AgentRef {
+                environment: EnvironmentName::new(ENVIRONMENT.to_owned()),
+                terminal: TerminalId(CALLER),
+            },
+            seen: Some(agent.clone()),
+            hint: None,
+        }),
+    ))?;
+    assert_eq!(observed, Reply::Accepted);
     let listed = call_in_background(&runtime, Request::List)?;
     assert_eq!(
         listed.join().map_err(|_| "the caller panicked")??,

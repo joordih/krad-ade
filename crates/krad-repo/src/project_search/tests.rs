@@ -1,6 +1,7 @@
 use super::*;
 use std::error::Error;
 use std::fs;
+use std::path::PathBuf;
 use std::process::Command;
 
 fn query(pattern: &str) -> ProjectQuery {

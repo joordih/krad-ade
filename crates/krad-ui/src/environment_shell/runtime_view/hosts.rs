@@ -1,5 +1,5 @@
 use krad_domain::EnvironmentName;
-use krad_protocol::{HostPrompt, HostState, HostsSnapshot, PromptId, RemoteBusState};
+use krad_protocol::{EnvironmentHost, HostPrompt, HostState, PromptId, RemoteBusState};
 use std::collections::{HashMap, VecDeque};
 
 static NOT_SHOWN: HostState = HostState::NotShown;
@@ -82,12 +82,12 @@ impl HostsMirror {
 
     pub(in crate::environment_shell) fn replace(
         &mut self,
-        snapshot: HostsSnapshot,
+        hosts: &[EnvironmentHost],
+        prompts: Vec<HostPrompt>,
     ) -> Vec<HostMove> {
         let mut known = std::mem::take(&mut self.hosts);
-        let moves = snapshot
-            .hosts
-            .into_iter()
+        let moves = hosts
+            .iter()
             .map(|host| {
                 let before = known
                     .remove(&host.environment)
@@ -96,18 +96,18 @@ impl HostsMirror {
                     host.environment.clone(),
                     Shown {
                         state: host.state.clone(),
-                        bus: host.bus,
+                        bus: host.bus.clone(),
                     },
                 );
                 HostMove {
-                    environment: host.environment,
+                    environment: host.environment.clone(),
                     before,
-                    after: host.state,
+                    after: host.state.clone(),
                 }
             })
             .filter(|moved| moved.before != moved.after)
             .collect();
-        self.prompts = snapshot.prompts.into();
+        self.prompts = prompts.into();
         moves
     }
 }
@@ -116,7 +116,6 @@ impl HostsMirror {
 mod tests {
     use super::*;
     use krad_domain::{HostPlatform, PromptAsker, PromptKind};
-    use krad_protocol::EnvironmentHost;
 
     fn main() -> EnvironmentName {
         EnvironmentName::new("main".to_owned())
@@ -137,6 +136,8 @@ mod tests {
             main(),
             HostState::Connected {
                 platform: HostPlatform::LinuxX86_64,
+                home: None,
+                login_env: krad_protocol::LoginEnv::Read,
             },
         );
         assert_eq!(moved.before, HostState::Connecting);
@@ -158,17 +159,13 @@ mod tests {
             kind: PromptKind::Secret,
             text: "Password: ".to_owned(),
         };
-        let unchanged = mirror.replace(HostsSnapshot {
-            hosts: vec![EnvironmentHost {
-                environment: main(),
-                state: HostState::Connecting,
-                bus: RemoteBusState::Absent,
-                agents: Vec::new(),
-            }],
-            prompts: vec![prompt.clone()],
-            local: Vec::new(),
-            adapters: Vec::new(),
-        });
+        let hosts = [EnvironmentHost {
+            environment: main(),
+            state: HostState::Connecting,
+            bus: RemoteBusState::Absent,
+            agents: Vec::new(),
+        }];
+        let unchanged = mirror.replace(&hosts, vec![prompt.clone()]);
         assert!(unchanged.is_empty());
         mirror.prompt_settled(PromptId(9));
         assert_eq!(mirror.next_prompt(), Some(prompt));

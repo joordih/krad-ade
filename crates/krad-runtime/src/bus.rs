@@ -143,7 +143,10 @@ impl Bus {
             }
             BusCommand::Answer { ask, answer } => Some(self.asks.answer_with(*ask, answer, outbox)),
             BusCommand::PublishDiscovery { file } => Some(discovery::publish(&self.access, *file)),
-            BusCommand::ReplayHook { .. } | BusCommand::Unknown => None,
+            BusCommand::ReplayHook { .. }
+            | BusCommand::ObserveAgent { .. }
+            | BusCommand::ReconcileAgents { .. }
+            | BusCommand::Unknown => None,
         }
     }
 

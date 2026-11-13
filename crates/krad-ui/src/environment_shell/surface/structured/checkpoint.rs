@@ -1,19 +1,17 @@
 use krad_domain::{
     ChatCheckpoints, EnvironmentName, GitObjectId, NodeField, RewindPoint, TerminalId,
 };
-use krad_host::HostLink;
 use std::path::PathBuf;
 
 use super::super::super::EnvironmentShell;
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell::surface) fn group_folder(
+    pub(in crate::environment_shell::surface) fn group_root(
         &self,
         env: &EnvironmentName,
         id: TerminalId,
-    ) -> Option<(HostLink, PathBuf)> {
-        let root = self.envs.get(env)?.data.group_of(id)?.root.clone();
-        Some((self.env_link(env), root))
+    ) -> Option<PathBuf> {
+        Some(self.envs.get(env)?.data.group_of(id)?.root.clone())
     }
 
     pub(super) fn record_turn_checkpoint(

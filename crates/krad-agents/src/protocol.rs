@@ -1,7 +1,6 @@
 mod api;
 mod automations;
 mod close;
-mod harness_name;
 mod kraddies;
 mod memory;
 mod variants;
@@ -13,7 +12,8 @@ pub use automations::{AutomationInfo, AutomationRunInfo};
 pub use close::{
     CloseOrder, CloseTarget, Closed, ClosedTarget, WorktreeFate, WorktreeLeft, WorktreeOutcome,
 };
-pub(crate) use harness_name::{bus_name, preset_by_bus_name, preset_by_display_name};
+pub(crate) use krad_domain::harness_names::{bus_name, preset_by_bus_name, preset_by_display_name};
+pub use krad_domain::{AgentInfo, StateReason, TerminalState};
 pub use krad_domain::{AgentStatus, Timestamp, WhenWorking};
 pub use kraddies::{KraddieInfo, KraddieMemoryInfo, KraddieRunInfo};
 pub use memory::{
@@ -23,16 +23,17 @@ pub use memory::{
 pub use variants::VariantsRequest;
 pub use watch::{
     AgentChangeKind, AgentEvent, AgentFilter, AgentSnapshot, AgentSubscription, CoarseState,
-    Heartbeat, StateReason, StreamId,
+    Heartbeat, StreamId,
 };
 pub use workspace::{ChangeSet, ChangedFile, FilePosition, SessionInfo, WorktreeInfo};
 
 use crate::code::{CodeAnswer, CodeRequest};
 use crate::extension_tools::{ExtensionToolAnswer, ToolCatalog};
 use crate::handle::Caller;
+use krad_domain::harness_names as harness_name;
 use krad_domain::{
-    AgentPreset, AgentState, PermissionMode, Switch, ToolDecision, ToolUseId, UnknownAgentState,
-    VariantRun, WinnerOutcome, ASK_WAIT,
+    AgentPreset, PermissionMode, Switch, ToolDecision, ToolUseId, VariantRun, WinnerOutcome,
+    ASK_WAIT,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -41,8 +42,6 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 pub const MAX_WAIT: Duration = Duration::from_mins(30);
-const EXITED: &str = "exited";
-const CLOSED: &str = "closed";
 const BLOCKING_MARGIN: Duration = Duration::from_secs(1);
 const DEFAULT_DEADLINE: Duration = Duration::from_secs(10);
 const SPAWN_DEADLINE: Duration = Duration::from_mins(1);
@@ -324,56 +323,6 @@ pub struct Envelope {
     pub token: BusToken,
     pub from: Caller,
     pub request: Request,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AgentInfo {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub environment: Option<String>,
-    pub terminal: u64,
-    pub title: String,
-    pub group: Option<String>,
-    pub state: TerminalState,
-    #[serde(with = "harness_name::display_name")]
-    pub harness: Option<AgentPreset>,
-    pub is_self: bool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(into = "String", try_from = "String")]
-pub enum TerminalState {
-    Running(AgentState),
-    Exited,
-    Closed,
-}
-
-impl fmt::Display for TerminalState {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::Running(state) => state.label(),
-            Self::Exited => EXITED,
-            Self::Closed => CLOSED,
-        })
-    }
-}
-
-impl From<TerminalState> for String {
-    fn from(state: TerminalState) -> Self {
-        state.to_string()
-    }
-}
-
-impl TryFrom<String> for TerminalState {
-    type Error = UnknownAgentState;
-
-    fn try_from(label: String) -> Result<Self, Self::Error> {
-        match label.as_str() {
-            EXITED => return Ok(Self::Exited),
-            CLOSED => return Ok(Self::Closed),
-            _ => {}
-        }
-        label.parse().map(Self::Running)
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

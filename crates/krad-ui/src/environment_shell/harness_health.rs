@@ -1,16 +1,11 @@
 mod onboarding;
 mod rows;
 
-use gpui_kit::{ClipboardItem, Context};
+use gpui_kit::{App, ClipboardItem, Context};
 use krad_domain::{parse_wsl_path, AgentPreset, HarnessOnboarding, ToastKind, CHECKED_HARNESSES};
-use krad_host::HostLink;
-use krad_protocol::{HarnessCheck, HarnessChecked};
-use krad_runtime::HarnessProbe;
+use krad_protocol::{Command, HarnessCheck, HarnessChecked, HarnessSpot, HealthCommand};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 
-use super::chat::StartError;
-use super::terminal_card::home_dir;
 use super::EnvironmentShell;
 
 pub(super) use krad_protocol::HealthPlace;
@@ -88,35 +83,42 @@ fn onboarding_step<'a>(
 }
 
 impl EnvironmentShell {
-    pub(super) fn health_place(&self) -> (HealthPlace, HostLink, Option<PathBuf>) {
-        let link = self.active_link();
-        if !link.is_local() {
-            return (HealthPlace::Ssh { host: link.host() }, link, None);
+    pub(super) fn health_place(&self) -> HealthPlace {
+        let host = self.active_host();
+        if !host.is_local() {
+            return HealthPlace::Ssh { host };
         }
         let root = self.active_group().map(|group| group.root.clone());
         match root.as_deref().and_then(parse_wsl_path) {
-            Some(folder) => (
-                HealthPlace::Wsl {
-                    distro: folder.distro,
-                },
-                link,
-                root,
-            ),
-            None => (HealthPlace::ThisComputer, link, None),
+            Some(folder) => HealthPlace::Wsl {
+                distro: folder.distro,
+            },
+            None => HealthPlace::ThisComputer,
         }
     }
 
-    pub(super) fn harness_check(
+    fn health_spot(&self) -> HarnessSpot {
+        let root = self.active_group().map(|group| group.root.clone());
+        HarnessSpot::at(self.active.clone(), root)
+    }
+
+    pub(super) fn harness_check<'a>(
         &self,
         place: &HealthPlace,
         harness: AgentPreset,
-    ) -> Option<&HarnessCheck> {
-        self.runtime.view.health.0.get(&(place.clone(), harness))
+        cx: &'a App,
+    ) -> Option<&'a HarnessCheck> {
+        self.runtime
+            .view
+            .read(cx)
+            .health
+            .0
+            .get(&(place.clone(), harness))
     }
 
     pub(super) fn check_harness_health(&mut self, cx: &mut Context<Self>) {
-        let (place, link, root) = self.health_place();
-        self.check_harnesses_at(&place, &link, root.as_deref(), cx);
+        let spot = self.health_spot();
+        self.check_harnesses_at(spot, cx);
     }
 
     pub(super) fn start_harness_onboarding(&mut self, cx: &mut Context<Self>) {
@@ -127,7 +129,7 @@ impl EnvironmentShell {
             self.finish_harness_onboarding(cx);
             return;
         }
-        self.check_harnesses_at(&HealthPlace::ThisComputer, &HostLink::Local, None, cx);
+        self.check_harnesses_at(HarnessSpot::default(), cx);
     }
 
     pub(super) fn copy_harness_fix(&mut self, text: &str, cx: &mut Context<Self>) {
@@ -135,52 +137,11 @@ impl EnvironmentShell {
         self.toast(ToastKind::Success, COPIED_TOAST, cx);
     }
 
-    fn check_harnesses_at(
-        &mut self,
-        place: &HealthPlace,
-        link: &HostLink,
-        root: Option<&Path>,
-        cx: &mut Context<Self>,
-    ) {
-        let probes = CHECKED_HARNESSES
-            .into_iter()
-            .map(|harness| (harness, self.health_probe(place, link, harness, root)))
-            .collect();
-        self.runtime.handle.check_harnesses(place.clone(), probes);
+    fn check_harnesses_at(&mut self, spot: HarnessSpot, cx: &mut Context<Self>) {
+        self.runtime
+            .client
+            .post(Command::Health(HealthCommand::Check { spot }));
         cx.notify();
-    }
-
-    fn health_probe(
-        &self,
-        place: &HealthPlace,
-        link: &HostLink,
-        harness: AgentPreset,
-        root: Option<&Path>,
-    ) -> Option<HarnessProbe> {
-        let absent_in_wsl = matches!(place, HealthPlace::Wsl { .. })
-            && !self.agents_for(&self.active, root).contains(&harness);
-        if absent_in_wsl {
-            return Some(HarnessProbe::Missing);
-        }
-        match self.harness_runner(link, harness, root) {
-            Ok((runner, cwd)) => Some(HarnessProbe::Run(runner, cwd)),
-            Err(StartError::Waiting) => None,
-            Err(_) => {
-                let program = self
-                    .settings
-                    .launch_line(harness)
-                    .and_then(|line| line.split_whitespace().next().map(str::to_owned))?;
-                let home = match link {
-                    HostLink::Local => home_dir().map(PathBuf::from),
-                    HostLink::Remote(ssh) => ssh.home().map(Path::to_path_buf),
-                };
-                Some(HarnessProbe::OffPath {
-                    link: link.clone(),
-                    home,
-                    program,
-                })
-            }
-        }
     }
 
     pub(super) fn advance_harness_onboarding(&mut self, cx: &mut Context<Self>) {
@@ -191,7 +152,7 @@ impl EnvironmentShell {
         let step = onboarding_step(
             CHECKED_HARNESSES
                 .into_iter()
-                .map(|harness| (harness, self.harness_check(&place, harness))),
+                .map(|harness| (harness, self.harness_check(&place, harness, cx))),
         );
         match step {
             OnboardingStep::Wait => {}
@@ -204,7 +165,7 @@ impl EnvironmentShell {
     }
 
     fn recheck_onboarding(&mut self, cx: &mut Context<Self>) {
-        self.check_harnesses_at(&HealthPlace::ThisComputer, &HostLink::Local, None, cx);
+        self.check_harnesses_at(HarnessSpot::default(), cx);
     }
 
     fn finish_harness_onboarding(&mut self, cx: &mut Context<Self>) {

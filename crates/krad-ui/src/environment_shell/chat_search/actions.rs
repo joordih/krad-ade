@@ -1,10 +1,9 @@
-use gpui_kit::{AppContext as _, Context, Window};
-use krad_chat::{new_session_id, LiveSession};
+use gpui_kit::{Context, Window};
 use krad_domain::{
-    chat_note_markdown, chat_note_stem, exchange_of, fork_plan, EnvironmentView, ForkPlan, Prompt,
-    TerminalId, ToastKind, CHAT_NOTES_FOLDER, VAULT_DIR,
+    chat_note_markdown, chat_note_stem, exchange_of, fork_plan, new_session_id, EnvironmentView,
+    ForkPlan, LiveSession, Prompt, TerminalId, ToastKind, CHAT_NOTES_FOLDER, VAULT_DIR,
 };
-use krad_repo::add_note;
+use krad_protocol::{Answer, RepoAsk};
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
 use super::super::palette::{PALETTE_TOP, PALETTE_W};
@@ -151,11 +150,19 @@ impl EnvironmentShell {
         let harness_name = self.settings.acp.harness_name(chat.harness);
         let text = chat_note_markdown(&title, &harness_name, kept);
         let stem = chat_note_stem(&title);
-        let link = self.active_link();
-        let written =
-            cx.background_spawn(
-                async move { add_note(&link, &root, CHAT_NOTES_FOLDER, &stem, &text) },
-            );
+        let written = self.ask_active_repo(
+            RepoAsk::AddNote {
+                root,
+                folder: CHAT_NOTES_FOLDER.to_owned(),
+                stem,
+                text,
+            },
+            |answer| match answer {
+                Answer::NoteAdded { name } => Some(name),
+                _ => None,
+            },
+            cx,
+        );
         cx.spawn(async move |this, cx| {
             let written = written.await;
             this.update(cx, |shell, cx| {
@@ -167,7 +174,7 @@ impl EnvironmentShell {
                         );
                         shell.refresh_vault(cx);
                     }
-                    Err(error) => shell.toast_failure(&error),
+                    Err(error) => shell.toast_failure(&error, cx),
                 }
                 cx.notify();
             })

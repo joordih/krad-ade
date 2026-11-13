@@ -1,7 +1,7 @@
 use gpui_kit::component::input::Input;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, Context, Div, IntoElement, ParentElement, SharedString,
+    div, px, rgb, AnyElement, App, Context, Div, IntoElement, ParentElement, SharedString,
     StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::{AgentPreset, KraddieWorkspace};
@@ -232,7 +232,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let typed = editor.model.read(cx).value().trim().to_owned();
-        let models = self.kraddie_model_rows(editor.harness);
+        let models = self.kraddie_model_rows(editor.harness, cx);
         if models.is_empty() {
             return None;
         }
@@ -264,12 +264,12 @@ impl EnvironmentShell {
         Some(chips().children(picks).into_any_element())
     }
 
-    fn kraddie_model_rows(&self, harness: AgentPreset) -> Vec<ModelChoice> {
+    fn kraddie_model_rows(&self, harness: AgentPreset, cx: &App) -> Vec<ModelChoice> {
         let mut group = HarnessModels {
             harness,
             name: self.settings.acp.harness_name(harness).into(),
             models: self
-                .model_choices(harness, None)
+                .model_choices(harness, None, cx)
                 .into_iter()
                 .filter(|choice| choice.id.is_some())
                 .collect(),
@@ -286,7 +286,7 @@ impl EnvironmentShell {
         let AgentPreset::Acp(agent) = editor.harness else {
             return None;
         };
-        let host = self.active_link().host();
+        let host = self.active_host();
         let text = match self.listed_models.acp_listing(&host, agent)? {
             AcpListing::Listing => LISTING_MODELS.to_owned(),
             AcpListing::NoModels => NO_MODELS.to_owned(),

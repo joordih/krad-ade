@@ -617,7 +617,7 @@ impl EnvironmentShell {
         if refused {
             self.toast(ToastKind::Warning, PANES_FULL_TEXT, cx);
         }
-        self.focus_terminal(id);
+        self.focus_terminal(id, cx);
     }
 
     fn ghost_pull(&self, mouse: (f32, f32)) -> (f32, f32) {

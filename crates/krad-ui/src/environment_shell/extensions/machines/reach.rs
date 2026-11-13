@@ -1,7 +1,7 @@
 use krad_extensions::api::protocol::{Machine, MachineState, TerminalCommand};
 use krad_extensions::api::HostKindId;
+use krad_extensions::host::MachineChannel;
 use krad_extensions::Trust;
-use krad_host::MachineChannel;
 
 use super::super::ExtensionRecord;
 use super::HostKindRef;

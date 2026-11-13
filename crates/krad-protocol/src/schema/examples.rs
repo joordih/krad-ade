@@ -1,5 +1,7 @@
 use serde_json::{json, Value};
 
+mod files;
+
 pub(super) const VERSIONING: &str = "protocol_version is the major version. Within it every change is additive: new fields carry a default, new commands, events, messages and codes read as `unknown` on an older peer, which answers a command it does not know with Refused(unsupported) instead of closing. A breaking change raises the major version, and the runtime refuses a Hello of another major version.";
 
 pub(super) const TRANSPORT: &str = "One byte stream per client (a socket to a cloud runner, or nothing at all in process, where the client calls the runtime handle with the same types). Every frame is length-prefixed; a message frame holds one JSON message, a terminal frame holds raw terminal bytes.";
@@ -57,12 +59,22 @@ pub(super) fn commands() -> Vec<(&'static str, Value)> {
     let mut commands = state_commands();
     commands.extend(conversation_commands());
     commands.extend(workspace_commands());
+    commands.extend(repo_commands());
+    commands.extend(files::file_commands());
     commands
 }
 
 fn state_commands() -> Vec<(&'static str, Value)> {
     vec![
         ("runtime_ping", json!({ "area": "runtime", "verb": "ping" })),
+        (
+            "runtime_settle",
+            json!({ "area": "runtime", "verb": "settle" }),
+        ),
+        (
+            "bus_observe_agent",
+            json!({ "area": "bus", "verb": "observe_agent", "agent": chat(), "hint": "permission_pending" }),
+        ),
         (
             "bus_answer_ask",
             json!({ "area": "bus", "verb": "answer_ask", "ask": 3, "decision": "Pass" }),
@@ -78,6 +90,22 @@ fn state_commands() -> Vec<(&'static str, Value)> {
         (
             "usage_refresh",
             json!({ "area": "usage", "verb": "refresh" }),
+        ),
+        (
+            "usage_place",
+            json!({ "area": "usage", "verb": "place", "spot": { "environment": ENVIRONMENT } }),
+        ),
+        (
+            "models_list",
+            json!({ "area": "models", "verb": "list", "spot": { "environment": ENVIRONMENT }, "harness": "Codex" }),
+        ),
+        (
+            "health_check",
+            json!({ "area": "health", "verb": "check", "spot": {} }),
+        ),
+        (
+            "opencode_start",
+            json!({ "area": "opencode", "verb": "start", "spot": { "environment": ENVIRONMENT, "root": "/home/dev/krad" } }),
         ),
         (
             "models_keep",
@@ -115,11 +143,35 @@ fn state_commands() -> Vec<(&'static str, Value)> {
             "host_reconnect",
             json!({ "area": "host", "verb": "reconnect", "environment": ENVIRONMENT }),
         ),
+        (
+            "host_close_all",
+            json!({ "area": "host", "verb": "close_all" }),
+        ),
+        (
+            "host_ssh_hosts",
+            json!({ "area": "host", "verb": "ssh_hosts" }),
+        ),
+        (
+            "host_install_acp_package",
+            json!({ "area": "host", "verb": "install_acp_package", "spot": { "environment": ENVIRONMENT }, "agent": "codex-acp" }),
+        ),
     ]
 }
 
 fn conversation_commands() -> Vec<(&'static str, Value)> {
     vec![
+        (
+            "chat_open",
+            json!({ "area": "chat", "verb": "open", "chat": chat(), "start": { "harness": "ClaudeCode", "model": null, "effort": null, "permission_mode": null, "mcp_servers": null, "acp": { "mode": null, "options": [] }, "session": { "kind": "resume", "from": "4f2c0b7c-a91e-4c1d-9e0f-2b7a1d3c5e8f" }, "messages": [], "notices": [] } }),
+        ),
+        (
+            "chat_page",
+            json!({ "area": "chat", "verb": "page", "chat": chat(), "before": 64, "count": 64 }),
+        ),
+        (
+            "chat_mentions",
+            json!({ "area": "chat", "verb": "mentions", "environment": ENVIRONMENT, "root": "/home/dev/app", "query": "main", "limit": 20 }),
+        ),
         (
             "chat_attach_image",
             json!({ "area": "chat", "verb": "attach_image", "chat": chat(), "image": { "format": "png", "bytes": [137, 80, 78, 71] } }),
@@ -200,8 +252,29 @@ fn workspace_commands() -> Vec<(&'static str, Value)> {
     ]
 }
 
-pub(super) fn events() -> Vec<(&'static str, Value)> {
+fn repo_commands() -> Vec<(&'static str, Value)> {
     vec![
+        (
+            "repo_commit_log",
+            json!({ "area": "repo", "environment": ENVIRONMENT, "ask": { "verb": "commit_log", "repo": "/home/dev/app", "revisions": ["HEAD"], "limit": 400 } }),
+        ),
+        (
+            "repo_diff",
+            json!({ "area": "repo", "environment": ENVIRONMENT, "ask": { "verb": "diff", "repo": "/home/dev/app", "of": { "kind": "working", "change": { "path": "src/main.rs", "kind": "modified", "origin": null } } } }),
+        ),
+        (
+            "repo_remove_worktree",
+            json!({ "area": "repo", "environment": ENVIRONMENT, "ask": { "verb": "remove_worktree", "repo": "/home/dev/app", "path": "/home/dev/app-fix", "removal": "discard" } }),
+        ),
+        (
+            "repo_replace_text",
+            json!({ "area": "repo", "environment": ENVIRONMENT, "ask": { "verb": "replace_text", "path": "/home/dev/app/src/main.rs", "expected": "fn main() {}\n", "text": "fn main() {\n}\n" } }),
+        ),
+    ]
+}
+
+pub(super) fn events() -> Vec<(&'static str, Value)> {
+    let mut events = vec![
         (
             "pong",
             json!({ "feed": "event", "seq": 42, "kind": { "type": "pong", "request": 12 } }),
@@ -234,7 +307,21 @@ pub(super) fn events() -> Vec<(&'static str, Value)> {
             "problem",
             json!({ "feed": "event", "seq": 49, "kind": { "type": "problem", "scope": { "on": "chat", "chat": chat() }, "code": "unavailable", "message": "Could not save the pasted image" } }),
         ),
-    ]
+        (
+            "answered",
+            json!({ "feed": "event", "seq": 50, "kind": { "type": "answered", "request": 15, "answer": { "kind": "mentions", "entries": [{ "path": "src/main.rs", "kind": "file" }] } } }),
+        ),
+        (
+            "answered_failed",
+            json!({ "feed": "event", "seq": 51, "kind": { "type": "answered", "request": 16, "answer": { "kind": "failed", "code": "failed", "message": "`git log` failed: not a repository" } } }),
+        ),
+        (
+            "answered_text_replaced",
+            json!({ "feed": "event", "seq": 52, "kind": { "type": "answered", "request": 17, "answer": { "kind": "text_replaced", "replaced": false } } }),
+        ),
+    ];
+    events.extend(files::file_events());
+    events
 }
 
 pub(super) fn forward_compatible() -> Vec<(Value, Value)> {

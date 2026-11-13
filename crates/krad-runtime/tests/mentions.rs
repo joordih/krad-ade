@@ -1,11 +1,15 @@
 use futures::executor::block_on;
-use krad_chat::new_session_id;
-use krad_host::HostLink;
-use krad_runtime::{Runtime, RuntimeSetup};
+use futures::StreamExt as _;
+use krad_domain::{new_session_id, EnvironmentData, EnvironmentName};
+use krad_protocol::{
+    Answer, ChatCommand, Command, EnvironmentCommand, ErrorCode, EventKind, Feed, Reply,
+};
+use krad_runtime::{EventReceiver, Runtime, RuntimeHandle, RuntimeSetup};
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
 const LIMIT: usize = 8;
+const ENVIRONMENT: &str = "mentions";
 
 struct Folder(PathBuf);
 
@@ -15,16 +19,54 @@ impl Drop for Folder {
     }
 }
 
-fn found(index: &krad_repo::FileIndex, query: &str) -> Vec<PathBuf> {
-    index
-        .search(query, LIMIT)
-        .into_iter()
-        .map(|entry| entry.path.clone())
-        .collect()
+fn environment() -> EnvironmentName {
+    EnvironmentName::new(ENVIRONMENT.to_owned())
+}
+
+fn mentions(root: &Path, query: &str) -> Command {
+    Command::Chat(ChatCommand::Mentions {
+        environment: environment(),
+        root: root.to_path_buf(),
+        query: query.to_owned(),
+        limit: LIMIT,
+    })
+}
+
+fn answer_of(
+    runtime: &RuntimeHandle,
+    feed: &mut EventReceiver,
+    command: Command,
+) -> Result<Answer, Box<dyn Error>> {
+    let request = runtime.next_request();
+    let reply = block_on(runtime.send(request, command))?;
+    if reply != Reply::Accepted {
+        return Err(format!("{reply:?}").into());
+    }
+    while let Some(feed) = block_on(feed.next()) {
+        if let Feed::Event(event) = feed {
+            if let EventKind::Answered {
+                request: heard,
+                answer,
+            } = event.kind
+            {
+                if heard == request {
+                    return Ok(*answer);
+                }
+            }
+        }
+    }
+    Err("the runtime stopped".into())
+}
+
+fn found(answer: Answer) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let Answer::Mentions(found) = answer else {
+        return Err(format!("{answer:?}").into());
+    };
+    Ok(found.entries.into_iter().map(|entry| entry.path).collect())
 }
 
 #[test]
-fn the_mentions_index_is_built_once_and_built_again_after_it_is_forgotten(
+fn mentions_are_answered_from_an_index_built_once_and_built_again_after_it_is_forgotten(
 ) -> Result<(), Box<dyn Error>> {
     let folder = Folder(std::env::temp_dir().join(format!(
         "krad-runtime-mentions-{}",
@@ -33,14 +75,36 @@ fn the_mentions_index_is_built_once_and_built_again_after_it_is_forgotten(
     std::fs::create_dir_all(folder.0.join("src"))?;
     std::fs::write(folder.0.join("src/reader.rs"), "")?;
     let runtime = Runtime::start(RuntimeSetup::default())?;
-    let ask = |root: &Path| block_on(runtime.mention_index(HostLink::Local, root.to_path_buf()));
-    let first = ask(&folder.0)?.map_err(|error| error.to_string())?;
-    assert_eq!(found(&first, "reader"), [PathBuf::from("src/reader.rs")]);
+    let mut feed = runtime.subscribe();
+    block_on(feed.next()).ok_or("no snapshot")?;
+    let unknown = block_on(runtime.send(runtime.next_request(), mentions(&folder.0, "reader")))?;
+    assert!(matches!(
+        unknown,
+        Reply::Refused {
+            code: ErrorCode::NotFound,
+            ..
+        }
+    ));
+    let mut data = EnvironmentData::empty(environment());
+    data.add_group(folder.0.clone(), None);
+    let open = Command::Environments(EnvironmentCommand::Open {
+        environment: Box::new(data),
+    });
+    assert_eq!(
+        block_on(runtime.send(runtime.next_request(), open))?,
+        Reply::Accepted
+    );
+    let ask = |feed: &mut EventReceiver, query: &str| {
+        answer_of(&runtime, feed, mentions(&folder.0, query)).and_then(found)
+    };
+    assert_eq!(ask(&mut feed, "reader")?, [PathBuf::from("src/reader.rs")]);
     std::fs::write(folder.0.join("src/writer.rs"), "")?;
-    let cached = ask(&folder.0)?.map_err(|error| error.to_string())?;
-    assert!(std::sync::Arc::ptr_eq(&first, &cached));
-    runtime.forget_mention_indexes();
-    let rebuilt = ask(&folder.0)?.map_err(|error| error.to_string())?;
-    assert_eq!(found(&rebuilt, "writer"), [PathBuf::from("src/writer.rs")]);
+    assert_eq!(ask(&mut feed, "writer")?, Vec::<PathBuf>::new());
+    let forget = Command::Chat(ChatCommand::ForgetMentions);
+    assert_eq!(
+        block_on(runtime.send(runtime.next_request(), forget))?,
+        Reply::Accepted
+    );
+    assert_eq!(ask(&mut feed, "writer")?, [PathBuf::from("src/writer.rs")]);
     Ok(())
 }

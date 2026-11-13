@@ -93,7 +93,7 @@ impl EnvironmentShell {
                     density: self.settings.sidebar.density,
                     cloud: session.cloud.as_ref().map(|placement| {
                         let waiting = status == CardStatus::Agent(AgentState::WaitingForInput);
-                        self.cloud_badge(placement.runner, waiting)
+                        self.cloud_badge(placement.runner, waiting, cx)
                     }),
                 };
                 Self::session_row(&row, cx)

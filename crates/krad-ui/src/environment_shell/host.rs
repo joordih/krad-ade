@@ -5,17 +5,15 @@ mod look;
 mod reactions;
 mod sign_in;
 mod ssh_dialog;
-mod tools;
 
 pub(super) use folder_browser::{FolderBrowser, FolderPurpose};
-pub(super) use ssh_dialog::{ssh_config_suggestions, SshDialog};
-pub use tools::HostTools;
+pub(super) use ssh_dialog::SshDialog;
 
-use gpui_kit::{AnyElement, Context, Window};
+use gpui_kit::{AnyElement, App, Context, Window};
 use krad_domain::{EnvironmentName, Host, TerminalId};
-use krad_host::{HostContext, HostLink, HOST_CLI_PROGRAM};
+use krad_extensions::host::HostLink;
 use krad_protocol::{Command, HostCommand, HostState};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use super::terminal_card::home_dir;
@@ -35,6 +33,7 @@ pub(super) enum HostDialog {
 pub(super) struct HostUi {
     pub(super) dialog: HostDialog,
     login_env_missing_told: HashSet<Host>,
+    sign_in_terminals: HashMap<EnvironmentName, TerminalId>,
 }
 
 impl EnvironmentShell {
@@ -42,26 +41,18 @@ impl EnvironmentShell {
         self.runtime.handle.host_link(host)
     }
 
-    pub(super) fn host_context(&self) -> HostContext {
-        HostContext {
-            config_dir: krad_store::config_dir(),
-            install_id: self.host_tools.install_id.clone(),
-            timeouts: self.settings.host_timeouts,
-            transport: None,
-            local_cli: self.host_tools.local_cli.clone(),
-            host_clis: self.host_tools.host_clis.clone(),
-            prompts: self.runtime.handle.prompt_sender(),
-        }
+    pub(in crate::environment_shell) fn host_state<'a>(
+        &self,
+        env: &EnvironmentName,
+        cx: &'a App,
+    ) -> &'a HostState {
+        self.runtime.view.read(cx).hosts.state(env)
     }
 
-    pub(in crate::environment_shell) fn host_state(&self, env: &EnvironmentName) -> &HostState {
-        self.runtime.view.hosts.state(env)
-    }
-
-    pub(super) fn host_ready(&self, env: &EnvironmentName) -> bool {
-        self.envs
-            .get(env)
-            .is_some_and(|live| live.data.host.is_local() || self.host_state(env).is_connected())
+    pub(super) fn host_ready(&self, env: &EnvironmentName, cx: &App) -> bool {
+        self.envs.get(env).is_some_and(|live| {
+            live.data.host.is_local() || self.host_state(env, cx).is_connected()
+        })
     }
 
     pub(super) fn connect_worker_hosts(&mut self, cx: &mut Context<Self>) {
@@ -76,9 +67,13 @@ impl EnvironmentShell {
         }
     }
 
-    pub(in crate::environment_shell) fn runs_in_background(&self, env: &EnvironmentName) -> bool {
+    pub(in crate::environment_shell) fn runs_in_background(
+        &self,
+        env: &EnvironmentName,
+        cx: &App,
+    ) -> bool {
         *env != self.active
-            && self.host_state(env).is_connected()
+            && self.host_state(env, cx).is_connected()
             && self
                 .envs
                 .get(env)
@@ -87,7 +82,7 @@ impl EnvironmentShell {
 
     pub(super) fn show_host(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
         let connects = self.envs.get(env).is_some_and(|live| {
-            !live.data.host.is_local() && self.host_state(env).connects_when_shown()
+            !live.data.host.is_local() && self.host_state(env, cx).connects_when_shown()
         });
         if connects {
             self.ask_host(HostCommand::Show {
@@ -98,7 +93,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn reconnect_to_host(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
-        if self.host_state(env).can_reconnect() {
+        if self.host_state(env, cx).can_reconnect() {
             self.ask_host(HostCommand::Reconnect {
                 environment: env.clone(),
             });
@@ -116,11 +111,13 @@ impl EnvironmentShell {
     }
 
     pub(super) fn sign_in_terminal_of(&self, env: &EnvironmentName) -> Option<TerminalId> {
-        self.host_state(env).sign_in_terminal()
+        self.hosts.sign_in_terminals.get(env).copied()
     }
 
     pub(super) fn close_hosts(&self) {
-        self.runtime.handle.close_hosts();
+        self.runtime
+            .client
+            .post(Command::Host(HostCommand::CloseAll));
     }
 
     pub(super) fn host_dialog_sheet(
@@ -138,20 +135,14 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn env_home(&self, env: &EnvironmentName) -> Option<PathBuf> {
+    pub(super) fn env_home(&self, env: &EnvironmentName, cx: &App) -> Option<PathBuf> {
         let live = self.envs.get(env)?;
-        match self.link_for(&live.data.host) {
-            HostLink::Local => home_dir().map(PathBuf::from),
-            HostLink::Remote(ssh) => ssh.home().map(PathBuf::from),
+        if live.data.host.is_local() {
+            return home_dir().map(PathBuf::from);
+        }
+        match self.host_state(env, cx) {
+            HostState::Connected { home, .. } => home.clone(),
+            _ => None,
         }
     }
-}
-
-pub(super) fn local_cli() -> Option<PathBuf> {
-    let file = format!("{HOST_CLI_PROGRAM}{}", std::env::consts::EXE_SUFFIX);
-    std::env::current_exe()
-        .ok()?
-        .parent()
-        .map(|dir| dir.join(file))
-        .filter(|path| path.is_file())
 }

@@ -1,4 +1,4 @@
-use krad_repo::{FoundLine, ProjectMatches};
+use krad_domain::{FoundLine, ProjectMatches};
 use std::ops::Range;
 
 const CONTEXT_BEFORE: usize = 24;
@@ -102,7 +102,7 @@ fn cut(text: &str, max: usize) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_repo::FileMatches;
+    use krad_domain::FileMatches;
     use std::path::PathBuf;
 
     fn found(text: &str, spans: &[(usize, usize)]) -> FoundLine {

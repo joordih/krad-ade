@@ -321,7 +321,7 @@ impl Render for EnvironmentShell {
             && !self.activity_reveal.is_moving()
             && !self.drag.resizes_terminals();
         if settled {
-            self.sync_activity_grid(window);
+            self.sync_activity_grid(window, cx);
             if view == EnvironmentView::Sessions && !self.editing() {
                 self.sync_session_grid(window);
             }

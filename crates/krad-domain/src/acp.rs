@@ -14,7 +14,7 @@ pub use id::{AcpAgentId, AcpAgentIdError, MAX_ACP_AGENT_ID_LEN};
 pub use offers::{
     AcpAuthMethod, AcpAuthMethodId, AcpConfigCategory, AcpConfigChoice, AcpConfigOption,
     AcpConfigOptionId, AcpConfigValue, AcpMode, AcpModeId, AcpModel, AcpModelId, AcpModels,
-    AcpModes, AcpPermissionKind, AcpPermissionOption, AcpPermissionOptionId, AcpSignIn,
+    AcpModes, AcpPermissionKind, AcpPermissionOption, AcpPermissionOptionId, AcpSignIn, AcpWanted,
 };
 pub use package::{AcpPackage, AcpPackageState, NpmPackage};
 pub use secrets::{AcpAgentStart, AcpSecretKey, EnteredEnvValue, EnteredEnvVariable, SplitEnv};

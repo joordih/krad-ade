@@ -1,11 +1,11 @@
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{AppContext as _, Context, Entity};
 use krad_domain::{EnvironmentName, TerminalId, Toolchain, ToolchainScope};
+use krad_extensions::host::HostLink;
 use krad_extensions::{
     handoff, merged_settings, project_config_present, Handoff, HandoffApply, ServerPlan,
     ServerToolchain,
 };
-use krad_host::HostLink;
 use krad_lsp::ServerSettings;
 use std::collections::HashSet;
 use std::path::PathBuf;

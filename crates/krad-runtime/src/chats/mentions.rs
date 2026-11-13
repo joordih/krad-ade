@@ -1,18 +1,14 @@
-use futures::channel::oneshot;
 use krad_domain::Host;
 use krad_host::HostLink;
+use krad_protocol::{Answer, ErrorCode, EventKind, FoundMentions, RequestId};
 use krad_repo::{index_files, FileIndex, RepoError};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::jobs::{JobDone, Jobs};
-use crate::runtime::answer_to;
 
 const FRESH_FOR: Duration = Duration::from_secs(30);
-
-pub(crate) type IndexAnswer = Result<Arc<FileIndex>, Arc<RepoError>>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct IndexKey {
@@ -22,7 +18,7 @@ pub(crate) struct IndexKey {
 
 #[derive(Debug)]
 struct Indexed {
-    index: Arc<FileIndex>,
+    index: FileIndex,
     built: Instant,
     stale: bool,
 }
@@ -33,10 +29,35 @@ impl Indexed {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct MentionQuery {
+    pub(crate) request: RequestId,
+    pub(crate) query: String,
+    pub(crate) limit: usize,
+}
+
+impl MentionQuery {
+    fn answer(&self, index: &FileIndex) -> EventKind {
+        let entries = index
+            .search(&self.query, self.limit)
+            .into_iter()
+            .cloned()
+            .collect();
+        self.answered(Answer::Mentions(FoundMentions { entries }))
+    }
+
+    fn answered(&self, answer: Answer) -> EventKind {
+        EventKind::Answered {
+            request: self.request,
+            answer: Box::new(answer),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct MentionIndexes {
     built: HashMap<IndexKey, Indexed>,
-    waiting: HashMap<IndexKey, Vec<oneshot::Sender<IndexAnswer>>>,
+    waiting: HashMap<IndexKey, Vec<MentionQuery>>,
 }
 
 #[derive(Debug)]
@@ -49,8 +70,8 @@ impl MentionIndexes {
     pub(crate) fn ask(
         &mut self,
         (link, root): (HostLink, PathBuf),
-        reply: oneshot::Sender<IndexAnswer>,
-        jobs: &Jobs,
+        query: MentionQuery,
+        (jobs, outbox): (&Jobs, &mut Vec<EventKind>),
     ) {
         let key = IndexKey {
             host: link.host(),
@@ -61,10 +82,10 @@ impl MentionIndexes {
             .get(&key)
             .filter(|indexed| indexed.is_fresh(Instant::now()))
         {
-            return answer_to(reply, Ok(Arc::clone(&fresh.index)));
+            return outbox.push(query.answer(&fresh.index));
         }
         let waiters = self.waiting.entry(key.clone()).or_default();
-        waiters.push(reply);
+        waiters.push(query);
         if waiters.len() > 1 {
             return;
         }
@@ -77,31 +98,41 @@ impl MentionIndexes {
             })
         });
         if let Err(error) = started {
-            self.indexed(
-                FilesIndexed {
-                    key,
-                    index: Err(RepoError::Io(error)),
-                },
-                Instant::now(),
-            );
+            let failed = FilesIndexed {
+                key,
+                index: Err(RepoError::Io(error)),
+            };
+            self.indexed(failed, Instant::now(), outbox);
         }
     }
 
-    pub(crate) fn indexed(&mut self, done: FilesIndexed, now: Instant) {
+    pub(crate) fn indexed(
+        &mut self,
+        done: FilesIndexed,
+        now: Instant,
+        outbox: &mut Vec<EventKind>,
+    ) {
         let FilesIndexed { key, index } = done;
-        let index = index.map(Arc::new).map_err(Arc::new);
-        if let Ok(index) = &index {
-            self.built.insert(
-                key.clone(),
-                Indexed {
-                    index: Arc::clone(index),
+        let waiters = self.waiting.remove(&key).unwrap_or_default();
+        match index {
+            Ok(index) => {
+                outbox.extend(waiters.iter().map(|query| query.answer(&index)));
+                let indexed = Indexed {
+                    index,
                     built: now,
                     stale: false,
-                },
-            );
-        }
-        for reply in self.waiting.remove(&key).unwrap_or_default() {
-            answer_to(reply, index.clone());
+                };
+                self.built.insert(key, indexed);
+            }
+            Err(error) => {
+                let message = error.to_string();
+                outbox.extend(waiters.iter().map(|query| {
+                    query.answered(Answer::Failed {
+                        code: ErrorCode::Unavailable,
+                        message: message.clone(),
+                    })
+                }));
+            }
         }
     }
 
@@ -110,12 +141,16 @@ impl MentionIndexes {
             indexed.stale = true;
         }
     }
+
+    pub(crate) fn drop_roots(&mut self, host: &Host, roots: &[PathBuf]) {
+        self.built
+            .retain(|key, _| key.host != *host || !roots.contains(&key.root));
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::executor::block_on;
 
     fn key() -> IndexKey {
         IndexKey {
@@ -124,29 +159,46 @@ mod tests {
         }
     }
 
+    fn query(request: u64) -> MentionQuery {
+        MentionQuery {
+            request: RequestId(request),
+            query: "main".to_owned(),
+            limit: 4,
+        }
+    }
+
     #[test]
     fn an_index_answers_everyone_waiting_and_stays_fresh_until_it_ages_or_is_forgotten() {
         let mut indexes = MentionIndexes::default();
-        let (first, first_answer) = oneshot::channel();
-        let (second, second_answer) = oneshot::channel();
-        indexes.waiting.insert(key(), vec![first, second]);
+        indexes.waiting.insert(key(), vec![query(1), query(2)]);
         let now = Instant::now();
         let files = FileIndex::new([PathBuf::from("src/main.rs")]);
+        let mut outbox = Vec::new();
         indexes.indexed(
             FilesIndexed {
                 key: key(),
                 index: Ok(files.clone()),
             },
             now,
+            &mut outbox,
         );
-        for answer in [first_answer, second_answer] {
-            let answered = block_on(answer).ok().and_then(Result::ok);
-            assert_eq!(answered.as_deref(), Some(&files));
-        }
+        let answered: Vec<RequestId> = outbox
+            .iter()
+            .filter_map(|event| match event {
+                EventKind::Answered { request, answer } => {
+                    matches!(**answer, Answer::Mentions(ref found) if found.entries.len() == 1)
+                        .then_some(*request)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(answered, [RequestId(1), RequestId(2)]);
         let kept = &indexes.built[&key()];
         assert!(kept.is_fresh(now));
         assert!(!kept.is_fresh(now + FRESH_FOR));
         indexes.forget();
         assert!(!indexes.built[&key()].is_fresh(now));
+        indexes.drop_roots(&Host::Local, &[PathBuf::from("/work")]);
+        assert!(indexes.built.is_empty());
     }
 }

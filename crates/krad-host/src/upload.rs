@@ -54,11 +54,7 @@ impl UploadProgress {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Existing {
-    Replace,
-    Skip,
-}
+use krad_domain::UploadExisting;
 
 struct Counted<'a, R> {
     inner: R,
@@ -97,7 +93,12 @@ pub fn local_size(path: &Path) -> u64 {
 impl HostLink {
     /// # Errors
     pub fn upload(&self, local: &Path, into: &Path) -> Result<PathBuf, HostError> {
-        self.upload_with(local, into, &UploadProgress::default(), Existing::Replace)
+        self.upload_with(
+            local,
+            into,
+            &UploadProgress::default(),
+            UploadExisting::Replace,
+        )
     }
 
     /// # Errors
@@ -106,7 +107,7 @@ impl HostLink {
         local: &Path,
         into: &Path,
         progress: &UploadProgress,
-        existing: Existing,
+        existing: UploadExisting,
     ) -> Result<PathBuf, HostError> {
         let name = local.file_name().ok_or_else(|| {
             HostError::Io(io::Error::new(
@@ -127,7 +128,7 @@ impl HostLink {
         local: &Path,
         target: &Path,
         progress: &UploadProgress,
-        existing: Existing,
+        existing: UploadExisting,
     ) -> Result<(), HostError> {
         progress.check()?;
         let metadata = fs::symlink_metadata(local)?;
@@ -144,7 +145,7 @@ impl HostLink {
             }
             return Ok(());
         }
-        if existing == Existing::Skip && self.symlink_metadata(target).is_ok() {
+        if existing == UploadExisting::Skip && self.symlink_metadata(target).is_ok() {
             progress.sent.fetch_add(metadata.len(), Ordering::Relaxed);
             return Ok(());
         }
@@ -220,7 +221,7 @@ mod tests {
         fs::create_dir_all(into.join("data"))?;
         fs::write(into.join("data").join("a.bin"), "kept")?;
         let progress = UploadProgress::default();
-        HostLink::Local.upload_with(&source, &into, &progress, Existing::Skip)?;
+        HostLink::Local.upload_with(&source, &into, &progress, UploadExisting::Skip)?;
         assert_eq!(progress.total(), 1024);
         assert_eq!(progress.sent(), 1024);
         assert_eq!(fs::read_to_string(into.join("data").join("a.bin"))?, "kept");
@@ -240,7 +241,7 @@ mod tests {
         let progress = UploadProgress::default();
         progress.cancel();
         assert!(HostLink::Local
-            .upload_with(&source, &into, &progress, Existing::Replace)
+            .upload_with(&source, &into, &progress, UploadExisting::Replace)
             .is_err());
         assert!(!into.join("big.bin").exists());
         fs::remove_dir_all(base)?;
@@ -258,7 +259,12 @@ mod tests {
         let progress = UploadProgress::default();
         progress.cancel();
         assert!(HostLink::Local
-            .upload_with(&source, &base.join("to"), &progress, Existing::Replace)
+            .upload_with(
+                &source,
+                &base.join("to"),
+                &progress,
+                UploadExisting::Replace
+            )
             .is_err());
         assert_eq!(fs::read_to_string(&target)?, "original");
         fs::remove_dir_all(base)?;

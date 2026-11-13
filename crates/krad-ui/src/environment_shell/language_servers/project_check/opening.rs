@@ -1,15 +1,17 @@
-use gpui_kit::{AppContext as _, Context};
+use gpui_kit::Context;
 use krad_lsp::lsp_types::request::WorkspaceDiagnosticRequest;
 use krad_lsp::lsp_types::{
     PartialResultParams, WorkDoneProgressParams, WorkspaceDiagnosticParams,
     WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
 };
 use krad_lsp::{uri_path, DocumentChange};
+use krad_protocol::FileAsk;
 use std::path::PathBuf;
 use std::time::Duration;
 
 use super::super::super::EnvironmentShell;
 use super::super::{Document, ServerKey};
+use super::disk::texts_of;
 use super::MAX_FILE_BYTES;
 
 const BATCH_FILES: usize = 16;
@@ -75,27 +77,28 @@ impl EnvironmentShell {
             })
             .cloned()
             .collect();
-        let Some((link, _)) = self.server_link(&key.host) else {
+        let Some(env) = self.env_on_host(&key.host) else {
             return;
         };
         let opened = key.clone();
         let task = cx.spawn(async move |this, cx| {
             for batch in wanted.chunks(BATCH_FILES) {
-                let reading_link = link.clone();
-                let paths = batch.to_vec();
-                let texts = cx
-                    .background_spawn(async move {
-                        paths
-                            .into_iter()
-                            .filter_map(|path| {
-                                let file =
-                                    krad_repo::read_text(&reading_link, &path, MAX_FILE_BYTES)
-                                        .ok()?;
-                                (!file.truncated).then_some((path, file.text))
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                    .await;
+                let ask = FileAsk::ReadTexts {
+                    paths: batch.to_vec(),
+                    limit: MAX_FILE_BYTES,
+                };
+                let Ok(reading) =
+                    this.update(cx, |shell, cx| shell.ask_file(&env, ask, texts_of, cx))
+                else {
+                    return;
+                };
+                let texts: Vec<(PathBuf, String)> = reading
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|read| !read.truncated)
+                    .map(|read| (read.path, read.text))
+                    .collect();
                 let going =
                     this.update(cx, |shell, cx| shell.open_in_background(&opened, texts, cx));
                 if !matches!(going, Ok(true)) {

@@ -1,6 +1,8 @@
 use krad_domain::{AgentPreset, HarnessHealth, Host};
 use serde::{Deserialize, Serialize};
 
+use crate::spots::HarnessSpot;
+
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum HealthPlace {
@@ -22,6 +24,17 @@ pub struct HarnessChecked {
     pub place: HealthPlace,
     pub harness: AgentPreset,
     pub check: HarnessCheck,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(tag = "verb", rename_all = "snake_case")]
+pub enum HealthCommand {
+    Check {
+        #[serde(default)]
+        spot: HarnessSpot,
+    },
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]

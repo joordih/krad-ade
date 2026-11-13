@@ -8,10 +8,10 @@ mod orchestrator;
 mod rewind;
 mod runtime_chat;
 
-use krad_chat::{new_session_id, Catalog, CommandOffer, LiveSession, SlashCommand};
+use krad_chat::{Catalog, CommandOffer, SlashCommand};
 use krad_domain::{
-    AgentPreset, Effort, EffortSnap, EnvironmentName, McpServerName, ModelId, PermissionMode,
-    ResumeId, TerminalId,
+    new_session_id, AgentPreset, Effort, EffortSnap, EnvironmentName, LiveSession, McpServerName,
+    ModelId, PermissionMode, ResumeId, TerminalId,
 };
 use krad_store::acp_transcript_file;
 

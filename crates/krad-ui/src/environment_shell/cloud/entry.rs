@@ -1,4 +1,4 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::{CloudRunnerId, GroupId, SessionId, TerminalGroup, ToastKind};
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
@@ -29,6 +29,7 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn cloud_session_entry(
         &self,
         group: &TerminalGroup,
+        cx: &App,
     ) -> MenuEntry {
         let runners = &self.settings.cloud.runners;
         let Some(first) = runners.first() else {
@@ -48,17 +49,21 @@ impl EnvironmentShell {
         if let [runner] = runners.as_slice() {
             return MenuEntry::item(NEW_LABEL, Some(IconName::Cloud), new_in(runner.id));
         }
-        MenuEntry::submenu(NEW_LABEL, IconName::Cloud, self.runner_entries(new_in))
+        MenuEntry::submenu(NEW_LABEL, IconName::Cloud, self.runner_entries(new_in, cx))
     }
 
-    fn runner_entries(&self, action: impl Fn(CloudRunnerId) -> MenuAction) -> Vec<MenuEntry> {
+    fn runner_entries(
+        &self,
+        action: impl Fn(CloudRunnerId) -> MenuAction,
+        cx: &App,
+    ) -> Vec<MenuEntry> {
         self.settings
             .cloud
             .runners
             .iter()
             .map(|runner| {
                 MenuEntry::item(runner.name.as_str(), None, action(runner.id))
-                    .with_detail(runner_label(&self.runner_state(runner.id)))
+                    .with_detail(runner_label(&self.runner_state(runner.id, cx)))
             })
             .collect()
     }
@@ -101,9 +106,10 @@ impl EnvironmentShell {
                 let entries = vec![MenuEntry::submenu(
                     SEND_LABEL,
                     IconName::Cloud,
-                    self.runner_entries(|runner| {
-                        MenuAction::Cloud(CloudMenu::Send(session, runner))
-                    }),
+                    self.runner_entries(
+                        |runner| MenuAction::Cloud(CloudMenu::Send(session, runner)),
+                        cx,
+                    ),
                 )];
                 self.open_menu(origin, MenuPlacement::Below, entries, cx);
             }

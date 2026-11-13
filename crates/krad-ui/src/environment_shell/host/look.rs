@@ -42,7 +42,7 @@ pub(super) const fn label(state: &HostState) -> &'static str {
 
 pub(super) fn detail(state: &HostState) -> Option<String> {
     match state {
-        HostState::Connected { platform } => Some(platform.to_string()),
+        HostState::Connected { platform, .. } => Some(platform.to_string()),
         HostState::Failed { reason } => Some(reason.clone()),
         HostState::NotShown
         | HostState::Connecting
@@ -62,7 +62,9 @@ mod tests {
     fn tones_follow_the_state() {
         assert_eq!(
             tone(&HostState::Connected {
-                platform: HostPlatform::LinuxAarch64
+                platform: HostPlatform::LinuxAarch64,
+                home: None,
+                login_env: krad_protocol::LoginEnv::Read,
             }),
             HostTone::Ready
         );
@@ -85,7 +87,9 @@ mod tests {
     fn only_a_connected_or_failed_host_has_a_detail() {
         assert_eq!(
             detail(&HostState::Connected {
-                platform: HostPlatform::LinuxX86_64
+                platform: HostPlatform::LinuxX86_64,
+                home: None,
+                login_env: krad_protocol::LoginEnv::Read,
             }),
             Some("linux-x86_64".to_owned())
         );

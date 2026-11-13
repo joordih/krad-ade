@@ -1,5 +1,5 @@
 use krad_domain::UsageBudget;
-use krad_protocol::{Event, EventKind, Scope, Seq};
+use krad_protocol::{Command, Event, EventKind, RuntimeCommand, Scope, Seq};
 use krad_store::{ChatImages, Secrets};
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,6 +17,7 @@ use crate::cloud::CloudSessions;
 use crate::cloud_runs::CloudRuns;
 use crate::code_hosts::CodeHostWatch;
 use crate::environments::Environments;
+use crate::file_asks::Uploads;
 use crate::gateway::Gateway;
 use crate::git::Git;
 use crate::handle::RuntimeHandle;
@@ -38,6 +39,7 @@ use crate::usage::Usage;
 use crate::workers::Workers;
 
 mod agent_commands;
+mod archive_files;
 mod bus_git;
 mod chat_images;
 mod chatting;
@@ -48,11 +50,14 @@ mod clouding;
 mod code_host_watch;
 mod commands;
 mod digesting;
+mod file_asks;
 mod finished_jobs;
 mod following;
 mod git_acts;
 mod gitting;
+mod harness_spots;
 mod hooking;
+mod host_asks;
 mod hosting;
 mod keystrokes;
 mod kraddie_bus;
@@ -132,6 +137,7 @@ pub struct Runtime {
     typist: Typist,
     secrets: Secrets,
     chat_images: Option<ChatImages>,
+    uploads: Uploads,
     stopped: Arc<AtomicBool>,
 }
 
@@ -169,12 +175,12 @@ impl Runtime {
                 .map(Arc::new)
         });
         let events = AppEvents::start(setup.events, &setup.secrets, &inbox);
-        let usage_budget = Arc::new(UsageBudget::default());
-        let usage = Usage::new(Arc::clone(&usage_budget));
+        let usage = Usage::new(Arc::new(UsageBudget::default()));
         let environments = Environments::start(setup.environments);
-        let (hosts, links) = Hosts::new(access.clone());
-        let opencode = OpencodeDirectory::default();
         let settings = AppSettings::start(setup.settings, &inbox);
+        let host_context = setup.host_tools.context(settings.current.host_timeouts);
+        let (hosts, links) = Hosts::new(access.clone(), host_context);
+        let opencode = OpencodeDirectory::default();
         let views = LaunchedViews::default();
         let owned = Owned {
             events,
@@ -198,7 +204,6 @@ impl Runtime {
         Ok(RuntimeHandle::new(
             inbox,
             access,
-            usage_budget,
             (links, opencode, views, secrets),
         ))
     }
@@ -241,6 +246,7 @@ impl Runtime {
             typist: Typist::default(),
             secrets: owned.secrets,
             chat_images: owned.chat_images,
+            uploads: Uploads::default(),
             stopped,
         }
     }
@@ -292,6 +298,11 @@ impl Runtime {
 
     fn apply(&mut self, input: Input) -> Flow {
         match input {
+            Input::Command {
+                command: Command::Runtime(RuntimeCommand::Settle),
+                reply,
+                ..
+            } => self.settle(reply),
             Input::Command { id, command, reply } => {
                 let answer = self.execute(id, command);
                 answer_to(reply, answer);
@@ -320,28 +331,12 @@ impl Runtime {
             } => self.hand_machine_channel(&environment, channel),
             Input::Wake => {}
             chat @ (Input::OpenChat { .. }
-            | Input::CloseChat(_)
-            | Input::ChatPage { .. }
-            | Input::MentionIndex { .. }
-            | Input::ForgetMentionIndexes
             | Input::OfferBuffers { .. }
             | Input::StartLiveChat(_)
             | Input::Opencode(_)) => {
                 self.apply_chat_input(chat);
             }
-            Input::CheckHarnesses { place, probes } => {
-                self.health
-                    .check(&place, probes, &self.jobs, &mut self.outbox);
-            }
-            Input::PlaceUsage(place) => self.usage.place(place, &self.jobs, &mut self.outbox),
-            Input::ListModels {
-                host,
-                harness,
-                runner,
-                cwd,
-            } => self.models.list((host, harness), runner, cwd, &self.jobs),
             Input::JobDone(done) => self.job_done(done),
-            Input::Settle(reply) => self.settle(reply),
             Input::SettingsNotSaved(error) => AppSettings::not_saved(error, &mut self.outbox),
             Input::KraddieNotSaved(error) => self.outbox.push(EventKind::KraddieNotSaved { error }),
             Input::DigestHeard { chat, reply } => self.digest_heard(&chat, reply),

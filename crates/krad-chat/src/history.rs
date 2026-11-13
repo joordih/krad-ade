@@ -23,18 +23,7 @@ const UUID_KEY: &str = "uuid";
 const TOOL_USE_ID_KEY: &str = "tool_use_id";
 const INTERRUPT_MARKER: &str = "[Request interrupted by user";
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TranscriptMark {
-    ToolFinished(ToolUseId),
-    Interrupted,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct TranscriptChunk {
-    pub entries: Vec<ChatEntry>,
-    pub marks: Vec<TranscriptMark>,
-    pub next: u64,
-}
+pub use krad_domain::{TranscriptChunk, TranscriptMark};
 
 #[must_use]
 pub fn claude_conversation_file(host: &HostLink, home: &Path, id: &ResumeId) -> Option<PathBuf> {

@@ -333,7 +333,6 @@ impl EnvironmentShell {
         self.palette_open = !self.palette_open;
         if self.palette_open {
             self.palette_files.clear();
-            self.index_palette_files(cx);
             self.refresh_chat_index(cx);
             self.detect_palette_tasks(cx);
             if let Some(palette) = &self.palette {
@@ -495,7 +494,7 @@ impl EnvironmentShell {
                 .on_query(move |query: &str, _: &mut Window, cx: &mut App| {
                     weak_query
                         .update(cx, |shell, cx| {
-                            shell.find_palette_files(query);
+                            shell.find_palette_files(query, cx);
                             shell.search_notes(query, cx);
                             shell.search_chat_history(query, cx);
                         })

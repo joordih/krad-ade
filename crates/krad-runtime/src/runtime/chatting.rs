@@ -1,14 +1,19 @@
 use krad_chat::start_chat;
+use krad_domain::EnvironmentName;
 use krad_domain::{AgentPreset, AttentionTarget, Host, ModelOffer, Sight};
 use krad_protocol::{
-    AgentRef, AttentionCommand, ChatCommand, EventKind, ModelsCommand, Reply, UsageCommand,
+    AgentRef, Answer, AttentionCommand, ChatCommand, ErrorCode, EventKind, ModelsCommand, Reply,
+    RequestId, UsageCommand,
 };
+use std::path::PathBuf;
 
-use super::{answer_to, Runtime};
+use super::{refused, Runtime};
 use crate::chats::{
     ChatCheckpoint, ChatEarlier, ChatEffect, ChatOpening, ChatStart, ChatWork, Chats, FilesIndexed,
     LaunchFacts,
 };
+use crate::chats::{MentionQuery, UNKNOWN_CHAT};
+use crate::environments::UNKNOWN_ENVIRONMENT;
 use crate::input::{Input, LiveStart};
 use crate::opencode::{OpencodeListed, OpencodeStarted};
 
@@ -68,24 +73,10 @@ impl Runtime {
     pub(super) fn apply_chat_input(&mut self, input: Input) {
         match input {
             Input::OpenChat { chat, start } => self.open_chat(&chat, *start),
-            Input::CloseChat(chat) => {
-                self.chats.close(&chat, &mut self.outbox);
-                self.cloud_runs.forget(&chat);
-            }
-            Input::ChatPage {
-                chat,
-                before,
-                count,
-                reply,
-            } => answer_to(reply, self.chats.page(&chat, before, count)),
-            Input::MentionIndex { place, reply } => {
-                self.chats.mentions.ask(place, reply, &self.jobs);
-            }
             Input::OfferBuffers {
                 environment,
                 buffers,
             } => self.buffers.offer(environment, buffers),
-            Input::ForgetMentionIndexes => self.chats.mentions.forget(),
             Input::StartLiveChat(start) => self.start_live_chat(*start),
             Input::Opencode(input) => self.opencode.apply(input, &self.jobs, &mut self.outbox),
             _ => {}
@@ -96,8 +87,46 @@ impl Runtime {
         self.with_chat_work(|chats, work| chats.open(chat, start, work));
     }
 
-    pub(super) fn execute_chat(&mut self, command: ChatCommand) -> Option<Reply> {
+    pub(super) fn execute_chat(&mut self, id: RequestId, command: ChatCommand) -> Option<Reply> {
         match command {
+            ChatCommand::Open { chat, start } => {
+                self.open_chat(&chat, ChatStart::from(*start));
+                Some(Reply::Accepted)
+            }
+            ChatCommand::Close { chat } => {
+                self.chats.close(&chat, &mut self.outbox);
+                self.cloud_runs.forget(&chat);
+                Some(Reply::Accepted)
+            }
+            ChatCommand::Page {
+                chat,
+                before,
+                count,
+            } => Some(self.answer_chat_page(id, &chat, (before, count))),
+            ChatCommand::Mentions {
+                environment,
+                root,
+                query,
+                limit,
+            } => Some(self.ask_mentions(
+                &environment,
+                root,
+                MentionQuery {
+                    request: id,
+                    query,
+                    limit,
+                },
+            )),
+            ChatCommand::Transcript { environment, ask } => {
+                Some(self.ask_transcript(id, &environment, ask))
+            }
+            ChatCommand::Subagents { environment, ask } => {
+                Some(self.ask_subagents(id, &environment, ask))
+            }
+            ChatCommand::ForgetMentions => {
+                self.chats.mentions.forget();
+                Some(Reply::Accepted)
+            }
             ChatCommand::AttachImage { chat, image } => Some(self.attach_chat_image(chat, image)),
             ChatCommand::ForgetImages { chat } => Some(self.forget_chat_images(chat)),
             command => self.with_chat_work(|chats, work| chats.execute(command, work)),
@@ -127,7 +156,39 @@ impl Runtime {
     pub(super) fn files_indexed(&mut self, indexed: FilesIndexed) {
         self.chats
             .mentions
-            .indexed(indexed, std::time::Instant::now());
+            .indexed(indexed, std::time::Instant::now(), &mut self.outbox);
+    }
+
+    fn answer_chat_page(
+        &mut self,
+        request: RequestId,
+        chat: &AgentRef,
+        (before, count): (usize, usize),
+    ) -> Reply {
+        let Some(page) = self.chats.page(chat, before, count) else {
+            return refused(ErrorCode::NotFound, UNKNOWN_CHAT);
+        };
+        self.outbox.push(EventKind::Answered {
+            request,
+            answer: Box::new(Answer::ChatPage(page)),
+        });
+        Reply::Accepted
+    }
+
+    fn ask_mentions(
+        &mut self,
+        environment: &EnvironmentName,
+        root: PathBuf,
+        query: MentionQuery,
+    ) -> Reply {
+        let Some(host) = self.environments.host_of(environment) else {
+            return refused(ErrorCode::NotFound, UNKNOWN_ENVIRONMENT);
+        };
+        let link = self.hosts.link(&host);
+        self.chats
+            .mentions
+            .ask((link, root), query, (&self.jobs, &mut self.outbox));
+        Reply::Accepted
     }
 
     pub(super) fn acp_secrets_read(&mut self, read: crate::chats::AcpSecretsRead) {

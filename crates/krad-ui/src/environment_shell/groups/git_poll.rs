@@ -92,7 +92,7 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn start_group_checks(&mut self, cx: &mut Context<Self>) {
         let task = cx.spawn(async move |this, cx| loop {
             let checked = this.update(cx, |shell, cx| {
-                let (_, roots) = shell.group_roots();
+                let roots = shell.group_roots();
                 shell.detect_wsl_agents(&roots);
                 shell.ensure_project_checks(cx);
             });

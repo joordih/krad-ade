@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 use crate::agent::AgentPreset;
 use crate::git_object::GitObjectId;
@@ -45,6 +46,27 @@ impl AgentPreset {
     pub const fn checkpoints_files(self) -> bool {
         self.rewinds() && !self.restores_files()
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckpointChangeKind {
+    Reverted,
+    Recreated,
+    Removed,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CheckpointChange {
+    pub path: PathBuf,
+    pub kind: CheckpointChangeKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[must_use]
+pub struct RestoredCheckpoint {
+    pub undo: GitObjectId,
+    pub changes: Vec<CheckpointChange>,
 }
 
 #[cfg(test)]

@@ -1,8 +1,8 @@
+use gpui_kit::App;
 use krad_domain::{
     parse_wsl_path, AgentPreset, EnvironmentName, LaunchIntent, ModelId, ProjectTask,
     RelaunchIntent, ResumeId, TerminalId, WslPath,
 };
-use krad_host::HostLink;
 use std::path::Path;
 
 use super::super::shell_site::ShellSite;
@@ -80,8 +80,9 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
         extra: Vec<(String, String)>,
+        cx: &App,
     ) -> Vec<(String, String)> {
-        let mut vars = self.bus_vars(env, id);
+        let mut vars = self.bus_vars(env, id, cx);
         vars.extend(extra);
         vars
     }
@@ -90,10 +91,10 @@ impl EnvironmentShell {
         &self,
         env: &EnvironmentName,
         cwd: Option<&Path>,
-    ) -> (HostLink, Option<WslPath>, ShellSite) {
-        let link = self.env_link(env);
-        let wsl = cwd.filter(|_| link.is_local()).and_then(parse_wsl_path);
-        let site = ShellSite::of(&link, wsl.is_some());
-        (link, wsl, site)
+    ) -> (Option<WslPath>, ShellSite) {
+        let host = self.env_host(env);
+        let wsl = cwd.filter(|_| host.is_local()).and_then(parse_wsl_path);
+        let site = ShellSite::of(&host, wsl.is_some());
+        (wsl, site)
     }
 }

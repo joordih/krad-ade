@@ -5,6 +5,7 @@ use krad_domain::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::answers::Answer;
 use crate::app_events::WebhookTest;
 use crate::attention::{AttentionNotice, AttentionSnapshot};
 use crate::bus::{
@@ -13,6 +14,7 @@ use crate::bus::{
 use crate::chats::{ChatAsk, ChatAskId, ChatState, ChatSummary};
 use crate::cloud::{CloudDraftId, CloudNews, CloudOpened};
 use crate::environments::SpendingCrossed;
+use crate::files::UploadShown;
 use crate::gateway::GatewayState;
 use crate::git::{GitFinished, GitRead, SessionChangesRead, WorktreeSwept};
 use crate::harness_health::{HarnessChecked, HealthSnapshot};
@@ -185,6 +187,11 @@ pub enum EventKind {
         image: ChatImage,
     },
     Problem(Problem),
+    Answered {
+        request: RequestId,
+        answer: Box<Answer>,
+    },
+    UploadProgress(UploadShown),
     GitRead(GitRead),
     GitFinished(GitFinished),
     SessionChangesRead(SessionChangesRead),

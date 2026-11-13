@@ -1,7 +1,7 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
+    div, px, rgb, AnyElement, App, Context, FontWeight, InteractiveElement, IntoElement,
+    MouseButton, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::{
     relative_age, AttentionKind, AttentionTarget, InboxFilter, SessionEdit, SessionId, Visibility,
@@ -78,8 +78,8 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    pub(in crate::environment_shell) fn attention_waiting(&self) -> bool {
-        !self.runtime.view.attention.queue.is_empty()
+    pub(in crate::environment_shell) fn attention_waiting(&self, cx: &App) -> bool {
+        !self.runtime.view.read(cx).attention.queue.is_empty()
     }
 
     pub(in crate::environment_shell) const fn attention_inbox_open(&self) -> bool {
@@ -101,10 +101,11 @@ impl EnvironmentShell {
             .map(|node| node.title.clone())
     }
 
-    fn waiting_rows(&self, now: Instant) -> Vec<InboxRow> {
+    fn waiting_rows(&self, now: Instant, cx: &App) -> Vec<InboxRow> {
         let filter = self.attention.filter;
         self.runtime
             .view
+            .read(cx)
             .attention
             .queue
             .ordered()
@@ -119,9 +120,10 @@ impl EnvironmentShell {
             .collect()
     }
 
-    fn history_rows(&self, now: Instant) -> Vec<InboxRow> {
+    fn history_rows(&self, now: Instant, cx: &App) -> Vec<InboxRow> {
         self.runtime
             .view
+            .read(cx)
             .attention
             .log
             .filtered(self.attention.filter)
@@ -146,8 +148,8 @@ impl EnvironmentShell {
         let (_, root_h) = self.root_size(window);
         let height = INBOX_MAX_H.min((root_h - INBOX_TOP - EDGE_MARGIN).max(0.0));
         let now = Instant::now();
-        let waiting = self.waiting_rows(now);
-        let history = self.history_rows(now);
+        let waiting = self.waiting_rows(now, cx);
+        let history = self.history_rows(now, cx);
         let dismiss = |this: &mut Self,
                        _: &gpui_kit::MouseDownEvent,
                        _: &mut Window,
@@ -230,23 +232,26 @@ impl EnvironmentShell {
                     .text_color(rgb(pal.text_strong))
                     .child(INBOX_TITLE),
             )
-            .when(!self.runtime.view.attention.log.is_empty(), |header| {
-                header.child(
-                    div()
-                        .id(CLEAR_ID)
-                        .cursor_pointer()
-                        .rounded(px(RADIUS_XS))
-                        .px(px(SPACE_1_5))
-                        .text_size(px(TEXT_XS))
-                        .line_height(px(LINE_XS))
-                        .text_color(rgb(pal.text_muted))
-                        .hover(|style| style.bg(pal.bg_hover))
-                        .child(CLEAR_LABEL)
-                        .on_click(cx.listener(|this: &mut Self, _, _, _| {
-                            this.tell_attention(AttentionCommand::ClearHistory);
-                        })),
-                )
-            })
+            .when(
+                !self.runtime.view.read(cx).attention.log.is_empty(),
+                |header| {
+                    header.child(
+                        div()
+                            .id(CLEAR_ID)
+                            .cursor_pointer()
+                            .rounded(px(RADIUS_XS))
+                            .px(px(SPACE_1_5))
+                            .text_size(px(TEXT_XS))
+                            .line_height(px(LINE_XS))
+                            .text_color(rgb(pal.text_muted))
+                            .hover(|style| style.bg(pal.bg_hover))
+                            .child(CLEAR_LABEL)
+                            .on_click(cx.listener(|this: &mut Self, _, _, _| {
+                                this.tell_attention(AttentionCommand::ClearHistory);
+                            })),
+                    )
+                },
+            )
             .into_any_element()
     }
 

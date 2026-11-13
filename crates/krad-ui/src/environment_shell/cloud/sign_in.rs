@@ -1,4 +1,4 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::{CloudRunnerId, EnvironmentName, RunnerCli, RunnerLogin, TerminalId, ToastKind};
 use krad_protocol::{Command, RunnerCommand};
 
@@ -24,8 +24,9 @@ impl EnvironmentShell {
         &self,
         runner: CloudRunnerId,
         cli: RunnerCli,
+        cx: &App,
     ) -> Option<RunnerLogin> {
-        let shown = self.runtime.view.runner_logins.get(&runner)?;
+        let shown = self.runtime.view.read(cx).runner_logins.get(&runner)?;
         if cli == RunnerCli::Claude && shown.claude_token {
             return Some(RunnerLogin::SignedIn);
         }
@@ -39,10 +40,11 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn runner_logins(
         &self,
         runner: CloudRunnerId,
+        cx: &App,
     ) -> Vec<(RunnerCli, RunnerLogin)> {
         RunnerCli::ALL
             .into_iter()
-            .filter_map(|cli| Some((cli, self.runner_login(runner, cli)?)))
+            .filter_map(|cli| Some((cli, self.runner_login(runner, cli, cx)?)))
             .collect()
     }
 
@@ -58,7 +60,7 @@ impl EnvironmentShell {
         cli: RunnerCli,
         cx: &mut Context<Self>,
     ) {
-        if !self.runner_state(runner).is_ready() {
+        if !self.runner_state(runner, cx).is_ready() {
             self.ensure_runner_ready(runner);
             return self.toast(ToastKind::Warning, NOT_READY, cx);
         }

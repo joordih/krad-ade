@@ -4,14 +4,14 @@ use gpui_kit::{
     InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Styled, Subscription, Task,
     Window,
 };
-use krad_host::HostLink;
-use krad_repo::write_note_text;
+use krad_protocol::FileAsk;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use super::super::disk_text::{
-    disk_change, modified_at, read_file, DiskChange, ReadError, ReadFile,
+    disk_change, modified_of, read_ask, read_of, stat_ask, DiskChange, ReadError, ReadFile,
 };
+use super::super::file_asks::stat_of;
 mod attachments;
 
 use super::super::EnvironmentShell;
@@ -51,7 +51,6 @@ enum DiskWatch {
 }
 
 pub(in crate::environment_shell) struct NoteEditor {
-    file: PathBuf,
     pub(super) state: Option<Entity<EditorState>>,
     pub(super) load: Load,
     dirty: bool,
@@ -63,9 +62,8 @@ pub(in crate::environment_shell) struct NoteEditor {
 }
 
 impl NoteEditor {
-    fn new(file: PathBuf) -> Self {
+    fn new() -> Self {
         Self {
-            file,
             state: None,
             load: Load::Pending,
             dirty: false,
@@ -119,16 +117,15 @@ impl EnvironmentShell {
         let Some(file) = self.vault_file(&path) else {
             return;
         };
-        let link = self.active_link();
         let editor = self
             .notes
             .editors
             .entry(path.clone())
-            .or_insert_with(|| NoteEditor::new(file.clone()));
+            .or_insert_with(NoteEditor::new);
         match std::mem::replace(&mut editor.load, Load::Ready) {
             Load::Pending => {
                 editor.load = Load::Reading;
-                Self::read_note_file(link, path, file, cx);
+                self.read_note_file(path, file, cx);
                 return;
             }
             Load::Read(read) => self.fill_note_editor(&path, read, window, cx),
@@ -145,14 +142,14 @@ impl EnvironmentShell {
         }
         if matches!(editor.load, Load::Ready) && editor.disk == DiskWatch::Idle {
             editor.disk = DiskWatch::Checking;
-            Self::check_note_disk(link, path, file, cx);
+            Self::check_note_disk(path, file, cx);
         }
     }
 
-    fn read_note_file(link: HostLink, path: String, file: PathBuf, cx: &mut Context<Self>) {
-        let reading = cx.background_spawn(async move { read_file(&link, &file) });
+    fn read_note_file(&self, path: String, file: PathBuf, cx: &mut Context<Self>) {
+        let reading = self.ask_active_file(read_ask(file), Some, cx);
         cx.spawn(async move |this, cx| {
-            let read = reading.await;
+            let read = read_of(reading.await);
             this.update(cx, |shell, cx| {
                 if let Some(editor) = shell.notes.editors.get_mut(&path) {
                     editor.load = match read {
@@ -244,25 +241,26 @@ impl EnvironmentShell {
             return;
         };
         editor.save = None;
-        let (written, file, saved) = (path.to_owned(), editor.file.clone(), text.clone());
-        let link = self.active_link();
-        let write = cx.background_spawn(async move {
-            write_note_text(&link, &root, &written, &saved).map(|()| modified_at(&link, &file))
-        });
+        let ask = FileAsk::WriteNote {
+            root,
+            path: path.to_owned(),
+            text: text.clone(),
+        };
+        let write = self.ask_active_file(ask, stat_of, cx);
         let path = path.to_owned();
         cx.spawn(async move |this, cx| {
             let result = write.await;
             this.update(cx, |shell, cx| {
                 match result {
-                    Ok(modified) => {
+                    Ok(stat) => {
                         if let Some(editor) = shell.notes.editors.get_mut(&path) {
-                            editor.modified = modified;
+                            editor.modified = stat.0.and_then(|stat| stat.modified);
                             let unchanged = editor.text(cx).is_some_and(|now| now == text);
                             editor.dirty = !unchanged;
                         }
                         shell.refresh_vault(cx);
                     }
-                    Err(error) => shell.toast_failure(&error),
+                    Err(error) => shell.toast_failure(&error, cx),
                 }
                 cx.notify();
             })
@@ -271,14 +269,16 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn check_note_disk(link: HostLink, path: String, file: PathBuf, cx: &mut Context<Self>) {
+    fn check_note_disk(path: String, file: PathBuf, cx: &mut Context<Self>) {
         let timer = cx.background_executor().timer(DISK_CHECK_EVERY);
-        let stat = cx.background_spawn(async move {
-            timer.await;
-            modified_at(&link, &file)
-        });
         cx.spawn(async move |this, cx| {
-            let disk = stat.await;
+            timer.await;
+            let Ok(stat) = this.update(cx, |shell, cx| {
+                shell.ask_active_file(stat_ask(file), stat_of, cx)
+            }) else {
+                return;
+            };
+            let disk = modified_of(stat.await);
             this.update(cx, |shell, cx| {
                 let Some(editor) = shell.notes.editors.get_mut(&path) else {
                     return;

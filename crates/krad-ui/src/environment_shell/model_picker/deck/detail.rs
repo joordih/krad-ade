@@ -249,7 +249,7 @@ impl EnvironmentShell {
         if !current {
             return small_text(PICK_TO_TUNE, pal.text_subtle);
         }
-        let tuning = self.chat_tuning(chat);
+        let tuning = self.chat_tuning(chat, cx);
         let effort = self.embedded_effort(chat, cx).unwrap_or_else(|| {
             let fixed = tuning.and_then(|tuning| tuning.fixed_effort).map_or_else(
                 || NOT_ADJUSTABLE.to_owned(),

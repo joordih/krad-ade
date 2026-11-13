@@ -4,10 +4,10 @@ use krad_domain::{
     EffectiveToolchain, EnvironmentName, GroupActivation, GroupEdit, GroupId, Host, ProjectFolder,
     TerminalGroup, TerminalId, ToolchainActivation, ToolchainChoices,
 };
+use krad_extensions::host::{HostCommand, HostLink};
 use krad_extensions::{
     activation_lines, SharedLocatorManifest, ToolchainCache, ToolchainFamilyManifest,
 };
-use krad_host::{HostCommand, HostLink};
 use krad_protocol::{AgentRef, Command, TerminalCommand, WriteBy};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

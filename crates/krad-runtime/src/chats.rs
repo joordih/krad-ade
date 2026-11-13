@@ -13,7 +13,9 @@ mod mcp_prep;
 mod mentions;
 mod queue;
 mod resolve;
+mod subagents_read;
 mod summary;
+mod transcript_tail;
 mod workers;
 
 use krad_chat::LiveSession;
@@ -48,14 +50,16 @@ pub(crate) use history::{ChatEarlier, ChatOpening};
 use krad_store::{acp_transcript_file, AcpTranscripts};
 pub(crate) use mcp_prep::{McpLaunched, McpRead};
 use mentions::MentionIndexes;
-pub(crate) use mentions::{FilesIndexed, IndexAnswer};
+pub(crate) use mentions::{FilesIndexed, MentionQuery};
 use queue::{ChatQueue, Heard};
 pub(crate) use resolve::LaunchFacts;
+pub(crate) use subagents_read::read_subagents;
 use summary::asks_of;
+pub(crate) use transcript_tail::read_tail;
 pub(crate) use workers::Launch;
 
 const CHAT_PAGE: usize = 64;
-const UNKNOWN_CHAT: &str = "no chat with this id";
+pub(crate) const UNKNOWN_CHAT: &str = "no chat with this id";
 const NOT_ACP: &str = "only an ACP agent's chat takes this command";
 const NOT_STARTED: &str = "the agent has not started yet";
 
@@ -262,7 +266,14 @@ impl Chats {
             }
             ChatCommand::SignIn { method, .. } => self.sign_in(&id, method),
             ChatCommand::TrustMcp { trust, .. } => self.trust_mcp(&id, trust, work),
-            ChatCommand::AttachImage { .. }
+            ChatCommand::Open { .. }
+            | ChatCommand::Close { .. }
+            | ChatCommand::Page { .. }
+            | ChatCommand::Mentions { .. }
+            | ChatCommand::ForgetMentions
+            | ChatCommand::Transcript { .. }
+            | ChatCommand::Subagents { .. }
+            | ChatCommand::AttachImage { .. }
             | ChatCommand::ForgetImages { .. }
             | ChatCommand::Unknown => return None,
         };

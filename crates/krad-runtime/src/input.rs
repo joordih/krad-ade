@@ -1,24 +1,18 @@
 use futures::channel::{mpsc, oneshot};
-use krad_agents::{AgentInfo, AgentKey, Incoming, Response, StateReason};
-use krad_chat::{LiveEvent, LiveSession, Runner};
-use krad_domain::{AgentPreset, CloudRunnerId, EnvironmentName, Host, RunnerCli};
-use krad_host::{HostLink, MachineChannel};
-use krad_protocol::{
-    AgentRef, ChatPage, Command, Feed, HealthPlace, Reply, RequestId, Scope, Seq, Snapshot,
-    WebhookTest,
-};
+use krad_agents::{Incoming, Response};
+use krad_chat::{LiveEvent, LiveSession};
+use krad_domain::{AgentPreset, CloudRunnerId, EnvironmentName, RunnerCli};
+use krad_host::MachineChannel;
+use krad_protocol::{AgentRef, Command, Feed, Reply, RequestId, Scope, Seq, Snapshot, WebhookTest};
 use krad_session::AnsiPalette;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::bus::{Delegated, DelegationId, Mail};
-use crate::chats::{ChatBrief, ChatStart, IndexAnswer, LiveStarted, OfferedBuffers};
-use crate::harness_health::HarnessProbe;
+use crate::chats::{ChatBrief, ChatStart, LiveStarted, OfferedBuffers};
 use crate::jobs::JobDone;
 use crate::kraddies::DigestReply;
 use crate::opencode::OpencodeInput;
 use crate::terminals::{Shared, TerminalAction, TerminalLaunch};
-use crate::usage::UsagePlace;
 
 pub(crate) struct LiveStart {
     pub(crate) chat: AgentRef,
@@ -79,29 +73,8 @@ pub(crate) enum Input {
     },
     BusDropped(DelegationId),
     Delegate(mpsc::Sender<Delegated>),
-    ObserveAgent {
-        key: AgentKey,
-        seen: Option<AgentInfo>,
-        hint: Option<StateReason>,
-    },
-    ReconcileAgents {
-        environments: Vec<String>,
-        agents: Vec<AgentInfo>,
-    },
     WebhookTested(WebhookTest),
-    CheckHarnesses {
-        place: HealthPlace,
-        probes: Vec<(AgentPreset, Option<HarnessProbe>)>,
-    },
-    PlaceUsage(Option<UsagePlace>),
-    ListModels {
-        host: Host,
-        harness: AgentPreset,
-        runner: Runner,
-        cwd: PathBuf,
-    },
     JobDone(JobDone),
-    Settle(oneshot::Sender<()>),
     SettingsNotSaved(String),
     KraddieNotSaved(String),
     DigestHeard {
@@ -131,18 +104,6 @@ pub(crate) enum Input {
         chat: AgentRef,
         start: Box<ChatStart>,
     },
-    CloseChat(AgentRef),
-    ChatPage {
-        chat: AgentRef,
-        before: usize,
-        count: usize,
-        reply: oneshot::Sender<Option<ChatPage>>,
-    },
-    MentionIndex {
-        place: (HostLink, PathBuf),
-        reply: oneshot::Sender<IndexAnswer>,
-    },
-    ForgetMentionIndexes,
     OfferBuffers {
         environment: EnvironmentName,
         buffers: OfferedBuffers,

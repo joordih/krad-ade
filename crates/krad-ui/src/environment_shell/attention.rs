@@ -100,7 +100,6 @@ impl EnvironmentShell {
     }
 
     pub(super) fn attention_raised(&mut self, notice: AttentionNotice) {
-        self.runtime.view.attention.raised(&notice);
         let AttentionNotice {
             target,
             kind,
@@ -151,17 +150,23 @@ impl EnvironmentShell {
             })
     }
 
-    pub(super) fn attention_seen(&mut self, env: &EnvironmentName, id: TerminalId) {
+    pub(super) fn attention_seen(&mut self, env: &EnvironmentName, id: TerminalId, cx: &App) {
         let target = AttentionTarget::new(env.clone(), id);
-        if self.runtime.view.attention.queue.contains(&target) {
+        if self.runtime.view.read(cx).attention.queue.contains(&target) {
             self.tell_attention(AttentionCommand::Seen { target });
         }
     }
 
-    pub(super) fn forget_attention(&mut self, env: &EnvironmentName, id: TerminalId) {
+    pub(super) fn forget_attention(&mut self, env: &EnvironmentName, id: TerminalId, cx: &mut App) {
         let target = AttentionTarget::new(env.clone(), id);
-        if self.runtime.view.attention.queue.contains(&target) {
-            self.runtime.view.attention.left(&target);
+        let left = self.runtime.view.update(cx, |model, _| {
+            let waiting = model.attention.queue.contains(&target);
+            if waiting {
+                model.attention.left(&target);
+            }
+            waiting
+        });
+        if left {
             self.tell_attention(AttentionCommand::Dismiss { target });
         }
     }
@@ -188,7 +193,7 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn note_window_focus(&mut self, active: bool) {
+    pub(super) fn note_window_focus(&mut self, active: bool, cx: &App) {
         self.attention.window = if active {
             WindowFocus::Foreground
         } else {
@@ -200,7 +205,7 @@ impl EnvironmentShell {
         let env = self.active.clone();
         let focused = self.envs.get(&env).and_then(|live| live.focused);
         if let Some(id) = focused {
-            self.attention_seen(&env, id);
+            self.attention_seen(&env, id, cx);
         }
     }
 
@@ -208,6 +213,7 @@ impl EnvironmentShell {
         let closed: Vec<AttentionTarget> = self
             .runtime
             .view
+            .read(cx)
             .attention
             .queue
             .ordered()
@@ -217,18 +223,19 @@ impl EnvironmentShell {
             .cloned()
             .collect();
         for target in closed {
-            self.forget_attention(&target.environment, target.terminal);
+            self.forget_attention(&target.environment, target.terminal, cx);
         }
         self.deliver_notifications(cx);
-        self.show_badge();
+        self.show_badge(cx);
         self.flash_window(cx);
     }
 
-    fn show_badge(&mut self) {
+    fn show_badge(&mut self, cx: &App) {
         let settings = self.settings.attention;
         let count = if settings.badge.is_on() {
             self.runtime
                 .view
+                .read(cx)
                 .attention
                 .queue
                 .ordered()

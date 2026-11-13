@@ -1,59 +1,12 @@
 use krad_host::HostLink;
 use std::collections::HashMap;
-use std::path::PathBuf;
 
-use super::{FileMatches, FoundLine};
+use super::{
+    replaced_line, FileMatches, FoundLine, ReplaceUndo, ReplacedFile, Replacement, UndoOutcome,
+};
 use crate::RepoError;
 
 const LINE_END: &str = "\n";
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Replacement {
-    pub replaced: usize,
-    pub changed_lines: usize,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ReplacedFile {
-    pub outcome: Replacement,
-    pub undo: Option<ReplaceUndo>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ReplaceUndo {
-    pub path: PathBuf,
-    before: String,
-    after: String,
-}
-
-impl ReplaceUndo {
-    #[must_use]
-    pub fn size(&self) -> usize {
-        self.before.len() + self.after.len()
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum UndoOutcome {
-    Restored,
-    ChangedSince,
-}
-
-#[must_use]
-pub fn replaced_line(found: &FoundLine, replacement: &str) -> String {
-    let mut line = String::with_capacity(found.text.len());
-    let mut from = 0;
-    for range in &found.matches {
-        let Some(kept) = found.text.get(from..range.start) else {
-            continue;
-        };
-        line.push_str(kept);
-        line.push_str(replacement);
-        from = range.end;
-    }
-    line.push_str(found.text.get(from..).unwrap_or_default());
-    line
-}
 
 /// # Errors
 ///

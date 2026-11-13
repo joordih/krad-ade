@@ -2,7 +2,7 @@ use gpui_kit::{
     div, px, rgb, Context, FontWeight, IntoElement, ParentElement, Render, SharedString, Styled,
     Window,
 };
-use krad_repo::{DirEntry, EntryKind};
+use krad_domain::{DirEntry, EntryKind};
 use std::path::PathBuf;
 
 use crate::components::{icon, IconName};

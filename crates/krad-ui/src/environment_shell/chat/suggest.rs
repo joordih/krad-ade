@@ -1,17 +1,19 @@
 use gpui_kit::component::input::InlineToken;
 use gpui_kit::component::input::TextareaState;
-use gpui_kit::{AppContext as _, Context, Entity, SharedString, Window};
-use krad_chat::{claude_skills, search_skills, shared_skill_message, Skill, SkillSource};
+use gpui_kit::{Context, Entity, SharedString, Window};
+use krad_chat::shared_skill_message;
 use krad_domain::{kraddie_mention_at, AgentPreset, TerminalId};
-use krad_host::HostLink;
+use krad_domain::{search_skills, Skill, SkillSource};
+use krad_domain::{EntryKind, IndexEntry};
+use krad_protocol::{Answer, RepoAsk};
 pub(in crate::environment_shell) use krad_repo::workplace_home;
-use krad_repo::{EntryKind, IndexEntry, RepoError};
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::PathBuf;
 
 use super::super::kraddie_memory::KraddieSuggestion;
 use super::super::EnvironmentShell;
+use super::file_index::FilesFor;
 
 pub(super) const MENTION_PREFIX: char = '@';
 const SKILL_PREFIX: char = '/';
@@ -106,10 +108,17 @@ impl EnvironmentShell {
             self.chat.suggest = found;
         }
         let root = self.composer_root(composer);
-        match opened {
-            Some(SuggestKind::Mention) => self.refresh_file_index(root, cx),
-            Some(SuggestKind::Skill) => Self::refresh_skills(self.active_link(), root, cx),
-            Some(SuggestKind::Kraddie) | None => {}
+        let mention = self
+            .chat
+            .suggest
+            .as_ref()
+            .filter(|suggest| suggest.kind == SuggestKind::Mention)
+            .map(|suggest| suggest.query.clone());
+        if let Some((root, query)) = root.clone().zip(mention) {
+            self.search_files((root, &query, SUGGESTION_LIMIT), FilesFor::Suggestions, cx);
+        }
+        if opened == Some(SuggestKind::Skill) {
+            self.refresh_skills(root, cx);
         }
         cx.notify();
     }
@@ -133,17 +142,14 @@ impl EnvironmentShell {
             .map(|group| group.root.clone())
     }
 
-    fn refresh_skills(link: HostLink, root: Option<PathBuf>, cx: &mut Context<Self>) {
-        let skills = cx.background_spawn(async move {
-            let home = workplace_home(&link, root.as_deref())?;
-            Ok::<_, RepoError>(claude_skills(&link, home.as_deref(), root.as_deref()))
-        });
+    fn refresh_skills(&self, root: Option<PathBuf>, cx: &mut Context<Self>) {
+        let skills = self.ask_active_repo(RepoAsk::ChatSkills { root }, chat_skills_of, cx);
         cx.spawn(async move |this, cx| {
             let skills = skills.await;
             this.update(cx, |shell, cx| {
                 match skills {
                     Ok(skills) => shell.chat.skills = Some(skills),
-                    Err(error) => shell.toast_failure(&error),
+                    Err(error) => shell.toast_failure(&error, cx),
                 }
                 cx.notify();
             })
@@ -157,8 +163,8 @@ impl EnvironmentShell {
         match suggest.kind {
             SuggestKind::Mention => {
                 let root = self.composer_root(suggest.composer)?;
-                let files = self.indexed_entries(&root, &suggest.query, SUGGESTION_LIMIT)?;
-                Some(files.into_iter().cloned().map(Suggestion::Entry).collect())
+                let files = self.suggested_entries(&root)?;
+                Some(files.iter().cloned().map(Suggestion::Entry).collect())
             }
             SuggestKind::Skill => {
                 let offered = self.harness_skills(suggest.composer);
@@ -342,6 +348,13 @@ pub(in crate::environment_shell) fn entry_labels(entry: &IndexEntry) -> (String,
         .map_or_else(String::new, |folder| folder.to_string_lossy().into_owned())
         .replace(WINDOWS_SEPARATOR, UNIX_SEPARATOR);
     (name, folder)
+}
+
+fn chat_skills_of(answer: Answer) -> Option<Vec<Skill>> {
+    match answer {
+        Answer::ChatSkills { skills } => Some(skills),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

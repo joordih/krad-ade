@@ -1,9 +1,11 @@
-use gpui_kit::{AppContext as _, Context, PromptButton, PromptLevel, Window};
-use krad_domain::{EnvironmentName, GitObjectId, Prompt, TerminalId};
-use krad_repo::{
-    checkpoint_changes, restore_checkpoint, CheckpointChange, CheckpointChangeKind, RepoError,
-    RestoredCheckpoint,
+use gpui_kit::{App, Context, PromptButton, PromptLevel, Window};
+use krad_client::ClientError;
+use krad_domain::{
+    CheckpointChange, CheckpointChangeKind, EnvironmentName, GitObjectId, Prompt,
+    RestoredCheckpoint, TerminalId,
 };
+use krad_protocol::{Answer, RepoAsk};
+use std::future::Future;
 
 use super::super::EnvironmentShell;
 use super::{Backend, ChatView};
@@ -91,6 +93,44 @@ fn set_busy(shell: &mut EnvironmentShell, env: &EnvironmentName, id: TerminalId,
 }
 
 impl EnvironmentShell {
+    fn ask_checkpoint_changes(
+        &self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        checkpoint: GitObjectId,
+        cx: &mut App,
+    ) -> Option<impl Future<Output = Result<Vec<CheckpointChange>, ClientError>> + 'static> {
+        let repo = self.group_root(env, id)?;
+        Some(self.ask_repo(
+            env,
+            RepoAsk::CheckpointChanges { repo, checkpoint },
+            |answer| match answer {
+                Answer::CheckpointChanges { changes } => Some(changes),
+                _ => None,
+            },
+            cx,
+        ))
+    }
+
+    fn ask_restore(
+        &self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        checkpoint: GitObjectId,
+        cx: &mut App,
+    ) -> Option<impl Future<Output = Result<RestoredCheckpoint, ClientError>> + 'static> {
+        let repo = self.group_root(env, id)?;
+        Some(self.ask_repo(
+            env,
+            RepoAsk::RestoreCheckpoint { repo, checkpoint },
+            |answer| match answer {
+                Answer::CheckpointRestored { restored } => Some(restored),
+                _ => None,
+            },
+            cx,
+        ))
+    }
+
     pub(super) fn rewind_with_files(
         &mut self,
         env: &EnvironmentName,
@@ -99,12 +139,11 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some((link, root)) = self.group_folder(env, id) else {
+        let Some(listed) = self.ask_checkpoint_changes(env, id, rewind.checkpoint.clone(), cx)
+        else {
             return self.rewind_conversation(env, id, rewind, cx);
         };
         set_busy(self, env, id, true);
-        let target = rewind.checkpoint.clone();
-        let listed = cx.background_spawn(async move { checkpoint_changes(&link, &root, &target) });
         let env = env.clone();
         cx.spawn_in(window, async move |this, cx| {
             let listed = listed.await;
@@ -186,13 +225,10 @@ impl EnvironmentShell {
         rewind: FilesRewind,
         cx: &mut Context<Self>,
     ) {
-        let Some((link, root)) = self.group_folder(env, id) else {
+        let Some(restored) = self.ask_restore(env, id, rewind.checkpoint.clone(), cx) else {
             return;
         };
         set_busy(self, env, id, true);
-        let target = rewind.checkpoint.clone();
-        let restored =
-            cx.background_spawn(async move { restore_checkpoint(&link, &root, &target) });
         let env = env.clone();
         cx.spawn(async move |this, cx| {
             let restored = restored.await;
@@ -211,7 +247,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
         rewind: FilesRewind,
-        restored: Result<RestoredCheckpoint, RepoError>,
+        restored: Result<RestoredCheckpoint, ClientError>,
         cx: &mut Context<Self>,
     ) {
         let Some(chat) = surface_chat(self, env, id) else {

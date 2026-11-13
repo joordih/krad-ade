@@ -1,7 +1,8 @@
 use gpui_kit::component::input::Position;
-use gpui_kit::{AppContext as _, Context, Task, Window};
+use gpui_kit::{Context, Task, Window};
+use krad_domain::TextMatch;
 use krad_domain::{EnvironmentView, FileOpening, VaultIndex};
-use krad_repo::{search_text, TextMatch};
+use krad_protocol::{Answer, FileAsk};
 use std::path::Path;
 
 use super::super::EnvironmentShell;
@@ -106,10 +107,12 @@ impl EnvironmentShell {
             cx.notify();
             return;
         };
-        let searched = vault.clone();
-        let link = self.active_link();
-        let search =
-            cx.background_spawn(async move { search_text(&link, &searched, &query, LINES_FOUND) });
+        let ask = FileAsk::SearchText {
+            dir: vault.clone(),
+            query,
+            limit: LINES_FOUND,
+        };
+        let search = self.ask_active_file(ask, text_matches_of, cx);
         self.notes.search.task = Some(cx.spawn(async move |this, cx| {
             let found = search.await;
             this.update(cx, |shell, cx| {
@@ -117,7 +120,7 @@ impl EnvironmentShell {
                     Ok(matches) => {
                         shell.notes.search.lines = note_lines(&vault, &shell.notes.index, matches);
                     }
-                    Err(error) => shell.toast_failure(&error),
+                    Err(error) => shell.toast_failure(&error, cx),
                 }
                 cx.notify();
             })
@@ -155,6 +158,13 @@ impl EnvironmentShell {
             state.set_cursor_position(Position::new(line.saturating_sub(1), 0), window, cx);
             state.focus(window, cx);
         });
+    }
+}
+
+fn text_matches_of(answer: Answer) -> Option<Vec<TextMatch>> {
+    match answer {
+        Answer::TextMatches { matches } => Some(matches),
+        _ => None,
     }
 }
 

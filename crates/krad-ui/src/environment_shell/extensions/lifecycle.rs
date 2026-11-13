@@ -11,10 +11,10 @@ use krad_extensions::api::protocol::{
     InitializeParams,
 };
 use krad_extensions::api::CURRENT_API;
+use krad_extensions::host::HostLink;
 use krad_extensions::program::{initialize, ExtensionProcess, ProgramEvent};
 use krad_extensions::ExtensionError;
 use krad_extensions::Trust;
-use krad_host::HostLink;
 use std::collections::BTreeSet;
 
 use super::super::EnvironmentShell;

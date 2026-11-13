@@ -1,6 +1,7 @@
 mod claude;
 
-use krad_domain::{ResumeId, RewindId, RewindPoint, RewindScope};
+pub use krad_domain::ResumeCut;
+use krad_domain::{RewindPoint, RewindScope};
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -19,13 +20,6 @@ pub struct RewindRequest {
 pub enum Rewound {
     InPlace,
     Restart(LiveSession),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ResumeCut {
-    pub from: ResumeId,
-    pub at: RewindId,
-    pub drops: Option<RewindId>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Error)]

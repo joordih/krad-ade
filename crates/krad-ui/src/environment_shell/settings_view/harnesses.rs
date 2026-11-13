@@ -27,7 +27,7 @@ fn place_hint(place: &HealthPlace) -> String {
 impl EnvironmentShell {
     pub(super) fn harnesses_pane(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let (place, _, _) = self.health_place();
+        let place = self.health_place();
         let mut rows = health_rows(self, &place, COPY_PREFIX, cx);
         rows.push(
             Button::new(BTN_CHECK_AGAIN)

@@ -1,11 +1,11 @@
-use krad_domain::{built_in_acp_agents, AgentPreset};
+use crate::{built_in_acp_agents, AgentPreset};
 use std::borrow::Cow;
 
 const NO_PROGRAM: &str = "this harness has no program to name it on the bus";
 const ACP_BUS_PREFIX: &str = "acp:";
 
 #[must_use]
-pub(crate) fn bus_name(preset: AgentPreset) -> Option<Cow<'static, str>> {
+pub fn bus_name(preset: AgentPreset) -> Option<Cow<'static, str>> {
     match preset {
         AgentPreset::Acp(id) => Some(Cow::Owned(format!("{ACP_BUS_PREFIX}{id}"))),
         native => native.program().map(Cow::Borrowed),
@@ -13,7 +13,7 @@ pub(crate) fn bus_name(preset: AgentPreset) -> Option<Cow<'static, str>> {
 }
 
 #[must_use]
-pub(crate) fn preset_by_bus_name(name: &str) -> Option<AgentPreset> {
+pub fn preset_by_bus_name(name: &str) -> Option<AgentPreset> {
     match name.strip_prefix(ACP_BUS_PREFIX) {
         Some(id) => id.parse().ok().map(AgentPreset::Acp),
         None => name.parse().ok(),
@@ -21,7 +21,7 @@ pub(crate) fn preset_by_bus_name(name: &str) -> Option<AgentPreset> {
 }
 
 #[must_use]
-pub(crate) fn preset_by_display_name(name: &str) -> Option<AgentPreset> {
+pub fn preset_by_display_name(name: &str) -> Option<AgentPreset> {
     AgentPreset::NATIVE
         .into_iter()
         .find(|preset| preset.display_name().eq_ignore_ascii_case(name))
@@ -33,15 +33,18 @@ pub(crate) fn preset_by_display_name(name: &str) -> Option<AgentPreset> {
         })
 }
 
-pub(crate) mod program {
+pub mod program {
     use super::{bus_name, preset_by_bus_name, NO_PROGRAM};
-    use krad_domain::AgentPreset;
+    use crate::AgentPreset;
     use serde::{de, ser, Deserialize as _, Deserializer, Serializer};
 
     const UNKNOWN_BUS_NAME: &str = "unknown harness on the bus";
 
+    /// # Errors
+    ///
+    /// Fails when the harness has no name on the bus.
     #[allow(clippy::trivially_copy_pass_by_ref)]
-    pub(crate) fn serialize<S: Serializer>(
+    pub fn serialize<S: Serializer>(
         preset: &AgentPreset,
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
@@ -49,7 +52,10 @@ pub(crate) mod program {
         serializer.serialize_str(&name)
     }
 
-    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+    /// # Errors
+    ///
+    /// Fails on a name that names no harness.
+    pub fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<AgentPreset, D::Error> {
         let name = String::deserialize(deserializer)?;
@@ -57,15 +63,18 @@ pub(crate) mod program {
     }
 }
 
-pub(crate) mod display_name {
+pub mod display_name {
     use super::{bus_name, preset_by_bus_name, preset_by_display_name};
-    use krad_domain::AgentPreset;
+    use crate::AgentPreset;
     use serde::{de, Deserialize as _, Deserializer, Serializer};
 
     const UNKNOWN_DISPLAY_NAME: &str = "unknown harness name";
 
+    /// # Errors
+    ///
+    /// Fails when the harness cannot be written.
     #[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
-    pub(crate) fn serialize<S: Serializer>(
+    pub fn serialize<S: Serializer>(
         preset: &Option<AgentPreset>,
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
@@ -78,7 +87,10 @@ pub(crate) mod display_name {
         }
     }
 
-    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+    /// # Errors
+    ///
+    /// Fails on a name that names no harness.
+    pub fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Option<AgentPreset>, D::Error> {
         Option::<String>::deserialize(deserializer)?

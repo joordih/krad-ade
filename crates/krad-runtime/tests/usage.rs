@@ -1,18 +1,21 @@
 use futures::executor::block_on;
 use futures::StreamExt as _;
 use krad_domain::{
-    AgentPreset, AgentStatus, Host, PlanUsage, ResetTime, UsageFailure, UsageReading, WindowSpan,
+    AgentPreset, AgentStatus, Host, PlanUsage, ResetTime, Settings, UsageReading, WindowSpan,
 };
 use krad_protocol::{
-    Command, EventKind, Feed, Reply, Scope, UsageCommand, UsageNews, UsageNote, UsageShown,
+    Command, EventKind, Feed, HarnessSpot, Reply, Scope, UsageCommand, UsageNews, UsageNote,
+    UsageShown,
 };
-use krad_runtime::{EventReceiver, Runtime, RuntimeHandle, RuntimeSetup, SourceState, UsagePlace};
+use krad_runtime::{EventReceiver, Runtime, RuntimeHandle, RuntimeSetup, SettingsSetup};
+use std::collections::HashMap;
 use std::error::Error;
 
 type TestResult = Result<(), Box<dyn Error>>;
 
 const FEED_ENDED: &str = "the feed ended";
-const NO_RUNNER: &str = "no runner";
+const MISSING_PROGRAM: &str = "krad-runtime-test-no-such-harness";
+const NOT_ON_PATH: &str = "is not on PATH";
 
 fn subscribed(runtime: &RuntimeHandle) -> Result<EventReceiver, Box<dyn Error>> {
     let mut events = runtime.subscribe();
@@ -103,37 +106,55 @@ fn an_alert_with_nothing_to_alert_is_dropped_and_a_chat_read_is_shown() -> TestR
 }
 
 #[test]
-fn a_harness_with_no_way_to_be_read_shows_why_and_a_waiting_one_its_note() -> TestResult {
-    let runtime = Runtime::start(RuntimeSetup::default())?;
+fn a_placed_harness_with_a_reading_but_no_program_shows_why_it_cannot_be_read() -> TestResult {
+    let settings = Settings {
+        harness_commands: HashMap::from([(AgentPreset::ClaudeCode, MISSING_PROGRAM.to_owned())]),
+        ..Settings::default()
+    };
+    let why = format!(
+        "{} {NOT_ON_PATH}",
+        settings.acp.harness_name(AgentPreset::ClaudeCode)
+    );
+    let runtime = Runtime::start(RuntimeSetup {
+        settings: SettingsSetup {
+            settings,
+            file: None,
+        },
+        ..RuntimeSetup::default()
+    })?;
     let mut events = subscribed(&runtime)?;
-    runtime.place_usage(Some(UsagePlace {
-        host: Host::Local,
-        sources: vec![
-            (
-                AgentPreset::Codex,
-                SourceState::Broken(NO_RUNNER.to_owned()),
-            ),
-            (
-                AgentPreset::Opencode,
-                SourceState::Waiting(UsageNote::Starting),
-            ),
-        ],
-    }));
-    let noted = next_shown(&mut events)?;
-    assert_eq!(noted.note, Some(UsageNote::Broken(NO_RUNNER.to_owned())));
-    let failed = next_shown(&mut events)?;
-    assert_eq!(
-        failed.reading.and_then(|reading| reading.failure()),
-        Some(UsageFailure::Unreachable)
-    );
-    let waiting = next_shown(&mut events)?;
-    assert_eq!(
-        (waiting.harness, waiting.note),
-        (AgentPreset::Opencode, Some(UsageNote::Starting))
-    );
-    let reply = send(&runtime, UsageCommand::Refresh)?;
-    assert_eq!(reply, Reply::Accepted);
+    let status = AgentStatus {
+        five_hour_used: Some(30),
+        ..AgentStatus::default()
+    };
+    send(
+        &runtime,
+        UsageCommand::Statusline {
+            host: Host::Local,
+            status,
+        },
+    )?;
+    next_shown(&mut events)?;
+    let placed = send(
+        &runtime,
+        UsageCommand::Place {
+            spot: Some(HarnessSpot::default()),
+        },
+    )?;
+    assert_eq!(placed, Reply::Accepted);
+    send(&runtime, UsageCommand::Refresh)?;
+    let noted = loop {
+        let shown = next_shown(&mut events)?;
+        if let Some(note) = shown.note {
+            break (shown.harness, note);
+        }
+    };
+    assert_eq!(noted, (AgentPreset::ClaudeCode, UsageNote::Broken(why)));
     let snapshot = block_on(runtime.snapshot(Scope::Runtime))?;
-    assert_eq!(snapshot.usage.shown.len(), 2);
+    assert_eq!(
+        snapshot.usage.shown.len(),
+        1,
+        "harnesses never read nor installed stay out"
+    );
     Ok(())
 }

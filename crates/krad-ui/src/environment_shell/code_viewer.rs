@@ -1,4 +1,3 @@
-use krad_host::HostLink;
 mod lines;
 mod selection;
 
@@ -9,8 +8,9 @@ use gpui_kit::{
     InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement,
     Styled, UniformListScrollHandle,
 };
+use krad_client::ClientError;
 use krad_domain::ChangeKind;
-use krad_repo::RepoError;
+use krad_protocol::{Answer, FileAsk, OverLimit, Unreadable};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -35,6 +35,7 @@ const MAX_VIEW_BYTES: u64 = 2 * 1024 * 1024;
 const TAB_AS_SPACES: &str = "    ";
 const LOADING_TEXT: &str = "Loading…";
 const BINARY_TEXT: &str = "Binary file, not shown";
+const UNEXPECTED_TEXT: &str = "The runtime answered something else";
 const TRUNCATED_TEXT: &str = "Showing the first 2 MB";
 const VIEWER_FRACTION: f32 = 0.5;
 pub(super) const VIEWER_MIN_W: f32 = 360.0;
@@ -80,10 +81,12 @@ struct ViewerText {
     markdown: Option<SharedString>,
 }
 
-fn load(link: &HostLink, path: &Path, language: Option<&LanguageDef>) -> ViewerContent {
-    match krad_repo::read_text(link, path, MAX_VIEW_BYTES) {
-        Ok(file) => {
-            let text = file.text.replace('\t', TAB_AS_SPACES);
+fn load(read: Result<Answer, ClientError>, language: Option<&LanguageDef>) -> ViewerContent {
+    match read {
+        Ok(Answer::FileText {
+            text, truncated, ..
+        }) => {
+            let text = text.replace('\t', TAB_AS_SPACES);
             let spans = highlight_lines(&text, Syntax::from(language));
             let markdown = is_markdown(language).then(|| SharedString::from(text.clone()));
             let lines: Vec<SharedString> = text
@@ -94,11 +97,14 @@ fn load(link: &HostLink, path: &Path, language: Option<&LanguageDef>) -> ViewerC
                 widest: widest_line(&lines),
                 lines,
                 spans,
-                truncated: file.truncated,
+                truncated,
                 markdown,
             }))
         }
-        Err(RepoError::Binary) => ViewerContent::Unavailable(BINARY_TEXT.to_owned()),
+        Ok(Answer::Unreadable {
+            unreadable: Unreadable::NotText,
+        }) => ViewerContent::Unavailable(BINARY_TEXT.to_owned()),
+        Ok(_) => ViewerContent::Unavailable(UNEXPECTED_TEXT.to_owned()),
         Err(error) => ViewerContent::Unavailable(error.to_string()),
     }
 }
@@ -130,13 +136,18 @@ impl EnvironmentShell {
         });
         cx.notify();
         let language = self.language_of(&path);
-        let link = self.active_link();
-        let loading = cx.background_spawn({
-            let path = path.clone();
-            async move { load(&link, &path, language.as_ref()) }
-        });
+        let ask = FileAsk::Read {
+            path: path.clone(),
+            from: 0,
+            limit: MAX_VIEW_BYTES,
+            over: OverLimit::Truncate,
+        };
+        let reading = self.ask_active_file(ask, Some, cx);
         cx.spawn(async move |this, cx| {
-            let content = loading.await;
+            let read = reading.await;
+            let content = cx
+                .background_spawn(async move { load(read, language.as_ref()) })
+                .await;
             this.update(cx, |shell, cx| {
                 if let Some(viewer) = shell.viewer.as_mut().filter(|viewer| viewer.path == path) {
                     viewer.content = content;

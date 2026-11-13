@@ -1,4 +1,4 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::{
     snap_effort, AgentPreset, ChatChoice, Effort, EffortSnap, EnvironmentName, ModelId, NodeField,
     TerminalId,
@@ -100,20 +100,25 @@ impl EnvironmentShell {
         self.store();
     }
 
-    fn model_efforts(&self, harness: AgentPreset, model: &ModelId) -> Option<Vec<Effort>> {
-        self.harness_offers(harness)?
+    fn model_efforts(
+        &self,
+        harness: AgentPreset,
+        model: &ModelId,
+        cx: &App,
+    ) -> Option<Vec<Effort>> {
+        self.harness_offers(harness, cx)?
             .iter()
             .find(|offer| offer.answers_to(model.as_str()))
             .map(|offer| offer.efforts.clone())
     }
 
-    pub(super) fn fit_effort_to_model(&mut self, env: &EnvironmentName, id: TerminalId) {
+    pub(super) fn fit_effort_to_model(&mut self, env: &EnvironmentName, id: TerminalId, cx: &App) {
         let Some((harness, Some(model))) = structured_mut(self, env, id)
             .map(|structured| (structured.harness, structured.chosen_model.clone()))
         else {
             return;
         };
-        let Some(allowed) = self.model_efforts(harness, &model) else {
+        let Some(allowed) = self.model_efforts(harness, &model, cx) else {
             return;
         };
         let remembered = self
@@ -154,6 +159,7 @@ impl EnvironmentShell {
         id: TerminalId,
         harness: AgentPreset,
         explicit: ChatChoice,
+        cx: &App,
     ) -> ChatChoice {
         let kept = self
             .envs
@@ -167,14 +173,19 @@ impl EnvironmentShell {
             .cloned()
             .unwrap_or_default();
         let preferred = ChatChoice {
-            model: self.new_chat_model(harness, remembered.model.as_ref()),
+            model: self.new_chat_model(harness, remembered.model.as_ref(), cx),
             effort: remembered.effort,
         };
         explicit.or(&kept).or(&preferred)
     }
 
-    fn new_chat_model(&self, harness: AgentPreset, last_used: Option<&ModelId>) -> Option<ModelId> {
-        let offers = self.harness_offers(harness);
+    fn new_chat_model(
+        &self,
+        harness: AgentPreset,
+        last_used: Option<&ModelId>,
+        cx: &App,
+    ) -> Option<ModelId> {
+        let offers = self.harness_offers(harness, cx);
         let offered = |model: &ModelId| {
             offers.is_some_and(|offers| offers.iter().any(|offer| offer.answers_to(model.as_str())))
         };
@@ -188,8 +199,12 @@ impl EnvironmentShell {
             .new_chat_model(harness, last_used, listed)
     }
 
-    pub(in crate::environment_shell) fn forget_unoffered_models(&mut self, harness: AgentPreset) {
-        let Some(offers) = self.harness_offers(harness) else {
+    pub(in crate::environment_shell) fn forget_unoffered_models(
+        &mut self,
+        harness: AgentPreset,
+        cx: &App,
+    ) {
+        let Some(offers) = self.harness_offers(harness, cx) else {
             return;
         };
         let offered = |model: &ModelId| offers.iter().any(|offer| offer.answers_to(model.as_str()));

@@ -7,11 +7,15 @@ use crate::bus::BusCommand;
 use crate::chats::ChatCommand;
 use crate::cloud::CloudCommand;
 use crate::environments::EnvironmentCommand;
+use crate::files::FileCommand;
 use crate::gateway::GatewayCommand;
 use crate::git::{ChangesCommand, GitCommand};
+use crate::harness_health::HealthCommand;
 use crate::hosts::HostCommand;
 use crate::kraddies::KraddieCommand;
 use crate::models::ModelsCommand;
+use crate::opencode::OpencodeCommand;
+use crate::repo::RepoCommand;
 use crate::review::{CodeHostCommand, ReviewCommand};
 use crate::runners::RunnerCommand;
 use crate::sessions::{GroupCommand, NodeCommand, SessionCommand};
@@ -29,6 +33,8 @@ pub enum Command {
     Attention(AttentionCommand),
     Usage(UsageCommand),
     Models(ModelsCommand),
+    Health(HealthCommand),
+    Opencode(OpencodeCommand),
     Environments(EnvironmentCommand),
     Session(SessionCommand),
     Group(GroupCommand),
@@ -47,6 +53,8 @@ pub enum Command {
     CodeHost(CodeHostCommand),
     Runner(RunnerCommand),
     Cloud(CloudCommand),
+    Repo(RepoCommand),
+    File(FileCommand),
     #[serde(other)]
     Unknown,
 }
@@ -55,6 +63,7 @@ pub enum Command {
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum RuntimeCommand {
     Ping,
+    Settle,
     #[serde(other)]
     Unknown,
 }
@@ -76,6 +85,7 @@ pub enum ErrorCode {
     Unavailable,
     Busy,
     Forbidden,
+    Failed,
     #[serde(other)]
     Unknown,
 }

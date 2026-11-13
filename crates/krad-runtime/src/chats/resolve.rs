@@ -3,7 +3,6 @@ use krad_chat::{BusVars, ChatBackend, EngineConfig, LiveConfig, Runner};
 use krad_domain::{parse_wsl_path, AgentPreset, Settings, UsageBudget};
 use krad_host::HostLink;
 use krad_protocol::{AgentRef, RemoteBusInfo};
-use krad_session::find_program;
 use krad_store::gateway_sessions_dir;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -16,6 +15,7 @@ use super::{ChatPlace, EditorBuffers};
 use crate::bus::BusAccess;
 use crate::cloud_runs::{placement_of, site_of, NodeSite};
 use crate::environments::Environments;
+use crate::harness_sites::{launch_program, HarnessHere, NotHere, NO_PROGRAM_TEXT};
 use crate::hosts::{remote_caller_vars, Hosts, Reach};
 use crate::kraddies::Kraddies;
 use crate::launches::{cli_name, local_caller_vars, AgentRole};
@@ -29,7 +29,6 @@ mod offered;
 pub(super) use acp::resolve_acp;
 use offered::Offered;
 
-const NO_PROGRAM_TEXT: &str = "is not on PATH";
 const NO_CHAT_TEXT: &str = "has no chat";
 const NOT_IN_WSL_TEXT: &str = "chats do not run in WSL folders yet";
 const NO_CONFIG_FOLDER_TEXT: &str = "Krad ADE has no config folder to keep the chat in";
@@ -176,9 +175,7 @@ impl LaunchFacts<'_> {
     }
 
     fn program(&self, harness: AgentPreset) -> Result<String, Unready> {
-        self.settings
-            .launch_line(harness)
-            .and_then(|line| line.split_whitespace().next().map(str::to_owned))
+        launch_program(self.settings, harness)
             .ok_or_else(|| problem(self.settings.acp.harness_name(harness), NO_PROGRAM_TEXT))
     }
 
@@ -198,44 +195,23 @@ impl LaunchFacts<'_> {
         (harness, program): (AgentPreset, String),
         place: &ChatPlace,
     ) -> Result<(Runner, PathBuf), Unready> {
-        let name = self.settings.acp.harness_name(harness);
         if place.cloud.is_some() {
             let link = place.link.clone();
             let cwd = place.root.clone().ok_or(Unready::Waiting)?;
             return Ok((Runner::Ssh { link, program }, cwd));
         }
-        if let HostLink::Remote(ssh) = &place.link {
-            let found = self
-                .hosts
-                .agents(&chat.environment)
-                .ok_or(Unready::Waiting)?;
-            if !found.contains(&harness) {
-                return Err(problem(name, NO_PROGRAM_TEXT));
-            }
-            let cwd = place
-                .root
-                .clone()
-                .or_else(|| ssh.home().map(Path::to_path_buf))
-                .ok_or(Unready::Waiting)?;
-            let link = place.link.clone();
-            return Ok((Runner::Ssh { link, program }, cwd));
-        }
-        let wsl = place
-            .root
-            .as_deref()
-            .and_then(|root| parse_wsl_path(root).map(|inside| (root, inside)));
-        if let Some((root, inside)) = wsl {
-            let runner = Runner::Wsl {
-                distro: inside.distro,
-                program,
-            };
-            return Ok((runner, root.to_path_buf()));
-        }
-        let runner = find_program(&program)
-            .map(Runner::Native)
-            .ok_or_else(|| problem(name, NO_PROGRAM_TEXT))?;
-        let cwd = place.root.clone().or_else(local_home).unwrap_or_default();
-        Ok((runner, cwd))
+        let here = HarnessHere {
+            link: &place.link,
+            root: place.root.as_deref(),
+            host_agents: self.hosts.agents(&chat.environment),
+        };
+        here.runner(harness, program)
+            .map_err(|missing| match missing {
+                NotHere::Waiting => Unready::Waiting,
+                NotHere::NoProgram => {
+                    problem(self.settings.acp.harness_name(harness), NO_PROGRAM_TEXT)
+                }
+            })
     }
 
     pub(super) fn history_runner(

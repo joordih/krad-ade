@@ -4,6 +4,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use krad_domain::GitObjectId;
+
+pub use krad_domain::{CheckpointChange, CheckpointChangeKind, RestoredCheckpoint};
 use krad_host::HostLink;
 
 use crate::git::{run_git, run_git_within};
@@ -41,26 +43,6 @@ fn parse_checkpoint(printed: &[u8]) -> Result<GitObjectId, RepoError> {
     String::from_utf8_lossy(printed)
         .parse()
         .map_err(|_| RepoError::UnexpectedOutput(WRITE_TREE_ARGS.join(ARG_SEPARATOR)))
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum CheckpointChangeKind {
-    Reverted,
-    Recreated,
-    Removed,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct CheckpointChange {
-    pub path: PathBuf,
-    pub kind: CheckpointChangeKind,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[must_use]
-pub struct RestoredCheckpoint {
-    pub undo: GitObjectId,
-    pub changes: Vec<CheckpointChange>,
 }
 
 struct Location {

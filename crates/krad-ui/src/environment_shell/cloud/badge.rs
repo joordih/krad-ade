@@ -1,5 +1,5 @@
 use gpui_kit::{
-    div, px, rgb, AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
+    div, px, rgb, AnyElement, App, Context, InteractiveElement, IntoElement, ParentElement,
     SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_domain::CloudRunnerId;
@@ -70,6 +70,7 @@ impl EnvironmentShell {
         &self,
         runner: CloudRunnerId,
         waiting: bool,
+        cx: &App,
     ) -> CloudBadge {
         if self.runner_removed_from_settings(runner) {
             return CloudBadge {
@@ -77,7 +78,7 @@ impl EnvironmentShell {
                 link: RunnerLink::Detached,
             };
         }
-        let state = self.runner_state(runner);
+        let state = self.runner_state(runner, cx);
         let link = RunnerLink::of(&state, waiting);
         CloudBadge {
             tooltip: badge_text(&self.runner_name(runner), link, &state).into(),
@@ -114,7 +115,7 @@ pub(in crate::environment_shell) fn cloud_marker(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_host::runner::Linger;
+    use krad_domain::Linger;
 
     #[test]
     fn the_badge_names_the_runner_and_how_the_session_is_reached() {

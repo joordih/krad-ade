@@ -2,7 +2,7 @@ use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{div, px, rgb, AnyElement, Context, Entity, IntoElement, ParentElement, Styled};
-use krad_repo::{CaseMatching, PatternSyntax, ProjectMatches, WordMatching};
+use krad_domain::{CaseMatching, PatternSyntax, ProjectMatches, WordMatching};
 
 use super::super::super::EnvironmentShell;
 use crate::components::{Button, ButtonVariant, IconName};
@@ -265,7 +265,7 @@ fn field_row(field: &Entity<InputState>) -> gpui_kit::Div {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_repo::{FileMatches, FoundLine};
+    use krad_domain::{FileMatches, FoundLine};
     use std::path::PathBuf;
 
     #[test]

@@ -1,7 +1,6 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::{AgentPreset, EnvironmentName, TerminalId, ToastKind};
-use krad_host::HostLink;
-use krad_protocol::{EventKind, HostState, HostsSnapshot, RemoteBusInfo, RemoteBusState};
+use krad_protocol::{EventKind, HostState, HostsSnapshot, LoginEnv, RemoteBusInfo, RemoteBusState};
 use std::path::PathBuf;
 
 use super::super::activity::{TerminalsTab, UtilityTab};
@@ -22,22 +21,11 @@ impl EnvironmentShell {
         kind: EventKind,
         cx: &mut Context<Self>,
     ) {
-        let hosts = &mut self.runtime.view.hosts;
         match kind {
-            EventKind::HostChanged { environment, state } => {
-                let moved = hosts.changed(environment, state);
-                self.host_moved(&moved, cx);
-            }
-            EventKind::RemoteBusChanged { environment, bus } => {
-                let before = hosts.bus_changed(environment.clone(), bus);
-                self.remote_bus_moved(&environment, &before, cx);
-            }
             EventKind::SignInWanted { environment } => self.sign_in_wanted(&environment, cx),
             EventKind::MachineChannelWanted { environment } => {
                 self.connect_machine(&environment, cx);
             }
-            EventKind::HostPrompted(prompt) => hosts.prompted(prompt),
-            EventKind::HostPromptSettled { prompt } => hosts.prompt_settled(prompt),
             EventKind::HostAgentsFound {
                 environment,
                 host,
@@ -52,6 +40,7 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn hosts_replaced(
         &mut self,
         snapshot: HostsSnapshot,
+        moves: Vec<HostMove>,
         cx: &mut Context<Self>,
     ) {
         for entry in snapshot
@@ -64,16 +53,20 @@ impl EnvironmentShell {
                     .insert(live.data.host.clone(), entry.agents.clone());
             }
         }
-        self.acp_adapters_replaced(snapshot.adapters.clone());
-        for found in snapshot.local.clone() {
+        self.acp_adapters_replaced(snapshot.adapters);
+        for found in snapshot.local {
             self.local_agents_found(found, cx);
         }
-        for moved in self.runtime.view.hosts.replace(snapshot) {
+        for moved in moves {
             self.host_moved(&moved, cx);
         }
     }
 
-    fn host_moved(&mut self, moved: &HostMove, cx: &mut Context<Self>) {
+    pub(in crate::environment_shell) fn host_moved(
+        &mut self,
+        moved: &HostMove,
+        cx: &mut Context<Self>,
+    ) {
         let env = &moved.environment;
         if let Some(terminal) = moved.before.sign_in_terminal() {
             let finished = moved.after.sign_in_terminal().is_none()
@@ -102,6 +95,7 @@ impl EnvironmentShell {
     }
 
     fn drop_sign_in_terminal(&mut self, env: &EnvironmentName, id: TerminalId) {
+        self.hosts.sign_in_terminals.remove(env);
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
@@ -124,25 +118,23 @@ impl EnvironmentShell {
             .map(|group| group.root.clone())
             .collect();
         let host = live.data.host.clone();
-        let shared = self.envs.iter().any(|(name, other)| {
-            name != env && other.data.host == host && self.host_state(name).is_connected()
-        });
         self.forget_review_offers(&host, &roots);
-        if !shared {
-            self.runtime.handle.forget_opencode(host.clone());
-        }
-        self.tell_missing_login_env(env);
+        self.tell_missing_login_env(env, cx);
         self.finish_host_connection(env, cx);
     }
 
-    fn tell_missing_login_env(&mut self, env: &EnvironmentName) {
+    fn tell_missing_login_env(&mut self, env: &EnvironmentName, cx: &App) {
         let Some(host) = self.envs.get(env).map(|live| live.data.host.clone()) else {
             return;
         };
-        let HostLink::Remote(ssh) = self.link_for(&host) else {
-            return;
-        };
-        if ssh.has_login_env() {
+        let missing = matches!(
+            self.host_state(env, cx),
+            HostState::Connected {
+                login_env: LoginEnv::Missing,
+                ..
+            }
+        );
+        if !missing {
             return;
         }
         let destination = host.to_string();
@@ -156,11 +148,11 @@ impl EnvironmentShell {
     }
 
     fn finish_host_connection(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
-        if !self.host_ready(env) {
+        if !self.host_ready(env, cx) {
             return;
         }
         if *env == self.active {
-            self.start_system_terminals();
+            self.start_system_terminals(cx);
             self.refresh_git(cx);
             self.forget_file_index();
             self.reload_file_tree(cx);
@@ -181,6 +173,7 @@ impl EnvironmentShell {
             .side_panel_mut()
             .add_terminal(id, format!("{SIGN_IN_LABEL} · {destination}"));
         live.terminals_tab = TerminalsTab::Shown;
+        self.hosts.sign_in_terminals.insert(env.clone(), id);
         let view = self.runtime.handle.open_sign_in(terminal_ref(env, id));
         self.keep_live_session(env, id, LiveTerminal::new(view, None));
         if *env == self.active {
@@ -189,17 +182,17 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    fn remote_bus_moved(
+    pub(in crate::environment_shell) fn remote_bus_moved(
         &mut self,
         env: &EnvironmentName,
         before: &RemoteBusState,
         cx: &mut Context<Self>,
     ) {
-        if let RemoteBusState::Unavailable { reason } = self.runtime.view.hosts.bus(env) {
-            let reason = reason.clone();
-            self.remote_bus_unavailable(env, &reason);
+        let bus = self.runtime.view.read(cx).hosts.bus(env).clone();
+        if let RemoteBusState::Unavailable { reason } = &bus {
+            self.remote_bus_unavailable(env, reason);
         }
-        if before.is_preparing() && !self.runtime.view.hosts.bus(env).is_preparing() {
+        if before.is_preparing() && !bus.is_preparing() {
             self.remote_bus_settled(env, cx);
         }
     }
@@ -223,14 +216,19 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    pub(in crate::environment_shell) fn remote_bus(
+    pub(in crate::environment_shell) fn remote_bus<'a>(
         &self,
         env: &EnvironmentName,
-    ) -> Option<&RemoteBusInfo> {
-        self.runtime.view.hosts.bus(env).ready()
+        cx: &'a App,
+    ) -> Option<&'a RemoteBusInfo> {
+        self.runtime.view.read(cx).hosts.bus(env).ready()
     }
 
-    pub(in crate::environment_shell) fn awaits_remote_bus(&self, env: &EnvironmentName) -> bool {
-        self.runtime.view.hosts.bus(env).is_preparing()
+    pub(in crate::environment_shell) fn awaits_remote_bus(
+        &self,
+        env: &EnvironmentName,
+        cx: &App,
+    ) -> bool {
+        self.runtime.view.read(cx).hosts.bus(env).is_preparing()
     }
 }

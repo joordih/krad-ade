@@ -66,7 +66,7 @@ impl EnvironmentShell {
         pal: &Palette,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let logins = self.runner_logins(runner);
+        let logins = self.runner_logins(runner, cx);
         if logins.is_empty() {
             return None;
         }

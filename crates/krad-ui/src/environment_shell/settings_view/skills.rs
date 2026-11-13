@@ -3,12 +3,13 @@ mod row;
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{AnyElement, AppContext as _, Context, Entity, Subscription, Window};
-use krad_chat::{enabled_count, skill_library, LibraryFilter, LibrarySkill, SkillHarness};
-use krad_domain::{SkillKey, SkillKind, ToastKind};
-use krad_repo::{reveal_in_file_manager, RepoError};
+use krad_domain::{
+    enabled_count, LibraryFilter, LibrarySkill, SkillHarness, SkillKey, SkillKind, ToastKind,
+};
+use krad_protocol::{Answer, RepoAsk};
 use std::path::PathBuf;
 
-use super::super::chat::workplace_home;
+use super::super::repo_asks::done;
 use super::sections::{empty_row, pane_column, settings_section};
 use super::{panel_card, EnvironmentShell, SettingsPane};
 use crate::theme::palette;
@@ -87,7 +88,6 @@ impl EnvironmentShell {
             return;
         }
         let root = self.active_group().map(|group| group.root.clone());
-        let link = self.active_link();
         if let Some(ui) = self.skills_ui_mut() {
             ui.root.clone_from(&root);
             if !matches!(ui.library, Library::Ready(_)) {
@@ -95,10 +95,14 @@ impl EnvironmentShell {
             }
         }
         let wanted = root.clone();
-        let detecting = cx.background_spawn(async move {
-            let home = workplace_home(&link, root.as_deref())?;
-            Ok::<_, RepoError>(skill_library(&link, home.as_deref(), root.as_deref()))
-        });
+        let detecting = self.ask_active_repo(
+            RepoAsk::Skills { root },
+            |answer| match answer {
+                Answer::Skills { skills } => Some(skills),
+                _ => None,
+            },
+            cx,
+        );
         cx.spawn(async move |this, cx| {
             let found = detecting.await;
             this.update(cx, |shell, cx| {
@@ -108,7 +112,7 @@ impl EnvironmentShell {
                             ui.library = Library::Ready(skills);
                         }
                     }
-                    Err(error) => shell.toast_failure(&error),
+                    Err(error) => shell.toast_failure(&error, cx),
                 }
                 cx.notify();
             })
@@ -138,8 +142,7 @@ impl EnvironmentShell {
     }
 
     fn reveal_skill_file(&self, file: PathBuf, cx: &mut Context<Self>) {
-        let link = self.active_link();
-        let revealing = cx.background_spawn(async move { reveal_in_file_manager(&link, &file) });
+        let revealing = self.ask_active_repo(RepoAsk::Reveal { path: file }, done, cx);
         cx.spawn(async move |this, cx| {
             let Err(error) = revealing.await else {
                 return;

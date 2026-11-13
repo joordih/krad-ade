@@ -1,14 +1,20 @@
 use futures::executor::block_on;
 use futures::StreamExt as _;
 use krad_chat::new_session_id;
-use krad_domain::{ChatImage, EnvironmentName, ImageFormat, TerminalId};
+use krad_domain::{
+    AgentPreset, ArchivedChat, ChatBookmarks, ChatCheckpoints, ChatChoice, ChatHome, ChatImage,
+    EnvironmentData, EnvironmentName, ImageFormat, LooseChat, RuntimeState, SessionEdit,
+    TerminalId,
+};
 use krad_protocol::{
     AgentRef, ChatCommand, Command, ErrorCode, EventKind, Feed, PastedImage, Problem, Reply,
+    SessionCommand,
 };
-use krad_runtime::{EventReceiver, Runtime, RuntimeSetup};
+use krad_runtime::{EnvironmentsSetup, EventReceiver, Runtime, RuntimeSetup};
 use krad_store::ChatImages;
 use std::error::Error;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 type TestResult = Result<(), Box<dyn Error>>;
 
@@ -93,5 +99,60 @@ fn a_runtime_without_an_image_folder_refuses_a_pasted_image() -> TestResult {
             ..
         }
     ));
+    Ok(())
+}
+
+#[test]
+fn forgetting_an_archive_removes_its_chats_images_under_the_runtime_s_root() -> TestResult {
+    let folder = Folder(std::env::temp_dir().join(format!(
+        "krad-runtime-archive-files-{}",
+        new_session_id().as_str()
+    )));
+    let mut data = EnvironmentData::empty(chat().environment);
+    let group = data.add_group(folder.0.join("repo"), None);
+    data.archive.chats.push(LooseChat {
+        group,
+        home: ChatHome::Gone,
+        session_name: "session".to_owned(),
+        closed: SystemTime::now(),
+        chat: ArchivedChat {
+            terminal: chat().terminal,
+            title: "chat".to_owned(),
+            harness: AgentPreset::ClaudeCode,
+            resume: new_session_id(),
+            choice: ChatChoice::default(),
+            bookmarks: ChatBookmarks::default(),
+            checkpoints: ChatCheckpoints::default(),
+        },
+    });
+    let runtime = Runtime::start(RuntimeSetup {
+        chat_images: Some(ChatImages::new(folder.0.clone())),
+        environments: EnvironmentsSetup {
+            state: RuntimeState {
+                environments: vec![data],
+                ..RuntimeState::default()
+            },
+            file: None,
+        },
+        ..RuntimeSetup::default()
+    })?;
+    let mut feed = runtime.subscribe();
+    block_on(feed.next()).ok_or(FEED_ENDED)?;
+    assert_eq!(
+        block_on(runtime.send(runtime.next_request(), attach()))?,
+        Reply::Accepted
+    );
+    let image = attached(&mut feed)?;
+    let forget = Command::Session(SessionCommand {
+        environment: chat().environment,
+        edit: SessionEdit::ForgetArchive,
+    });
+    assert_eq!(
+        block_on(runtime.send(runtime.next_request(), forget))?,
+        Reply::Accepted
+    );
+    while image.path.exists() {
+        std::thread::yield_now();
+    }
     Ok(())
 }

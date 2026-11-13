@@ -1,4 +1,4 @@
-use gpui_kit::{Context, MouseDownEvent, Pixels, Point};
+use gpui_kit::{App, Context, MouseDownEvent, Pixels, Point};
 use krad_domain::GroupId;
 
 use super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
@@ -51,7 +51,7 @@ impl EnvironmentShell {
         self.open_menu(point(anchor), placement, entries, cx);
     }
 
-    pub(super) fn group_menu(&self, id: GroupId) -> Vec<MenuEntry> {
+    pub(super) fn group_menu(&self, id: GroupId, cx: &App) -> Vec<MenuEntry> {
         let group = self
             .envs
             .get(&self.active)
@@ -65,7 +65,7 @@ impl EnvironmentShell {
                 Some(IconName::Book),
                 MenuAction::OpenArchive(id),
             ));
-            entries.push(self.cloud_session_entry(group));
+            entries.push(self.cloud_session_entry(group, cx));
             entries.push(MenuEntry::Separator);
         }
         if is_worktree {

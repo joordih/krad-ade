@@ -143,7 +143,7 @@ impl EnvironmentShell {
 
     pub(super) fn go_to_variant(&mut self, terminal: TerminalId, cx: &mut Context<Self>) {
         self.close_variants_ui(cx);
-        self.focus_terminal(terminal);
+        self.focus_terminal(terminal, cx);
         cx.notify();
     }
 

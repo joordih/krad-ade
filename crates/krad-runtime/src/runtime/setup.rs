@@ -3,6 +3,7 @@ use krad_store::{ChatImages, Secrets};
 use crate::app_events::EventsSetup;
 use crate::bus::BusSetup;
 use crate::environments::EnvironmentsSetup;
+use crate::hosts::HostTools;
 use crate::kraddies::KraddiesSetup;
 use crate::settings::SettingsSetup;
 
@@ -15,6 +16,7 @@ pub struct RuntimeSetup {
     pub kraddies: KraddiesSetup,
     pub secrets: Secrets,
     pub chat_images: Option<ChatImages>,
+    pub host_tools: HostTools,
 }
 
 impl Default for RuntimeSetup {
@@ -27,6 +29,7 @@ impl Default for RuntimeSetup {
             kraddies: KraddiesSetup::default(),
             secrets: Secrets::in_memory(),
             chat_images: None,
+            host_tools: HostTools::default(),
         }
     }
 }

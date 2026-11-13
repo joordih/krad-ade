@@ -1,6 +1,8 @@
 use super::*;
+use krad_domain::{SkillKind, SkillSettings};
 use std::error::Error;
 use std::fs;
+use std::path::PathBuf;
 
 fn write(path: &Path, text: &str) -> Result<(), Box<dyn Error>> {
     if let Some(parent) = path.parent() {

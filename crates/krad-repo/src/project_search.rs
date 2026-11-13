@@ -1,7 +1,6 @@
 use krad_host::HostLink;
 use std::ffi::OsString;
-use std::ops::Range;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::thread;
 
 use crate::git::repo_root;
@@ -11,10 +10,12 @@ use crate::RepoError;
 mod output;
 mod replace;
 
-pub use replace::{
-    replace_in_file, replaced_line, undo_replace, ReplaceUndo, ReplacedFile, Replacement,
-    UndoOutcome,
+pub use krad_domain::{
+    parse_globs, replaced_line, CaseMatching, FileMatches, FoundLine, PatternSyntax,
+    ProjectMatches, ProjectQuery, ReplaceUndo, ReplacedFile, Replacement, UndoOutcome,
+    WordMatching,
 };
+pub use replace::{replace_in_file, undo_replace};
 
 const GREP_COMMAND: &str = "grep";
 const GREP_COMMON_ARGS: [&str; 4] = ["--line-number", "-z", "-I", "--no-color"];
@@ -29,86 +30,12 @@ const PATTERN_ARG: &str = "-e";
 const PATHSPEC_SEPARATOR: &str = "--";
 const GREP_NO_MATCH: i32 = 1;
 const SEARCH_STOPPED_TEXT: &str = "the search stopped unexpectedly";
-const GLOB_LIST_SEPARATOR: char = ',';
 const GLOB_MAGIC: &str = ":(glob)";
 const EXCLUDE_GLOB_MAGIC: &str = ":(exclude,glob)";
 const ANY_FOLDER: &str = "**/";
 const ANYTHING_INSIDE: &str = "/**";
 const FOLDER_SEPARATOR: char = '/';
 const CURRENT_FOLDER: &str = "./";
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum PatternSyntax {
-    #[default]
-    Literal,
-    Regex,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum CaseMatching {
-    #[default]
-    Insensitive,
-    Sensitive,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum WordMatching {
-    #[default]
-    Anywhere,
-    WholeWord,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct ProjectQuery {
-    pub pattern: String,
-    pub syntax: PatternSyntax,
-    pub case: CaseMatching,
-    pub word: WordMatching,
-    pub include: Vec<String>,
-    pub exclude: Vec<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FoundLine {
-    pub line: u32,
-    pub text: String,
-    pub matches: Vec<Range<usize>>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FileMatches {
-    pub path: PathBuf,
-    pub lines: Vec<FoundLine>,
-}
-
-impl FileMatches {
-    #[must_use]
-    pub fn match_count(&self) -> usize {
-        self.lines.iter().map(|line| line.matches.len()).sum()
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ProjectMatches {
-    pub files: Vec<FileMatches>,
-    pub truncated: bool,
-}
-
-impl ProjectMatches {
-    #[must_use]
-    pub fn match_count(&self) -> usize {
-        self.files.iter().map(FileMatches::match_count).sum()
-    }
-}
-
-#[must_use]
-pub fn parse_globs(text: &str) -> Vec<String> {
-    text.split(GLOB_LIST_SEPARATOR)
-        .map(str::trim)
-        .filter(|glob| !glob.is_empty())
-        .map(str::to_owned)
-        .collect()
-}
 
 /// # Errors
 ///

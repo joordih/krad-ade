@@ -161,6 +161,12 @@ pub struct AcpAuthMethod {
     pub sign_in: AcpSignIn,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcpWanted {
+    pub mode: Option<AcpModeId>,
+    pub options: Vec<(AcpConfigOptionId, AcpConfigValue)>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

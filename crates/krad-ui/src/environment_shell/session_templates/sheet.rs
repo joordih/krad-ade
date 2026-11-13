@@ -3,8 +3,7 @@ use gpui_kit::{
     SharedString, StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::review::Issue;
-use krad_domain::{SessionTemplate, TEMPLATES_DIR};
-use krad_repo::StoredTemplate;
+use krad_domain::{SessionTemplate, StoredTemplate, TEMPLATES_DIR};
 
 use super::super::dialog_parts::{
     sheet_body, sheet_footer, sheet_group, sheet_overlay, sheet_panel, sheet_row_with,

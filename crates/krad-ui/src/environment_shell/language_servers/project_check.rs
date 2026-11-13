@@ -1,8 +1,8 @@
-use gpui_kit::{AppContext as _, Context, Task};
+use gpui_kit::{Context, Task};
 use krad_domain::{Host, LanguageId};
 use krad_extensions::{ProjectCheck, ServerScope};
-use krad_host::HostLink;
 use krad_lsp::lsp_types::FileChangeType;
+use krad_protocol::{Answer, FileAsk};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -95,11 +95,10 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get(&self.active) else {
             return;
         };
-        if !self.host_ready(&self.active) || self.language_servers.tools.is_none() {
+        if !self.host_ready(&self.active, cx) || self.language_servers.tools.is_none() {
             return;
         }
         let host = live.data.host.clone();
-        let link = self.runtime.handle.host_link(&live.data.host);
         let roots: Vec<PathBuf> = live
             .data
             .groups
@@ -109,7 +108,7 @@ impl EnvironmentShell {
         for root in roots {
             let group = (host.clone(), root);
             match self.project_checks().groups.get(&group) {
-                None => self.index_group(group, link.clone(), cx),
+                None => self.index_group(group, cx),
                 Some(GroupCheck::Indexed(_)) => self.start_group_servers(&group, cx),
                 Some(GroupCheck::Indexing { .. }) => {}
             }
@@ -120,9 +119,9 @@ impl EnvironmentShell {
         &self.language_servers.project
     }
 
-    fn index_group(&mut self, group: GroupKey, link: HostLink, cx: &mut Context<Self>) {
+    fn index_group(&mut self, group: GroupKey, cx: &mut Context<Self>) {
         let root = group.1.clone();
-        let indexing = cx.background_spawn(async move { krad_repo::index_files(&link, &root) });
+        let indexing = self.ask_active_file(FileAsk::Index { root }, indexed_of, cx);
         let indexed = group.clone();
         let task = cx.spawn(async move |this, cx| {
             let index = indexing.await;
@@ -131,7 +130,8 @@ impl EnvironmentShell {
                     tracing::debug!("the project check could not list the group's files");
                     return;
                 };
-                let languages = shell.files_by_language(&indexed.1, index.files());
+                let languages =
+                    shell.files_by_language(&indexed.1, index.iter().map(PathBuf::as_path));
                 shell
                     .language_servers
                     .project
@@ -309,6 +309,13 @@ impl EnvironmentShell {
             self.language_servers.project.background.remove(&document);
             self.language_servers.diagnostics.forget(&document);
         }
+    }
+}
+
+fn indexed_of(answer: Answer) -> Option<Vec<PathBuf>> {
+    match answer {
+        Answer::Indexed { files } => Some(files),
+        _ => None,
     }
 }
 

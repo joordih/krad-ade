@@ -1,5 +1,5 @@
 use gpui_kit::{
-    div, px, rgb, AnyElement, Context, ElementId, IntoElement, ParentElement,
+    div, px, rgb, AnyElement, App, Context, ElementId, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled,
 };
 use krad_domain::{AgentPreset, CloudRunnerId, TerminalId};
@@ -30,13 +30,13 @@ fn element_id(prefix: &str, id: TerminalId) -> ElementId {
 }
 
 impl EnvironmentShell {
-    fn cloud_tray_need(&self, id: TerminalId, harness: AgentPreset) -> Option<CloudTray> {
+    fn cloud_tray_need(&self, id: TerminalId, harness: AgentPreset, cx: &App) -> Option<CloudTray> {
         let runner = self.cloud_placement_of(&self.active, id)?.runner;
         if self.runner_removed_from_settings(runner) {
             return Some(CloudTray::Removed);
         }
         let cli = RunnerCli::of_harness(harness)?;
-        self.runner_login(runner, cli)
+        self.runner_login(runner, cli, cx)
             .filter(|login| login.needs_sign_in())
             .map(|_| CloudTray::SignedOut(runner, cli))
     }
@@ -47,7 +47,7 @@ impl EnvironmentShell {
         harness: AgentPreset,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let need = self.cloud_tray_need(id, harness)?;
+        let need = self.cloud_tray_need(id, harness, cx)?;
         let pal = palette(cx);
         let (text, buttons): (String, Vec<AnyElement>) = match need {
             CloudTray::Removed => {

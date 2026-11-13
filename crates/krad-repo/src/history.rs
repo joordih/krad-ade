@@ -4,9 +4,11 @@ use std::time::{Duration, SystemTime};
 
 use krad_domain::review::CommitSha;
 use krad_domain::{CommitLabel, HistoryCommit};
+
+pub use krad_domain::CommitFile;
 use krad_host::HostLink;
 
-use crate::changes::{parse_numstat, LineCount, WHOLE_FILE_CONTEXT};
+use crate::changes::{parse_numstat, WHOLE_FILE_CONTEXT};
 use crate::git::run_git;
 use crate::status::{ChangeKind, FileChange};
 use crate::RepoError;
@@ -52,12 +54,6 @@ const DELETED_CODE: char = 'D';
 const RENAMED_CODE: char = 'R';
 const COPIED_CODE: char = 'C';
 const UNMERGED_CODE: char = 'U';
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CommitFile {
-    pub change: FileChange,
-    pub lines: LineCount,
-}
 
 /// # Errors
 ///

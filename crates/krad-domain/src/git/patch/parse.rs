@@ -1,7 +1,7 @@
-use krad_domain::{GitObjectId, HunkFingerprint};
 use std::path::PathBuf;
 
 use super::{FilePatch, Hunk, HunkLine, HunkLineKind, PatchBody, PatchStatus};
+use crate::{GitObjectId, HunkFingerprint};
 
 const FILE_HEADER: &str = "diff --git ";
 const OLD_PREFIX: &str = "a/";

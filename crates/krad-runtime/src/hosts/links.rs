@@ -1,4 +1,4 @@
-use krad_domain::{Host, InstallId};
+use krad_domain::{Host, HostTimeouts, InstallId};
 use krad_host::mux::PromptSender;
 use krad_host::{HostContext, HostLink};
 use std::collections::HashMap;
@@ -16,10 +16,10 @@ struct Registry {
 pub(crate) struct HostLinks(Arc<RwLock<Registry>>);
 
 impl HostLinks {
-    pub(crate) fn new(prompts: PromptSender) -> Self {
+    pub(crate) fn new(prompts: PromptSender, context: HostContext) -> Self {
         let context = HostContext {
             prompts: Some(prompts),
-            ..HostContext::default()
+            ..context
         };
         Self(Arc::new(RwLock::new(Registry {
             context,
@@ -27,10 +27,9 @@ impl HostLinks {
         })))
     }
 
-    pub(crate) fn use_context(&self, context: HostContext) {
+    pub(crate) fn use_timeouts(&self, timeouts: HostTimeouts) {
         let mut registry = self.0.write().unwrap_or_else(PoisonError::into_inner);
-        let prompts = registry.context.prompts.take();
-        registry.context = HostContext { prompts, ..context };
+        registry.context.timeouts = timeouts;
     }
 
     pub(crate) fn install_id(&self) -> Option<InstallId> {

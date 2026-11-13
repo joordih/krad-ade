@@ -16,7 +16,7 @@ const SCHEMA_FILE: &str = "../../sdk/schema/krad-runtime-protocol.json";
 const WRITE_VAR: &str = "KRAD_PROTOCOL_SCHEMA";
 const WRITE_VALUE: &str = "write";
 
-const ERROR_CODES: [ErrorCode; 7] = [
+const ERROR_CODES: [ErrorCode; 8] = [
     ErrorCode::Unsupported,
     ErrorCode::NotFound,
     ErrorCode::AlreadyAnswered,
@@ -24,17 +24,20 @@ const ERROR_CODES: [ErrorCode; 7] = [
     ErrorCode::Unavailable,
     ErrorCode::Busy,
     ErrorCode::Forbidden,
+    ErrorCode::Failed,
 ];
 
 const SCOPES: [Scope; 1] = [Scope::Runtime];
 
-const AREAS: [&str; 24] = [
+const AREAS: [&str; 28] = [
     "runtime",
     "bus",
     "events",
     "attention",
     "usage",
     "models",
+    "health",
+    "opencode",
     "environments",
     "session",
     "group",
@@ -53,6 +56,8 @@ const AREAS: [&str; 24] = [
     "code_host",
     "runner",
     "cloud",
+    "repo",
+    "file",
 ];
 
 const fn listed_code(code: ErrorCode) -> bool {
@@ -63,7 +68,8 @@ const fn listed_code(code: ErrorCode) -> bool {
         | ErrorCode::Invalid
         | ErrorCode::Unavailable
         | ErrorCode::Busy
-        | ErrorCode::Forbidden => true,
+        | ErrorCode::Forbidden
+        | ErrorCode::Failed => true,
         ErrorCode::Unknown => false,
     }
 }
@@ -76,6 +82,8 @@ const fn area(command: &Command) -> Option<&'static str> {
         Command::Attention(_) => "attention",
         Command::Usage(_) => "usage",
         Command::Models(_) => "models",
+        Command::Health(_) => "health",
+        Command::Opencode(_) => "opencode",
         Command::Environments(_) => "environments",
         Command::Session(_) => "session",
         Command::Group(_) => "group",
@@ -94,6 +102,8 @@ const fn area(command: &Command) -> Option<&'static str> {
         Command::CodeHost(_) => "code_host",
         Command::Runner(_) => "runner",
         Command::Cloud(_) => "cloud",
+        Command::Repo(_) => "repo",
+        Command::File(_) => "file",
         Command::Unknown => return None,
     })
 }

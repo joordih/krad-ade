@@ -1,4 +1,4 @@
-use gpui_kit::{div, px, rgb, Context, ParentElement, Styled, Window};
+use gpui_kit::{div, px, rgb, App, Context, ParentElement, Styled, Window};
 use krad_domain::{AgentState, EnvironmentView, NodeField, SessionEdit, TerminalId, TextScale};
 
 use super::EnvironmentShell;
@@ -31,7 +31,7 @@ impl EnvironmentShell {
         window.focus(&self.focus, cx);
     }
 
-    pub(super) fn focus_terminal(&mut self, id: TerminalId) {
+    pub(super) fn focus_terminal(&mut self, id: TerminalId, cx: &App) {
         let env = self.active.clone();
         let shown = self
             .envs
@@ -63,7 +63,7 @@ impl EnvironmentShell {
                 live.selected_group = Some(group.id);
             }
         }
-        self.attention_seen(&env, id);
+        self.attention_seen(&env, id, cx);
     }
 
     pub(super) fn step_text_scale(&mut self, id: TerminalId, bigger: bool, cx: &mut Context<Self>) {

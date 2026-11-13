@@ -6,8 +6,7 @@ mod rows;
 mod upload;
 mod workspace_reload;
 
-use krad_domain::{ChangeKind, LanguageCatalog};
-use krad_repo::{DirEntry, EntryKind};
+use krad_domain::{ChangeKind, DirEntry, EntryKind, LanguageCatalog};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;

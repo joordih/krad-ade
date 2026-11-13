@@ -1,10 +1,9 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, AppContext as _, Context, FontWeight, IntoElement, ParentElement,
-    SharedString, Styled, Window,
+    div, px, rgb, AnyElement, Context, FontWeight, IntoElement, ParentElement, SharedString,
+    Styled, Window,
 };
-use krad_domain::{AppEvent, RemovalConfirm, ToastKind, WorktreeState};
-use krad_repo::{discard_worktree, remove_worktree, worktree_state, RepoError};
+use krad_domain::{RemovalConfirm, WorktreeState};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
@@ -16,6 +15,8 @@ use crate::components::{chip, icon, Button, ButtonVariant, IconName};
 use crate::theme::{
     palette, Palette, ICON_SM, LINE_SM, LINE_XS, SPACE_0_5, SPACE_2, SPACE_3, TEXT_SM, TEXT_XS,
 };
+
+mod checks;
 
 const LIST_TITLE: &str = "Existing worktrees";
 const LIST_HINT: &str = "The worktrees of the repositories open in this environment.";
@@ -112,58 +113,6 @@ impl EnvironmentShell {
         listed.into_values().collect()
     }
 
-    pub(in crate::environment_shell) fn refresh_worktree_states(&mut self, cx: &mut Context<Self>) {
-        let listed = self.listed_worktree_entries();
-        let Some(ui) = self.settings_ui.as_mut() else {
-            return;
-        };
-        for entry in &listed {
-            ui.worktrees
-                .states
-                .probes
-                .insert(entry.path.clone(), Probe::Checking);
-        }
-        let link = self.active_link();
-        let base = self.settings.worktrees.base;
-        let checking = cx.background_spawn(async move {
-            listed
-                .into_iter()
-                .map(|entry| {
-                    let state = worktree_state(
-                        &link,
-                        &entry.main,
-                        &entry.path,
-                        entry.branch.as_deref(),
-                        base,
-                    );
-                    (entry.path, state)
-                })
-                .collect::<Vec<_>>()
-        });
-        cx.spawn(async move |this, cx| {
-            let checked = checking.await;
-            this.update(cx, |shell, cx| {
-                let Some(ui) = shell.settings_ui.as_mut() else {
-                    return;
-                };
-                for (path, state) in checked {
-                    let probe = state.map_or_else(
-                        |error| {
-                            tracing::debug!(%error, "worktree state unreadable");
-                            Probe::Failed
-                        },
-                        Probe::Known,
-                    );
-                    ui.worktrees.states.probes.insert(path, probe);
-                }
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
-        cx.notify();
-    }
-
     fn ask_remove_listed(&mut self, entry: Listed, window: &mut Window, cx: &mut Context<Self>) {
         let probe = self
             .settings_ui
@@ -204,53 +153,6 @@ impl EnvironmentShell {
     }
 
     #[tracing::instrument(skip_all)]
-    fn remove_listed(&mut self, entry: Listed, probe: Option<&Probe>, cx: &mut Context<Self>) {
-        if let Some(ui) = self.settings_ui.as_mut() {
-            ui.worktrees.states.confirming = None;
-        }
-        let env = self.active.clone();
-        let group = self.envs.get(&env).and_then(|live| {
-            live.data
-                .groups
-                .iter()
-                .find(|group| group.root == entry.path)
-                .map(|group| group.id)
-        });
-        let link = self.env_link(&env);
-        let clean = matches!(
-            probe,
-            Some(Probe::Known(
-                WorktreeState::Fresh | WorktreeState::Merged | WorktreeState::Ahead(_)
-            ))
-        );
-        let removing = cx.background_spawn(async move {
-            let removed: Result<(), RepoError> = if clean {
-                remove_worktree(&link, &entry.main, &entry.path)
-            } else {
-                discard_worktree(&link, &entry.main, &entry.path)
-            };
-            removed
-        });
-        cx.spawn(async move |this, cx| {
-            let removed = removing.await;
-            this.update(cx, |shell, cx| {
-                match removed {
-                    Ok(()) => {
-                        shell.publish_event(&env, group, AppEvent::WorktreeRemoved);
-                        if let Some(group) = group {
-                            shell.remove_group_in(&env, group, cx);
-                        }
-                    }
-                    Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
-                }
-                shell.refresh_git(cx);
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
-    }
-
     pub(super) fn worktree_list_section(
         &self,
         states: &ListedStates,

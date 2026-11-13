@@ -1,6 +1,6 @@
 use krad_domain::{
-    AgentStatus, ApiDiscoveryFile, AskAnswer, AskKind, EnvironmentName, TerminalId, ToolDecision,
-    ToolUseId, WebhookId,
+    AgentInfo, AgentStatus, ApiDiscoveryFile, AskAnswer, AskKind, EnvironmentName, StateReason,
+    TerminalId, ToolDecision, ToolUseId, WebhookId,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -95,6 +95,17 @@ pub enum BusCommand {
         #[serde(default)]
         delivered: BTreeSet<WebhookId>,
     },
+    ObserveAgent {
+        agent: AgentRef,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        seen: Option<AgentInfo>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        hint: Option<StateReason>,
+    },
+    ReconcileAgents {
+        environments: Vec<EnvironmentName>,
+        agents: Vec<AgentInfo>,
+    },
     #[serde(other)]
     Unknown,
 }
@@ -111,6 +122,22 @@ mod tests {
             environment: EnvironmentName::new("main".to_owned()),
             terminal: TerminalId(3),
         }
+    }
+
+    #[test]
+    fn an_observed_agent_carries_what_the_client_saw_and_why() -> serde_json::Result<()> {
+        let command = Command::Bus(BusCommand::ObserveAgent {
+            agent: agent(),
+            seen: None,
+            hint: Some(StateReason::UserClosed),
+        });
+        let json = serde_json::to_string(&command)?;
+        assert_eq!(
+            json,
+            r#"{"area":"bus","verb":"observe_agent","agent":{"environment":"main","terminal":3},"hint":"user_closed"}"#
+        );
+        assert_eq!(serde_json::from_str::<Command>(&json)?, command);
+        Ok(())
     }
 
     #[test]

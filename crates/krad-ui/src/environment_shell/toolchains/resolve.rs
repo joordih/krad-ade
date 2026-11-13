@@ -1,18 +1,19 @@
-use gpui_kit::{AppContext as _, Context};
+use gpui_kit::{App, AppContext as _, Context};
 use krad_domain::{
     EffectiveToolchain, Host, ProjectFolder, ToastKind, ToolchainChoices, ToolchainFamilyId,
     ToolchainScope, ToolchainSelection,
 };
+use krad_extensions::host::{HostLink, HOST_CLI_PROGRAM};
 use krad_extensions::{
     project_folder_for, Discovery, DiscoveryRequest, SharedLocatorManifest, ToolchainCache,
     ToolchainFamilyManifest,
 };
-use krad_host::{HostLink, HOST_CLI_PROGRAM};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use super::super::language_servers::Document;
+use super::super::terminal_card::home_dir;
 use super::super::EnvironmentShell;
 use super::DocumentFamily;
 
@@ -110,16 +111,21 @@ impl EnvironmentShell {
         host: &Host,
         group_root: PathBuf,
     ) -> Option<DiscoveryInputs> {
-        let (name, live) = self.envs.iter().find(|(_, live)| live.data.host == *host)?;
+        let live = self.envs.values().find(|live| live.data.host == *host)?;
         let link = self.runtime.handle.host_link(&live.data.host);
-        let host_cli = match &link {
-            HostLink::Local => self.host_tools.local_cli.clone(),
-            HostLink::Remote(ssh) => ssh
-                .layout()
-                .map(|layout| layout.bin_dir().join(HOST_CLI_PROGRAM)),
+        let (host_cli, home) = match &link {
+            HostLink::Local => (
+                self.host_tools.local_cli.clone(),
+                home_dir().map(PathBuf::from),
+            ),
+            HostLink::Remote(ssh) => (
+                ssh.layout()
+                    .map(|layout| layout.bin_dir().join(HOST_CLI_PROGRAM)),
+                ssh.home().map(Path::to_path_buf),
+            ),
         };
         Some(DiscoveryInputs {
-            home: self.env_home(name),
+            home,
             link,
             host: host.clone(),
             group_root,
@@ -145,7 +151,8 @@ impl EnvironmentShell {
         document: Document,
         cx: &mut Context<Self>,
     ) {
-        if self.toolchains.resolving.contains(&document) || !self.host_is_ready(&document.host) {
+        if self.toolchains.resolving.contains(&document) || !self.host_is_ready(&document.host, cx)
+        {
             return;
         }
         let families = self.language_families(&document.path);
@@ -181,11 +188,11 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    fn host_is_ready(&self, host: &Host) -> bool {
+    fn host_is_ready(&self, host: &Host, cx: &App) -> bool {
         self.envs
             .iter()
             .find(|(_, live)| live.data.host == *host)
-            .is_some_and(|(name, _)| self.host_ready(name))
+            .is_some_and(|(name, _)| self.host_ready(name, cx))
     }
 
     fn toolchains_resolved(

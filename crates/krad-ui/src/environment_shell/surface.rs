@@ -39,10 +39,9 @@ use gpui_kit::{
     Subscription, Window,
 };
 use krad_domain::{
-    AgentPreset, Effort, EnvironmentName, Mention, ModelId, NodeField, Prompt, TerminalId,
-    COMPOSER_MIN_ROWS, DEFAULT_CHAT_HARNESS,
+    AgentPreset, Effort, EnvironmentName, IndexEntry, Mention, ModelId, NodeField, Prompt,
+    TerminalId, COMPOSER_MIN_ROWS, DEFAULT_CHAT_HARNESS,
 };
-use krad_repo::IndexEntry;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -357,7 +356,7 @@ impl EnvironmentShell {
         let chosen = command.clone();
         self.run_surface_command(&env, id, command);
         if matches!(chosen, SurfaceCommand::Model(..)) {
-            self.fit_effort_to_model(&env, id);
+            self.fit_effort_to_model(&env, id, cx);
         }
         self.remember_choice(&env, id, &chosen, cx);
         cx.notify();

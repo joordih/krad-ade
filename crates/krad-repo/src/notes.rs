@@ -1,11 +1,12 @@
-use krad_domain::{Note, ATTACHMENTS_DIR, DOCS_SOURCES_FILE, NOTE_EXTENSION, VAULT_DIR};
+use krad_domain::{Note, ATTACHMENTS_DIR, DOCS_SOURCES_FILE, NOTE_EXTENSION};
 use krad_host::HostLink;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 mod sources;
 
-pub use sources::{docs_source_candidates, read_docs_sources, write_docs_sources, SourceEntry};
+pub use krad_domain::SourceEntry;
+pub use sources::{docs_source_candidates, read_docs_sources, write_docs_sources};
 
 use crate::atomic::write_atomically;
 use crate::RepoError;
@@ -16,36 +17,7 @@ const EXTENSION_DOT: char = '.';
 const COPY_SEPARATOR: &str = " ";
 const MAX_COPIES: usize = 10_000;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum VaultEntryKind {
-    Folder,
-    Note,
-    Attachment,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VaultEntry {
-    pub path: String,
-    pub kind: VaultEntryKind,
-}
-
-#[must_use]
-pub fn vault_dir(root: &Path) -> PathBuf {
-    root.join(VAULT_DIR)
-}
-
-#[must_use]
-pub fn vault_path(root: &Path, path: &str) -> Option<PathBuf> {
-    let mut full = vault_dir(root);
-    for part in Path::new(path).components() {
-        match part {
-            Component::Normal(part) => full.push(part),
-            Component::CurDir => {}
-            _ => return None,
-        }
-    }
-    Some(full)
-}
+pub use krad_domain::{vault_dir, vault_path, VaultEntry, VaultEntryKind};
 
 fn inside(root: &Path, path: &str) -> Result<PathBuf, RepoError> {
     vault_path(root, path).ok_or_else(|| RepoError::OutsideRepository(path.to_owned()))

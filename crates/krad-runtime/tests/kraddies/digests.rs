@@ -5,7 +5,7 @@ use super::{
 use futures::executor::block_on;
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{AgentPreset, EnvironmentName, MemoryOwner, Prompt, Speaker, TerminalId};
-use krad_protocol::{AgentRef, Scope};
+use krad_protocol::{AgentRef, ChatCommand, Command, Scope};
 use krad_runtime::{ChatBrief, ChatStart, KraddiesSetup};
 use krad_store::OrdinaryDigests;
 
@@ -61,7 +61,8 @@ fn a_chat_the_runtime_closes_leaves_a_digest_of_what_was_said() -> TestResult {
         .digests
         .iter()
         .all(|owned| owned.book.is_empty()));
-    runtime.close_chat(chat);
+    let close = Command::Chat(ChatCommand::Close { chat });
+    block_on(runtime.send(runtime.next_request(), close))?;
     let book = wait_for(|| {
         Ok(kraddies_of(&runtime)?
             .digests

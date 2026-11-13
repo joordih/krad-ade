@@ -58,7 +58,7 @@ impl EnvironmentShell {
         ring.push(
             BoxShadow::new(px(0.0), px(0.0), pal.border.into()).spread_radius(px(COMPOSER_RING)),
         );
-        let facts = self.composer_facts(id, chat);
+        let facts = self.composer_facts(id, chat, cx);
         let now = self.agent_now(id);
         let field = div()
             .relative()

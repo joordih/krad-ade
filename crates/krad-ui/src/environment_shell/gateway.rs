@@ -1,14 +1,12 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::{
     AgentPreset, EnvironmentName, GatewayKey, GatewayModel, GatewayUrl, ModelOffer, TerminalId,
     ToastKind,
 };
-use krad_host::HostLink;
 use krad_protocol::{Command, EventKind, GatewayCommand, GatewayState};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
-use super::terminal_card::home_dir;
 use super::EnvironmentShell;
 
 const CHECK_DELAY: Duration = Duration::from_millis(600);
@@ -157,7 +155,7 @@ impl EnvironmentShell {
         matches!(self.gateway.link, GatewayState::Ready { .. })
     }
 
-    pub(super) fn chat_folder(&self, env: &EnvironmentName, id: TerminalId) -> PathBuf {
+    pub(super) fn chat_folder(&self, env: &EnvironmentName, id: TerminalId, cx: &App) -> PathBuf {
         if let Some(placement) = self.cloud_placement_of(env, id) {
             return placement.worktree;
         }
@@ -165,10 +163,7 @@ impl EnvironmentShell {
             .get(env)
             .and_then(|live| live.data.group_of(id))
             .map(|group| group.root.clone())
-            .or_else(|| match self.env_link(env) {
-                HostLink::Remote(ssh) => ssh.home().map(Path::to_path_buf),
-                HostLink::Local => home_dir().map(PathBuf::from),
-            })
+            .or_else(|| self.env_home(env, cx))
             .unwrap_or_default()
     }
 }

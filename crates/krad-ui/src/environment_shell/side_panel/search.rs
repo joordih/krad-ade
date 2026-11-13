@@ -5,7 +5,8 @@ use gpui_kit::{
     div, px, rgb, uniform_list, AnyElement, AppContext as _, Context, Entity, IntoElement,
     ParentElement, Styled, Subscription, Window,
 };
-use krad_repo::{parse_globs, search_project, ProjectMatches, ProjectQuery, ReplaceUndo};
+use krad_domain::{parse_globs, ProjectMatches, ProjectQuery, ReplaceUndo};
+use krad_protocol::{Answer, FileAsk};
 use std::ops::Range;
 use std::path::Path;
 use std::time::Duration;
@@ -195,18 +196,25 @@ impl EnvironmentShell {
         };
         self.side_search.results = SearchResults::Searching;
         let generation = self.side_search.generation;
-        let link = self.active_link();
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(SEARCH_DELAY).await;
-            let current = this
-                .read_with(cx, |shell, _| shell.side_search.generation == generation)
-                .unwrap_or_default();
-            if !current {
+            let searching = this
+                .update(cx, |shell, cx| {
+                    (shell.side_search.generation == generation).then(|| {
+                        let ask = FileAsk::Search {
+                            root,
+                            query,
+                            limit: SEARCH_LIMIT,
+                        };
+                        shell.ask_active_file(ask, matches_of, cx)
+                    })
+                })
+                .ok()
+                .flatten();
+            let Some(searching) = searching else {
                 return;
-            }
-            let found = cx
-                .background_spawn(async move { search_project(&link, &root, &query, SEARCH_LIMIT) })
-                .await;
+            };
+            let found = searching.await;
             this.update(cx, |shell, cx| {
                 if shell.side_search.generation != generation {
                     return;
@@ -292,4 +300,11 @@ fn search_field(field: &Entity<InputState>) -> AnyElement {
         .px(px(SPACE_1))
         .child(Input::new(field).small().cleanable(true))
         .into_any_element()
+}
+
+fn matches_of(answer: Answer) -> Option<ProjectMatches> {
+    match answer {
+        Answer::ProjectMatches { matches } => Some(matches),
+        _ => None,
+    }
 }

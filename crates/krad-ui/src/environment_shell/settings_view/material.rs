@@ -70,7 +70,7 @@ impl EnvironmentShell {
         self.answer_attention_notifications(window, cx);
         self.activation_watch = Some(cx.observe_window_activation(window, |this, window, cx| {
             let active = window.is_window_active();
-            this.note_window_focus(active);
+            this.note_window_focus(active, cx);
             if !active {
                 return;
             }

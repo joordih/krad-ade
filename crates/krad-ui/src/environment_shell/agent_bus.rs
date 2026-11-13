@@ -10,8 +10,9 @@ mod typing;
 mod workspace;
 
 use futures::StreamExt as _;
-use gpui_kit::Context;
-use krad_agents::{Caller, ErrorCode, Request, Response, TerminalHandle, TerminalState};
+use gpui_kit::{App, Context};
+use krad_agents::{Caller, ErrorCode, Request, Response, TerminalHandle};
+use krad_domain::TerminalState;
 use krad_domain::{parse_wsl_path, EnvironmentName, Host, TerminalId};
 use krad_runtime::{local_caller_vars, remote_caller_vars, BusReply, Delegated};
 use std::collections::HashSet;
@@ -69,7 +70,12 @@ impl EnvironmentShell {
         .detach();
     }
 
-    pub(super) fn bus_vars(&self, env: &EnvironmentName, id: TerminalId) -> Vec<(String, String)> {
+    pub(super) fn bus_vars(
+        &self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        cx: &App,
+    ) -> Vec<(String, String)> {
         let Some(bus) = self.runtime.handle.bus() else {
             return Vec::new();
         };
@@ -78,7 +84,7 @@ impl EnvironmentShell {
             .get(env)
             .is_some_and(|live| !live.data.host.is_local())
         {
-            return self.remote_bus(env).map_or_default(|remote| {
+            return self.remote_bus(env, cx).map_or_default(|remote| {
                 remote_caller_vars(remote, &Caller::Terminal(handle(env, id)))
             });
         }

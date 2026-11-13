@@ -1,13 +1,14 @@
-use gpui_kit::{AppContext as _, Context, PromptButton, PromptLevel, Window};
+use gpui_kit::{Context, PromptButton, PromptLevel, Window};
 use krad_domain::{EnvironmentName, TerminalId, ToastKind};
-use krad_host::HostLink;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use super::super::disk_text::{disk_change, modified_at, DiskChange};
+use super::super::disk_text::{disk_change, modified_of, stat_ask, DiskChange};
+use super::super::file_asks::stat_of;
 use super::super::{EnvironmentShell, LiveEnv};
 use super::{DiskWatch, FileEditor, Load};
 use crate::actions::SaveFile;
+use krad_protocol::FileAsk;
 
 const CANCEL_LABEL: &str = "Cancel";
 const DISCARD_LABEL: &str = "Close";
@@ -18,20 +19,20 @@ const DISK_CHECK_EVERY: Duration = Duration::from_secs(2);
 
 impl EnvironmentShell {
     pub(super) fn check_disk(
-        link: HostLink,
         env: EnvironmentName,
         id: TerminalId,
         path: PathBuf,
         cx: &mut Context<Self>,
     ) {
         let timer = cx.background_executor().timer(DISK_CHECK_EVERY);
-        let (statted, watched) = (link.clone(), path.clone());
-        let stat = cx.background_spawn(async move {
-            timer.await;
-            modified_at(&statted, &watched)
-        });
         cx.spawn(async move |this, cx| {
-            let disk = stat.await;
+            timer.await;
+            let Ok(stat) = this.update(cx, |shell, cx| {
+                shell.ask_file(&env, stat_ask(path.clone()), stat_of, cx)
+            }) else {
+                return;
+            };
+            let disk = modified_of(stat.await);
             this.update(cx, |shell, cx| {
                 let shown = env == shell.active
                     && shell
@@ -46,7 +47,7 @@ impl EnvironmentShell {
                 match disk_change(editor.modified, disk, editor.dirty) {
                     DiskChange::Unchanged if shown => {
                         editor.disk = DiskWatch::Checking;
-                        Self::check_disk(link, env, id, path, cx);
+                        Self::check_disk(env, id, path, cx);
                         return;
                     }
                     DiskChange::Unchanged => {}
@@ -81,16 +82,13 @@ impl EnvironmentShell {
         let text = state.read(cx).value().to_string();
         let saved = self.active_document(&path);
         let announced = path.clone();
-        let link = self.active_link();
-        let writing = cx.background_spawn(async move {
-            link.write(&path, text.as_bytes())
-                .map(|()| modified_at(&link, &path))
-        });
+        let writing = self.ask_file(&env, FileAsk::Write { path, text }, stat_of, cx);
         cx.spawn(async move |this, cx| {
             let written = writing.await;
             this.update(cx, |shell, cx| {
                 match written {
-                    Ok(modified) => {
+                    Ok(stat) => {
+                        let modified = stat.0.and_then(|stat| stat.modified);
                         shell.document_saved(&saved);
                         shell.announce_file_saved(&announced);
                         if let Some(editor) = shell.editor_mut(&env, id) {

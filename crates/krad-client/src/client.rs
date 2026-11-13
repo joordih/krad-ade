@@ -13,6 +13,8 @@ pub enum ClientError {
     Stopped,
     #[error("the runtime refused the client: {message}")]
     Refused { code: ErrorCode, message: String },
+    #[error("{message}")]
+    Failed { code: ErrorCode, message: String },
 }
 
 impl From<Reply> for ClientError {

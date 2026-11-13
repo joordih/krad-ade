@@ -3,8 +3,7 @@ use krad_chat::acp_offers;
 use krad_domain::{
     AcpAgentId, AcpAgentStart, AgentPreset, EnvironmentName, Host, ModelOffer, ToastKind,
 };
-use krad_host::HostLink;
-use krad_protocol::{Command, ListedModels as Listed, ModelsCommand, ModelsOrigin};
+use krad_protocol::{Command, HarnessSpot, ListedModels as Listed, ModelsCommand};
 use std::collections::HashMap;
 
 use super::chat::StartError;
@@ -44,7 +43,7 @@ impl ModelsMirror {
             .map_or(&[], Vec::as_slice)
     }
 
-    fn apply(&mut self, listed: Listed) {
+    pub(super) fn apply(&mut self, listed: Listed) {
         self.0.insert((listed.host, listed.harness), listed.models);
     }
 
@@ -60,42 +59,25 @@ impl EnvironmentShell {
     pub(super) fn list_harness_models(&self) {
         for harness in AgentPreset::NATIVE {
             if self.native_agents.contains(&harness) {
-                self.list_models_of(&HostLink::Local, harness);
+                self.list_models_at(HarnessSpot::default(), harness);
             }
         }
     }
 
     pub(super) fn list_host_models(&self, env: &EnvironmentName) {
-        let link = self.env_link(env);
-        let Some(found) = self.host_agents.get(&link.host()).cloned() else {
+        let host = self.env_host(env);
+        let Some(found) = self.host_agents.get(&host).cloned() else {
             return;
         };
         for harness in found {
-            self.list_models_of(&link, harness);
+            self.list_models_at(HarnessSpot::at(env.clone(), None), harness);
         }
     }
 
-    fn list_models_of(&self, link: &HostLink, harness: AgentPreset) {
-        let Ok((runner, cwd)) = self.harness_runner(link, harness, None) else {
-            return;
-        };
+    fn list_models_at(&self, spot: HarnessSpot, harness: AgentPreset) {
         self.runtime
-            .handle
-            .list_models(link.host(), harness, runner, cwd);
-    }
-
-    pub(super) fn models_listed(
-        &mut self,
-        listed: Listed,
-        origin: ModelsOrigin,
-        cx: &mut Context<Self>,
-    ) {
-        let harness = listed.harness;
-        self.runtime.view.models.apply(listed);
-        if origin == ModelsOrigin::Listing {
-            self.forget_unoffered_models(harness);
-        }
-        cx.notify();
+            .client
+            .post(Command::Models(ModelsCommand::List { spot, harness }));
     }
 
     pub(super) fn model_list_failed(&mut self, error: &str, cx: &mut Context<Self>) {
@@ -120,7 +102,13 @@ impl EnvironmentShell {
         let busy_or_known = matches!(
             self.listed_models.acp.get(&key),
             Some(AcpListing::Listing | AcpListing::NoModels)
-        ) || (!self.runtime.view.models.of(&host, preset).is_empty()
+        ) || (!self
+            .runtime
+            .view
+            .read(cx)
+            .models
+            .of(&host, preset)
+            .is_empty()
             && self.listed_models.acp_seeds.contains_key(&key));
         if busy_or_known || !self.installed_agents().contains(&preset) {
             return;

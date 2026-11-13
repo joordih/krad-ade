@@ -8,6 +8,7 @@ mod arcade;
 mod archive;
 mod ask;
 mod attention;
+mod automations;
 mod backdrop;
 mod changes_tab;
 mod chat;
@@ -28,6 +29,7 @@ mod environment_edits;
 mod environment_menu;
 mod environment_order;
 mod extensions;
+mod file_asks;
 mod file_tab;
 mod file_tree;
 mod focus_return;
@@ -38,9 +40,6 @@ mod groups;
 mod harness_health;
 mod harness_models;
 mod host;
-mod template_popup;
-pub use host::HostTools;
-mod automations;
 mod input;
 mod kraddie_memory;
 mod kraddies;
@@ -60,6 +59,7 @@ mod palette;
 mod performance;
 mod problems;
 mod rename;
+mod repo_asks;
 mod review_view;
 mod rubber_band;
 mod runtime_view;
@@ -78,6 +78,7 @@ mod sidebar_terminals;
 mod snapshot;
 mod spending;
 mod surface;
+mod template_popup;
 mod terminal_actions;
 mod terminal_body;
 mod terminal_card;
@@ -206,7 +207,7 @@ pub struct EnvironmentShell {
     name_dialogs: name_dialogs::NameDialogs,
     hosts: host::HostUi,
     toolchains: toolchains::Toolchains,
-    host_tools: host::HostTools,
+    host_tools: krad_runtime::HostTools,
     arcade: arcade::Arcade,
     app_updates: app_update::AppUpdates,
     extensions: extensions::Extensions,
@@ -224,7 +225,7 @@ impl EnvironmentShell {
         cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(UI_TICK).await;
             let ticked = this.update(cx, |shell, cx| {
-                let changed = shell.apply_tick();
+                let changed = shell.apply_tick(cx);
                 shell.flush_live_work(cx);
                 if changed {
                     cx.notify();
@@ -236,7 +237,7 @@ impl EnvironmentShell {
         })
     }
 
-    fn flush_live_work(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn flush_live_work(&mut self, cx: &mut Context<Self>) {
         self.flush_noticed_chats(cx);
         self.flush_attention(cx);
         self.service_hosts(cx);
@@ -247,7 +248,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
         layout: Layout,
         settings: Settings,
-        host_tools: host::HostTools,
+        host_tools: krad_runtime::HostTools,
         runtime: InProcess,
     ) -> Self {
         let mut shell = Self::assemble(cx, settings, host_tools, runtime);
@@ -258,7 +259,7 @@ impl EnvironmentShell {
     fn assemble(
         cx: &mut Context<Self>,
         settings: Settings,
-        host_tools: host::HostTools,
+        host_tools: krad_runtime::HostTools,
         runtime: InProcess,
     ) -> Self {
         Self {
@@ -357,14 +358,13 @@ impl EnvironmentShell {
             automations: automations::AutomationsUi::default(),
             variants: variants::VariantsUi::default(),
             cloud: cloud::CloudRunners::default(),
-            runtime: runtime_view::RuntimeLink::new(runtime),
+            runtime: runtime_view::RuntimeLink::new(runtime, cx),
         }
     }
 
     fn start(&mut self, layout: Layout, cx: &mut Context<Self>) {
-        self.runtime.handle.use_host_context(self.host_context());
         self.start_services(cx);
-        self.restore_layout(layout);
+        self.restore_layout(layout, cx);
         let active = self.active.clone();
         self.show_host(&active, cx);
         self.connect_worker_hosts(cx);
@@ -423,7 +423,7 @@ impl EnvironmentShell {
     }
 
     fn close_env(&mut self, name: &EnvironmentName, cx: &mut Context<Self>) {
-        self.forget_environment_archive(name, cx);
+        self.forget_environment_archive(name);
         if let Some(live) = self.envs.remove(name) {
             for id in live.sessions.keys() {
                 self.end_terminal(name, *id);

@@ -112,7 +112,7 @@ impl EnvironmentShell {
         pal: &Palette,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let kept = self.runner_has_claude_token(runner);
+        let kept = self.runner_has_claude_token(runner, cx);
         let button = |prefix: &'static str, label: &'static str| {
             Button::new((prefix, runner.0))
                 .label(label)

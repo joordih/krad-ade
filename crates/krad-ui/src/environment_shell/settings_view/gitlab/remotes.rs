@@ -1,12 +1,11 @@
-use gpui_kit::{AppContext as _, Context};
+use gpui_kit::Context;
 use krad_domain::review::{remote_project, ProjectPath, RemoteProject};
 use krad_domain::ORIGIN_REMOTE;
 use krad_github::GITHUB_HOST;
-use krad_repo::resolved_remote_url;
+use krad_protocol::{Answer, RepoAsk};
 use std::fmt;
 use std::path::PathBuf;
 
-use crate::environment_shell::chat::workplace_home;
 use crate::environment_shell::EnvironmentShell;
 
 pub(in crate::environment_shell::settings_view) struct GroupRemote {
@@ -72,30 +71,37 @@ impl fmt::Display for RemoteMatch {
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn load_group_remotes(&mut self, cx: &mut Context<Self>) {
-        let groups: Vec<(String, PathBuf)> = self.envs.get(&self.active).map_or_default(|live| {
-            live.data
-                .groups
-                .iter()
-                .map(|group| (group.name.clone(), group.root.clone()))
-                .collect()
-        });
-        let link = self.active_link();
-        let read = cx.background_spawn(async move {
-            groups
-                .into_iter()
-                .map(|(name, root)| GroupRemote {
-                    name,
-                    origin: {
-                        let home = workplace_home(&link, Some(&root)).ok().flatten();
-                        resolved_remote_url(&link, &root, ORIGIN_REMOTE, home.as_deref())
-                            .map_err(|error| error.to_string())
-                    },
-                })
-                .collect::<Vec<_>>()
-        });
+        let (names, roots): (Vec<String>, Vec<PathBuf>) =
+            self.envs.get(&self.active).map_or_default(|live| {
+                live.data
+                    .groups
+                    .iter()
+                    .map(|group| (group.name.clone(), group.root.clone()))
+                    .unzip()
+            });
+        let read = self.ask_active_repo(
+            RepoAsk::RemoteUrls {
+                roots,
+                remote: ORIGIN_REMOTE.to_owned(),
+            },
+            |answer| match answer {
+                Answer::RemoteUrls { urls } => Some(urls),
+                _ => None,
+            },
+            cx,
+        );
         cx.spawn(async move |this, cx| {
-            let remotes = read.await;
+            let read = read.await;
             this.update(cx, |shell, cx| {
+                let urls = match read {
+                    Ok(urls) => urls,
+                    Err(error) => return shell.toast_failure(&error, cx),
+                };
+                let remotes = names
+                    .into_iter()
+                    .zip(urls)
+                    .map(|(name, origin)| GroupRemote { name, origin })
+                    .collect();
                 if let Some(gitlab) = shell.gitlab_ui_mut() {
                     gitlab.remotes = Some(remotes);
                     cx.notify();

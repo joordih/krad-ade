@@ -2,10 +2,11 @@ use krad_host::HostLink;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use crate::files::EntryKind;
 use crate::git::{repo_root, run_git};
 use crate::on_host;
 use crate::RepoError;
+use krad_domain::EntryKind;
+pub use krad_domain::IndexEntry;
 
 const LS_FILES_ARGS: [&str; 5] = [
     "ls-files",
@@ -18,18 +19,11 @@ const RECORD_SEPARATOR: u8 = 0;
 const HIDDEN_PREFIX: char = '.';
 const MAX_WALKED_FILES: usize = 20_000;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct IndexEntry {
-    pub path: PathBuf,
-    pub kind: EntryKind,
-}
-
-impl IndexEntry {
-    fn name(&self) -> String {
-        self.path
-            .file_name()
-            .map_or_else(String::new, |name| name.to_string_lossy().to_lowercase())
-    }
+fn entry_name(entry: &IndexEntry) -> String {
+    entry
+        .path
+        .file_name()
+        .map_or_else(String::new, |name| name.to_string_lossy().to_lowercase())
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -79,7 +73,7 @@ impl FileIndex {
                 if !path.contains(&query) {
                     return None;
                 }
-                let name = entry.name();
+                let name = entry_name(entry);
                 Some((
                     !name.starts_with(&query),
                     !name.contains(&query),

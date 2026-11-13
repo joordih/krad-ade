@@ -1,11 +1,11 @@
 mod heard;
 mod shown;
 
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_chat::SlashCommand;
 use krad_domain::{AgentState, EnvironmentName, Prompt, RewindScope, TerminalId};
-use krad_protocol::{AgentRef, ChatCommand, Command};
-use krad_runtime::{runs_in_runtime, ChatBrief, ChatRole, ChatStart};
+use krad_protocol::{AgentRef, ChatCommand, ChatOpen, Command};
+use krad_runtime::runs_in_runtime;
 
 use super::super::super::chat::StartError;
 use super::super::super::EnvironmentShell;
@@ -73,8 +73,9 @@ impl EnvironmentShell {
         &mut self,
         env: &EnvironmentName,
         id: TerminalId,
+        cx: &App,
     ) -> Result<(), StartError> {
-        if self.runtime_chat_waits(env) {
+        if self.runtime_chat_waits(env, cx) {
             return Err(StartError::Waiting);
         }
         let Some(harness) = structured_of(self, env, id).map(|structured| structured.harness)
@@ -89,31 +90,30 @@ impl EnvironmentShell {
         else {
             return Ok(());
         };
-        let start = ChatStart {
+        let start = ChatOpen {
             harness,
-            brief: ChatBrief {
-                model: structured.chosen_model.clone(),
-                effort: structured.effort,
-                permission_mode: structured.permission_mode,
-                mcp_servers: structured.mcp_servers.clone(),
-                role: ChatRole::Agent,
-                acp: structured.acp.wanted(),
-            },
-            prepared: None,
+            model: structured.chosen_model.clone(),
+            effort: structured.effort,
+            permission_mode: structured.permission_mode,
+            mcp_servers: structured.mcp_servers.clone(),
+            acp: structured.acp.wanted(),
             session: structured.session.clone(),
             messages: messages.clone(),
-            queued: Vec::new(),
             notices: std::mem::take(&mut structured.notices),
         };
         structured.driver = ChatDriver::InRuntime;
-        self.runtime.handle.open_chat(chat_ref(env, id), start);
+        let chat = chat_ref(env, id);
+        self.runtime.client.post(Command::Chat(ChatCommand::Open {
+            chat,
+            start: Box::new(start),
+        }));
         Ok(())
     }
 
-    fn runtime_chat_waits(&self, env: &EnvironmentName) -> bool {
+    fn runtime_chat_waits(&self, env: &EnvironmentName, cx: &App) -> bool {
         let link = self.env_link(env);
         let agents_unknown = !link.is_local() && !self.host_agents.contains_key(&link.host());
-        self.awaits_remote_bus(env) || !link.is_ready() || agents_unknown
+        self.awaits_remote_bus(env, cx) || !link.is_ready() || agents_unknown
     }
 
     pub(super) fn hand_to_runtime(
@@ -199,7 +199,7 @@ impl EnvironmentShell {
             return;
         };
         structured.driver = ChatDriver::InShell;
-        self.runtime.handle.close_chat(chat_ref(env, id));
+        self.post_close_chat(env, id);
     }
 
     pub(in crate::environment_shell) fn close_runtime_chat(
@@ -212,8 +212,15 @@ impl EnvironmentShell {
             .and_then(|view| view.chat.structured())
             .is_some_and(StructuredChat::in_runtime)
         {
-            self.runtime.handle.close_chat(chat_ref(env, id));
+            self.post_close_chat(env, id);
         }
+    }
+
+    fn post_close_chat(&self, env: &EnvironmentName, id: TerminalId) {
+        let chat = chat_ref(env, id);
+        self.runtime
+            .client
+            .post(Command::Chat(ChatCommand::Close { chat }));
     }
 
     pub(in crate::environment_shell) fn runtime_chat_opened(
@@ -227,7 +234,7 @@ impl EnvironmentShell {
         }
         let resume = structured_of(self, env, id)
             .and_then(|structured| structured.session.history().cloned());
-        match (self.open_in_runtime(env, id), resume) {
+        match (self.open_in_runtime(env, id, cx), resume) {
             (Ok(()), _) | (Err(StartError::Waiting), None) => {}
             (Err(StartError::Waiting), Some(_)) => self.note_history_waits_for_host(env, id),
             (Err(error), _) => {

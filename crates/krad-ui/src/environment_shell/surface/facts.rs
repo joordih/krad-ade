@@ -1,3 +1,4 @@
+use gpui_kit::App;
 use krad_domain::{
     model_label, AgentPreset, AgentStatus, ContextSize, Effort, EffortSnap, EnvironmentName,
     ModelId, ModelOffer, ModelSource, TerminalId,
@@ -243,14 +244,18 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn harness_offers(&self, harness: AgentPreset) -> Option<&[ModelOffer]> {
-        let host = self.active_link().host();
+    pub(super) fn harness_offers<'a>(
+        &'a self,
+        harness: AgentPreset,
+        cx: &'a App,
+    ) -> Option<&'a [ModelOffer]> {
+        let host = self.active_host();
         let offers = match harness {
             AgentPreset::Gateway => self.gateway_offers(),
             AgentPreset::ClaudeCode
             | AgentPreset::Codex
             | AgentPreset::Opencode
-            | AgentPreset::Acp(_) => self.runtime.view.models.of(&host, harness),
+            | AgentPreset::Acp(_) => self.runtime.view.read(cx).models.of(&host, harness),
             AgentPreset::Shell => &[],
         };
         (!offers.is_empty()).then_some(offers)
@@ -268,26 +273,32 @@ impl EnvironmentShell {
         &self,
         harness: AgentPreset,
         current: Option<&ModelId>,
+        cx: &App,
     ) -> Vec<ModelChoice> {
-        self.harness_picks(harness, current)
+        self.harness_picks(harness, current, cx)
             .iter()
             .map(ModelChoice::from)
             .collect()
     }
 
-    fn harness_picks(&self, harness: AgentPreset, current: Option<&ModelId>) -> Vec<ModelPick> {
+    fn harness_picks(
+        &self,
+        harness: AgentPreset,
+        current: Option<&ModelId>,
+        cx: &App,
+    ) -> Vec<ModelPick> {
         let current = current.map(ModelId::as_str);
-        match self.harness_offers(harness) {
+        match self.harness_offers(harness, cx) {
             Some(offers) => offer_picks(offers, current, harness),
             None => settings_picks(self.settings_models(harness), current, harness),
         }
     }
 
-    pub(super) fn composer_facts(&self, id: TerminalId, chat: &ChatView) -> Facts {
+    pub(super) fn composer_facts(&self, id: TerminalId, chat: &ChatView, cx: &App) -> Facts {
         match &chat.chat.backend {
             Backend::Transcript(_) => {
                 let status = self
-                    .agent_status(&self.active, id)
+                    .agent_status(&self.active, id, cx)
                     .cloned()
                     .unwrap_or_default();
                 transcript_facts(&status, self.settings_models(TRANSCRIPT_HARNESS))
@@ -307,13 +318,13 @@ impl EnvironmentShell {
                                 && !(in_cloud && other.unavailable_in_cloud().is_some())
                                 && self.chats_on(&self.active, root, *other)
                         })
-                        .flat_map(|other| self.harness_picks(other, None))
+                        .flat_map(|other| self.harness_picks(other, None, cx))
                         .collect()
                 } else {
                     Vec::new()
                 };
                 let offered = Offered {
-                    fallback: self.harness_offers(harness),
+                    fallback: self.harness_offers(harness, cx),
                     settings: self.settings_models(harness),
                     others,
                 };

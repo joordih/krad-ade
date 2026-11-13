@@ -1,6 +1,4 @@
-use krad_domain::ToolUseId;
 use krad_host::HostLink;
-use serde::{Deserialize, Serialize};
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -12,17 +10,7 @@ const RECORD_PREFIX: &str = "agent-";
 pub(crate) const RECORD_EXTENSION: &str = "jsonl";
 pub(crate) const META_EXTENSION: &str = "meta.json";
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SubagentMeta {
-    pub tool_use_id: ToolUseId,
-    #[serde(default)]
-    pub agent_type: Option<String>,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub finished: bool,
-}
+pub use krad_domain::SubagentMeta;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SubagentFiles {
@@ -76,6 +64,7 @@ pub fn read_subagent_record(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use krad_domain::ToolUseId;
     use krad_domain::{ChatEntry, ChatEvent};
     use std::fs;
 

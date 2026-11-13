@@ -2,6 +2,7 @@ mod archive;
 mod content;
 mod error;
 mod extension;
+pub mod host;
 mod host_tools;
 mod http;
 pub mod index;

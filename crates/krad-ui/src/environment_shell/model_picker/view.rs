@@ -1,8 +1,8 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, point, px, rgb, size, AnyElement, Context, FontWeight, InteractiveElement, IntoElement,
-    KeyDownEvent, MouseButton, ParentElement, SharedString, StatefulInteractiveElement, Styled,
-    Window,
+    div, point, px, rgb, size, AnyElement, App, Context, FontWeight, InteractiveElement,
+    IntoElement, KeyDownEvent, MouseButton, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::{ComposerDesign, ModelSource};
 
@@ -326,8 +326,8 @@ impl EnvironmentShell {
         default.into_iter().chain(star).collect()
     }
 
-    pub(super) fn picker_empty_text(&self) -> SharedString {
-        if self.host_agents_known(&self.active) {
+    pub(super) fn picker_empty_text(&self, cx: &App) -> SharedString {
+        if self.host_agents_known(&self.active, cx) {
             return NO_MODELS_TEXT.into();
         }
         self.envs.get(&self.active).map_or_else(
@@ -477,7 +477,7 @@ impl EnvironmentShell {
                                 .child(Self::picker_rows(
                                     &picker.choosing,
                                     layout.descriptions,
-                                    self.picker_empty_text(),
+                                    self.picker_empty_text(cx),
                                     pal,
                                     cx,
                                 )),

@@ -1,10 +1,11 @@
 use krad_domain::{
     AcpAuthMethod, AcpAuthMethodId, AcpConfigOption, AcpConfigOptionId, AcpConfigValue, AcpModeId,
     AcpModels, AcpModes, AgentPreset, AskAnswer, AskKind, ChatMessage, ChatOrigin, CommandOffer,
-    Effort, ImageFormat, McpProjectTrust, ModelId, PermissionMode, PickedAnswer, Prompt, ResumeId,
-    RewindScope,
+    Effort, EnvironmentName, ImageFormat, McpProjectTrust, ModelId, PermissionMode, PickedAnswer,
+    Prompt, ResumeId, RewindScope,
 };
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::time::SystemTime;
 
 use crate::bus::AgentRef;
@@ -12,9 +13,16 @@ use crate::event::EventKind;
 
 mod mcp_trust;
 mod mirror;
+mod open;
+mod transcript;
 
 pub use mcp_trust::{McpOffered, McpSkippedShown, McpTrustAsk};
 pub use mirror::{ChatMirror, MirrorChange};
+pub use open::ChatOpen;
+pub use transcript::{
+    KnownRecord, SubagentUpdate, SubagentsAsk, SubagentsFrom, SubagentsRead, TranscriptAsk,
+    TranscriptRead,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -23,6 +31,33 @@ pub struct ChatAskId(pub u64);
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum ChatCommand {
+    Open {
+        chat: AgentRef,
+        start: Box<ChatOpen>,
+    },
+    Close {
+        chat: AgentRef,
+    },
+    Page {
+        chat: AgentRef,
+        before: usize,
+        count: usize,
+    },
+    Mentions {
+        environment: EnvironmentName,
+        root: PathBuf,
+        query: String,
+        limit: usize,
+    },
+    ForgetMentions,
+    Transcript {
+        environment: EnvironmentName,
+        ask: TranscriptAsk,
+    },
+    Subagents {
+        environment: EnvironmentName,
+        ask: SubagentsAsk,
+    },
     Send {
         chat: AgentRef,
         prompt: Prompt,
@@ -116,7 +151,10 @@ impl ChatCommand {
     #[must_use]
     pub const fn chat(&self) -> Option<&AgentRef> {
         match self {
-            Self::Send { chat, .. }
+            Self::Open { chat, .. }
+            | Self::Close { chat }
+            | Self::Page { chat, .. }
+            | Self::Send { chat, .. }
             | Self::Queue { chat, .. }
             | Self::Unqueue { chat, .. }
             | Self::ShowEarlier { chat }
@@ -135,7 +173,11 @@ impl ChatCommand {
             | Self::TrustMcp { chat, .. }
             | Self::AttachImage { chat, .. }
             | Self::ForgetImages { chat } => Some(chat),
-            Self::Unknown => None,
+            Self::Mentions { .. }
+            | Self::ForgetMentions
+            | Self::Transcript { .. }
+            | Self::Subagents { .. }
+            | Self::Unknown => None,
         }
     }
 }

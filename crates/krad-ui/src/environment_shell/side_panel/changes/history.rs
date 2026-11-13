@@ -2,10 +2,11 @@ mod graph_cell;
 mod rows;
 mod view;
 
-use gpui_kit::{AppContext as _, Context};
+use gpui_kit::Context;
+use krad_client::ClientError;
 use krad_domain::review::CommitSha;
-use krad_domain::{commit_graph, GraphRow, HistoryCommit, Host, SidePanelSection};
-use krad_repo::{commit_files, commit_log, CommitFile};
+use krad_domain::{commit_graph, CommitFile, GraphRow, HistoryCommit, Host, SidePanelSection};
+use krad_protocol::{Answer, RepoAsk};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -124,23 +125,40 @@ impl EnvironmentShell {
             return;
         }
         self.history.load = HistoryLoad::Reading;
-        let link = self.active_link();
-        let reading = cx.background_spawn(async move {
-            let mut revisions = vec![HEAD_REVISION];
-            revisions.extend(key.upstream.as_deref());
-            commit_log(&link, &key.repo, &revisions, HISTORY_LIMIT).map(|commits| {
-                let graph = commit_graph(&commits);
-                let lanes = graph.iter().map(|row| row.width).max().unwrap_or_default();
-                (
-                    key,
-                    ReadHistory {
-                        commits,
-                        graph,
-                        lanes,
-                    },
-                )
-            })
-        });
+        let mut revisions = vec![HEAD_REVISION.to_owned()];
+        revisions.extend(key.upstream.clone());
+        let asked = self.ask_active_repo(
+            RepoAsk::CommitLog {
+                repo: key.repo.clone(),
+                revisions,
+                limit: HISTORY_LIMIT,
+            },
+            |answer| match answer {
+                Answer::Commits { commits } => Some(commits),
+                _ => None,
+            },
+            cx,
+        );
+        let executor = cx.background_executor().clone();
+        let reading = async move {
+            let commits = asked.await?;
+            Ok::<_, ClientError>(
+                executor
+                    .spawn(async move {
+                        let graph = commit_graph(&commits);
+                        let lanes = graph.iter().map(|row| row.width).max().unwrap_or_default();
+                        (
+                            key,
+                            ReadHistory {
+                                commits,
+                                graph,
+                                lanes,
+                            },
+                        )
+                    })
+                    .await,
+            )
+        };
         cx.spawn(async move |this, cx| {
             let read = reading.await;
             this.update(cx, |shell, cx| {
@@ -172,9 +190,17 @@ impl EnvironmentShell {
         self.history
             .expanded
             .insert(sha.clone(), FilesLoad::Reading);
-        let link = self.active_link();
-        let asked = sha.clone();
-        let reading = cx.background_spawn(async move { commit_files(&link, &repo, &asked) });
+        let reading = self.ask_active_repo(
+            RepoAsk::CommitFiles {
+                repo,
+                sha: sha.clone(),
+            },
+            |answer| match answer {
+                Answer::CommitFiles { files } => Some(files),
+                _ => None,
+            },
+            cx,
+        );
         let sha = sha.clone();
         cx.spawn(async move |this, cx| {
             let read = reading.await;

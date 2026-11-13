@@ -1,9 +1,6 @@
-use gpui_kit::{
-    div, px, rgb, AnyElement, AppContext as _, Context, FontWeight, ParentElement, Styled, Window,
-};
+use gpui_kit::{div, px, rgb, AnyElement, Context, FontWeight, ParentElement, Styled, Window};
 use krad_domain::{ChangeKind, FileChange, FilePatch, PatchStatus, TerminalId, ToastKind};
-use krad_protocol::{ChangesAct, GitAct};
-use krad_repo::{read_text, RepoError};
+use krad_protocol::{Answer, ChangesAct, GitAct, RepoAsk};
 use std::borrow::Cow;
 use std::path::PathBuf;
 
@@ -203,7 +200,6 @@ impl EnvironmentShell {
     }
 
     fn revert_block(&mut self, tab: TerminalId, start: usize, cx: &mut Context<Self>) {
-        let link = self.active_link();
         let Some((path, lines)) = self
             .envs
             .get(&self.active)
@@ -211,24 +207,53 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let task = cx.background_spawn(async move {
-            let current = read_text(&link, &path, MAX_REVERT_BYTES)?;
-            let Some(text) =
-                reverted_block(&lines, start, &current.text).filter(|_| !current.truncated)
-            else {
-                return Ok(false);
-            };
-            link.write(&path, text.as_bytes())
-                .map_err(RepoError::from)
-                .map(|()| true)
-        });
+        let reading = self.ask_active_repo(
+            RepoAsk::ReadText {
+                path: path.clone(),
+                max_bytes: MAX_REVERT_BYTES,
+            },
+            |answer| match answer {
+                Answer::Text { text, truncated } => Some((text, truncated)),
+                _ => None,
+            },
+            cx,
+        );
         cx.spawn(async move |this, cx| {
-            let result = task.await;
+            let (current, truncated) = match reading.await {
+                Ok(read) => read,
+                Err(error) => {
+                    return this
+                        .update(cx, |shell, cx| shell.toast_failure(&error, cx))
+                        .unwrap_or_default();
+                }
+            };
+            let reverted = reverted_block(&lines, start, &current).filter(|_| !truncated);
+            let replacing = this.update(cx, |shell, cx| {
+                reverted.map(|text| {
+                    shell.ask_active_repo(
+                        RepoAsk::ReplaceText {
+                            path,
+                            expected: current,
+                            text,
+                        },
+                        |answer| match answer {
+                            Answer::TextReplaced { replaced } => Some(replaced),
+                            _ => None,
+                        },
+                        cx,
+                    )
+                })
+            });
+            let result = match replacing {
+                Ok(Some(replacing)) => replacing.await,
+                Ok(None) => Ok(false),
+                Err(_) => return,
+            };
             this.update(cx, |shell, cx| {
                 match result {
                     Ok(true) => {}
                     Ok(false) => shell.toast(ToastKind::Warning, STALE_TOAST, cx),
-                    Err(error) => shell.toast_failure(&error),
+                    Err(error) => shell.toast_failure(&error, cx),
                 }
                 shell.refresh_git(cx);
                 shell.reload_session_changes(cx);
@@ -295,7 +320,7 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_repo::parse_patch;
+    use krad_domain::parse_patch;
 
     const DIFF: &str = concat!(
         "diff --git a/a.rs b/a.rs\n",

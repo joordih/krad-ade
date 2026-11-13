@@ -1,6 +1,5 @@
 use crate::acp_transcript::transcript_file;
 use crate::chat_images::images_folder;
-use crate::config_dir::config_dir;
 use krad_domain::{EnvironmentName, TerminalId};
 use std::fs;
 use std::io::{self, ErrorKind};
@@ -8,8 +7,6 @@ use std::path::Path;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ArchiveStoreError {
-    #[error("There is no config folder holding the archived chat's files")]
-    NoConfigDir,
     #[error("Could not delete an archived chat's files: {0}")]
     Delete(io::Error),
 }
@@ -28,24 +25,13 @@ fn remove_dir(path: &Path) -> io::Result<()> {
     }
 }
 
-fn forget_chat_files_under(
+pub(crate) fn forget_chat_files_under(
     root: &Path,
     env: &EnvironmentName,
     chat: TerminalId,
 ) -> Result<(), ArchiveStoreError> {
     remove_dir(&images_folder(root, env, chat)).map_err(ArchiveStoreError::Delete)?;
     remove_file(&transcript_file(root, env, chat)).map_err(ArchiveStoreError::Delete)
-}
-
-/// # Errors
-///
-/// Fails when there is no config folder or a file the app kept for the chat cannot be removed.
-pub fn forget_archived_chat_files(
-    env: &EnvironmentName,
-    chat: TerminalId,
-) -> Result<(), ArchiveStoreError> {
-    let root = config_dir().ok_or(ArchiveStoreError::NoConfigDir)?;
-    forget_chat_files_under(&root, env, chat)
 }
 
 #[cfg(test)]

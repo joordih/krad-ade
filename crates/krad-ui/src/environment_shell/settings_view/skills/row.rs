@@ -4,7 +4,7 @@ use gpui_kit::{
     div, px, AnyElement, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
     StatefulInteractiveElement, Styled,
 };
-use krad_chat::{LibrarySkill, SkillPlace};
+use krad_domain::{LibrarySkill, SkillPlace};
 use std::path::PathBuf;
 
 use super::super::super::dialog_parts::sheet_row_with;
@@ -135,7 +135,7 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_chat::{SkillHarness, SkillScope};
+    use krad_domain::{SkillHarness, SkillScope};
     use krad_domain::{SkillKey, SkillKind};
 
     #[test]

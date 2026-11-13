@@ -1,6 +1,8 @@
 use krad_domain::{AgentPreset, Host, ModelOffer};
 use serde::{Deserialize, Serialize};
 
+use crate::spots::HarnessSpot;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelsOrigin {
@@ -11,6 +13,11 @@ pub enum ModelsOrigin {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum ModelsCommand {
+    List {
+        #[serde(default)]
+        spot: HarnessSpot,
+        harness: AgentPreset,
+    },
     Keep {
         host: Host,
         harness: AgentPreset,

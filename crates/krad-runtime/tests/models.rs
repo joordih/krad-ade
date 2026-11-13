@@ -1,18 +1,15 @@
 use futures::executor::block_on;
 use futures::StreamExt as _;
-use krad_chat::Runner;
 use krad_domain::{AgentPreset, Host, ModelOffer};
 use krad_protocol::{
     Command, EventKind, Feed, ListedModels, ModelsCommand, ModelsOrigin, Reply, Scope,
 };
 use krad_runtime::{EventReceiver, Runtime, RuntimeHandle, RuntimeSetup};
 use std::error::Error;
-use std::path::PathBuf;
 
 type TestResult = Result<(), Box<dyn Error>>;
 
 const FEED_ENDED: &str = "the feed ended";
-const MISSING_PROGRAM: &str = "krad-runtime-test-no-such-harness";
 
 fn subscribed(runtime: &RuntimeHandle) -> Result<EventReceiver, Box<dyn Error>> {
     let mut events = runtime.subscribe();
@@ -56,20 +53,43 @@ fn keep(runtime: &RuntimeHandle, harness: AgentPreset, models: Vec<ModelOffer>) 
     Ok(())
 }
 
+#[cfg(unix)]
 #[test]
 fn a_listing_runs_once_per_host_and_harness_and_reports_its_failure() -> TestResult {
-    let runtime = Runtime::start(RuntimeSetup::default())?;
+    use krad_domain::Settings;
+    use krad_protocol::HarnessSpot;
+    use krad_runtime::SettingsSetup;
+    use std::collections::HashMap;
+    use std::path::Path;
+
+    let codex = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake-harness/codex");
+    let runtime = Runtime::start(RuntimeSetup {
+        settings: SettingsSetup {
+            settings: Settings {
+                harness_commands: HashMap::from([(
+                    AgentPreset::Codex,
+                    codex.display().to_string(),
+                )]),
+                ..Settings::default()
+            },
+            file: None,
+        },
+        ..RuntimeSetup::default()
+    })?;
     let mut events = subscribed(&runtime)?;
-    let list = || {
-        runtime.list_models(
-            Host::Local,
-            AgentPreset::Codex,
-            Runner::Native(PathBuf::from(MISSING_PROGRAM)),
-            std::env::temp_dir(),
-        );
+    let list = || -> TestResult {
+        let reply = block_on(runtime.send(
+            runtime.next_request(),
+            Command::Models(ModelsCommand::List {
+                spot: HarnessSpot::default(),
+                harness: AgentPreset::Codex,
+            }),
+        ))?;
+        assert_eq!(reply, Reply::Accepted);
+        Ok(())
     };
-    list();
-    list();
+    list()?;
+    list()?;
     assert!(matches!(
         next_model_event(&mut events)?,
         EventKind::ModelListFailed {

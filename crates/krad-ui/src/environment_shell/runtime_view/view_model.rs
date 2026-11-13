@@ -1,17 +1,83 @@
-use krad_domain::{AgentStatus, CloudRunnerId, RunnerState};
-use krad_protocol::{AskId, EventKind, RemoteBusState, RunnerLogins, Snapshot};
+use gpui_kit::{Context, EventEmitter};
+use krad_client::RuntimeClient;
+use krad_domain::{
+    AgentPreset, AgentStatus, CloudRunnerId, EnvironmentName, RunnerState, Settings,
+};
+use krad_protocol::{AskId, EventKind, Feed, PendingAsk, RemoteBusState, RunnerLogins, Snapshot};
 use std::collections::{BTreeSet, HashMap};
 use std::mem::take;
+use std::sync::Arc;
+use std::time::Duration;
 
 use super::super::attention::AttentionMirror;
 use super::super::harness_health::HealthMirror;
 use super::super::harness_models::ModelsMirror;
 use super::super::opencode::OpencodeMirror;
 use super::super::usage_bar::UsageMirror;
+use super::following::{Batch, Following};
 use super::settings::SettingsMirror;
-use super::{spot, AgentSpot, EnvironmentsMirror, HostsMirror, MailNotices};
+use super::{AgentSpot, HostMove, HostsMirror, MailNotices, Waiters};
+
+mod folding;
+
+const FIRST_PACE: Duration = Duration::from_millis(16);
+const RECONNECT_PAUSE: Duration = Duration::from_millis(500);
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub(in crate::environment_shell) enum Area {
+    Statuses,
+    Mail,
+    Attention,
+    Health,
+    Usage,
+    Models,
+    Opencode,
+    Hosts,
+    Settings,
+    Runners,
+}
+
+impl Area {
+    const ALL: [Self; 10] = [
+        Self::Statuses,
+        Self::Mail,
+        Self::Attention,
+        Self::Health,
+        Self::Usage,
+        Self::Models,
+        Self::Opencode,
+        Self::Hosts,
+        Self::Settings,
+        Self::Runners,
+    ];
+}
+
+pub(in crate::environment_shell) enum Heard {
+    Snapshot {
+        snapshot: Box<Snapshot>,
+        moves: Vec<HostMove>,
+    },
+    Event(EventKind),
+    HostMoved(HostMove),
+    RemoteBusMoved {
+        environment: EnvironmentName,
+        before: RemoteBusState,
+    },
+    AskHeld(PendingAsk),
+    AskLetGo(AskId),
+    ModelsRelisted(AgentPreset),
+    OpencodeReady,
+    SettingsAdopted(Box<Settings>),
+}
 
 #[derive(Default)]
+pub(in crate::environment_shell) struct News {
+    pub(in crate::environment_shell) heard: Vec<Heard>,
+    pub(in crate::environment_shell) areas: BTreeSet<Area>,
+}
+
+pub(in crate::environment_shell) struct RuntimeNews;
+
 pub(in crate::environment_shell) struct ViewModel {
     pub(in crate::environment_shell) statuses: HashMap<AgentSpot, AgentStatus>,
     pub(in crate::environment_shell) asks: BTreeSet<AskId>,
@@ -21,66 +87,95 @@ pub(in crate::environment_shell) struct ViewModel {
     pub(in crate::environment_shell) usage: UsageMirror,
     pub(in crate::environment_shell) models: ModelsMirror,
     pub(in crate::environment_shell) opencode: OpencodeMirror,
-    pub(in crate::environment_shell) environments: EnvironmentsMirror,
     pub(in crate::environment_shell) hosts: HostsMirror,
     pub(in crate::environment_shell) settings: SettingsMirror,
     pub(in crate::environment_shell) runners: HashMap<CloudRunnerId, RunnerState>,
     pub(in crate::environment_shell) runner_buses: HashMap<CloudRunnerId, RemoteBusState>,
     pub(in crate::environment_shell) runner_logins: HashMap<CloudRunnerId, RunnerLogins>,
+    pub(in crate::environment_shell) pace: Duration,
+    pub(in crate::environment_shell::runtime_view) waiters: Waiters,
+    news: News,
 }
 
+impl Default for ViewModel {
+    fn default() -> Self {
+        Self {
+            statuses: HashMap::new(),
+            asks: BTreeSet::new(),
+            mail: MailNotices::default(),
+            attention: AttentionMirror::default(),
+            health: HealthMirror::default(),
+            usage: UsageMirror::default(),
+            models: ModelsMirror::default(),
+            opencode: OpencodeMirror::default(),
+            hosts: HostsMirror::default(),
+            settings: SettingsMirror::default(),
+            runners: HashMap::new(),
+            runner_buses: HashMap::new(),
+            runner_logins: HashMap::new(),
+            pace: FIRST_PACE,
+            waiters: Waiters::default(),
+            news: News::default(),
+        }
+    }
+}
+
+impl EventEmitter<RuntimeNews> for ViewModel {}
+
 impl ViewModel {
-    pub(in crate::environment_shell) fn adopt_snapshot(&mut self, snapshot: &mut Snapshot) {
-        self.statuses = take(&mut snapshot.bus.statuses)
-            .into_iter()
-            .map(|report| (spot(report.agent), report.status))
-            .collect();
-        self.mail.replace(take(&mut snapshot.bus.mail));
-        self.attention.replace(take(&mut snapshot.attention));
-        self.health.replace(take(&mut snapshot.health.checks));
-        self.usage.replace(take(&mut snapshot.usage.shown));
-        self.models.replace(take(&mut snapshot.models.listed));
-        self.opencode.replace(take(&mut snapshot.opencode));
-        self.settings.replace(*take(&mut snapshot.settings));
-        let runners = *take(&mut snapshot.runners);
-        self.runners = runners
-            .shown
-            .into_iter()
-            .map(|shown| (shown.runner, shown.state))
-            .collect();
-        self.runner_buses = runners
-            .buses
-            .into_iter()
-            .map(|shown| (shown.runner, shown.bus))
-            .collect();
-        self.runner_logins = runners
-            .logins
-            .into_iter()
-            .map(|shown| (shown.runner, shown))
-            .collect();
-        self.environments.replace(take(&mut snapshot.environments));
+    pub(in crate::environment_shell) fn follow(
+        client: Arc<dyn RuntimeClient>,
+        cx: &mut Context<Self>,
+    ) {
+        let mut following = Following::new(client);
+        cx.spawn(async move |this, cx| loop {
+            let pause = match following.next_batch().await {
+                Batch::Feeds(feeds) => {
+                    let Ok(pace) = this.update(cx, |model, cx| model.hear(feeds, cx)) else {
+                        break;
+                    };
+                    pace
+                }
+                Batch::Ended => {
+                    let Ok(()) = this.update(cx, |model, _| model.waiters.forget_all()) else {
+                        break;
+                    };
+                    RECONNECT_PAUSE
+                }
+                Batch::Stopped => break,
+            };
+            cx.background_executor().timer(pause).await;
+        })
+        .detach();
     }
 
-    pub(in crate::environment_shell) fn fold_event(
-        &mut self,
-        kind: EventKind,
-    ) -> Option<EventKind> {
-        match kind {
-            EventKind::AttentionLeft { target } => self.attention.left(&target),
-            EventKind::AttentionHistoryCleared => self.attention.history_cleared(),
-            EventKind::Mail(mail) => self.mail.set(mail),
-            EventKind::UsageShown(shown) => self.usage.apply(shown),
-            EventKind::RunnerBusChanged(shown) => {
-                self.runner_buses.insert(shown.runner, shown.bus);
-            }
-            EventKind::RunnerLoginsChanged(logins) => {
-                self.runner_logins.insert(logins.runner, logins);
-            }
-            EventKind::EnvironmentClosed { environment } => self.environments.closed(&environment),
-            EventKind::EnvironmentsOrdered { order } => self.environments.ordered(&order),
-            kind => return Some(kind),
+    fn hear(&mut self, feeds: Vec<Feed>, cx: &mut Context<Self>) -> Duration {
+        for feed in feeds {
+            self.feed(feed);
         }
-        None
+        if !self.news.heard.is_empty() || !self.news.areas.is_empty() {
+            cx.emit(RuntimeNews);
+        }
+        self.pace
+    }
+
+    pub(in crate::environment_shell) fn feed(&mut self, feed: Feed) {
+        match feed {
+            Feed::Snapshot(snapshot) => self.adopt_snapshot(snapshot),
+            Feed::Event(event) => self.fold_event(event.kind),
+        }
+    }
+
+    pub(in crate::environment_shell) fn take_news(&mut self) -> News {
+        take(&mut self.news)
+    }
+
+    fn changed(&mut self, area: Area) {
+        self.news.areas.insert(area);
+    }
+
+    fn heard(&mut self, heard: Heard) {
+        self.news.heard.push(heard);
     }
 }
 

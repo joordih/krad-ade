@@ -6,9 +6,9 @@ mod state;
 
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, ease_out_quint, px, rgb, Animation, AnimationExt as _, AnyElement, ClickEvent, Context,
-    FocusHandle, FontWeight, Hsla, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
-    Window,
+    div, ease_out_quint, px, rgb, Animation, AnimationExt as _, AnyElement, App, ClickEvent,
+    Context, FocusHandle, FontWeight, Hsla, IntoElement, ParentElement, StatefulInteractiveElement,
+    Styled, Window,
 };
 use krad_domain::{Effort, EffortSnap, TerminalId};
 use std::time::Duration;
@@ -233,15 +233,19 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    fn chat_facts(&self, id: TerminalId) -> Option<Facts> {
+    fn chat_facts(&self, id: TerminalId, cx: &App) -> Option<Facts> {
         self.envs
             .get(&self.active)
             .and_then(|live| live.chats.get(&id))
-            .map(|chat| self.composer_facts(id, chat))
+            .map(|chat| self.composer_facts(id, chat, cx))
     }
 
-    pub(in crate::environment_shell) fn chat_tuning(&self, id: TerminalId) -> Option<ChatTuning> {
-        let facts = self.chat_facts(id)?;
+    pub(in crate::environment_shell) fn chat_tuning(
+        &self,
+        id: TerminalId,
+        cx: &App,
+    ) -> Option<ChatTuning> {
+        let facts = self.chat_facts(id, cx)?;
         let fixed_effort = match facts.efforts.as_slice() {
             [only] => Some(*only),
             _ => None,

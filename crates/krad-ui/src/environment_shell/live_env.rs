@@ -19,7 +19,7 @@ pub(super) struct LiveEnv {
     pub(super) focused: Option<TerminalId>,
     pub(super) selected_group: Option<GroupId>,
     pub(super) working_since: HashMap<TerminalId, Instant>,
-    pub(super) pending_chats: HashMap<TerminalId, krad_chat::LiveSession>,
+    pub(super) pending_chats: HashMap<TerminalId, krad_domain::LiveSession>,
     pub(super) waiting_prompts: HashMap<TerminalId, Vec<Prompt>>,
     pub(super) waiting_modes: HashMap<TerminalId, PermissionMode>,
     pub(super) waiting_choices: HashMap<TerminalId, session_templates::ChatChoices>,

@@ -3,7 +3,7 @@ use krad_domain::{
     UsageFailure,
 };
 use krad_host::HostError;
-use krad_protocol::HealthPlace;
+use krad_protocol::{Answer, HealthPlace, RequestId};
 use std::io;
 use std::sync::mpsc::SyncSender;
 use std::thread;
@@ -30,6 +30,14 @@ const JOB_THREAD: &str = "krad-runtime-job";
 
 #[derive(Debug)]
 pub(crate) enum JobDone {
+    Answered {
+        request: RequestId,
+        answer: Box<Answer>,
+    },
+    Uploaded {
+        request: RequestId,
+        answer: Box<Answer>,
+    },
     HarnessChecked {
         place: HealthPlace,
         harness: AgentPreset,

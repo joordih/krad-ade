@@ -255,7 +255,12 @@ impl EnvironmentShell {
     }
 
     pub(super) fn save_settings(&mut self, cx: &mut Context<Self>) {
-        if self.runtime.view.settings.send(&self.settings) {
+        let settings = &self.settings;
+        if self
+            .runtime
+            .view
+            .update(cx, |model, _| model.settings.send(settings))
+        {
             let settings = Box::new(self.settings.clone());
             self.runtime
                 .client
@@ -265,10 +270,7 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    pub(super) fn settings_heard(&mut self, settings: Settings, cx: &mut Context<Self>) {
-        let Some(adopted) = self.runtime.view.settings.changed(settings) else {
-            return;
-        };
+    pub(super) fn settings_adopted(&mut self, adopted: Settings, cx: &mut Context<Self>) {
         self.settings = adopted;
         self.apply_active_theme(cx);
     }
@@ -318,7 +320,7 @@ impl EnvironmentShell {
             self.refresh_skill_library(cx);
         }
         if pane == SettingsPane::CloudRunners {
-            self.show_cloud_runners();
+            self.show_cloud_runners(cx);
         }
         cx.notify();
     }

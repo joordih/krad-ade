@@ -1,7 +1,8 @@
+pub use krad_domain::{DirEntry, EntryKind};
 use krad_host::HostLink;
 use std::fs::File;
 use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::process::wsl_resolve_symlinks;
 use crate::RepoError;
@@ -10,19 +11,6 @@ const GIT_DIR_NAME: &str = ".git";
 const BINARY_SNIFF_BYTES: usize = 8 * 1024;
 const NUL: u8 = 0;
 const NEWLINE: u8 = b'\n';
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum EntryKind {
-    Directory,
-    File,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DirEntry {
-    pub name: String,
-    pub path: PathBuf,
-    pub kind: EntryKind,
-}
 
 /// # Errors
 pub fn list_dir(host: &HostLink, dir: &Path) -> Result<Vec<DirEntry>, RepoError> {
@@ -105,6 +93,7 @@ mod tests {
     use super::*;
     use std::error::Error;
     use std::fs;
+    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_temp_dir(label: &str) -> Result<PathBuf, Box<dyn Error>> {

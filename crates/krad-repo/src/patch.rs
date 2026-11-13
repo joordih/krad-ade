@@ -1,8 +1,6 @@
-mod parse;
-
-pub use krad_domain::{FilePatch, Hunk, HunkLine, HunkLineKind, PatchBody, PatchStatus};
-
-pub use parse::parse_patch;
+pub use krad_domain::{
+    parse_patch, FilePatch, Hunk, HunkLine, HunkLineKind, PatchBody, PatchStatus,
+};
 
 const NEWLINE: &str = "\n";
 

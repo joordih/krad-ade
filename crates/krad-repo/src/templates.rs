@@ -1,14 +1,10 @@
-use krad_domain::{SessionTemplate, TemplateError, TemplateId, TEMPLATES_DIR, TEMPLATE_EXTENSION};
+use krad_domain::{TemplateId, TEMPLATES_DIR, TEMPLATE_EXTENSION};
+
+pub use krad_domain::StoredTemplate;
 use krad_host::{FileKind, HostLink};
 use std::path::{Path, PathBuf};
 
 use crate::RepoError;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StoredTemplate {
-    pub id: TemplateId,
-    pub template: Result<SessionTemplate, TemplateError>,
-}
 
 #[must_use]
 pub fn templates_dir(root: &Path) -> PathBuf {

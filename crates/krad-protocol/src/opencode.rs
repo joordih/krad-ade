@@ -1,6 +1,8 @@
 use krad_domain::Host;
 use serde::{Deserialize, Serialize};
 
+use crate::spots::HarnessSpot;
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum OpencodeStatus {
@@ -14,6 +16,20 @@ pub enum OpencodeStatus {
 pub struct OpencodeShown {
     pub host: Host,
     pub status: OpencodeStatus,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(tag = "verb", rename_all = "snake_case")]
+pub enum OpencodeCommand {
+    Start {
+        #[serde(default)]
+        spot: HarnessSpot,
+    },
+    Refresh {
+        host: Host,
+    },
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]

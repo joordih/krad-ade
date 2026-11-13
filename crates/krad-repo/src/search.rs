@@ -1,6 +1,6 @@
 use krad_host::HostLink;
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::files::read_text;
 use crate::git::repo_root;
@@ -26,12 +26,7 @@ const FIELD_SEPARATOR: u8 = 0;
 const MAX_SEARCHED_BYTES: u64 = 1024 * 1024;
 const MAX_LINE_CHARS: usize = 240;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TextMatch {
-    pub path: PathBuf,
-    pub line: u32,
-    pub text: String,
-}
+pub use krad_domain::TextMatch;
 
 /// # Errors
 ///
@@ -140,6 +135,7 @@ fn shown_line(line: &str) -> String {
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::PathBuf;
 
     #[test]
     fn grep_output_reads_into_matches_under_the_root() {

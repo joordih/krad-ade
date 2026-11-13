@@ -5,7 +5,6 @@ use gpui_kit::{
 };
 
 use super::super::super::dialog_parts::{field_label, sheet_group, sheet_padded};
-use super::super::super::host::ssh_config_suggestions;
 use super::super::sections::{card_field, settings_section};
 use super::super::{hint, EnvironmentShell};
 use super::draft::Draft;
@@ -83,7 +82,7 @@ impl EnvironmentShell {
         for field in fields {
             field.update(cx, |field, cx| field.set_value("", window, cx));
         }
-        let read = cx.background_spawn(async move { ssh_config_suggestions() });
+        let read = self.ssh_config_suggestions(cx);
         cx.spawn(async move |this, cx| {
             let suggestions = read.await;
             this.update(cx, |shell, cx| {

@@ -29,6 +29,9 @@ impl InProcess {
 
 impl RuntimeClient for InProcess {
     fn hello(&self, hello: Hello) -> Answer<Welcome> {
+        if self.handle.has_stopped() {
+            return futures::future::ready(Err(ClientError::Stopped)).boxed();
+        }
         let welcome = self.handle.hello(&hello).map_err(ClientError::from);
         futures::future::ready(welcome).boxed()
     }

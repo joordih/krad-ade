@@ -5,10 +5,12 @@ use krad_domain::{
     GroupId, InstallId, OfflineWebhooks, RunnerCli, RunnerLogin, RuntimeState, SessionSpec,
     Settings,
 };
-use krad_host::{new_install_id, HostContext};
+use krad_host::new_install_id;
 use krad_protocol::{CloudCommand, CloudNews, CloudOpened, Command, EventKind, Feed, Reply};
 use krad_protocol::{RunnerLogins, Scope};
-use krad_runtime::{EnvironmentsSetup, Runtime, RuntimeHandle, RuntimeSetup, SettingsSetup};
+use krad_runtime::{
+    EnvironmentsSetup, HostTools, Runtime, RuntimeHandle, RuntimeSetup, SettingsSetup,
+};
 use krad_store::Secrets;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -106,12 +108,12 @@ pub fn start(root: &Path, install: InstallId) -> Result<Started, Box<dyn Error>>
             file: None,
         },
         secrets: Secrets::in_memory(),
+        host_tools: HostTools {
+            install_id: Some(install),
+            ..HostTools::default()
+        },
         ..RuntimeSetup::default()
     })?;
-    runtime.use_host_context(HostContext {
-        install_id: Some(install),
-        ..HostContext::default()
-    });
     let mut events = runtime.subscribe();
     let (heard, feed) = channel();
     std::thread::spawn(move || {

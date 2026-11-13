@@ -1,17 +1,16 @@
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, AppContext as _, Context, Entity, InteractiveElement, IntoElement,
-    ParentElement, StatefulInteractiveElement, Styled, Subscription, Window,
+    div, px, rgb, AnyElement, App, AppContext as _, Context, Entity, InteractiveElement,
+    IntoElement, ParentElement, StatefulInteractiveElement, Styled, Subscription, Window,
 };
-use krad_domain::{ssh_config_aliases, EnvironmentData, Host, SshDestination, SshDestinationError};
-use krad_host::{read_ssh_config, HostLink};
-use std::path::PathBuf;
+use krad_domain::{EnvironmentData, Host, SshDestination, SshDestinationError};
+use krad_protocol::{Answer, HostCommand};
+use std::future::Future;
 
 use super::super::dialog_parts::{
     field_label, sheet_footer, sheet_overlay, sheet_panel, sheet_title,
 };
-use super::super::terminal_card::home_dir;
 use super::super::{EnvironmentShell, LiveEnv};
 use super::HostDialog;
 use crate::components::{icon, Button, ButtonVariant, IconName};
@@ -41,11 +40,26 @@ pub(in crate::environment_shell) struct SshDialog {
     _events: Subscription,
 }
 
-pub(in crate::environment_shell) fn ssh_config_suggestions() -> Vec<String> {
-    let Some(home) = home_dir() else {
-        return Vec::new();
-    };
-    ssh_config_aliases(&read_ssh_config(&HostLink::Local, &PathBuf::from(home)))
+impl EnvironmentShell {
+    pub(in crate::environment_shell) fn ssh_config_suggestions(
+        &self,
+        cx: &mut App,
+    ) -> impl Future<Output = Vec<String>> + 'static {
+        let asked = self.ask_host_query(
+            HostCommand::SshHosts,
+            |answer| match answer {
+                Answer::SshHosts { aliases } => Some(aliases),
+                _ => None,
+            },
+            cx,
+        );
+        async move {
+            asked.await.unwrap_or_else(|error| {
+                tracing::debug!(%error, "the ssh config could not be read");
+                Vec::new()
+            })
+        }
+    }
 }
 
 fn dismiss(this: &mut EnvironmentShell, _: &mut Window, cx: &mut Context<EnvironmentShell>) {
@@ -78,7 +92,7 @@ impl EnvironmentShell {
             suggestions: Vec::new(),
             _events: events,
         });
-        let read = cx.background_spawn(async move { ssh_config_suggestions() });
+        let read = self.ssh_config_suggestions(cx);
         cx.spawn(async move |this, cx| {
             let suggestions = read.await;
             this.update(cx, |shell, cx| {

@@ -31,6 +31,7 @@ impl EnvironmentShell {
         let next = self
             .runtime
             .view
+            .read(cx)
             .attention
             .queue
             .next_after(current.as_ref())

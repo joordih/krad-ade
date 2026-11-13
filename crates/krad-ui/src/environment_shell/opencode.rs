@@ -1,10 +1,10 @@
-use gpui_kit::Context;
-use krad_chat::{OpencodeServer, Runner};
+use gpui_kit::{App, Context};
+use krad_chat::OpencodeServer;
 use krad_domain::{AgentPreset, AgentState, EnvironmentName, Host, ResumeId, TerminalId};
-use krad_host::HostLink;
-use krad_protocol::{OpencodeShown, OpencodeSnapshot, OpencodeStatus};
+use krad_protocol::{
+    Command, HarnessSpot, OpencodeCommand, OpencodeShown, OpencodeSnapshot, OpencodeStatus,
+};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::EnvironmentShell;
@@ -21,7 +21,7 @@ impl OpencodeMirror {
             .collect();
     }
 
-    fn apply(&mut self, shown: OpencodeShown) {
+    pub(super) fn apply(&mut self, shown: OpencodeShown) {
         match shown.status {
             OpencodeStatus::Stopped => self.0.remove(&shown.host),
             status => self.0.insert(shown.host, status),
@@ -40,38 +40,35 @@ pub(super) struct Opencode {
 }
 
 impl EnvironmentShell {
-    pub(super) fn ensure_opencode(&mut self) {
-        if !self.native_agents.contains(&AgentPreset::Opencode) {
+    pub(super) fn ensure_opencode(&mut self, cx: &App) {
+        let known = self
+            .runtime
+            .view
+            .read(cx)
+            .opencode
+            .of(&Host::Local)
+            .is_some();
+        if known || !self.native_agents.contains(&AgentPreset::Opencode) {
             return;
         }
-        if self.runtime.view.opencode.of(&Host::Local).is_some() {
-            return;
-        }
-        let Ok((runner, cwd)) = self.harness_runner(&HostLink::Local, AgentPreset::Opencode, None)
-        else {
-            return;
-        };
-        self.ensure_host_opencode(runner, cwd);
+        self.runtime
+            .client
+            .post(Command::Opencode(OpencodeCommand::Start {
+                spot: HarnessSpot::default(),
+            }));
     }
 
-    pub(super) fn ensure_host_opencode(&self, runner: Runner, cwd: PathBuf) {
-        let host = runner.link().host();
-        if self.runtime.view.opencode.of(&host).is_none() {
-            self.runtime.handle.start_opencode(host, runner, cwd);
-        }
-    }
-
-    pub(super) fn opencode_heard(&mut self, shown: OpencodeShown, cx: &mut Context<Self>) {
-        let ready = shown.status == OpencodeStatus::Ready;
-        self.runtime.view.opencode.apply(shown);
-        if ready {
-            self.watch_new_opencode_terminals(cx);
-            self.place_usage();
-        }
+    pub(super) fn opencode_ready(&mut self, cx: &mut Context<Self>) {
+        self.watch_new_opencode_terminals(cx);
+        self.place_usage();
     }
 
     pub(super) fn refresh_opencode_models(&self) {
-        self.runtime.handle.refresh_opencode_models(Host::Local);
+        self.runtime
+            .client
+            .post(Command::Opencode(OpencodeCommand::Refresh {
+                host: Host::Local,
+            }));
     }
 
     pub(super) fn opencode_server_of(&self, env: &EnvironmentName) -> Option<Arc<OpencodeServer>> {

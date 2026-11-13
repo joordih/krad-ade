@@ -3,7 +3,7 @@ use gpui_kit::{
     div, AnyElement, AppContext as _, Context, Entity, InteractiveElement, IntoElement,
     KeyDownEvent, ParentElement, Styled, Subscription, Window,
 };
-use krad_repo::EntryKind;
+use krad_domain::EntryKind;
 use std::path::{Path, PathBuf};
 
 use super::rename::KEY_ESCAPE;

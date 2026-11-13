@@ -15,7 +15,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         edit: impl Into<EnvironmentEdit>,
     ) -> Edited {
-        if !self.runtime.view.environments.knows(env) {
+        if !self.runtime.environments.knows(env) {
             self.store();
         }
         self.apply_edit(env, edit)
@@ -56,7 +56,7 @@ impl EnvironmentShell {
         answers: Option<RequestId>,
         cx: &mut Context<Self>,
     ) {
-        let Some(runtime) = self.runtime.view.environments.get(env) else {
+        let Some(runtime) = self.runtime.environments.get(env) else {
             return;
         };
         let Some(live) = self.envs.get_mut(env) else {
@@ -87,7 +87,7 @@ impl EnvironmentShell {
     pub(super) fn adopt_runtime_environments(&mut self, cx: &mut Context<Self>) {
         let names: Vec<EnvironmentName> = self.envs.keys().cloned().collect();
         for env in names {
-            let Some(runtime) = self.runtime.view.environments.get(&env) else {
+            let Some(runtime) = self.runtime.environments.get(&env) else {
                 continue;
             };
             let Some(live) = self.envs.get_mut(&env) else {

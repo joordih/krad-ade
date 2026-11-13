@@ -1,5 +1,6 @@
-use krad_host::HostError;
-use krad_repo::RepoError;
+use gpui_kit::App;
+use krad_client::ClientError;
+use krad_protocol::ErrorCode;
 use std::fmt::Display;
 
 use krad_domain::ToastKind;
@@ -10,29 +11,28 @@ pub(in crate::environment_shell) trait HostFailure: Display {
     fn host_unavailable(&self) -> bool;
 }
 
-impl HostFailure for HostError {
-    fn host_unavailable(&self) -> bool {
-        self.breaks_the_channel()
-    }
-}
-
-impl HostFailure for RepoError {
+impl HostFailure for ClientError {
     fn host_unavailable(&self) -> bool {
         match self {
-            Self::Io(_) => true,
-            Self::Host(error) => error.breaks_the_channel(),
-            _ => false,
+            Self::Stopped => true,
+            Self::Refused { code, .. } | Self::Failed { code, .. } => {
+                *code == ErrorCode::Unavailable
+            }
         }
     }
 }
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn toast_failure(&mut self, error: &impl HostFailure) {
+    pub(in crate::environment_shell) fn toast_failure(
+        &mut self,
+        error: &impl HostFailure,
+        cx: &App,
+    ) {
         let Some(live) = self.envs.get(&self.active) else {
             return;
         };
         let remote = !live.data.host.is_local();
-        if remote && (self.host_state(&self.active).is_pending() || error.host_unavailable()) {
+        if remote && (self.host_state(&self.active, cx).is_pending() || error.host_unavailable()) {
             tracing::debug!(error = %error, "host operation skipped while the host is unavailable");
             return;
         }

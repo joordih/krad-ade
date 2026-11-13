@@ -110,6 +110,7 @@ impl EnvironmentShell {
             if !self
                 .runtime
                 .view
+                .read(cx)
                 .attention
                 .queue
                 .contains(&announcement.target)
@@ -125,7 +126,7 @@ impl EnvironmentShell {
                 },
             );
         }
-        let queue = &self.runtime.view.attention.queue;
+        let queue = &self.runtime.view.read(cx).attention.queue;
         let answered: Vec<AttentionTarget> = self
             .attention
             .delivered

@@ -239,7 +239,7 @@ impl EnvironmentShell {
         if !self.reopen_worker(&env, terminal, cx) {
             return;
         }
-        self.focus_terminal(terminal);
+        self.focus_terminal(terminal, cx);
         cx.notify();
         self.store();
     }

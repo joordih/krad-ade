@@ -2,8 +2,8 @@ use gpui_kit::{
     div, px, ClipboardItem, Context, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, Window,
 };
-use krad_domain::{ChangeKind, FileChange, FileOpening};
-use krad_repo::folder_changes;
+use krad_domain::{folder_changes, ChangeKind, FileChange, FileOpening};
+
 use std::path::{Path, PathBuf};
 
 use super::super::super::context_menu::{MenuAction, MenuEntry};

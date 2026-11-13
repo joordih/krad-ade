@@ -9,7 +9,7 @@ use chat_support::{
 use futures::executor::block_on;
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{ChatOpener, Speaker};
-use krad_protocol::{ChatCommand, ChatMirror, Command, ErrorCode, EventKind, Reply};
+use krad_protocol::{Answer, ChatCommand, ChatMirror, Command, ErrorCode, EventKind, Reply};
 use std::path::PathBuf;
 
 const HOME_VAR: &str = "HOME";
@@ -80,7 +80,22 @@ fn a_long_history_opens_at_its_tail_and_pages_in_the_start_with_its_origin() -> 
     assert!(feed.saw(|event| matches!(event, EventKind::ChatMessagesPrepended { count: 2, .. })));
     let mut mirror = feed.mirror(&id)?;
     assert_eq!((mirror.from, mirror.len()), (2, 4));
-    let page = block_on(runtime.chat_page(id.clone(), mirror.from, PAGE))?.ok_or("no page")?;
+    let request = runtime.next_request();
+    let page = Command::Chat(ChatCommand::Page {
+        chat: id.clone(),
+        before: mirror.from,
+        count: PAGE,
+    });
+    assert_eq!(block_on(runtime.send(request, page))?, Reply::Accepted);
+    let answered = feed.until(
+        |event| matches!(event, EventKind::Answered { request: answered, .. } if *answered == request),
+    )?;
+    let EventKind::Answered { answer, .. } = answered else {
+        return Err("no answer".into());
+    };
+    let Answer::ChatPage(page) = *answer else {
+        return Err("not a page".into());
+    };
     mirror.prepend(page);
     let said: Vec<(Speaker, &str)> = mirror
         .messages

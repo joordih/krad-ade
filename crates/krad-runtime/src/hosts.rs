@@ -9,12 +9,14 @@ mod prompts;
 mod remote_bus;
 mod sign_in;
 mod state;
+mod tools;
 
 pub use host_cli::{bundled_cli, upload_host_cli, HostCliError};
 pub use problem::explain_host_problem;
 pub use remote_bus::{
     remote_askpass, remote_caller_vars, remote_detached_caller_vars, RemoteBus, RemoteBusPlan,
 };
+pub use tools::HostTools;
 
 pub(crate) use agents::AgentsFound;
 pub(crate) use bus_slot::Reach;
@@ -25,9 +27,11 @@ pub(crate) use state::Attempt;
 use krad_domain::{AgentPreset, EnvironmentName, Host, HostPlatform};
 use krad_host::{HostError, HostLink, MachineChannel};
 use krad_protocol::{
-    AgentPlace, EnvironmentHost, ErrorCode, EventKind, HostCommand, HostState, HostsSnapshot, Reply,
+    AgentPlace, EnvironmentHost, ErrorCode, EventKind, HostCommand, HostState, HostsSnapshot,
+    LoginEnv, Reply,
 };
 use std::collections::{BTreeMap, HashMap};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -75,9 +79,12 @@ pub(crate) struct Hosts {
 }
 
 impl Hosts {
-    pub(crate) fn new(bus: Option<Arc<BusAccess>>) -> (Self, HostLinks) {
+    pub(crate) fn new(
+        bus: Option<Arc<BusAccess>>,
+        context: krad_host::HostContext,
+    ) -> (Self, HostLinks) {
         let (prompts, sender) = Prompts::open();
-        let links = HostLinks::new(sender);
+        let links = HostLinks::new(sender, context);
         let hosts = Self {
             links: links.clone(),
             prompts,
@@ -104,6 +111,10 @@ impl Hosts {
             | HostCommand::DetectLocalAgents { .. }
             | HostCommand::CheckAcpAdapter { .. }
             | HostCommand::RetryAcpAdapter { .. }
+            | HostCommand::CloseAll
+            | HostCommand::SshHosts
+            | HostCommand::AcpPackages { .. }
+            | HostCommand::InstallAcpPackage { .. }
             | HostCommand::Unknown => return None,
         };
         let Some(host) = host_of else {
@@ -264,11 +275,23 @@ impl Hosts {
             Ok(platform) => {
                 tracing::info!(environment = environment.as_str(), %platform, "host connected");
                 self.prepare_bus(environment, work.jobs, work.outbox);
-                self.set(
-                    environment,
-                    HostState::Connected { platform }.into(),
-                    work.outbox,
-                );
+                let (home, login_env) = match self.links.link(&host) {
+                    HostLink::Remote(ssh) => (
+                        ssh.home().map(Path::to_path_buf),
+                        if ssh.has_login_env() {
+                            LoginEnv::Read
+                        } else {
+                            LoginEnv::Missing
+                        },
+                    ),
+                    HostLink::Local => (std::env::home_dir(), LoginEnv::Read),
+                };
+                let connected = HostState::Connected {
+                    platform,
+                    home,
+                    login_env,
+                };
+                self.set(environment, connected.into(), work.outbox);
                 return;
             }
             Err(error) => error,
@@ -320,6 +343,23 @@ impl Hosts {
         if !host_still_used {
             self.links.close(&entry.host);
         }
+    }
+
+    pub(crate) fn shares_connection(&self, environment: &EnvironmentName) -> bool {
+        let Some(entry) = self.envs.get(environment) else {
+            return false;
+        };
+        self.envs.iter().any(|(name, other)| {
+            name != environment && other.host == entry.host && other.tracked.state.is_connected()
+        })
+    }
+
+    pub(crate) fn close_all(&self) {
+        self.links.close_all();
+    }
+
+    pub(crate) fn use_timeouts(&self, timeouts: krad_domain::HostTimeouts) {
+        self.links.use_timeouts(timeouts);
     }
 
     pub(crate) fn prompts(&self) -> Option<krad_host::mux::PromptSender> {

@@ -96,11 +96,8 @@ impl EnvironmentShell {
     }
 
     fn scope_home(&self, scope: &ToolchainScope) -> Option<std::path::PathBuf> {
-        let (name, _) = self
-            .envs
-            .iter()
-            .find(|(_, live)| live.data.host == scope.host)?;
-        self.env_home(name)
+        self.discovery_inputs(&scope.host, scope.group_root.clone())?
+            .home
     }
 
     fn toolchain_picker_entries(

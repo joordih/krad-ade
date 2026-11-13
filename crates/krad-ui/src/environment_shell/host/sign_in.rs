@@ -4,9 +4,10 @@ use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, Entity, ParentElement, Styled,
     Subscription, Window,
 };
+use krad_client::RuntimeClient;
 use krad_domain::{PromptAsker, PromptKind};
 use krad_protocol::{Command, HostCommand, HostPrompt, PromptAnswer};
-use krad_runtime::RuntimeHandle;
+use std::sync::Arc;
 
 use super::super::dialog_parts::{sheet_footer, sheet_overlay, sheet_panel, sheet_title};
 use super::super::EnvironmentShell;
@@ -29,7 +30,7 @@ const BTN_ANSWER: &str = "sign-in-answer";
 
 pub(in crate::environment_shell) struct SignInDialog {
     prompt: Option<HostPrompt>,
-    runtime: RuntimeHandle,
+    runtime: Arc<dyn RuntimeClient>,
     field: Entity<InputState>,
     _events: Subscription,
 }
@@ -79,7 +80,11 @@ impl EnvironmentShell {
         if !matches!(self.hosts.dialog, HostDialog::Closed) {
             return;
         }
-        let Some(prompt) = self.runtime.view.hosts.next_prompt() else {
+        let Some(prompt) = self
+            .runtime
+            .view
+            .update(cx, |model, _| model.hosts.next_prompt())
+        else {
             return;
         };
         let masked = prompt.kind == PromptKind::Secret;
@@ -104,7 +109,7 @@ impl EnvironmentShell {
         );
         self.hosts.dialog = HostDialog::SignIn(SignInDialog {
             prompt: Some(prompt),
-            runtime: self.runtime.handle.clone(),
+            runtime: Arc::clone(&self.runtime.client),
             field,
             _events: events,
         });

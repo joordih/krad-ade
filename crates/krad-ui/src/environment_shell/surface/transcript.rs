@@ -1,27 +1,23 @@
 use gpui_kit::{Context, Task, Window};
-use krad_chat::{
-    claude_conversation_file, read_claude_transcript, read_claude_transcript_tail, SlashCommand,
-    TranscriptChunk, TranscriptMark,
-};
+use krad_chat::SlashCommand;
+use krad_client::ClientError;
 use krad_domain::{
     AgentPreset, AgentState, ChatEntry, ChatEvent, EnvironmentName, ResumeId, Speaker, TerminalId,
-    ToolUseId,
+    ToolUseId, TranscriptChunk, TranscriptMark,
 };
-use krad_host::HostLink;
+use krad_protocol::{Answer, ChatCommand, Command, TranscriptAsk, TranscriptRead};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant, SystemTime};
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use super::super::ask::{AskQueue, Settled};
-use super::super::chat::{fold_entry, workplace_home, ChatMessage};
+use super::super::chat::{fold_entry, ChatMessage};
 use super::super::live_terminal::LiveTerminal;
 use super::super::EnvironmentShell;
 use super::{anchor, Backend, ChatView, SurfaceCommand};
 
 pub(super) const TRANSCRIPT_HARNESS: AgentPreset = AgentPreset::ClaudeCode;
 const TAIL_INTERVAL: Duration = Duration::from_millis(400);
-const FIRST_LOOK_BYTES: u64 = 2 * 1024 * 1024;
-const NO_HOME_TEXT: &str = "Cannot find the home folder Claude Code keeps conversations in";
 const THINKING_TOGGLE: &[u8] = b"\x1bt";
 const INTERRUPT: &[u8] = b"\x1b";
 
@@ -67,91 +63,6 @@ pub(in crate::environment_shell) struct TranscriptView {
     pub(in crate::environment_shell) asks: AskQueue,
 }
 
-pub(super) struct TailJob {
-    pub(super) link: HostLink,
-    pub(super) resume: ResumeId,
-    pub(super) root: Option<PathBuf>,
-    pub(super) home: Option<PathBuf>,
-    pub(super) file: Option<PathBuf>,
-    pub(super) from: u64,
-    pub(super) first_look: bool,
-}
-
-pub(super) struct TailRead {
-    pub(super) resume: ResumeId,
-    pub(super) home: Option<PathBuf>,
-    pub(super) file: Option<PathBuf>,
-    pub(super) chunk: TranscriptChunk,
-    pub(super) started: Option<SystemTime>,
-    pub(super) problem: Option<String>,
-    pub(super) start: u64,
-}
-
-impl TailRead {
-    pub(super) const fn skips_history(&self) -> bool {
-        self.start > 0
-    }
-}
-
-impl TailJob {
-    pub(super) fn run(self) -> TailRead {
-        let mut read = TailRead {
-            resume: self.resume,
-            home: self.home,
-            file: self.file,
-            chunk: TranscriptChunk {
-                next: self.from,
-                ..TranscriptChunk::default()
-            },
-            started: None,
-            problem: None,
-            start: 0,
-        };
-        if read.home.is_none() {
-            match workplace_home(&self.link, self.root.as_deref()) {
-                Ok(Some(home)) => read.home = Some(home),
-                Ok(None) => read.problem = Some(NO_HOME_TEXT.to_owned()),
-                Err(error) => read.problem = Some(error.to_string()),
-            }
-        }
-        if read.file.is_none() {
-            read.file = read
-                .home
-                .as_deref()
-                .and_then(|home| claude_conversation_file(&self.link, home, &read.resume));
-        }
-        let Some(file) = read.file.clone() else {
-            return read;
-        };
-        if self.from == 0 {
-            read.started = started_at(&self.link, &file);
-        }
-        let chunk = if self.first_look {
-            read_claude_transcript_tail(&self.link, &file, FIRST_LOOK_BYTES).map(
-                |(chunk, start)| {
-                    read.start = start;
-                    chunk
-                },
-            )
-        } else {
-            read_claude_transcript(&self.link, &file, self.from)
-        };
-        match chunk {
-            Ok(chunk) => read.chunk = chunk,
-            Err(error) => read.problem = Some(error.to_string()),
-        }
-        read
-    }
-}
-
-pub(super) fn started_at(link: &HostLink, file: &Path) -> Option<SystemTime> {
-    if link.is_local() {
-        let metadata = std::fs::metadata(file).ok()?;
-        return metadata.created().or_else(|_| metadata.modified()).ok();
-    }
-    link.metadata(file).ok()?.modified
-}
-
 fn open_answer() -> ChatMessage {
     ChatMessage {
         speaker: Speaker::Assistant,
@@ -166,7 +77,7 @@ fn open_answer() -> ChatMessage {
     }
 }
 
-pub(super) fn fold_history(chat: &mut ChatView, read: &TailRead, opened: bool) {
+pub(super) fn fold_history(chat: &mut ChatView, read: &TranscriptRead, opened: bool) {
     if opened {
         chat.chat.origin = krad_domain::ChatOrigin::of(&read.chunk.entries, read.started);
     }
@@ -290,13 +201,24 @@ impl EnvironmentShell {
 
     fn tail_transcript(env: EnvironmentName, id: TerminalId, cx: &mut Context<Self>) -> Task<()> {
         cx.spawn(async move |this, cx| loop {
-            let Ok(Some(job)) = this.update(cx, |shell, _| shell.tail_job(&env, id)) else {
+            let Ok(Some(asked)) = this.update(cx, |shell, cx| {
+                let ask = shell.tail_ask(&env, id)?;
+                let command = Command::Chat(ChatCommand::Transcript {
+                    environment: env.clone(),
+                    ask,
+                });
+                Some(shell.runtime.ask(command, cx))
+            }) else {
                 break;
             };
-            let read = cx
-                .background_executor()
-                .spawn(async move { job.run() })
-                .await;
+            let read = match asked.await {
+                Ok(Answer::Transcript(read)) => read,
+                Err(ClientError::Stopped) => break,
+                Ok(_) | Err(_) => {
+                    cx.background_executor().timer(TAIL_INTERVAL).await;
+                    continue;
+                }
+            };
             if this
                 .update(cx, |shell, cx| {
                     shell.apply_tail(&env, id, &read, cx);
@@ -310,7 +232,7 @@ impl EnvironmentShell {
         })
     }
 
-    fn tail_job(&mut self, env: &EnvironmentName, id: TerminalId) -> Option<TailJob> {
+    fn tail_ask(&mut self, env: &EnvironmentName, id: TerminalId) -> Option<TranscriptAsk> {
         let live = self.envs.get_mut(env)?;
         let resume = live
             .data
@@ -335,8 +257,7 @@ impl EnvironmentShell {
             chat.thread.remeasure();
             chat.chat.origin = None;
         }
-        Some(TailJob {
-            link: self.runtime.handle.host_link(&live.data.host),
+        Some(TranscriptAsk {
             resume,
             root,
             home: transcript.home.clone(),
@@ -350,7 +271,7 @@ impl EnvironmentShell {
         &mut self,
         env: &EnvironmentName,
         id: TerminalId,
-        read: &TailRead,
+        read: &TranscriptRead,
         cx: &mut Context<Self>,
     ) {
         let Some(chat) = self

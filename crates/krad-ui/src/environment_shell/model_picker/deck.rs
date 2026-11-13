@@ -325,7 +325,7 @@ impl EnvironmentShell {
                 .p(px(SPACE_2))
                 .text_size(px(TEXT_SM))
                 .text_color(rgb(pal.text_muted))
-                .child(self.picker_empty_text())
+                .child(self.picker_empty_text(cx))
         });
         div()
             .id(ROWS_ID)

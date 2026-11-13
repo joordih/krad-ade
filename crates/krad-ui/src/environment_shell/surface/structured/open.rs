@@ -1,8 +1,7 @@
 use gpui_kit::{Context, Window};
-use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
-    AgentPreset, ChatChoice, EnvironmentName, NodeKind, TerminalId, TerminalNode,
-    DEFAULT_CHAT_HARNESS,
+    new_session_id, AgentPreset, ChatChoice, EnvironmentName, LiveSession, NodeKind, TerminalId,
+    TerminalNode, DEFAULT_CHAT_HARNESS,
 };
 use std::collections::HashMap;
 
@@ -39,7 +38,7 @@ impl EnvironmentShell {
             .iter()
             .filter(|(_, live)| !live.pending_chats.is_empty())
             .map(|(name, _)| name.clone())
-            .filter(|name| self.runs_in_background(name))
+            .filter(|name| self.runs_in_background(name, cx))
             .collect();
         let active = self.active.clone();
         for env in std::iter::once(active).chain(background) {
@@ -92,6 +91,7 @@ impl EnvironmentShell {
                     model: choices.model,
                     effort: choices.effort,
                 },
+                cx,
             );
             self.keep_choice(env, id, choice.clone());
             structured.permission_mode = mode;

@@ -1,4 +1,4 @@
-use gpui_kit::{Context, Window};
+use gpui_kit::{App, Context, Window};
 use krad_domain::{AgentPreset, TerminalId};
 
 use super::super::live_terminal::end_terminal_on;
@@ -8,12 +8,12 @@ use super::super::EnvironmentShell;
 const SHELL_LABEL: &str = "Terminal";
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn start_system_terminals(&mut self) {
+    pub(in crate::environment_shell) fn start_system_terminals(&mut self, cx: &App) {
         let env = self.active.clone();
-        if !self.host_ready(&env) {
+        if !self.host_ready(&env, cx) {
             return;
         }
-        let home = self.env_home(&env);
+        let home = self.env_home(&env, cx);
         let missing: Vec<TerminalId> = self.envs.get(&env).map_or_default(|live| {
             live.data
                 .side_panel
@@ -30,6 +30,7 @@ impl EnvironmentShell {
                 Launch::Preset(AgentPreset::Shell),
                 home.clone(),
                 &[],
+                cx,
             );
         }
     }
@@ -47,7 +48,7 @@ impl EnvironmentShell {
             let title = format!("{SHELL_LABEL} · {}", id.as_u64());
             live.data.side_panel_mut().add_terminal(id, title);
         }
-        self.start_system_terminals();
+        self.start_system_terminals(cx);
         self.show_system_terminal(id, window, cx);
         self.store();
     }
@@ -62,7 +63,7 @@ impl EnvironmentShell {
             live.data.side_panel_mut().shown = Some(id);
         }
         self.focus_pane(window, cx);
-        self.focus_terminal(id);
+        self.focus_terminal(id, cx);
         cx.notify();
     }
 

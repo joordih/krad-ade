@@ -119,17 +119,16 @@ impl EnvironmentShell {
             return None;
         }
         let pal = palette(cx);
-        let link = self.active_link();
-        let host = link.host();
+        let host = self.active_host();
         let now = SystemTime::now();
         let warn_at = self.settings.plan_usage.warn_at;
         let blocks: Vec<AnyElement> = self
-            .usage_harnesses(&link)
+            .usage_harnesses(&host, cx)
             .into_iter()
             .enumerate()
             .map(|(index, harness)| {
                 let key = (host.clone(), harness);
-                let shown = self.runtime.view.usage.get(&key);
+                let shown = self.runtime.view.read(cx).usage.get(&key);
                 let input = BlockInput {
                     harness,
                     reading: shown.and_then(|shown| shown.reading.as_ref()),

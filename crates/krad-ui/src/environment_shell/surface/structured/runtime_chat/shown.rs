@@ -1,6 +1,6 @@
 use gpui_kit::Context;
 use krad_domain::{EnvironmentName, Prompt, TerminalId};
-use krad_protocol::{ChatCommand, ChatPage, ChatState, Command, McpTrustAsk};
+use krad_protocol::{Answer, ChatCommand, ChatPage, ChatState, Command, McpTrustAsk};
 use std::time::{Instant, SystemTime};
 
 use super::super::super::super::EnvironmentShell;
@@ -148,17 +148,19 @@ impl EnvironmentShell {
             return;
         }
         structured.shown.paging = true;
-        let page = self
-            .runtime
-            .handle
-            .chat_page(chat_ref(env, id), before, before);
+        let command = Command::Chat(ChatCommand::Page {
+            chat: chat_ref(env, id),
+            before,
+            count: before,
+        });
+        let page = self.runtime.ask(command, cx);
         let env = env.clone();
         cx.spawn(async move |this, cx| {
             let page = page.await;
             this.update(cx, |shell, cx| {
                 match page {
-                    Ok(Some(page)) => shell.earlier_page_read(&env, id, page),
-                    Ok(None) | Err(_) => {
+                    Ok(Answer::ChatPage(page)) => shell.earlier_page_read(&env, id, page),
+                    Ok(_) | Err(_) => {
                         if let Some(structured) = structured_mut(shell, &env, id) {
                             structured.shown.paging = false;
                         }

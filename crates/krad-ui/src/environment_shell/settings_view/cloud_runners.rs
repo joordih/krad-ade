@@ -63,7 +63,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let id = runner.id;
-        let state = self.runner_state(id);
+        let state = self.runner_state(id, cx);
         let button = |prefix: &'static str, label: &'static str| {
             Button::new((prefix, id.0))
                 .label(label)

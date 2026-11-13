@@ -1,3 +1,4 @@
+mod folder_changes;
 mod patch;
 mod refs;
 
@@ -7,7 +8,8 @@ use std::path::PathBuf;
 
 use crate::ChangeKind;
 
-pub use patch::{FilePatch, Hunk, HunkLine, HunkLineKind, PatchBody, PatchStatus};
+pub use folder_changes::{folder_changes, FolderChanges};
+pub use patch::{parse_patch, FilePatch, Hunk, HunkLine, HunkLineKind, PatchBody, PatchStatus};
 pub use refs::{Branch, BranchPlace, Refs, ORIGIN_REMOTE};
 
 const NAME_SEPARATOR: char = '-';

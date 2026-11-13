@@ -20,7 +20,7 @@ impl EnvironmentShell {
             .as_ref()
             .filter(|popover| popover.placement == EffortPlacement::InPicker)
             .filter(|popover| popover.state.chat == chat)?;
-        let (facts, track, was) = self.effort_track_of(chat, cx.reduce_motion())?;
+        let (facts, track, was) = self.effort_track_of(chat, cx.reduce_motion(), cx)?;
         let pal = palette(cx);
         let help = popover.state.help.then(|| Self::effort_help(&facts, pal));
         Some(

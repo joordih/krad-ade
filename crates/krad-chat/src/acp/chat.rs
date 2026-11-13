@@ -7,10 +7,8 @@ mod servers;
 mod translate;
 mod worker;
 
-use krad_domain::{
-    AcpAgentStart, AcpConfigOptionId, AcpConfigValue, AcpModeId, AcpModelId, ChatEvent,
-    McpServerStart,
-};
+pub use krad_domain::AcpWanted;
+use krad_domain::{AcpAgentStart, AcpModeId, AcpModelId, ChatEvent, McpServerStart};
 use krad_host::HostLink;
 use std::io;
 use std::path::PathBuf;
@@ -45,12 +43,6 @@ pub struct AcpConfig {
     pub buffers: Arc<dyn OpenBuffers>,
     pub model: Option<AcpModelId>,
     pub wanted: AcpWanted,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct AcpWanted {
-    pub mode: Option<AcpModeId>,
-    pub options: Vec<(AcpConfigOptionId, AcpConfigValue)>,
 }
 
 #[derive(Debug, Error)]

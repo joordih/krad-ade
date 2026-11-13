@@ -1,15 +1,15 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::{
     EnvironmentData, EnvironmentName, EnvironmentViewPreferences, Layout, SessionEdit,
     SidePanelLayout, TerminalId, ToastKind, ViewPreferences, DEFAULT_ENVIRONMENT,
     LAYOUT_SCHEMA_VERSION,
 };
-use krad_protocol::Command;
+use krad_protocol::{Command, RuntimeCommand};
 
 use super::{EnvironmentShell, LiveEnv};
 
 impl EnvironmentShell {
-    pub(super) fn restore_layout(&mut self, layout: Layout) {
+    pub(super) fn restore_layout(&mut self, layout: Layout, cx: &App) {
         let Layout { state, mut view } = layout;
         self.toolchains =
             super::toolchains::Toolchains::with_choices(std::mem::take(&mut view.toolchains));
@@ -19,7 +19,7 @@ impl EnvironmentShell {
         for data in &mut environments {
             data.restart();
         }
-        self.runtime.view.environments.replace(environments.clone());
+        self.runtime.environments.replace(environments.clone());
         let mut restored = 0;
         for mut data in environments {
             view.dress(&mut data);
@@ -32,14 +32,14 @@ impl EnvironmentShell {
             if let Some(terminal) = data_focus {
                 self.edit_environment(&name, SessionEdit::Reveal { terminal });
             }
-            restored += self.spawn_missing_sessions(&name);
+            restored += self.spawn_missing_sessions(&name, cx);
         }
         if self.order.is_empty() {
             let data = EnvironmentData::empty(EnvironmentName::new(DEFAULT_ENVIRONMENT.to_owned()));
             let name = data.name.clone();
             self.order.push(name.clone());
             self.envs.insert(name.clone(), LiveEnv::new(data, None));
-            restored += self.spawn_missing_sessions(&name);
+            restored += self.spawn_missing_sessions(&name, cx);
         }
         self.work_mode = view.work_mode;
         self.sidebar_w = view.sidebar_width;
@@ -107,10 +107,13 @@ impl EnvironmentShell {
     pub(super) fn settle_runtime_on_quit(cx: &mut Context<Self>) {
         cx.on_app_quit(|shell, _| {
             shell.store();
-            let settled = shell.runtime.handle.settle();
+            let settled = shell
+                .runtime
+                .client
+                .send(Command::Runtime(RuntimeCommand::Settle));
             async move {
-                if settled.await.is_err() {
-                    tracing::warn!("the runtime stopped before the layout settled");
+                if let Err(error) = settled.await {
+                    tracing::warn!(%error, "the runtime did not settle the layout");
                 }
             }
         })
@@ -123,12 +126,7 @@ impl EnvironmentShell {
             .iter()
             .filter_map(|name| Some(self.snapshot_env(name, self.envs.get(name)?)))
             .collect();
-        for command in self
-            .runtime
-            .view
-            .environments
-            .commands_toward(&environments)
-        {
+        for command in self.runtime.environments.commands_toward(&environments) {
             self.runtime.client.post(Command::Environments(command));
         }
         if let Some(writer) = &self.view_writer {

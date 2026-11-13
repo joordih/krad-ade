@@ -1,7 +1,8 @@
 use gpui_kit::component::command::CommandGroup;
-use gpui_kit::{App, Context, Window};
+use gpui_kit::{Context, Window};
 use std::path::{Path, PathBuf};
 
+use super::super::chat::FilesFor;
 use super::super::EnvironmentShell;
 use super::row::{command_row, Glyph};
 use crate::actions::QuickOpen;
@@ -18,27 +19,12 @@ impl EnvironmentShell {
         Some(group.root.clone())
     }
 
-    pub(super) fn index_palette_files(&mut self, cx: &mut Context<Self>) {
-        self.refresh_file_index(self.palette_root(), cx);
-    }
-
-    pub(super) fn find_palette_files(&mut self, query: &str) {
+    pub(super) fn find_palette_files(&mut self, query: &str, cx: &mut Context<Self>) {
         let query = query.trim();
-        self.palette_files = match self.palette_root().filter(|_| !query.is_empty()) {
-            Some(root) => self.indexed_files(&root, query, FILES_FOUND),
-            None => Vec::new(),
-        };
-    }
-
-    pub(in crate::environment_shell) fn refind_palette_files(&mut self, cx: &App) {
-        let Some(query) = self
-            .palette
-            .as_ref()
-            .map(|palette| palette.read(cx).query(cx).to_string())
-        else {
-            return;
-        };
-        self.find_palette_files(&query);
+        match self.palette_root().filter(|_| !query.is_empty()) {
+            Some(root) => self.search_files((root, query, FILES_FOUND), FilesFor::Palette, cx),
+            None => self.palette_files.clear(),
+        }
     }
 
     pub(in crate::environment_shell) fn on_quick_open(

@@ -1,19 +1,19 @@
-use gpui_kit::{AppContext as _, Context, Window};
-use krad_domain::{Host, LanguageId, LanguageTemplate, ToastKind};
-use krad_host::HostLink;
+use gpui_kit::{Context, Window};
+use krad_domain::{EntryKind, Host, LanguageId, LanguageTemplate, ToastKind};
 use krad_lsp::lsp_types::Position;
-use krad_repo::EntryKind;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+mod markers;
+
 use super::super::entry_input::entry_name;
 use super::super::language_servers::{ServerKey, ServerTemplates, TemplateOutput};
+use super::super::repo_asks::done;
 use super::super::EnvironmentShell;
 
 const TEMPLATE_FAILED_TEXT: &str = "The file could not be created";
 const PLAIN_GROUP: &str = "Other";
 const PLAIN_LABEL: &str = "Empty file";
-const ALREADY_EXISTS_TEXT: &str = "already exists";
 
 #[derive(Clone)]
 pub(in crate::environment_shell) enum ChoiceSource {
@@ -86,37 +86,6 @@ pub(super) fn manifest_output(
         files: vec![(file.clone(), rendered.text)],
         open: Some((file, Position::new(line, column))),
     })
-}
-
-fn has_marker(link: &HostLink, folder: &Path, stop: Option<&Path>, markers: &[String]) -> bool {
-    for dir in folder.ancestors() {
-        if markers.iter().any(|marker| link.exists(&dir.join(marker))) {
-            return true;
-        }
-        if Some(dir) == stop {
-            return false;
-        }
-    }
-    false
-}
-
-fn write_output(link: &HostLink, output: &TemplateOutput) -> Result<(), String> {
-    for folder in &output.folders {
-        link.create_dir_all(folder)
-            .map_err(|error| error.to_string())?;
-    }
-    for (path, text) in &output.files {
-        if link.exists(path) {
-            return Err(format!("{} {ALREADY_EXISTS_TEXT}", path.display()));
-        }
-        if let Some(parent) = path.parent() {
-            link.create_dir_all(parent)
-                .map_err(|error| error.to_string())?;
-        }
-        link.write(path, text.as_bytes())
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(())
 }
 
 impl EnvironmentShell {
@@ -203,32 +172,7 @@ impl EnvironmentShell {
             popup.pending = 2 + servers.len();
         }
         self.add_choices(placed, &[], cx);
-        let link = self.active_link();
-        let stop = self.file_tree_root().map(Path::to_path_buf);
-        let checking = folder.clone();
-        let checked = cx.background_spawn(async move {
-            marked
-                .into_iter()
-                .filter(|marked| {
-                    has_marker(&link, &checking, stop.as_deref(), &marked.template.markers)
-                })
-                .map(|marked| TemplateChoice {
-                    group: marked.template.group.clone(),
-                    label: marked.template.label.clone(),
-                    language: Some(marked.language.clone()),
-                    source: ChoiceSource::Manifest {
-                        language: marked.language,
-                        id: marked.template.id,
-                    },
-                })
-                .collect::<Vec<_>>()
-        });
-        cx.spawn(async move |this, cx| {
-            let found = checked.await;
-            this.update(cx, |shell, cx| shell.add_choices(found, &[], cx))
-                .unwrap_or_default();
-        })
-        .detach();
+        self.check_template_markers(folder.clone(), marked, cx);
         for asked in servers {
             cx.spawn(async move |this, cx| {
                 let answer: Option<ServerTemplates> = asked.await;
@@ -318,13 +262,12 @@ impl EnvironmentShell {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let link = self.active_link();
-        if link.host() != *host {
+        if self.envs.get(&self.active).map(|live| &live.data.host) != Some(host) {
             return;
         }
         self.close_template_popup(cx);
         let opened = output.open.clone();
-        let writing = cx.background_spawn(async move { write_output(&link, &output) });
+        let writing = self.ask_active_file(output.into(), done, cx);
         cx.spawn(async move |this, cx| {
             let written = writing.await;
             this.update(cx, |shell, cx| {
@@ -351,6 +294,7 @@ impl EnvironmentShell {
 
 #[cfg(test)]
 mod tests {
+    use super::markers::{has_marker, marker_paths};
     use super::*;
 
     #[test]
@@ -389,9 +333,12 @@ mod tests {
         std::fs::create_dir_all(&nested)?;
         std::fs::write(root.join("web/package.json"), "{}")?;
         let markers = ["package.json".to_owned()];
-        let link = HostLink::Local;
-        let found = has_marker(&link, &nested, Some(&root), &markers);
-        let outside = has_marker(&link, &root, Some(&root), &markers);
+        let present: HashSet<PathBuf> = marker_paths(&nested, Some(&root), &markers)
+            .into_iter()
+            .filter(|path| path.exists())
+            .collect();
+        let found = has_marker(&present, &nested, Some(&root), &markers);
+        let outside = has_marker(&present, &root, Some(&root), &markers);
         std::fs::remove_dir_all(&root)?;
         assert!(found);
         assert!(!outside);

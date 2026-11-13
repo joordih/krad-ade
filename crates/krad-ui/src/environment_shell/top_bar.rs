@@ -111,7 +111,7 @@ impl EnvironmentShell {
                     TOOLTIP_ATTENTION,
                     Some(Box::new(ToggleAttentionInbox)),
                     self.attention_inbox_open().then_some(pal.bg_selected),
-                    if self.attention_waiting() {
+                    if self.attention_waiting(cx) {
                         pal.attention
                     } else {
                         pal.text_muted

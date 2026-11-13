@@ -1,10 +1,12 @@
-use gpui_kit::{AppContext as _, ClipboardItem, Context, Window};
-use krad_host::HostLink;
-use krad_repo::{
-    create_dir, create_file, delete_entry, move_entry, relocate_entry, rename_entry,
-    reveal_in_file_manager, DirEntry, EntryKind, RepoError,
-};
+use gpui_kit::{ClipboardItem, Context, Window};
+use krad_client::ClientError;
+use krad_domain::{DirEntry, EntryKind};
+use krad_protocol::{FileAsk, RepoAsk};
+use std::future::Future;
 use std::path::{Path, PathBuf};
+
+use super::super::file_asks::placed;
+use super::super::repo_asks::done;
 
 use crate::components::IconName;
 use crate::environment_shell::context_menu::{MenuAction, MenuEntry};
@@ -112,11 +114,8 @@ impl EnvironmentShell {
                 cx.write_to_clipboard(ClipboardItem::new_string(relative));
             }
             FileAction::Reveal(path) => {
-                self.run_file_op(
-                    move |link| reveal_in_file_manager(link, &path),
-                    |_, (), _| {},
-                    cx,
-                );
+                let reveal = self.ask_active_repo(RepoAsk::Reveal { path }, done, cx);
+                Self::run_file_op(reveal, |_, (), _| {}, cx);
             }
             FileAction::Delete(path) => self.ask_to_delete(path, window, cx),
             FileAction::ShowFolder(folder) => self.navigate_file_tree(folder, cx),
@@ -152,9 +151,12 @@ impl EnvironmentShell {
         name: &str,
         cx: &mut Context<Self>,
     ) {
-        let (source, name) = (path.clone(), name.to_owned());
-        self.run_file_op(
-            move |link| rename_entry(link, &source, &name),
+        let ask = FileAsk::Rename {
+            path: path.clone(),
+            name: name.to_owned(),
+        };
+        Self::run_file_op(
+            self.ask_active_file(ask, placed, cx),
             move |this, renamed, cx| this.relocate(&path, Some(&renamed), cx),
             cx,
         );
@@ -166,9 +168,12 @@ impl EnvironmentShell {
         target: PathBuf,
         cx: &mut Context<Self>,
     ) {
-        let source = path.clone();
-        self.run_file_op(
-            move |link| relocate_entry(link, &source, &target),
+        let ask = FileAsk::Relocate {
+            path: path.clone(),
+            target,
+        };
+        Self::run_file_op(
+            self.ask_active_file(ask, placed, cx),
             move |this, moved, cx| this.relocate(&path, Some(&moved), cx),
             cx,
         );
@@ -182,11 +187,12 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let name = name.to_owned();
-        self.run_file_op(
-            move |link| match kind {
-                EntryKind::File => create_file(link, &dir, &name),
-                EntryKind::Directory => create_dir(link, &dir, &name),
-            },
+        let ask = match kind {
+            EntryKind::File => FileAsk::CreateFile { dir, name },
+            EntryKind::Directory => FileAsk::CreateDir { dir, name },
+        };
+        Self::run_file_op(
+            self.ask_active_file(ask, placed, cx),
             move |this, created, cx| {
                 this.file_tree.selected = Some(created.clone());
                 if kind == EntryKind::File {
@@ -207,9 +213,12 @@ impl EnvironmentShell {
         if dest_dir == path || path.parent() == Some(dest_dir.as_path()) {
             return;
         }
-        let source = path.clone();
-        self.run_file_op(
-            move |link| move_entry(link, &source, &dest_dir),
+        let ask = FileAsk::Move {
+            path: path.clone(),
+            into: dest_dir,
+        };
+        Self::run_file_op(
+            self.ask_active_file(ask, placed, cx),
             move |this, moved, cx| this.relocate(&path, Some(&moved), cx),
             cx,
         );
@@ -224,9 +233,9 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn delete_file(&self, path: PathBuf, cx: &mut Context<Self>) {
         cx.notify();
-        let target = path.clone();
-        self.run_file_op(
-            move |link| delete_entry(link, &target),
+        let ask = FileAsk::Delete { path: path.clone() };
+        Self::run_file_op(
+            self.ask_active_file(ask, done, cx),
             move |this, (), cx| this.relocate(&path, None, cx),
             cx,
         );
@@ -264,20 +273,17 @@ impl EnvironmentShell {
         self.refresh_git(cx);
     }
 
-    fn run_file_op<T: Send + 'static>(
-        &self,
-        op: impl FnOnce(&HostLink) -> Result<T, RepoError> + Send + 'static,
+    fn run_file_op<T: 'static>(
+        op: impl Future<Output = Result<T, ClientError>> + 'static,
         done: impl FnOnce(&mut Self, T, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
     ) {
-        let link = self.active_link();
-        let task = cx.background_spawn(async move { op(&link) });
         cx.spawn(async move |this, cx| {
-            let result = task.await;
+            let result = op.await;
             this.update(cx, |shell, cx| {
                 match result {
                     Ok(value) => done(shell, value, cx),
-                    Err(error) => shell.toast_failure(&error),
+                    Err(error) => shell.toast_failure(&error, cx),
                 }
                 cx.notify();
             })

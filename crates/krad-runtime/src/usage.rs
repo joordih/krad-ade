@@ -79,9 +79,13 @@ impl Usage {
                     self.heard(&key, Heard::Statusline(usage), outbox);
                 }
             }
-            UsageCommand::Unknown => return None,
+            UsageCommand::Place { .. } | UsageCommand::Unknown => return None,
         }
         Some(Reply::Accepted)
+    }
+
+    pub(crate) fn has_reading(&self, key: &UsageKey) -> bool {
+        self.readings.contains_key(key)
     }
 
     pub(crate) fn place(

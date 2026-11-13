@@ -1,3 +1,4 @@
+use futures::executor::block_on;
 use krad_agents::{QueuedEvent, Request};
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
@@ -140,7 +141,9 @@ fn saved_past(
 
 fn close(cloud: &mut CloudChat) -> Result<(), Box<dyn Error>> {
     let id = cloud.id.clone();
-    cloud.started.runtime.close_chat(id.clone());
+    let runtime = &cloud.started.runtime;
+    let close = Command::Chat(ChatCommand::Close { chat: id.clone() });
+    block_on(runtime.send(runtime.next_request(), close))?;
     cloud
         .chats
         .until(|event| matches!(event, EventKind::ChatClosed { chat } if *chat == id))?;

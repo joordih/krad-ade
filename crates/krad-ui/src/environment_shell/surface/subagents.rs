@@ -1,19 +1,17 @@
-use gpui_kit::{Context, ScrollHandle, Task};
-use krad_chat::{
-    claude_conversation_file, claude_subagents, engine_subagents, read_engine_subagent,
-    read_subagent_meta, read_subagent_record, SubagentFiles, SubagentMeta, TranscriptChunk,
-};
+use gpui_kit::{App, Context, ScrollHandle, Task};
+use krad_client::ClientError;
 use krad_domain::{
-    AgentPreset, ChatEntry, ChatEvent, EnvironmentName, ResumeId, TerminalId, ToolKind, ToolUseId,
+    AgentPreset, ChatEntry, ChatEvent, EnvironmentName, SubagentMeta, TerminalId, ToolKind,
+    ToolUseId,
 };
-use krad_host::HostLink;
-use krad_store::gateway_sessions_dir;
+use krad_protocol::{
+    Answer, ChatCommand, Command, KnownRecord, SubagentsAsk, SubagentsFrom, SubagentsRead,
+};
 use std::collections::HashMap;
-use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
-use super::super::chat::{fold_entry, workplace_home, AnswerPart, ChatMessage};
+use super::super::chat::{fold_entry, AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
 use super::anchor::follows_tail;
 use super::view::at_bottom;
@@ -71,111 +69,10 @@ pub(super) struct Subagents {
     watch: Option<Task<()>>,
 }
 
-enum SubagentSource {
-    Claude {
-        link: HostLink,
-        root: Option<PathBuf>,
-        home: Option<PathBuf>,
-        conversation: Option<PathBuf>,
-    },
-    Gateway {
-        sessions: PathBuf,
-        cwd: PathBuf,
-    },
-}
-
-struct SubagentJob {
-    resume: ResumeId,
-    source: SubagentSource,
-    known: Vec<(PathBuf, u64, bool)>,
-}
-
-struct SubagentUpdate {
-    meta: SubagentMeta,
-    record: PathBuf,
-    chunk: TranscriptChunk,
-}
-
-struct SubagentRead {
-    home: Option<PathBuf>,
-    conversation: Option<PathBuf>,
-    updates: Vec<SubagentUpdate>,
-}
-
 enum Look {
     Gone,
     Idle,
-    Read(SubagentJob),
-}
-
-fn updates(
-    files: Vec<SubagentFiles>,
-    known: &[(PathBuf, u64, bool)],
-    link: &HostLink,
-    read: impl Fn(&Path, u64) -> io::Result<TranscriptChunk>,
-) -> Vec<SubagentUpdate> {
-    files
-        .into_iter()
-        .filter_map(|files| {
-            let (from, done) = known
-                .iter()
-                .find(|(record, _, _)| *record == files.record)
-                .map_or((0, false), |(_, read, done)| (*read, *done));
-            if done {
-                return None;
-            }
-            let meta = read_subagent_meta(link, &files.meta).ok()?;
-            let chunk = read(&files.record, from).ok()?;
-            Some(SubagentUpdate {
-                meta,
-                record: files.record,
-                chunk,
-            })
-        })
-        .collect()
-}
-
-impl SubagentJob {
-    fn run(self) -> SubagentRead {
-        let (link, root, home, conversation) = match self.source {
-            SubagentSource::Gateway { sessions, cwd } => {
-                return SubagentRead {
-                    home: None,
-                    conversation: None,
-                    updates: updates(
-                        engine_subagents(&sessions, &self.resume),
-                        &self.known,
-                        &HostLink::Local,
-                        |record, from| read_engine_subagent(record, &cwd, from),
-                    ),
-                };
-            }
-            SubagentSource::Claude {
-                link,
-                root,
-                home,
-                conversation,
-            } => (link, root, home, conversation),
-        };
-        let home = home.or_else(|| workplace_home(&link, root.as_deref()).ok().flatten());
-        let conversation = conversation.or_else(|| {
-            home.as_deref()
-                .and_then(|home| claude_conversation_file(&link, home, &self.resume))
-        });
-        let updates = conversation.as_deref().map_or_default(|conversation| {
-            updates(
-                claude_subagents(&link, conversation),
-                &self.known,
-                &link,
-                |record, from| read_subagent_record(&link, record, from),
-            )
-        });
-        SubagentRead {
-            home,
-            conversation,
-            updates,
-        }
-    }
+    Read(SubagentsAsk),
 }
 
 fn agent_calls(messages: &[ChatMessage]) -> impl Iterator<Item = &ToolUseId> {
@@ -199,18 +96,27 @@ impl EnvironmentShell {
             let env = env.clone();
             async move |this, cx| loop {
                 cx.background_executor().timer(SUBAGENT_POLL).await;
-                let Ok(look) = this.update(cx, |shell, _| shell.subagent_look(&env, id)) else {
+                let Ok(look) = this.update(cx, |shell, cx| shell.subagent_look(&env, id, cx))
+                else {
                     break;
                 };
-                let job = match look {
+                let ask = match look {
                     Look::Gone => break,
                     Look::Idle => continue,
-                    Look::Read(job) => job,
+                    Look::Read(ask) => ask,
                 };
-                let read = cx
-                    .background_executor()
-                    .spawn(async move { job.run() })
-                    .await;
+                let command = Command::Chat(ChatCommand::Subagents {
+                    environment: env.clone(),
+                    ask,
+                });
+                let Ok(asked) = this.update(cx, |shell, cx| shell.runtime.ask(command, cx)) else {
+                    break;
+                };
+                let read = match asked.await {
+                    Ok(Answer::Subagents(read)) => *read,
+                    Err(ClientError::Stopped) => break,
+                    Ok(_) | Err(_) => continue,
+                };
                 if this
                     .update(cx, |shell, cx| shell.apply_subagents(&env, id, read, cx))
                     .is_err()
@@ -228,7 +134,7 @@ impl EnvironmentShell {
         }
     }
 
-    fn subagent_look(&self, env: &EnvironmentName, id: TerminalId) -> Look {
+    fn subagent_look(&self, env: &EnvironmentName, id: TerminalId, cx: &App) -> Look {
         let Some(live) = self.envs.get(env) else {
             return Look::Gone;
         };
@@ -251,18 +157,11 @@ impl EnvironmentShell {
         let (true, Some(resume)) = (following, resume) else {
             return Look::Idle;
         };
-        let source = match chat.chat.harness() {
-            AgentPreset::Gateway => {
-                let Some(sessions) = gateway_sessions_dir() else {
-                    return Look::Idle;
-                };
-                SubagentSource::Gateway {
-                    sessions,
-                    cwd: self.chat_folder(env, id),
-                }
-            }
-            AgentPreset::ClaudeCode => SubagentSource::Claude {
-                link: self.runtime.handle.host_link(&live.data.host),
+        let from = match chat.chat.harness() {
+            AgentPreset::Gateway => SubagentsFrom::Gateway {
+                cwd: self.chat_folder(env, id, cx),
+            },
+            AgentPreset::ClaudeCode => SubagentsFrom::Claude {
                 root: live.data.group_of(id).map(|group| group.root.clone()),
                 home: subagents.home.clone(),
                 conversation: subagents.conversation.clone(),
@@ -272,13 +171,17 @@ impl EnvironmentShell {
             | AgentPreset::Shell
             | AgentPreset::Acp(_) => return Look::Idle,
         };
-        Look::Read(SubagentJob {
+        Look::Read(SubagentsAsk {
             resume,
-            source,
+            from,
             known: subagents
                 .runs
                 .values()
-                .map(|run| (run.record.clone(), run.read, run.meta.finished))
+                .map(|run| KnownRecord {
+                    record: run.record.clone(),
+                    read: run.read,
+                    finished: run.meta.finished,
+                })
                 .collect(),
         })
     }
@@ -287,7 +190,7 @@ impl EnvironmentShell {
         &mut self,
         env: &EnvironmentName,
         id: TerminalId,
-        read: SubagentRead,
+        read: SubagentsRead,
         cx: &mut Context<Self>,
     ) {
         let Some(chat) = self

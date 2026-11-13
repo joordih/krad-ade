@@ -4,6 +4,7 @@ mod live;
 mod panel;
 mod suggest;
 
+pub(super) use file_index::FilesFor;
 pub(super) use krad_domain::{fold_entry, AnswerPart, ChatMessage, ShownOutput};
 pub(super) use live::StartError;
 pub(super) use panel::question_bubble;
@@ -19,7 +20,6 @@ use super::EnvironmentShell;
 pub(super) struct ChatState {
     pub(super) suggest: Option<Suggest>,
     suggest_scroll: ScrollHandle,
-    files: Option<file_index::IndexedFiles>,
-    indexing: Option<file_index::IndexKey>,
+    files: file_index::FileSearches,
     skills: Option<Vec<Skill>>,
 }

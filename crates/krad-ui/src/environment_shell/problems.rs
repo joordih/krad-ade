@@ -11,6 +11,7 @@ const fn toast_kind(code: ErrorCode) -> ToastKind {
         | ErrorCode::Invalid
         | ErrorCode::Unavailable
         | ErrorCode::Forbidden
+        | ErrorCode::Failed
         | ErrorCode::Unknown => ToastKind::Error,
     }
 }

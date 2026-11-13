@@ -63,6 +63,10 @@ impl Hosts {
         outbox.push(EventKind::LocalAgentsFound(found));
     }
 
+    pub(crate) fn local_agents(&self, place: &AgentPlace) -> Option<&[AgentPreset]> {
+        self.local.get(place).map(Vec::as_slice)
+    }
+
     pub(super) fn local_snapshot(&self) -> Vec<LocalAgents> {
         self.local
             .iter()

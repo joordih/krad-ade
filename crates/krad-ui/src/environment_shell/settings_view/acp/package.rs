@@ -1,21 +1,14 @@
-use gpui_kit::{AppContext as _, Context};
-use krad_chat::{acp_package_state, install_acp_package, Runner};
+use gpui_kit::Context;
+use krad_client::ClientError;
 use krad_domain::{
     acp_package, built_in_acp_agents, AcpAgentId, AcpPackage, AcpPackageState, NpmPackage,
     ToastKind,
 };
-use krad_host::HostLink;
-use krad_session::find_program;
+use krad_protocol::{AcpPackageShown, Answer, HarnessSpot, HostCommand};
 use std::collections::HashMap;
-use std::path::PathBuf;
 
-use super::super::super::terminal_card::home_dir;
 use super::super::super::EnvironmentShell;
 use super::DetectionPlace;
-
-const NPM_PROGRAM: &str = "npm";
-const NO_NPM_TEXT: &str = "npm was not found; install Node.js to install this agent";
-const NO_HOME_TEXT: &str = "the host's home folder is not known yet";
 const INSTALLED_TOAST: &str = "installed";
 const CHECKING_DETAIL: &str = "Checking npm";
 const INSTALLING_DETAIL: &str = "Installing";
@@ -58,6 +51,13 @@ pub(super) fn package_detail(package: NpmPackage, state: &AcpPackageState) -> St
     }
 }
 
+fn packages_of(answer: Answer) -> Option<Vec<AcpPackageShown>> {
+    match answer {
+        Answer::AcpPackages { packages } => Some(packages),
+        _ => None,
+    }
+}
+
 impl EnvironmentShell {
     fn acp_packages(&mut self) -> Option<&mut AcpPackages> {
         self.settings_ui.as_mut().map(|ui| &mut ui.acp.packages)
@@ -69,68 +69,59 @@ impl EnvironmentShell {
         }
     }
 
-    fn npm_runner(&self, place: &DetectionPlace) -> Result<(Runner, PathBuf), String> {
-        let link = self.active_link();
-        if let HostLink::Remote(ssh) = &link {
-            let home = ssh.home().map(PathBuf::from).ok_or(NO_HOME_TEXT)?;
-            let runner = Runner::Ssh {
-                link: link.clone(),
-                program: NPM_PROGRAM.to_owned(),
-            };
-            return Ok((runner, home));
+    fn acp_spot(&self) -> HarnessSpot {
+        let root = self.active_group().map(|group| group.root.clone());
+        HarnessSpot::at(self.active.clone(), root)
+    }
+
+    fn packages_shown(&mut self, place: &DetectionPlace, shown: Vec<AcpPackageShown>) {
+        for AcpPackageShown { agent, state } in shown {
+            self.set_acp_package((place.clone(), agent), state);
         }
-        if let DetectionPlace::Wsl(distro) = place {
-            let root = self
-                .active_group()
-                .map_or_else(PathBuf::new, |group| group.root.clone());
-            let runner = Runner::Wsl {
-                distro: distro.clone(),
-                program: NPM_PROGRAM.to_owned(),
-            };
-            return Ok((runner, root));
-        }
-        let npm = find_program(NPM_PROGRAM).ok_or(NO_NPM_TEXT)?;
-        let home = home_dir().map_or_else(PathBuf::new, PathBuf::from);
-        Ok((Runner::Native(npm), home))
     }
 
     pub(in crate::environment_shell) fn check_acp_packages(&mut self, cx: &mut Context<Self>) {
         let place = self.acp_detection_place();
-        let wanted: Vec<(AcpAgentId, NpmPackage)> = built_in_acp_agents()
+        let wanted: Vec<AcpAgentId> = built_in_acp_agents()
             .into_iter()
-            .filter_map(|agent| Some((agent.id, acp_package(agent.id)?.npm()?)))
-            .collect();
-        let runner = self.npm_runner(&place);
-        for (id, package) in wanted {
-            let key = (place.clone(), id);
-            let Some(packages) = self.acp_packages() else {
-                return;
-            };
-            if packages.state(&key).is_busy() {
-                continue;
-            }
-            let (npm, cwd) = match &runner {
-                Ok(found) => found.clone(),
-                Err(reason) => {
-                    self.set_acp_package(key, AcpPackageState::Failed(reason.clone()));
-                    continue;
-                }
-            };
-            self.set_acp_package(key.clone(), AcpPackageState::Checking);
-            let checking =
-                cx.background_spawn(async move { acp_package_state(&npm, &cwd, package) });
-            cx.spawn(async move |this, cx| {
-                let state = checking
-                    .await
-                    .unwrap_or_else(|error| AcpPackageState::Failed(error.to_string()));
-                this.update(cx, |shell, cx| {
-                    shell.set_acp_package(key, state);
-                    cx.notify();
-                })
-                .unwrap_or_default();
+            .filter(|agent| acp_package(agent.id).and_then(AcpPackage::npm).is_some())
+            .map(|agent| agent.id)
+            .filter(|id| {
+                self.settings_ui
+                    .as_ref()
+                    .is_some_and(|ui| !ui.acp.packages.state(&(place.clone(), *id)).is_busy())
             })
-            .detach();
+            .collect();
+        if wanted.is_empty() {
+            return;
         }
+        for id in &wanted {
+            self.set_acp_package((place.clone(), *id), AcpPackageState::Checking);
+        }
+        let checking = self.ask_host_query(
+            HostCommand::AcpPackages {
+                spot: self.acp_spot(),
+            },
+            packages_of,
+            cx,
+        );
+        cx.spawn(async move |this, cx| {
+            let checked = checking.await;
+            this.update(cx, |shell, cx| {
+                match checked {
+                    Ok(shown) => shell.packages_shown(&place, shown),
+                    Err(error) => {
+                        for id in wanted {
+                            let failed = AcpPackageState::Failed(error.to_string());
+                            shell.set_acp_package((place.clone(), id), failed);
+                        }
+                    }
+                }
+                cx.notify();
+            })
+            .unwrap_or_default();
+        })
+        .detach();
         cx.notify();
     }
 
@@ -140,39 +131,51 @@ impl EnvironmentShell {
         };
         let place = self.acp_detection_place();
         let key = (place.clone(), id);
-        let (npm, cwd) = match self.npm_runner(&place) {
-            Ok(found) => found,
-            Err(reason) => {
-                self.set_acp_package(key, AcpPackageState::Failed(reason));
-                return cx.notify();
-            }
-        };
         self.set_acp_package(key.clone(), AcpPackageState::Installing);
-        let installing =
-            cx.background_spawn(async move { install_acp_package(&npm, &cwd, package) });
+        let installing = self.ask_host_query(
+            HostCommand::InstallAcpPackage {
+                spot: self.acp_spot(),
+                agent: id,
+            },
+            packages_of,
+            cx,
+        );
         cx.spawn(async move |this, cx| {
             let installed = installing.await;
             this.update(cx, |shell, cx| {
-                match installed {
-                    Ok(state) => {
-                        shell.set_acp_package(key, state);
-                        shell.toast(
-                            ToastKind::Success,
-                            &format!("{} {INSTALLED_TOAST}", package.name),
-                            cx,
-                        );
-                        shell.redetect_acp_agents();
-                    }
-                    Err(error) => {
-                        shell.set_acp_package(key, AcpPackageState::Failed(error.to_string()));
-                    }
-                }
+                shell.acp_package_installed(key, package, installed, cx);
                 cx.notify();
             })
             .unwrap_or_default();
         })
         .detach();
         cx.notify();
+    }
+
+    fn acp_package_installed(
+        &mut self,
+        key: PackageKey,
+        package: NpmPackage,
+        installed: Result<Vec<AcpPackageShown>, ClientError>,
+        cx: &mut Context<Self>,
+    ) {
+        let state = match installed {
+            Ok(shown) => shown
+                .into_iter()
+                .find(|shown| shown.agent == key.1)
+                .map_or(AcpPackageState::Missing, |shown| shown.state),
+            Err(error) => AcpPackageState::Failed(error.to_string()),
+        };
+        let ready = matches!(state, AcpPackageState::Ready { .. });
+        self.set_acp_package(key, state);
+        if ready {
+            self.toast(
+                ToastKind::Success,
+                &format!("{} {INSTALLED_TOAST}", package.name),
+                cx,
+            );
+            self.redetect_acp_agents();
+        }
     }
 
     fn redetect_acp_agents(&mut self) {

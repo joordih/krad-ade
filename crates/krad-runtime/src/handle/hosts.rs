@@ -1,12 +1,12 @@
 use krad_domain::{CloudRunnerId, EnvironmentName, Host, RunnerCli};
 use krad_host::mux::PromptSender;
-use krad_host::{HostContext, HostLink, MachineChannel};
+use krad_host::{HostLink, MachineChannel};
 use krad_protocol::AgentRef;
 use std::sync::Arc;
 
 use super::RuntimeHandle;
 use crate::input::{Input, RunnerInput};
-use crate::terminals::{Shared, TerminalView};
+use crate::terminals::{HostShell, Shared, TerminalPlace, TerminalView};
 
 impl RuntimeHandle {
     #[must_use]
@@ -14,17 +14,18 @@ impl RuntimeHandle {
         self.links.link(host)
     }
 
-    pub fn use_host_context(&self, context: HostContext) {
-        self.links.use_context(context);
+    #[must_use]
+    pub fn host_place(&self, host: &Host, shell: HostShell, in_wsl: bool) -> TerminalPlace {
+        TerminalPlace::Host {
+            link: self.links.link(host),
+            shell,
+            in_wsl,
+        }
     }
 
     #[must_use]
     pub fn prompt_sender(&self) -> Option<PromptSender> {
         self.links.prompts()
-    }
-
-    pub fn close_hosts(&self) {
-        self.links.close_all();
     }
 
     #[must_use]

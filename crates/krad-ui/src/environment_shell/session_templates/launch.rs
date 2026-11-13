@@ -1,10 +1,10 @@
-use gpui_kit::{AppContext as _, Context};
-use krad_chat::{new_session_id, LiveSession};
+use gpui_kit::Context;
 use krad_domain::{
-    review::Issue, EnvironmentName, GroupId, Prompt, SessionEdit, SessionSpec, SessionTemplate,
-    TemplateLaunch, ToastKind, WorktreeOrigin,
+    new_session_id, review::Issue, EnvironmentName, GroupId, LiveSession, Prompt, SessionEdit,
+    SessionSpec, SessionTemplate, TemplateLaunch, ToastKind, WorktreeOrigin,
 };
-use krad_repo::add_worktree;
+
+use krad_protocol::{Answer, RepoAsk};
 
 use super::super::terminal_lifecycle::NodeGroup;
 use super::super::EnvironmentShell;
@@ -34,11 +34,18 @@ impl EnvironmentShell {
         let Some(repo_root) = self.group_repo_root(group) else {
             return self.toast(ToastKind::Warning, NOT_A_REPO_TEXT, cx);
         };
-        let link = self.env_link(&env);
-        let create = cx.background_spawn({
-            let repo_root = repo_root.clone();
-            async move { add_worktree(&link, &repo_root, branch.as_str()) }
-        });
+        let create = self.ask_repo(
+            &env,
+            RepoAsk::AddWorktree {
+                repo: repo_root.clone(),
+                name: branch.as_str().to_owned(),
+            },
+            |answer| match answer {
+                Answer::WorktreeAdded { worktree } => Some(worktree),
+                _ => None,
+            },
+            cx,
+        );
         cx.spawn(async move |this, cx| {
             let created = create.await;
             this.update(cx, |shell, cx| match created {
