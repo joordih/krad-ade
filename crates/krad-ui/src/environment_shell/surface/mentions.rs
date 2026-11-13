@@ -1,10 +1,11 @@
+mod upload;
+
 use gpui_kit::{
-    div, img, px, rgb, AnyElement, App, AppContext as _, ClipboardEntry, ClipboardItem, Context,
-    ElementId, InteractiveElement, IntoElement, ObjectFit, ParentElement, PathPromptOptions,
-    SharedString, StatefulInteractiveElement, Styled, StyledImage,
+    div, img, px, rgb, AnyElement, App, ClipboardEntry, ClipboardItem, Context, ElementId,
+    InteractiveElement, IntoElement, ObjectFit, ParentElement, PathPromptOptions, SharedString,
+    StatefulInteractiveElement, Styled, StyledImage,
 };
-use krad_domain::{EnvironmentName, ImageFormat, Mention, TerminalId, ToastKind};
-use krad_store::{chat_images_dir, delete_chat_images, save_pasted_image};
+use krad_domain::{EnvironmentName, ImageFormat, Mention, TerminalId};
 use std::path::{Path, PathBuf};
 
 use super::super::EnvironmentShell;
@@ -14,6 +15,7 @@ use crate::theme::{
     level_fill, palette, Palette, SurfaceLevel, ICON_SM, ICON_XS, LINE_XS, RADIUS_MD, RADIUS_SM,
     SPACE_1, SPACE_1_5, SPACE_2, TEXT_XS,
 };
+use upload::chat_ref;
 
 const PICK_PROMPT: &str = "Attach";
 const TOOLTIP_ATTACH: &str = "Attach files, folders or images";
@@ -160,7 +162,7 @@ impl EnvironmentShell {
     ) {
         let env = self.active.clone();
         let mentions = paths.iter().cloned().map(Mention::from).collect();
-        self.attach(&env, id, mentions, cx);
+        self.attach_mentions(&env, id, mentions, cx);
     }
 
     fn pick_mentions(&mut self, id: TerminalId, cx: &mut Context<Self>) {
@@ -176,8 +178,10 @@ impl EnvironmentShell {
                 return;
             };
             let mentions = paths.into_iter().map(Mention::from).collect();
-            this.update(cx, |shell, cx| shell.attach(&env, id, mentions, cx))
-                .unwrap_or_default();
+            this.update(cx, |shell, cx| {
+                shell.attach_mentions(&env, id, mentions, cx);
+            })
+            .unwrap_or_default();
         })
         .detach();
     }
@@ -200,26 +204,15 @@ impl EnvironmentShell {
         let Some(attachment) = clipboard_attachment(item) else {
             return false;
         };
-        let (format, bytes) = match attachment {
+        match attachment {
             ClipboardAttachment::Files(files) => {
                 let mentions = files.into_iter().map(Mention::from).collect();
-                self.attach(&env, id, mentions, cx);
-                return true;
+                self.attach_mentions(&env, id, mentions, cx);
             }
-            ClipboardAttachment::Image(format, bytes) => (format, bytes),
-        };
-        let owner = env.clone();
-        let save =
-            cx.background_spawn(async move { save_pasted_image(&owner, id, format, &bytes) });
-        cx.spawn(async move |this, cx| {
-            let saved = save.await;
-            this.update(cx, |shell, cx| match saved {
-                Ok(image) => shell.attach(&env, id, vec![Mention::Image(image)], cx),
-                Err(error) => shell.push_toast(ToastKind::Error, error.to_string()),
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+            ClipboardAttachment::Image(format, bytes) => {
+                self.upload_image(chat_ref(&env, id), format, bytes);
+            }
+        }
         true
     }
 
@@ -234,26 +227,6 @@ impl EnvironmentShell {
             chat.attached.remove(index);
         }
         cx.notify();
-    }
-
-    pub(in crate::environment_shell) fn forget_chat_images(
-        env: &EnvironmentName,
-        id: TerminalId,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(dir) = chat_images_dir(env, id) else {
-            return;
-        };
-        let delete = cx.background_spawn(async move { delete_chat_images(&dir) });
-        cx.spawn(async move |this, cx| {
-            if let Err(error) = delete.await {
-                this.update(cx, |shell, _| {
-                    shell.push_toast(ToastKind::Error, error.to_string());
-                })
-                .unwrap_or_default();
-            }
-        })
-        .detach();
     }
 
     pub(super) fn attach_control(id: TerminalId, cx: &mut Context<Self>) -> AnyElement {

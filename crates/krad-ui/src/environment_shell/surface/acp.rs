@@ -2,10 +2,10 @@ mod adapter;
 mod controls;
 mod sign_in;
 
-use krad_chat::{AcpOffered, AcpWanted, ModelOffer};
+use krad_chat::{AcpOffered, AcpWanted};
 use krad_domain::{
     AcpConfigOption, AcpConfigOptionId, AcpConfigValue, AcpEffort, AcpModeId, AcpModels, AcpModes,
-    Effort, ModelId,
+    Effort, ModelId, ModelOffer,
 };
 use krad_protocol::AcpShown;
 

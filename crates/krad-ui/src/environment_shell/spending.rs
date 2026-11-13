@@ -96,7 +96,7 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
-        let request = self.runtime.handle.next_request();
+        let request = self.runtime.client.next_request();
         live.data
             .record_usage(chat, &report, &spending.model_prices(), request);
         let recorded = EnvironmentCommand::RecordUsage {
@@ -107,8 +107,8 @@ impl EnvironmentShell {
         };
         drop(
             self.runtime
-                .handle
-                .send(request, Command::Environments(recorded)),
+                .client
+                .send_as(request, Command::Environments(recorded)),
         );
         cx.notify();
         self.store();

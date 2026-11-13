@@ -1,8 +1,7 @@
 use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, FontWeight, ParentElement, Styled, Window,
 };
-use krad_domain::{ChangeKind, FileChange, FilePatch, PatchStatus};
-use krad_domain::{TerminalId, ToastKind};
+use krad_domain::{ChangeKind, FileChange, FilePatch, PatchStatus, TerminalId, ToastKind};
 use krad_protocol::{ChangesAct, GitAct};
 use krad_repo::{read_text, RepoError};
 use std::borrow::Cow;

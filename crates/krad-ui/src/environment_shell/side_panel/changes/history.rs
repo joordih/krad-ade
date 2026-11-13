@@ -200,7 +200,7 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_repo::{ChangeKind, FileChange, LineCount};
+    use krad_domain::{ChangeKind, FileChange, LineCount};
     use std::time::SystemTime;
 
     fn commit(sha: &str) -> HistoryCommit {

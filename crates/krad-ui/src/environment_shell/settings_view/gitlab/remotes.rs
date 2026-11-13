@@ -1,7 +1,8 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_domain::review::{remote_project, ProjectPath, RemoteProject};
+use krad_domain::ORIGIN_REMOTE;
 use krad_github::GITHUB_HOST;
-use krad_repo::{resolved_remote_url, ORIGIN_REMOTE};
+use krad_repo::resolved_remote_url;
 use std::fmt;
 use std::path::PathBuf;
 

@@ -1,5 +1,4 @@
-use krad_domain::InstallId;
-use krad_host::HostPlatform;
+use krad_domain::{HostPlatform, InstallId};
 use std::path::PathBuf;
 
 use super::local_cli;

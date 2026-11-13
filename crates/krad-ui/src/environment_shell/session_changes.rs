@@ -72,7 +72,7 @@ impl EnvironmentShell {
         if self.session_changes_of(&env, session).is_some() {
             return;
         }
-        self.runtime.handle.post(Command::Changes(ChangesCommand {
+        self.runtime.client.post(Command::Changes(ChangesCommand {
             environment: env,
             session,
             act: ChangesAct::Capture,
@@ -117,12 +117,12 @@ impl EnvironmentShell {
         let Some(command) = self.session_changes_command(act) else {
             return;
         };
-        let request = self.runtime.handle.next_request();
+        let request = self.runtime.client.next_request();
         if let Some(review) = self.session_changes.review.as_mut() {
             review.load = ReviewLoad::Reading;
             review.awaiting = Some(request);
         }
-        drop(self.runtime.handle.send(request, command));
+        drop(self.runtime.client.send_as(request, command));
         cx.notify();
     }
 
@@ -161,7 +161,7 @@ impl EnvironmentShell {
         } else {
             ChangesAct::Accept { hunks }
         };
-        self.runtime.handle.post(Command::Changes(ChangesCommand {
+        self.runtime.client.post(Command::Changes(ChangesCommand {
             environment: env,
             session,
             act,

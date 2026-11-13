@@ -7,8 +7,9 @@ use gpui_kit::{
     Context, Div, ElementId, FontWeight, InteractiveElement, IntoElement, KeyDownEvent,
     MouseButton, ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
-use krad_chat::{AskKind, Question, QuestionOption};
-use krad_domain::{AskOutcome, AskVerdict, FileEdit, PermissionMode, TerminalId};
+use krad_domain::{
+    AskKind, AskOutcome, AskVerdict, FileEdit, PermissionMode, Question, QuestionOption, TerminalId,
+};
 use std::time::Duration;
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};

@@ -1,3 +1,4 @@
+use krad_client::RuntimeClient;
 use krad_domain::{AgentPreset, EnvironmentName, GridSize, TerminalId};
 use krad_protocol::{AgentRef, Command, TerminalCommand, WriteBy};
 use krad_runtime::{RuntimeHandle, TerminalAction, TerminalView};
@@ -60,7 +61,7 @@ pub(super) fn terminal_ref(env: &EnvironmentName, id: TerminalId) -> AgentRef {
     }
 }
 
-pub(super) fn end_terminal_on(runtime: &RuntimeHandle, env: &EnvironmentName, id: TerminalId) {
+pub(super) fn end_terminal_on(runtime: &dyn RuntimeClient, env: &EnvironmentName, id: TerminalId) {
     runtime.post(Command::Terminal(TerminalCommand::Close {
         terminal: terminal_ref(env, id),
     }));
@@ -78,8 +79,13 @@ impl EnvironmentShell {
         bytes: Vec<u8>,
         by: WriteBy,
     ) {
-        self.terminals()
-            .write_terminal(terminal_ref(env, id), bytes, by);
+        self.runtime
+            .client
+            .post(Command::Terminal(TerminalCommand::Write {
+                terminal: terminal_ref(env, id),
+                bytes,
+                by,
+            }));
     }
 
     pub(super) fn act_on_terminal(
@@ -93,7 +99,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn end_terminal(&self, env: &EnvironmentName, id: TerminalId) {
-        end_terminal_on(self.terminals(), env, id);
+        end_terminal_on(self.runtime.client.as_ref(), env, id);
     }
 
     pub(super) fn resize_terminal(

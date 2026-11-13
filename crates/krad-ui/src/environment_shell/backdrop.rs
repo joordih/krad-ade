@@ -9,7 +9,7 @@ use gpui_kit::{
 };
 use image::imageops::fast_blur;
 use image::{DynamicImage, Frame, ImageError, RgbaImage};
-use krad_domain::{BackdropImage, BackdropPercent, BackdropPlace, ToastKind};
+use krad_domain::{BackdropImage, BackdropPercent, BackdropPlace, Backdrops, ToastKind};
 use krad_store::{forget_backdrop_image, import_backdrop_image};
 
 use super::EnvironmentShell;
@@ -67,6 +67,7 @@ struct Slot {
 #[derive(Default)]
 pub(super) struct Backdrop {
     pub(super) material: Option<(WindowBackgroundAppearance, bool)>,
+    pub(super) chosen: Backdrops,
     window: Slot,
     chat: Slot,
     viewport: Option<Viewport>,
@@ -84,6 +85,17 @@ impl Backdrop {
         match place {
             BackdropPlace::Window => &mut self.window,
             BackdropPlace::Chat => &mut self.chat,
+        }
+    }
+
+    const fn slot_and_choice(
+        &mut self,
+        place: BackdropPlace,
+    ) -> (&mut Slot, Option<&BackdropImage>) {
+        let chosen = self.chosen.get(place);
+        match place {
+            BackdropPlace::Window => (&mut self.window, chosen),
+            BackdropPlace::Chat => (&mut self.chat, chosen),
         }
     }
 }
@@ -155,11 +167,10 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let slot = self.backdrop.slot_mut(place);
+        let (slot, chosen) = self.backdrop.slot_and_choice(place);
         for image in slot.retired.drain(..) {
             window.drop_image(image).unwrap_or_default();
         }
-        let chosen = self.settings.backdrop(place);
         if !slot.wants(chosen) {
             return;
         }
@@ -208,8 +219,8 @@ impl EnvironmentShell {
                 slot.wanted = None;
                 slot.retire_shown();
                 self.push_toast(ToastKind::Error, format!("{NOT_SHOWN_TEXT}: {error}"));
-                *self.settings.backdrop_mut(place) = None;
-                self.save_settings(cx);
+                *self.backdrop.chosen.get_mut(place) = None;
+                self.store();
             }
         }
         cx.notify();
@@ -223,7 +234,7 @@ impl EnvironmentShell {
         if transparency_reduced() {
             return None;
         }
-        let chosen = self.settings.backdrop(place)?;
+        let chosen = self.backdrop.chosen.get(place)?;
         let image = self.backdrop_picture(place)?;
         Some(BackdropLayer {
             image: Arc::clone(image),
@@ -243,7 +254,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn backdrop_picture(&self, place: BackdropPlace) -> Option<&Arc<RenderImage>> {
-        self.settings.backdrop(place)?;
+        self.backdrop.chosen.get(place)?;
         self.backdrop
             .slot(place)
             .shown
@@ -282,7 +293,7 @@ impl EnvironmentShell {
     }
 
     fn use_backdrop_copy(&mut self, place: BackdropPlace, copy: &Path, cx: &mut Context<Self>) {
-        let chosen = self.settings.backdrop_mut(place);
+        let chosen = self.backdrop.chosen.get_mut(place);
         let image = match chosen.take() {
             Some(previous) => BackdropImage {
                 file: copy.to_path_buf(),
@@ -291,15 +302,15 @@ impl EnvironmentShell {
             None => BackdropImage::new(copy),
         };
         *chosen = Some(image);
-        self.save_settings(cx);
+        self.store();
         cx.notify();
     }
 
     pub(super) fn clear_backdrop_image(&mut self, place: BackdropPlace, cx: &mut Context<Self>) {
-        let Some(previous) = self.settings.backdrop_mut(place).take() else {
+        let Some(previous) = self.backdrop.chosen.get_mut(place).take() else {
             return;
         };
-        self.save_settings(cx);
+        self.store();
         let removing =
             cx.background_spawn(async move { forget_backdrop_image(place, &previous.file) });
         cx.spawn(async move |this, cx| {
@@ -323,11 +334,11 @@ impl EnvironmentShell {
         edit: impl FnOnce(&mut BackdropImage),
         cx: &mut Context<Self>,
     ) {
-        let Some(image) = self.settings.backdrop_mut(place).as_mut() else {
+        let Some(image) = self.backdrop.chosen.get_mut(place).as_mut() else {
             return;
         };
         edit(image);
-        self.save_settings(cx);
+        self.store();
         cx.notify();
     }
 }

@@ -1,4 +1,5 @@
 use gpui_kit::Context;
+use krad_client::RuntimeClient;
 use krad_domain::{
     EffectiveToolchain, EnvironmentName, GroupActivation, GroupEdit, GroupId, Host, ProjectFolder,
     TerminalGroup, TerminalId, ToolchainActivation, ToolchainChoices,
@@ -7,8 +8,7 @@ use krad_extensions::{
     activation_lines, SharedLocatorManifest, ToolchainCache, ToolchainFamilyManifest,
 };
 use krad_host::{HostCommand, HostLink};
-use krad_protocol::{AgentRef, WriteBy};
-use krad_runtime::RuntimeHandle;
+use krad_protocol::{AgentRef, Command, TerminalCommand, WriteBy};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -101,7 +101,7 @@ impl ActivationCache {
 
 #[derive(Clone)]
 struct Typist {
-    runtime: RuntimeHandle,
+    runtime: Arc<dyn RuntimeClient>,
     terminal: AgentRef,
 }
 
@@ -110,11 +110,11 @@ impl Typist {
         let Some(typed) = typed_activation(lines) else {
             return;
         };
-        self.runtime.write_terminal(
-            self.terminal.clone(),
-            typed.into_bytes(),
-            WriteBy::AppOnUntouchedPrompt,
-        );
+        self.runtime.post(Command::Terminal(TerminalCommand::Write {
+            terminal: self.terminal.clone(),
+            bytes: typed.into_bytes(),
+            by: WriteBy::AppOnUntouchedPrompt,
+        }));
     }
 }
 
@@ -235,7 +235,7 @@ impl EnvironmentShell {
         };
         let key = (live.data.host.clone(), group.root.clone());
         let typist = Typist {
-            runtime: self.terminals().clone(),
+            runtime: Arc::clone(&self.runtime.client),
             terminal: terminal_ref(env, id),
         };
         let cached = self.toolchains.activations.get(&key);

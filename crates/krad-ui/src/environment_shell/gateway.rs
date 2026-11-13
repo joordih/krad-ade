@@ -1,6 +1,8 @@
 use gpui_kit::Context;
-use krad_chat::{GatewayModel, ModelOffer};
-use krad_domain::{AgentPreset, EnvironmentName, GatewayKey, GatewayUrl, TerminalId, ToastKind};
+use krad_domain::{
+    AgentPreset, EnvironmentName, GatewayKey, GatewayModel, GatewayUrl, ModelOffer, TerminalId,
+    ToastKind,
+};
 use krad_host::HostLink;
 use krad_protocol::{Command, EventKind, GatewayCommand, GatewayState};
 use std::path::{Path, PathBuf};
@@ -43,7 +45,7 @@ impl EnvironmentShell {
             return;
         };
         self.runtime
-            .handle
+            .client
             .post(Command::Gateway(GatewayCommand::ForgetKey { url }));
     }
 
@@ -78,7 +80,7 @@ impl EnvironmentShell {
 
     fn post_gateway_check(&self, url: Option<GatewayUrl>, key: Option<GatewayKey>) {
         self.runtime
-            .handle
+            .client
             .post(Command::Gateway(GatewayCommand::Check { url, key }));
     }
 

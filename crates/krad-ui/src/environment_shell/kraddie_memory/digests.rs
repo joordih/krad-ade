@@ -1,10 +1,10 @@
 use futures::channel::oneshot;
 use futures::future::{select, Either};
 use gpui_kit::Context;
-use krad_chat::{new_session_id, ChatEvent, LiveEvent, LiveSession};
+use krad_chat::{new_session_id, LiveEvent, LiveSession};
 use krad_domain::{
     digest_decision, digest_prompt, facts_from_reply, history_of, AgentPreset, ChatDigests,
-    ChatPhase, DigestChat, DigestCheck, DigestDecision, DigestDraft, EnvironmentName,
+    ChatEvent, ChatPhase, DigestChat, DigestCheck, DigestDecision, DigestDraft, EnvironmentName,
     HistoryMessage, MemoryOwner, PermissionMode, Prompt, TerminalId,
 };
 use std::time::{Duration, Instant, SystemTime};

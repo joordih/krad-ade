@@ -166,8 +166,7 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_chat::ChatEvent;
-    use krad_domain::{AgentPreset, ChatEntry};
+    use krad_domain::{AgentPreset, ChatEntry, ChatEvent};
 
     use super::super::super::chat::fold_entry;
 

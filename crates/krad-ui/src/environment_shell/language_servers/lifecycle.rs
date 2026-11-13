@@ -1,9 +1,9 @@
 use futures::StreamExt as _;
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{AppContext as _, Context, Entity};
-use krad_domain::{Host, ServerLaunch};
+use krad_domain::{Host, HostPlatform, ServerLaunch};
 use krad_extensions::{launch_with, merged_settings, ServerConfig};
-use krad_host::{HostLink, HostPlatform};
+use krad_host::HostLink;
 use krad_lsp::lsp_types::ServerCapabilities;
 use krad_lsp::{uri_path, LanguageServer, LspError, ServerEvent, ServerSettings};
 use std::path::PathBuf;

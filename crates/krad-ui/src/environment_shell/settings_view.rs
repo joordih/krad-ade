@@ -258,7 +258,7 @@ impl EnvironmentShell {
         if self.runtime.view.settings.send(&self.settings) {
             let settings = Box::new(self.settings.clone());
             self.runtime
-                .handle
+                .client
                 .post(Command::Settings(SettingsCommand::Save { settings }));
         }
         self.redetect_after_acp_change();

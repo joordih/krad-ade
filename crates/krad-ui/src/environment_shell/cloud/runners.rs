@@ -15,7 +15,7 @@ const FORWARDING_PREFIX: &str = "The browser can now finish the sign-in through"
 
 impl EnvironmentShell {
     fn post_runner(&self, command: RunnerCommand) {
-        self.runtime.handle.post(Command::Runner(command));
+        self.runtime.client.post(Command::Runner(command));
     }
 
     pub(in crate::environment_shell) fn ensure_runner_ready(&self, runner: CloudRunnerId) {

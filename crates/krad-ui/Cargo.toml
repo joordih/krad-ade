@@ -13,6 +13,7 @@ gpui-kit.workspace = true
 image.workspace = true
 krad-agents.workspace = true
 krad-chat.workspace = true
+krad-client.workspace = true
 krad-domain.workspace = true
 krad-extensions.workspace = true
 krad-github.workspace = true

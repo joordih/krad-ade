@@ -1,13 +1,10 @@
+use super::{HookAsk, Note, NotePurpose, Picks};
 use gpui_kit::FocusHandle;
-use krad_chat::AskKind;
-use krad_domain::{ToolDecision, ToolUseId};
+use krad_domain::{AskKind, ToolDecision, ToolUseId};
 use krad_protocol::{AskId, ChatAsk, ChatAskId};
-use krad_runtime::HeldAsk;
-
-use super::{Note, NotePurpose, Picks};
 
 pub(in crate::environment_shell) enum AskReply {
-    Hook(HeldAsk),
+    Hook(HookAsk),
     Keys,
     Runtime(ChatAskId),
 }
@@ -192,7 +189,9 @@ impl AskQueue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_runtime::{Runtime, RuntimeHandle, RuntimeSetup};
+    use crate::fake_client::RecordedClient;
+    use krad_protocol::{BusCommand, Command};
+    use std::sync::Arc;
 
     const PLAN_TOOL: &str = "ExitPlanMode";
     const BASH_TOOL: &str = "Bash";
@@ -210,16 +209,12 @@ mod tests {
         )
     }
 
-    fn runtime() -> RuntimeHandle {
-        let started = Runtime::start(RuntimeSetup::default());
-        let Ok(runtime) = started else {
-            unreachable!("the test runtime starts its thread");
-        };
-        runtime
+    fn runtime() -> Arc<RecordedClient> {
+        RecordedClient::new(Vec::new())
     }
 
-    fn bash(runtime: &RuntimeHandle, ask: u64, call: Option<&str>) -> Waiting {
-        let held = runtime.held_ask(AskId(ask));
+    fn bash(runtime: &Arc<RecordedClient>, ask: u64, call: Option<&str>) -> Waiting {
+        let held = HookAsk::new(AskId(ask), Arc::clone(runtime) as _);
         let kind = AskKind::Permission {
             tool: BASH_TOOL.to_owned(),
             kind: krad_domain::ToolKind::Shell,
@@ -311,8 +306,17 @@ mod tests {
         queue.push(plan());
         assert!(queue.settle(Settled::Plans));
         assert_eq!(tools(&queue), [Some(BASH_TOOL)]);
+        assert_eq!(runtime.sent(), []);
         assert!(queue.settle(Settled::All));
         assert!(queue.is_empty());
+        assert_eq!(
+            runtime.sent(),
+            [Command::Bus(BusCommand::AnswerAsk {
+                ask: AskId(1),
+                decision: ToolDecision::Pass,
+            })],
+            "a hook ask the queue lets go is passed back to its agent"
+        );
     }
 
     #[test]

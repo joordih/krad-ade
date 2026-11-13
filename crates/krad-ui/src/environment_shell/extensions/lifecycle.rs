@@ -3,6 +3,7 @@ mod restart;
 use futures::channel::mpsc;
 use futures::StreamExt as _;
 use gpui_kit::{AppContext as _, Context};
+use krad_domain::HostPlatform;
 use krad_domain::{Host, ServerRuntimeId, ToastKind};
 use krad_extensions::api::manifest::Placement;
 use krad_extensions::api::protocol::{
@@ -13,7 +14,7 @@ use krad_extensions::api::CURRENT_API;
 use krad_extensions::program::{initialize, ExtensionProcess, ProgramEvent};
 use krad_extensions::ExtensionError;
 use krad_extensions::Trust;
-use krad_host::{HostLink, HostPlatform};
+use krad_host::HostLink;
 use std::collections::BTreeSet;
 
 use super::super::EnvironmentShell;

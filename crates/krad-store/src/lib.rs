@@ -32,7 +32,7 @@ pub use backdrop_image::{
     backdrop_image_dir, forget_backdrop_image, import_backdrop_image, BackdropImageError,
 };
 pub use chat_digests::{DigestStoreError, OrdinaryDigests};
-pub use chat_images::{chat_images_dir, delete_chat_images, save_pasted_image, ChatImageError};
+pub use chat_images::{ChatImageError, ChatImages};
 pub use cloud_runner_token::{
     delete_cloud_claude_token, find_cloud_opencode_password, write_cloud_claude_token,
     write_cloud_opencode_password,

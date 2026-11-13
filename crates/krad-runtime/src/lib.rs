@@ -43,7 +43,7 @@ pub use code_hosts::{
     gitlab_token_saver, origin_repo, repo_of_remote, HostClient, HostError, HostLogin, HostRepo,
 };
 pub use environments::EnvironmentsSetup;
-pub use handle::{EventReceiver, HeldAsk, Pending, RuntimeHandle, RuntimeStopped};
+pub use handle::{EventReceiver, Pending, RuntimeHandle, RuntimeStopped};
 pub use harness_health::HarnessProbe;
 pub use hosts::{bundled_cli, remote_caller_vars};
 pub use kraddies::{Clock, KraddiesSetup};

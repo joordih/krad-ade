@@ -38,9 +38,9 @@ impl EnvironmentShell {
         follow: GitFollowUp,
         cx: &mut Context<Self>,
     ) {
-        let request = self.runtime.handle.next_request();
+        let request = self.runtime.client.next_request();
         self.git_requests.0.insert(request, follow);
-        let pending = self.runtime.handle.send(request, command);
+        let pending = self.runtime.client.send_as(request, command);
         cx.spawn(async move |this, cx| {
             let Ok(Reply::Refused { message, .. }) = pending.await else {
                 return;

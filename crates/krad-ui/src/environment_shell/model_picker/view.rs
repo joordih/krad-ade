@@ -4,8 +4,7 @@ use gpui_kit::{
     KeyDownEvent, MouseButton, ParentElement, SharedString, StatefulInteractiveElement, Styled,
     Window,
 };
-use krad_chat::ModelSource;
-use krad_domain::ComposerDesign;
+use krad_domain::{ComposerDesign, ModelSource};
 
 use super::super::EnvironmentShell;
 use super::layout::picker_layout;

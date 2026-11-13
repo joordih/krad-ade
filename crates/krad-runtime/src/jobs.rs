@@ -22,7 +22,7 @@ use crate::input::Input;
 use crate::opencode::{CloudOpencodeStarted, OpencodeListed, OpencodeStarted};
 use crate::reviews::ReviewDone;
 use crate::runners::RunnerDone;
-use crate::runtime::{AttachedLine, LinesCounted};
+use crate::runtime::{AttachedLine, ChatImageDone, LinesCounted};
 use crate::usage::UsageKey;
 use crate::variants::VariantJob;
 
@@ -57,6 +57,7 @@ pub(crate) enum JobDone {
     ChatOpened(ChatOpening),
     ChatEarlier(ChatEarlier),
     ChatCheckpoint(ChatCheckpoint),
+    ChatImage(ChatImageDone),
     FilesIndexed(FilesIndexed),
     GatewayChecked(GatewayRead),
     GatewayForgotten(GatewayForgotten),

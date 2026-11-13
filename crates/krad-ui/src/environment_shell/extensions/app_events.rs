@@ -120,7 +120,7 @@ impl EnvironmentShell {
             Switch::Off
         };
         self.runtime
-            .handle
+            .client
             .post(Command::Events(EventsCommand::WatchCodeHosts { watch }));
     }
 

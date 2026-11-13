@@ -19,6 +19,7 @@ mod kraddies;
 mod launches;
 mod models;
 mod opencode;
+mod problems;
 mod review;
 mod runners;
 #[cfg(test)]
@@ -38,7 +39,7 @@ pub use bus::{
 };
 pub use chats::{
     AcpShown, AcpSignInAsk, ChatAsk, ChatAskId, ChatCommand, ChatContext, ChatMirror, ChatPage,
-    ChatState, ChatSummary, McpOffered, McpSkippedShown, McpTrustAsk, MirrorChange,
+    ChatState, ChatSummary, McpOffered, McpSkippedShown, McpTrustAsk, MirrorChange, PastedImage,
 };
 pub use cloud::{
     CarriedConversation, CloudChatStart, CloudCommand, CloudDraftId, CloudNews, CloudOpened,
@@ -65,6 +66,7 @@ pub use kraddies::{AutomationState, KraddieCommand, KraddieState, KraddiesSnapsh
 pub use launches::{LaunchedAs, TerminalLaunched};
 pub use models::{ListedModels, ModelsCommand, ModelsOrigin, ModelsSnapshot};
 pub use opencode::{OpencodeShown, OpencodeSnapshot, OpencodeStatus};
+pub use problems::{Problem, ProblemScope};
 pub use review::{
     CodeHostCommand, CodeHostLogin, Fetched, FixOutcome, ListedRequests, LoginNews, LoginState,
     RequestDetailRead, RequestRef, ReviewAct, ReviewAnswer, ReviewAnswered, ReviewCommand,

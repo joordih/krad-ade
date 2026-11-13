@@ -71,7 +71,7 @@ impl EnvironmentShell {
             Some(ManagedAdapter::Checking | ManagedAdapter::Installing) => Err(StartError::Waiting),
             Some(ManagedAdapter::Unchecked) | None => {
                 self.runtime
-                    .handle
+                    .client
                     .post(Command::Host(HostCommand::CheckAcpAdapter {
                         agent: agent.id,
                     }));
@@ -99,7 +99,7 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn retry_acp_adapter(&mut self, agent: AcpAgentId) {
         self.runtime
-            .handle
+            .client
             .post(Command::Host(HostCommand::RetryAcpAdapter { agent }));
         self.detect_agents();
     }

@@ -1,7 +1,6 @@
 use gpui_kit::base::TextSelection;
 use gpui_kit::{Context, MouseDownEvent, Window};
-use krad_chat::Speaker;
-use krad_domain::TerminalId;
+use krad_domain::{Speaker, TerminalId};
 
 use super::super::chat::AnswerPart;
 use super::super::context_menu::{MenuAction, MenuEntry};

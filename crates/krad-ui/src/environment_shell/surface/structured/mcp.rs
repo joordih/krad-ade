@@ -25,7 +25,7 @@ impl EnvironmentShell {
                     chat: chat.clone(),
                     trust,
                 };
-                this.runtime.handle.post(Command::Chat(trust));
+                this.runtime.client.post(Command::Chat(trust));
             },
             cx,
         ))

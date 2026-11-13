@@ -12,8 +12,6 @@ const SAVE_ATTEMPTS: u64 = 64;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ChatImageError {
-    #[error("There is no config folder to keep the pasted image in")]
-    NoConfigDir,
     #[error("Could not save the pasted image: {0}")]
     Save(io::Error),
     #[error("Could not delete the chat's pasted images: {0}")]
@@ -35,9 +33,41 @@ pub(crate) fn images_folder(root: &Path, env: &EnvironmentName, chat: TerminalId
         .join(chat.as_u64().to_string())
 }
 
-#[must_use]
-pub fn chat_images_dir(env: &EnvironmentName, chat: TerminalId) -> Option<PathBuf> {
-    config_dir().map(|root| images_folder(&root, env, chat))
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChatImages {
+    root: PathBuf,
+}
+
+impl ChatImages {
+    #[must_use]
+    pub const fn new(root: PathBuf) -> Self {
+        Self { root }
+    }
+
+    #[must_use]
+    pub fn in_config_folder() -> Option<Self> {
+        config_dir().map(Self::new)
+    }
+
+    /// # Errors
+    ///
+    /// Fails when the image cannot be written.
+    pub fn save(
+        &self,
+        env: &EnvironmentName,
+        chat: TerminalId,
+        format: ImageFormat,
+        bytes: &[u8],
+    ) -> Result<ChatImage, ChatImageError> {
+        save_chat_image(&images_folder(&self.root, env, chat), format, bytes)
+    }
+
+    /// # Errors
+    ///
+    /// Fails when the chat's folder exists and cannot be removed.
+    pub fn forget(&self, env: &EnvironmentName, chat: TerminalId) -> Result<(), ChatImageError> {
+        delete_chat_images(&images_folder(&self.root, env, chat))
+    }
 }
 
 fn next_image_number<'a>(existing: impl IntoIterator<Item = &'a Path>) -> u64 {
@@ -80,27 +110,11 @@ fn save_chat_image(
     )))
 }
 
-/// # Errors
-///
-/// Fails when the folder exists and cannot be removed.
-pub fn delete_chat_images(dir: &Path) -> Result<(), ChatImageError> {
+fn delete_chat_images(dir: &Path) -> Result<(), ChatImageError> {
     match fs::remove_dir_all(dir) {
         Err(error) if error.kind() != ErrorKind::NotFound => Err(ChatImageError::Delete(error)),
         Ok(()) | Err(_) => Ok(()),
     }
-}
-
-/// # Errors
-///
-/// Fails when there is no config folder or the image cannot be written.
-pub fn save_pasted_image(
-    env: &EnvironmentName,
-    chat: TerminalId,
-    format: ImageFormat,
-    bytes: &[u8],
-) -> Result<ChatImage, ChatImageError> {
-    let dir = chat_images_dir(env, chat).ok_or(ChatImageError::NoConfigDir)?;
-    save_chat_image(&dir, format, bytes)
 }
 
 #[cfg(test)]
@@ -156,5 +170,22 @@ mod tests {
         assert!(delete_chat_images(&dir).is_ok());
         assert!(!dir.exists());
         assert!(delete_chat_images(&dir).is_ok(), "an absent folder is fine");
+    }
+
+    #[test]
+    fn a_runtime_keeps_and_forgets_a_chat_s_images_under_its_own_root() {
+        let root = scratch("root");
+        let images = ChatImages::new(root.clone());
+        let main = EnvironmentName::new("main".to_owned());
+        let saved = images
+            .save(&main, TerminalId(2), ImageFormat::Png, b"one")
+            .unwrap_or_else(|_| unreachable!("the scratch folder is writable"));
+        assert_eq!(
+            saved.path,
+            images_folder(&root, &main, TerminalId(2)).join("1.png")
+        );
+        assert!(images.forget(&main, TerminalId(2)).is_ok());
+        assert!(!saved.path.exists());
+        fs::remove_dir_all(&root).unwrap_or_default();
     }
 }

@@ -395,7 +395,7 @@ impl EnvironmentShell {
         let chat = self.forget_live_node(env, id, cx);
         let archived = self.archive_holds(env, id);
         if !archived && chat {
-            Self::forget_chat_images(env, id, cx);
+            self.forget_chat_images(env, id);
             self.forget_acp_transcript(env, id);
         }
         cx.notify();

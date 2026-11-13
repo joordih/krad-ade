@@ -381,7 +381,7 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_chat::{Speaker, ToolCall};
+    use krad_domain::{Speaker, ToolCall};
 
     fn agent_call(id: &str, name: &str) -> ChatEntry {
         ChatEntry::Event(ChatEvent::Tool(ToolCall {

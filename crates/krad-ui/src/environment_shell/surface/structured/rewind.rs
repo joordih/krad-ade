@@ -1,6 +1,5 @@
 use gpui_kit::Context;
-use krad_chat::RewindScope;
-use krad_domain::{EnvironmentName, Prompt, TerminalId};
+use krad_domain::{EnvironmentName, Prompt, RewindScope, TerminalId};
 
 use super::super::super::EnvironmentShell;
 use super::{structured_chat, structured_mut, StructuredChat};

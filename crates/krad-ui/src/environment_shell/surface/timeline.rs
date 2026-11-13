@@ -1,6 +1,5 @@
 use gpui_kit::{px, ListOffset, SharedString};
-use krad_chat::Speaker;
-use krad_domain::{Bookmark, ChatBookmarks};
+use krad_domain::{Bookmark, ChatBookmarks, Speaker};
 use std::cell::Ref;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;

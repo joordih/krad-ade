@@ -1,29 +1,26 @@
 use futures::{FutureExt as _, StreamExt as _};
 use gpui_kit::Context;
-use krad_domain::{AgentStatus, CloudRunnerId, EnvironmentName, RunnerState, TerminalId};
+use krad_client::{InProcess, RuntimeClient};
+use krad_domain::{AgentStatus, EnvironmentName, TerminalId};
 use krad_protocol::{
-    AgentRef, AskId, BusSnapshot, EventKind, Feed, RemoteBusState, RunnerLogins, StatusReport,
-    TerminalClassified, TerminalSummary,
+    AgentRef, AskId, EventKind, Feed, PendingAsk, StatusReport, TerminalClassified, TerminalSummary,
 };
 use krad_runtime::RuntimeHandle;
 use krad_session::AnsiPalette;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
+use std::sync::Arc;
 
 mod environments;
 mod hosts;
 mod mail;
 mod settings;
+mod view_model;
 
 pub(super) use environments::EnvironmentsMirror;
 pub(super) use hosts::{HostMove, HostsMirror};
 pub(super) use mail::MailNotices;
-use settings::SettingsMirror;
+pub(super) use view_model::ViewModel;
 
-use super::attention::AttentionMirror;
-use super::harness_health::HealthMirror;
-use super::harness_models::ModelsMirror;
-use super::opencode::OpencodeMirror;
-use super::usage_bar::UsageMirror;
 use super::EnvironmentShell;
 
 type AgentSpot = (EnvironmentName, TerminalId);
@@ -33,16 +30,18 @@ fn spot(agent: AgentRef) -> AgentSpot {
 }
 
 pub(super) struct RuntimeLink {
+    pub(super) client: Arc<dyn RuntimeClient>,
     pub(super) handle: RuntimeHandle,
-    pub(super) view: RuntimeView,
+    pub(super) view: ViewModel,
     palette: Option<AnsiPalette>,
 }
 
 impl RuntimeLink {
-    pub(super) fn new(handle: RuntimeHandle) -> Self {
+    pub(super) fn new(client: InProcess) -> Self {
         Self {
-            handle,
-            view: RuntimeView::default(),
+            handle: client.handle().clone(),
+            client: Arc::new(client),
+            view: ViewModel::default(),
             palette: None,
         }
     }
@@ -54,24 +53,6 @@ impl RuntimeLink {
     }
 }
 
-#[derive(Default)]
-pub(super) struct RuntimeView {
-    statuses: HashMap<AgentSpot, AgentStatus>,
-    asks: BTreeSet<AskId>,
-    pub(super) mail: MailNotices,
-    pub(super) attention: AttentionMirror,
-    pub(super) health: HealthMirror,
-    pub(super) usage: UsageMirror,
-    pub(super) models: ModelsMirror,
-    pub(super) opencode: OpencodeMirror,
-    pub(super) environments: EnvironmentsMirror,
-    pub(super) hosts: HostsMirror,
-    pub(super) settings: SettingsMirror,
-    pub(super) runners: HashMap<CloudRunnerId, RunnerState>,
-    pub(super) runner_buses: HashMap<CloudRunnerId, RemoteBusState>,
-    pub(super) runner_logins: HashMap<CloudRunnerId, RunnerLogins>,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Heard {
     Quietly,
@@ -81,7 +62,7 @@ enum Heard {
 
 impl EnvironmentShell {
     pub(super) fn follow_runtime(&mut self, cx: &mut Context<Self>) {
-        let mut feed = self.runtime.handle.subscribe();
+        let mut feed = self.runtime.client.subscribe(None);
         cx.spawn(async move |this, cx| {
             while let Some(first) = feed.next().await {
                 let mut batch = vec![first];
@@ -124,38 +105,13 @@ impl EnvironmentShell {
 
     fn apply_runtime_feed(&mut self, feed: Feed, cx: &mut Context<Self>) -> Heard {
         match feed {
-            Feed::Snapshot(snapshot) => {
-                self.apply_bus_snapshot(snapshot.bus);
-                self.runtime.view.attention.replace(snapshot.attention);
-                self.runtime.view.health.replace(snapshot.health.checks);
-                self.runtime.view.usage.replace(snapshot.usage.shown);
-                self.runtime.view.models.replace(snapshot.models.listed);
-                self.runtime.view.opencode.replace(snapshot.opencode);
+            Feed::Snapshot(mut snapshot) => {
+                self.runtime.view.adopt_snapshot(&mut snapshot);
+                self.apply_bus_asks(snapshot.bus.asks);
                 self.gateway_replaced(snapshot.gateway);
-                self.runtime.view.settings.replace(*snapshot.settings);
-                let runners = *snapshot.runners;
-                self.runtime.view.runners = runners
-                    .shown
-                    .into_iter()
-                    .map(|shown| (shown.runner, shown.state))
-                    .collect();
-                self.runtime.view.runner_buses = runners
-                    .buses
-                    .into_iter()
-                    .map(|shown| (shown.runner, shown.bus))
-                    .collect();
-                self.runtime.view.runner_logins = runners
-                    .logins
-                    .into_iter()
-                    .map(|shown| (shown.runner, shown))
-                    .collect();
-                for environment in &snapshot.environments {
-                    self.offer_open_buffers(&environment.name, cx);
+                for environment in self.runtime.view.environments.names() {
+                    self.offer_open_buffers(&environment, cx);
                 }
-                self.runtime
-                    .view
-                    .environments
-                    .replace(snapshot.environments);
                 self.adopt_runtime_environments(cx);
                 self.advance_harness_onboarding(cx);
                 self.hosts_replaced(*snapshot.hosts, cx);
@@ -168,7 +124,10 @@ impl EnvironmentShell {
                 }
                 Heard::FromTerminals
             }
-            Feed::Event(event) => self.apply_runtime_event(event.kind, cx),
+            Feed::Event(event) => match self.runtime.view.fold_event(event.kind) {
+                Some(kind) => self.apply_runtime_event(kind, cx),
+                None => Heard::Visibly,
+            },
         }
     }
 
@@ -180,8 +139,6 @@ impl EnvironmentShell {
                 environments.opened(*environment);
                 self.offer_open_buffers(&name, cx);
             }
-            EventKind::EnvironmentClosed { environment } => environments.closed(&environment),
-            EventKind::EnvironmentsOrdered { order } => environments.ordered(&order),
             EventKind::EnvironmentChanged {
                 environment,
                 changes,
@@ -238,13 +195,12 @@ impl EnvironmentShell {
     fn apply_shown_event(&mut self, kind: EventKind, cx: &mut Context<Self>) {
         match kind {
             EventKind::AppEvent(record) => self.app_event_heard(&record),
+            EventKind::ChatImageAttached { chat, image } => self.image_attached(&chat, image, cx),
+            EventKind::Problem(problem) => self.problem_heard(problem),
             EventKind::WebhookTested(tested) => self.webhook_tested(tested, cx),
             EventKind::AttentionRaised(notice) => self.attention_raised(notice),
-            EventKind::AttentionLeft { target } => self.runtime.view.attention.left(&target),
-            EventKind::AttentionHistoryCleared => self.runtime.view.attention.history_cleared(),
             EventKind::AgentStatus(report) => self.agent_status_heard(report),
             EventKind::AgentHooked(heard) => self.hook_heard(heard),
-            EventKind::Mail(mail) => self.runtime.view.mail.set(mail),
             EventKind::AskPending(pending) => {
                 if self.runtime.view.asks.insert(pending.ask) {
                     self.hold_ask(pending);
@@ -259,7 +215,6 @@ impl EnvironmentShell {
                 self.runtime.view.health.apply(checked);
                 self.advance_harness_onboarding(cx);
             }
-            EventKind::UsageShown(shown) => self.runtime.view.usage.apply(shown),
             EventKind::ModelsListed { listed, origin } => self.models_listed(listed, origin, cx),
             EventKind::ModelListFailed { error, .. } => self.model_list_failed(&error, cx),
             EventKind::OpencodeServer(shown) => self.opencode_heard(shown, cx),
@@ -289,16 +244,7 @@ impl EnvironmentShell {
             EventKind::CodeHostLogin(login) => self.code_host_login_heard(login, cx),
             EventKind::RunnerChanged(shown) => self.runner_changed(shown, cx),
             EventKind::RunnerRemoved(removed) => self.runner_removed(removed, cx),
-            EventKind::RunnerBusChanged(shown) => {
-                self.runtime
-                    .view
-                    .runner_buses
-                    .insert(shown.runner, shown.bus);
-            }
             EventKind::CloudAskReplayed(asked) => self.cloud_ask_replayed(asked),
-            EventKind::RunnerLoginsChanged(shown) => {
-                self.runtime.view.runner_logins.insert(shown.runner, shown);
-            }
             EventKind::RunnerNews(notice) => self.runner_news(notice, cx),
             EventKind::CloudPatchOffered { draft } => self.cloud_patch_offered(draft, cx),
             EventKind::CloudNews(news) => self.cloud_news(news, cx),
@@ -314,6 +260,12 @@ impl EnvironmentShell {
             | EventKind::AcpAdapterChanged(_)) => self.host_event_heard(host, cx),
             EventKind::EnvironmentOpened { .. }
             | EventKind::EnvironmentClosed { .. }
+            | EventKind::AttentionLeft { .. }
+            | EventKind::AttentionHistoryCleared
+            | EventKind::Mail(_)
+            | EventKind::UsageShown(_)
+            | EventKind::RunnerBusChanged(_)
+            | EventKind::RunnerLoginsChanged(_)
             | EventKind::EnvironmentsOrdered { .. }
             | EventKind::EnvironmentChanged { .. }
             | EventKind::TerminalChanged { .. }
@@ -347,14 +299,8 @@ impl EnvironmentShell {
             .insert(spot(report.agent), report.status);
     }
 
-    fn apply_bus_snapshot(&mut self, bus: BusSnapshot) {
-        self.runtime.view.statuses = bus
-            .statuses
-            .into_iter()
-            .map(|report| (spot(report.agent), report.status))
-            .collect();
-        self.runtime.view.mail.replace(bus.mail);
-        let pending: BTreeSet<AskId> = bus.asks.iter().map(|pending| pending.ask).collect();
+    fn apply_bus_asks(&mut self, asks: Vec<PendingAsk>) {
+        let pending: BTreeSet<AskId> = asks.iter().map(|pending| pending.ask).collect();
         let settled: Vec<AskId> = self
             .runtime
             .view
@@ -366,7 +312,7 @@ impl EnvironmentShell {
             self.runtime.view.asks.remove(&ask);
             self.forget_held_ask(ask);
         }
-        for pending in bus.asks {
+        for pending in asks {
             if self.runtime.view.asks.insert(pending.ask) {
                 self.hold_ask(pending);
             }

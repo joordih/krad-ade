@@ -347,9 +347,9 @@ pub struct Settings {
     pub window_material: WindowMaterial,
     #[serde(default, skip_serializing_if = "WindowTint::is_default")]
     pub window_tint: WindowTint,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing)]
     pub backdrop_image: Option<BackdropImage>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing)]
     pub chat_backdrop_image: Option<BackdropImage>,
     #[serde(default)]
     pub app_updates: AppUpdateCheck,
@@ -524,19 +524,37 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backdrop_image::Backdrops;
 
     #[test]
-    fn a_chosen_backdrop_image_survives_a_restart_and_no_image_stays_out_of_the_file(
+    fn a_backdrop_image_of_an_older_settings_file_is_read_once_and_never_written(
     ) -> serde_json::Result<()> {
-        let plain = serde_json::to_string(&Settings::default())?;
-        assert!(!plain.contains("backdrop_image"));
-        let settings = Settings {
-            backdrop_image: Some(BackdropImage::new("backdrop/image.png")),
+        let older = r#"{"backdrop_image":{"file":"backdrop/image.png"}}"#;
+        let mut settings: Settings = serde_json::from_str(older)?;
+        assert!(!serde_json::to_string(&settings)?.contains("backdrop_image"));
+        let mut backdrops = Backdrops::default();
+        backdrops.adopt_from(&mut settings);
+        assert_eq!(
+            backdrops.window,
+            Some(BackdropImage::new("backdrop/image.png"))
+        );
+        assert_eq!(settings.backdrop_image, None);
+        Ok(())
+    }
+
+    #[test]
+    fn backdrops_already_in_the_view_file_win_over_an_older_settings_file() {
+        let mut settings = Settings {
+            chat_backdrop_image: Some(BackdropImage::new("old.png")),
             ..Settings::default()
         };
-        let back: Settings = serde_json::from_str(&serde_json::to_string(&settings)?)?;
-        assert_eq!(back.backdrop_image, settings.backdrop_image);
-        Ok(())
+        let mut backdrops = Backdrops {
+            window: Some(BackdropImage::new("new.png")),
+            chat: None,
+        };
+        backdrops.adopt_from(&mut settings);
+        assert_eq!(backdrops.chat, None);
+        assert_eq!(settings.chat_backdrop_image, None);
     }
 
     #[test]

@@ -30,12 +30,12 @@ impl EnvironmentShell {
             return Edited::Ignored;
         };
         let edit = edit.into();
-        let request = self.runtime.handle.next_request();
+        let request = self.runtime.client.next_request();
         let edited = live.data.edit(&edit, request);
         drop(
             self.runtime
-                .handle
-                .send(request, Command::from((env.clone(), edit))),
+                .client
+                .send_as(request, Command::from((env.clone(), edit))),
         );
         edited
     }

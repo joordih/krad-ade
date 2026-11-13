@@ -6,8 +6,7 @@ use gpui_kit::{
     div, px, rems, rgb, AnyElement, Context, ElementId, Entity, InteractiveElement, IntoElement,
     MouseButton, MouseDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
-use krad_chat::{ToolCall, ToolUseId};
-use krad_domain::{TerminalId, ToolKind};
+use krad_domain::{TerminalId, ToolCall, ToolKind, ToolUseId};
 use std::borrow::Cow;
 
 use super::super::ask::ask_line;
@@ -387,7 +386,7 @@ mod tests {
     #[test]
     fn copying_a_reply_takes_only_what_the_agent_said() {
         let message = ChatMessage {
-            speaker: krad_chat::Speaker::Assistant,
+            speaker: krad_domain::Speaker::Assistant,
             text: String::new(),
             parts: vec![
                 AnswerPart::Thinking("weigh it".to_owned()),

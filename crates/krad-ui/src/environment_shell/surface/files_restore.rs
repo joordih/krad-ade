@@ -7,7 +7,7 @@ use krad_repo::{
 
 use super::super::EnvironmentShell;
 use super::{Backend, ChatView};
-use krad_chat::RewindScope;
+use krad_domain::RewindScope;
 
 mod undo;
 

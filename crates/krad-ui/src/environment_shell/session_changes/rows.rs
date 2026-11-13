@@ -1,5 +1,4 @@
-use krad_domain::{FilePatch, Hunk, HunkLineKind, LineCount};
-use krad_domain::{HunkFingerprint, SessionChanges};
+use krad_domain::{FilePatch, Hunk, HunkFingerprint, HunkLineKind, LineCount, SessionChanges};
 use std::collections::HashSet;
 use std::path::PathBuf;
 

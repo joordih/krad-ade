@@ -4,8 +4,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, Context, IntoElement, ParentElement, StatefulInteractiveElement,
     Styled, Window,
 };
-use krad_chat::AskKind;
-use krad_domain::{TerminalId, ToolKind};
+use krad_domain::{AskKind, TerminalId, ToolKind};
 use std::borrow::Cow;
 
 use super::super::surface::{names_its_tool, tool_request};
@@ -246,8 +245,9 @@ impl EnvironmentShell {
 mod tests {
     use super::super::{AskReply, Waiting};
     use super::*;
-    use krad_chat::Question;
-    use krad_domain::{AcpPermissionKind, AcpPermissionOption, AcpPermissionOptionId, ToolCall};
+    use krad_domain::{
+        AcpPermissionKind, AcpPermissionOption, AcpPermissionOptionId, Question, ToolCall,
+    };
 
     const WORKER: TerminalId = TerminalId(7);
 

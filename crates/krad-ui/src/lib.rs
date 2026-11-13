@@ -8,6 +8,8 @@ mod attention_sound;
 mod components;
 mod environment_shell;
 mod extension_view;
+#[cfg(test)]
+mod fake_client;
 mod file_icons;
 mod font_catalog;
 mod highlight;

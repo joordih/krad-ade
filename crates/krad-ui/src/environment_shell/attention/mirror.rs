@@ -6,7 +6,7 @@ use std::time::{Instant, SystemTime};
 
 #[derive(Default)]
 pub(in crate::environment_shell) struct AttentionMirror {
-    pub(super) queue: AttentionQueue,
+    pub(in crate::environment_shell) queue: AttentionQueue,
     pub(super) log: AttentionLog,
 }
 

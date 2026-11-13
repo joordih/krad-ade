@@ -126,7 +126,7 @@ impl EnvironmentShell {
         let chat = chat_ref(env, id);
         let starts_turn = !prompts.is_empty();
         for command in batch_commands(&chat, commands, prompts) {
-            self.runtime.handle.post(Command::Chat(command));
+            self.runtime.client.post(Command::Chat(command));
         }
         if starts_turn {
             self.set_agent_state(env, id, AgentState::Working);
@@ -155,7 +155,7 @@ impl EnvironmentShell {
             },
             SurfaceCommand::ToggleThinking => return,
         };
-        self.runtime.handle.post(Command::Chat(posted));
+        self.runtime.client.post(Command::Chat(posted));
     }
 
     pub(in crate::environment_shell) fn post_runtime_chat(
@@ -168,7 +168,7 @@ impl EnvironmentShell {
             return false;
         }
         self.runtime
-            .handle
+            .client
             .post(Command::Chat(command(chat_ref(env, id))));
         true
     }

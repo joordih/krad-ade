@@ -77,7 +77,7 @@ impl EnvironmentShell {
             return;
         };
         if live.sessions.remove(&id).is_some() {
-            end_terminal_on(&self.runtime.handle, &env, id);
+            end_terminal_on(self.runtime.client.as_ref(), &env, id);
         }
         live.images.remove(&id);
         live.data.side_panel_mut().remove_terminal(id);

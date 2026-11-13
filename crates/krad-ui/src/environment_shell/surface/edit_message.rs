@@ -4,8 +4,7 @@ use gpui_kit::{
     ParentElement, PromptButton, PromptLevel, StatefulInteractiveElement, Styled, Subscription,
     Window,
 };
-use krad_chat::{RewindScope, Speaker};
-use krad_domain::{Mention, Prompt, TerminalId};
+use krad_domain::{Mention, Prompt, RewindScope, Speaker, TerminalId};
 
 use super::super::chat::ChatMessage;
 use super::super::EnvironmentShell;
@@ -301,8 +300,7 @@ pub(super) fn is_edited(chat: &ChatView, index: usize) -> bool {
 mod tests {
     use super::super::super::chat::AnswerPart;
     use super::*;
-    use krad_chat::ToolCall;
-    use krad_domain::{FileEdit, RewindPoint};
+    use krad_domain::{FileEdit, RewindPoint, ToolCall};
 
     fn message(speaker: Speaker, rewind: Option<RewindPoint>) -> ChatMessage {
         ChatMessage {

@@ -1,7 +1,6 @@
 use gpui_kit::component::switch::Switch;
 use gpui_kit::{AnyElement, Context, IntoElement};
-use krad_chat::{GatewayModel, ModelSource};
-use krad_domain::ModelId;
+use krad_domain::{GatewayModel, ModelId, ModelSource};
 
 use super::super::sections::{empty_row, settings_section};
 use super::super::{form_row, panel_card, EnvironmentShell};
@@ -110,7 +109,7 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_chat::{ModelOffer, Vendor};
+    use krad_domain::{ModelOffer, Vendor};
 
     fn model(id: &str) -> ModelId {
         ModelId::parse(id).unwrap_or_else(|| unreachable!("{id} is a model id"))

@@ -24,14 +24,14 @@ impl EnvironmentShell {
         act: ReviewAct,
         cx: &mut Context<Self>,
     ) -> RequestId {
-        let request = self.runtime.handle.next_request();
+        let request = self.runtime.client.next_request();
         let environment = self.active.clone();
         let command = Command::Review(ReviewCommand {
             environment: environment.clone(),
             root: root.clone(),
             act: act.clone(),
         });
-        let pending = self.runtime.handle.send(request, command);
+        let pending = self.runtime.client.send_as(request, command);
         cx.spawn(async move |this, cx| {
             let Ok(Reply::Refused { message, .. }) = pending.await else {
                 return;

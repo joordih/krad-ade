@@ -1,4 +1,4 @@
-use krad_chat::{PickedAnswer, Question, QuestionOption};
+use krad_domain::{PickedAnswer, Question, QuestionOption};
 use std::collections::HashMap;
 
 pub(super) const OTHER_LABEL: &str = "Other";

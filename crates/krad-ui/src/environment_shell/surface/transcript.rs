@@ -1,10 +1,11 @@
 use gpui_kit::{Context, Task, Window};
 use krad_chat::{
     claude_conversation_file, read_claude_transcript, read_claude_transcript_tail, SlashCommand,
-    Speaker, TranscriptChunk, TranscriptMark,
+    TranscriptChunk, TranscriptMark,
 };
 use krad_domain::{
-    AgentPreset, AgentState, ChatEntry, ChatEvent, EnvironmentName, ResumeId, TerminalId, ToolUseId,
+    AgentPreset, AgentState, ChatEntry, ChatEvent, EnvironmentName, ResumeId, Speaker, TerminalId,
+    ToolUseId,
 };
 use krad_host::HostLink;
 use std::collections::HashMap;

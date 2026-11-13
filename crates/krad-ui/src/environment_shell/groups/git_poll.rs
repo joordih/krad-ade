@@ -112,7 +112,7 @@ impl EnvironmentShell {
         }) else {
             return;
         };
-        self.runtime.handle.post(Command::Git(GitCommand {
+        self.runtime.client.post(Command::Git(GitCommand {
             environment: env,
             group,
             act: GitAct::Refresh,

@@ -6,8 +6,9 @@ pub(super) use marks::mark;
 mod view;
 
 use gpui_kit::{Capslock, Context, FocusHandle, KeyDownEvent, SharedString, Window};
-use krad_chat::{ModelSource, SourceRank};
-use krad_domain::{AgentPreset, ComposerDesign, ContextSize, ModelId, TerminalId};
+use krad_domain::{
+    AgentPreset, ComposerDesign, ContextSize, ModelId, ModelSource, SourceRank, TerminalId,
+};
 
 use super::surface::SurfaceCommand;
 use super::EnvironmentShell;

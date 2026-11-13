@@ -9,6 +9,7 @@ repository.workspace = true
 default = ["desktop"]
 desktop = [
   "dep:gpui-kit",
+  "dep:krad-client",
   "dep:krad-runtime",
   "dep:krad-store",
   "dep:krad-ui",
@@ -33,6 +34,7 @@ path = "src/bin/krad-ade-agents.rs"
 [dependencies]
 gpui-kit = { workspace = true, optional = true }
 krad-agents = { workspace = true, features = ["python-toolchains"] }
+krad-client = { workspace = true, optional = true }
 krad-domain.workspace = true
 krad-runtime = { workspace = true, optional = true }
 krad-store = { workspace = true, optional = true }

@@ -99,7 +99,7 @@ impl EnvironmentShell {
         }
         self.save_settings(cx);
         self.runtime
-            .handle
+            .client
             .post(Command::Events(EventsCommand::RemoveWebhook { hook: id }));
         cx.notify();
         let removed = self.queue_secret_change(move || delete_webhook_secret(id), cx);
@@ -121,7 +121,7 @@ impl EnvironmentShell {
             return;
         }
         self.runtime
-            .handle
+            .client
             .post(Command::Events(EventsCommand::TestWebhook {
                 hook: id,
                 environment: self.active.clone(),

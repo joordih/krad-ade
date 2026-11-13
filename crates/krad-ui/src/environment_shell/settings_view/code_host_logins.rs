@@ -16,7 +16,7 @@ const fn host_name(host: CodeHost) -> &'static str {
 
 impl EnvironmentShell {
     pub(super) fn post_code_host(&self, command: CodeHostCommand) {
-        self.runtime.handle.post(Command::CodeHost(command));
+        self.runtime.client.post(Command::CodeHost(command));
     }
 
     pub(in crate::environment_shell) fn code_host_login_heard(

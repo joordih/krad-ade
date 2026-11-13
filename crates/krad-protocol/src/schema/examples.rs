@@ -121,6 +121,10 @@ fn state_commands() -> Vec<(&'static str, Value)> {
 fn conversation_commands() -> Vec<(&'static str, Value)> {
     vec![
         (
+            "chat_attach_image",
+            json!({ "area": "chat", "verb": "attach_image", "chat": chat(), "image": { "format": "png", "bytes": [137, 80, 78, 71] } }),
+        ),
+        (
             "chat_send",
             json!({ "area": "chat", "verb": "send", "chat": chat(), "prompt": { "text": "Run the tests", "mentions": [] } }),
         ),
@@ -225,6 +229,10 @@ pub(super) fn events() -> Vec<(&'static str, Value)> {
         (
             "session_changes_read",
             json!({ "feed": "event", "seq": 48, "kind": { "type": "session_changes_read", "request": 14, "environment": ENVIRONMENT, "session": 2, "read": { "read": "no_repository" } } }),
+        ),
+        (
+            "problem",
+            json!({ "feed": "event", "seq": 49, "kind": { "type": "problem", "scope": { "on": "chat", "chat": chat() }, "code": "unavailable", "message": "Could not save the pasted image" } }),
         ),
     ]
 }

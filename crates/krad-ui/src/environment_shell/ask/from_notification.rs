@@ -1,6 +1,7 @@
 use gpui_kit::Context;
-use krad_chat::{AskAnswer, AskKind};
-use krad_domain::{AcpPermissionKind, AttentionKind, EnvironmentName, TerminalId};
+use krad_domain::{
+    AcpPermissionKind, AskAnswer, AskKind, AttentionKind, EnvironmentName, TerminalId,
+};
 
 use super::super::EnvironmentShell;
 use super::{AskQueue, DENIED_TEXT};

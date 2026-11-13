@@ -1,11 +1,11 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_agents::{
-    ApiError, CloseOrder, CloseTarget, Closed, ErrorCode, Response, TerminalState, WorktreeFate,
-    WorktreeLeft, WorktreeOutcome,
+    ApiError, CloseOrder, CloseTarget, Closed, ErrorCode, Response, TerminalState, WorktreeLeft,
+    WorktreeOutcome,
 };
 use krad_domain::{
     AgentState, AppEvent, ClosePlan, CloseRefusal, CloseSubject, EnvironmentData, EnvironmentName,
-    GroupId, SessionId, TerminalId, WhenWorking,
+    GroupId, SessionId, TerminalId, WhenWorking, WorktreeFate,
 };
 use krad_protocol::{Command, GitAct, GitCommand};
 use krad_repo::{remove_settled_worktree, RepoError};
@@ -155,7 +155,7 @@ impl EnvironmentShell {
         });
         if let Some(plan) = plan {
             if let Some(group) = plan.worktree {
-                self.runtime.handle.post(Command::Git(GitCommand {
+                self.runtime.client.post(Command::Git(GitCommand {
                     environment: env.clone(),
                     group,
                     act: GitAct::AgentsFinished,

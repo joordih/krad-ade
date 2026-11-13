@@ -1,6 +1,7 @@
 use gpui_kit::{Context, ElementId, IntoElement, StatefulInteractiveElement};
-use krad_chat::Speaker;
-use krad_domain::{Bookmark, ChatBookmarks, Mention, NodeField, TerminalId, TurnPrint, TurnSide};
+use krad_domain::{
+    Bookmark, ChatBookmarks, Mention, NodeField, Speaker, TerminalId, TurnPrint, TurnSide,
+};
 use std::collections::HashMap;
 
 use super::super::chat::ChatMessage;

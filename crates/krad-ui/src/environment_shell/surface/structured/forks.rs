@@ -68,7 +68,7 @@ impl EnvironmentShell {
             return;
         };
         if live.sessions.remove(&id).is_some() {
-            end_terminal_on(&self.runtime.handle, &env, id);
+            end_terminal_on(self.runtime.client.as_ref(), &env, id);
         }
         live.pending_chats.insert(id, LiveSession::Resume(resume));
         self.set_node(&env, id, NodeField::Kind(NodeKind::Chat));

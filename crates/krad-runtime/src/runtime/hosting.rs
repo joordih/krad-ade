@@ -137,6 +137,7 @@ impl Runtime {
             JobDone::ChatOpened(opening) => self.chat_opened(opening),
             JobDone::ChatEarlier(earlier) => self.chat_earlier_read(earlier),
             JobDone::ChatCheckpoint(taken) => self.chat_checkpoint_taken(taken),
+            JobDone::ChatImage(done) => self.chat_image_done(done),
             JobDone::FilesIndexed(indexed) => self.files_indexed(indexed),
             JobDone::GatewayChecked(read) => {
                 self.gateway.checked(read, &mut self.outbox);

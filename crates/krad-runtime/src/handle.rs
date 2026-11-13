@@ -5,8 +5,8 @@ use krad_chat::{LiveEvent, LiveSession, OpencodeServer, Runner};
 use krad_domain::{AgentPreset, EnvironmentName, Host, UsageBudget};
 use krad_host::HostLink;
 use krad_protocol::{
-    AgentRef, AskId, ChatPage, Command, HealthPlace, Hello, Reply, RequestId, RuntimeRun, Scope,
-    Seq, Snapshot, TerminalCommand, Welcome, WriteBy,
+    AgentRef, ChatPage, Command, HealthPlace, Hello, Reply, RequestId, RuntimeRun, Scope, Seq,
+    Snapshot, TerminalCommand, Welcome, WriteBy,
 };
 use krad_repo::{FileIndex, RepoError};
 use krad_session::{AnsiPalette, SearchDirection};
@@ -31,7 +31,7 @@ use crate::usage::UsagePlace;
 mod hosts;
 mod waits;
 
-pub use waits::{EventReceiver, HeldAsk, Pending};
+pub use waits::{EventReceiver, Pending};
 
 const SUBSCRIBER_BUFFER: usize = 256;
 const BUILD: &str = env!("CARGO_PKG_VERSION");
@@ -345,14 +345,6 @@ impl RuntimeHandle {
 
     pub fn terminal_palette(&self, palette: AnsiPalette) {
         self.deliver(Input::TerminalPalette(palette));
-    }
-
-    #[must_use]
-    pub fn held_ask(&self, ask: AskId) -> HeldAsk {
-        HeldAsk {
-            ask,
-            runtime: self.clone(),
-        }
     }
 
     pub(crate) fn deliver(&self, input: Input) {

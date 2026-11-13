@@ -28,7 +28,7 @@ impl EnvironmentShell {
                 .len()
         });
         self.runtime
-            .handle
+            .client
             .post(Command::Terminal(TerminalCommand::OpenMissing {
                 environment: env.clone(),
             }));
@@ -44,7 +44,7 @@ impl EnvironmentShell {
     ) {
         self.store();
         self.runtime
-            .handle
+            .client
             .post(Command::Terminal(TerminalCommand::Open {
                 terminal: terminal_ref(env, id),
                 intent,

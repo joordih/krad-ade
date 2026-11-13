@@ -15,8 +15,8 @@ impl EnvironmentShell {
         command: KraddieCommand,
         cx: &mut Context<Self>,
     ) {
-        let pending = self.runtime.handle.send(
-            self.runtime.handle.next_request(),
+        let pending = self.runtime.client.send_as(
+            self.runtime.client.next_request(),
             Command::Kraddie(command),
         );
         cx.spawn(async move |this, cx| {

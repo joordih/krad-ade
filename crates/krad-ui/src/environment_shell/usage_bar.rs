@@ -91,7 +91,7 @@ impl EnvironmentShell {
     pub(super) fn refresh_usage(&mut self, cx: &mut Context<Self>) {
         self.place_usage();
         self.runtime
-            .handle
+            .client
             .post(Command::Usage(UsageCommand::Refresh));
         cx.notify();
     }
@@ -175,7 +175,7 @@ impl EnvironmentShell {
 
     pub(super) fn statusline_heard(&self, host: Host, status: &AgentStatus) {
         self.runtime
-            .handle
+            .client
             .post(Command::Usage(UsageCommand::Statusline {
                 host,
                 status: status.clone(),

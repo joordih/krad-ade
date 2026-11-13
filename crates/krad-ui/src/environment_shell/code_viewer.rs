@@ -9,7 +9,8 @@ use gpui_kit::{
     InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement,
     Styled, UniformListScrollHandle,
 };
-use krad_repo::{ChangeKind, RepoError};
+use krad_domain::ChangeKind;
+use krad_repo::RepoError;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 

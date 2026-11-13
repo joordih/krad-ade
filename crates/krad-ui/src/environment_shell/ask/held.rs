@@ -1,14 +1,14 @@
-use krad_chat::{AskAnswer, AskKind};
 use krad_domain::{
-    AgentPreset, EnvironmentName, PermissionMode, PlanDialogKeys, SettledAsks, TerminalId,
-    ToolDecision,
+    AgentPreset, AskAnswer, AskKind, EnvironmentName, PermissionMode, PlanDialogKeys, SettledAsks,
+    TerminalId, ToolDecision,
 };
 use krad_protocol::{AskId, AskRequest, PendingAsk};
 
 use super::super::agent_bus::ENTER;
 use super::super::surface::Backend;
 use super::super::EnvironmentShell;
-use super::{AskReply, Settled, Waiting};
+use super::{AskReply, HookAsk, Settled, Waiting};
+use std::sync::Arc;
 
 fn plan_keys(keys: PlanDialogKeys, answer: &AskAnswer) -> Vec<Vec<u8>> {
     match answer {
@@ -50,7 +50,7 @@ impl EnvironmentShell {
             kind,
             can_allow_always,
         } = pending;
-        let held = self.runtime.handle.held_ask(ask);
+        let held = HookAsk::new(ask, Arc::clone(&self.runtime.client));
         let chat = self
             .envs
             .get_mut(&agent.environment)

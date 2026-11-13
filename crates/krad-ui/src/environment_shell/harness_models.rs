@@ -1,6 +1,8 @@
 use gpui_kit::{AppContext as _, Context};
-use krad_chat::{acp_offers, ModelOffer};
-use krad_domain::{AcpAgentId, AcpAgentStart, AgentPreset, EnvironmentName, Host, ToastKind};
+use krad_chat::acp_offers;
+use krad_domain::{
+    AcpAgentId, AcpAgentStart, AgentPreset, EnvironmentName, Host, ModelOffer, ToastKind,
+};
 use krad_host::HostLink;
 use krad_protocol::{Command, ListedModels as Listed, ModelsCommand, ModelsOrigin};
 use std::collections::HashMap;
@@ -102,7 +104,7 @@ impl EnvironmentShell {
 
     fn keep_models(&self, host: Host, harness: AgentPreset, models: Vec<ModelOffer>) {
         self.runtime
-            .handle
+            .client
             .post(Command::Models(ModelsCommand::Keep {
                 host,
                 harness,

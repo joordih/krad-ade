@@ -262,7 +262,9 @@ impl Chats {
             }
             ChatCommand::SignIn { method, .. } => self.sign_in(&id, method),
             ChatCommand::TrustMcp { trust, .. } => self.trust_mcp(&id, trust, work),
-            ChatCommand::Unknown => return None,
+            ChatCommand::AttachImage { .. }
+            | ChatCommand::ForgetImages { .. }
+            | ChatCommand::Unknown => return None,
         };
         self.flush(&id, work);
         Some(reply)

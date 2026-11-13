@@ -1,3 +1,4 @@
+use crate::backdrop_image::Backdrops;
 use crate::environment::EnvironmentData;
 use crate::group::ShownExtensionViews;
 use crate::ids::{EnvironmentName, TerminalId};
@@ -27,6 +28,8 @@ pub struct ViewPreferences {
     pub sidebar_width: SidebarWidth,
     #[serde(default, skip_serializing_if = "ToolchainChoices::is_empty")]
     pub toolchains: ToolchainChoices,
+    #[serde(default, skip_serializing_if = "Backdrops::is_empty")]
+    pub backdrops: Backdrops,
     #[serde(default)]
     pub environments: Vec<EnvironmentViewPreferences>,
 }
@@ -39,6 +42,7 @@ impl Default for ViewPreferences {
             work_mode: WorkMode::default(),
             sidebar_width: SidebarWidth::default(),
             toolchains: ToolchainChoices::default(),
+            backdrops: Backdrops::default(),
             environments: Vec::new(),
         }
     }

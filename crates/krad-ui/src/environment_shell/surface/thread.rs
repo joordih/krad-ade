@@ -4,8 +4,7 @@ use gpui_kit::{
     div, list, px, AnyElement, App, Context, ElementId, Entity, InteractiveElement, IntoElement,
     MouseButton, MouseDownEvent, ParentElement, SharedString, Styled, Window,
 };
-use krad_chat::Speaker;
-use krad_domain::TerminalId;
+use krad_domain::{Speaker, TerminalId};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
 

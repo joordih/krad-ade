@@ -272,7 +272,7 @@ impl EnvironmentShell {
                     environment: env.clone(),
                     terminal: *id,
                 };
-                self.runtime.handle.post(Command::Chat(ChatCommand::SignIn {
+                self.runtime.client.post(Command::Chat(ChatCommand::SignIn {
                     chat,
                     method: retry,
                 }));

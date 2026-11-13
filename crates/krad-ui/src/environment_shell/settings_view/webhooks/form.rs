@@ -213,7 +213,7 @@ impl EnvironmentShell {
                 shell.save_settings(cx);
                 shell
                     .runtime
-                    .handle
+                    .client
                     .post(Command::Events(EventsCommand::SaveWebhook { hook }));
                 shell.toast(ToastKind::Success, SAVED_TOAST, cx);
             })

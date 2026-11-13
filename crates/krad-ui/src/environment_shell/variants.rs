@@ -59,8 +59,8 @@ impl EnvironmentShell {
         });
         let pending = self
             .runtime
-            .handle
-            .send(self.runtime.handle.next_request(), command);
+            .client
+            .send_as(self.runtime.client.next_request(), command);
         cx.spawn(async move |this, cx| {
             let Ok(Reply::Refused { message, .. }) = pending.await else {
                 return;

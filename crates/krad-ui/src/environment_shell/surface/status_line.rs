@@ -1,6 +1,5 @@
 use gpui_kit::{div, px, rgb, AnyElement, IntoElement, ParentElement, SharedString, Styled};
-use krad_chat::Speaker;
-use krad_domain::TerminalId;
+use krad_domain::{Speaker, TerminalId};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::{Duration, Instant};
 

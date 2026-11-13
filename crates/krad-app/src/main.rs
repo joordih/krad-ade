@@ -8,13 +8,14 @@ use gpui_kit::component::command::CommandState;
 use gpui_kit::component::TitleBar;
 use gpui_kit::{application, init, open_window, AppContext, WindowDecorations, WindowOptions};
 use krad_agents::CliPlace;
+use krad_client::InProcess;
 use krad_runtime::{
     BusSetup, Clock, EnvironmentsSetup, EventsSetup, KraddiesSetup, Runtime, RuntimeSetup,
     SettingsSetup,
 };
 use krad_store::{
-    config_dir, open_layout, read_settings, read_user_themes, LayoutOpening, OpenedLayout, Secrets,
-    APP_NAME,
+    config_dir, open_layout, read_settings, read_user_themes, ChatImages, LayoutOpening,
+    OpenedLayout, Secrets, APP_NAME,
 };
 use krad_ui::{
     active_appearance, apply_editor_font, apply_interface_font, apply_settings_theme,
@@ -80,6 +81,7 @@ fn main() {
         settings: SettingsSetup::in_config_folder(settings.clone()),
         kraddies: KraddiesSetup::in_config_folder(Clock::new(local_moment)),
         secrets: Secrets::system(),
+        chat_images: ChatImages::in_config_folder(),
     }) {
         Ok(runtime) => runtime,
         Err(error) => {
@@ -115,7 +117,13 @@ fn main() {
             };
             match open_window(options, cx, |window, cx| {
                 let view = cx.new(|cx| {
-                    EnvironmentShell::with_seed(cx, layout, settings, host_tools, runtime)
+                    EnvironmentShell::with_seed(
+                        cx,
+                        layout,
+                        settings,
+                        host_tools,
+                        InProcess::new(runtime),
+                    )
                 });
                 let palette = cx.new(|cx| CommandState::new(window, cx));
                 let weak = view.downgrade();

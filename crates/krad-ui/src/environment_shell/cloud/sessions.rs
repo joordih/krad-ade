@@ -34,7 +34,7 @@ const LEAVE_ANSWER: usize = 1;
 
 impl EnvironmentShell {
     fn post_cloud(&self, command: CloudCommand) {
-        self.runtime.handle.post(Command::Cloud(command));
+        self.runtime.client.post(Command::Cloud(command));
     }
 
     pub(in crate::environment_shell) fn new_cloud_session(

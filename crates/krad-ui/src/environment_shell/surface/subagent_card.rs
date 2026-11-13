@@ -3,8 +3,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, Context, ElementId, Entity, FontWeight, InteractiveElement,
     IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
-use krad_chat::{Speaker, ToolCall};
-use krad_domain::{AgentState, TerminalId, TextScale, ToolUseId};
+use krad_domain::{AgentState, Speaker, TerminalId, TextScale, ToolCall, ToolUseId};
 use std::time::Instant;
 
 use super::super::chat::{question_bubble, AnswerPart};

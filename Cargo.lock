@@ -3827,6 +3827,7 @@ version = "0.4.1"
 dependencies = [
  "gpui-kit",
  "krad-agents",
+ "krad-client",
  "krad-domain",
  "krad-runtime",
  "krad-store",
@@ -3853,6 +3854,17 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "ureq",
+]
+
+[[package]]
+name = "krad-client"
+version = "0.4.1"
+dependencies = [
+ "futures",
+ "krad-domain",
+ "krad-protocol",
+ "krad-runtime",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -4037,6 +4049,7 @@ dependencies = [
  "image",
  "krad-agents",
  "krad-chat",
+ "krad-client",
  "krad-domain",
  "krad-extensions",
  "krad-github",

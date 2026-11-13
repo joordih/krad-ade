@@ -1,8 +1,10 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_domain::review::CommitSha;
-use krad_domain::{EnvironmentName, FileOpening, FileView, NodeEdit, TerminalId};
+use krad_domain::{
+    ChangeKind, EnvironmentName, FileChange, FileOpening, FileView, NodeEdit, TerminalId,
+};
 use krad_host::HostLink;
-use krad_repo::{commit_diff, working_diff, ChangeKind, FileChange, RepoError};
+use krad_repo::{commit_diff, working_diff, RepoError};
 use std::path::{Path, PathBuf};
 
 use super::super::review_view::{numbered_lines, DiffLine};

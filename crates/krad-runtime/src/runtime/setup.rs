@@ -1,4 +1,4 @@
-use krad_store::Secrets;
+use krad_store::{ChatImages, Secrets};
 
 use crate::app_events::EventsSetup;
 use crate::bus::BusSetup;
@@ -14,6 +14,7 @@ pub struct RuntimeSetup {
     pub settings: SettingsSetup,
     pub kraddies: KraddiesSetup,
     pub secrets: Secrets,
+    pub chat_images: Option<ChatImages>,
 }
 
 impl Default for RuntimeSetup {
@@ -25,6 +26,7 @@ impl Default for RuntimeSetup {
             settings: SettingsSetup::default(),
             kraddies: KraddiesSetup::default(),
             secrets: Secrets::in_memory(),
+            chat_images: None,
         }
     }
 }

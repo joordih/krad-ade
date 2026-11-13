@@ -27,6 +27,10 @@ impl EnvironmentsMirror {
         self.get(name).is_some()
     }
 
+    pub(in crate::environment_shell) fn names(&self) -> Vec<EnvironmentName> {
+        self.0.iter().map(|kept| kept.name.clone()).collect()
+    }
+
     pub(super) fn opened(&mut self, environment: EnvironmentData) {
         match self.find_mut(&environment.name) {
             Some(kept) => *kept = environment,

@@ -44,7 +44,7 @@ impl EnvironmentShell {
         event: AppEvent,
     ) {
         self.runtime
-            .handle
+            .client
             .post(Command::Events(EventsCommand::Publish {
                 environment: environment.clone(),
                 group,
@@ -55,7 +55,7 @@ impl EnvironmentShell {
 
     pub(super) fn use_webhooks(&self) {
         self.runtime
-            .handle
+            .client
             .post(Command::Events(EventsCommand::UseWebhooks {
                 webhooks: self.settings.webhooks.clone(),
             }));

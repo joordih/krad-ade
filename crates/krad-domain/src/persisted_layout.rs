@@ -1,3 +1,4 @@
+use crate::backdrop_image::Backdrops;
 use crate::environment::EnvironmentData;
 use crate::ids::EnvironmentName;
 use crate::sidebar_width::SidebarWidth;
@@ -99,6 +100,7 @@ impl From<PersistedLayout> for Layout {
                 work_mode: single.work_mode,
                 sidebar_width: single.sidebar_width,
                 toolchains: single.toolchains,
+                backdrops: Backdrops::default(),
                 environments: views,
             },
         }

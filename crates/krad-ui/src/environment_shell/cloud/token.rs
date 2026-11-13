@@ -43,7 +43,7 @@ impl EnvironmentShell {
         token: ClaudeOauthToken,
     ) {
         self.runtime
-            .handle
+            .client
             .post(Command::Runner(RunnerCommand::KeepClaudeToken {
                 runner,
                 token,
@@ -52,7 +52,7 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn forget_claude_token(&self, runner: CloudRunnerId) {
         self.runtime
-            .handle
+            .client
             .post(Command::Runner(RunnerCommand::ForgetClaudeToken { runner }));
     }
 }

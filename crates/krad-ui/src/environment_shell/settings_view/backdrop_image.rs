@@ -149,8 +149,9 @@ impl EnvironmentShell {
         let mut events = Vec::with_capacity(count);
         for place in BackdropPlace::ALL {
             let start = self
-                .settings
-                .backdrop(place)
+                .backdrop
+                .chosen
+                .get(place)
                 .cloned()
                 .unwrap_or_else(|| BackdropImage::new(""));
             for amount in Amount::ALL {
@@ -168,8 +169,9 @@ impl EnvironmentShell {
                         };
                         let percent = percent_at(value.start());
                         if this
-                            .settings
-                            .backdrop(place)
+                            .backdrop
+                            .chosen
+                            .get(place)
                             .is_some_and(|image| amount.of(image) == percent)
                         {
                             return;
@@ -212,7 +214,7 @@ impl EnvironmentShell {
 
     fn backdrop_rows(&self, place: BackdropPlace, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let pal = palette(cx);
-        let chosen = self.settings.backdrop(place);
+        let chosen = self.backdrop.chosen.get(place);
         let mut rows = vec![form_row(
             IMAGE_LABEL,
             Some(IMAGE_HINT),

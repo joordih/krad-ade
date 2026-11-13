@@ -1,8 +1,8 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_chat::{new_session_id, LiveSession};
-use krad_domain::{review::Issue, SessionEdit, ToastKind};
 use krad_domain::{
-    EnvironmentName, GroupId, Prompt, SessionSpec, SessionTemplate, TemplateLaunch, WorktreeOrigin,
+    review::Issue, EnvironmentName, GroupId, Prompt, SessionEdit, SessionSpec, SessionTemplate,
+    TemplateLaunch, ToastKind, WorktreeOrigin,
 };
 use krad_repo::add_worktree;
 

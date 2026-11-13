@@ -83,6 +83,23 @@
       "mode": "acceptEdits",
       "verb": "approve_plan"
     },
+    "chat_attach_image": {
+      "area": "chat",
+      "chat": {
+        "environment": "main",
+        "terminal": 4
+      },
+      "image": {
+        "bytes": [
+          137,
+          80,
+          78,
+          71
+        ],
+        "format": "png"
+      },
+      "verb": "attach_image"
+    },
     "chat_interrupt": {
       "area": "chat",
       "chat": {
@@ -360,6 +377,22 @@
         "type": "pong"
       },
       "seq": 42
+    },
+    "problem": {
+      "feed": "event",
+      "kind": {
+        "code": "unavailable",
+        "message": "Could not save the pasted image",
+        "scope": {
+          "chat": {
+            "environment": "main",
+            "terminal": 4
+          },
+          "on": "chat"
+        },
+        "type": "problem"
+      },
+      "seq": 49
     },
     "session_changes_read": {
       "feed": "event",

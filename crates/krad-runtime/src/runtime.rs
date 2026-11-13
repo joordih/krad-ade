@@ -1,6 +1,6 @@
 use krad_domain::UsageBudget;
 use krad_protocol::{Event, EventKind, Scope, Seq};
-use krad_store::Secrets;
+use krad_store::{ChatImages, Secrets};
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender};
@@ -39,6 +39,7 @@ use crate::workers::Workers;
 
 mod agent_commands;
 mod bus_git;
+mod chat_images;
 mod chatting;
 mod ci_fixing;
 mod cloud_nodes;
@@ -83,6 +84,7 @@ mod variant_runs;
 mod worker_worktrees;
 mod working;
 
+pub(crate) use self::chat_images::ChatImageDone;
 pub(crate) use self::ci_fixing::PendingFix;
 pub(crate) use self::kraddie_following::LinesCounted;
 pub(crate) use self::kraddie_runs::RunPlan;
@@ -129,6 +131,7 @@ pub struct Runtime {
     kraddies: Kraddies,
     typist: Typist,
     secrets: Secrets,
+    chat_images: Option<ChatImages>,
     stopped: Arc<AtomicBool>,
 }
 
@@ -142,6 +145,7 @@ struct Owned {
     views: LaunchedViews,
     kraddies: KraddiesSetup,
     secrets: Secrets,
+    chat_images: Option<ChatImages>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -182,6 +186,7 @@ impl Runtime {
             views: views.clone(),
             kraddies: setup.kraddies,
             secrets: setup.secrets,
+            chat_images: setup.chat_images,
         };
         let secrets = owned.secrets.clone();
         let shared_access = access.clone();
@@ -235,6 +240,7 @@ impl Runtime {
             kraddies: Kraddies::start(owned.kraddies, inbox.clone()),
             typist: Typist::default(),
             secrets: owned.secrets,
+            chat_images: owned.chat_images,
             stopped,
         }
     }

@@ -1,5 +1,6 @@
 mod from_notification;
 mod held;
+mod hook;
 mod picks;
 mod queue;
 mod view;
@@ -7,10 +8,9 @@ mod worker;
 
 use gpui_kit::component::input::{InputEvent, TextareaState};
 use gpui_kit::{AppContext as _, Context, Entity, Focusable as _, Subscription, Window};
-use krad_chat::{AskAnswer, AskKind, Question};
 use krad_domain::{
-    AcpPermissionKind, AcpPermissionOption, AgentState, AskOutcome, AskVerdict, ChatEntry,
-    PermissionMode, TerminalId, ToolDecision,
+    AcpPermissionKind, AcpPermissionOption, AgentState, AskAnswer, AskKind, AskOutcome, AskVerdict,
+    ChatEntry, PermissionMode, Question, TerminalId, ToolDecision,
 };
 
 use krad_protocol::ChatCommand;
@@ -20,6 +20,7 @@ use super::surface::StructuredChat;
 use super::EnvironmentShell;
 pub(super) use from_notification::PermissionReply;
 pub(super) use held::HeldAskReport;
+pub(super) use hook::HookAsk;
 pub(super) use picks::Picks;
 pub(super) use queue::{AskQueue, AskReply, Settled, Waiting};
 pub(super) use view::{ask_line, mode_label, tray, tray_button};

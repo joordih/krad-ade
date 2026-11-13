@@ -13,6 +13,8 @@ impl EnvironmentShell {
         let Layout { state, mut view } = layout;
         self.toolchains =
             super::toolchains::Toolchains::with_choices(std::mem::take(&mut view.toolchains));
+        self.backdrop.chosen = std::mem::take(&mut view.backdrops);
+        self.backdrop.chosen.adopt_from(&mut self.settings);
         let mut environments = state.environments;
         for data in &mut environments {
             data.restart();
@@ -94,6 +96,7 @@ impl EnvironmentShell {
             work_mode: self.work_mode,
             sidebar_width: self.sidebar_w,
             toolchains: self.toolchains.choices.clone(),
+            backdrops: self.backdrop.chosen.clone(),
             environments: environments
                 .iter()
                 .map(EnvironmentViewPreferences::from)
@@ -126,7 +129,7 @@ impl EnvironmentShell {
             .environments
             .commands_toward(&environments)
         {
-            self.runtime.handle.post(Command::Environments(command));
+            self.runtime.client.post(Command::Environments(command));
         }
         if let Some(writer) = &self.view_writer {
             writer.persist(&self.view_preferences(&environments));

@@ -48,7 +48,7 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn check_runner_logins(&self, runner: CloudRunnerId) {
         self.runtime
-            .handle
+            .client
             .post(Command::Runner(RunnerCommand::CheckLogins { runner }));
     }
 

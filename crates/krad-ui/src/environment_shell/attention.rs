@@ -96,7 +96,7 @@ impl EnvironmentShell {
     }
 
     fn tell_attention(&self, command: AttentionCommand) {
-        self.runtime.handle.post(Command::Attention(command));
+        self.runtime.client.post(Command::Attention(command));
     }
 
     pub(super) fn attention_raised(&mut self, notice: AttentionNotice) {

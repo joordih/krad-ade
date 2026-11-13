@@ -122,7 +122,7 @@ impl EnvironmentShell {
         match shown {
             (0, true) => {
                 self.runtime
-                    .handle
+                    .client
                     .post(Command::Chat(ChatCommand::ShowEarlier {
                         chat: chat_ref(env, id),
                     }));

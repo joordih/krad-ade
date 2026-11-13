@@ -108,7 +108,7 @@ impl EnvironmentShell {
 
     fn ask_host(&mut self, command: HostCommand) {
         self.store();
-        self.runtime.handle.post(Command::Host(command));
+        self.runtime.client.post(Command::Host(command));
     }
 
     pub(super) fn service_hosts(&mut self, cx: &mut Context<Self>) {

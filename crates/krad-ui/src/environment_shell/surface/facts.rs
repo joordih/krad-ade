@@ -1,7 +1,6 @@
-use krad_agents::AgentStatus;
-use krad_chat::{ModelOffer, ModelSource};
 use krad_domain::{
-    model_label, AgentPreset, ContextSize, Effort, EffortSnap, EnvironmentName, ModelId, TerminalId,
+    model_label, AgentPreset, AgentStatus, ContextSize, Effort, EffortSnap, EnvironmentName,
+    ModelId, ModelOffer, ModelSource, TerminalId,
 };
 use std::path::Path;
 

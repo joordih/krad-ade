@@ -58,6 +58,7 @@ mod notes_view;
 mod opencode;
 mod palette;
 mod performance;
+mod problems;
 mod rename;
 mod review_view;
 mod rubber_band;
@@ -96,11 +97,11 @@ mod worktrees;
 
 use gpui_kit::component::command::CommandState;
 use gpui_kit::{Context, Entity, FocusHandle, Subscription, Task, WeakEntity, Window};
+use krad_client::InProcess;
 use krad_domain::{
     AgentPreset, EnvironmentData, EnvironmentName, EnvironmentView, Layout, Prompt, Settings,
     SidebarWidth, TerminalId, Visibility, WorkMode, DEFAULT_ENVIRONMENT,
 };
-use krad_runtime::RuntimeHandle;
 use krad_store::{AcpTranscripts, LayoutFile, LayoutWriter};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -247,7 +248,7 @@ impl EnvironmentShell {
         layout: Layout,
         settings: Settings,
         host_tools: host::HostTools,
-        runtime: RuntimeHandle,
+        runtime: InProcess,
     ) -> Self {
         let mut shell = Self::assemble(cx, settings, host_tools, runtime);
         shell.start(layout, cx);
@@ -258,7 +259,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
         settings: Settings,
         host_tools: host::HostTools,
-        runtime: RuntimeHandle,
+        runtime: InProcess,
     ) -> Self {
         Self {
             focus: cx.focus_handle(),

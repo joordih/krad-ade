@@ -97,7 +97,11 @@ impl Runtime {
     }
 
     pub(super) fn execute_chat(&mut self, command: ChatCommand) -> Option<Reply> {
-        self.with_chat_work(|chats, work| chats.execute(command, work))
+        match command {
+            ChatCommand::AttachImage { chat, image } => Some(self.attach_chat_image(chat, image)),
+            ChatCommand::ForgetImages { chat } => Some(self.forget_chat_images(chat)),
+            command => self.with_chat_work(|chats, work| chats.execute(command, work)),
+        }
     }
 
     pub(super) fn flush_chats(&mut self) {

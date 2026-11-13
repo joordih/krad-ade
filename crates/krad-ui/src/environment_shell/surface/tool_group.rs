@@ -4,8 +4,7 @@ use gpui_kit::{
     ElementId, FontWeight, InteractiveElement, IntoElement, ParentElement, SharedString,
     StatefulInteractiveElement, Styled,
 };
-use krad_chat::ToolCall;
-use krad_domain::{TerminalId, ToolKind, ToolUseId};
+use krad_domain::{TerminalId, ToolCall, ToolKind, ToolUseId};
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;

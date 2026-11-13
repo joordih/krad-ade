@@ -78,7 +78,7 @@ impl EnvironmentShell {
             return;
         }
         self.runtime
-            .handle
+            .client
             .post(Command::Host(HostCommand::DetectAgents {
                 environment: env.clone(),
             }));
@@ -127,7 +127,7 @@ impl EnvironmentShell {
     fn detect_agents_in(&self, distro: String) {
         let place = AgentPlace::Wsl { distro };
         self.runtime
-            .handle
+            .client
             .post(Command::Host(HostCommand::DetectLocalAgents { place }));
     }
 
@@ -307,7 +307,7 @@ impl EnvironmentShell {
 
     pub(super) fn detect_agents(&self) {
         self.runtime
-            .handle
+            .client
             .post(Command::Host(HostCommand::DetectLocalAgents {
                 place: AgentPlace::Native,
             }));

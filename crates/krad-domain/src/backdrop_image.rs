@@ -17,19 +17,41 @@ impl BackdropPlace {
     pub const ALL: [Self; 2] = [Self::Window, Self::Chat];
 }
 
-impl Settings {
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Backdrops {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window: Option<BackdropImage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat: Option<BackdropImage>,
+}
+
+impl Backdrops {
     #[must_use]
-    pub const fn backdrop(&self, place: BackdropPlace) -> Option<&BackdropImage> {
+    pub const fn is_empty(&self) -> bool {
+        self.window.is_none() && self.chat.is_none()
+    }
+
+    #[must_use]
+    pub const fn get(&self, place: BackdropPlace) -> Option<&BackdropImage> {
         match place {
-            BackdropPlace::Window => self.backdrop_image.as_ref(),
-            BackdropPlace::Chat => self.chat_backdrop_image.as_ref(),
+            BackdropPlace::Window => self.window.as_ref(),
+            BackdropPlace::Chat => self.chat.as_ref(),
         }
     }
 
-    pub const fn backdrop_mut(&mut self, place: BackdropPlace) -> &mut Option<BackdropImage> {
+    pub const fn get_mut(&mut self, place: BackdropPlace) -> &mut Option<BackdropImage> {
         match place {
-            BackdropPlace::Window => &mut self.backdrop_image,
-            BackdropPlace::Chat => &mut self.chat_backdrop_image,
+            BackdropPlace::Window => &mut self.window,
+            BackdropPlace::Chat => &mut self.chat,
+        }
+    }
+
+    pub fn adopt_from(&mut self, settings: &mut Settings) {
+        let window = settings.backdrop_image.take();
+        let chat = settings.chat_backdrop_image.take();
+        if self.is_empty() {
+            self.window = window;
+            self.chat = chat;
         }
     }
 }
@@ -162,18 +184,18 @@ mod tests {
 
     #[test]
     fn the_window_and_the_chat_keep_their_own_image() -> serde_json::Result<()> {
-        let mut settings = Settings::default();
-        *settings.backdrop_mut(BackdropPlace::Chat) = Some(BackdropImage::new("chat.png"));
-        assert_eq!(settings.backdrop(BackdropPlace::Window), None);
+        let mut backdrops = Backdrops::default();
+        assert_eq!(serde_json::to_string(&backdrops)?, "{}");
+        *backdrops.get_mut(BackdropPlace::Chat) = Some(BackdropImage::new("chat.png"));
+        assert_eq!(backdrops.get(BackdropPlace::Window), None);
         assert_eq!(
-            settings
-                .backdrop(BackdropPlace::Chat)
+            backdrops
+                .get(BackdropPlace::Chat)
                 .map(|image| image.file.clone()),
             Some(PathBuf::from("chat.png"))
         );
-        let back: Settings = serde_json::from_str(&serde_json::to_string(&settings)?)?;
-        assert_eq!(back.chat_backdrop_image, settings.chat_backdrop_image);
-        assert_eq!(back.backdrop_image, None);
+        let back: Backdrops = serde_json::from_str(&serde_json::to_string(&backdrops)?)?;
+        assert_eq!(back, backdrops);
         Ok(())
     }
 

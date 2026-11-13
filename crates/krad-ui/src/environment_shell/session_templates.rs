@@ -2,8 +2,7 @@ mod launch;
 mod sheet;
 
 use gpui_kit::{AppContext as _, Context};
-use krad_domain::{review::Issue, ToastKind};
-use krad_domain::{GroupId, McpServerName, ModelId, SessionTemplate};
+use krad_domain::{review::Issue, GroupId, McpServerName, ModelId, SessionTemplate, ToastKind};
 use krad_protocol::ReviewAct;
 use krad_repo::{read_session_templates, StoredTemplate};
 use std::path::{Path, PathBuf};

@@ -1,6 +1,7 @@
 use krad_domain::{
-    AgentPreset, AttentionTarget, ChatMessage, CloudRunnerId, EnvironmentChange, EnvironmentData,
-    EnvironmentName, EventRecord, GitObjectId, Host, KraddieId, RewindPoint, Settings, UsageReport,
+    AgentPreset, AttentionTarget, ChatImage, ChatMessage, CloudRunnerId, EnvironmentChange,
+    EnvironmentData, EnvironmentName, EventRecord, GitObjectId, Host, KraddieId, RewindPoint,
+    Settings, UsageReport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +25,7 @@ use crate::kraddies::{KraddieState, KraddiesSnapshot, OwnedDigests};
 use crate::launches::TerminalLaunched;
 use crate::models::{ListedModels, ModelsOrigin, ModelsSnapshot};
 use crate::opencode::{OpencodeShown, OpencodeSnapshot};
+use crate::problems::Problem;
 use crate::review::{CodeHostLogin, ReviewAnswered};
 use crate::runners::{
     CloudAskReplayed, RunnerBusShown, RunnerLogins, RunnerNotice, RunnerRemoved, RunnerShown,
@@ -178,6 +180,11 @@ pub enum EventKind {
         chat: AgentRef,
         report: UsageReport,
     },
+    ChatImageAttached {
+        chat: AgentRef,
+        image: ChatImage,
+    },
+    Problem(Problem),
     GitRead(GitRead),
     GitFinished(GitFinished),
     SessionChangesRead(SessionChangesRead),

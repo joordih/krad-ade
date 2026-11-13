@@ -1,34 +1,11 @@
 use futures::channel::{mpsc, oneshot};
 use futures::{Stream, StreamExt as _};
-use krad_domain::{AskAnswer, ToolDecision};
-use krad_protocol::{AskId, BusCommand, Command, Feed};
+use krad_protocol::Feed;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use super::{RuntimeHandle, RuntimeStopped};
-
-#[derive(Clone, Debug)]
-pub struct HeldAsk {
-    pub ask: AskId,
-    pub(crate) runtime: RuntimeHandle,
-}
-
-impl HeldAsk {
-    pub fn decide(self, decision: ToolDecision) {
-        self.runtime.post(Command::Bus(BusCommand::AnswerAsk {
-            ask: self.ask,
-            decision,
-        }));
-    }
-
-    pub fn answer(self, answer: AskAnswer) {
-        self.runtime.post(Command::Bus(BusCommand::Answer {
-            ask: self.ask,
-            answer,
-        }));
-    }
-}
+use super::RuntimeStopped;
 
 #[must_use]
 #[derive(Debug)]

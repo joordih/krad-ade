@@ -1,7 +1,8 @@
 use krad_domain::{
     AcpAuthMethod, AcpAuthMethodId, AcpConfigOption, AcpConfigOptionId, AcpConfigValue, AcpModeId,
     AcpModels, AcpModes, AgentPreset, AskAnswer, AskKind, ChatMessage, ChatOrigin, CommandOffer,
-    Effort, McpProjectTrust, ModelId, PermissionMode, PickedAnswer, Prompt, ResumeId, RewindScope,
+    Effort, ImageFormat, McpProjectTrust, ModelId, PermissionMode, PickedAnswer, Prompt, ResumeId,
+    RewindScope,
 };
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
@@ -94,8 +95,21 @@ pub enum ChatCommand {
         chat: AgentRef,
         trust: McpProjectTrust,
     },
+    AttachImage {
+        chat: AgentRef,
+        image: PastedImage,
+    },
+    ForgetImages {
+        chat: AgentRef,
+    },
     #[serde(other)]
     Unknown,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct PastedImage {
+    pub format: ImageFormat,
+    pub bytes: Vec<u8>,
 }
 
 impl ChatCommand {
@@ -118,7 +132,9 @@ impl ChatCommand {
             | Self::SetAcpMode { chat, .. }
             | Self::SetAcpOption { chat, .. }
             | Self::SignIn { chat, .. }
-            | Self::TrustMcp { chat, .. } => Some(chat),
+            | Self::TrustMcp { chat, .. }
+            | Self::AttachImage { chat, .. }
+            | Self::ForgetImages { chat } => Some(chat),
             Self::Unknown => None,
         }
     }
