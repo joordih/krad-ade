@@ -13,7 +13,7 @@ use super::super::super::super::cloud::NodeSite;
 use super::super::super::super::opencode::OpencodeLink;
 use super::super::super::super::EnvironmentShell;
 use super::super::super::transcript::{fold_history, started_at, TailJob, TailRead};
-use super::super::super::{Backend, Origin, SurfaceChat};
+use super::super::super::{Backend, SurfaceChat};
 use super::super::{structured_chat, structured_mut};
 
 pub(in crate::environment_shell::surface) struct Earlier {
@@ -41,7 +41,7 @@ fn prepend_history(chat: &mut SurfaceChat, entries: &[ChatEntry], started: Optio
     }
     messages.append(&mut chat.messages);
     chat.messages = messages;
-    chat.origin = Origin::of(entries, started);
+    chat.origin = krad_domain::ChatOrigin::of(entries, started);
     chat.opened_thoughts.clear();
     chat.editing = None;
     chat.thread.remeasure();

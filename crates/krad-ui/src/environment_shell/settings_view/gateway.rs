@@ -159,11 +159,7 @@ impl EnvironmentShell {
         };
         let has_key = matches!(
             self.gateway.link,
-            GatewayLink::Ready { .. }
-                | GatewayLink::Failed {
-                    access: Some(_),
-                    ..
-                }
+            GatewayLink::Ready { .. } | GatewayLink::Failed { has_key: true, .. }
         );
         let mut actions = Vec::new();
         if configured {

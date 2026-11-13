@@ -1,7 +1,8 @@
-use gpui_kit::{AppContext as _, Context};
-use krad_domain::Host;
-use krad_repo::{index_files, EntryKind, FileIndex, IndexEntry};
+use gpui_kit::Context;
+use krad_domain::{Host, ToastKind};
+use krad_repo::{EntryKind, FileIndex, IndexEntry};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::super::EnvironmentShell;
@@ -16,7 +17,7 @@ pub(in crate::environment_shell) struct IndexKey {
 
 pub(in crate::environment_shell) struct IndexedFiles {
     key: IndexKey,
-    index: FileIndex,
+    index: Arc<FileIndex>,
     built: Instant,
     stale: bool,
 }
@@ -52,7 +53,7 @@ impl EnvironmentShell {
         self.chat.indexing = Some(key.clone());
         let link = self.active_link();
         let root = key.root.clone();
-        let index = cx.background_spawn(async move { index_files(&link, &root) });
+        let index = self.runtime.handle.mention_index(link, root);
         cx.spawn(async move |this, cx| {
             let index = index.await;
             this.update(cx, |shell, cx| {
@@ -60,7 +61,7 @@ impl EnvironmentShell {
                     shell.chat.indexing = None;
                 }
                 match index {
-                    Ok(index) => {
+                    Ok(Ok(index)) => {
                         shell.chat.files = Some(IndexedFiles {
                             key,
                             index,
@@ -69,7 +70,8 @@ impl EnvironmentShell {
                         });
                         shell.refind_palette_files(cx);
                     }
-                    Err(error) => shell.toast_failure(&error),
+                    Ok(Err(error)) => shell.toast_failure(&*error),
+                    Err(stopped) => shell.toast(ToastKind::Error, &stopped.to_string(), cx),
                 }
                 cx.notify();
             })
@@ -82,6 +84,7 @@ impl EnvironmentShell {
         if let Some(files) = self.chat.files.as_mut() {
             files.stale = true;
         }
+        self.runtime.handle.forget_mention_indexes();
     }
 
     pub(in crate::environment_shell) fn indexed_entries(
@@ -124,7 +127,7 @@ mod tests {
                 host: Host::Local,
                 root: PathBuf::from("/work"),
             },
-            index: FileIndex::default(),
+            index: Arc::default(),
             built,
             stale,
         }

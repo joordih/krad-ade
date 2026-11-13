@@ -311,7 +311,10 @@ impl EnvironmentShell {
             | EventKind::ChatOpened { .. }
             | EventKind::ChatMessageAdded { .. }
             | EventKind::ChatMessageChanged { .. }
+            | EventKind::ChatMessageAppended { .. }
             | EventKind::ChatMessagesCut { .. }
+            | EventKind::ChatMessagesPrepended { .. }
+            | EventKind::ChatCheckpointed { .. }
             | EventKind::ChatState { .. }
             | EventKind::ChatAsk(_)
             | EventKind::ChatAskSettled { .. }

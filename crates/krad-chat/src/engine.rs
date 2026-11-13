@@ -48,7 +48,6 @@ pub(crate) use wire::Protocol;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EngineConfig {
-    pub access: GatewayAccess,
     pub sessions: PathBuf,
     pub home: Option<PathBuf>,
     pub cwd: PathBuf,
@@ -114,7 +113,7 @@ fn failure_notice(failure: &McpStartFailure) -> String {
     )
 }
 
-fn setup(config: &EngineConfig, mcp: Arc<McpToolbox>) -> Setup {
+fn setup(access: GatewayAccess, config: &EngineConfig, mcp: Arc<McpToolbox>) -> Setup {
     let skills = skill_files(
         &config.host,
         config.home.as_deref(),
@@ -135,7 +134,7 @@ fn setup(config: &EngineConfig, mcp: Arc<McpToolbox>) -> Setup {
         extra: config.system_prompt.as_deref(),
     });
     Setup {
-        access: config.access.clone(),
+        access,
         workspace: Workspace {
             cwd: config.cwd.clone(),
             env: config.bus_vars.0.clone(),
@@ -183,6 +182,7 @@ fn catalog(setup: &Setup) -> Catalog {
 }
 
 fn open(
+    access: GatewayAccess,
     config: &EngineConfig,
     session: &LiveSession,
     sink: &mut impl FnMut(LiveEvent),
@@ -201,7 +201,7 @@ fn open(
     for failure in &failures {
         sink(LiveEvent::Notice(failure_notice(failure)));
     }
-    let setup = setup(config, Arc::new(toolbox));
+    let setup = setup(access, config, Arc::new(toolbox));
     let model = chosen(config, &setup, &restored);
     if let Some(model) = model.as_ref().filter(|model| !restored.holds(model)) {
         if let Err(error) = file.append(&Record::from(model)) {
@@ -245,6 +245,7 @@ fn chosen(config: &EngineConfig, setup: &Setup, restored: &Restored) -> Option<C
 }
 
 pub(crate) fn spawn_engine(
+    access: GatewayAccess,
     config: EngineConfig,
     session: &LiveSession,
     mut sink: impl FnMut(LiveEvent) + Send + 'static,
@@ -257,7 +258,7 @@ pub(crate) fn spawn_engine(
     let background = Background::default();
     let owned = background.clone();
     thread::spawn(move || {
-        if let Some(start) = open(&config, &session, &mut sink) {
+        if let Some(start) = open(access, &config, &session, &mut sink) {
             Worker::new(start, sink, inbound, owned).run(&inbox);
         }
         alive.store(false, Ordering::SeqCst);

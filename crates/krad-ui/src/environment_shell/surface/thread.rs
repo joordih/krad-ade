@@ -19,7 +19,7 @@ use super::message_actions::{copy_button, message_actions, message_group, Bookma
 use super::origin::origin_line;
 use super::status_line::{status_line, TurnPhase};
 use super::view::{column, error_line, muted_line, AgentNow, LOADING_TEXT};
-use super::{Backend, Origin, SurfaceChat};
+use super::{Backend, SurfaceChat};
 use crate::components::{Button, ButtonVariant, CopyFeedback};
 use crate::theme::{palette, SPACE_0_5};
 
@@ -36,7 +36,7 @@ const QUESTION_COPY_TOOLTIP: &str = "Copy message";
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum ThreadItem {
     Earlier,
-    Origin(Origin),
+    Origin(krad_domain::ChatOrigin),
     Message(usize),
     Loading,
     Pending(usize),
@@ -53,10 +53,10 @@ fn thread_items(chat: &SurfaceChat, now: AgentNow) -> Vec<ThreadItem> {
     }
     items.extend(chat.origin.map(ThreadItem::Origin));
     items.extend((0..chat.messages.len()).map(ThreadItem::Message));
-    if chat.messages.is_empty() && chat.problem.is_none() && chat.outbox.messages.is_empty() {
+    if chat.messages.is_empty() && chat.problem.is_none() && chat.pending_len() == 0 {
         items.push(ThreadItem::Loading);
     }
-    items.extend((0..chat.outbox.messages.len()).map(ThreadItem::Pending));
+    items.extend((0..chat.pending_len()).map(ThreadItem::Pending));
     if now == AgentNow::Working {
         items.push(ThreadItem::Status);
     }
@@ -344,9 +344,7 @@ impl EnvironmentShell {
                     .into_any_element()
             }
             ThreadItem::Loading => muted_line(LOADING_TEXT, pal),
-            ThreadItem::Pending(index) => {
-                Self::pending_bubble(id, index, chat.outbox.messages.get(index)?, cx)
-            }
+            ThreadItem::Pending(index) => Self::pending_bubble(id, index, chat.pending(index)?, cx),
             ThreadItem::Status => {
                 let activity = self
                     .envs

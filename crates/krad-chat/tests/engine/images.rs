@@ -13,7 +13,7 @@ fn an_image_mention_reaches_the_model_and_stays_in_the_history() -> io::Result<(
     fs::write(&shot, b"png")?;
     let (url, seen) = fake_gateway(Vec::new())?;
     let id = new_session_id();
-    let (chat, events) = start(config(&url, &root), &LiveSession::Start(id.clone()));
+    let (chat, events) = start(&url, config(&root), &LiveSession::Start(id.clone()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send(Prompt::new(
         "what is this?",

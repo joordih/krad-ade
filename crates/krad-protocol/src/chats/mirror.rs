@@ -1,4 +1,4 @@
-use krad_domain::ChatMessage;
+use krad_domain::{ChatLogChange, ChatMessage};
 
 use super::{ChatAsk, ChatPage, ChatState, ChatSummary};
 use crate::event::EventKind;
@@ -7,6 +7,7 @@ use crate::event::EventKind;
 pub enum MirrorChange {
     Message(usize),
     Cut(usize),
+    Prepended(usize),
     State,
     Asks,
 }
@@ -57,6 +58,19 @@ impl ChatMirror {
             | EventKind::ChatMessageChanged { index, message, .. } => {
                 self.put(*index, message)?;
                 Some(MirrorChange::Message(*index))
+            }
+            EventKind::ChatMessageAppended { index, text, .. } => {
+                let local = index.checked_sub(self.from)?;
+                ChatLogChange::Appended {
+                    index: local,
+                    text: text.clone(),
+                }
+                .apply(&mut self.messages);
+                Some(MirrorChange::Message(*index))
+            }
+            EventKind::ChatMessagesPrepended { count, .. } => {
+                self.from += count;
+                Some(MirrorChange::Prepended(*count))
             }
             EventKind::ChatMessagesCut { len, .. } => {
                 self.cut(*len);

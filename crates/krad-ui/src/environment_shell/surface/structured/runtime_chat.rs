@@ -1,8 +1,9 @@
 mod heard;
+mod shown;
 
 use gpui_kit::Context;
 use krad_chat::SlashCommand;
-use krad_domain::{AgentPreset, AgentState, EnvironmentName, Prompt, RewindScope, TerminalId};
+use krad_domain::{AgentState, EnvironmentName, Prompt, RewindScope, TerminalId};
 use krad_protocol::{AgentRef, ChatCommand, Command};
 use krad_runtime::{runs_in_runtime, ChatPlace, ChatStart};
 
@@ -10,7 +11,9 @@ use super::super::super::chat::StartError;
 use super::super::super::cloud::NodeSite;
 use super::super::super::EnvironmentShell;
 use super::super::{SurfaceChat, SurfaceCommand};
-use super::{structured_chat, structured_mut, Batch, StructuredChat};
+use super::{structured_chat, structured_mut, StructuredChat};
+
+pub(super) use shown::RuntimeShown;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(in crate::environment_shell) enum ChatDriver {
@@ -32,9 +35,12 @@ fn chat_ref(env: &EnvironmentName, id: TerminalId) -> AgentRef {
     }
 }
 
-fn batch_commands(chat: &AgentRef, batch: &Batch) -> Vec<ChatCommand> {
-    let mut commands: Vec<ChatCommand> = batch
-        .commands
+fn batch_commands(
+    chat: &AgentRef,
+    commands: &[SlashCommand],
+    prompts: Vec<Prompt>,
+) -> Vec<ChatCommand> {
+    commands
         .iter()
         .map(|command| match command {
             SlashCommand::Model(model) => ChatCommand::SetModel {
@@ -50,12 +56,11 @@ fn batch_commands(chat: &AgentRef, batch: &Batch) -> Vec<ChatCommand> {
                 thinking: *thinking,
             },
         })
-        .collect();
-    commands.extend(batch.message.clone().map(|prompt| ChatCommand::Send {
-        chat: chat.clone(),
-        prompt,
-    }));
-    commands
+        .chain(prompts.into_iter().map(|prompt| ChatCommand::Send {
+            chat: chat.clone(),
+            prompt,
+        }))
+        .collect()
 }
 
 impl EnvironmentShell {
@@ -70,12 +75,16 @@ impl EnvironmentShell {
         &mut self,
         env: &EnvironmentName,
         id: TerminalId,
+        cx: &mut Context<Self>,
     ) -> Result<(), StartError> {
         if self.awaits_remote_bus(env) {
             return Err(StartError::Waiting);
         }
-        let harness = AgentPreset::ClaudeCode;
-        let config = self.live_config(env, id, harness)?;
+        let Some(harness) = structured_of(self, env, id).map(|structured| structured.harness)
+        else {
+            return Ok(());
+        };
+        let launch = self.chat_launch(env, id, harness, cx)?;
         let link = self.env_link(env);
         let root = self
             .envs
@@ -92,7 +101,7 @@ impl EnvironmentShell {
         };
         let start = ChatStart {
             harness,
-            config,
+            launch,
             session: structured.session.clone(),
             place: ChatPlace {
                 host: link.host(),
@@ -101,18 +110,26 @@ impl EnvironmentShell {
             },
             messages: messages.clone(),
             queued: Vec::new(),
+            notices: std::mem::take(&mut structured.notices),
         };
         structured.driver = ChatDriver::InRuntime;
         self.runtime.handle.open_chat(chat_ref(env, id), start);
         Ok(())
     }
 
-    pub(super) fn hand_to_runtime(&mut self, env: &EnvironmentName, id: TerminalId, batch: &Batch) {
+    pub(super) fn hand_to_runtime(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        commands: &[SlashCommand],
+        prompts: Vec<Prompt>,
+    ) {
         let chat = chat_ref(env, id);
-        for command in batch_commands(&chat, batch) {
+        let starts_turn = !prompts.is_empty();
+        for command in batch_commands(&chat, commands, prompts) {
             self.runtime.handle.post(Command::Chat(command));
         }
-        if batch.message.is_some() {
+        if starts_turn {
             self.set_agent_state(env, id, AgentState::Working);
         }
     }
@@ -164,9 +181,10 @@ impl EnvironmentShell {
         (index, prompt): (usize, Prompt),
         scope: RewindScope,
     ) -> bool {
+        let from = structured_of(self, env, id).map_or(0, StructuredChat::runtime_from);
         self.post_runtime_chat(env, id, |chat| ChatCommand::Rewind {
             chat,
-            index,
+            index: index + from,
             prompt,
             scope,
         })
@@ -210,11 +228,19 @@ impl EnvironmentShell {
         }
         let resume = structured_of(self, env, id)
             .and_then(|structured| structured.session.history().cloned());
-        match (self.open_in_runtime(env, id), resume) {
+        match (self.open_in_runtime(env, id, cx), resume) {
             (Ok(()), _) | (Err(StartError::Waiting), None) => {}
             (Err(StartError::Waiting), Some(_)) => self.note_history_waits_for_host(env, id),
             (Err(_), Some(resume)) => {
-                self.load_history(env.clone(), id, AgentPreset::ClaudeCode, resume, cx);
+                let unread = self
+                    .envs
+                    .get(env)
+                    .and_then(|live| live.chats.get(&id))
+                    .filter(|chat| chat.messages.is_empty())
+                    .map(SurfaceChat::harness);
+                if let Some(harness) = unread {
+                    self.load_history(env.clone(), id, harness, resume, cx);
+                }
             }
             (Err(error), None) => {
                 if let Some(chat) = structured_chat(self, env, id) {
@@ -240,21 +266,19 @@ mod tests {
     use krad_domain::{Effort, ModelId};
 
     #[test]
-    fn a_batch_reaches_the_runtime_as_settings_then_the_message() {
+    fn a_batch_reaches_the_runtime_as_settings_then_every_message() {
         let chat = chat_ref(&EnvironmentName::new("main".to_owned()), TerminalId(3));
         let model = ModelId::parse("opus");
-        let batch = Batch {
-            commands: model
-                .clone()
-                .map(SlashCommand::Model)
-                .into_iter()
-                .chain([
-                    SlashCommand::Thinking(false),
-                    SlashCommand::Effort(Effort::High),
-                ])
-                .collect(),
-            message: Some(Prompt::from("go")),
-        };
+        let commands: Vec<SlashCommand> = model
+            .clone()
+            .map(SlashCommand::Model)
+            .into_iter()
+            .chain([
+                SlashCommand::Thinking(false),
+                SlashCommand::Effort(Effort::High),
+            ])
+            .collect();
+        let prompts = vec![Prompt::from("go"), Prompt::from("then this")];
         let expected: Vec<ChatCommand> = model
             .map(|model| ChatCommand::SetModel {
                 chat: chat.clone(),
@@ -274,8 +298,12 @@ mod tests {
                     chat: chat.clone(),
                     prompt: Prompt::from("go"),
                 },
+                ChatCommand::Send {
+                    chat: chat.clone(),
+                    prompt: Prompt::from("then this"),
+                },
             ])
             .collect();
-        assert_eq!(batch_commands(&chat, &batch), expected);
+        assert_eq!(batch_commands(&chat, &commands, prompts), expected);
     }
 }

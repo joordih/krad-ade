@@ -49,9 +49,9 @@ fn an_mcp_tool_asks_once_when_allowed_always_and_its_answer_goes_back() -> io::R
         call_stream("call_m2", "mcp__fake__greet", &greet),
         ANSWER.to_owned(),
     ])?;
-    let mut chat_config = config(&url, &root);
+    let mut chat_config = config(&root);
     chat_config.mcp = vec![server("fake", FAKE_SERVER)];
-    let (chat, events) = start(chat_config, &LiveSession::Start(new_session_id()));
+    let (chat, events) = start(&url, chat_config, &LiveSession::Start(new_session_id()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("greet me");
     let asked = until(&events, |event| matches!(event, LiveEvent::Ask(_)));
@@ -86,9 +86,9 @@ fn a_server_that_does_not_start_is_told_to_the_chat() -> io::Result<()> {
     let root = scratch("mcp-fail");
     fs::create_dir_all(root.join("work"))?;
     let (url, _) = fake_gateway(Vec::new())?;
-    let mut chat_config = config(&url, &root);
+    let mut chat_config = config(&root);
     chat_config.mcp = vec![server("broken", "echo boom >&2; exit 1")];
-    let (_chat, events) = start(chat_config, &LiveSession::Start(new_session_id()));
+    let (_chat, events) = start(&url, chat_config, &LiveSession::Start(new_session_id()));
     let opened = until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     assert!(opened.iter().any(|event| matches!(
         event,

@@ -1,8 +1,9 @@
 use krad_domain::{
-    AgentPreset, AskAnswer, AskKind, ChatMessage, Effort, ModelId, PermissionMode, PickedAnswer,
-    Prompt, ResumeId, RewindScope,
+    AgentPreset, AskAnswer, AskKind, ChatMessage, ChatOrigin, Effort, ModelId, PermissionMode,
+    PickedAnswer, Prompt, ResumeId, RewindScope,
 };
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 
 use crate::bus::AgentRef;
 use crate::event::EventKind;
@@ -25,6 +26,13 @@ pub enum ChatCommand {
     Queue {
         chat: AgentRef,
         prompt: Prompt,
+    },
+    Unqueue {
+        chat: AgentRef,
+        index: usize,
+    },
+    ShowEarlier {
+        chat: AgentRef,
     },
     Interrupt {
         chat: AgentRef,
@@ -76,6 +84,8 @@ impl ChatCommand {
         match self {
             Self::Send { chat, .. }
             | Self::Queue { chat, .. }
+            | Self::Unqueue { chat, .. }
+            | Self::ShowEarlier { chat }
             | Self::Interrupt { chat }
             | Self::Rewind { chat, .. }
             | Self::SetModel { chat, .. }
@@ -97,7 +107,10 @@ impl EventKind {
             Self::ChatOpened { chat, .. }
             | Self::ChatMessageAdded { chat, .. }
             | Self::ChatMessageChanged { chat, .. }
+            | Self::ChatMessageAppended { chat, .. }
             | Self::ChatMessagesCut { chat, .. }
+            | Self::ChatMessagesPrepended { chat, .. }
+            | Self::ChatCheckpointed { chat, .. }
             | Self::ChatState { chat, .. }
             | Self::ChatAskSettled { chat, .. }
             | Self::ChatClosed { chat }
@@ -127,6 +140,14 @@ pub struct ChatState {
     pub context: ChatContext,
     pub queued: Vec<Prompt>,
     pub problem: Option<String>,
+    #[serde(default)]
+    pub notices: Vec<String>,
+    #[serde(default)]
+    pub working_since: Option<SystemTime>,
+    #[serde(default)]
+    pub earlier: bool,
+    #[serde(default)]
+    pub origin: Option<ChatOrigin>,
 }
 
 impl ChatState {
@@ -147,6 +168,10 @@ impl ChatState {
             },
             queued: Vec::new(),
             problem: None,
+            notices: Vec::new(),
+            working_since: None,
+            earlier: false,
+            origin: None,
         }
     }
 }

@@ -49,7 +49,7 @@ pub use gateway::{gateway_models, GatewayError, GatewayModel, Vendor};
 pub use health::{harness_health, harness_off_path};
 pub use history::{
     claude_conversation_file, read_claude_transcript, read_claude_transcript_before,
-    read_claude_transcript_tail, TranscriptChunk, TranscriptMark,
+    read_claude_transcript_tail, transcript_started, TranscriptChunk, TranscriptMark,
 };
 pub use krad_domain::Speaker;
 pub use krad_domain::{ChatEvent, Effort, RewindPoint, RewindScope, ToolCall, ToolUseId};

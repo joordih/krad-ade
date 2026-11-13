@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use super::Runtime;
+use crate::gateway::Gateway;
 use crate::hosts::HostWork;
 use crate::jobs::JobDone;
 use crate::terminals::Shared;
@@ -90,6 +91,14 @@ impl Runtime {
                 .hosts
                 .bus_prepared(&environment, &host, prepared, &mut self.outbox),
             JobDone::ChatOpened(opening) => self.chat_opened(opening),
+            JobDone::ChatEarlier(earlier) => self.chat_earlier_read(earlier),
+            JobDone::ChatCheckpoint(taken) => self.chat_checkpoint_taken(taken),
+            JobDone::FilesIndexed(indexed) => self.files_indexed(indexed),
+            JobDone::GatewayChecked(read) => {
+                self.gateway.checked(read);
+                self.flush_chats();
+            }
+            JobDone::GatewayForgotten(forgotten) => Gateway::forgotten(forgotten),
             JobDone::HarnessChecked { .. }
             | JobDone::ModelsListed { .. }
             | JobDone::UsageRead { .. } => {}

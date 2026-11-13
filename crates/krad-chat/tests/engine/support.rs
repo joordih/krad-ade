@@ -162,15 +162,18 @@ pub(crate) fn scratch(name: &str) -> PathBuf {
     dir
 }
 
-pub(crate) fn config(url: &str, root: &Path) -> EngineConfig {
+pub(crate) fn access(url: &str) -> GatewayAccess {
+    GatewayAccess {
+        url: url
+            .parse()
+            .unwrap_or_else(|_| unreachable!("{url} is a loopback address")),
+        key: GatewayKey::parse(KEY).unwrap_or_else(|| unreachable!("the key is not blank")),
+    }
+}
+
+pub(crate) fn config(root: &Path) -> EngineConfig {
     EngineConfig {
         host: krad_host::HostLink::Local,
-        access: GatewayAccess {
-            url: url
-                .parse()
-                .unwrap_or_else(|_| unreachable!("{url} is a loopback address")),
-            key: GatewayKey::parse(KEY).unwrap_or_else(|| unreachable!("the key is not blank")),
-        },
         sessions: root.join("sessions"),
         home: None,
         cwd: root.join("work"),
@@ -203,13 +206,18 @@ pub(crate) fn completions(seen: &Seen) -> Vec<String> {
 }
 
 pub(crate) fn start(
+    url: &str,
     config: EngineConfig,
     session: &LiveSession,
 ) -> (LiveChat, Receiver<LiveEvent>) {
     let (sender, events) = channel();
-    let chat = start_chat(ChatBackend::Gateway(config), session, move |event| {
-        sender.send(event).unwrap_or_default();
-    })
+    let chat = start_chat(
+        ChatBackend::Gateway(access(url), config),
+        session,
+        move |event| {
+            sender.send(event).unwrap_or_default();
+        },
+    )
     .unwrap_or_else(|_| unreachable!("a gateway chat always starts"));
     (chat, events)
 }

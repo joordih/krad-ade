@@ -1,11 +1,9 @@
-use gpui_kit::{AppContext as _, Context};
-use krad_chat::{gateway_models, GatewayModel, ModelOffer};
-use krad_domain::{
-    AgentPreset, EnvironmentName, GatewayAccess, GatewayKey, GatewayUrl, ModelId, TerminalId,
-    ToastKind,
-};
+use gpui_kit::Context;
+use krad_chat::{GatewayModel, ModelOffer};
+use krad_domain::{AgentPreset, EnvironmentName, GatewayKey, ModelId, TerminalId, ToastKind};
 use krad_host::HostLink;
-use krad_store::{delete_gateway_key, find_gateway_key, write_gateway_key, LoginPlace};
+use krad_runtime::{GatewayCheck, GatewayChecked};
+use krad_store::LoginPlace;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -27,14 +25,35 @@ pub(super) enum GatewayLink {
     Unset,
     Checking,
     Ready {
-        access: GatewayAccess,
         place: LoginPlace,
         models: Vec<GatewayModel>,
     },
     Failed {
-        access: Option<GatewayAccess>,
+        has_key: bool,
         error: String,
     },
+}
+
+impl From<GatewayChecked> for GatewayLink {
+    fn from(checked: GatewayChecked) -> Self {
+        match checked {
+            Ok(None) => Self::Unset,
+            Ok(Some(GatewayCheck {
+                place,
+                models: Ok(models),
+            })) => Self::Ready { place, models },
+            Ok(Some(GatewayCheck {
+                models: Err(error), ..
+            })) => Self::Failed {
+                has_key: true,
+                error,
+            },
+            Err(error) => Self::Failed {
+                has_key: false,
+                error,
+            },
+        }
+    }
 }
 
 #[derive(Default)]
@@ -45,43 +64,9 @@ pub(super) struct Gateway {
 }
 
 pub(super) enum GatewayReach {
-    Ready(GatewayAccess),
+    Ready,
     Waiting,
     Unavailable(String),
-}
-
-struct Checked {
-    access: GatewayAccess,
-    place: LoginPlace,
-    models: Result<Vec<GatewayModel>, String>,
-}
-
-fn read_access(url: &GatewayUrl) -> Result<Option<(GatewayAccess, LoginPlace)>, String> {
-    let found = find_gateway_key(url).map_err(|error| error.to_string())?;
-    Ok(found.map(|(key, place)| {
-        (
-            GatewayAccess {
-                url: url.clone(),
-                key,
-            },
-            place,
-        )
-    }))
-}
-
-fn check(url: &GatewayUrl, key: Option<&GatewayKey>) -> Result<Option<Checked>, String> {
-    if let Some(key) = key {
-        write_gateway_key(url, key).map_err(|error| error.to_string())?;
-    }
-    let Some((access, place)) = read_access(url)? else {
-        return Ok(None);
-    };
-    let models = gateway_models(&access).map_err(|error| error.to_string());
-    Ok(Some(Checked {
-        access,
-        place,
-        models,
-    }))
 }
 
 impl EnvironmentShell {
@@ -101,13 +86,14 @@ impl EnvironmentShell {
         let Some(url) = self.settings.gateway.url.clone() else {
             return;
         };
-        let removed = cx.background_spawn(async move { delete_gateway_key(&url) });
+        let removed = self.runtime.handle.forget_gateway_key(url);
         cx.spawn(async move |this, cx| {
             let removed = removed.await;
             this.update(cx, |shell, cx| {
                 match removed {
-                    Ok(()) => shell.toast(ToastKind::Success, KEY_FORGOTTEN_TOAST, cx),
-                    Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
+                    Ok(Ok(())) => shell.toast(ToastKind::Success, KEY_FORGOTTEN_TOAST, cx),
+                    Ok(Err(error)) => shell.toast(ToastKind::Error, &error, cx),
+                    Err(stopped) => shell.toast(ToastKind::Error, &stopped.to_string(), cx),
                 }
                 shell.check_gateway(cx);
             })
@@ -125,6 +111,7 @@ impl EnvironmentShell {
         self.gateway.attempt += 1;
         let attempt = self.gateway.attempt;
         let Some(url) = self.settings.gateway.url.clone() else {
+            drop(self.runtime.handle.check_gateway(None, None));
             self.settle_gateway(GatewayLink::Unset, cx);
             return;
         };
@@ -140,39 +127,24 @@ impl EnvironmentShell {
             if !current {
                 return;
             }
-            let checked = cx
-                .background_executor()
-                .spawn(async move { check(&url, key.as_ref()) })
-                .await;
+            let Ok(checked) = this.update(cx, |shell, _| {
+                shell.runtime.handle.check_gateway(Some(url), key)
+            }) else {
+                return;
+            };
+            let checked = checked.await;
             this.update(cx, |shell, cx| {
                 if shell.gateway.attempt != attempt {
                     return;
                 }
-                let link = match checked {
-                    Ok(None) => GatewayLink::Unset,
-                    Ok(Some(Checked {
-                        access,
-                        place,
-                        models: Ok(models),
-                    })) => GatewayLink::Ready {
-                        access,
-                        place,
-                        models,
+                let link = checked.map_or_else(
+                    |stopped| GatewayLink::Failed {
+                        has_key: false,
+                        error: stopped.to_string(),
                     },
-                    Ok(Some(Checked {
-                        access,
-                        models: Err(error),
-                        ..
-                    })) => GatewayLink::Failed {
-                        access: Some(access),
-                        error,
-                    },
-                    Err(error) => GatewayLink::Failed {
-                        access: None,
-                        error,
-                    },
-                };
-                if saving && !matches!(link, GatewayLink::Failed { access: None, .. }) {
+                    GatewayLink::from,
+                );
+                if saving && !matches!(link, GatewayLink::Failed { has_key: false, .. }) {
                     shell.toast(ToastKind::Success, KEY_SAVED_TOAST, cx);
                 }
                 shell.settle_gateway(link, cx);
@@ -197,7 +169,7 @@ impl EnvironmentShell {
 
     pub(super) fn gateway_reach(&self) -> GatewayReach {
         match &self.gateway.link {
-            GatewayLink::Ready { access, .. } => GatewayReach::Ready(access.clone()),
+            GatewayLink::Ready { .. } => GatewayReach::Ready,
             GatewayLink::Checking => GatewayReach::Waiting,
             GatewayLink::Unset => GatewayReach::Unavailable(NOT_SET_UP_TEXT.to_owned()),
             GatewayLink::Failed { error, .. } => {
@@ -263,5 +235,36 @@ impl EnvironmentShell {
                 HostLink::Local => home_dir().map(PathBuf::from),
             })
             .unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_check_the_runtime_answers_tells_whether_a_key_is_kept_without_holding_it() {
+        let failed = |checked| match GatewayLink::from(checked) {
+            GatewayLink::Failed { has_key, .. } => Some(has_key),
+            GatewayLink::Unset | GatewayLink::Checking | GatewayLink::Ready { .. } => None,
+        };
+        let unreachable = Ok(Some(GatewayCheck {
+            place: LoginPlace::Keyring,
+            models: Err("refused".to_owned()),
+        }));
+        assert_eq!(failed(unreachable), Some(true));
+        assert_eq!(failed(Err("no keyring".to_owned())), Some(false));
+        assert!(matches!(GatewayLink::from(Ok(None)), GatewayLink::Unset));
+        let ready = GatewayLink::from(Ok(Some(GatewayCheck {
+            place: LoginPlace::ConfigFolder,
+            models: Ok(Vec::new()),
+        })));
+        assert!(matches!(
+            ready,
+            GatewayLink::Ready {
+                place: LoginPlace::ConfigFolder,
+                ..
+            }
+        ));
     }
 }

@@ -15,7 +15,7 @@ use super::super::ask::{AskQueue, Settled};
 use super::super::chat::{fold_entry, workplace_home, ChatMessage};
 use super::super::live_terminal::LiveTerminal;
 use super::super::EnvironmentShell;
-use super::{anchor, Backend, Origin, SurfaceChat, SurfaceCommand};
+use super::{anchor, Backend, SurfaceChat, SurfaceCommand};
 
 pub(super) const TRANSCRIPT_HARNESS: AgentPreset = AgentPreset::ClaudeCode;
 const TAIL_INTERVAL: Duration = Duration::from_millis(400);
@@ -167,7 +167,7 @@ fn open_answer() -> ChatMessage {
 
 pub(super) fn fold_history(chat: &mut SurfaceChat, read: &TailRead, opened: bool) {
     if opened {
-        chat.origin = Origin::of(&read.chunk.entries, read.started);
+        chat.origin = krad_domain::ChatOrigin::of(&read.chunk.entries, read.started);
     }
     let starts_mid_answer = matches!(read.chunk.entries.first(), Some(ChatEntry::Event(_)));
     if chat.messages.is_empty() && starts_mid_answer {
@@ -417,7 +417,9 @@ impl SurfaceChat {
     pub(super) fn skips_history(&self) -> bool {
         match &self.backend {
             Backend::Transcript(view) => view.transcript.skipped,
-            Backend::Structured(structured) => structured.earlier.is_some(),
+            Backend::Structured(structured) => {
+                structured.earlier.is_some() || structured.runtime_skips_history()
+            }
         }
     }
 }

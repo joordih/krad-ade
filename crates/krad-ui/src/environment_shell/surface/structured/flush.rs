@@ -1,11 +1,8 @@
 use gpui_kit::Context;
-use krad_chat::{
-    BusVars, ChatBackend, ChatEvent, EngineConfig, LiveConfig, OpencodeServer, Runner,
-};
+use krad_chat::{BusVars, ChatBackend, ChatEvent, LiveConfig, OpencodeServer, Runner};
 use krad_domain::{AgentPreset, AgentState, AttentionKind, ChatEntry, EnvironmentName, TerminalId};
-use krad_host::HostLink;
-use krad_store::gateway_sessions_dir;
-use std::path::{Path, PathBuf};
+use krad_runtime::ChatLaunch;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -13,13 +10,15 @@ use super::super::super::agent_bus::{cli_name, BUS_HINT};
 use super::super::super::agent_hooks::LEAD_HINT;
 use super::super::super::chat::{LiveProcess, StartError};
 use super::super::super::cloud::NodeSite;
-use super::super::super::gateway::GatewayReach;
 use super::super::super::kraddie_memory::joined_prompt;
 use super::super::super::opencode::OpencodeLink;
-use super::super::super::terminal_card::home_dir;
 use super::super::super::EnvironmentShell;
 use super::super::{Backend, SurfaceChat};
 use super::{add_notice, structured_chat, structured_mut, Batch};
+
+mod gateway;
+
+const GATEWAY_IN_RUNTIME: &str = "Gateway chats run in the runtime";
 
 impl EnvironmentShell {
     pub(in crate::environment_shell::surface) fn flush_structured(
@@ -45,13 +44,12 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let batch = structured.take_batch(outbox, Instant::now());
         if structured.in_runtime() {
-            if batch.message.is_some() {
-                outbox.delivered();
-            }
-            return self.hand_to_runtime(env, id, &batch);
+            let commands = std::mem::take(&mut structured.commands);
+            let prompts = outbox.take_queued();
+            return self.hand_to_runtime(env, id, &commands, prompts);
         }
+        let batch = structured.take_batch(outbox, Instant::now());
         if let Some(prompt) = &batch.message {
             outbox.delivered();
             structured.fold_sent(messages, prompt);
@@ -173,7 +171,7 @@ impl EnvironmentShell {
             return Ok(());
         };
         if self.opens_in_runtime(env, id) {
-            return self.open_in_runtime(env, id);
+            return self.open_in_runtime(env, id, cx);
         }
         match self.node_site(env, id) {
             NodeSite::Waiting(runner) => {
@@ -186,7 +184,9 @@ impl EnvironmentShell {
             }
             NodeSite::Cloud(_) | NodeSite::Env => {}
         }
-        let backend = self.chat_backend(env, id, harness, cx)?;
+        let ChatLaunch::Backend(backend) = self.chat_launch(env, id, harness, cx)? else {
+            return Err(StartError::Gateway(GATEWAY_IN_RUNTIME.to_owned()));
+        };
         let owner = env.clone();
         let apply = move |shell: &mut Self, event, cx: &mut Context<Self>| {
             shell.note_prompted(&owner, id, &event);
@@ -195,22 +195,32 @@ impl EnvironmentShell {
         let Some(structured) = structured_mut(self, env, id) else {
             return Ok(());
         };
-        structured.live = Some(LiveProcess::spawn(backend, &structured.session, cx, apply)?);
+        structured.live = Some(LiveProcess::spawn(
+            *backend,
+            &structured.session,
+            cx,
+            apply,
+        )?);
         Ok(())
     }
 
-    pub(in crate::environment_shell) fn chat_backend(
+    pub(in crate::environment_shell) fn chat_launch(
         &mut self,
         env: &EnvironmentName,
         id: TerminalId,
         harness: AgentPreset,
         cx: &mut Context<Self>,
-    ) -> Result<ChatBackend, StartError> {
+    ) -> Result<ChatLaunch, StartError> {
         let site = self.node_site(env, id);
         if let (true, Some(reason)) = (site.is_cloud(), harness.unavailable_in_cloud()) {
             return Err(StartError::Cloud(reason.to_owned()));
         }
-        Ok(match harness {
+        if harness == AgentPreset::Gateway {
+            return Ok(ChatLaunch::Gateway(Box::new(
+                self.gateway_config(env, id, cx)?,
+            )));
+        }
+        Ok(ChatLaunch::from(match harness {
             AgentPreset::ClaudeCode => ChatBackend::Claude(self.live_config(env, id, harness)?),
             AgentPreset::Codex => ChatBackend::Codex(self.live_config(env, id, harness)?),
             AgentPreset::Opencode => {
@@ -223,12 +233,11 @@ impl EnvironmentShell {
                 };
                 ChatBackend::Opencode(server, config)
             }
-            AgentPreset::Gateway => ChatBackend::Gateway(self.gateway_config(env, id, cx)?),
             AgentPreset::Acp(agent) => ChatBackend::Acp(self.acp_config(env, id, agent, cx)?),
-            AgentPreset::Shell => {
+            AgentPreset::Gateway | AgentPreset::Shell => {
                 return Err(StartError::NoChat(self.settings.acp.harness_name(harness)))
             }
-        })
+        }))
     }
 
     fn system_prompt(&self, env: &EnvironmentName, id: TerminalId, in_wsl: bool) -> Option<String> {
@@ -325,71 +334,6 @@ impl EnvironmentShell {
         }
     }
 
-    fn gateway_config(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        cx: &mut Context<Self>,
-    ) -> Result<EngineConfig, StartError> {
-        if !self.env_link(env).is_ready() {
-            return Err(StartError::Waiting);
-        }
-        let access = match self.gateway_reach() {
-            GatewayReach::Ready(access) => access,
-            GatewayReach::Waiting => return Err(StartError::Waiting),
-            GatewayReach::Unavailable(error) => return Err(StartError::Gateway(error)),
-        };
-        let sessions = gateway_sessions_dir().ok_or(StartError::NoConfigFolder)?;
-        let cwd = self.chat_folder(env, id);
-        let launch = self
-            .gateway_mcp(env, id, &cwd, cx)
-            .ok_or(StartError::Waiting)?;
-        let host = self.env_link(env);
-        let (system_prompt, bus_vars, home) = match &host {
-            HostLink::Local => (
-                self.system_prompt(env, id, false),
-                BusVars(self.bus_vars(env, id)),
-                home_dir().map(PathBuf::from),
-            ),
-            HostLink::Remote(ssh) => {
-                let home = ssh.home().map(Path::to_path_buf);
-                if self.remote_bus(env).is_some() {
-                    (
-                        self.system_prompt(env, id, false),
-                        BusVars(self.bus_vars(env, id)),
-                        home,
-                    )
-                } else {
-                    (self.memory_preamble(env, id), BusVars(Vec::new()), home)
-                }
-            }
-        };
-        let chosen = structured_mut(self, env, id).and_then(|chat| chat.chosen_model.clone());
-        let model = self
-            .gateway_model(chosen.as_ref())
-            .ok_or_else(|| StartError::Gateway(Self::no_gateway_model_text().to_owned()))?;
-        let served = self.gateway_served().to_vec();
-        let context_windows = self.settings.gateway.context_windows.clone();
-        let structured = structured_mut(self, env, id).ok_or(StartError::Waiting)?;
-        structured.notices.extend(launch.problems);
-        Ok(EngineConfig {
-            access,
-            sessions,
-            home,
-            cwd,
-            model: Some(model),
-            models: served,
-            context_windows,
-            system_prompt,
-            effort: structured.effort,
-            permission_mode: structured.permission_mode,
-            bus_vars,
-            mcp: launch.starts,
-            host,
-            skills: self.settings.skills.clone(),
-        })
-    }
-
     pub(in crate::environment_shell) fn flush_chats_of(
         &mut self,
         harness: AgentPreset,
@@ -409,6 +353,7 @@ impl EnvironmentShell {
             })
             .collect();
         for (env, id) in waiting {
+            self.runtime_chat_opened(&env, id, cx);
             self.flush_structured(&env, id, cx);
         }
     }

@@ -1,8 +1,8 @@
 mod claude;
 
 use krad_domain::{
-    AcpAuthMethodId, AcpConfigOptionId, AcpConfigValue, AcpModeId, Effort, ModelId, PermissionMode,
-    Prompt, ResumeId, UsageBudget,
+    AcpAuthMethodId, AcpConfigOptionId, AcpConfigValue, AcpModeId, Effort, GatewayAccess, ModelId,
+    PermissionMode, Prompt, ResumeId, UsageBudget,
 };
 use std::collections::hash_map::RandomState;
 use std::fmt;
@@ -195,11 +195,12 @@ impl Drop for LiveChat {
     }
 }
 
+#[derive(Clone)]
 pub enum ChatBackend {
     Claude(LiveConfig),
     Codex(LiveConfig),
     Opencode(Arc<OpencodeServer>, LiveConfig),
-    Gateway(EngineConfig),
+    Gateway(GatewayAccess, EngineConfig),
     Acp(AcpConfig),
 }
 
@@ -217,7 +218,9 @@ pub fn start_chat(
         ChatBackend::Opencode(server, config) => {
             Box::new(spawn_opencode(server, config, session, sink))
         }
-        ChatBackend::Gateway(config) => Box::new(spawn_engine(config, session, sink)),
+        ChatBackend::Gateway(access, config) => {
+            Box::new(spawn_engine(access, config, session, sink))
+        }
         ChatBackend::Acp(config) => Box::new(spawn_acp(config, session, sink)),
     };
     Ok(LiveChat { harness })

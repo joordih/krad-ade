@@ -11,6 +11,7 @@ const UNKNOWN_ASK: &str = "no ask with this id";
 const NO_REWIND_POINT: &str = "this message cannot be rewound";
 const NOT_RUNNING: &str = "the chat is not running";
 const BUSY: &str = "the chat is still answering";
+const NOT_QUEUED: &str = "no queued message at this place";
 
 impl Chats {
     pub(super) fn queue_prompt(&mut self, id: &AgentRef, prompt: Prompt) -> Reply {
@@ -19,6 +20,16 @@ impl Chats {
         };
         chat.outbox.push_back(prompt);
         Reply::Accepted
+    }
+
+    pub(super) fn unqueue(&mut self, id: &AgentRef, index: usize) -> Reply {
+        let Some(chat) = self.open.get_mut(id) else {
+            return refused(ErrorCode::NotFound, UNKNOWN_CHAT);
+        };
+        match chat.outbox.remove(index) {
+            Some(_) => Reply::Accepted,
+            None => refused(ErrorCode::NotFound, NOT_QUEUED),
+        }
     }
 
     pub(super) fn interrupt(&self, id: &AgentRef) -> Reply {
@@ -36,7 +47,7 @@ impl Chats {
         if let Some(live) = chat.live() {
             live.set_model(&model);
         }
-        chat.config.model = Some(model);
+        chat.choices.model = Some(model);
         Reply::Accepted
     }
 
@@ -44,7 +55,7 @@ impl Chats {
         let Some(chat) = self.open.get_mut(id) else {
             return refused(ErrorCode::NotFound, UNKNOWN_CHAT);
         };
-        chat.config.effort = Some(effort);
+        chat.choices.effort = Some(effort);
         if chat.live.is_some() {
             chat.commands.push(SlashCommand::Effort(effort));
         }
@@ -66,7 +77,7 @@ impl Chats {
         if let Some(live) = chat.live() {
             live.set_permission_mode(mode);
         }
-        chat.config.permission_mode = Some(mode);
+        chat.choices.permission_mode = Some(mode);
         Reply::Accepted
     }
 
@@ -98,7 +109,7 @@ impl Chats {
             .then(|| chat.home.clone())
             .flatten();
         live.rewind(RewindRequest { point, scope, home });
-        chat.working = true;
+        chat.begin_work();
         chat.rewinding = Some(Rewinding { index, prompt });
         chat.tell_state(outbox);
         Reply::Accepted

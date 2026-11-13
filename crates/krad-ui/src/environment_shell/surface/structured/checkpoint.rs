@@ -99,6 +99,16 @@ impl EnvironmentShell {
         else {
             return;
         };
+        self.record_turn_checkpoint(env, id, point, checkpoint);
+    }
+
+    pub(super) fn record_turn_checkpoint(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        point: RewindPoint,
+        checkpoint: GitObjectId,
+    ) {
         let Some(node) = self.chat_node(env, id) else {
             return;
         };

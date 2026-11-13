@@ -123,7 +123,7 @@ fn two_subagents_run_in_parallel_and_their_reports_go_back_to_the_parent() -> io
     let root = workspace("parallel")?;
     let (url, seen) = routed_gateway(split_work)?;
     let id = new_session_id();
-    let (chat, events) = start(config(&url, &root), &LiveSession::Start(id.clone()));
+    let (chat, events) = start(&url, config(&root), &LiveSession::Start(id.clone()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("split the work");
     let asked = until(&events, |event| matches!(event, LiveEvent::Ask(_)));
@@ -187,7 +187,7 @@ fn interrupting_the_chat_stops_a_subagent_waiting_on_the_user() -> io::Result<()
     let root = workspace("interrupt")?;
     let (url, _) = routed_gateway(write_only)?;
     let id = new_session_id();
-    let (chat, events) = start(config(&url, &root), &LiveSession::Start(id.clone()));
+    let (chat, events) = start(&url, config(&root), &LiveSession::Start(id.clone()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("write a note through a subagent");
     let asked = until(&events, |event| matches!(event, LiveEvent::Ask(_)));

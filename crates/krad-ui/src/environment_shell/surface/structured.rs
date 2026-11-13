@@ -37,6 +37,7 @@ pub(in crate::environment_shell) use open::restored_chats;
 use open::Earlier;
 use rewind::Rewinding;
 pub(in crate::environment_shell) use runtime_chat::ChatDriver;
+use runtime_chat::RuntimeShown;
 
 const FULL_PERCENT: u64 = 100;
 const THINKING_DEFAULT: bool = true;
@@ -94,6 +95,7 @@ pub(in crate::environment_shell) struct StructuredChat {
     pub(in crate::environment_shell) acp: AcpOffers,
     transcript: Option<AcpTranscript>,
     driver: ChatDriver,
+    shown: RuntimeShown,
 }
 
 impl StructuredChat {
@@ -128,6 +130,7 @@ impl StructuredChat {
             acp: AcpOffers::default(),
             transcript: None,
             driver: ChatDriver::InShell,
+            shown: RuntimeShown::default(),
         }
     }
 
@@ -205,7 +208,7 @@ impl StructuredChat {
     }
 
     fn has_work(&self, outbox: &Outbox) -> bool {
-        self.is_free() && (!self.commands.is_empty() || outbox.has_queued())
+        (self.in_runtime() || self.is_free()) && (!self.commands.is_empty() || outbox.has_queued())
     }
 
     pub(super) fn is_free(&self) -> bool {
@@ -213,7 +216,7 @@ impl StructuredChat {
     }
 
     pub(super) fn takes_bus_notice(&self, outbox: &Outbox) -> bool {
-        self.is_free() && !outbox.has_queued()
+        self.is_free() && !outbox.has_queued() && self.shown.queued.is_empty()
     }
 
     fn take_batch(&mut self, outbox: &mut Outbox, now: Instant) -> Batch {

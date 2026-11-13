@@ -49,10 +49,10 @@ fn one_turn(
     session: &LiveSession,
     models: Vec<GatewayModel>,
 ) -> Vec<LiveEvent> {
-    let mut claude = config(url, root);
+    let mut claude = config(root);
     claude.model = ModelId::parse(CLAUDE);
     claude.models = models;
-    let (chat, events) = start(claude, session);
+    let (chat, events) = start(url, claude, session);
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("hi");
     until(&events, finished)
@@ -112,13 +112,13 @@ fn the_context_window_of_a_model_comes_from_its_override() -> io::Result<()> {
     let root = scratch("window");
     fs::create_dir_all(root.join("work"))?;
     let (url, seen) = fake_gateway(vec![LARGE_ANSWER.to_owned()])?;
-    let mut small = config(&url, &root);
+    let mut small = config(&root);
     let window = ContextWindow::try_from(100).unwrap_or_default();
     small.context_windows = HashMap::from([(
         ModelId::parse(MODEL).unwrap_or_else(|| unreachable!("valid")),
         window,
     )]);
-    let (chat, events) = start(small, &LiveSession::Start(new_session_id()));
+    let (chat, events) = start(&url, small, &LiveSession::Start(new_session_id()));
     let opened = until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     assert!(opened
         .iter()
@@ -146,7 +146,7 @@ fn an_answer_cut_at_the_token_limit_ends_with_an_error_live_and_on_replay() -> i
     fs::create_dir_all(root.join("work"))?;
     let (url, _) = fake_gateway(vec![CUT_ANSWER.to_owned()])?;
     let id = new_session_id();
-    let (chat, events) = start(config(&url, &root), &LiveSession::Start(id.clone()));
+    let (chat, events) = start(&url, config(&root), &LiveSession::Start(id.clone()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("explain");
     let answered = until(&events, finished);
@@ -168,7 +168,7 @@ fn an_answer_cut_off_while_messages_wait_still_says_so_before_going_on() -> io::
     let root = scratch("cut-queued");
     fs::create_dir_all(root.join("work"))?;
     let (url, _) = fake_gateway(vec![CUT_ANSWER.to_owned(), ANSWER.to_owned()])?;
-    let (chat, events) = start(config(&url, &root), &LiveSession::Start(new_session_id()));
+    let (chat, events) = start(&url, config(&root), &LiveSession::Start(new_session_id()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("explain");
     chat.send("and then?");

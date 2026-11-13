@@ -71,6 +71,15 @@ fn chat_events_round_trip() -> serde_json::Result<()> {
             chat: chat(),
             ask: ChatAskId(1),
         },
+        EventKind::ChatMessageAppended {
+            chat: chat(),
+            index: 0,
+            text: " there".to_owned(),
+        },
+        EventKind::ChatMessagesPrepended {
+            chat: chat(),
+            count: 4,
+        },
         EventKind::ChatClosed { chat: chat() },
     ];
     for kind in kinds {
@@ -151,4 +160,52 @@ fn a_mirror_from_a_tail_takes_earlier_pages_in_front() {
         len: 0,
     });
     assert!(mirror.is_empty());
+}
+
+#[test]
+fn a_state_from_an_older_runtime_reads_without_its_newer_fields() -> serde_json::Result<()> {
+    let mut state = ChatState::new(AgentPreset::Codex);
+    state.notices = vec!["The chosen model is not offered".to_owned()];
+    state.working_since = Some(std::time::SystemTime::UNIX_EPOCH);
+    let json = serde_json::to_value(&state)?;
+    assert_eq!(serde_json::from_value::<ChatState>(json)?, state);
+    let older = r#"{"harness":"Codex","working":false,"alive":false,"resume":null,"model":null,"chosen_model":null,"effort":null,"permission_mode":null,"context":{"tokens":null,"window":null},"queued":[],"problem":null}"#;
+    assert_eq!(
+        serde_json::from_str::<ChatState>(older)?,
+        ChatState::new(AgentPreset::Codex)
+    );
+    Ok(())
+}
+
+#[test]
+fn a_mirror_appends_streamed_text_and_makes_room_for_earlier_messages() {
+    let mut mirror = ChatMirror::new(ChatState::new(AgentPreset::ClaudeCode));
+    let mut answer = message("Two");
+    answer.running = true;
+    mirror.apply(&EventKind::ChatMessageAdded {
+        chat: chat(),
+        index: 0,
+        message: Box::new(answer),
+    });
+    let appended = EventKind::ChatMessageAppended {
+        chat: chat(),
+        index: 0,
+        text: " tabs".to_owned(),
+    };
+    assert_eq!(mirror.apply(&appended), Some(MirrorChange::Message(0)));
+    assert_eq!(mirror.messages[0].text, "Two tabs");
+    let prepended = EventKind::ChatMessagesPrepended {
+        chat: chat(),
+        count: 2,
+    };
+    assert_eq!(mirror.apply(&prepended), Some(MirrorChange::Prepended(2)));
+    assert_eq!((mirror.from, mirror.len()), (2, 3));
+    mirror.prepend(ChatPage {
+        chat: chat(),
+        len: 3,
+        from: 0,
+        messages: vec![message("a"), message("b")],
+    });
+    assert_eq!(mirror.from, 0);
+    assert_eq!(mirror.messages[2].text, "Two tabs");
 }

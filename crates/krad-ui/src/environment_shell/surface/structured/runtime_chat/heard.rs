@@ -9,7 +9,8 @@ use super::super::super::super::ask::Waiting;
 use super::super::super::super::workers::LaunchProgress;
 use super::super::super::super::EnvironmentShell;
 use super::super::super::{anchor, Backend, SurfaceChat};
-use super::super::{structured_chat, StructuredChat};
+use super::super::{structured_chat, structured_mut, StructuredChat};
+use super::shown::shown_problem;
 
 fn runtime_chat<'a>(
     shell: &'a mut EnvironmentShell,
@@ -48,6 +49,21 @@ impl EnvironmentShell {
                 index,
                 message,
             } => self.runtime_chat_message(&chat, index, *message, cx),
+            EventKind::ChatMessageAppended { chat, index, text } => {
+                self.runtime_chat_appended(&chat, index, text);
+            }
+            EventKind::ChatMessagesPrepended { chat, count } => {
+                let (env, id) = (&chat.environment, chat.terminal);
+                if let Some(structured) = structured_mut(self, env, id) {
+                    structured.shown.shifted(count);
+                }
+                self.page_in_earlier(env, id, cx);
+            }
+            EventKind::ChatCheckpointed {
+                chat,
+                point,
+                checkpoint,
+            } => self.record_turn_checkpoint(&chat.environment, chat.terminal, point, checkpoint),
             EventKind::ChatMessagesCut { chat, len } => self.runtime_chat_cut(&chat, len),
             EventKind::ChatAsk(ask) => self.runtime_chat_ask(ask, cx),
             EventKind::ChatAskSettled { chat, ask } => {
@@ -71,9 +87,12 @@ impl EnvironmentShell {
             let ChatSummary { state, tail, asks } = summary;
             let chat = tail.chat.clone();
             if let Some(shown) = runtime_chat(self, &chat.environment, chat.terminal) {
-                if tail.from == 0 {
-                    shown.messages = tail.messages;
-                    shown.thread.remeasure();
+                shown.messages = tail.messages;
+                shown.opened_thoughts.clear();
+                shown.tool_groups.clear();
+                shown.thread.remeasure();
+                if let Some(structured) = shown.structured_mut() {
+                    structured.shown.starts_at(tail.from);
                 }
             }
             for ask in asks {
@@ -92,7 +111,10 @@ impl EnvironmentShell {
     ) {
         let (env, id) = (&chat.environment, chat.terminal);
         let progress = progress_of(&message);
-        let Some(shown) = runtime_chat(self, env, id) else {
+        let Some((shown, index)) = runtime_chat(self, env, id).and_then(|shown| {
+            let index = shown.structured()?.shown.local(index)?;
+            Some((shown, index))
+        }) else {
             return;
         };
         let followed = anchor::follows_tail(shown.anchor, &shown.thread);
@@ -103,8 +125,29 @@ impl EnvironmentShell {
         self.follow_launch_progress(env, id, progress, cx);
     }
 
+    fn runtime_chat_appended(&mut self, chat: &AgentRef, index: usize, text: String) {
+        let Some((shown, index)) =
+            runtime_chat(self, &chat.environment, chat.terminal).and_then(|shown| {
+                let index = shown.structured()?.shown.local(index)?;
+                Some((shown, index))
+            })
+        else {
+            return;
+        };
+        let followed = anchor::follows_tail(shown.anchor, &shown.thread);
+        ChatLogChange::Appended { index, text }.apply(&mut shown.messages);
+        if followed {
+            shown.thread.scroll_to_end();
+        }
+    }
+
     fn runtime_chat_cut(&mut self, chat: &AgentRef, len: usize) {
-        let Some(shown) = runtime_chat(self, &chat.environment, chat.terminal) else {
+        let Some((shown, len)) =
+            runtime_chat(self, &chat.environment, chat.terminal).and_then(|shown| {
+                let len = shown.structured()?.shown.local(len).unwrap_or_default();
+                Some((shown, len))
+            })
+        else {
             return;
         };
         shown.messages.truncate(len);
@@ -143,7 +186,10 @@ impl EnvironmentShell {
         let Some(shown) = runtime_chat(self, env, id) else {
             return;
         };
-        shown.problem.clone_from(&state.problem);
+        shown.problem = shown_problem(&state);
+        if state.origin.is_some() {
+            shown.origin = state.origin;
+        }
         let failed = shown
             .messages
             .last()
@@ -152,6 +198,7 @@ impl EnvironmentShell {
         let Backend::Structured(structured) = &mut shown.backend else {
             return;
         };
+        structured.shown.take_state(&state);
         let was_working = structured.working;
         if state.working {
             structured.working = true;

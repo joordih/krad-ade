@@ -15,6 +15,7 @@ use crate::attention::Attention;
 use crate::bus::{open, Bus, BusSetup};
 use crate::chats::Chats;
 use crate::environments::{Environments, EnvironmentsSetup};
+use crate::gateway::Gateway;
 use crate::handle::RuntimeHandle;
 use crate::harness_health::Health;
 use crate::hosts::Hosts;
@@ -60,6 +61,7 @@ pub struct Runtime {
     terminals: Terminals,
     hosts: Hosts,
     chats: Chats,
+    gateway: Gateway,
     stopped: Arc<AtomicBool>,
 }
 
@@ -131,6 +133,7 @@ impl Runtime {
             terminals: Terminals::new(inbox.clone()),
             hosts: owned.hosts,
             chats: Chats::new(inbox.clone()),
+            gateway: Gateway::default(),
             stopped,
         }
     }
@@ -204,7 +207,13 @@ impl Runtime {
                 channel,
             } => self.hand_machine_channel(&environment, channel),
             Input::Wake => {}
-            chat @ (Input::OpenChat { .. } | Input::CloseChat(_) | Input::ChatPage { .. }) => {
+            chat @ (Input::OpenChat { .. }
+            | Input::CloseChat(_)
+            | Input::ChatPage { .. }
+            | Input::MentionIndex { .. }
+            | Input::ForgetMentionIndexes
+            | Input::StartLiveChat(_)
+            | Input::Gateway(_)) => {
                 self.apply_chat_input(chat);
             }
             Input::CheckHarnesses { place, probes } => {
@@ -271,6 +280,10 @@ impl Runtime {
             | Input::OpenChat { .. }
             | Input::CloseChat(_)
             | Input::ChatPage { .. }
+            | Input::MentionIndex { .. }
+            | Input::ForgetMentionIndexes
+            | Input::StartLiveChat(_)
+            | Input::Gateway(_)
             | Input::Wake
             | Input::Tick
             | Input::Stop => {}

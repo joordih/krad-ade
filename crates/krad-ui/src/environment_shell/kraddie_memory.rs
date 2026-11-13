@@ -44,7 +44,7 @@ pub(super) struct KraddieMemoryUi {
     ordinary_store: Option<OrdinaryDigests>,
     shelf: Option<KraddieShelf>,
     quiet: HashMap<ChatKey, Instant>,
-    writing: HashMap<ChatKey, LiveChat>,
+    writing: HashMap<ChatKey, Option<LiveChat>>,
     attempted: HashMap<ChatKey, usize>,
     pub(super) expanded: HashSet<KraddieId>,
     older_digests: HashMap<KraddieId, usize>,

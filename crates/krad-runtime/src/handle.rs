@@ -1,14 +1,17 @@
 use futures::channel::{mpsc, oneshot};
 use futures::{Stream, StreamExt as _};
 use krad_agents::{AgentInfo, AgentKey, StateReason};
-use krad_chat::Runner;
-use krad_domain::{AgentPreset, EnvironmentName, Host, ToolDecision, UsageBudget};
+use krad_chat::{LiveEvent, LiveSession, Runner};
+use krad_domain::{
+    AgentPreset, EnvironmentName, GatewayKey, GatewayUrl, Host, ToolDecision, UsageBudget,
+};
 use krad_host::mux::PromptSender;
 use krad_host::{HostContext, HostLink, MachineChannel};
 use krad_protocol::{
     AgentRef, AskId, BusCommand, ChatPage, Command, Feed, HealthPlace, Reply, RequestId, Scope,
     Snapshot, TerminalCommand, WriteBy,
 };
+use krad_repo::{FileIndex, RepoError};
 use krad_session::{AnsiPalette, SearchDirection};
 use std::future::Future;
 use std::path::PathBuf;
@@ -19,10 +22,11 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use crate::bus::{BusAccess, DelegationReceiver, DELEGATION_BUFFER};
-use crate::chats::ChatStart;
+use crate::chats::{ChatLaunch, ChatStart, LiveStarted};
+use crate::gateway::{GatewayChecked, GatewayInput};
 use crate::harness_health::HarnessProbe;
 use crate::hosts::HostLinks;
-use crate::input::Input;
+use crate::input::{Input, LiveStart};
 use crate::terminals::{Shared, TerminalAction, TerminalLaunch, TerminalView};
 use crate::usage::UsagePlace;
 
@@ -189,6 +193,55 @@ impl RuntimeHandle {
             count,
             reply,
         });
+        Pending(answer)
+    }
+
+    pub fn mention_index(
+        &self,
+        link: HostLink,
+        root: PathBuf,
+    ) -> Pending<Result<Arc<FileIndex>, Arc<RepoError>>> {
+        let (reply, answer) = oneshot::channel();
+        self.deliver(Input::MentionIndex {
+            place: (link, root),
+            reply,
+        });
+        Pending(answer)
+    }
+
+    pub fn forget_mention_indexes(&self) {
+        self.deliver(Input::ForgetMentionIndexes);
+    }
+
+    pub fn start_live_chat(
+        &self,
+        launch: ChatLaunch,
+        session: LiveSession,
+        sink: impl FnMut(LiveEvent) + Send + 'static,
+    ) -> Pending<LiveStarted> {
+        let (reply, answer) = oneshot::channel();
+        self.deliver(Input::StartLiveChat(Box::new(LiveStart {
+            launch,
+            session,
+            sink: Box::new(sink),
+            reply,
+        })));
+        Pending(answer)
+    }
+
+    pub fn check_gateway(
+        &self,
+        url: Option<GatewayUrl>,
+        key: Option<GatewayKey>,
+    ) -> Pending<GatewayChecked> {
+        let (reply, answer) = oneshot::channel();
+        self.deliver(Input::Gateway(GatewayInput::Check { url, key, reply }));
+        Pending(answer)
+    }
+
+    pub fn forget_gateway_key(&self, url: GatewayUrl) -> Pending<Result<(), String>> {
+        let (reply, answer) = oneshot::channel();
+        self.deliver(Input::Gateway(GatewayInput::Forget { url, reply }));
         Pending(answer)
     }
 

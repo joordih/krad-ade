@@ -1,12 +1,15 @@
 use serde::{Deserialize, Serialize};
 
+use super::fold::add_text;
 use super::ChatMessage;
+use crate::chat::{ChatEntry, ChatEvent};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "change", rename_all = "snake_case")]
 pub enum ChatLogChange {
     Added { index: usize, message: ChatMessage },
     Changed { index: usize, message: ChatMessage },
+    Appended { index: usize, text: String },
     Cut { len: usize },
 }
 
@@ -32,8 +35,37 @@ impl ChatLogChange {
         changes
     }
 
+    #[must_use]
+    pub fn after(
+        entry: &ChatEntry,
+        messages: &[ChatMessage],
+        before: usize,
+        touched: Option<usize>,
+    ) -> Vec<Self> {
+        let last = messages.len().checked_sub(1);
+        match entry {
+            ChatEntry::Event(ChatEvent::TextDelta(text))
+                if messages.len() == before && touched.is_some() && touched == last =>
+            {
+                touched
+                    .map(|index| Self::Appended {
+                        index,
+                        text: text.clone(),
+                    })
+                    .into_iter()
+                    .collect()
+            }
+            _ => Self::since(messages, before, touched),
+        }
+    }
+
     pub fn apply(self, messages: &mut Vec<ChatMessage>) {
         match self {
+            Self::Appended { index, text } => {
+                if let Some(message) = messages.get_mut(index) {
+                    add_text(message, &text, false);
+                }
+            }
             Self::Added { index, message } | Self::Changed { index, message } => {
                 if index < messages.len() {
                     messages[index] = message;
@@ -100,6 +132,39 @@ mod tests {
             0
         );
         assert_eq!(copy, log);
+    }
+
+    #[test]
+    fn a_streamed_delta_travels_as_its_text_and_a_copy_follows() {
+        let mut log = Vec::new();
+        let mut copy = Vec::new();
+        replay(&mut log, &mut copy, &user("one"));
+        let mut told = Vec::new();
+        for piece in ["Two ", "tabs", ".", "\n\nThen"] {
+            let entry = ChatEntry::Event(ChatEvent::TextDelta(piece.to_owned()));
+            let before = log.len();
+            let touched = fold_entry(&mut log, &entry);
+            for change in ChatLogChange::after(&entry, &log, before, touched) {
+                told.push(change.clone());
+                change.apply(&mut copy);
+            }
+        }
+        assert!(told
+            .iter()
+            .all(|change| matches!(change, ChatLogChange::Appended { index: 1, .. })));
+        let entry = ChatEntry::Event(ChatEvent::Done);
+        let before = log.len();
+        let touched = fold_entry(&mut log, &entry);
+        let done = ChatLogChange::after(&entry, &log, before, touched);
+        assert!(matches!(
+            done.as_slice(),
+            [ChatLogChange::Changed { index: 1, .. }]
+        ));
+        for change in done {
+            change.apply(&mut copy);
+        }
+        assert_eq!(copy, log);
+        assert_eq!(log[1].text, "Two tabs.\n\nThen");
     }
 
     #[test]

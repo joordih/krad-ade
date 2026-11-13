@@ -1,8 +1,8 @@
 use futures::channel::{mpsc, oneshot};
 use krad_agents::{AgentInfo, AgentKey, Incoming, Response, StateReason};
-use krad_chat::Runner;
+use krad_chat::{LiveEvent, LiveSession, Runner};
 use krad_domain::{AgentPreset, EnvironmentName, Host};
-use krad_host::MachineChannel;
+use krad_host::{HostLink, MachineChannel};
 use krad_protocol::{
     AgentRef, ChatPage, Command, Feed, HealthPlace, Reply, RequestId, Scope, Snapshot, WebhookTest,
 };
@@ -11,11 +11,28 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::bus::{Delegated, DelegationId, Mail};
-use crate::chats::ChatStart;
+use crate::chats::{ChatLaunch, ChatStart, IndexAnswer, LiveStarted};
+use crate::gateway::GatewayInput;
 use crate::harness_health::HarnessProbe;
 use crate::jobs::JobDone;
 use crate::terminals::{Shared, TerminalAction, TerminalLaunch};
 use crate::usage::UsagePlace;
+
+pub(crate) struct LiveStart {
+    pub(crate) launch: ChatLaunch,
+    pub(crate) session: LiveSession,
+    pub(crate) sink: Box<dyn FnMut(LiveEvent) + Send>,
+    pub(crate) reply: oneshot::Sender<LiveStarted>,
+}
+
+impl std::fmt::Debug for LiveStart {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("LiveStart")
+            .field("session", &self.session)
+            .finish_non_exhaustive()
+    }
+}
 
 #[derive(Debug)]
 pub(crate) enum Input {
@@ -92,6 +109,13 @@ pub(crate) enum Input {
         count: usize,
         reply: oneshot::Sender<Option<ChatPage>>,
     },
+    MentionIndex {
+        place: (HostLink, PathBuf),
+        reply: oneshot::Sender<IndexAnswer>,
+    },
+    ForgetMentionIndexes,
+    StartLiveChat(Box<LiveStart>),
+    Gateway(GatewayInput),
     Wake,
     Tick,
     Stop,

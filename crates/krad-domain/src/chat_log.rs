@@ -1,5 +1,6 @@
 mod change;
 mod fold;
+mod origin;
 mod shown_output;
 
 use serde::{Deserialize, Serialize};
@@ -12,6 +13,7 @@ use crate::rewind::RewindPoint;
 
 pub use change::ChatLogChange;
 pub use fold::{fold_entry, fold_prompt, last_permission_mode};
+pub use origin::{ChatOpener, ChatOrigin};
 pub use shown_output::ShownOutput;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

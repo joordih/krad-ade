@@ -1,6 +1,6 @@
 use krad_domain::{
     AgentPreset, AttentionTarget, ChatMessage, EnvironmentChange, EnvironmentData, EnvironmentName,
-    EventRecord, Host, UsageReport,
+    EventRecord, GitObjectId, Host, RewindPoint, UsageReport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -106,9 +106,23 @@ pub enum EventKind {
         index: usize,
         message: Box<ChatMessage>,
     },
+    ChatMessageAppended {
+        chat: AgentRef,
+        index: usize,
+        text: String,
+    },
     ChatMessagesCut {
         chat: AgentRef,
         len: usize,
+    },
+    ChatMessagesPrepended {
+        chat: AgentRef,
+        count: usize,
+    },
+    ChatCheckpointed {
+        chat: AgentRef,
+        point: RewindPoint,
+        checkpoint: GitObjectId,
     },
     ChatState {
         chat: AgentRef,

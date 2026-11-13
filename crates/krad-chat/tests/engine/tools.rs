@@ -21,7 +21,7 @@ fn a_web_page_is_fetched_after_the_user_allows_it_and_read_as_text() -> io::Resu
     )?;
     let fetch = call_stream("call_fetch", "web_fetch", &serde_json::json!({"url": page}));
     let (url, seen) = fake_gateway(vec![fetch, ANSWER.to_owned()])?;
-    let (chat, events) = start(config(&url, &root), &LiveSession::Start(new_session_id()));
+    let (chat, events) = start(&url, config(&root), &LiveSession::Start(new_session_id()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("read the release notes");
     let asked = until(&events, |event| matches!(event, LiveEvent::Ask(_)));
@@ -65,9 +65,9 @@ fn background_shells_die_with_their_chat() -> io::Result<()> {
         &serde_json::json!({"command": "sleep 1 && touch late.txt", "run_in_background": true}),
     );
     let (url, seen) = fake_gateway(vec![start_call, ANSWER.to_owned()])?;
-    let mut bypass = config(&url, &root);
+    let mut bypass = config(&root);
     bypass.permission_mode = Some(PermissionMode::BypassPermissions);
-    let (chat, events) = start(bypass, &LiveSession::Start(new_session_id()));
+    let (chat, events) = start(&url, bypass, &LiveSession::Start(new_session_id()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("start it");
     until(&events, finished);
@@ -93,7 +93,7 @@ fn web_search_sends_a_side_request_with_only_native_search() -> io::Result<()> {
         "\n\ndata: [DONE]\n\n"
     );
     let (url, seen) = fake_gateway(vec![search, found.to_owned(), ANSWER.to_owned()])?;
-    let (chat, events) = start(config(&url, &root), &LiveSession::Start(new_session_id()));
+    let (chat, events) = start(&url, config(&root), &LiveSession::Start(new_session_id()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("which serde?");
     let answered = until(&events, finished);
@@ -125,9 +125,9 @@ fn a_fetch_with_a_prompt_returns_the_models_extract_of_the_page() -> io::Result<
         serde_json::json!({"choices": [{"index": 0, "delta": {"content": EXTRACT}, "finish_reason": "stop"}]})
     );
     let (url, seen) = fake_gateway(vec![fetch, extract, ANSWER.to_owned()])?;
-    let mut bypass = config(&url, &root);
+    let mut bypass = config(&root);
     bypass.permission_mode = Some(PermissionMode::BypassPermissions);
-    let (chat, events) = start(bypass, &LiveSession::Start(new_session_id()));
+    let (chat, events) = start(&url, bypass, &LiveSession::Start(new_session_id()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("which serde is the latest?");
     until(&events, finished);
@@ -163,10 +163,10 @@ fn web_search_on_a_model_without_native_search_says_so_without_a_side_request() 
         &serde_json::json!({"query": "latest serde"}),
     );
     let (url, seen) = fake_gateway(vec![search, ANSWER.to_owned()])?;
-    let mut other = config(&url, &root);
+    let mut other = config(&root);
     other.model = ModelId::parse(LLAMA);
     other.models = vec![gateway_model(LLAMA, Vendor::Other)];
-    let (chat, events) = start(other, &LiveSession::Start(new_session_id()));
+    let (chat, events) = start(&url, other, &LiveSession::Start(new_session_id()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("which serde?");
     until(&events, finished);

@@ -15,6 +15,14 @@ fn append_text(answer: &mut String, piece: &str, whole_blocks: bool) {
     answer.push_str(piece);
 }
 
+pub(super) fn add_text(answer: &mut ChatMessage, piece: &str, whole_blocks: bool) {
+    append_text(&mut answer.text, piece, whole_blocks);
+    match answer.parts.last_mut() {
+        Some(AnswerPart::Text(text)) => append_text(text, piece, whole_blocks),
+        _ => answer.parts.push(AnswerPart::Text(piece.to_owned())),
+    }
+}
+
 fn last_user(messages: &[ChatMessage]) -> Option<usize> {
     messages
         .iter()
@@ -95,14 +103,8 @@ fn fold_into_answer(messages: &mut [ChatMessage], event: &ChatEvent) -> Option<u
         | ChatEvent::Edited { .. }
         | ChatEvent::ToolOutput { .. } => return None,
         ChatEvent::Checklist(list) => answer.checklist = Some(list.clone()),
-        ChatEvent::Text(piece) | ChatEvent::TextDelta(piece) => {
-            let whole_blocks = matches!(event, ChatEvent::Text(_));
-            append_text(&mut answer.text, piece, whole_blocks);
-            match answer.parts.last_mut() {
-                Some(AnswerPart::Text(text)) => append_text(text, piece, whole_blocks),
-                _ => answer.parts.push(AnswerPart::Text(piece.clone())),
-            }
-        }
+        ChatEvent::Text(piece) => add_text(answer, piece, true),
+        ChatEvent::TextDelta(piece) => add_text(answer, piece, false),
         ChatEvent::Thinking(thought) => {
             answer.parts.push(AnswerPart::Thinking(thought.clone()));
         }

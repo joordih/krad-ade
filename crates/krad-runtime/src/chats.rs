@@ -1,11 +1,16 @@
 mod answers;
+mod backend;
 mod chat;
+mod checkpoints;
 mod heard;
 mod history;
+mod mentions;
 mod queue;
 
-use krad_chat::{start_chat, ChatBackend, LiveConfig, LiveSession};
-use krad_domain::{AgentPreset, AttentionKind, ChatMessage, Host, ModelOffer, Prompt, UsageReport};
+use krad_chat::LiveSession;
+use krad_domain::{
+    AgentPreset, AttentionKind, ChatMessage, GatewayAccess, Host, ModelOffer, Prompt, UsageReport,
+};
 use krad_host::HostLink;
 use krad_protocol::{
     AgentRef, ChatAsk, ChatCommand, ChatPage, ChatSummary, ErrorCode, EventKind, Reply, UsageNews,
@@ -17,8 +22,13 @@ use std::sync::mpsc::{Receiver, SyncSender};
 use crate::input::Input;
 use crate::jobs::Jobs;
 use crate::runtime::refused;
+use backend::ensure_live;
+pub use backend::{runs_in_runtime, ChatLaunch, LiveStarted};
 use chat::Chat;
-pub(crate) use history::ChatOpening;
+pub(crate) use checkpoints::ChatCheckpoint;
+pub(crate) use history::{ChatEarlier, ChatOpening};
+use mentions::MentionIndexes;
+pub(crate) use mentions::{FilesIndexed, IndexAnswer};
 use queue::{ChatQueue, Heard};
 
 const CHAT_PAGE: usize = 64;
@@ -31,19 +41,24 @@ pub struct ChatPlace {
     pub root: Option<PathBuf>,
 }
 
-#[derive(Debug)]
 pub struct ChatStart {
     pub harness: AgentPreset,
-    pub config: LiveConfig,
+    pub launch: ChatLaunch,
     pub session: LiveSession,
     pub place: ChatPlace,
     pub messages: Vec<ChatMessage>,
     pub queued: Vec<Prompt>,
+    pub notices: Vec<String>,
 }
 
-#[must_use]
-pub const fn runs_in_runtime(harness: AgentPreset) -> bool {
-    matches!(harness, AgentPreset::ClaudeCode)
+impl std::fmt::Debug for ChatStart {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ChatStart")
+            .field("harness", &self.harness)
+            .field("place", &self.place)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug)]
@@ -70,6 +85,7 @@ pub(crate) struct Chats {
     heard: Receiver<Heard>,
     next_ask: u64,
     next_generation: u64,
+    pub(crate) mentions: MentionIndexes,
 }
 
 impl std::fmt::Debug for Chats {
@@ -83,6 +99,7 @@ impl std::fmt::Debug for Chats {
 
 pub(crate) struct ChatWork<'a> {
     pub(crate) jobs: &'a Jobs,
+    pub(crate) gateway: Option<&'a GatewayAccess>,
     pub(crate) outbox: &'a mut Vec<EventKind>,
     pub(crate) effects: &'a mut Vec<ChatEffect>,
 }
@@ -96,6 +113,7 @@ impl Chats {
             heard,
             next_ask: 0,
             next_generation: 0,
+            mentions: MentionIndexes::default(),
         }
     }
 
@@ -119,7 +137,7 @@ impl Chats {
         history::read(&chat, work.jobs);
         tracing::info!("chat opened in the runtime");
         self.open.insert(id.clone(), chat);
-        self.flush(id, work.outbox);
+        self.flush(id, work);
     }
 
     pub(crate) fn close(&mut self, id: &AgentRef, outbox: &mut Vec<EventKind>) {
@@ -157,6 +175,8 @@ impl Chats {
             ChatCommand::Send { prompt, .. } | ChatCommand::Queue { prompt, .. } => {
                 self.queue_prompt(&id, prompt)
             }
+            ChatCommand::Unqueue { index, .. } => self.unqueue(&id, index),
+            ChatCommand::ShowEarlier { .. } => self.show_earlier(&id, work.jobs),
             ChatCommand::Interrupt { .. } => self.interrupt(&id),
             ChatCommand::Rewind {
                 index,
@@ -180,27 +200,35 @@ impl Chats {
             ),
             ChatCommand::Unknown => return None,
         };
-        self.flush(&id, work.outbox);
+        self.flush(&id, work);
         Some(reply)
     }
 
-    pub(crate) fn flush(&mut self, id: &AgentRef, outbox: &mut Vec<EventKind>) {
+    pub(crate) fn flush_all(&mut self, work: &mut ChatWork<'_>) {
+        let open: Vec<AgentRef> = self.open.keys().cloned().collect();
+        for id in open {
+            self.flush(&id, work);
+        }
+    }
+
+    pub(crate) fn flush(&mut self, id: &AgentRef, work: &mut ChatWork<'_>) {
         let generation = self.next_generation + 1;
         let Some(chat) = self.open.get_mut(id) else {
             return;
         };
-        if chat.has_work() && ensure_live(chat, &self.queue, generation) {
+        if chat.has_work() && ensure_live(chat, &self.queue, generation, work.gateway) {
             if chat.generation == generation {
                 self.next_generation = generation;
             }
             let batch = chat.take_batch();
             if let Some(prompt) = &batch.message {
-                chat.fold_sent(prompt, outbox);
-                chat.problem = None;
+                chat.fold_sent(prompt, work.outbox);
             }
-            hand_over(chat, batch);
+            if !checkpoints::take_first(chat, batch.clone(), work.jobs) {
+                hand_over(chat, batch);
+            }
         }
-        chat.tell_state(outbox);
+        chat.tell_state(work.outbox);
     }
 
     pub(crate) fn snapshot(&self) -> Vec<ChatSummary> {
@@ -259,30 +287,6 @@ fn asks_of(chat: &Chat) -> Vec<ChatAsk> {
             can_allow_always: held.can_allow_always(),
         })
         .collect()
-}
-
-fn ensure_live(chat: &mut Chat, queue: &ChatQueue, generation: u64) -> bool {
-    if chat.live().is_some() {
-        return true;
-    }
-    let sink = queue.sink(chat.id.clone(), generation);
-    match start_chat(
-        ChatBackend::Claude(chat.config.clone()),
-        &chat.session,
-        sink,
-    ) {
-        Ok(live) => {
-            chat.live = Some(live);
-            chat.generation = generation;
-            chat.confirmed = false;
-            true
-        }
-        Err(error) => {
-            tracing::debug!(%error, "a chat could not start");
-            chat.problem = Some(error.to_string());
-            false
-        }
-    }
 }
 
 fn hand_over(chat: &mut Chat, batch: chat::Batch) {

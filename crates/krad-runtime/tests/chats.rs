@@ -4,8 +4,7 @@
 mod chat_support;
 
 use chat_support::{
-    chat, claude_start, fake_runner, start_runtime, Ask as _, ChatFeed, TestResult, ASK_HARNESS,
-    CLAUDE_HARNESS,
+    chat, claude_start, fake_runner, start_runtime, Ask as _, ChatFeed, TestResult, CLAUDE_HARNESS,
 };
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
@@ -16,6 +15,7 @@ use krad_protocol::{
 };
 use std::path::PathBuf;
 
+const ASK_HARNESS: &str = "tests/fixtures/fake-harness/claude-ask";
 const PROMPT: &str = "Why does it race?";
 const RECORDED_ANSWER: &str = "Two tabs rotate at once.";
 const RECORDED_SESSION: &str = "0b7c3a52-9f1e-4d2a-8c6b-1f2e3d4c5b6a";

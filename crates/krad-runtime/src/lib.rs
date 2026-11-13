@@ -3,6 +3,7 @@ mod attention;
 mod bus;
 mod chats;
 mod environments;
+mod gateway;
 mod handle;
 mod harness_health;
 mod hosts;
@@ -16,8 +17,9 @@ mod usage;
 
 pub use app_events::{EventsSetup, WebhookSecrets};
 pub use bus::{BusAccess, BusReply, BusSetup, Delegated, DelegationReceiver, Mail};
-pub use chats::{runs_in_runtime, ChatPlace, ChatStart};
+pub use chats::{runs_in_runtime, ChatLaunch, ChatPlace, ChatStart};
 pub use environments::EnvironmentsSetup;
+pub use gateway::{GatewayCheck, GatewayChecked};
 pub use handle::{EventReceiver, HeldAsk, Pending, RuntimeHandle, RuntimeStopped};
 pub use harness_health::HarnessProbe;
 pub use hosts::{

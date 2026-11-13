@@ -33,7 +33,7 @@ fn an_edited_second_prompt_is_answered_from_the_first_exchange_only() -> io::Res
     fs::create_dir_all(root.join("work"))?;
     let (url, seen) = fake_gateway(streams(&[ANSWER, ANSWER, ANSWER]))?;
     let id = new_session_id();
-    let (chat, events) = start(config(&url, &root), &LiveSession::Start(id.clone()));
+    let (chat, events) = start(&url, config(&root), &LiveSession::Start(id.clone()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("first question");
     let first = until(&events, finished);
@@ -77,7 +77,7 @@ fn a_files_rewind_puts_back_what_the_turn_wrote() -> io::Result<()> {
     fs::create_dir_all(&work)?;
     fs::write(work.join("note.txt"), "old\n")?;
     let (url, _) = fake_gateway(streams(&[WRITE_CALL, ANSWER]))?;
-    let (chat, events) = start(config(&url, &root), &LiveSession::Start(new_session_id()));
+    let (chat, events) = start(&url, config(&root), &LiveSession::Start(new_session_id()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("write a note");
     let asked = until(&events, |event| matches!(event, LiveEvent::Ask(_)));

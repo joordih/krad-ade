@@ -59,7 +59,7 @@ pub(super) fn changed_files_after(messages: &[ChatMessage], index: usize) -> boo
 impl SurfaceChat {
     pub(super) fn takes_edits(&self) -> bool {
         self.editing.is_none()
-            && self.outbox.messages.is_empty()
+            && self.pending_len() == 0
             && self
                 .structured()
                 .is_some_and(|structured| structured.is_free() && !structured.is_rewinding())
@@ -163,7 +163,7 @@ impl EnvironmentShell {
         let Some(editor) = &chat.editing else {
             return;
         };
-        let free = chat.outbox.messages.is_empty()
+        let free = chat.pending_len() == 0
             && chat
                 .structured()
                 .is_some_and(|structured| structured.is_free() && !structured.is_rewinding());

@@ -55,7 +55,6 @@ pub(super) use composer::EffortPopover;
 use edit_message::MessageEditor;
 use glide::Glide;
 pub(super) use origin::age_label;
-use origin::Origin;
 use outbox::Outbox;
 use subagents::Subagents;
 use timeline::Timeline;
@@ -103,7 +102,7 @@ pub(super) enum Backend {
 
 pub(super) struct SurfaceChat {
     pub(super) messages: Vec<ChatMessage>,
-    pub(super) origin: Option<Origin>,
+    pub(super) origin: Option<krad_domain::ChatOrigin>,
     pub(super) input: Entity<TextareaState>,
     composer_rows: u16,
     _input_events: Subscription,
@@ -320,6 +319,10 @@ impl EnvironmentShell {
     }
 
     pub(super) fn show_earlier(&mut self, id: TerminalId, cx: &mut Context<Self>) {
+        let env = self.active.clone();
+        if self.show_earlier_in_runtime(&env, id, cx) {
+            return cx.notify();
+        }
         let structured = self
             .envs
             .get(&self.active)
@@ -334,12 +337,13 @@ impl EnvironmentShell {
 
     pub(super) fn cancel_queued(&mut self, id: TerminalId, index: usize, cx: &mut Context<Self>) {
         let env = self.active.clone();
-        if let Some(chat) = self
+        let queued = self
             .envs
             .get_mut(&env)
             .and_then(|live| live.chats.get_mut(&id))
-        {
-            chat.outbox.cancel(index);
+            .and_then(|chat| chat.cancel_pending(index));
+        if let Some(index) = queued {
+            self.unqueue_in_runtime(&env, id, index);
         }
         cx.notify();
     }

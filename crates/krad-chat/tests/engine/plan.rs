@@ -18,9 +18,9 @@ fn an_approved_plan_switches_the_mode_and_the_turn_goes_on_to_implement_it() -> 
         &serde_json::json!({"plan": "# Write the note\n1. write note.txt"}),
     );
     let (url, seen) = fake_gateway(vec![plan, WRITE_CALL.to_owned(), ANSWER.to_owned()])?;
-    let mut planning = config(&url, &root);
+    let mut planning = config(&root);
     planning.permission_mode = Some(PermissionMode::Plan);
-    let (chat, events) = start(planning, &LiveSession::Start(new_session_id()));
+    let (chat, events) = start(&url, planning, &LiveSession::Start(new_session_id()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("plan a note");
     let asked = until(&events, |event| matches!(event, LiveEvent::Ask(_)));
@@ -77,7 +77,7 @@ fn exit_plan_outside_plan_mode_just_tells_the_model_to_proceed() -> io::Result<(
         &serde_json::json!({"plan": "# Steps"}),
     );
     let (url, seen) = fake_gateway(vec![plan, ANSWER.to_owned()])?;
-    let (chat, events) = start(config(&url, &root), &LiveSession::Start(new_session_id()));
+    let (chat, events) = start(&url, config(&root), &LiveSession::Start(new_session_id()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("do it");
     let answered = until(&events, finished);
@@ -102,9 +102,9 @@ fn a_rejected_plan_keeps_plan_mode_and_sends_the_feedback() -> io::Result<()> {
         &serde_json::json!({"plan": "# Big rewrite"}),
     );
     let (url, seen) = fake_gateway(vec![plan, ANSWER.to_owned()])?;
-    let mut planning = config(&url, &root);
+    let mut planning = config(&root);
     planning.permission_mode = Some(PermissionMode::Plan);
-    let (chat, events) = start(planning, &LiveSession::Start(new_session_id()));
+    let (chat, events) = start(&url, planning, &LiveSession::Start(new_session_id()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("plan it");
     let asked = until(&events, |event| matches!(event, LiveEvent::Ask(_)));

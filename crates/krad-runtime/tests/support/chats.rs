@@ -1,10 +1,10 @@
 use futures::executor::block_on;
 use futures::StreamExt as _;
-use krad_chat::{BusVars, LiveConfig, LiveSession, Runner};
+use krad_chat::{BusVars, ChatBackend, LiveConfig, LiveSession, Runner};
 use krad_domain::{AgentPreset, EnvironmentName, Host, TerminalId};
 use krad_host::HostLink;
 use krad_protocol::{AgentRef, ChatMirror, ChatSummary, Command, EventKind, Feed, Reply, Scope};
-use krad_runtime::{ChatPlace, ChatStart, Runtime, RuntimeHandle, RuntimeSetup};
+use krad_runtime::{ChatLaunch, ChatPlace, ChatStart, Runtime, RuntimeHandle, RuntimeSetup};
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::PathBuf;
@@ -14,7 +14,6 @@ use std::time::{Duration, Instant};
 pub type TestResult = Result<(), Box<dyn Error>>;
 
 pub const CLAUDE_HARNESS: &str = "../krad-chat/tests/fixtures/fake-harness/claude";
-pub const ASK_HARNESS: &str = "tests/fixtures/fake-harness/claude-ask";
 const WAIT: Duration = Duration::from_secs(10);
 const TIMED_OUT: &str = "the awaited chat event never came";
 const NOT_A_SNAPSHOT: &str = "the feed did not start from a snapshot";
@@ -31,19 +30,23 @@ pub fn chat(id: u64) -> AgentRef {
     }
 }
 
-pub fn claude_start(runner: Runner, session: LiveSession) -> ChatStart {
+pub fn live_config(runner: Runner) -> LiveConfig {
+    LiveConfig {
+        runner,
+        model: None,
+        cwd: std::env::temp_dir(),
+        system_prompt: None,
+        effort: None,
+        permission_mode: None,
+        bus_vars: BusVars::default(),
+        usage_budget: std::sync::Arc::default(),
+    }
+}
+
+pub fn start_with(harness: AgentPreset, launch: ChatLaunch, session: LiveSession) -> ChatStart {
     ChatStart {
-        harness: AgentPreset::ClaudeCode,
-        config: LiveConfig {
-            runner,
-            model: None,
-            cwd: std::env::temp_dir(),
-            system_prompt: None,
-            effort: None,
-            permission_mode: None,
-            bus_vars: BusVars::default(),
-            usage_budget: std::sync::Arc::default(),
-        },
+        harness,
+        launch,
         session,
         place: ChatPlace {
             host: Host::Local,
@@ -52,7 +55,16 @@ pub fn claude_start(runner: Runner, session: LiveSession) -> ChatStart {
         },
         messages: Vec::new(),
         queued: Vec::new(),
+        notices: Vec::new(),
     }
+}
+
+pub fn claude_start(runner: Runner, session: LiveSession) -> ChatStart {
+    start_with(
+        AgentPreset::ClaudeCode,
+        ChatLaunch::from(ChatBackend::Claude(live_config(runner))),
+        session,
+    )
 }
 
 pub fn start_runtime() -> Result<RuntimeHandle, Box<dyn Error>> {

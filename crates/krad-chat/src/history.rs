@@ -3,6 +3,7 @@ use krad_host::HostLink;
 use serde_json::Value;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use crate::parse::{claude, permission_mode};
 use crate::skills::CLAUDE_DIR;
@@ -99,6 +100,15 @@ pub(crate) fn read_lines(
     let mut chunk = chunk_of_bytes(&bytes[..end], sidechain);
     chunk.next = from + u64::try_from(end + 1).unwrap_or(u64::MAX);
     Ok(chunk)
+}
+
+#[must_use]
+pub fn transcript_started(host: &HostLink, file: &Path) -> Option<SystemTime> {
+    if host.is_local() {
+        let metadata = std::fs::metadata(file).ok()?;
+        return metadata.created().or_else(|_| metadata.modified()).ok();
+    }
+    host.metadata(file).ok()?.modified
 }
 
 /// # Errors

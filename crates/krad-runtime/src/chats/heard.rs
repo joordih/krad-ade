@@ -3,7 +3,7 @@ use krad_domain::{ChatEntry, ModelOffer};
 use krad_protocol::{AgentRef, ChatAsk, ChatAskId, EventKind, UsageNews};
 
 use super::chat::{Batch, Chat};
-use super::{ensure_live, hand_over, ChatEffect, ChatWork, Chats};
+use super::{checkpoints, ensure_live, hand_over, ChatEffect, ChatWork, Chats};
 
 enum Outcome {
     Applied,
@@ -40,11 +40,10 @@ impl Chats {
                     self.next_generation += 1;
                     retry(
                         chat,
-                        &self.queue,
-                        self.next_generation,
+                        (&self.queue, self.next_generation),
                         batch,
                         failure,
-                        work.outbox,
+                        work,
                     );
                 }
             }
@@ -53,26 +52,25 @@ impl Chats {
             }
         }
         for id in touched {
-            self.flush(&id, work.outbox);
+            self.flush(&id, work);
         }
     }
 }
 
 fn retry(
     chat: &mut Chat,
-    queue: &super::queue::ChatQueue,
-    generation: u64,
+    (queue, generation): (&super::queue::ChatQueue, u64),
     batch: Batch,
     failure: ChatEvent,
-    outbox: &mut Vec<EventKind>,
+    work: &mut ChatWork<'_>,
 ) {
-    if ensure_live(chat, queue, generation) {
+    if ensure_live(chat, queue, generation, work.gateway) {
         hand_over(chat, batch);
         return;
     }
     chat.closes_turn(true);
-    chat.cancel_asks(outbox);
-    chat.fold(&ChatEntry::Event(failure), outbox);
+    chat.cancel_asks(work.outbox);
+    chat.fold(&ChatEntry::Event(failure), work.outbox);
 }
 
 fn hear_one(chat: &mut Chat, event: LiveEvent, ask: ChatAskId, work: &mut ChatWork<'_>) -> Outcome {
@@ -80,7 +78,7 @@ fn hear_one(chat: &mut Chat, event: LiveEvent, ask: ChatAskId, work: &mut ChatWo
     match event {
         LiveEvent::Ready(catalog) => keep_models(chat, catalog.models, work),
         LiveEvent::Rewound(outcome) => rewound(chat, outcome, work.outbox),
-        LiveEvent::Notice(notice) => chat.add_notice(&notice),
+        LiveEvent::Notice(notice) => chat.notices.push(notice),
         LiveEvent::Ask(held) => {
             let kind = held.kind.clone();
             work.outbox.push(EventKind::ChatAsk(ChatAsk {
@@ -114,7 +112,7 @@ fn hear_chat(
     match event {
         ChatEvent::Session(resume) => chat.session_reported(resume),
         ChatEvent::Model(model) => chat.model = Some(model),
-        ChatEvent::PermissionMode(mode) => chat.config.permission_mode = Some(mode),
+        ChatEvent::PermissionMode(mode) => chat.choices.permission_mode = Some(mode),
         ChatEvent::ContextTokens(tokens) => chat.context.tokens = Some(tokens),
         ChatEvent::ContextWindow(window) => chat.context.window = Some(window),
         ChatEvent::TurnStarted => {
@@ -134,6 +132,10 @@ fn hear_chat(
                 chat.problem = Some(error);
             }
         }
+        ChatEvent::Prompted(point) => {
+            checkpoints::prompted(chat, &point, outbox);
+            chat.fold(&ChatEntry::Event(ChatEvent::Prompted(point)), outbox);
+        }
         event => chat.fold(&ChatEntry::Event(event), outbox),
     }
     Outcome::Applied
@@ -147,7 +149,7 @@ fn rewound(
     let Some(rewinding) = chat.rewinding.take() else {
         return;
     };
-    chat.working = false;
+    chat.end_work();
     match outcome {
         Err(error) => {
             chat.problem = Some(error.to_string());

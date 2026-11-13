@@ -18,7 +18,7 @@ fn a_gateway_chat_asks_before_writing_then_answers_and_resumes() -> io::Result<(
     fs::create_dir_all(root.join("work"))?;
     let (url, seen) = fake_gateway(streams(&[WRITE_CALL, ANSWER]))?;
     let id = new_session_id();
-    let (chat, events) = start(config(&url, &root), &LiveSession::Start(id.clone()));
+    let (chat, events) = start(&url, config(&root), &LiveSession::Start(id.clone()));
     let opened = until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     assert!(opened.iter().any(
         |event| matches!(event, LiveEvent::Chat(ChatEvent::Session(started)) if *started == id)
@@ -87,7 +87,7 @@ fn a_denied_write_goes_back_to_the_model_as_refused() -> io::Result<()> {
     let root = scratch("deny");
     fs::create_dir_all(root.join("work"))?;
     let (url, seen) = fake_gateway(streams(&[WRITE_CALL, ANSWER]))?;
-    let (chat, events) = start(config(&url, &root), &LiveSession::Start(new_session_id()));
+    let (chat, events) = start(&url, config(&root), &LiveSession::Start(new_session_id()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("write a note");
     let asked = until(&events, |event| matches!(event, LiveEvent::Ask(_)));
@@ -122,7 +122,7 @@ fn the_model_can_ask_the_user_and_gets_the_picked_answers_back() -> io::Result<(
     let root = scratch("questions");
     fs::create_dir_all(root.join("work"))?;
     let (url, seen) = fake_gateway(streams(&[QUESTION_CALL, ANSWER]))?;
-    let (chat, events) = start(config(&url, &root), &LiveSession::Start(new_session_id()));
+    let (chat, events) = start(&url, config(&root), &LiveSession::Start(new_session_id()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("sort a list");
     let asked = until(&events, |event| matches!(event, LiveEvent::Ask(_)));
@@ -175,7 +175,7 @@ fn a_checklist_call_reaches_the_chat_without_asking_and_is_confirmed() -> io::Re
     );
     let (url, seen) = fake_gateway(vec![checklist, ANSWER.to_owned()])?;
     let id = new_session_id();
-    let (chat, events) = start(config(&url, &root), &LiveSession::Start(id.clone()));
+    let (chat, events) = start(&url, config(&root), &LiveSession::Start(id.clone()));
     until(&events, |event| matches!(event, LiveEvent::Ready(_)));
     chat.send("fix the parser");
     let turn = until(&events, finished);

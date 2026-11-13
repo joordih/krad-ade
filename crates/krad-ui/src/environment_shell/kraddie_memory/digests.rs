@@ -1,9 +1,7 @@
 use futures::channel::oneshot;
 use futures::future::{select, Either};
 use gpui_kit::Context;
-use krad_chat::{
-    new_session_id, start_chat, BusVars, ChatBackend, ChatEvent, LiveEvent, LiveSession, Speaker,
-};
+use krad_chat::{new_session_id, ChatEvent, LiveEvent, LiveSession, Speaker};
 use krad_domain::{
     digest_decision, digest_prompt, facts_from_reply, AgentPreset, ChatDigests, ChatPhase,
     DigestChat, DigestCheck, DigestDecision, DigestDraft, EnvironmentName, HistoryMessage,
@@ -14,6 +12,9 @@ use std::time::{Duration, Instant, SystemTime};
 use super::super::chat::{AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
 use super::ChatKey;
+use quiet::quiet_launch;
+
+mod quiet;
 
 pub(super) const DIGEST_CHECK_EVERY: Duration = Duration::from_mins(1);
 const DIGEST_TIMEOUT: Duration = Duration::from_mins(4);
@@ -59,37 +60,6 @@ pub(in crate::environment_shell) fn history_of(messages: &[ChatMessage]) -> Vec<
             (!text.trim().is_empty()).then_some(HistoryMessage { speaker, text })
         })
         .collect()
-}
-
-fn quiet_backend(backend: ChatBackend) -> Option<ChatBackend> {
-    match backend {
-        ChatBackend::Claude(mut config) => {
-            config.system_prompt = None;
-            config.bus_vars = BusVars(Vec::new());
-            config.permission_mode = Some(DIGEST_MODE);
-            Some(ChatBackend::Claude(config))
-        }
-        ChatBackend::Codex(mut config) => {
-            config.system_prompt = None;
-            config.bus_vars = BusVars(Vec::new());
-            config.permission_mode = Some(DIGEST_MODE);
-            Some(ChatBackend::Codex(config))
-        }
-        ChatBackend::Opencode(server, mut config) => {
-            config.system_prompt = None;
-            config.bus_vars = BusVars(Vec::new());
-            config.permission_mode = Some(DIGEST_MODE);
-            Some(ChatBackend::Opencode(server, config))
-        }
-        ChatBackend::Gateway(mut config) => {
-            config.system_prompt = None;
-            config.bus_vars = BusVars(Vec::new());
-            config.permission_mode = Some(DIGEST_MODE);
-            config.mcp = Vec::new();
-            Some(ChatBackend::Gateway(config))
-        }
-        ChatBackend::Acp(_) => None,
-    }
 }
 
 fn reply_sink(reply: oneshot::Sender<DigestReply>) -> impl FnMut(LiveEvent) + Send + 'static {
@@ -274,30 +244,48 @@ impl EnvironmentShell {
             .memory
             .attempted
             .insert(key.clone(), job.messages.len());
-        let backend = match self.chat_backend(&key.0, key.1, job.harness, cx) {
-            Ok(backend) => quiet_backend(backend),
+        let launch = match self.chat_launch(&key.0, key.1, job.harness, cx) {
+            Ok(launch) => quiet_launch(launch),
             Err(error) => {
                 tracing::debug!(%error, "no harness free to write a chat digest");
                 None
             }
         };
-        let Some(backend) = backend else {
+        let Some(launch) = launch else {
             return;
         };
         let (sender, receiver) = oneshot::channel();
         let session = LiveSession::Start(new_session_id());
-        let live = match start_chat(backend, &session, reply_sink(sender)) {
-            Ok(live) => live,
-            Err(error) => {
-                tracing::warn!(%error, "the chat digest writer did not start");
-                return;
-            }
-        };
-        live.send(Prompt::from(digest_prompt(&job.chat.title, &job.messages)));
-        self.kraddies.memory.writing.insert(key.clone(), live);
+        let started = self
+            .runtime
+            .handle
+            .start_live_chat(launch, session, reply_sink(sender));
+        let prompt = Prompt::from(digest_prompt(&job.chat.title, &job.messages));
+        self.kraddies.memory.writing.insert(key.clone(), None);
         let key = key.clone();
         let timer = cx.background_executor().timer(DIGEST_TIMEOUT);
         cx.spawn(async move |this, cx| {
+            let started = started
+                .await
+                .map_err(|stopped| stopped.to_string())
+                .and_then(|started| started);
+            let live = match started {
+                Ok(live) => live,
+                Err(error) => {
+                    this.update(cx, |shell, _| shell.digest_stopped(&key, &error))
+                        .unwrap_or_default();
+                    return;
+                }
+            };
+            live.send(prompt);
+            let kept = this.update(cx, |shell, _| {
+                if let Some(writer) = shell.kraddies.memory.writing.get_mut(&key) {
+                    *writer = Some(live);
+                }
+            });
+            if kept.is_err() {
+                return;
+            }
             let reply = match select(receiver, timer).await {
                 Either::Left((Ok(reply), _)) => reply,
                 Either::Left((Err(_), _)) => DigestReply::Failed(WRITER_STOPPED.to_owned()),
@@ -309,6 +297,11 @@ impl EnvironmentShell {
         .detach();
     }
 
+    fn digest_stopped(&mut self, key: &ChatKey, error: &str) {
+        tracing::warn!(%error, "the chat digest writer did not start");
+        self.kraddies.memory.writing.remove(key);
+    }
+
     fn digest_written(
         &mut self,
         key: &ChatKey,
@@ -316,7 +309,7 @@ impl EnvironmentShell {
         reply: DigestReply,
         cx: &mut Context<Self>,
     ) {
-        if let Some(live) = self.kraddies.memory.writing.remove(key) {
+        if let Some(Some(live)) = self.kraddies.memory.writing.remove(key) {
             live.stop();
         }
         let text = match reply {

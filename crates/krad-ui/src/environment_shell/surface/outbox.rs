@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use super::super::chat::question_bubble;
 use super::super::EnvironmentShell;
 use super::mentions::sent_mentions;
+use super::SurfaceChat;
 use crate::theme::{palette, LINE_2XS, SPACE_1, SPACE_1_5, TEXT_2XS};
 
 const SENT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -97,6 +98,14 @@ impl Outbox {
         });
     }
 
+    pub(super) fn take_queued(&mut self) -> Vec<Prompt> {
+        let (queued, kept) = std::mem::take(&mut self.messages)
+            .into_iter()
+            .partition(|message| message.stage == Stage::Queued);
+        self.messages = kept;
+        queued.into_iter().map(|message| message.prompt).collect()
+    }
+
     pub(super) fn cancel(&mut self, index: usize) -> bool {
         let queued = self
             .messages
@@ -104,6 +113,33 @@ impl Outbox {
             .is_some_and(|message| message.stage == Stage::Queued);
         if queued {
             self.messages.remove(index);
+        }
+        queued
+    }
+}
+
+impl SurfaceChat {
+    fn runtime_queued(&self) -> &[Outgoing] {
+        self.structured()
+            .map_or(&[], |structured| structured.runtime_queued())
+    }
+
+    pub(super) fn pending_len(&self) -> usize {
+        self.outbox.messages.len() + self.runtime_queued().len()
+    }
+
+    pub(super) fn pending(&self, index: usize) -> Option<&Outgoing> {
+        let held = self.outbox.messages.len();
+        match index.checked_sub(held) {
+            Some(queued) => self.runtime_queued().get(queued),
+            None => self.outbox.messages.get(index),
+        }
+    }
+
+    pub(super) fn cancel_pending(&mut self, index: usize) -> Option<usize> {
+        let queued = index.checked_sub(self.outbox.messages.len());
+        if queued.is_none() {
+            self.outbox.cancel(index);
         }
         queued
     }
@@ -196,6 +232,22 @@ mod tests {
         assert!(!outbox.cancel(0), "already handed over");
         assert!(outbox.cancel(1));
         assert_eq!(outbox.messages.len(), 1);
+    }
+
+    #[test]
+    fn a_runtime_chat_takes_every_queued_message_at_once() {
+        let now = Instant::now();
+        let mut outbox = Outbox::default();
+        outbox.push(Prompt::from("sent"));
+        outbox.next_to_send(true, now);
+        outbox.push(Prompt::from("second"));
+        outbox.push(Prompt::from("third"));
+        assert_eq!(
+            outbox.take_queued(),
+            [Prompt::from("second"), Prompt::from("third")]
+        );
+        assert_eq!(outbox.messages.len(), 1, "the handed over one stays");
+        assert!(!outbox.has_queued());
     }
 
     #[test]

@@ -1,15 +1,34 @@
-use krad_domain::{AttentionTarget, Sight};
+use krad_chat::start_chat;
+use krad_domain::{AttentionTarget, GatewayAccess, Sight};
 use krad_protocol::{AgentRef, AttentionCommand, ChatCommand, ModelsCommand, Reply, UsageCommand};
 
 use super::{answer_to, Runtime};
-use crate::chats::{ChatEffect, ChatOpening, ChatStart, ChatWork, Chats};
-use crate::input::Input;
+use crate::chats::{
+    ChatCheckpoint, ChatEarlier, ChatEffect, ChatOpening, ChatStart, ChatWork, Chats, FilesIndexed,
+};
+use crate::input::{Input, LiveStart};
+
+fn start_live_chat(start: LiveStart, gateway: Option<&GatewayAccess>) {
+    let LiveStart {
+        launch,
+        session,
+        sink,
+        reply,
+    } = start;
+    let started = launch
+        .resolve(gateway)
+        .and_then(|backend| start_chat(backend, &session, sink).map_err(|error| error.to_string()));
+    if reply.send(started).is_err() {
+        tracing::trace!("a client left before its chat started");
+    }
+}
 
 impl Runtime {
     fn with_chat_work<T>(&mut self, act: impl FnOnce(&mut Chats, &mut ChatWork<'_>) -> T) -> T {
         let mut effects = Vec::new();
         let mut work = ChatWork {
             jobs: &self.jobs,
+            gateway: self.gateway.access.as_ref(),
             outbox: &mut self.outbox,
             effects: &mut effects,
         };
@@ -30,6 +49,14 @@ impl Runtime {
                 count,
                 reply,
             } => answer_to(reply, self.chats.page(&chat, before, count)),
+            Input::MentionIndex { place, reply } => {
+                self.chats.mentions.ask(place, reply, &self.jobs);
+            }
+            Input::ForgetMentionIndexes => self.chats.mentions.forget(),
+            Input::StartLiveChat(start) => {
+                start_live_chat(*start, self.gateway.access.as_ref());
+            }
+            Input::Gateway(input) => self.gateway.apply(input, &self.jobs),
             _ => {}
         }
     }
@@ -42,12 +69,30 @@ impl Runtime {
         self.with_chat_work(|chats, work| chats.execute(command, work))
     }
 
+    pub(super) fn flush_chats(&mut self) {
+        self.with_chat_work(Chats::flush_all);
+    }
+
     pub(super) fn hear_chats(&mut self) {
         self.with_chat_work(Chats::hear);
     }
 
     pub(super) fn chat_opened(&mut self, opening: ChatOpening) {
         self.with_chat_work(|chats, work| chats.opened(opening, work));
+    }
+
+    pub(super) fn chat_earlier_read(&mut self, earlier: ChatEarlier) {
+        self.with_chat_work(|chats, work| chats.earlier_read(earlier, work));
+    }
+
+    pub(super) fn chat_checkpoint_taken(&mut self, taken: ChatCheckpoint) {
+        self.with_chat_work(|chats, work| chats.checkpoint_taken(taken, work));
+    }
+
+    pub(super) fn files_indexed(&mut self, indexed: FilesIndexed) {
+        self.chats
+            .mentions
+            .indexed(indexed, std::time::Instant::now());
     }
 
     fn chat_effect(&mut self, effect: ChatEffect) {
