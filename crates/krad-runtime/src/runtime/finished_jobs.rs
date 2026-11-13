@@ -21,6 +21,7 @@ impl Runtime {
             JobDone::CodeHosts(observed) => self.code_hosts_observed(observed),
             JobDone::Review(done) => self.review_done(*done),
             JobDone::Runner(done) => self.runner_done(*done),
+            JobDone::Cloud(done) => self.cloud_done(*done),
             JobDone::Adapter(done) => {
                 self.adapters.done(done, &self.jobs, &mut self.outbox);
                 self.flush_chats();

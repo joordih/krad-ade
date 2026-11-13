@@ -1,4 +1,4 @@
-use krad_protocol::{BusSnapshot, HostsSnapshot, Scope, Seq, Snapshot};
+use krad_protocol::{BusSnapshot, HostsSnapshot, RunnersSnapshot, Scope, Seq, Snapshot};
 
 use super::Runtime;
 use crate::adapters::AcpAdapters;
@@ -59,8 +59,11 @@ impl Parts<'_> {
             settings: self.settings.snapshot(),
             git: self.git.snapshot(),
             kraddies: Box::new(self.kraddies.snapshot()),
-            runners: self.runners.snapshot(),
-            runner_buses: self.runners.buses.snapshot(),
+            runners: Box::new(RunnersSnapshot {
+                shown: self.runners.snapshot(),
+                buses: self.runners.buses.snapshot(),
+                logins: self.runners.logins_snapshot(),
+            }),
         }
     }
 }

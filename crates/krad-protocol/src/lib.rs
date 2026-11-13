@@ -2,6 +2,7 @@ mod app_events;
 mod attention;
 mod bus;
 mod chats;
+mod cloud;
 mod command;
 mod environments;
 mod event;
@@ -34,6 +35,10 @@ pub use chats::{
     AcpShown, AcpSignInAsk, ChatAsk, ChatAskId, ChatCommand, ChatContext, ChatMirror, ChatPage,
     ChatState, ChatSummary, McpOffered, McpSkippedShown, McpTrustAsk, MirrorChange,
 };
+pub use cloud::{
+    CarriedConversation, CloudChatStart, CloudCommand, CloudDraftId, CloudNews, CloudOpened,
+    PatchAnswer,
+};
 pub use command::{Command, ErrorCode, Reply, RuntimeCommand};
 pub use environments::{EnvironmentCommand, SpendingCrossed};
 pub use event::{Event, EventKind, Feed, Scope, Snapshot};
@@ -59,7 +64,10 @@ pub use review::{
     RequestDetailRead, RequestRef, ReviewAct, ReviewAnswer, ReviewAnswered, ReviewCommand,
     ReviewConnection, ReviewWrite, RowFacts, SignInWith,
 };
-pub use runners::{CloudAskReplayed, RunnerBusShown, RunnerCommand, RunnerRemoved, RunnerShown};
+pub use runners::{
+    CliLogin, CloudAskReplayed, RunnerBusShown, RunnerCommand, RunnerLogins, RunnerNews,
+    RunnerNotice, RunnerRemoved, RunnerShown, RunnersSnapshot,
+};
 pub use sessions::{GroupCommand, NodeCommand, SessionCommand};
 pub use settings::SettingsCommand;
 pub use terminals::{

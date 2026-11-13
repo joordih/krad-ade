@@ -4,6 +4,7 @@ use crate::app_events::EventsCommand;
 use crate::attention::AttentionCommand;
 use crate::bus::BusCommand;
 use crate::chats::ChatCommand;
+use crate::cloud::CloudCommand;
 use crate::environments::EnvironmentCommand;
 use crate::gateway::GatewayCommand;
 use crate::git::{ChangesCommand, GitCommand};
@@ -43,6 +44,7 @@ pub enum Command {
     Review(ReviewCommand),
     CodeHost(CodeHostCommand),
     Runner(RunnerCommand),
+    Cloud(CloudCommand),
     #[serde(other)]
     Unknown,
 }

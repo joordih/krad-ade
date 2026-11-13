@@ -8,7 +8,7 @@ use super::super::ask::{tray, tray_button};
 use super::super::workers::LeadEnding;
 use super::super::EnvironmentShell;
 use super::stops::REMOVED_RUNNER;
-use super::RunnerCli;
+use super::{cli_label, RunnerCli};
 use crate::components::{icon, IconName};
 use crate::theme::{palette, ICON, SPACE_2};
 
@@ -71,14 +71,14 @@ impl EnvironmentShell {
                     .child(SIGN_IN_LABEL)
                     .into_any_element();
                 let recheck = tray_button(element_id(RECHECK_PREFIX, id), false, pal)
-                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                        this.check_runner_logins(runner, cx);
+                    .on_click(cx.listener(move |this: &mut Self, _, _, _| {
+                        this.check_runner_logins(runner);
                     }))
                     .child(RECHECK_LABEL)
                     .into_any_element();
                 let text = format!(
                     "{} {SIGNED_OUT_MIDDLE} {}",
-                    cli.label(),
+                    cli_label(cli),
                     self.runner_name(runner)
                 );
                 (text, vec![recheck, sign_in])

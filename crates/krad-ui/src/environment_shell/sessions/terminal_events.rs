@@ -86,7 +86,6 @@ impl EnvironmentShell {
             return true;
         }
         self.acp_sign_in_ended(env, id);
-        self.runner_helper_exited(env, id);
         let Some(live) = self.envs.get_mut(env) else {
             return false;
         };
@@ -122,7 +121,6 @@ impl EnvironmentShell {
         let changed = self.expire_toasts(now);
         self.service_agent_bus();
         self.reconcile_agent_feed();
-        self.hear_runner_sign_ins();
         changed
     }
 }

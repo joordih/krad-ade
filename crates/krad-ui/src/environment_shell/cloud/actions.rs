@@ -1,8 +1,9 @@
 use gpui_kit::{
     div, px, rgb, AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
-    SharedString, StatefulInteractiveElement, Styled, Window,
+    SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_domain::SessionId;
+use krad_protocol::CloudCommand;
 
 use super::super::EnvironmentShell;
 use crate::components::{icon, IconName};
@@ -78,17 +79,43 @@ impl EnvironmentShell {
         action: CloudAction,
         session: Option<SessionId>,
         origin: (f32, f32),
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         match (action, session) {
             (CloudAction::Send, Some(session)) => {
-                self.offer_send_to_cloud(session, origin, window, cx);
+                self.offer_send_to_cloud(session, origin, cx);
             }
-            (CloudAction::Send, None) => self.send_current_to_cloud(window, cx),
-            (CloudAction::Push, _) => self.push_cloud_branch(session, cx),
-            (CloudAction::OpenRequest, _) => self.open_cloud_request(session, cx),
-            (CloudAction::BringHome, _) => self.bring_cloud_home(session, cx),
+            (CloudAction::Send, None) => self.send_current_to_cloud(cx),
+            (CloudAction::Push, _) => {
+                self.cloud_result(
+                    session,
+                    |environment, session| CloudCommand::Push {
+                        environment,
+                        session,
+                    },
+                    cx,
+                );
+            }
+            (CloudAction::OpenRequest, _) => {
+                self.cloud_result(
+                    session,
+                    |environment, session| CloudCommand::OpenRequest {
+                        environment,
+                        session,
+                    },
+                    cx,
+                );
+            }
+            (CloudAction::BringHome, _) => {
+                self.cloud_result(
+                    session,
+                    |environment, session| CloudCommand::BringHome {
+                        environment,
+                        session,
+                    },
+                    cx,
+                );
+            }
         }
     }
 
@@ -120,9 +147,9 @@ impl EnvironmentShell {
                     .line_height(px(LINE_SM))
                     .text_color(rgb(pal.text_default))
                     .hover(|style| style.bg(pal.bg_hover))
-                    .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                         this.close_name_dialog(cx);
-                        this.run_cloud_action(action, Some(session), origin, window, cx);
+                        this.run_cloud_action(action, Some(session), origin, cx);
                     }))
                     .child(icon(action.glyph(), ICON_SM, pal.text_muted))
                     .child(SharedString::from(action.label()))

@@ -9,8 +9,6 @@ mod service;
 mod typing;
 mod workspace;
 
-pub(in crate::environment_shell) use askpass::AskpassPlan;
-
 use futures::StreamExt as _;
 use gpui_kit::Context;
 use krad_agents::{Caller, ErrorCode, Request, Response, TerminalHandle, TerminalState};

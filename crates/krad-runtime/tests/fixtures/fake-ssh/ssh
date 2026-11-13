@@ -2,6 +2,7 @@
 for word in "$@"; do destination="$word"; done
 case " $* " in
   *" -- connects.invalid"*) exec "$(dirname "$0")/connects" "$@" ;;
+  *" -- ready.invalid"*) exec "$(dirname "$0")/ready" "$@" ;;
 esac
 case " $* " in
   *" -O check "*) exit 255 ;;

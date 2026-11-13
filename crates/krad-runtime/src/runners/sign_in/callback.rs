@@ -4,9 +4,9 @@ const URL_ENDS: [char; 8] = ['"', '\'', '<', '>', ')', '&', '\u{1b}', '\u{7}'];
 const MAX_PORT_DIGITS: usize = 5;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::environment_shell) struct LoopbackCallback {
-    pub(in crate::environment_shell) port: u16,
-    pub(in crate::environment_shell) url: String,
+pub(crate) struct LoopbackCallback {
+    pub(crate) port: u16,
+    pub(crate) url: String,
 }
 
 fn decoded(text: &str) -> String {
@@ -50,7 +50,7 @@ fn callback_at(rest: &str, start: &str) -> Option<LoopbackCallback> {
     })
 }
 
-pub(in crate::environment_shell) fn loopback_callbacks(text: &str) -> Vec<LoopbackCallback> {
+pub(crate) fn loopback_callbacks(text: &str) -> Vec<LoopbackCallback> {
     let plain = decoded(text);
     let mut found: Vec<LoopbackCallback> = Vec::new();
     for start in LOOPBACK_STARTS {

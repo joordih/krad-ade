@@ -27,11 +27,9 @@ fn cloud_program(launch: &Launch) -> CloudProgram {
             args: args.clone(),
             vars: vars.clone(),
         },
-        Launch::Preset(_)
-        | Launch::Agent { .. }
-        | Launch::Resume { .. }
-        | Launch::SignIn { .. }
-        | Launch::Task(_) => CloudProgram::login_shell(),
+        Launch::Preset(_) | Launch::Agent { .. } | Launch::Resume { .. } | Launch::Task(_) => {
+            CloudProgram::login_shell()
+        }
     }
 }
 
@@ -42,15 +40,6 @@ impl EnvironmentShell {
         id: TerminalId,
         launch: &Launch,
     ) -> CloudShell {
-        if let Some(opener) = self.cloud.openers.remove(&(env.clone(), id)) {
-            return CloudShell::Ready {
-                opener,
-                types_line: false,
-            };
-        }
-        if matches!(launch, Launch::SignIn { .. }) {
-            return CloudShell::Env;
-        }
         let site = match self.node_site(env, id) {
             NodeSite::Env => return CloudShell::Env,
             NodeSite::Waiting(runner) if self.runner_removed_from_settings(runner) => {
@@ -85,7 +74,6 @@ impl EnvironmentShell {
             self.ensure_runner_ready(runner);
         }
         self.check_cloud_processes(cx);
-        self.service_runner_sign_ins(cx);
     }
 
     pub(in crate::environment_shell) fn report_cloud_shell(&mut self, error: String) {

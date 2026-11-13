@@ -28,7 +28,7 @@ enum Flash {
 
 pub(super) struct AttentionUi {
     window: WindowFocus,
-    window_handle: Option<AnyWindowHandle>,
+    pub(super) window_handle: Option<AnyWindowHandle>,
     outbox: Vec<Announcement>,
     delivered: HashMap<AttentionTarget, Delivered>,
     badge: Option<usize>,

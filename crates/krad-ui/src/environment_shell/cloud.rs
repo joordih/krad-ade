@@ -1,13 +1,10 @@
 mod actions;
 mod badge;
 mod bus;
-mod carry;
 mod entry;
-mod naming;
 mod opencode;
 mod patch_dialog;
 mod process;
-mod results;
 mod runners;
 mod sessions;
 mod settle;
@@ -20,53 +17,39 @@ mod terminal;
 mod token;
 mod tray;
 mod webhooks;
-mod workspace;
 
 pub(in crate::environment_shell) use actions::CloudAction;
 pub(in crate::environment_shell) use badge::{cloud_marker, CloudBadge};
 pub(in crate::environment_shell) use entry::CloudMenu;
 pub(in crate::environment_shell) use krad_domain::RunnerState;
+pub(in crate::environment_shell) use krad_domain::{RunnerCli, RunnerLogin};
 pub(in crate::environment_shell) use shells::CloudShell;
-pub(in crate::environment_shell) use sign_in::{RunnerCli, RunnerLogin};
+pub(in crate::environment_shell) use sign_in::cli_label;
 pub(in crate::environment_shell) use site::{CloudSite, NodeSite};
 pub(in crate::environment_shell) use state::{linger_warning, runner_label};
 
 use krad_chat::CloudRun;
-use krad_domain::{ClaudeOauthToken, CloudRunnerId, EnvironmentName, Pairing, TerminalId};
+use krad_domain::{CloudRunnerId, EnvironmentName, Pairing, TerminalId};
 use krad_host::HostLink;
 use krad_runtime::ReadyRunner;
-use krad_session::PtyOpener;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use self::process::{Liveness, LivenessCheck};
-use self::sessions::{PatchQuestion, PendingCloudSession};
-use self::sign_in::{LoopbackCallback, SignInWatch};
 use super::EnvironmentShell;
 
 type NodeKey = (EnvironmentName, TerminalId);
-
-enum HelperTerminal {
-    SignIn(SignInWatch),
-    Plain,
-}
 
 #[derive(Default)]
 pub(super) struct CloudRunners {
     attached: HashMap<NodeKey, CloudRun>,
     reattached: HashSet<NodeKey>,
-    pending: Vec<PendingCloudSession>,
-    asking: Option<PatchQuestion>,
+    asking: Option<krad_protocol::CloudDraftId>,
     opencode: HashMap<CloudRunnerId, opencode::CloudOpencode>,
     wanted: HashSet<CloudRunnerId>,
     liveness: HashMap<NodeKey, Liveness>,
     unchecked: Vec<LivenessCheck>,
-    logins: HashMap<(CloudRunnerId, RunnerCli), RunnerLogin>,
-    claude_tokens: HashMap<CloudRunnerId, ClaudeOauthToken>,
-    helpers: HashMap<NodeKey, HelperTerminal>,
-    openers: HashMap<NodeKey, PtyOpener>,
-    forward_asks: Vec<(NodeKey, LoopbackCallback)>,
-    finished: Vec<SignInWatch>,
+    helpers: HashSet<NodeKey>,
 }
 
 impl EnvironmentShell {
@@ -94,7 +77,10 @@ impl EnvironmentShell {
         self.ready_runner(id).map(|ready| ready.cli)
     }
 
-    fn ready_runner(&self, id: CloudRunnerId) -> Option<ReadyRunner> {
+    pub(in crate::environment_shell) fn ready_runner(
+        &self,
+        id: CloudRunnerId,
+    ) -> Option<ReadyRunner> {
         self.runner_state(id)
             .is_ready()
             .then(|| self.runtime.handle.runner(id))

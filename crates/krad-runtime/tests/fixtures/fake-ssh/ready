@@ -1,0 +1,16 @@
+#!/bin/sh
+[ -n "${KRAD_FAKE_RUNNER_HOME:-}" ] || exit 255
+cd "$KRAD_FAKE_RUNNER_HOME" || exit 255
+options=""
+while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do options="$options $1"; shift; done
+shift 2
+case "$options " in
+  *" -O "*) exit 0 ;;
+  *" -s "*)
+    for server in /usr/libexec/sftp-server /usr/lib/openssh/sftp-server /usr/libexec/openssh/sftp-server /usr/lib/ssh/sftp-server; do
+      [ -x "$server" ] && HOME="$KRAD_FAKE_RUNNER_HOME" exec "$server"
+    done
+    exit 127
+    ;;
+esac
+HOME="$KRAD_FAKE_RUNNER_HOME" SHELL=/bin/sh PATH="$(dirname "$0")/runner-bin:$(dirname "$0")/host-bin:$PATH" exec /bin/sh -c "$*"

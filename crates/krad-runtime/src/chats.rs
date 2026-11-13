@@ -189,6 +189,10 @@ impl Chats {
         self.flush(id, work);
     }
 
+    pub(crate) fn messages(&self, id: &AgentRef) -> Option<Vec<ChatMessage>> {
+        self.open.get(id).map(|chat| chat.messages.clone())
+    }
+
     pub(crate) fn close(&mut self, id: &AgentRef, outbox: &mut Vec<EventKind>) {
         let Some(chat) = self.open.remove(id) else {
             return;

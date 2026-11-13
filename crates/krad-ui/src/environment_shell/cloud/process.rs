@@ -8,8 +8,8 @@ use std::process::Output;
 
 use super::super::chat::StartError;
 use super::super::EnvironmentShell;
-use super::naming::{new_nonce, node_process_id};
 use super::{CloudSite, NodeKey};
+use krad_runtime::{new_nonce, node_process_id};
 
 const NO_PROCESS_ID: &str = "The cloud session's folder gives no process name";
 

@@ -1,7 +1,7 @@
 use gpui_kit::{div, px, AnyElement, Context, IntoElement, ParentElement, SharedString, Styled};
 use krad_domain::CloudRunnerId;
 
-use super::super::super::cloud::{RunnerCli, RunnerLogin};
+use super::super::super::cloud::{cli_label, RunnerCli, RunnerLogin};
 use super::super::{form_row, EnvironmentShell};
 use crate::components::{Button, ButtonVariant};
 use crate::theme::{Palette, SPACE_2};
@@ -45,7 +45,7 @@ fn logins_summary(logins: &[(RunnerCli, RunnerLogin)]) -> String {
             let names: Vec<&str> = logins
                 .iter()
                 .filter(|(_, login)| login == wanted)
-                .map(|(cli, _)| cli.label())
+                .map(|(cli, _)| cli_label(*cli))
                 .collect();
             (!names.is_empty()).then(|| {
                 format!(
@@ -77,9 +77,9 @@ impl EnvironmentShell {
                 Button::new(SharedString::from(format!(
                     "{SIGN_IN_ID}-{}-{}",
                     runner.0,
-                    cli.label()
+                    cli_label(cli)
                 )))
-                .label(format!("{SIGN_IN_PREFIX} {}", cli.label()))
+                .label(format!("{SIGN_IN_PREFIX} {}", cli_label(cli)))
                 .small()
                 .variant(ButtonVariant::Primary)
                 .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
@@ -98,8 +98,8 @@ impl EnvironmentShell {
                     .label(RECHECK_LABEL)
                     .small()
                     .variant(ButtonVariant::Secondary)
-                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                        this.check_runner_logins(runner, cx);
+                    .on_click(cx.listener(move |this: &mut Self, _, _, _| {
+                        this.check_runner_logins(runner);
                     })),
             )
             .into_any_element();

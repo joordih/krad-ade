@@ -90,6 +90,7 @@ impl Runtime {
             Command::Review(command) => self.execute_review(id, command),
             Command::CodeHost(command) => self.execute_code_host(command),
             Command::Runner(command) => self.execute_runner(command),
+            Command::Cloud(command) => self.execute_cloud(command),
             Command::Runtime(RuntimeCommand::Unknown) | Command::Unknown => {
                 refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)
             }
@@ -226,6 +227,7 @@ impl Runtime {
             | Input::TerminalAction { .. }
             | Input::TerminalPalette(_)
             | Input::OpenSignIn { .. }
+            | Input::Runner(_)
             | Input::MachineChannel { .. }
             | Input::OpenChat { .. }
             | Input::CloseChat(_)

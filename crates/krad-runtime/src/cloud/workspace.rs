@@ -26,22 +26,22 @@ const APPLY_FAILED: &str = "Your uncommitted changes could not be applied on the
 const HOST_FAILED: &str = "The runner could not be reached";
 
 #[derive(Clone, Debug)]
-pub(in crate::environment_shell) struct WorkspaceRequest {
-    pub(in crate::environment_shell) runner: CloudRunnerId,
-    pub(in crate::environment_shell) remote_url: String,
-    pub(in crate::environment_shell) upstream_branch: Option<String>,
-    pub(in crate::environment_shell) session_slug: String,
-    pub(in crate::environment_shell) patch: Option<String>,
+pub(crate) struct WorkspaceRequest {
+    pub(crate) runner: CloudRunnerId,
+    pub(crate) remote_url: String,
+    pub(crate) upstream_branch: Option<String>,
+    pub(crate) session_slug: String,
+    pub(crate) patch: Option<String>,
 }
 
 #[derive(Debug)]
-pub(in crate::environment_shell) struct PreparedWorkspace {
-    pub(in crate::environment_shell) placement: CloudPlacement,
-    pub(in crate::environment_shell) patch_problem: Option<String>,
+pub(crate) struct PreparedWorkspace {
+    pub(crate) placement: CloudPlacement,
+    pub(crate) patch_problem: Option<String>,
 }
 
 #[derive(Debug)]
-pub(in crate::environment_shell) enum WorkspaceError {
+pub(crate) enum WorkspaceError {
     NoLayout,
     Clone(String),
     Fetch(String),
@@ -67,7 +67,7 @@ impl From<HostError> for WorkspaceError {
     }
 }
 
-pub(super) fn git(dir: Option<&Path>) -> HostCommand {
+pub(crate) fn git(dir: Option<&Path>) -> HostCommand {
     let mut command = HostCommand::new(GIT_PROGRAM);
     if let Some(dir) = dir {
         command.args([DIR_FLAG, &remote_path(dir)]);
@@ -178,7 +178,7 @@ fn apply_patch(link: &HostLink, worktree: &Path, patch: &str) -> Option<String> 
 }
 
 #[tracing::instrument(skip_all, fields(runner = %request.runner))]
-pub(in crate::environment_shell) fn prepare_workspace(
+pub(crate) fn prepare_workspace(
     link: &HostLink,
     request: &WorkspaceRequest,
 ) -> Result<PreparedWorkspace, WorkspaceError> {

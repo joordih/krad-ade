@@ -386,9 +386,9 @@ impl EnvironmentShell {
             PaletteCmd::NewGroup => self.prompt_new_group(window, cx),
             PaletteCmd::RemoveGroup => self.remove_selected_group(cx),
             PaletteCmd::OpenArchive => self.open_selected_archive(window, cx),
-            PaletteCmd::NewCloudSession => self.new_cloud_session_in_selected(window, cx),
+            PaletteCmd::NewCloudSession => self.new_cloud_session_in_selected(cx),
             PaletteCmd::Cloud(action) => {
-                self.run_cloud_action(action, None, (PALETTE_W, PALETTE_TOP), window, cx);
+                self.run_cloud_action(action, None, (PALETTE_W, PALETTE_TOP), cx);
             }
             PaletteCmd::NewWorktree => self.start_new_worktree(cx),
             PaletteCmd::RemoveWorktree => self.remove_selected_worktree(cx),

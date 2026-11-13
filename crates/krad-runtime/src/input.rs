@@ -1,7 +1,7 @@
 use futures::channel::{mpsc, oneshot};
 use krad_agents::{AgentInfo, AgentKey, Incoming, Response, StateReason};
 use krad_chat::{LiveEvent, LiveSession, Runner};
-use krad_domain::{AgentPreset, EnvironmentName, Host};
+use krad_domain::{AgentPreset, CloudRunnerId, EnvironmentName, Host, RunnerCli};
 use krad_host::{HostLink, MachineChannel};
 use krad_protocol::{
     AgentRef, ChatPage, Command, Feed, HealthPlace, Reply, RequestId, Scope, Snapshot, WebhookTest,
@@ -36,6 +36,20 @@ impl std::fmt::Debug for LiveStart {
             .field("session", &self.session)
             .finish_non_exhaustive()
     }
+}
+
+#[derive(Debug)]
+pub(crate) enum RunnerInput {
+    OpenSignIn {
+        terminal: AgentRef,
+        runner: CloudRunnerId,
+        cli: RunnerCli,
+        shared: Arc<Shared>,
+    },
+    OpenClaudeSetup {
+        terminal: AgentRef,
+        shared: Arc<Shared>,
+    },
 }
 
 #[derive(Debug)]
@@ -104,6 +118,7 @@ pub(crate) enum Input {
         terminal: AgentRef,
         shared: Arc<Shared>,
     },
+    Runner(RunnerInput),
     MachineChannel {
         environment: EnvironmentName,
         channel: Result<MachineChannel, String>,

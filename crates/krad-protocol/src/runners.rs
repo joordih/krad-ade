@@ -1,11 +1,13 @@
-use krad_domain::{AttentionKind, CloudRunnerId, RunnerState, WebhookId};
+use krad_domain::{
+    AttentionKind, ClaudeOauthToken, CloudRunnerId, RunnerCli, RunnerLogin, RunnerState, WebhookId,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 use crate::bus::AgentRef;
 use crate::hosts::RemoteBusState;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum RunnerCommand {
     Ensure {
@@ -17,8 +19,68 @@ pub enum RunnerCommand {
     Remove {
         runner: CloudRunnerId,
     },
+    CheckLogins {
+        runner: CloudRunnerId,
+    },
+    KeepClaudeToken {
+        runner: CloudRunnerId,
+        token: ClaudeOauthToken,
+    },
+    ForgetClaudeToken {
+        runner: CloudRunnerId,
+    },
     #[serde(other)]
     Unknown,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct CliLogin {
+    pub cli: RunnerCli,
+    pub login: RunnerLogin,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub struct RunnerLogins {
+    pub runner: CloudRunnerId,
+    pub logins: Vec<CliLogin>,
+    pub claude_token: bool,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(tag = "news", rename_all = "snake_case")]
+pub enum RunnerNews {
+    ClaudeTokenKept,
+    ClaudeTokenForgotten,
+    ClaudeTokenNotKept {
+        error: String,
+    },
+    ClaudeTokenNotForgotten {
+        error: String,
+    },
+    SignInForwarded {
+        url: String,
+    },
+    SignInNotForwarded {
+        message: String,
+    },
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub struct RunnersSnapshot {
+    #[serde(default)]
+    pub shown: Vec<RunnerShown>,
+    #[serde(default)]
+    pub buses: Vec<RunnerBusShown>,
+    #[serde(default)]
+    pub logins: Vec<RunnerLogins>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct RunnerNotice {
+    pub runner: CloudRunnerId,
+    pub news: RunnerNews,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -72,6 +134,37 @@ mod tests {
             serde_json::from_str::<RunnerCommand>(r#"{"verb":"pair_again","runner":3}"#)?,
             RunnerCommand::Unknown
         );
+        Ok(())
+    }
+
+    #[test]
+    fn logins_and_news_round_trip_without_the_token() -> serde_json::Result<()> {
+        let logins = RunnerLogins {
+            runner: CloudRunnerId(3),
+            logins: vec![CliLogin {
+                cli: RunnerCli::Codex,
+                login: RunnerLogin::SignedOut,
+            }],
+            claude_token: true,
+        };
+        let json = serde_json::to_string(&logins)?;
+        assert_eq!(serde_json::from_str::<RunnerLogins>(&json)?, logins);
+        let notice = RunnerNotice {
+            runner: CloudRunnerId(3),
+            news: RunnerNews::SignInForwarded {
+                url: "http://localhost:1455/callback".to_owned(),
+            },
+        };
+        let json = serde_json::to_string(&notice)?;
+        assert_eq!(serde_json::from_str::<RunnerNotice>(&json)?, notice);
+        let token: ClaudeOauthToken = "sk-ant-oat01-abc"
+            .parse()
+            .map_err(serde::de::Error::custom)?;
+        let keep = RunnerCommand::KeepClaudeToken {
+            runner: CloudRunnerId(3),
+            token,
+        };
+        assert!(!format!("{keep:?}").contains("sk-ant"));
         Ok(())
     }
 

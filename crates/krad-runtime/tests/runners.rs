@@ -213,7 +213,7 @@ fn runners_connect_install_fail_with_a_reason_and_are_removed() -> TestResult {
     );
     assert!(runtime.runner(connects).is_none());
 
-    let shown = block_on(runtime.snapshot(Scope::Runtime))?.runners;
+    let shown = block_on(runtime.snapshot(Scope::Runtime))?.runners.shown;
     assert_eq!(
         shown.iter().map(|shown| shown.runner).collect::<Vec<_>>(),
         [refuses, asks, connects]
@@ -226,7 +226,7 @@ fn runners_connect_install_fail_with_a_reason_and_are_removed() -> TestResult {
     assert_eq!(removal_of(&feed, connects)?.problem, None);
     assert!(secrets.find_cloud_runner_token(connects)?.is_none());
     assert!(secrets.find_cloud_claude_token(connects)?.is_none());
-    let shown = block_on(runtime.snapshot(Scope::Runtime))?.runners;
+    let shown = block_on(runtime.snapshot(Scope::Runtime))?.runners.shown;
     assert!(shown.iter().all(|shown| shown.runner != connects));
     Ok(())
 }

@@ -47,7 +47,7 @@ fn slug_of(raw: &str, limit: usize) -> String {
     }
 }
 
-pub(in crate::environment_shell) fn repo_slug(remote_url: &str) -> String {
+pub(crate) fn repo_slug(remote_url: &str) -> String {
     let trimmed = remote_url.trim().trim_end_matches('/');
     let last = trimmed
         .rsplit(URL_SEPARATORS)
@@ -61,7 +61,7 @@ pub(in crate::environment_shell) fn repo_slug(remote_url: &str) -> String {
     )
 }
 
-pub(in crate::environment_shell) fn session_slug(group_name: &str, nonce: &str) -> String {
+pub(crate) fn session_slug(group_name: &str, nonce: &str) -> String {
     format!(
         "{}{SLUG_SEPARATOR}{}",
         slug_of(group_name, NAME_SLUG_MAX),
@@ -69,7 +69,7 @@ pub(in crate::environment_shell) fn session_slug(group_name: &str, nonce: &str) 
     )
 }
 
-pub(in crate::environment_shell) fn placement_for(
+pub(crate) fn placement_for(
     runner: CloudRunnerId,
     runner_dir: &Path,
     repo_slug: &str,
@@ -86,7 +86,8 @@ pub(in crate::environment_shell) fn placement_for(
     }
 }
 
-pub(in crate::environment_shell) fn node_process_id(
+#[must_use]
+pub fn node_process_id(
     placement: &CloudPlacement,
     terminal: TerminalId,
     nonce: &str,
@@ -102,7 +103,8 @@ pub(in crate::environment_shell) fn node_process_id(
     .ok()
 }
 
-pub(in crate::environment_shell) fn new_nonce() -> String {
+#[must_use]
+pub fn new_nonce() -> String {
     krad_host::new_install_id()
         .map_or_else(|| NONCE_FALLBACK.to_owned(), |id| id.as_str().to_owned())
 }
@@ -115,17 +117,17 @@ fn nonce_of(raw: &str, length: usize) -> String {
         .collect()
 }
 
-pub(in crate::environment_shell) fn upstream_branch(upstream: Option<&str>) -> Option<&str> {
+pub(crate) fn upstream_branch(upstream: Option<&str>) -> Option<&str> {
     let (_, branch) = upstream?.split_once(REMOTE_BRANCH_SEPARATOR)?;
     Some(branch).filter(|branch| !branch.is_empty())
 }
 
-pub(in crate::environment_shell) fn upstream_remote(upstream: Option<&str>) -> Option<&str> {
+pub(crate) fn upstream_remote(upstream: Option<&str>) -> Option<&str> {
     let (remote, _) = upstream?.split_once(REMOTE_BRANCH_SEPARATOR)?;
     Some(remote).filter(|remote| !remote.is_empty())
 }
 
-pub(in crate::environment_shell) fn cloud_session_name(group: &str, ordinal: usize) -> String {
+pub(crate) fn cloud_session_name(group: &str, ordinal: usize) -> String {
     if ordinal <= 1 {
         format!("{SESSION_NAME_PREFIX}{group}")
     } else {
@@ -133,7 +135,7 @@ pub(in crate::environment_shell) fn cloud_session_name(group: &str, ordinal: usi
     }
 }
 
-pub(in crate::environment_shell) fn sent_session_name(session: &str) -> String {
+pub(crate) fn sent_session_name(session: &str) -> String {
     if session.starts_with(SESSION_NAME_PREFIX) {
         session.to_owned()
     } else {
@@ -141,10 +143,7 @@ pub(in crate::environment_shell) fn sent_session_name(session: &str) -> String {
     }
 }
 
-pub(in crate::environment_shell) fn holds_cloud_work(
-    session: &Session,
-    nodes: &[TerminalNode],
-) -> bool {
+pub(crate) fn holds_cloud_work(session: &Session, nodes: &[TerminalNode]) -> bool {
     session.cloud.is_some()
         && session
             .tabs
@@ -158,15 +157,15 @@ pub(in crate::environment_shell) fn holds_cloud_work(
             })
 }
 
-pub(in crate::environment_shell) fn reached_limit(running: usize, max_sessions: u8) -> bool {
+pub(crate) fn reached_limit(running: usize, max_sessions: u8) -> bool {
     running >= usize::from(max_sessions)
 }
 
-pub(in crate::environment_shell) fn offered_patch(diff: String) -> Option<String> {
+pub(crate) fn offered_patch(diff: String) -> Option<String> {
     (!diff.trim().is_empty()).then_some(diff)
 }
 
-pub(in crate::environment_shell) fn cloud_chat_harness(
+pub(crate) fn cloud_chat_harness(
     preferred: AgentPreset,
     candidates: &[AgentPreset],
 ) -> AgentPreset {

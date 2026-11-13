@@ -2,7 +2,7 @@ use futures::{FutureExt as _, StreamExt as _};
 use gpui_kit::Context;
 use krad_domain::{AgentStatus, CloudRunnerId, EnvironmentName, RunnerState, TerminalId};
 use krad_protocol::{
-    AgentRef, AskId, BusSnapshot, EventKind, Feed, RemoteBusState, StatusReport,
+    AgentRef, AskId, BusSnapshot, EventKind, Feed, RemoteBusState, RunnerLogins, StatusReport,
     TerminalClassified, TerminalSummary,
 };
 use krad_runtime::RuntimeHandle;
@@ -69,6 +69,7 @@ pub(super) struct RuntimeView {
     pub(super) settings: SettingsMirror,
     pub(super) runners: HashMap<CloudRunnerId, RunnerState>,
     pub(super) runner_buses: HashMap<CloudRunnerId, RemoteBusState>,
+    pub(super) runner_logins: HashMap<CloudRunnerId, RunnerLogins>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -132,15 +133,21 @@ impl EnvironmentShell {
                 self.runtime.view.opencode.replace(snapshot.opencode);
                 self.gateway_replaced(snapshot.gateway);
                 self.runtime.view.settings.replace(*snapshot.settings);
-                self.runtime.view.runners = snapshot
-                    .runners
+                let runners = *snapshot.runners;
+                self.runtime.view.runners = runners
+                    .shown
                     .into_iter()
                     .map(|shown| (shown.runner, shown.state))
                     .collect();
-                self.runtime.view.runner_buses = snapshot
-                    .runner_buses
+                self.runtime.view.runner_buses = runners
+                    .buses
                     .into_iter()
                     .map(|shown| (shown.runner, shown.bus))
+                    .collect();
+                self.runtime.view.runner_logins = runners
+                    .logins
+                    .into_iter()
+                    .map(|shown| (shown.runner, shown))
                     .collect();
                 for environment in &snapshot.environments {
                     self.offer_open_buffers(&environment.name, cx);
@@ -290,6 +297,13 @@ impl EnvironmentShell {
             }
             EventKind::RunnerReturned { .. } => self.resume_cloud_work(cx),
             EventKind::CloudAskReplayed(asked) => self.cloud_ask_replayed(asked),
+            EventKind::RunnerLoginsChanged(shown) => {
+                self.runtime.view.runner_logins.insert(shown.runner, shown);
+            }
+            EventKind::RunnerNews(notice) => self.runner_news(notice, cx),
+            EventKind::CloudPatchOffered { draft } => self.cloud_patch_offered(draft, cx),
+            EventKind::CloudNews(news) => self.cloud_news(news, cx),
+            EventKind::CloudSessionOpened(opened) => self.cloud_session_opened(opened, cx),
             host @ (EventKind::HostChanged { .. }
             | EventKind::SignInWanted { .. }
             | EventKind::MachineChannelWanted { .. }

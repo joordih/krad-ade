@@ -10,6 +10,7 @@ use crate::bus::{
     AgentRef, AskId, AskSettlement, BusSnapshot, MailCount, PendingAsk, StatusReport,
 };
 use crate::chats::{ChatAsk, ChatAskId, ChatState, ChatSummary};
+use crate::cloud::{CloudDraftId, CloudNews, CloudOpened};
 use crate::environments::SpendingCrossed;
 use crate::gateway::GatewayState;
 use crate::git::{GitFinished, GitRead, SessionChangesRead, WorktreeSwept};
@@ -24,7 +25,10 @@ use crate::launches::TerminalLaunched;
 use crate::models::{ListedModels, ModelsOrigin, ModelsSnapshot};
 use crate::opencode::{OpencodeShown, OpencodeSnapshot};
 use crate::review::{CodeHostLogin, ReviewAnswered};
-use crate::runners::{CloudAskReplayed, RunnerBusShown, RunnerRemoved, RunnerShown};
+use crate::runners::{
+    CloudAskReplayed, RunnerBusShown, RunnerLogins, RunnerNotice, RunnerRemoved, RunnerShown,
+    RunnersSnapshot,
+};
 use crate::terminals::{TerminalClassified, TerminalSummary};
 use crate::usage::{UsageShown, UsageSnapshot};
 
@@ -201,6 +205,13 @@ pub enum EventKind {
         runner: CloudRunnerId,
     },
     CloudAskReplayed(CloudAskReplayed),
+    RunnerLoginsChanged(RunnerLogins),
+    RunnerNews(RunnerNotice),
+    CloudPatchOffered {
+        draft: CloudDraftId,
+    },
+    CloudNews(CloudNews),
+    CloudSessionOpened(CloudOpened),
     #[serde(other)]
     Unknown,
 }
@@ -244,9 +255,7 @@ pub struct Snapshot {
     #[serde(default)]
     pub kraddies: Box<KraddiesSnapshot>,
     #[serde(default)]
-    pub runners: Vec<RunnerShown>,
-    #[serde(default)]
-    pub runner_buses: Vec<RunnerBusShown>,
+    pub runners: Box<RunnersSnapshot>,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -308,8 +317,7 @@ mod tests {
                 settings: Box::default(),
                 git: Vec::new(),
                 kraddies: Box::default(),
-                runners: Vec::new(),
-                runner_buses: Vec::new(),
+                runners: Box::default(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

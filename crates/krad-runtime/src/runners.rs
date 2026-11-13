@@ -1,6 +1,9 @@
-use krad_domain::{ClaudeOauthToken, CloudRunnerId, Host, HostPlatform, Pairing, RunnerState};
-use krad_host::{HostError, HostLink};
-use krad_protocol::RunnerShown;
+use krad_domain::{
+    ClaudeOauthToken, CloudRunnerId, Host, HostPlatform, Pairing, RunnerCli, RunnerLogin,
+    RunnerState,
+};
+use krad_host::{Forward, HostError, HostLink};
+use krad_protocol::{AgentRef, RunnerLogins, RunnerShown};
 use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
@@ -9,6 +12,8 @@ use std::sync::{Arc, PoisonError, RwLock};
 mod bus;
 mod explain;
 mod install;
+mod logins;
+mod sign_in;
 mod webhooks;
 
 pub(crate) use bus::RunnerBuses;
@@ -18,6 +23,8 @@ pub(crate) use webhooks::{runner_webhooks_plan, RunnerWebhooksSync};
 
 pub(crate) use explain::explain;
 pub(crate) use install::{prepare_runner, retire_runner, PreparedRunner, RunnerSetupError};
+pub(crate) use logins::{git_program, login_args, probe_login, Logins};
+pub(crate) use sign_in::{forward_failure, login_script, LoopbackCallback, SignInWatch, SignIns};
 
 #[derive(Clone)]
 pub struct ReadyRunner {
@@ -54,6 +61,17 @@ impl RunnerDirectory {
             .insert(runner, ready);
     }
 
+    pub(crate) fn keep_claude_token(&self, runner: CloudRunnerId, token: Option<ClaudeOauthToken>) {
+        if let Some(ready) = self
+            .0
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get_mut(&runner)
+        {
+            ready.claude_token = token;
+        }
+    }
+
     fn take(&self, runner: CloudRunnerId) -> Option<ReadyRunner> {
         self.0
             .write()
@@ -78,6 +96,21 @@ pub(crate) enum RunnerDone {
         problem: Option<String>,
     },
     Returned(Box<RunnerReturn>),
+    LoginProbed {
+        runner: CloudRunnerId,
+        cli: RunnerCli,
+        login: RunnerLogin,
+    },
+    ClaudeTokenSaved {
+        runner: CloudRunnerId,
+        token: Option<ClaudeOauthToken>,
+        saved: Result<(), String>,
+    },
+    SignInForwarded {
+        terminal: AgentRef,
+        callback: LoopbackCallback,
+        opened: Result<Forward, HostError>,
+    },
 }
 
 #[derive(Debug)]
@@ -100,6 +133,8 @@ pub(crate) struct Runners {
     pub(crate) directory: RunnerDirectory,
     pub(crate) buses: RunnerBuses,
     pub(crate) webhooks: RunnerWebhooksSync,
+    pub(crate) logins: Logins,
+    pub(crate) sign_ins: SignIns,
 }
 
 impl Runners {
@@ -109,6 +144,8 @@ impl Runners {
             directory,
             buses: RunnerBuses::default(),
             webhooks: RunnerWebhooksSync::default(),
+            logins: Logins::default(),
+            sign_ins: SignIns::default(),
         }
     }
 
@@ -152,6 +189,25 @@ impl Runners {
     pub(crate) fn forget(&mut self, runner: CloudRunnerId) -> Option<(Host, Option<ReadyRunner>)> {
         let live = self.live.remove(&runner)?;
         Some((live.host, self.directory.take(runner)))
+    }
+
+    pub(crate) fn logins_shown(&self, runner: CloudRunnerId) -> RunnerLogins {
+        let token = self
+            .directory
+            .get(runner)
+            .is_some_and(|ready| ready.claude_token.is_some());
+        self.logins.shown(runner, token)
+    }
+
+    pub(crate) fn logins_snapshot(&self) -> Vec<RunnerLogins> {
+        let mut runners: Vec<CloudRunnerId> = self.logins.runners().collect();
+        runners.extend(self.live.keys().copied());
+        runners.sort_unstable();
+        runners.dedup();
+        runners
+            .into_iter()
+            .map(|runner| self.logins_shown(runner))
+            .collect()
     }
 
     pub(crate) fn snapshot(&self) -> Vec<RunnerShown> {

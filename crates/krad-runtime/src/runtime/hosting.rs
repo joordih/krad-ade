@@ -169,7 +169,8 @@ impl Runtime {
             | JobDone::Variant(_)
             | JobDone::CodeHosts(_)
             | JobDone::Review(_)
-            | JobDone::Runner(_) => {}
+            | JobDone::Runner(_)
+            | JobDone::Cloud(_) => {}
         }
     }
 

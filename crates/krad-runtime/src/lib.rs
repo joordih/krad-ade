@@ -3,6 +3,7 @@ mod app_events;
 mod attention;
 mod bus;
 mod chats;
+mod cloud;
 mod code_hosts;
 mod environments;
 mod gateway;
@@ -36,6 +37,7 @@ pub use bus::{
 pub use chats::{
     runs_in_runtime, ChatBrief, ChatLaunch, ChatPlace, ChatRole, ChatStart, PreparedLaunch,
 };
+pub use cloud::{new_nonce, node_process_id};
 pub use code_hosts::{
     gitlab_token_saver, origin_repo, repo_of_remote, HostClient, HostError, HostLogin, HostRepo,
 };

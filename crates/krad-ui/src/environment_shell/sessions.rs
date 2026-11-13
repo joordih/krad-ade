@@ -170,8 +170,7 @@ impl EnvironmentShell {
         (launch, cwd, prefill): (Launch, Option<PathBuf>, &[String]),
         cloud: Option<CloudOpener>,
     ) {
-        let signs_in = matches!(launch, Launch::SignIn { .. });
-        if !signs_in && cloud.is_none() && !self.host_ready(env) {
+        if cloud.is_none() && !self.host_ready(env) {
             self.push_toast(ToastKind::Error, HOST_NOT_READY_TEXT.to_owned());
             return;
         }
@@ -179,7 +178,7 @@ impl EnvironmentShell {
         let (link, wsl, site) = if cloud.is_some() {
             (krad_host::HostLink::Local, None, ShellSite::Cloud)
         } else {
-            self.launch_site(env, signs_in, cwd.as_deref())
+            self.launch_site(env, cwd.as_deref())
         };
         let model = launch.model();
         let attached = self.opencode_attach(&launch, harness, site);
@@ -221,7 +220,7 @@ impl EnvironmentShell {
             harness,
             prefill: prefill.to_vec(),
             typed: typed_now,
-            tap: self.runner_sign_in_tap(env, id),
+            tap: None,
         };
         let view = self
             .terminals()

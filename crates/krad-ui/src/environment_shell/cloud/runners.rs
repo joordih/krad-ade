@@ -1,11 +1,17 @@
 use gpui_kit::Context;
 use krad_domain::{CloudRunnerId, CloudRunnerName, RunnerState, SshDestination, ToastKind};
-use krad_protocol::{Command, RunnerCommand, RunnerRemoved, RunnerShown};
+use krad_protocol::{Command, RunnerCommand, RunnerNews, RunnerNotice, RunnerRemoved, RunnerShown};
 
 use super::super::EnvironmentShell;
 
 const ADDED_TOAST: &str = "Cloud runner added";
 const REMOVED_TOAST: &str = "Cloud runner removed";
+const TOKEN_SAVED_PREFIX: &str = "New Claude Code chats on";
+const TOKEN_SAVED_SUFFIX: &str = "use the long-lived token";
+const TOKEN_FORGOTTEN: &str = "The long-lived Claude Code token was forgotten";
+const TOKEN_NOT_SAVED: &str = "Could not keep the token";
+const TOKEN_NOT_FORGOTTEN: &str = "Could not forget the token";
+const FORWARDING_PREFIX: &str = "The browser can now finish the sign-in through";
 
 impl EnvironmentShell {
     fn post_runner(&self, command: RunnerCommand) {
@@ -49,8 +55,7 @@ impl EnvironmentShell {
             return;
         }
         self.save_settings(cx);
-        self.forget_runner_logins(runner);
-        self.keep_runner_claude_token(runner, None);
+        self.runtime.view.runner_logins.remove(&runner);
         self.mark_runner_removed(runner);
         self.runtime.view.runners.remove(&runner);
         self.post_runner(RunnerCommand::Remove { runner });
@@ -67,14 +72,6 @@ impl EnvironmentShell {
             return;
         }
         let settled = state.is_ready() || matches!(state, RunnerState::Failed { .. });
-        if state.is_ready() {
-            let token = self
-                .runtime
-                .handle
-                .runner(runner)
-                .and_then(|ready| ready.claude_token);
-            self.keep_runner_claude_token(runner, token);
-        }
         self.runtime.view.runners.insert(runner, state);
         if settled {
             self.cloud_runner_settled(runner, cx);
@@ -91,5 +88,34 @@ impl EnvironmentShell {
             Some(problem) => self.toast(ToastKind::Error, &problem, cx),
             None => self.toast(ToastKind::Success, REMOVED_TOAST, cx),
         }
+    }
+
+    pub(in crate::environment_shell) fn runner_news(
+        &mut self,
+        notice: RunnerNotice,
+        cx: &mut Context<Self>,
+    ) {
+        let (kind, text) = match notice.news {
+            RunnerNews::ClaudeTokenKept => (
+                ToastKind::Success,
+                format!(
+                    "{TOKEN_SAVED_PREFIX} {} {TOKEN_SAVED_SUFFIX}",
+                    self.runner_name(notice.runner)
+                ),
+            ),
+            RunnerNews::ClaudeTokenForgotten => (ToastKind::Success, TOKEN_FORGOTTEN.to_owned()),
+            RunnerNews::ClaudeTokenNotKept { error } => {
+                (ToastKind::Error, format!("{TOKEN_NOT_SAVED}: {error}"))
+            }
+            RunnerNews::ClaudeTokenNotForgotten { error } => {
+                (ToastKind::Error, format!("{TOKEN_NOT_FORGOTTEN}: {error}"))
+            }
+            RunnerNews::SignInForwarded { url } => {
+                (ToastKind::Info, format!("{FORWARDING_PREFIX} {url}"))
+            }
+            RunnerNews::SignInNotForwarded { message } => (ToastKind::Warning, message),
+            RunnerNews::Unknown => return,
+        };
+        self.toast(kind, &text, cx);
     }
 }

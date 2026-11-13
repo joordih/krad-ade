@@ -12,6 +12,7 @@ use crate::adapters::AdapterDone;
 use crate::chats::{
     AcpSecretsRead, ChatCheckpoint, ChatEarlier, ChatOpening, FilesIndexed, McpLaunched, McpRead,
 };
+use crate::cloud::CloudDone;
 use crate::code_hosts::Observed;
 use crate::gateway::{GatewayForgotten, GatewayRead};
 use crate::git::GitJob;
@@ -73,6 +74,7 @@ pub(crate) enum JobDone {
     CodeHosts(Vec<Observed>),
     Review(Box<ReviewDone>),
     Runner(Box<RunnerDone>),
+    Cloud(Box<CloudDone>),
 }
 
 #[derive(Clone, Debug)]

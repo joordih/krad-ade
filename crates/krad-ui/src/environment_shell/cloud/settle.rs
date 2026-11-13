@@ -62,7 +62,6 @@ impl EnvironmentShell {
     ) {
         let chats = self.cloud_chats_on(runner);
         if self.runner_link(runner).is_none() {
-            self.fail_pending_cloud_sessions(runner, cx);
             let text = format!(
                 "{RUNNER_PREFIX} {}: {}",
                 self.runner_name(runner),
@@ -79,8 +78,6 @@ impl EnvironmentShell {
             }
             return;
         }
-        self.start_pending_cloud_sessions(runner, cx);
-        self.check_runner_logins(runner, cx);
         for (env, id) in chats {
             if let Some(chat) = self
                 .envs

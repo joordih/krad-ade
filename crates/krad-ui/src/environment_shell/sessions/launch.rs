@@ -28,10 +28,6 @@ pub(in crate::environment_shell) enum Launch {
         args: Vec<String>,
         vars: Vec<(String, String)>,
     },
-    SignIn {
-        program: String,
-        args: Vec<String>,
-    },
     Task(ProjectTask),
 }
 
@@ -77,7 +73,7 @@ impl TryFrom<Launch> for LaunchIntent {
             }),
             Launch::Resume { preset, resume } => Ok(Self::Resume { preset, resume }),
             Launch::Task(task) => Ok(Self::Task { task }),
-            command @ (Launch::Command { .. } | Launch::SignIn { .. }) => Err(command),
+            command @ Launch::Command { .. } => Err(command),
         }
     }
 }
@@ -94,7 +90,6 @@ impl Launch {
             | Self::Agent { .. }
             | Self::Resume { .. }
             | Self::Command { .. }
-            | Self::SignIn { .. }
             | Self::Task(_) => None,
         }
     }
@@ -102,11 +97,7 @@ impl Launch {
     pub(super) fn model(&self) -> Option<ModelId> {
         match self {
             Self::Agent { model, .. } => model.clone(),
-            Self::Preset(_)
-            | Self::Resume { .. }
-            | Self::Command { .. }
-            | Self::SignIn { .. }
-            | Self::Task(_) => None,
+            Self::Preset(_) | Self::Resume { .. } | Self::Command { .. } | Self::Task(_) => None,
         }
     }
 }
@@ -123,13 +114,11 @@ pub(super) struct ResolvedLaunch {
 pub(super) enum LaunchShell {
     Login,
     Given,
-    Local,
 }
 
 impl LaunchShell {
     pub(super) fn place(self, link: HostLink, in_wsl: bool) -> TerminalPlace {
         let shell = match self {
-            Self::Local => return TerminalPlace::Here,
             Self::Login => HostShell::Login,
             Self::Given => HostShell::Given,
         };
@@ -160,14 +149,9 @@ impl EnvironmentShell {
     pub(super) fn launch_site(
         &self,
         env: &EnvironmentName,
-        signs_in: bool,
         cwd: Option<&Path>,
     ) -> (HostLink, Option<WslPath>, ShellSite) {
-        let link = if signs_in {
-            HostLink::Local
-        } else {
-            self.env_link(env)
-        };
+        let link = self.env_link(env);
         let wsl = cwd.filter(|_| link.is_local()).and_then(parse_wsl_path);
         let site = ShellSite::of(&link, wsl.is_some());
         (link, wsl, site)
@@ -192,7 +176,6 @@ impl EnvironmentShell {
             | Launch::Agent { .. }
             | Launch::Resume { .. }
             | Launch::Command { .. }
-            | Launch::SignIn { .. }
             | Launch::Task(_) => new_opencode_session_id(),
         };
         Some((server, resume))
@@ -261,13 +244,6 @@ impl EnvironmentShell {
                 agent: None,
                 vars,
                 shell: LaunchShell::Given,
-            },
-            Launch::SignIn { program, args } => ResolvedLaunch {
-                program,
-                args,
-                agent: None,
-                vars: Vec::new(),
-                shell: LaunchShell::Local,
             },
             Launch::Task(task) => {
                 let (program, args) = shell();

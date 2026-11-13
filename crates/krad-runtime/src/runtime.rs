@@ -13,6 +13,7 @@ use crate::app_events::AppEvents;
 use crate::attention::Attention;
 use crate::bus::{open, Bus};
 use crate::chats::{Chats, EditorBuffers};
+use crate::cloud::CloudSessions;
 use crate::code_hosts::CodeHostWatch;
 use crate::environments::Environments;
 use crate::gateway::Gateway;
@@ -38,6 +39,8 @@ use crate::workers::Workers;
 mod bus_git;
 mod chatting;
 mod ci_fixing;
+mod cloud_results;
+mod clouding;
 mod code_host_watch;
 mod commands;
 mod digesting;
@@ -60,6 +63,7 @@ mod parts;
 mod removing;
 mod replies;
 mod reviewing;
+mod runner_logins;
 mod runner_return;
 mod runner_webhooks;
 mod running;
@@ -68,6 +72,7 @@ mod settling;
 mod setup;
 mod signing_in;
 mod terminal_targets;
+mod ticking;
 mod variant_bus;
 mod variant_picks;
 mod variant_progress;
@@ -110,6 +115,7 @@ pub struct Runtime {
     code_hosts: CodeHostWatch,
     reviews: Reviews,
     runners: Runners,
+    cloud: CloudSessions,
     gateway: Gateway,
     opencode: OpencodeServers,
     settings: AppSettings,
@@ -217,6 +223,7 @@ impl Runtime {
             code_hosts: CodeHostWatch::default(),
             reviews: Reviews::default(),
             runners: Runners::with_directory(owned.runners),
+            cloud: CloudSessions::default(),
             gateway: Gateway::default(),
             opencode: OpencodeServers::new(inbox.clone(), owned.opencode),
             settings: owned.settings,
@@ -284,20 +291,7 @@ impl Runtime {
             Input::Snapshot { scope, reply } => answer_to(reply, self.snapshot(scope)),
             Input::Stop => return Flow::Stopping,
             Input::WebhookTested(tested) => self.outbox.push(EventKind::WebhookTested(tested)),
-            Input::Tick => {
-                if let Some(bus) = &mut self.bus {
-                    bus.tick(&mut self.outbox);
-                }
-                self.usage.tick(&self.jobs, &mut self.outbox);
-                self.terminals.tick(Instant::now(), &mut self.outbox);
-                self.type_due(Instant::now());
-                self.watch_runner_buses();
-                self.sync_runner_webhooks(Instant::now());
-                self.tick_hosts();
-                self.tick_git();
-                self.tick_kraddies();
-                self.tick_code_hosts();
-            }
+            Input::Tick => self.tick(),
             Input::OpenTerminal {
                 terminal,
                 launch,
@@ -310,6 +304,7 @@ impl Runtime {
             }
             Input::TerminalPalette(palette) => self.terminals.recolor(palette),
             Input::OpenSignIn { terminal, shared } => self.open_sign_in(terminal, shared),
+            Input::Runner(runner) => self.apply_runner_input(runner),
             Input::MachineChannel {
                 environment,
                 channel,

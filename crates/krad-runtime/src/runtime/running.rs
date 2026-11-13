@@ -36,6 +36,24 @@ impl Runtime {
                 Reply::Accepted
             }
             RunnerCommand::Remove { runner } => self.remove_runner(runner),
+            RunnerCommand::CheckLogins { runner } => {
+                if !self.track_runner(runner) {
+                    return refused(ErrorCode::NotFound, UNKNOWN_RUNNER);
+                }
+                match self.runners.directory.get(runner) {
+                    Some(_) => self.check_runner_logins(runner),
+                    None => return self.ensure_runner(runner),
+                }
+                Reply::Accepted
+            }
+            RunnerCommand::KeepClaudeToken { runner, token } => {
+                self.save_claude_token(runner, Some(token));
+                Reply::Accepted
+            }
+            RunnerCommand::ForgetClaudeToken { runner } => {
+                self.save_claude_token(runner, None);
+                Reply::Accepted
+            }
             RunnerCommand::Unknown => refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND),
         }
     }
@@ -51,7 +69,7 @@ impl Runtime {
         true
     }
 
-    fn ensure_runner(&mut self, runner: CloudRunnerId) -> Reply {
+    pub(super) fn ensure_runner(&mut self, runner: CloudRunnerId) -> Reply {
         if !self.track_runner(runner) {
             return refused(ErrorCode::NotFound, UNKNOWN_RUNNER);
         }
@@ -80,6 +98,15 @@ impl Runtime {
             if let Some(bus) = self.runners.buses.drop_bus(shown.runner) {
                 self.outbox.push(EventKind::RunnerBusChanged(bus));
             }
+        }
+        let runner = shown.runner;
+        match &shown.state {
+            state if state.is_ready() => self.start_waiting_cloud_sessions(runner),
+            RunnerState::Failed { reason } => {
+                let reason = reason.clone();
+                self.fail_waiting_cloud_sessions(runner, &reason);
+            }
+            _ => {}
         }
         self.outbox.push(EventKind::RunnerChanged(shown));
     }
@@ -123,6 +150,19 @@ impl Runtime {
                     .push(EventKind::RunnerRemoved(RunnerRemoved { runner, problem }));
             }
             RunnerDone::Returned(back) => self.runner_returned(*back),
+            RunnerDone::LoginProbed { runner, cli, login } => {
+                self.login_probed(runner, cli, login);
+            }
+            RunnerDone::ClaudeTokenSaved {
+                runner,
+                token,
+                saved,
+            } => self.claude_token_saved(runner, token, saved),
+            RunnerDone::SignInForwarded {
+                terminal,
+                callback,
+                opened,
+            } => self.sign_in_forwarded(&terminal, callback, opened),
         }
     }
 
@@ -199,6 +239,7 @@ impl Runtime {
         self.show_runner(shown);
         if ready {
             self.run_queued_stops(runner);
+            self.check_runner_logins(runner);
         }
     }
 
@@ -244,6 +285,7 @@ impl Runtime {
             self.outbox.push(EventKind::RunnerBusChanged(bus));
         }
         self.runners.webhooks.forget(runner);
+        self.forget_runner_logins(runner);
         let (host, ready) = self
             .runners
             .forget(runner)

@@ -2,11 +2,10 @@ use gpui_kit::{div, px, rgb, AnyElement, Context, ParentElement, Styled, Window}
 
 use super::super::dialog_parts::{sheet_footer, sheet_overlay, sheet_panel, sheet_title};
 use super::super::EnvironmentShell;
-use super::sessions::{
-    PatchAnswer, PATCH_CANCEL, PATCH_CONFIRM, PATCH_DETAIL, PATCH_LEAVE, PATCH_TITLE,
-};
+use super::sessions::{PATCH_CANCEL, PATCH_CONFIRM, PATCH_DETAIL, PATCH_LEAVE, PATCH_TITLE};
 use crate::components::{Button, ButtonVariant};
 use crate::theme::{palette, LINE_SM, SPACE_5, SPACE_6, TEXT_SM};
+use krad_protocol::PatchAnswer;
 
 const DIALOG_W: f32 = 420.0;
 const BTN_CLOSE: &str = "cloud-patch-close";
@@ -20,8 +19,8 @@ fn cancel(this: &mut EnvironmentShell, _: &mut Window, cx: &mut Context<Environm
 
 impl EnvironmentShell {
     fn answer_asked_patch(&mut self, answer: PatchAnswer, cx: &mut Context<Self>) {
-        if let Some(question) = self.cloud.asking.take() {
-            self.answer_patch(question, answer, cx);
+        if let Some(draft) = self.cloud.asking.take() {
+            self.answer_patch(draft, answer);
         }
         cx.notify();
     }

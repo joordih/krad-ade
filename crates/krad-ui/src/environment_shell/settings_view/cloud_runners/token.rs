@@ -94,7 +94,7 @@ impl EnvironmentShell {
         match text.parse::<ClaudeOauthToken>() {
             Ok(token) => {
                 self.close_token_form(window, cx);
-                Self::save_claude_token(runner, token, cx);
+                self.save_claude_token(runner, token);
             }
             Err(error) => {
                 if let Some(form) = self.token_form() {
@@ -112,7 +112,7 @@ impl EnvironmentShell {
         pal: &Palette,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let kept = self.runner_claude_token(runner).is_some();
+        let kept = self.runner_has_claude_token(runner);
         let button = |prefix: &'static str, label: &'static str| {
             Button::new((prefix, runner.0))
                 .label(label)
@@ -121,8 +121,8 @@ impl EnvironmentShell {
         };
         let control = if kept {
             button(FORGET_PREFIX, FORGET_LABEL)
-                .on_click(cx.listener(move |_: &mut Self, _, _, cx| {
-                    Self::forget_claude_token(runner, cx);
+                .on_click(cx.listener(move |this: &mut Self, _, _, _| {
+                    this.forget_claude_token(runner);
                 }))
                 .into_any_element()
         } else {

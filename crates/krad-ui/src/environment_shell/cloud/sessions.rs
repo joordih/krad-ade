@@ -1,29 +1,32 @@
-use gpui_kit::{AppContext as _, Context, PromptButton, PromptLevel, Window};
-use krad_chat::{new_session_id, LiveSession};
-use krad_domain::{
-    AgentPreset, CloudRunnerId, EnvironmentName, EnvironmentView, GroupId, SessionEdit, ToastKind,
+use gpui_kit::{Context, PromptButton, PromptLevel};
+use krad_chat::LiveSession;
+use krad_domain::{CloudRunnerId, EnvironmentView, GroupId, SessionId, ToastKind};
+use krad_protocol::{
+    CarriedConversation, CloudCommand, CloudDraftId, CloudNews, CloudOpened, Command, PatchAnswer,
 };
-use krad_repo::{resolved_remote_url, working_patch_with_untracked, ORIGIN_REMOTE};
-use std::path::PathBuf;
 
 use super::super::native_alert::NATIVE_ALERTS;
-use super::super::terminal_card::home_dir;
-use super::super::terminal_lifecycle::NodeGroup;
 use super::super::EnvironmentShell;
-use super::carry::{carry_chats, CarriedChat, CarriedStart};
-use super::naming::{
-    cloud_chat_harness, cloud_session_name, holds_cloud_work, new_nonce, offered_patch,
-    reached_limit, session_slug, upstream_branch, upstream_remote,
-};
 use super::state::runner_label;
-use super::workspace::{prepare_workspace, PreparedWorkspace, WorkspaceError, WorkspaceRequest};
 
-const NO_REMOTE_TOAST: &str = "The group has no git remote to clone on the runner";
 const AT_LIMIT_TOAST: &str =
     "You already run as many cloud sessions as Settings allows; close one first";
-const PREPARING_PREFIX: &str = "Preparing the cloud session on";
+const NO_REMOTE_TOAST: &str = "The group has no git remote to clone on the runner";
 const REMOTE_UNREAD: &str = "Could not read the group's git remote";
+const PREPARING_PREFIX: &str = "Preparing the cloud session on";
 const RUNNER_FAILED_PREFIX: &str = "The cloud session could not start on";
+const NO_SESSION_TOAST: &str = "Open a session first";
+const ALREADY_CLOUD_TOAST: &str = "This session already runs in the cloud";
+const NO_GROUP_TOAST: &str = "Only a session in a group can go to the cloud";
+const NOT_CLOUD: &str = "This session does not run in the cloud";
+const NOT_READY: &str = "The cloud runner is not connected yet; try again once it is ready";
+const NO_REPO: &str = "The group's repository is not known yet";
+const PUSHING: &str = "Pushing the session's branch from the runner…";
+const PUSHED_PREFIX: &str = "Pushed";
+const OPENING: &str = "Opening a pull request for the session…";
+const OPENED_PREFIX: &str = "Opened";
+const BRINGING: &str = "Bringing the session's branch to this computer…";
+const BROUGHT_PREFIX: &str = "The branch is now a worktree group:";
 pub(super) const PATCH_TITLE: &str = "Bring your uncommitted changes?";
 pub(super) const PATCH_DETAIL: &str = "The cloud session starts from the group's branch on its remote. Your uncommitted changes, new files included, can be applied there as a patch.";
 pub(super) const PATCH_CONFIRM: &str = "Bring them";
@@ -32,365 +35,183 @@ pub(super) const PATCH_CANCEL: &str = "Cancel";
 const BRING_ANSWER: usize = 0;
 const LEAVE_ANSWER: usize = 1;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum PatchAnswer {
-    Bring,
-    Leave,
-    Cancel,
-}
-
-#[derive(Clone, Debug, Default)]
-pub(in crate::environment_shell) struct CloudOrder {
-    pub(in crate::environment_shell) name: Option<String>,
-    pub(in crate::environment_shell) carried: Vec<CarriedChat>,
-}
-
-#[derive(Clone, Debug)]
-pub(in crate::environment_shell) struct CloudDraft {
-    env: EnvironmentName,
-    group: GroupId,
-    name: String,
-    request: WorkspaceRequest,
-    carried: Vec<CarriedChat>,
-}
-
-#[derive(Clone, Debug)]
-pub(in crate::environment_shell) struct PendingCloudSession(CloudDraft);
-
-#[derive(Clone, Debug)]
-pub(in crate::environment_shell) struct PatchQuestion {
-    pub(super) draft: CloudDraft,
-    pub(super) patch: String,
-}
-
-struct GroupFacts {
-    group: GroupId,
-    runner: CloudRunnerId,
-    env: EnvironmentName,
-    root: PathBuf,
-    name: String,
-    upstream: Option<String>,
-    order: CloudOrder,
-}
-
-type RemoteRead = (Result<Option<String>, krad_repo::RepoError>, String);
-type Prepared = Result<(PreparedWorkspace, Vec<CarriedStart>), WorkspaceError>;
-
 impl EnvironmentShell {
-    fn running_cloud_sessions(&self) -> usize {
-        self.envs
-            .values()
-            .flat_map(|live| {
-                live.data
-                    .sessions
-                    .iter()
-                    .filter(|session| holds_cloud_work(session, &live.data.nodes))
-            })
-            .count()
-    }
-
-    fn group_facts(
-        &self,
-        group: GroupId,
-        runner: CloudRunnerId,
-        order: CloudOrder,
-    ) -> Option<GroupFacts> {
-        let env = self.active.clone();
-        let found = self.envs.get(&env)?.data.group(group)?;
-        let upstream = self
-            .git_at(&env, &found.root)
-            .and_then(|git| git.status.upstream.clone());
-        Some(GroupFacts {
-            group,
-            runner,
-            root: found.root.clone(),
-            name: found.name.clone(),
-            upstream,
-            env,
-            order,
-        })
+    fn post_cloud(&self, command: CloudCommand) {
+        self.runtime.handle.post(Command::Cloud(command));
     }
 
     pub(in crate::environment_shell) fn new_cloud_session(
-        &mut self,
+        &self,
         group: GroupId,
         runner: CloudRunnerId,
-        window: &mut Window,
-        cx: &mut Context<Self>,
     ) {
-        self.create_cloud_session(group, runner, CloudOrder::default(), window, cx);
-    }
-
-    pub(in crate::environment_shell) fn create_cloud_session(
-        &mut self,
-        group: GroupId,
-        runner: CloudRunnerId,
-        order: CloudOrder,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if reached_limit(
-            self.running_cloud_sessions(),
-            self.settings.cloud.max_sessions,
-        ) {
-            self.toast(ToastKind::Warning, AT_LIMIT_TOAST, cx);
-            return;
-        }
-        let Some(facts) = self.group_facts(group, runner, order) else {
-            return;
-        };
-        let link = self.env_link(&facts.env);
-        let remote = upstream_remote(facts.upstream.as_deref())
-            .unwrap_or(ORIGIN_REMOTE)
-            .to_owned();
-        let root = facts.root.clone();
-        let read = cx.background_spawn(async move {
-            let home = home_dir().map(PathBuf::from);
-            let url = resolved_remote_url(&link, &root, &remote, home.as_deref());
-            let diff = working_patch_with_untracked(&link, &root).unwrap_or_else(|error| {
-                tracing::debug!(%error, "no uncommitted changes to offer");
-                String::new()
-            });
-            (url, diff)
-        });
-        cx.spawn_in(window, async move |this, cx| {
-            let read = read.await;
-            this.update_in(cx, |shell, window, cx| {
-                shell.remote_read(facts, read, window, cx);
-            })
-            .unwrap_or_default();
-        })
-        .detach();
-    }
-
-    fn remote_read(
-        &mut self,
-        facts: GroupFacts,
-        (url, diff): RemoteRead,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let GroupFacts {
+        self.post_cloud(CloudCommand::Create {
+            environment: self.active.clone(),
             group,
             runner,
-            order,
-            ..
-        } = facts;
-        let remote_url = match url {
-            Ok(Some(url)) => url,
-            Ok(None) => return self.toast(ToastKind::Warning, NO_REMOTE_TOAST, cx),
-            Err(error) => {
-                return self.toast(ToastKind::Error, &format!("{REMOTE_UNREAD}: {error}"), cx);
-            }
-        };
-        let ordinal = self.envs.get(&facts.env).map_or(0, |live| {
-            live.data
-                .sessions_of(Some(group))
-                .filter(|session| session.cloud.is_some())
-                .count()
-        }) + 1;
-        let draft = CloudDraft {
-            name: order
-                .name
-                .unwrap_or_else(|| cloud_session_name(&facts.name, ordinal)),
-            request: WorkspaceRequest {
-                runner,
-                remote_url,
-                upstream_branch: upstream_branch(facts.upstream.as_deref()).map(str::to_owned),
-                session_slug: session_slug(&facts.name, &new_nonce()),
-                patch: None,
-            },
-            env: facts.env,
-            group,
-            carried: order.carried,
-        };
-        match offered_patch(diff) {
-            Some(patch) => self.ask_for_patch(PatchQuestion { draft, patch }, window, cx),
-            None => self.queue_cloud_session(draft, cx),
-        }
+        });
     }
 
-    fn ask_for_patch(
+    pub(in crate::environment_shell) fn send_session_to_cloud(
+        &self,
+        session: SessionId,
+        runner: CloudRunnerId,
+    ) {
+        self.post_cloud(CloudCommand::Send {
+            environment: self.active.clone(),
+            session,
+            runner,
+        });
+    }
+
+    fn session_or_current(&self, session: Option<SessionId>) -> Option<SessionId> {
+        session.or_else(|| {
+            self.envs
+                .get(&self.active)
+                .and_then(|live| live.data.current_session())
+                .map(|found| found.id)
+        })
+    }
+
+    pub(in crate::environment_shell) fn cloud_result(
         &mut self,
-        question: PatchQuestion,
-        window: &mut Window,
+        session: Option<SessionId>,
+        command: impl FnOnce(krad_domain::EnvironmentName, SessionId) -> CloudCommand,
         cx: &mut Context<Self>,
     ) {
-        if !NATIVE_ALERTS {
-            self.cloud.asking = Some(question);
-            cx.notify();
-            return;
-        }
-        let answer = window.prompt(
-            PromptLevel::Warning,
-            PATCH_TITLE,
-            Some(PATCH_DETAIL),
-            &[
-                PromptButton::ok(PATCH_CONFIRM),
-                PromptButton::new(PATCH_LEAVE),
-                PromptButton::cancel(PATCH_CANCEL),
-            ],
-            cx,
-        );
+        let Some(session) = self.session_or_current(session) else {
+            return self.toast(ToastKind::Warning, NO_SESSION_TOAST, cx);
+        };
+        self.post_cloud(command(self.active.clone(), session));
+    }
+
+    pub(in crate::environment_shell) fn cloud_patch_offered(
+        &mut self,
+        draft: CloudDraftId,
+        cx: &mut Context<Self>,
+    ) {
+        let handle = self.attention.window_handle.filter(|_| NATIVE_ALERTS);
+        let prompted = handle.and_then(|handle| {
+            handle
+                .update(cx, |_, window, cx| {
+                    window.prompt(
+                        PromptLevel::Warning,
+                        PATCH_TITLE,
+                        Some(PATCH_DETAIL),
+                        &[
+                            PromptButton::ok(PATCH_CONFIRM),
+                            PromptButton::new(PATCH_LEAVE),
+                            PromptButton::cancel(PATCH_CANCEL),
+                        ],
+                        cx,
+                    )
+                })
+                .ok()
+        });
+        let Some(answer) = prompted else {
+            self.cloud.asking = Some(draft);
+            return cx.notify();
+        };
         cx.spawn(async move |this, cx| {
             let answer = match answer.await {
                 Ok(BRING_ANSWER) => PatchAnswer::Bring,
                 Ok(LEAVE_ANSWER) => PatchAnswer::Leave,
                 _ => PatchAnswer::Cancel,
             };
-            this.update(cx, |shell, cx| shell.answer_patch(question, answer, cx))
+            this.update(cx, |shell, _| shell.answer_patch(draft, answer))
                 .unwrap_or_default();
         })
         .detach();
     }
 
-    pub(super) fn answer_patch(
-        &mut self,
-        question: PatchQuestion,
+    pub(in crate::environment_shell) fn answer_patch(
+        &self,
+        draft: CloudDraftId,
         answer: PatchAnswer,
-        cx: &mut Context<Self>,
     ) {
-        let PatchQuestion { mut draft, patch } = question;
-        match answer {
-            PatchAnswer::Cancel => return,
-            PatchAnswer::Bring => draft.request.patch = Some(patch),
-            PatchAnswer::Leave => {}
-        }
-        self.queue_cloud_session(draft, cx);
+        self.post_cloud(CloudCommand::AnswerPatch { draft, answer });
     }
 
-    fn queue_cloud_session(&mut self, draft: CloudDraft, cx: &mut Context<Self>) {
-        let runner = draft.request.runner;
-        let text = format!("{PREPARING_PREFIX} {}…", self.runner_name(runner));
-        self.toast(ToastKind::Info, &text, cx);
-        self.cloud.pending.push(PendingCloudSession(draft));
-        self.ensure_runner_ready(runner);
-        if self.runner_link(runner).is_some() {
-            self.start_pending_cloud_sessions(runner, cx);
-        }
-    }
-
-    pub(super) fn start_pending_cloud_sessions(
+    pub(in crate::environment_shell) fn cloud_news(
         &mut self,
-        runner: CloudRunnerId,
+        news: CloudNews,
         cx: &mut Context<Self>,
     ) {
-        let Some(link) = self.runner_link(runner) else {
-            return;
-        };
-        let (starting, waiting): (Vec<_>, Vec<_>) = std::mem::take(&mut self.cloud.pending)
-            .into_iter()
-            .partition(|PendingCloudSession(draft)| draft.request.runner == runner);
-        self.cloud.pending = waiting;
-        for PendingCloudSession(mut draft) in starting {
-            let link = link.clone();
-            let request = draft.request.clone();
-            let carried = std::mem::take(&mut draft.carried);
-            let prepare = cx.background_spawn(async move {
-                let prepared = prepare_workspace(&link, &request)?;
-                let starts = carry_chats(&link, &prepared.placement.worktree, carried);
-                Ok((prepared, starts))
-            });
-            cx.spawn(async move |this, cx| {
-                let prepared = prepare.await;
-                this.update(cx, |shell, cx| {
-                    shell.workspace_prepared(draft, prepared, cx);
-                })
-                .unwrap_or_default();
-            })
-            .detach();
-        }
-    }
-
-    pub(super) fn fail_pending_cloud_sessions(
-        &mut self,
-        runner: CloudRunnerId,
-        cx: &mut Context<Self>,
-    ) {
-        let before = self.cloud.pending.len();
-        self.cloud
-            .pending
-            .retain(|PendingCloudSession(draft)| draft.request.runner != runner);
-        if self.cloud.pending.len() == before {
-            return;
-        }
-        let text = format!(
-            "{RUNNER_FAILED_PREFIX} {}: {}",
-            self.runner_name(runner),
-            runner_label(&self.runner_state(runner))
-        );
-        self.toast(ToastKind::Error, &text, cx);
-    }
-
-    fn workspace_prepared(
-        &mut self,
-        draft: CloudDraft,
-        prepared: Prepared,
-        cx: &mut Context<Self>,
-    ) {
-        let (prepared, starts) = match prepared {
-            Ok(prepared) => prepared,
-            Err(error) => {
-                tracing::warn!(%error, "the cloud session's workspace could not be prepared");
-                return self.toast(ToastKind::Error, &error.to_string(), cx);
+        let (kind, text) = match news {
+            CloudNews::AtLimit => (ToastKind::Warning, AT_LIMIT_TOAST.to_owned()),
+            CloudNews::NoRemote => (ToastKind::Warning, NO_REMOTE_TOAST.to_owned()),
+            CloudNews::NoSession => (ToastKind::Warning, NO_SESSION_TOAST.to_owned()),
+            CloudNews::AlreadyCloud => (ToastKind::Warning, ALREADY_CLOUD_TOAST.to_owned()),
+            CloudNews::NoGroup => (ToastKind::Warning, NO_GROUP_TOAST.to_owned()),
+            CloudNews::NotCloud => (ToastKind::Warning, NOT_CLOUD.to_owned()),
+            CloudNews::RunnerNotReady => (ToastKind::Warning, NOT_READY.to_owned()),
+            CloudNews::NoRepo => (ToastKind::Warning, NO_REPO.to_owned()),
+            CloudNews::RemoteUnread { error } => {
+                (ToastKind::Error, format!("{REMOTE_UNREAD}: {error}"))
             }
+            CloudNews::Preparing { runner } => (
+                ToastKind::Info,
+                format!("{PREPARING_PREFIX} {}…", self.runner_name(runner)),
+            ),
+            CloudNews::RunnerFailed { runner, reason } => (
+                ToastKind::Error,
+                format!(
+                    "{RUNNER_FAILED_PREFIX} {}: {}",
+                    self.runner_name(runner),
+                    runner_label(&krad_domain::RunnerState::Failed { reason })
+                ),
+            ),
+            CloudNews::NotPrepared { error } | CloudNews::ResultFailed { error } => {
+                (ToastKind::Error, error)
+            }
+            CloudNews::PatchProblem { problem } => (ToastKind::Warning, problem),
+            CloudNews::Pushing => (ToastKind::Info, PUSHING.to_owned()),
+            CloudNews::Pushed { branch } => {
+                (ToastKind::Success, format!("{PUSHED_PREFIX} {branch}"))
+            }
+            CloudNews::Opening => (ToastKind::Info, OPENING.to_owned()),
+            CloudNews::RequestOpened { url } => {
+                cx.open_url(&url);
+                (ToastKind::Success, format!("{OPENED_PREFIX} {url}"))
+            }
+            CloudNews::Bringing => (ToastKind::Info, BRINGING.to_owned()),
+            CloudNews::BroughtHome { branch } => {
+                (ToastKind::Success, format!("{BROUGHT_PREFIX} {branch}"))
+            }
+            CloudNews::Unknown => return,
         };
-        if let Some(problem) = &prepared.patch_problem {
-            self.toast(ToastKind::Warning, problem, cx);
-        }
-        self.open_cloud_session(draft, prepared, starts, cx);
+        self.toast(kind, &text, cx);
     }
 
-    fn open_cloud_session(
+    pub(in crate::environment_shell) fn cloud_session_opened(
         &mut self,
-        draft: CloudDraft,
-        prepared: PreparedWorkspace,
-        starts: Vec<CarriedStart>,
+        opened: CloudOpened,
         cx: &mut Context<Self>,
     ) {
-        let CloudDraft {
-            env, group, name, ..
-        } = draft;
-        if env == self.active {
+        let CloudOpened {
+            environment,
+            group,
+            starts,
+            ..
+        } = opened;
+        if environment == self.active {
             self.leave_main_overlays();
         }
-        let Some(live) = self
-            .envs
-            .get(&env)
-            .filter(|live| live.data.group(group).is_some())
-        else {
-            return;
-        };
-        let runner = prepared.placement.runner;
-        let session = live.data.next_session_id();
-        let opened = SessionEdit::Open {
-            session,
-            group: Some(group),
-            name,
-            shown: true,
-        };
-        self.edit_environment(&env, opened);
-        let cloud = Some(prepared.placement);
-        self.edit_environment(&env, SessionEdit::SetCloud { session, cloud });
-        let Some(live) = self.envs.get_mut(&env) else {
+        let Some(live) = self.envs.get_mut(&environment) else {
             return;
         };
         live.data.set_view(EnvironmentView::Sessions);
         live.selected_group = Some(group);
-        tracing::info!(%runner, session = session.as_u64(), "cloud session opened");
-        if starts.is_empty() {
-            let preferred = self.settings.default_harness;
-            let candidates = AgentPreset::chat_harnesses(&self.settings.acp.all_agents());
-            let harness = cloud_chat_harness(preferred, &candidates);
-            let chat = LiveSession::Start(new_session_id());
-            self.spawn_chat_as(&env, NodeGroup::Exactly(Some(group)), harness, chat, cx);
-        }
         for start in starts {
+            let session = match start.conversation {
+                CarriedConversation::Fresh(resume) => LiveSession::Start(resume),
+                CarriedConversation::Forked(resume) => LiveSession::Fork(resume),
+            };
             self.spawn_seeded_chat(
-                &env,
+                &environment,
                 Some(group),
                 start.harness,
-                start.session,
+                session,
                 start.prompts,
                 cx,
             );

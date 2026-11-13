@@ -26,7 +26,7 @@ fn stdout_of(link: &HostLink, command: &HostCommand) -> Option<String> {
         .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
-pub(super) fn default_branch(link: &HostLink, repo: &Path) -> Option<String> {
+pub(crate) fn default_branch(link: &HostLink, repo: &Path) -> Option<String> {
     let mut command = git(Some(repo));
     command.args(["symbolic-ref", "--short", ORIGIN_HEAD]);
     let named = stdout_of(link, &command)?;
@@ -39,7 +39,7 @@ fn branch_of_remote_head(named: &str) -> Option<&str> {
         .filter(|branch| !branch.is_empty())
 }
 
-pub(super) fn commit_subjects(link: &HostLink, worktree: &Path, target: &str) -> Vec<String> {
+pub(crate) fn commit_subjects(link: &HostLink, worktree: &Path, target: &str) -> Vec<String> {
     let mut command = git(Some(worktree));
     command.args([
         "log",
@@ -55,7 +55,7 @@ pub(super) fn commit_subjects(link: &HostLink, worktree: &Path, target: &str) ->
     })
 }
 
-pub(super) fn new_request(
+pub(crate) fn new_request(
     title: &str,
     source: &str,
     target: &str,
