@@ -3,51 +3,19 @@ mod file_index;
 mod live;
 mod panel;
 mod suggest;
-mod tool_output;
-mod transcript;
 
+pub(super) use krad_domain::{
+    fold_entry, fold_prompt, last_permission_mode, AnswerPart, ChatMessage, ShownOutput,
+};
 pub(super) use live::{LiveProcess, StartError};
 pub(super) use panel::question_bubble;
 pub(super) use suggest::workplace_home;
 use suggest::Suggest;
-pub(super) use tool_output::ShownOutput;
-pub(super) use transcript::{fold_entry, fold_prompt, last_permission_mode};
 
 use gpui_kit::ScrollHandle;
-use krad_chat::{Skill, Speaker, ToolCall};
-use krad_domain::{AskOutcome, Checklist, Mention, RewindPoint, ToolUseId};
-use std::collections::HashMap;
+use krad_chat::{Skill, Speaker};
 
 use super::EnvironmentShell;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) enum AnswerPart {
-    Thinking(String),
-    Tool(ToolCall),
-    Text(String),
-    Ask(AskOutcome),
-}
-
-pub(super) struct ChatMessage {
-    pub(super) speaker: Speaker,
-    pub(super) text: String,
-    pub(super) parts: Vec<AnswerPart>,
-    pub(super) error: Option<String>,
-    pub(super) running: bool,
-    pub(super) mentions: Vec<Mention>,
-    pub(super) checklist: Option<Checklist>,
-    pub(super) rewind: Option<RewindPoint>,
-    pub(super) tool_outputs: HashMap<ToolUseId, ShownOutput>,
-}
-
-impl ChatMessage {
-    pub(super) fn tools(&self) -> impl Iterator<Item = &ToolCall> {
-        self.parts.iter().filter_map(|part| match part {
-            AnswerPart::Tool(call) => Some(call),
-            AnswerPart::Thinking(_) | AnswerPart::Text(_) | AnswerPart::Ask(_) => None,
-        })
-    }
-}
 
 const USER_PREFIX: &str = "> ";
 const TOOL_PREFIX: &str = "• ";
@@ -98,20 +66,13 @@ pub(super) struct ChatState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use krad_chat::ToolCall;
     use krad_domain::ToolKind;
 
     fn message(speaker: Speaker, text: &str, parts: Vec<AnswerPart>) -> ChatMessage {
-        ChatMessage {
-            speaker,
-            text: text.to_owned(),
-            parts,
-            error: None,
-            running: false,
-            mentions: Vec::new(),
-            checklist: None,
-            rewind: None,
-            tool_outputs: HashMap::new(),
-        }
+        let mut message = ChatMessage::new(speaker, text.to_owned());
+        message.parts = parts;
+        message
     }
 
     #[test]

@@ -136,7 +136,7 @@ impl AcpPermissionKind {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcpPermissionOption {
     pub id: AcpPermissionOptionId,
     pub name: String,

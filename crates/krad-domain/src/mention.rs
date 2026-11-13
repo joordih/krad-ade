@@ -88,7 +88,7 @@ pub struct ChatImage {
     pub format: ImageFormat,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Mention {
     Path(PathBuf),
     Image(ChatImage),
@@ -112,7 +112,7 @@ impl From<PathBuf> for Mention {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Prompt {
     pub text: String,
     pub mentions: Vec<Mention>,

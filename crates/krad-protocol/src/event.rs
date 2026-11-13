@@ -1,6 +1,6 @@
 use krad_domain::{
-    AgentPreset, AttentionTarget, EnvironmentChange, EnvironmentData, EnvironmentName, EventRecord,
-    Host,
+    AgentPreset, AttentionTarget, ChatMessage, EnvironmentChange, EnvironmentData, EnvironmentName,
+    EventRecord, Host, UsageReport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -9,6 +9,7 @@ use crate::attention::{AttentionNotice, AttentionSnapshot};
 use crate::bus::{
     AgentRef, AskId, AskSettlement, BusSnapshot, MailCount, PendingAsk, StatusReport,
 };
+use crate::chats::{ChatAsk, ChatAskId, ChatState, ChatSummary};
 use crate::environments::SpendingCrossed;
 use crate::harness_health::{HarnessChecked, HealthSnapshot};
 use crate::hosts::{HostPrompt, HostState, HostsSnapshot, PromptId, RemoteBusState};
@@ -91,6 +92,40 @@ pub enum EventKind {
     HostPromptSettled {
         prompt: PromptId,
     },
+    ChatOpened {
+        chat: AgentRef,
+        state: Box<ChatState>,
+    },
+    ChatMessageAdded {
+        chat: AgentRef,
+        index: usize,
+        message: Box<ChatMessage>,
+    },
+    ChatMessageChanged {
+        chat: AgentRef,
+        index: usize,
+        message: Box<ChatMessage>,
+    },
+    ChatMessagesCut {
+        chat: AgentRef,
+        len: usize,
+    },
+    ChatState {
+        chat: AgentRef,
+        state: Box<ChatState>,
+    },
+    ChatAsk(ChatAsk),
+    ChatAskSettled {
+        chat: AgentRef,
+        ask: ChatAskId,
+    },
+    ChatClosed {
+        chat: AgentRef,
+    },
+    ChatSpent {
+        chat: AgentRef,
+        report: UsageReport,
+    },
     #[serde(other)]
     Unknown,
 }
@@ -121,6 +156,8 @@ pub struct Snapshot {
     pub terminals: Vec<TerminalSummary>,
     #[serde(default)]
     pub hosts: HostsSnapshot,
+    #[serde(default)]
+    pub chats: Vec<ChatSummary>,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -176,6 +213,7 @@ mod tests {
                 environments: Vec::new(),
                 terminals: Vec::new(),
                 hosts: HostsSnapshot::default(),
+                chats: Vec::new(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

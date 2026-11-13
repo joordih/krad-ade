@@ -134,6 +134,17 @@ impl Environments {
             .map(|environment| environment.host.clone())
     }
 
+    pub(crate) fn node_title(&self, node: &AgentRef) -> Option<String> {
+        self.state
+            .environments
+            .iter()
+            .find(|environment| environment.name == node.environment)?
+            .nodes
+            .iter()
+            .find(|kept| kept.id == node.terminal)
+            .map(|kept| kept.title.clone())
+    }
+
     pub(crate) fn uses_host(&self, host: &Host) -> bool {
         self.state
             .environments

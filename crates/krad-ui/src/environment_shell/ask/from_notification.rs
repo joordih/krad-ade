@@ -4,7 +4,7 @@ use krad_domain::{AcpPermissionKind, AttentionKind, EnvironmentName, TerminalId}
 
 use super::super::surface::SurfaceChat;
 use super::super::EnvironmentShell;
-use super::{subject, AskQueue, DENIED_TEXT};
+use super::{AskQueue, DENIED_TEXT};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::environment_shell) enum PermissionReply {
@@ -60,7 +60,7 @@ impl EnvironmentShell {
             .and_then(AskQueue::front)?;
         Some(FrontAsk {
             kind: attention_kind(&waiting.ask.kind),
-            subject: subject(&waiting.ask.kind),
+            subject: waiting.ask.kind.subject(),
         })
     }
 

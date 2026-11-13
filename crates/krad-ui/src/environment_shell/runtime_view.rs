@@ -183,6 +183,7 @@ impl EnvironmentShell {
                     .replace(snapshot.environments);
                 self.advance_harness_onboarding(cx);
                 self.hosts_replaced(snapshot.hosts, cx);
+                self.runtime_chats_replaced(snapshot.chats, cx);
                 for summary in snapshot.terminals {
                     self.terminal_summary_heard(summary);
                 }
@@ -226,6 +227,10 @@ impl EnvironmentShell {
                 } else {
                     Heard::Quietly
                 };
+            }
+            chat if chat.chat().is_some() => {
+                self.chat_event_heard(chat, cx);
+                return Heard::Visibly;
             }
             kind => {
                 self.apply_shown_event(kind, cx);
@@ -303,6 +308,15 @@ impl EnvironmentShell {
             | EventKind::TerminalChanged { .. }
             | EventKind::TerminalEnded(_)
             | EventKind::TerminalClassified(_)
+            | EventKind::ChatOpened { .. }
+            | EventKind::ChatMessageAdded { .. }
+            | EventKind::ChatMessageChanged { .. }
+            | EventKind::ChatMessagesCut { .. }
+            | EventKind::ChatState { .. }
+            | EventKind::ChatAsk(_)
+            | EventKind::ChatAskSettled { .. }
+            | EventKind::ChatClosed { .. }
+            | EventKind::ChatSpent { .. }
             | EventKind::Pong { .. }
             | EventKind::Unknown => {}
         }

@@ -51,6 +51,7 @@ pub use history::{
     claude_conversation_file, read_claude_transcript, read_claude_transcript_before,
     read_claude_transcript_tail, TranscriptChunk, TranscriptMark,
 };
+pub use krad_domain::Speaker;
 pub use krad_domain::{ChatEvent, Effort, RewindPoint, RewindScope, ToolCall, ToolUseId};
 pub use live::{
     new_session_id, start_chat, BusVars, ChatBackend, LiveChat, LiveConfig, LiveSession,
@@ -63,7 +64,7 @@ pub use opencode::{
     watch_opencode_session, OpencodeError, OpencodeServer,
 };
 pub use process::Runner;
-pub use prompt::{shared_skill_message, Speaker};
+pub use prompt::shared_skill_message;
 pub use refused::ResumeRefused;
 pub use rewind::{RewindError, RewindRequest, Rewound};
 pub use skills::{

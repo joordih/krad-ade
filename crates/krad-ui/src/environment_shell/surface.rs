@@ -371,6 +371,7 @@ impl EnvironmentShell {
             return HarnessChange::Refused;
         }
         let transcript = self.acp_transcript(env, id, *harness);
+        self.leave_runtime(env, id);
         let Some(SurfaceChat {
             backend: Backend::Structured(structured),
             ..
@@ -428,6 +429,7 @@ impl EnvironmentShell {
         id: TerminalId,
         command: SurfaceCommand,
     ) {
+        self.command_runtime_chat(env, id, &command);
         match self
             .envs
             .get_mut(env)

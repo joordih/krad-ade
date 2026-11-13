@@ -13,6 +13,8 @@ use krad_domain::{
     PermissionMode, TerminalId, ToolDecision,
 };
 
+use krad_protocol::ChatCommand;
+
 use super::chat::fold_entry;
 use super::surface::{Backend, StructuredChat, SurfaceChat};
 use super::EnvironmentShell;
@@ -30,8 +32,6 @@ const FEEDBACK_PLACEHOLDER: &str = "What should the plan change?";
 const OTHER_PLACEHOLDER: &str = "Your own answer";
 const NOTE_ROWS: usize = 2;
 const ESCAPE: &[u8] = b"\x1b";
-const SUBJECT_SEPARATOR: &str = " ";
-const QUESTIONS_SEPARATOR: &str = "; ";
 
 const ACP_PERMISSION_ORDER: [AcpPermissionKind; 4] = [
     AcpPermissionKind::AllowOnce,
@@ -77,7 +77,7 @@ impl Choice {
     fn of_waiting(waiting: &Waiting) -> Vec<Self> {
         Self::of(
             &waiting.ask.kind,
-            waiting.ask.can_allow_always(),
+            waiting.can_allow_always(),
             waiting.by_keys(),
         )
     }
@@ -177,61 +177,12 @@ fn front_question(waiting: &[Waiting], text: &str) -> Option<(Vec<Question>, Que
     Some((questions.clone(), asked))
 }
 
-fn subject(kind: &AskKind) -> String {
-    match kind {
-        AskKind::Permission { tool, summary, .. } => format!("{tool}{SUBJECT_SEPARATOR}{summary}")
-            .trim()
-            .to_owned(),
-        AskKind::AcpPermission { tool, .. } => {
-            format!("{}{SUBJECT_SEPARATOR}{}", tool.name, tool.summary)
-                .trim()
-                .to_owned()
-        }
-        AskKind::Questions(questions) => questions
-            .iter()
-            .map(|question| question.text.as_str())
-            .collect::<Vec<_>>()
-            .join(QUESTIONS_SEPARATOR),
-        AskKind::Plan { plan } => plan
-            .lines()
-            .map(|line| line.trim_start_matches('#').trim())
-            .find(|line| !line.is_empty())
-            .unwrap_or_default()
-            .to_owned(),
-    }
-}
-
-fn chosen_verdict(kind: &AskKind, answer: &AskAnswer) -> Option<AskVerdict> {
-    let (AskAnswer::Chosen(id), AskKind::AcpPermission { options, .. }) = (answer, kind) else {
-        return None;
-    };
-    let chosen = options.iter().find(|option| &option.id == id)?;
-    Some(match chosen.kind {
-        AcpPermissionKind::AllowOnce => AskVerdict::Allowed,
-        AcpPermissionKind::AllowAlways => AskVerdict::AllowedAlways,
-        AcpPermissionKind::RejectOnce | AcpPermissionKind::RejectAlways => AskVerdict::Denied,
-    })
-}
-
 fn verdict(kind: &AskKind, answer: &AskAnswer) -> AskVerdict {
-    if let Some(verdict) = chosen_verdict(kind, answer) {
-        return verdict;
-    }
-    match (answer, kind) {
-        (AskAnswer::Allow, _) => AskVerdict::Allowed,
-        (AskAnswer::AllowAlways, _) => AskVerdict::AllowedAlways,
-        (AskAnswer::ApprovePlan { mode }, _) => AskVerdict::PlanApproved(*mode),
-        (AskAnswer::Deny { .. }, AskKind::Plan { .. }) => AskVerdict::PlanRejected,
-        (AskAnswer::Deny { .. }, _) => AskVerdict::Denied,
-        (AskAnswer::Answers(_) | AskAnswer::Chosen(_), _) => AskVerdict::Answered,
-    }
+    answer.verdict(kind)
 }
 
 fn outcome(kind: &AskKind, verdict: AskVerdict) -> AskOutcome {
-    AskOutcome {
-        subject: subject(kind),
-        verdict,
-    }
+    kind.outcome(verdict)
 }
 
 impl EnvironmentShell {
@@ -282,6 +233,11 @@ impl EnvironmentShell {
         if let Some(live) = self.ask_process(owner) {
             live.set_permission_mode(mode);
         }
+        let env = self.active.clone();
+        self.post_runtime_chat(&env, owner, |chat| ChatCommand::SetPermissionMode {
+            chat,
+            mode,
+        });
         if let Some(structured) = self.structured_of_mut(owner) {
             structured.permission_mode = Some(mode);
         }
@@ -298,7 +254,9 @@ impl EnvironmentShell {
         {
             match &chat.backend {
                 Backend::Structured(structured) => structured.fold_kept(&mut chat.messages, &entry),
-                Backend::Transcript(_) => fold_entry(&mut chat.messages, &entry),
+                Backend::Transcript(_) => {
+                    fold_entry(&mut chat.messages, &entry);
+                }
             }
         }
     }
@@ -309,6 +267,7 @@ impl EnvironmentShell {
         else {
             return;
         };
+        let answered_elsewhere = matches!(reply, AskReply::Runtime { .. });
         match reply {
             AskReply::Live => {
                 if let Some(live) = self.ask_process(owner) {
@@ -317,8 +276,19 @@ impl EnvironmentShell {
             }
             AskReply::Hook(held) => held.decide(ask.decision(answer)),
             AskReply::Keys => self.type_plan_answer(owner, answer),
+            AskReply::Runtime { ask: asked, .. } => {
+                let env = self.active.clone();
+                let answer = answer.clone();
+                self.post_runtime_chat(&env, owner, |chat| ChatCommand::AnswerAsk {
+                    chat,
+                    ask: asked,
+                    answer,
+                });
+            }
         }
-        self.record_ask(owner, outcome(&ask.kind, verdict(&ask.kind, answer)));
+        if !answered_elsewhere {
+            self.record_ask(owner, outcome(&ask.kind, verdict(&ask.kind, answer)));
+        }
         let waits = self.ask_queue(owner).is_some_and(|queue| !queue.is_empty());
         let state = if waits {
             AgentState::WaitingForInput
@@ -424,6 +394,11 @@ impl EnvironmentShell {
                 if let Some(live) = self.ask_process(owner) {
                     live.interrupt();
                 }
+            }
+            Some(AskReply::Runtime { .. }) => {
+                self.answer_ask(owner, &answer, cx);
+                let env = self.active.clone();
+                self.post_runtime_chat(&env, owner, |chat| ChatCommand::Interrupt { chat });
             }
             Some(AskReply::Hook(_)) => {
                 let Some(Waiting { ask, reply, .. }) =
@@ -688,7 +663,7 @@ mod tests {
         let plan = AskKind::Plan {
             plan: "\n# Add the notes file\n- Write it".to_owned(),
         };
-        assert_eq!(subject(&plan), "Add the notes file");
+        assert_eq!(plan.subject(), "Add the notes file");
         let sent_back = AskAnswer::Deny {
             message: KEEP_PLANNING_TEXT.to_owned(),
         };

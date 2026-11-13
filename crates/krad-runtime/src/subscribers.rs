@@ -98,6 +98,7 @@ mod tests {
             environments: Vec::new(),
             terminals: Vec::new(),
             hosts: krad_protocol::HostsSnapshot::default(),
+            chats: Vec::new(),
         }
     }
 

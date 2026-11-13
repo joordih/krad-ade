@@ -224,6 +224,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
+        self.leave_runtime(&env, id);
         if let Some(live) = self.envs.get_mut(&env) {
             live.chats.remove(&id);
         }

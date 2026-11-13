@@ -1,0 +1,178 @@
+use krad_domain::{
+    AgentPreset, AskAnswer, AskKind, ChatMessage, Effort, ModelId, PermissionMode, PickedAnswer,
+    Prompt, ResumeId, RewindScope,
+};
+use serde::{Deserialize, Serialize};
+
+use crate::bus::AgentRef;
+use crate::event::EventKind;
+
+mod mirror;
+
+pub use mirror::{ChatMirror, MirrorChange};
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ChatAskId(pub u64);
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(tag = "verb", rename_all = "snake_case")]
+pub enum ChatCommand {
+    Send {
+        chat: AgentRef,
+        prompt: Prompt,
+    },
+    Queue {
+        chat: AgentRef,
+        prompt: Prompt,
+    },
+    Interrupt {
+        chat: AgentRef,
+    },
+    Rewind {
+        chat: AgentRef,
+        index: usize,
+        prompt: Prompt,
+        scope: RewindScope,
+    },
+    SetModel {
+        chat: AgentRef,
+        model: ModelId,
+    },
+    SetEffort {
+        chat: AgentRef,
+        effort: Effort,
+    },
+    SetPermissionMode {
+        chat: AgentRef,
+        mode: PermissionMode,
+    },
+    SetThinking {
+        chat: AgentRef,
+        thinking: bool,
+    },
+    AnswerAsk {
+        chat: AgentRef,
+        ask: ChatAskId,
+        answer: AskAnswer,
+    },
+    AnswerQuestion {
+        chat: AgentRef,
+        ask: ChatAskId,
+        answers: Vec<PickedAnswer>,
+    },
+    ApprovePlan {
+        chat: AgentRef,
+        ask: ChatAskId,
+        mode: PermissionMode,
+    },
+    #[serde(other)]
+    Unknown,
+}
+
+impl ChatCommand {
+    #[must_use]
+    pub const fn chat(&self) -> Option<&AgentRef> {
+        match self {
+            Self::Send { chat, .. }
+            | Self::Queue { chat, .. }
+            | Self::Interrupt { chat }
+            | Self::Rewind { chat, .. }
+            | Self::SetModel { chat, .. }
+            | Self::SetEffort { chat, .. }
+            | Self::SetPermissionMode { chat, .. }
+            | Self::SetThinking { chat, .. }
+            | Self::AnswerAsk { chat, .. }
+            | Self::AnswerQuestion { chat, .. }
+            | Self::ApprovePlan { chat, .. } => Some(chat),
+            Self::Unknown => None,
+        }
+    }
+}
+
+impl EventKind {
+    #[must_use]
+    pub const fn chat(&self) -> Option<&AgentRef> {
+        match self {
+            Self::ChatOpened { chat, .. }
+            | Self::ChatMessageAdded { chat, .. }
+            | Self::ChatMessageChanged { chat, .. }
+            | Self::ChatMessagesCut { chat, .. }
+            | Self::ChatState { chat, .. }
+            | Self::ChatAskSettled { chat, .. }
+            | Self::ChatClosed { chat }
+            | Self::ChatSpent { chat, .. } => Some(chat),
+            Self::ChatAsk(ask) => Some(&ask.chat),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub struct ChatContext {
+    pub tokens: Option<u64>,
+    pub window: Option<u64>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct ChatState {
+    pub harness: AgentPreset,
+    pub working: bool,
+    pub alive: bool,
+    pub resume: Option<ResumeId>,
+    pub model: Option<String>,
+    pub chosen_model: Option<ModelId>,
+    pub effort: Option<Effort>,
+    pub permission_mode: Option<PermissionMode>,
+    pub context: ChatContext,
+    pub queued: Vec<Prompt>,
+    pub problem: Option<String>,
+}
+
+impl ChatState {
+    #[must_use]
+    pub const fn new(harness: AgentPreset) -> Self {
+        Self {
+            harness,
+            working: false,
+            alive: false,
+            resume: None,
+            model: None,
+            chosen_model: None,
+            effort: None,
+            permission_mode: None,
+            context: ChatContext {
+                tokens: None,
+                window: None,
+            },
+            queued: Vec::new(),
+            problem: None,
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct ChatAsk {
+    pub chat: AgentRef,
+    pub ask: ChatAskId,
+    pub kind: AskKind,
+    pub can_allow_always: bool,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct ChatPage {
+    pub chat: AgentRef,
+    pub len: usize,
+    pub from: usize,
+    pub messages: Vec<ChatMessage>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct ChatSummary {
+    pub state: ChatState,
+    pub tail: ChatPage,
+    pub asks: Vec<ChatAsk>,
+}
+
+#[cfg(test)]
+mod tests;

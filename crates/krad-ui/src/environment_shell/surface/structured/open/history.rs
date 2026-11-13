@@ -48,7 +48,7 @@ fn prepend_history(chat: &mut SurfaceChat, entries: &[ChatEntry], started: Optio
 }
 
 impl EnvironmentShell {
-    pub(super) fn load_history(
+    pub(in crate::environment_shell::surface::structured) fn load_history(
         &mut self,
         env: EnvironmentName,
         id: TerminalId,

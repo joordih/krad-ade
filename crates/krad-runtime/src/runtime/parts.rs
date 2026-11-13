@@ -2,6 +2,7 @@ use krad_protocol::{BusSnapshot, Scope, Seq, Snapshot};
 
 use crate::attention::Attention;
 use crate::bus::Bus;
+use crate::chats::Chats;
 use crate::environments::Environments;
 use crate::harness_health::Health;
 use crate::hosts::Hosts;
@@ -18,6 +19,7 @@ pub(super) struct Parts<'a> {
     pub(super) environments: &'a Environments,
     pub(super) terminals: &'a Terminals,
     pub(super) hosts: &'a Hosts,
+    pub(super) chats: &'a Chats,
 }
 
 impl Parts<'_> {
@@ -33,6 +35,7 @@ impl Parts<'_> {
             environments: self.environments.snapshot(),
             terminals: self.terminals.snapshot(),
             hosts: self.hosts.snapshot(),
+            chats: self.chats.snapshot(),
         }
     }
 }

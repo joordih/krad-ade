@@ -1,6 +1,7 @@
 mod app_events;
 mod attention;
 mod bus;
+mod chats;
 mod command;
 mod environments;
 mod event;
@@ -17,6 +18,10 @@ pub use attention::{AttentionCommand, AttentionNotice, AttentionSnapshot, Attent
 pub use bus::{
     AgentRef, AskId, AskRequest, AskSettlement, BusCommand, BusSnapshot, MailCount, PendingAsk,
     StatusReport,
+};
+pub use chats::{
+    ChatAsk, ChatAskId, ChatCommand, ChatContext, ChatMirror, ChatPage, ChatState, ChatSummary,
+    MirrorChange,
 };
 pub use command::{Command, ErrorCode, Reply, RuntimeCommand};
 pub use environments::{EnvironmentCommand, SpendingCrossed};

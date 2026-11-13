@@ -386,6 +386,10 @@ impl EnvironmentShell {
         let ran = live.sessions.remove(&id).is_some();
         let chat = live.chats.remove(&id);
         live.pending_chats.remove(&id);
+        self.close_runtime_chat(env, id, chat.as_ref());
+        let Some(live) = self.envs.get_mut(env) else {
+            return;
+        };
         live.waiting_prompts.remove(&id);
         live.waiting_modes.remove(&id);
         live.waiting_choices.remove(&id);

@@ -1,7 +1,6 @@
 use krad_domain::{
-    AcpAuthMethod, AcpConfigOption, AcpModels, AcpModes, AcpPermissionKind, AcpPermissionOption,
-    AcpPermissionOptionId, ChatEvent, FileEdit, LimitAlert, ModelId, PermissionMode, PlanUsage,
-    RewindId, ToolCall, ToolKind, UsageReport,
+    AcpAuthMethod, AcpConfigOption, AcpModels, AcpModes, AcpPermissionKind, ChatEvent, LimitAlert,
+    ModelId, PermissionMode, PlanUsage, RewindId, ToolKind, UsageReport,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -18,7 +17,9 @@ mod catalog;
 mod held;
 
 pub use catalog::{Catalog, CommandOffer};
-pub use krad_domain::{ModelOffer, ModelSource, SourceRank};
+pub use krad_domain::{
+    AskAnswer, AskKind, ModelOffer, ModelSource, PickedAnswer, Question, QuestionOption, SourceRank,
+};
 
 const ANSWERS_KEY: &str = "answers";
 const LABEL_SEPARATOR: &str = ", ";
@@ -60,24 +61,6 @@ pub enum AcpEvent {
     SignInNeeded(Vec<AcpAuthMethod>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
-pub struct QuestionOption {
-    pub label: String,
-    pub description: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Question {
-    #[serde(rename = "question")]
-    pub text: String,
-    pub header: Option<String>,
-    #[serde(default, deserialize_with = "each_entry")]
-    pub options: Vec<QuestionOption>,
-    #[serde(default)]
-    pub multi_select: bool,
-}
-
 #[derive(Default, Deserialize)]
 struct PlanInput {
     #[serde(default)]
@@ -88,25 +71,6 @@ struct PlanInput {
 struct QuestionInput {
     #[serde(default, deserialize_with = "each_entry")]
     questions: Vec<Question>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum AskKind {
-    Permission {
-        tool: String,
-        kind: ToolKind,
-        summary: String,
-        title: Option<String>,
-        edit: Option<FileEdit>,
-    },
-    Questions(Vec<Question>),
-    Plan {
-        plan: String,
-    },
-    AcpPermission {
-        tool: ToolCall,
-        options: Vec<AcpPermissionOption>,
-    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -177,22 +141,6 @@ impl ToolAsk {
             },
         }
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PickedAnswer {
-    pub question: String,
-    pub labels: Vec<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum AskAnswer {
-    Allow,
-    AllowAlways,
-    ApprovePlan { mode: PermissionMode },
-    Deny { message: String },
-    Answers(Vec<PickedAnswer>),
-    Chosen(AcpPermissionOptionId),
 }
 
 #[derive(Deserialize)]

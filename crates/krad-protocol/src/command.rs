@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::app_events::EventsCommand;
 use crate::attention::AttentionCommand;
 use crate::bus::BusCommand;
+use crate::chats::ChatCommand;
 use crate::environments::EnvironmentCommand;
 use crate::hosts::HostCommand;
 use crate::models::ModelsCommand;
@@ -21,6 +22,7 @@ pub enum Command {
     Environments(EnvironmentCommand),
     Terminal(TerminalCommand),
     Host(HostCommand),
+    Chat(ChatCommand),
     #[serde(other)]
     Unknown,
 }

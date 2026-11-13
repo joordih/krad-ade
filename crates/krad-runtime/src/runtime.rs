@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use crate::app_events::{AppEvents, EventsSetup};
 use crate::attention::Attention;
 use crate::bus::{open, Bus, BusSetup};
+use crate::chats::Chats;
 use crate::environments::{Environments, EnvironmentsSetup};
 use crate::handle::RuntimeHandle;
 use crate::harness_health::Health;
@@ -24,6 +25,7 @@ use crate::subscribers::Subscribers;
 use crate::terminals::{Settling, Terminals};
 use crate::usage::Usage;
 
+mod chatting;
 mod hosting;
 mod parts;
 
@@ -57,6 +59,7 @@ pub struct Runtime {
     environments: Environments,
     terminals: Terminals,
     hosts: Hosts,
+    chats: Chats,
     stopped: Arc<AtomicBool>,
 }
 
@@ -127,6 +130,7 @@ impl Runtime {
             environments: owned.environments,
             terminals: Terminals::new(inbox.clone()),
             hosts: owned.hosts,
+            chats: Chats::new(inbox.clone()),
             stopped,
         }
     }
@@ -153,6 +157,7 @@ impl Runtime {
                 }
             }
             self.terminals.pumped(&mut self.outbox);
+            self.hear_chats();
             self.hear_ended_terminals(unread);
             self.flush();
             if flow == Flow::Stopping {
@@ -199,6 +204,9 @@ impl Runtime {
                 channel,
             } => self.hand_machine_channel(&environment, channel),
             Input::Wake => {}
+            chat @ (Input::OpenChat { .. } | Input::CloseChat(_) | Input::ChatPage { .. }) => {
+                self.apply_chat_input(chat);
+            }
             Input::CheckHarnesses { place, probes } => {
                 self.health
                     .check(&place, probes, &self.jobs, &mut self.outbox);
@@ -260,6 +268,9 @@ impl Runtime {
             | Input::TerminalPalette(_)
             | Input::OpenSignIn { .. }
             | Input::MachineChannel { .. }
+            | Input::OpenChat { .. }
+            | Input::CloseChat(_)
+            | Input::ChatPage { .. }
             | Input::Wake
             | Input::Tick
             | Input::Stop => {}
@@ -318,6 +329,9 @@ impl Runtime {
             Command::Host(command) => self
                 .execute_host(command)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
+            Command::Chat(command) => self
+                .execute_chat(command)
+                .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Terminal(command) => self
                 .terminals
                 .execute(command, &mut self.outbox)
@@ -362,6 +376,7 @@ impl Runtime {
             environments: &self.environments,
             terminals: &self.terminals,
             hosts: &self.hosts,
+            chats: &self.chats,
         };
         let seq = self.seq;
         self.subscribers
@@ -378,6 +393,7 @@ impl Runtime {
             environments: &self.environments,
             terminals: &self.terminals,
             hosts: &self.hosts,
+            chats: &self.chats,
         }
         .snapshot(self.seq, scope)
     }
@@ -390,7 +406,7 @@ pub(crate) fn refused(code: ErrorCode, message: &str) -> Reply {
     }
 }
 
-fn answer_to<T: std::fmt::Debug>(reply: oneshot::Sender<T>, answer: T) {
+pub(super) fn answer_to<T: std::fmt::Debug>(reply: oneshot::Sender<T>, answer: T) {
     if let Err(unheard) = reply.send(answer) {
         tracing::trace!(?unheard, "a client left before its answer");
     }

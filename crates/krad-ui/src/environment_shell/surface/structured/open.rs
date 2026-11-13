@@ -125,7 +125,9 @@ impl EnvironmentShell {
                 self.seed_acp_chats();
                 self.list_acp_models(agent, cx);
             }
-            if let Some(resume) = history {
+            if self.opens_in_runtime(env, id) {
+                self.runtime_chat_opened(env, id, cx);
+            } else if let Some(resume) = history {
                 match self.node_site(env, id) {
                     NodeSite::Waiting(runner) => self.note_cloud_wait(env, id, runner, cx),
                     NodeSite::Cloud(_) => self.load_history(env.clone(), id, harness, resume, cx),
@@ -145,7 +147,7 @@ impl EnvironmentShell {
         !reads_history_on_host(harness) || self.host_agents_known(env)
     }
 
-    fn note_history_waits_for_host(&mut self, env: &EnvironmentName, id: TerminalId) {
+    pub(super) fn note_history_waits_for_host(&mut self, env: &EnvironmentName, id: TerminalId) {
         let Some(destination) = self.envs.get(env).map(|live| live.data.host.to_string()) else {
             return;
         };
@@ -159,6 +161,13 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         cx: &mut Context<Self>,
     ) {
+        let opening: Vec<TerminalId> = self
+            .envs
+            .get(env)
+            .map_or_else(Vec::new, |live| live.chats.keys().copied().collect());
+        for id in opening {
+            self.runtime_chat_opened(env, id, cx);
+        }
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
@@ -170,6 +179,9 @@ impl EnvironmentShell {
                 let Backend::Structured(structured) = &chat.backend else {
                     return None;
                 };
+                if structured.in_runtime() {
+                    return None;
+                }
                 let resume = structured.session.history()?.clone();
                 let harness = structured.harness;
                 chat.problem = None;
@@ -187,6 +199,9 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &mut Context<Self>,
     ) {
+        if self.opens_in_runtime(env, id) {
+            return self.runtime_chat_opened(env, id, cx);
+        }
         let Some(chat) = structured_chat(self, env, id).filter(|chat| chat.messages.is_empty())
         else {
             return;
@@ -194,6 +209,9 @@ impl EnvironmentShell {
         let Backend::Structured(structured) = &chat.backend else {
             return;
         };
+        if structured.in_runtime() {
+            return;
+        }
         let Some(resume) = structured.session.history().cloned() else {
             return;
         };

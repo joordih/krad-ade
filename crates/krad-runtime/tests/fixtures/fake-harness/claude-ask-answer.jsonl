@@ -1,0 +1,2 @@
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Listed the folder."}]},"session_id":"5d1e2f3a-4b5c-4d6e-8f70-81a2b3c4d5e6"}
+{"type":"result","subtype":"success","is_error":false,"result":"Listed the folder.","session_id":"5d1e2f3a-4b5c-4d6e-8f70-81a2b3c4d5e6"}

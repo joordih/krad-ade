@@ -4,13 +4,14 @@ use krad_chat::Runner;
 use krad_domain::{AgentPreset, EnvironmentName, Host};
 use krad_host::MachineChannel;
 use krad_protocol::{
-    AgentRef, Command, Feed, HealthPlace, Reply, RequestId, Scope, Snapshot, WebhookTest,
+    AgentRef, ChatPage, Command, Feed, HealthPlace, Reply, RequestId, Scope, Snapshot, WebhookTest,
 };
 use krad_session::AnsiPalette;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::bus::{Delegated, DelegationId, Mail};
+use crate::chats::ChatStart;
 use crate::harness_health::HarnessProbe;
 use crate::jobs::JobDone;
 use crate::terminals::{Shared, TerminalAction, TerminalLaunch};
@@ -79,6 +80,17 @@ pub(crate) enum Input {
     MachineChannel {
         environment: EnvironmentName,
         channel: Result<MachineChannel, String>,
+    },
+    OpenChat {
+        chat: AgentRef,
+        start: Box<ChatStart>,
+    },
+    CloseChat(AgentRef),
+    ChatPage {
+        chat: AgentRef,
+        before: usize,
+        count: usize,
+        reply: oneshot::Sender<Option<ChatPage>>,
     },
     Wake,
     Tick,

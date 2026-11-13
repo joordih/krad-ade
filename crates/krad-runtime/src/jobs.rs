@@ -8,6 +8,7 @@ use std::io;
 use std::sync::mpsc::SyncSender;
 use std::thread;
 
+use crate::chats::ChatOpening;
 use crate::hosts::{Attempt, RemoteBus};
 use crate::input::Input;
 use crate::usage::UsageKey;
@@ -40,6 +41,7 @@ pub(crate) enum JobDone {
         host: Host,
         prepared: Result<RemoteBus, String>,
     },
+    ChatOpened(ChatOpening),
 }
 
 #[derive(Clone, Debug)]

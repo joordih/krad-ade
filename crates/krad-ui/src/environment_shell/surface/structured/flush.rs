@@ -46,6 +46,12 @@ impl EnvironmentShell {
             return;
         };
         let batch = structured.take_batch(outbox, Instant::now());
+        if structured.in_runtime() {
+            if batch.message.is_some() {
+                outbox.delivered();
+            }
+            return self.hand_to_runtime(env, id, &batch);
+        }
         if let Some(prompt) = &batch.message {
             outbox.delivered();
             structured.fold_sent(messages, prompt);
@@ -161,11 +167,14 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Result<(), StartError> {
         let Some(harness) = structured_mut(self, env, id)
-            .filter(|structured| structured.live().is_none())
+            .filter(|structured| structured.live().is_none() && !structured.in_runtime())
             .map(|structured| structured.harness)
         else {
             return Ok(());
         };
+        if self.opens_in_runtime(env, id) {
+            return self.open_in_runtime(env, id);
+        }
         match self.node_site(env, id) {
             NodeSite::Waiting(runner) => {
                 self.note_cloud_wait(env, id, runner, cx);
@@ -231,7 +240,7 @@ impl EnvironmentShell {
         joined_prompt(hint, self.memory_preamble(env, id))
     }
 
-    fn live_config(
+    pub(super) fn live_config(
         &mut self,
         env: &EnvironmentName,
         id: TerminalId,

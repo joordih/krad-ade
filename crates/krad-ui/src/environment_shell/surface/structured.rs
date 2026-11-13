@@ -7,6 +7,7 @@ mod open;
 mod orchestrator;
 mod reattach;
 mod rewind;
+mod runtime_chat;
 
 use gpui_kit::Context;
 use krad_chat::{
@@ -35,6 +36,7 @@ use mcp::McpPrep;
 pub(in crate::environment_shell) use open::restored_chats;
 use open::Earlier;
 use rewind::Rewinding;
+pub(in crate::environment_shell) use runtime_chat::ChatDriver;
 
 const FULL_PERCENT: u64 = 100;
 const THINKING_DEFAULT: bool = true;
@@ -91,6 +93,7 @@ pub(in crate::environment_shell) struct StructuredChat {
     pending_checkpoints: checkpoint::CheckpointQueue,
     pub(in crate::environment_shell) acp: AcpOffers,
     transcript: Option<AcpTranscript>,
+    driver: ChatDriver,
 }
 
 impl StructuredChat {
@@ -124,6 +127,7 @@ impl StructuredChat {
             pending_checkpoints: checkpoint::CheckpointQueue::default(),
             acp: AcpOffers::default(),
             transcript: None,
+            driver: ChatDriver::InShell,
         }
     }
 

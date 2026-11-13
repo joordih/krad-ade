@@ -59,7 +59,7 @@ pub use patch::{
     parse_patch, revert_hunk, revert_hunks, FilePatch, Hunk, HunkLine, HunkLineKind, PatchBody,
     PatchStatus, StaleHunk,
 };
-pub use process::{host_programs, wsl_home, wsl_programs};
+pub use process::{host_programs, workplace_home, wsl_home, wsl_programs};
 pub use project_search::{
     parse_globs, replace_in_file, replaced_line, search_project, undo_replace, CaseMatching,
     FileMatches, FoundLine, PatternSyntax, ProjectMatches, ProjectQuery, ReplaceUndo, ReplacedFile,

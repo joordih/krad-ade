@@ -33,7 +33,7 @@ pub(super) struct WorkerLaunch {
     pub(super) cloud: Option<CloudPlacement>,
 }
 
-enum LaunchProgress {
+pub(super) enum LaunchProgress {
     Started,
     Failed(String),
     Unknown,
@@ -104,6 +104,16 @@ impl EnvironmentShell {
         event: &LiveEvent,
         cx: &mut Context<Self>,
     ) -> bool {
+        self.follow_launch_progress(env, id, launch_progress(event), cx)
+    }
+
+    pub(super) fn follow_launch_progress(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        progress: LaunchProgress,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let launching = self
             .envs
             .get(env)
@@ -111,7 +121,7 @@ impl EnvironmentShell {
         if !launching {
             return false;
         }
-        match launch_progress(event) {
+        match progress {
             LaunchProgress::Started => {
                 self.answer_launch(
                     env,

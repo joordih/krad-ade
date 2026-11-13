@@ -11,7 +11,7 @@ use std::borrow::Cow;
 use super::super::surface::{names_its_tool, tool_request};
 use super::super::EnvironmentShell;
 use super::view::owned_id;
-use super::{subject, tray_button, AskQueue, Choice};
+use super::{tray_button, AskQueue, Choice};
 use crate::components::{icon, IconName};
 use crate::theme::{palette, ICON_SM, LINE_XS, SPACE_1, SPACE_1_5, TEXT_XS};
 
@@ -84,12 +84,12 @@ impl Phrase {
             } => Self::tool(tool, *tool_kind, summary),
             AskKind::AcpPermission { tool, .. } => Self::tool(&tool.name, tool.kind, &tool.summary),
             AskKind::Questions(_) => Self {
-                request: Cow::Owned(subject(kind)),
+                request: Cow::Owned(kind.subject()),
                 code: None,
                 mark: NO_MARK,
             },
             AskKind::Plan { .. } => {
-                let heading = subject(kind);
+                let heading = kind.subject();
                 let request = if heading.is_empty() {
                     Cow::Borrowed(PLAN_REQUEST)
                 } else {

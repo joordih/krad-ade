@@ -2,17 +2,15 @@ use gpui_kit::component::input::InlineToken;
 use gpui_kit::component::input::TextareaState;
 use gpui_kit::{AppContext as _, Context, Entity, SharedString, Window};
 use krad_chat::{claude_skills, search_skills, shared_skill_message, Skill, SkillSource};
-use krad_domain::{
-    kraddie_mention_at, parse_wsl_path, wsl_unc_path, AgentPreset, TerminalId, WslPath,
-};
+use krad_domain::{kraddie_mention_at, AgentPreset, TerminalId};
 use krad_host::HostLink;
-use krad_repo::{wsl_home, EntryKind, IndexEntry, RepoError};
+pub(in crate::environment_shell) use krad_repo::workplace_home;
+use krad_repo::{EntryKind, IndexEntry, RepoError};
 use std::collections::HashMap;
 use std::ops::Range;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use super::super::kraddie_memory::KraddieSuggestion;
-use super::super::terminal_card::home_dir;
 use super::super::EnvironmentShell;
 
 pub(super) const MENTION_PREFIX: char = '@';
@@ -330,19 +328,6 @@ impl EnvironmentShell {
             return None;
         };
         Some(shared_skill_message(message, &self.harness_path(file)))
-    }
-}
-
-pub(in crate::environment_shell) fn workplace_home(
-    link: &HostLink,
-    root: Option<&Path>,
-) -> Result<Option<PathBuf>, RepoError> {
-    if let HostLink::Remote(ssh) = link {
-        return Ok(ssh.home().map(Path::to_path_buf));
-    }
-    match root.and_then(parse_wsl_path) {
-        Some(WslPath { distro, .. }) => Ok(Some(wsl_unc_path(&distro, &wsl_home(&distro)?))),
-        None => Ok(home_dir().map(PathBuf::from)),
     }
 }
 

@@ -41,6 +41,10 @@ impl Runtime {
             _ => None,
         };
         let reply = self.environments.execute(command, &mut self.outbox)?;
+        if let (Some((environment, _)), Reply::Accepted) = (&closed, &reply) {
+            self.chats
+                .close_environment(environment.as_str(), &mut self.outbox);
+        }
         if let (Some((environment, host)), Reply::Accepted) = (closed, &reply) {
             let still_used = self.environments.uses_host(&host);
             self.hosts.environment_closed(&environment, still_used);
@@ -85,6 +89,7 @@ impl Runtime {
             } => self
                 .hosts
                 .bus_prepared(&environment, &host, prepared, &mut self.outbox),
+            JobDone::ChatOpened(opening) => self.chat_opened(opening),
             JobDone::HarnessChecked { .. }
             | JobDone::ModelsListed { .. }
             | JobDone::UsageRead { .. } => {}

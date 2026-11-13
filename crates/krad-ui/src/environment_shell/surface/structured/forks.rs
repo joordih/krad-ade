@@ -32,6 +32,7 @@ impl EnvironmentShell {
         let Some((group, harness, resume)) = self.node_resume(&env, id) else {
             return;
         };
+        self.leave_runtime(&env, id);
         let Some(live) = self.envs.get_mut(&env) else {
             return;
         };

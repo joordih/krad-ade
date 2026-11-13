@@ -2,12 +2,6 @@ const SHARED_SKILL_INTRO: &str = "Use the skill defined in";
 const SHARED_SKILL_STEPS: &str = "read that file first and follow its instructions.";
 const SHARED_SKILL_ARGUMENTS: &str = "Arguments:";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Speaker {
-    User,
-    Assistant,
-}
-
 #[must_use]
 pub fn shared_skill_message(message: &str, skill_file: &str) -> String {
     let arguments = message

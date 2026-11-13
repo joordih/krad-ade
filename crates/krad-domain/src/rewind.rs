@@ -32,7 +32,8 @@ pub enum RewindPoint {
     Prompt(usize),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RewindScope {
     Conversation,
     ConversationAndFiles,

@@ -1,5 +1,6 @@
-use gpui_kit::SharedString;
-use krad_domain::ToolOutput;
+use serde::{Deserialize, Serialize};
+
+use crate::chat::ToolOutput;
 
 const SHOWN_LINES: usize = 12;
 const LINE_BREAK: char = '\n';
@@ -7,10 +8,10 @@ const EXIT_CODE_LEAD: &str = "Exited with code";
 const SIGNAL_LEAD: &str = "Stopped by";
 const SUCCESS_CODE: u32 = 0;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::environment_shell) struct ShownOutput {
-    pub(in crate::environment_shell) text: SharedString,
-    pub(in crate::environment_shell) failure: Option<SharedString>,
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShownOutput {
+    pub text: String,
+    pub failure: Option<String>,
 }
 
 impl From<&ToolOutput> for ShownOutput {
@@ -26,8 +27,8 @@ impl From<&ToolOutput> for ShownOutput {
             (None, _) => None,
         };
         Self {
-            text: SharedString::from(trimmed[start..].to_owned()),
-            failure: failure.map(SharedString::from),
+            text: trimmed[start..].to_owned(),
+            failure,
         }
     }
 }
@@ -57,7 +58,7 @@ mod tests {
             exit_code: Some(0),
             ..ToolOutput::default()
         });
-        assert_eq!(shown.text.as_ref(), "hello");
+        assert_eq!(shown.text, "hello");
         assert_eq!(shown.failure, None);
     }
 }

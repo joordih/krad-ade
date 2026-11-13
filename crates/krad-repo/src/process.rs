@@ -147,6 +147,19 @@ pub(crate) fn host_path(host: &HostLink, repo: &Path, printed: &str) -> PathBuf 
 }
 
 /// # Errors
+///
+/// Fails when the home folder of a WSL distribution cannot be read.
+pub fn workplace_home(link: &HostLink, root: Option<&Path>) -> Result<Option<PathBuf>, RepoError> {
+    if let HostLink::Remote(ssh) = link {
+        return Ok(ssh.home().map(Path::to_path_buf));
+    }
+    match root.and_then(parse_wsl_path) {
+        Some(WslPath { distro, .. }) => Ok(Some(wsl_unc_path(&distro, &wsl_home(&distro)?))),
+        None => Ok(std::env::home_dir()),
+    }
+}
+
+/// # Errors
 pub fn wsl_home(distro: &str) -> Result<String, RepoError> {
     let args = [POSIX_SHELL, POSIX_SHELL_COMMAND_FLAG, PRINT_HOME];
     let home = String::from_utf8_lossy(&run_in_wsl(distro, &args)?).into_owned();

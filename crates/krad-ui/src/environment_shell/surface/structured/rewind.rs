@@ -79,6 +79,13 @@ impl EnvironmentShell {
             }
             return;
         }
+        if self.rewind_in_runtime(env, id, (index, prompt.clone()), scope) {
+            if let Some(structured) = structured_mut(self, env, id) {
+                structured.working = true;
+                structured.rewinding = Some(Rewinding { index, prompt });
+            }
+            return;
+        }
         let Some(structured) = structured_mut(self, env, id) else {
             return;
         };

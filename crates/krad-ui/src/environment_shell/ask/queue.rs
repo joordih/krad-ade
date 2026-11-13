@@ -1,7 +1,7 @@
 use gpui_kit::FocusHandle;
 use krad_chat::{AskKind, ToolAsk};
 use krad_domain::{AskOutcome, AskVerdict, ToolDecision, ToolUseId};
-use krad_protocol::AskId;
+use krad_protocol::{AskId, ChatAsk, ChatAskId};
 use krad_runtime::HeldAsk;
 
 use super::{outcome, Note, NotePurpose, Picks};
@@ -10,6 +10,7 @@ pub(in crate::environment_shell) enum AskReply {
     Live,
     Hook(HeldAsk),
     Keys,
+    Runtime { ask: ChatAskId, allows_always: bool },
 }
 
 pub(in crate::environment_shell) struct Waiting {
@@ -69,6 +70,31 @@ impl Waiting {
             tool: Some(tool),
             call,
         }
+    }
+
+    pub(in crate::environment_shell) fn of_runtime(asked: ChatAsk) -> Self {
+        let mut ask = ToolAsk::held(String::new(), <_>::default(), Vec::new());
+        ask.kind = asked.kind;
+        Self {
+            ask,
+            reply: AskReply::Runtime {
+                ask: asked.ask,
+                allows_always: asked.can_allow_always,
+            },
+            tool: None,
+            call: None,
+        }
+    }
+
+    pub(super) fn can_allow_always(&self) -> bool {
+        match &self.reply {
+            AskReply::Runtime { allows_always, .. } => *allows_always,
+            AskReply::Live | AskReply::Hook(_) | AskReply::Keys => self.ask.can_allow_always(),
+        }
+    }
+
+    fn is_chat_ask(&self, ask: ChatAskId) -> bool {
+        matches!(&self.reply, AskReply::Runtime { ask: held, .. } if *held == ask)
     }
 
     pub(super) const fn by_keys(&self) -> bool {
@@ -151,6 +177,14 @@ impl AskQueue {
 
     pub(in crate::environment_shell) fn settle(&mut self, settled: Settled<'_>) -> bool {
         self.drop_where(|waiting| settled.covers(waiting))
+    }
+
+    pub(in crate::environment_shell) fn holds_chat_ask(&self, ask: ChatAskId) -> bool {
+        self.waiting.iter().any(|waiting| waiting.is_chat_ask(ask))
+    }
+
+    pub(in crate::environment_shell) fn forget_chat_ask(&mut self, ask: ChatAskId) -> bool {
+        self.drop_where(|waiting| waiting.is_chat_ask(ask))
     }
 
     pub(in crate::environment_shell) fn forget_ask(&mut self, ask: AskId) -> bool {

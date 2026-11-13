@@ -3985,6 +3985,7 @@ dependencies = [
  "krad-domain",
  "krad-host",
  "krad-protocol",
+ "krad-repo",
  "krad-session",
  "krad-store",
  "serde_json",

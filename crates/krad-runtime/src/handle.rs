@@ -6,8 +6,8 @@ use krad_domain::{AgentPreset, EnvironmentName, Host, ToolDecision, UsageBudget}
 use krad_host::mux::PromptSender;
 use krad_host::{HostContext, HostLink, MachineChannel};
 use krad_protocol::{
-    AgentRef, AskId, BusCommand, Command, Feed, HealthPlace, Reply, RequestId, Scope, Snapshot,
-    TerminalCommand, WriteBy,
+    AgentRef, AskId, BusCommand, ChatPage, Command, Feed, HealthPlace, Reply, RequestId, Scope,
+    Snapshot, TerminalCommand, WriteBy,
 };
 use krad_session::{AnsiPalette, SearchDirection};
 use std::future::Future;
@@ -19,6 +19,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use crate::bus::{BusAccess, DelegationReceiver, DELEGATION_BUFFER};
+use crate::chats::ChatStart;
 use crate::harness_health::HarnessProbe;
 use crate::hosts::HostLinks;
 use crate::input::Input;
@@ -162,6 +163,33 @@ impl RuntimeHandle {
             shared,
         });
         view
+    }
+
+    pub fn open_chat(&self, chat: AgentRef, start: ChatStart) {
+        self.deliver(Input::OpenChat {
+            chat,
+            start: Box::new(start),
+        });
+    }
+
+    pub fn close_chat(&self, chat: AgentRef) {
+        self.deliver(Input::CloseChat(chat));
+    }
+
+    pub fn chat_page(
+        &self,
+        chat: AgentRef,
+        before: usize,
+        count: usize,
+    ) -> Pending<Option<ChatPage>> {
+        let (reply, answer) = oneshot::channel();
+        self.deliver(Input::ChatPage {
+            chat,
+            before,
+            count,
+            reply,
+        });
+        Pending(answer)
     }
 
     pub fn write_terminal(&self, terminal: AgentRef, bytes: Vec<u8>, by: WriteBy) {

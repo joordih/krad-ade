@@ -1,0 +1,8 @@
+#!/bin/sh
+here="$(dirname "$0")"
+while IFS= read -r line; do
+    case "$line" in
+        *'"type":"user"'*) cat "$here/claude-ask-request.jsonl" ;;
+        *'"behavior":"allow"'*) cat "$here/claude-ask-answer.jsonl" ;;
+    esac
+done
