@@ -26,12 +26,15 @@ use crate::settings::{AppSettings, SettingsSetup};
 use crate::subscribers::Subscribers;
 use crate::terminals::{Settling, Terminals};
 use crate::usage::Usage;
+use crate::workers::Workers;
 
 mod chatting;
 mod commands;
+mod following;
 mod hosting;
 mod launching;
 mod parts;
+mod working;
 
 pub(crate) use self::launching::AttachedLine;
 use self::parts::Parts;
@@ -70,6 +73,7 @@ pub struct Runtime {
     opencode: OpencodeServers,
     settings: AppSettings,
     launches: Launches,
+    workers: Workers,
     stopped: Arc<AtomicBool>,
 }
 
@@ -159,6 +163,7 @@ impl Runtime {
             opencode: OpencodeServers::new(inbox.clone(), owned.opencode),
             settings: owned.settings,
             launches: Launches::new(owned.views, inbox.clone()),
+            workers: Workers::default(),
             stopped,
         }
     }
@@ -186,6 +191,9 @@ impl Runtime {
             }
             self.terminals.pumped(&mut self.outbox);
             self.hear_chats();
+            self.keep_chat_resumes();
+            self.follow_workers();
+            self.settle_waiters();
             self.hear_ended_terminals(unread);
             self.follow_connections(unread);
             self.flush();

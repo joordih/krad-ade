@@ -135,7 +135,7 @@ impl EnvironmentShell {
         for live in self.envs.values_mut() {
             let reachable = layout.reachable_view(live.data.view);
             moved |= reachable != live.data.view;
-            live.data.view = reachable;
+            live.data.set_view(reachable);
         }
         if moved {
             self.store();

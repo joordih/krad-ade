@@ -3,7 +3,7 @@ mod sheets;
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{AppContext as _, Context, Entity, Subscription, Window};
-use krad_domain::{EnvironmentName, GroupId};
+use krad_domain::{EnvironmentName, GroupEdit, GroupId};
 use krad_lsp::lsp_types::Position;
 use std::path::PathBuf;
 
@@ -142,18 +142,16 @@ impl EnvironmentShell {
             match dialog.target {
                 NameTarget::Environment(name) => {
                     if let Some(live) = self.envs.get_mut(&name) {
-                        live.data.title = Some(typed);
+                        live.data.set_title(Some(typed));
                     }
                 }
                 NameTarget::Group(id) => {
                     let env = self.active.clone();
-                    if let Some(group) = self
-                        .envs
-                        .get_mut(&env)
-                        .and_then(|live| live.data.groups.iter_mut().find(|group| group.id == id))
-                    {
-                        group.name = typed;
-                    }
+                    let renamed = GroupEdit::Rename {
+                        group: id,
+                        name: typed,
+                    };
+                    self.edit_environment(&env, renamed);
                 }
                 NameTarget::Symbol { path, at, .. } => {
                     self.rename_symbol(&path, at, typed, cx);

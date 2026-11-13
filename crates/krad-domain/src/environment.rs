@@ -16,9 +16,11 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
 mod change;
+mod edit;
 mod relaunch;
 
 pub use change::EnvironmentChange;
+pub use edit::{Edited, EnvironmentEdit, GroupEdit, NodeEdit, NodeField, NodePlace, SessionEdit};
 pub use relaunch::{Relaunch, RelaunchIntent, RESTORE_MARKER};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -120,6 +122,14 @@ pub struct EnvironmentData {
 }
 
 impl EnvironmentData {
+    pub fn restart(&mut self) {
+        self.enter_sessions();
+        self.drop_file_tabs(true);
+        for node in &mut self.nodes {
+            node.state = AgentState::Idle;
+        }
+    }
+
     #[must_use]
     pub fn display_name(&self) -> &str {
         self.title.as_deref().unwrap_or(self.name.as_str())

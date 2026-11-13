@@ -1,40 +1,23 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_agents::{
-    AgentInfo, ApiError, CloseOrder, CloseTarget, Closed, ClosedTarget, ErrorCode, Response,
-    TerminalState, WorktreeFate, WorktreeLeft, WorktreeOutcome,
+    ApiError, CloseOrder, CloseTarget, Closed, ErrorCode, Response, TerminalState, WorktreeFate,
+    WorktreeLeft, WorktreeOutcome,
 };
 use krad_domain::{
-    worker_session_name, AgentState, AppEvent, ClosePlan, CloseRefusal, CloseSubject,
-    EnvironmentData, EnvironmentName, GroupId, SessionId, TerminalId, WhenWorking,
+    AgentState, AppEvent, ClosePlan, CloseRefusal, CloseSubject, EnvironmentData, EnvironmentName,
+    GroupId, SessionId, TerminalId, WhenWorking,
 };
 use krad_repo::{remove_settled_worktree, RepoError};
-use krad_runtime::BusReply;
+use krad_runtime::{closed_target, refusal_error, BusReply};
 use std::path::PathBuf;
 
 use super::super::EnvironmentShell;
 use super::{handle, Settlement};
 
-const UNKNOWN_TARGET: &str = "No worker or session with that id in your environment";
-const ALREADY_CLOSED: &str = "That worker is already closed; send it a message to reopen it";
-const NOT_OWNED: &str = "Only the workers you started and the sessions of your group can be closed";
-const ITSELF: &str = "A lead cannot close itself or the session it runs in";
-const WORKING: &str = "It is still working; pass --force to stop its turn and close it";
 const NOT_ON_SCREEN: &str = "That environment is not the one on screen; open it in the app first";
 const WORKTREE_IN_USE: &str = "Other sessions still use that worktree, so it was kept";
 const UNKNOWN_VARIANTS_RUN: &str = "No variants run with that id in your environment";
 const FOREIGN_VARIANTS_RUN: &str = "Only the variants runs of your session's group can be picked";
-
-#[must_use]
-pub(super) fn refusal_error(refusal: CloseRefusal) -> ApiError {
-    let (code, message) = match refusal {
-        CloseRefusal::Unknown => (ErrorCode::NotFound, UNKNOWN_TARGET),
-        CloseRefusal::AlreadyClosed => (ErrorCode::NotFound, ALREADY_CLOSED),
-        CloseRefusal::NotOwned => (ErrorCode::NotOwned, NOT_OWNED),
-        CloseRefusal::Itself => (ErrorCode::Forbidden, ITSELF),
-        CloseRefusal::Working => (ErrorCode::Busy, WORKING),
-    };
-    ApiError::new(code, message)
-}
 
 #[must_use]
 pub(super) fn session_close_refusal(
@@ -74,37 +57,6 @@ pub(super) fn removal_outcome(removed: Result<(), RepoError>) -> WorktreeOutcome
             ))
         }
         Err(error) => WorktreeOutcome::Refused(ApiError::new(ErrorCode::Failed, error.to_string())),
-    }
-}
-
-#[must_use]
-pub(super) fn closed_worker_infos(data: &EnvironmentData) -> Vec<AgentInfo> {
-    data.sessions
-        .iter()
-        .filter_map(|session| session.lead.as_ref())
-        .flat_map(|lead| &lead.workers)
-        .filter(|worker| worker.session.is_none())
-        .map(|worker| AgentInfo {
-            environment: Some(data.name.as_str().to_owned()),
-            terminal: worker.terminal.as_u64(),
-            title: worker_session_name(&worker.task),
-            group: worker
-                .reopen
-                .as_ref()
-                .and_then(|reopen| reopen.group)
-                .and_then(|group| data.group(group))
-                .map(|group| group.name.clone()),
-            state: TerminalState::Closed,
-            harness: worker.reopen.as_ref().map(|reopen| reopen.harness),
-            is_self: false,
-        })
-        .collect()
-}
-
-const fn closed_target(subject: CloseSubject) -> ClosedTarget {
-    match subject {
-        CloseSubject::Worker(terminal) => ClosedTarget::Agent(terminal.as_u64()),
-        CloseSubject::Session(session) => ClosedTarget::Session(session.as_u64()),
     }
 }
 

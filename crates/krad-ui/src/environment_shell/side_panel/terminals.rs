@@ -45,7 +45,7 @@ impl EnvironmentShell {
         };
         if let Some(live) = self.envs.get_mut(&env) {
             let title = format!("{SHELL_LABEL} · {}", id.as_u64());
-            live.data.side_panel.add_terminal(id, title);
+            live.data.side_panel_mut().add_terminal(id, title);
         }
         self.start_system_terminals();
         self.show_system_terminal(id, window, cx);
@@ -59,7 +59,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         if let Some(live) = self.envs.get_mut(&self.active) {
-            live.data.side_panel.shown = Some(id);
+            live.data.side_panel_mut().shown = Some(id);
         }
         self.focus_pane(window, cx);
         self.focus_terminal(id);
@@ -80,7 +80,7 @@ impl EnvironmentShell {
             end_terminal_on(&self.runtime.handle, &env, id);
         }
         live.images.remove(&id);
-        live.data.side_panel.remove_terminal(id);
+        live.data.side_panel_mut().remove_terminal(id);
         if live.focused == Some(id) {
             live.focused = live.shown_tab();
         }

@@ -10,10 +10,24 @@ pub struct SessionSpec {
 
 impl EnvironmentData {
     pub fn new_session(&mut self, group: Option<GroupId>, spec: SessionSpec) -> SessionId {
-        let ordinal = self.sessions_of(group).count() + 1;
-        let id = self.push_session(group, format!("{NEW_SESSION_PREFIX} {ordinal}"));
-        self.apply_spec(id, spec);
+        let id = self.next_session_id();
+        self.open_session(id, group, spec);
         id
+    }
+
+    pub fn open_session(
+        &mut self,
+        id: SessionId,
+        group: Option<GroupId>,
+        spec: SessionSpec,
+    ) -> bool {
+        if self.session(id).is_some() {
+            return false;
+        }
+        let ordinal = self.sessions_of(group).count() + 1;
+        self.insert_session(id, group, format!("{NEW_SESSION_PREFIX} {ordinal}"));
+        self.apply_spec(id, spec);
+        true
     }
 
     fn apply_spec(&mut self, id: SessionId, spec: SessionSpec) {

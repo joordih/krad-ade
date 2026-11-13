@@ -8,6 +8,7 @@ use crate::environments::EnvironmentCommand;
 use crate::gateway::GatewayCommand;
 use crate::hosts::HostCommand;
 use crate::models::ModelsCommand;
+use crate::sessions::{GroupCommand, NodeCommand, SessionCommand};
 use crate::settings::SettingsCommand;
 use crate::terminals::TerminalCommand;
 use crate::usage::UsageCommand;
@@ -22,6 +23,9 @@ pub enum Command {
     Usage(UsageCommand),
     Models(ModelsCommand),
     Environments(EnvironmentCommand),
+    Session(SessionCommand),
+    Group(GroupCommand),
+    Node(NodeCommand),
     Terminal(TerminalCommand),
     Host(HostCommand),
     Chat(ChatCommand),

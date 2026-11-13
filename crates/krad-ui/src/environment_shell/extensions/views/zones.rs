@@ -3,7 +3,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, Context, ElementId, FontWeight, InteractiveElement, IntoElement,
     ParentElement, StatefulInteractiveElement, Styled,
 };
-use krad_domain::{EnvironmentName, ExtensionTab, ShownExtensionViews, TerminalId};
+use krad_domain::{EnvironmentName, ExtensionTab, SessionEdit, ShownExtensionViews, TerminalId};
 use krad_extensions::api::manifest::ViewZone;
 
 use super::super::super::activity::UtilityTab;
@@ -41,7 +41,7 @@ impl EnvironmentShell {
             ViewPlace::SidePanel(env) => {
                 if let Some(live) = self.envs.get_mut(&env) {
                     live.extension_side = Some(id);
-                    live.data.side_panel.open = true;
+                    live.data.side_panel_mut().open = true;
                 }
                 self.remember_extension_views(&env);
                 self.store();
@@ -49,8 +49,8 @@ impl EnvironmentShell {
             ViewPlace::Utilities(_) => self.show_utilities(UtilityTab::Extension(id), cx),
             ViewPlace::Popover(..) => self.show_extension_popover(id, cx),
             ViewPlace::FileTab(env, terminal) => {
+                self.edit_environment(&env, SessionEdit::Reveal { terminal });
                 if let Some(live) = self.envs.get_mut(&env) {
-                    live.data.reveal_terminal(terminal);
                     live.focused = Some(terminal);
                 }
                 self.show_sessions_for(&env, cx);
@@ -244,7 +244,7 @@ impl EnvironmentShell {
             return;
         }
         if let Some(live) = self.envs.get_mut(env) {
-            live.data.extension_views = shown;
+            live.data.set_extension_views(shown);
         }
         self.store();
     }

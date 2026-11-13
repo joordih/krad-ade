@@ -13,7 +13,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, Entity, InteractiveElement, IntoElement,
     ParentElement, Styled, Subscription, Window,
 };
-use krad_domain::{EnvironmentName, FileOpening, FileView, TerminalId, TextScale};
+use krad_domain::{EnvironmentName, FileOpening, FileView, NodeEdit, TerminalId, TextScale};
 use krad_host::HostLink;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -138,10 +138,21 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
+        let Some(group) = self.envs.get(&env).map(|live| live.selected_group) else {
+            return;
+        };
+        let opened = NodeEdit::OpenFile {
+            group,
+            path: path.to_path_buf(),
+            view: FileView::Edit,
+            opening,
+        };
+        let Some(id) = self.edit_environment(&env, opened).opened() else {
+            return;
+        };
         let Some(live) = self.envs.get_mut(&env) else {
             return;
         };
-        let id = live.data.open_file(live.selected_group, path, opening);
         live.focused = Some(id);
         if let Some(editor) = live.editors.get_mut(&id) {
             editor.focus_pending = true;
@@ -158,9 +169,8 @@ impl EnvironmentShell {
     }
 
     pub(super) fn pin_file_tab(&mut self, id: TerminalId, cx: &mut Context<Self>) {
-        if let Some(live) = self.envs.get_mut(&self.active) {
-            live.data.pin_file(id);
-        }
+        let env = self.active.clone();
+        self.edit_environment(&env, NodeEdit::PinFile { terminal: id });
         cx.notify();
         self.store();
     }
@@ -359,7 +369,7 @@ impl EnvironmentShell {
         }
         let pinned = live.data.open_file_of(id).is_some_and(|file| file.pinned);
         if !pinned {
-            live.data.pin_file(id);
+            self.edit_environment(env, NodeEdit::PinFile { terminal: id });
             self.store();
         }
         cx.notify();

@@ -1,6 +1,8 @@
-use krad_domain::{AgentPreset, PermissionMode};
+use crate::agent::AgentPreset;
+use crate::permission_mode::PermissionMode;
 
-pub(in crate::environment_shell) const fn worker_mode(
+#[must_use]
+pub const fn worker_mode(
     lead: Option<PermissionMode>,
     worker: AgentPreset,
 ) -> Option<PermissionMode> {
@@ -20,7 +22,12 @@ pub(in crate::environment_shell) const fn worker_mode(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::environment_shell::ask::OFFERED_MODES;
+    const OFFERED_MODES: [PermissionMode; 4] = [
+        PermissionMode::Manual,
+        PermissionMode::AcceptEdits,
+        PermissionMode::Plan,
+        PermissionMode::Auto,
+    ];
 
     #[test]
     fn a_worker_starts_in_the_mode_its_lead_chat_has() {

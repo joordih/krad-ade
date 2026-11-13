@@ -1,8 +1,8 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_agents::{ErrorCode, Response};
 use krad_domain::{
-    AppEvent, CleanupPlan, DiscardStep, EnvironmentName, GroupId, TerminalId, ToastKind, VariantId,
-    VariantRunId, WinnerOutcome,
+    AppEvent, CleanupPlan, DiscardStep, EnvironmentName, GroupEdit, GroupId, TerminalId, ToastKind,
+    VariantId, VariantRunId, WinnerOutcome,
 };
 use krad_repo::{apply_variant, discard_variant, VariantRemoval};
 use std::path::PathBuf;
@@ -160,10 +160,15 @@ impl EnvironmentShell {
     }
 
     pub(super) fn forget_variant_group(&mut self, env: &EnvironmentName, group: GroupId) {
+        let removed = self
+            .envs
+            .get(env)
+            .and_then(|live| live.data.group(group))
+            .cloned();
+        self.edit_environment(env, GroupEdit::Remove { group });
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
-        let removed = live.data.remove_group(group);
         if live.selected_group == Some(group) {
             live.selected_group = live.data.groups.first().map(|group| group.id);
         }

@@ -16,6 +16,17 @@ impl EnvironmentsMirror {
         self.0 = environments;
     }
 
+    pub(in crate::environment_shell) fn get(
+        &self,
+        name: &EnvironmentName,
+    ) -> Option<&EnvironmentData> {
+        self.0.iter().find(|kept| kept.name == *name)
+    }
+
+    pub(in crate::environment_shell) fn knows(&self, name: &EnvironmentName) -> bool {
+        self.get(name).is_some()
+    }
+
     pub(super) fn opened(&mut self, environment: EnvironmentData) {
         match self.find_mut(&environment.name) {
             Some(kept) => *kept = environment,

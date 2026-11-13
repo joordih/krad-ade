@@ -14,6 +14,7 @@ mod session_look;
 mod session_memory;
 mod tab_closing;
 mod worker;
+mod worker_mode;
 pub use closing::*;
 pub use diff_comment::*;
 pub use extension_tab::*;
@@ -28,6 +29,7 @@ pub use session_look::*;
 pub use session_memory::*;
 pub use tab_closing::*;
 pub use worker::*;
+pub use worker_mode::worker_mode;
 
 use crate::environment::EnvironmentData;
 use crate::ids::{GroupId, TerminalId};
@@ -62,13 +64,31 @@ pub fn group_name_for(root: &Path) -> String {
 
 impl EnvironmentData {
     pub fn add_group(&mut self, root: PathBuf, worktree: Option<WorktreeOrigin>) -> GroupId {
-        let id = GroupId(
+        let id = self.next_group_id();
+        self.insert_group(id, root, worktree);
+        id
+    }
+
+    #[must_use]
+    pub fn next_group_id(&self) -> GroupId {
+        GroupId(
             self.groups
                 .iter()
                 .map(|group| group.id.as_u64())
                 .max()
                 .map_or(1, |last| last + 1),
-        );
+        )
+    }
+
+    pub fn insert_group(
+        &mut self,
+        id: GroupId,
+        root: PathBuf,
+        worktree: Option<WorktreeOrigin>,
+    ) -> bool {
+        if self.group(id).is_some() {
+            return false;
+        }
         self.groups.push(TerminalGroup {
             id,
             name: group_name_for(&root),
@@ -76,7 +96,7 @@ impl EnvironmentData {
             worktree,
             activation: GroupActivation::Inherit,
         });
-        id
+        true
     }
 
     pub fn remove_group(&mut self, id: GroupId) -> Option<TerminalGroup> {

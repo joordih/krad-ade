@@ -2,7 +2,7 @@ use gpui_kit::{AppContext as _, Context};
 use krad_agents::{ErrorCode, Response, TerminalHandle};
 use krad_domain::{
     code_tools_launch_args, hook_launch_args, hook_state, launch_with_prompt, quote_for_shell,
-    worker_brief, AgentPreset, CloudPlacement, EnvironmentName, ModelDelivery, ModelId,
+    worker_brief, AgentPreset, CloudPlacement, EnvironmentName, ModelDelivery, ModelId, NodeField,
     PermissionMode, ResumeId, SessionId, TerminalGroup, TerminalId, ToastKind, WorkerSpawn,
     WorktreeOrigin,
 };
@@ -169,17 +169,22 @@ impl EnvironmentShell {
         resume: Option<ResumeId>,
         fresh: bool,
     ) {
-        let Some(live) = self.envs.get_mut(env) else {
-            return;
-        };
-        let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) else {
+        let Some(node) = self
+            .envs
+            .get(env)
+            .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
+        else {
             return;
         };
         let Some(resume) = resume.filter(|resume| node.resume.as_ref() != Some(resume)) else {
             return;
         };
-        let replaced = node.resume.replace(resume).is_some();
-        node.harness = Some(preset);
+        let replaced = node.resume.is_some();
+        self.set_node(env, id, NodeField::Resume(Some(resume)));
+        self.set_node(env, id, NodeField::Harness(Some(preset)));
+        let Some(live) = self.envs.get_mut(env) else {
+            return;
+        };
         if fresh && replaced {
             if let Some(session) = live.sessions.get_mut(&id) {
                 session.activity = Some(FRESH_CONVERSATION.to_owned());

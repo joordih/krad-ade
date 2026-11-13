@@ -47,7 +47,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         run: VariantRunId,
     ) -> Option<&mut VariantRun> {
-        self.envs.get_mut(env)?.data.variant_runs.run_mut(run)
+        self.envs.get_mut(env)?.data.variant_runs_mut().run_mut(run)
     }
 
     fn variant_label(&self, run: &VariantRun, variant: VariantId) -> String {

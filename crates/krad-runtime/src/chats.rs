@@ -10,6 +10,8 @@ mod mcp_prep;
 mod mentions;
 mod queue;
 mod resolve;
+mod summary;
+mod workers;
 
 use krad_chat::LiveSession;
 use krad_domain::{
@@ -17,9 +19,7 @@ use krad_domain::{
     Prompt, UsageReport,
 };
 use krad_host::HostLink;
-use krad_protocol::{
-    AgentRef, ChatAsk, ChatCommand, ChatPage, ChatSummary, ErrorCode, EventKind, Reply, UsageNews,
-};
+use krad_protocol::{AgentRef, ChatCommand, ErrorCode, EventKind, Reply, UsageNews};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, SyncSender};
@@ -44,6 +44,8 @@ use mentions::MentionIndexes;
 pub(crate) use mentions::{FilesIndexed, IndexAnswer};
 use queue::{ChatQueue, Heard};
 pub(crate) use resolve::LaunchFacts;
+use summary::asks_of;
+pub(crate) use workers::Launch;
 
 const CHAT_PAGE: usize = 64;
 const UNKNOWN_CHAT: &str = "no chat with this id";
@@ -148,6 +150,9 @@ impl Chats {
 
     #[tracing::instrument(skip_all, fields(environment = id.environment.as_str(), chat = id.terminal.0))]
     pub(crate) fn open(&mut self, id: &AgentRef, start: ChatStart, work: &mut ChatWork<'_>) {
+        if self.rejoin(id, work.outbox) {
+            return;
+        }
         if !runs_in_runtime(start.harness) {
             tracing::warn!("a chat the runtime cannot run was handed to it");
             return;
@@ -324,32 +329,6 @@ impl Chats {
         chat.tell_state(work.outbox);
     }
 
-    pub(crate) fn snapshot(&self) -> Vec<ChatSummary> {
-        let mut summaries: Vec<ChatSummary> = self
-            .open
-            .values()
-            .map(|chat| ChatSummary {
-                state: chat.state(),
-                tail: page(chat, chat.messages.len(), CHAT_PAGE),
-                asks: asks_of(chat),
-            })
-            .collect();
-        summaries.sort_by(|left, right| {
-            let key = |summary: &ChatSummary| {
-                (
-                    summary.tail.chat.environment.as_str().to_owned(),
-                    summary.tail.chat.terminal.0,
-                )
-            };
-            key(left).cmp(&key(right))
-        });
-        summaries
-    }
-
-    pub(crate) fn page(&self, id: &AgentRef, before: usize, count: usize) -> Option<ChatPage> {
-        self.open.get(id).map(|chat| page(chat, before, count))
-    }
-
     fn spent(chat: &Chat, report: UsageReport) -> EventKind {
         let model = chat.model.as_deref().and_then(krad_domain::ModelId::parse);
         EventKind::ChatSpent {
@@ -357,29 +336,6 @@ impl Chats {
             report: report.or_model(model),
         }
     }
-}
-
-fn page(chat: &Chat, before: usize, count: usize) -> ChatPage {
-    let end = before.min(chat.messages.len());
-    let from = end.saturating_sub(count);
-    ChatPage {
-        chat: chat.id.clone(),
-        len: chat.messages.len(),
-        from,
-        messages: chat.messages[from..end].to_vec(),
-    }
-}
-
-fn asks_of(chat: &Chat) -> Vec<ChatAsk> {
-    chat.asks
-        .iter()
-        .map(|(ask, held)| ChatAsk {
-            chat: chat.id.clone(),
-            ask: *ask,
-            kind: held.kind.clone(),
-            can_allow_always: held.can_allow_always(),
-        })
-        .collect()
 }
 
 fn hand_over(chat: &mut Chat, batch: chat::Batch) {

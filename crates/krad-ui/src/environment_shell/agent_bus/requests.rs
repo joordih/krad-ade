@@ -1,12 +1,11 @@
 use gpui_kit::Context;
 use krad_agents::{AgentInfo, ErrorCode, Response, TerminalHandle, TerminalState};
 use krad_domain::{AgentState, EnvironmentName, TerminalId};
-use krad_runtime::{BusReply, Mail, Pending};
+use krad_runtime::{closed_worker_infos, BusReply, Mail, Pending};
 
 use super::super::live_terminal::LiveTerminal;
 use super::super::surface::ChatPresence;
 use super::super::EnvironmentShell;
-use super::close::closed_worker_infos;
 use super::feed::lists_as_agent;
 use super::{Settlement, NO_SUCH_TERMINAL};
 

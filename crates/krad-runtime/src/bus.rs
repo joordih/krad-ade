@@ -10,6 +10,7 @@ pub(crate) use access::open;
 pub use access::{BusAccess, BusSetup};
 pub use delegation::{BusReply, Delegated, DelegationReceiver, Mail};
 pub(crate) use delegation::{DelegationId, DELEGATION_BUFFER};
+pub use lead::closed_worker_infos;
 pub(crate) use lead::{as_lead, closed_worker_answer};
 
 use futures::channel::{mpsc, oneshot};
@@ -188,6 +189,14 @@ impl Bus {
         for gone in self.directory.reconcile(environments, agents) {
             self.mail.forget(&gone, outbox);
         }
+    }
+
+    pub(crate) fn agents_in(&self, environment: &str, me: Option<u64>) -> Vec<AgentInfo> {
+        self.directory.agents_in(environment, me)
+    }
+
+    pub(crate) fn every_agent(&self) -> Vec<AgentInfo> {
+        self.directory.every_agent()
     }
 
     pub(crate) fn tick(&mut self, outbox: &mut Vec<EventKind>) {

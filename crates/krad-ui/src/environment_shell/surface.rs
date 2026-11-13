@@ -38,8 +38,8 @@ use gpui_kit::{
     Subscription, Window,
 };
 use krad_domain::{
-    AgentPreset, Effort, EnvironmentName, Mention, ModelId, Prompt, TerminalId, COMPOSER_MIN_ROWS,
-    DEFAULT_CHAT_HARNESS,
+    AgentPreset, Effort, EnvironmentName, Mention, ModelId, NodeField, Prompt, TerminalId,
+    COMPOSER_MIN_ROWS, DEFAULT_CHAT_HARNESS,
 };
 use krad_repo::IndexEntry;
 use std::cell::{Cell, RefCell};
@@ -387,12 +387,7 @@ impl EnvironmentShell {
             return HarnessChange::Kept;
         };
         structured.switch_harness(*harness, transcript);
-        let Some(live) = self.envs.get_mut(env) else {
-            return HarnessChange::Kept;
-        };
-        if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
-            node.harness = Some(*harness);
-        }
+        self.set_node(env, id, NodeField::Harness(Some(*harness)));
         self.seed_acp_chats();
         HarnessChange::Switched
     }

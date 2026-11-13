@@ -3,7 +3,7 @@ use gpui_kit::{
     div, px, AnyElement, ClickEvent, Context, InteractiveElement, IntoElement, ParentElement,
     PinchEvent, Pixels, Point, StatefulInteractiveElement, Styled,
 };
-use krad_domain::TerminalId;
+use krad_domain::{SessionEdit, TerminalId};
 use std::rc::Rc;
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuSearch};
@@ -30,9 +30,8 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &mut Context<Self>,
     ) {
-        if let Some(live) = self.envs.get_mut(&self.active) {
-            live.data.remember_chat(id);
-        }
+        let env = self.active.clone();
+        self.edit_environment(&env, SessionEdit::RememberChat { terminal: id });
         cx.notify();
         self.store();
     }

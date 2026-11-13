@@ -63,8 +63,29 @@ pub enum EnvironmentChange {
 
 impl EnvironmentChange {
     #[must_use]
-    pub const fn is_runtime_owned(&self) -> bool {
+    pub const fn is_terminal_meta(&self) -> bool {
         matches!(self, Self::Meta { .. } | Self::MetaRemoved { .. })
+    }
+
+    #[must_use]
+    pub const fn is_runtime_owned(&self) -> bool {
+        !matches!(
+            self,
+            Self::Title { .. } | Self::Host { .. } | Self::VariantRuns { .. }
+        )
+    }
+}
+
+impl EnvironmentData {
+    pub fn adopt_runtime_items(&mut self, runtime: &Self) {
+        self.nodes.clone_from(&runtime.nodes);
+        self.meta.clone_from(&runtime.meta);
+        self.next_id = runtime.next_id;
+        self.groups.clone_from(&runtime.groups);
+        self.sessions.clone_from(&runtime.sessions);
+        self.active_session = runtime.active_session;
+        self.retired_spend.clone_from(&runtime.retired_spend);
+        self.archive.clone_from(&runtime.archive);
     }
 }
 
@@ -128,39 +149,71 @@ fn session_key(session: &Session) -> SessionId {
 impl EnvironmentChange {
     #[must_use]
     pub fn between(before: &EnvironmentData, after: &EnvironmentData) -> Vec<Self> {
-        let mut changes = Vec::new();
-        let nodes = list_changes(&before.nodes, &after.nodes, node_key);
-        changes.extend(nodes.removed.into_iter().map(|id| Self::NodeRemoved { id }));
-        changes.extend(nodes.placed.into_iter().map(|placed| Self::Node {
-            index: placed.index,
-            node: placed.item,
-        }));
-        let groups = list_changes(&before.groups, &after.groups, group_key);
-        changes.extend(
-            groups
-                .removed
-                .into_iter()
-                .map(|id| Self::GroupRemoved { id }),
-        );
-        changes.extend(groups.placed.into_iter().map(|placed| Self::Group {
-            index: placed.index,
-            group: placed.item,
-        }));
-        let sessions = list_changes(&before.sessions, &after.sessions, session_key);
-        changes.extend(
-            sessions
-                .removed
-                .into_iter()
-                .map(|id| Self::SessionRemoved { id }),
-        );
-        changes.extend(sessions.placed.into_iter().map(|placed| Self::Session {
-            index: placed.index,
-            session: placed.item,
-        }));
+        let mut changes = list_changes_of(before, after);
         changes.extend(meta_changes(before, after));
         changes.extend(scalar_changes(before, after));
         changes
     }
+
+    #[must_use]
+    pub fn between_items(before: &EnvironmentData, after: &EnvironmentData) -> Vec<Self> {
+        let mut changes = list_changes_of(before, after);
+        changes.extend(scalar_changes(before, after));
+        changes
+    }
+}
+
+fn list_changes_of(before: &EnvironmentData, after: &EnvironmentData) -> Vec<EnvironmentChange> {
+    let mut changes = Vec::new();
+    let nodes = list_changes(&before.nodes, &after.nodes, node_key);
+    changes.extend(
+        nodes
+            .removed
+            .into_iter()
+            .map(|id| EnvironmentChange::NodeRemoved { id }),
+    );
+    changes.extend(
+        nodes
+            .placed
+            .into_iter()
+            .map(|placed| EnvironmentChange::Node {
+                index: placed.index,
+                node: placed.item,
+            }),
+    );
+    let groups = list_changes(&before.groups, &after.groups, group_key);
+    changes.extend(
+        groups
+            .removed
+            .into_iter()
+            .map(|id| EnvironmentChange::GroupRemoved { id }),
+    );
+    changes.extend(
+        groups
+            .placed
+            .into_iter()
+            .map(|placed| EnvironmentChange::Group {
+                index: placed.index,
+                group: placed.item,
+            }),
+    );
+    let sessions = list_changes(&before.sessions, &after.sessions, session_key);
+    changes.extend(
+        sessions
+            .removed
+            .into_iter()
+            .map(|id| EnvironmentChange::SessionRemoved { id }),
+    );
+    changes.extend(
+        sessions
+            .placed
+            .into_iter()
+            .map(|placed| EnvironmentChange::Session {
+                index: placed.index,
+                session: placed.item,
+            }),
+    );
+    changes
 }
 
 fn meta_changes(

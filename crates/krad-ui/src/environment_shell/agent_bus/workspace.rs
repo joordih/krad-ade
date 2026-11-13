@@ -4,7 +4,7 @@ use gpui_kit::{AppContext as _, Context};
 use krad_agents::{
     ApiError, ApiInfo, ErrorCode, FilePosition, Request, Response, SessionInfo, TerminalHandle,
 };
-use krad_domain::{EnvironmentData, EnvironmentName, GroupId, SessionId, SessionSpec, TerminalId};
+use krad_domain::{EnvironmentData, EnvironmentName, GroupId, SessionEdit, SessionId, TerminalId};
 use krad_host::HostLink;
 use krad_lsp::lsp_types::Position;
 use krad_runtime::BusReply;
@@ -181,14 +181,16 @@ impl EnvironmentShell {
         name: Option<String>,
         cx: &mut Context<Self>,
     ) -> Result<Response, ApiError> {
-        let live = self.envs.get_mut(env).ok_or_else(no_environment)?;
+        let live = self.envs.get(env).ok_or_else(no_environment)?;
         let group = target_group(&live.data, caller, group)?;
-        let shown = live.data.active_session;
-        let spec = SessionSpec {
+        let session = live.data.next_session_id();
+        let opened = SessionEdit::Open {
+            session,
+            group: Some(group),
             name: name.unwrap_or_default(),
+            shown: false,
         };
-        let session = live.data.new_session(Some(group), spec);
-        live.data.active_session = shown;
+        self.edit_environment(env, opened);
         cx.notify();
         self.store();
         Ok(Response::SessionCreated {
@@ -271,6 +273,7 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use krad_domain::SessionSpec;
 
     fn environment() -> (EnvironmentData, GroupId) {
         let mut data = EnvironmentData::empty(EnvironmentName::new("main".to_owned()));

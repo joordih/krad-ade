@@ -76,6 +76,7 @@ mod tests {
             EventKind::EnvironmentChanged {
                 environment: main(),
                 changes: vec![EnvironmentChange::NodeRemoved { id: TerminalId(2) }],
+                answers: None,
             },
             EventKind::EnvironmentsOrdered {
                 order: vec![main()],

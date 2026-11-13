@@ -1,8 +1,9 @@
 use futures::executor::block_on;
 use futures::StreamExt as _;
 use krad_domain::{
-    AgentState, BudgetStatus, EnvironmentChange, EnvironmentData, EnvironmentName, ReportedUsage,
-    RuntimeState, SessionSpec, SpendSettings, TerminalId, TokenUsage, UsageReport, UsdCost,
+    AgentState, BudgetStatus, EnvironmentChange, EnvironmentData, EnvironmentEdit, EnvironmentName,
+    GroupEdit, GroupId, NodeEdit, NodeField, ReportedUsage, RuntimeState, SessionSpec,
+    SpendSettings, TerminalId, TokenUsage, UsageReport, UsdCost,
 };
 use krad_protocol::{
     Command, EnvironmentCommand, ErrorCode, EventKind, Feed, Reply, RuntimeCommand, Scope,
@@ -53,10 +54,15 @@ fn start(state: RuntimeState, dir: &Path) -> Result<RuntimeHandle, Box<dyn Error
 }
 
 fn send(runtime: &RuntimeHandle, command: EnvironmentCommand) -> Result<Reply, Box<dyn Error>> {
-    Ok(block_on(runtime.send(
-        runtime.next_request(),
-        Command::Environments(command),
-    ))?)
+    send_command(runtime, Command::Environments(command))
+}
+
+fn send_command(runtime: &RuntimeHandle, command: Command) -> Result<Reply, Box<dyn Error>> {
+    Ok(block_on(runtime.send(runtime.next_request(), command))?)
+}
+
+fn edit_command(environment: &EnvironmentName, edit: EnvironmentEdit) -> Command {
+    (environment.clone(), edit).into()
 }
 
 fn subscribed(
@@ -107,6 +113,7 @@ fn mirrored(mut mirror: Vec<EnvironmentData>, events: Vec<EventKind>) -> Vec<Env
             EventKind::EnvironmentChanged {
                 environment,
                 changes,
+                ..
             } => {
                 if let Some(kept) = mirror.iter_mut().find(|kept| kept.name == environment) {
                     for change in changes {
@@ -134,14 +141,46 @@ fn payments() -> Result<EnvironmentData, Box<dyn Error>> {
     Ok(environment)
 }
 
-fn edited(before: &EnvironmentData) -> EnvironmentData {
+fn edits() -> Vec<EnvironmentEdit> {
+    vec![
+        NodeEdit::Set {
+            terminal: CHAT,
+            field: NodeField::State(AgentState::Working),
+        }
+        .into(),
+        GroupEdit::Add {
+            group: GroupId(2),
+            root: PathBuf::from("/work/web"),
+            worktree: None,
+        }
+        .into(),
+    ]
+}
+
+fn edited(before: &EnvironmentData, edits: &[EnvironmentEdit]) -> EnvironmentData {
     let mut after = before.clone();
     after.title = Some("Payments".to_owned());
-    if let Some(node) = after.nodes.first_mut() {
-        node.state = AgentState::Working;
+    for edit in edits {
+        after.edit(edit);
     }
-    after.add_group(PathBuf::from("/work/web"), None);
     after
+}
+
+fn commands_toward(before: &EnvironmentData, edits: Vec<EnvironmentEdit>) -> Vec<Command> {
+    let titled = EnvironmentData {
+        title: Some("Payments".to_owned()),
+        ..before.clone()
+    };
+    let mut commands = vec![Command::Environments(EnvironmentCommand::Change {
+        environment: before.name.clone(),
+        changes: EnvironmentChange::between(before, &titled),
+    })];
+    commands.extend(
+        edits
+            .into_iter()
+            .map(|edit| edit_command(&before.name, edit)),
+    );
+    commands
 }
 
 #[test]
@@ -149,7 +188,7 @@ fn environment_commands_persist_and_a_restarted_runtime_restores_them() -> TestR
     let folder = Folder::new("restart");
     let runtime = start(RuntimeState::default(), &folder.0)?;
     let opened = payments()?;
-    let changed = edited(&opened);
+    let changed = edited(&opened, &edits());
     let scratch = EnvironmentData::empty(name("scratch"));
     for command in [
         EnvironmentCommand::Open {
@@ -158,20 +197,22 @@ fn environment_commands_persist_and_a_restarted_runtime_restores_them() -> TestR
         EnvironmentCommand::Open {
             environment: Box::new(scratch.clone()),
         },
-        EnvironmentCommand::Change {
-            environment: opened.name.clone(),
-            changes: EnvironmentChange::between(&opened, &changed),
-        },
-        EnvironmentCommand::Order {
-            order: vec![scratch.name.clone(), opened.name.clone()],
-        },
     ] {
         assert_eq!(send(&runtime, command)?, Reply::Accepted);
     }
-    let expected = vec![scratch, changed];
+    for command in commands_toward(&opened, edits()) {
+        assert_eq!(send_command(&runtime, command)?, Reply::Accepted);
+    }
+    let order = EnvironmentCommand::Order {
+        order: vec![scratch.name.clone(), opened.name.clone()],
+    };
+    assert_eq!(send(&runtime, order)?, Reply::Accepted);
+    let mut restored_payments = changed.clone();
+    restored_payments.restart();
+    let expected = vec![scratch.clone(), restored_payments];
     block_on(runtime.settle())?;
     let state = open_layout_in(&folder.0).layout.state;
-    assert_eq!(state.environments, expected);
+    assert_eq!(state.environments, vec![scratch, changed]);
     drop(runtime);
     let restarted = start(state, &folder.0)?;
     let (_, restored) = subscribed(&restarted)?;
@@ -196,20 +237,14 @@ fn the_event_stream_rebuilds_the_runtime_state_on_a_mirror() -> TestResult {
     )?;
     let (mut events, start_state) = subscribed(&runtime)?;
     assert_eq!(start_state, vec![seeded.clone()]);
-    let changed = edited(&seeded);
-    let mut removed = changed.clone();
-    removed.groups.remove(0);
+    let removal: EnvironmentEdit = GroupEdit::Remove { group: GroupId(1) }.into();
+    let removed = edited(&seeded, &[edits(), vec![removal.clone()]].concat());
+    for command in commands_toward(&seeded, edits()) {
+        assert_eq!(send_command(&runtime, command)?, Reply::Accepted);
+    }
     for command in [
-        EnvironmentCommand::Change {
-            environment: seeded.name.clone(),
-            changes: EnvironmentChange::between(&seeded, &changed),
-        },
         EnvironmentCommand::Open {
             environment: Box::new(EnvironmentData::empty(name("docs"))),
-        },
-        EnvironmentCommand::Change {
-            environment: seeded.name.clone(),
-            changes: EnvironmentChange::between(&changed, &removed),
         },
         EnvironmentCommand::Order {
             order: vec![name("docs")],
@@ -220,10 +255,16 @@ fn the_event_stream_rebuilds_the_runtime_state_on_a_mirror() -> TestResult {
     ] {
         assert_eq!(send(&runtime, command)?, Reply::Accepted);
     }
+    assert_eq!(
+        send_command(&runtime, edit_command(&seeded.name, removal))?,
+        Reply::Accepted
+    );
     let heard = events_until_pong(&runtime, &mut events)?;
-    assert!(heard.iter().all(|kind| !matches!(
+    assert!(heard.iter().any(|kind| matches!(
         kind,
-        EventKind::EnvironmentChanged { changes, .. } if changes.len() > 3
+        EventKind::EnvironmentChanged { changes, .. }
+            if changes.contains(&EnvironmentChange::GroupRemoved { id: GroupId(1) })
+                && changes.contains(&EnvironmentChange::NodeRemoved { id: CHAT })
     )));
     let snapshot = block_on(runtime.snapshot(Scope::Runtime))?.environments;
     assert_eq!(mirrored(start_state, heard), snapshot);
@@ -304,3 +345,6 @@ fn recorded_usage_reaches_the_chat_and_a_crossed_budget_is_told_once() -> TestRe
     );
     Ok(())
 }
+
+#[path = "environments/answers.rs"]
+mod answers;

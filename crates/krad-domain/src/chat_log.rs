@@ -1,5 +1,6 @@
 mod change;
 mod fold;
+mod lines;
 mod origin;
 mod shown_output;
 
@@ -13,6 +14,7 @@ use crate::rewind::RewindPoint;
 
 pub use change::ChatLogChange;
 pub use fold::{fold_entry, fold_prompt, last_permission_mode};
+pub use lines::conversation_lines;
 pub use origin::{ChatOpener, ChatOrigin};
 pub use shown_output::ShownOutput;
 

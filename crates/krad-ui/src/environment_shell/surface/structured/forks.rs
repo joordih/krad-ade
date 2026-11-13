@@ -1,6 +1,8 @@
 use gpui_kit::Context;
 use krad_chat::LiveSession;
-use krad_domain::{AgentPreset, EnvironmentName, GroupId, NodeKind, ResumeId, TerminalId};
+use krad_domain::{
+    AgentPreset, EnvironmentName, GroupId, NodeField, NodeKind, ResumeId, TerminalId,
+};
 
 use super::super::super::live_terminal::end_terminal_on;
 use super::super::super::sessions::Launch;
@@ -41,10 +43,8 @@ impl EnvironmentShell {
         let cwd = group
             .and_then(|group| live.data.group(group))
             .map(|group| group.root.clone());
-        if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
-            node.kind = NodeKind::Terminal;
-            node.harness = Some(harness);
-        }
+        self.set_node(&env, id, NodeField::Kind(NodeKind::Terminal));
+        self.set_node(&env, id, NodeField::Harness(Some(harness)));
         let launch = Launch::Resume {
             preset: harness,
             resume: Some(resume),
@@ -70,11 +70,9 @@ impl EnvironmentShell {
         if live.sessions.remove(&id).is_some() {
             end_terminal_on(&self.runtime.handle, &env, id);
         }
-        if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
-            node.kind = NodeKind::Chat;
-            node.harness = Some(harness);
-        }
         live.pending_chats.insert(id, LiveSession::Resume(resume));
+        self.set_node(&env, id, NodeField::Kind(NodeKind::Chat));
+        self.set_node(&env, id, NodeField::Harness(Some(harness)));
         self.store();
         cx.notify();
     }

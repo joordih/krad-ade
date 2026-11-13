@@ -5,7 +5,7 @@ use gpui_kit::{
     IntoElement, KeyDownEvent, MouseButton, ParentElement, SharedString,
     StatefulInteractiveElement, Styled, Subscription, Window,
 };
-use krad_domain::{Hue, SessionIcon, SessionId, SessionLook};
+use krad_domain::{Hue, SessionEdit, SessionIcon, SessionId, SessionLook};
 
 use super::super::rename::KEY_ESCAPE;
 use super::super::session_look::session_icon;
@@ -80,7 +80,16 @@ impl EnvironmentShell {
                 InputEvent::Change => {
                     let typed = field.read(cx).value().trim().to_owned();
                     if !typed.is_empty() {
-                        this.edit_session(session, |found| found.name = typed, cx);
+                        let env = this.active.clone();
+                        this.edit_environment(
+                            &env,
+                            SessionEdit::Rename {
+                                session,
+                                name: typed,
+                            },
+                        );
+                        this.store();
+                        cx.notify();
                     }
                 }
                 InputEvent::PressEnter { .. } => this.close_name_dialog(cx),
@@ -96,33 +105,25 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    fn edit_session(
-        &mut self,
-        session: SessionId,
-        edit: impl FnOnce(&mut krad_domain::Session),
-        cx: &mut Context<Self>,
-    ) {
-        let env = self.active.clone();
-        let Some(found) = self.envs.get_mut(&env).and_then(|live| {
-            live.data
-                .sessions
-                .iter_mut()
-                .find(|found| found.id == session)
-        }) else {
-            return;
-        };
-        edit(found);
-        self.store();
-        cx.notify();
-    }
-
     fn edit_look(
         &mut self,
         session: SessionId,
         edit: impl FnOnce(&mut SessionLook),
         cx: &mut Context<Self>,
     ) {
-        self.edit_session(session, |found| edit(&mut found.look), cx);
+        let env = self.active.clone();
+        let Some(mut look) = self
+            .envs
+            .get(&env)
+            .and_then(|live| live.data.session(session))
+            .map(|found| found.look)
+        else {
+            return;
+        };
+        edit(&mut look);
+        self.edit_environment(&env, SessionEdit::SetLook { session, look });
+        self.store();
+        cx.notify();
     }
 
     pub(super) fn look_popover(

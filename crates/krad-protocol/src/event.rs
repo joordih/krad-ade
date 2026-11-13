@@ -83,6 +83,8 @@ pub enum EventKind {
     EnvironmentChanged {
         environment: EnvironmentName,
         changes: Vec<EnvironmentChange>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        answers: Option<RequestId>,
     },
     SpendingCrossed(SpendingCrossed),
     TerminalChanged {

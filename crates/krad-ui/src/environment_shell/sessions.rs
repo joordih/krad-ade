@@ -5,8 +5,8 @@ mod typed_line;
 pub(super) use launch::Launch;
 
 use krad_domain::{
-    agent_event, AgentState, AppEvent, EnvironmentName, LaunchIntent, Relaunch, ResumeId,
-    TerminalId, ToastKind,
+    agent_event, AgentState, AppEvent, EnvironmentName, LaunchIntent, NodeField, Relaunch,
+    ResumeId, TerminalId, ToastKind,
 };
 use krad_protocol::{Command, TerminalCommand};
 use krad_runtime::{AgentRole, TerminalLaunch, TerminalPlace};
@@ -255,12 +255,18 @@ impl EnvironmentShell {
         id: TerminalId,
         session: LiveTerminal,
     ) {
+        let harness_changed = self.envs.get(env).is_some_and(|live| {
+            live.data
+                .nodes
+                .iter()
+                .any(|node| node.id == id && node.harness != session.harness)
+        });
+        if harness_changed {
+            self.set_node(env, id, NodeField::Harness(session.harness));
+        }
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
-        if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
-            node.harness = session.harness;
-        }
         live.sessions.insert(id, session);
         if live.focused.is_none() {
             live.focused = Some(id);
@@ -280,13 +286,7 @@ impl EnvironmentShell {
     }
 
     fn keep_opencode_resume(&mut self, env: &EnvironmentName, id: TerminalId, resume: ResumeId) {
-        if let Some(node) = self
-            .envs
-            .get_mut(env)
-            .and_then(|live| live.data.nodes.iter_mut().find(|node| node.id == id))
-        {
-            node.resume = Some(resume.clone());
-        }
+        self.set_node(env, id, NodeField::Resume(Some(resume.clone())));
         self.note_opencode_terminal(env, id, resume);
     }
 
@@ -296,10 +296,11 @@ impl EnvironmentShell {
         id: TerminalId,
         state: AgentState,
     ) -> bool {
-        let Some(live) = self.envs.get_mut(env) else {
-            return false;
-        };
-        let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) else {
+        let Some(node) = self
+            .envs
+            .get(env)
+            .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
+        else {
             return false;
         };
         if node.state == state {
@@ -309,7 +310,10 @@ impl EnvironmentShell {
         let event = agent_event(id, node.harness, previous, state);
         let group = node.group;
         let waiting = previous == AgentState::Working && state == AgentState::WaitingForInput;
-        node.state = state;
+        self.set_node(env, id, NodeField::State(state));
+        let Some(live) = self.envs.get_mut(env) else {
+            return false;
+        };
         if state == AgentState::Working {
             live.working_since.insert(id, Instant::now());
         } else {

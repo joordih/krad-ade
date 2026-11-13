@@ -71,11 +71,25 @@ impl EnvironmentData {
         kraddie: KraddieId,
         spec: SessionSpec,
     ) -> SessionId {
-        let id = self.new_session(group, spec);
+        let id = self.next_session_id();
+        self.open_kraddie_session(id, group, kraddie, spec);
+        id
+    }
+
+    pub fn open_kraddie_session(
+        &mut self,
+        id: SessionId,
+        group: Option<GroupId>,
+        kraddie: KraddieId,
+        spec: SessionSpec,
+    ) -> bool {
+        if !self.open_session(id, group, spec) {
+            return false;
+        }
         if let Some(session) = self.sessions.iter_mut().find(|session| session.id == id) {
             session.memory.kraddie = Some(kraddie);
         }
-        id
+        true
     }
 
     pub fn kraddie_sessions<'a>(

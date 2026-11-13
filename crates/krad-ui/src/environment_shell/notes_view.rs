@@ -125,10 +125,10 @@ impl EnvironmentShell {
             .iter()
             .position(|tabs| tabs.group == Some(group))
             .unwrap_or_else(|| {
-                live.data.note_tabs.push(NoteTabs::for_group(group));
+                live.data.note_tabs_mut().push(NoteTabs::for_group(group));
                 live.data.note_tabs.len() - 1
             });
-        let Some(tabs) = live.data.note_tabs.get_mut(index) else {
+        let Some(tabs) = live.data.note_tabs_mut().get_mut(index) else {
             return;
         };
         edit(tabs);

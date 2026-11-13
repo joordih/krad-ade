@@ -217,11 +217,8 @@ impl EnvironmentShell {
         let resumed = state
             .resume
             .filter(|resume| structured.session.history() != Some(resume));
-        if let Some(resume) = resumed.clone() {
-            structured.session_reported(resume);
-        }
         if let Some(resume) = resumed {
-            self.note_chat_resume(env, id, resume);
+            structured.session_reported(resume);
         }
         if asks_sign_in {
             self.set_agent_state(env, id, AgentState::WaitingForInput);

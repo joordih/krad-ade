@@ -1,6 +1,8 @@
 use gpui_kit::{AppContext as _, Context, PromptButton, PromptLevel, Window};
 use krad_chat::{new_session_id, LiveSession};
-use krad_domain::{AgentPreset, CloudRunnerId, EnvironmentName, GroupId, SessionSpec, ToastKind};
+use krad_domain::{
+    AgentPreset, CloudRunnerId, EnvironmentName, EnvironmentView, GroupId, SessionEdit, ToastKind,
+};
 use krad_repo::{resolved_remote_url, working_patch_with_untracked, ORIGIN_REMOTE};
 use std::path::PathBuf;
 
@@ -351,23 +353,28 @@ impl EnvironmentShell {
         if env == self.active {
             self.leave_main_overlays();
         }
+        let Some(live) = self
+            .envs
+            .get(&env)
+            .filter(|live| live.data.group(group).is_some())
+        else {
+            return;
+        };
+        let runner = prepared.placement.runner;
+        let session = live.data.next_session_id();
+        let opened = SessionEdit::Open {
+            session,
+            group: Some(group),
+            name,
+            shown: true,
+        };
+        self.edit_environment(&env, opened);
+        let cloud = Some(prepared.placement);
+        self.edit_environment(&env, SessionEdit::SetCloud { session, cloud });
         let Some(live) = self.envs.get_mut(&env) else {
             return;
         };
-        if live.data.group(group).is_none() {
-            return;
-        }
-        let runner = prepared.placement.runner;
-        let session = live.data.new_session(Some(group), SessionSpec { name });
-        if let Some(found) = live
-            .data
-            .sessions
-            .iter_mut()
-            .find(|found| found.id == session)
-        {
-            found.cloud = Some(prepared.placement);
-        }
-        live.data.show_session(session);
+        live.data.set_view(EnvironmentView::Sessions);
         live.selected_group = Some(group);
         tracing::info!(%runner, session = session.as_u64(), "cloud session opened");
         if starts.is_empty() {

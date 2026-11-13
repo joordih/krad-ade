@@ -66,13 +66,11 @@ impl EnvironmentShell {
             return;
         };
         let consumed = run.consumed();
-        if let Some(saved) = self
-            .node_mut(env, id)
-            .and_then(|node| node.cloud.as_mut())
-            .filter(|saved| saved.id == run.process)
-        {
-            saved.offset = consumed;
-        }
+        self.edit_cloud_process(env, id, |cloud| {
+            if let Some(saved) = cloud.as_mut().filter(|saved| saved.id == run.process) {
+                saved.offset = consumed;
+            }
+        });
     }
 
     fn fresh_process(
@@ -83,12 +81,11 @@ impl EnvironmentShell {
     ) -> Result<ProcessStart, StartError> {
         let process = node_process_id(&site.placement, id, &new_nonce())
             .ok_or_else(|| StartError::Cloud(NO_PROCESS_ID.to_owned()))?;
-        if let Some(node) = self.node_mut(env, id) {
-            node.cloud = Some(CloudProcess {
-                id: process.clone(),
-                offset: JournalOffset::default(),
-            });
-        }
+        let started = CloudProcess {
+            id: process.clone(),
+            offset: JournalOffset::default(),
+        };
+        self.edit_cloud_process(env, id, |cloud| *cloud = Some(started));
         Ok(ProcessStart {
             id: process,
             from: JournalOffset::default(),

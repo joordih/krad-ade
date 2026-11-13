@@ -4,7 +4,9 @@ use gpui_kit::{
     App, Context, Div, InteractiveElement, MouseButton, MouseDownEvent, NavigationDirection,
     PinchEvent, ScrollDelta, ScrollWheelEvent, Task, TouchPhase, Window,
 };
-use krad_domain::{FileOpening, NavigationPlace, NavigationStep, TerminalId, TextScale};
+use krad_domain::{
+    FileOpening, NavigationPlace, NavigationStep, NodeField, SessionEdit, TerminalId, TextScale,
+};
 use krad_lsp::lsp_types::Position;
 use std::collections::HashMap;
 
@@ -54,12 +56,8 @@ impl EnvironmentShell {
 
     fn scale_without_storing(&mut self, tab: TerminalId, scale: TextScale, cx: &mut Context<Self>) {
         let env = self.active.clone();
-        if let Some(node) = self
-            .envs
-            .get_mut(&env)
-            .and_then(|live| live.data.nodes.iter_mut().find(|node| node.id == tab))
-        {
-            node.text_scale = scale;
+        if self.text_scale_of(tab).is_some_and(|kept| kept != scale) {
+            self.set_node(&env, tab, NodeField::TextScale(scale));
         }
         cx.notify();
     }
@@ -270,9 +268,8 @@ impl EnvironmentShell {
     pub(super) fn step_session(&mut self, forward: bool, cx: &mut Context<Self>) {
         let env = self.active.clone();
         let stepped = self
-            .envs
-            .get_mut(&env)
-            .is_some_and(|live| live.data.step_session(forward));
+            .edit_environment(&env, SessionEdit::Step { forward })
+            .applied();
         if stepped {
             self.leave_main_overlays();
             cx.notify();

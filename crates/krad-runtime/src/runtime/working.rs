@@ -1,0 +1,293 @@
+use futures::channel::oneshot;
+use krad_agents::{
+    Caller, CloseOrder, CloseTarget, Closed, Incoming, LeadHandle, Request, Response, WorktreeFate,
+    WorktreeLeft, WorktreeOutcome,
+};
+use krad_chat::{new_session_id, LiveSession};
+use krad_domain::{
+    chat_worker_brief, worker_mode, AgentPreset, AgentState, ClosePlan, CloseRefusal, CloseSubject,
+    EnvironmentName, NodeEdit, NodePlace, Prompt, SessionEdit, SessionId, TerminalId, WhenWorking,
+    WorkerSpawn,
+};
+use krad_protocol::AgentRef;
+use std::time::SystemTime;
+
+use super::Runtime;
+use crate::chats::{ChatBrief, ChatRole, ChatStart};
+use crate::workers::{closed_target, plan_spawn, refusal_error, worker_node};
+
+enum LeadClose {
+    Delegated,
+    Refused(CloseRefusal),
+    Closed(Vec<Closed>),
+}
+
+fn reply_with(reply: oneshot::Sender<Response>, response: Response) {
+    if reply.send(response).is_err() {
+        tracing::trace!("a lead left before its answer");
+    }
+}
+
+fn agent(environment: &EnvironmentName, terminal: TerminalId) -> AgentRef {
+    AgentRef {
+        environment: environment.clone(),
+        terminal,
+    }
+}
+
+impl Runtime {
+    pub(super) fn answer_for_leads(&mut self, incoming: Incoming) -> Option<Incoming> {
+        let Caller::Lead(lead) = &incoming.from else {
+            return Some(incoming);
+        };
+        let lead = lead.clone();
+        match &incoming.request {
+            Request::Spawn {
+                agent,
+                worktree,
+                task,
+            } => {
+                let (agent, worktree, task) = (*agent, worktree.clone(), task.clone());
+                self.spawn_worker(&lead, (agent, worktree.as_deref(), &task), incoming)
+            }
+            Request::Close(order) => {
+                let order = *order;
+                match self.close_as_lead(&lead, order) {
+                    LeadClose::Delegated => Some(incoming),
+                    LeadClose::Refused(refusal) => {
+                        reply_with(incoming.reply, Response::Error(refusal_error(refusal)));
+                        None
+                    }
+                    LeadClose::Closed(closed) => {
+                        reply_with(incoming.reply, Response::Closed(closed));
+                        None
+                    }
+                }
+            }
+            Request::CloseSession { session } => {
+                let session = *session;
+                let order = CloseOrder {
+                    target: CloseTarget::Session(session),
+                    when_working: WhenWorking::CancelTurn,
+                    worktree: WorktreeFate::Keep,
+                };
+                match self.close_as_lead(&lead, order) {
+                    LeadClose::Delegated => Some(incoming),
+                    LeadClose::Refused(refusal) => {
+                        reply_with(incoming.reply, Response::Error(refusal_error(refusal)));
+                        None
+                    }
+                    LeadClose::Closed(_) => {
+                        reply_with(incoming.reply, Response::SessionClosed { session });
+                        None
+                    }
+                }
+            }
+            _ => Some(incoming),
+        }
+    }
+
+    fn spawn_worker(
+        &mut self,
+        lead: &LeadHandle,
+        (preset, worktree, task): (AgentPreset, Option<&str>, &str),
+        incoming: Incoming,
+    ) -> Option<Incoming> {
+        let environment = EnvironmentName::new(lead.environment.clone());
+        let session = SessionId(lead.session);
+        let Some(data) = self.environments.data(&environment) else {
+            return Some(incoming);
+        };
+        let Some(plan) = plan_spawn(data, session, preset, worktree) else {
+            return Some(incoming);
+        };
+        let id = TerminalId(data.next_id);
+        let opened_session = data.next_session_id();
+        let label = self.settings.current.acp.harness_name(preset);
+        let node = worker_node(id, &label, preset, plan.group);
+        let lead_mode = plan
+            .lead_terminal
+            .and_then(|terminal| self.chats.permission_mode(&agent(&environment, terminal)));
+        let opened = NodeEdit::Open {
+            node: Box::new(node),
+            place: NodePlace::Worker {
+                session: opened_session,
+                spawn: WorkerSpawn {
+                    lead: Some(session),
+                    task: task.to_owned(),
+                },
+                cloud: None,
+            },
+        };
+        self.environments
+            .edit(environment.clone(), &opened.into(), None, &mut self.outbox);
+        let worker = agent(&environment, id);
+        let start = ChatStart {
+            harness: preset,
+            brief: ChatBrief {
+                model: None,
+                effort: None,
+                permission_mode: worker_mode(lead_mode, preset),
+                memory: None,
+                mcp_servers: None,
+                role: ChatRole::Agent,
+            },
+            prepared: None,
+            session: LiveSession::Start(new_session_id()),
+            messages: Vec::new(),
+            queued: vec![Prompt::from(chat_worker_brief(task))],
+            notices: Vec::new(),
+        };
+        tracing::info!(
+            worker = id.as_u64(),
+            "a lead started a worker in the runtime"
+        );
+        self.open_chat(&worker, start);
+        self.workers.launching(worker, incoming.reply);
+        None
+    }
+
+    pub(super) fn follow_workers(&mut self) {
+        let chats = &self.chats;
+        for failed in self.workers.follow(|worker| chats.launch(worker)) {
+            self.close_worker(&failed, true);
+        }
+    }
+
+    fn close_worker(&mut self, worker: &AgentRef, forget: bool) {
+        self.workers.closed(worker);
+        self.chats.close(worker, &mut self.outbox);
+        self.terminals.close(worker);
+        let environment = worker.environment.clone();
+        if forget {
+            let forgotten = NodeEdit::ForgetWorker {
+                terminal: worker.terminal,
+            };
+            self.environments.edit(
+                environment.clone(),
+                &forgotten.into(),
+                None,
+                &mut self.outbox,
+            );
+        }
+        let closed = NodeEdit::Close {
+            terminal: worker.terminal,
+        };
+        self.environments
+            .edit(environment, &closed.into(), None, &mut self.outbox);
+    }
+
+    fn is_busy(&self, environment: &EnvironmentName, terminal: TerminalId) -> bool {
+        let worker = agent(environment, terminal);
+        let working = self
+            .environments
+            .data(environment)
+            .and_then(|data| data.nodes.iter().find(|node| node.id == terminal))
+            .is_some_and(|node| {
+                matches!(
+                    node.state,
+                    AgentState::Working | AgentState::WaitingForInput
+                )
+            });
+        working || self.chats.is_busy(&worker) || self.workers.is_launching(&worker)
+    }
+
+    fn close_plans(
+        &self,
+        environment: &EnvironmentName,
+        lead: SessionId,
+        order: CloseOrder,
+    ) -> Result<Vec<ClosePlan>, CloseRefusal> {
+        let data = self
+            .environments
+            .data(environment)
+            .ok_or(CloseRefusal::Unknown)?;
+        let busy = |terminal| self.is_busy(environment, terminal);
+        let subjects = match order.target {
+            CloseTarget::Agent(terminal) => vec![CloseSubject::Worker(TerminalId(terminal))],
+            CloseTarget::Session(session) => vec![CloseSubject::Session(SessionId(session))],
+            CloseTarget::AllIdle => data
+                .idle_workers(lead, busy)
+                .into_iter()
+                .map(CloseSubject::Worker)
+                .collect(),
+        };
+        subjects
+            .into_iter()
+            .map(|subject| data.plan_close(lead, subject, order.when_working, busy))
+            .collect()
+    }
+
+    fn close_as_lead(&mut self, lead: &LeadHandle, order: CloseOrder) -> LeadClose {
+        let environment = EnvironmentName::new(lead.environment.clone());
+        let plans = match self.close_plans(&environment, SessionId(lead.session), order) {
+            Ok(plans) => plans,
+            Err(refusal) => return LeadClose::Refused(refusal),
+        };
+        let removes = order.worktree == WorktreeFate::Remove
+            && plans.iter().any(|plan| plan.worktree.is_some());
+        if removes {
+            return LeadClose::Delegated;
+        }
+        LeadClose::Closed(
+            plans
+                .iter()
+                .map(|plan| self.close_planned(&environment, plan))
+                .collect(),
+        )
+    }
+
+    pub(super) fn close_planned(
+        &mut self,
+        environment: &EnvironmentName,
+        plan: &ClosePlan,
+    ) -> Closed {
+        tracing::info!(subject = ?plan.subject, "lead closes in the runtime");
+        let worktree = plan.worktree.and_then(|group| {
+            let root = self
+                .environments
+                .data(environment)?
+                .group(group)?
+                .root
+                .clone();
+            Some(WorktreeLeft {
+                path: root,
+                outcome: WorktreeOutcome::Kept,
+            })
+        });
+        if let CloseSubject::Session(session) = plan.subject {
+            let archived = if self.settings.current.archive_retention.keeps() {
+                SessionEdit::Archive {
+                    session,
+                    at: SystemTime::now(),
+                }
+            } else {
+                SessionEdit::Leave { session }
+            };
+            self.environments.edit(
+                environment.clone(),
+                &archived.into(),
+                None,
+                &mut self.outbox,
+            );
+        }
+        for terminal in &plan.cancel {
+            self.chats.stop_turn(&agent(environment, *terminal));
+        }
+        for terminal in &plan.terminals {
+            self.close_worker(&agent(environment, *terminal), false);
+        }
+        if let CloseSubject::Session(session) = plan.subject {
+            self.environments.edit(
+                environment.clone(),
+                &SessionEdit::Close { session }.into(),
+                None,
+                &mut self.outbox,
+            );
+        }
+        Closed {
+            target: closed_target(plan.subject),
+            worktree,
+        }
+    }
+}

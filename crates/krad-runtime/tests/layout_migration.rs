@@ -1,6 +1,9 @@
 use futures::executor::block_on;
-use krad_domain::{EnvironmentData, EnvironmentView, Layout, PersistedLayout, WorkMode};
-use krad_protocol::Scope;
+use krad_domain::{
+    EnvironmentData, EnvironmentEdit, EnvironmentView, Layout, PersistedLayout, SessionEdit,
+    WorkMode,
+};
+use krad_protocol::{Command, Reply, Scope};
 use krad_runtime::{EnvironmentsSetup, Runtime, RuntimeSetup};
 use krad_store::{open_layout_in, LayoutFile, LayoutOpening};
 use std::error::Error;
@@ -55,9 +58,12 @@ fn fixture_bytes(file: &str) -> std::io::Result<Vec<u8>> {
 }
 
 fn folder_with(fixture: &Fixture, bytes: &[u8]) -> std::io::Result<Folder> {
+    folder_named(&fixture.version.to_string(), bytes)
+}
+
+fn folder_named(tag: &str, bytes: &[u8]) -> std::io::Result<Folder> {
     let dir = std::env::temp_dir().join(format!(
-        "krad-runtime-migration-{}-{}",
-        fixture.version,
+        "krad-runtime-migration-{tag}-{}",
         std::process::id()
     ));
     drop(std::fs::remove_dir_all(&dir));
@@ -136,7 +142,11 @@ fn the_runtime_starts_from_a_migrated_layout_and_keeps_the_view_to_the_ui() -> T
         ..RuntimeSetup::default()
     })?;
     let environments = block_on(runtime.snapshot(Scope::Runtime))?.environments;
-    assert_eq!(environments, opened.state.environments);
+    let mut restarted = opened.state.environments.clone();
+    for environment in &mut restarted {
+        environment.restart();
+    }
+    assert_eq!(environments, restarted);
     assert!(environments
         .iter()
         .all(|environment| environment.view == EnvironmentView::Sessions
@@ -144,5 +154,73 @@ fn the_runtime_starts_from_a_migrated_layout_and_keeps_the_view_to_the_ui() -> T
             && !environment.side_panel.open));
     let written = std::fs::read_to_string(LayoutFile::State.path_in(&folder.0))?;
     assert!(written.contains("-oProxyCommand=evil"), "{written}");
+    Ok(())
+}
+
+#[test]
+fn a_state_written_before_typed_edits_keeps_every_environment_through_them() -> TestResult {
+    let fixture = &FIXTURES[2];
+    let migrated = folder_named("typed-edits", &fixture_bytes(fixture.file)?)?;
+    let opened = open_layout_in(&migrated.0).layout;
+    let dir = migrated.0.with_extension("edited");
+    drop(std::fs::remove_dir_all(&dir));
+    std::fs::create_dir_all(&dir)?;
+    let edited_folder = Folder(dir);
+    std::fs::copy(
+        LayoutFile::State.path_in(&migrated.0),
+        LayoutFile::State.path_in(&edited_folder.0),
+    )?;
+    let state = open_layout_in(&edited_folder.0).layout.state;
+    assert_eq!(state, opened.state);
+    let runtime = Runtime::start(RuntimeSetup {
+        environments: EnvironmentsSetup {
+            state: state.clone(),
+            file: Some(LayoutFile::State.path_in(&edited_folder.0)),
+        },
+        ..RuntimeSetup::default()
+    })?;
+    let mut expected = state.environments.clone();
+    for environment in &mut expected {
+        environment.restart();
+    }
+    let main = expected
+        .first_mut()
+        .ok_or("the fixture has an environment")?;
+    let session = main
+        .sessions
+        .first()
+        .map(|session| session.id)
+        .ok_or("the fixture has a session")?;
+    let edits: Vec<EnvironmentEdit> = vec![
+        SessionEdit::Rename {
+            session,
+            name: "Refunds".to_owned(),
+        }
+        .into(),
+        SessionEdit::Archive {
+            session,
+            at: std::time::SystemTime::UNIX_EPOCH,
+        }
+        .into(),
+        SessionEdit::Close { session }.into(),
+    ];
+    for edit in &edits {
+        main.edit(edit);
+        let command: Command = (main.name.clone(), edit.clone()).into();
+        assert_eq!(
+            block_on(runtime.send(runtime.next_request(), command))?,
+            Reply::Accepted
+        );
+    }
+    block_on(runtime.settle())?;
+    drop(runtime);
+    let reread = open_layout_in(&edited_folder.0).layout.state;
+    assert_eq!(reread.environments, expected);
+    assert_eq!(reread.unreadable, state.unreadable);
+    assert!(reread.environments.first().is_some_and(|main| main
+        .archive
+        .sessions
+        .iter()
+        .any(|kept| kept.name == "Refunds")));
     Ok(())
 }

@@ -4,8 +4,8 @@ use gpui_kit::{
     MouseDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_domain::{
-    AgentPreset, AgentState, EnvironmentView, GroupId, Session, SessionAttention, SessionId,
-    SessionSpec, SidebarDensity, TerminalId,
+    AgentPreset, AgentState, EnvironmentView, GroupId, Session, SessionAttention, SessionEdit,
+    SessionId, SessionSpec, SidebarDensity, TerminalId,
 };
 
 use std::borrow::Cow;
@@ -296,16 +296,20 @@ impl EnvironmentShell {
         let env = self.active.clone();
         let view = self.settings.sidebar.reachable_view(view);
         if let Some(live) = self.envs.get_mut(&env) {
-            live.data.view = view;
+            live.data.set_view(view);
         }
         cx.notify();
         self.store();
     }
 
-    fn with_sessions(&mut self, cx: &mut Context<Self>, edit: impl FnOnce(&mut LiveEnv)) {
+    fn with_sessions(&mut self, cx: &mut Context<Self>, edit: SessionEdit) {
         let env = self.active.clone();
+        let shown = matches!(edit, SessionEdit::Select { .. } | SessionEdit::Open { .. });
+        let edited = self.edit_environment(&env, edit);
         if let Some(live) = self.envs.get_mut(&env) {
-            edit(live);
+            if shown && edited.applied() {
+                live.data.set_view(EnvironmentView::Sessions);
+            }
             show_current_session(live);
         }
         cx.notify();
@@ -314,9 +318,7 @@ impl EnvironmentShell {
 
     fn select_session(&mut self, id: SessionId, cx: &mut Context<Self>) {
         self.leave_main_overlays();
-        self.with_sessions(cx, |live| {
-            live.data.show_session(id);
-        });
+        self.with_sessions(cx, SessionEdit::Select { session: id });
     }
 
     pub(super) fn leave_main_overlays(&mut self) {
@@ -338,10 +340,17 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         self.leave_main_overlays();
-        self.with_sessions(cx, |live| {
-            let id = live.data.new_session(group, spec);
-            live.data.show_session(id);
-        });
+        let env = self.active.clone();
+        let Some(session) = self.envs.get(&env).map(|live| live.data.next_session_id()) else {
+            return;
+        };
+        let opened = SessionEdit::Open {
+            session,
+            group,
+            name: spec.name,
+            shown: true,
+        };
+        self.with_sessions(cx, opened);
         self.capture_session_baseline(cx);
     }
 
@@ -360,9 +369,7 @@ impl EnvironmentShell {
         for terminal in workers.into_iter().chain(held) {
             self.close_terminal_in(&env, terminal, cx);
         }
-        self.with_sessions(cx, |live| {
-            live.data.close_session(id);
-        });
+        self.with_sessions(cx, SessionEdit::Close { session: id });
     }
 }
 

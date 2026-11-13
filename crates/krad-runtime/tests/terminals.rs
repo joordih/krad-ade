@@ -4,10 +4,10 @@ use futures::executor::block_on;
 use futures::StreamExt as _;
 use krad_domain::{
     AgentPreset, AgentState, EnvironmentChange, EnvironmentData, EnvironmentName, GridSize,
-    ProcessRun, RuntimeState, TerminalId, TerminalMeta,
+    NodeEdit, ProcessRun, RuntimeState, TerminalId, TerminalMeta,
 };
 use krad_protocol::{
-    AgentRef, Command, EnvironmentCommand, ErrorCode, EventKind, Feed, Reply, Scope,
+    AgentRef, Command, EnvironmentCommand, ErrorCode, EventKind, Feed, NodeCommand, Reply, Scope,
     TerminalClassified, TerminalCommand, TerminalSummary, WriteBy,
 };
 use krad_runtime::{
@@ -301,11 +301,13 @@ fn the_runtime_owns_terminal_meta_and_ignores_a_client_writing_it() -> TestResul
         saved(&block_on(runtime.snapshot(Scope::Runtime))?.environments),
         Some(cwd)
     );
-    let removed = EnvironmentCommand::Change {
+    let removed = NodeCommand {
         environment: EnvironmentName::new("main".to_owned()),
-        changes: vec![EnvironmentChange::NodeRemoved { id: TerminalId(5) }],
+        edit: NodeEdit::Close {
+            terminal: TerminalId(5),
+        },
     };
-    runtime.post(Command::Environments(removed));
+    runtime.post(Command::Node(removed));
     let pruned = until(&feed, None, |kind| {
         matches!(kind, EventKind::EnvironmentChanged { changes, .. }
             if changes.contains(&EnvironmentChange::MetaRemoved { terminal: TerminalId(5) }))

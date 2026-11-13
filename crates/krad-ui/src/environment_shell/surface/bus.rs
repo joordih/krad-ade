@@ -1,7 +1,6 @@
 use gpui_kit::Context;
-use krad_domain::{EnvironmentName, Prompt, TerminalId};
+use krad_domain::{conversation_lines, EnvironmentName, Prompt, TerminalId};
 
-use super::super::chat::conversation_lines;
 use super::super::EnvironmentShell;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -3,8 +3,8 @@ mod history;
 use gpui_kit::{Context, Window};
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
-    AgentPreset, ChatChoice, EnvironmentName, NodeKind, ResumeId, TerminalId, TerminalNode,
-    DEFAULT_CHAT_HARNESS,
+    AgentPreset, ChatChoice, EnvironmentName, NodeField, NodeKind, ResumeId, TerminalId,
+    TerminalNode, DEFAULT_CHAT_HARNESS,
 };
 use std::collections::HashMap;
 
@@ -227,15 +227,15 @@ impl EnvironmentShell {
     ) {
         let Some(node) = self
             .envs
-            .get_mut(env)
-            .and_then(|live| live.data.nodes.iter_mut().find(|node| node.id == id))
+            .get(env)
+            .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
         else {
             return;
         };
         if node.resume.as_ref() == Some(&resume) {
             return;
         }
-        node.resume = Some(resume);
+        self.set_node(env, id, NodeField::Resume(Some(resume)));
         self.store();
     }
 }

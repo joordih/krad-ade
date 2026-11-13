@@ -1,10 +1,10 @@
 use gpui_kit::Context;
 use krad_agents::StateReason;
 use krad_chat::{new_session_id, LiveSession};
-use krad_domain::SessionSpec;
 use krad_domain::{
-    AgentPreset, AgentState, CloudPlacement, EnvironmentName, GroupId, NodeKind, PermissionMode,
-    Prompt, TerminalId, TerminalNode, TextScale, WorkerSpawn, DEFAULT_CHAT_HARNESS,
+    AgentPreset, AgentState, CloudPlacement, EnvironmentName, GroupId, NodeEdit, NodeKind,
+    NodePlace, PermissionMode, Prompt, SessionEdit, SessionSpec, TerminalId, TerminalNode,
+    TextScale, WorkerSpawn, DEFAULT_CHAT_HARNESS,
 };
 use krad_session::wsl_shell;
 use std::path::PathBuf;
@@ -42,9 +42,8 @@ pub(super) struct NodeSpec<'a> {
 
 impl EnvironmentShell {
     pub(super) fn alloc_terminal_id(&mut self, env: &EnvironmentName) -> Option<TerminalId> {
-        let live = self.envs.get_mut(env)?;
-        let id = TerminalId(live.data.next_id);
-        live.data.next_id += 1;
+        let id = TerminalId(self.envs.get(env)?.data.next_id);
+        self.edit_environment(env, NodeEdit::Reserve { terminal: id });
         Some(id)
     }
 
@@ -88,8 +87,9 @@ impl EnvironmentShell {
         for group in bare {
             self.start_chat_session(Some(group), cx);
         }
-        if let Some((shown, live)) = shown.zip(self.envs.get_mut(&self.active.clone())) {
-            live.data.select_session(shown);
+        if let Some(shown) = shown {
+            let env = self.active.clone();
+            self.edit_environment(&env, SessionEdit::Select { session: shown });
         }
         if let Some(group) = empty {
             let env = self.active.clone();
@@ -254,12 +254,20 @@ impl EnvironmentShell {
             label: &self.settings.acp.harness_name(preset),
             group: NodeGroup::OrSelected(group),
         };
-        self.push_node(env, id, &spec, None)?;
-        let live = self.envs.get_mut(env)?;
-        let opened = live.data.open_worker_session(id, spawn);
-        if let Some(opened) = opened.and_then(|opened| live.data.session_mut(opened)) {
-            opened.cloud = cloud;
+        let (node, _, _) = self.new_node(env, id, &spec, None)?;
+        let place = NodePlace::Worker {
+            session: self.envs.get(env)?.data.next_session_id(),
+            spawn,
+            cloud,
+        };
+        let opened = NodeEdit::Open {
+            node: Box::new(node),
+            place,
+        };
+        if !self.edit_environment(env, opened).applied() {
+            return None;
         }
+        let live = self.envs.get_mut(env)?;
         live.pending_chats.insert(id, session);
         if !prompts.is_empty() {
             live.waiting_prompts.insert(id, prompts);
@@ -293,23 +301,28 @@ impl EnvironmentShell {
         spec: &NodeSpec<'_>,
         after: Option<TerminalId>,
     ) -> Option<(TerminalId, Option<PathBuf>)> {
-        let id = self.alloc_terminal_id(env)?;
-        let (cwd, anchor) = self.push_node(env, id, spec, after)?;
-        let live = self.envs.get_mut(env)?;
-        live.data.place_terminal(id, anchor);
-        live.focused = Some(id);
+        let id = TerminalId(self.envs.get(env)?.data.next_id);
+        let (node, cwd, anchor) = self.new_node(env, id, spec, after)?;
+        let opened = NodeEdit::Open {
+            node: Box::new(node),
+            place: NodePlace::Tab { anchor },
+        };
+        if !self.edit_environment(env, opened).applied() {
+            return None;
+        }
+        self.envs.get_mut(env)?.focused = Some(id);
         Some((id, cwd))
     }
 
-    fn push_node(
-        &mut self,
+    fn new_node(
+        &self,
         env: &EnvironmentName,
         id: TerminalId,
         spec: &NodeSpec<'_>,
         after: Option<TerminalId>,
-    ) -> Option<(Option<PathBuf>, Option<TerminalId>)> {
+    ) -> Option<(TerminalNode, Option<PathBuf>, Option<TerminalId>)> {
         let title = format!("{} · {}", spec.label, id.as_u64());
-        let live = self.envs.get_mut(env)?;
+        let live = self.envs.get(env)?;
         let anchor_node = after.and_then(|anchor| {
             live.data
                 .nodes
@@ -326,7 +339,7 @@ impl EnvironmentShell {
             .map_or(wanted, |node| node.group)
             .and_then(|group| live.data.group(group));
         let cwd = group.map(|group| group.root.clone());
-        live.data.nodes.push(TerminalNode {
+        let node = TerminalNode {
             id,
             title,
             state: AgentState::Idle,
@@ -344,8 +357,8 @@ impl EnvironmentShell {
             checkpoints: krad_domain::ChatCheckpoints::default(),
             choice: krad_domain::ChatChoice::default(),
             cloud: None,
-        });
-        Some((cwd, anchor_node.map(|node| node.id)))
+        };
+        Some((node, cwd, anchor_node.map(|node| node.id)))
     }
 
     pub(super) fn close_chat_tab(
@@ -379,21 +392,33 @@ impl EnvironmentShell {
         for worker in workers {
             self.close_terminal_in(env, worker, cx);
         }
+        self.edit_environment(env, NodeEdit::Close { terminal: id });
+        let chat = self.forget_live_node(env, id, cx);
+        let archived = self.archive_holds(env, id);
+        if !archived && chat {
+            Self::forget_chat_images(env, id, cx);
+            self.forget_acp_transcript(env, id);
+        }
+        cx.notify();
+        self.store();
+    }
+
+    pub(super) fn forget_live_node(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        self.end_worker_launch(env, id);
         let Some(live) = self.envs.get_mut(env) else {
-            return;
+            return false;
         };
-        live.data.retire_chat_usage(id);
         let ran = live.sessions.remove(&id).is_some();
         let chat = live.chats.remove(&id);
         live.pending_chats.remove(&id);
-        self.close_runtime_chat(env, id, chat.as_ref());
-        let Some(live) = self.envs.get_mut(env) else {
-            return;
-        };
         live.waiting_prompts.remove(&id);
         live.waiting_modes.remove(&id);
         live.waiting_choices.remove(&id);
-        live.data.drop_terminal(id);
         if live.focused == Some(id) {
             live.focused = None;
             show_current_session(live);
@@ -401,17 +426,13 @@ impl EnvironmentShell {
                 live.focused = live.data.nodes.first().map(|node| node.id);
             }
         }
+        self.close_runtime_chat(env, id, chat.as_ref());
         if ran {
             self.end_terminal(env, id);
         }
         self.forget_attention(env, id);
         self.publish_agent(env, id, Some(StateReason::UserClosed));
-        let archived = self.archive_holds(env, id);
-        if !archived && chat.is_some_and(|chat| chat.structured().is_some()) {
-            Self::forget_chat_images(env, id, cx);
-            self.forget_acp_transcript(env, id);
-        }
         cx.notify();
-        self.store();
+        chat.is_some_and(|chat| chat.structured().is_some())
     }
 }

@@ -2,7 +2,7 @@ use gpui_kit::component::input::{InputEvent, TextareaState};
 use gpui_kit::{AppContext as _, Context, Entity, SharedString, Subscription, Window};
 use krad_domain::{
     review_message, DiffAnchor, DiffComment, DiffCommentId, EnvironmentName, HunkLines, Session,
-    TerminalId, ToastKind,
+    SessionEdit, TerminalId, ToastKind,
 };
 
 use super::super::{EnvironmentShell, LiveEnv};
@@ -75,14 +75,6 @@ impl LiveEnv {
         self.data.session(self.data.session_of(tab)?)
     }
 
-    fn tab_session_mut(&mut self, tab: TerminalId) -> Option<&mut Session> {
-        let id = self.data.session_of(tab)?;
-        self.data
-            .sessions
-            .iter_mut()
-            .find(|session| session.id == id)
-    }
-
     pub(super) fn tab_comment(&self, tab: TerminalId, id: DiffCommentId) -> Option<&DiffComment> {
         self.tab_session(tab)?
             .diff_comments
@@ -95,20 +87,19 @@ impl LiveEnv {
             .map_or(0, |session| session.diff_comments.len())
     }
 
-    fn sync_diff_comments(&mut self, tab: TerminalId) -> bool {
+    fn sync_diff_comments(&mut self, tab: TerminalId) -> Option<SessionEdit> {
         let id = self.data.session_of(tab);
-        let Some(diff) = self.diffs.get_mut(&tab) else {
-            return false;
-        };
-        let session = id.and_then(|id| self.data.sessions.iter_mut().find(|s| s.id == id));
+        let diff = self.diffs.get_mut(&tab)?;
+        let session = id.and_then(|id| self.data.session(id));
         let (DiffLoad::Ready(read), Some(session)) = (&diff.load, session) else {
             diff.comments.clear();
             diff.refold();
-            return false;
+            return None;
         };
         let mut changed = false;
+        let mut comments = session.diff_comments.clone();
         diff.comments = Vec::new();
-        for comment in &mut session.diff_comments {
+        for comment in &mut comments {
             if comment.quote.anchor.path != diff.path {
                 continue;
             }
@@ -116,19 +107,42 @@ impl LiveEnv {
             diff.comments.push(PlacedComment::new(&read.lines, comment));
         }
         diff.refold();
-        changed
+        changed.then_some(SessionEdit::SetDiffComments {
+            session: session.id,
+            comments,
+        })
     }
 }
 
 impl EnvironmentShell {
     pub(super) fn refresh_diff_comments(&mut self, env: &EnvironmentName, tab: TerminalId) {
-        let changed = self
+        let reanchored = self
             .envs
             .get_mut(env)
-            .is_some_and(|live| live.sync_diff_comments(tab));
-        if changed {
+            .and_then(|live| live.sync_diff_comments(tab));
+        if let Some(reanchored) = reanchored {
+            self.edit_environment(env, reanchored);
             self.store();
         }
+    }
+
+    fn edit_tab_comments<T>(
+        &mut self,
+        env: &EnvironmentName,
+        tab: TerminalId,
+        edit: impl FnOnce(&mut Session) -> T,
+    ) -> Option<T> {
+        let mut session = self.envs.get(env)?.tab_session(tab)?.clone();
+        let before = session.diff_comments.clone();
+        let edited = edit(&mut session);
+        if session.diff_comments != before {
+            let kept = SessionEdit::SetDiffComments {
+                session: session.id,
+                comments: session.diff_comments,
+            };
+            self.edit_environment(env, kept);
+        }
+        Some(edited)
     }
 
     fn open_draft(
@@ -282,23 +296,21 @@ impl EnvironmentShell {
             _ => None,
         };
         let mut moved = false;
-        if let Some(session) = live.tab_session_mut(tab) {
-            match draft.target {
-                DraftTarget::New { .. } if text.is_empty() => {}
-                DraftTarget::New { .. } => match quoted {
-                    Some(quoted) => {
-                        session.add_diff_comment(quoted, text);
-                    }
-                    None => moved = true,
-                },
-                DraftTarget::Edit(id) if text.is_empty() => {
-                    session.remove_diff_comment(id);
+        self.edit_tab_comments(&env, tab, |session| match draft.target {
+            DraftTarget::New { .. } if text.is_empty() => {}
+            DraftTarget::New { .. } => match quoted {
+                Some(quoted) => {
+                    session.add_diff_comment(quoted, text);
                 }
-                DraftTarget::Edit(id) => {
-                    session.edit_diff_comment(id, text);
-                }
+                None => moved = true,
+            },
+            DraftTarget::Edit(id) if text.is_empty() => {
+                session.remove_diff_comment(id);
             }
-        }
+            DraftTarget::Edit(id) => {
+                session.edit_diff_comment(id, text);
+            }
+        });
         if moved {
             self.toast(ToastKind::Warning, DRAFT_MOVED, cx);
         }
@@ -315,10 +327,8 @@ impl EnvironmentShell {
     ) {
         let env = self.active.clone();
         let removed = self
-            .envs
-            .get_mut(&env)
-            .and_then(|live| live.tab_session_mut(tab))
-            .is_some_and(|session| session.remove_diff_comment(id));
+            .edit_tab_comments(&env, tab, |session| session.remove_diff_comment(id))
+            .unwrap_or_default();
         if !removed {
             return;
         }
@@ -351,13 +361,7 @@ impl EnvironmentShell {
             self.toast(ToastKind::Warning, NO_AGENT, cx);
             return;
         }
-        if let Some(session) = self
-            .envs
-            .get_mut(&env)
-            .and_then(|live| live.tab_session_mut(tab))
-        {
-            session.diff_comments.clear();
-        }
+        self.edit_tab_comments(&env, tab, |session| session.diff_comments.clear());
         self.refresh_diff_comments(&env, tab);
         self.store();
         self.toast(ToastKind::Success, REVIEW_SENT, cx);

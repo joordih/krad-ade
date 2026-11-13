@@ -1,7 +1,7 @@
 use gpui_kit::Context;
 use krad_domain::{
     model_label, snap_effort, AgentPreset, ChatChoice, Effort, EffortSnap, EnvironmentName,
-    ModelId, TerminalId, TerminalNode,
+    ModelId, NodeField, TerminalId,
 };
 
 use super::super::EnvironmentShell;
@@ -35,18 +35,25 @@ impl<'a> Chosen<'a> {
     }
 }
 
-fn node_mut<'a>(
-    shell: &'a mut EnvironmentShell,
+fn edit_choice(
+    shell: &mut EnvironmentShell,
     env: &EnvironmentName,
     id: TerminalId,
-) -> Option<&'a mut TerminalNode> {
-    shell
+    change: impl FnOnce(&mut ChatChoice),
+) {
+    let Some(before) = shell
         .envs
-        .get_mut(env)?
-        .data
-        .nodes
-        .iter_mut()
-        .find(|node| node.id == id)
+        .get(env)
+        .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
+        .map(|node| node.choice.clone())
+    else {
+        return;
+    };
+    let mut choice = before.clone();
+    change(&mut choice);
+    if choice != before {
+        shell.set_node(env, id, NodeField::Choice(choice));
+    }
 }
 
 fn structured_mut<'a>(
@@ -88,9 +95,7 @@ impl EnvironmentShell {
             SurfaceCommand::Model(harness, _) => Some(*harness),
             _ => self.chat_harness_of(env, id),
         };
-        if let Some(node) = node_mut(self, env, id) {
-            chosen.apply(&mut node.choice);
-        }
+        edit_choice(self, env, id, |choice| chosen.apply(choice));
         if let Some(harness) = harness {
             chosen.apply(self.settings.chat_defaults.entry(harness).or_default());
             self.save_settings(cx);
@@ -143,9 +148,7 @@ impl EnvironmentShell {
         if let Some(effort) = fitted.filter(|_| structured.effort.is_none()) {
             structured.command(SurfaceCommand::Effort(effort));
         }
-        if let Some(node) = node_mut(self, env, id) {
-            node.choice.effort = fitted;
-        }
+        edit_choice(self, env, id, |choice| choice.effort = fitted);
     }
 
     pub(super) fn restored_choice(
@@ -217,9 +220,7 @@ impl EnvironmentShell {
             if let Some(structured) = structured_mut(self, &env, id) {
                 structured.chosen_model = None;
             }
-            if let Some(node) = node_mut(self, &env, id) {
-                node.choice.model = None;
-            }
+            edit_choice(self, &env, id, |choice| choice.model = None);
         }
     }
 
@@ -235,9 +236,7 @@ impl EnvironmentShell {
             if let Some(structured) = structured_mut(self, env, id) {
                 structured.chosen_model = None;
             }
-            if let Some(node) = node_mut(self, env, id) {
-                node.choice.model = None;
-            }
+            edit_choice(self, env, id, |choice| choice.model = None);
         }
         (model, notice)
     }
@@ -248,9 +247,7 @@ impl EnvironmentShell {
         id: TerminalId,
         choice: ChatChoice,
     ) {
-        if let Some(node) = node_mut(self, env, id) {
-            node.choice = choice;
-        }
+        edit_choice(self, env, id, |kept| *kept = choice);
     }
 
     fn offered_model(

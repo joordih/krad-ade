@@ -1,5 +1,8 @@
 use gpui_kit::{AppContext as _, Context};
-use krad_domain::{ChatDigests, Kraddie, KraddieId, KraddieSettings, MemoryOwner, Switch};
+use krad_domain::{
+    ChatDigests, EnvironmentName, Kraddie, KraddieId, KraddieSettings, MemoryOwner, SessionEdit,
+    Switch,
+};
 
 use super::super::EnvironmentShell;
 
@@ -73,8 +76,13 @@ impl EnvironmentShell {
         if memory.expanded.remove(old) {
             memory.expanded.insert(new.clone());
         }
-        for live in self.envs.values_mut() {
-            live.data.rename_kraddie(old, new);
+        let names: Vec<EnvironmentName> = self.envs.keys().cloned().collect();
+        for env in names {
+            let renamed = SessionEdit::RenameKraddie {
+                old: old.clone(),
+                new: new.clone(),
+            };
+            self.edit_environment(&env, renamed);
         }
         let changed: Vec<Kraddie> = self
             .kraddies

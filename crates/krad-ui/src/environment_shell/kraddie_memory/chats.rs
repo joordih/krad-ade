@@ -2,8 +2,8 @@ use gpui_kit::Context;
 use krad_agents::{ErrorCode, KraddieChatInfo, Response};
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
-    EnvironmentName, EnvironmentView, GroupId, KraddieId, Session, SessionId, SessionSpec,
-    TerminalId, ToastKind, WorkerSurface,
+    EnvironmentName, EnvironmentView, GroupId, KraddieId, Session, SessionEdit, SessionId,
+    SessionSpec, TerminalId, ToastKind, WorkerSurface,
 };
 
 use super::super::session_templates::ChatChoices;
@@ -59,9 +59,16 @@ impl EnvironmentShell {
         };
         let session = self
             .envs
-            .get_mut(&env)
-            .map(|live| live.data.new_kraddie_session(group, id.clone(), spec))
+            .get(&env)
+            .map(|live| live.data.next_session_id())
             .ok_or(NO_ENVIRONMENT)?;
+        let opened = SessionEdit::OpenForKraddie {
+            session,
+            group,
+            kraddie: id.clone(),
+            name: spec.name,
+        };
+        self.edit_environment(&env, opened);
         self.capture_session_baseline(cx);
         let terminal = self
             .spawn_chat_as(
@@ -140,14 +147,13 @@ impl EnvironmentShell {
         if *env != self.active {
             return;
         }
-        let shown = self.envs.get_mut(env).is_some_and(|live| {
-            let selected = live.data.select_session(session);
-            if selected {
-                live.data.view = EnvironmentView::Sessions;
-            }
-            selected
-        });
+        let shown = self
+            .edit_environment(env, SessionEdit::Select { session })
+            .applied();
         if shown {
+            if let Some(live) = self.envs.get_mut(env) {
+                live.data.set_view(EnvironmentView::Sessions);
+            }
             self.store();
             cx.notify();
         }

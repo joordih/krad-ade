@@ -1,13 +1,12 @@
 mod card;
 mod ending;
-mod mode;
 
 use gpui_kit::Context;
 use krad_agents::{ErrorCode, Response};
 use krad_chat::{new_session_id, LiveEvent, LiveSession};
 use krad_domain::{
-    AgentPreset, ChatEvent, CloudPlacement, EnvironmentName, GroupId, PermissionMode, Prompt,
-    TerminalId, WorkerSpawn, WorkerSurface,
+    worker_mode, AgentPreset, ChatEvent, CloudPlacement, EnvironmentName, GroupId, NodeEdit,
+    PermissionMode, Prompt, TerminalId, WorkerSpawn, WorkerSurface,
 };
 use krad_runtime::BusReply;
 
@@ -81,7 +80,7 @@ impl EnvironmentShell {
             spawn,
             session: LiveSession::Start(new_session_id()),
             prompts: vec![Prompt::from(brief)],
-            mode: mode::worker_mode(mode, preset),
+            mode: worker_mode(mode, preset),
             cloud,
         };
         let opened = self
@@ -151,9 +150,7 @@ impl EnvironmentShell {
         if !self.answer_launch(env, id, failure) {
             return;
         }
-        if let Some(live) = self.envs.get_mut(env) {
-            live.data.forget_worker(id);
-        }
+        self.edit_environment(env, NodeEdit::ForgetWorker { terminal: id });
         self.close_terminal_in(env, id, cx);
     }
 
@@ -235,16 +232,11 @@ impl EnvironmentShell {
         if self.open_worker_chat(env, terminal, chat, cx).is_none() {
             return false;
         }
-        if let Some(node) = self
-            .envs
-            .get_mut(env)
-            .and_then(|live| live.data.nodes.iter_mut().find(|node| node.id == terminal))
-        {
-            node.resume = Some(reopen.resume);
-        }
-        if let Some(live) = self.envs.get_mut(env) {
-            live.data.resume_worker_usage(terminal);
-        }
+        let resumed = NodeEdit::ResumeWorker {
+            terminal,
+            resume: reopen.resume,
+        };
+        self.edit_environment(env, resumed);
         self.store();
         true
     }

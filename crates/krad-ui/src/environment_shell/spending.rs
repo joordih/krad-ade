@@ -96,16 +96,20 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
+        let request = self.runtime.handle.next_request();
         live.data
-            .record_usage(chat, &report, &spending.model_prices());
-        self.runtime
-            .handle
-            .post(Command::Environments(EnvironmentCommand::RecordUsage {
-                environment: env.clone(),
-                chat,
-                report,
-                spending,
-            }));
+            .record_usage(chat, &report, &spending.model_prices(), request);
+        let recorded = EnvironmentCommand::RecordUsage {
+            environment: env.clone(),
+            chat,
+            report,
+            spending,
+        };
+        drop(
+            self.runtime
+                .handle
+                .send(request, Command::Environments(recorded)),
+        );
         self.note_variant_spend(env, chat);
         cx.notify();
         self.store();

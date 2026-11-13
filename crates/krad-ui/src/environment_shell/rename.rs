@@ -1,5 +1,5 @@
 use gpui_kit::Context;
-use krad_domain::{EnvironmentName, GroupId, TerminalId};
+use krad_domain::{EnvironmentName, GroupId, NodeField, TerminalId};
 
 use super::EnvironmentShell;
 
@@ -142,17 +142,11 @@ impl EnvironmentShell {
         match draft.target {
             RenameTarget::Terminal(id) => {
                 let env = self.active.clone();
-                if let Some(node) = self
-                    .envs
-                    .get_mut(&env)
-                    .and_then(|live| live.data.nodes.iter_mut().find(|node| node.id == id))
-                {
-                    title.clone_into(&mut node.title);
-                }
+                self.set_node(&env, id, NodeField::Title(title.to_owned()));
             }
             RenameTarget::Environment(name) => {
                 if let Some(live) = self.envs.get_mut(&name) {
-                    live.data.title = Some(title.to_owned());
+                    live.data.set_title(Some(title.to_owned()));
                 }
             }
             RenameTarget::Worktree(group) => {

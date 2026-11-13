@@ -1,6 +1,6 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_chat::{new_session_id, LiveSession};
-use krad_domain::{review::Issue, ToastKind};
+use krad_domain::{review::Issue, SessionEdit, ToastKind};
 use krad_domain::{
     EnvironmentName, GroupId, Prompt, SessionSpec, SessionTemplate, TemplateLaunch, WorktreeOrigin,
 };
@@ -74,8 +74,14 @@ impl EnvironmentShell {
         let spec = SessionSpec { name: session_name };
         if *env == self.active {
             self.new_session(group, spec, cx);
-        } else if let Some(live) = self.envs.get_mut(env) {
-            live.data.new_session(group, spec);
+        } else if let Some(session) = self.envs.get(env).map(|live| live.data.next_session_id()) {
+            let opened = SessionEdit::Open {
+                session,
+                group,
+                name: spec.name,
+                shown: true,
+            };
+            self.edit_environment(env, opened);
         }
         let session = LiveSession::Start(new_session_id());
         let place = NodeGroup::Exactly(group);

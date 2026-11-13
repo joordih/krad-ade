@@ -2,12 +2,13 @@ use super::{Worker, WorkerReopen};
 use crate::environment::EnvironmentData;
 use crate::ids::{SessionId, TerminalId};
 use crate::usage::Spend;
+use serde::{Deserialize, Serialize};
 
 const WORKER_SESSION_NAME: &str = "Worker";
 const WORKER_NAME_CHARS: usize = 40;
 const ELLIPSIS: char = '…';
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkerSpawn {
     pub lead: Option<SessionId>,
     pub task: String,
@@ -34,9 +35,25 @@ impl EnvironmentData {
         terminal: TerminalId,
         spawn: WorkerSpawn,
     ) -> Option<SessionId> {
-        let node = self.nodes.iter().find(|node| node.id == terminal)?;
+        let id = self.next_session_id();
+        self.open_worker_session_as(terminal, id, spawn)
+            .then_some(id)
+    }
+
+    pub fn open_worker_session_as(
+        &mut self,
+        terminal: TerminalId,
+        id: SessionId,
+        spawn: WorkerSpawn,
+    ) -> bool {
+        if self.session(id).is_some() {
+            return false;
+        }
+        let Some(node) = self.nodes.iter().find(|node| node.id == terminal) else {
+            return false;
+        };
         let group = self.home_of(node);
-        let id = self.push_session(group, worker_session_name(&spawn.task));
+        self.insert_session(id, group, worker_session_name(&spawn.task));
         for session in &mut self.sessions {
             session.tabs.remove_terminal(terminal);
         }
@@ -48,7 +65,7 @@ impl EnvironmentData {
         }
         self.ensure_sessions();
         self.assign_terminals();
-        Some(id)
+        true
     }
 
     fn own_worker(&mut self, lead: SessionId, terminal: TerminalId, at: SessionId, task: String) {

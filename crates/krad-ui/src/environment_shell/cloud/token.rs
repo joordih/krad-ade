@@ -70,7 +70,7 @@ impl EnvironmentShell {
         };
         if let Some(live) = self.envs.get_mut(&env) {
             live.data
-                .side_panel
+                .side_panel_mut()
                 .add_terminal(id, SETUP_LABEL.to_owned());
             live.terminals_tab = TerminalsTab::Shown;
         }

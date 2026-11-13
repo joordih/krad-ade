@@ -49,7 +49,7 @@ impl EnvironmentShell {
     ) {
         let env = self.active.clone();
         if let Some(live) = self.envs.get_mut(&env) {
-            edit(&mut live.data.side_panel);
+            edit(live.data.side_panel_mut());
         }
         cx.notify();
         self.store();
@@ -196,7 +196,7 @@ impl EnvironmentShell {
         };
         let env = self.active.clone();
         if let Some(live) = self.envs.get_mut(&env) {
-            let layout = &mut live.data.side_panel;
+            let layout = live.data.side_panel_mut();
             match drag {
                 SidePanelDrag::Width {
                     mouse_start,

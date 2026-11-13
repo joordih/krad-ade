@@ -1,7 +1,7 @@
 use gpui_kit::{Context, PathPromptOptions, SharedString, Window};
 use krad_domain::{
-    parse_wsl_path, AgentPreset, EnvironmentName, GroupId, Host, TerminalGroup, TerminalId,
-    ToastKind, WorktreeOrigin,
+    parse_wsl_path, AgentPreset, EnvironmentName, GroupEdit, GroupId, Host, TerminalGroup,
+    TerminalId, ToastKind, WorktreeOrigin,
 };
 use krad_host::HostLink;
 use krad_protocol::{AgentPlace, Command, HostCommand, LocalAgents};
@@ -234,11 +234,20 @@ impl EnvironmentShell {
         worktree: Option<WorktreeOrigin>,
         cx: &mut Context<Self>,
     ) -> Option<GroupId> {
-        let id = self.envs.get_mut(env).map(|live| {
-            let id = live.data.add_group(root, worktree);
-            live.selected_group = Some(id);
-            id
-        });
+        let id = self.envs.get(env).map(|live| live.data.next_group_id());
+        if let Some(group) = id {
+            self.edit_environment(
+                env,
+                GroupEdit::Add {
+                    group,
+                    root,
+                    worktree,
+                },
+            );
+            if let Some(live) = self.envs.get_mut(env) {
+                live.selected_group = Some(group);
+            }
+        }
         self.refresh_git(cx);
         cx.notify();
         self.store();
@@ -275,10 +284,15 @@ impl EnvironmentShell {
         for terminal in held {
             self.close_terminal_in(env, terminal, cx);
         }
+        let removed = self
+            .envs
+            .get(env)
+            .and_then(|live| live.data.group(id))
+            .cloned();
+        self.edit_environment(env, GroupEdit::Remove { group: id });
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
-        let removed = live.data.remove_group(id);
         if live.selected_group.is_none_or(|selected| selected == id) {
             live.selected_group = live.data.groups.first().map(|group| group.id);
         }

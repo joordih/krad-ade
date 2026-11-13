@@ -104,7 +104,7 @@ impl EnvironmentShell {
             return;
         };
         live.sessions.remove(&id);
-        live.data.side_panel.remove_terminal(id);
+        live.data.side_panel_mut().remove_terminal(id);
         if live.focused == Some(id) {
             live.focused = live.shown_tab();
         }
@@ -177,7 +177,7 @@ impl EnvironmentShell {
         };
         let destination = live.data.host.to_string();
         live.data
-            .side_panel
+            .side_panel_mut()
             .add_terminal(id, format!("{SIGN_IN_LABEL} · {destination}"));
         live.terminals_tab = TerminalsTab::Shown;
         let view = self.runtime.handle.open_sign_in(terminal_ref(env, id));

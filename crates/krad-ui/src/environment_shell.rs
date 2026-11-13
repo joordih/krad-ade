@@ -24,6 +24,7 @@ mod drag;
 mod editor_keys;
 mod editor_popovers;
 mod entry_input;
+mod environment_edits;
 mod environment_menu;
 mod environment_order;
 mod extensions;

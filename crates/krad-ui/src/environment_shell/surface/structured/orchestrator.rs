@@ -1,6 +1,8 @@
 use gpui_kit::{Context, Window};
 use krad_chat::LiveSession;
-use krad_domain::{EnvironmentName, SessionId, SessionLead, TerminalId, DEFAULT_CHAT_HARNESS};
+use krad_domain::{
+    Edited, EnvironmentName, SessionEdit, SessionId, SessionLead, TerminalId, DEFAULT_CHAT_HARNESS,
+};
 
 use super::super::super::workers::LeadEnding;
 use super::super::super::EnvironmentShell;
@@ -32,24 +34,18 @@ impl EnvironmentShell {
             .map_or((DEFAULT_CHAT_HARNESS, None), |chat| {
                 (chat.harness, chat.chosen_model.clone())
             });
-        let Some(live) = self.envs.get_mut(&env) else {
-            return;
-        };
-        let Some(session_id) = live.data.session_of(id) else {
-            return;
-        };
-        let Some(session) = live
-            .data
-            .sessions
-            .iter_mut()
-            .find(|session| session.id == session_id)
+        let Some(session) = self
+            .envs
+            .get(&env)
+            .and_then(|live| live.data.session_of(id))
         else {
             return;
         };
-        session.lead = Some(SessionLead {
+        let lead = SessionLead {
             terminal: Some(id),
             ..SessionLead::new(harness, model)
-        });
+        };
+        self.edit_environment(&env, SessionEdit::MakeLead { session, lead });
         self.restart_live_chat(&env, id);
         self.store();
         cx.notify();
@@ -75,10 +71,10 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        let lead = self
-            .envs
-            .get_mut(&env)
-            .and_then(|live| live.data.dismiss_lead(id));
+        let lead = match self.edit_environment(&env, SessionEdit::DismissLead { session: id }) {
+            Edited::LeadDismissed(lead) => Some(lead),
+            _ => None,
+        };
         if let Some(terminal) = lead.and_then(|lead| lead.terminal) {
             self.restart_live_chat(&env, terminal);
         }

@@ -1,7 +1,8 @@
 use krad_domain::EnvironmentName;
 use krad_host::MachineChannel;
 use krad_protocol::{
-    AgentRef, EnvironmentCommand, ErrorCode, EventKind, HostCommand, Reply, TerminalSummary,
+    AgentRef, EnvironmentCommand, ErrorCode, EventKind, HostCommand, Reply, RequestId,
+    TerminalSummary,
 };
 use std::sync::Arc;
 use std::time::Instant;
@@ -52,7 +53,11 @@ impl Runtime {
         hosts.execute(command, host, &mut work)
     }
 
-    pub(super) fn execute_environments(&mut self, command: EnvironmentCommand) -> Option<Reply> {
+    pub(super) fn execute_environments(
+        &mut self,
+        command: EnvironmentCommand,
+        request: RequestId,
+    ) -> Option<Reply> {
         let closed = match &command {
             EnvironmentCommand::Close { environment } => self
                 .environments
@@ -60,7 +65,9 @@ impl Runtime {
                 .map(|host| (environment.clone(), host)),
             _ => None,
         };
-        let reply = self.environments.execute(command, &mut self.outbox)?;
+        let reply = self
+            .environments
+            .execute(command, request, &mut self.outbox)?;
         if let (Some((environment, _)), Reply::Accepted) = (&closed, &reply) {
             self.chats
                 .close_environment(environment.as_str(), &mut self.outbox);

@@ -18,9 +18,12 @@ mod settings;
 mod subscribers;
 mod terminals;
 mod usage;
+mod workers;
 
 pub use app_events::{EventsSetup, WebhookSecrets};
-pub use bus::{BusAccess, BusReply, BusSetup, Delegated, DelegationReceiver, Mail};
+pub use bus::{
+    closed_worker_infos, BusAccess, BusReply, BusSetup, Delegated, DelegationReceiver, Mail,
+};
 pub use chats::{
     runs_in_runtime, ChatBrief, ChatLaunch, ChatPlace, ChatRole, ChatStart, PreparedLaunch,
 };
@@ -43,3 +46,4 @@ pub use terminals::{
     TerminalFrame, TerminalLaunch, TerminalPlace, TerminalStatus, TerminalView,
 };
 pub use usage::{SourceState, UsagePlace, UsageSource};
+pub use workers::{closed_target, refusal_error};

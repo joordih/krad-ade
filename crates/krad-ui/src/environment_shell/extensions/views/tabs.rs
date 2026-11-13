@@ -1,5 +1,5 @@
 use gpui_kit::Context;
-use krad_domain::{EnvironmentName, ExtensionTab, NodeKind, TerminalId};
+use krad_domain::{EnvironmentName, ExtensionTab, NodeEdit, NodeKind, TerminalId};
 use krad_extensions::api::protocol::{ViewClosed, ViewRef};
 use krad_extensions::api::{ExtensionId, ViewId};
 
@@ -63,11 +63,12 @@ impl EnvironmentShell {
             }
             ViewPlace::Popover(..) => self.forget_extension_popover(id),
             ViewPlace::FileTab(env, terminal) => {
-                if let Some(live) = self.envs.get_mut(&env) {
-                    if live.data.nodes.iter().any(|node| node.id == terminal) {
-                        live.data.nodes.retain(|node| node.id != terminal);
-                        live.data.remove_terminal_tiles(terminal);
-                    }
+                let open = self
+                    .envs
+                    .get(&env)
+                    .is_some_and(|live| live.data.nodes.iter().any(|node| node.id == terminal));
+                if open {
+                    self.edit_environment(&env, NodeEdit::Close { terminal });
                 }
                 self.store();
             }

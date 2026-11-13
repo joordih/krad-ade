@@ -1,5 +1,5 @@
 use gpui_kit::{div, px, rgb, Context, ParentElement, Styled, Window};
-use krad_domain::{AgentState, TerminalId, TextScale};
+use krad_domain::{AgentState, EnvironmentView, NodeField, SessionEdit, TerminalId, TextScale};
 
 use super::EnvironmentShell;
 use crate::actions::{TextLarger, TextReset, TextSmaller};
@@ -40,16 +40,27 @@ impl EnvironmentShell {
         if shown {
             self.leave_main_overlays();
         }
+        if self
+            .edit_environment(&env, SessionEdit::Reveal { terminal: id })
+            .applied()
+        {
+            if let Some(live) = self.envs.get_mut(&env) {
+                live.data.set_view(EnvironmentView::Sessions);
+            }
+        }
+        let done = self.envs.get(&env).is_some_and(|live| {
+            live.data
+                .nodes
+                .iter()
+                .any(|node| node.id == id && node.state == AgentState::Done)
+        });
+        if done {
+            self.set_node(&env, id, NodeField::State(AgentState::Idle));
+        }
         if let Some(live) = self.envs.get_mut(&env) {
             live.focused = Some(id);
-            live.data.show_terminal(id);
             if let Some(group) = live.data.group_of(id) {
                 live.selected_group = Some(group.id);
-            }
-            if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
-                if node.state == AgentState::Done {
-                    node.state = AgentState::Idle;
-                }
             }
         }
         self.attention_seen(&env, id);
@@ -76,12 +87,13 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        if let Some(node) = self
+        let scaled = self
             .envs
-            .get_mut(&env)
-            .and_then(|live| live.data.nodes.iter_mut().find(|node| node.id == id))
-        {
-            node.text_scale = change(node.text_scale);
+            .get(&env)
+            .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
+            .map(|node| (node.text_scale, change(node.text_scale)));
+        if let Some((_, scale)) = scaled.filter(|(before, after)| before != after) {
+            self.set_node(&env, id, NodeField::TextScale(scale));
         }
         cx.notify();
         self.store();

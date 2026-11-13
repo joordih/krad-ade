@@ -1,8 +1,8 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_chat::{stop_cloud_process, CloudRun, Runner};
 use krad_domain::{
-    AgentPreset, CloudPlacement, CloudRunnerId, EnvironmentName, JournalOffset, Pairing,
-    TerminalId, TerminalNode,
+    AgentPreset, CloudPlacement, CloudProcess, CloudRunnerId, EnvironmentName, JournalOffset,
+    NodeField, Pairing, TerminalId, TerminalNode,
 };
 use krad_host::HostLink;
 use std::path::PathBuf;
@@ -76,17 +76,25 @@ impl EnvironmentShell {
             .map_or_else(|| id.to_string(), |runner| runner.name.as_str().to_owned())
     }
 
-    pub(super) fn node_mut(
+    pub(super) fn edit_cloud_process(
         &mut self,
         env: &EnvironmentName,
         id: TerminalId,
-    ) -> Option<&mut TerminalNode> {
-        self.envs
-            .get_mut(env)?
-            .data
-            .nodes
-            .iter_mut()
-            .find(|node| node.id == id)
+        change: impl FnOnce(&mut Option<CloudProcess>),
+    ) {
+        let Some(before) = self
+            .envs
+            .get(env)
+            .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
+            .map(|node| node.cloud.clone())
+        else {
+            return;
+        };
+        let mut cloud = before.clone();
+        change(&mut cloud);
+        if cloud != before {
+            self.set_node(env, id, NodeField::Cloud(cloud));
+        }
     }
 
     pub(in crate::environment_shell) fn cloud_chat_runner(
@@ -136,9 +144,11 @@ impl EnvironmentShell {
             return false;
         }
         self.cloud.attached.remove(&key);
-        if let Some(saved) = self.node_mut(env, id).and_then(|node| node.cloud.as_mut()) {
-            saved.offset = JournalOffset::default();
-        }
+        self.edit_cloud_process(env, id, |cloud| {
+            if let Some(saved) = cloud.as_mut() {
+                saved.offset = JournalOffset::default();
+            }
+        });
         true
     }
 

@@ -127,7 +127,7 @@ impl EnvironmentShell {
         }
         if let Some(target) = live
             .data
-            .variant_runs
+            .variant_runs_mut()
             .run_mut(run)
             .and_then(|found| found.variant_mut(variant))
         {
@@ -276,7 +276,7 @@ impl EnvironmentShell {
                 };
                 let missing = live
                     .data
-                    .variant_runs
+                    .variant_runs_mut()
                     .mark_missing_worktrees(|path| !gone.iter().any(|gone| gone == path));
                 tracing::info!(count = missing.len(), "variant worktrees missing");
                 let finished: Vec<(VariantRunId, krad_domain::GroupId)> = live

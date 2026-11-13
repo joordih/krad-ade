@@ -1,12 +1,12 @@
 use super::chat_support::{chat, Ask as _, ChatFeed, TestResult, CLAUDE_HARNESS};
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
-    AgentPreset, EnvironmentChange, EnvironmentData, EnvironmentName, GroupId, McpProjectTrust,
-    Prompt, RuntimeState, SessionLead, Settings, Speaker, TerminalGroup, TerminalId, TerminalNode,
+    AgentPreset, EnvironmentData, EnvironmentName, GroupId, McpProjectTrust, Prompt, RuntimeState,
+    SessionEdit, SessionLead, Settings, Speaker, TerminalGroup, TerminalId, TerminalNode,
     PROJECT_MCP_FILE,
 };
 use krad_protocol::{
-    AgentRef, ChatCommand, ChatMirror, Command, EnvironmentCommand, ErrorCode, EventKind, Reply,
+    AgentRef, ChatCommand, ChatMirror, Command, ErrorCode, EventKind, Reply, SessionCommand,
     SettingsCommand,
 };
 use krad_runtime::{
@@ -227,23 +227,23 @@ fn a_chat_made_lead_restarts_with_the_lead_hint_on_its_next_message() -> TestRes
     runtime.open_chat(id.clone(), briefed(AgentPreset::ClaudeCode));
     assert_eq!(runtime.send_now(send(&id))?, Reply::Accepted);
     feed.until_chat(&id, |mirror| !mirror.state.working && answers(mirror) == 1)?;
-    let (index, mut session) = data
+    let session = data
         .sessions
-        .iter()
-        .cloned()
-        .enumerate()
-        .next()
+        .first()
+        .map(|session| session.id)
         .ok_or("sessions mode opened no session")?;
-    session.lead = Some(SessionLead {
-        terminal: Some(TerminalId(1)),
-        ..SessionLead::new(AgentPreset::ClaudeCode, None)
-    });
-    let made_lead = EnvironmentCommand::Change {
+    let made_lead = SessionCommand {
         environment: EnvironmentName::new(ENVIRONMENT.to_owned()),
-        changes: vec![EnvironmentChange::Session { index, session }],
+        edit: SessionEdit::MakeLead {
+            session,
+            lead: SessionLead {
+                terminal: Some(TerminalId(1)),
+                ..SessionLead::new(AgentPreset::ClaudeCode, None)
+            },
+        },
     };
     assert_eq!(
-        runtime.send_now(Command::Environments(made_lead))?,
+        runtime.send_now(Command::Session(made_lead))?,
         Reply::Accepted
     );
     assert_eq!(runtime.send_now(send(&id))?, Reply::Accepted);

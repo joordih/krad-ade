@@ -1,8 +1,8 @@
 use gpui_kit::Context;
 use krad_chat::LiveSession;
 use krad_domain::{
-    AgentPreset, ArchivedSessionId, ArchivedShell, EnvironmentName, GroupId, NodeKind, ResumedChat,
-    TerminalId,
+    AgentPreset, ArchivedSessionId, ArchivedShell, Edited, EnvironmentName, EnvironmentView,
+    GroupId, NodeEdit, NodeField, NodeKind, ResumedChat, SessionEdit, TerminalId,
 };
 
 use super::super::sessions::Launch;
@@ -39,13 +39,7 @@ impl EnvironmentShell {
         let Some(id) = self.open_terminal_at(env, &spec, launch, shell.cwd, cx) else {
             return;
         };
-        if let Some(node) = self
-            .envs
-            .get_mut(env)
-            .and_then(|live| live.data.nodes.iter_mut().find(|node| node.id == id))
-        {
-            node.title = shell.title;
-        }
+        self.set_node(env, id, NodeField::Title(shell.title));
     }
 
     pub(in crate::environment_shell) fn reopen_archived_session(
@@ -54,20 +48,24 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        let Some(live) = self.envs.get_mut(&env) else {
+        let Some(group) = self.envs.get(&env).and_then(|live| {
+            live.data
+                .archive
+                .sessions
+                .iter()
+                .find(|session| session.id == id)
+                .map(|session| session.group)
+        }) else {
             return;
         };
-        let group = live
-            .data
-            .archive
-            .sessions
-            .iter()
-            .find(|session| session.id == id)
-            .map(|session| session.group);
-        let (Some(group), Some(reopened)) = (group, live.data.reopen_archived_session(id)) else {
+        let Edited::Reopened(reopened) =
+            self.edit_environment(&env, SessionEdit::Reopen { archived: id })
+        else {
             return;
         };
-        live.archive_sheet = None;
+        if let Some(live) = self.envs.get_mut(&env) {
+            live.archive_sheet = None;
+        }
         self.resume_reopened(&env, &reopened.chats);
         for shell in reopened.shells {
             self.reopen_shell(&env, group, shell, cx);
@@ -75,8 +73,20 @@ impl EnvironmentShell {
         for worker in reopened.workers {
             self.reopen_worker(&env, worker, cx);
         }
+        if self
+            .edit_environment(
+                &env,
+                SessionEdit::Select {
+                    session: reopened.session,
+                },
+            )
+            .applied()
+        {
+            if let Some(live) = self.envs.get_mut(&env) {
+                live.data.set_view(EnvironmentView::Sessions);
+            }
+        }
         if let Some(live) = self.envs.get_mut(&env) {
-            live.data.show_session(reopened.session);
             show_current_session(live);
         }
         cx.notify();
@@ -89,12 +99,15 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        let Some(live) = self.envs.get_mut(&env) else {
-            return;
-        };
-        live.archive_sheet = None;
-        if let Some(resumed) = live.data.reopen_archived_chat(terminal) {
-            live.focused = Some(resumed.terminal);
+        if let Some(live) = self.envs.get_mut(&env) {
+            live.archive_sheet = None;
+        }
+        if let Edited::Resumed(resumed) =
+            self.edit_environment(&env, NodeEdit::ReopenArchivedChat { terminal })
+        {
+            if let Some(live) = self.envs.get_mut(&env) {
+                live.focused = Some(resumed.terminal);
+            }
             self.resume_reopened(&env, std::slice::from_ref(&resumed));
         }
         cx.notify();

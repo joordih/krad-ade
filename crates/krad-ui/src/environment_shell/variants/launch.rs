@@ -56,7 +56,7 @@ impl EnvironmentShell {
             .ok_or_else(|| NOT_A_REPO_TEXT.to_owned())?;
         let run = live
             .data
-            .variant_runs
+            .variant_runs_mut()
             .start(group, repo_root.clone(), order, SystemTime::now())
             .map_err(|error| error.to_string())?;
         let launches: Vec<VariantLaunch> =

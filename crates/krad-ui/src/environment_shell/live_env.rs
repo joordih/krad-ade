@@ -2,6 +2,10 @@ use krad_domain::{EnvironmentData, GroupId, PermissionMode, TerminalId};
 use std::collections::HashMap;
 use std::time::Instant;
 
+mod environment_copy;
+
+pub(super) use environment_copy::{EnvironmentCopy, NodesMoved};
+
 use super::live_terminal::LiveTerminal;
 use super::{
     activity, archive, changes_tab, file_tab, session_templates, sessions, surface,
@@ -9,7 +13,7 @@ use super::{
 };
 
 pub(super) struct LiveEnv {
-    pub(super) data: EnvironmentData,
+    pub(super) data: EnvironmentCopy,
     pub(super) deferred_launches: Vec<sessions::DeferredLaunch>,
     pub(super) sessions: HashMap<TerminalId, LiveTerminal>,
     pub(super) chats: HashMap<TerminalId, surface::SurfaceChat>,
@@ -37,12 +41,7 @@ pub(super) struct LiveEnv {
 }
 
 impl LiveEnv {
-    pub(super) fn new(mut data: EnvironmentData, focused: Option<TerminalId>) -> Self {
-        data.enter_sessions();
-        data.drop_file_tabs(true);
-        if let Some(id) = focused {
-            data.reveal_terminal(id);
-        }
+    pub(super) fn new(data: EnvironmentData, focused: Option<TerminalId>) -> Self {
         let selected_group = focused
             .and_then(|id| data.group_of(id))
             .or_else(|| data.groups.first())
@@ -50,7 +49,7 @@ impl LiveEnv {
         let pending_chats = surface::restored_chats(&data.nodes);
         Self {
             deferred_launches: Vec::new(),
-            data,
+            data: EnvironmentCopy::new(data),
             sessions: HashMap::new(),
             chats: HashMap::new(),
             focused,

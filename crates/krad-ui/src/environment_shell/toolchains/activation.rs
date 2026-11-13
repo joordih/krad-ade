@@ -1,6 +1,6 @@
 use gpui_kit::Context;
 use krad_domain::{
-    EffectiveToolchain, EnvironmentName, GroupActivation, GroupId, Host, ProjectFolder,
+    EffectiveToolchain, EnvironmentName, GroupActivation, GroupEdit, GroupId, Host, ProjectFolder,
     TerminalGroup, TerminalId, ToolchainActivation, ToolchainChoices,
 };
 use krad_extensions::{
@@ -193,14 +193,14 @@ impl EnvironmentShell {
         activation: GroupActivation,
         cx: &mut Context<Self>,
     ) {
-        let Some(group) = self
-            .envs
-            .get_mut(&self.active)
-            .and_then(|live| live.data.groups.iter_mut().find(|group| group.id == id))
-        else {
-            return;
-        };
-        group.activation = activation;
+        let env = self.active.clone();
+        self.edit_environment(
+            &env,
+            GroupEdit::SetActivation {
+                group: id,
+                activation,
+            },
+        );
         self.store();
         cx.notify();
     }

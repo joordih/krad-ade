@@ -3,7 +3,7 @@ use gpui_kit::Context;
 use krad_chat::Speaker;
 use krad_domain::{
     is_quiet_reply, BudgetStatus, CheckInContext, EnvironmentName, GroupId, Hush, KraddieId,
-    KraddieWake, KraddieWorkspace, RoundsCheck, RoundsMoment, RunSlot, TerminalId,
+    KraddieWake, KraddieWorkspace, RoundsCheck, RoundsMoment, RunSlot, SessionEdit, TerminalId,
     MAX_KRADDIE_RUNS,
 };
 use std::path::Path;
@@ -230,8 +230,8 @@ impl EnvironmentShell {
             .get(&ended.env)
             .and_then(|live| live.data.session_of(ended.terminal));
         self.close_terminal_in(&ended.env, ended.terminal, cx);
-        if let (Some(session), Some(live)) = (session, self.envs.get_mut(&ended.env)) {
-            live.data.close_session(session);
+        if let Some(session) = session {
+            self.edit_environment(&ended.env, SessionEdit::Close { session });
         }
         if let Some(entry) = self.kraddies.entry_mut(&ended.kraddie) {
             entry.check_ins.forget(ended.run);

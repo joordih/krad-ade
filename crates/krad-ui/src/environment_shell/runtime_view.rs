@@ -1,6 +1,6 @@
 use futures::{FutureExt as _, StreamExt as _};
 use gpui_kit::Context;
-use krad_domain::{AgentStatus, EnvironmentChange, EnvironmentData, EnvironmentName, TerminalId};
+use krad_domain::{AgentStatus, EnvironmentName, TerminalId};
 use krad_protocol::{
     AgentRef, AskId, BusSnapshot, EventKind, Feed, StatusReport, TerminalClassified,
     TerminalSummary,
@@ -133,11 +133,11 @@ impl EnvironmentShell {
                 self.runtime.view.opencode.replace(snapshot.opencode);
                 self.gateway_replaced(snapshot.gateway);
                 self.runtime.view.settings.replace(*snapshot.settings);
-                self.adopt_runtime_meta(&snapshot.environments);
                 self.runtime
                     .view
                     .environments
                     .replace(snapshot.environments);
+                self.adopt_runtime_environments(cx);
                 self.advance_harness_onboarding(cx);
                 self.hosts_replaced(snapshot.hosts, cx);
                 self.runtime_chats_replaced(snapshot.chats, cx);
@@ -160,12 +160,13 @@ impl EnvironmentShell {
             EventKind::EnvironmentChanged {
                 environment,
                 changes,
+                answers,
             } => {
-                self.adopt_runtime_changes(&environment, &changes);
                 self.runtime
                     .view
                     .environments
-                    .changed(&environment, changes);
+                    .changed(&environment, changes.clone());
+                self.environment_heard(&environment, &changes, answers, cx);
             }
             EventKind::TerminalChanged { terminal } => {
                 return if terminal.environment == self.active {
@@ -206,27 +207,6 @@ impl EnvironmentShell {
         let TerminalSummary { terminal, run } = summary;
         if !run.is_running() {
             self.terminal_ended(&terminal.environment, terminal.terminal, run);
-        }
-    }
-
-    fn adopt_runtime_changes(
-        &mut self,
-        environment: &EnvironmentName,
-        changes: &[EnvironmentChange],
-    ) {
-        let Some(live) = self.envs.get_mut(environment) else {
-            return;
-        };
-        for change in changes.iter().filter(|change| change.is_runtime_owned()) {
-            live.data.apply(change.clone());
-        }
-    }
-
-    fn adopt_runtime_meta(&mut self, environments: &[EnvironmentData]) {
-        for environment in environments {
-            if let Some(live) = self.envs.get_mut(&environment.name) {
-                live.data.meta.clone_from(&environment.meta);
-            }
         }
     }
 

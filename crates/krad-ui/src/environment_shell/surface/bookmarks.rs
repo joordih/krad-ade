@@ -1,6 +1,6 @@
 use gpui_kit::{Context, ElementId, IntoElement, StatefulInteractiveElement};
 use krad_chat::Speaker;
-use krad_domain::{Bookmark, ChatBookmarks, Mention, TerminalId, TurnPrint, TurnSide};
+use krad_domain::{Bookmark, ChatBookmarks, Mention, NodeField, TerminalId, TurnPrint, TurnSide};
 use std::collections::HashMap;
 
 use super::super::chat::ChatMessage;
@@ -104,14 +104,17 @@ impl EnvironmentShell {
     }
 
     fn toggle_bookmark(&mut self, id: TerminalId, bookmark: Bookmark) {
-        let Some(node) = self
+        let env = self.active.clone();
+        let Some(mut bookmarks) = self
             .envs
-            .get_mut(&self.active)
-            .and_then(|live| live.data.nodes.iter_mut().find(|node| node.id == id))
+            .get(&env)
+            .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
+            .map(|node| node.bookmarks.clone())
         else {
             return;
         };
-        node.bookmarks.toggle(bookmark);
+        bookmarks.toggle(bookmark);
+        self.set_node(&env, id, NodeField::Bookmarks(bookmarks));
         self.store();
     }
 }

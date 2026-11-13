@@ -37,7 +37,6 @@ fn opened_closed_reordered_and_changed_environments_reach_the_same_state() {
     mirror.replace(vec![main.clone(), named("old"), named("docs")]);
     let mut changed = main.clone();
     changed.title = Some("Payments".to_owned());
-    changed.add_group(PathBuf::from("/work/web"), None);
     let wanted = vec![named("docs"), named("new"), changed];
     let commands = mirror.commands_toward(&wanted);
     assert!(commands
@@ -77,9 +76,11 @@ fn an_opened_environment_leaves_its_view_to_the_shell() {
 }
 
 #[test]
-fn the_ui_never_sends_the_meta_the_runtime_owns() {
+fn the_ui_never_diffs_the_items_the_runtime_owns() {
     let mut mirror = EnvironmentsMirror::default();
     let mut kept = named("main");
+    kept.add_group(PathBuf::from("/work/api"), None);
+    kept.enter_sessions();
     kept.meta.insert(
         TerminalId(3),
         krad_domain::TerminalMeta {
@@ -90,6 +91,8 @@ fn the_ui_never_sends_the_meta_the_runtime_owns() {
     mirror.replace(vec![kept.clone()]);
     let mut stale = kept;
     stale.meta.clear();
+    stale.groups.clear();
+    stale.next_id = 40;
     assert_eq!(
         mirror.commands_toward(std::slice::from_ref(&stale)),
         Vec::new()

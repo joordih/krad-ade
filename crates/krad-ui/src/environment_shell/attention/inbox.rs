@@ -4,7 +4,7 @@ use gpui_kit::{
     ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::{
-    relative_age, AttentionKind, AttentionTarget, InboxFilter, SessionId, Visibility,
+    relative_age, AttentionKind, AttentionTarget, InboxFilter, SessionEdit, SessionId, Visibility,
 };
 use krad_protocol::AttentionCommand;
 use std::time::Instant;
@@ -334,9 +334,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        if let Some(live) = self.envs.get_mut(&env) {
-            live.data.toggle_session_attention(session);
-        }
+        self.edit_environment(&env, SessionEdit::ToggleAttention { session });
         cx.notify();
         self.store();
     }

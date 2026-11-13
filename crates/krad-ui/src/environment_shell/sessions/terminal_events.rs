@@ -1,4 +1,4 @@
-use krad_domain::{AgentState, EnvironmentName, ProcessRun, TerminalId, ToastKind};
+use krad_domain::{AgentState, EnvironmentName, NodeField, ProcessRun, TerminalId, ToastKind};
 use krad_protocol::{AgentRef, LaunchedAs, TerminalLaunched};
 use std::time::Instant;
 
@@ -97,9 +97,7 @@ impl EnvironmentShell {
         if !live.sessions.contains_key(&id) {
             return false;
         }
-        if let Some(node) = live.data.nodes.iter_mut().find(|node| node.id == id) {
-            node.state = AgentState::Idle;
-        }
+        self.set_node(env, id, NodeField::State(AgentState::Idle));
         self.publish_agent(env, id, None);
         let raw = id.as_u64();
         match code {

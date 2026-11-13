@@ -1,6 +1,8 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_chat::{ChatEvent, LiveEvent};
-use krad_domain::{EnvironmentName, GitObjectId, RewindPoint, TerminalId, TerminalNode};
+use krad_domain::{
+    ChatCheckpoints, EnvironmentName, GitObjectId, NodeField, RewindPoint, TerminalId,
+};
 use krad_host::HostLink;
 use krad_repo::{snapshot_checkpoint, RepoError};
 use std::collections::VecDeque;
@@ -109,10 +111,11 @@ impl EnvironmentShell {
         point: RewindPoint,
         checkpoint: GitObjectId,
     ) {
-        let Some(node) = self.chat_node(env, id) else {
+        let Some(mut checkpoints) = self.chat_checkpoints(env, id) else {
             return;
         };
-        node.checkpoints.record(point, checkpoint);
+        checkpoints.record(point, checkpoint);
+        self.set_node(env, id, NodeField::Checkpoints(checkpoints));
         self.store();
     }
 
@@ -122,13 +125,14 @@ impl EnvironmentShell {
         id: TerminalId,
         point: &RewindPoint,
     ) {
-        let Some(node) = self.chat_node(env, id) else {
+        let Some(mut checkpoints) = self.chat_checkpoints(env, id) else {
             return;
         };
-        if node.checkpoints.before(point).is_none() {
+        if checkpoints.before(point).is_none() {
             return;
         }
-        node.checkpoints.cut_from(point);
+        checkpoints.cut_from(point);
+        self.set_node(env, id, NodeField::Checkpoints(checkpoints));
         self.store();
     }
 
@@ -149,13 +153,14 @@ impl EnvironmentShell {
             .cloned()
     }
 
-    fn chat_node(&mut self, env: &EnvironmentName, id: TerminalId) -> Option<&mut TerminalNode> {
+    fn chat_checkpoints(&self, env: &EnvironmentName, id: TerminalId) -> Option<ChatCheckpoints> {
         self.envs
-            .get_mut(env)?
+            .get(env)?
             .data
             .nodes
-            .iter_mut()
+            .iter()
             .find(|node| node.id == id)
+            .map(|node| node.checkpoints.clone())
     }
 }
 

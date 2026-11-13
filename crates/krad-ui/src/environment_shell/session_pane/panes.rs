@@ -5,8 +5,8 @@ use gpui_kit::{
     Render, SharedString, StatefulInteractiveElement, Styled, WeakEntity, Window,
 };
 use krad_domain::{
-    Axis, DividerId, LayoutTemplate, PaneId, SessionPanes, SnapZone, TerminalId, ToastKind,
-    UnitRect,
+    Axis, DividerId, LayoutTemplate, PaneId, SessionEdit, SessionPanes, SnapZone, TerminalId,
+    ToastKind, UnitRect,
 };
 use std::time::Instant;
 
@@ -254,13 +254,22 @@ impl EnvironmentShell {
             .filter(|id| !docked.contains(id))
             .collect();
         let focused = live.focused;
-        let Some(session) = live.data.current_session_mut() else {
+        let Some(session) = live.data.current_session() else {
             return;
         };
-        let into = target.or_else(|| focused.and_then(|id| session.panes.pane_of(id)));
-        session.panes.sync(&tabs, &guests, into);
-        if let Some(focused) = focused.filter(|id| session.panes.pane_of(*id).is_some()) {
-            session.panes.show(focused);
+        let mut panes = session.panes.clone();
+        let into = target.or_else(|| focused.and_then(|id| panes.pane_of(id)));
+        panes.sync(&tabs, &guests, into);
+        if let Some(focused) = focused.filter(|id| panes.pane_of(*id).is_some()) {
+            panes.show(focused);
+        }
+        if panes != session.panes {
+            let kept = SessionEdit::SetPanes {
+                session: session.id,
+                panes,
+            };
+            let env = self.active.clone();
+            self.edit_environment(&env, kept);
         }
     }
 
@@ -513,10 +522,18 @@ impl EnvironmentShell {
         let env = self.active.clone();
         if let Some(session) = self
             .envs
-            .get_mut(&env)
-            .and_then(|live| live.data.current_session_mut())
+            .get(&env)
+            .and_then(|live| live.data.current_session())
         {
-            edit(&mut session.panes);
+            let mut panes = session.panes.clone();
+            edit(&mut panes);
+            if panes != session.panes {
+                let kept = SessionEdit::SetPanes {
+                    session: session.id,
+                    panes,
+                };
+                self.edit_environment(&env, kept);
+            }
         }
         cx.notify();
         self.store();

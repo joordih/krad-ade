@@ -5,7 +5,9 @@ mod sheet;
 pub(super) use generation::LoadGeneration;
 
 use gpui_kit::{AppContext as _, Context, Window};
-use krad_domain::{EnvironmentName, GitObjectId, HunkFingerprint, SessionChanges, SessionId};
+use krad_domain::{
+    EnvironmentName, GitObjectId, HunkFingerprint, SessionChanges, SessionEdit, SessionId,
+};
 use krad_host::HostLink;
 use krad_repo::{repo_root, session_diff, snapshot_tree, RepoError, SessionDiff};
 use std::collections::HashSet;
@@ -104,16 +106,18 @@ impl EnvironmentShell {
         session: SessionId,
         edit: impl FnOnce(&mut Option<SessionChanges>),
     ) {
-        let Some(session) = self
+        let Some(before) = self
             .envs
-            .get_mut(env)
-            .and_then(|live| live.data.session_mut(session))
+            .get(env)
+            .and_then(|live| live.data.session(session))
+            .map(|found| found.changes.clone())
         else {
             return;
         };
-        let before = session.changes.clone();
-        edit(&mut session.changes);
-        if session.changes != before {
+        let mut changes = before.clone();
+        edit(&mut changes);
+        if changes != before {
+            self.edit_environment(env, SessionEdit::SetChanges { session, changes });
             self.store();
         }
     }

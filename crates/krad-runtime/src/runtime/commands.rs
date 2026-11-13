@@ -1,9 +1,10 @@
 use krad_agents::{Caller, Incoming};
-use krad_domain::EnvironmentName;
-use krad_protocol::{Command, ErrorCode, EventKind, Reply, RequestId, RuntimeCommand};
+use krad_domain::{EnvironmentEdit, EnvironmentName, NodeEdit};
+use krad_protocol::{AgentRef, Command, ErrorCode, EventKind, Reply, RequestId, RuntimeCommand};
 
 use super::{refused, Runtime, NO_BUS, UNSUPPORTED_COMMAND};
 use crate::bus::{as_lead, closed_worker_answer};
+use crate::environments::UNKNOWN_ENVIRONMENT;
 use crate::input::Input;
 
 impl Runtime {
@@ -37,8 +38,11 @@ impl Runtime {
                 .execute(&command, &mut self.outbox)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Environments(command) => self
-                .execute_environments(command)
+                .execute_environments(command, id)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
+            Command::Session(command) => self.execute_edit(id, command.into()),
+            Command::Group(command) => self.execute_edit(id, command.into()),
+            Command::Node(command) => self.execute_edit(id, command.into()),
             Command::Host(command) => self
                 .execute_host(command)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
@@ -63,11 +67,36 @@ impl Runtime {
         }
     }
 
+    fn execute_edit(
+        &mut self,
+        id: RequestId,
+        (environment, edit): (EnvironmentName, EnvironmentEdit),
+    ) -> Reply {
+        if edit.is_unknown() {
+            self.environments
+                .edit(environment, &edit, Some(id), &mut self.outbox);
+            return refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND);
+        }
+        if let EnvironmentEdit::Node(NodeEdit::Close { terminal }) = &edit {
+            self.workers.closed(&AgentRef {
+                environment: environment.clone(),
+                terminal: *terminal,
+            });
+        }
+        match self
+            .environments
+            .edit(environment, &edit, Some(id), &mut self.outbox)
+        {
+            Some(_) => Reply::Accepted,
+            None => refused(ErrorCode::NotFound, UNKNOWN_ENVIRONMENT),
+        }
+    }
+
     pub(super) fn answer_bus(&mut self, incoming: Incoming) {
-        let Some(bus) = &mut self.bus else {
+        if self.bus.is_none() {
             tracing::debug!("a bus request reached a runtime without a bus");
             return;
-        };
+        }
         let Incoming {
             from,
             request,
@@ -91,7 +120,16 @@ impl Runtime {
             request,
             reply,
         };
-        bus.answer(incoming, &mut self.outbox);
+        let Some(incoming) = self
+            .list_all(incoming)
+            .and_then(|incoming| self.answer_for_leads(incoming))
+            .and_then(|incoming| self.answer_on_chats(incoming))
+        else {
+            return;
+        };
+        if let Some(bus) = &mut self.bus {
+            bus.answer(incoming, &mut self.outbox);
+        }
     }
 
     pub(super) fn apply_bus(&mut self, input: Input) {

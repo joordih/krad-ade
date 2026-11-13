@@ -5,7 +5,7 @@ mod zones;
 use futures::channel::mpsc;
 use futures::StreamExt as _;
 use gpui_kit::{AppContext as _, Context, Entity, Task};
-use krad_domain::{EnvironmentName, ExtensionTab, TerminalId};
+use krad_domain::{EnvironmentName, ExtensionTab, NodeEdit, TerminalId};
 use krad_extensions::api::manifest::ViewZone;
 use krad_extensions::api::protocol::{
     PatchViewParams, RenderView, Rows, RowsParams, ViewEventNotification, ViewEventParams, ViewRef,
@@ -134,17 +134,25 @@ impl EnvironmentShell {
                 ViewPlace::Popover(env, item)
             }
             ViewZone::FileTab => {
-                let Some(live) = self.envs.get_mut(&env) else {
+                let Some(group) = self.envs.get(&env).map(|live| live.selected_group) else {
                     return false;
                 };
-                let group = live.selected_group;
                 let tab = ExtensionTab {
                     extension: extension.to_string(),
                     view: view.to_string(),
                     instance: instance.map(String::from),
                 };
-                let terminal = live.data.open_extension_tab(group, tab, &title);
-                live.focused = Some(terminal);
+                let opened = NodeEdit::OpenExtensionTab {
+                    group,
+                    tab,
+                    title: title.clone(),
+                };
+                let Some(terminal) = self.edit_environment(&env, opened).opened() else {
+                    return false;
+                };
+                if let Some(live) = self.envs.get_mut(&env) {
+                    live.focused = Some(terminal);
+                }
                 self.store();
                 ViewPlace::FileTab(env, terminal)
             }

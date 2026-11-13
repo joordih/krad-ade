@@ -1,6 +1,6 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_domain::review::CommitSha;
-use krad_domain::{EnvironmentName, FileOpening, FileView, TerminalId};
+use krad_domain::{EnvironmentName, FileOpening, FileView, NodeEdit, TerminalId};
 use krad_host::HostLink;
 use krad_repo::{commit_diff, working_diff, ChangeKind, FileChange, RepoError};
 use std::path::{Path, PathBuf};
@@ -40,12 +40,21 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
+        let Some(group) = self.envs.get(&env).map(|live| live.selected_group) else {
+            return;
+        };
+        let opened = NodeEdit::OpenFile {
+            group,
+            path: path.to_path_buf(),
+            view: FileView::Commit(sha),
+            opening,
+        };
+        let Some(id) = self.edit_environment(&env, opened).opened() else {
+            return;
+        };
         let Some(live) = self.envs.get_mut(&env) else {
             return;
         };
-        let id = live
-            .data
-            .open_file_as(live.selected_group, path, FileView::Commit(sha), opening);
         live.focused = Some(id);
         cx.notify();
         self.store();

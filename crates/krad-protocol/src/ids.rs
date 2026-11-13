@@ -7,7 +7,7 @@ impl ProtocolVersion {
     pub const CURRENT: Self = Self(1);
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct RequestId(pub u64);
 
 #[derive(

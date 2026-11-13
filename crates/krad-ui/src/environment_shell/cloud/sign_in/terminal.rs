@@ -141,7 +141,7 @@ impl EnvironmentShell {
             cli.label()
         );
         if let Some(live) = self.envs.get_mut(&env) {
-            live.data.side_panel.add_terminal(id, label);
+            live.data.side_panel_mut().add_terminal(id, label);
             live.terminals_tab = TerminalsTab::Shown;
         }
         self.cloud

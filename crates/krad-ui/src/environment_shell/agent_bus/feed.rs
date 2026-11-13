@@ -1,4 +1,4 @@
-use krad_agents::{AgentInfo, AgentKey, ErrorCode, Request, Response, StateReason, TerminalState};
+use krad_agents::{AgentInfo, AgentKey, ErrorCode, Response, StateReason, TerminalState};
 use krad_domain::{AgentState, AttentionKind, EnvironmentName, NodeKind, TerminalId, TerminalNode};
 
 use super::super::live_env::LiveEnv;
@@ -18,21 +18,8 @@ pub(super) const fn lists_as_agent(node: &TerminalNode) -> bool {
     node.file.is_none() && matches!(node.kind, NodeKind::Terminal | NodeKind::Chat)
 }
 
-fn client_refusal() -> Response {
+pub(super) fn client_refusal() -> Response {
     Response::error(ErrorCode::Forbidden, CLIENTS_ONLY_READ)
-}
-
-pub(super) fn client_answer(shell: &EnvironmentShell, request: &Request) -> Response {
-    match request {
-        Request::ListAll => Response::Agents(
-            shell
-                .envs
-                .keys()
-                .flat_map(|name| shell.all_agent_infos(name.as_str(), None))
-                .collect(),
-        ),
-        _ => client_refusal(),
-    }
 }
 
 impl EnvironmentShell {

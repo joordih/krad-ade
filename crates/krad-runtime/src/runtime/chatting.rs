@@ -80,7 +80,7 @@ impl Runtime {
         }
     }
 
-    fn open_chat(&mut self, chat: &AgentRef, start: ChatStart) {
+    pub(super) fn open_chat(&mut self, chat: &AgentRef, start: ChatStart) {
         self.with_chat_work(|chats, work| chats.open(chat, start, work));
     }
 

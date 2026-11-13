@@ -74,21 +74,29 @@ fn start() -> Result<(RuntimeHandle, SessionId), Box<dyn Error>> {
     Ok((runtime, session))
 }
 
-fn call_from(
+fn call_as(
     runtime: &RuntimeHandle,
-    terminal: TerminalId,
+    caller: Caller,
     request: Request,
 ) -> Result<JoinHandle<Result<Response, AgentsError>>, Box<dyn Error>> {
     let endpoint = &runtime.bus().ok_or(NO_BUS)?.endpoint;
     let address = endpoint.address.to_string();
     let token = endpoint.token.clone();
+    Ok(thread::spawn(move || {
+        call(&address, &token, &caller, request)
+    }))
+}
+
+fn call_from(
+    runtime: &RuntimeHandle,
+    terminal: TerminalId,
+    request: Request,
+) -> Result<JoinHandle<Result<Response, AgentsError>>, Box<dyn Error>> {
     let caller = Caller::Terminal(TerminalHandle {
         environment: ENVIRONMENT.to_owned(),
         terminal: terminal.0,
     });
-    Ok(thread::spawn(move || {
-        call(&address, &token, &caller, request)
-    }))
+    call_as(runtime, caller, request)
 }
 
 fn answered(asked: JoinHandle<Result<Response, AgentsError>>) -> Result<Response, Box<dyn Error>> {
@@ -96,12 +104,13 @@ fn answered(asked: JoinHandle<Result<Response, AgentsError>>) -> Result<Response
 }
 
 #[test]
-fn a_leads_orders_reach_the_app_as_the_lead_and_anyone_elses_are_refused() -> TestResult {
+fn a_leads_orders_the_runtime_cannot_carry_reach_the_app_as_the_lead_and_anyone_elses_are_refused(
+) -> TestResult {
     let (runtime, session) = start()?;
     let mut delegations = runtime.delegate_bus();
     let spawn = Request::Spawn {
         agent: AgentPreset::ClaudeCode,
-        worktree: None,
+        worktree: Some("write-the-tests".to_owned()),
         task: "Write the tests".to_owned(),
     };
     let refused = answered(call_from(&runtime, MEMBER, spawn.clone())?)?;
@@ -168,3 +177,6 @@ fn a_closed_worker_is_settled_and_retired_without_asking_the_app() -> TestResult
     ));
     Ok(())
 }
+
+#[path = "lead/worker.rs"]
+mod worker;

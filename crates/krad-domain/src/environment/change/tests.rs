@@ -79,7 +79,7 @@ fn a_change_round_trips_through_json() -> serde_json::Result<()> {
 }
 
 #[test]
-fn only_terminal_meta_belongs_to_the_runtime() {
+fn only_the_title_the_host_and_variant_runs_belong_to_clients() {
     let meta = EnvironmentChange::Meta {
         terminal: TerminalId(1),
         meta: TerminalMeta {
@@ -92,6 +92,30 @@ fn only_terminal_meta_belongs_to_the_runtime() {
         terminal: TerminalId(1)
     }
     .is_runtime_owned());
-    assert!(!EnvironmentChange::NodeRemoved { id: TerminalId(1) }.is_runtime_owned());
+    assert!(EnvironmentChange::NodeRemoved { id: TerminalId(1) }.is_runtime_owned());
+    assert!(EnvironmentChange::SessionRemoved { id: SessionId(1) }.is_runtime_owned());
+    assert!(EnvironmentChange::GroupRemoved { id: GroupId(1) }.is_runtime_owned());
+    assert!(EnvironmentChange::NextId { next: 2 }.is_runtime_owned());
     assert!(!EnvironmentChange::Title { title: None }.is_runtime_owned());
+    assert!(!EnvironmentChange::Host { host: Host::Local }.is_runtime_owned());
+}
+
+#[test]
+fn adopting_the_runtime_items_leaves_only_client_fields_to_differ() {
+    let before = seed_environment();
+    let mut runtime = before.clone();
+    runtime.add_group(PathBuf::from("/work/api"), None);
+    runtime.enter_sessions();
+    runtime.nodes.remove(0);
+    runtime.next_id = 9;
+    let mut client = before;
+    client.title = Some("Payments".to_owned());
+    client.adopt_runtime_items(&runtime);
+    let left: Vec<EnvironmentChange> = EnvironmentChange::between(&runtime, &client);
+    assert_eq!(
+        left,
+        vec![EnvironmentChange::Title {
+            title: Some("Payments".to_owned())
+        }]
+    );
 }

@@ -1,8 +1,8 @@
 use gpui_kit::Context;
 use krad_domain::{
-    AgentState, EnvironmentData, EnvironmentName, EnvironmentViewPreferences, Layout,
-    SidePanelLayout, TerminalId, ToastKind, ViewPreferences, DEFAULT_ENVIRONMENT,
-    LAYOUT_SCHEMA_VERSION,
+    EnvironmentData, EnvironmentName, EnvironmentViewPreferences, Layout, NodeEdit, NodeField,
+    SessionEdit, SidePanelLayout, TerminalId, TerminalNode, ToastKind, ViewPreferences,
+    DEFAULT_ENVIRONMENT, LAYOUT_SCHEMA_VERSION,
 };
 use krad_protocol::Command;
 
@@ -13,22 +13,23 @@ impl EnvironmentShell {
         let Layout { state, mut view } = layout;
         self.toolchains =
             super::toolchains::Toolchains::with_choices(std::mem::take(&mut view.toolchains));
-        self.runtime
-            .view
-            .environments
-            .replace(state.environments.clone());
+        let mut environments = state.environments;
+        for data in &mut environments {
+            data.restart();
+        }
+        self.runtime.view.environments.replace(environments.clone());
         let mut restored = 0;
-        for mut data in state.environments {
+        for mut data in environments {
             view.dress(&mut data);
             let ids: Vec<TerminalId> = data.nodes.iter().map(|node| node.id).collect();
             let data_focus = data.focus.filter(|id| ids.contains(id));
-            for node in &mut data.nodes {
-                node.state = AgentState::Idle;
-            }
             let name = data.name.clone();
             self.order.push(name.clone());
             self.envs
                 .insert(name.clone(), LiveEnv::new(data, data_focus));
+            if let Some(terminal) = data_focus {
+                self.edit_environment(&name, SessionEdit::Reveal { terminal });
+            }
             restored += self.spawn_missing_sessions(&name);
         }
         if self.order.is_empty() {
@@ -57,7 +58,7 @@ impl EnvironmentShell {
         EnvironmentData {
             name: live.data.name.clone(),
             host: live.data.host.clone(),
-            nodes: self.nodes_with_offsets(name, &live.data.nodes),
+            nodes: live.data.nodes.clone(),
             meta: live.data.meta.clone(),
             next_id: live.data.next_id,
             view: live.data.view,
@@ -84,6 +85,29 @@ impl EnvironmentShell {
             side_panel.remove_terminal(helper);
         }
         side_panel
+    }
+
+    fn keep_cloud_offsets(&mut self) {
+        let moved: Vec<(EnvironmentName, TerminalNode)> = self
+            .order
+            .iter()
+            .filter_map(|name| Some((name, self.envs.get(name)?)))
+            .flat_map(|(name, live)| {
+                self.nodes_with_offsets(name, &live.data.nodes)
+                    .into_iter()
+                    .zip(&live.data.nodes)
+                    .filter(|(offset, kept)| offset.cloud != kept.cloud)
+                    .map(|(offset, _)| (name.clone(), offset))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        for (env, node) in moved {
+            let kept = NodeEdit::Set {
+                terminal: node.id,
+                field: NodeField::Cloud(node.cloud),
+            };
+            self.apply_edit(&env, kept);
+        }
     }
 
     fn view_preferences(&self, environments: &[EnvironmentData]) -> ViewPreferences {
@@ -113,7 +137,8 @@ impl EnvironmentShell {
         .detach();
     }
 
-    pub(super) fn store(&self) {
+    pub(super) fn store(&mut self) {
+        self.keep_cloud_offsets();
         let environments: Vec<EnvironmentData> = self
             .order
             .iter()

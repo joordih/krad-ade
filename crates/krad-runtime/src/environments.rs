@@ -1,14 +1,16 @@
 use krad_domain::{
-    BudgetStatus, EnvironmentChange, EnvironmentData, EnvironmentName, Host, RuntimeState,
-    SpendSettings, TerminalId, TerminalMeta, UsageReport,
+    BudgetStatus, Edited, EnvironmentChange, EnvironmentData, EnvironmentEdit, EnvironmentName,
+    Host, RuntimeState, SpendSettings, TerminalId, TerminalMeta, UsageReport,
 };
-use krad_protocol::{AgentRef, EnvironmentCommand, ErrorCode, EventKind, Reply, SpendingCrossed};
+use krad_protocol::{
+    AgentRef, EnvironmentCommand, ErrorCode, EventKind, Reply, RequestId, SpendingCrossed,
+};
 use krad_store::{config_dir, LayoutFile, LayoutWriter};
 use std::path::PathBuf;
 
 use crate::runtime::refused;
 
-const UNKNOWN_ENVIRONMENT: &str = "this runtime has no environment of that name";
+pub(crate) const UNKNOWN_ENVIRONMENT: &str = "this runtime has no environment of that name";
 
 #[derive(Clone, Debug, Default)]
 pub struct EnvironmentsSetup {
@@ -40,7 +42,10 @@ struct UsageRecord {
 }
 
 impl Environments {
-    pub(crate) fn start(setup: EnvironmentsSetup) -> Self {
+    pub(crate) fn start(mut setup: EnvironmentsSetup) -> Self {
+        for environment in &mut setup.state.environments {
+            environment.restart();
+        }
         if !setup.state.unreadable.is_empty() {
             tracing::warn!(
                 count = setup.state.unreadable.len(),
@@ -57,6 +62,7 @@ impl Environments {
     pub(crate) fn execute(
         &mut self,
         command: EnvironmentCommand,
+        request: RequestId,
         outbox: &mut Vec<EventKind>,
     ) -> Option<Reply> {
         let reply = match command {
@@ -85,11 +91,43 @@ impl Environments {
                     report,
                     spending,
                 },
+                request,
                 outbox,
             ),
             EnvironmentCommand::Unknown => return None,
         };
         Some(reply)
+    }
+
+    pub(crate) fn edit(
+        &mut self,
+        environment: EnvironmentName,
+        edit: &EnvironmentEdit,
+        answers: Option<RequestId>,
+        outbox: &mut Vec<EventKind>,
+    ) -> Option<Edited> {
+        let Some(kept) = self.find_mut(&environment) else {
+            if answers.is_some() {
+                outbox.push(EventKind::EnvironmentChanged {
+                    environment,
+                    changes: Vec::new(),
+                    answers,
+                });
+            }
+            return None;
+        };
+        let (edited, changes) = kept.edit_with_changes(edit);
+        if !changes.is_empty() {
+            self.dirty = true;
+        }
+        if !changes.is_empty() || answers.is_some() {
+            outbox.push(EventKind::EnvironmentChanged {
+                environment,
+                changes,
+                answers,
+            });
+        }
+        Some(edited)
     }
 
     pub(crate) fn flush(&mut self) {
@@ -215,7 +253,7 @@ impl Environments {
         let Some(kept) = self.find_mut(&environment) else {
             return refused(ErrorCode::NotFound, UNKNOWN_ENVIRONMENT);
         };
-        let (owned, mut changes): (Vec<_>, Vec<_>) = changes
+        let (owned, changes): (Vec<_>, Vec<_>) = changes
             .into_iter()
             .partition(EnvironmentChange::is_runtime_owned);
         if !owned.is_empty() {
@@ -227,17 +265,6 @@ impl Environments {
         for change in &changes {
             kept.apply(change.clone());
         }
-        let pruned: Vec<EnvironmentChange> = changes
-            .iter()
-            .filter_map(|change| match change {
-                EnvironmentChange::NodeRemoved { id } => kept
-                    .meta
-                    .remove(id)
-                    .map(|_| EnvironmentChange::MetaRemoved { terminal: *id }),
-                _ => None,
-            })
-            .collect();
-        changes.extend(pruned);
         if changes.is_empty() {
             return Reply::Accepted;
         }
@@ -245,6 +272,7 @@ impl Environments {
         outbox.push(EventKind::EnvironmentChanged {
             environment,
             changes,
+            answers: None,
         });
         Reply::Accepted
     }
@@ -269,6 +297,7 @@ impl Environments {
                 terminal: terminal.terminal,
                 meta,
             }],
+            answers: None,
         });
     }
 
@@ -276,9 +305,15 @@ impl Environments {
         &mut self,
         environment: EnvironmentName,
         record: &UsageRecord,
+        request: RequestId,
         outbox: &mut Vec<EventKind>,
     ) -> Reply {
         let Some(kept) = self.find_mut(&environment) else {
+            outbox.push(EventKind::EnvironmentChanged {
+                environment,
+                changes: Vec::new(),
+                answers: Some(request),
+            });
             return refused(ErrorCode::NotFound, UNKNOWN_ENVIRONMENT);
         };
         let group = kept.group_of_chat(record.chat);
@@ -291,6 +326,11 @@ impl Environments {
             .enumerate()
             .find(|(_, node)| node.id == record.chat)
         else {
+            outbox.push(EventKind::EnvironmentChanged {
+                environment,
+                changes: Vec::new(),
+                answers: Some(request),
+            });
             return Reply::Accepted;
         };
         let changes = vec![EnvironmentChange::Node {
@@ -307,6 +347,7 @@ impl Environments {
         outbox.push(EventKind::EnvironmentChanged {
             environment: environment.clone(),
             changes,
+            answers: Some(request),
         });
         if let Some((status, budget)) = crossed {
             outbox.push(EventKind::SpendingCrossed(SpendingCrossed {

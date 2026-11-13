@@ -164,9 +164,7 @@ impl EnvironmentShell {
             Caller::Terminal(from) => self.answer_terminal(&from, request, reply, cx),
             Caller::Lead(lead) => self.answer_lead(&lead, request, reply, cx),
             Caller::Git(_) => self.answer_git(request, reply),
-            Caller::Client => reply
-                .send(feed::client_answer(self, &request))
-                .unwrap_or_default(),
+            Caller::Client => reply.send(feed::client_refusal()).unwrap_or_default(),
         }
         cx.notify();
     }
@@ -222,12 +220,11 @@ impl EnvironmentShell {
                 self.answer_code(&from.environment, &caller, code, reply, cx);
                 return;
             }
-            Request::List | Request::Check { .. } | Request::Status(_) | Request::Ask { .. } => {
-                Some(answered_by_runtime())
-            }
-            Request::ListAll => Some(Response::Agents(
-                self.all_agent_infos(&from.environment, Some(from.terminal)),
-            )),
+            Request::List
+            | Request::ListAll
+            | Request::Check { .. }
+            | Request::Status(_)
+            | Request::Ask { .. } => Some(answered_by_runtime()),
             Request::Close(_) => Some(Response::error(ErrorCode::Forbidden, ONLY_LEADS_CLOSE)),
             Request::Send { to, body } => {
                 self.post(from, to, body, reply);

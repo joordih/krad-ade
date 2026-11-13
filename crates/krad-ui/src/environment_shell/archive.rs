@@ -6,8 +6,8 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{AppContext as _, Context, Entity, Subscription, Window};
 use krad_chat::forget_engine_session;
 use krad_domain::{
-    AgentPreset, Archive, ArchivedChat, ArchivedSessionId, EnvironmentName, GroupId, SessionId,
-    TerminalId, ToastKind,
+    AgentPreset, ArchivedChat, ArchivedSessionId, EnvironmentEdit, EnvironmentName, GroupId,
+    NodeEdit, SessionEdit, SessionId, TerminalId, ToastKind,
 };
 use krad_store::{forget_archived_chat_files, gateway_sessions_dir};
 use std::time::{Duration, SystemTime};
@@ -60,24 +60,26 @@ impl EnvironmentShell {
     }
 
     pub(super) fn archive_session(&mut self, env: &EnvironmentName, session: SessionId) {
-        let keeps = self.settings.archive_retention.keeps();
-        let Some(live) = self.envs.get_mut(env) else {
-            return;
+        let edit = if self.settings.archive_retention.keeps() {
+            SessionEdit::Archive {
+                session,
+                at: SystemTime::now(),
+            }
+        } else {
+            SessionEdit::Leave { session }
         };
-        if !keeps {
-            live.data.archive.leave_session(session);
-            return;
-        }
-        live.data.archive_session(session, SystemTime::now());
+        self.edit_environment(env, edit);
     }
 
     pub(super) fn archive_chat_tab(&mut self, env: &EnvironmentName, terminal: TerminalId) {
         if !self.settings.archive_retention.keeps() {
             return;
         }
-        if let Some(live) = self.envs.get_mut(env) {
-            live.data.archive_chat(terminal, SystemTime::now());
-        }
+        let archived = NodeEdit::ArchiveChat {
+            terminal,
+            at: SystemTime::now(),
+        };
+        self.edit_environment(env, archived);
     }
 
     pub(super) fn forget_group_archive(
@@ -86,10 +88,12 @@ impl EnvironmentShell {
         group: GroupId,
         cx: &mut Context<Self>,
     ) {
+        let deleted = self
+            .edit_environment(env, SessionEdit::ForgetGroupArchive { group })
+            .deleted();
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
-        let deleted = live.data.archive.forget_group(group);
         if live
             .archive_sheet
             .as_ref()
@@ -105,25 +109,28 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         cx: &mut Context<Self>,
     ) {
-        let Some(live) = self.envs.get_mut(env) else {
-            return;
-        };
-        let deleted = live.data.archive.forget_all();
+        let deleted = self
+            .edit_environment(env, SessionEdit::ForgetArchive)
+            .deleted();
         Self::forget_archived(env, deleted, cx);
     }
 
     pub(super) fn sweep_archive(&mut self, cx: &mut Context<Self>) {
         let retention = self.settings.archive_retention;
         let now = SystemTime::now();
-        let expired: Vec<(EnvironmentName, Vec<ArchivedChat>)> = self
+        let stale: Vec<EnvironmentName> = self
             .envs
-            .iter_mut()
-            .filter_map(|(env, live)| {
-                let archive = &mut live.data.archive;
-                let before = (archive.sessions.len(), archive.chats.len());
-                let deleted = archive.expire(retention, now);
-                let after = (archive.sessions.len(), archive.chats.len());
-                (after != before).then(|| (env.clone(), deleted))
+            .iter()
+            .filter(|(_, live)| live.data.archive.has_expired(retention, now))
+            .map(|(env, _)| env.clone())
+            .collect();
+        let expired: Vec<(EnvironmentName, Vec<ArchivedChat>)> = stale
+            .into_iter()
+            .map(|env| {
+                let deleted = self
+                    .edit_environment(&env, SessionEdit::ExpireArchive { retention, now })
+                    .deleted();
+                (env, deleted)
             })
             .collect();
         if expired.is_empty() {
@@ -191,29 +198,19 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    fn delete_archived(
-        &mut self,
-        forget: impl FnOnce(&mut Archive) -> Vec<ArchivedChat>,
-        cx: &mut Context<Self>,
-    ) {
+    fn delete_archived(&mut self, forget: impl Into<EnvironmentEdit>, cx: &mut Context<Self>) {
         let env = self.active.clone();
-        let Some(live) = self.envs.get_mut(&env) else {
-            return;
-        };
-        let deleted = forget(&mut live.data.archive);
+        let deleted = self.edit_environment(&env, forget).deleted();
         Self::forget_archived(&env, deleted, cx);
         cx.notify();
         self.store();
     }
 
     fn delete_archived_session(&mut self, id: ArchivedSessionId, cx: &mut Context<Self>) {
-        self.delete_archived(|archive| archive.delete_session(id), cx);
+        self.delete_archived(SessionEdit::DeleteArchived { archived: id }, cx);
     }
 
     fn delete_archived_chat(&mut self, terminal: TerminalId, cx: &mut Context<Self>) {
-        self.delete_archived(
-            |archive| archive.delete_chat(terminal).into_iter().collect(),
-            cx,
-        );
+        self.delete_archived(NodeEdit::DeleteArchivedChat { terminal }, cx);
     }
 }

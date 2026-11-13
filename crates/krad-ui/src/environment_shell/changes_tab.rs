@@ -12,7 +12,7 @@ use gpui_kit::{
     div, px, rgb, uniform_list, AnyElement, Context, FontWeight, InteractiveElement, IntoElement,
     ListHorizontalSizingBehavior, ParentElement, StatefulInteractiveElement, Styled, Window,
 };
-use krad_domain::{FileOpening, FileView, TerminalId};
+use krad_domain::{FileOpening, FileView, NodeEdit, TerminalId};
 use std::collections::HashSet;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -145,12 +145,21 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
+        let Some(group) = self.envs.get(&env).map(|live| live.selected_group) else {
+            return;
+        };
+        let opened = NodeEdit::OpenFile {
+            group,
+            path: path.to_path_buf(),
+            view: FileView::Changes,
+            opening,
+        };
+        let Some(id) = self.edit_environment(&env, opened).opened() else {
+            return;
+        };
         let Some(live) = self.envs.get_mut(&env) else {
             return;
         };
-        let id = live
-            .data
-            .open_file_as(live.selected_group, path, FileView::Changes, opening);
         live.focused = Some(id);
         cx.notify();
         self.store();

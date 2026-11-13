@@ -179,14 +179,24 @@ impl EnvironmentData {
         }
     }
 
-    pub(super) fn push_session(&mut self, group: Option<GroupId>, name: String) -> SessionId {
-        let id = SessionId(
+    #[must_use]
+    pub fn next_session_id(&self) -> SessionId {
+        SessionId(
             self.sessions
                 .iter()
                 .map(|session| session.id.as_u64())
                 .max()
                 .map_or(1, |last| last + 1),
-        );
+        )
+    }
+
+    pub(super) fn push_session(&mut self, group: Option<GroupId>, name: String) -> SessionId {
+        let id = self.next_session_id();
+        self.insert_session(id, group, name);
+        id
+    }
+
+    pub(super) fn insert_session(&mut self, id: SessionId, group: Option<GroupId>, name: String) {
         self.sessions.push(Session {
             id,
             group,
@@ -202,7 +212,6 @@ impl EnvironmentData {
             memory: SessionMemory::default(),
             cloud: None,
         });
-        id
     }
 
     pub(crate) fn home_of(&self, node: &TerminalNode) -> Option<GroupId> {

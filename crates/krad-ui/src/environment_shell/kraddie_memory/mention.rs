@@ -6,7 +6,7 @@ use gpui_kit::{
 use krad_domain::{
     kraddie_chip_text, matching_kraddies, mention_pack, mentioned_kraddies, EnvironmentName,
     KraddieChip, KraddieId, KraddieMood, KraddieName, MemoryOwner, MemorySize, PackRequest,
-    TerminalId, MENTION_PACK_TOKENS,
+    SessionEdit, TerminalId, MENTION_PACK_TOKENS,
 };
 use std::rc::Rc;
 use std::time::SystemTime;
@@ -138,9 +138,11 @@ impl EnvironmentShell {
         if chosen.is_empty() {
             return text;
         }
-        if let Some(live) = self.envs.get_mut(env) {
-            live.data.note_kraddie_mentions(composer, &chosen);
-        }
+        let noted = SessionEdit::NoteKraddieMentions {
+            chat: composer,
+            kraddies: chosen.clone(),
+        };
+        self.edit_environment(env, noted);
         let packs: Vec<String> = chosen
             .iter()
             .filter_map(|id| self.kraddie_chip(id))

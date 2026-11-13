@@ -13,6 +13,7 @@ mod ids;
 mod launches;
 mod models;
 mod opencode;
+mod sessions;
 mod settings;
 mod terminals;
 mod usage;
@@ -41,6 +42,7 @@ pub use ids::{ProtocolVersion, RequestId, Seq};
 pub use launches::{LaunchedAs, TerminalLaunched};
 pub use models::{ListedModels, ModelsCommand, ModelsOrigin, ModelsSnapshot};
 pub use opencode::{OpencodeShown, OpencodeSnapshot, OpencodeStatus};
+pub use sessions::{GroupCommand, NodeCommand, SessionCommand};
 pub use settings::SettingsCommand;
 pub use terminals::{
     TerminalClassified, TerminalCommand, TerminalScroll, TerminalSummary, WriteBy,

@@ -121,6 +121,17 @@ impl Archive {
             .collect()
     }
 
+    #[must_use]
+    pub fn has_expired(&self, retention: ArchiveRetention, now: SystemTime) -> bool {
+        self.sessions
+            .iter()
+            .any(|session| retention.has_expired(session.closed, now))
+            || self
+                .chats
+                .iter()
+                .any(|loose| retention.has_expired(loose.closed, now))
+    }
+
     pub fn expire(&mut self, retention: ArchiveRetention, now: SystemTime) -> Vec<ArchivedChat> {
         let expired: Vec<ArchivedSessionId> = self
             .sessions
