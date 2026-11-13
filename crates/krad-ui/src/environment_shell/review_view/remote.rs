@@ -1,49 +1,58 @@
-use gpui_kit::{AppContext as _, Context, Task, Window};
-use krad_domain::review::{
-    project_on_host, DiffRefs, DiscussionId, MergeOptions, MergeRequest, MergeRequestIid,
-    MergeRequestQuery, ProjectPath,
-};
-use krad_domain::{
-    AppEvent, CodeHost, EnvironmentName, GitlabSettings, GroupId, ReviewVerdict, ToastKind,
-};
-use krad_gitlab::GitlabConfig;
+mod answers;
+
+use gpui_kit::{AppContext as _, Context, Window};
+use krad_domain::review::{DiffRefs, DiscussionId, MergeOptions, MergeRequest, MergeRequestIid};
 use krad_host::HostLink;
-use krad_repo::{diff_between, remote_url, ORIGIN_REMOTE};
+use krad_protocol::{Command, Reply, RequestId, RequestRef, ReviewAct, ReviewCommand, ReviewWrite};
+use krad_repo::diff_between;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use super::detail::RequestDetail;
-use super::diff::{ChangedFile, DiffSource};
-use super::host::{origin_repo, HostClient, HostError};
-use super::summary::approval_tally;
-use super::Remote;
-use super::{Account, Connection, RequestList, RowFacts};
+use super::diff::DiffSource;
+use super::{Connection, Remote, RequestList};
 use crate::environment_shell::EnvironmentShell;
 
-const GITLAB_NOT_SIGNED_IN: &str =
-    "Sign in on the GitLab page of Settings to review merge requests.";
-const GITHUB_NOT_SIGNED_IN: &str =
-    "Sign in on the GitHub page of Settings to review pull requests.";
-const NOT_A_PROJECT: &str =
-    "The group's origin remote does not point at a GitLab or GitHub project";
+pub(in crate::environment_shell) use answers::refused_answer;
+
 const ROW_FACTS_LIMIT: usize = 50;
 
 impl EnvironmentShell {
-    pub(super) fn connect_host(&mut self, root: PathBuf, cx: &mut Context<Self>) {
-        self.review.connection = Connection::Connecting;
-        let settings = self.settings.gitlab.clone();
-        let link = self.active_link();
-        let sign_in = cx.background_spawn(async move { sign_in(&link, &root, &settings) });
+    pub(in crate::environment_shell) fn post_review(
+        &mut self,
+        root: PathBuf,
+        act: ReviewAct,
+        cx: &mut Context<Self>,
+    ) -> RequestId {
+        let request = self.runtime.handle.next_request();
+        let environment = self.active.clone();
+        let command = Command::Review(ReviewCommand {
+            environment: environment.clone(),
+            root: root.clone(),
+            act: act.clone(),
+        });
+        let pending = self.runtime.handle.send(request, command);
         cx.spawn(async move |this, cx| {
-            let connection = sign_in.await;
+            let Ok(Reply::Refused { message, .. }) = pending.await else {
+                return;
+            };
             this.update(cx, |shell, cx| {
-                shell.review.connection = connection;
-                cx.notify();
+                if let Some(answer) = refused_answer(&act, message) {
+                    shell.review_answered(request, (environment, root), answer, cx);
+                } else {
+                    shell.review.forget_login();
+                    cx.notify();
+                }
             })
             .unwrap_or_default();
         })
         .detach();
+        request
+    }
+
+    pub(super) fn connect_host(&mut self, root: PathBuf, cx: &mut Context<Self>) {
+        self.review.connection = Connection::Connecting;
+        self.post_review(root, ReviewAct::Connect, cx);
     }
 
     pub(super) fn refresh_review(&mut self, cx: &mut Context<Self>) {
@@ -67,9 +76,6 @@ impl EnvironmentShell {
         {
             return;
         }
-        let Some(client) = self.host_client() else {
-            return;
-        };
         let Connection::Ready(account) = &self.review.connection else {
             return;
         };
@@ -82,41 +88,19 @@ impl EnvironmentShell {
         {
             self.review.detail = None;
         }
-        let root = root.to_path_buf();
+        let request = self.post_review(root.to_path_buf(), ReviewAct::List { query }, cx);
         self.review.list = Some(RequestList {
-            root: root.clone(),
+            root: root.to_path_buf(),
             filter,
+            request,
             requests: Remote::Loading,
             facts: HashMap::new(),
         });
-        let repo = root.clone();
-        let link = self.active_link();
-        let load = cx.background_spawn(async move { list_requests(&client, &link, &repo, query) });
-        cx.spawn(async move |this, cx| {
-            let requests = load.await;
-            this.update(cx, |shell, cx| {
-                let Some(list) = shell
-                    .review
-                    .list
-                    .as_mut()
-                    .filter(|list| list.root == root && list.filter == filter)
-                else {
-                    return;
-                };
-                list.requests = requests.map_or_else(Remote::Failed, Remote::Ready);
-                shell.load_row_facts(&root, filter, cx);
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
     }
 
-    fn load_row_facts(&mut self, root: &Path, filter: super::ReviewFilter, cx: &mut Context<Self>) {
-        let Some(client) = self.host_client() else {
-            return;
-        };
+    fn load_row_facts(&mut self, cx: &mut Context<Self>) {
         let Some(RequestList {
+            root,
             requests: Remote::Ready((project, requests)),
             ..
         }) = self.review.list.as_ref()
@@ -128,36 +112,20 @@ impl EnvironmentShell {
             .take(ROW_FACTS_LIMIT)
             .map(|request| request.iid)
             .collect();
-        for iid in iids {
-            let facts = fetch(cx, &client, project, move |gitlab, project| {
-                row_facts(gitlab, project, iid)
-            });
-            let root = root.to_path_buf();
-            cx.spawn(async move |this, cx| {
-                let Remote::Ready(facts) = facts.await else {
-                    return;
-                };
-                this.update(cx, |shell, cx| {
-                    let Some(list) = shell
-                        .review
-                        .list
-                        .as_mut()
-                        .filter(|list| list.root == root && list.filter == filter)
-                    else {
-                        return;
-                    };
-                    list.facts.insert(iid, facts);
-                    cx.notify();
-                })
-                .unwrap_or_default();
-            })
-            .detach();
+        let act = ReviewAct::Facts {
+            project: project.clone(),
+            iids,
+        };
+        let root = root.clone();
+        let request = self.post_review(root, act, cx);
+        if let Some(list) = self.review.list.as_mut() {
+            list.request = request;
         }
     }
 
     pub(super) fn open_merge_request(
         &mut self,
-        project: ProjectPath,
+        project: krad_domain::review::ProjectPath,
         iid: MergeRequestIid,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -184,77 +152,13 @@ impl EnvironmentShell {
     }
 
     pub(super) fn load_request_detail(&mut self, cx: &mut Context<Self>) {
-        let Some(client) = self.host_client() else {
+        if !matches!(self.review.connection, Connection::Ready(_)) {
+            return;
+        }
+        let Some((root, request)) = self.open_target() else {
             return;
         };
-        let Some(detail) = &self.review.detail else {
-            return;
-        };
-        let iid = detail.request.iid;
-        let project = detail.project.clone();
-        let request = fetch(cx, &client, &project, move |gitlab, project| {
-            let request = gitlab.merge_request(project, iid)?;
-            let jobs = request
-                .head_pipeline
-                .as_ref()
-                .map(|pipeline| gitlab.jobs(project, pipeline.id));
-            Ok((request, jobs))
-        });
-        let commits = fetch(cx, &client, &project, move |gitlab, project| {
-            gitlab.commits(project, iid)
-        });
-        let files = fetch(cx, &client, &project, move |gitlab, project| {
-            gitlab
-                .changes(project, iid)
-                .map(|changes| changes.into_iter().map(ChangedFile::new).collect())
-        });
-        let discussions = fetch(cx, &client, &project, move |gitlab, project| {
-            gitlab.discussions(project, iid)
-        });
-        let approvals = fetch(cx, &client, &project, move |gitlab, project| {
-            gitlab.approvals(project, iid)
-        });
-        let pipelines = fetch(cx, &client, &project, move |gitlab, project| {
-            gitlab.pipelines(project, iid)
-        });
-        cx.spawn(async move |this, cx| {
-            let (request, commits, files, discussions, approvals, pipelines) =
-                futures::join!(request, commits, files, discussions, approvals, pipelines);
-            this.update(cx, |shell, cx| {
-                let Some(detail) = shell
-                    .review
-                    .detail
-                    .as_mut()
-                    .filter(|detail| detail.request.iid == iid)
-                else {
-                    return;
-                };
-                detail.jobs = match request {
-                    Remote::Ready((request, jobs)) => {
-                        detail.request = request;
-                        jobs.map_or(Remote::Ready(Vec::new()), |jobs| {
-                            jobs.map_or_else(
-                                |error| Remote::Failed(error.to_string()),
-                                Remote::Ready,
-                            )
-                        })
-                    }
-                    Remote::Failed(reason) => Remote::Failed(reason),
-                    Remote::Loading => Remote::Loading,
-                };
-                detail.commits = commits;
-                detail.files = files;
-                detail.discussions = discussions;
-                detail.approvals = approvals;
-                detail.pipelines = pipelines;
-                detail.forget_colors();
-                detail.sync_rows();
-                shell.read_local_diffs(cx);
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+        self.post_review(root, ReviewAct::Detail { request }, cx);
     }
 
     fn read_local_diffs(&mut self, cx: &mut Context<Self>) {
@@ -304,9 +208,6 @@ impl EnvironmentShell {
     }
 
     pub(super) fn comment_on_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((client, project, iid)) = self.open_target() else {
-            return;
-        };
         let Some(body) = self
             .review
             .detail
@@ -315,16 +216,10 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let added =
-            cx.background_spawn(async move { client.add_note(&project, iid, &body).map(drop) });
-        let sent = self.sent_review(iid, ReviewVerdict::Commented);
-        Self::reload_after_write(added, sent, cx);
+        self.write_review(ReviewWrite::Comment { body }, cx);
     }
 
     pub(super) fn send_reply(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((client, project, iid)) = self.open_target() else {
-            return;
-        };
         let Some((discussion, body)) = self
             .review
             .detail
@@ -333,43 +228,22 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let replied = cx.background_spawn(async move {
-            client.reply(&project, iid, &discussion, &body).map(drop)
-        });
-        let sent = self.sent_review(iid, ReviewVerdict::Replied);
-        Self::reload_after_write(replied, sent, cx);
+        self.write_review(ReviewWrite::Reply { discussion, body }, cx);
     }
 
     pub(super) fn resolve_thread(&mut self, discussion: DiscussionId, cx: &mut Context<Self>) {
-        let Some((client, project, iid)) = self.open_target() else {
-            return;
-        };
-        let resolved = cx.background_spawn(async move {
-            client.resolve_discussion(&project, iid, &discussion, true)
-        });
-        Self::reload_after_write(resolved, None, cx);
+        self.write_review(ReviewWrite::Resolve { discussion }, cx);
     }
 
     pub(super) fn set_approval(&mut self, approve: Approval, cx: &mut Context<Self>) {
-        let Some((client, project, iid)) = self.open_target() else {
-            return;
+        let write = match approve {
+            Approval::Approve => ReviewWrite::Approve,
+            Approval::Revoke => ReviewWrite::Revoke,
         };
-        let changed = cx.background_spawn(async move {
-            match approve {
-                Approval::Approve => client.approve(&project, iid),
-                Approval::Revoke => client.unapprove(&project, iid),
-            }
-        });
-        let sent = (approve == Approval::Approve)
-            .then(|| self.sent_review(iid, ReviewVerdict::Approved))
-            .flatten();
-        Self::reload_after_write(changed, sent, cx);
+        self.write_review(write, cx);
     }
 
     pub(super) fn merge_request(&mut self, cx: &mut Context<Self>) {
-        let Some((client, project, iid)) = self.open_target() else {
-            return;
-        };
         let Some(detail) = self.review.detail.as_mut() else {
             return;
         };
@@ -384,159 +258,30 @@ impl EnvironmentShell {
             squash: detail.squash,
             should_remove_source_branch: detail.remove_source_branch,
         };
-        let merged = cx.background_spawn(async move { client.merge(&project, iid, &options) });
-        cx.spawn(async move |this, cx| {
-            let merged = merged.await;
-            this.update(cx, |shell, cx| {
-                if let Err(error) = merged {
-                    shell.toast(ToastKind::Error, &error.to_string(), cx);
-                }
-                shell.review.list = None;
-                shell.load_request_detail(cx);
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+        self.write_review(ReviewWrite::Merge { options }, cx);
     }
 
-    fn sent_review(&self, iid: MergeRequestIid, verdict: ReviewVerdict) -> Option<SentReview> {
-        let root = &self.review.detail.as_ref()?.root;
-        let group = self
-            .envs
-            .get(&self.active)?
-            .data
-            .groups
-            .iter()
-            .find(|group| &group.root == root)
-            .map(|group| group.id);
-        Some(SentReview {
-            environment: self.active.clone(),
-            group,
-            event: AppEvent::ReviewSent {
-                merge_request: iid,
-                verdict,
-            },
-        })
+    fn write_review(&mut self, write: ReviewWrite, cx: &mut Context<Self>) {
+        let Some((root, request)) = self.open_target() else {
+            return;
+        };
+        self.post_review(root, ReviewAct::Write { request, write }, cx);
     }
 
-    fn reload_after_write(
-        change: Task<Result<(), HostError>>,
-        sent: Option<SentReview>,
-        cx: &mut Context<Self>,
-    ) {
-        cx.spawn(async move |this, cx| {
-            let result = change.await;
-            this.update(cx, |shell, cx| {
-                match (result, sent) {
-                    (Err(error), _) => shell.toast(ToastKind::Error, &error.to_string(), cx),
-                    (Ok(()), Some(sent)) => {
-                        shell.publish_event(&sent.environment, sent.group, sent.event);
-                    }
-                    (Ok(()), None) => {}
-                }
-                shell.load_request_detail(cx);
-            })
-            .unwrap_or_default();
-        })
-        .detach();
-    }
-
-    pub(super) fn host_client(&self) -> Option<Arc<HostClient>> {
-        match &self.review.connection {
-            Connection::Ready(account) => Some(Arc::clone(&account.client)),
-            _ => None,
-        }
-    }
-
-    fn open_target(&self) -> Option<(Arc<HostClient>, ProjectPath, MergeRequestIid)> {
+    pub(super) fn open_target(&self) -> Option<(PathBuf, RequestRef)> {
         let detail = self.review.detail.as_ref()?;
-        Some((
-            self.host_client()?,
-            detail.project.clone(),
-            detail.request.iid,
-        ))
+        let request = RequestRef {
+            project: detail.project.clone(),
+            iid: detail.request.iid,
+        };
+        Some((detail.root.clone(), request))
     }
-}
-
-struct SentReview {
-    environment: EnvironmentName,
-    group: Option<GroupId>,
-    event: AppEvent,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum Approval {
     Approve,
     Revoke,
-}
-
-fn fetch<T: Send + 'static>(
-    cx: &mut Context<EnvironmentShell>,
-    client: &Arc<HostClient>,
-    project: &ProjectPath,
-    call: impl FnOnce(&HostClient, &ProjectPath) -> Result<T, HostError> + Send + 'static,
-) -> Task<Remote<T>> {
-    let client = Arc::clone(client);
-    let project = project.clone();
-    cx.background_spawn(async move {
-        call(&client, &project)
-            .map_or_else(|error| Remote::Failed(error.to_string()), Remote::Ready)
-    })
-}
-
-fn sign_in(link: &HostLink, root: &Path, gitlab: &GitlabSettings) -> Connection {
-    let Some(repo) = origin_repo(link, root, GitlabConfig::try_from(gitlab).ok()) else {
-        return Connection::SignedOut(NOT_A_PROJECT.to_owned());
-    };
-    let client = match repo.login.client() {
-        Ok(Some(client)) => client,
-        Ok(None) => {
-            let hint = match repo.login.code_host() {
-                CodeHost::Gitlab => GITLAB_NOT_SIGNED_IN,
-                CodeHost::Github => GITHUB_NOT_SIGNED_IN,
-            };
-            return Connection::SignedOut(hint.to_owned());
-        }
-        Err(error) => return Connection::Failed(error.to_string()),
-    };
-    match client.current_user() {
-        Ok(me) => Connection::Ready(Account {
-            client: Arc::new(client),
-            me,
-        }),
-        Err(error) if error.is_signed_out() => Connection::SignedOut(error.to_string()),
-        Err(error) => Connection::Failed(error.to_string()),
-    }
-}
-
-fn list_requests(
-    client: &HostClient,
-    link: &HostLink,
-    repo: &Path,
-    query: MergeRequestQuery,
-) -> Result<(ProjectPath, Vec<MergeRequest>), String> {
-    let url = remote_url(link, repo, ORIGIN_REMOTE).map_err(|error| error.to_string())?;
-    let project = url
-        .and_then(|url| project_on_host(&url, client.host()))
-        .ok_or_else(|| NOT_A_PROJECT.to_owned())?;
-    let requests = client
-        .merge_requests(&project, query)
-        .map_err(|error| error.to_string())?;
-    Ok((project, requests))
-}
-
-fn row_facts(
-    client: &HostClient,
-    project: &ProjectPath,
-    iid: MergeRequestIid,
-) -> Result<RowFacts, HostError> {
-    let request = client.merge_request(project, iid)?;
-    let approvals = client.approvals(project, iid)?;
-    Ok(RowFacts {
-        pipeline: request.head_pipeline.map(|pipeline| pipeline.status),
-        approvals: approval_tally(&approvals),
-    })
 }
 
 fn local_diffs(

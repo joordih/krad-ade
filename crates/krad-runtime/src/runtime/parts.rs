@@ -13,6 +13,7 @@ use crate::hosts::Hosts;
 use crate::kraddies::Kraddies;
 use crate::models::Models;
 use crate::opencode::OpencodeServers;
+use crate::runners::Runners;
 use crate::settings::AppSettings;
 use crate::terminals::Terminals;
 use crate::usage::Usage;
@@ -33,6 +34,7 @@ pub(super) struct Parts<'a> {
     pub(super) settings: &'a AppSettings,
     pub(super) git: &'a Git,
     pub(super) kraddies: &'a Kraddies,
+    pub(super) runners: &'a Runners,
 }
 
 impl Parts<'_> {
@@ -57,6 +59,7 @@ impl Parts<'_> {
             settings: self.settings.snapshot(),
             git: self.git.snapshot(),
             kraddies: Box::new(self.kraddies.snapshot()),
+            runners: self.runners.snapshot(),
         }
     }
 }
@@ -79,6 +82,7 @@ impl Runtime {
             settings: &self.settings,
             git: &self.git,
             kraddies: &self.kraddies,
+            runners: &self.runners,
         }
         .snapshot(self.seq, scope)
     }

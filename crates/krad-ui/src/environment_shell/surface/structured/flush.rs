@@ -166,7 +166,7 @@ impl EnvironmentShell {
         }
         let site = match self.node_site(env, id) {
             NodeSite::Waiting(runner) => {
-                self.note_cloud_wait(env, id, runner, cx);
+                self.note_cloud_wait(env, id, runner);
                 return Err(StartError::Waiting);
             }
             NodeSite::Env => {

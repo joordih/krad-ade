@@ -133,6 +133,10 @@ impl Runtime {
                 self.kraddie_worktree_made(&plan, repo, acted);
                 return;
             }
+            Asker::CiFix(pending) => {
+                self.fix_worktree_made(*pending, repo, acted);
+                return;
+            }
         };
         let outcome = match acted {
             Ok(Acted::Done) => GitOutcome::Done,

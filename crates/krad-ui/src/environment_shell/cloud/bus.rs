@@ -31,6 +31,12 @@ impl RemoteBusSlot {
     }
 }
 
+#[derive(Default)]
+pub(in crate::environment_shell) struct RunnerBus {
+    slot: RemoteBusSlot,
+    port: Option<u16>,
+}
+
 struct RunnerReturn {
     events: Vec<QueuedEvent>,
     bus: Option<Result<RemoteBus, HostCliError>>,
@@ -58,16 +64,17 @@ fn take_events(link: &HostLink, command: Option<HostCommand>) -> Vec<QueuedEvent
 impl EnvironmentShell {
     fn runner_bus_plan(&self, runner: CloudRunnerId) -> Option<RemoteBusPlan> {
         let bus = self.runtime.handle.bus()?;
-        let live = self.cloud.live.get(&runner)?;
-        let HostLink::Remote(ssh) = &live.link else {
+        let link = self.runner_link(runner)?;
+        let HostLink::Remote(ssh) = &link else {
             return None;
         };
+        let port = self.cloud.buses.get(&runner).and_then(|bus| bus.port);
         Some(RemoteBusPlan::for_runner(
             ssh.clone(),
-            live.link.clone(),
+            link.clone(),
             runner,
             &bus.endpoint,
-            live.bus_port,
+            port,
         ))
     }
 
@@ -82,13 +89,11 @@ impl EnvironmentShell {
             _ => None,
         };
         let plan = self.runner_bus_plan(runner);
-        if let Some(live) = self.cloud.live.get_mut(&runner) {
-            live.bus = if plan.is_some() {
-                RemoteBusSlot::Preparing
-            } else {
-                RemoteBusSlot::Absent
-            };
-        }
+        self.cloud.buses.entry(runner).or_default().slot = if plan.is_some() {
+            RemoteBusSlot::Preparing
+        } else {
+            RemoteBusSlot::Absent
+        };
         let started = Instant::now();
         let back = cx.background_spawn(async move {
             let events = take_events(&link, take);
@@ -112,10 +117,10 @@ impl EnvironmentShell {
         back: RunnerReturn,
         cx: &mut Context<Self>,
     ) {
-        if let Some(live) = self.cloud.live.get_mut(&runner) {
-            live.bus = match back.bus {
+        if let Some(kept) = self.cloud.buses.get_mut(&runner) {
+            kept.slot = match back.bus {
                 Some(Ok(bus)) => {
-                    live.bus_port = Some(bus.remote_port());
+                    kept.port = Some(bus.remote_port());
                     RemoteBusSlot::Ready(bus)
                 }
                 Some(Err(error)) => {
@@ -132,16 +137,16 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn watch_runner_buses(&mut self, cx: &mut Context<Self>) {
         let dropped: Vec<CloudRunnerId> = self
             .cloud
-            .live
+            .buses
             .iter_mut()
-            .filter_map(|(id, live)| {
-                let RemoteBusSlot::Ready(bus) = &mut live.bus else {
+            .filter_map(|(id, kept)| {
+                let RemoteBusSlot::Ready(bus) = &mut kept.slot else {
                     return None;
                 };
                 if bus.is_alive() {
                     return None;
                 }
-                live.bus = RemoteBusSlot::Absent;
+                kept.slot = RemoteBusSlot::Absent;
                 Some(*id)
             })
             .collect();
@@ -152,17 +157,17 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn drop_runner_bus(&mut self, runner: CloudRunnerId) {
-        if let Some(live) = self.cloud.live.get_mut(&runner) {
-            live.bus = RemoteBusSlot::Absent;
+    pub(in crate::environment_shell) fn drop_runner_bus(&mut self, runner: CloudRunnerId) {
+        if let Some(kept) = self.cloud.buses.get_mut(&runner) {
+            kept.slot = RemoteBusSlot::Absent;
         }
     }
 
     fn runner_bus(&self, runner: CloudRunnerId) -> &RemoteBusSlot {
         self.cloud
-            .live
+            .buses
             .get(&runner)
-            .map_or(&RemoteBusSlot::Absent, |live| &live.bus)
+            .map_or(&RemoteBusSlot::Absent, |kept| &kept.slot)
     }
 
     pub(in crate::environment_shell) fn awaits_runner_bus(

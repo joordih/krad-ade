@@ -3,21 +3,14 @@ mod sheet;
 
 use gpui_kit::{AppContext as _, Context};
 use krad_domain::{review::Issue, ToastKind};
-use krad_domain::{CodeHost, GitlabSettings, GroupId, McpServerName, ModelId, SessionTemplate};
-use krad_gitlab::GitlabConfig;
-use krad_host::HostLink;
+use krad_domain::{GroupId, McpServerName, ModelId, SessionTemplate};
+use krad_protocol::ReviewAct;
 use krad_repo::{read_session_templates, StoredTemplate};
 use std::path::{Path, PathBuf};
 
-use super::review_view::{origin_repo, Remote};
+use super::review_view::Remote;
 use super::EnvironmentShell;
 
-const NOT_ON_A_CODE_HOST: &str =
-    "The group's origin remote does not point at a GitLab or GitHub project";
-const GITLAB_NOT_SIGNED_IN: &str =
-    "Sign in on the GitLab page of Settings to start sessions from issues.";
-const GITHUB_NOT_SIGNED_IN: &str =
-    "Sign in on the GitHub page of Settings to start sessions from issues.";
 const NO_GROUP_TEXT: &str = "Select a group to start a session from a template";
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -47,29 +40,6 @@ pub(super) struct TemplatePicker {
     root: PathBuf,
     templates: Vec<StoredTemplate>,
     stage: PickerStage,
-}
-
-fn read_open_issues(
-    link: &HostLink,
-    root: &Path,
-    gitlab: &GitlabSettings,
-) -> Result<Vec<Issue>, String> {
-    let repo = origin_repo(link, root, GitlabConfig::try_from(gitlab).ok())
-        .ok_or_else(|| NOT_ON_A_CODE_HOST.to_owned())?;
-    let client = repo
-        .login
-        .client()
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| {
-            match repo.login.code_host() {
-                CodeHost::Gitlab => GITLAB_NOT_SIGNED_IN,
-                CodeHost::Github => GITHUB_NOT_SIGNED_IN,
-            }
-            .to_owned()
-        })?;
-    client
-        .issues(&repo.project)
-        .map_err(|error| error.to_string())
 }
 
 impl EnvironmentShell {
@@ -158,25 +128,21 @@ impl EnvironmentShell {
             issues: Remote::Loading,
         };
         let root = picker.root.clone();
-        let link = self.active_link();
-        let gitlab = self.settings.gitlab.clone();
-        let read = cx.background_spawn(async move { read_open_issues(&link, &root, &gitlab) });
-        cx.spawn(async move |this, cx| {
-            let issues = read.await;
-            this.update(cx, |shell, cx| {
-                if let Some(TemplatePicker {
-                    stage: PickerStage::Issues { issues: shown, .. },
-                    ..
-                }) = &mut shell.template_picker
-                {
-                    *shown = issues.map_or_else(Remote::Failed, Remote::Ready);
-                }
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+        self.post_review(root, ReviewAct::Issues, cx);
         cx.notify();
+    }
+
+    pub(super) fn issues_answered(&mut self, root: &Path, issues: Remote<Vec<Issue>>) {
+        if let Some(TemplatePicker {
+            root: asked,
+            stage: PickerStage::Issues { issues: shown, .. },
+            ..
+        }) = &mut self.template_picker
+        {
+            if asked == root {
+                *shown = issues;
+            }
+        }
     }
 
     fn back_to_templates(&mut self, cx: &mut Context<Self>) {
@@ -235,20 +201,5 @@ impl EnvironmentShell {
             self.launch_template(group, &template, Some(issue), cx);
         }
         cx.notify();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn issues_need_a_group_whose_origin_is_on_a_code_host() -> std::io::Result<()> {
-        let root = std::env::temp_dir().join(format!("krad-issues-none-{}", std::process::id()));
-        std::fs::create_dir_all(&root)?;
-        let read = read_open_issues(&HostLink::Local, &root, &GitlabSettings::default());
-        std::fs::remove_dir_all(&root)?;
-        assert_eq!(read, Err(NOT_ON_A_CODE_HOST.to_owned()));
-        Ok(())
     }
 }

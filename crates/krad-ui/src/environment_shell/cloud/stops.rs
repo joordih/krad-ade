@@ -1,5 +1,4 @@
-use gpui_kit::{AppContext as _, Context};
-use krad_chat::stop_cloud_process;
+use gpui_kit::Context;
 use krad_domain::{CloudProcessId, CloudRunnerId};
 
 use super::super::EnvironmentShell;
@@ -26,30 +25,7 @@ impl EnvironmentShell {
         tracing::debug!(%process, "the runner is away, so the stop waits for it");
         self.settings.cloud.queue_stop(runner, process);
         self.save_settings(cx);
-        self.ensure_runner_ready(runner, cx);
-    }
-
-    pub(super) fn run_queued_stops(&mut self, runner: CloudRunnerId, cx: &mut Context<Self>) {
-        let (Some(link), Some(cli), Some(pairing)) = (
-            self.runner_link(runner),
-            self.runner_cli(runner),
-            self.runner_pairing(runner),
-        ) else {
-            return;
-        };
-        let stops = self.settings.cloud.take_stops(runner);
-        if stops.is_empty() {
-            return;
-        }
-        self.save_settings(cx);
-        cx.background_spawn(async move {
-            for process in stops {
-                if let Err(error) = stop_cloud_process(&link, &cli, &pairing, &process) {
-                    tracing::warn!(%process, %error, "a queued cloud process did not stop");
-                }
-            }
-        })
-        .detach();
+        self.ensure_runner_ready(runner);
     }
 
     pub(super) fn mark_runner_removed(&mut self, runner: CloudRunnerId) {

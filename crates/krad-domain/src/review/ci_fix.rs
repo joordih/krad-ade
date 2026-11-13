@@ -1,16 +1,39 @@
-use super::{Job, JobLog, MergeRequest};
+use super::{Change, Job, JobLog, MergeRequest};
 use crate::CodeHost;
 
 pub const SUMMARY_FILES_LIMIT: usize = 60;
 const LOG_FENCE: &str = "```";
 const UNKNOWN_STEP: &str = "not reported";
 const LINE_BREAK: &str = "\n";
+const ADDED_MARK: char = '+';
+const REMOVED_MARK: char = '-';
+const NEW_FILE_HEADER: &str = "+++";
+const OLD_FILE_HEADER: &str = "---";
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ChangeStat {
     pub path: String,
     pub added: usize,
     pub removed: usize,
+}
+
+impl From<&Change> for ChangeStat {
+    fn from(change: &Change) -> Self {
+        let lines = || {
+            change
+                .diff
+                .lines()
+                .filter(|line| !line.starts_with(NEW_FILE_HEADER))
+                .filter(|line| !line.starts_with(OLD_FILE_HEADER))
+        };
+        Self {
+            path: change.new_path.clone(),
+            added: lines().filter(|line| line.starts_with(ADDED_MARK)).count(),
+            removed: lines()
+                .filter(|line| line.starts_with(REMOVED_MARK))
+                .count(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -210,5 +233,26 @@ mod tests {
             ..failure
         });
         assert!(none.contains("The merge request's changed files could not be read."));
+    }
+
+    #[test]
+    fn a_change_counts_its_added_and_removed_lines_without_the_file_headers() {
+        let change = Change {
+            old_path: "src/lib.rs".to_owned(),
+            new_path: "src/lib.rs".to_owned(),
+            diff: "--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,3 +1,3 @@\n keep\n-old\n+new\n+more\n"
+                .to_owned(),
+            new_file: false,
+            renamed_file: false,
+            deleted_file: false,
+        };
+        assert_eq!(
+            ChangeStat::from(&change),
+            ChangeStat {
+                path: "src/lib.rs".to_owned(),
+                added: 2,
+                removed: 1,
+            }
+        );
     }
 }

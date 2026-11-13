@@ -87,6 +87,14 @@ pub enum HostClient {
     Github(GithubClient),
 }
 
+impl fmt::Debug for HostClient {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HostClient")
+            .field("host", &self.host())
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug)]
 pub enum HostError {
     Gitlab(GitlabError),

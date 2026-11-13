@@ -65,6 +65,7 @@ impl Runtime {
             Command::Settings(command) => {
                 let reply = self.settings.execute(command, &mut self.outbox);
                 self.flush_chats();
+                self.run_ready_stops();
                 reply.unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND))
             }
             Command::Terminal(command) => self
@@ -74,6 +75,9 @@ impl Runtime {
             Command::Changes(command) => self.execute_changes(id, command),
             Command::Kraddie(command) => self.execute_kraddie(command),
             Command::Variant(command) => self.execute_variant(command),
+            Command::Review(command) => self.execute_review(id, command),
+            Command::CodeHost(command) => self.execute_code_host(command),
+            Command::Runner(command) => self.execute_runner(command),
             Command::Runtime(RuntimeCommand::Unknown) | Command::Unknown => {
                 refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)
             }

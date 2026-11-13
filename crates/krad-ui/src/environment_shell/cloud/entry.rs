@@ -5,6 +5,7 @@ use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
 use super::super::EnvironmentShell;
 use super::naming::sent_session_name;
 use super::sessions::CloudOrder;
+use super::state::runner_label;
 use crate::components::IconName;
 
 const NEW_LABEL: &str = "New cloud session…";
@@ -66,7 +67,7 @@ impl EnvironmentShell {
             .iter()
             .map(|runner| {
                 MenuEntry::item(runner.name.as_str(), None, action(runner.id))
-                    .with_detail(self.runner_state(runner.id).label())
+                    .with_detail(runner_label(&self.runner_state(runner.id)))
             })
             .collect()
     }

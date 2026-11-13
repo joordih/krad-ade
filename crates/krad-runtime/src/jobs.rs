@@ -18,6 +18,8 @@ use crate::git::GitJob;
 use crate::hosts::{AgentsFound, Attempt, LocalFound, RemoteBus};
 use crate::input::Input;
 use crate::opencode::{OpencodeListed, OpencodeStarted};
+use crate::reviews::ReviewDone;
+use crate::runners::RunnerDone;
 use crate::runtime::{AttachedLine, LinesCounted};
 use crate::usage::UsageKey;
 use crate::variants::VariantJob;
@@ -69,6 +71,8 @@ pub(crate) enum JobDone {
     Adapter(AdapterDone),
     Variant(VariantJob),
     CodeHosts(Vec<Observed>),
+    Review(Box<ReviewDone>),
+    Runner(Box<RunnerDone>),
 }
 
 #[derive(Clone, Debug)]
@@ -80,14 +84,28 @@ impl Jobs {
     }
 
     pub(crate) fn run(&self, work: impl FnOnce() -> JobDone + Send + 'static) -> io::Result<()> {
-        let inbox = self.0.clone();
+        self.run_reporting(move |steps| steps.report(work()))
+    }
+
+    pub(crate) fn run_reporting(
+        &self,
+        work: impl FnOnce(&Steps) + Send + 'static,
+    ) -> io::Result<()> {
+        let steps = Steps(self.0.clone());
         thread::Builder::new()
             .name(JOB_THREAD.to_owned())
-            .spawn(move || {
-                if inbox.send(Input::JobDone(work())).is_err() {
-                    tracing::trace!("a job finished after the runtime stopped");
-                }
-            })
+            .spawn(move || work(&steps))
             .map(drop)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct Steps(SyncSender<Input>);
+
+impl Steps {
+    pub(crate) fn report(&self, done: JobDone) {
+        if self.0.send(Input::JobDone(done)).is_err() {
+            tracing::trace!("a job reported after the runtime stopped");
+        }
     }
 }

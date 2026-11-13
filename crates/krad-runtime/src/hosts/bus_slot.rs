@@ -1,4 +1,4 @@
-use krad_domain::{EnvironmentName, Host};
+use krad_domain::{EnvironmentName, Host, InstallId};
 use krad_host::HostLink;
 use krad_protocol::{EventKind, RemoteBusInfo, RemoteBusState};
 use std::fmt;
@@ -60,6 +60,14 @@ impl Hosts {
 
     pub(crate) fn link(&self, host: &Host) -> HostLink {
         self.links.link(host)
+    }
+
+    pub(crate) fn install_id(&self) -> Option<InstallId> {
+        self.links.install_id()
+    }
+
+    pub(crate) fn close(&self, host: &Host) {
+        self.links.close(host);
     }
 
     pub(super) fn set_bus(

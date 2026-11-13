@@ -22,6 +22,8 @@ use crate::kraddies::{KraddieState, KraddiesSnapshot, OwnedDigests};
 use crate::launches::TerminalLaunched;
 use crate::models::{ListedModels, ModelsOrigin, ModelsSnapshot};
 use crate::opencode::{OpencodeShown, OpencodeSnapshot};
+use crate::review::{CodeHostLogin, ReviewAnswered};
+use crate::runners::{RunnerRemoved, RunnerShown};
 use crate::terminals::{TerminalClassified, TerminalSummary};
 use crate::usage::{UsageShown, UsageSnapshot};
 
@@ -188,6 +190,10 @@ pub enum EventKind {
     KraddieNotSaved {
         error: String,
     },
+    ReviewAnswered(Box<ReviewAnswered>),
+    CodeHostLogin(CodeHostLogin),
+    RunnerChanged(RunnerShown),
+    RunnerRemoved(RunnerRemoved),
     #[serde(other)]
     Unknown,
 }
@@ -230,6 +236,8 @@ pub struct Snapshot {
     pub git: Vec<GitRead>,
     #[serde(default)]
     pub kraddies: Box<KraddiesSnapshot>,
+    #[serde(default)]
+    pub runners: Vec<RunnerShown>,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -291,6 +299,7 @@ mod tests {
                 settings: Box::default(),
                 git: Vec::new(),
                 kraddies: Box::default(),
+                runners: Vec::new(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

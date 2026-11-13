@@ -15,7 +15,7 @@ use krad_repo::{
 use std::path::PathBuf;
 
 use super::AskpassPlan;
-use crate::runtime::RunPlan;
+use crate::runtime::{PendingFix, RunPlan};
 use crate::workers::PendingWorker;
 
 #[derive(Debug)]
@@ -63,6 +63,7 @@ pub(crate) enum Asker {
     Client(RequestId),
     Worker(Box<PendingWorker>),
     Kraddie(Box<RunPlan>),
+    CiFix(Box<PendingFix>),
     Bus(oneshot::Sender<Response>),
 }
 

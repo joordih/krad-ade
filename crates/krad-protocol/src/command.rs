@@ -10,6 +10,8 @@ use crate::git::{ChangesCommand, GitCommand};
 use crate::hosts::HostCommand;
 use crate::kraddies::KraddieCommand;
 use crate::models::ModelsCommand;
+use crate::review::{CodeHostCommand, ReviewCommand};
+use crate::runners::RunnerCommand;
 use crate::sessions::{GroupCommand, NodeCommand, SessionCommand};
 use crate::settings::SettingsCommand;
 use crate::terminals::TerminalCommand;
@@ -38,6 +40,9 @@ pub enum Command {
     Changes(ChangesCommand),
     Kraddie(KraddieCommand),
     Variant(VariantCommand),
+    Review(ReviewCommand),
+    CodeHost(CodeHostCommand),
+    Runner(RunnerCommand),
     #[serde(other)]
     Unknown,
 }

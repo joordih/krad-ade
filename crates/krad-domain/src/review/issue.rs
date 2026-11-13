@@ -4,7 +4,9 @@ use super::{IssueNumber, MergeRequestIid, MergeRequestState, NoteId, User};
 
 pub use query::{sort_issues, IssueQuery, IssueSort, IssueStateFilter, ListPage};
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, Hash, Debug, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum IssueState {
     #[default]
     Open,
@@ -21,7 +23,7 @@ impl IssueState {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Issue {
     pub number: IssueNumber,
     pub title: String,

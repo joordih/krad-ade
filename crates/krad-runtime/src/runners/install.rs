@@ -11,22 +11,22 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
-use krad_runtime::{upload_host_cli, HostCliError};
+use crate::hosts::{upload_host_cli, HostCliError};
 
 const INSTALL_SCRIPT: &str = "the cloud runner's install script";
 const NO_INSTALL_ID: &str = "this installation has no id, so no cloud runner can pair with it";
 const BAD_TOKEN: &str = "the cloud runner answered the pairing with an invalid token";
 
 #[derive(Clone, Debug)]
-pub(in crate::environment_shell) struct PreparedRunner {
-    pub(in crate::environment_shell) cli: PathBuf,
-    pub(in crate::environment_shell) pairing: Pairing,
-    pub(in crate::environment_shell) report: InstallReport,
-    pub(in crate::environment_shell) claude_token: Option<ClaudeOauthToken>,
+pub(crate) struct PreparedRunner {
+    pub(crate) cli: PathBuf,
+    pub(crate) pairing: Pairing,
+    pub(crate) report: InstallReport,
+    pub(crate) claude_token: Option<ClaudeOauthToken>,
 }
 
 #[derive(Debug)]
-pub(in crate::environment_shell) enum RunnerSetupError {
+pub(crate) enum RunnerSetupError {
     NoInstallId,
     Cli(HostCliError),
     Host(HostError),
@@ -127,7 +127,7 @@ fn is_authorized(link: &HostLink, cli: &Path, pairing: &Pairing) -> bool {
 }
 
 #[tracing::instrument(skip_all, fields(%runner))]
-pub(in crate::environment_shell) fn prepare_runner(
+pub(crate) fn prepare_runner(
     link: &HostLink,
     ssh: &RemoteLink,
     runner: CloudRunnerId,
@@ -177,7 +177,7 @@ fn run_checked(link: &HostLink, command: &HostCommand) -> Result<(), HostError> 
 }
 
 #[tracing::instrument(skip_all)]
-pub(in crate::environment_shell) fn retire_runner(
+pub(crate) fn retire_runner(
     link: &HostLink,
     paired: Option<&(PathBuf, Pairing)>,
 ) -> Vec<HostError> {

@@ -15,6 +15,7 @@ use super::naming::{
     cloud_chat_harness, cloud_session_name, holds_cloud_work, new_nonce, offered_patch,
     reached_limit, session_slug, upstream_branch, upstream_remote,
 };
+use super::state::runner_label;
 use super::workspace::{prepare_workspace, PreparedWorkspace, WorkspaceError, WorkspaceRequest};
 
 const NO_REMOTE_TOAST: &str = "The group has no git remote to clone on the runner";
@@ -263,7 +264,7 @@ impl EnvironmentShell {
         let text = format!("{PREPARING_PREFIX} {}…", self.runner_name(runner));
         self.toast(ToastKind::Info, &text, cx);
         self.cloud.pending.push(PendingCloudSession(draft));
-        self.ensure_runner_ready(runner, cx);
+        self.ensure_runner_ready(runner);
         if self.runner_link(runner).is_some() {
             self.start_pending_cloud_sessions(runner, cx);
         }
@@ -316,7 +317,7 @@ impl EnvironmentShell {
         let text = format!(
             "{RUNNER_FAILED_PREFIX} {}: {}",
             self.runner_name(runner),
-            self.runner_state(runner).label()
+            runner_label(&self.runner_state(runner))
         );
         self.toast(ToastKind::Error, &text, cx);
     }

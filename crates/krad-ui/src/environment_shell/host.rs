@@ -21,8 +21,6 @@ use std::path::PathBuf;
 use super::terminal_card::home_dir;
 use super::EnvironmentShell;
 
-const THREAD_HOST_CLOSE: &str = "krad-ade-host-close";
-
 #[derive(Default)]
 pub(super) enum HostDialog {
     #[default]
@@ -147,16 +145,6 @@ impl EnvironmentShell {
             HostLink::Remote(ssh) => ssh.home().map(PathBuf::from),
         }
     }
-}
-
-pub(super) fn close_link(link: &HostLink) {
-    let HostLink::Remote(ssh) = link.clone() else {
-        return;
-    };
-    let closing = std::thread::Builder::new()
-        .name(THREAD_HOST_CLOSE.to_owned())
-        .spawn(move || ssh.close());
-    drop(closing);
 }
 
 pub(super) fn local_cli() -> Option<PathBuf> {

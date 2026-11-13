@@ -4,7 +4,7 @@ use std::str::FromStr;
 use super::commands::authorize;
 use super::{RUNNER_VERB, STATUS_VERB};
 use crate::command::{quote, HostCommand};
-use krad_domain::Pairing;
+use krad_domain::{Pairing, RunnerState};
 
 pub const SERVICE_NAME: &str = "krad-cloud-runner.service";
 pub const READY_MARKER: &str = "krad-cloud-runner: ready";
@@ -23,16 +23,25 @@ pub enum ServiceState {
     UpdatePending,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Linger {
-    Enabled,
-    Unavailable,
-}
+pub use krad_domain::Linger;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InstallReport {
     pub service: ServiceState,
     pub linger: Linger,
+}
+
+impl From<InstallReport> for RunnerState {
+    fn from(report: InstallReport) -> Self {
+        match report.service {
+            ServiceState::Ready => Self::Ready {
+                linger: report.linger,
+            },
+            ServiceState::UpdatePending => Self::UpdatePending {
+                linger: report.linger,
+            },
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]

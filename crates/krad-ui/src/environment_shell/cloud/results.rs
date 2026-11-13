@@ -168,7 +168,7 @@ impl EnvironmentShell {
             .and_then(|group| self.git_at(&env, &group.root))
             .and_then(|git| git.status.upstream.clone());
         let Some(link) = self.runner_link(placement.runner) else {
-            self.ensure_runner_ready(placement.runner, cx);
+            self.ensure_runner_ready(placement.runner);
             self.toast(ToastKind::Warning, NOT_READY, cx);
             return None;
         };

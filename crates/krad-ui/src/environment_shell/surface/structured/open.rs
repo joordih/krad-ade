@@ -129,7 +129,7 @@ impl EnvironmentShell {
                 self.runtime_chat_opened(env, id, cx);
             } else if let Some(resume) = history {
                 match self.node_site(env, id) {
-                    NodeSite::Waiting(runner) => self.note_cloud_wait(env, id, runner, cx),
+                    NodeSite::Waiting(runner) => self.note_cloud_wait(env, id, runner),
                     NodeSite::Cloud(_) => self.load_history(env.clone(), id, harness, resume, cx),
                     NodeSite::Env if self.reads_history_now(env, harness) => {
                         self.load_history(env.clone(), id, harness, resume, cx);

@@ -1,6 +1,5 @@
-use futures::channel::oneshot;
 use krad_domain::UsageBudget;
-use krad_protocol::{ErrorCode, Event, EventKind, Reply, Scope, Seq};
+use krad_protocol::{Event, EventKind, Scope, Seq};
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender};
@@ -26,6 +25,8 @@ use crate::kraddies::{Kraddies, KraddiesSetup};
 use crate::launches::{LaunchedViews, Launches};
 use crate::models::Models;
 use crate::opencode::{OpencodeDirectory, OpencodeServers};
+use crate::reviews::Reviews;
+use crate::runners::{RunnerDirectory, Runners};
 use crate::settings::{AppSettings, SettingsSetup};
 use crate::subscribers::Subscribers;
 use crate::terminals::{Settling, Terminals};
@@ -34,6 +35,7 @@ use crate::workers::Workers;
 
 mod bus_git;
 mod chatting;
+mod ci_fixing;
 mod code_host_watch;
 mod commands;
 mod digesting;
@@ -52,8 +54,12 @@ mod kraddie_worktrees;
 mod launching;
 mod parts;
 mod removing;
+mod replies;
+mod reviewing;
+mod running;
 mod session_changes;
 mod settling;
+mod signing_in;
 mod variant_bus;
 mod variant_picks;
 mod variant_progress;
@@ -61,10 +67,12 @@ mod variant_runs;
 mod worker_worktrees;
 mod working;
 
+pub(crate) use self::ci_fixing::PendingFix;
 pub(crate) use self::kraddie_following::LinesCounted;
 pub(crate) use self::kraddie_runs::RunPlan;
 pub(crate) use self::launching::AttachedLine;
 use self::parts::Parts;
+pub(crate) use self::replies::{answer_to, refused};
 
 const THREAD_NAME: &str = "krad-runtime";
 const INPUT_CAPACITY: usize = 1024;
@@ -100,6 +108,8 @@ pub struct Runtime {
     adapters: AcpAdapters,
     buffers: EditorBuffers,
     code_hosts: CodeHostWatch,
+    reviews: Reviews,
+    runners: Runners,
     gateway: Gateway,
     opencode: OpencodeServers,
     settings: AppSettings,
@@ -118,6 +128,7 @@ struct Owned {
     opencode: OpencodeDirectory,
     settings: AppSettings,
     views: LaunchedViews,
+    runners: RunnerDirectory,
     kraddies: KraddiesSetup,
 }
 
@@ -149,6 +160,7 @@ impl Runtime {
         let opencode = OpencodeDirectory::default();
         let settings = AppSettings::start(setup.settings, &inbox);
         let views = LaunchedViews::default();
+        let runners = RunnerDirectory::default();
         let owned = Owned {
             events,
             usage,
@@ -157,6 +169,7 @@ impl Runtime {
             opencode: opencode.clone(),
             settings,
             views: views.clone(),
+            runners: runners.clone(),
             kraddies: setup.kraddies,
         };
         let shared_access = access.clone();
@@ -169,7 +182,7 @@ impl Runtime {
             inbox,
             access,
             usage_budget,
-            (links, opencode, views),
+            (links, runners, opencode, views),
         ))
     }
 
@@ -197,6 +210,8 @@ impl Runtime {
             adapters: AcpAdapters::default(),
             buffers: EditorBuffers::default(),
             code_hosts: CodeHostWatch::default(),
+            reviews: Reviews::default(),
+            runners: Runners::with_directory(owned.runners),
             gateway: Gateway::default(),
             opencode: OpencodeServers::new(inbox.clone(), owned.opencode),
             settings: owned.settings,
@@ -365,22 +380,10 @@ impl Runtime {
             settings: &self.settings,
             git: &self.git,
             kraddies: &self.kraddies,
+            runners: &self.runners,
         };
         let seq = self.seq;
         self.subscribers
             .publish(&events, || parts.snapshot(seq, Scope::Runtime));
-    }
-}
-
-pub(crate) fn refused(code: ErrorCode, message: &str) -> Reply {
-    Reply::Refused {
-        code,
-        message: message.to_owned(),
-    }
-}
-
-pub(super) fn answer_to<T: std::fmt::Debug>(reply: oneshot::Sender<T>, answer: T) {
-    if let Err(unheard) = reply.send(answer) {
-        tracing::trace!(?unheard, "a client left before its answer");
     }
 }

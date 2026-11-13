@@ -1,23 +1,21 @@
-use krad_domain::{Branch, BranchPlace, GroupId, TerminalId, ORIGIN_REMOTE};
+use krad_domain::{Branch, BranchPlace, GroupGit, GroupId, TerminalId, ORIGIN_REMOTE};
 use std::path::Path;
 
-use crate::environment_shell::groups::GroupGit;
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(super) struct ChatSeat {
-    pub(super) id: TerminalId,
-    pub(super) group: Option<GroupId>,
-    pub(super) worker: bool,
+pub(crate) struct ChatSeat {
+    pub(crate) id: TerminalId,
+    pub(crate) group: Option<GroupId>,
+    pub(crate) worker: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(super) enum FixOwner {
+pub(crate) enum FixOwner {
     Chat(TerminalId),
     Group(GroupId),
     Nobody,
 }
 
-pub(super) fn branch_owner<'a>(
+pub(crate) fn branch_owner<'a>(
     groups: impl IntoIterator<Item = (GroupId, Option<&'a str>)>,
     chats: impl IntoIterator<Item = ChatSeat>,
     branch: &str,
@@ -41,7 +39,7 @@ pub(super) fn branch_owner<'a>(
         .map_or(FixOwner::Group(first), |chat| FixOwner::Chat(chat.id))
 }
 
-pub(super) fn shares_repository(repository: &GroupGit, root: &Path) -> bool {
+pub(crate) fn shares_repository(repository: &GroupGit, root: &Path) -> bool {
     in_worktrees(
         &repository.repo_root,
         repository
@@ -60,7 +58,7 @@ fn in_worktrees<'a>(
     root.starts_with(repo_root) || worktrees.any(|worktree| root.starts_with(worktree))
 }
 
-pub(super) fn pick_branch<'a>(branches: &'a [Branch], name: &str) -> Option<&'a Branch> {
+pub(crate) fn pick_branch<'a>(branches: &'a [Branch], name: &str) -> Option<&'a Branch> {
     let named = || branches.iter().filter(move |branch| branch.name == name);
     named()
         .find(|branch| branch.place == BranchPlace::Local)

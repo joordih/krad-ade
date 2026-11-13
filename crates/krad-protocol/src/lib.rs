@@ -15,6 +15,8 @@ mod kraddies;
 mod launches;
 mod models;
 mod opencode;
+mod review;
+mod runners;
 mod sessions;
 mod settings;
 mod terminals;
@@ -50,6 +52,12 @@ pub use kraddies::{AutomationState, KraddieCommand, KraddieState, KraddiesSnapsh
 pub use launches::{LaunchedAs, TerminalLaunched};
 pub use models::{ListedModels, ModelsCommand, ModelsOrigin, ModelsSnapshot};
 pub use opencode::{OpencodeShown, OpencodeSnapshot, OpencodeStatus};
+pub use review::{
+    CodeHostCommand, CodeHostLogin, Fetched, FixOutcome, ListedRequests, LoginNews, LoginState,
+    RequestDetailRead, RequestRef, ReviewAct, ReviewAnswer, ReviewAnswered, ReviewCommand,
+    ReviewConnection, ReviewWrite, RowFacts, SignInWith,
+};
+pub use runners::{RunnerCommand, RunnerRemoved, RunnerShown};
 pub use sessions::{GroupCommand, NodeCommand, SessionCommand};
 pub use settings::SettingsCommand;
 pub use terminals::{

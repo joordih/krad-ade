@@ -1,6 +1,6 @@
 use futures::{FutureExt as _, StreamExt as _};
 use gpui_kit::Context;
-use krad_domain::{AgentStatus, EnvironmentName, TerminalId};
+use krad_domain::{AgentStatus, CloudRunnerId, EnvironmentName, RunnerState, TerminalId};
 use krad_protocol::{
     AgentRef, AskId, BusSnapshot, EventKind, Feed, StatusReport, TerminalClassified,
     TerminalSummary,
@@ -67,6 +67,7 @@ pub(super) struct RuntimeView {
     pub(super) environments: EnvironmentsMirror,
     pub(super) hosts: HostsMirror,
     pub(super) settings: SettingsMirror,
+    pub(super) runners: HashMap<CloudRunnerId, RunnerState>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -130,6 +131,11 @@ impl EnvironmentShell {
                 self.runtime.view.opencode.replace(snapshot.opencode);
                 self.gateway_replaced(snapshot.gateway);
                 self.runtime.view.settings.replace(*snapshot.settings);
+                self.runtime.view.runners = snapshot
+                    .runners
+                    .into_iter()
+                    .map(|shown| (shown.runner, shown.state))
+                    .collect();
                 for environment in &snapshot.environments {
                     self.offer_open_buffers(&environment.name, cx);
                 }
@@ -261,6 +267,14 @@ impl EnvironmentShell {
                 self.kraddie_run_failed(&task, &reason, cx);
             }
             EventKind::KraddieNotSaved { error } => self.kraddie_not_saved(&error, cx),
+            EventKind::ReviewAnswered(answered) => {
+                let answered = *answered;
+                let place = (answered.environment, answered.root);
+                self.review_answered(answered.request, place, answered.answer, cx);
+            }
+            EventKind::CodeHostLogin(login) => self.code_host_login_heard(login, cx),
+            EventKind::RunnerChanged(shown) => self.runner_changed(shown, cx),
+            EventKind::RunnerRemoved(removed) => self.runner_removed(removed, cx),
             host @ (EventKind::HostChanged { .. }
             | EventKind::SignInWanted { .. }
             | EventKind::MachineChannelWanted { .. }

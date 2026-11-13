@@ -57,13 +57,10 @@ fn fixture_bytes(file: &str) -> std::io::Result<Vec<u8>> {
     )
 }
 
-fn folder_with(fixture: &Fixture, bytes: &[u8]) -> std::io::Result<Folder> {
-    folder_named(&fixture.version.to_string(), bytes)
-}
-
-fn folder_named(tag: &str, bytes: &[u8]) -> std::io::Result<Folder> {
+fn folder_with(test: &str, fixture: &Fixture, bytes: &[u8]) -> std::io::Result<Folder> {
     let dir = std::env::temp_dir().join(format!(
-        "krad-runtime-migration-{tag}-{}",
+        "krad-runtime-migration-{test}-{}-{}",
+        fixture.version,
         std::process::id()
     ));
     drop(std::fs::remove_dir_all(&dir));
@@ -105,7 +102,7 @@ fn single_file_layouts_of_every_version_migrate_without_losing_anything() -> Tes
         );
         let whole = single.environments.clone();
         let (active, work_mode) = (single.active.clone(), single.work_mode);
-        let folder = folder_with(fixture, &original)?;
+        let folder = folder_with("single-file", fixture, &original)?;
         let migrated = open_layout_in(&folder.0);
         let LayoutOpening::Migrated { from, kept } = &migrated.opening else {
             return Err(format!("{} not migrated: {:?}", fixture.file, migrated.opening).into());
@@ -131,7 +128,7 @@ fn single_file_layouts_of_every_version_migrate_without_losing_anything() -> Tes
 #[test]
 fn the_runtime_starts_from_a_migrated_layout_and_keeps_the_view_to_the_ui() -> TestResult {
     let fixture = &FIXTURES[2];
-    let folder = folder_with(fixture, &fixture_bytes(fixture.file)?)?;
+    let folder = folder_with("runtime-start", fixture, &fixture_bytes(fixture.file)?)?;
     let opened = open_layout_in(&folder.0).layout;
     assert_eq!(opened.view.work_mode, WorkMode::Editor);
     let runtime = Runtime::start(RuntimeSetup {
@@ -160,7 +157,7 @@ fn the_runtime_starts_from_a_migrated_layout_and_keeps_the_view_to_the_ui() -> T
 #[test]
 fn a_state_written_before_typed_edits_keeps_every_environment_through_them() -> TestResult {
     let fixture = &FIXTURES[2];
-    let migrated = folder_named("typed-edits", &fixture_bytes(fixture.file)?)?;
+    let migrated = folder_with("typed-edits", fixture, &fixture_bytes(fixture.file)?)?;
     let opened = open_layout_in(&migrated.0).layout;
     let dir = migrated.0.with_extension("edited");
     drop(std::fs::remove_dir_all(&dir));

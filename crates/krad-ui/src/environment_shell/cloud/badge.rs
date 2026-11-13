@@ -5,6 +5,7 @@ use gpui_kit::{
 use krad_domain::CloudRunnerId;
 
 use super::super::EnvironmentShell;
+use super::state::runner_label;
 use super::stops::REMOVED_RUNNER;
 use super::RunnerState;
 use crate::components::{icon, tooltip_view, IconName};
@@ -59,7 +60,7 @@ fn badge_text(runner: &str, link: RunnerLink, state: &RunnerState) -> String {
     let mut text = format!("{BADGE_PREFIX} {runner}{BADGE_SEPARATOR}{}", link.label());
     if link == RunnerLink::Detached {
         text.push_str(BADGE_SEPARATOR);
-        text.push_str(&state.label());
+        text.push_str(&runner_label(state));
     }
     text
 }

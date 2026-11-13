@@ -1,24 +1,19 @@
 use futures::channel::{mpsc, oneshot};
-use futures::{Stream, StreamExt as _};
 use krad_agents::{AgentInfo, AgentKey, StateReason};
 use krad_chat::acp::OpenBuffers;
 use krad_chat::{LiveEvent, LiveSession, OpencodeServer, Runner};
-use krad_domain::{AgentPreset, EnvironmentName, Host, ToolDecision, UsageBudget};
-use krad_host::mux::PromptSender;
-use krad_host::{HostContext, HostLink, MachineChannel};
+use krad_domain::{AgentPreset, EnvironmentName, Host, UsageBudget};
+use krad_host::HostLink;
 use krad_protocol::{
-    AgentRef, AskId, BusCommand, ChatPage, Command, Feed, HealthPlace, Reply, RequestId, Scope,
-    Snapshot, TerminalCommand, WriteBy,
+    AgentRef, AskId, ChatPage, Command, HealthPlace, Reply, RequestId, Scope, Snapshot,
+    TerminalCommand, WriteBy,
 };
 use krad_repo::{FileIndex, RepoError};
 use krad_session::{AnsiPalette, SearchDirection};
-use std::future::Future;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 
 use crate::bus::{BusAccess, DelegationReceiver, DELEGATION_BUFFER};
 use crate::chats::{ChatBrief, ChatStart, LiveStarted, OfferedBuffers};
@@ -27,8 +22,14 @@ use crate::hosts::HostLinks;
 use crate::input::{Input, LiveStart};
 use crate::launches::LaunchedViews;
 use crate::opencode::{OpencodeDirectory, OpencodeInput};
+use crate::runners::RunnerDirectory;
 use crate::terminals::{Shared, TerminalAction, TerminalLaunch, TerminalView};
 use crate::usage::UsagePlace;
+
+mod hosts;
+mod waits;
+
+pub use waits::{EventReceiver, HeldAsk, Pending};
 
 const SUBSCRIBER_BUFFER: usize = 256;
 
@@ -53,6 +54,7 @@ pub struct RuntimeHandle {
     bus: Option<Arc<BusAccess>>,
     usage_budget: Arc<UsageBudget>,
     links: HostLinks,
+    runners: RunnerDirectory,
     opencode: OpencodeDirectory,
     views: LaunchedViews,
     requests: Arc<AtomicU64>,
@@ -64,7 +66,12 @@ impl RuntimeHandle {
         inbox: SyncSender<Input>,
         bus: Option<Arc<BusAccess>>,
         usage_budget: Arc<UsageBudget>,
-        (links, opencode, views): (HostLinks, OpencodeDirectory, LaunchedViews),
+        (links, runners, opencode, views): (
+            HostLinks,
+            RunnerDirectory,
+            OpencodeDirectory,
+            LaunchedViews,
+        ),
     ) -> Self {
         Self {
             _alive: Arc::new(Alive(inbox.clone())),
@@ -72,6 +79,7 @@ impl RuntimeHandle {
             bus,
             usage_budget,
             links,
+            runners,
             opencode,
             views,
             requests: Arc::new(AtomicU64::new(0)),
@@ -308,43 +316,6 @@ impl RuntimeHandle {
         Pending(answer)
     }
 
-    #[must_use]
-    pub fn host_link(&self, host: &Host) -> HostLink {
-        self.links.link(host)
-    }
-
-    pub fn use_host_context(&self, context: HostContext) {
-        self.links.use_context(context);
-    }
-
-    #[must_use]
-    pub fn prompt_sender(&self) -> Option<PromptSender> {
-        self.links.prompts()
-    }
-
-    pub fn close_hosts(&self) {
-        self.links.close_all();
-    }
-
-    #[must_use]
-    pub fn open_sign_in(&self, terminal: AgentRef) -> TerminalView {
-        let shared = Shared::new(self.inbox.clone());
-        let view = TerminalView::new(Arc::clone(&shared));
-        self.deliver(Input::OpenSignIn { terminal, shared });
-        view
-    }
-
-    pub fn hand_machine_channel(
-        &self,
-        environment: EnvironmentName,
-        channel: Result<MachineChannel, String>,
-    ) {
-        self.deliver(Input::MachineChannel {
-            environment,
-            channel,
-        });
-    }
-
     pub fn terminal_palette(&self, palette: AnsiPalette) {
         self.deliver(Input::TerminalPalette(palette));
     }
@@ -357,50 +328,9 @@ impl RuntimeHandle {
         }
     }
 
-    fn deliver(&self, input: Input) {
+    pub(crate) fn deliver(&self, input: Input) {
         if self.inbox.send(input).is_err() {
             tracing::debug!("input reached a stopped runtime");
         }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct HeldAsk {
-    pub ask: AskId,
-    runtime: RuntimeHandle,
-}
-
-impl HeldAsk {
-    pub fn decide(self, decision: ToolDecision) {
-        self.runtime.post(Command::Bus(BusCommand::AnswerAsk {
-            ask: self.ask,
-            decision,
-        }));
-    }
-}
-
-#[must_use]
-#[derive(Debug)]
-pub struct Pending<T>(oneshot::Receiver<T>);
-
-impl<T> Future for Pending<T> {
-    type Output = Result<T, RuntimeStopped>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(&mut self.0)
-            .poll(cx)
-            .map(|answer| answer.map_err(|_| RuntimeStopped))
-    }
-}
-
-#[must_use]
-#[derive(Debug)]
-pub struct EventReceiver(mpsc::Receiver<Feed>);
-
-impl Stream for EventReceiver {
-    type Item = Feed;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Feed>> {
-        self.0.poll_next_unpin(cx)
     }
 }

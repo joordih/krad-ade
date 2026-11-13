@@ -78,6 +78,7 @@ impl From<ureq::Error> for GithubError {
 
 pub struct GithubClient {
     agent: Agent,
+    api: String,
     bearer: String,
     me: OnceLock<User>,
 }
@@ -85,15 +86,25 @@ pub struct GithubClient {
 impl GithubClient {
     #[must_use]
     pub fn new(token: &GithubToken) -> Self {
+        Self::at(API_URL, token)
+    }
+
+    #[must_use]
+    pub fn at(api: &str, token: &GithubToken) -> Self {
         let agent = Agent::config_builder()
             .timeout_global(Some(REQUEST_TIMEOUT))
             .build()
             .new_agent();
         Self {
             agent,
+            api: api.trim_end_matches(PATH_SEPARATOR).to_owned(),
             bearer: format!("{BEARER}{}", token.access_token),
             me: OnceLock::new(),
         }
+    }
+
+    fn api_url(&self, path: &str) -> String {
+        format!("{}{path}", self.api)
     }
 
     #[must_use]
@@ -363,7 +374,7 @@ impl GithubClient {
         let merged = self.merge_request(project, iid)?;
         if options.should_remove_source_branch {
             let branch = format!("/git/refs/heads/{}", encode_path(&merged.source_branch));
-            let url = api_url(&repo_path(project, &branch)?);
+            let url = self.api_url(&repo_path(project, &branch)?);
             self.call(self.agent.delete(&url)).map(drop)?;
         }
         Ok(merged)
@@ -382,7 +393,7 @@ impl GithubClient {
     }
 
     fn runs(&self, project: &ProjectPath, head: &str) -> Result<Vec<Pipeline>, GithubError> {
-        let url = api_url(&repo_path(project, "/actions/runs")?);
+        let url = self.api_url(&repo_path(project, "/actions/runs")?);
         let runs: RunsJson = self.read(
             self.agent
                 .get(&url)
@@ -414,13 +425,14 @@ impl GithubClient {
     pub fn job_log(&self, project: &ProjectPath, job: JobId) -> Result<JobLog, GithubError> {
         let path = repo_path(project, &format!("/actions/jobs/{job}"))?;
         let steps: JobStepsJson = self.get(&path)?;
-        let mut response = self.call(self.agent.get(&api_url(&format!("{path}{LOGS_PATH}"))))?;
+        let mut response =
+            self.call(self.agent.get(&self.api_url(&format!("{path}{LOGS_PATH}"))))?;
         let reader = std::io::BufReader::new(response.body_mut().as_reader());
         read_job_log(reader, steps.failing_step()).map_err(GithubError::Log)
     }
 
     fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, GithubError> {
-        self.read(self.agent.get(&api_url(path)))
+        self.read(self.agent.get(&self.api_url(path)))
     }
 
     fn read<T: DeserializeOwned>(
@@ -442,7 +454,7 @@ impl GithubClient {
         path: &str,
         body: &B,
     ) -> Result<T, GithubError> {
-        let request = signed(self.agent.post(&api_url(path)), &self.bearer);
+        let request = signed(self.agent.post(&self.api_url(path)), &self.bearer);
         Ok(request.send_json(body)?.body_mut().read_json()?)
     }
 
@@ -451,7 +463,7 @@ impl GithubClient {
         path: &str,
         body: &B,
     ) -> Result<T, GithubError> {
-        let request = signed(self.agent.put(&api_url(path)), &self.bearer);
+        let request = signed(self.agent.put(&self.api_url(path)), &self.bearer);
         Ok(request.send_json(body)?.body_mut().read_json()?)
     }
 
@@ -468,7 +480,7 @@ impl GithubClient {
         path: &str,
         body: &B,
     ) -> Result<T, GithubError> {
-        let request = signed(self.agent.patch(&api_url(path)), &self.bearer);
+        let request = signed(self.agent.patch(&self.api_url(path)), &self.bearer);
         Ok(request.send_json(body)?.body_mut().read_json()?)
     }
 
@@ -480,7 +492,7 @@ impl GithubClient {
     ) -> Result<(T, bool), GithubError> {
         let request = self
             .agent
-            .get(&api_url(path))
+            .get(&self.api_url(path))
             .query(PER_PAGE_PARAM, PER_PAGE)
             .query(PAGE_PARAM, page.0.to_string())
             .query_pairs(params.iter().map(|(key, value)| (*key, value.as_str())));
@@ -500,7 +512,7 @@ impl GithubClient {
         params: &[(&str, String)],
     ) -> Result<Vec<T>, GithubError> {
         let mut items = Vec::new();
-        let mut next = Some(api_url(path));
+        let mut next = Some(self.api_url(path));
         let mut first = true;
         while let Some(url) = next {
             let mut request = self.agent.get(&url);
@@ -578,10 +590,6 @@ fn repo_path(project: &ProjectPath, rest: &str) -> Result<String, GithubError> {
         encode_path(owner),
         encode_path(name)
     ))
-}
-
-fn api_url(path: &str) -> String {
-    format!("{API_URL}{path}")
 }
 
 fn pull_path(

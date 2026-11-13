@@ -22,9 +22,9 @@ use krad_domain::review::{
     User, UserId,
 };
 use krad_domain::CodeHost;
+use krad_protocol::RequestId;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use super::settings_view::SettingsPane;
 use super::EnvironmentShell;
@@ -35,7 +35,7 @@ use crate::theme::{palette, Palette};
 pub(super) use changes::{diff_row, DIFF_GUTTER_W};
 use detail::{RequestDetail, ReviewTab};
 pub(super) use diff::{highlight_diff, numbered_lines, DiffLine, LineHighlights, LineKind};
-pub(super) use host::{origin_repo, repo_of_remote, HostClient, HostError as CodeHostError};
+pub(super) use host::{repo_of_remote, HostError as CodeHostError};
 use layout::{review_frame, ReviewFrame};
 use marks::{
     avatar, ci_color, ci_glyph, ci_label, merge_status_label, meta_line, state_color, state_label,
@@ -119,7 +119,7 @@ pub(super) enum Remote<T> {
 }
 
 struct Account {
-    client: Arc<HostClient>,
+    host: CodeHost,
     me: User,
 }
 
@@ -142,6 +142,7 @@ struct RowFacts {
 struct RequestList {
     root: PathBuf,
     filter: ReviewFilter,
+    request: RequestId,
     requests: Remote<(ProjectPath, Vec<MergeRequest>)>,
     facts: HashMap<MergeRequestIid, RowFacts>,
 }
@@ -177,9 +178,9 @@ impl EnvironmentShell {
         };
         let stale = match &self.review.connection {
             Connection::Idle => true,
-            Connection::Ready(account) => self
-                .review_host()
-                .is_some_and(|host| host != account.client.code_host()),
+            Connection::Ready(account) => {
+                self.review_host().is_some_and(|host| host != account.host)
+            }
             Connection::Connecting | Connection::SignedOut(_) | Connection::Failed(_) => false,
         };
         if stale {
@@ -254,7 +255,7 @@ impl EnvironmentShell {
 
     pub(super) fn review_words(&self) -> &'static HostWords {
         let host = match &self.review.connection {
-            Connection::Ready(account) => Some(account.client.code_host()),
+            Connection::Ready(account) => Some(account.host),
             _ => self.review_host(),
         };
         host_words(host.unwrap_or(CodeHost::Gitlab))

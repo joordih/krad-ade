@@ -7,7 +7,7 @@ use gpui_kit::component::switch::Switch;
 use gpui_kit::{div, px, AnyElement, Context, IntoElement, ParentElement, Styled, Window};
 use krad_domain::{CloudRunner, OfflineWebhooks};
 
-use super::super::cloud::RunnerState;
+use super::super::cloud::{linger_warning, runner_label, RunnerState};
 use super::super::dialog_parts::sheet_padded;
 use super::sections::{empty_row, footnote, pane_column, settings_section};
 use super::{form_row, hint, panel_card, EnvironmentShell};
@@ -37,7 +37,11 @@ pub(in crate::environment_shell) struct CloudRunnersUi {
 }
 
 fn runner_detail(runner: &CloudRunner, state: &RunnerState) -> String {
-    format!("{}{DETAIL_SEPARATOR}{}", runner.destination, state.label())
+    format!(
+        "{}{DETAIL_SEPARATOR}{}",
+        runner.destination,
+        runner_label(state)
+    )
 }
 
 impl EnvironmentShell {
@@ -66,26 +70,26 @@ impl EnvironmentShell {
                 .small()
                 .variant(ButtonVariant::Secondary)
         };
-        let controls = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(SPACE_2))
-            .child(button(RECONNECT_PREFIX, RECONNECT_LABEL).on_click(
-                cx.listener(move |this: &mut Self, _, _, cx| this.reconnect_runner(id, cx)),
-            ))
-            .child(button(REMOVE_PREFIX, REMOVE_LABEL).on_click(
-                cx.listener(move |this: &mut Self, _, _, cx| this.remove_cloud_runner(id, cx)),
-            ))
-            .into_any_element();
+        let controls =
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(SPACE_2))
+                .child(button(RECONNECT_PREFIX, RECONNECT_LABEL).on_click(
+                    cx.listener(move |this: &mut Self, _, _, _| this.reconnect_runner(id)),
+                ))
+                .child(button(REMOVE_PREFIX, REMOVE_LABEL).on_click(
+                    cx.listener(move |this: &mut Self, _, _, cx| this.remove_cloud_runner(id, cx)),
+                ))
+                .into_any_element();
         let row = form_row(
             runner.name.as_str(),
             Some(&runner_detail(runner, &state)),
             controls,
             pal,
         );
-        let warning = state
-            .linger_warning()
+        let warning = linger_warning(&state)
             .map(|warning| sheet_padded(hint(warning, pal)).into_any_element());
         let logins = self.runner_logins_row(id, pal, cx);
         std::iter::once(row)

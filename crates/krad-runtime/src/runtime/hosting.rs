@@ -167,7 +167,9 @@ impl Runtime {
             | JobDone::KraddieLines(_)
             | JobDone::Adapter(_)
             | JobDone::Variant(_)
-            | JobDone::CodeHosts(_) => {}
+            | JobDone::CodeHosts(_)
+            | JobDone::Review(_)
+            | JobDone::Runner(_) => {}
         }
     }
 

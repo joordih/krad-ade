@@ -1,10 +1,7 @@
-use gpui_kit::{AppContext as _, Context};
-use krad_domain::{CodeHost, EnvironmentView, GitlabSettings, Host};
-use krad_gitlab::GitlabConfig;
-use krad_host::HostLink;
-use std::path::{Path, PathBuf};
-
-use super::host::origin_repo;
+use gpui_kit::Context;
+use krad_domain::{CodeHost, EnvironmentName, EnvironmentView, Host};
+use krad_protocol::ReviewAct;
+use std::path::PathBuf;
 
 use crate::environment_shell::groups::GitKey;
 use crate::environment_shell::EnvironmentShell;
@@ -14,15 +11,6 @@ pub(super) enum Offer {
     Probing,
     On(CodeHost),
     Withheld,
-}
-
-fn probe(link: &HostLink, root: &Path, gitlab: &GitlabSettings) -> Option<CodeHost> {
-    let repo = origin_repo(link, root, GitlabConfig::try_from(gitlab).ok())?;
-    repo.login
-        .client()
-        .ok()
-        .flatten()
-        .map(|_| repo.login.code_host())
 }
 
 impl EnvironmentShell {
@@ -48,22 +36,25 @@ impl EnvironmentShell {
 
     fn start_probe(&mut self, key: GitKey, cx: &mut Context<Self>) {
         self.review.offers.insert(key.clone(), Offer::Probing);
-        let gitlab = self.settings.gitlab.clone();
-        let link = self.active_link();
-        let probed = cx.background_spawn({
-            let root = key.1.clone();
-            async move { probe(&link, &root, &gitlab) }
-        });
-        cx.spawn(async move |this, cx| {
-            let host = probed.await;
-            this.update(cx, |shell, cx| {
-                let offer = host.map_or(Offer::Withheld, Offer::On);
-                shell.review.offers.insert(key, offer);
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+        self.post_review(key.1, ReviewAct::Probe, cx);
+    }
+
+    pub(super) fn review_probed(
+        &mut self,
+        environment: &EnvironmentName,
+        root: PathBuf,
+        host: Option<CodeHost>,
+    ) {
+        let Some(live) = self.envs.get(environment) else {
+            return;
+        };
+        let key = (live.data.host.clone(), root);
+        if self.review.offers.get(&key) != Some(&Offer::Probing) {
+            return;
+        }
+        self.review
+            .offers
+            .insert(key, host.map_or(Offer::Withheld, Offer::On));
     }
 
     pub(in crate::environment_shell) fn forget_review_offers(

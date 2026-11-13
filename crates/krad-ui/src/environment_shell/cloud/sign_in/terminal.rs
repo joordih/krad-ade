@@ -99,7 +99,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let Some(link) = self.runner_link(runner) else {
-            self.ensure_runner_ready(runner, cx);
+            self.ensure_runner_ready(runner);
             return self.toast(ToastKind::Warning, NOT_READY, cx);
         };
         let program = match (cli.harness(), cli.git_program()) {

@@ -279,7 +279,7 @@ impl EnvironmentShell {
         Some(id)
     }
 
-    fn default_chat_harness(&self, env: &EnvironmentName) -> AgentPreset {
+    pub(super) fn default_chat_harness(&self, env: &EnvironmentName) -> AgentPreset {
         let available = self.agents_for(env, None);
         let chosen = self.settings.default_harness.as_offered(available);
         let preferred = chosen.has_structured_chat().then_some(chosen);

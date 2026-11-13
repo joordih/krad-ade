@@ -1,12 +1,10 @@
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
-    div, px, rgb, AnyElement, AppContext as _, ClipboardItem, Context, FontWeight, IntoElement,
-    ParentElement, Styled,
+    div, px, rgb, AnyElement, ClipboardItem, Context, FontWeight, IntoElement, ParentElement,
+    Styled,
 };
-use krad_github::{DeviceLogin, GithubClient, GithubError, GithubToken};
-use krad_store::{delete_github_login, find_github_login, write_github_login, LoginPlace};
-
-use krad_domain::ToastKind;
+use krad_domain::{CodeHost, LoginPlace, ToastKind};
+use krad_protocol::{CodeHostCommand, LoginState, SignInWith};
 
 use super::sections::{account_row, AccountRow};
 use super::EnvironmentShell;
@@ -28,7 +26,6 @@ const DISCONNECT_LABEL: &str = "Disconnect";
 const CANCEL_LABEL: &str = "Cancel";
 const OPEN_PAGE_LABEL: &str = "Open GitHub";
 const COPY_CODE_LABEL: &str = "Copy code";
-const SIGNED_OUT_TOAST: &str = "Signed out of GitHub";
 const CODE_COPIED_TOAST: &str = "Code copied. Paste it on the GitHub page that just opened.";
 const BTN_SIGN_IN: &str = "github-sign-in";
 const BTN_DISCONNECT: &str = "github-disconnect";
@@ -48,7 +45,6 @@ pub(super) enum GithubStatus {
 
 pub(super) struct GithubUi {
     pub(super) status: GithubStatus,
-    attempt: u64,
 }
 
 const fn place_text(place: LoginPlace) -> &'static str {
@@ -58,144 +54,60 @@ const fn place_text(place: LoginPlace) -> &'static str {
     }
 }
 
-fn check_login() -> Result<GithubStatus, String> {
-    let Some((token, place)) = find_github_login().map_err(|error| error.to_string())? else {
-        return Ok(GithubStatus::SignedOut);
-    };
-    match GithubClient::new(&token).current_user() {
-        Ok(user) => Ok(GithubStatus::SignedIn(Some(user.username), place)),
-        Err(GithubError::SignedOut) => Ok(GithubStatus::SignedOut),
-        Err(_) => Ok(GithubStatus::SignedIn(None, place)),
+impl GithubStatus {
+    pub(super) fn heard(state: LoginState) -> Option<Self> {
+        Some(match state {
+            LoginState::Checking => Self::Checking,
+            LoginState::SignedOut => Self::SignedOut,
+            LoginState::SignedIn { username, place } => Self::SignedIn(username, place),
+            LoginState::WaitingForCode {
+                user_code, page, ..
+            } => Self::WaitingForCode { user_code, page },
+            LoginState::WaitingForBrowser { .. } | LoginState::Unknown => return None,
+        })
     }
-}
-
-fn keep_login(token: &GithubToken) -> Result<String, String> {
-    write_github_login(token).map_err(|error| error.to_string())?;
-    GithubClient::new(token)
-        .current_user()
-        .map(|user| user.username)
-        .map_err(|error| error.to_string())
 }
 
 impl EnvironmentShell {
     pub(super) const fn github_ui() -> GithubUi {
         GithubUi {
             status: GithubStatus::Checking,
-            attempt: 0,
         }
     }
 
-    fn github_ui_mut(&mut self) -> Option<&mut GithubUi> {
-        self.settings_ui.as_mut().map(|ui| &mut ui.github)
-    }
-
-    fn set_github_status(&mut self, status: GithubStatus, cx: &mut Context<Self>) {
-        if let Some(github) = self.github_ui_mut() {
+    pub(super) fn github_heard(&mut self, state: LoginState, cx: &mut Context<Self>) {
+        let Some(status) = GithubStatus::heard(state) else {
+            return;
+        };
+        if let GithubStatus::WaitingForCode { user_code, page } = &status {
+            cx.write_to_clipboard(ClipboardItem::new_string(user_code.clone()));
+            cx.open_url(page);
+            self.toast(ToastKind::Success, CODE_COPIED_TOAST, cx);
+        }
+        if let Some(github) = self.settings_ui.as_mut().map(|ui| &mut ui.github) {
             github.status = status;
             cx.notify();
         }
     }
 
-    fn is_github_attempt(&mut self, attempt: u64) -> bool {
-        self.github_ui_mut()
-            .is_some_and(|github| github.attempt == attempt)
+    pub(super) fn refresh_github_status(&self) {
+        let host = CodeHost::Github;
+        self.post_code_host(CodeHostCommand::Check { host });
     }
 
-    pub(super) fn refresh_github_status(&mut self, cx: &mut Context<Self>) {
-        self.set_github_status(GithubStatus::Checking, cx);
-        let check = cx.background_spawn(async move { check_login() });
-        cx.spawn(async move |this, cx| {
-            let checked = check.await;
-            this.update(cx, |shell, cx| {
-                let status = checked.unwrap_or_else(|error| {
-                    shell.toast(ToastKind::Error, &error, cx);
-                    GithubStatus::SignedOut
-                });
-                shell.set_github_status(status, cx);
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+    fn cancel_github_sign_in(&self) {
+        let host = CodeHost::Github;
+        self.post_code_host(CodeHostCommand::Cancel { host });
     }
 
-    fn cancel_github_sign_in(&mut self, cx: &mut Context<Self>) {
-        if let Some(github) = self.github_ui_mut() {
-            github.attempt += 1;
-        }
-        self.refresh_github_status(cx);
+    fn sign_in_github(&self) {
+        let with = SignInWith::GithubDevice;
+        self.post_code_host(CodeHostCommand::SignIn { with });
     }
 
-    fn sign_in_github(&mut self, cx: &mut Context<Self>) {
-        let Some(attempt) = self.github_ui_mut().map(|github| {
-            github.attempt += 1;
-            github.attempt
-        }) else {
-            return;
-        };
-        cx.spawn(async move |this, cx| {
-            let background = cx.background_executor().clone();
-            let started = background.spawn(async move { DeviceLogin::start() }).await;
-            let outcome = match started {
-                Ok(login) => {
-                    let waiting = GithubStatus::WaitingForCode {
-                        user_code: login.user_code.clone(),
-                        page: login.verification_uri.clone(),
-                    };
-                    let page = login.verification_uri.clone();
-                    let code = login.user_code.clone();
-                    this.update(cx, |shell, cx| {
-                        if shell.is_github_attempt(attempt) {
-                            shell.set_github_status(waiting, cx);
-                            cx.write_to_clipboard(ClipboardItem::new_string(code));
-                            cx.open_url(&page);
-                            shell.toast(ToastKind::Success, CODE_COPIED_TOAST, cx);
-                        }
-                    })
-                    .unwrap_or_default();
-                    background.spawn(async move { login.finish() }).await
-                }
-                Err(error) => Err(error),
-            };
-            let current = this
-                .update(cx, |shell, _| shell.is_github_attempt(attempt))
-                .unwrap_or_default();
-            if !current {
-                return;
-            }
-            let kept = match outcome {
-                Ok(token) => background.spawn(async move { keep_login(&token) }).await,
-                Err(error) => Err(error.to_string()),
-            };
-            this.update(cx, |shell, cx| {
-                match kept {
-                    Ok(username) => shell.toast(
-                        ToastKind::Success,
-                        &format!("Signed in to GitHub as @{username}"),
-                        cx,
-                    ),
-                    Err(text) => shell.toast(ToastKind::Error, &text, cx),
-                }
-                shell.refresh_github_status(cx);
-            })
-            .unwrap_or_default();
-        })
-        .detach();
-    }
-
-    fn sign_out_github(cx: &mut Context<Self>) {
-        let delete = cx.background_spawn(async move { delete_github_login() });
-        cx.spawn(async move |this, cx| {
-            let deleted = delete.await;
-            this.update(cx, |shell, cx| {
-                match deleted {
-                    Ok(()) => shell.toast(ToastKind::Success, SIGNED_OUT_TOAST, cx),
-                    Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
-                }
-                shell.refresh_github_status(cx);
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+    fn sign_out_github(&self) {
+        let host = CodeHost::Github;
+        self.post_code_host(CodeHostCommand::SignOut { host });
     }
 
     pub(super) fn github_account(status: &GithubStatus, cx: &mut Context<Self>) -> AnyElement {
@@ -256,13 +168,13 @@ impl EnvironmentShell {
                 .label(SIGN_IN_LABEL)
                 .small()
                 .variant(ButtonVariant::Primary)
-                .on_click(cx.listener(|this: &mut Self, _, _, cx| this.sign_in_github(cx)))
+                .on_click(cx.listener(|this: &mut Self, _, _, _| this.sign_in_github()))
                 .into_any_element()],
             GithubStatus::SignedIn(..) => vec![Button::new(BTN_DISCONNECT)
                 .label(DISCONNECT_LABEL)
                 .small()
                 .variant(ButtonVariant::Secondary)
-                .on_click(cx.listener(|_: &mut Self, _, _, cx| Self::sign_out_github(cx)))
+                .on_click(cx.listener(|this: &mut Self, _, _, _| this.sign_out_github()))
                 .into_any_element()],
             GithubStatus::WaitingForCode { user_code, page } => {
                 let code = user_code.clone();
@@ -286,8 +198,8 @@ impl EnvironmentShell {
                         .label(CANCEL_LABEL)
                         .small()
                         .variant(ButtonVariant::Secondary)
-                        .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                            this.cancel_github_sign_in(cx);
+                        .on_click(cx.listener(|this: &mut Self, _, _, _| {
+                            this.cancel_github_sign_in();
                         }))
                         .into_any_element(),
                 ]

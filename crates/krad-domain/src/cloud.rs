@@ -1,11 +1,13 @@
 mod claude_token;
 mod placement;
 mod runner;
+mod runner_state;
 mod webhooks;
 
 pub use claude_token::{ClaudeOauthToken, ClaudeOauthTokenError};
 pub use placement::{CloudPlacement, CloudProcess, OpencodePassword};
 pub use runner::*;
+pub use runner_state::{Linger, RunnerState};
 pub use webhooks::{RunnerWebhooks, SyncedWebhook, WebhookTarget};
 
 use serde::{Deserialize, Serialize};

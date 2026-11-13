@@ -104,6 +104,7 @@ mod tests {
             settings: Box::default(),
             git: Vec::new(),
             kraddies: Box::default(),
+            runners: Vec::new(),
         }
     }
 

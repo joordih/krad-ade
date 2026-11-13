@@ -44,7 +44,8 @@ numeric_id!(PipelineId);
 numeric_id!(JobId);
 numeric_id!(IssueNumber);
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub struct ProjectPath(String);
 
 #[derive(Debug, PartialEq, Eq)]
@@ -70,6 +71,20 @@ impl FromStr for ProjectPath {
     }
 }
 
+impl TryFrom<String> for ProjectPath {
+    type Error = InvalidProjectPath;
+
+    fn try_from(path: String) -> Result<Self, InvalidProjectPath> {
+        path.parse()
+    }
+}
+
+impl From<ProjectPath> for String {
+    fn from(path: ProjectPath) -> Self {
+        path.0
+    }
+}
+
 impl fmt::Display for ProjectPath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
@@ -82,7 +97,7 @@ impl AsRef<str> for ProjectPath {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub enum HeadRepository {
     #[default]
     Same,
@@ -113,17 +128,18 @@ impl CommitSha {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
 pub struct DiscussionId(pub String);
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct User {
     pub id: UserId,
     pub username: String,
     pub name: String,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub enum MergeRequestState {
     Opened,
     Closed,
@@ -132,7 +148,7 @@ pub enum MergeRequestState {
     Other,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub enum MergeStatus {
     Mergeable,
     Checking,
@@ -147,7 +163,7 @@ pub enum MergeStatus {
     Other,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct MergeRequest {
     pub iid: MergeRequestIid,
     pub title: String,
@@ -170,13 +186,13 @@ pub struct MergeRequest {
     pub diff_refs: Option<DiffRefs>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DiffRefs {
     pub base_sha: CommitSha,
     pub head_sha: CommitSha,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Commit {
     pub id: CommitSha,
     pub short_id: String,
@@ -187,7 +203,7 @@ pub struct Commit {
     pub web_url: Option<String>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Change {
     pub old_path: String,
     pub new_path: String,
@@ -197,7 +213,7 @@ pub struct Change {
     pub deleted_file: bool,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Discussion {
     pub id: DiscussionId,
     pub individual_note: bool,
@@ -221,7 +237,7 @@ impl Discussion {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Note {
     pub id: NoteId,
     pub body: String,
@@ -233,7 +249,7 @@ pub struct Note {
     pub position: Option<NotePosition>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct NotePosition {
     pub old_path: Option<String>,
     pub new_path: Option<String>,
@@ -241,7 +257,7 @@ pub struct NotePosition {
     pub new_line: Option<u32>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Approvals {
     pub approved: bool,
     pub approvals_required: u32,
@@ -249,12 +265,12 @@ pub struct Approvals {
     pub approved_by: Vec<Approval>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Approval {
     pub user: User,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub enum CiStatus {
     Created,
     WaitingForResource,
@@ -271,7 +287,7 @@ pub enum CiStatus {
     Other,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Pipeline {
     pub id: PipelineId,
     pub sha: CommitSha,
@@ -282,7 +298,7 @@ pub struct Pipeline {
     pub duration: Option<u64>,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Job {
     pub id: JobId,
     pub name: String,
@@ -292,7 +308,9 @@ pub struct Job {
     pub duration: Option<f64>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, Hash, Debug, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum StateFilter {
     #[default]
     Opened,
@@ -301,7 +319,9 @@ pub enum StateFilter {
     All,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, Hash, Debug, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum Scope {
     #[default]
     All,
@@ -309,7 +329,9 @@ pub enum Scope {
     AssignedToMe,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, Hash, Debug, Default, serde::Serialize, serde::Deserialize,
+)]
 pub struct MergeRequestQuery {
     pub state: StateFilter,
     pub scope: Scope,
@@ -324,7 +346,7 @@ pub struct NewMergeRequest {
     pub description: String,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct MergeOptions {
     pub sha: Option<CommitSha>,
     pub squash: bool,
@@ -358,5 +380,13 @@ mod tests {
             Err(InvalidProjectPath)
         );
         assert_eq!(" ".parse::<ProjectPath>(), Err(InvalidProjectPath));
+    }
+
+    #[test]
+    fn a_project_path_is_read_back_only_when_valid() -> serde_json::Result<()> {
+        let path: ProjectPath = serde_json::from_str(r#""team/app""#)?;
+        assert_eq!(serde_json::to_string(&path)?, r#""team/app""#);
+        assert!(serde_json::from_str::<ProjectPath>(r#""team//app""#).is_err());
+        Ok(())
     }
 }

@@ -138,8 +138,8 @@ impl EnvironmentShell {
                 Button::new(BTN_CLOSE)
                     .icon(IconName::Close)
                     .tooltip(CANCEL_LABEL)
-                    .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                        this.cancel_gitlab_sign_in(cx);
+                    .on_click(cx.listener(|this: &mut Self, _, _, _| {
+                        this.cancel_gitlab_sign_in();
                     })),
             )
             .into_any_element()
@@ -257,8 +257,8 @@ impl EnvironmentShell {
                 Button::new(BTN_CANCEL)
                     .label(CANCEL_LABEL)
                     .variant(ButtonVariant::Secondary)
-                    .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                        this.cancel_gitlab_sign_in(cx);
+                    .on_click(cx.listener(|this: &mut Self, _, _, _| {
+                        this.cancel_gitlab_sign_in();
                     })),
             )
             .into_any_element()

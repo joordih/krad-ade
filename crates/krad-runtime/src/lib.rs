@@ -17,6 +17,8 @@ mod launches;
 mod mcp;
 mod models;
 mod opencode;
+mod reviews;
+mod runners;
 mod runtime;
 mod settings;
 mod subscribers;
@@ -49,6 +51,7 @@ pub use mcp::{
     code_tools_server, mcp_servers, read_project_mcp, trust_of, trusted_servers, with_secrets,
     McpLaunch, McpTrust,
 };
+pub use runners::ReadyRunner;
 pub use runtime::{Runtime, RuntimeSetup};
 pub use settings::SettingsSetup;
 pub use terminals::{

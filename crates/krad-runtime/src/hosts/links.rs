@@ -1,4 +1,4 @@
-use krad_domain::Host;
+use krad_domain::{Host, InstallId};
 use krad_host::mux::PromptSender;
 use krad_host::{HostContext, HostLink};
 use std::collections::HashMap;
@@ -31,6 +31,11 @@ impl HostLinks {
         let mut registry = self.0.write().unwrap_or_else(PoisonError::into_inner);
         let prompts = registry.context.prompts.take();
         registry.context = HostContext { prompts, ..context };
+    }
+
+    pub(crate) fn install_id(&self) -> Option<InstallId> {
+        let registry = self.0.read().unwrap_or_else(PoisonError::into_inner);
+        registry.context.install_id.clone()
     }
 
     pub(crate) fn prompts(&self) -> Option<PromptSender> {

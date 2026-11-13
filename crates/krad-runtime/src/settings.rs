@@ -1,4 +1,4 @@
-use krad_domain::{McpProjectTrust, Settings};
+use krad_domain::{CloudProcessId, CloudRunnerId, McpProjectTrust, Settings};
 use krad_protocol::{EventKind, Reply, SettingsCommand};
 use krad_store::{config_dir, settings_file_in, LayoutWriter};
 use std::path::{Path, PathBuf};
@@ -81,6 +81,21 @@ impl AppSettings {
         });
     }
 
+    pub(crate) fn take_cloud_stops(
+        &mut self,
+        runner: CloudRunnerId,
+        outbox: &mut Vec<EventKind>,
+    ) -> Vec<CloudProcessId> {
+        let stops = self.current.cloud.take_stops(runner);
+        if !stops.is_empty() {
+            self.dirty = true;
+            outbox.push(EventKind::SettingsChanged {
+                settings: Box::new(self.current.clone()),
+            });
+        }
+        stops
+    }
+
     pub(crate) fn not_saved(error: String, outbox: &mut Vec<EventKind>) {
         tracing::warn!(%error, "could not save the settings");
         outbox.push(EventKind::SettingsNotSaved { error });
@@ -105,5 +120,40 @@ impl AppSettings {
 
     pub(crate) fn snapshot(&self) -> Box<Settings> {
         Box::new(self.current.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc::sync_channel;
+
+    #[test]
+    fn queued_stops_of_a_runner_are_taken_once_and_announced(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut settings = Settings::default();
+        let gpu = settings.cloud.add("gpu".parse()?, "me@gpu".parse()?);
+        let other = settings.cloud.add("other".parse()?, "me@other".parse()?);
+        let process: CloudProcessId = "api-2-a1b2c3".parse()?;
+        settings.cloud.queue_stop(gpu, process.clone());
+        settings.cloud.queue_stop(other, "web-3-d4e5f6".parse()?);
+        let (inbox, _input) = sync_channel(1);
+        let mut kept = AppSettings::start(
+            SettingsSetup {
+                settings,
+                file: None,
+            },
+            &inbox,
+        );
+        let mut outbox = Vec::new();
+        assert_eq!(kept.take_cloud_stops(gpu, &mut outbox), vec![process]);
+        assert!(matches!(
+            outbox.as_slice(),
+            [EventKind::SettingsChanged { .. }]
+        ));
+        assert_eq!(kept.take_cloud_stops(gpu, &mut outbox), Vec::new());
+        assert_eq!(outbox.len(), 1);
+        assert_eq!(kept.current.cloud.take_stops(other).len(), 1);
+        Ok(())
     }
 }

@@ -2,6 +2,7 @@ use gpui_kit::Context;
 use krad_domain::{AgentPreset, CloudRunnerId, EnvironmentName, TerminalId};
 
 use super::super::EnvironmentShell;
+use super::state::runner_label;
 use super::stops::REMOVED_RUNNER;
 
 const CONNECTING_PREFIX: &str = "Connecting to cloud runner";
@@ -17,12 +18,11 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
         runner: CloudRunnerId,
-        cx: &mut Context<Self>,
     ) {
         let text = if self.runner_removed_from_settings(runner) {
             REMOVED_RUNNER.to_owned()
         } else {
-            self.ensure_runner_ready(runner, cx);
+            self.ensure_runner_ready(runner);
             format!("{CONNECTING_PREFIX} {}", self.runner_name(runner))
         };
         if let Some(chat) = self
@@ -67,7 +67,7 @@ impl EnvironmentShell {
             let text = format!(
                 "{RUNNER_PREFIX} {}: {}",
                 self.runner_name(runner),
-                self.runner_state(runner).label()
+                runner_label(&self.runner_state(runner))
             );
             for (env, id) in chats {
                 if let Some(chat) = self
@@ -83,7 +83,6 @@ impl EnvironmentShell {
         self.forget_runner_webhooks(runner);
         self.start_runner_return(runner, cx);
         self.start_pending_cloud_sessions(runner, cx);
-        self.run_queued_stops(runner, cx);
         self.check_runner_logins(runner, cx);
         for (env, id) in chats {
             if let Some(chat) = self

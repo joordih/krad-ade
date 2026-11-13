@@ -5,9 +5,9 @@ use gpui_kit::{
     div, px, rgb, AnyElement, ClipboardItem, Context, Entity, FontWeight, IntoElement,
     ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
+use krad_domain::LoginPlace;
 use krad_domain::{relative_age, GitlabSignIn, ToastKind};
 use krad_gitlab::{REDIRECT_URI, SCOPE};
-use krad_store::LoginPlace;
 use std::time::Duration;
 
 use super::super::super::dialog_parts::{sheet_group, sheet_row_with};
@@ -178,8 +178,8 @@ impl EnvironmentShell {
                     .label(CANCEL_LABEL)
                     .small()
                     .variant(ButtonVariant::Secondary)
-                    .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                        this.cancel_gitlab_sign_in(cx);
+                    .on_click(cx.listener(|this: &mut Self, _, _, _| {
+                        this.cancel_gitlab_sign_in();
                     })),
             ),
         };

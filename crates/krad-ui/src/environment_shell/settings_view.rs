@@ -4,6 +4,7 @@ mod backdrop_image;
 mod beta;
 mod chat;
 mod cloud_runners;
+mod code_host_logins;
 mod editor;
 mod extensions;
 mod flat_pane;
@@ -226,8 +227,8 @@ impl EnvironmentShell {
             theme_editor: None,
             scroll: gpui_kit::ScrollHandle::new(),
         });
-        self.refresh_gitlab_status(cx);
-        self.refresh_github_status(cx);
+        self.refresh_gitlab_status();
+        self.refresh_github_status();
         self.load_group_remotes(cx);
         cx.notify();
     }
@@ -317,7 +318,7 @@ impl EnvironmentShell {
             self.refresh_skill_library(cx);
         }
         if pane == SettingsPane::CloudRunners {
-            self.show_cloud_runners(cx);
+            self.show_cloud_runners();
         }
         cx.notify();
     }

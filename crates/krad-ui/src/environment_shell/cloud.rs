@@ -4,7 +4,6 @@ mod bus;
 mod carry;
 mod catch_up;
 mod entry;
-mod install;
 mod naming;
 mod opencode;
 mod patch_dialog;
@@ -27,21 +26,22 @@ mod workspace;
 pub(in crate::environment_shell) use actions::CloudAction;
 pub(in crate::environment_shell) use badge::{cloud_marker, CloudBadge};
 pub(in crate::environment_shell) use entry::CloudMenu;
+pub(in crate::environment_shell) use krad_domain::RunnerState;
 pub(in crate::environment_shell) use shells::CloudShell;
 pub(in crate::environment_shell) use sign_in::{RunnerCli, RunnerLogin};
 pub(in crate::environment_shell) use site::{CloudSite, NodeSite};
-pub(in crate::environment_shell) use state::RunnerState;
+pub(in crate::environment_shell) use state::{linger_warning, runner_label};
 
 use krad_chat::CloudRun;
 use krad_domain::{ClaudeOauthToken, CloudRunnerId, EnvironmentName, Pairing, TerminalId};
 use krad_host::HostLink;
+use krad_runtime::ReadyRunner;
 use krad_session::PtyOpener;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Instant;
 
-use self::bus::RemoteBusSlot;
-use self::install::PreparedRunner;
+use self::bus::RunnerBus;
 use self::process::{Liveness, LivenessCheck};
 use self::sessions::{PatchQuestion, PendingCloudSession};
 use self::sign_in::{LoopbackCallback, SignInWatch};
@@ -55,17 +55,9 @@ enum HelperTerminal {
     Plain,
 }
 
-pub(in crate::environment_shell) struct LiveRunner {
-    link: HostLink,
-    state: RunnerState,
-    prepared: Option<PreparedRunner>,
-    bus: RemoteBusSlot,
-    bus_port: Option<u16>,
-}
-
 #[derive(Default)]
 pub(super) struct CloudRunners {
-    live: HashMap<CloudRunnerId, LiveRunner>,
+    buses: HashMap<CloudRunnerId, RunnerBus>,
     attached: HashMap<NodeKey, CloudRun>,
     reattached: HashSet<NodeKey>,
     pending: Vec<PendingCloudSession>,
@@ -87,34 +79,33 @@ pub(super) struct CloudRunners {
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn runner_state(&self, id: CloudRunnerId) -> RunnerState {
-        self.cloud
-            .live
+        self.runtime
+            .view
+            .runners
             .get(&id)
-            .map_or_else(RunnerState::default, |live| live.state.clone())
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub(in crate::environment_shell) fn runner_link(&self, id: CloudRunnerId) -> Option<HostLink> {
-        let live = self.cloud.live.get(&id)?;
-        live.state.is_ready().then(|| live.link.clone())
+        self.ready_runner(id).map(|ready| ready.link)
     }
 
     pub(in crate::environment_shell) fn runner_pairing(
         &self,
         id: CloudRunnerId,
     ) -> Option<Pairing> {
-        self.ready_runner(id)
-            .map(|prepared| prepared.pairing.clone())
+        self.ready_runner(id).map(|ready| ready.pairing)
     }
 
     pub(in crate::environment_shell) fn runner_cli(&self, id: CloudRunnerId) -> Option<PathBuf> {
-        self.ready_runner(id).map(|prepared| prepared.cli.clone())
+        self.ready_runner(id).map(|ready| ready.cli)
     }
 
-    fn ready_runner(&self, id: CloudRunnerId) -> Option<&PreparedRunner> {
-        let live = self.cloud.live.get(&id)?;
-        live.state
+    fn ready_runner(&self, id: CloudRunnerId) -> Option<ReadyRunner> {
+        self.runner_state(id)
             .is_ready()
-            .then_some(live.prepared.as_ref())
+            .then(|| self.runtime.handle.runner(id))
             .flatten()
     }
 }

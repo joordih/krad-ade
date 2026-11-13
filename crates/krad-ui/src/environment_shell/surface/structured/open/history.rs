@@ -83,7 +83,7 @@ impl EnvironmentShell {
                 }
                 server
             }
-            NodeSite::Waiting(runner) => return self.note_cloud_wait(&env, id, runner, cx),
+            NodeSite::Waiting(runner) => return self.note_cloud_wait(&env, id, runner),
         };
         let Some(server) = server else {
             return;
@@ -117,7 +117,7 @@ impl EnvironmentShell {
                 };
                 (runner, site.placement.worktree)
             }),
-            NodeSite::Waiting(runner) => return self.note_cloud_wait(&env, id, runner, cx),
+            NodeSite::Waiting(runner) => return self.note_cloud_wait(&env, id, runner),
         };
         let (runner, cwd) = match found {
             Ok(found) => found,
@@ -214,7 +214,7 @@ impl EnvironmentShell {
                     .map(|group| group.root.clone()),
             ),
             NodeSite::Cloud(site) => (site.link, Some(site.placement.worktree)),
-            NodeSite::Waiting(runner) => return self.note_cloud_wait(&env, id, runner, cx),
+            NodeSite::Waiting(runner) => return self.note_cloud_wait(&env, id, runner),
         };
         let job = TailJob {
             link,

@@ -82,7 +82,7 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn connect_wanted_runners(&mut self, cx: &mut Context<Self>) {
         for runner in std::mem::take(&mut self.cloud.wanted) {
-            self.ensure_runner_ready(runner, cx);
+            self.ensure_runner_ready(runner);
         }
         self.check_cloud_processes(cx);
         self.service_runner_sign_ins(cx);
