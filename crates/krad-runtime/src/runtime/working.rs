@@ -106,6 +106,9 @@ impl Runtime {
         let Some(plan) = plan_spawn(data, session, preset) else {
             return Some(incoming);
         };
+        if plan.in_cloud && worktree.is_some() {
+            return Some(incoming);
+        }
         let pending = PendingWorker {
             lead: session,
             lead_terminal: plan.lead_terminal,
@@ -144,6 +147,7 @@ impl Runtime {
         let opened_session = data.next_session_id();
         let label = self.settings.current.acp.harness_name(preset);
         let node = worker_node(id, &label, preset, Some(group));
+        let cloud = data.session(lead).and_then(|session| session.cloud.clone());
         let lead_mode = lead_terminal
             .and_then(|terminal| self.chats.permission_mode(&agent(environment, terminal)));
         let opened = NodeEdit::Open {
@@ -154,7 +158,7 @@ impl Runtime {
                     lead: Some(lead),
                     task: task.clone(),
                 },
-                cloud: None,
+                cloud,
             },
         };
         self.environments
@@ -195,6 +199,7 @@ impl Runtime {
         self.workers.closed(worker);
         self.chats.close(worker, &mut self.outbox);
         self.terminals.close(worker);
+        self.stop_cloud_node(worker);
         let environment = worker.environment.clone();
         if forget {
             let forgotten = NodeEdit::ForgetWorker {

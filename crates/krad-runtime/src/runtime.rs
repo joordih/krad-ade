@@ -14,6 +14,7 @@ use crate::attention::Attention;
 use crate::bus::{open, Bus};
 use crate::chats::{Chats, EditorBuffers};
 use crate::cloud::CloudSessions;
+use crate::cloud_runs::CloudRuns;
 use crate::code_hosts::CodeHostWatch;
 use crate::environments::Environments;
 use crate::gateway::Gateway;
@@ -40,6 +41,7 @@ mod bus_git;
 mod chatting;
 mod ci_fixing;
 mod cloud_results;
+mod cloud_nodes;
 mod clouding;
 mod code_host_watch;
 mod commands;
@@ -116,6 +118,7 @@ pub struct Runtime {
     reviews: Reviews,
     runners: Runners,
     cloud: CloudSessions,
+    cloud_runs: CloudRuns,
     gateway: Gateway,
     opencode: OpencodeServers,
     settings: AppSettings,
@@ -224,6 +227,7 @@ impl Runtime {
             reviews: Reviews::default(),
             runners: Runners::with_directory(owned.runners),
             cloud: CloudSessions::default(),
+            cloud_runs: CloudRuns::default(),
             gateway: Gateway::default(),
             opencode: OpencodeServers::new(inbox.clone(), owned.opencode),
             settings: owned.settings,
@@ -271,6 +275,7 @@ impl Runtime {
             self.settle_waiters();
             self.hear_ended_terminals(unread);
             self.follow_connections(unread);
+            self.settle_cloud_runs();
             self.flush();
             if flow == Flow::Stopping {
                 break;

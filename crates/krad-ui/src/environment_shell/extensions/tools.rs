@@ -3,7 +3,7 @@ use krad_agents::{
     extension_tool_name, ErrorCode, ExtensionToolAnswer, ExtensionToolEffect, ExtensionToolInfo,
     ExtensionToolOutcome, MemoryTools, Request, Response, ToolCatalog,
 };
-use krad_domain::{CodeTools, EnvironmentName, ExtensionTools};
+use krad_domain::{EnvironmentName, ExtensionTools};
 use krad_extensions::api::manifest::{ExtensionManifest, Placement, ToolEffect};
 use krad_extensions::api::protocol::{
     CallTool, CallToolParams, CallToolResult, ToolContent, ToolOutcome,
@@ -88,11 +88,6 @@ fn answer_of(result: CallToolResult) -> ExtensionToolAnswer {
 }
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn agent_tools_offered(&self) -> bool {
-        self.settings.code_tools == CodeTools::On
-            || self.settings.extension_tools == ExtensionTools::On
-            || self.memory_tools_offered()
-    }
 
     pub(in crate::environment_shell) fn tool_catalog(&self) -> ToolCatalog {
         let extension_tools = if self.settings.extension_tools == ExtensionTools::On {

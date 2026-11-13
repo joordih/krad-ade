@@ -316,6 +316,7 @@ impl Runtime {
         } else {
             starts
         };
+        self.open_carried_chats((&environment, session, group), &starts);
         self.outbox.push(EventKind::CloudSessionOpened(CloudOpened {
             environment,
             session,

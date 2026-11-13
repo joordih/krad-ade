@@ -382,7 +382,6 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &mut Context<Self>,
     ) {
-        self.stop_cloud_node(env, id, cx);
         self.digest_ended_chat(env, id, cx);
         self.end_worker_launch(env, id);
         let workers = self

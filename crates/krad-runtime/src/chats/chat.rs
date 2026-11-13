@@ -12,6 +12,7 @@ use std::time::SystemTime;
 use super::acp::AcpChat;
 use super::backend::{ChatLaunch, Choices};
 use super::brief::ChatBrief;
+use super::cloud::CloudChat;
 use super::mcp_prep::McpPrep;
 use super::ChatPlace;
 use crate::launches::AgentRole;
@@ -54,6 +55,7 @@ pub(super) enum HistoryWait {
     #[default]
     No,
     ForServer,
+    ForRunner,
 }
 
 pub(super) struct Chat {
@@ -96,6 +98,7 @@ pub(super) struct Chat {
     pub(super) transcript: Option<AcpTranscript>,
     pub(super) offered: Vec<CommandOffer>,
     pub(super) account: Option<String>,
+    pub(super) cloud: Option<CloudChat>,
     told: Option<ChatState>,
 }
 
@@ -153,6 +156,7 @@ impl Chat {
             transcript: None,
             offered: Vec::new(),
             account: None,
+            cloud: None,
             told: None,
         }
     }

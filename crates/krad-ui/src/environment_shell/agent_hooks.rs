@@ -1,18 +1,15 @@
 use gpui_kit::Context;
 use krad_agents::{ErrorCode, Response, TerminalHandle};
 use krad_domain::{
-    code_tools_launch_args, hook_launch_args, launch_with_prompt, quote_for_shell,
-    sanitize_worktree_name, worker_brief, AgentPreset, CloudPlacement, EnvironmentName,
-    ModelDelivery, ModelId, PermissionMode, SessionId, TerminalGroup, TerminalId, ToastKind,
+    sanitize_worktree_name, worker_brief, AgentPreset, CloudPlacement, EnvironmentName, PermissionMode, SessionId, TerminalGroup, TerminalId, ToastKind,
     WorkerSpawn,
 };
-use krad_protocol::{Conversation, HookHeard, HookOrigin, Typing};
+use krad_protocol::{Conversation, HookHeard, HookOrigin};
 use krad_runtime::{cli_name, BusReply};
 use std::collections::BTreeSet;
 
 use super::ask::HeldAskReport;
 use super::git_actions::GitFollowUp;
-use super::shell_site::ShellSite;
 use super::workers::WorkerLaunch;
 use super::EnvironmentShell;
 
@@ -42,58 +39,6 @@ pub(super) struct WorkerOf {
 }
 
 impl EnvironmentShell {
-    pub(super) fn agent_launch_line(
-        &self,
-        (env, id): (&EnvironmentName, TerminalId),
-        preset: AgentPreset,
-        site: ShellSite,
-        prompt: &str,
-        model: Option<&ModelId>,
-    ) -> Option<(String, Option<String>)> {
-        let mut line = self.settings.launch_line(preset)?;
-        let quoting = site.quoting();
-        if let (Some(model), Some(ModelDelivery::Flag(flag))) = (model, preset.model_delivery()) {
-            let model = quote_for_shell(model.as_str(), quoting);
-            line = format!("{line} {flag} {model}");
-        }
-        let cli = cli_name(site.is_wsl());
-        let remote = self.remote_bus(env).filter(|_| site == ShellSite::Ssh);
-        let cloud = self
-            .cloud_hook_settings(env, id)
-            .filter(|_| site == ShellSite::Cloud);
-        let reaches = site.reaches_bus() || remote.is_some() || cloud.is_some();
-        if let Some(bus) = self.runtime.handle.bus().filter(|_| reaches) {
-            let settings = match (remote, cloud) {
-                (Some(remote), _) => Some(remote.claude_settings.to_string_lossy().into_owned()),
-                (None, Some(cloud)) => Some(cloud),
-                (None, None) => bus
-                    .claude_settings
-                    .as_ref()
-                    .filter(|_| site.reads_local_files())
-                    .map(|path| path.to_string_lossy().into_owned()),
-            };
-            if let Some(args) = hook_launch_args(preset, cli, quoting, settings.as_deref()) {
-                line = format!("{line} {args}");
-            }
-            if self.agent_tools_offered() {
-                if let Some(args) = code_tools_launch_args(preset, cli, quoting) {
-                    line = format!("{line} {args}");
-                }
-            }
-            if let Some(flag) = preset.system_prompt_flag() {
-                let hint = self
-                    .role_of(env, id)
-                    .hint()
-                    .replace(krad_agents::CLI_PROGRAM, cli);
-                line = format!("{line} {flag} {}", quote_for_shell(&hint, quoting));
-            }
-        }
-        Some(launch_with_prompt(&line, preset, prompt, quoting))
-    }
-
-    pub(super) fn queue_prompt(&self, env: &EnvironmentName, id: TerminalId, text: String) {
-        self.type_typing(env, id, Typing::Prompt { text });
-    }
 
     pub(super) fn hook_heard(&mut self, heard: HookHeard) {
         let HookHeard {

@@ -100,6 +100,7 @@ impl Runtime {
             }
         }
         let runner = shown.runner;
+        self.cloud_runner_turned(runner, &shown.state);
         match &shown.state {
             state if state.is_ready() => self.start_waiting_cloud_sessions(runner),
             RunnerState::Failed { reason } => {
@@ -281,6 +282,7 @@ impl Runtime {
 
     #[tracing::instrument(skip_all, fields(%runner))]
     fn remove_runner(&mut self, runner: CloudRunnerId) -> Reply {
+        self.cloud_runner_removed(runner);
         if let Some(bus) = self.runners.buses.forget(runner) {
             self.outbox.push(EventKind::RunnerBusChanged(bus));
         }

@@ -11,15 +11,19 @@ use std::sync::Arc;
 
 use super::backend::{ChatLaunch, Choices, Unready};
 use super::brief::{ChatBrief, ChatRole};
+use super::cloud::{cloud_place, CloudChat};
 use super::{ChatPlace, EditorBuffers};
+use crate::cloud_runs::{placement_of, site_of, NodeSite};
 use crate::bus::BusAccess;
 use crate::environments::Environments;
 use crate::hosts::{remote_caller_vars, Hosts, Reach};
 use crate::kraddies::Kraddies;
 use crate::launches::{cli_name, local_caller_vars, AgentRole};
 use crate::models::Models;
+use crate::runners::Runners;
 
 mod acp;
+mod cloud;
 
 pub(super) use acp::resolve_acp;
 
@@ -41,6 +45,7 @@ pub(crate) struct LaunchFacts<'a> {
     pub(crate) kraddies: &'a Kraddies,
     pub(crate) buffers: &'a EditorBuffers,
     pub(crate) secrets: &'a krad_store::Secrets,
+    pub(crate) runners: &'a Runners,
 }
 
 pub(super) struct Resolved {
@@ -48,6 +53,8 @@ pub(super) struct Resolved {
     pub(super) notices: Vec<String>,
     pub(super) model_dropped: bool,
 }
+
+type LiveParts = (Runner, PathBuf, Option<String>, Vec<(String, String)>);
 
 struct Site<'a> {
     remote: Option<&'a RemoteBusInfo>,
@@ -94,11 +101,16 @@ pub(super) fn chat_folder(place: &ChatPlace) -> PathBuf {
 impl LaunchFacts<'_> {
     pub(crate) fn place(&self, chat: &AgentRef) -> Option<ChatPlace> {
         let data = self.environments.data(&chat.environment)?;
+        let cloud = placement_of(self.environments, chat);
+        if let NodeSite::Cloud(site) = site_of(cloud.clone(), self.runners) {
+            return Some(cloud_place(&site));
+        }
         let host = data.host.clone();
         Some(ChatPlace {
             link: self.hosts.link(&host),
             root: data.group_of(chat.terminal).map(|group| group.root.clone()),
             host,
+            cloud,
         })
     }
 
@@ -187,6 +199,11 @@ impl LaunchFacts<'_> {
         place: &ChatPlace,
     ) -> Result<(Runner, PathBuf), Unready> {
         let name = self.settings.acp.harness_name(harness);
+        if place.cloud.is_some() {
+            let link = place.link.clone();
+            let cwd = place.root.clone().ok_or(Unready::Waiting)?;
+            return Ok((Runner::Ssh { link, program }, cwd));
+        }
         if let HostLink::Remote(ssh) = &place.link {
             let found = self
                 .hosts
@@ -246,21 +263,13 @@ impl LaunchFacts<'_> {
 
     fn live_config(
         &self,
-        chat: &AgentRef,
-        (harness, place): (AgentPreset, &ChatPlace),
+        (chat, harness, place, cloud): (&AgentRef, AgentPreset, &ChatPlace, Option<&CloudChat>),
         brief: &ChatBrief,
         choices: &Choices,
     ) -> Result<(LiveConfig, Offered), Unready> {
-        let site = self.site(chat, place)?;
-        let (runner, cwd) = self.runner(chat, harness, place)?;
-        let off_bus = runner.on_ssh() && site.remote.is_none();
-        let (system_prompt, bus_vars) = match brief.role {
-            ChatRole::Digest => (None, Vec::new()),
-            ChatRole::Agent if off_bus => (self.memory(chat), Vec::new()),
-            ChatRole::Agent => (
-                self.system_prompt(site.role, runner.in_wsl(), self.memory(chat).as_deref()),
-                self.bus_vars(chat, place, runner.in_wsl()),
-            ),
+        let (runner, cwd, system_prompt, bus_vars) = match cloud {
+            Some(cloud) => self.cloud_live(chat, harness, brief, cloud)?,
+            None => self.env_live(chat, (harness, place), brief)?,
         };
         let offered = self.offered(harness, place, choices);
         let config = LiveConfig {
@@ -274,6 +283,26 @@ impl LaunchFacts<'_> {
             usage_budget: Arc::clone(self.usage_budget),
         };
         Ok((config, offered))
+    }
+
+    fn env_live(
+        &self,
+        chat: &AgentRef,
+        (harness, place): (AgentPreset, &ChatPlace),
+        brief: &ChatBrief,
+    ) -> Result<LiveParts, Unready> {
+        let site = self.site(chat, place)?;
+        let (runner, cwd) = self.runner(chat, harness, place)?;
+        let off_bus = runner.on_ssh() && site.remote.is_none();
+        let (system_prompt, bus_vars) = match brief.role {
+            ChatRole::Digest => (None, Vec::new()),
+            ChatRole::Agent if off_bus => (self.memory(chat), Vec::new()),
+            ChatRole::Agent => (
+                self.system_prompt(site.role, runner.in_wsl(), self.memory(chat).as_deref()),
+                self.bus_vars(chat, place, runner.in_wsl()),
+            ),
+        };
+        Ok((runner, cwd, system_prompt, bus_vars))
     }
 
     fn engine_config(
@@ -318,7 +347,7 @@ impl LaunchFacts<'_> {
 
     pub(super) fn resolve(
         &self,
-        (chat, harness, place): (&AgentRef, AgentPreset, &ChatPlace),
+        (chat, harness, place, cloud): (&AgentRef, AgentPreset, &ChatPlace, Option<&CloudChat>),
         (brief, choices): (&ChatBrief, &Choices),
         mcp: Vec<krad_domain::McpServerStart>,
     ) -> Result<Resolved, Unready> {
@@ -333,7 +362,7 @@ impl LaunchFacts<'_> {
                 });
             }
             AgentPreset::ClaudeCode | AgentPreset::Codex | AgentPreset::Opencode => {
-                self.live_config(chat, (harness, place), brief, choices)?
+                self.live_config((chat, harness, place, cloud), brief, choices)?
             }
             AgentPreset::Acp(_) | AgentPreset::Shell => return Err(problem(name, NO_CHAT_TEXT)),
         };

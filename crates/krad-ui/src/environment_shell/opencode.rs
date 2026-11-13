@@ -36,7 +36,6 @@ impl OpencodeMirror {
 #[derive(Default)]
 pub(super) struct Opencode {
     unwatched: Vec<(EnvironmentName, TerminalId, ResumeId)>,
-    pub(super) waiting_histories: Vec<(EnvironmentName, TerminalId, ResumeId)>,
     watches: HashMap<(EnvironmentName, TerminalId), gpui_kit::Task<()>>,
 }
 

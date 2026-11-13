@@ -56,6 +56,7 @@ pub fn start_with(harness: AgentPreset, launch: ChatLaunch, session: LiveSession
                 host: Host::Local,
                 link: HostLink::Local,
                 root: None,
+                cloud: None,
             },
         }),
         session,

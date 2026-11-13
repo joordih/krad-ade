@@ -1,7 +1,7 @@
 use gpui_kit::Context;
 use krad_domain::{
-    EnvironmentData, EnvironmentName, EnvironmentViewPreferences, Layout, NodeEdit, NodeField,
-    SessionEdit, SidePanelLayout, TerminalId, TerminalNode, ToastKind, ViewPreferences,
+    EnvironmentData, EnvironmentName, EnvironmentViewPreferences, Layout,
+    SessionEdit, SidePanelLayout, TerminalId, ToastKind, ViewPreferences,
     DEFAULT_ENVIRONMENT, LAYOUT_SCHEMA_VERSION,
 };
 use krad_protocol::Command;
@@ -87,29 +87,6 @@ impl EnvironmentShell {
         side_panel
     }
 
-    fn keep_cloud_offsets(&mut self) {
-        let moved: Vec<(EnvironmentName, TerminalNode)> = self
-            .order
-            .iter()
-            .filter_map(|name| Some((name, self.envs.get(name)?)))
-            .flat_map(|(name, live)| {
-                self.nodes_with_offsets(name, &live.data.nodes)
-                    .into_iter()
-                    .zip(&live.data.nodes)
-                    .filter(|(offset, kept)| offset.cloud != kept.cloud)
-                    .map(|(offset, _)| (name.clone(), offset))
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-        for (env, node) in moved {
-            let kept = NodeEdit::Set {
-                terminal: node.id,
-                field: NodeField::Cloud(node.cloud),
-            };
-            self.apply_edit(&env, kept);
-        }
-    }
-
     fn view_preferences(&self, environments: &[EnvironmentData]) -> ViewPreferences {
         ViewPreferences {
             version: LAYOUT_SCHEMA_VERSION,
@@ -138,7 +115,6 @@ impl EnvironmentShell {
     }
 
     pub(super) fn store(&mut self) {
-        self.keep_cloud_offsets();
         let environments: Vec<EnvironmentData> = self
             .order
             .iter()

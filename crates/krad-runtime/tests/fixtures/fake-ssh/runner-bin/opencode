@@ -1,0 +1,5 @@
+#!/bin/sh
+case "$1" in
+  --version) echo "0.15.0" ;;
+  *) exit 1 ;;
+esac

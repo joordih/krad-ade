@@ -5,73 +5,35 @@ mod forks;
 mod mcp;
 mod open;
 mod orchestrator;
-mod reattach;
 mod rewind;
 mod runtime_chat;
 
-use gpui_kit::Context;
 use krad_chat::{
-    new_session_id, AcpEvent, Catalog, ChatEvent, CommandOffer, LiveChat, LiveEvent, LiveSession,
-    ModelOffer, ResumeRefused, SlashCommand,
+    new_session_id, Catalog, CommandOffer, LiveSession, SlashCommand,
 };
 use krad_domain::{
-    AgentPreset, AgentState, AttentionKind, ChatEntry, Effort, EffortSnap, EnvironmentName,
-    McpServerName, Mention, ModelId, PermissionMode, Prompt, ResumeId, TerminalId, UsageReport,
+    AgentPreset, Effort, EffortSnap, EnvironmentName,
+    McpServerName, ModelId, PermissionMode, ResumeId, TerminalId,
 };
-use krad_protocol::UsageNews;
-use krad_store::{acp_transcript_file, AcpTranscript};
-use std::time::Instant;
+use krad_store::acp_transcript_file;
 
-use super::super::ask::{AskQueue, Waiting};
-use super::super::chat::{fold_entry, fold_prompt, ChatMessage, LiveProcess};
+use super::super::ask::AskQueue;
 use super::super::EnvironmentShell;
-use super::acp::{AcpChoice, AcpOffers};
+use super::acp::AcpOffers;
 use super::outbox::Outbox;
-use super::{anchor, Backend, SurfaceChat, SurfaceCommand};
+use super::{Backend, SurfaceChat, SurfaceCommand};
 
 pub(super) use acp::read_acp_env;
 pub(in crate::environment_shell) use acp::read_acp_secrets;
-use acp::AcpSecretsPrep;
-use mcp::McpPrep;
 pub(in crate::environment_shell) use open::restored_chats;
-use open::Earlier;
-use rewind::Rewinding;
 pub(in crate::environment_shell) use runtime_chat::ChatDriver;
 use runtime_chat::RuntimeShown;
 
 const FULL_PERCENT: u64 = 100;
 const THINKING_DEFAULT: bool = true;
-const NOTICE_SEPARATOR: &str = "\n";
-
-fn add_notice(problem: &mut Option<String>, notice: &str) {
-    match problem {
-        Some(shown) => {
-            shown.push_str(NOTICE_SEPARATOR);
-            shown.push_str(notice);
-        }
-        None => *problem = Some(notice.to_owned()),
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-struct Batch {
-    commands: Vec<SlashCommand>,
-    message: Option<Prompt>,
-}
-
-impl Batch {
-    fn results(&self) -> usize {
-        self.commands.len() + usize::from(self.message.is_some())
-    }
-}
-
 pub(in crate::environment_shell) struct StructuredChat {
     pub(in crate::environment_shell) harness: AgentPreset,
-    pub(super) live: Option<LiveProcess>,
     pub(super) session: LiveSession,
-    fell_back: bool,
-    last_batch: Option<Batch>,
-    outstanding: usize,
     pub(in crate::environment_shell) asks: AskQueue,
     pub(in crate::environment_shell) permission_mode: Option<PermissionMode>,
     pub(in crate::environment_shell) catalog: Option<Catalog>,
@@ -85,15 +47,10 @@ pub(in crate::environment_shell) struct StructuredChat {
     context_tokens: Option<u64>,
     pub(super) context_window: Option<u64>,
     pub(super) working: bool,
-    pub(super) earlier: Option<Earlier>,
-    mcp: McpPrep,
     mcp_servers: Option<Vec<McpServerName>>,
-    acp_secrets: AcpSecretsPrep,
     notices: Vec<String>,
-    rewinding: Option<Rewinding>,
-    pending_checkpoints: checkpoint::CheckpointQueue,
+    rewinding: bool,
     pub(in crate::environment_shell) acp: AcpOffers,
-    transcript: Option<AcpTranscript>,
     driver: ChatDriver,
     shown: RuntimeShown,
 }
@@ -102,11 +59,7 @@ impl StructuredChat {
     fn new(session: LiveSession, harness: AgentPreset) -> Self {
         Self {
             harness,
-            live: None,
             session,
-            fell_back: false,
-            last_batch: None,
-            outstanding: 0,
             asks: AskQueue::default(),
             permission_mode: None,
             catalog: None,
@@ -120,66 +73,21 @@ impl StructuredChat {
             context_tokens: None,
             context_window: None,
             working: false,
-            earlier: None,
-            mcp: McpPrep::default(),
             mcp_servers: None,
-            acp_secrets: AcpSecretsPrep::default(),
             notices: Vec::new(),
-            rewinding: None,
-            pending_checkpoints: checkpoint::CheckpointQueue::default(),
+            rewinding: false,
             acp: AcpOffers::default(),
-            transcript: None,
             driver: ChatDriver::InShell,
             shown: RuntimeShown::default(),
         }
     }
 
     pub(super) fn is_fresh(&self) -> bool {
-        self.session.history().is_none()
-            && self.outstanding == 0
-            && !self.live.as_ref().is_some_and(|live| live.confirmed)
+        self.session.history().is_none() && !self.working
     }
 
-    pub(in crate::environment_shell) fn fold_kept(
-        &self,
-        messages: &mut Vec<ChatMessage>,
-        entry: &ChatEntry,
-    ) {
-        if let Some(transcript) = &self.transcript {
-            transcript.keep(entry);
-        }
-        fold_entry(messages, entry);
-    }
-
-    fn fold_sent(&self, messages: &mut Vec<ChatMessage>, prompt: &Prompt) {
-        if let Some(transcript) = &self.transcript {
-            transcript.keep(&ChatEntry::User {
-                text: prompt.text.clone(),
-                preset: self.harness,
-                model: self.chosen_model.clone(),
-                images: prompt
-                    .mentions
-                    .iter()
-                    .filter_map(|mention| match mention {
-                        Mention::Image(image) => Some(image.clone()),
-                        Mention::Path(_) => None,
-                    })
-                    .collect(),
-            });
-        }
-        fold_prompt(messages, prompt, self.harness);
-    }
-
-    pub(super) fn switch_harness(
-        &mut self,
-        harness: AgentPreset,
-        transcript: Option<AcpTranscript>,
-    ) {
-        self.transcript = transcript;
+    pub(super) fn switch_harness(&mut self, harness: AgentPreset) {
         self.harness = harness;
-        self.live = None;
-        self.mcp = McpPrep::default();
-        self.acp_secrets = AcpSecretsPrep::default();
         self.catalog = None;
         self.model = None;
         self.effort = None;
@@ -187,7 +95,6 @@ impl StructuredChat {
         self.context_tokens = None;
         self.context_window = None;
         self.acp = AcpOffers::default();
-        self.pending_checkpoints.clear();
         self.session = LiveSession::Start(new_session_id());
     }
 
@@ -215,10 +122,6 @@ impl StructuredChat {
         u16::try_from(percent).ok()
     }
 
-    pub(in crate::environment_shell) fn live(&self) -> Option<&LiveChat> {
-        self.live.as_ref().and_then(LiveProcess::alive)
-    }
-
     fn has_work(&self, outbox: &Outbox) -> bool {
         (self.in_runtime() || self.is_free()) && (!self.commands.is_empty() || outbox.has_queued())
     }
@@ -231,138 +134,28 @@ impl StructuredChat {
         self.is_free() && !outbox.has_queued() && self.shown.queued.is_empty()
     }
 
-    fn take_batch(&mut self, outbox: &mut Outbox, now: Instant) -> Batch {
-        Batch {
-            commands: std::mem::take(&mut self.commands),
-            message: outbox.next_to_send(true, now),
-        }
-    }
-
-    fn handed_over(&mut self, batch: Batch) {
-        self.outstanding += batch.results();
-        self.working |= batch.message.is_some();
-        self.last_batch = Some(batch);
-    }
-
     fn session_reported(&mut self, resume: ResumeId) {
-        if let Some(live) = self.live.as_mut() {
-            live.confirmed = true;
-        }
         self.session = LiveSession::Resume(resume);
     }
 
-    fn opens_turn(&mut self) -> bool {
-        if self.working || self.outstanding > 0 {
-            return false;
-        }
-        self.outstanding = 1;
-        self.working = true;
-        true
-    }
-
-    fn closes_turn(&mut self, ended: bool) -> bool {
-        self.outstanding = self.outstanding.saturating_sub(1);
-        if ended {
-            self.outstanding = 0;
-        }
-        if self.outstanding > 0 {
-            return false;
-        }
+    fn ends_turn(&mut self) {
         self.working = false;
-        true
-    }
-
-    fn retries(&mut self, refused: &ResumeRefused) -> Option<Batch> {
-        match refused {
-            ResumeRefused::MissingConversation(_) => {
-                let batch = self.falls_back()?;
-                if matches!(self.harness, AgentPreset::Acp(_)) {
-                    self.notices.push(refused.to_string());
-                }
-                Some(batch)
-            }
-            ResumeRefused::TurnNotDropped(_) => self.drops_turn_again(),
-        }
-    }
-
-    fn falls_back(&mut self) -> Option<Batch> {
-        let reported = self
-            .live
-            .as_ref()
-            .is_some_and(|live| live.confirmed || live.chat.is_alive());
-        if self.fell_back || reported || self.session.history().is_none() {
-            return None;
-        }
-        self.fell_back = true;
-        self.session = LiveSession::Start(new_session_id());
-        self.live = None;
-        self.outstanding = 0;
-        Some(self.last_batch.take().unwrap_or_default())
     }
 
     pub(super) fn command(&mut self, command: SurfaceCommand) {
         match command {
-            SurfaceCommand::Stop => {
-                if let Some(live) = self.live() {
-                    live.interrupt();
-                }
-            }
-            SurfaceCommand::Model(_, model) => {
-                if let Some(live) = self.live() {
-                    live.set_model(&model);
-                }
-                self.chosen_model = Some(model);
-            }
+            SurfaceCommand::Stop => {}
+            SurfaceCommand::Model(_, model) => self.chosen_model = Some(model),
             SurfaceCommand::Effort(effort) => {
                 self.effort_was = self.effort;
                 self.effort = Some(effort);
                 self.effort_notice = None;
-                if self.live.is_some() {
-                    self.commands.push(SlashCommand::Effort(effort));
-                }
             }
             SurfaceCommand::ToggleThinking => {
                 self.thinking = !self.thinking;
                 self.commands.push(SlashCommand::Thinking(self.thinking));
             }
         }
-    }
-}
-
-type ReportedModels = (AgentPreset, Vec<ModelOffer>);
-
-fn acp_reported(
-    structured: &mut StructuredChat,
-    event: AcpEvent,
-) -> (Option<AgentState>, Option<ReportedModels>) {
-    let state = matches!(event, AcpEvent::SignInNeeded(_)).then_some(AgentState::WaitingForInput);
-    let models = if let AcpEvent::Models(models) = &event {
-        Some((
-            structured.harness,
-            models.available.iter().map(ModelOffer::from).collect(),
-        ))
-    } else {
-        None
-    };
-    let early = structured.acp.reported(event);
-    if let Some(live) = structured.live() {
-        for choice in early {
-            match choice {
-                AcpChoice::Mode(mode) => live.set_acp_mode(mode),
-                AcpChoice::Option(option, value) => live.set_acp_option(option, value),
-            }
-        }
-    }
-    (state, models)
-}
-
-fn split_refusal(event: LiveEvent) -> (LiveEvent, Option<ResumeRefused>) {
-    match event {
-        LiveEvent::Refused(refused) => (
-            LiveEvent::Chat(ChatEvent::Error(refused.to_string())),
-            Some(refused),
-        ),
-        event => (event, None),
     }
 }
 
@@ -391,52 +184,6 @@ fn structured_mut<'a>(
 }
 
 impl EnvironmentShell {
-    fn chat_spent(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        report: UsageReport,
-        cx: &mut Context<Self>,
-    ) {
-        let model = structured_mut(self, env, id).and_then(|structured| structured.model.clone());
-        self.record_spend(env, id, report, model.as_deref(), cx);
-    }
-
-    fn chat_usage(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        event: LiveEvent,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(harness) = structured_mut(self, env, id).map(|structured| structured.harness)
-        else {
-            return;
-        };
-        let news = match event {
-            LiveEvent::Usage(usage) => UsageNews::Read { usage },
-            LiveEvent::Limit(alert) => UsageNews::Alert { alert },
-            _ => return,
-        };
-        let host = self.env_link(env).host();
-        self.usage_heard(host, harness, news);
-        cx.notify();
-    }
-
-    pub(super) fn acp_transcript(
-        &self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        harness: AgentPreset,
-    ) -> Option<AcpTranscript> {
-        if !matches!(harness, AgentPreset::Acp(_)) {
-            return None;
-        }
-        self.acp_transcripts
-            .as_ref()?
-            .transcript(acp_transcript_file(env, id)?)
-    }
-
     pub(in crate::environment_shell) fn forget_acp_transcript(
         &self,
         env: &EnvironmentName,
@@ -447,131 +194,6 @@ impl EnvironmentShell {
             return;
         };
         transcripts.forget(file);
-    }
-
-    fn apply_structured_event(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        event: LiveEvent,
-        cx: &mut Context<Self>,
-    ) {
-        if self.reattach_past_end(env, id, &event, cx) {
-            return;
-        }
-        if self.follow_worker_launch(env, id, &event, cx) {
-            return;
-        }
-        if let LiveEvent::Spent(report) = event {
-            return self.chat_spent(env, id, report, cx);
-        }
-        if let LiveEvent::Usage(_) | LiveEvent::Limit(_) = event {
-            return self.chat_usage(env, id, event, cx);
-        }
-        let Some(SurfaceChat {
-            backend: Backend::Structured(structured),
-            messages,
-            thread,
-            problem,
-            anchor,
-            ..
-        }) = structured_chat(self, env, id)
-        else {
-            return;
-        };
-        let followed = anchor::follows_tail(*anchor, thread);
-        let mut state = None;
-        let mut raised = None;
-        let mut reported_models: Option<ReportedModels> = None;
-        let (event, refused) = split_refusal(event);
-        match event {
-            LiveEvent::Ready(catalog) => {
-                let harness = structured.harness;
-                self.keep_harness_models(env, harness, &catalog.models);
-                if let Some(structured) = structured_mut(self, env, id) {
-                    structured.catalog = Some(catalog);
-                    structured.acp.opened();
-                }
-                return self.flush_structured(env, id, cx);
-            }
-            LiveEvent::Rewound(outcome) => {
-                self.rewound(env, id, outcome, cx);
-                return self.flush_structured(env, id, cx);
-            }
-            LiveEvent::Notice(notice) => add_notice(problem, &notice),
-            LiveEvent::Ask(ask) => {
-                structured.asks.push(Waiting::live(*ask));
-                state = Some(AgentState::WaitingForInput);
-            }
-            LiveEvent::Chat(ChatEvent::Session(resume)) => {
-                structured.session_reported(resume.clone());
-                self.note_chat_resume(env, id, resume);
-                return;
-            }
-            LiveEvent::Chat(ChatEvent::Model(model)) => structured.model = Some(model),
-            LiveEvent::Chat(ChatEvent::PermissionMode(mode)) => {
-                structured.permission_mode = Some(mode);
-            }
-            LiveEvent::Chat(ChatEvent::ContextTokens(tokens)) => {
-                structured.context_tokens = Some(tokens);
-            }
-            LiveEvent::Chat(ChatEvent::ContextWindow(window)) => {
-                structured.context_window = Some(window);
-            }
-            LiveEvent::Acp(event) => (state, reported_models) = acp_reported(structured, event),
-            LiveEvent::Refused(_)
-            | LiveEvent::Spent(_)
-            | LiveEvent::Usage(_)
-            | LiveEvent::Limit(_) => {}
-            LiveEvent::Chat(ChatEvent::TurnStarted) => {
-                if !structured.opens_turn() {
-                    return;
-                }
-                structured.fold_kept(messages, &ChatEntry::Event(ChatEvent::TurnStarted));
-                state = Some(AgentState::Working);
-            }
-            LiveEvent::Chat(event @ (ChatEvent::Done | ChatEvent::Error(_))) => {
-                raised = matches!(event, ChatEvent::Error(_)).then_some(AttentionKind::Error);
-                if let Some(batch) = refused.and_then(|refused| structured.retries(&refused)) {
-                    self.hand_over_again(env, id, batch, event, cx);
-                    return;
-                }
-                let ended = structured.live().is_none();
-                if structured.closes_turn(ended) {
-                    for outcome in structured.asks.cancel_all() {
-                        structured.fold_kept(messages, &ChatEntry::Asked(outcome));
-                    }
-                    structured.fold_kept(messages, &ChatEntry::Event(event));
-                    state = Some(AgentState::Idle);
-                } else if let ChatEvent::Error(error) = event {
-                    *problem = Some(error);
-                }
-            }
-            LiveEvent::Chat(event) => structured.fold_kept(messages, &ChatEntry::Event(event)),
-        }
-        if followed {
-            thread.scroll_to_end();
-        }
-        if let Some((harness, offers)) = reported_models {
-            self.keep_harness_models(env, harness, &offers);
-        }
-        self.conclude_structured_event(env, id, (state, raised), cx);
-    }
-
-    fn conclude_structured_event(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        (state, raised): (Option<AgentState>, Option<AttentionKind>),
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(state) = state {
-            self.set_agent_state(env, id, state);
-        }
-        if let Some(kind) = raised {
-            self.raise_attention(env, id, kind);
-        }
-        self.flush_structured(env, id, cx);
     }
 }
 

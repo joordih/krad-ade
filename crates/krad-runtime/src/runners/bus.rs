@@ -53,6 +53,19 @@ fn shown(runner: CloudRunnerId, kept: &Kept) -> RunnerBusShown {
 }
 
 impl RunnerBuses {
+    pub(crate) fn ready(&self, runner: CloudRunnerId) -> Option<&krad_protocol::RemoteBusInfo> {
+        match &self.kept.get(&runner)?.slot {
+            Slot::Ready(bus) => Some(bus.info()),
+            Slot::Absent | Slot::Preparing => None,
+        }
+    }
+
+    pub(crate) fn is_preparing(&self, runner: CloudRunnerId) -> bool {
+        self.kept
+            .get(&runner)
+            .is_some_and(|kept| matches!(kept.slot, Slot::Preparing))
+    }
+
     pub(crate) fn port(&self, runner: CloudRunnerId) -> Option<u16> {
         self.kept.get(&runner).and_then(|kept| kept.port)
     }

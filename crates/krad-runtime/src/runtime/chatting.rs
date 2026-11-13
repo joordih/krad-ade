@@ -39,6 +39,7 @@ impl Runtime {
         let mut effects = Vec::new();
         let mut work = ChatWork {
             jobs: &self.jobs,
+            cloud: &mut self.cloud_runs,
             adapters: &mut self.adapters,
             gateway: self.gateway.reached(&self.settings.current.gateway),
             opencode: &mut self.opencode,
@@ -54,6 +55,7 @@ impl Runtime {
                 kraddies: &self.kraddies,
                 buffers: &self.buffers,
                 secrets: &self.secrets,
+                runners: &self.runners,
             },
         };
         let done = act(&mut self.chats, &mut work);
@@ -66,7 +68,10 @@ impl Runtime {
     pub(super) fn apply_chat_input(&mut self, input: Input) {
         match input {
             Input::OpenChat { chat, start } => self.open_chat(&chat, *start),
-            Input::CloseChat(chat) => self.chats.close(&chat, &mut self.outbox),
+            Input::CloseChat(chat) => {
+                self.chats.close(&chat, &mut self.outbox);
+                self.cloud_runs.forget(&chat);
+            }
             Input::ChatPage {
                 chat,
                 before,

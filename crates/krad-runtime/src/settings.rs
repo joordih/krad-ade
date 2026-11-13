@@ -96,6 +96,19 @@ impl AppSettings {
         stops
     }
 
+    pub(crate) fn queue_cloud_stop(
+        &mut self,
+        runner: CloudRunnerId,
+        process: CloudProcessId,
+        outbox: &mut Vec<EventKind>,
+    ) {
+        self.current.cloud.queue_stop(runner, process);
+        self.dirty = true;
+        outbox.push(EventKind::SettingsChanged {
+            settings: Box::new(self.current.clone()),
+        });
+    }
+
     pub(crate) fn not_saved(error: String, outbox: &mut Vec<EventKind>) {
         tracing::warn!(%error, "could not save the settings");
         outbox.push(EventKind::SettingsNotSaved { error });

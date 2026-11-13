@@ -328,9 +328,7 @@ impl EnvironmentShell {
             .get(&self.active)
             .and_then(|live| live.chats.get(&id))
             .is_some_and(|chat| chat.structured().is_some());
-        if structured {
-            self.show_earlier_structured(id, cx);
-        } else {
+        if !structured {
             self.show_whole_transcript(id, cx);
         }
     }
@@ -374,7 +372,6 @@ impl EnvironmentShell {
         if !messages.is_empty() || !structured.is_fresh() {
             return HarnessChange::Refused;
         }
-        let transcript = self.acp_transcript(env, id, *harness);
         self.leave_runtime(env, id);
         let Some(SurfaceChat {
             backend: Backend::Structured(structured),
@@ -386,7 +383,7 @@ impl EnvironmentShell {
         else {
             return HarnessChange::Kept;
         };
-        structured.switch_harness(*harness, transcript);
+        structured.switch_harness(*harness);
         self.set_node(env, id, NodeField::Harness(Some(*harness)));
         self.seed_acp_chats();
         HarnessChange::Switched

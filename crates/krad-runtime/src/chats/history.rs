@@ -9,7 +9,9 @@ use krad_store::read_acp_transcript;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use super::backend::HistorySource;
+use super::backend::{reach_server, HistorySource, Unready};
+use super::cloud::{cloud_place, runner_wait};
+use crate::cloud_runs::{site_of, CloudSite, NodeSite};
 use super::chat::{Chat, Earlier, HistoryWait, Shown};
 use super::{ChatWork, Chats, UNKNOWN_CHAT};
 use crate::jobs::{JobDone, Jobs};
@@ -49,14 +51,12 @@ pub(super) fn read(chat: &mut Chat, work: &mut ChatWork<'_>) {
         .is_empty()
         .then(|| chat.session.history().cloned())
         .flatten();
+    let Ok(cloud) = cloud_site(chat, work) else {
+        return;
+    };
     let source = match HistorySource::of(chat, &work.facts) {
         HistorySource::OpencodeOn(..) if resume.is_none() => return,
-        HistorySource::OpencodeOn(runner, cwd) => match work.opencode.reach(
-            &runner.link().host(),
-            (&runner, &cwd),
-            work.jobs,
-            work.outbox,
-        ) {
+        HistorySource::OpencodeOn(runner, cwd) => match reach_server((&runner, &cwd), cloud.as_ref(), work) {
             Reach::Ready(server) => HistorySource::Opencode(server),
             Reach::Waiting => {
                 chat.history = HistoryWait::ForServer;
@@ -81,6 +81,27 @@ pub(super) fn read(chat: &mut Chat, work: &mut ChatWork<'_>) {
     });
     if let Err(error) = started {
         tracing::warn!(%error, "the chat history job could not start");
+    }
+}
+
+fn cloud_site(chat: &mut Chat, work: &mut ChatWork<'_>) -> Result<Option<CloudSite>, Unready> {
+    let Some(placement) = chat.place.cloud.clone() else {
+        return Ok(None);
+    };
+    match site_of(Some(placement), work.facts.runners) {
+        NodeSite::Cloud(site) => {
+            chat.place = cloud_place(&site);
+            Ok(Some(*site))
+        }
+        NodeSite::Waiting(runner) => {
+            chat.history = HistoryWait::ForRunner;
+            let wait = runner_wait(runner, chat, work);
+            if let Unready::Problem(problem) = &wait {
+                chat.problem = Some(problem.clone());
+            }
+            Err(wait)
+        }
+        NodeSite::Env => Ok(None),
     }
 }
 

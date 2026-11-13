@@ -1,13 +1,9 @@
-use krad_chat::{new_opencode_session_id, OpencodeServer};
 use krad_domain::{
-    parse_wsl_path, resume_line, AgentPreset, EnvironmentName, LaunchIntent, ModelId, ProjectTask,
+    parse_wsl_path, AgentPreset, EnvironmentName, LaunchIntent, ModelId, ProjectTask,
     RelaunchIntent, ResumeId, TerminalId, WslPath,
 };
 use krad_host::HostLink;
-use krad_runtime::{HostShell, TerminalPlace};
-use krad_session::{default_shell, wsl_shell_in};
 use std::path::Path;
-use std::sync::Arc;
 
 use super::super::shell_site::ShellSite;
 use super::super::EnvironmentShell;
@@ -78,71 +74,15 @@ impl TryFrom<Launch> for LaunchIntent {
     }
 }
 
-impl Launch {
-    pub(super) const fn harness(&self) -> Option<AgentPreset> {
-        match self {
-            Self::Preset(preset) | Self::Agent { preset, .. } | Self::Resume { preset, .. }
-                if preset.is_agent() =>
-            {
-                Some(*preset)
-            }
-            Self::Preset(_)
-            | Self::Agent { .. }
-            | Self::Resume { .. }
-            | Self::Command { .. }
-            | Self::Task(_) => None,
-        }
-    }
-
-    pub(super) fn model(&self) -> Option<ModelId> {
-        match self {
-            Self::Agent { model, .. } => model.clone(),
-            Self::Preset(_) | Self::Resume { .. } | Self::Command { .. } | Self::Task(_) => None,
-        }
-    }
-}
-
-pub(super) struct ResolvedLaunch {
-    pub(super) program: String,
-    pub(super) args: Vec<String>,
-    pub(super) agent: Option<(String, Option<String>)>,
-    pub(super) vars: Vec<(String, String)>,
-    pub(super) shell: LaunchShell,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum LaunchShell {
-    Login,
-    Given,
-}
-
-impl LaunchShell {
-    pub(super) fn place(self, link: HostLink, in_wsl: bool) -> TerminalPlace {
-        let shell = match self {
-            Self::Login => HostShell::Login,
-            Self::Given => HostShell::Given,
-        };
-        TerminalPlace::Host {
-            link,
-            shell,
-            in_wsl,
-        }
-    }
-}
-
 impl EnvironmentShell {
     pub(super) fn launch_vars(
         &self,
         env: &EnvironmentName,
         id: TerminalId,
         extra: Vec<(String, String)>,
-        attached: Option<&(Arc<OpencodeServer>, ResumeId)>,
     ) -> Vec<(String, String)> {
         let mut vars = self.bus_vars(env, id);
         vars.extend(extra);
-        if let Some((server, _)) = attached {
-            vars.extend(server.client_env());
-        }
         vars
     }
 
@@ -157,104 +97,4 @@ impl EnvironmentShell {
         (link, wsl, site)
     }
 
-    pub(super) fn opencode_attach(
-        &self,
-        launch: &Launch,
-        harness: Option<AgentPreset>,
-        site: ShellSite,
-    ) -> Option<(Arc<OpencodeServer>, ResumeId)> {
-        if !harness.is_some_and(AgentPreset::attaches_to_server) || site != ShellSite::Native {
-            return None;
-        }
-        let server = self.opencode_server()?;
-        let resume = match launch {
-            Launch::Resume {
-                resume: Some(resume),
-                ..
-            } => resume.clone(),
-            Launch::Preset(_)
-            | Launch::Agent { .. }
-            | Launch::Resume { .. }
-            | Launch::Command { .. }
-            | Launch::Task(_) => new_opencode_session_id(),
-        };
-        Some((server, resume))
-    }
-
-    pub(super) fn resolve_launch(
-        &self,
-        (env, id): (&EnvironmentName, TerminalId),
-        launch: Launch,
-        wsl: Option<&WslPath>,
-        site: ShellSite,
-    ) -> ResolvedLaunch {
-        let shell = || match wsl {
-            Some(folder) => wsl_shell_in(&folder.distro, &folder.linux),
-            None => default_shell(),
-        };
-        match launch {
-            Launch::Preset(preset) => {
-                let (program, args) = shell();
-                ResolvedLaunch {
-                    program,
-                    args,
-                    agent: self.agent_launch_line((env, id), preset, site, "", None),
-                    vars: Vec::new(),
-                    shell: LaunchShell::Login,
-                }
-            }
-            Launch::Agent {
-                preset,
-                prompt,
-                model,
-            } => {
-                let (program, args) = shell();
-                ResolvedLaunch {
-                    program,
-                    args,
-                    agent: self.agent_launch_line((env, id), preset, site, &prompt, model.as_ref()),
-                    vars: Vec::new(),
-                    shell: LaunchShell::Login,
-                }
-            }
-            Launch::Resume { preset, resume } => {
-                let (program, args) = shell();
-                let quoting = site.quoting();
-                let agent = self
-                    .agent_launch_line((env, id), preset, site, "", None)
-                    .map(|(line, after_start)| match &resume {
-                        Some(id) => (resume_line(&line, preset, id, quoting), after_start),
-                        None => (line, after_start),
-                    });
-                ResolvedLaunch {
-                    program,
-                    args,
-                    agent,
-                    vars: Vec::new(),
-                    shell: LaunchShell::Login,
-                }
-            }
-            Launch::Command {
-                program,
-                args,
-                vars,
-            } => ResolvedLaunch {
-                program,
-                args,
-                agent: None,
-                vars,
-                shell: LaunchShell::Given,
-            },
-            Launch::Task(task) => {
-                let (program, args) = shell();
-                ResolvedLaunch {
-                    program,
-                    args,
-                    agent: Some((task.command_line(site.quoting()), None)),
-                    vars: Vec::new(),
-                    shell: LaunchShell::Login,
-                }
-            }
-        }
-    }
 }

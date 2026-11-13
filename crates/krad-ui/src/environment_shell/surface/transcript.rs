@@ -418,7 +418,7 @@ impl SurfaceChat {
         match &self.backend {
             Backend::Transcript(view) => view.transcript.skipped,
             Backend::Structured(structured) => {
-                structured.earlier.is_some() || structured.runtime_skips_history()
+                structured.runtime_skips_history()
             }
         }
     }

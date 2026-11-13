@@ -1,8 +1,7 @@
 use gpui_kit::{Context, PromptButton, PromptLevel};
-use krad_chat::LiveSession;
 use krad_domain::{CloudRunnerId, EnvironmentView, GroupId, SessionId, ToastKind};
 use krad_protocol::{
-    CarriedConversation, CloudCommand, CloudDraftId, CloudNews, CloudOpened, Command, PatchAnswer,
+    CloudCommand, CloudDraftId, CloudNews, CloudOpened, Command, PatchAnswer,
 };
 
 use super::super::native_alert::NATIVE_ALERTS;
@@ -189,10 +188,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let CloudOpened {
-            environment,
-            group,
-            starts,
-            ..
+            environment, group, ..
         } = opened;
         if environment == self.active {
             self.leave_main_overlays();
@@ -202,20 +198,6 @@ impl EnvironmentShell {
         };
         live.data.set_view(EnvironmentView::Sessions);
         live.selected_group = Some(group);
-        for start in starts {
-            let session = match start.conversation {
-                CarriedConversation::Fresh(resume) => LiveSession::Start(resume),
-                CarriedConversation::Forked(resume) => LiveSession::Fork(resume),
-            };
-            self.spawn_seeded_chat(
-                &environment,
-                Some(group),
-                start.harness,
-                session,
-                start.prompts,
-                cx,
-            );
-        }
         self.store();
         cx.notify();
     }

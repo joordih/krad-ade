@@ -135,8 +135,6 @@ impl EnvironmentShell {
                 if structured.in_runtime() {
                     let env = self.active.clone();
                     self.post_runtime_chat(&env, id, |chat| ChatCommand::SignIn { chat, method });
-                } else if let Some(live) = structured.live() {
-                    live.sign_in(method);
                 }
             }
             SignInAction::Terminal { args, env, retry } => {
@@ -277,8 +275,6 @@ impl EnvironmentShell {
                     chat,
                     method: retry,
                 }));
-            } else if let Some(chat) = structured.live() {
-                chat.sign_in(retry);
             }
             return;
         }

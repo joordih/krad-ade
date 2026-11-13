@@ -2,7 +2,7 @@ mod adapter;
 mod controls;
 mod sign_in;
 
-use krad_chat::{AcpEvent, AcpOffered, AcpWanted, ModelOffer};
+use krad_chat::{AcpOffered, AcpWanted, ModelOffer};
 use krad_domain::{
     AcpConfigOption, AcpConfigOptionId, AcpConfigValue, AcpEffort, AcpModeId, AcpModels, AcpModes,
     Effort, ModelId,
@@ -83,25 +83,6 @@ impl AcpOffers {
         wanted
     }
 
-    #[must_use]
-    pub(super) fn reported(&mut self, event: AcpEvent) -> Vec<AcpChoice> {
-        let mut early = Vec::new();
-        if !matches!(event, AcpEvent::SignInNeeded(_)) && self.source == Source::Seed {
-            self.source = Source::Agent;
-            early = std::mem::take(&mut self.chosen_early);
-        }
-        match event {
-            AcpEvent::Modes(modes) => self.modes = Some(modes),
-            AcpEvent::Models(models) => self.models = Some(models),
-            AcpEvent::Options(options) => self.options = options,
-            AcpEvent::SignInNeeded(methods) => match &mut self.sign_in {
-                Some(asked) => asked.asked_again(methods),
-                None => self.sign_in = Some(SignInAsk::new(methods)),
-            },
-        }
-        early
-    }
-
     pub(in crate::environment_shell) fn adopt(&mut self, shown: &AcpShown) -> bool {
         if shown.reported {
             self.source = Source::Agent;
@@ -123,10 +104,6 @@ impl AcpOffers {
             None => self.sign_in = Some(SignInAsk::new(asked.methods.clone())),
         }
         true
-    }
-
-    pub(super) fn opened(&mut self) {
-        self.sign_in = None;
     }
 
     fn modes(&self) -> Option<&AcpModes> {

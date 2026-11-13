@@ -1,13 +1,11 @@
 use gpui_kit::Context;
-use krad_domain::{AgentPreset, ClaudeOauthToken, CloudRunnerId, EnvironmentName, TerminalId};
+use krad_domain::{ClaudeOauthToken, CloudRunnerId};
 use krad_protocol::{Command, RunnerCommand};
 
 use super::super::activity::UtilityTab;
 use super::super::live_terminal::{terminal_ref, LiveTerminal};
 use super::super::EnvironmentShell;
-use super::NodeSite;
 
-const TOKEN_VAR: &str = "CLAUDE_CODE_OAUTH_TOKEN";
 const SETUP_LABEL: &str = "Claude Code token";
 
 impl EnvironmentShell {
@@ -20,22 +18,6 @@ impl EnvironmentShell {
             .runner_logins
             .get(&runner)
             .is_some_and(|shown| shown.claude_token)
-    }
-
-    pub(in crate::environment_shell) fn cloud_claude_env(
-        &self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        harness: AgentPreset,
-    ) -> Option<(String, String)> {
-        if harness != AgentPreset::ClaudeCode {
-            return None;
-        }
-        let NodeSite::Cloud(site) = self.node_site(env, id) else {
-            return None;
-        };
-        let token = self.ready_runner(site.placement.runner)?.claude_token?;
-        Some((TOKEN_VAR.to_owned(), token.expose().to_owned()))
     }
 
     pub(in crate::environment_shell) fn start_claude_setup_token(

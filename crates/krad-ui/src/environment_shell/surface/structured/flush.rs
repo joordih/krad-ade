@@ -1,15 +1,10 @@
 use gpui_kit::Context;
-use krad_chat::{BusVars, ChatBackend, ChatEvent, LiveConfig};
-use krad_domain::{AgentPreset, AgentState, AttentionKind, ChatEntry, EnvironmentName, TerminalId};
-use krad_runtime::{cli_name, BUS_HINT, LEAD_HINT};
-use std::time::Instant;
+use krad_domain::{AgentPreset, EnvironmentName, TerminalId};
 
-use super::super::super::chat::{LiveProcess, StartError};
-use super::super::super::cloud::{CloudSite, NodeSite};
-use super::super::super::kraddie_memory::joined_prompt;
+use super::super::super::chat::StartError;
 use super::super::super::EnvironmentShell;
 use super::super::{Backend, SurfaceChat};
-use super::{add_notice, structured_chat, structured_mut, Batch};
+use super::{structured_chat, structured_mut};
 
 impl EnvironmentShell {
     pub(in crate::environment_shell::surface) fn flush_structured(
@@ -28,79 +23,17 @@ impl EnvironmentShell {
         let Some(SurfaceChat {
             backend: Backend::Structured(structured),
             outbox,
-            messages,
-            problem,
             ..
         }) = structured_chat(self, env, id)
         else {
             return;
         };
-        if structured.in_runtime() {
-            let commands = std::mem::take(&mut structured.commands);
-            let prompts = outbox.take_queued();
-            return self.hand_to_runtime(env, id, &commands, prompts);
-        }
-        let batch = structured.take_batch(outbox, Instant::now());
-        if let Some(prompt) = &batch.message {
-            outbox.delivered();
-            structured.fold_sent(messages, prompt);
-            *problem = None;
-        }
-        for notice in std::mem::take(&mut structured.notices) {
-            add_notice(problem, &notice);
-        }
-        if batch.message.is_some() && structured.harness.checkpoints_files() {
-            return self.hand_over_after_checkpoint(env, id, batch, cx);
-        }
-        self.hand_over(env, id, batch);
-    }
-
-    pub(super) fn hand_over_again(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        batch: Batch,
-        failure: ChatEvent,
-        cx: &mut Context<Self>,
-    ) {
-        if self.start_or_report(env, id, cx) {
-            self.hand_over(env, id, batch);
+        if !structured.in_runtime() {
             return;
         }
-        if let Some(SurfaceChat {
-            backend: Backend::Structured(structured),
-            messages,
-            ..
-        }) = structured_chat(self, env, id)
-        {
-            structured.closes_turn(true);
-            for outcome in structured.asks.cancel_all() {
-                structured.fold_kept(messages, &ChatEntry::Asked(outcome));
-            }
-            structured.fold_kept(messages, &ChatEntry::Event(failure));
-        }
-        self.set_agent_state(env, id, AgentState::Idle);
-        self.raise_attention(env, id, AttentionKind::Error);
-    }
-
-    pub(super) fn hand_over(&mut self, env: &EnvironmentName, id: TerminalId, batch: Batch) {
-        let Some(structured) = structured_mut(self, env, id) else {
-            return;
-        };
-        let Some(live) = structured.live() else {
-            return;
-        };
-        for command in &batch.commands {
-            live.run(command);
-        }
-        if let Some(prompt) = &batch.message {
-            live.send(prompt.clone());
-        }
-        let starts_turn = batch.message.is_some();
-        structured.handed_over(batch);
-        if starts_turn {
-            self.set_agent_state(env, id, AgentState::Working);
-        }
+        let commands = std::mem::take(&mut structured.commands);
+        let prompts = outbox.take_queued();
+        self.hand_to_runtime(env, id, &commands, prompts);
     }
 
     pub(super) fn start_or_report(
@@ -109,11 +42,10 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Err(error) = self.ensure_live(env, id, cx) else {
+        let Err(error) = self.ensure_live(env, id) else {
             return true;
         };
         if matches!(error, StartError::Waiting) {
-            self.check_cloud_processes(cx);
             return false;
         }
         if let Some(chat) = self
@@ -127,36 +59,9 @@ impl EnvironmentShell {
         false
     }
 
-    fn bus_hint(&self, in_wsl: bool) -> Option<String> {
-        self.runtime
-            .handle
-            .bus()
-            .is_some()
-            .then(|| BUS_HINT.replace(krad_agents::CLI_PROGRAM, cli_name(in_wsl)))
-    }
-
-    fn lead_hint(&self, in_wsl: bool) -> Option<String> {
-        self.runtime
-            .handle
-            .bus()
-            .is_some()
-            .then(|| LEAD_HINT.replace(krad_agents::CLI_PROGRAM, cli_name(in_wsl)))
-    }
-
-    fn orchestrates_in(&self, env: &EnvironmentName, id: TerminalId) -> bool {
-        self.envs
-            .get(env)
-            .is_some_and(|live| live.data.session_led_by(id).is_some())
-    }
-
-    fn ensure_live(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        cx: &mut Context<Self>,
-    ) -> Result<(), StartError> {
+    fn ensure_live(&mut self, env: &EnvironmentName, id: TerminalId) -> Result<(), StartError> {
         let Some(harness) = structured_mut(self, env, id)
-            .filter(|structured| structured.live().is_none() && !structured.in_runtime())
+            .filter(|structured| !structured.in_runtime())
             .map(|structured| structured.harness)
         else {
             return Ok(());
@@ -164,102 +69,7 @@ impl EnvironmentShell {
         if self.opens_in_runtime(env, id) {
             return self.open_in_runtime(env, id);
         }
-        let site = match self.node_site(env, id) {
-            NodeSite::Waiting(runner) => {
-                self.note_cloud_wait(env, id, runner);
-                return Err(StartError::Waiting);
-            }
-            NodeSite::Env => {
-                return Err(StartError::NoChat(self.settings.acp.harness_name(harness)))
-            }
-            NodeSite::Cloud(site) => site,
-        };
-        if self.awaits_runner_bus(env, id) {
-            return Err(StartError::Waiting);
-        }
-        let backend = self.cloud_backend(env, id, (harness, &site), cx)?;
-        let owner = env.clone();
-        let apply = move |shell: &mut Self, event, cx: &mut Context<Self>| {
-            shell.note_prompted(&owner, id, &event);
-            shell.apply_structured_event(&owner, id, event, cx);
-        };
-        let Some(structured) = structured_mut(self, env, id) else {
-            return Ok(());
-        };
-        structured.live = Some(LiveProcess::spawn(backend, &structured.session, cx, apply)?);
-        Ok(())
-    }
-
-    fn cloud_backend(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        (harness, site): (AgentPreset, &CloudSite),
-        cx: &mut Context<Self>,
-    ) -> Result<ChatBackend, StartError> {
-        if let Some(reason) = harness.unavailable_in_cloud() {
-            return Err(StartError::Cloud(reason.to_owned()));
-        }
-        Ok(match harness {
-            AgentPreset::ClaudeCode => {
-                ChatBackend::Claude(self.live_config(env, id, harness, site)?)
-            }
-            AgentPreset::Codex => ChatBackend::Codex(self.live_config(env, id, harness, site)?),
-            AgentPreset::Opencode => {
-                let config = self.live_config(env, id, harness, site)?;
-                ChatBackend::Opencode(self.cloud_opencode_for(site, cx)?, config)
-            }
-            AgentPreset::Acp(agent) => {
-                ChatBackend::Acp(self.acp_config((env, id), agent, site, cx)?)
-            }
-            AgentPreset::Gateway | AgentPreset::Shell => {
-                return Err(StartError::NoChat(self.settings.acp.harness_name(harness)))
-            }
-        })
-    }
-
-    fn system_prompt(&self, env: &EnvironmentName, id: TerminalId, in_wsl: bool) -> Option<String> {
-        let hint = if self.orchestrates_in(env, id) {
-            self.lead_hint(in_wsl)
-        } else {
-            self.bus_hint(in_wsl)
-        };
-        joined_prompt(hint, self.memory_preamble(env, id))
-    }
-
-    fn live_config(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        harness: AgentPreset,
-        site: &CloudSite,
-    ) -> Result<LiveConfig, StartError> {
-        let program = self.launch_program(harness)?;
-        let (runner, cwd) = self.cloud_chat_runner(env, id, site, harness, program)?;
-        let vars = self.bus_vars(env, id);
-        let (system_prompt, mut bus_vars) = if vars.is_empty() {
-            (self.memory_preamble(env, id), BusVars(Vec::new()))
-        } else {
-            (self.system_prompt(env, id, runner.in_wsl()), BusVars(vars))
-        };
-        bus_vars.0.extend(
-            self.cloud_claude_env(env, id, harness)
-                .filter(|_| runner.in_cloud()),
-        );
-        let (model, notice) = self.offered_choice(env, id, harness);
-        let usage_budget = self.claude_usage_budget();
-        let structured = structured_mut(self, env, id).ok_or(StartError::Waiting)?;
-        structured.notices.extend(notice);
-        Ok(LiveConfig {
-            runner,
-            model,
-            cwd,
-            system_prompt,
-            effort: structured.effort,
-            permission_mode: structured.permission_mode,
-            bus_vars,
-            usage_budget,
-        })
+        Err(StartError::NoChat(self.settings.acp.harness_name(harness)))
     }
 
     pub(in crate::environment_shell) fn flush_chats_of(

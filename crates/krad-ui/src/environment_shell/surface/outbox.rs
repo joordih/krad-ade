@@ -46,16 +46,6 @@ impl Outbox {
         });
     }
 
-    pub(super) fn push_first(&mut self, prompt: Prompt) {
-        self.messages.insert(
-            0,
-            Outgoing {
-                prompt,
-                stage: Stage::Queued,
-            },
-        );
-    }
-
     pub(super) fn next_to_send(&mut self, free: bool, now: Instant) -> Option<Prompt> {
         let in_flight = self
             .messages

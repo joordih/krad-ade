@@ -1,7 +1,7 @@
-use futures::channel::mpsc::{unbounded, UnboundedReceiver};
+use futures::channel::mpsc::UnboundedReceiver;
 use futures::StreamExt as _;
 use gpui_kit::{Context, Task};
-use krad_chat::{start_chat, ChatBackend, ChatError, LiveChat, LiveEvent, LiveSession, Runner};
+use krad_chat::{ChatError, Runner};
 use krad_domain::{parse_wsl_path, AgentPreset};
 use krad_host::HostLink;
 use krad_session::find_program;
@@ -23,10 +23,7 @@ pub(in crate::environment_shell) enum StartError {
     NoProgram(HarnessName),
     NoChat(HarnessName),
     Waiting,
-    Opencode(String),
-    Secret(String),
     Adapter(String),
-    Cloud(String),
     Chat(ChatError),
 }
 
@@ -36,10 +33,7 @@ impl fmt::Display for StartError {
             Self::NoProgram(name) => write!(formatter, "{name} {NO_PROGRAM_TEXT}"),
             Self::NoChat(name) => write!(formatter, "{name} {NO_CHAT_TEXT}"),
             Self::Waiting => formatter.write_str(WAITING_TEXT),
-            Self::Opencode(error)
-            | Self::Secret(error)
-            | Self::Adapter(error)
-            | Self::Cloud(error) => formatter.write_str(error),
+            Self::Adapter(error) => formatter.write_str(error),
             Self::Chat(error) => error.fmt(formatter),
         }
     }
@@ -48,35 +42,6 @@ impl fmt::Display for StartError {
 impl From<ChatError> for StartError {
     fn from(error: ChatError) -> Self {
         Self::Chat(error)
-    }
-}
-
-pub(in crate::environment_shell) struct LiveProcess {
-    pub(in crate::environment_shell) chat: LiveChat,
-    _events: Task<()>,
-    pub(in crate::environment_shell) confirmed: bool,
-}
-
-impl LiveProcess {
-    pub(in crate::environment_shell) fn spawn(
-        backend: ChatBackend,
-        session: &LiveSession,
-        cx: &mut Context<EnvironmentShell>,
-        apply: impl FnMut(&mut EnvironmentShell, LiveEvent, &mut Context<EnvironmentShell>) + 'static,
-    ) -> Result<Self, ChatError> {
-        let (sender, receiver) = unbounded();
-        let chat = start_chat(backend, session, move |event| {
-            sender.unbounded_send(event).unwrap_or_default();
-        })?;
-        Ok(Self {
-            chat,
-            _events: EnvironmentShell::listen(receiver, cx, apply),
-            confirmed: false,
-        })
-    }
-
-    pub(in crate::environment_shell) fn alive(&self) -> Option<&LiveChat> {
-        Some(&self.chat).filter(|chat| chat.is_alive())
     }
 }
 

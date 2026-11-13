@@ -73,9 +73,6 @@ impl EnvironmentShell {
         let Some(bus) = self.runtime.handle.bus() else {
             return Vec::new();
         };
-        if self.cloud_placement_of(env, id).is_some() {
-            return self.cloud_bus_vars(env, id);
-        }
         if self
             .envs
             .get(env)

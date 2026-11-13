@@ -22,6 +22,8 @@ impl Runtime {
             JobDone::Review(done) => self.review_done(*done),
             JobDone::Runner(done) => self.runner_done(*done),
             JobDone::Cloud(done) => self.cloud_done(*done),
+            JobDone::CloudLiveness(checked) => self.cloud_liveness_checked(checked),
+            JobDone::CloudOpencodeStarted(started) => self.cloud_opencode_started(started),
             JobDone::Adapter(done) => {
                 self.adapters.done(done, &self.jobs, &mut self.outbox);
                 self.flush_chats();

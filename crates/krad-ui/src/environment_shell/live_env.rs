@@ -8,13 +8,12 @@ pub(super) use environment_copy::{EnvironmentCopy, NodesMoved};
 
 use super::live_terminal::LiveTerminal;
 use super::{
-    activity, archive, changes_tab, file_tab, session_templates, sessions, surface,
+    activity, archive, changes_tab, file_tab, session_templates, surface,
     terminal_images, workers, Prompt,
 };
 
 pub(super) struct LiveEnv {
     pub(super) data: EnvironmentCopy,
-    pub(super) deferred_launches: Vec<sessions::DeferredLaunch>,
     pub(super) sessions: HashMap<TerminalId, LiveTerminal>,
     pub(super) chats: HashMap<TerminalId, surface::SurfaceChat>,
     pub(super) focused: Option<TerminalId>,
@@ -48,7 +47,6 @@ impl LiveEnv {
             .map(|group| group.id);
         let pending_chats = surface::restored_chats(&data.nodes);
         Self {
-            deferred_launches: Vec::new(),
             data: EnvironmentCopy::new(data),
             sessions: HashMap::new(),
             chats: HashMap::new(),

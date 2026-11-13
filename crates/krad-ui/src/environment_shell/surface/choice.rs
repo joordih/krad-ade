@@ -1,6 +1,6 @@
 use gpui_kit::Context;
 use krad_domain::{
-    model_label, snap_effort, AgentPreset, ChatChoice, Effort, EffortSnap, EnvironmentName,
+    snap_effort, AgentPreset, ChatChoice, Effort, EffortSnap, EnvironmentName,
     ModelId, NodeField, TerminalId,
 };
 
@@ -8,9 +8,6 @@ use super::super::EnvironmentShell;
 
 use super::structured::StructuredChat;
 use super::{Backend, SurfaceCommand};
-
-const UNAVAILABLE_MODEL_NOTICE: &str =
-    "is no longer offered here, so this message uses the default model";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Chosen<'a> {
@@ -224,23 +221,6 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn offered_choice(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        harness: AgentPreset,
-    ) -> (Option<ModelId>, Option<String>) {
-        let chosen = structured_mut(self, env, id).and_then(|chat| chat.chosen_model.clone());
-        let (model, notice) = self.offered_model(harness, chosen);
-        if notice.is_some() {
-            if let Some(structured) = structured_mut(self, env, id) {
-                structured.chosen_model = None;
-            }
-            edit_choice(self, env, id, |choice| choice.model = None);
-        }
-        (model, notice)
-    }
-
     pub(super) fn keep_choice(
         &mut self,
         env: &EnvironmentName,
@@ -250,21 +230,4 @@ impl EnvironmentShell {
         edit_choice(self, env, id, |kept| *kept = choice);
     }
 
-    fn offered_model(
-        &self,
-        harness: AgentPreset,
-        chosen: Option<ModelId>,
-    ) -> (Option<ModelId>, Option<String>) {
-        let Some(model) = chosen else {
-            return (None, None);
-        };
-        let gone = self
-            .harness_offers(harness)
-            .is_some_and(|offers| !offers.iter().any(|offer| offer.answers_to(model.as_str())));
-        if gone {
-            let notice = format!("{} {UNAVAILABLE_MODEL_NOTICE}", model_label(model.as_str()));
-            return (None, Some(notice));
-        }
-        (Some(model), None)
-    }
 }

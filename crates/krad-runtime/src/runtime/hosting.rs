@@ -170,7 +170,9 @@ impl Runtime {
             | JobDone::CodeHosts(_)
             | JobDone::Review(_)
             | JobDone::Runner(_)
-            | JobDone::Cloud(_) => {}
+            | JobDone::Cloud(_)
+            | JobDone::CloudLiveness(_)
+            | JobDone::CloudOpencodeStarted(_) => {}
         }
     }
 

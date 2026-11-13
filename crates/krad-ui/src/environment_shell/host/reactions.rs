@@ -159,7 +159,6 @@ impl EnvironmentShell {
         if !self.host_ready(env) {
             return;
         }
-        self.relaunch_cloud_sessions(env);
         if *env == self.active {
             self.start_system_terminals();
             self.refresh_git(cx);
@@ -215,8 +214,7 @@ impl EnvironmentShell {
         self.push_toast(ToastKind::Error, format!("{BUS_UNAVAILABLE}: {reason}"));
     }
 
-    fn remote_bus_settled(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
-        self.start_deferred_launches(env);
+    fn remote_bus_settled(&mut self, _env: &EnvironmentName, cx: &mut Context<Self>) {
         let harnesses: Vec<AgentPreset> =
             AgentPreset::listed(&self.settings.acp.all_agents()).collect();
         for harness in harnesses {

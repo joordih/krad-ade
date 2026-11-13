@@ -184,13 +184,4 @@ impl EnvironmentShell {
         .detach();
     }
 
-    pub(super) fn keep_harness_models(
-        &mut self,
-        env: &EnvironmentName,
-        harness: AgentPreset,
-        models: &[ModelOffer],
-    ) {
-        let host = self.env_link(env).host();
-        self.keep_models(host, harness, models.to_vec());
-    }
 }

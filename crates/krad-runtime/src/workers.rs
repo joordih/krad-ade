@@ -24,6 +24,7 @@ const WORKER_CLOSED_EARLY: &str = "The worker was closed before it started";
 pub(crate) struct WorkerPlan {
     pub(crate) group: GroupId,
     pub(crate) lead_terminal: Option<TerminalId>,
+    pub(crate) in_cloud: bool,
 }
 
 #[derive(Debug)]
@@ -49,10 +50,10 @@ pub(crate) fn plan_spawn(
     let session = data.session(lead)?;
     let lead_terminal = session.lead.as_ref()?.terminal;
     let group = session.group.filter(|group| data.group(*group).is_some())?;
-    let runs_here = session.cloud.is_none() && runs_as_worker(agent);
-    runs_here.then_some(WorkerPlan {
+    runs_as_worker(agent).then_some(WorkerPlan {
         group,
         lead_terminal,
+        in_cloud: session.cloud.is_some(),
     })
 }
 

@@ -9,6 +9,10 @@ use std::sync::{Arc, PoisonError, RwLock};
 use crate::input::Input;
 use crate::jobs::{JobDone, Jobs};
 
+mod cloud;
+
+pub(crate) use cloud::{CloudOpencodeStarted, CloudOpencodes};
+
 const JOB_FAILED: &str = "the opencode server could not start";
 
 #[derive(Debug)]
@@ -100,6 +104,7 @@ pub(crate) struct ModelsHeard {
 #[derive(Debug)]
 pub(crate) struct OpencodeServers {
     hosts: HashMap<Host, Served>,
+    pub(crate) cloud: CloudOpencodes,
     directory: OpencodeDirectory,
     inbox: SyncSender<Input>,
 }
@@ -115,6 +120,7 @@ impl OpencodeServers {
     pub(crate) fn new(inbox: SyncSender<Input>, directory: OpencodeDirectory) -> Self {
         Self {
             hosts: HashMap::new(),
+            cloud: CloudOpencodes::default(),
             directory,
             inbox,
         }

@@ -1,19 +1,15 @@
-mod history;
-
 use gpui_kit::{Context, Window};
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
-    AgentPreset, ChatChoice, EnvironmentName, NodeField, NodeKind, ResumeId, TerminalId,
+    AgentPreset, ChatChoice, EnvironmentName, NodeKind, TerminalId,
     TerminalNode, DEFAULT_CHAT_HARNESS,
 };
 use std::collections::HashMap;
 
-use super::super::super::cloud::NodeSite;
 use super::super::super::EnvironmentShell;
 use super::super::{Backend, SurfaceChat};
 use super::{structured_chat, StructuredChat};
 
-pub(in crate::environment_shell::surface) use history::Earlier;
 
 pub(in crate::environment_shell) fn restored_chats(
     nodes: &[TerminalNode],
@@ -32,13 +28,6 @@ pub(in crate::environment_shell) fn restored_chats(
 }
 
 const CONNECTING_TEXT: &str = "Connecting to";
-
-const fn reads_history_on_host(harness: AgentPreset) -> bool {
-    matches!(
-        harness,
-        AgentPreset::ClaudeCode | AgentPreset::Codex | AgentPreset::Opencode
-    )
-}
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn ensure_structured_chats(
@@ -86,7 +75,7 @@ impl EnvironmentShell {
             .collect();
         for (id, session, harness) in pending {
             let (input, events) = Self::chat_input(id, window, cx);
-            let history = session.history().cloned();
+            let _history = session.history().cloned();
             let mut structured = StructuredChat::new(session, harness);
             let live = self.envs.get_mut(env);
             let (waiting, mode, choices) = live.map_or_else(Default::default, |live| {
@@ -110,7 +99,6 @@ impl EnvironmentShell {
             structured.chosen_model = choice.model;
             structured.mcp_servers = choices.mcp_servers;
             structured.effort = choice.effort;
-            structured.transcript = self.acp_transcript(env, id, harness);
             let mut chat =
                 SurfaceChat::new(input, events, Backend::Structured(Box::new(structured)));
             let prompted = !waiting.is_empty();
@@ -125,26 +113,11 @@ impl EnvironmentShell {
                 self.seed_acp_chats();
                 self.list_acp_models(agent, cx);
             }
-            if self.opens_in_runtime(env, id) {
-                self.runtime_chat_opened(env, id, cx);
-            } else if let Some(resume) = history {
-                match self.node_site(env, id) {
-                    NodeSite::Waiting(runner) => self.note_cloud_wait(env, id, runner),
-                    NodeSite::Cloud(_) => self.load_history(env.clone(), id, harness, resume, cx),
-                    NodeSite::Env if self.reads_history_now(env, harness) => {
-                        self.load_history(env.clone(), id, harness, resume, cx);
-                    }
-                    NodeSite::Env => self.note_history_waits_for_host(env, id),
-                }
-            }
+            self.runtime_chat_opened(env, id, cx);
             if prompted {
                 self.flush_structured(env, id, cx);
             }
         }
-    }
-
-    fn reads_history_now(&self, env: &EnvironmentName, harness: AgentPreset) -> bool {
-        !reads_history_on_host(harness) || self.host_agents_known(env)
     }
 
     pub(super) fn note_history_waits_for_host(&mut self, env: &EnvironmentName, id: TerminalId) {
@@ -168,88 +141,6 @@ impl EnvironmentShell {
         for id in opening {
             self.runtime_chat_opened(env, id, cx);
         }
-        let Some(live) = self.envs.get_mut(env) else {
-            return;
-        };
-        let missing: Vec<(TerminalId, AgentPreset, ResumeId)> = live
-            .chats
-            .iter_mut()
-            .filter(|(_, chat)| chat.messages.is_empty())
-            .filter_map(|(id, chat)| {
-                let Backend::Structured(structured) = &chat.backend else {
-                    return None;
-                };
-                if structured.in_runtime() {
-                    return None;
-                }
-                let resume = structured.session.history()?.clone();
-                let harness = structured.harness;
-                chat.problem = None;
-                Some((*id, harness, resume))
-            })
-            .collect();
-        for (id, harness, resume) in missing {
-            self.load_history(env.clone(), id, harness, resume, cx);
-        }
     }
 
-    pub(in crate::environment_shell) fn load_history_of(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        cx: &mut Context<Self>,
-    ) {
-        if self.opens_in_runtime(env, id) {
-            return self.runtime_chat_opened(env, id, cx);
-        }
-        let Some(chat) = structured_chat(self, env, id).filter(|chat| chat.messages.is_empty())
-        else {
-            return;
-        };
-        let Backend::Structured(structured) = &chat.backend else {
-            return;
-        };
-        if structured.in_runtime() {
-            return;
-        }
-        let Some(resume) = structured.session.history().cloned() else {
-            return;
-        };
-        let harness = structured.harness;
-        self.load_history(env.clone(), id, harness, resume, cx);
-    }
-
-    pub(super) fn note_chat_resume(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        resume: ResumeId,
-    ) {
-        let Some(node) = self
-            .envs
-            .get(env)
-            .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
-        else {
-            return;
-        };
-        if node.resume.as_ref() == Some(&resume) {
-            return;
-        }
-        self.set_node(env, id, NodeField::Resume(Some(resume)));
-        self.store();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::reads_history_on_host;
-    use krad_domain::AgentPreset;
-
-    #[test]
-    fn only_harnesses_that_keep_history_on_the_host_wait_for_it() {
-        assert!(reads_history_on_host(AgentPreset::ClaudeCode));
-        assert!(reads_history_on_host(AgentPreset::Codex));
-        assert!(reads_history_on_host(AgentPreset::Opencode));
-        assert!(!reads_history_on_host(AgentPreset::Gateway));
-    }
 }

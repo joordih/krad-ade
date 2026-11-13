@@ -13,6 +13,7 @@ impl Runtime {
         self.watch_runner_buses();
         self.sync_runner_webhooks(Instant::now());
         self.hear_runner_sign_ins();
+        self.keep_cloud_offsets(Instant::now());
         self.tick_hosts();
         self.tick_git();
         self.tick_kraddies();

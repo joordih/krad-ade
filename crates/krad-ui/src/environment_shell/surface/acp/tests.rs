@@ -1,4 +1,5 @@
 use super::*;
+use krad_chat::AcpEvent;
 use krad_domain::{AcpConfigCategory, AcpConfigChoice, AcpMode, TerminalId};
 
 fn mode(id: &str) -> AcpMode {
@@ -17,11 +18,20 @@ fn modes(current: &str, available: &[&str]) -> AcpModes {
 }
 
 fn heard(offers: &mut AcpOffers, event: AcpEvent) {
-    assert_eq!(
-        offers.reported(event),
-        Vec::<AcpChoice>::new(),
-        "nothing was chosen before the agent reported"
-    );
+    let mut shown = krad_protocol::AcpShown {
+        modes: offers.modes.clone(),
+        models: offers.models.clone(),
+        options: offers.options.clone(),
+        reported: true,
+        sign_in: None,
+    };
+    match event {
+        AcpEvent::Modes(modes) => shown.modes = Some(modes),
+        AcpEvent::Models(models) => shown.models = Some(models),
+        AcpEvent::Options(options) => shown.options = options,
+        AcpEvent::SignInNeeded(_) => {}
+    }
+    assert!(!offers.adopt(&shown), "no sign-in was asked");
 }
 
 fn shown_mode(offers: &AcpOffers) -> Option<String> {
@@ -157,29 +167,6 @@ fn claude_s_effort_ultracode_fast_and_persona_leave_the_pills_for_the_effort_sli
 }
 
 #[test]
-fn a_second_sign_in_ask_after_choosing_marks_it_failed_and_opening_clears_it() {
-    let mut offers = AcpOffers::default();
-    let methods = vec![krad_domain::AcpAuthMethod {
-        id: krad_domain::AcpAuthMethodId("login".to_owned()),
-        name: "Log in".to_owned(),
-        description: None,
-        sign_in: krad_domain::AcpSignIn::ByAgent,
-    }];
-    heard(&mut offers, AcpEvent::SignInNeeded(methods.clone()));
-    let asked = offers.sign_in.as_mut().map(|asked| {
-        asked.step = sign_in::SignInStep::Signing(methods[0].id.clone());
-    });
-    assert!(asked.is_some());
-    heard(&mut offers, AcpEvent::SignInNeeded(methods.clone()));
-    assert_eq!(
-        offers.sign_in.as_ref().map(|asked| asked.step.clone()),
-        Some(sign_in::SignInStep::Failed(methods[0].id.clone()))
-    );
-    offers.opened();
-    assert!(offers.sign_in.is_none());
-}
-
-#[test]
 fn the_models_an_agent_reports_become_the_chat_s_model_rows_with_its_current_one() {
     let mut offers = AcpOffers::default();
     let model = |id: &str, name: &str| krad_domain::AcpModel {
@@ -233,7 +220,7 @@ fn a_seeded_chat_shows_the_agent_s_mode_and_effort_before_its_session_opens() {
 }
 
 #[test]
-fn choices_made_before_the_session_opened_are_wanted_once_each_and_resent_on_its_first_report() {
+fn choices_made_before_the_session_opened_are_wanted_until_the_runtime_reports_it() {
     let mut offers = AcpOffers::default();
     offers.seed(&claude_seed("medium"));
     let plan = AcpChoice::Mode(AcpModeId("plan".to_owned()));
@@ -262,16 +249,8 @@ fn choices_made_before_the_session_opened_are_wanted_once_each_and_resent_on_its
         Some(Effort::High),
         "a late probe never undoes what the user chose"
     );
-    assert_eq!(
-        offers.reported(AcpEvent::Modes(modes("plan", &["default", "plan"]))),
-        [plan, AcpChoice::Option(high.0, high.1)]
-    );
+    heard(&mut offers, AcpEvent::Modes(modes("plan", &["default", "plan"])));
     assert_eq!(shown_mode(&offers).as_deref(), Some("PLAN"));
-    assert_eq!(
-        offers.effort().and_then(|effort| effort.current),
-        Some(Effort::High),
-        "the seeded effort stays until the agent reports its own"
-    );
     assert_eq!(offers.wanted(), AcpWanted::default());
 }
 

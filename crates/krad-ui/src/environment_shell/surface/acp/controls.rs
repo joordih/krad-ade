@@ -203,11 +203,6 @@ impl EnvironmentShell {
                     value,
                 },
             });
-        } else if let Some(live) = structured.live() {
-            match choice {
-                AcpChoice::Mode(mode) => live.set_acp_mode(mode),
-                AcpChoice::Option(option, value) => live.set_acp_option(option, value),
-            }
         }
         cx.notify();
     }

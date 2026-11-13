@@ -295,7 +295,7 @@ impl EnvironmentShell {
                     .runner_buses
                     .insert(shown.runner, shown.bus);
             }
-            EventKind::RunnerReturned { .. } => self.resume_cloud_work(cx),
+            EventKind::RunnerReturned { .. } => {}
             EventKind::CloudAskReplayed(asked) => self.cloud_ask_replayed(asked),
             EventKind::RunnerLoginsChanged(shown) => {
                 self.runtime.view.runner_logins.insert(shown.runner, shown);

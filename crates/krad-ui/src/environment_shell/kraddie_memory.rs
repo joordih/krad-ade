@@ -11,21 +11,19 @@ use gpui_kit::component::input::TextareaState;
 use gpui_kit::{Context, Entity, Task};
 use krad_chat::LiveChat;
 use krad_domain::{
-    chat_pack, memory_reach, DigestBook, DigestId, EnvironmentName, KraddieChip, KraddieId,
-    KraddieMood, MemoryKind, MemoryLibrary, MemoryOwner, MemoryReach, MemorySize, PackRequest,
-    SessionId, TerminalId, CHAT_PACK_TOKENS,
+    DigestBook, DigestId, EnvironmentName, KraddieChip, KraddieId,
+    KraddieMood, MemoryLibrary, MemoryOwner, MemorySize,
+    SessionId, TerminalId,
 };
 use krad_protocol::OwnedDigests;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::time::{Instant, SystemTime};
+use std::time::Instant;
 
 use super::EnvironmentShell;
 use crate::kraddie_avatar::KraddieSprite;
 
 pub(super) use mention::KraddieSuggestion;
-
-const PROMPT_SEPARATOR: &str = "\n\n";
 
 type ChatKey = (EnvironmentName, TerminalId);
 
@@ -84,14 +82,6 @@ impl KraddieMemoryUi {
     }
 }
 
-#[must_use]
-pub(super) fn joined_prompt(first: Option<String>, second: Option<String>) -> Option<String> {
-    match (first, second) {
-        (Some(first), Some(second)) => Some(format!("{first}{PROMPT_SEPARATOR}{second}")),
-        (first, second) => first.or(second),
-    }
-}
-
 impl EnvironmentShell {
     pub(super) fn memory_library(&self) -> MemoryLibrary {
         let mut library = MemoryLibrary::default();
@@ -146,55 +136,6 @@ impl EnvironmentShell {
             .map_or(MemoryOwner::Ordinary, krad_domain::SessionMemory::owner)
     }
 
-    pub(super) fn chat_reach(&self, env: &EnvironmentName, chat: TerminalId) -> MemoryReach {
-        let memory = self
-            .envs
-            .get(env)
-            .and_then(|live| live.data.chat_memory(chat));
-        let owner = memory.map_or(MemoryOwner::Ordinary, krad_domain::SessionMemory::owner);
-        let mentioned = memory.map_or(&[][..], |memory| memory.mentioned_in(chat));
-        memory_reach(
-            &owner,
-            self.kraddies.entries.iter().map(|entry| &entry.kraddie),
-            mentioned,
-        )
-    }
-
-    pub(super) fn memory_preamble(
-        &self,
-        env: &EnvironmentName,
-        chat: TerminalId,
-    ) -> Option<String> {
-        let owner = self.chat_owner(env, chat);
-        let identity = owner.kraddie().and_then(|id| {
-            let entry = self.kraddies.entry(id)?;
-            Some(self.kraddie_mind(id).chat_brief(&entry.kraddie))
-        });
-        let reach = self.chat_reach(env, chat);
-        let library = self.memory_library();
-        let query = self
-            .envs
-            .get(env)
-            .and_then(|live| {
-                live.data
-                    .session_of(chat)
-                    .and_then(|id| live.data.session(id))
-            })
-            .map_or_default(|session| session.name.clone());
-        let request = PackRequest {
-            home: &owner,
-            query: &query,
-            budget: CHAT_PACK_TOKENS,
-            now: SystemTime::now(),
-        };
-        let visible = library
-            .visible(&reach)
-            .filter(|item| !(item.kind == MemoryKind::Keepsake && item.owner() == owner));
-        let pack = chat_pack(visible, &request);
-        let pack = (!pack.is_empty()).then_some(pack.text);
-        joined_prompt(identity, pack)
-    }
-
     pub(super) fn start_memory_clock(&mut self, cx: &mut Context<Self>) {
         if self.kraddies.memory.ticker.is_some() {
             return;
@@ -212,27 +153,5 @@ impl EnvironmentShell {
 
     fn tend_memory(&mut self, cx: &mut Context<Self>) {
         self.check_digests(cx);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn prompts_join_with_a_blank_line_and_skip_what_is_missing() {
-        assert_eq!(
-            joined_prompt(Some("a".to_owned()), Some("b".to_owned())).as_deref(),
-            Some("a\n\nb")
-        );
-        assert_eq!(
-            joined_prompt(None, Some("b".to_owned())).as_deref(),
-            Some("b")
-        );
-        assert_eq!(
-            joined_prompt(Some("a".to_owned()), None).as_deref(),
-            Some("a")
-        );
-        assert_eq!(joined_prompt(None, None), None);
     }
 }

@@ -3,9 +3,9 @@ mod ending;
 
 use gpui_kit::Context;
 use krad_agents::{ErrorCode, Response};
-use krad_chat::{new_session_id, LiveEvent, LiveSession};
+use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
-    worker_mode, AgentPreset, ChatEvent, CloudPlacement, EnvironmentName, GroupId, NodeEdit,
+    worker_mode, AgentPreset, CloudPlacement, EnvironmentName, GroupId, NodeEdit,
     PermissionMode, Prompt, TerminalId, WorkerSpawn, WorkerSurface,
 };
 use krad_runtime::BusReply;
@@ -36,20 +36,6 @@ pub(super) enum LaunchProgress {
     Started,
     Failed(String),
     Unknown,
-}
-
-fn launch_progress(event: &LiveEvent) -> LaunchProgress {
-    match event {
-        LiveEvent::Chat(ChatEvent::Error(error)) => LaunchProgress::Failed(error.clone()),
-        LiveEvent::Refused(refused) => LaunchProgress::Failed(refused.to_string()),
-        LiveEvent::Chat(_) | LiveEvent::Ready(_) | LiveEvent::Ask(_) => LaunchProgress::Started,
-        LiveEvent::Usage(_)
-        | LiveEvent::Limit(_)
-        | LiveEvent::Spent(_)
-        | LiveEvent::Notice(_)
-        | LiveEvent::Rewound(_)
-        | LiveEvent::Acp(_) => LaunchProgress::Unknown,
-    }
 }
 
 impl EnvironmentShell {
@@ -94,16 +80,6 @@ impl EnvironmentShell {
                 .send(Response::error(ErrorCode::Unsupported, NO_GROUP))
                 .unwrap_or_default(),
         }
-    }
-
-    pub(super) fn follow_worker_launch(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        event: &LiveEvent,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        self.follow_launch_progress(env, id, launch_progress(event), cx)
     }
 
     pub(super) fn follow_launch_progress(
@@ -239,20 +215,5 @@ impl EnvironmentShell {
         self.edit_environment(env, resumed);
         self.store();
         true
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_worker_has_started_once_its_harness_says_anything_but_an_error() {
-        let started = launch_progress(&LiveEvent::Chat(ChatEvent::Text("On it".to_owned())));
-        assert!(matches!(started, LaunchProgress::Started));
-        let failed = launch_progress(&LiveEvent::Chat(ChatEvent::Error("no claude".to_owned())));
-        assert!(matches!(failed, LaunchProgress::Failed(error) if error == "no claude"));
-        let notice = launch_progress(&LiveEvent::Notice("slow".to_owned()));
-        assert!(matches!(notice, LaunchProgress::Unknown));
     }
 }

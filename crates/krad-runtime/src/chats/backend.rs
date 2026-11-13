@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::brief::ChatBrief;
+use super::cloud;
+use crate::cloud_runs::CloudSite;
 use super::chat::Chat;
 use super::mcp_prep::{ready_mcp, McpPrep};
 use super::queue::ChatQueue;
@@ -112,13 +114,31 @@ fn served(mut config: EngineConfig, reached: GatewayReached<'_>) -> EngineConfig
     config
 }
 
-pub(super) fn reach_opencode(config: &LiveConfig, work: &mut ChatWork<'_>) -> Reach {
-    work.opencode.reach(
-        &config.runner.link().host(),
-        (&config.runner, &config.cwd),
-        work.jobs,
-        work.outbox,
-    )
+pub(super) fn reach_opencode(
+    config: &LiveConfig,
+    cloud: Option<&CloudSite>,
+    work: &mut ChatWork<'_>,
+) -> Reach {
+    reach_server((&config.runner, &config.cwd), cloud, work)
+}
+
+pub(super) fn reach_server(
+    (runner, cwd): (&Runner, &std::path::Path),
+    cloud: Option<&CloudSite>,
+    work: &mut ChatWork<'_>,
+) -> Reach {
+    if let Some(site) = cloud {
+        let program = match runner {
+            Runner::Ssh { program, .. } => program.as_str(),
+            Runner::Native(_) | Runner::Wsl { .. } | Runner::Cloud(_) => "",
+        };
+        return work
+            .opencode
+            .cloud
+            .reach(site, program, (work.jobs, work.facts.secrets));
+    }
+    work.opencode
+        .reach(&runner.link().host(), (runner, cwd), work.jobs, work.outbox)
 }
 
 impl From<ChatBackend> for ChatLaunch {
@@ -297,13 +317,13 @@ fn planned(
     let Some(prepared) = &chat.prepared else {
         let resolved = match chat.harness {
             AgentPreset::Acp(agent) => resolve_acp(
-                (&chat.id, agent, &chat.place),
+                (&chat.id, agent, &chat.place, chat.cloud.as_ref()),
                 (&chat.brief, &chat.choices),
                 mcp.starts,
                 work,
             )?,
             harness => work.facts.resolve(
-                (&chat.id, harness, &chat.place),
+                (&chat.id, harness, &chat.place, chat.cloud.as_ref()),
                 (&chat.brief, &chat.choices),
                 mcp.starts,
             )?,
@@ -339,14 +359,14 @@ pub(crate) fn resolve_once(
         .place(chat)
         .ok_or_else(|| Unready::Problem(UNKNOWN_PLACE.to_owned()))?;
     let resolved = work.facts.resolve(
-        (chat, harness, &place),
+        (chat, harness, &place, None),
         (brief, &Choices::from(brief)),
         Vec::new(),
     )?;
     let gateway = work.gateway;
     resolved
         .launch
-        .resolve(gateway, |config| reach_opencode(config, work))
+        .resolve(gateway, |config| reach_opencode(config, None, work))
 }
 
 pub(super) fn ensure_live(
@@ -367,6 +387,14 @@ pub(super) fn ensure_live(
     let Some(mcp) = ready_mcp(chat, work) else {
         return false;
     };
+    match cloud::reach(chat, work) {
+        Ok(()) => {}
+        Err(Unready::Waiting) => return false,
+        Err(Unready::Problem(problem)) => {
+            chat.problem = Some(problem);
+            return false;
+        }
+    }
     let gateway = work.gateway;
     let launch = match (planned(chat, mcp, work), chat.acp.as_mut()) {
         (Ok(ChatLaunch::Acp(config)), Some(acp)) => acp
@@ -378,8 +406,10 @@ pub(super) fn ensure_live(
             .map(ChatLaunch::from),
         (planned, _) => planned,
     };
-    let backend =
-        launch.and_then(|launch| launch.resolve(gateway, |config| reach_opencode(config, work)));
+    let site = chat.cloud.as_ref().map(|cloud| cloud.site.as_ref().clone());
+    let backend = launch.and_then(|launch| {
+        launch.resolve(gateway, |config| reach_opencode(config, site.as_ref(), work))
+    });
     let backend = match backend {
         Ok(backend) => backend,
         Err(Unready::Waiting) => return false,

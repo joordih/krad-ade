@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use super::{refused, Runtime};
+use crate::cloud_runs::placement_of;
 use crate::hosts::{remote_caller_vars, Reach};
 use crate::jobs::JobDone;
 use crate::launches::{
@@ -152,11 +153,7 @@ impl Runtime {
                 environment: environment.clone(),
                 terminal: id,
             };
-            let in_cloud = data
-                .session_of(id)
-                .and_then(|session| data.session(session))
-                .is_some_and(|session| session.cloud.is_some());
-            in_cloud || terminals.runs(&terminal) || launches.is_waiting(&terminal)
+            terminals.runs(&terminal) || launches.is_waiting(&terminal)
         });
         let count = relaunches.len();
         for relaunch in relaunches {
@@ -174,6 +171,9 @@ impl Runtime {
     }
 
     fn launch(&mut self, waiting: WaitingLaunch) {
+        if let Some(placement) = placement_of(&self.environments, &waiting.terminal) {
+            return self.launch_in_cloud(waiting, placement);
+        }
         let Some(host) = self.environments.host_of(&waiting.terminal.environment) else {
             return;
         };

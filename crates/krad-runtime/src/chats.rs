@@ -5,6 +5,7 @@ mod brief;
 mod buffers;
 mod chat;
 mod checkpoints;
+mod cloud;
 mod digest_source;
 mod heard;
 mod history;
@@ -17,8 +18,8 @@ mod workers;
 
 use krad_chat::LiveSession;
 use krad_domain::{
-    AcpAuthMethodId, AgentPreset, AttentionKind, ChatMessage, Host, McpProjectTrust, ModelOffer,
-    Prompt, UsageReport,
+    AcpAuthMethodId, AgentPreset, AttentionKind, ChatMessage, CloudPlacement, CloudRunnerId, Host,
+    McpProjectTrust, ModelOffer, Prompt, UsageReport,
 };
 use krad_host::HostLink;
 use krad_protocol::{AgentRef, ChatCommand, ErrorCode, EventKind, Reply, UsageNews};
@@ -27,6 +28,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, SyncSender};
 
 use crate::adapters::AcpAdapters;
+use crate::cloud_runs::CloudRuns;
 use crate::gateway::GatewayReached;
 use crate::input::Input;
 use crate::jobs::Jobs;
@@ -62,6 +64,7 @@ pub struct ChatPlace {
     pub host: Host,
     pub link: HostLink,
     pub root: Option<PathBuf>,
+    pub cloud: Option<CloudPlacement>,
 }
 
 pub struct ChatStart {
@@ -128,6 +131,7 @@ impl std::fmt::Debug for Chats {
 
 pub(crate) struct ChatWork<'a> {
     pub(crate) jobs: &'a Jobs,
+    pub(crate) cloud: &'a mut CloudRuns,
     pub(crate) adapters: &'a mut AcpAdapters,
     pub(crate) gateway: Option<GatewayReached<'a>>,
     pub(crate) opencode: &'a mut OpencodeServers,
@@ -313,6 +317,38 @@ impl Chats {
             }
         }
         self.flush_all(work);
+    }
+
+    pub(crate) fn cloud_ready(&mut self, runner: CloudRunnerId, work: &mut ChatWork<'_>) {
+        for chat in self.open.values_mut() {
+            let on_runner = chat
+                .place
+                .cloud
+                .as_ref()
+                .is_some_and(|placement| placement.runner == runner);
+            if on_runner && chat.history != HistoryWait::No {
+                chat.history = HistoryWait::No;
+                history::read(chat, work);
+            }
+        }
+        self.flush_all(work);
+    }
+
+    pub(crate) fn runner_problem(
+        &mut self,
+        runner: CloudRunnerId,
+        problem: &str,
+        outbox: &mut Vec<EventKind>,
+    ) {
+        for chat in self.open.values_mut().filter(|chat| {
+            chat.place
+                .cloud
+                .as_ref()
+                .is_some_and(|placement| placement.runner == runner)
+        }) {
+            chat.problem = Some(problem.to_owned());
+            chat.tell_state(outbox);
+        }
     }
 
     pub(crate) fn flush_all(&mut self, work: &mut ChatWork<'_>) {

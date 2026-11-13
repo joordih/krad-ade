@@ -8,7 +8,6 @@ use krad_protocol::{AgentRef, ChatCommand, Command};
 use krad_runtime::{runs_in_runtime, ChatBrief, ChatRole, ChatStart};
 
 use super::super::super::chat::StartError;
-use super::super::super::cloud::NodeSite;
 use super::super::super::EnvironmentShell;
 use super::super::{SurfaceChat, SurfaceCommand};
 use super::{structured_chat, structured_mut, StructuredChat};
@@ -65,10 +64,9 @@ fn batch_commands(
 
 impl EnvironmentShell {
     pub(super) fn opens_in_runtime(&self, env: &EnvironmentName, id: TerminalId) -> bool {
-        let runs = structured_of(self, env, id).is_some_and(|structured| {
+        structured_of(self, env, id).is_some_and(|structured| {
             runs_in_runtime(structured.harness) && !structured.in_runtime()
-        });
-        runs && matches!(self.node_site(env, id), NodeSite::Env)
+        })
     }
 
     pub(super) fn open_in_runtime(
@@ -232,18 +230,7 @@ impl EnvironmentShell {
         match (self.open_in_runtime(env, id), resume) {
             (Ok(()), _) | (Err(StartError::Waiting), None) => {}
             (Err(StartError::Waiting), Some(_)) => self.note_history_waits_for_host(env, id),
-            (Err(_), Some(resume)) => {
-                let unread = self
-                    .envs
-                    .get(env)
-                    .and_then(|live| live.chats.get(&id))
-                    .filter(|chat| chat.messages.is_empty())
-                    .map(SurfaceChat::harness);
-                if let Some(harness) = unread {
-                    self.load_history(env.clone(), id, harness, resume, cx);
-                }
-            }
-            (Err(error), None) => {
+            (Err(error), _) => {
                 if let Some(chat) = structured_chat(self, env, id) {
                     chat.problem = Some(error.to_string());
                 }

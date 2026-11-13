@@ -3,13 +3,12 @@ mod view;
 
 use gpui_kit::Context;
 use krad_chat::Runner;
-use krad_domain::{AgentPreset, AgentStatus, Host, UsageBudget, UsageIndicator};
+use krad_domain::{AgentPreset, AgentStatus, Host, UsageIndicator};
 use krad_host::HostLink;
-use krad_protocol::{Command, OpencodeStatus, UsageCommand, UsageNews, UsageNote, UsageShown};
+use krad_protocol::{Command, OpencodeStatus, UsageCommand, UsageNote, UsageShown};
 use krad_runtime::{SourceState, UsagePlace, UsageSource};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use super::chat::StartError;
 use super::EnvironmentShell;
@@ -71,10 +70,6 @@ impl EnvironmentShell {
         self.save_settings(cx);
         self.place_usage();
         cx.notify();
-    }
-
-    pub(super) fn claude_usage_budget(&self) -> Arc<UsageBudget> {
-        self.runtime.handle.usage_budget()
     }
 
     pub(super) fn place_usage(&mut self) {
@@ -176,16 +171,6 @@ impl EnvironmentShell {
                 SourceState::Waiting(UsageNote::HostNotReady)
             }
         }
-    }
-
-    pub(super) fn usage_heard(&self, host: Host, harness: AgentPreset, news: UsageNews) {
-        self.runtime
-            .handle
-            .post(Command::Usage(UsageCommand::Heard {
-                host,
-                harness,
-                news,
-            }));
     }
 
     pub(super) fn statusline_heard(&self, host: Host, status: &AgentStatus) {

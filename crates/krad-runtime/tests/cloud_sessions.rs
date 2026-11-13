@@ -236,6 +236,16 @@ fn a_cloud_session_is_prepared_on_a_ready_runner_and_its_branch_comes_home() -> 
     ));
     let (logins, opened) = opened_with_settled_logins(&feed)?;
     assert_eq!(logins.runner, RUNNER);
+    let login_of = |cli: RunnerCli| {
+        logins
+            .logins
+            .iter()
+            .find(|known| known.cli == cli)
+            .map(|known| known.login)
+    };
+    assert_eq!(login_of(RunnerCli::Claude), Some(RunnerLogin::SignedOut));
+    assert_eq!(login_of(RunnerCli::Github), Some(RunnerLogin::SignedIn));
+    assert_eq!(login_of(RunnerCli::Gitlab), Some(RunnerLogin::SignedOut));
     assert!(runtime.runner(RUNNER).is_some());
     assert_eq!(opened.group, group);
     assert_eq!(opened.starts.len(), 1);

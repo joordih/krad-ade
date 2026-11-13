@@ -240,7 +240,6 @@ impl EnvironmentShell {
         self.flush_attention(cx);
         self.service_hosts(cx);
         self.watch_new_opencode_terminals(cx);
-        self.connect_wanted_runners(cx);
     }
 
     pub fn with_seed(

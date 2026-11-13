@@ -6,8 +6,11 @@ use std::path::PathBuf;
 
 use super::super::backend::{ChatLaunch, Choices, Unready};
 use super::super::brief::{ChatBrief, ChatRole};
+use super::super::cloud::CloudChat;
 use super::super::{ChatPlace, ChatWork};
-use super::{local_home, problem, Offered, Resolved, NO_CONFIG_FOLDER_TEXT, NO_PROGRAM_TEXT};
+use super::{
+    local_home, problem, LaunchFacts, Offered, Resolved, NO_CONFIG_FOLDER_TEXT, NO_PROGRAM_TEXT,
+};
 use crate::adapters::{kept_package, AdapterLaunch};
 
 const INSTALLING_TEXT: &str = "Installing";
@@ -38,8 +41,34 @@ fn adapter_runner(
     }
 }
 
+fn env_runner(
+    (chat, agent, place): (&AgentRef, &krad_domain::AcpAgent, &ChatPlace),
+    brief: &ChatBrief,
+    work: &mut ChatWork<'_>,
+) -> Result<(Runner, PathBuf, Vec<(String, String)>), Unready> {
+    let preset = AgentPreset::Acp(agent.id);
+    let name = work.facts.settings.acp.harness_name(preset);
+    let remote = work.facts.site(chat, place)?.remote.is_some();
+    let (runner, cwd) = match kept_package(agent.id, &place.link, place.root.as_deref()) {
+        Some(package) => {
+            let launch = work.adapters.start(agent, package, work.jobs, work.outbox);
+            adapter_runner(launch, &name, place)?
+        }
+        None => work
+            .facts
+            .program_runner(chat, (preset, agent.program.clone()), place)?,
+    };
+    let off_bus = brief.role == ChatRole::Digest || (runner.on_ssh() && !remote);
+    let bus_vars = if off_bus {
+        Vec::new()
+    } else {
+        work.facts.bus_vars(chat, place, runner.in_wsl())
+    };
+    Ok((runner, cwd, bus_vars))
+}
+
 pub(in crate::chats) fn resolve_acp(
-    (chat, agent, place): (&AgentRef, AcpAgentId, &ChatPlace),
+    (chat, agent, place, cloud): (&AgentRef, AcpAgentId, &ChatPlace, Option<&CloudChat>),
     (brief, choices): (&ChatBrief, &Choices),
     mcp: Vec<McpServerStart>,
     work: &mut ChatWork<'_>,
@@ -52,21 +81,16 @@ pub(in crate::chats) fn resolve_acp(
         .acp
         .agent(agent)
         .ok_or_else(|| problem(&name, NO_PROGRAM_TEXT))?;
-    let remote = work.facts.site(chat, place)?.remote.is_some();
-    let (runner, cwd) = match kept_package(agent.id, &place.link, place.root.as_deref()) {
-        Some(package) => {
-            let launch = work.adapters.start(&agent, package, work.jobs, work.outbox);
-            adapter_runner(launch, &name, place)?
+    let (runner, cwd, bus_vars) = match cloud {
+        Some(cloud) => {
+            let runner = LaunchFacts::cloud_runner(cloud, agent.program.clone());
+            let vars = match brief.role {
+                ChatRole::Digest => Vec::new(),
+                ChatRole::Agent => work.facts.cloud_bus_vars(chat, preset, cloud),
+            };
+            (runner, cloud.site.placement.worktree.clone(), vars)
         }
-        None => work
-            .facts
-            .program_runner(chat, (preset, agent.program.clone()), place)?,
-    };
-    let off_bus = brief.role == ChatRole::Digest || (runner.on_ssh() && !remote);
-    let bus_vars = if off_bus {
-        Vec::new()
-    } else {
-        work.facts.bus_vars(chat, place, runner.in_wsl())
+        None => env_runner((chat, &agent, place), brief, work)?,
     };
     let offered = work.facts.offered(preset, place, choices);
     let config = AcpConfig {

@@ -7,7 +7,7 @@ mod worker;
 
 use gpui_kit::component::input::{InputEvent, TextareaState};
 use gpui_kit::{AppContext as _, Context, Entity, Focusable as _, Subscription, Window};
-use krad_chat::{AskAnswer, AskKind, LiveChat, Question};
+use krad_chat::{AskAnswer, AskKind, Question};
 use krad_domain::{
     AcpPermissionKind, AcpPermissionOption, AgentState, AskOutcome, AskVerdict, ChatEntry,
     PermissionMode, TerminalId, ToolDecision,
@@ -16,7 +16,7 @@ use krad_domain::{
 use krad_protocol::ChatCommand;
 
 use super::chat::fold_entry;
-use super::surface::{Backend, StructuredChat, SurfaceChat};
+use super::surface::{StructuredChat, SurfaceChat};
 use super::EnvironmentShell;
 pub(super) use from_notification::PermissionReply;
 pub(super) use held::HeldAskReport;
@@ -216,10 +216,6 @@ impl EnvironmentShell {
             .map(SurfaceChat::asks_mut)
     }
 
-    fn ask_process(&self, owner: TerminalId) -> Option<&LiveChat> {
-        self.structured_of(owner)?.live()
-    }
-
     pub(super) fn permission_mode(&self, owner: TerminalId) -> Option<PermissionMode> {
         self.structured_of(owner)?.permission_mode
     }
@@ -230,9 +226,6 @@ impl EnvironmentShell {
         mode: PermissionMode,
         cx: &mut Context<Self>,
     ) {
-        if let Some(live) = self.ask_process(owner) {
-            live.set_permission_mode(mode);
-        }
         let env = self.active.clone();
         self.post_runtime_chat(&env, owner, |chat| ChatCommand::SetPermissionMode {
             chat,
@@ -252,12 +245,7 @@ impl EnvironmentShell {
             .get_mut(&env)
             .and_then(|live| live.chats.get_mut(&owner))
         {
-            match &chat.backend {
-                Backend::Structured(structured) => structured.fold_kept(&mut chat.messages, &entry),
-                Backend::Transcript(_) => {
-                    fold_entry(&mut chat.messages, &entry);
-                }
-            }
+            fold_entry(&mut chat.messages, &entry);
         }
     }
 
@@ -269,11 +257,6 @@ impl EnvironmentShell {
         };
         let answered_elsewhere = matches!(reply, AskReply::Runtime { .. });
         match reply {
-            AskReply::Live => {
-                if let Some(live) = self.ask_process(owner) {
-                    live.answer(&ask, answer);
-                }
-            }
             AskReply::Hook(held) => held.decide(ask.decision(answer)),
             AskReply::Keys => self.type_plan_answer(owner, answer),
             AskReply::Runtime { ask: asked, .. } => {
@@ -389,12 +372,6 @@ impl EnvironmentShell {
             .map(|waiting| &waiting.reply);
         match reply {
             None => {}
-            Some(AskReply::Live) => {
-                self.answer_ask(owner, &answer, cx);
-                if let Some(live) = self.ask_process(owner) {
-                    live.interrupt();
-                }
-            }
             Some(AskReply::Runtime { .. }) => {
                 self.answer_ask(owner, &answer, cx);
                 let env = self.active.clone();

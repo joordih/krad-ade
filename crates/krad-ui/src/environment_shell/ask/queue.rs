@@ -1,13 +1,12 @@
 use gpui_kit::FocusHandle;
 use krad_chat::{AskKind, ToolAsk};
-use krad_domain::{AskOutcome, AskVerdict, ToolDecision, ToolUseId};
+use krad_domain::{ToolDecision, ToolUseId};
 use krad_protocol::{AskId, ChatAsk, ChatAskId};
 use krad_runtime::HeldAsk;
 
-use super::{outcome, Note, NotePurpose, Picks};
+use super::{Note, NotePurpose, Picks};
 
 pub(in crate::environment_shell) enum AskReply {
-    Live,
     Hook(HeldAsk),
     Keys,
     Runtime { ask: ChatAskId, allows_always: bool },
@@ -49,15 +48,6 @@ impl Settled<'_> {
 }
 
 impl Waiting {
-    pub(in crate::environment_shell) const fn live(ask: ToolAsk) -> Self {
-        Self {
-            ask,
-            reply: AskReply::Live,
-            tool: None,
-            call: None,
-        }
-    }
-
     pub(in crate::environment_shell) const fn held(
         ask: ToolAsk,
         reply: AskReply,
@@ -89,7 +79,7 @@ impl Waiting {
     pub(super) fn can_allow_always(&self) -> bool {
         match &self.reply {
             AskReply::Runtime { allows_always, .. } => *allows_always,
-            AskReply::Live | AskReply::Hook(_) | AskReply::Keys => self.ask.can_allow_always(),
+            AskReply::Hook(_) | AskReply::Keys => self.ask.can_allow_always(),
         }
     }
 
@@ -160,19 +150,6 @@ impl AskQueue {
         self.picks = Picks::default();
         self.note = None;
         Some(self.waiting.remove(0))
-    }
-
-    pub(in crate::environment_shell) fn cancel_all(&mut self) -> Vec<AskOutcome> {
-        self.picks = Picks::default();
-        self.note = None;
-        self.waiting
-            .drain(..)
-            .map(|waiting| {
-                let line = outcome(&waiting.ask.kind, AskVerdict::Cancelled);
-                waiting.let_go();
-                line
-            })
-            .collect()
     }
 
     pub(in crate::environment_shell) fn settle(&mut self, settled: Settled<'_>) -> bool {

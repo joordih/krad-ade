@@ -61,6 +61,7 @@ pub(crate) struct WaitingLaunch {
 #[derive(Debug)]
 pub(crate) struct Launches {
     waiting: Vec<WaitingLaunch>,
+    cloud_waiting: Vec<WaitingLaunch>,
     pub(crate) views: LaunchedViews,
     inbox: SyncSender<Input>,
 }
@@ -69,6 +70,7 @@ impl Launches {
     pub(crate) const fn new(views: LaunchedViews, inbox: SyncSender<Input>) -> Self {
         Self {
             waiting: Vec::new(),
+            cloud_waiting: Vec::new(),
             views,
             inbox,
         }
@@ -93,9 +95,21 @@ impl Launches {
         self.waiting.push(launch);
     }
 
+    pub(crate) fn wait_for_cloud(&mut self, launch: WaitingLaunch) {
+        if self.is_waiting(&launch.terminal) {
+            return;
+        }
+        self.cloud_waiting.push(launch);
+    }
+
+    pub(crate) fn take_cloud_waiting(&mut self) -> Vec<WaitingLaunch> {
+        std::mem::take(&mut self.cloud_waiting)
+    }
+
     pub(crate) fn is_waiting(&self, terminal: &AgentRef) -> bool {
         self.waiting
             .iter()
+            .chain(&self.cloud_waiting)
             .any(|waiting| waiting.terminal == *terminal)
     }
 
@@ -109,11 +123,15 @@ impl Launches {
 
     pub(crate) fn forget(&mut self, terminal: &AgentRef) {
         self.waiting.retain(|waiting| waiting.terminal != *terminal);
+        self.cloud_waiting
+            .retain(|waiting| waiting.terminal != *terminal);
         drop(self.views.take(terminal));
     }
 
     pub(crate) fn forget_environment(&mut self, environment: &EnvironmentName) {
         self.waiting
+            .retain(|waiting| waiting.terminal.environment != *environment);
+        self.cloud_waiting
             .retain(|waiting| waiting.terminal.environment != *environment);
         self.views.forget_environment(environment);
     }

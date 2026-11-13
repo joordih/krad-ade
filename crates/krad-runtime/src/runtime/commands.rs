@@ -108,10 +108,12 @@ impl Runtime {
             return refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND);
         }
         if let EnvironmentEdit::Node(NodeEdit::Close { terminal }) = &edit {
-            self.workers.closed(&AgentRef {
+            let node = AgentRef {
                 environment: environment.clone(),
                 terminal: *terminal,
-            });
+            };
+            self.stop_cloud_node(&node);
+            self.workers.closed(&node);
         }
         match self
             .environments

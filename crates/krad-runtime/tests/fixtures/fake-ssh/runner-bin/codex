@@ -1,0 +1,5 @@
+#!/bin/sh
+case "$1" in
+  --version) echo "codex-cli 0.40.0" ;;
+  *) exit 1 ;;
+esac

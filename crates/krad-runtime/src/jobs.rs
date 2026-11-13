@@ -13,12 +13,13 @@ use crate::chats::{
     AcpSecretsRead, ChatCheckpoint, ChatEarlier, ChatOpening, FilesIndexed, McpLaunched, McpRead,
 };
 use crate::cloud::CloudDone;
+use crate::cloud_runs::LivenessChecked;
 use crate::code_hosts::Observed;
 use crate::gateway::{GatewayForgotten, GatewayRead};
 use crate::git::GitJob;
 use crate::hosts::{AgentsFound, Attempt, LocalFound, RemoteBus};
 use crate::input::Input;
-use crate::opencode::{OpencodeListed, OpencodeStarted};
+use crate::opencode::{CloudOpencodeStarted, OpencodeListed, OpencodeStarted};
 use crate::reviews::ReviewDone;
 use crate::runners::RunnerDone;
 use crate::runtime::{AttachedLine, LinesCounted};
@@ -75,6 +76,8 @@ pub(crate) enum JobDone {
     Review(Box<ReviewDone>),
     Runner(Box<RunnerDone>),
     Cloud(Box<CloudDone>),
+    CloudLiveness(LivenessChecked),
+    CloudOpencodeStarted(CloudOpencodeStarted),
 }
 
 #[derive(Clone, Debug)]

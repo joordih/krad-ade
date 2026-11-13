@@ -1,167 +1,12 @@
 use gpui_kit::{AnyElement, Context};
-use krad_domain::{EnvironmentName, McpProjectFile, McpProjectTrust, McpServer, TerminalId};
-use krad_host::HostLink;
-use krad_protocol::{ChatCommand, Command, McpTrustAsk};
-use krad_runtime::{trusted_servers, McpLaunch, McpTrust};
-use std::path::{Path, PathBuf};
+use krad_domain::TerminalId;
+use krad_protocol::{ChatCommand, Command};
 
-use super::super::super::cloud::NodeSite;
 use super::super::super::EnvironmentShell;
 use super::super::{Backend, SurfaceChat};
 use super::runtime_chat::chat_ref;
-use super::structured_mut;
-
-const READ_FAILED_LEAD: &str = "The project's MCP file could not be read: ";
-
-#[derive(Debug, Default)]
-pub(in crate::environment_shell) enum McpPrep {
-    #[default]
-    Unread,
-    Reading,
-    Asking {
-        file: McpProjectFile,
-        asked: McpTrustAsk,
-    },
-    Launching,
-    Ready(McpLaunch),
-}
 
 impl EnvironmentShell {
-    pub(super) fn gateway_mcp(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        folder: &Path,
-        cx: &mut Context<Self>,
-    ) -> Option<McpLaunch> {
-        let link = match self.node_site(env, id) {
-            NodeSite::Cloud(site) => site.link,
-            NodeSite::Env | NodeSite::Waiting(_) => self.env_link(env),
-        };
-        let structured = structured_mut(self, env, id)?;
-        match std::mem::take(&mut structured.mcp) {
-            McpPrep::Ready(launch) => Some(launch),
-            McpPrep::Unread => {
-                structured.mcp = McpPrep::Reading;
-                Self::read_project_mcp(link, env.clone(), id, folder.to_path_buf(), cx);
-                None
-            }
-            waiting @ (McpPrep::Reading | McpPrep::Asking { .. } | McpPrep::Launching) => {
-                structured.mcp = waiting;
-                None
-            }
-        }
-    }
-
-    fn read_project_mcp(
-        link: HostLink,
-        env: EnvironmentName,
-        id: TerminalId,
-        folder: PathBuf,
-        cx: &mut Context<Self>,
-    ) {
-        let read = Self::load_project_mcp(link, folder.clone(), cx);
-        cx.spawn(async move |this, cx| {
-            let file = read.await;
-            this.update(cx, |shell, cx| {
-                shell.project_mcp_read(&env, id, &folder, file, cx);
-            })
-            .unwrap_or_default();
-        })
-        .detach();
-    }
-
-    fn project_mcp_read(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        folder: &Path,
-        file: Result<McpProjectFile, String>,
-        cx: &mut Context<Self>,
-    ) {
-        let file = match file {
-            Ok(file) => file,
-            Err(error) => {
-                if let Some(structured) = structured_mut(self, env, id) {
-                    structured
-                        .notices
-                        .push(format!("{READ_FAILED_LEAD}{error}"));
-                }
-                return self.launch_mcp(env, id, Vec::new(), cx);
-            }
-        };
-        match self.mcp_trust_for(folder, file) {
-            McpTrust::Trusted(servers) => self.launch_mcp(env, id, servers, cx),
-            McpTrust::Ignored => self.launch_mcp(env, id, Vec::new(), cx),
-            McpTrust::Unknown(file) => {
-                let asked = McpTrustAsk::new(folder.to_path_buf(), &file);
-                if let Some(structured) = structured_mut(self, env, id) {
-                    structured.mcp = McpPrep::Asking { file, asked };
-                }
-                cx.notify();
-            }
-        }
-    }
-
-    fn launch_mcp(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        project: Vec<McpServer>,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(structured) = structured_mut(self, env, id) else {
-            return;
-        };
-        structured.mcp = McpPrep::Launching;
-        let chosen = structured.mcp_servers.clone();
-        let project = project
-            .into_iter()
-            .chain(self.code_tools_server(env, id))
-            .collect();
-        let launch = self.mcp_launch(project, chosen.as_deref(), cx);
-        let env = env.clone();
-        cx.spawn(async move |this, cx| {
-            let launch = launch.await;
-            this.update(cx, |shell, cx| {
-                if let Some(structured) = structured_mut(shell, &env, id) {
-                    structured.mcp = McpPrep::Ready(launch);
-                }
-                shell.flush_structured(&env, id, cx);
-            })
-            .unwrap_or_default();
-        })
-        .detach();
-    }
-
-    fn mcp_trust_chosen(&mut self, folder: &Path, trust: McpProjectTrust, cx: &mut Context<Self>) {
-        self.set_mcp_project_trust(folder, trust, cx);
-        let asking: Vec<(EnvironmentName, TerminalId)> = self
-            .envs
-            .iter()
-            .flat_map(|(env, live)| {
-                live.chats
-                    .iter()
-                    .filter(|(_, chat)| {
-                        chat.structured().is_some_and(|structured| {
-                            matches!(structured.mcp, McpPrep::Asking { .. })
-                        })
-                    })
-                    .map(move |(id, _)| (env.clone(), *id))
-            })
-            .filter(|(env, id)| self.chat_folder(env, *id) == folder)
-            .collect();
-        for (env, id) in asking {
-            let Some(structured) = structured_mut(self, &env, id) else {
-                continue;
-            };
-            let McpPrep::Asking { file, .. } = std::mem::take(&mut structured.mcp) else {
-                continue;
-            };
-            self.launch_mcp(&env, id, trusted_servers(file, trust), cx);
-        }
-    }
-
     pub(in crate::environment_shell::surface) fn mcp_tray(
         &self,
         id: TerminalId,
@@ -171,28 +16,17 @@ impl EnvironmentShell {
         let Backend::Structured(structured) = &chat.backend else {
             return None;
         };
-        if structured.in_runtime() {
-            let asked = structured.shown.mcp_trust.as_ref()?;
-            let chat = chat_ref(&self.active, id);
-            return Some(Self::mcp_trust_tray(
-                asked,
-                move |this, trust, _, _| {
-                    let trust = ChatCommand::TrustMcp {
-                        chat: chat.clone(),
-                        trust,
-                    };
-                    this.runtime.handle.post(Command::Chat(trust));
-                },
-                cx,
-            ));
-        }
-        let McpPrep::Asking { asked, .. } = &structured.mcp else {
-            return None;
-        };
-        let folder = asked.folder.clone();
+        let asked = structured.shown.mcp_trust.as_ref()?;
+        let chat = chat_ref(&self.active, id);
         Some(Self::mcp_trust_tray(
             asked,
-            move |this, trust, _, cx| this.mcp_trust_chosen(&folder, trust, cx),
+            move |this, trust, _, _| {
+                let trust = ChatCommand::TrustMcp {
+                    chat: chat.clone(),
+                    trust,
+                };
+                this.runtime.handle.post(Command::Chat(trust));
+            },
             cx,
         ))
     }

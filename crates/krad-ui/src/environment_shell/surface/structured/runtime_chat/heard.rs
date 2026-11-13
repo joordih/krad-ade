@@ -64,7 +64,7 @@ impl EnvironmentShell {
                 point,
                 checkpoint,
             } => self.record_turn_checkpoint(&chat.environment, chat.terminal, point, checkpoint),
-            EventKind::ChatMessagesCut { chat, len } => self.runtime_chat_cut(&chat, len),
+            EventKind::ChatMessagesCut { chat, len } => self.runtime_chat_cut(&chat, len, cx),
             EventKind::ChatAsk(ask) => self.runtime_chat_ask(ask, cx),
             EventKind::ChatAskSettled { chat, ask } => {
                 if let Some(chat) = runtime_chat(self, &chat.environment, chat.terminal) {
@@ -141,7 +141,7 @@ impl EnvironmentShell {
         }
     }
 
-    fn runtime_chat_cut(&mut self, chat: &AgentRef, len: usize) {
+    fn runtime_chat_cut(&mut self, chat: &AgentRef, len: usize, cx: &mut Context<Self>) {
         let Some((shown, len)) =
             runtime_chat(self, &chat.environment, chat.terminal).and_then(|shown| {
                 let len = shown.structured()?.shown.local(len).unwrap_or_default();
@@ -156,12 +156,12 @@ impl EnvironmentShell {
         shown.thread.remeasure();
         let rewound = shown
             .structured_mut()
-            .and_then(|structured| structured.rewinding.take())
-            .is_some();
+            .is_some_and(|structured| std::mem::take(&mut structured.rewinding));
         if rewound {
             shown.editing = None;
             shown.pins_latest = true;
             shown.start_glide(Instant::now());
+            self.files_rewind_settled(&chat.environment, chat.terminal, true, cx);
         }
     }
 
@@ -208,7 +208,7 @@ impl EnvironmentShell {
         if state.working {
             structured.working = true;
         } else {
-            structured.closes_turn(true);
+            structured.ends_turn();
         }
         structured.model.clone_from(&state.model);
         structured.permission_mode = state.permission_mode;

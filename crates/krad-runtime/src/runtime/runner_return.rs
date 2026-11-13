@@ -132,6 +132,7 @@ impl Runtime {
         self.outbox.push(EventKind::RunnerBusChanged(shown));
         self.catch_up(events, started);
         self.outbox.push(EventKind::RunnerReturned { runner });
+        self.cloud_runner_returned();
     }
 
     fn catch_up(&mut self, events: Vec<QueuedEvent>, started: Instant) {

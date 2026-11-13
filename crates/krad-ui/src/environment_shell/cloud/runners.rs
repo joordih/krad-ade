@@ -56,7 +56,6 @@ impl EnvironmentShell {
         }
         self.save_settings(cx);
         self.runtime.view.runner_logins.remove(&runner);
-        self.mark_runner_removed(runner);
         self.runtime.view.runners.remove(&runner);
         self.post_runner(RunnerCommand::Remove { runner });
         cx.notify();
@@ -71,11 +70,7 @@ impl EnvironmentShell {
         if self.runner_removed_from_settings(runner) {
             return;
         }
-        let settled = state.is_ready() || matches!(state, RunnerState::Failed { .. });
         self.runtime.view.runners.insert(runner, state);
-        if settled {
-            self.cloud_runner_settled(runner, cx);
-        }
         cx.notify();
     }
 

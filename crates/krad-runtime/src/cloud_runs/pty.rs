@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use super::CloudSite;
+use super::{CloudSite, ProcessStart};
 
 const SHELL_PROGRAM: &str = "sh";
 const LOGIN_SHELL_ARGS: [&str; 2] = ["-c", "exec \"${SHELL:-/bin/sh}\" -l"];
@@ -25,14 +25,14 @@ const REFUSED: &str = "The cloud runner did not open the terminal";
 const NO_PIPE: &str = "the attach process gave no pipe";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::environment_shell) struct CloudProgram {
-    pub(in crate::environment_shell) program: String,
-    pub(in crate::environment_shell) args: Vec<String>,
-    pub(in crate::environment_shell) vars: Vec<(String, String)>,
+pub(crate) struct CloudProgram {
+    pub(crate) program: String,
+    pub(crate) args: Vec<String>,
+    pub(crate) vars: Vec<(String, String)>,
 }
 
 impl CloudProgram {
-    pub(in crate::environment_shell) fn login_shell() -> Self {
+    pub(crate) fn login_shell() -> Self {
         Self {
             program: SHELL_PROGRAM.to_owned(),
             args: LOGIN_SHELL_ARGS.map(str::to_owned).to_vec(),
@@ -55,10 +55,10 @@ impl CloudProgram {
     }
 }
 
-pub(in crate::environment_shell) struct CloudTerminal {
-    pub(in crate::environment_shell) site: CloudSite,
-    pub(in crate::environment_shell) process: CloudProcessId,
-    pub(in crate::environment_shell) program: CloudProgram,
+pub(crate) struct CloudTerminal {
+    site: CloudSite,
+    process: CloudProcessId,
+    program: CloudProgram,
 }
 
 struct CloudResize {
@@ -142,7 +142,15 @@ fn refusal(errors: JoinHandle<String>) -> PtyError {
 }
 
 impl CloudTerminal {
-    pub(in crate::environment_shell) fn opener(self) -> PtyOpener {
+    pub(crate) fn new(site: CloudSite, start: &ProcessStart, program: CloudProgram) -> Self {
+        Self {
+            site,
+            process: start.id.clone(),
+            program,
+        }
+    }
+
+    pub(crate) fn opener(self) -> PtyOpener {
         Box::new(move |cols, rows| self.open(cols, rows))
     }
 

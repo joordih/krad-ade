@@ -2,7 +2,7 @@ use krad_chat::{AcpEvent, Catalog, ChatEvent, LiveEvent, ResumeRefused, Rewound}
 use krad_domain::{ChatEntry, ModelOffer};
 use krad_protocol::{AgentRef, ChatAsk, ChatAskId, EventKind, UsageNews};
 
-use super::acp;
+use super::{acp, cloud};
 use super::chat::{Batch, Chat};
 use super::{checkpoints, ensure_live, hand_over, ChatEffect, ChatWork, Chats};
 
@@ -76,6 +76,9 @@ fn retry(
 
 fn hear_one(chat: &mut Chat, event: LiveEvent, ask: ChatAskId, work: &mut ChatWork<'_>) -> Outcome {
     let (event, refused) = split_refusal(event);
+    if let Some((batch, failure)) = cloud::reattaches(chat, &event, work) {
+        return Outcome::Retry(batch, failure);
+    }
     match event {
         LiveEvent::Ready(catalog) => ready(chat, catalog, work),
         LiveEvent::Acp(event) => acp_heard(chat, event, work),

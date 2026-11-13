@@ -5,9 +5,9 @@ mod panel;
 mod suggest;
 
 pub(super) use krad_domain::{
-    fold_entry, fold_prompt, last_permission_mode, AnswerPart, ChatMessage, ShownOutput,
+    fold_entry, AnswerPart, ChatMessage, ShownOutput,
 };
-pub(super) use live::{LiveProcess, StartError};
+pub(super) use live::StartError;
 pub(super) use panel::question_bubble;
 pub(super) use suggest::workplace_home;
 use suggest::Suggest;
