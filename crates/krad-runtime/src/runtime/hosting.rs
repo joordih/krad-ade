@@ -152,7 +152,8 @@ impl Runtime {
             JobDone::HarnessChecked { .. }
             | JobDone::ModelsListed { .. }
             | JobDone::UsageRead { .. }
-            | JobDone::Git(_) => {}
+            | JobDone::Git(_)
+            | JobDone::KraddieLines(_) => {}
         }
     }
 

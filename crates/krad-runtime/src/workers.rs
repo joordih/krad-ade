@@ -36,6 +36,13 @@ pub(crate) struct PendingWorker {
 }
 
 #[must_use]
+pub(crate) fn runs_as_worker(agent: AgentPreset) -> bool {
+    agent.acp_agent().is_none()
+        && agent.worker_surface() == WorkerSurface::Chat
+        && runs_in_runtime(agent)
+}
+
+#[must_use]
 pub(crate) fn plan_spawn(
     data: &EnvironmentData,
     lead: SessionId,
@@ -44,10 +51,7 @@ pub(crate) fn plan_spawn(
     let session = data.session(lead)?;
     let lead_terminal = session.lead.as_ref()?.terminal;
     let group = session.group.filter(|group| data.group(*group).is_some())?;
-    let runs_here = session.cloud.is_none()
-        && agent.acp_agent().is_none()
-        && agent.worker_surface() == WorkerSurface::Chat
-        && runs_in_runtime(agent);
+    let runs_here = session.cloud.is_none() && runs_as_worker(agent);
     runs_here.then_some(WorkerPlan {
         group,
         lead_terminal,

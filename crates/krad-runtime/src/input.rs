@@ -14,6 +14,7 @@ use crate::bus::{Delegated, DelegationId, Mail};
 use crate::chats::{ChatBrief, ChatStart, IndexAnswer, LiveStarted};
 use crate::harness_health::HarnessProbe;
 use crate::jobs::JobDone;
+use crate::kraddies::DigestReply;
 use crate::opencode::OpencodeInput;
 use crate::terminals::{Shared, TerminalAction, TerminalLaunch};
 use crate::usage::UsagePlace;
@@ -84,7 +85,10 @@ pub(crate) enum Input {
     JobDone(JobDone),
     Settle(oneshot::Sender<()>),
     SettingsNotSaved(String),
-    OfferMemoryTools(bool),
+    DigestHeard {
+        chat: AgentRef,
+        reply: DigestReply,
+    },
     OpenTerminal {
         terminal: AgentRef,
         launch: TerminalLaunch,

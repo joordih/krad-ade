@@ -113,10 +113,7 @@ impl EnvironmentShell {
             .unwrap_or(Heard::Quietly);
         match heard {
             Heard::Quietly => return,
-            Heard::Visibly => {
-                self.flush_attention(cx);
-                self.flush_kraddies(cx);
-            }
+            Heard::Visibly => self.flush_attention(cx),
             Heard::FromTerminals => self.flush_live_work(cx),
         }
         cx.notify();
@@ -142,6 +139,7 @@ impl EnvironmentShell {
                 self.hosts_replaced(snapshot.hosts, cx);
                 self.runtime_chats_replaced(snapshot.chats, cx);
                 self.git_replaced(snapshot.git, cx);
+                self.kraddies_replaced(*snapshot.kraddies);
                 for summary in snapshot.terminals {
                     self.adopt_launched_view(&summary.terminal);
                     self.terminal_summary_heard(summary);
@@ -249,6 +247,12 @@ impl EnvironmentShell {
             EventKind::GitFinished(finished) => self.git_finished(finished, cx),
             EventKind::SessionChangesRead(read) => self.session_changes_read(read),
             EventKind::WorktreeSwept(swept) => self.worktree_swept(&swept),
+            EventKind::KraddieChanged { kraddie } => self.kraddie_heard(*kraddie),
+            EventKind::KraddieRemoved { kraddie } => self.kraddie_removed(&kraddie),
+            EventKind::DigestsChanged(owned) => self.digests_heard(owned),
+            EventKind::KraddieRunFailed { task, reason } => {
+                self.kraddie_run_failed(&task, &reason, cx);
+            }
             host @ (EventKind::HostChanged { .. }
             | EventKind::SignInWanted { .. }
             | EventKind::MachineChannelWanted { .. }

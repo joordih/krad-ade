@@ -10,6 +10,7 @@ mod harness_health;
 mod hosts;
 mod input;
 mod jobs;
+mod kraddies;
 mod launches;
 mod mcp;
 mod models;
@@ -35,6 +36,7 @@ pub use hosts::{
     bundled_cli, explain_host_problem, remote_askpass, remote_caller_vars,
     remote_detached_caller_vars, upload_host_cli, HostCliError, RemoteBus, RemoteBusPlan,
 };
+pub use kraddies::{Clock, KraddiesSetup};
 pub use launches::{cli_name, local_caller_vars, AgentRole, BUS_HINT, LEAD_HINT};
 pub use mcp::{
     code_tools_server, mcp_servers, read_project_mcp, trust_of, trusted_servers, with_secrets,

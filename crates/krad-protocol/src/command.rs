@@ -8,6 +8,7 @@ use crate::environments::EnvironmentCommand;
 use crate::gateway::GatewayCommand;
 use crate::git::{ChangesCommand, GitCommand};
 use crate::hosts::HostCommand;
+use crate::kraddies::KraddieCommand;
 use crate::models::ModelsCommand;
 use crate::sessions::{GroupCommand, NodeCommand, SessionCommand};
 use crate::settings::SettingsCommand;
@@ -34,6 +35,7 @@ pub enum Command {
     Settings(SettingsCommand),
     Git(GitCommand),
     Changes(ChangesCommand),
+    Kraddie(KraddieCommand),
     #[serde(other)]
     Unknown,
 }
@@ -60,6 +62,7 @@ pub enum ErrorCode {
     NotFound,
     AlreadyAnswered,
     Invalid,
+    Unavailable,
     #[serde(other)]
     Unknown,
 }
@@ -79,7 +82,7 @@ mod tests {
 
     #[test]
     fn a_command_from_a_newer_client_reads_as_unknown() -> serde_json::Result<()> {
-        let area: Command = serde_json::from_str(r#"{"area":"kraddie","verb":"run"}"#)?;
+        let area: Command = serde_json::from_str(r#"{"area":"variant","verb":"run"}"#)?;
         assert_eq!(area, Command::Unknown);
         let verb: Command = serde_json::from_str(r#"{"area":"runtime","verb":"restart"}"#)?;
         assert_eq!(verb, Command::Runtime(RuntimeCommand::Unknown));

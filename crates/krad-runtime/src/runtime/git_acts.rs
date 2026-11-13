@@ -129,6 +129,10 @@ impl Runtime {
                 self.bus_worktree_made(&environment, group, (repo, acted), reply);
                 return;
             }
+            Asker::Kraddie(plan) => {
+                self.kraddie_worktree_made(&plan, repo, acted);
+                return;
+            }
         };
         let outcome = match acted {
             Ok(Acted::Done) => GitOutcome::Done,

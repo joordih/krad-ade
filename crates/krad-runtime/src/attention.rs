@@ -114,6 +114,12 @@ impl Attention {
         }));
     }
 
+    pub(crate) fn records(&self) -> impl Iterator<Item = (&'static str, &str)> {
+        self.log
+            .filtered(InboxFilter::All)
+            .map(|record| (record.kind.display_name(), record.title.as_str()))
+    }
+
     pub(crate) fn snapshot(&self) -> AttentionSnapshot {
         AttentionSnapshot {
             waiting: self

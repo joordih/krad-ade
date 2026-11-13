@@ -131,9 +131,35 @@ impl KraddieRounds {
     }
 }
 
+#[must_use]
+pub fn quiet_since(
+    last_started: Option<SystemTime>,
+    opened_at: SystemTime,
+    last_check_in: Option<SystemTime>,
+) -> SystemTime {
+    [last_started, last_check_in]
+        .into_iter()
+        .flatten()
+        .fold(opened_at, SystemTime::max)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_kraddie_has_been_quiet_since_its_last_run_check_in_or_the_app_opening() {
+        let opened = SystemTime::UNIX_EPOCH + Duration::from_secs(100);
+        assert_eq!(quiet_since(None, opened, None), opened);
+        let ran = opened + Duration::from_secs(50);
+        assert_eq!(quiet_since(Some(ran), opened, None), ran);
+        let checked = ran + Duration::from_secs(10);
+        assert_eq!(quiet_since(Some(ran), opened, Some(checked)), checked);
+        assert_eq!(
+            quiet_since(Some(SystemTime::UNIX_EPOCH), opened, None),
+            opened
+        );
+    }
 
     fn moment(quiet_for: Duration) -> RoundsMoment {
         let since = SystemTime::UNIX_EPOCH;

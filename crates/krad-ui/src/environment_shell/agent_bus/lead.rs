@@ -80,11 +80,6 @@ impl EnvironmentShell {
                             None => self.answer_chat(&lead.environment, group, request, reply, cx),
                         }
                     }
-                    other @ (Request::MemorySearch { .. } | Request::MemoryRead { .. }) => {
-                        let chat = led_by.and_then(|(_, terminal)| terminal);
-                        let answer = self.answer_memory(&lead.environment, chat, &other);
-                        reply.send(answer).unwrap_or_default();
-                    }
                     other => {
                         if let Some(answer) = self.answer_worker(&env, session, &other, cx) {
                             Self::reply_tail(answer, reply, cx);

@@ -1,8 +1,5 @@
-use gpui_kit::{AppContext as _, Context};
-use krad_domain::{
-    ChatDigests, EnvironmentName, Kraddie, KraddieId, KraddieSettings, MemoryOwner, SessionEdit,
-    Switch,
-};
+use gpui_kit::Context;
+use krad_domain::{ChatDigests, KraddieId, KraddieSettings, Switch};
 
 use super::super::EnvironmentShell;
 
@@ -62,52 +59,13 @@ impl EnvironmentShell {
         &mut self,
         old: &KraddieId,
         new: &KraddieId,
-        cx: &mut Context<Self>,
     ) {
         let memory = &mut self.kraddies.memory;
         if let Some(book) = memory.books.remove(old) {
             memory.books.insert(new.clone(), book);
         }
-        for set in [&mut memory.loaded, &mut memory.loading] {
-            if set.remove(&MemoryOwner::Kraddie(old.clone())) {
-                set.insert(MemoryOwner::Kraddie(new.clone()));
-            }
-        }
         if memory.expanded.remove(old) {
             memory.expanded.insert(new.clone());
         }
-        let names: Vec<EnvironmentName> = self.envs.keys().cloned().collect();
-        for env in names {
-            let renamed = SessionEdit::RenameKraddie {
-                old: old.clone(),
-                new: new.clone(),
-            };
-            self.edit_environment(&env, renamed);
-        }
-        let changed: Vec<Kraddie> = self
-            .kraddies
-            .entries
-            .iter_mut()
-            .filter_map(|entry| {
-                let reads = &mut entry.kraddie.settings.reads;
-                let at = reads.iter().position(|read| read == old)?;
-                reads[at] = new.clone();
-                Some(entry.kraddie.clone())
-            })
-            .collect();
-        let Some(files) = self.kraddies.memory.shelf.clone() else {
-            return;
-        };
-        if changed.is_empty() {
-            return;
-        }
-        cx.background_spawn(async move {
-            for kraddie in changed {
-                if let Err(error) = files.write(&kraddie) {
-                    tracing::warn!(kraddie = %kraddie.id(), %error, "renamed reader not saved");
-                }
-            }
-        })
-        .detach();
     }
 }

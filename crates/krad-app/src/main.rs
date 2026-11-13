@@ -9,7 +9,8 @@ use gpui_kit::component::TitleBar;
 use gpui_kit::{application, init, open_window, AppContext, WindowDecorations, WindowOptions};
 use krad_agents::CliPlace;
 use krad_runtime::{
-    BusSetup, EnvironmentsSetup, EventsSetup, Runtime, RuntimeSetup, SettingsSetup,
+    BusSetup, Clock, EnvironmentsSetup, EventsSetup, KraddiesSetup, Runtime, RuntimeSetup,
+    SettingsSetup,
 };
 use krad_store::{
     config_dir, open_layout, read_settings, read_user_themes, LayoutOpening, OpenedLayout, APP_NAME,
@@ -17,9 +18,9 @@ use krad_store::{
 use krad_ui::{
     active_appearance, apply_editor_font, apply_interface_font, apply_settings_theme,
     apply_window_material, apply_window_tint, http_client, initial_window_bounds,
-    install_app_menus, install_theme_library, key_bindings, login_shell_env, match_window_frame,
-    register_fonts, title_bar_options, window_background, AppAssets, Appearance, EnvironmentShell,
-    HostTools,
+    install_app_menus, install_theme_library, key_bindings, local_moment, login_shell_env,
+    match_window_frame, register_fonts, title_bar_options, window_background, AppAssets,
+    Appearance, EnvironmentShell, HostTools,
 };
 
 const APP_TITLE: &str = "Krad ADE";
@@ -76,6 +77,7 @@ fn main() {
         events: Some(EventsSetup::in_config_folder()),
         environments,
         settings: SettingsSetup::in_config_folder(settings.clone()),
+        kraddies: KraddiesSetup::in_config_folder(Clock::new(local_moment)),
     }) {
         Ok(runtime) => runtime,
         Err(error) => {

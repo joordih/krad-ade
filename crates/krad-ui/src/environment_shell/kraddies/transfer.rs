@@ -1,11 +1,10 @@
 use gpui_kit::{Context, PathPromptOptions, SharedString};
-use krad_domain::{Automation, KraddieHistory, KraddieId, ToastKind, KRADDIE_FILE_EXTENSION};
+use krad_domain::{Automation, KraddieId, ToastKind, KRADDIE_FILE_EXTENSION};
 use krad_store::{export_kraddie, import_kraddie};
 use std::path::PathBuf;
 
 use super::super::EnvironmentShell;
 use super::panel::NAME_TAKEN;
-use super::AutomationEntry;
 
 const IMPORT_PROMPT: &str = "Import Kraddie";
 const IMPORTED: &str = "Kraddie imported";
@@ -66,15 +65,7 @@ impl EnvironmentShell {
                     shell.toast(ToastKind::Warning, NAME_TAKEN, cx);
                 }
                 Ok(read) => {
-                    let automations = read
-                        .automations
-                        .into_iter()
-                        .map(|automation| AutomationEntry {
-                            automation,
-                            history: KraddieHistory::default(),
-                        })
-                        .collect();
-                    shell.adopt_new_kraddie(read.kraddie, automations, None, cx);
+                    shell.import_kraddie(read.kraddie, read.automations, cx);
                     shell.toast(ToastKind::Success, IMPORTED, cx);
                 }
                 Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),

@@ -84,18 +84,14 @@ impl EnvironmentShell {
             | Request::RunAutomation { .. }
             | Request::SwitchAutomation { .. }
             | Request::RememberKraddie { .. }
-            | Request::KraddieMemory { .. }) => {
-                self.answer_kraddies(request, reply, cx);
-                return;
-            }
-            request @ (Request::KraddieRecall { .. }
+            | Request::KraddieMemory { .. }
+            | Request::KraddieRecall { .. }
             | Request::NewKraddieChat { .. }
-            | Request::ShareKraddieMemory { .. }) => {
-                self.answer_kraddie_memory(request, reply, cx);
+            | Request::ShareKraddieMemory { .. }
+            | Request::MemorySearch { .. }
+            | Request::MemoryRead { .. }) => {
+                self.answer_kraddie_request(request, reply, cx);
                 return;
-            }
-            request @ (Request::MemorySearch { .. } | Request::MemoryRead { .. }) => {
-                self.answer_memory(environment, None, &request)
             }
             Request::CreateWorktree { .. } | Request::Changes { .. } => {
                 super::answered_by_runtime()

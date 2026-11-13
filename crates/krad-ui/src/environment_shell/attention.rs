@@ -158,15 +158,6 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn attention_records(&self) -> impl Iterator<Item = (&'static str, &str)> {
-        self.runtime
-            .view
-            .attention
-            .log
-            .filtered(InboxFilter::All)
-            .map(|record| (record.kind.display_name(), record.title.as_str()))
-    }
-
     pub(super) fn forget_attention(&mut self, env: &EnvironmentName, id: TerminalId) {
         let target = AttentionTarget::new(env.clone(), id);
         if self.runtime.view.attention.queue.contains(&target) {

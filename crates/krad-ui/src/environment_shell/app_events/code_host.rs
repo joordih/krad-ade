@@ -96,10 +96,7 @@ impl EnvironmentShell {
                 .spawn(async move { observe(targets, gitlab.as_ref()) })
                 .await;
             if this
-                .update(cx, |shell, cx| {
-                    shell.apply_code_host(observed);
-                    shell.flush_kraddies(cx);
-                })
+                .update(cx, |shell, cx| shell.apply_code_host(observed, cx))
                 .is_err()
             {
                 break;
@@ -131,7 +128,7 @@ impl EnvironmentShell {
         Some((targets, GitlabConfig::try_from(&self.settings.gitlab).ok()))
     }
 
-    fn apply_code_host(&mut self, observed: Vec<Observed>) {
+    fn apply_code_host(&mut self, observed: Vec<Observed>, cx: &mut Context<Self>) {
         for seen in observed {
             let snapshots = &mut self.app_events.code_hosts.snapshots;
             let events = code_host_events(snapshots.get(&seen.project), &seen.snapshot);
@@ -139,7 +136,7 @@ impl EnvironmentShell {
             let kept = seen.snapshot.carried_over(snapshots.get(&seen.project));
             snapshots.insert(seen.project, kept);
             for event in events {
-                self.observe_code_host_event(&seen.environment, seen.group, host, &event);
+                self.observe_code_host_event(&seen.environment, seen.group, host, &event, cx);
                 self.publish_event(&seen.environment, Some(seen.group), event);
             }
         }

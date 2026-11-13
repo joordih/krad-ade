@@ -166,7 +166,6 @@ impl Runtime {
                 model: None,
                 effort: None,
                 permission_mode: worker_mode(lead_mode, preset),
-                memory: None,
                 mcp_servers: None,
                 role: ChatRole::Agent,
             },

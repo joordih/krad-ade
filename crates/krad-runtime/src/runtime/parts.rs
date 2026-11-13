@@ -1,5 +1,6 @@
 use krad_protocol::{BusSnapshot, Scope, Seq, Snapshot};
 
+use super::Runtime;
 use crate::attention::Attention;
 use crate::bus::Bus;
 use crate::chats::Chats;
@@ -8,6 +9,7 @@ use crate::gateway::Gateway;
 use crate::git::Git;
 use crate::harness_health::Health;
 use crate::hosts::Hosts;
+use crate::kraddies::Kraddies;
 use crate::models::Models;
 use crate::opencode::OpencodeServers;
 use crate::settings::AppSettings;
@@ -28,6 +30,7 @@ pub(super) struct Parts<'a> {
     pub(super) gateway: &'a Gateway,
     pub(super) settings: &'a AppSettings,
     pub(super) git: &'a Git,
+    pub(super) kraddies: &'a Kraddies,
 }
 
 impl Parts<'_> {
@@ -48,6 +51,29 @@ impl Parts<'_> {
             gateway: self.gateway.snapshot(),
             settings: self.settings.snapshot(),
             git: self.git.snapshot(),
+            kraddies: Box::new(self.kraddies.snapshot()),
         }
+    }
+}
+
+impl Runtime {
+    pub(super) fn snapshot(&self, scope: Scope) -> Snapshot {
+        Parts {
+            bus: self.bus.as_ref(),
+            attention: &self.attention,
+            health: &self.health,
+            usage: &self.usage,
+            models: &self.models,
+            environments: &self.environments,
+            terminals: &self.terminals,
+            hosts: &self.hosts,
+            chats: &self.chats,
+            opencode: &self.opencode,
+            gateway: &self.gateway,
+            settings: &self.settings,
+            git: &self.git,
+            kraddies: &self.kraddies,
+        }
+        .snapshot(self.seq, scope)
     }
 }

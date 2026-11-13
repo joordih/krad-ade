@@ -1,6 +1,7 @@
 use super::compass::KraddieCompass;
 use super::memory::KraddieMemory;
 use super::Kraddie;
+use serde::{Deserialize, Serialize};
 
 pub const QUIET_REPLY: &str = "NOTHING_TO_SUGGEST";
 const PARAGRAPH: &str = "\n\n";
@@ -22,7 +23,8 @@ const NOTES: &str = "The user's notes:";
 const INBOX: &str = "The attention inbox:";
 const NOTHING: &str = "(none)";
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct KraddieMind {
     pub compass: KraddieCompass,
     pub memory: KraddieMemory,

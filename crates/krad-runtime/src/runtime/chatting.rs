@@ -50,7 +50,7 @@ impl Runtime {
                 models: &self.models,
                 bus: self.bus.as_ref().map(crate::bus::Bus::access),
                 usage_budget: self.usage.budget(),
-                memory_tools: self.launches.memory_tools,
+                kraddies: &self.kraddies,
             },
         };
         let done = act(&mut self.chats, &mut work);

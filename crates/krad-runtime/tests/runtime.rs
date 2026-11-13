@@ -70,8 +70,12 @@ fn a_subscriber_starts_from_a_snapshot_and_receives_events_with_rising_seqs() ->
         .map(|_| next(&mut events))
         .collect::<Result<Vec<_>, _>>()?;
     assert_eq!(received, vec![pong(2, 10), pong(3, 11), pong(4, 12)]);
+    let mut snapshot = block_on(runtime.snapshot(Scope::Runtime))?;
+    assert!(snapshot.kraddies.opened_at.is_some());
+    assert_eq!(snapshot.kraddies.kraddies.len(), 0);
+    *snapshot.kraddies = krad_protocol::KraddiesSnapshot::default();
     assert_eq!(
-        block_on(runtime.snapshot(Scope::Runtime))?,
+        snapshot,
         Snapshot {
             scope: Scope::Runtime,
             seq: Seq(4),
@@ -88,6 +92,7 @@ fn a_subscriber_starts_from_a_snapshot_and_receives_events_with_rising_seqs() ->
             gateway: krad_protocol::GatewayState::default(),
             settings: Box::default(),
             git: Vec::new(),
+            kraddies: Box::default(),
         }
     );
     Ok(())

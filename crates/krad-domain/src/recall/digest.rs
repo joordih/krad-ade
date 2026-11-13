@@ -72,7 +72,7 @@ impl ChatDigest {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DigestDraft {
     pub chat: DigestChat,
     pub facts: Vec<String>,
@@ -102,9 +102,22 @@ fn bounded_facts<'a>(facts: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     kept
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "Vec<ChatDigest>", into = "Vec<ChatDigest>")]
 pub struct DigestBook {
     digests: Vec<ChatDigest>,
+}
+
+impl From<Vec<ChatDigest>> for DigestBook {
+    fn from(digests: Vec<ChatDigest>) -> Self {
+        Self::new(digests)
+    }
+}
+
+impl From<DigestBook> for Vec<ChatDigest> {
+    fn from(book: DigestBook) -> Self {
+        book.digests
+    }
 }
 
 impl DigestBook {

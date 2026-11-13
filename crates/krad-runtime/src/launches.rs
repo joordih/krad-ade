@@ -61,7 +61,6 @@ pub(crate) struct WaitingLaunch {
 #[derive(Debug)]
 pub(crate) struct Launches {
     waiting: Vec<WaitingLaunch>,
-    pub(crate) memory_tools: bool,
     pub(crate) views: LaunchedViews,
     inbox: SyncSender<Input>,
 }
@@ -70,7 +69,6 @@ impl Launches {
     pub(crate) const fn new(views: LaunchedViews, inbox: SyncSender<Input>) -> Self {
         Self {
             waiting: Vec::new(),
-            memory_tools: false,
             views,
             inbox,
         }

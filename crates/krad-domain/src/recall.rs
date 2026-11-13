@@ -6,6 +6,7 @@ mod owner;
 mod pack;
 mod reach;
 mod timing;
+mod transcript;
 mod writing;
 
 pub use digest::{
@@ -32,6 +33,7 @@ pub use timing::{
     digest_decision, ChatDigests, ChatPhase, DigestCheck, DigestDecision, DigestReason, DigestSkip,
     DIGEST_AFTER_QUIET, MIN_NEW_MESSAGES,
 };
+pub use transcript::{final_reply, history_of};
 pub use writing::{
     digest_prompt, facts_from_reply, redacted, DIGEST_TRANSCRIPT_CHARS, NOTHING_TO_KEEP,
 };

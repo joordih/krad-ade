@@ -15,6 +15,7 @@ use super::ChatPlace;
 use crate::bus::BusAccess;
 use crate::environments::Environments;
 use crate::hosts::{remote_caller_vars, Hosts, Reach};
+use crate::kraddies::Kraddies;
 use crate::launches::{cli_name, local_caller_vars, AgentRole};
 use crate::models::Models;
 
@@ -33,7 +34,7 @@ pub(crate) struct LaunchFacts<'a> {
     pub(crate) models: &'a Models,
     pub(crate) bus: Option<&'a BusAccess>,
     pub(crate) usage_budget: &'a Arc<UsageBudget>,
-    pub(crate) memory_tools: bool,
+    pub(crate) kraddies: &'a Kraddies,
 }
 
 pub(super) struct Resolved {
@@ -98,7 +99,7 @@ impl LaunchFacts<'_> {
     pub(super) fn tools_offered(&self) -> bool {
         self.settings.code_tools == krad_domain::CodeTools::On
             || self.settings.extension_tools == krad_domain::ExtensionTools::On
-            || self.memory_tools
+            || self.kraddies.offers_memory_tools()
     }
 
     fn site(&self, chat: &AgentRef, place: &ChatPlace) -> Result<Site<'_>, Unready> {
@@ -142,6 +143,11 @@ impl LaunchFacts<'_> {
             Reach::BusPreparing | Reach::Unreached => None,
         };
         remote.map_or_else(Vec::new, |remote| remote_caller_vars(remote, &caller(chat)))
+    }
+
+    fn memory(&self, chat: &AgentRef) -> Option<String> {
+        let data = self.environments.data(&chat.environment)?;
+        self.kraddies.preamble(data, chat.terminal)
     }
 
     fn system_prompt(&self, role: AgentRole, in_wsl: bool, memory: Option<&str>) -> Option<String> {
@@ -235,9 +241,9 @@ impl LaunchFacts<'_> {
         let off_bus = runner.on_ssh() && site.remote.is_none();
         let (system_prompt, bus_vars) = match brief.role {
             ChatRole::Digest => (None, Vec::new()),
-            ChatRole::Agent if off_bus => (brief.memory.clone(), Vec::new()),
+            ChatRole::Agent if off_bus => (self.memory(chat), Vec::new()),
             ChatRole::Agent => (
-                self.system_prompt(site.role, runner.in_wsl(), brief.memory.as_deref()),
+                self.system_prompt(site.role, runner.in_wsl(), self.memory(chat).as_deref()),
                 self.bus_vars(chat, place, runner.in_wsl()),
             ),
         };
@@ -273,10 +279,10 @@ impl LaunchFacts<'_> {
         let (system_prompt, bus_vars) = match brief.role {
             ChatRole::Digest => (None, Vec::new()),
             ChatRole::Agent if on_bus => (
-                self.system_prompt(site.role, false, brief.memory.as_deref()),
+                self.system_prompt(site.role, false, self.memory(chat).as_deref()),
                 self.bus_vars(chat, place, false),
             ),
-            ChatRole::Agent => (brief.memory.clone(), Vec::new()),
+            ChatRole::Agent => (self.memory(chat), Vec::new()),
         };
         Ok(EngineConfig {
             sessions,

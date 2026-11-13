@@ -19,12 +19,14 @@ mod trigger;
 
 pub use activity::{KraddieActivity, KraddieDate, KraddieDay, ACTIVITY_KEPT_DAYS};
 pub use automation::{
-    code_host_name, validate_automations, AppTrigger, Automation, AutomationDraft, AutomationError,
+    automation_since, code_host_name, local_stamp, run_stamp, schedule_label, trigger_label,
+    validate_automations, AppTrigger, Automation, AutomationDraft, AutomationError,
     AutomationEvent, AutomationFormatVersion, AutomationId, AutomationKey, AutomationName,
     AutomationNameError, AutomationQuery, AutomationSession, AutomationTemplate, AutomationsFile,
     AutomationsFileError, CatchUp, CodeHostTrigger, CodeHostWake, Conversation, DraftError,
-    TemplateCatalog, TemplateCatalogError, TemplateCategory, TemplateIcon, Trigger, WorkingCopy,
-    AUTOMATIONS_FORMAT_VERSION, MAX_AUTOMATIONS, MAX_INSTRUCTIONS_CHARS, MAX_TRIGGERS, UNTITLED,
+    LocalMoment, LocalOffset, TemplateCatalog, TemplateCatalogError, TemplateCategory,
+    TemplateIcon, Trigger, WorkingCopy, AUTOMATIONS_FORMAT_VERSION, MANUAL_LABEL, MAX_AUTOMATIONS,
+    MAX_INSTRUCTIONS_CHARS, MAX_TRIGGERS, UNTITLED,
 };
 pub use compass::{
     CompassTooLong, KraddieCompass, COMPASS_FILE, DEFAULT_COMPASS, LEGACY_COMPASS_FILE,
@@ -37,8 +39,8 @@ pub use heatmap::{
 pub use memory::{KraddieMemory, MemoryError, MAX_MEMORY_LINES, MAX_MEMORY_LINE_CHARS};
 pub use mind::{is_quiet_reply, CheckInContext, KraddieMind, QUIET_REPLY};
 pub use rounds::{
-    Hush, KraddieRounds, QuietSpan, RoundsCheck, RoundsMoment, RunSlot, QUIET_FIFTEEN_MINUTES,
-    QUIET_ONE_HOUR, QUIET_THIRTY_MINUTES, QUIET_TWO_HOURS,
+    quiet_since, Hush, KraddieRounds, QuietSpan, RoundsCheck, RoundsMoment, RunSlot,
+    QUIET_FIFTEEN_MINUTES, QUIET_ONE_HOUR, QUIET_THIRTY_MINUTES, QUIET_TWO_HOURS,
 };
 pub use settings::{KraddieSessions, KraddieSettings};
 

@@ -8,14 +8,14 @@ mod sharing;
 mod sidebar;
 
 use gpui_kit::component::input::TextareaState;
-use gpui_kit::{AppContext as _, Context, Entity, Task};
+use gpui_kit::{Context, Entity, Task};
 use krad_chat::LiveChat;
 use krad_domain::{
     chat_pack, memory_reach, DigestBook, DigestId, EnvironmentName, KraddieChip, KraddieId,
     KraddieMood, MemoryKind, MemoryLibrary, MemoryOwner, MemoryReach, MemorySize, PackRequest,
     SessionId, TerminalId, CHAT_PACK_TOKENS,
 };
-use krad_store::{KraddieShelf, OrdinaryDigests};
+use krad_protocol::OwnedDigests;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::time::{Instant, SystemTime};
@@ -23,7 +23,6 @@ use std::time::{Instant, SystemTime};
 use super::EnvironmentShell;
 use crate::kraddie_avatar::KraddieSprite;
 
-pub(super) use digests::history_of;
 pub(super) use mention::KraddieSuggestion;
 
 const PROMPT_SEPARATOR: &str = "\n\n";
@@ -36,13 +35,11 @@ pub(super) struct DigestEdit {
     text: Entity<TextareaState>,
 }
 
+#[derive(Default)]
 pub(super) struct KraddieMemoryUi {
     ordinary: DigestBook,
     books: HashMap<KraddieId, DigestBook>,
-    loaded: HashSet<MemoryOwner>,
-    loading: HashSet<MemoryOwner>,
-    ordinary_store: Option<OrdinaryDigests>,
-    shelf: Option<KraddieShelf>,
+    known: bool,
     quiet: HashMap<ChatKey, Instant>,
     writing: HashMap<ChatKey, Option<LiveChat>>,
     attempted: HashMap<ChatKey, usize>,
@@ -51,56 +48,6 @@ pub(super) struct KraddieMemoryUi {
     pub(super) chips: HashMap<TerminalId, Vec<KraddieChip>>,
     editing: Option<DigestEdit>,
     ticker: Option<Task<()>>,
-    saving: HashMap<MemoryOwner, SaveTurn>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum SaveTurn {
-    Writing,
-    WritingThenAgain,
-}
-
-fn ask_save(saving: &mut HashMap<MemoryOwner, SaveTurn>, owner: &MemoryOwner) -> bool {
-    if let Some(turn) = saving.get_mut(owner) {
-        *turn = SaveTurn::WritingThenAgain;
-        return false;
-    }
-    saving.insert(owner.clone(), SaveTurn::Writing);
-    true
-}
-
-fn saved(saving: &mut HashMap<MemoryOwner, SaveTurn>, owner: &MemoryOwner) -> bool {
-    if saving.get(owner) == Some(&SaveTurn::WritingThenAgain) {
-        saving.insert(owner.clone(), SaveTurn::Writing);
-        return true;
-    }
-    saving.remove(owner);
-    false
-}
-
-impl Default for KraddieMemoryUi {
-    fn default() -> Self {
-        let ordinary_store = OrdinaryDigests::in_config()
-            .inspect_err(|error| tracing::debug!(%error, "no folder for chat digests"))
-            .ok();
-        Self {
-            ordinary: DigestBook::default(),
-            books: HashMap::new(),
-            loaded: HashSet::new(),
-            loading: HashSet::new(),
-            ordinary_store,
-            shelf: KraddieShelf::in_config(),
-            quiet: HashMap::new(),
-            writing: HashMap::new(),
-            attempted: HashMap::new(),
-            expanded: HashSet::new(),
-            older_digests: HashMap::new(),
-            chips: HashMap::new(),
-            editing: None,
-            ticker: None,
-            saving: HashMap::new(),
-        }
-    }
 }
 
 impl KraddieMemoryUi {
@@ -116,6 +63,24 @@ impl KraddieMemoryUi {
             MemoryOwner::Ordinary => &mut self.ordinary,
             MemoryOwner::Kraddie(id) => self.books.entry(id.clone()).or_default(),
         }
+    }
+
+    pub(super) fn replace_books(&mut self, digests: Vec<OwnedDigests>) {
+        self.ordinary = DigestBook::default();
+        self.books.clear();
+        for owned in digests {
+            self.adopt_book(owned);
+        }
+        self.known = true;
+    }
+
+    pub(super) fn adopt_book(&mut self, owned: OwnedDigests) {
+        *self.book_mut(&owned.owner) = owned.book;
+    }
+
+    pub(super) fn forget_book(&mut self, id: &KraddieId) {
+        self.books.remove(id);
+        self.expanded.remove(id);
     }
 }
 
@@ -246,101 +211,7 @@ impl EnvironmentShell {
     }
 
     fn tend_memory(&mut self, cx: &mut Context<Self>) {
-        self.load_missing_digests(cx);
         self.check_digests(cx);
-    }
-
-    fn load_missing_digests(&mut self, cx: &mut Context<Self>) {
-        let wanted: Vec<MemoryOwner> = std::iter::once(MemoryOwner::Ordinary)
-            .chain(
-                self.kraddies
-                    .entries
-                    .iter()
-                    .map(|entry| MemoryOwner::Kraddie(entry.kraddie.id())),
-            )
-            .filter(|owner| {
-                !self.kraddies.memory.loaded.contains(owner)
-                    && !self.kraddies.memory.loading.contains(owner)
-            })
-            .collect();
-        if wanted.is_empty() {
-            return;
-        }
-        self.kraddies.memory.loading.extend(wanted.iter().cloned());
-        let ordinary_files = self.kraddies.memory.ordinary_store.clone();
-        let kraddie_files = self.kraddies.memory.shelf.clone();
-        let read = cx.background_spawn(async move {
-            wanted
-                .into_iter()
-                .map(|owner| {
-                    let book = match &owner {
-                        MemoryOwner::Ordinary => ordinary_files.as_ref().map(OrdinaryDigests::read),
-                        MemoryOwner::Kraddie(id) => {
-                            kraddie_files.as_ref().map(|files| files.read_digests(id))
-                        }
-                    };
-                    let book = match book {
-                        Some(Ok(book)) => book,
-                        Some(Err(error)) => {
-                            tracing::warn!(%owner, %error, "chat digests unreadable; set aside");
-                            DigestBook::default()
-                        }
-                        None => DigestBook::default(),
-                    };
-                    (owner, book)
-                })
-                .collect::<Vec<_>>()
-        });
-        cx.spawn(async move |this, cx| {
-            let books = read.await;
-            this.update(cx, |shell, cx| {
-                for (owner, book) in books {
-                    shell.kraddies.memory.loading.remove(&owner);
-                    *shell.kraddies.memory.book_mut(&owner) = book;
-                    shell.kraddies.memory.loaded.insert(owner);
-                }
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
-    }
-
-    fn save_digests(&mut self, owner: &MemoryOwner, cx: &mut Context<Self>) {
-        if ask_save(&mut self.kraddies.memory.saving, owner) {
-            self.write_digests(owner.clone(), cx);
-        }
-    }
-
-    fn write_digests(&mut self, owner: MemoryOwner, cx: &mut Context<Self>) {
-        let Some(book) = self.kraddies.memory.book(&owner).cloned() else {
-            self.kraddies.memory.saving.remove(&owner);
-            return;
-        };
-        let ordinary_files = self.kraddies.memory.ordinary_store.clone();
-        let kraddie_files = self.kraddies.memory.shelf.clone();
-        let target = owner.clone();
-        let written = cx.background_spawn(async move {
-            let written = match &target {
-                MemoryOwner::Ordinary => ordinary_files.map(|store| store.write(&book)),
-                MemoryOwner::Kraddie(id) => {
-                    kraddie_files.map(|files| files.write_digests(id, &book))
-                }
-            };
-            if let Some(Err(error)) = written {
-                tracing::warn!(owner = %target, %error, "chat digests not saved");
-            }
-        });
-        cx.spawn(async move |this, cx| {
-            written.await;
-            this.update(cx, |shell, cx| {
-                if saved(&mut shell.kraddies.memory.saving, &owner) {
-                    shell.write_digests(owner, cx);
-                }
-            })
-            .unwrap_or_default();
-        })
-        .detach();
     }
 }
 
@@ -363,25 +234,5 @@ mod tests {
             Some("a")
         );
         assert_eq!(joined_prompt(None, None), None);
-    }
-
-    #[test]
-    fn one_digest_write_runs_per_owner_and_a_change_meanwhile_writes_again() {
-        let mut saving = HashMap::new();
-        let ordinary = MemoryOwner::Ordinary;
-        let kraddie = MemoryOwner::Kraddie(
-            KraddieId::try_from("a".to_owned()).unwrap_or_else(|_| unreachable!("an id")),
-        );
-        assert!(ask_save(&mut saving, &ordinary));
-        assert!(ask_save(&mut saving, &kraddie));
-        assert!(!ask_save(&mut saving, &ordinary));
-        assert!(!ask_save(&mut saving, &ordinary));
-        assert!(saved(&mut saving, &ordinary));
-        assert!(!ask_save(&mut saving, &ordinary));
-        assert!(saved(&mut saving, &ordinary));
-        assert!(!saved(&mut saving, &ordinary));
-        assert!(!saved(&mut saving, &kraddie));
-        assert!(saving.is_empty());
-        assert!(ask_save(&mut saving, &ordinary));
     }
 }

@@ -103,6 +103,7 @@ mod tests {
             gateway: krad_protocol::GatewayState::default(),
             settings: Box::default(),
             git: Vec::new(),
+            kraddies: Box::default(),
         }
     }
 

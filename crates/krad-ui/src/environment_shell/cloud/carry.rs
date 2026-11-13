@@ -6,7 +6,6 @@ use krad_host::HostLink;
 use std::path::{Path, PathBuf};
 
 use super::super::chat::workplace_home;
-use super::super::kraddie_memory::history_of;
 use super::super::sessions_view::session_terminals;
 use super::super::EnvironmentShell;
 use super::naming::cloud_chat_harness;
@@ -124,7 +123,7 @@ impl EnvironmentShell {
                 let node = live.data.nodes.iter().find(|node| node.id == id)?;
                 let harness = node.harness.filter(|preset| preset.has_structured_chat())?;
                 let chat = live.chats.get(&id)?;
-                let messages = history_of(&chat.messages);
+                let messages = krad_domain::history_of(&chat.messages);
                 let seed = (!messages.is_empty()).then(|| {
                     fork_seed_prompt(
                         &node.title,

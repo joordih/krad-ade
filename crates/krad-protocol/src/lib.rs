@@ -11,6 +11,7 @@ mod git;
 mod harness_health;
 mod hosts;
 mod ids;
+mod kraddies;
 mod launches;
 mod models;
 mod opencode;
@@ -44,6 +45,7 @@ pub use hosts::{
     PromptAnswer, PromptId, RemoteBusInfo, RemoteBusState,
 };
 pub use ids::{ProtocolVersion, RequestId, Seq};
+pub use kraddies::{AutomationState, KraddieCommand, KraddieState, KraddiesSnapshot, OwnedDigests};
 pub use launches::{LaunchedAs, TerminalLaunched};
 pub use models::{ListedModels, ModelsCommand, ModelsOrigin, ModelsSnapshot};
 pub use opencode::{OpencodeShown, OpencodeSnapshot, OpencodeStatus};

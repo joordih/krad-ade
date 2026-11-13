@@ -7,14 +7,15 @@ use krad_domain::{
 use krad_host::HostLink;
 use krad_protocol::RequestId;
 use krad_repo::{
-    add_branch_worktree, add_planned_worktree, check_out, commit, create_branch, create_tag,
-    delete_tag, discard_change, discard_folder, fetch, pop_stash, pull, push, push_tags,
-    remove_worktree, revert_session_file, revert_session_hunk, stage, stage_all, stash_changes,
-    sync, unstage, unstage_all, RepoError,
+    add_branch_worktree, add_planned_worktree, add_worktree, check_out, commit, create_branch,
+    create_tag, delete_tag, discard_change, discard_folder, fetch, pop_stash, pull, push,
+    push_tags, remove_worktree, revert_session_file, revert_session_hunk, stage, stage_all,
+    stash_changes, sync, unstage, unstage_all, RepoError,
 };
 use std::path::PathBuf;
 
 use super::AskpassPlan;
+use crate::runtime::RunPlan;
 use crate::workers::PendingWorker;
 
 #[derive(Debug)]
@@ -47,6 +48,7 @@ pub(crate) enum Act {
         settings: WorktreeSettings,
     },
     OpenBranchWorktree(Branch),
+    AddWorktree(String),
     RemoveWorktree {
         path: PathBuf,
     },
@@ -60,6 +62,7 @@ pub(crate) enum Act {
 pub(crate) enum Asker {
     Client(RequestId),
     Worker(Box<PendingWorker>),
+    Kraddie(Box<RunPlan>),
     Bus(oneshot::Sender<Response>),
 }
 
@@ -159,6 +162,7 @@ fn acting(
             }
             Ok(Acted::Created(planned.worktree))
         }
+        Act::AddWorktree(branch) => add_worktree(link, repo, &branch).map(Acted::Created),
         Act::OpenBranchWorktree(branch) => {
             add_branch_worktree(link, repo, &branch).map(Acted::Opened)
         }

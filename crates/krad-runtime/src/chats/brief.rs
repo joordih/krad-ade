@@ -16,7 +16,6 @@ pub struct ChatBrief {
     pub model: Option<ModelId>,
     pub effort: Option<Effort>,
     pub permission_mode: Option<PermissionMode>,
-    pub memory: Option<String>,
     pub mcp_servers: Option<Vec<McpServerName>>,
     pub role: ChatRole,
 }

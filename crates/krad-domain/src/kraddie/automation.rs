@@ -1,6 +1,8 @@
 mod brief;
 mod draft;
 mod file;
+mod label;
+mod moment;
 mod name;
 mod session;
 mod template;
@@ -11,6 +13,8 @@ pub use file::{
     validate_automations, AutomationFormatVersion, AutomationsFile, AutomationsFileError,
     AUTOMATIONS_FORMAT_VERSION,
 };
+pub use label::{local_stamp, run_stamp, schedule_label, trigger_label, MANUAL_LABEL};
+pub use moment::{LocalMoment, LocalOffset};
 pub use name::{AutomationId, AutomationKey, AutomationName, AutomationNameError, AutomationQuery};
 pub use session::{AutomationSession, CatchUp, Conversation, WorkingCopy};
 pub use template::{
@@ -28,10 +32,16 @@ use crate::permission_mode::PermissionMode;
 use chrono::{DateTime, TimeDelta, TimeZone};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::time::SystemTime;
 
 pub const MAX_INSTRUCTIONS_CHARS: usize = 20_000;
 pub const MAX_TRIGGERS: usize = 12;
 pub const MAX_AUTOMATIONS: usize = 50;
+
+#[must_use]
+pub fn automation_since(last_started: Option<SystemTime>, opened_at: SystemTime) -> SystemTime {
+    last_started.unwrap_or(opened_at).max(opened_at)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AutomationError {
@@ -151,6 +161,22 @@ impl Automation {
             .cloned()
             .unwrap_or(earliest);
         self.next_after(&since).is_some_and(|slot| slot <= *opened)
+    }
+
+    #[must_use]
+    pub fn next_run_at(&self, since: SystemTime, offset: LocalOffset) -> Option<SystemTime> {
+        self.next_after(&offset.zoned(since)).map(SystemTime::from)
+    }
+
+    #[must_use]
+    pub fn is_due_at(&self, since: SystemTime, now: LocalMoment) -> bool {
+        self.is_due(&now.offset.zoned(since), &now.zoned())
+    }
+
+    #[must_use]
+    pub fn missed_run_at(&self, last: Option<SystemTime>, opened: LocalMoment) -> bool {
+        let last = last.map(|last| opened.offset.zoned(last));
+        self.missed_run(last.as_ref(), &opened.zoned())
     }
 
     #[must_use]

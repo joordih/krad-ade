@@ -3,8 +3,7 @@ use gpui_kit::{
     div, px, rgb, AnimationExt as _, AnyElement, AppContext as _, Context, InteractiveElement,
     IntoElement, ParentElement, SharedString, SpringAnimation, Styled, Window,
 };
-use krad_agents::{ErrorCode, KraddieMemoryInfo};
-use krad_domain::{KraddieId, MemoryError, ToastKind, MAX_MEMORY_LINES};
+use krad_domain::{KraddieId, ToastKind, MAX_MEMORY_LINES};
 
 use super::super::super::EnvironmentShell;
 use super::super::layout::PageLayout;
@@ -32,7 +31,6 @@ const DELETE_TOOLTIP: &str = "Let it go";
 const SAVE_LABEL: &str = "Save";
 const CANCEL_LABEL: &str = "Cancel";
 const EMPTY_MEMORY: &str = "No keepsakes yet. Add the first one above.";
-const NO_KRADDIE: &str = "No Kraddie with that name";
 const MEMORY_ROW_PREFIX: &str = "kraddie-keepsake-row";
 
 fn fraction(part: usize, whole: usize) -> f32 {
@@ -43,59 +41,7 @@ fn fraction(part: usize, whole: usize) -> f32 {
     (as_f32(part) / as_f32(whole)).clamp(0.0, 1.0)
 }
 
-const fn memory_code(error: MemoryError) -> ErrorCode {
-    match error {
-        MemoryError::Empty | MemoryError::TooLong => ErrorCode::BadRequest,
-        MemoryError::Full => ErrorCode::Forbidden,
-        MemoryError::NoSuchLine => ErrorCode::NotFound,
-    }
-}
-
 impl EnvironmentShell {
-    fn kraddie_named(&self, name: &str) -> Option<KraddieId> {
-        self.kraddies
-            .entries
-            .iter()
-            .find(|entry| entry.kraddie.name.matches(name) || entry.kraddie.id().as_str() == name)
-            .map(|entry| entry.kraddie.id())
-    }
-
-    fn memory_info(&self, id: &KraddieId) -> KraddieMemoryInfo {
-        KraddieMemoryInfo {
-            kraddie: id.to_string(),
-            lines: self.kraddie_mind(id).memory.lines().to_vec(),
-            limit: MAX_MEMORY_LINES,
-        }
-    }
-
-    pub(in crate::environment_shell) fn kraddie_memory_from_bus(
-        &self,
-        name: &str,
-    ) -> Result<KraddieMemoryInfo, (ErrorCode, String)> {
-        let id = self
-            .kraddie_named(name)
-            .ok_or_else(|| (ErrorCode::NotFound, NO_KRADDIE.to_owned()))?;
-        Ok(self.memory_info(&id))
-    }
-
-    pub(in crate::environment_shell) fn remember_from_bus(
-        &mut self,
-        name: &str,
-        text: &str,
-        cx: &mut Context<Self>,
-    ) -> Result<KraddieMemoryInfo, (ErrorCode, String)> {
-        let id = self
-            .kraddie_named(name)
-            .ok_or_else(|| (ErrorCode::NotFound, NO_KRADDIE.to_owned()))?;
-        let mut memory = self.kraddie_mind(&id).memory;
-        memory
-            .add(text)
-            .map_err(|error| (memory_code(error), error.to_string()))?;
-        self.edit_mind(&id, |mind| mind.memory = memory, cx);
-        tracing::info!(kraddie = %id, "kraddie remembered a line");
-        Ok(self.memory_info(&id))
-    }
-
     fn add_memory_line(&mut self, id: &KraddieId, window: &mut Window, cx: &mut Context<Self>) {
         let Some(input) = self.kraddies.profile.new_line.clone() else {
             return;
@@ -354,13 +300,5 @@ mod tests {
         assert!((fraction(MAX_MEMORY_LINES, MAX_MEMORY_LINES) - 1.0).abs() < f32::EPSILON);
         assert!((fraction(50, 200) - 0.25).abs() < f32::EPSILON);
         assert!(fraction(3, 0).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn memory_refusals_keep_stable_error_codes() {
-        assert_eq!(memory_code(MemoryError::Empty), ErrorCode::BadRequest);
-        assert_eq!(memory_code(MemoryError::TooLong), ErrorCode::BadRequest);
-        assert_eq!(memory_code(MemoryError::Full), ErrorCode::Forbidden);
-        assert_eq!(memory_code(MemoryError::NoSuchLine), ErrorCode::NotFound);
     }
 }

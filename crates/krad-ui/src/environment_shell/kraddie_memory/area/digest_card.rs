@@ -4,6 +4,7 @@ use gpui_kit::{
     ParentElement, Styled, Window,
 };
 use krad_domain::{relative_age, ChatDigest, DigestAuthor, DigestId, MemoryOwner, ToastKind};
+use krad_protocol::KraddieCommand;
 use std::time::SystemTime;
 
 use super::super::super::EnvironmentShell;
@@ -237,7 +238,14 @@ impl EnvironmentShell {
             .book_mut(&edit.owner)
             .edit(edit.digest, &text);
         match edited {
-            Ok(()) => self.save_digests(&edit.owner, cx),
+            Ok(()) => self.tell_kraddies(
+                KraddieCommand::ReviseDigest {
+                    owner: edit.owner.clone(),
+                    digest: edit.digest,
+                    text,
+                },
+                cx,
+            ),
             Err(error) => {
                 self.toast(ToastKind::Error, &error.to_string(), cx);
                 self.kraddies.memory.editing = Some(edit);
@@ -253,8 +261,11 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         if self.kraddies.memory.book_mut(owner).remove(digest).is_ok() {
-            tracing::info!(%owner, digest = digest.0, "chat digest forgotten");
-            self.save_digests(owner, cx);
+            let command = KraddieCommand::ForgetDigest {
+                owner: owner.clone(),
+                digest,
+            };
+            self.tell_kraddies(command, cx);
         }
         cx.notify();
     }

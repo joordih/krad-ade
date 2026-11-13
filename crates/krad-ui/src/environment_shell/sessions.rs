@@ -77,7 +77,6 @@ impl EnvironmentShell {
                 .relaunches(|id| live.sessions.contains_key(&id))
                 .len()
         });
-        self.offer_memory_tools();
         self.runtime
             .handle
             .post(Command::Terminal(TerminalCommand::OpenMissing {
@@ -104,12 +103,6 @@ impl EnvironmentShell {
         }
     }
 
-    fn offer_memory_tools(&self) {
-        self.runtime
-            .handle
-            .offer_memory_tools(self.memory_tools_offered());
-    }
-
     fn launch_in_runtime(
         &mut self,
         env: &EnvironmentName,
@@ -118,7 +111,6 @@ impl EnvironmentShell {
         cwd: Option<PathBuf>,
     ) {
         self.store();
-        self.offer_memory_tools();
         self.runtime
             .handle
             .post(Command::Terminal(TerminalCommand::Open {

@@ -4,6 +4,7 @@ mod backend;
 mod brief;
 mod chat;
 mod checkpoints;
+mod digest_source;
 mod heard;
 mod history;
 mod mcp_prep;
@@ -37,6 +38,7 @@ pub use backend::{runs_in_runtime, ChatLaunch, LiveStarted};
 pub use brief::{ChatBrief, ChatRole, PreparedLaunch};
 use chat::{Chat, HistoryWait};
 pub(crate) use checkpoints::ChatCheckpoint;
+pub(crate) use digest_source::DigestSource;
 pub(crate) use history::{ChatEarlier, ChatOpening};
 use krad_store::{acp_transcript_file, AcpTranscripts};
 pub(crate) use mcp_prep::{McpLaunched, McpRead};
@@ -108,6 +110,7 @@ pub(crate) struct Chats {
     heard: Receiver<Heard>,
     next_ask: u64,
     next_generation: u64,
+    ended: Vec<DigestSource>,
     pub(crate) mentions: MentionIndexes,
 }
 
@@ -139,6 +142,7 @@ impl Chats {
             heard,
             next_ask: 0,
             next_generation: 0,
+            ended: Vec::new(),
             mentions: MentionIndexes::default(),
         }
     }
@@ -188,6 +192,7 @@ impl Chats {
         if let Some(live) = &chat.live {
             live.stop();
         }
+        self.ended.push(DigestSource::from(&chat));
         outbox.push(EventKind::ChatClosed { chat: id.clone() });
     }
 

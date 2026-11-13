@@ -68,6 +68,7 @@ impl Runtime {
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),
             Command::Git(command) => self.execute_git(id, command),
             Command::Changes(command) => self.execute_changes(id, command),
+            Command::Kraddie(command) => self.execute_kraddie(command),
             Command::Runtime(RuntimeCommand::Unknown) | Command::Unknown => {
                 refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)
             }
@@ -145,6 +146,7 @@ impl Runtime {
         };
         let Some(incoming) = self
             .list_all(incoming)
+            .and_then(|incoming| self.answer_kraddie_requests(incoming))
             .and_then(|incoming| self.answer_git_requests(incoming))
             .and_then(|incoming| self.answer_for_leads(incoming))
             .and_then(|incoming| self.answer_on_chats(incoming))
@@ -185,7 +187,7 @@ impl Runtime {
             | Input::JobDone(_)
             | Input::Settle(_)
             | Input::SettingsNotSaved(_)
-            | Input::OfferMemoryTools(_)
+            | Input::DigestHeard { .. }
             | Input::OpenTerminal { .. }
             | Input::TerminalAction { .. }
             | Input::TerminalPalette(_)

@@ -238,7 +238,6 @@ impl EnvironmentShell {
     fn flush_live_work(&mut self, cx: &mut Context<Self>) {
         self.flush_noticed_chats(cx);
         self.flush_attention(cx);
-        self.flush_kraddies(cx);
         self.flush_variant_progress(cx);
         self.service_hosts(cx);
         self.watch_new_opencode_terminals(cx);
@@ -393,7 +392,7 @@ impl EnvironmentShell {
         self.start_watches(cx);
         self.load_language_tools(cx);
         self.load_extensions(cx);
-        self.load_kraddies(cx);
+        self.start_kraddie_clocks(cx);
         self.start_archive_sweeps(cx);
     }
 

@@ -16,7 +16,7 @@ use crate::git::GitJob;
 use crate::hosts::{AgentsFound, Attempt, LocalFound, RemoteBus};
 use crate::input::Input;
 use crate::opencode::{OpencodeListed, OpencodeStarted};
-use crate::runtime::AttachedLine;
+use crate::runtime::{AttachedLine, LinesCounted};
 use crate::usage::UsageKey;
 
 const JOB_THREAD: &str = "krad-runtime-job";
@@ -62,6 +62,7 @@ pub(crate) enum JobDone {
     McpRead(McpRead),
     McpLaunched(McpLaunched),
     Git(GitJob),
+    KraddieLines(LinesCounted),
 }
 
 #[derive(Clone, Debug)]

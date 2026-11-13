@@ -177,10 +177,6 @@ impl RuntimeHandle {
         self.views.take(terminal)
     }
 
-    pub fn offer_memory_tools(&self, offered: bool) {
-        self.deliver(Input::OfferMemoryTools(offered));
-    }
-
     pub fn open_chat(&self, chat: AgentRef, start: ChatStart) {
         self.deliver(Input::OpenChat {
             chat,

@@ -65,7 +65,6 @@ impl EnvironmentShell {
     }
 
     pub(super) fn app_event_heard(&mut self, record: &EventRecord) {
-        self.observe_kraddie_event(&record.environment, record.group, &record.event);
         self.announce_app_event(record);
     }
 

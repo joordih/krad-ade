@@ -1,6 +1,6 @@
 use futures::channel::oneshot;
 use krad_domain::UsageBudget;
-use krad_protocol::{ErrorCode, Event, EventKind, Reply, Scope, Seq, Snapshot};
+use krad_protocol::{ErrorCode, Event, EventKind, Reply, Scope, Seq};
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender};
@@ -19,7 +19,8 @@ use crate::handle::RuntimeHandle;
 use crate::harness_health::Health;
 use crate::hosts::Hosts;
 use crate::input::Input;
-use crate::jobs::{JobDone, Jobs};
+use crate::jobs::Jobs;
+use crate::kraddies::{Kraddies, KraddiesSetup};
 use crate::launches::{LaunchedViews, Launches};
 use crate::models::Models;
 use crate::opencode::{OpencodeDirectory, OpencodeServers};
@@ -32,10 +33,18 @@ use crate::workers::Workers;
 mod bus_git;
 mod chatting;
 mod commands;
+mod digesting;
+mod finished_jobs;
 mod following;
 mod git_acts;
 mod gitting;
 mod hosting;
+mod kraddie_bus;
+mod kraddie_commands;
+mod kraddie_following;
+mod kraddie_rounds;
+mod kraddie_runs;
+mod kraddie_worktrees;
 mod launching;
 mod parts;
 mod removing;
@@ -43,6 +52,8 @@ mod session_changes;
 mod worker_worktrees;
 mod working;
 
+pub(crate) use self::kraddie_following::LinesCounted;
+pub(crate) use self::kraddie_runs::RunPlan;
 pub(crate) use self::launching::AttachedLine;
 use self::parts::Parts;
 
@@ -58,6 +69,7 @@ pub struct RuntimeSetup {
     pub events: Option<EventsSetup>,
     pub environments: EnvironmentsSetup,
     pub settings: SettingsSetup,
+    pub kraddies: KraddiesSetup,
 }
 
 #[derive(Debug)]
@@ -82,6 +94,7 @@ pub struct Runtime {
     launches: Launches,
     workers: Workers,
     git: Git,
+    kraddies: Kraddies,
     stopped: Arc<AtomicBool>,
 }
 
@@ -93,6 +106,7 @@ struct Owned {
     opencode: OpencodeDirectory,
     settings: AppSettings,
     views: LaunchedViews,
+    kraddies: KraddiesSetup,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -131,6 +145,7 @@ impl Runtime {
             opencode: opencode.clone(),
             settings,
             views: views.clone(),
+            kraddies: setup.kraddies,
         };
         let shared_access = access.clone();
         let runtime_inbox = inbox.clone();
@@ -173,12 +188,15 @@ impl Runtime {
             launches: Launches::new(owned.views, inbox.clone()),
             workers: Workers::default(),
             git: Git::default(),
+            kraddies: Kraddies::start(owned.kraddies, inbox.clone()),
             stopped,
         }
     }
 
     fn run(mut self, input: &Receiver<Input>) {
         let mut next_tick = Instant::now() + TICK_INTERVAL;
+        self.catch_up_kraddies();
+        self.flush();
         loop {
             let wait = next_tick.saturating_duration_since(Instant::now());
             let mut batch = match input.recv_timeout(wait) {
@@ -202,6 +220,9 @@ impl Runtime {
             self.hear_chats();
             self.keep_chat_resumes();
             self.follow_workers();
+            self.follow_kraddie_runs();
+            self.digest_ended_chats();
+            self.hear_kraddie_events(unread);
             self.settle_waiters();
             self.hear_ended_terminals(unread);
             self.follow_connections(unread);
@@ -233,6 +254,7 @@ impl Runtime {
                 self.terminals.tick(Instant::now(), &mut self.outbox);
                 self.tick_hosts();
                 self.tick_git();
+                self.tick_kraddies();
             }
             Input::OpenTerminal {
                 terminal,
@@ -277,32 +299,17 @@ impl Runtime {
                 let settled = Arc::new(Settled(Some(reply)));
                 let waiting = Arc::clone(&settled);
                 self.settings.settle(move || drop(waiting));
+                let shelved = Arc::clone(&settled);
+                self.kraddies.flush(&mut self.outbox);
+                self.kraddies.settle(move || drop(shelved));
                 self.environments.settle(move || drop(settled));
             }
             Input::SettingsNotSaved(error) => AppSettings::not_saved(error, &mut self.outbox),
-            Input::OfferMemoryTools(offered) => self.offer_memory_tools(offered),
+            Input::DigestHeard { chat, reply } => self.digest_heard(&chat, reply),
             Input::Bus(incoming) => self.answer_bus(incoming),
             bus_input => self.apply_bus(bus_input),
         }
         Flow::Running
-    }
-
-    fn job_done(&mut self, done: JobDone) {
-        match done {
-            JobDone::HarnessChecked {
-                place,
-                harness,
-                health,
-            } => self
-                .health
-                .checked(place, harness, health, &mut self.outbox),
-            JobDone::ModelsListed { key, listed } => {
-                self.models.listed(key, listed, &mut self.outbox);
-            }
-            JobDone::UsageRead { key, read } => self.usage.read(&key, read, &mut self.outbox),
-            JobDone::Git(job) => self.git_job_done(job),
-            host_job => self.host_job_done(host_job),
-        }
     }
 
     fn save_terminal_metas(&mut self, settling: Settling) {
@@ -319,6 +326,7 @@ impl Runtime {
         self.save_terminal_metas(Settling::No);
         self.environments.flush();
         self.settings.flush();
+        self.kraddies.flush(&mut self.outbox);
         self.terminals.render(&mut self.outbox);
         let events: Vec<Event> = self
             .outbox
@@ -345,29 +353,11 @@ impl Runtime {
             gateway: &self.gateway,
             settings: &self.settings,
             git: &self.git,
+            kraddies: &self.kraddies,
         };
         let seq = self.seq;
         self.subscribers
             .publish(&events, || parts.snapshot(seq, Scope::Runtime));
-    }
-
-    fn snapshot(&self, scope: Scope) -> Snapshot {
-        Parts {
-            bus: self.bus.as_ref(),
-            attention: &self.attention,
-            health: &self.health,
-            usage: &self.usage,
-            models: &self.models,
-            environments: &self.environments,
-            terminals: &self.terminals,
-            hosts: &self.hosts,
-            chats: &self.chats,
-            opencode: &self.opencode,
-            gateway: &self.gateway,
-            settings: &self.settings,
-            git: &self.git,
-        }
-        .snapshot(self.seq, scope)
     }
 }
 

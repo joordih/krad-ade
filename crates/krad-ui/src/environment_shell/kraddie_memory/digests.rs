@@ -1,25 +1,23 @@
 use futures::channel::oneshot;
 use futures::future::{select, Either};
 use gpui_kit::Context;
-use krad_chat::{new_session_id, ChatEvent, LiveEvent, LiveSession, Speaker};
+use krad_chat::{new_session_id, ChatEvent, LiveEvent, LiveSession};
 use krad_domain::{
-    digest_decision, digest_prompt, facts_from_reply, AgentPreset, ChatDigests, ChatPhase,
-    DigestChat, DigestCheck, DigestDecision, DigestDraft, EnvironmentName, HistoryMessage,
-    HistorySpeaker, MemoryOwner, PermissionMode, Prompt, TerminalId,
+    digest_decision, digest_prompt, facts_from_reply, history_of, AgentPreset, ChatDigests,
+    ChatPhase, DigestChat, DigestCheck, DigestDecision, DigestDraft, EnvironmentName,
+    HistoryMessage, MemoryOwner, PermissionMode, Prompt, TerminalId,
 };
 use std::time::{Duration, Instant, SystemTime};
 
-use krad_protocol::AgentRef;
+use krad_protocol::{AgentRef, KraddieCommand};
 use krad_runtime::{ChatBrief, ChatRole};
 
-use super::super::chat::{AnswerPart, ChatMessage};
 use super::super::EnvironmentShell;
 use super::ChatKey;
 
 pub(super) const DIGEST_CHECK_EVERY: Duration = Duration::from_mins(1);
 const DIGEST_TIMEOUT: Duration = Duration::from_mins(4);
 const DIGEST_MODE: PermissionMode = PermissionMode::Plan;
-const BLOCK_SEPARATOR: &str = "\n\n";
 const WRITER_STOPPED: &str = "the writer stopped";
 const WRITER_TOO_SLOW: &str = "the writer took too long";
 
@@ -33,33 +31,6 @@ struct DigestJob {
 enum DigestReply {
     Text(String),
     Failed(String),
-}
-
-#[must_use]
-pub(in crate::environment_shell) fn history_of(messages: &[ChatMessage]) -> Vec<HistoryMessage> {
-    messages
-        .iter()
-        .filter_map(|message| {
-            let (speaker, text) = match message.speaker {
-                Speaker::User => (HistorySpeaker::User, message.text.clone()),
-                Speaker::Assistant => {
-                    let text = message
-                        .parts
-                        .iter()
-                        .filter_map(|part| match part {
-                            AnswerPart::Text(text) => Some(text.as_str()),
-                            AnswerPart::Thinking(_) | AnswerPart::Tool(_) | AnswerPart::Ask(_) => {
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join(BLOCK_SEPARATOR);
-                    (HistorySpeaker::Agent, text)
-                }
-            };
-            (!text.trim().is_empty()).then_some(HistoryMessage { speaker, text })
-        })
-        .collect()
 }
 
 fn reply_sink(reply: oneshot::Sender<DigestReply>) -> impl FnMut(LiveEvent) + Send + 'static {
@@ -102,11 +73,10 @@ impl EnvironmentShell {
         let (env, chat) = key;
         let live = self.envs.get(env)?;
         let surface = live.chats.get(chat)?;
-        surface.structured()?;
-        let owner = self.chat_owner(env, *chat);
-        if !self.kraddies.memory.loaded.contains(&owner) {
+        if surface.structured()?.in_runtime() || !self.kraddies.memory.known {
             return None;
         }
+        let owner = self.chat_owner(env, *chat);
         let digests = match owner.kraddie() {
             Some(id) => self.kraddies.entry(id)?.kraddie.settings.digests,
             None => ChatDigests::Automatic,
@@ -165,7 +135,11 @@ impl EnvironmentShell {
             .flat_map(|(env, live)| {
                 live.chats
                     .iter()
-                    .filter(|(_, surface)| surface.structured().is_some())
+                    .filter(|(_, surface)| {
+                        surface
+                            .structured()
+                            .is_some_and(|structured| !structured.in_runtime())
+                    })
                     .map(move |(chat, surface)| {
                         ((env.clone(), *chat), surface.working_since.get().is_some())
                     })
@@ -337,63 +311,17 @@ impl EnvironmentShell {
             covered: job.messages.len(),
             written: SystemTime::now(),
         };
-        if self
-            .kraddies
-            .memory
-            .book_mut(&job.owner)
-            .record(draft)
-            .is_some()
-        {
-            tracing::info!(owner = %job.owner, "chat digest kept");
-            self.save_digests(&job.owner, cx);
-            cx.notify();
-        }
+        let command = KraddieCommand::RecordDigest {
+            owner: job.owner,
+            draft: Box::new(draft),
+        };
+        self.tell_kraddies(command, cx);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
-
-    fn message(speaker: Speaker, text: &str, parts: Vec<AnswerPart>) -> ChatMessage {
-        ChatMessage {
-            speaker,
-            text: text.to_owned(),
-            parts,
-            error: None,
-            running: false,
-            mentions: Vec::new(),
-            checklist: None,
-            rewind: None,
-            tool_outputs: HashMap::new(),
-        }
-    }
-
-    #[test]
-    fn the_digest_reads_what_was_said_not_tools_or_thoughts() {
-        let messages = [
-            message(Speaker::User, "Which port?", Vec::new()),
-            message(
-                Speaker::Assistant,
-                "",
-                vec![
-                    AnswerPart::Thinking("hmm".to_owned()),
-                    AnswerPart::Text("Port 8080.".to_owned()),
-                    AnswerPart::Text("Set in config.toml.".to_owned()),
-                ],
-            ),
-            message(
-                Speaker::Assistant,
-                "",
-                vec![AnswerPart::Thinking("only".to_owned())],
-            ),
-        ];
-        let history = history_of(&messages);
-        assert_eq!(history.len(), 2);
-        assert_eq!(history[0].speaker, HistorySpeaker::User);
-        assert_eq!(history[1].text, "Port 8080.\n\nSet in config.toml.");
-    }
 
     #[test]
     fn the_writer_keeps_the_whole_answer_or_its_pieces() {

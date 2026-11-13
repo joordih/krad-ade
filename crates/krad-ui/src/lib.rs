@@ -33,6 +33,7 @@ pub use environment_shell::{EnvironmentShell, HostTools};
 pub use http::http_client;
 pub use keymap::key_bindings;
 pub use krad_session::login_shell_env;
+pub use local_clock::local_moment;
 pub use theme::{
     active_appearance, apply_editor_font, apply_interface_font, apply_settings_theme,
     apply_window_material, apply_window_tint, install_theme_library, register_fonts, Appearance,

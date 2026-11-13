@@ -1,3 +1,5 @@
+use super::trigger::KraddieWake;
+use crate::git::LineCount;
 use crate::usage::{Spend, UsdCost};
 use chrono::{Days, NaiveDate};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -50,6 +52,36 @@ pub struct KraddieDay {
 }
 
 impl KraddieDay {
+    #[must_use]
+    pub fn of_wake(wake: KraddieWake) -> Self {
+        let routine = !wake.by_user() && !matches!(wake, KraddieWake::Rounds);
+        Self {
+            runs: 1,
+            routines: u32::from(routine),
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn of_session() -> Self {
+        Self {
+            sessions: 1,
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn of_lines(counts: impl IntoIterator<Item = LineCount>) -> Self {
+        let total = counts
+            .into_iter()
+            .fold(LineCount::default(), |sum, count| sum + count);
+        Self {
+            lines_added: u64::from(total.added),
+            lines_removed: u64::from(total.removed),
+            ..Self::default()
+        }
+    }
+
     #[must_use]
     pub const fn lines_changed(&self) -> u64 {
         self.lines_added.saturating_add(self.lines_removed)
@@ -125,6 +157,31 @@ mod tests {
 
     fn date(text: &str) -> NaiveDate {
         text.parse().unwrap_or_else(|_| unreachable!())
+    }
+
+    #[test]
+    fn automation_trigger_wakes_count_as_routines_and_lines_add_up() {
+        use super::super::trigger::KraddieEvent;
+        assert_eq!(KraddieDay::of_wake(KraddieWake::Schedule).routines, 1);
+        assert_eq!(KraddieDay::of_wake(KraddieWake::CatchUp).routines, 1);
+        assert_eq!(
+            KraddieDay::of_wake(KraddieWake::Event(KraddieEvent::CiFailed)).routines,
+            1
+        );
+        assert_eq!(KraddieDay::of_wake(KraddieWake::Manual).routines, 0);
+        assert_eq!(KraddieDay::of_wake(KraddieWake::Rounds).routines, 0);
+        assert_eq!(KraddieDay::of_wake(KraddieWake::Cli).runs, 1);
+        let day = KraddieDay::of_lines([
+            LineCount {
+                added: 3,
+                removed: 1,
+            },
+            LineCount {
+                added: 7,
+                removed: 0,
+            },
+        ]);
+        assert_eq!((day.lines_added, day.lines_removed), (10, 1));
     }
 
     #[test]

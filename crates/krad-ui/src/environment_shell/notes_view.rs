@@ -211,6 +211,7 @@ impl EnvironmentShell {
                     self.notes.entries = read.entries;
                     self.notes.index = read.index;
                     self.notes.graph.forget();
+                    self.tell_notes_to_kraddies(cx);
                     cx.notify();
                 }
             }

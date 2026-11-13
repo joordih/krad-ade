@@ -1,6 +1,6 @@
 use krad_domain::{
     AgentPreset, AttentionTarget, ChatMessage, EnvironmentChange, EnvironmentData, EnvironmentName,
-    EventRecord, GitObjectId, Host, RewindPoint, Settings, UsageReport,
+    EventRecord, GitObjectId, Host, KraddieId, RewindPoint, Settings, UsageReport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -16,6 +16,7 @@ use crate::git::{GitFinished, GitRead, SessionChangesRead, WorktreeSwept};
 use crate::harness_health::{HarnessChecked, HealthSnapshot};
 use crate::hosts::{HostPrompt, HostState, HostsSnapshot, LocalAgents, PromptId, RemoteBusState};
 use crate::ids::{RequestId, Seq};
+use crate::kraddies::{KraddieState, KraddiesSnapshot, OwnedDigests};
 use crate::launches::TerminalLaunched;
 use crate::models::{ListedModels, ModelsOrigin, ModelsSnapshot};
 use crate::opencode::{OpencodeShown, OpencodeSnapshot};
@@ -170,6 +171,17 @@ pub enum EventKind {
     GitFinished(GitFinished),
     SessionChangesRead(SessionChangesRead),
     WorktreeSwept(WorktreeSwept),
+    KraddieChanged {
+        kraddie: Box<KraddieState>,
+    },
+    KraddieRemoved {
+        kraddie: KraddieId,
+    },
+    DigestsChanged(OwnedDigests),
+    KraddieRunFailed {
+        task: String,
+        reason: String,
+    },
     #[serde(other)]
     Unknown,
 }
@@ -210,6 +222,8 @@ pub struct Snapshot {
     pub settings: Box<Settings>,
     #[serde(default)]
     pub git: Vec<GitRead>,
+    #[serde(default)]
+    pub kraddies: Box<KraddiesSnapshot>,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -270,6 +284,7 @@ mod tests {
                 gateway: GatewayState::default(),
                 settings: Box::default(),
                 git: Vec::new(),
+                kraddies: Box::default(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

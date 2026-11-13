@@ -93,7 +93,6 @@ impl EnvironmentShell {
             }),
             _ => None,
         };
-        let memory = self.memory_preamble(env, id);
         let Some(SurfaceChat {
             backend: super::super::Backend::Structured(structured),
             messages,
@@ -108,7 +107,6 @@ impl EnvironmentShell {
                 model: structured.chosen_model.clone(),
                 effort: structured.effort,
                 permission_mode: structured.permission_mode,
-                memory,
                 mcp_servers: structured.mcp_servers.clone(),
                 role: ChatRole::Agent,
             },

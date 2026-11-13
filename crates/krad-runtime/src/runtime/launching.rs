@@ -99,10 +99,6 @@ impl Runtime {
         }
     }
 
-    pub(super) fn offer_memory_tools(&mut self, offered: bool) {
-        self.launches.memory_tools = offered;
-    }
-
     pub(super) fn follow_connections(&mut self, unread: usize) {
         let connected: Vec<EnvironmentName> = self
             .outbox
@@ -272,7 +268,7 @@ impl Runtime {
             },
             tools_offered: settings.code_tools == CodeTools::On
                 || settings.extension_tools == ExtensionTools::On
-                || self.launches.memory_tools,
+                || self.kraddies.offers_memory_tools(),
         };
         let agent = context.line(&waiting.intent);
         let harness = waiting.intent.harness();

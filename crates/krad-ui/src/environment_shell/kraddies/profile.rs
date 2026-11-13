@@ -12,14 +12,11 @@ mod sidebar;
 
 use chrono::{Local, NaiveDate};
 use gpui_kit::component::input::{InputState, TextareaState};
-use gpui_kit::{AppContext as _, Bounds, Context, Entity, Pixels};
-use krad_domain::{
-    EnvironmentName, HeatMap, HeatMetric, KraddieActivity, KraddieId, KraddieMind, KraddieRunId,
-    TerminalId,
-};
-use krad_store::KraddieProfileFiles;
+use gpui_kit::{Bounds, Context, Entity, Pixels};
+use krad_domain::{HeatMap, HeatMetric, KraddieActivity, KraddieId, KraddieMind};
+use krad_protocol::KraddieCommand;
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::SystemTime;
 
@@ -97,14 +94,6 @@ struct HeatKey {
     revision: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct EndedRun {
-    pub(super) env: EnvironmentName,
-    pub(super) terminal: TerminalId,
-    pub(super) kraddie: KraddieId,
-    pub(super) run: KraddieRunId,
-}
-
 struct CompassDraft {
     kraddie: KraddieId,
     text: Entity<TextareaState>,
@@ -137,11 +126,7 @@ pub(in crate::environment_shell) struct ProfileUi {
     editing_line: Option<LineDraft>,
     session_model: Option<(KraddieId, Entity<InputState>)>,
     resetting: Option<KraddieId>,
-    check_ins: HashMap<(EnvironmentName, TerminalId), KraddieId>,
     last_check_in: HashMap<KraddieId, SystemTime>,
-    pub(super) ended: Vec<EndedRun>,
-    dirty_minds: HashSet<KraddieId>,
-    dirty_activity: HashSet<KraddieId>,
 }
 
 fn today() -> NaiveDate {
@@ -185,9 +170,22 @@ impl ProfileUi {
         };
     }
 
-    fn touched_activity(&mut self, id: &KraddieId) {
-        self.revision = self.revision.wrapping_add(1);
-        self.dirty_activity.insert(id.clone());
+    pub(super) fn adopt(
+        &mut self,
+        id: &KraddieId,
+        mind: KraddieMind,
+        activity: KraddieActivity,
+        last_check_in: Option<SystemTime>,
+    ) {
+        self.minds.insert(id.clone(), mind);
+        if self.activity.get(id) != Some(&activity) {
+            self.activity.insert(id.clone(), activity);
+            self.revision = self.revision.wrapping_add(1);
+        }
+        match last_check_in {
+            Some(at) => self.last_check_in.insert(id.clone(), at),
+            None => self.last_check_in.remove(id),
+        };
     }
 
     pub(super) fn rename(&mut self, old: &KraddieId, new: &KraddieId) {
@@ -203,10 +201,6 @@ impl ProfileUi {
         self.revision = self.revision.wrapping_add(1);
     }
 
-    pub(super) fn forget_check_in(&mut self, env: &EnvironmentName, terminal: TerminalId) {
-        self.check_ins.remove(&(env.clone(), terminal));
-    }
-
     pub(super) fn forget(&mut self, id: &KraddieId) {
         self.minds.remove(id);
         self.activity.remove(id);
@@ -218,82 +212,6 @@ impl ProfileUi {
 }
 
 impl EnvironmentShell {
-    pub(super) fn load_kraddie_profiles(&mut self, cx: &mut Context<Self>) {
-        let Some(store) = self.kraddies.shelf.clone() else {
-            return;
-        };
-        let ids: Vec<KraddieId> = self
-            .kraddies
-            .entries
-            .iter()
-            .map(|entry| entry.kraddie.id())
-            .collect();
-        let read = cx.background_spawn(async move {
-            ids.into_iter()
-                .map(|id| {
-                    let files = store.read_profile(&id);
-                    (id, files)
-                })
-                .collect::<Vec<(KraddieId, KraddieProfileFiles)>>()
-        });
-        cx.spawn(async move |this, cx| {
-            let profiles = read.await;
-            this.update(cx, |shell, cx| {
-                let today = today();
-                for (id, mut files) in profiles {
-                    files.activity.prune(today);
-                    shell.kraddies.profile.minds.insert(id.clone(), files.mind);
-                    shell.kraddies.profile.activity.insert(id, files.activity);
-                }
-                shell.kraddies.profile.revision = shell.kraddies.profile.revision.wrapping_add(1);
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
-    }
-
-    pub(super) fn save_kraddie_profiles(&mut self, cx: &mut Context<Self>) {
-        let Some(store) = self.kraddies.shelf.clone() else {
-            return;
-        };
-        let profile = &mut self.kraddies.profile;
-        let minds: Vec<(KraddieId, KraddieMind)> = std::mem::take(&mut profile.dirty_minds)
-            .into_iter()
-            .map(|id| {
-                let mind = profile.mind(&id);
-                (id, mind)
-            })
-            .collect();
-        let activity: Vec<(KraddieId, KraddieActivity)> =
-            std::mem::take(&mut profile.dirty_activity)
-                .into_iter()
-                .filter_map(|id| {
-                    let activity = profile.activity.get(&id)?.clone();
-                    Some((id, activity))
-                })
-                .collect();
-        if minds.is_empty() && activity.is_empty() {
-            return;
-        }
-        cx.background_spawn(async move {
-            for (id, mind) in minds {
-                if let Err(error) = store
-                    .write_compass(&id, &mind.compass)
-                    .and_then(|()| store.write_memory(&id, &mind.memory))
-                {
-                    tracing::warn!(kraddie = %id, %error, "kraddie compass or memory not saved");
-                }
-            }
-            for (id, activity) in activity {
-                if let Err(error) = store.write_activity(&id, &activity) {
-                    tracing::warn!(kraddie = %id, %error, "kraddie activity not saved");
-                }
-            }
-        })
-        .detach();
-    }
-
     pub(in crate::environment_shell) fn open_kraddie_page(
         &mut self,
         id: &KraddieId,
@@ -325,8 +243,11 @@ impl EnvironmentShell {
     ) {
         let mind = self.kraddies.profile.minds.entry(id.clone()).or_default();
         edit(mind);
-        self.kraddies.profile.dirty_minds.insert(id.clone());
-        self.save_kraddie_profiles(cx);
+        let command = KraddieCommand::SetMind {
+            kraddie: id.clone(),
+            mind: Box::new(mind.clone()),
+        };
+        self.tell_kraddies(command, cx);
         cx.notify();
     }
 

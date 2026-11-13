@@ -156,10 +156,6 @@ impl EnvironmentShell {
             request,
             reply,
         } = delegated;
-        if let Some(refusal) = self.memory_gate(&from, &request) {
-            reply.send(Response::Error(refusal)).unwrap_or_default();
-            return;
-        }
         match from {
             Caller::Terminal(from) => self.answer_terminal(&from, request, reply, cx),
             Caller::Lead(lead) => self.answer_lead(&lead, request, reply, cx),
@@ -183,16 +179,13 @@ impl EnvironmentShell {
             | Request::RunAutomation { .. }
             | Request::SwitchAutomation { .. }
             | Request::RememberKraddie { .. }
-            | Request::KraddieMemory { .. }) => {
-                self.answer_kraddies(request, reply, cx);
-            }
-            request @ (Request::KraddieRecall { .. }
+            | Request::KraddieMemory { .. }
+            | Request::KraddieRecall { .. }
             | Request::NewKraddieChat { .. }
             | Request::ShareKraddieMemory { .. }
             | Request::MemorySearch { .. }
             | Request::MemoryRead { .. }) => {
-                let chat = Some(TerminalId(from.terminal));
-                self.answer_memory_call(&from.environment, chat, request, reply, cx);
+                self.answer_kraddie_request(request, reply, cx);
             }
             request @ (Request::RunVariants(_)
             | Request::Variants { .. }

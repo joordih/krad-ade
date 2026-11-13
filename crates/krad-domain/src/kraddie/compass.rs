@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 pub const MAX_COMPASS_CHARS: usize = 20_000;
@@ -19,8 +20,15 @@ impl fmt::Display for CompassTooLong {
 
 impl std::error::Error for CompassTooLong {}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub struct KraddieCompass(String);
+
+impl From<KraddieCompass> for String {
+    fn from(compass: KraddieCompass) -> Self {
+        compass.0
+    }
+}
 
 impl Default for KraddieCompass {
     fn default() -> Self {
