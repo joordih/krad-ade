@@ -14,7 +14,7 @@ use krad_domain::{
     ModelId, PermissionMode, ResumeId, TerminalId,
 };
 use krad_domain::{Catalog, CommandOffer, SlashCommand};
-use krad_store::acp_transcript_file;
+use krad_protocol::ChatCommand;
 
 use super::super::ask::AskQueue;
 use super::super::EnvironmentShell;
@@ -185,11 +185,13 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
     ) {
-        let (Some(transcripts), Some(file)) = (&self.acp_transcripts, acp_transcript_file(env, id))
-        else {
-            return;
-        };
-        transcripts.forget(file);
+        let place = ChatPlace::here(env);
+        self.post_chat(
+            &place,
+            ChatCommand::ForgetTranscript {
+                chat: place.chat(id),
+            },
+        );
     }
 }
 

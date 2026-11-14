@@ -11,7 +11,7 @@ use cloud::{
 };
 use krad_domain::{RunnerCli, RunnerLogin};
 use krad_host::{APP_DIR, HOST_CLI_BUILD, HOST_CLI_PROGRAM};
-use krad_protocol::{CloudCommand, CloudNews, Command, Reply, RunnerCommand};
+use krad_protocol::{CloudCommand, CloudNews, CloudReach, Command, Reply, RunnerCommand};
 use repo::{committed_repo, git};
 use std::error::Error;
 use std::os::unix::fs::PermissionsExt as _;
@@ -36,7 +36,8 @@ fn install_fake_cli(runner_home: &Path) -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn a_cloud_session_is_prepared_on_a_ready_runner_and_its_branch_comes_home() -> TestResult {
+fn a_cloud_session_is_prepared_over_the_wire_of_a_runner_without_a_runtime_and_its_branch_comes_home(
+) -> TestResult {
     let config = temp_folder("cs-config")?;
     let runner_home = temp_folder("cs-home")?;
     use_fake_runner(&config.0, &runner_home.0);
@@ -49,7 +50,7 @@ fn a_cloud_session_is_prepared_on_a_ready_runner_and_its_branch_comes_home() -> 
     let root = local.0.join("work");
     install_fake_cli(&runner_home.0)?;
     let started = start(&root, install_id()?)?;
-    let (logins, opened) = create_cloud_session(&started)?;
+    let (logins, opened) = create_cloud_session(&started, CloudReach::Runtime)?;
     let Started {
         runtime,
         group,

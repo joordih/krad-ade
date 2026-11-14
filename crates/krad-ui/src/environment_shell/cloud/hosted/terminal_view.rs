@@ -4,8 +4,8 @@ use gpui_kit::{
     div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, ParentElement, ScrollWheelEvent, Styled, Task, Window,
 };
-use krad_domain::{CloudRunnerId, GridSize, RuntimeId, ToastKind};
-use krad_protocol::{AgentRef, Command, Reply, TerminalCommand, WriteBy};
+use krad_domain::{GridSize, RuntimeId, ToastKind};
+use krad_protocol::{Command, Reply, TerminalCommand, WriteBy};
 use krad_session::{CellPoint, KeyModifiers, XTERM_PALETTE};
 
 use super::super::super::terminal_body::{
@@ -13,7 +13,7 @@ use super::super::super::terminal_body::{
     TERMINAL_FONT_PX, TERMINAL_LINE_PX,
 };
 use super::super::super::EnvironmentShell;
-use super::terminal::{session_terminals, HostedTerminalKey, RemoteTerminal};
+use super::terminal::{HostedTerminalKey, RemoteTerminal};
 use crate::components::{card, Button, ButtonVariant};
 use crate::terminal_theme::terminal_colors;
 use crate::theme::{mono_family, palette, RADIUS_LG, SPACE_2, SPACE_3, TEXT_XS};
@@ -22,13 +22,13 @@ const WATCH_BATCH: usize = 64;
 const HEADER_H: f32 = 36.0;
 const CLOSE_ID: &str = "hosted-terminal-close";
 const CLOSE_LABEL: &str = "Close";
+const HIDE_ID: &str = "hosted-terminal-hide";
+const HIDE_LABEL: &str = "Hide";
 const ENDED: &str = "The runner stopped sending this terminal";
 const UNWATCHED: &str = "The runner did not let this window watch the terminal";
 const UNREACHED: &str = "The cloud runner is not connected";
 const TITLE_PREFIX: &str = "Terminal on";
 const UNZOOMED: f32 = 1.0;
-const CHIP_PREFIX: &str = "hosted-terminal-chip";
-const CHIP_LABEL: &str = "Terminal";
 
 pub(in crate::environment_shell) struct HostedTerminalView {
     terminal: RemoteTerminal,
@@ -110,6 +110,10 @@ impl EnvironmentShell {
             self.cloud.terminal = None;
             self.toast(ToastKind::Warning, UNWATCHED, cx);
         }
+    }
+
+    pub(in crate::environment_shell) fn shown_hosted_terminal(&self) -> Option<&HostedTerminalKey> {
+        self.cloud.terminal.as_ref().map(|view| &view.terminal.key)
     }
 
     pub(in crate::environment_shell) fn leave_hosted_terminal(&mut self) {
@@ -216,47 +220,6 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    pub(in crate::environment_shell) fn hosted_terminal_chips(
-        &self,
-        runner: CloudRunnerId,
-        beside: &AgentRef,
-        cx: &mut Context<Self>,
-    ) -> Vec<AnyElement> {
-        let terminals = self
-            .runtime
-            .view
-            .read(cx)
-            .remotes
-            .get(runner)
-            .and_then(|remote| {
-                remote
-                    .environments
-                    .all()
-                    .iter()
-                    .find(|data| data.name == beside.environment)
-            })
-            .map_or_else(Vec::new, |data| session_terminals(data, beside.terminal));
-        terminals
-            .into_iter()
-            .map(|terminal| {
-                let key = HostedTerminalKey {
-                    runner,
-                    terminal: AgentRef {
-                        environment: beside.environment.clone(),
-                        terminal,
-                    },
-                };
-                Button::new((CHIP_PREFIX, terminal.as_u64()))
-                    .label(format!("{CHIP_LABEL} {}", terminal.as_u64()))
-                    .variant(ButtonVariant::Ghost)
-                    .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                        this.show_hosted_terminal(&key, cx);
-                    }))
-                    .into_any_element()
-            })
-            .collect()
-    }
-
     pub(in crate::environment_shell) fn hosted_terminal_pane(
         &self,
         cx: &mut Context<Self>,
@@ -332,12 +295,20 @@ impl EnvironmentShell {
                             )
                         })
                         .child(
-                            Button::new(CLOSE_ID)
-                                .label(CLOSE_LABEL)
+                            Button::new(HIDE_ID)
+                                .label(HIDE_LABEL)
                                 .variant(ButtonVariant::Ghost)
                                 .on_click(cx.listener(|this: &mut Self, _, _, cx| {
                                     this.leave_hosted_terminal();
                                     cx.notify();
+                                })),
+                        )
+                        .child(
+                            Button::new(CLOSE_ID)
+                                .label(CLOSE_LABEL)
+                                .variant(ButtonVariant::Ghost)
+                                .on_click(cx.listener(|this: &mut Self, _, _, cx| {
+                                    this.close_hosted_terminal(cx);
                                 })),
                         ),
                 )

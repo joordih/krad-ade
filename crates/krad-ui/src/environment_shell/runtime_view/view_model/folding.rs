@@ -18,6 +18,10 @@ impl ViewModel {
         self.health.replace(take(&mut snapshot.health.checks));
         self.usage.replace(take(&mut snapshot.usage.shown));
         self.models.replace(take(&mut snapshot.models.listed));
+        self.adapters = take(&mut snapshot.hosts.adapters)
+            .into_iter()
+            .map(|kept| (kept.agent, kept.adapter))
+            .collect();
         self.opencode.replace(take(&mut snapshot.opencode));
         self.settings.replace(*take(&mut snapshot.settings));
         let runners = *take(&mut snapshot.runners);
@@ -165,6 +169,16 @@ impl ViewModel {
                     environment,
                     before,
                 });
+                Area::Hosts
+            }
+            EventKind::AcpOffers(offers) => {
+                self.acp.heard(&offers);
+                self.heard(Heard::Event(EventKind::AcpOffers(offers)));
+                Area::Models
+            }
+            EventKind::AcpAdapterChanged(kept) => {
+                self.adapters.insert(kept.agent, kept.adapter.clone());
+                self.heard(Heard::Event(EventKind::AcpAdapterChanged(kept)));
                 Area::Hosts
             }
             EventKind::HostPrompted(prompt) => {

@@ -173,7 +173,7 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let pal = palette(cx);
         if let Some(kept) = self
-            .kept_adapter(agent.id)
+            .kept_adapter(agent.id, cx)
             .filter(|_| *place == DetectionPlace::ThisComputer)
         {
             return Self::kept_adapter_row(index, agent, &kept, cx);

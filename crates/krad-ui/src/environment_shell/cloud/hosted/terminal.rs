@@ -1,4 +1,4 @@
-use krad_domain::{CloudRunnerId, EnvironmentData, GridSize, NodeKind, TerminalId};
+use krad_domain::{AgentPreset, CloudRunnerId, EnvironmentData, GridSize, NodeKind, TerminalId};
 use krad_protocol::AgentRef;
 use krad_runtime::TerminalFrame;
 use krad_session::{
@@ -96,15 +96,15 @@ impl RemoteTerminal {
 pub(in crate::environment_shell) fn session_terminals(
     data: &EnvironmentData,
     beside: TerminalId,
-) -> Vec<TerminalId> {
+) -> Vec<(TerminalId, Option<AgentPreset>)> {
     let Some(session) = data.session_of(beside) else {
         return Vec::new();
     };
     data.nodes
         .iter()
-        .filter(|node| node.kind == NodeKind::Terminal && node.harness.is_none())
+        .filter(|node| node.kind == NodeKind::Terminal)
         .filter(|node| data.session_of(node.id) == Some(session))
-        .map(|node| node.id)
+        .map(|node| (node.id, node.harness))
         .collect()
 }
 
@@ -112,8 +112,8 @@ pub(in crate::environment_shell) fn session_terminals(
 mod tests {
     use super::*;
     use krad_domain::{
-        AgentPreset, AgentState, ChatBookmarks, ChatCheckpoints, ChatChoice, ChatUsage,
-        EnvironmentName, GroupId, NodeEdit, NodePlace, SessionSpec, TerminalNode, TextScale,
+        AgentState, ChatBookmarks, ChatCheckpoints, ChatChoice, ChatUsage, EnvironmentName,
+        GroupId, NodeEdit, NodePlace, SessionSpec, TerminalNode, TextScale,
     };
     use krad_session::XTERM_PALETTE;
     use std::path::PathBuf;
@@ -134,7 +134,12 @@ mod tests {
             .collect()
     }
 
-    fn node(id: TerminalId, group: GroupId, harness: Option<AgentPreset>) -> TerminalNode {
+    fn node(
+        id: TerminalId,
+        group: GroupId,
+        harness: Option<AgentPreset>,
+        kind: NodeKind,
+    ) -> TerminalNode {
         TerminalNode {
             id,
             title: "node".to_owned(),
@@ -143,11 +148,7 @@ mod tests {
             resume: None,
             group: Some(group),
             text_scale: TextScale::default(),
-            kind: if harness.is_some() {
-                NodeKind::Chat
-            } else {
-                NodeKind::Terminal
-            },
+            kind,
             file: None,
             extension: None,
             bookmarks: ChatBookmarks::default(),
@@ -162,10 +163,11 @@ mod tests {
         data: &mut EnvironmentData,
         group: GroupId,
         harness: Option<AgentPreset>,
+        kind: NodeKind,
     ) -> TerminalId {
         let id = TerminalId(data.next_id);
         let opened = NodeEdit::Open {
-            node: Box::new(node(id, group, harness)),
+            node: Box::new(node(id, group, harness, kind)),
             place: NodePlace::Tab { anchor: None },
         };
         data.edit(&opened.into());
@@ -173,18 +175,29 @@ mod tests {
     }
 
     #[test]
-    fn a_hosted_chat_offers_the_shell_terminals_of_its_own_session_only() {
+    fn a_hosted_chat_offers_the_terminals_of_its_own_session_only() {
         let mut data = EnvironmentData::empty(EnvironmentName::new("runner".to_owned()));
         let group = data.add_group(PathBuf::from("/runner/repos/api"), None);
         data.enter_sessions();
         data.new_session(Some(group), SessionSpec::default());
-        let chat = open(&mut data, group, Some(AgentPreset::ClaudeCode));
-        let shell = open(&mut data, group, None);
+        let chat = open(
+            &mut data,
+            group,
+            Some(AgentPreset::ClaudeCode),
+            NodeKind::Chat,
+        );
+        let shell = open(&mut data, group, None, NodeKind::Terminal);
+        let codex = open(
+            &mut data,
+            group,
+            Some(AgentPreset::Codex),
+            NodeKind::Terminal,
+        );
         data.new_session(Some(group), SessionSpec::default());
-        let elsewhere = open(&mut data, group, None);
+        let elsewhere = open(&mut data, group, None, NodeKind::Terminal);
         let offered = session_terminals(&data, chat);
-        assert_eq!(offered, [shell]);
-        assert!(!offered.contains(&elsewhere));
+        assert_eq!(offered, [(shell, None), (codex, Some(AgentPreset::Codex))]);
+        assert!(offered.iter().all(|(id, _)| *id != elsewhere));
     }
 
     fn remote() -> RemoteTerminal {

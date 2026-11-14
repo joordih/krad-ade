@@ -62,7 +62,7 @@ fn open_cloud_chat(name: &str) -> Result<CloudChat, Box<dyn Error>> {
     let install = install_id()?;
     let started = start(&local.0.join("work"), install.clone())?;
     let mut chats = ChatFeed::follow(&started.runtime);
-    let (_, opened) = create_cloud_session(&started)?;
+    let (_, opened) = create_cloud_session(&started, krad_protocol::CloudReach::ProcessWire)?;
     let EventKind::ChatOpened { chat: id, .. } =
         chats.until(|event| matches!(event, EventKind::ChatOpened { .. }))?
     else {

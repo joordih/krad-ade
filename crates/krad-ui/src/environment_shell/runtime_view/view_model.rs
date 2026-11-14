@@ -1,7 +1,8 @@
 use gpui_kit::{Context, EventEmitter};
 use krad_client::RuntimeClient;
 use krad_domain::{
-    AgentPreset, AgentStatus, CloudRunnerId, EnvironmentName, RunnerState, Settings,
+    AcpAgentId, AgentPreset, AgentStatus, CloudRunnerId, EnvironmentName, ManagedAdapter,
+    RunnerState, Settings,
 };
 use krad_protocol::{AskId, EventKind, Feed, PendingAsk, RemoteBusState, RunnerLogins, Snapshot};
 use std::collections::{BTreeSet, HashMap};
@@ -11,7 +12,7 @@ use std::time::Duration;
 
 use super::super::attention::AttentionMirror;
 use super::super::harness_health::HealthMirror;
-use super::super::harness_models::ModelsMirror;
+use super::super::harness_models::{ListedModels, ModelsMirror};
 use super::super::opencode::OpencodeMirror;
 use super::super::usage_bar::UsageMirror;
 use super::following::{Batch, Following};
@@ -98,6 +99,8 @@ pub(in crate::environment_shell) struct ViewModel {
     pub(in crate::environment_shell) health: HealthMirror,
     pub(in crate::environment_shell) usage: UsageMirror,
     pub(in crate::environment_shell) models: ModelsMirror,
+    pub(in crate::environment_shell) acp: ListedModels,
+    pub(in crate::environment_shell) adapters: HashMap<AcpAgentId, ManagedAdapter>,
     pub(in crate::environment_shell) opencode: OpencodeMirror,
     pub(in crate::environment_shell) hosts: HostsMirror,
     pub(in crate::environment_shell) settings: SettingsMirror,
@@ -120,6 +123,8 @@ impl Default for ViewModel {
             health: HealthMirror::default(),
             usage: UsageMirror::default(),
             models: ModelsMirror::default(),
+            adapters: HashMap::new(),
+            acp: ListedModels::default(),
             opencode: OpencodeMirror::default(),
             hosts: HostsMirror::default(),
             settings: SettingsMirror::default(),

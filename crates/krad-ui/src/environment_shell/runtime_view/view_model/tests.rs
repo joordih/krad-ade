@@ -290,3 +290,35 @@ fn an_older_runner_keeps_the_process_wire_until_it_leaves_ready() {
         "a connection that finishes after its runner left is dropped"
     );
 }
+
+#[test]
+fn acp_adapters_and_listings_are_read_from_the_runtime_s_events_in_the_view_model() {
+    use super::super::super::harness_models::AcpListing;
+    use krad_domain::{AcpAgentId, Host, ManagedAdapter};
+    use krad_protocol::{AcpListing as Listing, AcpOffers, KeptAdapter};
+    let Ok(agent) = "gemini".parse::<AcpAgentId>() else {
+        unreachable!("a valid agent id");
+    };
+    let mut model = ViewModel::default();
+    model.fold_event(EventKind::AcpAdapterChanged(KeptAdapter {
+        agent,
+        adapter: ManagedAdapter::Installing,
+    }));
+    assert_eq!(
+        model.adapters.get(&agent),
+        Some(&ManagedAdapter::Installing)
+    );
+    model.fold_event(EventKind::AcpOffers(AcpOffers {
+        host: Host::Local,
+        agent,
+        listing: Listing::Failed {
+            error: "no node".to_owned(),
+        },
+    }));
+    assert_eq!(
+        model.acp.acp_listing(&Host::Local, agent),
+        Some(&AcpListing::Failed("no node".to_owned()))
+    );
+    let heard = model.take_news().heard;
+    assert_eq!(heard.len(), 2, "the shell still hears both to react");
+}

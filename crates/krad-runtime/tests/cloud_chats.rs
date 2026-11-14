@@ -5,6 +5,9 @@ mod cloud;
 #[path = "cloud_chats/hosted.rs"]
 mod hosted;
 #[cfg(unix)]
+#[path = "cloud_chats/hosted_terminals.rs"]
+mod hosted_terminals;
+#[cfg(unix)]
 #[path = "cloud_chats/hosted_view.rs"]
 mod hosted_view;
 #[cfg(unix)]

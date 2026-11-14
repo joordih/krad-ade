@@ -36,9 +36,16 @@ fn a_hosted_session_shows_only_under_the_group_it_came_from() {
 }
 
 #[test]
-fn a_new_cloud_session_runs_on_the_runner_s_runtime_only_when_it_is_connected() {
-    use super::super::sessions::reach_for;
-    use krad_protocol::CloudReach;
-    assert_eq!(reach_for(true), CloudReach::Runtime);
-    assert_eq!(reach_for(false), CloudReach::ProcessWire);
+fn the_runner_is_asked_for_a_hosted_chat_s_models_only_when_none_are_known() {
+    let runner = EnvironmentName::new("runner".to_owned());
+    let asked = model_listing(false, &runner, AgentPreset::ClaudeCode);
+    assert_eq!(
+        asked,
+        Some(Command::Models(ModelsCommand::List {
+            spot: HarnessSpot::at(runner.clone(), None),
+            harness: AgentPreset::ClaudeCode,
+        }))
+    );
+    assert_eq!(model_listing(true, &runner, AgentPreset::ClaudeCode), None);
+    assert_eq!(model_listing(false, &runner, AgentPreset::Gateway), None);
 }

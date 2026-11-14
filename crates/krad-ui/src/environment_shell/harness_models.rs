@@ -29,6 +29,29 @@ impl ListedModels {
     pub(super) fn acp_seed(&self, host: &Host, agent: AcpAgentId) -> Option<&AcpSeed> {
         self.acp_seeds.get(&(host.clone(), agent))
     }
+
+    pub(super) fn heard(&mut self, offers: &AcpOffers) {
+        let key = (offers.host.clone(), offers.agent);
+        match &offers.listing {
+            Listing::Listing => {
+                self.acp.insert(key, AcpListing::Listing);
+            }
+            Listing::Waiting | Listing::Unknown => {
+                self.acp.remove(&key);
+            }
+            Listing::Failed { error } => {
+                self.acp.insert(key, AcpListing::Failed(error.clone()));
+            }
+            Listing::Offered { offered } => {
+                self.acp_seeds.insert(key.clone(), AcpSeed::from(offered));
+                if offered.models.is_empty() {
+                    self.acp.insert(key, AcpListing::NoModels);
+                } else {
+                    self.acp.remove(&key);
+                }
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -87,17 +110,12 @@ impl EnvironmentShell {
         let host = self.env_host(&env);
         let preset = AgentPreset::Acp(agent);
         let key = (host.clone(), agent);
+        let model = self.runtime.view.read(cx);
         let busy_or_known = matches!(
-            self.listed_models.acp.get(&key),
+            model.acp.acp.get(&key),
             Some(AcpListing::Listing | AcpListing::NoModels)
-        ) || (!self
-            .runtime
-            .view
-            .read(cx)
-            .models
-            .of(&host, preset)
-            .is_empty()
-            && self.listed_models.acp_seeds.contains_key(&key));
+        ) || (!model.models.of(&host, preset).is_empty()
+            && model.acp.acp_seeds.contains_key(&key));
         if busy_or_known
             || !self.installed_agents().contains(&preset)
             || self.settings.acp.agent(agent).is_none()
@@ -108,31 +126,9 @@ impl EnvironmentShell {
         self.list_models_at(HarnessSpot::at(env, root), preset);
     }
 
-    pub(super) fn acp_offers_heard(&mut self, offers: AcpOffers, cx: &mut Context<Self>) {
-        let key = (offers.host, offers.agent);
-        match offers.listing {
-            Listing::Listing => {
-                self.listed_models.acp.insert(key, AcpListing::Listing);
-            }
-            Listing::Waiting | Listing::Unknown => {
-                self.listed_models.acp.remove(&key);
-            }
-            Listing::Failed { error } => {
-                self.listed_models
-                    .acp
-                    .insert(key, AcpListing::Failed(error));
-            }
-            Listing::Offered { offered } => {
-                self.listed_models
-                    .acp_seeds
-                    .insert(key.clone(), AcpSeed::from(&offered));
-                if offered.models.is_empty() {
-                    self.listed_models.acp.insert(key, AcpListing::NoModels);
-                } else {
-                    self.listed_models.acp.remove(&key);
-                }
-                self.seed_acp_chats();
-            }
+    pub(super) fn acp_offers_heard(&mut self, offers: &AcpOffers, cx: &mut Context<Self>) {
+        if matches!(offers.listing, Listing::Offered { .. }) {
+            self.seed_acp_chats(cx);
         }
         cx.notify();
     }

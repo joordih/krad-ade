@@ -122,12 +122,6 @@ impl Remotes {
         Some((client, answer, request))
     }
 
-    pub(in crate::environment_shell) fn connected(&self, runner: CloudRunnerId) -> bool {
-        self.runtimes
-            .get(&runner)
-            .is_some_and(|remote| matches!(remote.reach, RunnerReach::Connected { .. }))
-    }
-
     pub(in crate::environment_shell) fn await_hosted(
         &mut self,
         runner: CloudRunnerId,

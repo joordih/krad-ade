@@ -145,6 +145,16 @@ pub(crate) struct ChatWork<'a> {
 }
 
 impl Chats {
+    pub(crate) fn forget_transcript(&self, chat: &AgentRef) {
+        let (Some(transcripts), Some(file)) = (
+            self.transcripts.as_ref(),
+            acp_transcript_file(&chat.environment, chat.terminal),
+        ) else {
+            return;
+        };
+        transcripts.forget(file);
+    }
+
     pub(crate) fn new(wake: SyncSender<Input>) -> Self {
         let (queue, heard) = ChatQueue::open(wake);
         Self {
@@ -276,6 +286,7 @@ impl Chats {
             | ChatCommand::History { .. }
             | ChatCommand::AttachImage { .. }
             | ChatCommand::ForgetImages { .. }
+            | ChatCommand::ForgetTranscript { .. }
             | ChatCommand::ReadImage { .. }
             | ChatCommand::Unknown => return None,
         };

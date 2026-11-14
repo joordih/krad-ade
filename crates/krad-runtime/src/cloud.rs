@@ -80,6 +80,7 @@ pub(crate) enum CloudDone {
         runner: CloudRunnerId,
         slug: String,
         handed: Result<(), HandOverError>,
+        fallback: Box<CloudDraft>,
     },
 }
 

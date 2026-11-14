@@ -93,7 +93,7 @@ impl EnvironmentShell {
                 .child(field_label(MODEL_LABEL, pal))
                 .child(Input::new(&editor.model))
                 .children(self.kraddie_model_chips(editor, pal, cx))
-                .children(self.kraddie_model_note(editor, pal))
+                .children(self.kraddie_model_note(editor, pal, cx))
                 .child(field_label(WORKSPACE_LABEL, pal))
                 .child(self.kraddie_workspace_chips(editor, pal, cx)),
         );
@@ -282,12 +282,17 @@ impl EnvironmentShell {
         group.models
     }
 
-    fn kraddie_model_note(&self, editor: &KraddieEditor, pal: &Palette) -> Option<AnyElement> {
+    fn kraddie_model_note(
+        &self,
+        editor: &KraddieEditor,
+        pal: &Palette,
+        cx: &App,
+    ) -> Option<AnyElement> {
         let AgentPreset::Acp(agent) = editor.harness else {
             return None;
         };
         let host = self.active_host();
-        let text = match self.listed_models.acp_listing(&host, agent)? {
+        let text = match self.runtime.view.read(cx).acp.acp_listing(&host, agent)? {
             AcpListing::Listing => LISTING_MODELS.to_owned(),
             AcpListing::NoModels => NO_MODELS.to_owned(),
             AcpListing::Failed(reason) => format!("{MODELS_FAILED}: {reason}"),

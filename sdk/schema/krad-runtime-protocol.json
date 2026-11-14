@@ -113,6 +113,14 @@
       },
       "verb": "attach_image"
     },
+    "chat_forget_transcript": {
+      "area": "chat",
+      "chat": {
+        "environment": "main",
+        "terminal": 4
+      },
+      "verb": "forget_transcript"
+    },
     "chat_interrupt": {
       "area": "chat",
       "chat": {
@@ -500,6 +508,18 @@
       },
       "verb": "save"
     },
+    "terminal_open_beside": {
+      "area": "terminal",
+      "beside": {
+        "environment": "main",
+        "terminal": 4
+      },
+      "intent": {
+        "intent": "preset",
+        "preset": "Shell"
+      },
+      "verb": "open_beside"
+    },
     "terminal_resize": {
       "area": "terminal",
       "size": {
@@ -606,6 +626,21 @@
         "type": "answered"
       },
       "seq": 53
+    },
+    "answered_terminal_opened": {
+      "feed": "event",
+      "kind": {
+        "answer": {
+          "kind": "terminal_opened",
+          "terminal": {
+            "environment": "main",
+            "terminal": 9
+          }
+        },
+        "request": 17,
+        "type": "answered"
+      },
+      "seq": 52
     },
     "answered_text_replaced": {
       "feed": "event",

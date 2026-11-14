@@ -19,10 +19,10 @@ pub(in crate::environment_shell) enum CloudMenu {
 }
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn run_cloud_menu(&self, menu: CloudMenu, cx: &App) {
+    pub(in crate::environment_shell) fn run_cloud_menu(&self, menu: CloudMenu) {
         match menu {
-            CloudMenu::New(group, runner) => self.new_cloud_session(group, runner, cx),
-            CloudMenu::Send(session, runner) => self.send_to_cloud(session, runner, cx),
+            CloudMenu::New(group, runner) => self.new_cloud_session(group, runner),
+            CloudMenu::Send(session, runner) => self.send_session_to_cloud(session, runner),
         }
     }
 
@@ -75,7 +75,7 @@ impl EnvironmentShell {
         let group = self.active_group().map(|group| group.id);
         let runner = self.settings.cloud.runners.first().map(|runner| runner.id);
         match (group, runner) {
-            (Some(group), Some(runner)) => self.new_cloud_session(group, runner, cx),
+            (Some(group), Some(runner)) => self.new_cloud_session(group, runner),
             (_, None) => self.toast(ToastKind::Warning, NO_RUNNER_REASON, cx),
             (None, Some(_)) => self.toast(ToastKind::Warning, NO_REMOTE_REASON, cx),
         }
@@ -100,7 +100,7 @@ impl EnvironmentShell {
             [] => self.toast(ToastKind::Warning, NO_RUNNER_REASON, cx),
             [runner] => {
                 let runner = runner.id;
-                self.send_to_cloud(session, runner, cx);
+                self.send_session_to_cloud(session, runner);
             }
             _ => {
                 let entries = vec![MenuEntry::submenu(
@@ -124,13 +124,9 @@ impl EnvironmentShell {
             .map(|session| session.id);
         let runner = self.settings.cloud.runners.first().map(|runner| runner.id);
         match (current, runner) {
-            (Some(session), Some(runner)) => self.send_to_cloud(session, runner, cx),
+            (Some(session), Some(runner)) => self.send_session_to_cloud(session, runner),
             (None, _) => self.toast(ToastKind::Warning, NO_SESSION_TOAST, cx),
             (Some(_), None) => self.toast(ToastKind::Warning, NO_RUNNER_REASON, cx),
         }
-    }
-
-    fn send_to_cloud(&self, session: SessionId, runner: CloudRunnerId, cx: &App) {
-        self.send_session_to_cloud(session, runner, cx);
     }
 }

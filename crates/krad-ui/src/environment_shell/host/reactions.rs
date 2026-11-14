@@ -32,7 +32,7 @@ impl EnvironmentShell {
                 agents,
             } => self.host_agents_found(&environment, (host, agents), cx),
             EventKind::LocalAgentsFound(found) => self.local_agents_found(found, cx),
-            EventKind::AcpAdapterChanged(kept) => self.acp_adapter_heard(kept, cx),
+            EventKind::AcpAdapterChanged(kept) => self.acp_adapter_heard(kept.agent, cx),
             _ => {}
         }
     }
@@ -53,7 +53,6 @@ impl EnvironmentShell {
                     .insert(live.data.host.clone(), entry.agents.clone());
             }
         }
-        self.acp_adapters_replaced(snapshot.adapters);
         for found in snapshot.local {
             self.local_agents_found(found, cx);
         }

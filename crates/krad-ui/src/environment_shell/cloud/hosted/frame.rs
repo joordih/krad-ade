@@ -56,7 +56,7 @@ impl EnvironmentShell {
             .map(|chat| chat.mirror.state.harness);
         let title = harness.map(|harness| self.settings.acp.harness_name(harness).into_owned());
         let caption = format!("{ON_RUNNER} {}", self.runner_name(key.runner));
-        let terminals = self.hosted_terminal_chips(key.runner, &key.chat, cx);
+        let terminals = self.hosted_terminal_chips(key, cx);
         div()
             .flex()
             .flex_row()

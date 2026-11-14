@@ -137,7 +137,7 @@ impl EnvironmentShell {
                     .and_then(|agent| self.settings.acp.agent(agent));
                 if let Some(agent) = agent {
                     let command = CommandLine {
-                        program: self.acp_program_name(&agent),
+                        program: self.acp_program_name(&agent, cx),
                         args,
                     };
                     self.sign_in_in_its_terminal(id, agent.id, (command, env), retry, cx);

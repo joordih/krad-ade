@@ -70,7 +70,6 @@ fn a_hosted_session_s_commands_go_to_its_runner_and_local_ones_stay_here() {
     assert_eq!(local_client.sent(), [interrupt]);
     let unknown = RuntimeId::Runner(CloudRunnerId(RUNNER + 1));
     assert!(model.remotes.route(&local, unknown).is_none());
-    assert!(model.remotes.connected(CloudRunnerId(RUNNER)));
 }
 
 #[test]
@@ -200,4 +199,53 @@ fn a_runner_s_chat_events_reach_the_shell_and_its_answers_reach_the_asker() {
     };
     model.fold_remote(runner, connection, event(12, answered));
     assert_eq!(futures::executor::block_on(answer).ok(), Some(bytes));
+}
+
+#[test]
+fn a_hosted_chat_s_models_are_the_runner_s_own_and_not_this_computer_s() {
+    use krad_domain::{Host, ModelOffer};
+    use krad_protocol::{ListedModels, ModelsOrigin};
+    let runner = CloudRunnerId(RUNNER);
+    let mut model = ViewModel::default();
+    let connection = connected(&mut model, RecordedClient::new(Vec::new()));
+    let offer = |value: &str| ModelOffer {
+        value: value.to_owned(),
+        name: value.to_owned(),
+        ..ModelOffer::default()
+    };
+    let mut snapshot = runner_snapshot();
+    snapshot.models.listed = vec![ListedModels {
+        host: Host::Local,
+        harness: AgentPreset::Codex,
+        models: vec![offer("gpt-runner")],
+    }];
+    model.fold_remote(runner, connection, Feed::Snapshot(snapshot));
+    let listed = EventKind::ModelsListed {
+        listed: ListedModels {
+            host: Host::Local,
+            harness: AgentPreset::ClaudeCode,
+            models: vec![offer("opus-runner")],
+        },
+        origin: ModelsOrigin::Listing,
+    };
+    model.fold_remote(runner, connection, event(30, listed));
+    let environment = EnvironmentName::new(RUNNER_ENVIRONMENT.to_owned());
+    let names = |harness| {
+        model.remotes.get(runner).map(|remote| {
+            remote
+                .offers(&environment, harness)
+                .iter()
+                .map(|offer| offer.value.clone())
+                .collect::<Vec<_>>()
+        })
+    };
+    assert_eq!(
+        names(AgentPreset::ClaudeCode),
+        Some(vec!["opus-runner".to_owned()])
+    );
+    assert_eq!(
+        names(AgentPreset::Codex),
+        Some(vec!["gpt-runner".to_owned()])
+    );
+    assert_eq!(model.models.of(&Host::Local, AgentPreset::ClaudeCode), []);
 }

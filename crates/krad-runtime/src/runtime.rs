@@ -71,6 +71,7 @@ mod kraddie_rounds;
 mod kraddie_runs;
 mod kraddie_worktrees;
 mod launching;
+mod opening_beside;
 mod parts;
 mod removing;
 mod replies;

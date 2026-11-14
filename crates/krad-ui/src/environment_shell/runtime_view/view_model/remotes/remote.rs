@@ -1,4 +1,5 @@
 use krad_client::{Cursor, RuntimeClient};
+use krad_domain::{AgentPreset, EnvironmentName, ModelOffer};
 use krad_protocol::{
     hosted_summaries, AgentRef, AskId, ChatFacts, ChatMirror, Event, EventKind, HostedSummary,
     Problem, ProblemScope, Seq, Snapshot,
@@ -8,6 +9,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use super::super::super::super::harness_models::ModelsMirror;
 use super::super::super::{EnvironmentsMirror, Waiters};
 use super::backoff::Backoff;
 
@@ -52,6 +54,7 @@ pub(in crate::environment_shell) struct RemoteRuntime {
     pub(in crate::environment_shell) asks: BTreeSet<AskId>,
     pub(in crate::environment_shell) chats: HashMap<AgentRef, RemoteChat>,
     pub(in crate::environment_shell) hosted: Vec<HostedSummary>,
+    pub(in crate::environment_shell) models: ModelsMirror,
     pub(super) client: Option<Arc<dyn RuntimeClient>>,
     pub(super) stop: Option<LineStop>,
     pub(super) cursor: Cursor,
@@ -74,6 +77,7 @@ impl RemoteRuntime {
             asks: BTreeSet::new(),
             chats: HashMap::new(),
             hosted: Vec::new(),
+            models: ModelsMirror::default(),
             client: None,
             stop: None,
             cursor: Cursor::default(),
@@ -81,6 +85,18 @@ impl RemoteRuntime {
             connection,
             waiters: Waiters::default(),
         }
+    }
+
+    pub(in crate::environment_shell) fn offers(
+        &self,
+        environment: &EnvironmentName,
+        harness: AgentPreset,
+    ) -> &[ModelOffer] {
+        self.environments
+            .all()
+            .iter()
+            .find(|data| data.name == *environment)
+            .map_or(&[], |data| self.models.of(&data.host, harness))
     }
 
     pub(super) fn let_go(&mut self) {
@@ -93,6 +109,7 @@ impl RemoteRuntime {
 
     pub(super) fn adopt(&mut self, snapshot: Snapshot) {
         self.environments.replace(snapshot.environments);
+        self.models.replace(snapshot.models.listed);
         self.asks = snapshot
             .bus
             .asks
@@ -144,6 +161,10 @@ impl RemoteRuntime {
             EventKind::Answered { request, answer } => {
                 self.waiters.answered(request, *answer);
                 false
+            }
+            EventKind::ModelsListed { listed, .. } => {
+                self.models.apply(listed);
+                true
             }
             EventKind::AskPending(pending) => self.asks.insert(pending.ask),
             EventKind::AskSettled { ask, .. } => self.asks.remove(&ask),

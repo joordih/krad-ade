@@ -37,7 +37,7 @@ mod view;
 
 use gpui_kit::component::input::{InputEvent, TextareaState};
 use gpui_kit::{
-    px, AppContext as _, Context, Entity, FollowMode, ListAlignment, ListState, SharedString,
+    px, App, AppContext as _, Context, Entity, FollowMode, ListAlignment, ListState, SharedString,
     Subscription, Window,
 };
 use krad_domain::{
@@ -301,6 +301,7 @@ impl EnvironmentShell {
         place: &ChatPlace,
         id: TerminalId,
         command: &SurfaceCommand,
+        cx: &App,
     ) -> HarnessChange {
         let SurfaceCommand::Model(harness, _) = command else {
             return HarnessChange::Kept;
@@ -335,7 +336,7 @@ impl EnvironmentShell {
         };
         structured.switch_harness(*harness);
         self.set_node(&local, id, NodeField::Harness(Some(*harness)));
-        self.seed_acp_chats();
+        self.seed_acp_chats(cx);
         HarnessChange::Switched
     }
 
@@ -351,7 +352,7 @@ impl EnvironmentShell {
             }
         }
         let place = self.chat_place();
-        match self.harness_change(&place, id, &command) {
+        match self.harness_change(&place, id, &command, cx) {
             HarnessChange::Refused => return,
             HarnessChange::Switched => self.store(),
             HarnessChange::Kept => {}

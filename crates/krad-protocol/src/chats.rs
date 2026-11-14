@@ -143,6 +143,9 @@ pub enum ChatCommand {
     ForgetImages {
         chat: AgentRef,
     },
+    ForgetTranscript {
+        chat: AgentRef,
+    },
     ReadImage {
         image: ChatImage,
     },
@@ -181,7 +184,8 @@ impl ChatCommand {
             | Self::SignIn { chat, .. }
             | Self::TrustMcp { chat, .. }
             | Self::AttachImage { chat, .. }
-            | Self::ForgetImages { chat } => Some(chat),
+            | Self::ForgetImages { chat }
+            | Self::ForgetTranscript { chat } => Some(chat),
             Self::Mentions { .. }
             | Self::ReadImage { .. }
             | Self::ForgetMentions

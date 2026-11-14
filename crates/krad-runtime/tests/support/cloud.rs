@@ -194,12 +194,13 @@ pub fn cloned_with_remote(origin: &Repo, name: &str) -> Result<Folder, Box<dyn E
 
 pub fn create_cloud_session(
     started: &Started,
+    reach: CloudReach,
 ) -> Result<(RunnerLogins, CloudOpened), Box<dyn Error>> {
     let create = CloudCommand::Create {
         environment: environment(),
         group: started.group,
         runner: RUNNER,
-        reach: CloudReach::ProcessWire,
+        reach,
     };
     if send(&started.runtime, Command::Cloud(create))? != Reply::Accepted {
         return Err("the cloud session was refused".into());

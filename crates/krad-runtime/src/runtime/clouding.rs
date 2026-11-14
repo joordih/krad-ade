@@ -1,4 +1,5 @@
 use krad_domain::{AgentPreset, CloudRunnerId, EnvironmentName, GroupId, SessionEdit, SessionId};
+use krad_host::HostLink;
 use krad_protocol::{
     CloudCommand, CloudDraftId, CloudNews, CloudOpened, CloudReach, ErrorCode, EventKind,
     PatchAnswer, Reply,
@@ -169,7 +170,8 @@ impl Runtime {
                 runner,
                 slug,
                 handed,
-            } => self.cloud_handed_over(runner, slug, handed),
+                fallback,
+            } => self.cloud_handed_over((runner, slug), handed, *fallback),
             results => self.cloud_result(results),
         }
     }
@@ -257,25 +259,29 @@ impl Runtime {
         let Some(ready) = self.runners.directory.get(runner) else {
             return;
         };
-        for mut draft in self.cloud.take_waiting(runner) {
+        for draft in self.cloud.take_waiting(runner) {
             if draft.reach == CloudReach::Runtime {
                 self.hand_over_cloud_session(&ready, draft);
                 continue;
             }
-            let link = ready.link.clone();
-            let request = draft.request.clone();
-            let carried = std::mem::take(&mut draft.carried);
-            let ready_starts = std::mem::take(&mut draft.starts);
-            let draft = Box::new(draft);
-            self.run_cloud_job(move || {
-                let prepared = prepare_workspace(&link, &request).map(|prepared| {
-                    let mut starts = carry_chats(&link, &prepared.placement.worktree, carried);
-                    starts.extend(ready_starts);
-                    (prepared, starts)
-                });
-                CloudDone::Prepared { draft, prepared }
-            });
+            self.prepare_on_the_wire(&ready.link, draft);
         }
+    }
+
+    pub(super) fn prepare_on_the_wire(&mut self, link: &HostLink, mut draft: CloudDraft) {
+        let link = link.clone();
+        let request = draft.request.clone();
+        let carried = std::mem::take(&mut draft.carried);
+        let ready_starts = std::mem::take(&mut draft.starts);
+        let draft = Box::new(draft);
+        self.run_cloud_job(move || {
+            let prepared = prepare_workspace(&link, &request).map(|prepared| {
+                let mut starts = carry_chats(&link, &prepared.placement.worktree, carried);
+                starts.extend(ready_starts);
+                (prepared, starts)
+            });
+            CloudDone::Prepared { draft, prepared }
+        });
     }
 
     pub(super) fn fail_waiting_cloud_sessions(&mut self, runner: CloudRunnerId, reason: &str) {

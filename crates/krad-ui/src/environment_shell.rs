@@ -103,7 +103,7 @@ use krad_domain::{
     AgentPreset, EnvironmentData, EnvironmentName, EnvironmentView, Layout, Prompt, Settings,
     SidebarWidth, TerminalId, Visibility, WorkMode, DEFAULT_ENVIRONMENT,
 };
-use krad_store::{AcpTranscripts, LayoutFile, LayoutWriter};
+use krad_store::{LayoutFile, LayoutWriter};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -174,7 +174,6 @@ pub struct EnvironmentShell {
     activity_log: activity::ActivityLog,
     close_request: CloseRequest,
     view_writer: Option<LayoutWriter>,
-    acp_transcripts: Option<AcpTranscripts>,
     git: HashMap<groups::GitKey, groups::GroupGit>,
     git_task: Option<Task<()>>,
     file_tree: file_tree::FileTree,
@@ -187,8 +186,6 @@ pub struct EnvironmentShell {
     settings_ui: Option<settings_view::SettingsUi>,
     bus_work: agent_bus::BusWork,
     gateway: gateway::Gateway,
-    listed_models: harness_models::ListedModels,
-    acp_adapters: HashMap<krad_domain::AcpAgentId, krad_domain::ManagedAdapter>,
     harness_checks: harness_health::HarnessChecks,
     context_menu: Option<context_menu::ContextMenu>,
     focus_returns: focus_return::FocusReturns,
@@ -313,7 +310,6 @@ impl EnvironmentShell {
             activity_log: activity::ActivityLog::default(),
             close_request: CloseRequest::Idle,
             view_writer: LayoutWriter::spawn(LayoutFile::View),
-            acp_transcripts: AcpTranscripts::spawn(),
             git: HashMap::new(),
             git_task: None,
             file_tree: file_tree::FileTree::default(),
@@ -326,8 +322,6 @@ impl EnvironmentShell {
             settings_ui: None,
             bus_work: agent_bus::BusWork::default(),
             gateway: gateway::Gateway::default(),
-            listed_models: harness_models::ListedModels::default(),
-            acp_adapters: HashMap::new(),
             harness_checks: harness_health::HarnessChecks::default(),
             context_menu: None,
             focus_returns: focus_return::FocusReturns::default(),

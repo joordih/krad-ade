@@ -249,6 +249,17 @@ impl EnvironmentShell {
         harness: AgentPreset,
         cx: &'a App,
     ) -> Option<&'a [ModelOffer]> {
+        let place = self.chat_place();
+        if let Some(runner) = place.runner() {
+            let offers = self
+                .runtime
+                .view
+                .read(cx)
+                .remotes
+                .get(runner)
+                .map_or(&[][..], |remote| remote.offers(&place.environment, harness));
+            return (!offers.is_empty()).then_some(offers);
+        }
         let host = self.active_host();
         let offers = match harness {
             AgentPreset::Gateway => self.gateway_offers(),

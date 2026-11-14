@@ -184,7 +184,7 @@ impl Runtime {
         count
     }
 
-    fn launch(&mut self, waiting: WaitingLaunch) {
+    pub(super) fn launch(&mut self, waiting: WaitingLaunch) {
         if let Some(placement) = placement_of(&self.environments, &waiting.terminal) {
             return self.launch_in_cloud(waiting, placement);
         }

@@ -197,7 +197,7 @@ impl EnvironmentShell {
             EventKind::AgentStatus(report) => self.agent_status_heard(&report),
             EventKind::AgentHooked(heard) => self.hook_heard(heard),
             EventKind::ModelListFailed { error, .. } => self.model_list_failed(&error, cx),
-            EventKind::AcpOffers(offers) => self.acp_offers_heard(offers, cx),
+            EventKind::AcpOffers(offers) => self.acp_offers_heard(&offers, cx),
             EventKind::OpencodeTerminalState { terminal, state } => {
                 self.apply_opencode_state(&terminal.environment, terminal.terminal, state);
             }

@@ -1,6 +1,6 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::{app_kept_acp_package, AcpAgent, AcpAgentId, ManagedAdapter};
-use krad_protocol::{Command, HostCommand, KeptAdapter};
+use krad_protocol::{Command, HostCommand};
 
 use crate::environment_shell::EnvironmentShell;
 
@@ -34,8 +34,12 @@ pub(in crate::environment_shell) fn kept_adapter_view(adapter: &ManagedAdapter) 
 }
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn acp_program_name(&self, agent: &AcpAgent) -> String {
-        match self.acp_adapters.get(&agent.id) {
+    pub(in crate::environment_shell) fn acp_program_name(
+        &self,
+        agent: &AcpAgent,
+        cx: &App,
+    ) -> String {
+        match self.runtime.view.read(cx).adapters.get(&agent.id) {
             Some(ManagedAdapter::Ready { program, .. }) => program.to_string_lossy().into_owned(),
             Some(_) | None => agent.program.clone(),
         }
@@ -44,10 +48,12 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn kept_adapter(
         &self,
         agent: AcpAgentId,
+        cx: &App,
     ) -> Option<KeptAdapterView> {
         app_kept_acp_package(agent)?;
         let unchecked = ManagedAdapter::default();
-        let adapter = self.acp_adapters.get(&agent).unwrap_or(&unchecked);
+        let model = self.runtime.view.read(cx);
+        let adapter = model.adapters.get(&agent).unwrap_or(&unchecked);
         Some(kept_adapter_view(adapter))
     }
 
@@ -60,19 +66,11 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn acp_adapter_heard(
         &mut self,
-        kept: KeptAdapter,
+        agent: AcpAgentId,
         cx: &mut Context<Self>,
     ) {
-        self.acp_adapters.insert(kept.agent, kept.adapter);
-        self.list_acp_models(kept.agent, cx);
+        self.list_acp_models(agent, cx);
         cx.notify();
-    }
-
-    pub(in crate::environment_shell) fn acp_adapters_replaced(&mut self, kept: Vec<KeptAdapter>) {
-        self.acp_adapters = kept
-            .into_iter()
-            .map(|kept| (kept.agent, kept.adapter))
-            .collect();
     }
 }
 

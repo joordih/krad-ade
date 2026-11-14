@@ -108,7 +108,7 @@ impl EnvironmentShell {
             }
             self.watch_subagents(env, id, cx);
             if let AgentPreset::Acp(agent) = harness {
-                self.seed_acp_chats();
+                self.seed_acp_chats(cx);
                 self.list_acp_models(agent, cx);
             }
             let place = ChatPlace::here(env);

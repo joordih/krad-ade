@@ -172,6 +172,10 @@ fn state_commands() -> Vec<(&'static str, Value)> {
             json!({ "area": "terminal", "verb": "resize", "terminal": chat(), "size": { "cols": 120, "rows": 40, "cell_width_px": 8, "cell_height_px": 16 } }),
         ),
         (
+            "terminal_open_beside",
+            json!({ "area": "terminal", "verb": "open_beside", "beside": chat(), "intent": { "intent": "preset", "preset": "Shell" } }),
+        ),
+        (
             "terminal_scroll",
             json!({ "area": "terminal", "verb": "scroll", "terminal": chat(), "scroll": { "to": "bottom" } }),
         ),
@@ -211,6 +215,10 @@ fn conversation_commands() -> Vec<(&'static str, Value)> {
         (
             "chat_attach_image",
             json!({ "area": "chat", "verb": "attach_image", "chat": chat(), "image": { "format": "png", "bytes": [137, 80, 78, 71] } }),
+        ),
+        (
+            "chat_forget_transcript",
+            json!({ "area": "chat", "verb": "forget_transcript", "chat": chat() }),
         ),
         (
             "chat_read_image",
@@ -354,6 +362,10 @@ pub(super) fn events() -> Vec<(&'static str, Value)> {
         (
             "answered",
             json!({ "feed": "event", "seq": 50, "kind": { "type": "answered", "request": 15, "answer": { "kind": "mentions", "entries": [{ "path": "src/main.rs", "kind": "file" }] } } }),
+        ),
+        (
+            "answered_terminal_opened",
+            json!({ "feed": "event", "seq": 52, "kind": { "type": "answered", "request": 17, "answer": { "kind": "terminal_opened", "terminal": { "environment": ENVIRONMENT, "terminal": 9 } } } }),
         ),
         (
             "answered_failed",

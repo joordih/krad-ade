@@ -1,6 +1,6 @@
 use gpui_kit::{Context, Window};
-use krad_domain::{CloudRunnerId, EnvironmentName, GroupId, ToastKind};
-use krad_protocol::{AgentRef, HostedSummary};
+use krad_domain::{AgentPreset, CloudRunnerId, EnvironmentName, GroupId, RuntimeId, ToastKind};
+use krad_protocol::{AgentRef, Command, HarnessSpot, HostedSummary, ModelsCommand};
 
 use super::super::runtime_view::HostedFailure;
 use super::super::surface::ChatPlace;
@@ -10,6 +10,7 @@ mod frame;
 mod lives;
 mod rows;
 mod terminal;
+mod terminal_open;
 mod terminal_view;
 
 pub(in crate::environment_shell) use lives::HostedLives;
@@ -42,6 +43,19 @@ pub(in crate::environment_shell) fn hosted_in<'a>(
             })
         })
         .collect()
+}
+
+pub(in crate::environment_shell) fn model_listing(
+    known: bool,
+    environment: &EnvironmentName,
+    harness: AgentPreset,
+) -> Option<Command> {
+    (!known && harness.is_agent()).then(|| {
+        Command::Models(ModelsCommand::List {
+            spot: HarnessSpot::at(environment.clone(), None),
+            harness,
+        })
+    })
 }
 
 impl EnvironmentShell {
@@ -80,10 +94,30 @@ impl EnvironmentShell {
             return self.toast(ToastKind::Warning, UNREACHED, cx);
         }
         self.open_hosted_chat(&place, key.chat.terminal, window, cx);
+        self.list_hosted_models(&key, cx);
         self.cloud.terminal = None;
         self.cloud.shown = Some(key);
         self.forget_unshown_hosted_places();
         cx.notify();
+    }
+
+    fn list_hosted_models(&self, key: &HostedChatKey, cx: &mut Context<Self>) {
+        let listing = {
+            let model = self.runtime.view.read(cx);
+            let Some(remote) = model.remotes.get(key.runner) else {
+                return;
+            };
+            remote.chats.get(&key.chat).and_then(|chat| {
+                let harness = chat.mirror.state.harness;
+                let known = !remote.offers(&key.chat.environment, harness).is_empty();
+                model_listing(known, &key.chat.environment, harness)
+            })
+        };
+        if let (Some(command), Some(client)) =
+            (listing, self.client_for(RuntimeId::Runner(key.runner), cx))
+        {
+            client.post(command);
+        }
     }
 
     fn forget_unshown_hosted_places(&mut self) {

@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+use crate::bus::AgentRef;
 use crate::chats::{ChatPage, HistoryPart, SubagentsRead, TranscriptRead};
 use crate::command::ErrorCode;
 use crate::files::{TextRead, Unreadable, VaultNoteText};
@@ -144,6 +145,9 @@ pub enum Answer {
     Vault {
         entries: Vec<VaultEntry>,
         notes: Vec<VaultNoteText>,
+    },
+    TerminalOpened {
+        terminal: AgentRef,
     },
     Failed {
         code: ErrorCode,
