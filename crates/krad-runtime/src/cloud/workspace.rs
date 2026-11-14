@@ -1,7 +1,8 @@
 use krad_domain::{CloudPlacement, CloudRunnerId};
+use krad_host::runner::runner_root;
 use krad_host::{remote_path, HostCommand, HostError, HostLink};
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Output;
 use std::time::Duration;
 
@@ -60,6 +61,8 @@ impl fmt::Display for WorkspaceError {
         }
     }
 }
+
+impl std::error::Error for WorkspaceError {}
 
 impl From<HostError> for WorkspaceError {
     fn from(error: HostError) -> Self {
@@ -160,7 +163,7 @@ fn add_worktree(
 fn apply_patch(link: &HostLink, worktree: &Path, patch: &str) -> Option<String> {
     let mut file = worktree.as_os_str().to_owned();
     file.push(PATCH_SUFFIX);
-    let file = std::path::PathBuf::from(file);
+    let file = PathBuf::from(file);
     if let Err(error) = link.write(&file, patch.as_bytes()) {
         return Some(format!("{APPLY_FAILED}: {error}"));
     }
@@ -177,21 +180,34 @@ fn apply_patch(link: &HostLink, worktree: &Path, patch: &str) -> Option<String> 
     problem
 }
 
+fn runner_dir_of(link: &HostLink) -> Result<PathBuf, WorkspaceError> {
+    match link {
+        HostLink::Remote(ssh) => ssh
+            .layout()
+            .map(|layout| layout.runner_dir())
+            .ok_or(WorkspaceError::NoLayout),
+        HostLink::Local => runner_root().map_err(|_| WorkspaceError::NoLayout),
+    }
+}
+
+pub(crate) fn placement_on(
+    link: &HostLink,
+    request: &WorkspaceRequest,
+) -> Result<CloudPlacement, WorkspaceError> {
+    Ok(placement_for(
+        request.runner,
+        &runner_dir_of(link)?,
+        &repo_slug(&request.remote_url),
+        &request.session_slug,
+    ))
+}
+
 #[tracing::instrument(skip_all, fields(runner = %request.runner))]
 pub(crate) fn prepare_workspace(
     link: &HostLink,
     request: &WorkspaceRequest,
 ) -> Result<PreparedWorkspace, WorkspaceError> {
-    let HostLink::Remote(ssh) = link else {
-        return Err(WorkspaceError::NoLayout);
-    };
-    let layout = ssh.layout().ok_or(WorkspaceError::NoLayout)?;
-    let placement = placement_for(
-        request.runner,
-        &layout.runner_dir(),
-        &repo_slug(&request.remote_url),
-        &request.session_slug,
-    );
+    let placement = placement_on(link, request)?;
     ensure_clone(link, request, &placement.repo_dir)?;
     let base = base_of(
         link,

@@ -2,6 +2,9 @@
 #[path = "support/cloud.rs"]
 mod cloud;
 #[cfg(unix)]
+#[path = "cloud_chats/hosted.rs"]
+mod hosted;
+#[cfg(unix)]
 #[path = "cloud_chats/mirror.rs"]
 mod mirror;
 #[cfg(unix)]
@@ -20,7 +23,7 @@ use std::process::ExitCode;
 type Case = (&'static str, fn() -> cloud::TestResult);
 
 #[cfg(unix)]
-const CASES: [Case; 3] = [
+const CASES: [Case; 4] = [
     (
         "a_cloud_chat_answers_on_the_runner_reattaches_from_its_offset_and_replays_its_journal",
         scenarios::a_cloud_chat_answers_on_the_runner_reattaches_from_its_offset_and_replays_its_journal,
@@ -32,6 +35,10 @@ const CASES: [Case; 3] = [
     (
         "the_desktop_reaches_a_ready_runner_s_runtime_through_cloud_connect",
         scenarios::the_desktop_reaches_a_ready_runner_s_runtime_through_cloud_connect,
+    ),
+    (
+        "a_cloud_session_handed_to_the_runner_s_runtime_chats_there_and_survives_its_restart",
+        hosted::a_cloud_session_handed_to_the_runner_s_runtime_chats_there_and_survives_its_restart,
     ),
 ];
 

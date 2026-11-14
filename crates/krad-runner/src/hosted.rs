@@ -8,5 +8,5 @@ mod profile;
 mod server;
 
 pub use listener::{bind_runtime_socket, Listener, Stream};
-pub use profile::{RunnerProfile, RUNNER_ENVIRONMENT};
+pub use profile::{OwnDaemon, RunnerProfile, RUNNER_ENVIRONMENT};
 pub use server::RuntimeServer;

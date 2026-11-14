@@ -24,9 +24,9 @@ use super::mirror::ChatFeed;
 use super::repo::{committed_repo, Repo};
 use super::runner::{install_host_cli, runner_dir, start_daemon, Daemon};
 
-const PROMPT: &str = "Why does it race?";
-const RECORDED_ANSWER: &str = "Two tabs rotate at once.";
-const ASKING_PROMPT: &str = "List it";
+pub const PROMPT: &str = "Why does it race?";
+pub const RECORDED_ANSWER: &str = "Two tabs rotate at once.";
+pub const ASKING_PROMPT: &str = "List it";
 const QUIET_PROMPT: &str = "Carry on";
 const LISTED_ANSWER: &str = "Listed the folder.";
 const ASKED_TOOL: &str = "Bash";
@@ -83,14 +83,14 @@ fn open_cloud_chat(name: &str) -> Result<CloudChat, Box<dyn Error>> {
     })
 }
 
-fn sent(id: &AgentRef, text: &str) -> Command {
+pub fn sent(id: &AgentRef, text: &str) -> Command {
     Command::Chat(ChatCommand::Send {
         chat: id.clone(),
         prompt: Prompt::from(text),
     })
 }
 
-fn answers(mirror: &ChatMirror) -> usize {
+pub fn answers(mirror: &ChatMirror) -> usize {
     mirror
         .messages
         .iter()
@@ -98,7 +98,7 @@ fn answers(mirror: &ChatMirror) -> usize {
         .count()
 }
 
-fn settled_with(mirror: &ChatMirror, count: usize) -> bool {
+pub fn settled_with(mirror: &ChatMirror, count: usize) -> bool {
     !mirror.state.working && answers(mirror) == count
 }
 
@@ -183,14 +183,14 @@ fn keep_offset(
     )
 }
 
-fn asked(chats: &mut ChatFeed, id: &AgentRef) -> Result<ChatAsk, Box<dyn Error>> {
+pub fn asked(chats: &mut ChatFeed, id: &AgentRef) -> Result<ChatAsk, Box<dyn Error>> {
     match chats.until(|event| matches!(event, EventKind::ChatAsk(ask) if ask.chat == *id))? {
         EventKind::ChatAsk(ask) => Ok(ask),
         _ => Err(NO_ASK.into()),
     }
 }
 
-fn listed(mirror: &ChatMirror) -> bool {
+pub fn listed(mirror: &ChatMirror) -> bool {
     mirror
         .messages
         .iter()

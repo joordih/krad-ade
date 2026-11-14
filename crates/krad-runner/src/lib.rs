@@ -31,7 +31,8 @@ mod verbs;
 pub use daemon::RunnerDaemon;
 #[cfg(all(unix, feature = "runtime"))]
 pub use hosted::{
-    bind_runtime_socket, Listener, RunnerProfile, RuntimeServer, Stream, RUNNER_ENVIRONMENT,
+    bind_runtime_socket, Listener, OwnDaemon, RunnerProfile, RuntimeServer, Stream,
+    RUNNER_ENVIRONMENT,
 };
 #[cfg(all(unix, feature = "runtime"))]
 pub use serving::serve_runner;

@@ -5,6 +5,7 @@ use crate::bus::BusSetup;
 use crate::environments::EnvironmentsSetup;
 use crate::hosts::HostTools;
 use crate::kraddies::KraddiesSetup;
+use crate::runners::OwnRunner;
 use crate::settings::SettingsSetup;
 
 #[derive(Clone, Debug)]
@@ -17,6 +18,7 @@ pub struct RuntimeSetup {
     pub secrets: Secrets,
     pub chat_images: Option<ChatImages>,
     pub host_tools: HostTools,
+    pub own_runner: Option<OwnRunner>,
 }
 
 impl Default for RuntimeSetup {
@@ -30,6 +32,7 @@ impl Default for RuntimeSetup {
             secrets: Secrets::in_memory(),
             chat_images: None,
             host_tools: HostTools::default(),
+            own_runner: None,
         }
     }
 }

@@ -83,6 +83,7 @@ fn main() {
         secrets: Secrets::system(),
         chat_images: ChatImages::in_config_folder(),
         host_tools: host_tools.clone(),
+        own_runner: None,
     }) {
         Ok(runtime) => runtime,
         Err(error) => {

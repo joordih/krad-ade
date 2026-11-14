@@ -51,7 +51,7 @@ pub use chats::{
 };
 pub use cloud::{
     CarriedConversation, CloudChatStart, CloudCommand, CloudDraftId, CloudNews, CloudOpened,
-    PatchAnswer,
+    CloudReach, HostedSession, HostedWorkspace, PatchAnswer,
 };
 pub use command::{Command, ErrorCode, Reply, RuntimeCommand};
 pub use environments::{EnvironmentCommand, SpendingCrossed};

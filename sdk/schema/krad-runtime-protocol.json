@@ -176,9 +176,32 @@
       },
       "verb": "send"
     },
+    "cloud_host": {
+      "area": "cloud",
+      "session": {
+        "name": "Cloud · api",
+        "starts": [
+          {
+            "conversation": {
+              "conversation": "fresh",
+              "resume": "0d6f2b8e-4c1a-4f7e-9a51-2b6c3d4e5f60"
+            },
+            "harness": "ClaudeCode",
+            "prompts": []
+          }
+        ],
+        "workspace": {
+          "remote_url": "git@example.com:me/api.git",
+          "session_slug": "api-1a2b",
+          "upstream_branch": "main"
+        }
+      },
+      "verb": "host"
+    },
     "cloud_send": {
       "area": "cloud",
       "environment": "main",
+      "reach": "process_wire",
       "runner": 1,
       "session": 2,
       "verb": "send"

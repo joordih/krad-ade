@@ -1,16 +1,18 @@
 use krad_domain::review::MergeRequest;
 use krad_domain::{CloudRunnerId, EnvironmentName, GroupId};
-use krad_protocol::{CloudChatStart, CloudDraftId};
+use krad_protocol::{CloudChatStart, CloudDraftId, CloudReach};
 use krad_repo::{RepoError, Worktree};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 mod carry;
+mod hand_over;
 mod naming;
 mod results;
 mod workspace;
 
 pub(crate) use carry::{carried_chats, carry_chats, fresh_start, CarriedChat, CarrySource};
+pub(crate) use hand_over::{hand_over, HandOver, HandOverError};
 pub(crate) use naming::{
     cloud_chat_harness, cloud_session_name, holds_cloud_work, new_nonce as draft_nonce,
     offered_patch, reached_limit, sent_session_name, session_slug, upstream_branch,
@@ -21,7 +23,7 @@ pub(crate) use results::{
     bring_home, open_request, push_branch, CloudWork, LocalRepo, ResultError,
 };
 pub(crate) use workspace::{
-    prepare_workspace, PreparedWorkspace, WorkspaceError, WorkspaceRequest,
+    placement_on, prepare_workspace, PreparedWorkspace, WorkspaceError, WorkspaceRequest,
 };
 
 #[derive(Clone, Debug)]
@@ -31,6 +33,8 @@ pub(crate) struct CloudDraft {
     pub(crate) name: String,
     pub(crate) request: WorkspaceRequest,
     pub(crate) carried: Vec<CarriedChat>,
+    pub(crate) starts: Vec<CloudChatStart>,
+    pub(crate) reach: CloudReach,
 }
 
 #[derive(Debug)]
@@ -42,6 +46,7 @@ pub(crate) struct DraftFacts {
     pub(crate) name: Option<String>,
     pub(crate) upstream: Option<String>,
     pub(crate) carried: Vec<CarriedChat>,
+    pub(crate) reach: CloudReach,
 }
 
 #[derive(Debug)]
@@ -69,6 +74,10 @@ pub(crate) enum CloudDone {
         repo_root: PathBuf,
         branch: String,
         brought: Result<Worktree, ResultError>,
+    },
+    HandedOver {
+        runner: CloudRunnerId,
+        handed: Result<(), HandOverError>,
     },
 }
 
@@ -121,6 +130,8 @@ mod tests {
                 patch: None,
             },
             carried: Vec::new(),
+            starts: Vec::new(),
+            reach: CloudReach::ProcessWire,
         }
     }
 

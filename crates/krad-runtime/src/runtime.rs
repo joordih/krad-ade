@@ -45,6 +45,7 @@ mod bus_git;
 mod chat_images;
 mod chatting;
 mod ci_fixing;
+mod cloud_hosting;
 mod cloud_nodes;
 mod cloud_results;
 mod clouding;
@@ -202,9 +203,14 @@ impl Runtime {
         let secrets = owned.secrets.clone();
         let shared_access = access.clone();
         let runtime_inbox = inbox.clone();
+        let own_runner = setup.own_runner;
         thread::Builder::new()
             .name(THREAD_NAME.to_owned())
-            .spawn(move || Self::idle(shared_access, owned, &runtime_inbox, stopped).run(&input))?;
+            .spawn(move || {
+                let mut runtime = Self::idle(shared_access, owned, &runtime_inbox, stopped);
+                runtime.adopt_own_runner(own_runner);
+                runtime.run(&input);
+            })?;
         tracing::info!("runtime started");
         Ok(RuntimeHandle::new(
             inbox,

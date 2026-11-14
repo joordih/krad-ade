@@ -283,7 +283,11 @@ fn workspace_commands() -> Vec<(&'static str, Value)> {
         ),
         (
             "cloud_send",
-            json!({ "area": "cloud", "verb": "send", "environment": ENVIRONMENT, "session": 2, "runner": 1 }),
+            json!({ "area": "cloud", "verb": "send", "environment": ENVIRONMENT, "session": 2, "runner": 1, "reach": "process_wire" }),
+        ),
+        (
+            "cloud_host",
+            json!({ "area": "cloud", "verb": "host", "session": { "name": "Cloud · api", "workspace": { "remote_url": "git@example.com:me/api.git", "upstream_branch": "main", "session_slug": "api-1a2b" }, "starts": [{ "harness": "ClaudeCode", "conversation": { "conversation": "fresh", "resume": "0d6f2b8e-4c1a-4f7e-9a51-2b6c3d4e5f60" } }] } }),
         ),
     ]
 }

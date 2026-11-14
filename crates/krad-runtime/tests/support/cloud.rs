@@ -6,7 +6,9 @@ use krad_domain::{
     Settings,
 };
 use krad_host::new_install_id;
-use krad_protocol::{CloudCommand, CloudNews, CloudOpened, Command, EventKind, Feed, Reply};
+use krad_protocol::{
+    CloudCommand, CloudNews, CloudOpened, CloudReach, Command, EventKind, Feed, Reply,
+};
 use krad_protocol::{RunnerLogins, Scope};
 use krad_runtime::{
     EnvironmentsSetup, HostTools, Runtime, RuntimeHandle, RuntimeSetup, SettingsSetup,
@@ -197,6 +199,7 @@ pub fn create_cloud_session(
         environment: environment(),
         group: started.group,
         runner: RUNNER,
+        reach: CloudReach::ProcessWire,
     };
     if send(&started.runtime, Command::Cloud(create))? != Reply::Accepted {
         return Err("the cloud session was refused".into());

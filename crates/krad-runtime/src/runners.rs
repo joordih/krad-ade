@@ -1,6 +1,6 @@
 use krad_domain::{
-    ClaudeOauthToken, CloudRunnerId, Host, HostPlatform, Pairing, RunnerCli, RunnerLogin,
-    RunnerState,
+    ClaudeOauthToken, CloudRunnerId, EnvironmentName, Host, HostPlatform, Linger, Pairing,
+    RunnerCli, RunnerLogin, RunnerState,
 };
 use krad_host::{Forward, HostError, HostLink};
 use krad_protocol::{AgentRef, RunnerLogins, RunnerShown};
@@ -13,6 +13,7 @@ mod explain;
 mod install;
 mod line;
 mod logins;
+mod own;
 mod sign_in;
 mod webhooks;
 
@@ -26,6 +27,7 @@ pub(crate) use install::{prepare_runner, retire_runner, PreparedRunner, RunnerSe
 pub(crate) use line::open_runner_line;
 pub use line::{RunnerLine, RunnerLineError};
 pub(crate) use logins::{git_program, login_args, probe_login, Logins};
+pub use own::{OwnRunner, OWN_RUNNER};
 pub(crate) use sign_in::{forward_failure, login_script, LoopbackCallback, SignInWatch, SignIns};
 
 #[derive(Clone)]
@@ -126,6 +128,7 @@ pub(crate) struct Runners {
     pub(crate) webhooks: RunnerWebhooksSync,
     pub(crate) logins: Logins,
     pub(crate) sign_ins: SignIns,
+    pub(crate) own: Option<EnvironmentName>,
 }
 
 impl Runners {
@@ -164,6 +167,22 @@ impl Runners {
         let shown = self.set(runner, state)?;
         self.directory.put(runner, ready);
         Some(shown)
+    }
+
+    pub(crate) fn adopt_own(&mut self, own: OwnRunner) {
+        self.track(OWN_RUNNER, Host::Local);
+        let ready = ReadyRunner {
+            link: HostLink::Local,
+            cli: own.cli,
+            pairing: own.pairing,
+            claude_token: None,
+        };
+        let state = RunnerState::Ready {
+            linger: Linger::Enabled,
+        };
+        if self.ready(OWN_RUNNER, ready, state).is_some() {
+            self.own = Some(own.environment);
+        }
     }
 
     pub(crate) fn forget(&mut self, runner: CloudRunnerId) -> Option<(Host, Option<ReadyRunner>)> {

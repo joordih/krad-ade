@@ -1,6 +1,8 @@
 use gpui_kit::{Context, PromptButton, PromptLevel};
 use krad_domain::{CloudRunnerId, EnvironmentView, GroupId, SessionId, ToastKind};
-use krad_protocol::{CloudCommand, CloudDraftId, CloudNews, CloudOpened, Command, PatchAnswer};
+use krad_protocol::{
+    CloudCommand, CloudDraftId, CloudNews, CloudOpened, CloudReach, Command, PatchAnswer,
+};
 
 use super::super::native_alert::NATIVE_ALERTS;
 use super::super::EnvironmentShell;
@@ -11,6 +13,7 @@ const AT_LIMIT_TOAST: &str =
 const NO_REMOTE_TOAST: &str = "The group has no git remote to clone on the runner";
 const REMOTE_UNREAD: &str = "Could not read the group's git remote";
 const PREPARING_PREFIX: &str = "Preparing the cloud session on";
+const HOSTED_PREFIX: &str = "The cloud session now runs on";
 const RUNNER_FAILED_PREFIX: &str = "The cloud session could not start on";
 const NO_SESSION_TOAST: &str = "Open a session first";
 const ALREADY_CLOUD_TOAST: &str = "This session already runs in the cloud";
@@ -46,6 +49,7 @@ impl EnvironmentShell {
             environment: self.active.clone(),
             group,
             runner,
+            reach: CloudReach::ProcessWire,
         });
     }
 
@@ -58,6 +62,7 @@ impl EnvironmentShell {
             environment: self.active.clone(),
             session,
             runner,
+            reach: CloudReach::ProcessWire,
         });
     }
 
@@ -149,6 +154,10 @@ impl EnvironmentShell {
             CloudNews::Preparing { runner } => (
                 ToastKind::Info,
                 format!("{PREPARING_PREFIX} {}…", self.runner_name(runner)),
+            ),
+            CloudNews::Hosted { runner } => (
+                ToastKind::Success,
+                format!("{HOSTED_PREFIX} {}", self.runner_name(runner)),
             ),
             CloudNews::RunnerFailed { runner, reason } => (
                 ToastKind::Error,

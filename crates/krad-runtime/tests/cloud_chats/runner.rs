@@ -1,10 +1,11 @@
-use krad_host::runner::{run_client_verb, runner_root, runner_socket, RUNNER_VERB};
+use krad_host::runner::{run_client_verb, runner_root, runner_socket, runtime_socket, RUNNER_VERB};
 use krad_host::{HostLayout, APP_DIR, HOST_CLI_BUILD, HOST_CLI_PROGRAM};
 use krad_runner::{run_runner_verb, serve_runner};
 use krad_store::Secrets;
 use std::error::Error;
 use std::io::Write as _;
 use std::os::unix::fs::PermissionsExt as _;
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
@@ -23,6 +24,13 @@ const PID_FILE: &str = "pid";
 const KILL_PROGRAM: &str = "kill";
 const KILL_SIGNAL: &str = "-KILL";
 const NO_SOCKET: &str = "the cloud runner daemon never opened its socket";
+const PATH_VAR: &str = "PATH";
+const SHELL_VAR: &str = "SHELL";
+const SHELL: &str = "/bin/sh";
+const SYSTEM_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
+const FAKE_SSH_DIR: &str = "tests/fixtures/fake-ssh";
+const RUNNER_BIN: &str = "runner-bin";
+const HOST_BIN: &str = "host-bin";
 
 pub fn serve_as_host_cli() -> Option<ExitCode> {
     std::env::var_os(CLI_MODE_VAR)?;
@@ -66,6 +74,7 @@ pub fn runner_dir(runner_home: &Path) -> PathBuf {
 
 pub struct Daemon {
     child: Child,
+    home: PathBuf,
     processes: PathBuf,
 }
 
@@ -86,6 +95,13 @@ impl Daemon {
             );
         }
     }
+
+    pub fn restart(&mut self) -> Result<(), Box<dyn Error>> {
+        self.child.kill()?;
+        self.child.wait()?;
+        self.child = spawn_daemon(&self.home)?;
+        wait_for_runtime(&self.home)
+    }
 }
 
 impl Drop for Daemon {
@@ -96,18 +112,45 @@ impl Drop for Daemon {
     }
 }
 
-pub fn start_daemon(runner_home: &Path) -> Result<Daemon, Box<dyn Error>> {
-    let socket = runner_socket(&runner_dir(runner_home));
-    let child = Command::new(std::env::current_exe()?)
+fn runner_path() -> String {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join(FAKE_SSH_DIR);
+    format!(
+        "{}:{}:{SYSTEM_PATH}",
+        fixtures.join(RUNNER_BIN).display(),
+        fixtures.join(HOST_BIN).display()
+    )
+}
+
+fn spawn_daemon(runner_home: &Path) -> Result<Child, Box<dyn Error>> {
+    Ok(Command::new(std::env::current_exe()?)
         .arg(RUNNER_VERB)
         .env(CLI_MODE_VAR, CLI_MODE_ON)
         .env(HOME_VAR, runner_home)
+        .env(PATH_VAR, runner_path())
+        .env(SHELL_VAR, SHELL)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn()?;
+        .spawn()?)
+}
+
+fn wait_for_runtime(runner_home: &Path) -> Result<(), Box<dyn Error>> {
+    let socket = runtime_socket(&runner_dir(runner_home));
+    let deadline = Instant::now() + SOCKET_WAIT;
+    while UnixStream::connect(&socket).is_err() {
+        if Instant::now() > deadline {
+            return Err(NO_SOCKET.into());
+        }
+        std::thread::sleep(SOCKET_POLL);
+    }
+    Ok(())
+}
+
+pub fn start_daemon(runner_home: &Path) -> Result<Daemon, Box<dyn Error>> {
+    let socket = runner_socket(&runner_dir(runner_home));
     let daemon = Daemon {
-        child,
+        child: spawn_daemon(runner_home)?,
+        home: runner_home.to_owned(),
         processes: runner_dir(runner_home).join(PROCESSES_DIR),
     };
     let deadline = Instant::now() + SOCKET_WAIT;

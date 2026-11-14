@@ -1,6 +1,7 @@
-use krad_domain::{EnvironmentData, EnvironmentName, RuntimeState};
+use krad_domain::{EnvironmentData, EnvironmentName, Pairing, RuntimeState};
 use krad_runtime::{
-    BusSetup, EnvironmentsSetup, EventsSetup, HostTools, KraddiesSetup, RuntimeSetup, SettingsSetup,
+    BusSetup, EnvironmentsSetup, EventsSetup, HostTools, KraddiesSetup, OwnRunner, RuntimeSetup,
+    SettingsSetup,
 };
 use krad_store::{
     open_layout_in, read_settings_in, settings_file_in, LayoutFile, LayoutOpening, OpenedLayout,
@@ -12,10 +13,16 @@ const RUNTIME_DIR: &str = "runtime";
 const EVENTS_DIR: &str = "events";
 pub const RUNNER_ENVIRONMENT: &str = "runner";
 
+pub struct OwnDaemon {
+    pub cli: PathBuf,
+    pub pairing: Pairing,
+}
+
 pub struct RunnerProfile {
     pub root: PathBuf,
     pub secrets: Secrets,
     pub cli_dir: Option<PathBuf>,
+    pub daemon: Option<OwnDaemon>,
 }
 
 fn with_one_local_environment(mut state: RuntimeState) -> RuntimeState {
@@ -43,6 +50,14 @@ impl RunnerProfile {
     pub fn setup(self) -> RuntimeSetup {
         let dir = self.root.join(RUNTIME_DIR);
         let (state, file) = opened_state(&dir);
+        let own_runner = self
+            .daemon
+            .zip(state.environments.first())
+            .map(|(daemon, first)| OwnRunner {
+                cli: daemon.cli,
+                pairing: daemon.pairing,
+                environment: first.name.clone(),
+            });
         RuntimeSetup {
             bus: Some(BusSetup {
                 cli_dir: self.cli_dir,
@@ -60,6 +75,7 @@ impl RunnerProfile {
             secrets: self.secrets,
             chat_images: None,
             host_tools: HostTools::default(),
+            own_runner,
         }
     }
 }
@@ -75,6 +91,7 @@ mod tests {
             root: root.clone(),
             secrets: Secrets::in_memory(),
             cli_dir: None,
+            daemon: None,
         }
         .setup();
         let names: Vec<&str> = setup

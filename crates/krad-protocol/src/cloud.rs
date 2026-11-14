@@ -14,6 +14,32 @@ pub enum PatchAnswer {
     Cancel,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CloudReach {
+    #[default]
+    ProcessWire,
+    Runtime,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct HostedWorkspace {
+    pub remote_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_branch: Option<String>,
+    pub session_slug: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patch: Option<String>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct HostedSession {
+    pub name: String,
+    pub workspace: HostedWorkspace,
+    #[serde(default)]
+    pub starts: Vec<CloudChatStart>,
+}
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum CloudCommand {
@@ -21,11 +47,18 @@ pub enum CloudCommand {
         environment: EnvironmentName,
         group: GroupId,
         runner: CloudRunnerId,
+        #[serde(default)]
+        reach: CloudReach,
     },
     Send {
         environment: EnvironmentName,
         session: SessionId,
         runner: CloudRunnerId,
+        #[serde(default)]
+        reach: CloudReach,
+    },
+    Host {
+        session: Box<HostedSession>,
     },
     AnswerPatch {
         draft: CloudDraftId,
@@ -85,6 +118,9 @@ pub enum CloudNews {
         error: String,
     },
     Preparing {
+        runner: CloudRunnerId,
+    },
+    Hosted {
         runner: CloudRunnerId,
     },
     RunnerFailed {

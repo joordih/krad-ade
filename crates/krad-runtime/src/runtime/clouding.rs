@@ -1,6 +1,7 @@
 use krad_domain::{AgentPreset, CloudRunnerId, EnvironmentName, GroupId, SessionEdit, SessionId};
 use krad_protocol::{
-    CloudCommand, CloudDraftId, CloudNews, CloudOpened, ErrorCode, EventKind, PatchAnswer, Reply,
+    CloudCommand, CloudDraftId, CloudNews, CloudOpened, CloudReach, ErrorCode, EventKind,
+    PatchAnswer, Reply,
 };
 use krad_repo::{resolved_remote_url, working_patch_with_untracked, ORIGIN_REMOTE};
 
@@ -30,12 +31,15 @@ impl Runtime {
                 environment,
                 group,
                 runner,
-            } => self.create_cloud_session((environment, group, runner), None, Vec::new()),
+                reach,
+            } => self.create_cloud_session((environment, group, runner), reach, None, Vec::new()),
             CloudCommand::Send {
                 environment,
                 session,
                 runner,
-            } => self.send_to_cloud(environment, session, runner),
+                reach,
+            } => self.send_to_cloud(environment, session, (runner, reach)),
+            CloudCommand::Host { session } => return self.host_cloud_session(*session),
             CloudCommand::AnswerPatch { draft, answer } => self.answer_patch(draft, answer),
             CloudCommand::Push {
                 environment,
@@ -81,7 +85,7 @@ impl Runtime {
         &mut self,
         environment: EnvironmentName,
         session: SessionId,
-        runner: CloudRunnerId,
+        (runner, reach): (CloudRunnerId, CloudReach),
     ) {
         let Some(data) = self.environments.data(&environment) else {
             return self.cloud_news(CloudNews::NoSession);
@@ -106,13 +110,14 @@ impl Runtime {
         };
         let carried = carried_chats(&source, session);
         tracing::info!(%runner, chats = carried.len(), "sending a session to the cloud");
-        self.create_cloud_session((environment, group, runner), Some(name), carried);
+        self.create_cloud_session((environment, group, runner), reach, Some(name), carried);
     }
 
     #[tracing::instrument(skip_all, fields(%runner))]
     fn create_cloud_session(
         &mut self,
         (environment, group, runner): (EnvironmentName, GroupId, CloudRunnerId),
+        reach: CloudReach,
         name: Option<String>,
         carried: Vec<CarriedChat>,
     ) {
@@ -143,6 +148,7 @@ impl Runtime {
             name,
             upstream,
             carried,
+            reach,
         });
         self.run_cloud_job(move || {
             let home = std::env::home_dir();
@@ -159,6 +165,7 @@ impl Runtime {
         match done {
             CloudDone::RemoteRead { facts, url, diff } => self.remote_read(*facts, url, diff),
             CloudDone::Prepared { draft, prepared } => self.cloud_prepared(*draft, prepared),
+            CloudDone::HandedOver { runner, handed } => self.cloud_handed_over(runner, handed),
             results => self.cloud_result(results),
         }
     }
@@ -200,6 +207,8 @@ impl Runtime {
             environment: facts.environment,
             group: facts.group,
             carried: facts.carried,
+            starts: Vec::new(),
+            reach: facts.reach,
         };
         match offered_patch(diff) {
             Some(patch) => {
@@ -222,7 +231,7 @@ impl Runtime {
         self.queue_cloud_session(draft);
     }
 
-    fn queue_cloud_session(&mut self, draft: CloudDraft) {
+    pub(super) fn queue_cloud_session(&mut self, draft: CloudDraft) {
         let runner = draft.request.runner;
         self.cloud_news(CloudNews::Preparing { runner });
         self.cloud.wait(draft);
@@ -240,17 +249,23 @@ impl Runtime {
     }
 
     pub(super) fn start_waiting_cloud_sessions(&mut self, runner: CloudRunnerId) {
-        let Some(link) = self.runners.directory.get(runner).map(|ready| ready.link) else {
+        let Some(ready) = self.runners.directory.get(runner) else {
             return;
         };
         for mut draft in self.cloud.take_waiting(runner) {
-            let link = link.clone();
+            if draft.reach == CloudReach::Runtime {
+                self.hand_over_cloud_session(&ready, draft);
+                continue;
+            }
+            let link = ready.link.clone();
             let request = draft.request.clone();
             let carried = std::mem::take(&mut draft.carried);
+            let ready_starts = std::mem::take(&mut draft.starts);
             let draft = Box::new(draft);
             self.run_cloud_job(move || {
                 let prepared = prepare_workspace(&link, &request).map(|prepared| {
-                    let starts = carry_chats(&link, &prepared.placement.worktree, carried);
+                    let mut starts = carry_chats(&link, &prepared.placement.worktree, carried);
+                    starts.extend(ready_starts);
                     (prepared, starts)
                 });
                 CloudDone::Prepared { draft, prepared }
@@ -325,7 +340,7 @@ impl Runtime {
         }));
     }
 
-    fn default_cloud_harness(&self) -> AgentPreset {
+    pub(super) fn default_cloud_harness(&self) -> AgentPreset {
         let settings = &self.settings.current;
         let candidates = AgentPreset::chat_harnesses(&settings.acp.all_agents());
         cloud_chat_harness(settings.default_harness, &candidates)

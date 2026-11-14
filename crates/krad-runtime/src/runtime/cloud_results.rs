@@ -156,7 +156,9 @@ impl Runtime {
                     error: error.to_string(),
                 },
             },
-            CloudDone::RemoteRead { .. } | CloudDone::Prepared { .. } => return,
+            CloudDone::RemoteRead { .. }
+            | CloudDone::Prepared { .. }
+            | CloudDone::HandedOver { .. } => return,
         };
         self.cloud_news(news);
     }
