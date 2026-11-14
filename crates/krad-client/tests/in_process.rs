@@ -82,6 +82,7 @@ fn an_in_process_client_of_another_major_version_is_refused() -> TestResult {
     let other = Hello {
         protocol: ProtocolVersion(ProtocolVersion::CURRENT.0 + 1),
         build: BUILD.to_owned(),
+        pairing: None,
     };
     assert!(matches!(
         block_on(client.hello(other)),

@@ -940,7 +940,7 @@
     "terminal": "the kind byte, the terminal id as a big-endian u64, then the raw bytes",
     "terminal_id_bytes": 8
   },
-  "handshake": "The client sends Hello with its protocol version and build; the runtime answers Welcome with its own protocol version, build and run, or Refused(unsupported) when the major versions differ. The run names this start of the runtime: a client whose remembered run differs subscribes without since.",
+  "handshake": "The client sends Hello with its protocol version and build; the runtime answers Welcome with its own protocol version, build and run, or Refused(unsupported) when the major versions differ. A runner's runtime also asks for a pairing in Hello and names in Welcome the permissions it grants (read, drive, answer, admin) and the first request id of the connection's own range, which the client counts up from; a Hello with no pairing may only redeem a pairing code, and pairing commands are answered only to the connection that sent them. The run names this start of the runtime: a client whose remembered run differs subscribes without since.",
   "idempotency": "Answers name their object by a stable id (an ask, a plan, a variant run, a session's hunks). The first answer wins; a repeated one gets Refused(already_answered).",
   "messages": {
     "accepted": {
@@ -950,6 +950,11 @@
       },
       "type": "reply"
     },
+    "ask_snapshot": {
+      "id": 14,
+      "scope": "runtime",
+      "type": "ask_snapshot"
+    },
     "command": {
       "command": {
         "area": "runtime",
@@ -957,6 +962,17 @@
       },
       "id": 12,
       "type": "command"
+    },
+    "create_pairing_code": {
+      "command": {
+        "permissions": [
+          "read",
+          "answer"
+        ],
+        "verb": "create_pairing_code"
+      },
+      "id": 15,
+      "type": "pairing"
     },
     "event": {
       "feed": "event",
@@ -972,6 +988,46 @@
       "protocol": 1,
       "type": "hello"
     },
+    "paired_hello": {
+      "build": "0.3.3",
+      "pairing": {
+        "install": "0123456789abcdef",
+        "token": "00112233445566778899aabbccddeeff"
+      },
+      "protocol": 1,
+      "type": "hello"
+    },
+    "paired_welcome": {
+      "build": "0.3.3",
+      "first_request": 4294967296,
+      "permissions": [
+        "read",
+        "drive",
+        "answer"
+      ],
+      "protocol": 1,
+      "run": 7340116812,
+      "type": "welcome"
+    },
+    "pairing_code": {
+      "answer": {
+        "code": "K7QF3MZP",
+        "expires": "2026-11-14T10:10:00.000Z",
+        "kind": "code"
+      },
+      "id": 15,
+      "type": "paired"
+    },
+    "redeem_pairing_code": {
+      "command": {
+        "code": "K7QF3MZP",
+        "device": "phone",
+        "install": "fedcba9876543210",
+        "verb": "redeem_pairing_code"
+      },
+      "id": 1,
+      "type": "pairing"
+    },
     "refused": {
       "id": 13,
       "reply": {
@@ -981,9 +1037,22 @@
       },
       "type": "reply"
     },
+    "refused_message": {
+      "code": "unsupported",
+      "message": "this runtime does not know that message",
+      "type": "refused"
+    },
     "resume": {
       "since": 41,
       "type": "subscribe"
+    },
+    "revoke_pairing": {
+      "command": {
+        "install": "fedcba9876543210",
+        "verb": "revoke_pairing"
+      },
+      "id": 16,
+      "type": "pairing"
     },
     "snapshot": {
       "attention": {
@@ -1052,6 +1121,76 @@
       "usage": {
         "shown": []
       }
+    },
+    "snapshot_answer": {
+      "id": 14,
+      "snapshot": {
+        "attention": {
+          "history": [],
+          "waiting": []
+        },
+        "bus": {
+          "asks": [],
+          "mail": [],
+          "statuses": []
+        },
+        "chats": [],
+        "environments": [],
+        "gateway": {
+          "state": "unset"
+        },
+        "git": [],
+        "health": {
+          "checks": []
+        },
+        "hosts": {
+          "adapters": [],
+          "hosts": [],
+          "local": [],
+          "prompts": []
+        },
+        "kraddies": {
+          "digests": [],
+          "kraddies": []
+        },
+        "models": {
+          "listed": []
+        },
+        "opencode": {
+          "servers": []
+        },
+        "runners": {
+          "buses": [],
+          "logins": [],
+          "shown": []
+        },
+        "scope": "runtime",
+        "seq": 41,
+        "settings": {
+          "app_updates": "Automatic",
+          "appearance": "Light",
+          "code_tools": "on",
+          "copy_mode": "Shortcut",
+          "default_harness": "Shell",
+          "editor_font": {
+            "ligatures": "On"
+          },
+          "extension_tools": "on",
+          "harness_commands": {},
+          "interface_font": {
+            "ligatures": "On"
+          },
+          "terminal_font": {
+            "ligatures": "On"
+          },
+          "window_material": "Glass"
+        },
+        "terminals": [],
+        "usage": {
+          "shown": []
+        }
+      },
+      "type": "snapshot"
     },
     "subscribe": {
       "type": "subscribe"

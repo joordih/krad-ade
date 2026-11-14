@@ -17,6 +17,7 @@ desktop = [
   "dep:tracing-appender",
   "dep:tracing-subscriber",
 ]
+runner-runtime = ["krad-runner/runtime"]
 
 [[bin]]
 name = "krad-ade"
@@ -36,6 +37,7 @@ gpui-kit = { workspace = true, optional = true }
 krad-agents = { workspace = true, features = ["python-toolchains"] }
 krad-client = { workspace = true, optional = true }
 krad-domain.workspace = true
+krad-runner.workspace = true
 krad-runtime = { workspace = true, optional = true }
 krad-store = { workspace = true, optional = true }
 krad-ui = { workspace = true, optional = true }

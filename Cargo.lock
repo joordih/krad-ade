@@ -3829,6 +3829,7 @@ dependencies = [
  "krad-agents",
  "krad-client",
  "krad-domain",
+ "krad-runner",
  "krad-runtime",
  "krad-store",
  "krad-ui",
@@ -3865,6 +3866,7 @@ dependencies = [
  "krad-protocol",
  "krad-runtime",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
@@ -3988,6 +3990,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "krad-runner"
+version = "0.4.1"
+dependencies = [
+ "futures",
+ "krad-agents",
+ "krad-client",
+ "krad-domain",
+ "krad-host",
+ "krad-protocol",
+ "krad-runtime",
+ "krad-store",
+ "portable-pty",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tracing",
+]
+
+[[package]]
 name = "krad-runtime"
 version = "0.4.1"
 dependencies = [
@@ -4000,6 +4021,7 @@ dependencies = [
  "krad-host",
  "krad-protocol",
  "krad-repo",
+ "krad-runner",
  "krad-session",
  "krad-store",
  "serde_json",

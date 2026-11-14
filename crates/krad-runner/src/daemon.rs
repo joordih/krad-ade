@@ -1,4 +1,9 @@
-use krad_domain::{CloudProcessId, JournalOffset};
+use krad_domain::{CloudProcessId, JournalOffset, PairingPermission};
+use krad_host::mux::TerminalSize;
+use krad_host::runner::wire::{CloudLaunch, Envelope, Reply, Request};
+use krad_host::runner::{ensure_private_dir, runner_socket, PROCESS_ENV};
+
+use crate::pairings::{authorize, migrate_plain_tokens};
 use std::collections::HashMap;
 use std::fs;
 use std::io;
@@ -7,30 +12,20 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 
-use super::clients::{ensure_private_dir, is_paired};
-use super::journal::Journal;
-use super::listing::list_processes;
-use super::piped::start_piped;
-use super::process::{forward_input, stop_group, stream_output, Tracked};
-use super::pty::start_pty;
-use super::restart::adopt_previous;
-use super::wire::{CloudLaunch, Envelope, Reply, Request};
-use super::PROCESS_ENV;
-use crate::mux::TerminalSize;
+use crate::journal::Journal;
+use crate::listing::list_processes;
+use crate::piped::start_piped;
+use crate::process::{forward_input, stop_group, stream_output, Tracked};
+use crate::pty::start_pty;
+use crate::restart::adopt_previous;
 
-const SOCKET_FILE: &str = "daemon.sock";
-pub(super) const PROCESSES_DIR: &str = "processes";
+pub(crate) const PROCESSES_DIR: &str = "processes";
 const CONNECTION_THREAD: &str = "krad-cloud-connection";
 const NOT_PAIRED: &str = "this installation is not paired with the cloud runner";
 const UNKNOWN_PROCESS: &str = "the cloud runner has no process with that id";
 const NOT_RUNNING: &str = "that cloud process is not running";
 const NO_TERMINAL: &str = "that cloud process has no terminal";
 const RESIZE_FAILED: &str = "the cloud process's terminal did not take the new size";
-
-#[must_use]
-pub fn runner_socket(root: &Path) -> PathBuf {
-    root.join(SOCKET_FILE)
-}
 
 fn marked(mut launch: CloudLaunch, id: &CloudProcessId) -> CloudLaunch {
     launch.env.retain(|(name, _)| name != PROCESS_ENV);
@@ -48,6 +43,7 @@ pub struct RunnerDaemon {
 impl RunnerDaemon {
     #[must_use]
     pub fn new(root: &Path) -> Arc<Self> {
+        migrate_plain_tokens(root);
         Arc::new(Self {
             root: root.to_owned(),
             processes: Mutex::new(adopt_previous(&root.join(PROCESSES_DIR))),
@@ -86,7 +82,14 @@ impl RunnerDaemon {
             Ok(envelope) => envelope,
             Err(error) => return Reply::Refused(error.to_string()).write(&mut stream),
         };
-        if !is_paired(&self.root, &envelope.pairing) {
+        let needed = match envelope.request {
+            Request::List => PairingPermission::Read,
+            Request::Open { .. } | Request::Stop { .. } | Request::Resize { .. } => {
+                PairingPermission::Drive
+            }
+        };
+        let granted = authorize(&self.root, &envelope.pairing);
+        if !granted.is_some_and(|granted| granted.allows(needed)) {
             tracing::debug!(install = %envelope.pairing.install, "refused an unpaired client");
             return Reply::Refused(NOT_PAIRED.to_owned()).write(&mut stream);
         }

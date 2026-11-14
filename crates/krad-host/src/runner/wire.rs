@@ -14,7 +14,7 @@ use self::codec::{
 use super::status::CloudProcessStatus;
 use crate::mux::TerminalSize;
 
-pub(crate) const PROTOCOL_VERSION: u8 = 2;
+pub const PROTOCOL_VERSION: u8 = 2;
 
 macro_rules! wire_tags {
     ($name:ident { $($variant:ident = $value:expr),+ $(,)? }) => {
@@ -63,7 +63,7 @@ pub struct CloudLaunch {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Request {
+pub enum Request {
     Open {
         id: CloudProcessId,
         from: JournalOffset,
@@ -80,13 +80,13 @@ pub(crate) enum Request {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Envelope {
-    pub(crate) pairing: Pairing,
-    pub(crate) request: Request,
+pub struct Envelope {
+    pub pairing: Pairing,
+    pub request: Request,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Reply {
+pub enum Reply {
     Accepted { end: JournalOffset },
     Refused(String),
     PastEnd { end: JournalOffset },
@@ -95,13 +95,14 @@ pub(crate) enum Reply {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Frame {
+pub enum Frame {
     Data(Vec<u8>),
     Exit(Option<i32>),
 }
 
 impl Envelope {
-    pub(crate) fn write(&self, out: &mut impl Write) -> io::Result<()> {
+    /// # Errors
+    pub fn write(&self, out: &mut impl Write) -> io::Result<()> {
         write_u8(out, PROTOCOL_VERSION)?;
         write_text(out, self.pairing.install.as_str())?;
         write_text(out, self.pairing.token.expose())?;
@@ -109,7 +110,8 @@ impl Envelope {
         out.flush()
     }
 
-    pub(crate) fn read(input: &mut impl Read) -> io::Result<Self> {
+    /// # Errors
+    pub fn read(input: &mut impl Read) -> io::Result<Self> {
         let version = read_u8(input)?;
         if version != PROTOCOL_VERSION {
             return Err(io::Error::new(
@@ -181,7 +183,8 @@ impl Request {
 }
 
 impl Reply {
-    pub(crate) fn write(&self, out: &mut impl Write) -> io::Result<()> {
+    /// # Errors
+    pub fn write(&self, out: &mut impl Write) -> io::Result<()> {
         match self {
             Self::Accepted { end } => {
                 write_u8(out, ReplyTag::Accepted as u8)?;
@@ -209,7 +212,8 @@ impl Reply {
         out.flush()
     }
 
-    pub(crate) fn read(input: &mut impl Read) -> io::Result<Self> {
+    /// # Errors
+    pub fn read(input: &mut impl Read) -> io::Result<Self> {
         Ok(match ReplyTag::try_from(read_u8(input)?)? {
             ReplyTag::Accepted => Self::Accepted {
                 end: read_offset(input)?,
@@ -235,7 +239,8 @@ impl Reply {
 }
 
 impl Frame {
-    pub(crate) fn write(&self, out: &mut impl Write) -> io::Result<()> {
+    /// # Errors
+    pub fn write(&self, out: &mut impl Write) -> io::Result<()> {
         match self {
             Self::Data(bytes) => {
                 write_u8(out, FrameTag::Data as u8)?;
@@ -249,7 +254,8 @@ impl Frame {
         out.flush()
     }
 
-    pub(crate) fn read(input: &mut impl Read) -> io::Result<Self> {
+    /// # Errors
+    pub fn read(input: &mut impl Read) -> io::Result<Self> {
         Ok(match FrameTag::try_from(read_u8(input)?)? {
             FrameTag::Data => Self::Data(read_bytes(input, MAX_DATA_BYTES)?),
             FrameTag::Exit => Self::Exit(read_code(input)?),

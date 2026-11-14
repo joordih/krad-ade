@@ -9,9 +9,9 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::Duration;
 
-use super::journal::{append, Journal};
-use super::wire::Frame;
-use crate::mux::TerminalSize;
+use crate::journal::{append, Journal};
+use krad_host::mux::TerminalSize;
+use krad_host::runner::wire::Frame;
 
 const CHUNK_BYTES: usize = 32 * 1024;
 const SIGNAL_EXIT_BASE: i32 = 128;
@@ -136,7 +136,7 @@ impl Tracked {
         let terminal = terminal.lock().unwrap_or_else(PoisonError::into_inner);
         Some(
             terminal
-                .resize(super::pty::pty_size(size))
+                .resize(crate::pty::pty_size(size))
                 .map_err(io::Error::other),
         )
     }

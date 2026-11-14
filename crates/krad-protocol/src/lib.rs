@@ -21,6 +21,7 @@ mod kraddies;
 mod launches;
 mod models;
 mod opencode;
+mod pairings;
 mod problems;
 mod repo;
 mod review;
@@ -81,6 +82,7 @@ pub use models::{
     AcpListing, AcpOffers, ListedModels, ModelsCommand, ModelsOrigin, ModelsSnapshot,
 };
 pub use opencode::{OpencodeCommand, OpencodeShown, OpencodeSnapshot, OpencodeStatus};
+pub use pairings::{PairingAnswer, PairingCommand};
 pub use problems::{Problem, ProblemScope};
 pub use repo::{DiffOf, RepoAsk, RepoCommand, WorktreeProbe, WorktreeRemoval};
 pub use review::{

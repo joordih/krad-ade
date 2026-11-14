@@ -3,9 +3,9 @@ use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::time::{Duration, Instant};
 
-use super::super::process::group_alive;
 use super::{attach, list, open, running_daemon, script, serve, Frame, Runner, TestResult};
-use crate::mux::TerminalSize;
+use crate::process::group_alive;
+use krad_host::mux::TerminalSize;
 
 const PATIENCE: Duration = Duration::from_secs(10);
 const POLL: Duration = Duration::from_millis(20);

@@ -140,6 +140,7 @@ krad-lsp = { path = "crates/krad-lsp" }
 krad-protocol = { path = "crates/krad-protocol" }
 krad-pty = { path = "crates/krad-pty" }
 krad-repo = { path = "crates/krad-repo" }
+krad-runner = { path = "crates/krad-runner", default-features = false }
 krad-runtime = { path = "crates/krad-runtime" }
 krad-term = { path = "crates/krad-term" }
 krad-session = { path = "crates/krad-session" }

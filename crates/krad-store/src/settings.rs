@@ -20,6 +20,12 @@ pub fn read_settings() -> Settings {
         .map_or_else(Settings::default, |bytes| settings_from(&bytes))
 }
 
+#[must_use]
+pub fn read_settings_in(dir: &Path) -> Settings {
+    std::fs::read(settings_file_in(dir))
+        .map_or_else(|_| Settings::default(), |bytes| settings_from(&bytes))
+}
+
 fn settings_from(bytes: &[u8]) -> Settings {
     serde_json::from_slice(bytes).unwrap_or_default()
 }

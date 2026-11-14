@@ -1,5 +1,6 @@
-use krad_host::runner::{run_runner_verb, runner_socket, RUNNER_VERB};
+use krad_host::runner::{run_client_verb, runner_socket, RUNNER_VERB};
 use krad_host::{HostLayout, APP_DIR, HOST_CLI_BUILD, HOST_CLI_PROGRAM};
+use krad_runner::run_runner_verb;
 use std::error::Error;
 use std::io::Write as _;
 use std::os::unix::fs::PermissionsExt as _;
@@ -32,7 +33,9 @@ pub fn serve_as_host_cli() -> Option<ExitCode> {
         drop(writeln!(std::io::stdout(), "{HOST_CLI_BUILD}"));
         return Some(ExitCode::SUCCESS);
     }
-    let code = run_runner_verb(verb, rest).unwrap_or_default();
+    let code = run_runner_verb(verb, rest)
+        .or_else(|| run_client_verb(verb, rest))
+        .unwrap_or_default();
     Some(ExitCode::from(u8::try_from(code).unwrap_or(EXIT_FAILED)))
 }
 

@@ -26,7 +26,7 @@ pub(crate) fn run(args: &[String]) -> Option<i32> {
 
 #[cfg(unix)]
 fn runner_verb(verb: &str, rest: &[String]) -> Option<i32> {
-    krad_host::runner::run_runner_verb(verb, rest)
+    krad_host::runner::run_client_verb(verb, rest)
 }
 
 #[cfg(not(unix))]

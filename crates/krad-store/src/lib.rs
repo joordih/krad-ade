@@ -54,7 +54,7 @@ pub use layout::{
     open_layout, open_layout_in, LayoutFile, LayoutOpening, LayoutWriter, OpenedLayout,
 };
 pub use mcp_secret::{delete_mcp_secret, write_mcp_secret};
-pub use settings::{read_settings, settings_file_in};
+pub use settings::{read_settings, read_settings_in, settings_file_in};
 pub use themes::{read_user_themes, write_user_theme};
 pub use vault::{LoginPlace, LoginStoreError, Secrets};
 pub use webhook_secret::{delete_webhook_secret, find_webhook_secret, write_webhook_secret};

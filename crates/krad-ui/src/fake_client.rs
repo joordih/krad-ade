@@ -64,6 +64,8 @@ impl RuntimeClient for RecordedClient {
             protocol: ProtocolVersion::CURRENT,
             build: BUILD.to_owned(),
             run: RUN,
+            permissions: None,
+            first_request: None,
         };
         futures::future::ready(Ok(welcome)).boxed()
     }

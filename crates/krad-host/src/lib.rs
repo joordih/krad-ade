@@ -37,7 +37,7 @@ pub use machine::MachineChannel;
 pub use mode::FileMode;
 pub use path::remote_path;
 pub use platform::{HostPlatform, UnsupportedPlatform};
-pub use random::new_install_id;
+pub use random::{new_install_id, new_pairing_code, new_pairing_token};
 pub use run::local_output_within;
 pub use secret_input::SecretCommand;
 pub use sftp::FileKind;

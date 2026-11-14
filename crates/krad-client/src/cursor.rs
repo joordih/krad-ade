@@ -38,6 +38,8 @@ mod tests {
             protocol: ProtocolVersion::CURRENT,
             build: BUILD.to_owned(),
             run: RuntimeRun(run),
+            permissions: None,
+            first_request: None,
         }
     }
 

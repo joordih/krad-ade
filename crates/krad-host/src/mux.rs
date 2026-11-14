@@ -22,7 +22,8 @@ pub use prompt::{PromptAsker, PromptKind, PromptSender, Secret, SignInPrompt};
 pub use serve::serve;
 pub use shim::{run_askpass, run_exec};
 pub(crate) use wire::OpenRequest;
-pub(crate) use wire::{Stream, TerminalSize};
+pub(crate) use wire::Stream;
+pub use wire::TerminalSize;
 
 use std::io;
 use thiserror::Error;

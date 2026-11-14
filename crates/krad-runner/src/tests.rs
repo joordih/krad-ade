@@ -7,10 +7,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread;
 
-use super::clients::pair;
-use super::wire::{Envelope, Frame, Reply, Request, PROTOCOL_VERSION};
-use super::{attach, list, resize, runner_socket, stop, CloudLaunch, RunnerDaemon};
-use crate::mux::TerminalSize;
+use krad_domain::PairingPermissions;
+use krad_host::mux::TerminalSize;
+use krad_host::runner::wire::{Envelope, Frame, Reply, Request, PROTOCOL_VERSION};
+use krad_host::runner::{attach, list, resize, runner_socket, stop, CloudLaunch};
+
+use crate::daemon::RunnerDaemon;
+use crate::pairings::pair;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -38,7 +41,7 @@ fn running_daemon(name: &str) -> Result<Runner, Box<dyn std::error::Error>> {
     let root = std::env::temp_dir().join(format!("krad-runner-{name}-{}", std::process::id()));
     serve(&root)?;
     let install: InstallId = "0123456789abcdef".parse()?;
-    let token = pair(&root, &install)?;
+    let token = pair(&root, &install, "test".parse()?, PairingPermissions::all())?;
     Ok(Runner {
         socket: runner_socket(&root),
         root,

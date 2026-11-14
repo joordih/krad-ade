@@ -1,0 +1,41 @@
+[package]
+name = "krad-runner"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["runtime"]
+runtime = [
+  "dep:futures",
+  "dep:krad-protocol",
+  "dep:krad-runtime",
+  "dep:krad-store",
+]
+
+[dependencies]
+futures = { workspace = true, optional = true }
+krad-domain.workspace = true
+krad-host.workspace = true
+krad-protocol = { workspace = true, optional = true }
+krad-runtime = { workspace = true, optional = true }
+krad-store = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tracing.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+portable-pty.workspace = true
+
+[dev-dependencies]
+futures.workspace = true
+krad-agents.workspace = true
+krad-client.workspace = true
+krad-protocol.workspace = true
+krad-runtime.workspace = true
+
+[[test]]
+name = "hosted_runtime"
+required-features = ["runtime"]

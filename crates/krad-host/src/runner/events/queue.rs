@@ -4,7 +4,7 @@ use std::io::{self, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
-use super::super::clients::ensure_private_dir;
+use super::super::folder::ensure_private_dir;
 use super::{events_file, EVENTS_DIR};
 use crate::layout::HostLayout;
 use crate::mode::FileMode;
@@ -90,7 +90,7 @@ fn newest_lines(text: &[u8], budget: usize) -> &[u8] {
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::clients::{pair, paired_installs};
+    use super::super::super::folder::{clients_dir, paired_installs, pairing_file};
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 
@@ -110,6 +110,11 @@ mod tests {
             .map(|install| (install, line.to_owned()))
             .collect();
         queue_events(runner_dir, &lines);
+    }
+
+    fn pair(runner_dir: &Path, install: &InstallId) -> io::Result<()> {
+        ensure_private_dir(&clients_dir(runner_dir))?;
+        fs::write(pairing_file(runner_dir, install), "")
     }
 
     fn root(name: &str) -> Root {

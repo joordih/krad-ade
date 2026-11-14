@@ -10,6 +10,7 @@ futures.workspace = true
 krad-protocol.workspace = true
 krad-runtime.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 krad-domain.workspace = true

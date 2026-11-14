@@ -157,7 +157,7 @@ impl From<PairingToken> for String {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Pairing {
     pub install: InstallId,
     pub token: PairingToken,

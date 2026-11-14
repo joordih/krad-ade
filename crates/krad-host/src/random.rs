@@ -38,6 +38,23 @@ pub fn new_install_id() -> Option<krad_domain::InstallId> {
     random_hex(INSTALL_ID_BYTES).parse().ok()
 }
 
+#[must_use]
+pub fn new_pairing_token() -> Option<krad_domain::PairingToken> {
+    random_hex(TOKEN_BYTES).parse().ok()
+}
+
+#[must_use]
+pub fn new_pairing_code() -> Option<krad_domain::PairingCode> {
+    let alphabet = krad_domain::PAIRING_CODE_ALPHABET;
+    let mut buffer = vec![0; krad_domain::PAIRING_CODE_LEN];
+    fill(&mut buffer);
+    let code: String = buffer
+        .iter()
+        .map(|byte| char::from(alphabet[usize::from(*byte) % alphabet.len()]))
+        .collect();
+    code.parse().ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -55,6 +72,14 @@ mod tests {
         let first = new_install_id();
         assert!(first.is_some());
         assert_ne!(new_install_id(), first);
+    }
+
+    #[test]
+    fn a_new_pairing_code_and_token_are_valid_and_differ() {
+        let code = new_pairing_code();
+        assert!(code.is_some());
+        assert_ne!(new_pairing_code(), code);
+        assert!(new_pairing_token().is_some());
     }
 
     #[test]

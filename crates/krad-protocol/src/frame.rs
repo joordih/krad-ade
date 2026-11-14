@@ -5,10 +5,11 @@ use krad_domain::TerminalId;
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
-use crate::command::{Command, Reply};
-use crate::event::Feed;
+use crate::command::{Command, ErrorCode, Reply};
+use crate::event::{Feed, Scope, Snapshot};
 use crate::hello::{Hello, Welcome};
 use crate::ids::{RequestId, Seq};
+use crate::pairings::{PairingAnswer, PairingCommand};
 
 pub(crate) const LENGTH_BYTES: usize = 4;
 pub(crate) const TERMINAL_ID_BYTES: usize = 8;
@@ -50,6 +51,26 @@ pub enum Message {
         reply: Reply,
     },
     Feed(Feed),
+    AskSnapshot {
+        id: RequestId,
+        scope: Scope,
+    },
+    Snapshot {
+        id: RequestId,
+        snapshot: Box<Snapshot>,
+    },
+    Pairing {
+        id: RequestId,
+        command: PairingCommand,
+    },
+    Paired {
+        id: RequestId,
+        answer: PairingAnswer,
+    },
+    Refused {
+        code: ErrorCode,
+        message: String,
+    },
     #[serde(other)]
     Unknown,
 }

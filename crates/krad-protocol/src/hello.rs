@@ -1,7 +1,8 @@
+use krad_domain::{Pairing, PairingPermissions};
 use serde::{Deserialize, Serialize};
 
 use crate::command::{ErrorCode, Reply};
-use crate::ids::ProtocolVersion;
+use crate::ids::{ProtocolVersion, RequestId};
 
 const OTHER_VERSION: &str = "this runtime speaks another major version of the protocol";
 
@@ -13,6 +14,8 @@ pub struct RuntimeRun(pub u64);
 pub struct Hello {
     pub protocol: ProtocolVersion,
     pub build: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pairing: Option<Pairing>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -20,6 +23,10 @@ pub struct Welcome {
     pub protocol: ProtocolVersion,
     pub build: String,
     pub run: RuntimeRun,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<PairingPermissions>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_request: Option<RequestId>,
 }
 
 impl Hello {
@@ -28,6 +35,15 @@ impl Hello {
         Self {
             protocol: ProtocolVersion::CURRENT,
             build: build.to_owned(),
+            pairing: None,
+        }
+    }
+
+    #[must_use]
+    pub fn paired(build: &str, pairing: Pairing) -> Self {
+        Self {
+            pairing: Some(pairing),
+            ..Self::new(build)
         }
     }
 
@@ -45,6 +61,8 @@ impl Hello {
             protocol: ProtocolVersion::CURRENT,
             build: build.to_owned(),
             run,
+            permissions: None,
+            first_request: None,
         })
     }
 }
@@ -64,6 +82,8 @@ mod tests {
                 protocol: ProtocolVersion::CURRENT,
                 build: BUILD.to_owned(),
                 run: RuntimeRun(7),
+                permissions: None,
+                first_request: None,
             })
         );
     }
@@ -73,6 +93,7 @@ mod tests {
         let hello = Hello {
             protocol: ProtocolVersion(ProtocolVersion::CURRENT.0 + 1),
             build: BUILD.to_owned(),
+            pairing: None,
         };
         assert!(matches!(
             hello.welcome(BUILD, RuntimeRun(1)),

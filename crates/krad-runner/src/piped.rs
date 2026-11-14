@@ -6,9 +6,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use super::journal::Journal;
-use super::process::{exit_code_of, group_alive, Tracked, SPAWN_FAILED};
-use super::wire::CloudLaunch;
+use crate::journal::Journal;
+use crate::process::{exit_code_of, group_alive, Tracked, SPAWN_FAILED};
+use krad_host::runner::wire::CloudLaunch;
 
 const SHELL: &str = "/bin/sh";
 const SHELL_COMMAND_FLAG: &str = "-c";

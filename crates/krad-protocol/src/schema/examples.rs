@@ -6,7 +6,7 @@ pub(super) const VERSIONING: &str = "protocol_version is the major version. With
 
 pub(super) const TRANSPORT: &str = "One byte stream per client (a socket to a cloud runner, or nothing at all in process, where the client calls the runtime handle with the same types). Every frame is length-prefixed; a message frame holds one JSON message, a terminal frame holds raw terminal bytes.";
 
-pub(super) const HANDSHAKE: &str = "The client sends Hello with its protocol version and build; the runtime answers Welcome with its own protocol version, build and run, or Refused(unsupported) when the major versions differ. The run names this start of the runtime: a client whose remembered run differs subscribes without since.";
+pub(super) const HANDSHAKE: &str = "The client sends Hello with its protocol version and build; the runtime answers Welcome with its own protocol version, build and run, or Refused(unsupported) when the major versions differ. A runner's runtime also asks for a pairing in Hello and names in Welcome the permissions it grants (read, drive, answer, admin) and the first request id of the connection's own range, which the client counts up from; a Hello with no pairing may only redeem a pairing code, and pairing commands are answered only to the connection that sent them. The run names this start of the runtime: a client whose remembered run differs subscribes without since.";
 
 pub(super) const RESUME: &str = "Subscribe without since starts from a Snapshot followed by every later Event. Subscribe with since gets exactly the Events after that Seq when the runtime still keeps them in its ring of recent events, otherwise a Snapshot followed by the later Events. A subscriber that falls behind also gets a fresh Snapshot. Events folded into a Snapshot are never sent again.";
 
@@ -51,6 +51,42 @@ pub(super) fn messages() -> Vec<(&'static str, Value)> {
         (
             "snapshot",
             json!({ "type": "feed", "feed": "snapshot", "scope": "runtime", "seq": 41 }),
+        ),
+        (
+            "paired_hello",
+            json!({ "type": "hello", "protocol": 1, "build": "0.3.3", "pairing": { "install": "0123456789abcdef", "token": "00112233445566778899aabbccddeeff" } }),
+        ),
+        (
+            "paired_welcome",
+            json!({ "type": "welcome", "protocol": 1, "build": "0.3.3", "run": 7_340_116_812_u64, "permissions": ["read", "drive", "answer"], "first_request": 4_294_967_296_u64 }),
+        ),
+        (
+            "ask_snapshot",
+            json!({ "type": "ask_snapshot", "id": 14, "scope": "runtime" }),
+        ),
+        (
+            "snapshot_answer",
+            json!({ "type": "snapshot", "id": 14, "snapshot": { "scope": "runtime", "seq": 41 } }),
+        ),
+        (
+            "create_pairing_code",
+            json!({ "type": "pairing", "id": 15, "command": { "verb": "create_pairing_code", "permissions": ["read", "answer"] } }),
+        ),
+        (
+            "pairing_code",
+            json!({ "type": "paired", "id": 15, "answer": { "kind": "code", "code": "K7QF3MZP", "expires": "2026-11-14T10:10:00Z" } }),
+        ),
+        (
+            "redeem_pairing_code",
+            json!({ "type": "pairing", "id": 1, "command": { "verb": "redeem_pairing_code", "code": "K7QF3MZP", "install": "fedcba9876543210", "device": "phone" } }),
+        ),
+        (
+            "revoke_pairing",
+            json!({ "type": "pairing", "id": 16, "command": { "verb": "revoke_pairing", "install": "fedcba9876543210" } }),
+        ),
+        (
+            "refused_message",
+            json!({ "type": "refused", "code": "unsupported", "message": "this runtime does not know that message" }),
         ),
     ]
 }
