@@ -4,6 +4,7 @@ mod badge;
 mod entry;
 mod hosted;
 mod patch_dialog;
+mod run_on;
 mod runners;
 mod sessions;
 mod sign_in;
@@ -19,6 +20,7 @@ pub(in crate::environment_shell) use badge::{cloud_marker, CloudBadge};
 pub(in crate::environment_shell) use entry::CloudMenu;
 pub(in crate::environment_shell) use krad_domain::RunnerState;
 pub(in crate::environment_shell) use krad_domain::{RunnerCli, RunnerLogin};
+pub(in crate::environment_shell) use run_on::{RunOn, RunOnChoice};
 pub(in crate::environment_shell) use sign_in::cli_label;
 pub(in crate::environment_shell) use state::{
     linger_warning, outdated_runner_toast, reach_label, runner_label,

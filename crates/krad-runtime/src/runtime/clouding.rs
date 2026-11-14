@@ -2,17 +2,17 @@ use krad_domain::{AgentPreset, CloudRunnerId, EnvironmentName, GroupId, SessionE
 use krad_host::HostLink;
 use krad_protocol::{
     CloudCommand, CloudDraftId, CloudNews, CloudOpened, CloudReach, ErrorCode, EventKind,
-    PatchAnswer, Reply,
+    FirstChat, PatchAnswer, Reply,
 };
 use krad_repo::{resolved_remote_url, working_patch_with_untracked, ORIGIN_REMOTE};
 
 use super::working::agent;
 use super::{refused, Runtime, UNSUPPORTED_COMMAND};
 use crate::cloud::{
-    carried_chats, carry_chats, cloud_chat_harness, cloud_session_name, draft_nonce, fresh_start,
-    holds_cloud_work, offered_patch, prepare_workspace, reached_limit, sent_session_name,
-    session_slug, upstream_branch, upstream_remote, CarriedChat, CarrySource, CloudDone,
-    CloudDraft, DraftFacts, PreparedWorkspace, WorkspaceError, WorkspaceRequest,
+    carried_chats, carry_chats, cloud_chat_harness, cloud_session_name, draft_nonce, first_start,
+    fresh_start, holds_cloud_work, offered_patch, prepare_workspace, reached_limit,
+    sent_session_name, session_slug, upstream_branch, upstream_remote, CarriedChat, CarrySource,
+    CloudDone, CloudDraft, DraftFacts, PreparedWorkspace, WorkspaceError, WorkspaceRequest,
 };
 use crate::jobs::JobDone;
 use krad_protocol::CloudChatStart;
@@ -33,7 +33,8 @@ impl Runtime {
                 group,
                 runner,
                 reach,
-            } => self.create_cloud_session((environment, group, runner), reach, None, Vec::new()),
+                first,
+            } => self.new_cloud_session((environment, group, runner), reach, first),
             CloudCommand::Send {
                 environment,
                 session,
@@ -82,6 +83,20 @@ impl Runtime {
             .count()
     }
 
+    fn new_cloud_session(
+        &mut self,
+        place: (EnvironmentName, GroupId, CloudRunnerId),
+        reach: CloudReach,
+        first: Option<FirstChat>,
+    ) {
+        let candidates = AgentPreset::chat_harnesses(&self.settings.current.acp.all_agents());
+        let starts = first
+            .map(|first| first_start(first, &candidates))
+            .into_iter()
+            .collect();
+        self.create_cloud_session(place, reach, None, (Vec::new(), starts));
+    }
+
     fn send_to_cloud(
         &mut self,
         environment: EnvironmentName,
@@ -111,7 +126,8 @@ impl Runtime {
         };
         let carried = carried_chats(&source, session);
         tracing::info!(%runner, chats = carried.len(), "sending a session to the cloud");
-        self.create_cloud_session((environment, group, runner), reach, Some(name), carried);
+        let chats = (carried, Vec::new());
+        self.create_cloud_session((environment, group, runner), reach, Some(name), chats);
     }
 
     #[tracing::instrument(skip_all, fields(%runner))]
@@ -120,7 +136,7 @@ impl Runtime {
         (environment, group, runner): (EnvironmentName, GroupId, CloudRunnerId),
         reach: CloudReach,
         name: Option<String>,
-        carried: Vec<CarriedChat>,
+        (carried, starts): (Vec<CarriedChat>, Vec<CloudChatStart>),
     ) {
         let max = self.settings.current.cloud.max_sessions;
         if reached_limit(self.running_cloud_sessions(), max) {
@@ -149,6 +165,7 @@ impl Runtime {
             name,
             upstream,
             carried,
+            starts,
             reach,
         });
         self.run_cloud_job(move || {
@@ -213,7 +230,7 @@ impl Runtime {
             environment: facts.environment,
             group: facts.group,
             carried: facts.carried,
-            starts: Vec::new(),
+            starts: facts.starts,
             reach: facts.reach,
             origin: None,
         };

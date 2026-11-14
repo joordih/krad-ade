@@ -70,7 +70,7 @@ impl StructuredChat {
         }
     }
 
-    pub(super) fn is_fresh(&self) -> bool {
+    pub(in crate::environment_shell) fn is_fresh(&self) -> bool {
         self.session.history().is_none() && !self.working
     }
 

@@ -192,6 +192,21 @@
       },
       "verb": "send"
     },
+    "cloud_create": {
+      "area": "cloud",
+      "environment": "main",
+      "first": {
+        "harness": "Codex",
+        "prompt": {
+          "mentions": [],
+          "text": "Fix the flaky login test"
+        }
+      },
+      "group": 1,
+      "reach": "runtime",
+      "runner": 1,
+      "verb": "create"
+    },
     "cloud_host": {
       "area": "cloud",
       "session": {

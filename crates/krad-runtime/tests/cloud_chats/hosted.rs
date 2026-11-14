@@ -115,6 +115,7 @@ pub fn a_cloud_session_handed_to_the_runner_s_runtime_chats_there_and_survives_i
         group: started.group,
         runner: RUNNER,
         reach: CloudReach::Runtime,
+        first: None,
     };
     assert_eq!(
         send(&started.runtime, Command::Cloud(create))?,

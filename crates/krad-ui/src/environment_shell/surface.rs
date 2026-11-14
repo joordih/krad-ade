@@ -216,6 +216,9 @@ impl EnvironmentShell {
             self.recheck_failed_gateway(cx);
         }
         let text = self.skill_message(harness, text);
+        if self.first_message_to_cloud(id, harness, &text, cx) {
+            return cx.notify();
+        }
         let text = match place.local().cloned() {
             Some(local) => self.with_kraddie_packs(&local, id, text, cx),
             None => text,

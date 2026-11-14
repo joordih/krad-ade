@@ -3,6 +3,7 @@ use krad_domain::{CloudRunnerId, GroupId, SessionId, TerminalGroup, ToastKind};
 
 use super::super::context_menu::{MenuAction, MenuEntry, MenuPlacement};
 use super::super::EnvironmentShell;
+use super::run_on::RunOn;
 use super::state::runner_label;
 use crate::components::IconName;
 
@@ -16,13 +17,19 @@ const NO_SESSION_TOAST: &str = "Open a session first";
 pub(in crate::environment_shell) enum CloudMenu {
     New(GroupId, CloudRunnerId),
     Send(SessionId, CloudRunnerId),
+    RunOn(RunOn),
 }
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn run_cloud_menu(&self, menu: CloudMenu) {
+    pub(in crate::environment_shell) fn run_cloud_menu(
+        &mut self,
+        menu: CloudMenu,
+        cx: &mut Context<Self>,
+    ) {
         match menu {
             CloudMenu::New(group, runner) => self.new_cloud_session(group, runner),
             CloudMenu::Send(session, runner) => self.send_session_to_cloud(session, runner),
+            CloudMenu::RunOn(run_on) => self.choose_run_on(run_on, cx),
         }
     }
 

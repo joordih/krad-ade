@@ -294,6 +294,10 @@ fn workspace_commands() -> Vec<(&'static str, Value)> {
             json!({ "area": "runner", "verb": "reconnect", "runner": 1 }),
         ),
         (
+            "cloud_create",
+            json!({ "area": "cloud", "verb": "create", "environment": ENVIRONMENT, "group": 1, "runner": 1, "reach": "runtime", "first": { "harness": "Codex", "prompt": { "text": "Fix the flaky login test", "mentions": [] } } }),
+        ),
+        (
             "cloud_send",
             json!({ "area": "cloud", "verb": "send", "environment": ENVIRONMENT, "session": 2, "runner": 1, "reach": "process_wire" }),
         ),

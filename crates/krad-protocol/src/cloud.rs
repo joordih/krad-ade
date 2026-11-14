@@ -51,6 +51,8 @@ pub enum CloudCommand {
         runner: CloudRunnerId,
         #[serde(default)]
         reach: CloudReach,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        first: Option<FirstChat>,
     },
     Send {
         environment: EnvironmentName,
@@ -80,6 +82,12 @@ pub enum CloudCommand {
     },
     #[serde(other)]
     Unknown,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct FirstChat {
+    pub harness: AgentPreset,
+    pub prompt: Prompt,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -182,6 +190,31 @@ mod tests {
         };
         let json = serde_json::to_string(&news)?;
         assert_eq!(serde_json::from_str::<CloudNews>(&json)?, news);
+        Ok(())
+    }
+
+    #[test]
+    fn a_new_cloud_session_may_carry_its_first_chat_and_an_older_create_reads_without_one(
+    ) -> serde_json::Result<()> {
+        let older =
+            r#"{"verb":"create","environment":"api","group":1,"runner":2,"reach":"runtime"}"#;
+        let CloudCommand::Create { first, .. } = serde_json::from_str::<CloudCommand>(older)?
+        else {
+            unreachable!("a create command");
+        };
+        assert_eq!(first, None);
+        let command = CloudCommand::Create {
+            environment: EnvironmentName::new("api".to_owned()),
+            group: GroupId(1),
+            runner: CloudRunnerId(2),
+            reach: CloudReach::Runtime,
+            first: Some(FirstChat {
+                harness: AgentPreset::Codex,
+                prompt: Prompt::new("Fix the flaky test", Vec::new()),
+            }),
+        };
+        let json = serde_json::to_string(&command)?;
+        assert_eq!(serde_json::from_str::<CloudCommand>(&json)?, command);
         Ok(())
     }
 

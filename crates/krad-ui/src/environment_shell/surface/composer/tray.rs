@@ -245,6 +245,7 @@ impl EnvironmentShell {
             .children(Self::tray_model_pill(id, chat, facts, cx))
             .children(Self::acp_option_controls(id, chat, cx))
             .child(switches)
+            .children(self.run_on_control(id, cx))
             .child(div().flex_1())
             .children(context)
             .into_any_element()

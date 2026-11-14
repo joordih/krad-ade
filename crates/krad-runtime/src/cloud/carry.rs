@@ -4,7 +4,7 @@ use krad_domain::{
     HistoryMessage, Prompt, ResumeId, Session, SessionId, TerminalId,
 };
 use krad_host::HostLink;
-use krad_protocol::{CarriedConversation, CloudChatStart};
+use krad_protocol::{CarriedConversation, CloudChatStart, FirstChat};
 use krad_repo::workplace_home;
 use std::path::{Path, PathBuf};
 
@@ -35,6 +35,14 @@ pub(crate) fn fresh_start(harness: AgentPreset, seed: Option<String>) -> CloudCh
         harness,
         conversation: CarriedConversation::Fresh(new_session_id()),
         prompts: seed.map_or_else(Vec::new, |seed| vec![Prompt::new(&seed, Vec::new())]),
+    }
+}
+
+pub(crate) fn first_start(first: FirstChat, candidates: &[AgentPreset]) -> CloudChatStart {
+    CloudChatStart {
+        harness: cloud_chat_harness(first.harness, candidates),
+        conversation: CarriedConversation::Fresh(new_session_id()),
+        prompts: vec![first.prompt],
     }
 }
 
@@ -176,5 +184,26 @@ mod tests {
         assert!(matches!(start.conversation, CarriedConversation::Fresh(_)));
         assert_eq!(start.prompts.len(), 1);
         assert_eq!(fresh_start(AgentPreset::Codex, None).prompts.len(), 0);
+    }
+
+    #[test]
+    fn a_first_chat_starts_fresh_with_its_prompt_on_a_harness_the_runner_runs() {
+        let prompt = Prompt::new("Fix the flaky test", Vec::new());
+        let first = FirstChat {
+            harness: AgentPreset::Codex,
+            prompt: prompt.clone(),
+        };
+        let start = first_start(first, &[AgentPreset::ClaudeCode]);
+        assert_eq!(start.harness, AgentPreset::Codex);
+        assert!(matches!(start.conversation, CarriedConversation::Fresh(_)));
+        assert_eq!(start.prompts, vec![prompt]);
+        let shell = FirstChat {
+            harness: AgentPreset::Shell,
+            prompt: Prompt::new("ls", Vec::new()),
+        };
+        assert_eq!(
+            first_start(shell, &[AgentPreset::ClaudeCode]).harness,
+            AgentPreset::ClaudeCode
+        );
     }
 }

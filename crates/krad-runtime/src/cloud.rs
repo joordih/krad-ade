@@ -11,7 +11,9 @@ mod naming;
 mod results;
 mod workspace;
 
-pub(crate) use carry::{carried_chats, carry_chats, fresh_start, CarriedChat, CarrySource};
+pub(crate) use carry::{
+    carried_chats, carry_chats, first_start, fresh_start, CarriedChat, CarrySource,
+};
 pub(crate) use hand_over::{hand_over, HandOver, HandOverError};
 pub(crate) use naming::{
     cloud_chat_harness, cloud_session_name, holds_cloud_work, new_nonce as draft_nonce,
@@ -47,6 +49,7 @@ pub(crate) struct DraftFacts {
     pub(crate) name: Option<String>,
     pub(crate) upstream: Option<String>,
     pub(crate) carried: Vec<CarriedChat>,
+    pub(crate) starts: Vec<CloudChatStart>,
     pub(crate) reach: CloudReach,
 }
 

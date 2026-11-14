@@ -9,9 +9,11 @@ use cloud::{
     cloned_with_remote, create_cloud_session, environment, environment_data, install_id, news,
     send, start, temp_folder, use_fake_runner, Started, TestResult, RUNNER,
 };
-use krad_domain::{RunnerCli, RunnerLogin};
+use krad_domain::{AgentPreset, Prompt, RunnerCli, RunnerLogin};
 use krad_host::{APP_DIR, HOST_CLI_BUILD, HOST_CLI_PROGRAM};
-use krad_protocol::{CloudCommand, CloudNews, CloudReach, Command, Reply, RunnerCommand};
+use krad_protocol::{
+    CloudCommand, CloudNews, CloudReach, Command, FirstChat, Reply, RunnerCommand,
+};
 use repo::{committed_repo, git};
 use std::error::Error;
 use std::os::unix::fs::PermissionsExt as _;
@@ -22,6 +24,7 @@ const BRANCH_PREFIX: &str = "krad/";
 const EXECUTABLE: u32 = 0o755;
 const BIN_DIR: &str = "bin";
 const PAIR_VERB: &str = "cloud-pair";
+const FIRST_PROMPT: &str = "Fix the flaky login test";
 
 fn install_fake_cli(runner_home: &Path) -> Result<(), Box<dyn Error>> {
     let bin = runner_home.join(APP_DIR).join(HOST_CLI_BUILD).join(BIN_DIR);
@@ -50,7 +53,11 @@ fn a_cloud_session_is_prepared_over_the_wire_of_a_runner_without_a_runtime_and_i
     let root = local.0.join("work");
     install_fake_cli(&runner_home.0)?;
     let started = start(&root, install_id()?)?;
-    let (logins, opened) = create_cloud_session(&started, CloudReach::Runtime)?;
+    let first = FirstChat {
+        harness: AgentPreset::Codex,
+        prompt: Prompt::new(FIRST_PROMPT, Vec::new()),
+    };
+    let (logins, opened) = create_cloud_session(&started, CloudReach::Runtime, Some(first))?;
     let Started {
         runtime,
         group,
@@ -69,7 +76,11 @@ fn a_cloud_session_is_prepared_over_the_wire_of_a_runner_without_a_runtime_and_i
     assert_eq!(login_of(RunnerCli::Github), Some(RunnerLogin::SignedIn));
     assert_eq!(login_of(RunnerCli::Gitlab), Some(RunnerLogin::SignedOut));
     assert_eq!(opened.group, group);
-    assert_eq!(opened.starts.len(), 1);
+    let [start] = opened.starts.as_slice() else {
+        return Err("the cloud session did not open its one chat".into());
+    };
+    assert_eq!(start.harness, AgentPreset::Codex);
+    assert_eq!(start.prompts, vec![Prompt::new(FIRST_PROMPT, Vec::new())]);
     let data = environment_data(&runtime)?;
     let placement = data
         .session(opened.session)

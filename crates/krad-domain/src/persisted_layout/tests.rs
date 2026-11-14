@@ -117,6 +117,22 @@ fn an_environment_takes_its_view_preferences_or_starts_with_defaults() {
 }
 
 #[test]
+fn the_chosen_cloud_runner_of_new_chats_is_kept_and_older_files_run_here() -> serde_json::Result<()>
+{
+    let name = EnvironmentName::new(DEFAULT_ENVIRONMENT.to_owned());
+    let chosen = EnvironmentViewPreferences {
+        run_on: Some(CloudRunnerId(3)),
+        ..EnvironmentViewPreferences::new(name.clone())
+    };
+    assert_eq!(through_json(&chosen)?, chosen);
+    let here = serde_json::to_value(EnvironmentViewPreferences::new(name))?;
+    assert_eq!(here.get("run_on"), None);
+    let older: EnvironmentViewPreferences = serde_json::from_value(here)?;
+    assert_eq!(older.run_on, None);
+    Ok(())
+}
+
+#[test]
 fn toolchain_choices_and_group_activation_survive_a_restart() -> serde_json::Result<()> {
     let mut environment = main_environment();
     let group = environment.add_group(PathBuf::from("/work/api"), None);

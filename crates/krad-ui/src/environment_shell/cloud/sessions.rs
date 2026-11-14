@@ -50,6 +50,7 @@ impl EnvironmentShell {
             group,
             runner,
             reach: CloudReach::Runtime,
+            first: None,
         });
     }
 

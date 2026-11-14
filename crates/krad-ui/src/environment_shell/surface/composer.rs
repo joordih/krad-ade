@@ -1,4 +1,5 @@
 mod effort_slider;
+mod run_on;
 mod tray;
 mod usage;
 
@@ -115,6 +116,7 @@ impl EnvironmentShell {
                     .is_some()
                     .then(|| self.orchestrator_control(id, cx)),
             )
+            .children(self.run_on_control(id, cx))
             .child(self.model_controls(id, chat, &facts, cx));
         div()
             .flex()

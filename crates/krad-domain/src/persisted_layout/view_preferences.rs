@@ -1,4 +1,5 @@
 use crate::backdrop_image::Backdrops;
+use crate::cloud::CloudRunnerId;
 use crate::environment::EnvironmentData;
 use crate::group::ShownExtensionViews;
 use crate::ids::{EnvironmentName, TerminalId};
@@ -85,6 +86,8 @@ pub struct EnvironmentViewPreferences {
     pub note_tabs: Vec<NoteTabs>,
     #[serde(default, skip_serializing_if = "ShownExtensionViews::is_empty")]
     pub extension_views: ShownExtensionViews,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_on: Option<CloudRunnerId>,
 }
 
 impl EnvironmentViewPreferences {
@@ -97,6 +100,7 @@ impl EnvironmentViewPreferences {
             side_panel: SidePanelLayout::default(),
             note_tabs: Vec::new(),
             extension_views: ShownExtensionViews::default(),
+            run_on: None,
         }
     }
 }
@@ -110,6 +114,7 @@ impl From<&EnvironmentData> for EnvironmentViewPreferences {
             side_panel: environment.side_panel.clone(),
             note_tabs: environment.note_tabs.clone(),
             extension_views: environment.extension_views.clone(),
+            run_on: None,
         }
     }
 }
@@ -123,6 +128,7 @@ impl EnvironmentData {
             side_panel: std::mem::take(&mut self.side_panel),
             note_tabs: std::mem::take(&mut self.note_tabs),
             extension_views: std::mem::take(&mut self.extension_views),
+            run_on: None,
         }
     }
 
