@@ -1,3 +1,4 @@
+mod asked_sign_in;
 mod channels;
 mod files;
 mod login_env;

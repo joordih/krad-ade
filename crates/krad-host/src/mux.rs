@@ -13,8 +13,10 @@ mod shim;
 mod tests;
 mod wire;
 
+pub(crate) use askpass::ask_through;
 pub use askpass::{askpass_alias, is_askpass_invocation, ASKPASS_PROGRAM};
 pub use bootstrap::BootstrapFailure;
+pub(crate) use broker::Broker;
 pub(crate) use carrier::{MuxCarrier, MuxTools};
 pub(crate) use channel::Channel;
 pub(crate) use forward::MuxForward;

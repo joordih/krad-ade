@@ -57,22 +57,6 @@ impl RuntimeHandle {
     }
 
     #[must_use]
-    pub fn open_runner_ssh_sign_in(
-        &self,
-        terminal: AgentRef,
-        runner: CloudRunnerId,
-    ) -> TerminalView {
-        let shared = Shared::new(self.inbox.clone());
-        let view = TerminalView::new(Arc::clone(&shared));
-        self.deliver(Input::Runner(RunnerInput::OpenSshSignIn {
-            terminal,
-            runner,
-            shared,
-        }));
-        view
-    }
-
-    #[must_use]
     pub fn open_claude_setup_token(&self, terminal: AgentRef) -> TerminalView {
         let shared = Shared::new(self.inbox.clone());
         let view = TerminalView::new(Arc::clone(&shared));

@@ -332,6 +332,12 @@
       "spot": {},
       "verb": "check"
     },
+    "host_cancel_prompt": {
+      "answer": null,
+      "area": "host",
+      "prompt": 2,
+      "verb": "answer_prompt"
+    },
     "host_close_all": {
       "area": "host",
       "verb": "close_all"
@@ -740,6 +746,20 @@
       },
       "seq": 49
     },
+    "runner_prompted": {
+      "feed": "event",
+      "kind": {
+        "asker": {
+          "asker": "runner",
+          "runner": 1
+        },
+        "kind": "secret",
+        "prompt": 2,
+        "text": "me@gpu's password: ",
+        "type": "host_prompted"
+      },
+      "seq": 55
+    },
     "runner_signing_in": {
       "feed": "event",
       "kind": {
@@ -992,6 +1012,37 @@
           "type": "runner_changed"
         },
         "seq": 54,
+        "type": "feed"
+      }
+    },
+    {
+      "line": {
+        "feed": "event",
+        "kind": {
+          "asker": {
+            "asker": "extension",
+            "extension": "vm"
+          },
+          "kind": "secret",
+          "prompt": 3,
+          "text": "Passphrase: ",
+          "type": "host_prompted"
+        },
+        "seq": 56,
+        "type": "feed"
+      },
+      "reads_as": {
+        "feed": "event",
+        "kind": {
+          "asker": {
+            "asker": "unknown"
+          },
+          "kind": "secret",
+          "prompt": 3,
+          "text": "Passphrase: ",
+          "type": "host_prompted"
+        },
+        "seq": 56,
         "type": "feed"
       }
     },

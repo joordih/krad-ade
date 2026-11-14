@@ -2,11 +2,28 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
+use super::broker::Broker;
 use crate::layout::APP_VERSION;
 
 pub const ASKPASS_PROGRAM: &str = "krad-ade-askpass";
 const ALIAS_DIR: &str = "bin";
+const ASKPASS_VAR: &str = "SSH_ASKPASS";
+const ASKPASS_REQUIRE_VAR: &str = "SSH_ASKPASS_REQUIRE";
+const ASKPASS_FORCED: &str = "force";
+const DISPLAY_VAR: &str = "DISPLAY";
+const PLACEHOLDER_DISPLAY: &str = "krad-ade:0";
+
+pub(crate) fn ask_through(command: &mut Command, askpass: &Path, broker: &Broker) {
+    command
+        .env(ASKPASS_VAR, askpass)
+        .env(ASKPASS_REQUIRE_VAR, ASKPASS_FORCED)
+        .envs(broker.env());
+    if std::env::var_os(DISPLAY_VAR).is_none() {
+        command.env(DISPLAY_VAR, PLACEHOLDER_DISPLAY);
+    }
+}
 
 #[must_use]
 pub fn is_askpass_invocation(program: &OsStr) -> bool {

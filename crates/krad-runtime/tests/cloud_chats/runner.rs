@@ -1,3 +1,5 @@
+use krad_agents::ASKPASS_VERB;
+use krad_host::mux::run_askpass;
 use krad_host::runner::{run_client_verb, runner_root, runner_socket, runtime_socket, RUNNER_VERB};
 use krad_host::{HostLayout, APP_DIR, HOST_CLI_BUILD, HOST_CLI_PROGRAM};
 use krad_runner::{run_runner_verb, serve_runner};
@@ -43,7 +45,9 @@ pub fn serve_as_host_cli() -> Option<ExitCode> {
         drop(writeln!(std::io::stdout(), "{HOST_CLI_BUILD}"));
         return Some(ExitCode::SUCCESS);
     }
-    let code = if verb == RUNNER_VERB {
+    let code = if verb == ASKPASS_VERB {
+        run_askpass(rest.first().map_or("", String::as_str))
+    } else if verb == RUNNER_VERB {
         runner_root()
             .and_then(|root| serve_runner(&root, Secrets::in_memory()))
             .unwrap_or(i32::from(EXIT_FAILED))
@@ -67,6 +71,17 @@ pub fn install_host_cli(runner_home: &Path) -> Result<(), Box<dyn Error>> {
     std::fs::write(&cli, script)?;
     std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(EXECUTABLE))?;
     Ok(())
+}
+
+pub fn askpass_cli(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    let cli = dir.join(HOST_CLI_PROGRAM);
+    let script = format!(
+        "#!/bin/sh\n{CLI_MODE_VAR}={CLI_MODE_ON}\nexport {CLI_MODE_VAR}\nexec '{}' {ASKPASS_VERB} \"$@\"\n",
+        std::env::current_exe()?.display()
+    );
+    std::fs::write(&cli, script)?;
+    std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(EXECUTABLE))?;
+    Ok(cli)
 }
 
 pub fn runner_dir(runner_home: &Path) -> PathBuf {

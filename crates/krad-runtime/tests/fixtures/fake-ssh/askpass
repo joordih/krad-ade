@@ -1,0 +1,24 @@
+#!/bin/sh
+[ -n "${KRAD_FAKE_SIGN_IN_MARK:-}" ] || exit 255
+[ -f "$KRAD_FAKE_SIGN_IN_MARK" ] && exec "$(dirname "$0")/connects" "$@"
+case " $* " in
+  *" -O "*) exit 255 ;;
+  *BatchMode=yes*)
+    echo "me@askpass.invalid: Permission denied (publickey,password)." >&2
+    exit 255
+    ;;
+esac
+[ -t 0 ] && exit 255
+[ "${SSH_ASKPASS_REQUIRE:-}" = force ] && [ -x "${SSH_ASKPASS:-}" ] || exit 255
+tries=0
+while [ "$tries" -lt 3 ]; do
+  tries=$((tries + 1))
+  answer=$("$SSH_ASKPASS" "me@askpass.invalid's password: ") || answer=
+  if [ -n "$answer" ] && [ "$answer" = "${KRAD_FAKE_SSH_PASSWORD:-}" ]; then
+    : > "$KRAD_FAKE_SIGN_IN_MARK"
+    exit 0
+  fi
+  echo "Permission denied, please try again." >&2
+done
+echo "me@askpass.invalid: Permission denied (publickey,password)." >&2
+exit 255

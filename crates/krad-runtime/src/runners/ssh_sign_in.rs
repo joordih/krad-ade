@@ -1,75 +1,51 @@
 use krad_domain::CloudRunnerId;
-use krad_protocol::AgentRef;
 use std::collections::HashMap;
 
-#[derive(Debug, PartialEq, Eq)]
-enum SshSignIn {
-    Wanted,
-    Open(AgentRef),
-}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct SignInRun(u64);
 
 #[derive(Debug, Default)]
-pub(crate) struct SshSignIns(HashMap<CloudRunnerId, SshSignIn>);
+pub(crate) struct SshSignIns {
+    running: HashMap<CloudRunnerId, SignInRun>,
+    last: SignInRun,
+}
 
 impl SshSignIns {
-    pub(crate) fn want(&mut self, runner: CloudRunnerId) {
-        self.0.insert(runner, SshSignIn::Wanted);
+    pub(crate) fn start(&mut self, runner: CloudRunnerId) -> SignInRun {
+        self.last = SignInRun(self.last.0 + 1);
+        self.running.insert(runner, self.last);
+        self.last
     }
 
-    pub(crate) fn open(&mut self, runner: CloudRunnerId, terminal: &AgentRef) -> bool {
-        let Some(sign_in) = self.0.get_mut(&runner) else {
-            return false;
-        };
-        if *sign_in != SshSignIn::Wanted {
+    pub(crate) fn finish(&mut self, runner: CloudRunnerId, run: SignInRun) -> bool {
+        if self.running.get(&runner) != Some(&run) {
             return false;
         }
-        *sign_in = SshSignIn::Open(terminal.clone());
+        self.running.remove(&runner);
         true
     }
 
-    pub(crate) fn opened(&self) -> Vec<(CloudRunnerId, AgentRef)> {
-        self.0
-            .iter()
-            .filter_map(|(runner, sign_in)| match sign_in {
-                SshSignIn::Open(terminal) => Some((*runner, terminal.clone())),
-                SshSignIn::Wanted => None,
-            })
-            .collect()
-    }
-
-    pub(crate) fn finish(&mut self, runner: CloudRunnerId) -> Option<AgentRef> {
-        match self.0.remove(&runner)? {
-            SshSignIn::Open(terminal) => Some(terminal),
-            SshSignIn::Wanted => None,
-        }
+    pub(crate) fn end(&mut self, runner: CloudRunnerId) -> bool {
+        self.running.remove(&runner).is_some()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_domain::{EnvironmentName, TerminalId};
-
-    fn terminal(id: u64) -> AgentRef {
-        AgentRef {
-            environment: EnvironmentName::new("main".to_owned()),
-            terminal: TerminalId(id),
-        }
-    }
 
     #[test]
-    fn only_a_wanted_sign_in_opens_once_and_finishing_hands_its_terminal_back() {
+    fn only_the_latest_sign_in_of_a_runner_finishes_and_an_ended_one_never_does() {
         let runner = CloudRunnerId(2);
         let mut sign_ins = SshSignIns::default();
-        assert!(!sign_ins.open(runner, &terminal(1)));
-        sign_ins.want(runner);
-        assert_eq!(sign_ins.opened(), Vec::new());
-        assert!(sign_ins.open(runner, &terminal(1)));
-        assert!(!sign_ins.open(runner, &terminal(2)));
-        assert_eq!(sign_ins.opened(), [(runner, terminal(1))]);
-        assert_eq!(sign_ins.finish(runner), Some(terminal(1)));
-        assert_eq!(sign_ins.finish(runner), None);
-        sign_ins.want(runner);
-        assert_eq!(sign_ins.finish(runner), None);
+        assert!(!sign_ins.end(runner));
+        let first = sign_ins.start(runner);
+        let second = sign_ins.start(runner);
+        assert!(!sign_ins.finish(runner, first));
+        assert!(sign_ins.finish(runner, second));
+        assert!(!sign_ins.finish(runner, second));
+        let third = sign_ins.start(runner);
+        assert!(sign_ins.end(runner));
+        assert!(!sign_ins.finish(runner, third));
     }
 }

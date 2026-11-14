@@ -26,11 +26,6 @@ pub(crate) enum RunnerInput {
         terminal: AgentRef,
         shared: Arc<Shared>,
     },
-    OpenSshSignIn {
-        terminal: AgentRef,
-        runner: CloudRunnerId,
-        shared: Arc<Shared>,
-    },
     Connect {
         runner: CloudRunnerId,
         reply: oneshot::Sender<Result<RunnerLine, RunnerLineError>>,

@@ -154,6 +154,11 @@ impl Runtime {
                 attempt,
                 prepared,
             } => self.runner_prepared((runner, attempt), prepared),
+            RunnerDone::SignedIn {
+                runner,
+                run,
+                outcome,
+            } => self.runner_signed_in(runner, run, outcome),
             RunnerDone::Removed {
                 runner,
                 host,

@@ -20,6 +20,9 @@ mod repo;
 #[path = "cloud_chats/runner.rs"]
 mod runner;
 #[cfg(unix)]
+#[path = "cloud_chats/runner_sign_in.rs"]
+mod runner_sign_in;
+#[cfg(unix)]
 #[path = "cloud_chats/scenarios.rs"]
 mod scenarios;
 
@@ -29,7 +32,11 @@ use std::process::ExitCode;
 type Case = (&'static str, fn() -> cloud::TestResult);
 
 #[cfg(unix)]
-const CASES: [Case; 4] = [
+const CASES: [Case; 5] = [
+    (
+        "a_cloud_runner_asks_for_its_password_in_the_app_and_signs_in_with_the_answer",
+        runner_sign_in::a_cloud_runner_asks_for_its_password_in_the_app_and_signs_in_with_the_answer,
+    ),
     (
         "a_cloud_chat_answers_on_the_runner_reattaches_from_its_offset_and_replays_its_journal",
         scenarios::a_cloud_chat_answers_on_the_runner_reattaches_from_its_offset_and_replays_its_journal,

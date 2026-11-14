@@ -7,6 +7,7 @@ mod sign_in;
 mod ssh_dialog;
 
 pub(super) use folder_browser::{FolderBrowser, FolderPurpose};
+pub(super) use sign_in::{SignInDialog, SignInPlace};
 pub(super) use ssh_dialog::SshDialog;
 
 use gpui_kit::{AnyElement, App, Context, Window};
@@ -121,11 +122,12 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         self.show_waiting_prompt(window, cx);
+        self.show_runner_prompt(window, cx);
         match &self.hosts.dialog {
             HostDialog::Closed => None,
             HostDialog::NewEnvironment(dialog) => Some(Self::ssh_dialog_sheet(dialog, cx)),
             HostDialog::Folder(browser) => Some(Self::folder_browser_sheet(browser, cx)),
-            HostDialog::SignIn(dialog) => Self::sign_in_sheet(dialog, cx),
+            HostDialog::SignIn(dialog) => self.sign_in_sheet(dialog, SignInPlace::Shell, cx),
             HostDialog::Machines(dialog) => Some(Self::machine_dialog_sheet(dialog, cx)),
         }
     }

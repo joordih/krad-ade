@@ -1,4 +1,4 @@
-use krad_domain::EnvironmentName;
+use krad_domain::{EnvironmentName, PromptAsker};
 use krad_protocol::{EnvironmentHost, HostPrompt, HostState, PromptId, RemoteBusState};
 use std::collections::{HashMap, VecDeque};
 
@@ -77,7 +77,25 @@ impl HostsMirror {
     }
 
     pub(in crate::environment_shell) fn next_prompt(&mut self) -> Option<HostPrompt> {
-        self.prompts.pop_front()
+        self.take_first(|asker| !matches!(asker, PromptAsker::Runner { .. }))
+    }
+
+    pub(in crate::environment_shell) fn next_runner_prompt(&mut self) -> Option<HostPrompt> {
+        self.take_first(|asker| matches!(asker, PromptAsker::Runner { .. }))
+    }
+
+    pub(in crate::environment_shell) fn runner_prompt_waits(&self) -> bool {
+        self.prompts
+            .iter()
+            .any(|prompt| matches!(prompt.asker, PromptAsker::Runner { .. }))
+    }
+
+    fn take_first(&mut self, wanted: impl Fn(&PromptAsker) -> bool) -> Option<HostPrompt> {
+        let at = self
+            .prompts
+            .iter()
+            .position(|prompt| wanted(&prompt.asker))?;
+        self.prompts.remove(at)
     }
 
     pub(in crate::environment_shell) fn replace(
@@ -170,5 +188,31 @@ mod tests {
         mirror.prompt_settled(PromptId(9));
         assert_eq!(mirror.next_prompt(), Some(prompt));
         assert_eq!(mirror.next_prompt(), None);
+    }
+
+    #[test]
+    fn a_runner_s_prompts_are_kept_for_the_settings_and_never_reach_the_host_dialog() {
+        let mut mirror = HostsMirror::default();
+        let asked = |prompt: u64, asker: PromptAsker| HostPrompt {
+            prompt: PromptId(prompt),
+            asker,
+            kind: PromptKind::Secret,
+            text: "Password: ".to_owned(),
+        };
+        let runner = asked(
+            1,
+            PromptAsker::Runner {
+                runner: krad_domain::CloudRunnerId(3),
+            },
+        );
+        let git = asked(2, PromptAsker::Git);
+        mirror.prompted(runner.clone());
+        mirror.prompted(git.clone());
+        assert_eq!(mirror.next_prompt(), Some(git));
+        assert_eq!(mirror.next_prompt(), None);
+        assert!(mirror.runner_prompt_waits());
+        assert_eq!(mirror.next_runner_prompt(), Some(runner));
+        assert!(!mirror.runner_prompt_waits());
+        assert_eq!(mirror.next_runner_prompt(), None);
     }
 }

@@ -5,8 +5,7 @@ use super::super::runtime_view::RunnerReach;
 
 const NOT_CONNECTED: &str = "Not connected";
 const CONNECTING: &str = "Connecting";
-const SIGNING_IN: &str =
-    "Signing in…: type the password, passphrase or code in the SSH sign-in terminal";
+const SIGNING_IN: &str = "Signing in…: answer ssh in the sign-in dialog";
 const UNKNOWN_STATE: &str = "In a state this version does not know";
 const INSTALLING: &str = "Installing the runner";
 const READY: &str = "Ready";

@@ -1,7 +1,6 @@
 mod pending;
 mod relay;
 
-use krad_domain::SshDestination;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -42,17 +41,14 @@ pub(crate) struct Broker {
 
 struct Shared {
     token: String,
-    destination: SshDestination,
+    asker: PromptAsker,
     prompts: Option<PromptSender>,
     pending: Arc<Mutex<Pending>>,
     remote: Arc<Mutex<Option<Session>>>,
 }
 
 impl Broker {
-    pub(crate) fn start(
-        destination: SshDestination,
-        prompts: Option<PromptSender>,
-    ) -> io::Result<Self> {
+    pub(crate) fn start(asker: PromptAsker, prompts: Option<PromptSender>) -> io::Result<Self> {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
         listener.set_nonblocking(true)?;
         let endpoint = listener.local_addr()?;
@@ -62,7 +58,7 @@ impl Broker {
         let stop = Arc::new(AtomicBool::new(false));
         let shared = Arc::new(Shared {
             token: token.clone(),
-            destination,
+            asker,
             prompts,
             pending: Arc::clone(&pending),
             remote: Arc::clone(&remote),
@@ -189,13 +185,7 @@ fn ask(shared: &Shared, text: String) -> Option<Secret> {
     let prompts = shared.prompts.as_ref()?;
     let (answer, answered) = mpsc::channel();
     prompts
-        .send(SignInPrompt::new(
-            PromptAsker::Host {
-                destination: shared.destination.clone(),
-            },
-            text,
-            answer,
-        ))
+        .send(SignInPrompt::new(shared.asker.clone(), text, answer))
         .ok()?;
     answered.recv_timeout(SIGN_IN_WAIT).ok().flatten()
 }
@@ -241,6 +231,12 @@ pub(crate) fn askpass_header(token: &str, prompt: &str) -> String {
 mod tests {
     use super::*;
 
+    fn devbox() -> Result<PromptAsker, krad_domain::SshDestinationError> {
+        Ok(PromptAsker::Host {
+            destination: "devbox".parse()?,
+        })
+    }
+
     #[test]
     fn tokens_compare_whole_and_differ_between_brokers() {
         let token = new_token();
@@ -253,7 +249,7 @@ mod tests {
     fn an_askpass_question_reaches_the_prompts_and_its_answer_comes_back(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (prompts, asked) = mpsc::channel();
-        let broker = Broker::start("devbox".parse()?, Some(prompts))?;
+        let broker = Broker::start(devbox()?, Some(prompts))?;
         let answering = thread::spawn(move || {
             if let Ok(prompt) = asked.recv() {
                 let text = prompt.text.clone();
@@ -275,7 +271,7 @@ mod tests {
 
     #[test]
     fn a_wrong_token_gets_nothing() -> Result<(), Box<dyn std::error::Error>> {
-        let broker = Broker::start("devbox".parse()?, None)?;
+        let broker = Broker::start(devbox()?, None)?;
         let mut stream = TcpStream::connect(broker.endpoint)?;
         stream.write_all(askpass_header("0000", "x").as_bytes())?;
         stream.write_all(b"x")?;
