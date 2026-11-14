@@ -15,6 +15,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  ZIG_VERSION: 0.17.0
 
 jobs:
   build:
@@ -25,16 +26,29 @@ jobs:
           - runner: ubuntu-22.04
             platform: linux-x86_64
             target: x86_64-unknown-linux-musl
+            zig-host: x86_64-linux
+            zig-sha256: 1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026
           - runner: ubuntu-24.04-arm
             platform: linux-aarch64
             target: aarch64-unknown-linux-musl
+            zig-host: aarch64-linux
+            zig-sha256: 9e8d11661d4ae3bd57702a3832781e23ad151dde5798e16a5ccd503f65234ff8
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
-      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: sudo apt-get update && sudo apt-get install -y pkg-config
+      - name: Install Zig
+        env:
+          ZIG_ARCHIVE: zig-${{ matrix.zig-host }}-${{ env.ZIG_VERSION }}
+          ZIG_SHA256: ${{ matrix.zig-sha256 }}
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/$ZIG_ARCHIVE.tar.xz" "https://ziglang.org/download/$ZIG_VERSION/$ZIG_ARCHIVE.tar.xz"
+          echo "$ZIG_SHA256  $RUNNER_TEMP/$ZIG_ARCHIVE.tar.xz" | sha256sum --check
+          tar -xJf "$RUNNER_TEMP/$ZIG_ARCHIVE.tar.xz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/$ZIG_ARCHIVE" >> "$GITHUB_PATH"
       - uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941
         with:
           tool: just

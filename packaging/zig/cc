@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+zig_target=$KRAD_ZIG_TARGET
+for argument do
+    shift
+    case $argument in
+        --target=*) ;;
+        *) set -- "$@" "$argument" ;;
+    esac
+done
+exec "${ZIG:-zig}" cc -target "$zig_target" "$@"
