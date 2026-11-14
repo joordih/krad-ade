@@ -34,7 +34,7 @@ impl EnvironmentShell {
         node: &TerminalNode,
     ) -> AgentInfo {
         let session = live.sessions.get(&node.id);
-        let chat = self.chat_presence(env, node.id).is_some();
+        let chat = self.runs_chat(env, node.id);
         let alive = chat || session.is_some_and(LiveTerminal::is_running);
         AgentInfo {
             environment: Some(env.as_str().to_owned()),

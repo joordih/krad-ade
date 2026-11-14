@@ -1,14 +1,11 @@
-use krad_domain::{EnvironmentViewPreferences, GroupId, PermissionMode, TerminalId};
+use krad_domain::{EnvironmentViewPreferences, GroupId, TerminalId};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Instant;
 
 use super::live_terminal::LiveTerminal;
 use super::runtime_view::EnvironmentCopy;
-use super::{
-    activity, archive, changes_tab, file_tab, session_templates, surface, terminal_images, workers,
-    Prompt,
-};
+use super::{activity, archive, changes_tab, file_tab, surface, terminal_images, workers};
 
 pub(super) struct LiveEnv {
     pub(super) data: Rc<EnvironmentCopy>,
@@ -18,11 +15,6 @@ pub(super) struct LiveEnv {
     pub(super) focused: Option<TerminalId>,
     pub(super) selected_group: Option<GroupId>,
     pub(super) working_since: HashMap<TerminalId, Instant>,
-    pub(super) pending_chats: HashMap<TerminalId, krad_domain::LiveSession>,
-    pub(super) waiting_prompts: HashMap<TerminalId, Vec<Prompt>>,
-    pub(super) waiting_modes: HashMap<TerminalId, PermissionMode>,
-    pub(super) waiting_choices: HashMap<TerminalId, session_templates::ChatChoices>,
-    pub(super) noticed_chats: Vec<TerminalId>,
     pub(super) images: HashMap<TerminalId, terminal_images::TerminalImages>,
     pub(super) editors: HashMap<TerminalId, file_tab::FileEditor>,
     pub(super) diffs: HashMap<TerminalId, changes_tab::FileDiff>,
@@ -47,7 +39,6 @@ impl LiveEnv {
             .and_then(|id| data.group_of(id))
             .or_else(|| data.groups.first())
             .map(|group| group.id);
-        let pending_chats = surface::restored_chats(&data.nodes);
         Self {
             data,
             view,
@@ -56,11 +47,6 @@ impl LiveEnv {
             focused,
             selected_group,
             working_since: HashMap::new(),
-            pending_chats,
-            waiting_prompts: HashMap::new(),
-            waiting_modes: HashMap::new(),
-            waiting_choices: HashMap::new(),
-            noticed_chats: Vec::new(),
             images: HashMap::new(),
             editors: HashMap::new(),
             diffs: HashMap::new(),

@@ -378,6 +378,9 @@ impl Chats {
     }
 
     pub(crate) fn flush_all(&mut self, work: &mut ChatWork<'_>) {
+        for chat in self.open.values_mut() {
+            history::host_reached(chat, work);
+        }
         let open: Vec<AgentRef> = self.open.keys().cloned().collect();
         for id in open {
             self.flush(&id, work);

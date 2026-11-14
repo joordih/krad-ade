@@ -18,6 +18,7 @@ mod heard;
 mod hosts;
 mod kraddie_minds;
 mod kraddies;
+mod local_chats;
 mod mail;
 mod settings;
 mod shown_environments;
@@ -32,6 +33,7 @@ pub(super) use git::{GitGroups, GitKey, GitMirror, GitMove};
 pub(super) use hosts::{HostMove, HostsMirror};
 pub(super) use kraddie_minds::KraddieMinds;
 pub(super) use kraddies::{AutomationEntry, KraddieBook, KraddieEntry, KraddiesMirror};
+pub(super) use local_chats::LocalChats;
 pub(super) use mail::MailNotices;
 use shown_environments::ShownEnvironments;
 use view_model::RuntimeNews;
@@ -54,6 +56,7 @@ pub(super) struct RuntimeLink {
     pub(super) settings: Rc<Settings>,
     pub(super) git: Rc<GitGroups>,
     pub(super) kraddies: Rc<KraddieBook>,
+    pub(super) chats: Rc<LocalChats>,
     palette: Option<AnsiPalette>,
 }
 
@@ -70,6 +73,7 @@ impl RuntimeLink {
             settings,
             git: Rc::default(),
             kraddies: Rc::default(),
+            chats: Rc::default(),
             palette: None,
         }
     }
@@ -81,6 +85,15 @@ impl RuntimeLink {
         self.settings = model.settings.current();
         self.git = model.git.current();
         self.kraddies = model.kraddies.current();
+        self.chats = Rc::clone(&model.chats);
+    }
+
+    pub(super) fn edit_chats(&mut self, cx: &mut App, edit: impl FnOnce(&mut LocalChats)) {
+        drop(std::mem::take(&mut self.chats));
+        self.chats = self.view.update(cx, |model, _| {
+            edit(Rc::make_mut(&mut model.chats));
+            Rc::clone(&model.chats)
+        });
     }
 
     pub(super) fn shown(&self, env: &EnvironmentName, cx: &App) -> Option<Rc<EnvironmentCopy>> {

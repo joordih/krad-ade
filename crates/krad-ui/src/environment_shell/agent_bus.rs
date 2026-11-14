@@ -12,7 +12,6 @@ mod workspace;
 use futures::StreamExt as _;
 use gpui_kit::{App, Context};
 use krad_domain::agents_api::{Caller, ErrorCode, Request, Response, TerminalHandle};
-use krad_domain::TerminalState;
 use krad_domain::{parse_wsl_path, EnvironmentName, Host, TerminalId};
 use krad_runtime::{local_caller_vars, remote_caller_vars, BusReply, Delegated};
 use std::collections::HashSet;
@@ -30,12 +29,6 @@ const ANSWERED_BY_RUNTIME: &str = "The runtime answers this request before it re
 #[derive(Default)]
 pub(super) struct BusWork {
     pub(super) remote_unavailable_told: HashSet<Host>,
-}
-
-enum Settlement {
-    Missing,
-    Working,
-    Settled(TerminalState),
 }
 
 fn answered_by_runtime() -> Response {
@@ -165,15 +158,11 @@ impl EnvironmentShell {
             | Request::Changes { .. }
             | Request::Hook { .. }
             | Request::Wait { .. }
+            | Request::Read { .. }
             | Request::Spawn { .. } => Some(answered_by_runtime()),
             Request::Close(_) => Some(Response::error(ErrorCode::Forbidden, ONLY_LEADS_CLOSE)),
             Request::Send { to, body } => {
                 self.post(from, to, body, reply);
-                return;
-            }
-            Request::Read { target, lines } => {
-                let tail = self.screen_tail(&from.environment, target, lines);
-                Self::reply_tail(tail, reply, cx);
                 return;
             }
             Request::Askpass { .. } => Some(askpass::git_only()),

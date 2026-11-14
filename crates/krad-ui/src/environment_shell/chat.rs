@@ -1,12 +1,10 @@
 mod context;
 mod file_index;
-mod live;
 mod panel;
 mod suggest;
 
 pub(super) use file_index::FilesFor;
 pub(super) use krad_domain::{fold_entry, AnswerPart, ChatMessage, ShownOutput};
-pub(super) use live::StartError;
 pub(super) use panel::question_bubble;
 use suggest::Suggest;
 

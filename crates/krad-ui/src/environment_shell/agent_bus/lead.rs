@@ -1,13 +1,11 @@
 use gpui_kit::Context;
 use krad_domain::agents_api::{ErrorCode, LeadHandle, Request, Response};
-use krad_domain::TerminalState;
-use krad_domain::{AgentState, EnvironmentName, SessionId, TerminalId, VariantRunId};
+use krad_domain::{EnvironmentName, SessionId, TerminalId, VariantRunId};
 use krad_runtime::BusReply;
 
 use super::super::EnvironmentShell;
 use super::close::{pick_refusal, session_close_refusal};
-use super::requests::ScreenTail;
-use super::{handle, Settlement};
+use super::requests::CLOSED_TERMINAL;
 
 const NOT_A_LEAD_ANYMORE: &str = "This chat is no longer its session's lead";
 const NO_LEAD_GROUP: &str = "The lead's session belongs to no group, so it cannot start workers";
@@ -39,10 +37,7 @@ impl EnvironmentShell {
             Some(None) => NO_LEAD_GROUP,
             Some(Some(group)) => {
                 match request {
-                    Request::Close(order) => {
-                        self.close_for_lead(&env, session, order, reply, cx);
-                    }
-                    Request::Spawn { .. } => {
+                    Request::Close(_) | Request::Spawn { .. } => {
                         reply.send(super::answered_by_runtime()).unwrap_or_default();
                     }
                     request @ Request::CloseSession { session: closing } => {
@@ -66,13 +61,12 @@ impl EnvironmentShell {
                             None => self.answer_chat(&lead.environment, group, request, reply, cx),
                         }
                     }
-                    other => {
-                        if let Some(answer) = self.answer_worker(&env, session, &other, cx) {
-                            Self::reply_tail(answer, reply, cx);
-                            return;
-                        }
-                        self.answer_chat(&lead.environment, group, other, reply, cx);
+                    Request::Send { to, body } => {
+                        let response =
+                            self.reopen_and_send(&env, session, TerminalId(to), &body, cx);
+                        reply.send(response).unwrap_or_default();
                     }
+                    other => self.answer_chat(&lead.environment, group, other, reply, cx),
                 }
                 return;
             }
@@ -96,41 +90,21 @@ impl EnvironmentShell {
         })
     }
 
-    fn has_finished(&self, env: &EnvironmentName, terminal: TerminalId) -> bool {
-        let settled = self.settled_state(&handle(env, terminal));
-        let idle = matches!(
-            settled,
-            Settlement::Settled(TerminalState::Running(AgentState::Idle | AgentState::Done))
-        );
-        idle
-    }
-
-    fn answer_worker(
+    fn reopen_and_send(
         &mut self,
         env: &EnvironmentName,
         lead: SessionId,
-        request: &Request,
+        terminal: TerminalId,
+        body: &str,
         cx: &mut Context<Self>,
-    ) -> Option<ScreenTail> {
-        match request {
-            Request::Read { target, lines } => {
-                let terminal = TerminalId(*target);
-                let open = self.worker_place(env, lead, terminal)? == WorkerPlace::Open;
-                if !open || !self.has_finished(env, terminal) {
-                    return None;
-                }
-                let tail = self.screen_tail(env.as_str(), *target, *lines);
-                self.close_finished_worker(env, lead, terminal, cx);
-                Some(tail)
-            }
-            Request::Send { to, .. } => {
-                let terminal = TerminalId(*to);
-                if self.worker_place(env, lead, terminal) == Some(WorkerPlace::Closed) {
-                    self.reopen_worker(env, terminal, cx);
-                }
-                None
-            }
-            _ => None,
+    ) -> Response {
+        let reopened = self.worker_place(env, lead, terminal) == Some(WorkerPlace::Closed)
+            && self.reopen_worker(env, terminal, cx);
+        if reopened && self.queue_chat_prompt(env, terminal, body, cx) {
+            return Response::Submitted {
+                terminal: terminal.as_u64(),
+            };
         }
+        Response::error(ErrorCode::NotFound, CLOSED_TERMINAL)
     }
 }

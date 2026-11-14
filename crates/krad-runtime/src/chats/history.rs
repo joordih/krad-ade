@@ -12,7 +12,7 @@ use std::time::SystemTime;
 use super::backend::{reach_server, HistorySource, Unready};
 use super::chat::{Chat, Earlier, HistoryWait, Shown};
 use super::cloud::{cloud_place, runner_wait};
-use super::{ChatWork, Chats, UNKNOWN_CHAT};
+use super::{ChatWork, Chats, LaunchFacts, UNKNOWN_CHAT};
 use crate::cloud_runs::{site_of, CloudSite, NodeSite};
 use crate::jobs::{JobDone, Jobs};
 use crate::opencode::Reach;
@@ -54,6 +54,10 @@ pub(super) fn read(chat: &mut Chat, work: &mut ChatWork<'_>) {
     let Ok(cloud) = cloud_site(chat, work) else {
         return;
     };
+    if cloud.is_none() && waits_for_host(chat, &work.facts) {
+        chat.history = HistoryWait::ForHost;
+        return;
+    }
     let source = match HistorySource::of(chat, &work.facts) {
         HistorySource::OpencodeOn(..) if resume.is_none() => return,
         HistorySource::OpencodeOn(runner, cwd) => {
@@ -84,6 +88,21 @@ pub(super) fn read(chat: &mut Chat, work: &mut ChatWork<'_>) {
     if let Err(error) = started {
         tracing::warn!(%error, "the chat history job could not start");
     }
+}
+
+pub(super) fn waits_for_host(chat: &Chat, facts: &LaunchFacts<'_>) -> bool {
+    chat.place.cloud.is_none()
+        && !chat.place.host.is_local()
+        && facts.hosts.agents(&chat.id.environment).is_none()
+}
+
+pub(super) fn host_reached(chat: &mut Chat, work: &mut ChatWork<'_>) {
+    if chat.history != HistoryWait::ForHost || waits_for_host(chat, &work.facts) {
+        return;
+    }
+    chat.history = HistoryWait::No;
+    chat.place.link = work.facts.hosts.link(&chat.place.host);
+    read(chat, work);
 }
 
 fn cloud_site(chat: &mut Chat, work: &mut ChatWork<'_>) -> Result<Option<CloudSite>, Unready> {

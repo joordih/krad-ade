@@ -343,3 +343,6 @@ fn agents_on_this_computer_are_found_by_the_runtime_and_kept_in_its_snapshot() -
     assert_eq!(snapshot.hosts.local, vec![found]);
     Ok(())
 }
+
+#[path = "hosts/chat_wait.rs"]
+mod chat_wait;

@@ -220,11 +220,10 @@ fn a_seeded_chat_shows_the_agent_s_mode_and_effort_before_its_session_opens() {
         offers.effort().and_then(|effort| effort.current),
         Some(Effort::Medium)
     );
-    assert_eq!(offers.wanted(), AcpWanted::default());
 }
 
 #[test]
-fn choices_made_before_the_session_opened_are_wanted_until_the_runtime_reports_it() {
+fn choices_made_before_the_session_opened_show_until_the_runtime_reports_it() {
     let mut offers = AcpOffers::default();
     offers.seed(&claude_seed("medium"));
     let plan = AcpChoice::Mode(AcpModeId("plan".to_owned()));
@@ -236,17 +235,7 @@ fn choices_made_before_the_session_opened_are_wanted_until_the_runtime_reports_i
     {
         assert!(offers.chose(&choice));
     }
-    let high = (
-        AcpConfigOptionId("effort".to_owned()),
-        AcpConfigValue("high".to_owned()),
-    );
-    assert_eq!(
-        offers.wanted(),
-        AcpWanted {
-            mode: Some(AcpModeId("plan".to_owned())),
-            options: vec![high.clone()],
-        }
-    );
+    assert_eq!(shown_mode(&offers).as_deref(), Some("PLAN"));
     offers.seed(&claude_seed("low"));
     assert_eq!(
         offers.effort().and_then(|effort| effort.current),
@@ -258,7 +247,12 @@ fn choices_made_before_the_session_opened_are_wanted_until_the_runtime_reports_i
         AcpEvent::Modes(modes("plan", &["default", "plan"])),
     );
     assert_eq!(shown_mode(&offers).as_deref(), Some("PLAN"));
-    assert_eq!(offers.wanted(), AcpWanted::default());
+    offers.seed(&claude_seed("medium"));
+    assert_eq!(
+        shown_mode(&offers).as_deref(),
+        Some("PLAN"),
+        "what the agent reported stays"
+    );
 }
 
 #[test]

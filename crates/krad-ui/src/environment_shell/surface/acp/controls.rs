@@ -193,16 +193,14 @@ impl EnvironmentShell {
         if !structured.acp.chose(&choice) {
             return;
         }
-        if structured.in_runtime() {
-            self.post_runtime_chat(&place, id, |chat| match choice {
-                AcpChoice::Mode(mode) => ChatCommand::SetAcpMode { chat, mode },
-                AcpChoice::Option(option, value) => ChatCommand::SetAcpOption {
-                    chat,
-                    option,
-                    value,
-                },
-            });
-        }
+        self.post_runtime_chat(&place, id, |chat| match choice {
+            AcpChoice::Mode(mode) => ChatCommand::SetAcpMode { chat, mode },
+            AcpChoice::Option(option, value) => ChatCommand::SetAcpOption {
+                chat,
+                option,
+                value,
+            },
+        });
         cx.notify();
     }
 }

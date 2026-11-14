@@ -7,6 +7,7 @@ use super::super::super::live_terminal::end_terminal_on;
 use super::super::super::sessions::Launch;
 use super::super::super::EnvironmentShell;
 use super::super::ChatPlace;
+use super::ChatSeed;
 
 impl EnvironmentShell {
     fn node_resume(
@@ -36,12 +37,11 @@ impl EnvironmentShell {
         let Some((group, harness, resume)) = self.node_resume(&env, id) else {
             return;
         };
-        self.leave_runtime(&ChatPlace::here(&env), id);
+        self.close_runtime_chat(&ChatPlace::here(&env), id, cx);
         let Some(live) = self.envs.get_mut(&env) else {
             return;
         };
         live.chats.remove(&id);
-        live.pending_chats.remove(&id);
         let cwd = group
             .and_then(|group| live.data.group(group))
             .map(|group| group.root.clone());
@@ -73,9 +73,9 @@ impl EnvironmentShell {
         if live.sessions.remove(&id).is_some() {
             end_terminal_on(self.runtime.client.as_ref(), &env, id);
         }
-        live.pending_chats.insert(id, LiveSession::Resume(resume));
         self.set_node(&env, id, NodeField::Kind(NodeKind::Chat), cx);
         self.set_node(&env, id, NodeField::Harness(Some(harness)), cx);
+        self.open_chat(&env, id, ChatSeed::from(LiveSession::Resume(resume)), cx);
         self.save_view();
         cx.notify();
     }

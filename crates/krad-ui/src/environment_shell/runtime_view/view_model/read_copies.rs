@@ -57,7 +57,12 @@ impl ViewModel {
                 self.kraddies.digests(&owned);
                 self.heard(Heard::Event(EventKind::DigestsChanged(owned)));
             }
-            kind => self.heard(Heard::Event(kind)),
+            kind => {
+                if kind.chat().is_some() {
+                    Rc::make_mut(&mut self.chats).heard(&kind);
+                }
+                self.heard(Heard::Event(kind));
+            }
         }
     }
 

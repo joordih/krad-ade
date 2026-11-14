@@ -20,9 +20,9 @@ mod hosted_places;
 mod mentions;
 mod message_actions;
 mod origin;
-mod outbox;
 mod place;
 mod prose_views;
+mod queued;
 mod shown_images;
 mod status_line;
 mod structured;
@@ -42,8 +42,8 @@ use gpui_kit::{
     Subscription, Window,
 };
 use krad_domain::{
-    AgentPreset, Effort, EnvironmentName, IndexEntry, Mention, ModelId, NodeField, Prompt,
-    TerminalId, COMPOSER_MIN_ROWS, DEFAULT_CHAT_HARNESS,
+    AgentPreset, Effort, IndexEntry, Mention, ModelId, NodeField, Prompt, TerminalId,
+    COMPOSER_MIN_ROWS, DEFAULT_CHAT_HARNESS,
 };
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -63,13 +63,12 @@ use transcript::TranscriptView;
 
 pub(super) use acp::{AcpChoice, AcpSeed, KeptAdapterView};
 pub(super) use answer::{names_its_tool, tool_question, tool_request};
-pub(super) use bus::ChatPresence;
 pub(super) use chat_menu::ChatCopy;
 pub(super) use edit_diff::edit_diffs;
 pub(super) use hosted_places::HostedPlaces;
 pub(super) use place::ChatPlace;
 pub(super) use status_line::elapsed_label;
-pub(super) use structured::restored_chats;
+pub(super) use structured::ChatSeed;
 pub(super) use structured::StructuredChat;
 
 const INPUT_PLACEHOLDER: &str = "Ask anything…  @ for files, / for skills";
@@ -128,16 +127,6 @@ pub(super) struct ChatView {
 }
 
 impl ChatView {
-    pub(super) fn takes_bus_notice(&self) -> bool {
-        self.chat
-            .structured()
-            .is_some_and(|structured| structured.takes_bus_notice(&self.chat.outbox))
-    }
-
-    pub(super) fn queue_bus_notice(&mut self, notice: String) {
-        self.chat.outbox.push(Prompt::from(notice));
-    }
-
     fn new(input: Entity<TextareaState>, input_events: Subscription, backend: Backend) -> Self {
         Self {
             chat: Chat::new(backend),
@@ -231,45 +220,26 @@ impl EnvironmentShell {
             Some(local) => self.with_kraddie_packs(&local, id, text, cx),
             None => text,
         };
-        if let Some(chat) = self
+        let Some(chat) = self
             .live_mut(&place)
             .and_then(|live| live.chats.get_mut(&id))
-        {
-            chat.mentions.clear();
-            let prompt = Prompt::new(&text, std::mem::take(&mut chat.attached));
-            chat.chat.outbox.push(prompt);
-            chat.pins_latest = true;
-            chat.start_glide(Instant::now());
+        else {
+            return;
+        };
+        chat.mentions.clear();
+        let prompt = Prompt::new(&text, std::mem::take(&mut chat.attached));
+        chat.pins_latest = true;
+        chat.start_glide(Instant::now());
+        let structured = chat.chat.structured().is_some();
+        if structured {
+            chat.show_queued(prompt.clone());
         }
-        self.flush_outbox(&place, id, cx);
-        cx.notify();
-    }
-
-    pub(super) fn flush_noticed_chats(&mut self, cx: &mut Context<Self>) {
-        let noticed: Vec<(EnvironmentName, TerminalId)> = self
-            .envs
-            .iter_mut()
-            .flat_map(|(env, live)| {
-                std::mem::take(&mut live.noticed_chats)
-                    .into_iter()
-                    .map(move |id| (env.clone(), id))
-            })
-            .collect();
-        for (env, id) in noticed {
-            self.flush_outbox(&ChatPlace::here(&env), id, cx);
-        }
-    }
-
-    fn flush_outbox(&mut self, place: &ChatPlace, id: TerminalId, cx: &mut Context<Self>) {
-        let structured = self
-            .live(place)
-            .and_then(|live| live.chats.get(&id))
-            .is_some_and(|chat| chat.chat.structured().is_some());
         match (structured, place.local().cloned()) {
-            (true, _) => self.flush_structured(place, id, cx),
-            (false, Some(local)) => self.flush_transcript(&local, id),
+            (true, _) => self.send_prompt(&place, id, prompt, cx),
+            (false, Some(local)) => self.submit_text_into(&local, id, &prompt.text),
             (false, None) => {}
         }
+        cx.notify();
     }
 
     pub(super) fn show_earlier(&mut self, id: TerminalId, cx: &mut Context<Self>) {
@@ -288,13 +258,7 @@ impl EnvironmentShell {
 
     pub(super) fn cancel_queued(&mut self, id: TerminalId, index: usize, cx: &mut Context<Self>) {
         let place = self.chat_place();
-        let queued = self
-            .live_mut(&place)
-            .and_then(|live| live.chats.get_mut(&id))
-            .and_then(|chat| chat.cancel_pending(index));
-        if let Some(index) = queued {
-            self.unqueue_in_runtime(&place, id, index);
-        }
+        self.unqueue_in_runtime(&place, id, index);
         cx.notify();
     }
 
@@ -328,7 +292,7 @@ impl EnvironmentShell {
         if !messages.is_empty() || !structured.is_fresh() {
             return HarnessChange::Refused;
         }
-        self.leave_runtime(place, id);
+        self.close_runtime_chat(place, id, cx);
         let Some(Backend::Structured(structured)) = self
             .live_mut(place)
             .and_then(|live| live.chats.get_mut(&id))
@@ -337,7 +301,9 @@ impl EnvironmentShell {
             return HarnessChange::Kept;
         };
         structured.switch_harness(*harness);
+        let session = structured.session.clone();
         self.set_node(&local, id, NodeField::Harness(Some(*harness)), cx);
+        self.open_chat(&local, id, ChatSeed::from(session), cx);
         self.seed_acp_chats(cx);
         HarnessChange::Switched
     }
@@ -368,10 +334,6 @@ impl EnvironmentShell {
             self.remember_choice(&local, id, &chosen, cx);
         }
         cx.notify();
-    }
-
-    pub(super) fn stop_turn_in(&mut self, place: &ChatPlace, id: TerminalId) {
-        self.run_surface_command(place, id, SurfaceCommand::Stop);
     }
 
     fn run_surface_command(&mut self, place: &ChatPlace, id: TerminalId, command: SurfaceCommand) {

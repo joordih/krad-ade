@@ -4,7 +4,6 @@ use krad_protocol::{Answer, ChatCommand, ChatPage, ChatState, Command, McpTrustA
 use std::time::{Instant, SystemTime};
 
 use super::super::super::super::EnvironmentShell;
-use super::super::super::outbox::{Outgoing, Stage};
 use super::super::super::ChatPlace;
 use super::super::{structured_chat, structured_mut, StructuredChat};
 use super::structured_of;
@@ -13,7 +12,7 @@ const NOTICE_SEPARATOR: &str = "\n";
 
 #[derive(Debug, Default)]
 pub(in crate::environment_shell::surface) struct RuntimeShown {
-    pub(in crate::environment_shell::surface) queued: Vec<Outgoing>,
+    pub(in crate::environment_shell::surface) queued: Vec<Prompt>,
     pub(in crate::environment_shell::surface) mcp_trust: Option<McpTrustAsk>,
     from: usize,
     earlier: bool,
@@ -23,15 +22,7 @@ pub(in crate::environment_shell::surface) struct RuntimeShown {
 
 impl RuntimeShown {
     pub(super) fn take_state(&mut self, state: &ChatState) {
-        self.queued = state
-            .queued
-            .iter()
-            .cloned()
-            .map(|prompt: Prompt| Outgoing {
-                prompt,
-                stage: Stage::Queued,
-            })
-            .collect();
+        self.queued.clone_from(&state.queued);
         self.earlier = state.earlier;
         self.mcp_trust.clone_from(&state.mcp_trust);
         self.working_since = match (state.working_since, self.working_since) {
@@ -74,12 +65,12 @@ fn as_instant(since: SystemTime, now: Instant, wall: SystemTime) -> Instant {
 }
 
 impl StructuredChat {
-    pub(in crate::environment_shell::surface) fn runtime_queued(&self) -> &[Outgoing] {
-        if self.in_runtime() {
-            &self.shown.queued
-        } else {
-            &[]
-        }
+    pub(in crate::environment_shell::surface) fn show_queued(&mut self, prompt: Prompt) {
+        self.shown.queued.push(prompt);
+    }
+
+    pub(in crate::environment_shell::surface) fn runtime_queued(&self) -> &[Prompt] {
+        &self.shown.queued
     }
 
     pub(super) const fn runtime_from(&self) -> usize {
@@ -87,14 +78,11 @@ impl StructuredChat {
     }
 
     pub(in crate::environment_shell::surface) const fn runtime_skips_history(&self) -> bool {
-        self.in_runtime() && self.shown.skips_history()
+        self.shown.skips_history()
     }
 
     pub(in crate::environment_shell::surface) fn runtime_working_since(&self) -> Option<Instant> {
-        self.shown
-            .working_since
-            .filter(|_| self.in_runtime())
-            .map(|(_, since)| since)
+        self.shown.working_since.map(|(_, since)| since)
     }
 }
 
@@ -115,7 +103,6 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> bool {
         let Some(shown) = structured_of(self, place, id)
-            .filter(|structured| structured.in_runtime())
             .map(|structured| (structured.shown.from, structured.shown.earlier))
         else {
             return false;
@@ -141,8 +128,7 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &mut Context<Self>,
     ) {
-        let Some(structured) = structured_mut(self, place, id).filter(|chat| chat.in_runtime())
-        else {
+        let Some(structured) = structured_mut(self, place, id) else {
             return;
         };
         let before = structured.shown.from;
@@ -231,8 +217,7 @@ mod tests {
         let wall = SystemTime::now();
         state.working_since = wall.checked_sub(Duration::from_secs(90));
         shown.take_state(&state);
-        assert_eq!(shown.queued.len(), 1);
-        assert_eq!(shown.queued[0].stage, Stage::Queued);
+        assert_eq!(shown.queued, [Prompt::from("second")]);
         assert!(shown.skips_history());
         let now = Instant::now();
         let since = state

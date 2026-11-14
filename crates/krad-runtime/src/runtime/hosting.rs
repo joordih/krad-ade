@@ -145,9 +145,11 @@ impl Runtime {
                 environment,
                 host,
                 prepared,
-            } => self
-                .hosts
-                .bus_prepared(&environment, &host, prepared, &mut self.outbox),
+            } => {
+                self.hosts
+                    .bus_prepared(&environment, &host, prepared, &mut self.outbox);
+                self.flush_chats();
+            }
             JobDone::Answered { request, answer } => {
                 self.outbox.push(EventKind::Answered { request, answer });
             }

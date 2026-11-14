@@ -1,6 +1,7 @@
 use gpui_kit::{App, Context};
 use krad_domain::{
-    AgentState, AttentionKind, ChatLogChange, ChatMessage, Mention, RuntimeId, TerminalId,
+    AgentState, AttentionKind, ChatLogChange, ChatMessage, EnvironmentName, Mention, RuntimeId,
+    TerminalId,
 };
 use krad_protocol::{AgentRef, ChatAsk, ChatState, ChatSummary, EventKind};
 use std::time::Instant;
@@ -8,7 +9,7 @@ use std::time::Instant;
 use super::super::super::super::ask::Waiting;
 use super::super::super::super::EnvironmentShell;
 use super::super::super::{anchor, Backend, ChatPlace, ChatView};
-use super::super::{structured_chat, structured_mut, StructuredChat};
+use super::super::{structured_chat, structured_mut};
 use super::shown::shown_problem;
 
 fn runtime_chat<'a>(
@@ -16,11 +17,7 @@ fn runtime_chat<'a>(
     place: &ChatPlace,
     id: TerminalId,
 ) -> Option<&'a mut ChatView> {
-    structured_chat(shell, place, id).filter(|chat| {
-        chat.chat
-            .structured()
-            .is_some_and(StructuredChat::in_runtime)
-    })
+    structured_chat(shell, place, id)
 }
 
 fn place_of(runtime: RuntimeId, chat: &AgentRef) -> ChatPlace {
@@ -227,6 +224,9 @@ impl EnvironmentShell {
     ) {
         let local = place.local().cloned();
         let Some(shown) = runtime_chat(self, place, id) else {
+            if let Some(env) = &local {
+                self.settle_unshown(env, place, id, &state, cx);
+            }
             return;
         };
         shown.chat.problem = shown_problem(&state);
@@ -271,19 +271,38 @@ impl EnvironmentShell {
         if was_working == state.working {
             return;
         }
-        let settled = match (state.working, waits) {
-            (true, _) => AgentState::Working,
-            (false, true) => AgentState::WaitingForInput,
-            (false, false) => AgentState::Idle,
-        };
+        let settled = settled_state(state.working, waits);
         if let Some(env) = &local {
             self.set_agent_state(env, id, settled, cx);
             if failed && !state.working {
                 self.raise_attention(env, id, AttentionKind::Error);
             }
         }
-        if !state.working {
-            self.flush_structured(place, id, cx);
-        }
+    }
+}
+
+impl EnvironmentShell {
+    fn settle_unshown(
+        &mut self,
+        env: &EnvironmentName,
+        place: &ChatPlace,
+        id: TerminalId,
+        state: &ChatState,
+        cx: &mut App,
+    ) {
+        let asks = self
+            .runtime
+            .chats
+            .get(&place.chat(id))
+            .is_some_and(|mirror| !mirror.asks.is_empty());
+        self.set_agent_state(env, id, settled_state(state.working, asks), cx);
+    }
+}
+
+const fn settled_state(working: bool, asks: bool) -> AgentState {
+    match (working, asks) {
+        (true, _) => AgentState::Working,
+        (false, true) => AgentState::WaitingForInput,
+        (false, false) => AgentState::Idle,
     }
 }

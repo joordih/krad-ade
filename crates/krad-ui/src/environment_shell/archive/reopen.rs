@@ -1,4 +1,4 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::{
     AgentPreset, ArchivedSessionId, ArchivedShell, Edited, EnvironmentName, EnvironmentView,
     GroupId, LiveSession, NodeEdit, NodeField, NodeKind, ResumedChat, SessionEdit, TerminalId,
@@ -6,19 +6,19 @@ use krad_domain::{
 
 use super::super::sessions::Launch;
 use super::super::sessions_view::show_current_session;
+use super::super::surface::ChatSeed;
 use super::super::terminal_lifecycle::{NodeGroup, NodeSpec};
 use super::super::EnvironmentShell;
 
 impl EnvironmentShell {
-    fn resume_reopened(&mut self, env: &EnvironmentName, chats: &[ResumedChat]) {
-        let Some(live) = self.envs.get_mut(env) else {
-            return;
-        };
+    fn resume_reopened(&mut self, env: &EnvironmentName, chats: &[ResumedChat], cx: &mut App) {
         for chat in chats {
-            live.pending_chats
-                .insert(chat.terminal, LiveSession::Resume(chat.resume.clone()));
+            let session = LiveSession::Resume(chat.resume.clone());
+            self.open_chat(env, chat.terminal, ChatSeed::from(session), cx);
         }
-        show_current_session(live);
+        if let Some(live) = self.envs.get_mut(env) {
+            show_current_session(live);
+        }
     }
 
     fn reopen_shell(
@@ -65,7 +65,7 @@ impl EnvironmentShell {
         if let Some(live) = self.envs.get_mut(&env) {
             live.archive_sheet = None;
         }
-        self.resume_reopened(&env, &reopened.chats);
+        self.resume_reopened(&env, &reopened.chats, cx);
         for shell in reopened.shells {
             self.reopen_shell(&env, group, shell, cx);
         }
@@ -108,7 +108,7 @@ impl EnvironmentShell {
             if let Some(live) = self.envs.get_mut(&env) {
                 live.focused = Some(resumed.terminal);
             }
-            self.resume_reopened(&env, std::slice::from_ref(&resumed));
+            self.resume_reopened(&env, std::slice::from_ref(&resumed), cx);
         }
         cx.notify();
         self.save_view();

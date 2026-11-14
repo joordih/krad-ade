@@ -57,6 +57,7 @@ impl ViewModel {
         }
         let git_moved = self.git.replace(take(&mut snapshot.git));
         self.kraddies.replace(&snapshot.kraddies);
+        Rc::make_mut(&mut self.chats).replace(&snapshot.chats);
         let prompts = take(&mut snapshot.hosts.prompts);
         let moves = self.hosts.replace(&snapshot.hosts.hosts, prompts);
         self.news.areas.extend(Area::ALL);

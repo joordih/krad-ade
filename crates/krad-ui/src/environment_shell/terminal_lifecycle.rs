@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use super::sessions::Launch;
 use super::sessions_view::{session_terminals, show_current_session};
-use super::surface::ChatPlace;
+use super::surface::{ChatPlace, ChatSeed};
 use super::EnvironmentShell;
 
 const NEW_CHAT_LABEL: &str = "New chat";
@@ -179,11 +179,11 @@ impl EnvironmentShell {
         &mut self,
         env: &EnvironmentName,
         group: NodeGroup,
-        session: LiveSession,
+        seed: impl Into<ChatSeed>,
         cx: &mut Context<Self>,
     ) -> Option<TerminalId> {
         let preset = self.default_chat_harness(env, cx);
-        self.spawn_chat_as(env, group, preset, session, cx)
+        self.spawn_chat_as(env, group, preset, seed, cx)
     }
 
     pub(super) fn spawn_chat_as(
@@ -191,7 +191,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         group: NodeGroup,
         preset: AgentPreset,
-        session: LiveSession,
+        seed: impl Into<ChatSeed>,
         cx: &mut Context<Self>,
     ) -> Option<TerminalId> {
         let spec = NodeSpec {
@@ -201,9 +201,7 @@ impl EnvironmentShell {
             group,
         };
         let (id, _) = self.add_node(env, &spec, None, cx)?;
-        if let Some(live) = self.envs.get_mut(env) {
-            live.pending_chats.insert(id, session);
-        }
+        self.open_chat(env, id, seed.into(), cx);
         self.draw_arcade_game();
         self.settle_new_node(cx);
         Some(id)
@@ -226,11 +224,12 @@ impl EnvironmentShell {
             group: NodeGroup::Exactly(group),
         };
         let (id, _) = self.add_node(env, &spec, None, cx)?;
-        let live = self.envs.get_mut(env)?;
-        live.pending_chats.insert(id, session);
-        if !prompts.is_empty() {
-            live.waiting_prompts.insert(id, prompts);
-        }
+        let seed = ChatSeed {
+            session: Some(session),
+            prompts,
+            ..ChatSeed::default()
+        };
+        self.open_chat(env, id, seed, cx);
         self.settle_new_node(cx);
         Some(id)
     }
@@ -270,14 +269,13 @@ impl EnvironmentShell {
         if !self.edit_environment(env, opened, cx).applied() {
             return None;
         }
-        let live = self.envs.get_mut(env)?;
-        live.pending_chats.insert(id, session);
-        if !prompts.is_empty() {
-            live.waiting_prompts.insert(id, prompts);
-        }
-        if let Some(mode) = mode {
-            live.waiting_modes.insert(id, mode);
-        }
+        let seed = ChatSeed {
+            session: Some(session),
+            prompts,
+            mode,
+            ..ChatSeed::default()
+        };
+        self.open_chat(env, id, seed, cx);
         self.settle_new_node(cx);
         Some(id)
     }
@@ -417,10 +415,6 @@ impl EnvironmentShell {
         };
         let ran = live.sessions.remove(&id).is_some();
         let chat = live.chats.remove(&id);
-        live.pending_chats.remove(&id);
-        live.waiting_prompts.remove(&id);
-        live.waiting_modes.remove(&id);
-        live.waiting_choices.remove(&id);
         if live.focused == Some(id) {
             live.focused = None;
             show_current_session(live);
@@ -428,7 +422,7 @@ impl EnvironmentShell {
                 live.focused = live.data.nodes.first().map(|node| node.id);
             }
         }
-        self.close_runtime_chat(&ChatPlace::here(env), id, chat.as_ref());
+        self.close_runtime_chat(&ChatPlace::here(env), id, cx);
         if ran {
             self.end_terminal(env, id);
         }

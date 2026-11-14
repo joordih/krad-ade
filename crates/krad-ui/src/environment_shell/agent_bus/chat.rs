@@ -1,12 +1,10 @@
 use gpui_kit::Context;
 use krad_domain::agents_api::{ErrorCode, Request, Response};
-use krad_domain::{EnvironmentName, GroupId, TerminalId};
+use krad_domain::GroupId;
 use krad_runtime::BusReply;
 
 use super::super::language_servers::CodeCaller;
-use super::super::live_terminal::LiveTerminal;
 use super::super::EnvironmentShell;
-use super::requests::CLOSED_TERMINAL;
 
 const NO_CHAT_INBOX: &str = "The chat has no inbox: follow agents with wait and read";
 const TERMINALS_ONLY: &str = "Only agents in terminals can do that";
@@ -28,12 +26,6 @@ impl EnvironmentShell {
             Request::List => Response::Agents(self.agent_infos(environment, None)),
             Request::ListAll => Response::Agents(self.all_agent_infos(environment, None)),
             Request::Close(_) => Response::error(ErrorCode::Forbidden, super::ONLY_LEADS_CLOSE),
-            Request::Send { to, body } => self.submit_from_chat(environment, to, &body, cx),
-            Request::Read { target, lines } => {
-                let tail = self.screen_tail(environment, target, lines);
-                Self::reply_tail(tail, reply, cx);
-                return;
-            }
             Request::Check { .. } => Response::error(ErrorCode::Unsupported, NO_CHAT_INBOX),
             Request::SubscribeAgents(_) => super::feed::streamed_by_the_bus(),
             Request::Hook { .. } | Request::Status(_) | Request::Ask { .. } => {
@@ -62,6 +54,8 @@ impl EnvironmentShell {
                 return;
             }
             Request::CreateWorktree { .. }
+            | Request::Send { .. }
+            | Request::Read { .. }
             | Request::Wait { .. }
             | Request::Spawn { .. }
             | Request::Changes { .. }
@@ -78,29 +72,5 @@ impl EnvironmentShell {
             }
         };
         reply.send(response).unwrap_or_default();
-    }
-
-    fn submit_from_chat(
-        &mut self,
-        environment: &str,
-        to: u64,
-        body: &str,
-        cx: &mut Context<Self>,
-    ) -> Response {
-        let env = EnvironmentName::new(environment.to_owned());
-        let id = TerminalId(to);
-        if self.queue_chat_prompt(&env, id, body, cx) {
-            return Response::Submitted { terminal: to };
-        }
-        let running = self
-            .envs
-            .get(&env)
-            .and_then(|live| live.sessions.get(&id))
-            .is_some_and(LiveTerminal::is_running);
-        if !running {
-            return Response::error(ErrorCode::NotFound, CLOSED_TERMINAL);
-        }
-        self.submit_text_into(&env, id, body);
-        Response::Submitted { terminal: to }
     }
 }

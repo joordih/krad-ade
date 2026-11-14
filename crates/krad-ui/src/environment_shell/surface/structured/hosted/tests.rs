@@ -27,8 +27,7 @@ fn a_mirrored_chat_opens_driven_by_its_runner_with_the_runner_s_choices_and_tail
         messages: vec![ChatMessage::new(Speaker::User, "hello".to_owned())],
         asks: Vec::new(),
     };
-    let structured = hosted_structured(&mirror);
-    assert!(structured.in_runtime());
+    let structured = mirrored_structured(&mirror);
     assert_eq!(structured.chosen_model, ModelId::parse("opus"));
     let place = runner_place();
     let summary = mirrored_summary(&place, TerminalId(7), mirror);

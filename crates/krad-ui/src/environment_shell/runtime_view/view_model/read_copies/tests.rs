@@ -56,3 +56,46 @@ fn the_view_model_keeps_the_shown_environments_and_tells_the_shell_what_moved() 
         });
     assert_eq!(moved, Some((main, vec![TerminalId(5)])));
 }
+
+#[test]
+fn the_view_model_keeps_each_chat_s_read_copy_from_the_snapshot_and_its_events() {
+    let opened = krad_protocol::AgentRef {
+        environment: EnvironmentName::new(MAIN.to_owned()),
+        terminal: TerminalId(5),
+    };
+    let mut model = ViewModel::default();
+    let mut state = krad_protocol::ChatState::new(krad_domain::AgentPreset::Codex);
+    let mut known = snapshot();
+    known.chats = vec![krad_protocol::ChatSummary {
+        state: state.clone(),
+        tail: krad_protocol::ChatPage {
+            chat: opened.clone(),
+            len: 0,
+            from: 0,
+            messages: Vec::new(),
+        },
+        asks: Vec::new(),
+    }];
+    model.feed(Feed::Snapshot(known));
+    assert!(model.chats.contains(&opened));
+    state.queued = vec![krad_domain::Prompt::from("go on")];
+    model.fold_event(EventKind::ChatState {
+        chat: opened.clone(),
+        state: Box::new(state.clone()),
+    });
+    assert_eq!(
+        model.chats.get(&opened).map(|mirror| &mirror.state),
+        Some(&state)
+    );
+    let heard = model.take_news().heard;
+    assert!(
+        heard
+            .iter()
+            .any(|heard| matches!(heard, Heard::Event(EventKind::ChatState { .. }))),
+        "the shell still hears the event"
+    );
+    model.fold_event(EventKind::ChatClosed {
+        chat: opened.clone(),
+    });
+    assert!(!model.chats.contains(&opened));
+}

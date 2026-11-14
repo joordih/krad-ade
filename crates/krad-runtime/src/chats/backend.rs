@@ -298,6 +298,9 @@ pub(super) fn ensure_live(
             live.stop();
         }
     }
+    if super::history::waits_for_host(chat, &work.facts) {
+        return false;
+    }
     let Some(mcp) = ready_mcp(chat, work) else {
         return false;
     };

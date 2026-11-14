@@ -1,5 +1,5 @@
 use gpui_kit::{App, Context};
-use krad_domain::{AgentPreset, EnvironmentName, GatewayKey, GatewayUrl, TerminalId, ToastKind};
+use krad_domain::{EnvironmentName, GatewayKey, GatewayUrl, TerminalId, ToastKind};
 use krad_protocol::{Command, EventKind, GatewayCommand, GatewayState};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -108,7 +108,6 @@ impl EnvironmentShell {
 
     fn settle_gateway(&mut self, cx: &mut Context<Self>) {
         self.refresh_gateway_offers(cx);
-        self.flush_chats_of(AgentPreset::Gateway, cx);
         cx.notify();
     }
 

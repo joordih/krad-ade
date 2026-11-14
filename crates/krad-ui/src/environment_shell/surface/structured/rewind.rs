@@ -1,4 +1,3 @@
-use gpui_kit::Context;
 use krad_domain::{Prompt, RewindScope, TerminalId};
 
 use super::super::super::EnvironmentShell;
@@ -21,7 +20,6 @@ impl EnvironmentShell {
         index: usize,
         prompt: Prompt,
         scope: RewindScope,
-        cx: &mut Context<Self>,
     ) {
         let rewinds = structured_chat(self, place, id)
             .and_then(|chat| chat.chat.messages.get(index))
@@ -29,15 +27,12 @@ impl EnvironmentShell {
         if !rewinds {
             return;
         }
-        if !self.start_or_report(place, id, cx) {
+        if !self.rewind_in_runtime(place, id, (index, prompt), scope) {
             if let Some(chat) = structured_chat(self, place, id) {
                 chat.chat
                     .problem
                     .get_or_insert_with(|| STARTING_TEXT.to_owned());
             }
-            return;
-        }
-        if !self.rewind_in_runtime(place, id, (index, prompt), scope) {
             return;
         }
         if let Some(structured) = structured_mut(self, place, id) {

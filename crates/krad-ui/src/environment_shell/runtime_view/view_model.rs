@@ -22,7 +22,8 @@ use super::following::{Batch, Following};
 use super::settings::SettingsMirror;
 use super::{AgentSpot, AgentsMirror, GatewayMirror, HostMove, HostsMirror, MailNotices, Waiters};
 use super::{
-    EnvironmentsMirror, GitMirror, GitMove, KraddiesMirror, NodesMoved, ShownEnvironments,
+    EnvironmentsMirror, GitMirror, GitMove, KraddiesMirror, LocalChats, NodesMoved,
+    ShownEnvironments,
 };
 
 mod folding;
@@ -123,6 +124,7 @@ pub(in crate::environment_shell) struct ViewModel {
     pub(in crate::environment_shell) shown: ShownEnvironments,
     pub(in crate::environment_shell) git: GitMirror,
     pub(in crate::environment_shell) kraddies: KraddiesMirror,
+    pub(in crate::environment_shell) chats: Rc<LocalChats>,
     pub(in crate::environment_shell) runners: HashMap<CloudRunnerId, RunnerState>,
     pub(in crate::environment_shell) runner_buses: HashMap<CloudRunnerId, RemoteBusState>,
     pub(in crate::environment_shell) runner_logins: HashMap<CloudRunnerId, RunnerLogins>,
@@ -154,6 +156,7 @@ impl Default for ViewModel {
             shown: ShownEnvironments::default(),
             git: GitMirror::default(),
             kraddies: KraddiesMirror::default(),
+            chats: Rc::default(),
             runners: HashMap::new(),
             runner_buses: HashMap::new(),
             runner_logins: HashMap::new(),

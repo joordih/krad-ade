@@ -196,7 +196,7 @@ impl EnvironmentShell {
             return cx.notify();
         }
         if !asks_files {
-            self.start_rewind(&place, id, index, prompt, RewindScope::Conversation, cx);
+            self.start_rewind(&place, id, index, prompt, RewindScope::Conversation);
             return cx.notify();
         }
         let answer = window.prompt(
@@ -217,7 +217,7 @@ impl EnvironmentShell {
                 _ => return,
             };
             this.update(cx, |shell, cx| {
-                shell.start_rewind(&place, id, index, prompt, scope, cx);
+                shell.start_rewind(&place, id, index, prompt, scope);
                 cx.notify();
             })
             .unwrap_or_default();

@@ -19,6 +19,8 @@ use crate::launches::AgentRole;
 
 mod log;
 
+const CONNECTING_TEXT: &str = "Connecting to";
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Batch {
     pub(super) commands: Vec<SlashCommand>,
@@ -56,6 +58,7 @@ pub(super) enum HistoryWait {
     No,
     ForServer,
     ForRunner,
+    ForHost,
 }
 
 pub(super) struct Chat {
@@ -173,7 +176,7 @@ impl Chat {
             permission_mode: self.choices.permission_mode,
             context: self.context.clone(),
             queued: self.outbox.iter().cloned().collect(),
-            problem: self.problem.clone(),
+            problem: self.problem.clone().or_else(|| self.connecting_note()),
             notices: self.notices.clone(),
             working_since: self.working_since,
             earlier: self.shown != Shown::Whole,
@@ -184,6 +187,11 @@ impl Chat {
             mcp_trust: self.mcp.asked(),
             launch: self.shown_launch(),
         }
+    }
+
+    fn connecting_note(&self) -> Option<String> {
+        (self.history == HistoryWait::ForHost && self.resume.is_some())
+            .then(|| format!("{CONNECTING_TEXT} {}", self.place.host))
     }
 
     pub(super) fn tell_state(&mut self, outbox: &mut Vec<EventKind>) {

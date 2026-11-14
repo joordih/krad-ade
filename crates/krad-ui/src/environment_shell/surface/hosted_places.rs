@@ -21,8 +21,7 @@ pub(in crate::environment_shell) struct HostedPlaces(HashMap<ChatPlace, HostedPl
 
 fn hosted_place(data: EnvironmentData, client: Arc<dyn RuntimeClient>) -> HostedPlace {
     let preferences = EnvironmentViewPreferences::new(data.name.clone());
-    let mut views = LiveEnv::new(Rc::new(EnvironmentCopy::new(data)), preferences, None);
-    views.pending_chats.clear();
+    let views = LiveEnv::new(Rc::new(EnvironmentCopy::new(data)), preferences, None);
     HostedPlace { views, client }
 }
 

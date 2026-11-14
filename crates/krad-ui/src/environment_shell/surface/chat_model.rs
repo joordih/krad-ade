@@ -5,7 +5,6 @@ use std::time::Instant;
 use super::super::ask::AskQueue;
 use super::super::chat::ChatMessage;
 use super::files_restore::FilesUndo;
-use super::outbox::Outbox;
 use super::subagents::Subagents;
 use super::transcript::TRANSCRIPT_HARNESS;
 use super::{Backend, StructuredChat};
@@ -14,7 +13,6 @@ pub(in crate::environment_shell) struct Chat {
     pub(in crate::environment_shell) messages: Vec<ChatMessage>,
     pub(in crate::environment_shell) origin: Option<ChatOrigin>,
     pub(in crate::environment_shell) working_since: Cell<Option<Instant>>,
-    pub(super) outbox: Outbox,
     pub(in crate::environment_shell) problem: Option<String>,
     pub(in crate::environment_shell) backend: Backend,
     pub(super) subagents: Subagents,
@@ -27,7 +25,6 @@ impl Chat {
             messages: Vec::new(),
             origin: None,
             working_since: Cell::new(None),
-            outbox: Outbox::default(),
             problem: None,
             backend,
             subagents: Subagents::default(),

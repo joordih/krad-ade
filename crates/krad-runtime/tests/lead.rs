@@ -104,21 +104,40 @@ fn answered(asked: JoinHandle<Result<Response, AgentsError>>) -> Result<Response
     Ok(asked.join().map_err(|_| CALLER_PANICKED)??)
 }
 
+fn not_found(response: &Response) -> bool {
+    matches!(response, Response::Error(error) if error.code == ErrorCode::NotFound)
+}
+
 #[test]
-fn a_leads_orders_the_runtime_cannot_carry_reach_the_app_as_the_lead_and_anyone_elses_are_refused(
+fn a_lead_reaches_the_app_only_to_reopen_a_closed_worker_and_anyone_elses_orders_are_refused(
 ) -> TestResult {
     let (runtime, session) = start()?;
     let mut delegations = runtime.delegate_bus();
-    let spawn = Request::Send {
+    let to_open = Request::Send {
         to: OPEN_WORKER.0,
         body: "Write the tests".to_owned(),
     };
-    let refused = answered(call_from(&runtime, MEMBER, spawn.clone())?)?;
+    let refused = answered(call_from(&runtime, MEMBER, to_open.clone())?)?;
     assert!(matches!(
         refused,
         Response::Error(error) if error.code == ErrorCode::Forbidden
     ));
-    let asked = call_from(&runtime, LEAD, spawn.clone())?;
+    let unreached = answered(call_from(&runtime, LEAD, to_open)?)?;
+    assert!(not_found(&unreached), "{unreached:?}");
+    let read = answered(call_from(
+        &runtime,
+        LEAD,
+        Request::Read {
+            target: OPEN_WORKER.0,
+            lines: 5,
+        },
+    )?)?;
+    assert!(not_found(&read), "{read:?}");
+    let to_closed = Request::Send {
+        to: CLOSED_WORKER.0,
+        body: "Pick it up again".to_owned(),
+    };
+    let asked = call_from(&runtime, LEAD, to_closed.clone())?;
     let delegated = block_on(delegations.next()).ok_or(NO_DELEGATION)?;
     assert_eq!(
         delegated.from,
@@ -127,28 +146,16 @@ fn a_leads_orders_the_runtime_cannot_carry_reach_the_app_as_the_lead_and_anyone_
             session: session.as_u64(),
         })
     );
-    assert_eq!(delegated.request, spawn);
+    assert_eq!(delegated.request, to_closed);
     delegated.reply.send(Response::Submitted {
-        terminal: OPEN_WORKER.0,
+        terminal: CLOSED_WORKER.0,
     })?;
     assert_eq!(
         answered(asked)?,
         Response::Submitted {
-            terminal: OPEN_WORKER.0
+            terminal: CLOSED_WORKER.0
         }
     );
-    let follows = call_from(
-        &runtime,
-        LEAD,
-        Request::Read {
-            target: OPEN_WORKER.0,
-            lines: 5,
-        },
-    )?;
-    let delegated = block_on(delegations.next()).ok_or(NO_DELEGATION)?;
-    assert!(matches!(delegated.from, Caller::Lead(_)));
-    delegated.reply.send(Response::Screen(String::new()))?;
-    answered(follows)?;
     Ok(())
 }
 
@@ -220,6 +227,8 @@ fn waits_on_terminals_the_app_never_opened_are_answered_by_the_runtime() -> Test
 
 #[path = "lead/acp_worker.rs"]
 mod acp_worker;
+#[path = "lead/peer_chat.rs"]
+mod peer_chat;
 #[path = "lead/worker.rs"]
 mod worker;
 #[path = "lead/worker_commands.rs"]

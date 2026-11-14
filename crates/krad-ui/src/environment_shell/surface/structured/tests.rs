@@ -13,12 +13,6 @@ fn resumed() -> StructuredChat {
     )
 }
 
-fn queued(text: &str) -> Outbox {
-    let mut outbox = Outbox::default();
-    outbox.push(krad_domain::Prompt::from(text));
-    outbox
-}
-
 #[test]
 fn the_context_reads_as_the_share_of_the_window_in_use() {
     let mut chat = resumed();
@@ -30,34 +24,13 @@ fn the_context_reads_as_the_share_of_the_window_in_use() {
 }
 
 #[test]
-fn thinking_starts_on_and_each_toggle_is_typed_as_a_setting() {
+fn thinking_starts_on_and_each_toggle_flips_it() {
     let mut chat = resumed();
     assert_eq!(chat.thinking, THINKING_DEFAULT);
     chat.command(SurfaceCommand::ToggleThinking);
+    assert_eq!(chat.thinking, !THINKING_DEFAULT);
     chat.command(SurfaceCommand::ToggleThinking);
     assert_eq!(chat.thinking, THINKING_DEFAULT);
-    assert_eq!(
-        chat.commands,
-        [
-            SlashCommand::Thinking(!THINKING_DEFAULT),
-            SlashCommand::Thinking(THINKING_DEFAULT)
-        ]
-    );
-}
-
-#[test]
-fn a_bus_notice_waits_for_a_free_chat_and_never_jumps_the_queue() {
-    let mut chat = resumed();
-    assert!(chat.takes_bus_notice(&Outbox::default()));
-    assert!(
-        !chat.takes_bus_notice(&queued("Fix the race")),
-        "the user's message goes first"
-    );
-    chat.working = true;
-    assert!(
-        !chat.takes_bus_notice(&Outbox::default()),
-        "a turn is running"
-    );
 }
 
 #[test]

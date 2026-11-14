@@ -1,50 +1,20 @@
-use gpui_kit::Context;
-use krad_domain::{conversation_lines, EnvironmentName, Prompt, TerminalId};
+use gpui_kit::App;
+use krad_domain::{EnvironmentName, NodeKind, Prompt, TerminalId};
 
 use super::super::EnvironmentShell;
-use super::ChatPlace;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::environment_shell) enum ChatPresence {
-    Queued,
-    Open,
-}
+use super::{ChatPlace, ChatSeed};
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn chat_presence(
+    pub(in crate::environment_shell) fn runs_chat(
         &self,
         env: &EnvironmentName,
         id: TerminalId,
-    ) -> Option<ChatPresence> {
-        let live = self.envs.get(env)?;
-        if live.waiting_prompts.contains_key(&id) {
-            return Some(ChatPresence::Queued);
-        }
-        if let Some(chat) = live.chats.get(&id) {
-            return Some(if chat.chat.outbox.has_queued() {
-                ChatPresence::Queued
-            } else {
-                ChatPresence::Open
-            });
-        }
-        live.pending_chats
-            .contains_key(&id)
-            .then_some(ChatPresence::Open)
-    }
-
-    pub(in crate::environment_shell) fn chat_tail(
-        &self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        lines: usize,
-    ) -> Option<String> {
-        let live = self.envs.get(env)?;
-        let Some(chat) = live.chats.get(&id) else {
-            return live.pending_chats.contains_key(&id).then(String::new);
-        };
-        let all = conversation_lines(&chat.chat.messages);
-        let start = all.len().saturating_sub(lines);
-        Some(all[start..].join("\n"))
+    ) -> bool {
+        self.runtime.chats.contains(&ChatPlace::here(env).chat(id))
+            || self
+                .envs
+                .get(env)
+                .is_some_and(|live| live.chats.contains_key(&id))
     }
 
     pub(in crate::environment_shell) fn queue_chat_prompt(
@@ -52,23 +22,22 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
         text: &str,
-        cx: &mut Context<Self>,
+        cx: &mut App,
     ) -> bool {
-        let Some(live) = self.envs.get_mut(env) else {
+        let is_chat = self.envs.get(env).is_some_and(|live| {
+            live.data
+                .nodes
+                .iter()
+                .any(|node| node.id == id && node.kind == NodeKind::Chat)
+        });
+        if !is_chat {
             return false;
+        }
+        let seed = ChatSeed {
+            prompts: vec![Prompt::from(text)],
+            ..ChatSeed::default()
         };
-        if let Some(chat) = live.chats.get_mut(&id) {
-            chat.chat.outbox.push(Prompt::from(text));
-            self.flush_outbox(&ChatPlace::here(env), id, cx);
-            return true;
-        }
-        if !live.pending_chats.contains_key(&id) {
-            return false;
-        }
-        live.waiting_prompts
-            .entry(id)
-            .or_default()
-            .push(Prompt::from(text));
+        self.open_chat(env, id, seed, cx);
         true
     }
 }

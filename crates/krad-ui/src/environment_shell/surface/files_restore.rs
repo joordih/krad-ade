@@ -142,7 +142,7 @@ impl EnvironmentShell {
     ) {
         let Some(listed) = self.ask_checkpoint_changes(env, id, rewind.checkpoint.clone(), cx)
         else {
-            return self.rewind_conversation(env, id, rewind, cx);
+            return self.rewind_conversation(env, id, rewind);
         };
         set_busy(self, env, id, true);
         let env = env.clone();
@@ -155,7 +155,7 @@ impl EnvironmentShell {
                     Vec::new()
                 });
                 if changes.is_empty() {
-                    shell.rewind_conversation(&env, id, rewind, cx);
+                    shell.rewind_conversation(&env, id, rewind);
                 } else {
                     Self::ask_rewind_files(&env, id, rewind, &changes, window, cx);
                 }
@@ -166,20 +166,13 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn rewind_conversation(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        rewind: FilesRewind,
-        cx: &mut Context<Self>,
-    ) {
+    fn rewind_conversation(&mut self, env: &EnvironmentName, id: TerminalId, rewind: FilesRewind) {
         self.start_rewind(
             &ChatPlace::here(env),
             id,
             rewind.index,
             rewind.prompt,
             RewindScope::Conversation,
-            cx,
         );
     }
 
@@ -209,7 +202,7 @@ impl EnvironmentShell {
             this.update(cx, |shell, cx| {
                 match answer {
                     Ok(BOTH_ANSWER) => shell.restore_then_rewind(&env, id, rewind, cx),
-                    Ok(CONVERSATION_ANSWER) => shell.rewind_conversation(&env, id, rewind, cx),
+                    Ok(CONVERSATION_ANSWER) => shell.rewind_conversation(&env, id, rewind),
                     _ => {}
                 }
                 cx.notify();
@@ -235,7 +228,7 @@ impl EnvironmentShell {
             let restored = restored.await;
             this.update(cx, |shell, cx| {
                 set_busy(shell, &env, id, false);
-                shell.files_restored(&env, id, rewind, restored, cx);
+                shell.files_restored(&env, id, rewind, restored);
                 cx.notify();
             })
             .unwrap_or_default();
@@ -249,7 +242,6 @@ impl EnvironmentShell {
         id: TerminalId,
         rewind: FilesRewind,
         restored: Result<RestoredCheckpoint, ClientError>,
-        cx: &mut Context<Self>,
     ) {
         let Some(chat) = surface_chat(self, env, id) else {
             return;
@@ -260,7 +252,7 @@ impl EnvironmentShell {
                     undo: restored.undo,
                     rewind: RewindProgress::Waiting,
                 });
-                self.rewind_conversation(env, id, rewind, cx);
+                self.rewind_conversation(env, id, rewind);
             }
             Err(error) => chat.chat.problem = Some(error.to_string()),
         }

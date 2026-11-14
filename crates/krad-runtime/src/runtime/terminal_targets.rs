@@ -1,5 +1,5 @@
 use futures::channel::oneshot;
-use krad_agents::{Caller, ErrorCode, Incoming, Request, Response, TerminalState};
+use krad_agents::{Caller, ErrorCode, Incoming, LeadHandle, Request, Response, TerminalState};
 use krad_domain::{AgentState, EnvironmentName, SessionId, TerminalId};
 use krad_protocol::AgentRef;
 use std::time::Instant;
@@ -45,6 +45,36 @@ impl Runtime {
             _ => return Some(incoming),
         }
         None
+    }
+
+    pub(super) fn answer_unreached(&self, incoming: Incoming) -> Option<Incoming> {
+        let lead = match &incoming.from {
+            Caller::Terminal(_) => None,
+            Caller::Lead(lead) => Some(lead),
+            Caller::Git(_) | Caller::Client => return Some(incoming),
+        };
+        let reopens = match (&incoming.request, lead) {
+            (Request::Read { .. }, _) => false,
+            (Request::Send { to, .. }, Some(lead)) => self.is_closed_worker(lead, TerminalId(*to)),
+            _ => return Some(incoming),
+        };
+        if reopens {
+            return Some(incoming);
+        }
+        reply_with(
+            incoming.reply,
+            Response::error(ErrorCode::NotFound, CLOSED_TERMINAL),
+        );
+        None
+    }
+
+    fn is_closed_worker(&self, lead: &LeadHandle, terminal: TerminalId) -> bool {
+        self.environments
+            .data(&EnvironmentName::new(lead.environment.clone()))
+            .and_then(|data| data.worker(terminal))
+            .is_some_and(|(owner, worker)| {
+                owner == SessionId(lead.session) && worker.session.is_none()
+            })
     }
 
     pub(super) fn terminal_settled(&self, target: &AgentRef) -> Option<TerminalState> {

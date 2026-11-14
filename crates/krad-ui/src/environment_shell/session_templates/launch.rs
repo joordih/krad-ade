@@ -6,6 +6,7 @@ use krad_domain::{
 
 use krad_protocol::{Answer, RepoAsk};
 
+use super::super::surface::ChatSeed;
 use super::super::terminal_lifecycle::NodeGroup;
 use super::super::EnvironmentShell;
 use super::ChatChoices;
@@ -90,26 +91,24 @@ impl EnvironmentShell {
             };
             self.edit_environment(env, opened, cx);
         }
-        let session = LiveSession::Start(new_session_id());
-        let place = NodeGroup::Exactly(group);
-        let chat = match harness {
-            Some(harness) => self.spawn_chat_as(env, place, harness, session, cx),
-            None => self.spawn_chat_in(env, place, session, cx),
-        };
-        let Some((id, live)) = chat.zip(self.envs.get_mut(env)) else {
-            return;
-        };
-        if let Some(prompt) = prompt {
-            live.waiting_prompts.insert(id, vec![Prompt::from(prompt)]);
-        }
-        live.waiting_choices.insert(
-            id,
-            ChatChoices {
+        let seed = ChatSeed {
+            session: Some(LiveSession::Start(new_session_id())),
+            prompts: prompt.map(Prompt::from).into_iter().collect(),
+            mode: None,
+            choices: ChatChoices {
                 model,
                 mcp_servers,
                 effort: None,
             },
-        );
+        };
+        let place = NodeGroup::Exactly(group);
+        let chat = match harness {
+            Some(harness) => self.spawn_chat_as(env, place, harness, seed, cx),
+            None => self.spawn_chat_in(env, place, seed, cx),
+        };
+        let Some(id) = chat else {
+            return;
+        };
         tracing::info!(terminal = id.as_u64(), "session started from a template");
     }
 }

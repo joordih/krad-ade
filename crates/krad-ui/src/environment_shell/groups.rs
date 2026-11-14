@@ -105,12 +105,6 @@ impl EnvironmentShell {
     pub(super) fn host_agents_found(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
         self.list_host_models(env, cx);
         self.place_usage();
-        self.load_missing_histories(env, cx);
-        let harnesses: Vec<AgentPreset> =
-            AgentPreset::listed(&self.runtime.settings.acp.all_agents()).collect();
-        for harness in harnesses {
-            self.flush_chats_of(harness, cx);
-        }
         cx.notify();
     }
 

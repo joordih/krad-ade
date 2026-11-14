@@ -6,7 +6,6 @@ use krad_domain::{
 use krad_protocol::{Command, EnvironmentCommand};
 
 use super::runtime_view::{EnvironmentCopy, NodesMoved};
-use super::surface::restored_chats;
 use super::{EnvironmentShell, LiveEnv};
 
 impl EnvironmentShell {
@@ -94,8 +93,15 @@ impl EnvironmentShell {
         let focus = preferences
             .focus
             .filter(|id| data.nodes.iter().any(|node| node.id == *id));
+        let chats: Vec<TerminalId> = data
+            .nodes
+            .iter()
+            .filter(|node| node.kind == NodeKind::Chat)
+            .map(|node| node.id)
+            .collect();
         self.envs
             .insert(env.clone(), LiveEnv::new(data, preferences, focus));
+        self.open_restored_chats(env, chats, cx);
         if let Some(terminal) = focus {
             self.edit_environment(env, SessionEdit::Reveal { terminal }, cx);
         }
@@ -153,17 +159,17 @@ impl EnvironmentShell {
         for gone in moved.gone {
             self.forget_live_node(env, gone, cx);
         }
-        let Some(live) = self.envs.get_mut(env) else {
+        let Some(live) = self.envs.get(env) else {
             return;
         };
-        let came: Vec<_> = live
+        let came: Vec<TerminalId> = live
             .data
             .nodes
             .iter()
             .filter(|node| moved.came.contains(&node.id) && node.kind == NodeKind::Chat)
-            .cloned()
+            .map(|node| node.id)
             .collect();
-        live.pending_chats.extend(restored_chats(&came));
+        self.open_restored_chats(env, came, cx);
         cx.notify();
     }
 }

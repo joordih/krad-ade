@@ -123,12 +123,11 @@ impl EnvironmentShell {
         };
         match action {
             SignInAction::Authenticate(method) => {
-                if structured.in_runtime() {
-                    let env = self.active.clone();
-                    self.post_runtime_chat(&ChatPlace::here(&env), id, |chat| {
-                        ChatCommand::SignIn { chat, method }
-                    });
-                }
+                let env = self.active.clone();
+                self.post_runtime_chat(&ChatPlace::here(&env), id, |chat| ChatCommand::SignIn {
+                    chat,
+                    method,
+                });
             }
             SignInAction::Terminal { args, env, retry } => {
                 let agent = structured
@@ -243,16 +242,14 @@ impl EnvironmentShell {
             else {
                 continue;
             };
-            if structured.in_runtime() {
-                let chat = AgentRef {
-                    environment: env.clone(),
-                    terminal: *id,
-                };
-                self.runtime.client.post(Command::Chat(ChatCommand::SignIn {
-                    chat,
-                    method: retry,
-                }));
-            }
+            let chat = AgentRef {
+                environment: env.clone(),
+                terminal: *id,
+            };
+            self.runtime.client.post(Command::Chat(ChatCommand::SignIn {
+                chat,
+                method: retry,
+            }));
             return;
         }
     }

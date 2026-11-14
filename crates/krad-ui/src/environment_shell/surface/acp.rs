@@ -4,7 +4,7 @@ mod sign_in;
 
 use krad_domain::{
     AcpConfigOption, AcpConfigOptionId, AcpConfigValue, AcpEffort, AcpModeId, AcpModels, AcpModes,
-    AcpOffered, AcpWanted, Effort, ModelId, ModelOffer,
+    AcpOffered, Effort, ModelId, ModelOffer,
 };
 use krad_protocol::AcpShown;
 
@@ -67,19 +67,6 @@ impl AcpOffers {
         }
         self.modes.clone_from(&seed.modes);
         self.options.clone_from(&seed.options);
-    }
-
-    pub(in crate::environment_shell) fn wanted(&self) -> AcpWanted {
-        let mut wanted = AcpWanted::default();
-        for choice in &self.chosen_early {
-            match choice {
-                AcpChoice::Mode(mode) => wanted.mode = Some(mode.clone()),
-                AcpChoice::Option(option, value) => {
-                    wanted.options.push((option.clone(), value.clone()));
-                }
-            }
-        }
-        wanted
     }
 
     pub(in crate::environment_shell) fn adopt(&mut self, shown: &AcpShown) -> bool {

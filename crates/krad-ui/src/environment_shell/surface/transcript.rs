@@ -2,19 +2,17 @@ use gpui_kit::{Context, Task, Window};
 use krad_client::ClientError;
 use krad_domain::SlashCommand;
 use krad_domain::{
-    AgentPreset, AgentState, ChatEntry, ChatEvent, EnvironmentName, ResumeId, Speaker, TerminalId,
-    ToolUseId, TranscriptChunk, TranscriptMark,
+    AgentPreset, ChatEntry, ChatEvent, EnvironmentName, ResumeId, Speaker, TerminalId, ToolUseId,
+    TranscriptChunk, TranscriptMark,
 };
 use krad_protocol::{Answer, ChatCommand, Command, TranscriptAsk, TranscriptRead};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use super::super::ask::{AskQueue, Settled};
 use super::super::chat::{fold_entry, ChatMessage};
-use super::super::live_terminal::LiveTerminal;
 use super::super::EnvironmentShell;
-use super::ChatPlace;
 use super::{anchor, Backend, ChatView, SurfaceCommand};
 
 pub(super) const TRANSCRIPT_HARNESS: AgentPreset = AgentPreset::ClaudeCode;
@@ -87,9 +85,6 @@ pub(super) fn fold_history(chat: &mut ChatView, read: &TranscriptRead, opened: b
         chat.chat.messages.push(open_answer());
     }
     for entry in &read.chunk.entries {
-        if matches!(entry, ChatEntry::User { .. }) {
-            chat.chat.outbox.delivered();
-        }
         fold_entry(&mut chat.chat.messages, entry);
     }
 }
@@ -137,7 +132,6 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        self.leave_runtime(&ChatPlace::here(&env), id);
         if let Some(live) = self.envs.get_mut(&env) {
             live.chats.remove(&id);
         }
@@ -150,32 +144,6 @@ impl EnvironmentShell {
             self.close_suggest(cx);
         }
         cx.notify();
-    }
-
-    pub(super) fn flush_transcript(&mut self, env: &EnvironmentName, id: TerminalId) {
-        let now = Instant::now();
-        let Some(live) = self.envs.get_mut(env) else {
-            return;
-        };
-        let running = live.sessions.get(&id).is_some_and(LiveTerminal::is_running);
-        let state = live
-            .data
-            .nodes
-            .iter()
-            .find(|node| node.id == id)
-            .map(|node| node.state);
-        let Some(chat) = live.chats.get_mut(&id) else {
-            return;
-        };
-        let working = matches!(
-            state,
-            Some(AgentState::Working | AgentState::WaitingForInput)
-        );
-        chat.chat.outbox.settle(working, now);
-        let free = running && matches!(state, Some(AgentState::Idle | AgentState::Done));
-        if let Some(prompt) = chat.chat.outbox.next_to_send(free, now) {
-            self.submit_text_into(env, id, &prompt.text);
-        }
     }
 
     pub(super) fn command_transcript(
@@ -223,7 +191,6 @@ impl EnvironmentShell {
             if this
                 .update(cx, |shell, cx| {
                     shell.apply_tail(&env, id, &read, cx);
-                    shell.flush_transcript(&env, id);
                 })
                 .is_err()
             {

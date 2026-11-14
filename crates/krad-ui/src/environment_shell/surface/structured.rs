@@ -1,6 +1,5 @@
 mod acp;
 mod checkpoint;
-mod flush;
 mod forks;
 mod hosted;
 mod mcp;
@@ -10,20 +9,18 @@ mod rewind;
 mod runtime_chat;
 
 use krad_domain::{
-    new_session_id, AgentPreset, Effort, EffortSnap, EnvironmentName, LiveSession, McpServerName,
-    ModelId, PermissionMode, ResumeId, TerminalId,
+    new_session_id, AgentPreset, Effort, EffortSnap, EnvironmentName, LiveSession, ModelId,
+    PermissionMode, ResumeId, TerminalId,
 };
-use krad_domain::{Catalog, CommandOffer, SlashCommand};
+use krad_domain::{Catalog, CommandOffer};
 use krad_protocol::{ChatCommand, ChatLaunch};
 
 use super::super::ask::AskQueue;
 use super::super::EnvironmentShell;
 use super::acp::AcpOffers;
-use super::outbox::Outbox;
 use super::{Backend, ChatPlace, ChatView, SurfaceCommand};
 
-pub(in crate::environment_shell) use open::restored_chats;
-pub(in crate::environment_shell) use runtime_chat::ChatDriver;
+pub(in crate::environment_shell) use open::ChatSeed;
 use runtime_chat::RuntimeShown;
 
 const FULL_PERCENT: u64 = 100;
@@ -40,16 +37,12 @@ pub(in crate::environment_shell) struct StructuredChat {
     pub(super) effort_notice: Option<EffortSnap>,
     pub(super) effort_was: Option<Effort>,
     pub(super) thinking: bool,
-    commands: Vec<SlashCommand>,
     context_tokens: Option<u64>,
     pub(super) context_window: Option<u64>,
     pub(super) working: bool,
     pub(in crate::environment_shell) launch: ChatLaunch,
-    mcp_servers: Option<Vec<McpServerName>>,
-    notices: Vec<String>,
     rewinding: bool,
     pub(in crate::environment_shell) acp: AcpOffers,
-    driver: ChatDriver,
     shown: RuntimeShown,
 }
 
@@ -67,16 +60,12 @@ impl StructuredChat {
             effort_notice: None,
             effort_was: None,
             thinking: THINKING_DEFAULT,
-            commands: Vec::new(),
             context_tokens: None,
             context_window: None,
             working: false,
             launch: ChatLaunch::Answered,
-            mcp_servers: None,
-            notices: Vec::new(),
             rewinding: false,
             acp: AcpOffers::default(),
-            driver: ChatDriver::InShell,
             shown: RuntimeShown::default(),
         }
     }
@@ -121,16 +110,8 @@ impl StructuredChat {
         u16::try_from(percent).ok()
     }
 
-    fn has_work(&self, outbox: &Outbox) -> bool {
-        (self.in_runtime() || self.is_free()) && (!self.commands.is_empty() || outbox.has_queued())
-    }
-
     pub(super) fn is_free(&self) -> bool {
         !self.working && self.asks.is_empty()
-    }
-
-    pub(super) fn takes_bus_notice(&self, outbox: &Outbox) -> bool {
-        self.is_free() && !outbox.has_queued() && self.shown.queued.is_empty()
     }
 
     fn session_reported(&mut self, resume: ResumeId) {
@@ -150,10 +131,7 @@ impl StructuredChat {
                 self.effort = Some(effort);
                 self.effort_notice = None;
             }
-            SurfaceCommand::ToggleThinking => {
-                self.thinking = !self.thinking;
-                self.commands.push(SlashCommand::Thinking(self.thinking));
-            }
+            SurfaceCommand::ToggleThinking => self.thinking = !self.thinking,
         }
     }
 }

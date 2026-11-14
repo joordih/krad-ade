@@ -234,6 +234,7 @@ impl Runtime {
             .and_then(|incoming| self.answer_for_leads(incoming))
             .and_then(|incoming| self.answer_on_chats(incoming))
             .and_then(|incoming| self.answer_on_terminals(incoming))
+            .and_then(|incoming| self.answer_unreached(incoming))
         else {
             return;
         };

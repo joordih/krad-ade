@@ -6,7 +6,7 @@ use super::super::super::problems::toast_kind;
 use super::super::super::EnvironmentShell;
 use super::super::shown_images::ShownImages;
 use super::super::{Backend, ChatPlace, ChatView};
-use super::{ChatDriver, StructuredChat};
+use super::StructuredChat;
 
 const UNREACHED: &str = "The chat's runtime is out of reach; nothing was sent";
 
@@ -40,14 +40,13 @@ fn refusal_toast(reply: Reply) -> Option<(ToastKind, String)> {
     }
 }
 
-fn hosted_structured(mirror: &ChatMirror) -> StructuredChat {
+pub(super) fn mirrored_structured(mirror: &ChatMirror) -> StructuredChat {
     let state = &mirror.state;
     let session = state
         .resume
         .clone()
         .map_or_else(|| LiveSession::Start(new_session_id()), LiveSession::Resume);
     let mut structured = StructuredChat::new(session, state.harness);
-    structured.driver = ChatDriver::InRuntime;
     structured.chosen_model.clone_from(&state.chosen_model);
     structured.effort = state.effort;
     structured.permission_mode = state.permission_mode;
@@ -82,7 +81,7 @@ impl EnvironmentShell {
             return;
         };
         let (input, events) = Self::chat_input(id, window, cx);
-        let structured = hosted_structured(&mirror);
+        let structured = mirrored_structured(&mirror);
         let mut chat = ChatView::new(input, events, Backend::Structured(Box::new(structured)));
         chat.images = ShownImages::fetched();
         let Some(live) = self.live_mut(place) else {

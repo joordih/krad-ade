@@ -100,8 +100,8 @@ use gpui_kit::component::command::CommandState;
 use gpui_kit::{Context, Entity, FocusHandle, Subscription, Task, WeakEntity, Window};
 use krad_client::InProcess;
 use krad_domain::{
-    EnvironmentData, EnvironmentName, EnvironmentView, Layout, Prompt, Settings, SidebarWidth,
-    TerminalId, Visibility, WorkMode, DEFAULT_ENVIRONMENT,
+    EnvironmentData, EnvironmentName, EnvironmentView, Layout, Settings, SidebarWidth, TerminalId,
+    Visibility, WorkMode, DEFAULT_ENVIRONMENT,
 };
 use krad_protocol::{Command, EnvironmentCommand};
 use krad_store::{LayoutFile, LayoutWriter};
@@ -228,7 +228,6 @@ impl EnvironmentShell {
     }
 
     pub(super) fn flush_live_work(&mut self, cx: &mut Context<Self>) {
-        self.flush_noticed_chats(cx);
         self.flush_attention(cx);
         self.service_hosts(cx);
     }

@@ -46,7 +46,7 @@ pub(super) fn lead_environment(root: &Path) -> Result<EnvironmentData, Box<dyn E
     Ok(data)
 }
 
-fn start(data: EnvironmentData) -> Result<RuntimeHandle, Box<dyn Error>> {
+pub(super) fn start(data: EnvironmentData) -> Result<RuntimeHandle, Box<dyn Error>> {
     let fake = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(FAKE_CLAUDE)
         .canonicalize()?;

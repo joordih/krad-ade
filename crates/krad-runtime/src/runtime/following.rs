@@ -146,16 +146,24 @@ impl Runtime {
         incoming: Incoming,
     ) -> Option<Incoming> {
         let chat = agent(environment, target);
-        let Some((owner, worker)) = self
+        let owned = self
             .environments
             .data(environment)
             .and_then(|data| data.worker(target))
-        else {
-            return Some(incoming);
+            .filter(|(owner, _)| *owner == lead);
+        let Some((_, worker)) = owned else {
+            if !self.chats.is_open(&chat) {
+                return Some(incoming);
+            }
+            self.with_chat_work(|chats, work| chats.send_prompt(&chat, Prompt::from(body), work));
+            reply_with(
+                incoming.reply,
+                Response::Submitted {
+                    terminal: target.as_u64(),
+                },
+            );
+            return None;
         };
-        if owner != lead {
-            return Some(incoming);
-        }
         if worker.session.is_some() {
             if !self.chats.is_open(&chat) {
                 return Some(incoming);

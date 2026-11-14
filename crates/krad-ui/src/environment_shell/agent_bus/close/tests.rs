@@ -1,5 +1,6 @@
 use super::*;
-use krad_domain::{AgentPreset, SessionLead};
+use krad_domain::{AgentPreset, EnvironmentName, SessionLead};
+use std::path::PathBuf;
 
 #[test]
 fn a_lead_closes_only_the_sessions_the_close_rules_give_it() {

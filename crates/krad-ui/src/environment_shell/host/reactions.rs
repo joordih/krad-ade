@@ -1,5 +1,5 @@
 use gpui_kit::{App, Context};
-use krad_domain::{AgentPreset, EnvironmentName, TerminalId, ToastKind};
+use krad_domain::{EnvironmentName, TerminalId, ToastKind};
 use krad_protocol::{EventKind, HostState, HostsSnapshot, LoginEnv, RemoteBusInfo, RemoteBusState};
 use std::path::PathBuf;
 
@@ -178,7 +178,7 @@ impl EnvironmentShell {
             self.remote_bus_unavailable(env, reason);
         }
         if before.is_preparing() && !bus.is_preparing() {
-            self.remote_bus_settled(env, cx);
+            cx.notify();
         }
     }
 
@@ -192,28 +192,11 @@ impl EnvironmentShell {
         self.push_toast(ToastKind::Error, format!("{BUS_UNAVAILABLE}: {reason}"));
     }
 
-    fn remote_bus_settled(&mut self, _env: &EnvironmentName, cx: &mut Context<Self>) {
-        let harnesses: Vec<AgentPreset> =
-            AgentPreset::listed(&self.runtime.settings.acp.all_agents()).collect();
-        for harness in harnesses {
-            self.flush_chats_of(harness, cx);
-        }
-        cx.notify();
-    }
-
     pub(in crate::environment_shell) fn remote_bus<'a>(
         &self,
         env: &EnvironmentName,
         cx: &'a App,
     ) -> Option<&'a RemoteBusInfo> {
         self.runtime.view.read(cx).hosts.bus(env).ready()
-    }
-
-    pub(in crate::environment_shell) fn awaits_remote_bus(
-        &self,
-        env: &EnvironmentName,
-        cx: &App,
-    ) -> bool {
-        self.runtime.view.read(cx).hosts.bus(env).is_preparing()
     }
 }
