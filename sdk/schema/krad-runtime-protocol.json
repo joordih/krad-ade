@@ -164,6 +164,14 @@
       "count": 64,
       "verb": "page"
     },
+    "chat_read_image": {
+      "area": "chat",
+      "image": {
+        "format": "png",
+        "path": "/home/dev/.config/krad-ade/chat-images/6d61696e/3/1.png"
+      },
+      "verb": "read_image"
+    },
     "chat_send": {
       "area": "chat",
       "chat": {

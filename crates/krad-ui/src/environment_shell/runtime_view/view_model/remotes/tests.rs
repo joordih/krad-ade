@@ -162,3 +162,42 @@ fn reaching_a_lost_runner_again_keeps_what_it_showed() {
         None
     );
 }
+
+#[test]
+fn a_runner_s_chat_events_reach_the_shell_and_its_answers_reach_the_asker() {
+    let runner = CloudRunnerId(RUNNER);
+    let mut model = ViewModel::default();
+    let remote = RecordedClient::new(Vec::new());
+    let connection = connected(&mut model, Arc::clone(&remote));
+    model.fold_remote(runner, connection, Feed::Snapshot(runner_snapshot()));
+    let opened = EventKind::ChatOpened {
+        chat: chat(),
+        state: Box::new(ChatState::new(AgentPreset::ClaudeCode)),
+    };
+    model.fold_remote(runner, connection, event(11, opened.clone()));
+    let heard = model.take_news().heard;
+    assert!(heard
+        .iter()
+        .any(|heard| matches!(heard, Heard::RemoteReplaced(replaced) if *replaced == runner)));
+    assert!(heard.iter().any(|heard| matches!(
+        heard,
+        Heard::RemoteChat { runner: from, kind } if *from == runner && **kind == opened
+    )));
+    let Some((client, answer, request)) = model.remotes.wait(runner) else {
+        unreachable!("a connected runner takes a waiter");
+    };
+    assert!(Arc::ptr_eq(
+        &client,
+        &(Arc::clone(&remote) as Arc<dyn RuntimeClient>)
+    ));
+    let bytes = krad_protocol::Answer::ImageBytes {
+        format: krad_domain::ImageFormat::Png,
+        bytes: b"png".to_vec(),
+    };
+    let answered = EventKind::Answered {
+        request,
+        answer: Box::new(bytes.clone()),
+    };
+    model.fold_remote(runner, connection, event(12, answered));
+    assert_eq!(futures::executor::block_on(answer).ok(), Some(bytes));
+}

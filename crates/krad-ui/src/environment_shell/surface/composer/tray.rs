@@ -184,8 +184,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let Some(input) = self
-            .envs
-            .get(&self.active)
+            .live(&self.chat_place())
             .and_then(|live| live.chats.get(&id))
             .map(|chat| chat.input.clone())
         else {
@@ -217,7 +216,9 @@ impl EnvironmentShell {
             .border_1()
             .border_color(pal.divider)
             .children(Self::tray_thinking(id, facts, cx))
-            .children(structured.then(|| self.tray_orchestrator(id, cx)))
+            .children(
+                (structured && self.shown_here().is_some()).then(|| self.tray_orchestrator(id, cx)),
+            )
             .children(self.chat_mode_control(id, chat, cx));
         let context = context_percent(facts).map(|used| {
             div()

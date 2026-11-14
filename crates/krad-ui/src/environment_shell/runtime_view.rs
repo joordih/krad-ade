@@ -49,6 +49,10 @@ impl RuntimeLink {
         }
     }
 
+    pub(super) const fn palette(&self) -> Option<AnsiPalette> {
+        self.palette
+    }
+
     pub(super) fn use_palette(&mut self, palette: AnsiPalette) {
         if self.palette.replace(palette) != Some(palette) {
             self.handle.terminal_palette(palette);

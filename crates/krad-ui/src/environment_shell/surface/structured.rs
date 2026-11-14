@@ -2,6 +2,7 @@ mod acp;
 mod checkpoint;
 mod flush;
 mod forks;
+mod hosted;
 mod mcp;
 mod open;
 mod orchestrator;
@@ -19,7 +20,7 @@ use super::super::ask::AskQueue;
 use super::super::EnvironmentShell;
 use super::acp::AcpOffers;
 use super::outbox::Outbox;
-use super::{Backend, ChatView, SurfaceCommand};
+use super::{Backend, ChatPlace, ChatView, SurfaceCommand};
 
 pub(in crate::environment_shell) use open::restored_chats;
 pub(in crate::environment_shell) use runtime_chat::ChatDriver;
@@ -157,12 +158,11 @@ impl StructuredChat {
 
 fn structured_chat<'a>(
     shell: &'a mut EnvironmentShell,
-    env: &EnvironmentName,
+    place: &ChatPlace,
     id: TerminalId,
 ) -> Option<&'a mut ChatView> {
     shell
-        .envs
-        .get_mut(env)?
+        .live_mut(place)?
         .chats
         .get_mut(&id)
         .filter(|chat| matches!(chat.chat.backend, Backend::Structured(_)))
@@ -170,10 +170,10 @@ fn structured_chat<'a>(
 
 fn structured_mut<'a>(
     shell: &'a mut EnvironmentShell,
-    env: &EnvironmentName,
+    place: &ChatPlace,
     id: TerminalId,
 ) -> Option<&'a mut StructuredChat> {
-    match &mut structured_chat(shell, env, id)?.chat.backend {
+    match &mut structured_chat(shell, place, id)?.chat.backend {
         Backend::Structured(structured) => Some(structured),
         Backend::Transcript(_) => None,
     }

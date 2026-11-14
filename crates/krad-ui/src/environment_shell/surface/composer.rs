@@ -37,6 +37,9 @@ const TOOLTIP_MODEL_MISSING: &str =
     "This model is no longer offered here; the default model answers until you pick another";
 const ORCHESTRATOR_LABEL: &str = "Orchestrator";
 const ORCHESTRATOR_PREFIX: &str = "surface-orchestrator";
+const TOOLTIP_ORCHESTRATOR_HOSTED: &str =
+    "Leading other agents is not available for cloud chats yet";
+const UNAVAILABLE_OPACITY: f32 = 0.5;
 const TOOLTIP_ORCHESTRATOR_OFF: &str =
     "Orchestrator: lead this session, starting and directing Workers";
 const TOOLTIP_ORCHESTRATOR_ON: &str = "Leading this session; click to make it a plain chat again";
@@ -195,6 +198,18 @@ impl EnvironmentShell {
 
     fn orchestrator_control(&self, id: TerminalId, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
+        if self.shown_here().is_none() {
+            return control_pill((ORCHESTRATOR_PREFIX, id.as_u64()), pal)
+                .opacity(UNAVAILABLE_OPACITY)
+                .tooltip(|_, cx| tooltip_view(TOOLTIP_ORCHESTRATOR_HOSTED.into(), cx))
+                .child(icon(IconName::Crown, ICON_XS, pal.text_muted))
+                .child(
+                    div()
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(ORCHESTRATOR_LABEL),
+                )
+                .into_any_element();
+        }
         let on = self.orchestrates(id);
         control_pill((ORCHESTRATOR_PREFIX, id.as_u64()), pal)
             .when(on, |pill| {

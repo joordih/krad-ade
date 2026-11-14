@@ -5,9 +5,9 @@ use krad_protocol::{
 
 pub(crate) const fn needed_for_command(command: &Command) -> PairingPermission {
     match command {
-        Command::Runtime(_) | Command::Terminal(TerminalCommand::Watch { .. }) => {
-            PairingPermission::Read
-        }
+        Command::Runtime(_)
+        | Command::Terminal(TerminalCommand::Watch { .. })
+        | Command::Chat(ChatCommand::ReadImage { .. }) => PairingPermission::Read,
         Command::Bus(BusCommand::AnswerAsk { .. } | BusCommand::Answer { .. })
         | Command::Chat(
             ChatCommand::AnswerAsk { .. }
@@ -45,6 +45,13 @@ mod tests {
         assert_eq!(needed_for_command(&answer), PairingPermission::Answer);
         let ping = Command::Runtime(RuntimeCommand::Ping);
         assert_eq!(needed_for_command(&ping), PairingPermission::Read);
+        let image = Command::Chat(ChatCommand::ReadImage {
+            image: krad_domain::ChatImage {
+                path: std::path::PathBuf::from("/runner/runtime/chat-images/1.png"),
+                format: krad_domain::ImageFormat::Png,
+            },
+        });
+        assert_eq!(needed_for_command(&image), PairingPermission::Read);
         let settings = Command::Settings(SettingsCommand::Unknown);
         assert_eq!(needed_for_command(&settings), PairingPermission::Admin);
         let answered = Command::Bus(BusCommand::Answer {

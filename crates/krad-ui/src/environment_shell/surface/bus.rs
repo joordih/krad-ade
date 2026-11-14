@@ -2,6 +2,7 @@ use gpui_kit::Context;
 use krad_domain::{conversation_lines, EnvironmentName, Prompt, TerminalId};
 
 use super::super::EnvironmentShell;
+use super::ChatPlace;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::environment_shell) enum ChatPresence {
@@ -58,7 +59,7 @@ impl EnvironmentShell {
         };
         if let Some(chat) = live.chats.get_mut(&id) {
             chat.chat.outbox.push(Prompt::from(text));
-            self.flush_outbox(env, id, cx);
+            self.flush_outbox(&ChatPlace::here(env), id, cx);
             return true;
         }
         if !live.pending_chats.contains_key(&id) {

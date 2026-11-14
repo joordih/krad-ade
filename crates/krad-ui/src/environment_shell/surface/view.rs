@@ -59,7 +59,7 @@ impl EnvironmentShell {
         &mut self,
         now: std::time::Instant,
     ) -> bool {
-        let Some(live) = self.envs.get(&self.active) else {
+        let Some(live) = self.live(&self.chat_place()) else {
             return false;
         };
         let started: Vec<(TerminalId, bool)> = live
@@ -82,7 +82,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn agent_now(&self, id: TerminalId) -> AgentNow {
-        let Some(live) = self.envs.get(&self.active) else {
+        let Some(live) = self.live(&self.chat_place()) else {
             return AgentNow::Exited;
         };
         if let Some(structured) = live.chats.get(&id).and_then(|view| view.chat.structured()) {
@@ -122,8 +122,7 @@ impl EnvironmentShell {
             return Self::subagent_view(id, tool, chat, started, &self.copy_feedback, cx);
         }
         let scale = self
-            .envs
-            .get(&self.active)
+            .live(&self.chat_place())
             .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
             .map_or(krad_domain::TextScale::DEFAULT, |node| {
                 node.text_scale.as_f32()

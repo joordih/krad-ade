@@ -3,13 +3,13 @@ mod shown;
 
 use gpui_kit::{App, Context};
 use krad_domain::SlashCommand;
-use krad_domain::{AgentState, EnvironmentName, Prompt, RewindScope, TerminalId};
+use krad_domain::{AgentState, Prompt, RewindScope, TerminalId};
 use krad_protocol::{AgentRef, ChatCommand, ChatOpen, Command};
 use krad_runtime::runs_in_runtime;
 
 use super::super::super::chat::StartError;
 use super::super::super::EnvironmentShell;
-use super::super::{Chat, ChatView, SurfaceCommand};
+use super::super::{Chat, ChatPlace, ChatView, SurfaceCommand};
 use super::{structured_chat, structured_mut, StructuredChat};
 
 pub(super) use shown::RuntimeShown;
@@ -27,10 +27,17 @@ impl StructuredChat {
     }
 }
 
-pub(super) fn chat_ref(env: &EnvironmentName, id: TerminalId) -> AgentRef {
-    AgentRef {
-        environment: env.clone(),
-        terminal: id,
+pub(super) fn rewind_command(
+    chat: AgentRef,
+    (index, prompt): (usize, Prompt),
+    from: usize,
+    scope: RewindScope,
+) -> ChatCommand {
+    ChatCommand::Rewind {
+        chat,
+        index: index + from,
+        prompt,
+        scope,
     }
 }
 
@@ -63,22 +70,22 @@ fn batch_commands(
 }
 
 impl EnvironmentShell {
-    pub(super) fn opens_in_runtime(&self, env: &EnvironmentName, id: TerminalId) -> bool {
-        structured_of(self, env, id).is_some_and(|structured| {
+    pub(super) fn opens_in_runtime(&self, place: &ChatPlace, id: TerminalId) -> bool {
+        structured_of(self, place, id).is_some_and(|structured| {
             runs_in_runtime(structured.harness) && !structured.in_runtime()
         })
     }
 
     pub(super) fn open_in_runtime(
         &mut self,
-        env: &EnvironmentName,
+        place: &ChatPlace,
         id: TerminalId,
         cx: &App,
     ) -> Result<(), StartError> {
-        if self.runtime_chat_waits(env, cx) {
+        if self.runtime_chat_waits(place, cx) {
             return Err(StartError::Waiting);
         }
-        let Some(harness) = structured_of(self, env, id).map(|structured| structured.harness)
+        let Some(harness) = structured_of(self, place, id).map(|structured| structured.harness)
         else {
             return Ok(());
         };
@@ -86,7 +93,7 @@ impl EnvironmentShell {
             backend: super::super::Backend::Structured(structured),
             messages,
             ..
-        }) = structured_chat(self, env, id).map(|view| &mut view.chat)
+        }) = structured_chat(self, place, id).map(|view| &mut view.chat)
         else {
             return Ok(());
         };
@@ -102,47 +109,61 @@ impl EnvironmentShell {
             notices: std::mem::take(&mut structured.notices),
         };
         structured.driver = ChatDriver::InRuntime;
-        let chat = chat_ref(env, id);
-        self.runtime.client.post(Command::Chat(ChatCommand::Open {
-            chat,
-            start: Box::new(start),
-        }));
+        let chat = place.chat(id);
+        self.post_chat(
+            place,
+            ChatCommand::Open {
+                chat,
+                start: Box::new(start),
+            },
+        );
         Ok(())
     }
 
-    fn runtime_chat_waits(&self, env: &EnvironmentName, cx: &App) -> bool {
+    fn runtime_chat_waits(&self, place: &ChatPlace, cx: &App) -> bool {
+        let Some(env) = place.local() else {
+            return self.chat_client(place).is_none();
+        };
         let link = self.env_link(env);
         let agents_unknown = !link.is_local() && !self.host_agents.contains_key(&link.host());
         self.awaits_remote_bus(env, cx) || !link.is_ready() || agents_unknown
     }
 
+    pub(in crate::environment_shell) fn post_chat(&self, place: &ChatPlace, command: ChatCommand) {
+        if let Some(client) = self.chat_client(place) {
+            client.post(Command::Chat(command));
+        } else {
+            tracing::debug!("the chat's runtime is out of reach; the command is dropped");
+        }
+    }
+
     pub(super) fn hand_to_runtime(
         &mut self,
-        env: &EnvironmentName,
+        place: &ChatPlace,
         id: TerminalId,
         commands: &[SlashCommand],
         prompts: Vec<Prompt>,
     ) {
-        let chat = chat_ref(env, id);
+        let chat = place.chat(id);
         let starts_turn = !prompts.is_empty();
         for command in batch_commands(&chat, commands, prompts) {
-            self.runtime.client.post(Command::Chat(command));
+            self.post_chat(place, command);
         }
-        if starts_turn {
+        if let Some(env) = place.local().filter(|_| starts_turn) {
             self.set_agent_state(env, id, AgentState::Working);
         }
     }
 
     pub(in crate::environment_shell) fn command_runtime_chat(
         &self,
-        env: &EnvironmentName,
+        place: &ChatPlace,
         id: TerminalId,
         command: &SurfaceCommand,
     ) {
-        if !structured_of(self, env, id).is_some_and(StructuredChat::in_runtime) {
+        if !structured_of(self, place, id).is_some_and(StructuredChat::in_runtime) {
             return;
         }
-        let chat = chat_ref(env, id);
+        let chat = place.chat(id);
         let posted = match command {
             SurfaceCommand::Stop => ChatCommand::Interrupt { chat },
             SurfaceCommand::Model(_, model) => ChatCommand::SetModel {
@@ -155,56 +176,51 @@ impl EnvironmentShell {
             },
             SurfaceCommand::ToggleThinking => return,
         };
-        self.runtime.client.post(Command::Chat(posted));
+        self.post_chat(place, posted);
     }
 
     pub(in crate::environment_shell) fn post_runtime_chat(
         &self,
-        env: &EnvironmentName,
+        place: &ChatPlace,
         id: TerminalId,
         command: impl FnOnce(AgentRef) -> ChatCommand,
     ) -> bool {
-        if !structured_of(self, env, id).is_some_and(StructuredChat::in_runtime) {
+        if !structured_of(self, place, id).is_some_and(StructuredChat::in_runtime) {
             return false;
         }
-        self.runtime
-            .client
-            .post(Command::Chat(command(chat_ref(env, id))));
+        self.post_chat(place, command(place.chat(id)));
         true
     }
 
     pub(super) fn rewind_in_runtime(
         &self,
-        env: &EnvironmentName,
+        place: &ChatPlace,
         id: TerminalId,
         (index, prompt): (usize, Prompt),
         scope: RewindScope,
     ) -> bool {
-        let from = structured_of(self, env, id).map_or(0, StructuredChat::runtime_from);
-        self.post_runtime_chat(env, id, |chat| ChatCommand::Rewind {
-            chat,
-            index: index + from,
-            prompt,
-            scope,
+        let from = structured_of(self, place, id).map_or(0, StructuredChat::runtime_from);
+        self.post_runtime_chat(place, id, |chat| {
+            rewind_command(chat, (index, prompt), from, scope)
         })
     }
 
     pub(in crate::environment_shell) fn leave_runtime(
         &mut self,
-        env: &EnvironmentName,
+        place: &ChatPlace,
         id: TerminalId,
     ) {
-        let Some(structured) = structured_mut(self, env, id).filter(|chat| chat.in_runtime())
+        let Some(structured) = structured_mut(self, place, id).filter(|chat| chat.in_runtime())
         else {
             return;
         };
         structured.driver = ChatDriver::InShell;
-        self.post_close_chat(env, id);
+        self.post_close_chat(place, id);
     }
 
     pub(in crate::environment_shell) fn close_runtime_chat(
         &self,
-        env: &EnvironmentName,
+        place: &ChatPlace,
         id: TerminalId,
         chat: Option<&ChatView>,
     ) {
@@ -212,33 +228,35 @@ impl EnvironmentShell {
             .and_then(|view| view.chat.structured())
             .is_some_and(StructuredChat::in_runtime)
         {
-            self.post_close_chat(env, id);
+            self.post_close_chat(place, id);
         }
     }
 
-    fn post_close_chat(&self, env: &EnvironmentName, id: TerminalId) {
-        let chat = chat_ref(env, id);
-        self.runtime
-            .client
-            .post(Command::Chat(ChatCommand::Close { chat }));
+    fn post_close_chat(&self, place: &ChatPlace, id: TerminalId) {
+        self.post_chat(
+            place,
+            ChatCommand::Close {
+                chat: place.chat(id),
+            },
+        );
     }
 
     pub(in crate::environment_shell) fn runtime_chat_opened(
         &mut self,
-        env: &EnvironmentName,
+        place: &ChatPlace,
         id: TerminalId,
         cx: &mut Context<Self>,
     ) {
-        if !self.opens_in_runtime(env, id) {
+        if !self.opens_in_runtime(place, id) {
             return;
         }
-        let resume = structured_of(self, env, id)
+        let resume = structured_of(self, place, id)
             .and_then(|structured| structured.session.history().cloned());
-        match (self.open_in_runtime(env, id, cx), resume) {
+        match (self.open_in_runtime(place, id, cx), resume) {
             (Ok(()), _) | (Err(StartError::Waiting), None) => {}
-            (Err(StartError::Waiting), Some(_)) => self.note_history_waits_for_host(env, id),
+            (Err(StartError::Waiting), Some(_)) => self.note_history_waits_for_host(place, id),
             (Err(error), _) => {
-                if let Some(chat) = structured_chat(self, env, id) {
+                if let Some(chat) = structured_chat(self, place, id) {
                     chat.chat.problem = Some(error.to_string());
                 }
             }
@@ -249,10 +267,10 @@ impl EnvironmentShell {
 
 fn structured_of<'a>(
     shell: &'a EnvironmentShell,
-    env: &EnvironmentName,
+    place: &ChatPlace,
     id: TerminalId,
 ) -> Option<&'a StructuredChat> {
-    shell.envs.get(env)?.chats.get(&id)?.chat.structured()
+    shell.live(place)?.chats.get(&id)?.chat.structured()
 }
 
 #[cfg(test)]
@@ -262,7 +280,8 @@ mod tests {
 
     #[test]
     fn a_batch_reaches_the_runtime_as_settings_then_every_message() {
-        let chat = chat_ref(&EnvironmentName::new("main".to_owned()), TerminalId(3));
+        let chat = ChatPlace::here(&krad_domain::EnvironmentName::new("main".to_owned()))
+            .chat(TerminalId(3));
         let model = ModelId::parse("opus");
         let commands: Vec<SlashCommand> = model
             .clone()

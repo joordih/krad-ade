@@ -5,7 +5,8 @@ use krad_domain::{
     WorktreeState,
 };
 use krad_domain::{
-    DirEntry, FileStat, ProjectMatches, ReplacedFile, Skill, TextMatch, UndoOutcome, VaultEntry,
+    DirEntry, FileStat, ImageFormat, ProjectMatches, ReplacedFile, Skill, TextMatch, UndoOutcome,
+    VaultEntry,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -99,6 +100,10 @@ pub enum Answer {
     },
     Unreadable {
         unreadable: Unreadable,
+    },
+    ImageBytes {
+        format: ImageFormat,
+        bytes: Vec<u8>,
     },
     Stat {
         stat: Option<FileStat>,

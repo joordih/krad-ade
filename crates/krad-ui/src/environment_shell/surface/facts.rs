@@ -308,15 +308,20 @@ impl EnvironmentShell {
                 let fresh = chat.chat.messages.is_empty() && structured.is_fresh();
                 let root = self.active_group().map(|group| group.root.as_path());
                 let others = if fresh {
-                    let available = self.agents_for(&self.active, root);
-                    let in_cloud = self.cloud_placement_of(&self.active, id).is_some();
+                    let here = self
+                        .chat_place()
+                        .local()
+                        .cloned()
+                        .unwrap_or_else(|| self.active.clone());
+                    let available = self.agents_for(&here, root);
+                    let in_cloud = self.cloud_placement_of(&here, id).is_some();
                     AgentPreset::chat_harnesses(&self.settings.acp.all_agents())
                         .into_iter()
                         .filter(|other| {
                             other.native_twin() != harness.native_twin()
                                 && other.is_offered(available)
                                 && !(in_cloud && other.unavailable_in_cloud().is_some())
-                                && self.chats_on(&self.active, root, *other)
+                                && self.chats_on(&here, root, *other)
                         })
                         .flat_map(|other| self.harness_picks(other, None, cx))
                         .collect()

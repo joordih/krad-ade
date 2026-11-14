@@ -20,7 +20,9 @@ mod mentions;
 mod message_actions;
 mod origin;
 mod outbox;
+mod place;
 mod prose_views;
+mod shown_images;
 mod status_line;
 mod structured;
 mod subagent_card;
@@ -54,6 +56,7 @@ pub(super) use composer::EffortPopover;
 use edit_message::MessageEditor;
 use glide::Glide;
 pub(super) use origin::age_label;
+use shown_images::ShownImages;
 use timeline::Timeline;
 use transcript::TranscriptView;
 
@@ -62,6 +65,7 @@ pub(super) use answer::{names_its_tool, tool_question, tool_request};
 pub(super) use bus::ChatPresence;
 pub(super) use chat_menu::ChatCopy;
 pub(super) use edit_diff::edit_diffs;
+pub(super) use place::ChatPlace;
 pub(super) use status_line::elapsed_label;
 pub(super) use structured::restored_chats;
 pub(super) use structured::StructuredChat;
@@ -118,6 +122,7 @@ pub(super) struct ChatView {
     glide: Option<Glide>,
     checklist_view: ChecklistView,
     editing: Option<MessageEditor>,
+    pub(super) images: ShownImages,
 }
 
 impl ChatView {
@@ -154,6 +159,7 @@ impl ChatView {
             glide: None,
             checklist_view: ChecklistView::default(),
             editing: None,
+            images: ShownImages::Here,
         }
     }
 }
@@ -191,10 +197,9 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let env = self.active.clone();
+        let place = self.chat_place();
         let blocked = self
-            .envs
-            .get(&env)
+            .live(&place)
             .and_then(|live| live.chats.get(&id))
             .is_some_and(|chat| chat.chat.asks().blocks_typing());
         if blocked {
@@ -205,8 +210,7 @@ impl EnvironmentShell {
         };
         let text = input.read(cx).value().trim().to_owned();
         let attached = self
-            .envs
-            .get(&env)
+            .live(&place)
             .and_then(|live| live.chats.get(&id))
             .is_some_and(|chat| !chat.attached.is_empty());
         if text.is_empty() && !attached {
@@ -214,18 +218,19 @@ impl EnvironmentShell {
         }
         input.update(cx, |input, cx| input.set_value("", window, cx));
         let harness = self
-            .envs
-            .get(&env)
+            .live(&place)
             .and_then(|live| live.chats.get(&id))
             .map_or(DEFAULT_CHAT_HARNESS, |view| view.chat.harness());
         if harness.chats_through_gateway() {
             self.recheck_failed_gateway(cx);
         }
         let text = self.skill_message(harness, text);
-        let text = self.with_kraddie_packs(&env, id, text);
+        let text = match place.local().cloned() {
+            Some(local) => self.with_kraddie_packs(&local, id, text),
+            None => text,
+        };
         if let Some(chat) = self
-            .envs
-            .get_mut(&env)
+            .live_mut(&place)
             .and_then(|live| live.chats.get_mut(&id))
         {
             chat.mentions.clear();
@@ -234,7 +239,7 @@ impl EnvironmentShell {
             chat.pins_latest = true;
             chat.start_glide(Instant::now());
         }
-        self.flush_outbox(&env, id, cx);
+        self.flush_outbox(&place, id, cx);
         cx.notify();
     }
 
@@ -249,31 +254,29 @@ impl EnvironmentShell {
             })
             .collect();
         for (env, id) in noticed {
-            self.flush_outbox(&env, id, cx);
+            self.flush_outbox(&ChatPlace::here(&env), id, cx);
         }
     }
 
-    fn flush_outbox(&mut self, env: &EnvironmentName, id: TerminalId, cx: &mut Context<Self>) {
+    fn flush_outbox(&mut self, place: &ChatPlace, id: TerminalId, cx: &mut Context<Self>) {
         let structured = self
-            .envs
-            .get(env)
+            .live(place)
             .and_then(|live| live.chats.get(&id))
             .is_some_and(|chat| chat.chat.structured().is_some());
-        if structured {
-            self.flush_structured(env, id, cx);
-        } else {
-            self.flush_transcript(env, id);
+        match (structured, place.local().cloned()) {
+            (true, _) => self.flush_structured(place, id, cx),
+            (false, Some(local)) => self.flush_transcript(&local, id),
+            (false, None) => {}
         }
     }
 
     pub(super) fn show_earlier(&mut self, id: TerminalId, cx: &mut Context<Self>) {
-        let env = self.active.clone();
-        if self.show_earlier_in_runtime(&env, id, cx) {
+        let place = self.chat_place();
+        if self.show_earlier_in_runtime(&place, id, cx) {
             return cx.notify();
         }
         let structured = self
-            .envs
-            .get(&self.active)
+            .live(&self.chat_place())
             .and_then(|live| live.chats.get(&id))
             .is_some_and(|chat| chat.chat.structured().is_some());
         if !structured {
@@ -282,28 +285,27 @@ impl EnvironmentShell {
     }
 
     pub(super) fn cancel_queued(&mut self, id: TerminalId, index: usize, cx: &mut Context<Self>) {
-        let env = self.active.clone();
+        let place = self.chat_place();
         let queued = self
-            .envs
-            .get_mut(&env)
+            .live_mut(&place)
             .and_then(|live| live.chats.get_mut(&id))
             .and_then(|chat| chat.cancel_pending(index));
         if let Some(index) = queued {
-            self.unqueue_in_runtime(&env, id, index);
+            self.unqueue_in_runtime(&place, id, index);
         }
         cx.notify();
     }
 
     fn harness_change(
         &mut self,
-        env: &EnvironmentName,
+        place: &ChatPlace,
         id: TerminalId,
         command: &SurfaceCommand,
     ) -> HarnessChange {
         let SurfaceCommand::Model(harness, _) = command else {
             return HarnessChange::Kept;
         };
-        let Some(live) = self.envs.get_mut(env) else {
+        let Some(live) = self.live_mut(place) else {
             return HarnessChange::Kept;
         };
         let Some(Chat {
@@ -317,20 +319,22 @@ impl EnvironmentShell {
         if *harness == structured.harness {
             return HarnessChange::Kept;
         }
+        let Some(local) = place.local().cloned() else {
+            return HarnessChange::Refused;
+        };
         if !messages.is_empty() || !structured.is_fresh() {
             return HarnessChange::Refused;
         }
-        self.leave_runtime(env, id);
+        self.leave_runtime(place, id);
         let Some(Backend::Structured(structured)) = self
-            .envs
-            .get_mut(env)
+            .live_mut(place)
             .and_then(|live| live.chats.get_mut(&id))
             .map(|view| &mut view.chat.backend)
         else {
             return HarnessChange::Kept;
         };
         structured.switch_harness(*harness);
-        self.set_node(env, id, NodeField::Harness(Some(*harness)));
+        self.set_node(&local, id, NodeField::Harness(Some(*harness)));
         self.seed_acp_chats();
         HarnessChange::Switched
     }
@@ -346,40 +350,40 @@ impl EnvironmentShell {
                 return;
             }
         }
-        let env = self.active.clone();
-        match self.harness_change(&env, id, &command) {
+        let place = self.chat_place();
+        match self.harness_change(&place, id, &command) {
             HarnessChange::Refused => return,
             HarnessChange::Switched => self.store(),
             HarnessChange::Kept => {}
         }
         let chosen = command.clone();
-        self.run_surface_command(&env, id, command);
-        if matches!(chosen, SurfaceCommand::Model(..)) {
-            self.fit_effort_to_model(&env, id, cx);
+        self.run_surface_command(&place, id, command);
+        if let Some(local) = place.local().cloned() {
+            if matches!(chosen, SurfaceCommand::Model(..)) {
+                self.fit_effort_to_model(&local, id, cx);
+            }
+            self.remember_choice(&local, id, &chosen, cx);
         }
-        self.remember_choice(&env, id, &chosen, cx);
         cx.notify();
     }
 
-    pub(super) fn stop_turn_in(&mut self, env: &EnvironmentName, id: TerminalId) {
-        self.run_surface_command(env, id, SurfaceCommand::Stop);
+    pub(super) fn stop_turn_in(&mut self, place: &ChatPlace, id: TerminalId) {
+        self.run_surface_command(place, id, SurfaceCommand::Stop);
     }
 
-    fn run_surface_command(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-        command: SurfaceCommand,
-    ) {
-        self.command_runtime_chat(env, id, &command);
+    fn run_surface_command(&mut self, place: &ChatPlace, id: TerminalId, command: SurfaceCommand) {
+        self.command_runtime_chat(place, id, &command);
         match self
-            .envs
-            .get_mut(env)
+            .live_mut(place)
             .and_then(|live| live.chats.get_mut(&id))
             .map(|chat| &mut chat.chat.backend)
         {
             Some(Backend::Structured(structured)) => structured.command(command),
-            Some(Backend::Transcript(_)) | None => self.command_transcript(env, id, &command),
+            Some(Backend::Transcript(_)) | None => {
+                if let Some(local) = place.local().cloned() {
+                    self.command_transcript(&local, id, &command);
+                }
+            }
         }
     }
 }

@@ -285,13 +285,12 @@ impl EnvironmentShell {
     }
 
     fn active_chat(&self, id: TerminalId) -> Option<&ChatView> {
-        self.envs.get(&self.active)?.chats.get(&id)
+        self.live(&self.chat_place())?.chats.get(&id)
     }
 
     fn jump_on_timeline(&mut self, id: TerminalId, row: usize) {
         if let Some(chat) = self
-            .envs
-            .get_mut(&self.active)
+            .live_mut(&self.chat_place())
             .and_then(|live| live.chats.get_mut(&id))
         {
             chat.jump_to_row(row);

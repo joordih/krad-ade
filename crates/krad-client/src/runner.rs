@@ -1,7 +1,6 @@
 mod inbox;
 
 use futures::channel::{mpsc, oneshot};
-use futures::stream::BoxStream;
 use futures::{FutureExt as _, StreamExt as _};
 use krad_protocol::{
     read_frame, write_frame, AgentRef, Command, ErrorCode, Frame, Hello, Message, PairingAnswer,
@@ -15,7 +14,7 @@ use std::thread;
 use std::time::Duration;
 
 use self::inbox::{read_all, Awaiting, Waiting};
-use crate::client::{Answer, ClientError, Feeds, RuntimeClient};
+use crate::client::{Answer, ClientError, Feeds, RuntimeClient, TerminalBytesFeed};
 
 const OUTBOX_CAPACITY: usize = 256;
 const FEED_CAPACITY: usize = 1024;
@@ -27,8 +26,6 @@ const WELCOME_TOO_SLOW: &str = "the runner did not welcome the client in time";
 const CONNECT_LIMIT: Duration = Duration::from_secs(20);
 const NO_THREAD: &str = "the runner client could not start its threads";
 const FIRST_REQUEST: RequestId = RequestId(1);
-
-pub type TerminalBytesFeed = BoxStream<'static, Vec<u8>>;
 
 pub struct Runner {
     outbox: SyncSender<Message>,
@@ -154,13 +151,6 @@ impl Runner {
             .boxed()
     }
 
-    pub fn watch_terminal(&self, terminal: AgentRef) -> (Answer<Reply>, TerminalBytesFeed) {
-        let (sink, bytes) = mpsc::channel(TERMINAL_CAPACITY);
-        self.waiting.watch(terminal.terminal, sink);
-        let watch = Command::Terminal(TerminalCommand::Watch { terminal });
-        (self.send(watch), bytes.boxed())
-    }
-
     pub fn pairing(&self, command: PairingCommand) -> Answer<PairingAnswer> {
         let id = self.next_request();
         let (sender, answer) = oneshot::channel();
@@ -191,6 +181,13 @@ impl RuntimeClient for Runner {
             self.waiting.stop_following();
         }
         feeds.boxed()
+    }
+
+    fn watch_terminal(&self, terminal: AgentRef) -> (Answer<Reply>, TerminalBytesFeed) {
+        let (sink, bytes) = mpsc::channel(TERMINAL_CAPACITY);
+        self.waiting.watch(terminal.terminal, sink);
+        let watch = Command::Terminal(TerminalCommand::Watch { terminal });
+        (self.send(watch), bytes.boxed())
     }
 
     fn snapshot(&self, scope: Scope) -> Answer<Snapshot> {

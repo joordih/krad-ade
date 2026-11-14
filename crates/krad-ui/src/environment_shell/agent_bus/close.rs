@@ -13,6 +13,7 @@ use krad_protocol::{Answer, Command, GitAct, GitCommand, RepoAsk, RepoCommand};
 use krad_runtime::{closed_target, refusal_error, BusReply};
 use std::path::PathBuf;
 
+use super::super::surface::ChatPlace;
 use super::super::EnvironmentShell;
 use super::{handle, Settlement};
 
@@ -133,7 +134,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         for terminal in &plan.cancel {
-            self.stop_turn_in(env, *terminal);
+            self.stop_turn_in(&ChatPlace::here(env), *terminal);
         }
         for terminal in &plan.terminals {
             self.close_terminal_in(env, *terminal, cx);

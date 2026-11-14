@@ -1,12 +1,5 @@
 use super::*;
-use krad_domain::{SessionId, SessionLook, TerminalId};
-
-fn chat() -> AgentRef {
-    AgentRef {
-        environment: EnvironmentName::new("runner".to_owned()),
-        terminal: TerminalId(3),
-    }
-}
+use krad_domain::{SessionId, SessionLook};
 
 fn summary(environment: &str, group: u64) -> HostedSummary {
     HostedSummary {
@@ -24,28 +17,6 @@ fn summary(environment: &str, group: u64) -> HostedSummary {
         last_activity: None,
         seq: None,
     }
-}
-
-#[test]
-fn the_composer_turns_model_and_effort_lines_into_their_commands_and_the_rest_into_messages() {
-    assert!(matches!(
-        hosted_command(&chat(), "/model opus"),
-        ChatCommand::SetModel { .. }
-    ));
-    assert_eq!(
-        hosted_command(&chat(), "/effort high"),
-        ChatCommand::SetEffort {
-            chat: chat(),
-            effort: Effort::High
-        }
-    );
-    assert_eq!(
-        hosted_command(&chat(), " /modelling is hard "),
-        ChatCommand::Send {
-            chat: chat(),
-            prompt: Prompt::from("/modelling is hard")
-        }
-    );
 }
 
 #[test]

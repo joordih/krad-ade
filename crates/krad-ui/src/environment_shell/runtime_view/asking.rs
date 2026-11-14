@@ -1,7 +1,9 @@
 use futures::channel::oneshot;
+use futures::future::BoxFuture;
 use futures::FutureExt as _;
 use gpui_kit::App;
-use krad_client::ClientError;
+use krad_client::{Answer as KradAnswer, ClientError};
+use krad_domain::CloudRunnerId;
 use krad_protocol::{Answer, Command, Reply, RequestId};
 use std::collections::HashMap;
 use std::future::Future;
@@ -12,7 +14,10 @@ use super::RuntimeLink;
 pub(in crate::environment_shell) struct Waiters(HashMap<RequestId, oneshot::Sender<Answer>>);
 
 impl Waiters {
-    fn wait(&mut self, request: RequestId) -> oneshot::Receiver<Answer> {
+    pub(in crate::environment_shell) fn wait(
+        &mut self,
+        request: RequestId,
+    ) -> oneshot::Receiver<Answer> {
         self.0.retain(|_, waiter| !waiter.is_canceled());
         let (waiter, answer) = oneshot::channel();
         self.0.insert(request, waiter);
@@ -47,20 +52,39 @@ impl RuntimeLink {
         request: RequestId,
         command: Command,
         cx: &mut App,
-    ) -> impl Future<Output = Result<Answer, ClientError>> + 'static {
+    ) -> BoxFuture<'static, Result<Answer, ClientError>> {
         let answer = self.view.update(cx, |model, _| model.waiters.wait(request));
-        let reply = self.client.send_as(request, command);
-        async move {
-            match reply.await? {
-                Reply::Accepted => match answer.await.map_err(|_| ClientError::Stopped)? {
-                    Answer::Failed { code, message } => Err(ClientError::Failed { code, message }),
-                    answer => Ok(answer),
-                },
-                refused @ Reply::Refused { .. } => Err(ClientError::from(refused)),
-            }
-        }
-        .boxed()
+        asked(self.client.send_as(request, command), answer)
     }
+
+    pub(in crate::environment_shell) fn ask_runner(
+        &self,
+        runner: CloudRunnerId,
+        command: Command,
+        cx: &mut App,
+    ) -> BoxFuture<'static, Result<Answer, ClientError>> {
+        let asking = self.view.update(cx, |model, _| model.remotes.wait(runner));
+        let Some((client, answer, request)) = asking else {
+            return futures::future::ready(Err(ClientError::Stopped)).boxed();
+        };
+        asked(client.send_as(request, command), answer)
+    }
+}
+
+fn asked(
+    reply: KradAnswer<Reply>,
+    answer: oneshot::Receiver<Answer>,
+) -> BoxFuture<'static, Result<Answer, ClientError>> {
+    async move {
+        match reply.await? {
+            Reply::Accepted => match answer.await.map_err(|_| ClientError::Stopped)? {
+                Answer::Failed { code, message } => Err(ClientError::Failed { code, message }),
+                answer => Ok(answer),
+            },
+            refused @ Reply::Refused { .. } => Err(ClientError::from(refused)),
+        }
+    }
+    .boxed()
 }
 
 #[cfg(test)]

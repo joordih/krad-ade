@@ -97,10 +97,9 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let env = self.active.clone();
+        let place = self.chat_place();
         let Some(chat) = self
-            .envs
-            .get(&env)
+            .live(&place)
             .and_then(|live| live.chats.get(&id))
             .filter(|chat| chat.offers_edit(index))
         else {
@@ -127,8 +126,7 @@ impl EnvironmentShell {
         );
         input.update(cx, |field, cx| field.focus(window, cx));
         if let Some(chat) = self
-            .envs
-            .get_mut(&env)
+            .live_mut(&place)
             .and_then(|live| live.chats.get_mut(&id))
         {
             chat.editing = Some(MessageEditor {
@@ -143,10 +141,9 @@ impl EnvironmentShell {
     }
 
     fn cancel_edit(&mut self, id: TerminalId, cx: &mut Context<Self>) {
-        let env = self.active.clone();
+        let place = self.chat_place();
         if let Some(chat) = self
-            .envs
-            .get_mut(&env)
+            .live_mut(&place)
             .and_then(|live| live.chats.get_mut(&id))
         {
             chat.editing = None;
@@ -156,8 +153,8 @@ impl EnvironmentShell {
     }
 
     fn send_edit(&mut self, id: TerminalId, window: &mut Window, cx: &mut Context<Self>) {
-        let env = self.active.clone();
-        let Some(chat) = self.envs.get(&env).and_then(|live| live.chats.get(&id)) else {
+        let place = self.chat_place();
+        let Some(chat) = self.live(&place).and_then(|live| live.chats.get(&id)) else {
             return;
         };
         let Some(editor) = &chat.editing else {
@@ -184,20 +181,22 @@ impl EnvironmentShell {
         let mentions = editor.mentions.clone();
         let text = self.skill_message(harness, text);
         let prompt = Prompt::new(&text, mentions);
+        let local = place.local().cloned();
         let checkpoint = point
             .filter(|_| harness.checkpoints_files())
-            .and_then(|point| self.turn_checkpoint(&env, id, &point));
-        if let Some(checkpoint) = checkpoint {
+            .zip(local.as_ref())
+            .and_then(|(point, local)| self.turn_checkpoint(local, id, &point));
+        if let (Some(checkpoint), Some(local)) = (checkpoint, &local) {
             let rewind = FilesRewind {
                 index,
                 prompt,
                 checkpoint,
             };
-            self.rewind_with_files(&env, id, rewind, window, cx);
+            self.rewind_with_files(local, id, rewind, window, cx);
             return cx.notify();
         }
         if !asks_files {
-            self.start_rewind(&env, id, index, prompt, RewindScope::Conversation, cx);
+            self.start_rewind(&place, id, index, prompt, RewindScope::Conversation, cx);
             return cx.notify();
         }
         let answer = window.prompt(
@@ -218,7 +217,7 @@ impl EnvironmentShell {
                 _ => return,
             };
             this.update(cx, |shell, cx| {
-                shell.start_rewind(&env, id, index, prompt, scope, cx);
+                shell.start_rewind(&place, id, index, prompt, scope, cx);
                 cx.notify();
             })
             .unwrap_or_default();
@@ -283,7 +282,7 @@ impl EnvironmentShell {
                                 .disabled(rewinding),
                         ),
                 )
-                .children(sent_mentions(&editor.mentions, pal, cx))
+                .children(sent_mentions(&editor.mentions, &chat.images, pal, cx))
                 .children(buttons)
                 .into_any_element(),
         )

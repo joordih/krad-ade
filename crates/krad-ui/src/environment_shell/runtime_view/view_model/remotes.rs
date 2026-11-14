@@ -1,7 +1,8 @@
+use futures::channel::oneshot;
 use gpui_kit::{AppContext as _, Context};
 use krad_client::{ClientError, Cursor, Runner, RuntimeClient};
 use krad_domain::{CloudRunnerId, EnvironmentName, RunnerState, RuntimeId, Session};
-use krad_protocol::{AgentRef, Feed, HostedSummary};
+use krad_protocol::{AgentRef, Answer, EventKind, Feed, HostedSummary, RequestId};
 use krad_runtime::{LineStop, RunnerLineError, RuntimeHandle};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -108,6 +109,17 @@ impl Remotes {
             RuntimeId::Local => Some(Arc::clone(local)),
             RuntimeId::Runner(runner) => self.runtimes.get(&runner)?.client.clone(),
         }
+    }
+
+    pub(in crate::environment_shell) fn wait(
+        &mut self,
+        runner: CloudRunnerId,
+    ) -> Option<(Arc<dyn RuntimeClient>, oneshot::Receiver<Answer>, RequestId)> {
+        let remote = self.runtimes.get_mut(&runner)?;
+        let client = remote.client.clone()?;
+        let request = client.next_request();
+        let answer = remote.waiters.wait(request);
+        Some((client, answer, request))
     }
 
     pub(in crate::environment_shell) fn connected(&self, runner: CloudRunnerId) -> bool {
@@ -332,16 +344,28 @@ impl ViewModel {
         feed: Feed,
     ) -> Option<bool> {
         let remote = self.remotes.current(runner, connection)?;
-        let Folded { changed, failure } = match feed {
+        let (Folded { changed, failure }, heard) = match feed {
             Feed::Snapshot(snapshot) => {
                 remote.adopt(snapshot);
-                Folded {
+                let folded = Folded {
                     changed: true,
                     failure: None,
-                }
+                };
+                (folded, Some(Heard::RemoteReplaced(runner)))
             }
-            Feed::Event(event) => remote.fold(event),
+            Feed::Event(event) => {
+                let shown = event.kind.chat().is_some()
+                    || matches!(event.kind, EventKind::ChatImageAttached { .. });
+                let chat = shown.then(|| Heard::RemoteChat {
+                    runner,
+                    kind: Box::new(event.kind.clone()),
+                });
+                (remote.fold(event), chat)
+            }
         };
+        if let Some(heard) = heard {
+            self.heard(heard);
+        }
         if let Some(failure) =
             failure.and_then(|failure| self.remotes.awaited_failure(runner, failure))
         {

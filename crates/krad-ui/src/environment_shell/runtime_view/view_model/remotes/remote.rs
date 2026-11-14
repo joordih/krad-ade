@@ -8,7 +8,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use super::super::super::EnvironmentsMirror;
+use super::super::super::{EnvironmentsMirror, Waiters};
 use super::backoff::Backoff;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -57,6 +57,7 @@ pub(in crate::environment_shell) struct RemoteRuntime {
     pub(super) cursor: Cursor,
     pub(super) backoff: Backoff,
     pub(super) connection: u64,
+    pub(super) waiters: Waiters,
 }
 
 impl Drop for RemoteRuntime {
@@ -78,11 +79,13 @@ impl RemoteRuntime {
             cursor: Cursor::default(),
             backoff: Backoff::default(),
             connection,
+            waiters: Waiters::default(),
         }
     }
 
     pub(super) fn let_go(&mut self) {
         self.client = None;
+        self.waiters.forget_all();
         if let Some(stop) = self.stop.take() {
             stop.stop();
         }
@@ -137,6 +140,10 @@ impl RemoteRuntime {
             } => {
                 self.environments.changed(&environment, changes);
                 true
+            }
+            EventKind::Answered { request, answer } => {
+                self.waiters.answered(request, *answer);
+                false
             }
             EventKind::AskPending(pending) => self.asks.insert(pending.ask),
             EventKind::AskSettled { ask, .. } => self.asks.remove(&ask),

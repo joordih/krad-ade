@@ -75,6 +75,11 @@ pub(in crate::environment_shell) enum Heard {
         runner: CloudRunnerId,
         failure: HostedFailure,
     },
+    RemoteChat {
+        runner: CloudRunnerId,
+        kind: Box<EventKind>,
+    },
+    RemoteReplaced(CloudRunnerId),
 }
 
 #[derive(Default)]

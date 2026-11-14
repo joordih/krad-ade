@@ -149,6 +149,8 @@ pub enum FileAsk {
 pub enum Unreadable {
     TooLarge { len: u64, limit: u64 },
     NotText,
+    Missing,
+    Outside,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]

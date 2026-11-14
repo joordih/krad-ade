@@ -1,12 +1,13 @@
 use gpui_kit::Context;
-use krad_domain::{EnvironmentName, Prompt, TerminalId};
+use krad_domain::{Prompt, TerminalId};
 use krad_protocol::{Answer, ChatCommand, ChatPage, ChatState, Command, McpTrustAsk};
 use std::time::{Instant, SystemTime};
 
 use super::super::super::super::EnvironmentShell;
 use super::super::super::outbox::{Outgoing, Stage};
+use super::super::super::ChatPlace;
 use super::super::{structured_chat, structured_mut, StructuredChat};
-use super::{chat_ref, structured_of};
+use super::structured_of;
 
 const NOTICE_SEPARATOR: &str = "\n";
 
@@ -100,20 +101,20 @@ impl StructuredChat {
 impl EnvironmentShell {
     pub(in crate::environment_shell::surface) fn unqueue_in_runtime(
         &self,
-        env: &EnvironmentName,
+        place: &ChatPlace,
         id: TerminalId,
         index: usize,
     ) {
-        self.post_runtime_chat(env, id, |chat| ChatCommand::Unqueue { chat, index });
+        self.post_runtime_chat(place, id, |chat| ChatCommand::Unqueue { chat, index });
     }
 
     pub(in crate::environment_shell::surface) fn show_earlier_in_runtime(
         &mut self,
-        env: &EnvironmentName,
+        place: &ChatPlace,
         id: TerminalId,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(shown) = structured_of(self, env, id)
+        let Some(shown) = structured_of(self, place, id)
             .filter(|structured| structured.in_runtime())
             .map(|structured| (structured.shown.from, structured.shown.earlier))
         else {
@@ -121,25 +122,26 @@ impl EnvironmentShell {
         };
         match shown {
             (0, true) => {
-                self.runtime
-                    .client
-                    .post(Command::Chat(ChatCommand::ShowEarlier {
-                        chat: chat_ref(env, id),
-                    }));
+                self.post_chat(
+                    place,
+                    ChatCommand::ShowEarlier {
+                        chat: place.chat(id),
+                    },
+                );
             }
             (0, false) => {}
-            _ => self.page_in_earlier(env, id, cx),
+            _ => self.page_in_earlier(place, id, cx),
         }
         true
     }
 
     pub(super) fn page_in_earlier(
         &mut self,
-        env: &EnvironmentName,
+        place: &ChatPlace,
         id: TerminalId,
         cx: &mut Context<Self>,
     ) {
-        let Some(structured) = structured_mut(self, env, id).filter(|chat| chat.in_runtime())
+        let Some(structured) = structured_mut(self, place, id).filter(|chat| chat.in_runtime())
         else {
             return;
         };
@@ -149,19 +151,19 @@ impl EnvironmentShell {
         }
         structured.shown.paging = true;
         let command = Command::Chat(ChatCommand::Page {
-            chat: chat_ref(env, id),
+            chat: place.chat(id),
             before,
             count: before,
         });
-        let page = self.runtime.ask(command, cx);
-        let env = env.clone();
+        let page = self.ask_at(place, command, cx);
+        let place = place.clone();
         cx.spawn(async move |this, cx| {
             let page = page.await;
             this.update(cx, |shell, cx| {
                 match page {
-                    Ok(Answer::ChatPage(page)) => shell.earlier_page_read(&env, id, page),
+                    Ok(Answer::ChatPage(page)) => shell.earlier_page_read(&place, id, page),
                     Ok(_) | Err(_) => {
-                        if let Some(structured) = structured_mut(shell, &env, id) {
+                        if let Some(structured) = structured_mut(shell, &place, id) {
                             structured.shown.paging = false;
                         }
                     }
@@ -173,8 +175,8 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn earlier_page_read(&mut self, env: &EnvironmentName, id: TerminalId, page: ChatPage) {
-        let Some(chat) = structured_chat(self, env, id) else {
+    fn earlier_page_read(&mut self, place: &ChatPlace, id: TerminalId, page: ChatPage) {
+        let Some(chat) = structured_chat(self, place, id) else {
             return;
         };
         let Some(structured) = chat.chat.structured_mut() else {

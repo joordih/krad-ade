@@ -20,6 +20,13 @@ pub enum ChatImageError {
     Delete(io::Error),
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum ImageUnread {
+    Missing,
+    Outside,
+    TooLarge { len: u64, limit: u64 },
+}
+
 pub(crate) fn environment_folder(env: &EnvironmentName) -> String {
     env.as_str()
         .bytes()
@@ -80,6 +87,24 @@ impl ChatImages {
     /// Fails when the chat's folder exists and cannot be removed.
     pub fn forget(&self, env: &EnvironmentName, chat: TerminalId) -> Result<(), ChatImageError> {
         delete_chat_images(&images_folder(&self.root, env, chat))
+    }
+
+    /// # Errors
+    ///
+    /// Fails when the image is missing, lies outside this runtime's image folder or is larger
+    /// than `limit`.
+    pub fn read(&self, image: &ChatImage, limit: u64) -> Result<Vec<u8>, ImageUnread> {
+        let folder = fs::canonicalize(self.root.join(CHAT_IMAGES_DIR_NAME))
+            .map_err(|_| ImageUnread::Missing)?;
+        let path = fs::canonicalize(&image.path).map_err(|_| ImageUnread::Missing)?;
+        if !path.starts_with(&folder) {
+            return Err(ImageUnread::Outside);
+        }
+        let len = fs::metadata(&path).map_err(|_| ImageUnread::Missing)?.len();
+        if len > limit {
+            return Err(ImageUnread::TooLarge { len, limit });
+        }
+        fs::read(&path).map_err(|_| ImageUnread::Missing)
     }
 }
 
@@ -183,6 +208,34 @@ mod tests {
         assert!(delete_chat_images(&dir).is_ok());
         assert!(!dir.exists());
         assert!(delete_chat_images(&dir).is_ok(), "an absent folder is fine");
+    }
+
+    #[test]
+    fn only_a_kept_image_small_enough_is_read_back() {
+        let root = scratch("read");
+        let images = ChatImages::new(root.clone());
+        let main = EnvironmentName::new("main".to_owned());
+        let saved = images
+            .save(&main, TerminalId(3), ImageFormat::Png, b"pixels")
+            .unwrap_or_else(|_| unreachable!("the scratch folder is writable"));
+        assert_eq!(images.read(&saved, 64), Ok(b"pixels".to_vec()));
+        assert_eq!(
+            images.read(&saved, 2),
+            Err(ImageUnread::TooLarge { len: 6, limit: 2 })
+        );
+        let outside = root.join("secret.png");
+        fs::write(&outside, b"no").unwrap_or_default();
+        let escape = ChatImage {
+            path: images_folder(&root, &main, TerminalId(3)).join("../../../secret.png"),
+            format: ImageFormat::Png,
+        };
+        assert_eq!(images.read(&escape, 64), Err(ImageUnread::Outside));
+        let gone = ChatImage {
+            path: images_folder(&root, &main, TerminalId(3)).join("9.png"),
+            format: ImageFormat::Png,
+        };
+        assert_eq!(images.read(&gone, 64), Err(ImageUnread::Missing));
+        fs::remove_dir_all(&root).unwrap_or_default();
     }
 
     #[test]

@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use super::super::chat::question_bubble;
 use super::super::EnvironmentShell;
 use super::mentions::sent_mentions;
+use super::shown_images::ShownImages;
 use super::ChatView;
 use crate::theme::{palette, LINE_2XS, SPACE_1, SPACE_1_5, TEXT_2XS};
 
@@ -139,8 +140,8 @@ impl ChatView {
 impl EnvironmentShell {
     pub(super) fn pending_bubble(
         id: TerminalId,
-        index: usize,
-        outgoing: &Outgoing,
+        (index, outgoing): (usize, &Outgoing),
+        images: &ShownImages,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
@@ -164,7 +165,7 @@ impl EnvironmentShell {
                     cx,
                 ))
             })
-            .children(sent_mentions(&outgoing.prompt.mentions, pal, cx))
+            .children(sent_mentions(&outgoing.prompt.mentions, images, pal, cx))
             .child(
                 div()
                     .flex()

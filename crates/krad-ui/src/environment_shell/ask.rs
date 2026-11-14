@@ -184,8 +184,7 @@ fn outcome(kind: &AskKind, verdict: AskVerdict) -> AskOutcome {
 
 impl EnvironmentShell {
     fn structured_of(&self, id: TerminalId) -> Option<&StructuredChat> {
-        self.envs
-            .get(&self.active)?
+        self.live(&self.chat_place())?
             .chats
             .get(&id)?
             .chat
@@ -193,9 +192,8 @@ impl EnvironmentShell {
     }
 
     fn structured_of_mut(&mut self, id: TerminalId) -> Option<&mut StructuredChat> {
-        let env = self.active.clone();
-        self.envs
-            .get_mut(&env)?
+        let place = self.chat_place();
+        self.live_mut(&place)?
             .chats
             .get_mut(&id)?
             .chat
@@ -203,17 +201,15 @@ impl EnvironmentShell {
     }
 
     pub(super) fn ask_queue(&self, owner: TerminalId) -> Option<&AskQueue> {
-        self.envs
-            .get(&self.active)?
+        self.live(&self.chat_place())?
             .chats
             .get(&owner)
             .map(|view| view.chat.asks())
     }
 
     fn ask_queue_mut(&mut self, owner: TerminalId) -> Option<&mut AskQueue> {
-        let env = self.active.clone();
-        self.envs
-            .get_mut(&env)?
+        let place = self.chat_place();
+        self.live_mut(&place)?
             .chats
             .get_mut(&owner)
             .map(|view| view.chat.asks_mut())
@@ -229,8 +225,8 @@ impl EnvironmentShell {
         mode: PermissionMode,
         cx: &mut Context<Self>,
     ) {
-        let env = self.active.clone();
-        self.post_runtime_chat(&env, owner, |chat| ChatCommand::SetPermissionMode {
+        let place = self.chat_place();
+        self.post_runtime_chat(&place, owner, |chat| ChatCommand::SetPermissionMode {
             chat,
             mode,
         });
@@ -242,10 +238,9 @@ impl EnvironmentShell {
 
     fn record_ask(&mut self, owner: TerminalId, outcome: AskOutcome) {
         let entry = ChatEntry::Asked(outcome);
-        let env = self.active.clone();
+        let place = self.chat_place();
         if let Some(chat) = self
-            .envs
-            .get_mut(&env)
+            .live_mut(&place)
             .and_then(|live| live.chats.get_mut(&owner))
         {
             fold_entry(&mut chat.chat.messages, &entry);
@@ -263,13 +258,13 @@ impl EnvironmentShell {
             AskReply::Hook(held) => held.answer(answer.clone()),
             AskReply::Keys => self.type_plan_answer(owner, answer),
             AskReply::Runtime(asked) => {
-                let env = self.active.clone();
-                let answer = answer.clone();
-                self.post_runtime_chat(&env, owner, |chat| ChatCommand::AnswerAsk {
-                    chat,
+                let place = self.chat_place();
+                let command = ChatCommand::AnswerAsk {
+                    chat: place.chat(owner),
                     ask: asked,
-                    answer,
-                });
+                    answer: answer.clone(),
+                };
+                self.send_chat(&place, command, cx);
             }
         }
         if !answered_elsewhere {
@@ -281,8 +276,9 @@ impl EnvironmentShell {
         } else {
             AgentState::Working
         };
-        let env = self.active.clone();
-        self.set_agent_state(&env, owner, state);
+        if let Some(env) = self.shown_here() {
+            self.set_agent_state(&env, owner, state);
+        }
         cx.notify();
     }
 
@@ -377,8 +373,8 @@ impl EnvironmentShell {
             None => {}
             Some(AskReply::Runtime(_)) => {
                 self.answer_ask(owner, &answer, cx);
-                let env = self.active.clone();
-                self.post_runtime_chat(&env, owner, |chat| ChatCommand::Interrupt { chat });
+                let place = self.chat_place();
+                self.post_runtime_chat(&place, owner, |chat| ChatCommand::Interrupt { chat });
             }
             Some(AskReply::Hook(_)) => {
                 let Some(Waiting { kind, reply, .. }) =
@@ -563,8 +559,7 @@ impl EnvironmentShell {
 
     pub(super) fn sync_ask_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let owners: Vec<TerminalId> = self
-            .envs
-            .get(&self.active)
+            .live(&self.chat_place())
             .map_or_default(|live| live.chats.keys().copied().collect());
         for owner in owners {
             self.sync_owner_focus(owner, window, cx);
@@ -596,8 +591,7 @@ impl EnvironmentShell {
     }
 
     fn ask_composer(&self, owner: TerminalId) -> Option<Entity<TextareaState>> {
-        self.envs
-            .get(&self.active)?
+        self.live(&self.chat_place())?
             .chats
             .get(&owner)
             .map(|chat| chat.input.clone())

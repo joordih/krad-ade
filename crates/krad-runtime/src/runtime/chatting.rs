@@ -111,6 +111,7 @@ impl Runtime {
             }
             ChatCommand::AttachImage { chat, image } => Some(self.attach_chat_image(chat, image)),
             ChatCommand::ForgetImages { chat } => Some(self.forget_chat_images(chat)),
+            ChatCommand::ReadImage { image } => Some(self.read_chat_image(id, image)),
             command => self.with_chat_work(|chats, work| chats.execute(command, work)),
         }
     }

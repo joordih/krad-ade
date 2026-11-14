@@ -1,21 +1,23 @@
 mod upload;
 
+use gpui_kit::ImageSource;
 use gpui_kit::{
     div, img, px, rgb, AnyElement, App, ClipboardEntry, ClipboardItem, Context, ElementId,
     InteractiveElement, IntoElement, ObjectFit, ParentElement, PathPromptOptions, SharedString,
     StatefulInteractiveElement, Styled, StyledImage,
 };
-use krad_domain::{EnvironmentName, ImageFormat, Mention, TerminalId};
+use krad_domain::{ImageFormat, Mention, TerminalId};
 use std::path::{Path, PathBuf};
 
 use super::super::EnvironmentShell;
+use super::shown_images::ShownImages;
+use super::ChatPlace;
 use super::ChatView;
 use crate::components::{icon, tooltip_view, IconName};
 use crate::theme::{
     level_fill, palette, Palette, SurfaceLevel, ICON_SM, ICON_XS, LINE_XS, RADIUS_MD, RADIUS_SM,
     SPACE_1, SPACE_1_5, SPACE_2, TEXT_XS,
 };
-use upload::chat_ref;
 
 const PICK_PROMPT: &str = "Attach";
 const TOOLTIP_ATTACH: &str = "Attach files, folders or images";
@@ -81,11 +83,22 @@ fn added(attached: &mut Vec<Mention>, mentions: Vec<Mention>) {
     }
 }
 
-fn thumbnail(path: &Path, size: f32) -> gpui_kit::Img {
-    img(path.to_path_buf())
+fn thumbnail(source: ImageSource, size: f32) -> gpui_kit::Img {
+    img(source)
         .size(px(size))
         .rounded(px(RADIUS_MD))
         .object_fit(ObjectFit::Cover)
+}
+
+fn unshown_thumbnail(size: f32, pal: &Palette, cx: &App) -> gpui_kit::Div {
+    div()
+        .flex()
+        .items_center()
+        .justify_center()
+        .size(px(size))
+        .rounded(px(RADIUS_MD))
+        .bg(level_fill(SurfaceLevel::Pane, pal.bg_panel, cx))
+        .child(icon(IconName::Attach, ICON_SM, pal.text_muted))
 }
 
 fn file_chip(path: &Path, pal: &Palette, cx: &App) -> gpui_kit::Div {
@@ -106,14 +119,27 @@ fn file_chip(path: &Path, pal: &Palette, cx: &App) -> gpui_kit::Div {
         .child(div().truncate().child(mention_name(path)))
 }
 
-fn mention_element(mention: &Mention, size: f32, pal: &Palette, cx: &App) -> AnyElement {
+fn mention_element(
+    mention: &Mention,
+    (images, size): (&ShownImages, f32),
+    pal: &Palette,
+    cx: &App,
+) -> AnyElement {
     match mention {
-        Mention::Image(image) => thumbnail(&image.path, size).into_any_element(),
+        Mention::Image(image) => images.source(&image.path).map_or_else(
+            || unshown_thumbnail(size, pal, cx).into_any_element(),
+            |source| thumbnail(source, size).into_any_element(),
+        ),
         Mention::Path(path) => file_chip(path, pal, cx).into_any_element(),
     }
 }
 
-pub(super) fn sent_mentions(mentions: &[Mention], pal: &Palette, cx: &App) -> Option<AnyElement> {
+pub(super) fn sent_mentions(
+    mentions: &[Mention],
+    images: &ShownImages,
+    pal: &Palette,
+    cx: &App,
+) -> Option<AnyElement> {
     if mentions.is_empty() {
         return None;
     }
@@ -128,23 +154,22 @@ pub(super) fn sent_mentions(mentions: &[Mention], pal: &Palette, cx: &App) -> Op
             .children(
                 mentions
                     .iter()
-                    .map(|mention| mention_element(mention, SENT_THUMB_SIZE, pal, cx)),
+                    .map(|mention| mention_element(mention, (images, SENT_THUMB_SIZE), pal, cx)),
             )
             .into_any_element(),
     )
 }
 
 impl EnvironmentShell {
-    fn attach(
+    pub(in crate::environment_shell) fn attach(
         &mut self,
-        env: &EnvironmentName,
+        place: &ChatPlace,
         id: TerminalId,
         mentions: Vec<Mention>,
         cx: &mut Context<Self>,
     ) {
         let Some(chat) = self
-            .envs
-            .get_mut(env)
+            .live_mut(place)
             .and_then(|live| live.chats.get_mut(&id))
             .filter(|chat| chat.chat.structured().is_some())
         else {
@@ -160,13 +185,13 @@ impl EnvironmentShell {
         paths: &[PathBuf],
         cx: &mut Context<Self>,
     ) {
-        let env = self.active.clone();
+        let place = self.chat_place();
         let mentions = paths.iter().cloned().map(Mention::from).collect();
-        self.attach_mentions(&env, id, mentions, cx);
+        self.attach_mentions(&place, id, mentions, cx);
     }
 
     fn pick_mentions(&mut self, id: TerminalId, cx: &mut Context<Self>) {
-        let env = self.active.clone();
+        let place = self.chat_place();
         let answer = cx.prompt_for_paths(PathPromptOptions {
             files: true,
             directories: true,
@@ -179,7 +204,7 @@ impl EnvironmentShell {
             };
             let mentions = paths.into_iter().map(Mention::from).collect();
             this.update(cx, |shell, cx| {
-                shell.attach_mentions(&env, id, mentions, cx);
+                shell.attach_mentions(&place, id, mentions, cx);
             })
             .unwrap_or_default();
         })
@@ -192,10 +217,9 @@ impl EnvironmentShell {
         item: &ClipboardItem,
         cx: &mut Context<Self>,
     ) -> bool {
-        let env = self.active.clone();
+        let place = self.chat_place();
         let structured = self
-            .envs
-            .get(&env)
+            .live(&place)
             .and_then(|live| live.chats.get(&id))
             .is_some_and(|chat| chat.chat.structured().is_some());
         if !structured {
@@ -207,20 +231,19 @@ impl EnvironmentShell {
         match attachment {
             ClipboardAttachment::Files(files) => {
                 let mentions = files.into_iter().map(Mention::from).collect();
-                self.attach_mentions(&env, id, mentions, cx);
+                self.attach_mentions(&place, id, mentions, cx);
             }
             ClipboardAttachment::Image(format, bytes) => {
-                self.upload_image(chat_ref(&env, id), format, bytes);
+                self.upload_image(&place, id, (format, bytes));
             }
         }
         true
     }
 
     fn remove_mention(&mut self, id: TerminalId, index: usize, cx: &mut Context<Self>) {
-        let env = self.active.clone();
+        let place = self.chat_place();
         if let Some(chat) = self
-            .envs
-            .get_mut(&env)
+            .live_mut(&place)
             .and_then(|live| live.chats.get_mut(&id))
             .filter(|chat| index < chat.attached.len())
         {
@@ -284,7 +307,12 @@ impl EnvironmentShell {
             div()
                 .relative()
                 .flex_none()
-                .child(mention_element(mention, THUMB_SIZE, pal, cx))
+                .child(mention_element(
+                    mention,
+                    (&chat.images, THUMB_SIZE),
+                    pal,
+                    cx,
+                ))
                 .child(remove)
         });
         Some(

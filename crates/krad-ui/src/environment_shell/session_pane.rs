@@ -217,6 +217,9 @@ fn position_of(event: &ClickEvent) -> (f32, f32) {
 
 impl EnvironmentShell {
     pub(super) fn session_pane(&self, cx: &mut Context<Self>) -> AnyElement {
+        if let Some(hosted) = self.hosted_terminal_pane(cx) {
+            return hosted;
+        }
         if let Some(hosted) = self.hosted_chat_pane(cx) {
             return hosted;
         }

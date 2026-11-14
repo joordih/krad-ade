@@ -276,6 +276,7 @@ impl Chats {
             | ChatCommand::History { .. }
             | ChatCommand::AttachImage { .. }
             | ChatCommand::ForgetImages { .. }
+            | ChatCommand::ReadImage { .. }
             | ChatCommand::Unknown => return None,
         };
         self.flush(&id, work);

@@ -6,6 +6,7 @@ use krad_domain::{
 use super::super::super::live_terminal::end_terminal_on;
 use super::super::super::sessions::Launch;
 use super::super::super::EnvironmentShell;
+use super::super::ChatPlace;
 
 impl EnvironmentShell {
     fn node_resume(
@@ -29,11 +30,13 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &mut Context<Self>,
     ) {
-        let env = self.active.clone();
+        let Some(env) = self.shown_here() else {
+            return;
+        };
         let Some((group, harness, resume)) = self.node_resume(&env, id) else {
             return;
         };
-        self.leave_runtime(&env, id);
+        self.leave_runtime(&ChatPlace::here(&env), id);
         let Some(live) = self.envs.get_mut(&env) else {
             return;
         };
@@ -58,7 +61,9 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &mut Context<Self>,
     ) {
-        let env = self.active.clone();
+        let Some(env) = self.shown_here() else {
+            return;
+        };
         let Some((_, harness, resume)) = self.node_resume(&env, id) else {
             return;
         };

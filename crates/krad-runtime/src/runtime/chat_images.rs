@@ -1,11 +1,24 @@
 use krad_domain::ChatImage;
-use krad_protocol::{AgentRef, ErrorCode, EventKind, PastedImage, Problem, ProblemScope, Reply};
+use krad_protocol::{
+    AgentRef, Answer, ErrorCode, EventKind, PastedImage, Problem, ProblemScope, Reply, RequestId,
+    Unreadable,
+};
+use krad_store::ImageUnread;
 
 use super::{refused, Runtime};
 use crate::jobs::JobDone;
 
 const NO_IMAGE_FOLDER: &str = "this runtime keeps no pasted images";
 const NO_JOB: &str = "the runtime could not start the image job";
+const IMAGE_BYTES_LIMIT: u64 = 1024 * 1024;
+
+const fn unreadable(unread: &ImageUnread) -> Unreadable {
+    match *unread {
+        ImageUnread::Missing => Unreadable::Missing,
+        ImageUnread::Outside => Unreadable::Outside,
+        ImageUnread::TooLarge { len, limit } => Unreadable::TooLarge { len, limit },
+    }
+}
 
 #[derive(Debug)]
 pub(crate) enum ChatImageDone {
@@ -34,6 +47,23 @@ impl Runtime {
             |_| refused(ErrorCode::Unavailable, NO_JOB),
             |()| Reply::Accepted,
         )
+    }
+
+    pub(super) fn read_chat_image(&self, request: RequestId, image: ChatImage) -> Reply {
+        let Some(images) = self.chat_images.clone() else {
+            return refused(ErrorCode::Unavailable, NO_IMAGE_FOLDER);
+        };
+        self.answer_in_job(request, move || {
+            match images.read(&image, IMAGE_BYTES_LIMIT) {
+                Ok(bytes) => Answer::ImageBytes {
+                    format: image.format,
+                    bytes,
+                },
+                Err(unread) => Answer::Unreadable {
+                    unreadable: unreadable(&unread),
+                },
+            }
+        })
     }
 
     pub(super) fn forget_chat_images(&mut self, chat: AgentRef) -> Reply {

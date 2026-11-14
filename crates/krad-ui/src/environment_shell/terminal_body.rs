@@ -4,8 +4,9 @@ use gpui_kit::{
     MouseButton, MouseDownEvent, ParentElement, ScrollWheelEvent, SharedString, Styled, Window,
 };
 use krad_domain::{Ligatures, TerminalId};
-use krad_runtime::TerminalAction;
+use krad_runtime::{TerminalAction, TerminalFrame};
 use krad_session::{CellPoint, CursorShape, GridSize, ImageDepth, MouseAction, TermCursor};
+use std::sync::Arc;
 use std::time::Duration;
 
 use super::drag::DragState;
@@ -132,13 +133,28 @@ fn session_screen(
     mono: &SharedString,
     colors: &TerminalColors,
 ) -> AnyElement {
+    frame_screen(
+        body,
+        session.view.paint_frame(),
+        uploaded,
+        look,
+        (mono, colors),
+    )
+}
+
+pub(super) fn frame_screen(
+    body: Div,
+    frame: Arc<TerminalFrame>,
+    uploaded: Option<&TerminalImages>,
+    look: BodyLook,
+    (mono, colors): (&SharedString, &TerminalColors),
+) -> AnyElement {
     let BodyLook {
         geometry,
         zoom,
         focused,
         ..
     } = look;
-    let frame = session.view.paint_frame();
     let text_look = TextLook {
         font: Font {
             features: font_features(look.ligatures),
@@ -226,7 +242,17 @@ pub(super) fn embedded_screen(
     colors: &TerminalColors,
     cx: &App,
 ) -> AnyElement {
-    let body = div()
+    let body = screen_body(look, mono, colors, cx);
+    session_screen(body, session, None, look, mono, colors)
+}
+
+pub(super) fn screen_body(
+    look: BodyLook,
+    mono: &SharedString,
+    colors: &TerminalColors,
+    cx: &App,
+) -> Div {
+    div()
         .relative()
         .flex_1()
         .min_h_0()
@@ -244,8 +270,7 @@ pub(super) fn embedded_screen(
         .text_size(px(TERMINAL_FONT_PX * look.text_zoom))
         .line_height(px(look.geometry.line_h))
         .text_color(rgb(colors.foreground))
-        .whitespace_nowrap();
-    session_screen(body, session, None, look, mono, colors)
+        .whitespace_nowrap()
 }
 
 impl EnvironmentShell {

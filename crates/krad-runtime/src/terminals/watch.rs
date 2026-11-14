@@ -5,6 +5,35 @@ use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 
 const REPLAY_BYTES: usize = 64 * 1024;
 const WATCH_BUFFER: usize = 256;
+const ESCAPE: u8 = 0x1b;
+const LINE_FEED: u8 = b'\n';
+
+#[derive(Debug, Default)]
+struct Recent {
+    bytes: VecDeque<u8>,
+    trimmed: bool,
+}
+
+impl Recent {
+    fn keep(&mut self, bytes: &[u8]) {
+        self.bytes.extend(bytes);
+        let over = self.bytes.len().saturating_sub(REPLAY_BYTES);
+        self.bytes.drain(..over);
+        self.trimmed |= over > 0;
+    }
+
+    fn replay(&self) -> Vec<u8> {
+        let start = if self.trimmed { self.clean_start() } else { 0 };
+        self.bytes.iter().skip(start).copied().collect()
+    }
+
+    fn clean_start(&self) -> usize {
+        let at = |wanted: u8| self.bytes.iter().position(|byte| *byte == wanted);
+        at(ESCAPE)
+            .or_else(|| at(LINE_FEED).map(|line| line + 1))
+            .unwrap_or(0)
+    }
+}
 
 #[derive(Debug)]
 pub struct TerminalWatch {
@@ -15,7 +44,7 @@ pub struct TerminalWatch {
 #[derive(Debug, Default)]
 pub(crate) struct Watchers {
     kept: Option<EnvironmentName>,
-    recent: HashMap<AgentRef, VecDeque<u8>>,
+    recent: HashMap<AgentRef, Recent>,
     watching: HashMap<AgentRef, Vec<SyncSender<Vec<u8>>>>,
 }
 
@@ -26,10 +55,7 @@ impl Watchers {
 
     pub(crate) fn heard(&mut self, terminal: &AgentRef, bytes: &[u8]) {
         if self.kept.as_ref() == Some(&terminal.environment) {
-            let recent = self.recent.entry(terminal.clone()).or_default();
-            recent.extend(bytes);
-            let over = recent.len().saturating_sub(REPLAY_BYTES);
-            recent.drain(..over);
+            self.recent.entry(terminal.clone()).or_default().keep(bytes);
         }
         let Some(watchers) = self.watching.get_mut(terminal) else {
             return;
@@ -56,7 +82,7 @@ impl Watchers {
         let replay = self
             .recent
             .get(terminal)
-            .map_or_else(Vec::new, |recent| recent.iter().copied().collect());
+            .map_or_else(Vec::new, Recent::replay);
         TerminalWatch { replay, bytes }
     }
 
@@ -86,7 +112,7 @@ mod tests {
         watchers.heard(&terminal("desk"), b"secret");
         let watch = watchers.watch(&terminal("runner"));
         assert_eq!(watch.replay, b"$ ls\r\n");
-        assert!(watchers.watch(&terminal("desk")).replay.is_empty());
+        assert_eq!(watchers.watch(&terminal("desk")).replay, Vec::<u8>::new());
         watchers.heard(&terminal("runner"), b"a.txt");
         assert_eq!(watch.bytes.try_recv().ok(), Some(b"a.txt".to_vec()));
     }
@@ -98,7 +124,28 @@ mod tests {
         watchers.heard(&terminal("runner"), &vec![b'a'; REPLAY_BYTES]);
         watchers.heard(&terminal("runner"), b"end");
         let replay = watchers.watch(&terminal("runner")).replay;
-        assert_eq!(replay.len(), REPLAY_BYTES);
         assert!(replay.ends_with(b"end"));
+        assert!(replay.len() <= REPLAY_BYTES);
+    }
+
+    #[test]
+    fn a_trimmed_replay_starts_at_an_escape_so_no_sequence_is_cut_in_half() {
+        let mut watchers = Watchers::default();
+        watchers.keep_replays_of(EnvironmentName::new("runner".to_owned()));
+        let mut early = b"\x1b[38;5;196m".to_vec();
+        early.extend(vec![b'a'; REPLAY_BYTES - 4]);
+        watchers.heard(&terminal("runner"), &early);
+        watchers.heard(&terminal("runner"), b"\x1b[0mdone");
+        let replay = watchers.watch(&terminal("runner")).replay;
+        assert_eq!(replay, b"\x1b[0mdone");
+    }
+
+    #[test]
+    fn an_untrimmed_replay_is_kept_from_its_first_byte() {
+        let mut watchers = Watchers::default();
+        watchers.keep_replays_of(EnvironmentName::new("runner".to_owned()));
+        watchers.heard(&terminal("runner"), b"plain \x1b[1mbold");
+        let replay = watchers.watch(&terminal("runner")).replay;
+        assert_eq!(replay, b"plain \x1b[1mbold");
     }
 }

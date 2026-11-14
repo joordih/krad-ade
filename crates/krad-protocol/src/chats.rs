@@ -1,8 +1,8 @@
 use krad_domain::{
     AcpAuthMethod, AcpAuthMethodId, AcpConfigOption, AcpConfigOptionId, AcpConfigValue, AcpModeId,
-    AcpModels, AcpModes, AgentPreset, AskAnswer, AskKind, ChatMessage, ChatOrigin, CommandOffer,
-    Effort, EnvironmentName, ImageFormat, McpProjectTrust, ModelId, PermissionMode, PickedAnswer,
-    Prompt, ResumeId, RewindScope,
+    AcpModels, AcpModes, AgentPreset, AskAnswer, AskKind, ChatImage, ChatMessage, ChatOrigin,
+    CommandOffer, Effort, EnvironmentName, ImageFormat, McpProjectTrust, ModelId, PermissionMode,
+    PickedAnswer, Prompt, ResumeId, RewindScope,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -143,6 +143,9 @@ pub enum ChatCommand {
     ForgetImages {
         chat: AgentRef,
     },
+    ReadImage {
+        image: ChatImage,
+    },
     #[serde(other)]
     Unknown,
 }
@@ -180,6 +183,7 @@ impl ChatCommand {
             | Self::AttachImage { chat, .. }
             | Self::ForgetImages { chat } => Some(chat),
             Self::Mentions { .. }
+            | Self::ReadImage { .. }
             | Self::ForgetMentions
             | Self::Transcript { .. }
             | Self::Subagents { .. }

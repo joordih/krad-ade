@@ -3,7 +3,7 @@ use krad_protocol::{ErrorCode, Problem};
 
 use super::EnvironmentShell;
 
-const fn toast_kind(code: ErrorCode) -> ToastKind {
+pub(in crate::environment_shell) const fn toast_kind(code: ErrorCode) -> ToastKind {
     match code {
         ErrorCode::Busy | ErrorCode::AlreadyAnswered => ToastKind::Warning,
         ErrorCode::Unsupported

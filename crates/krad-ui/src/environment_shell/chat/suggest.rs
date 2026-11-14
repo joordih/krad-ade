@@ -116,7 +116,7 @@ impl EnvironmentShell {
         if let Some((root, query)) = root.clone().zip(mention) {
             self.search_files((root, &query, SUGGESTION_LIMIT), FilesFor::Suggestions, cx);
         }
-        if opened == Some(SuggestKind::Skill) {
+        if opened == Some(SuggestKind::Skill) && self.shown_here().is_some() {
             self.refresh_skills(root, cx);
         }
         cx.notify();
@@ -126,16 +126,14 @@ impl EnvironmentShell {
         &self,
         composer: TerminalId,
     ) -> Option<Entity<TextareaState>> {
-        self.envs
-            .get(&self.active)?
+        self.live(&self.chat_place())?
             .chats
             .get(&composer)
             .map(|chat| chat.input.clone())
     }
 
     fn composer_root(&self, composer: TerminalId) -> Option<PathBuf> {
-        self.envs
-            .get(&self.active)?
+        self.live(&self.chat_place())?
             .data
             .group_of(composer)
             .map(|group| group.root.clone())
@@ -279,15 +277,14 @@ impl EnvironmentShell {
         &mut self,
         composer: TerminalId,
     ) -> Option<&mut HashMap<SharedString, IndexEntry>> {
-        self.envs
-            .get_mut(&self.active)?
+        self.live_mut(&self.chat_place())?
             .chats
             .get_mut(&composer)
             .map(|chat| &mut chat.mentions)
     }
 
     fn harness_skills(&self, composer: TerminalId) -> Option<Vec<Skill>> {
-        let chat = self.envs.get(&self.active)?.chats.get(&composer)?;
+        let chat = self.live(&self.chat_place())?.chats.get(&composer)?;
         if chat.chat.harness().reads_shared_skills() {
             return None;
         }

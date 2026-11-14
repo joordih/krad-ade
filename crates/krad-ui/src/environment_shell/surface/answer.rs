@@ -353,10 +353,9 @@ impl EnvironmentShell {
     }
 
     fn toggle_thought(&mut self, id: TerminalId, key: (usize, usize), cx: &mut Context<Self>) {
-        let env = self.active.clone();
+        let place = self.chat_place();
         if let Some(chat) = self
-            .envs
-            .get_mut(&env)
+            .live_mut(&place)
             .and_then(|live| live.chats.get_mut(&id))
         {
             if !chat.opened_thoughts.remove(&key) {

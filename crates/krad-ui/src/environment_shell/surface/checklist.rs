@@ -152,10 +152,9 @@ impl EnvironmentShell {
     }
 
     fn toggle_checklist(&mut self, id: TerminalId) {
-        let env = self.active.clone();
+        let place = self.chat_place();
         if let Some(chat) = self
-            .envs
-            .get_mut(&env)
+            .live_mut(&place)
             .and_then(|live| live.chats.get_mut(&id))
         {
             chat.checklist_view = chat.checklist_view.toggled();

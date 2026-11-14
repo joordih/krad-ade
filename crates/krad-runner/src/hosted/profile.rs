@@ -4,8 +4,8 @@ use krad_runtime::{
     SettingsSetup,
 };
 use krad_store::{
-    open_layout_in, read_settings_in, settings_file_in, LayoutFile, LayoutOpening, OpenedLayout,
-    Secrets,
+    open_layout_in, read_settings_in, settings_file_in, ChatImages, LayoutFile, LayoutOpening,
+    OpenedLayout, Secrets,
 };
 use std::path::{Path, PathBuf};
 
@@ -73,7 +73,7 @@ impl RunnerProfile {
             },
             kraddies: KraddiesSetup::default(),
             secrets: self.secrets,
-            chat_images: None,
+            chat_images: Some(ChatImages::new(dir)),
             host_tools: HostTools::default(),
             own_runner,
         }
@@ -102,6 +102,7 @@ mod tests {
             .map(|environment| environment.name.as_str())
             .collect();
         assert_eq!(names, [RUNNER_ENVIRONMENT]);
+        assert!(setup.chat_images.is_some());
         assert!(setup
             .environments
             .state

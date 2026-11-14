@@ -234,8 +234,7 @@ impl EnvironmentShell {
     }
 
     fn chat_facts(&self, id: TerminalId, cx: &App) -> Option<Facts> {
-        self.envs
-            .get(&self.active)
+        self.live(&self.chat_place())
             .and_then(|live| live.chats.get(&id))
             .map(|chat| self.composer_facts(id, chat, cx))
     }
@@ -257,7 +256,7 @@ impl EnvironmentShell {
     }
 
     fn effort_was(&self, id: TerminalId) -> Option<Effort> {
-        match &self.envs.get(&self.active)?.chats.get(&id)?.chat.backend {
+        match &self.live(&self.chat_place())?.chats.get(&id)?.chat.backend {
             Backend::Structured(structured) => structured.effort_was,
             Backend::Transcript(_) => None,
         }

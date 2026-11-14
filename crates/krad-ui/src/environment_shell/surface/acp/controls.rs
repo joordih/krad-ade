@@ -135,8 +135,7 @@ impl EnvironmentShell {
     }
 
     fn acp_offers_of(&self, id: TerminalId) -> Option<&AcpOffers> {
-        self.envs
-            .get(&self.active)?
+        self.live(&self.chat_place())?
             .chats
             .get(&id)?
             .chat
@@ -183,10 +182,9 @@ impl EnvironmentShell {
         choice: AcpChoice,
         cx: &mut Context<Self>,
     ) {
-        let env = self.active.clone();
+        let place = self.chat_place();
         let Some(structured) = self
-            .envs
-            .get_mut(&env)
+            .live_mut(&place)
             .and_then(|live| live.chats.get_mut(&id))
             .and_then(|view| view.chat.structured_mut())
         else {
@@ -196,7 +194,7 @@ impl EnvironmentShell {
             return;
         }
         if structured.in_runtime() {
-            self.post_runtime_chat(&env, id, |chat| match choice {
+            self.post_runtime_chat(&place, id, |chat| match choice {
                 AcpChoice::Mode(mode) => ChatCommand::SetAcpMode { chat, mode },
                 AcpChoice::Option(option, value) => ChatCommand::SetAcpOption {
                     chat,

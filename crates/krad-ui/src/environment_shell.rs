@@ -411,6 +411,8 @@ impl EnvironmentShell {
     fn switch_env(&mut self, name: &EnvironmentName, cx: &mut Context<Self>) {
         if self.envs.contains_key(name) {
             self.active = name.clone();
+            self.leave_hosted_chat();
+            self.leave_hosted_terminal();
             self.unseen.remove(name);
             self.show_host(name, cx);
             self.place_usage();

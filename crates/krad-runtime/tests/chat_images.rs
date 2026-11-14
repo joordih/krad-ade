@@ -7,10 +7,10 @@ use krad_domain::{
     TerminalId,
 };
 use krad_protocol::{
-    AgentRef, ChatCommand, Command, ErrorCode, EventKind, Feed, PastedImage, Problem, Reply,
-    SessionCommand,
+    AgentRef, Answer, ChatCommand, Command, ErrorCode, EventKind, Feed, PastedImage, Problem,
+    Reply, RequestId, SessionCommand, Unreadable,
 };
-use krad_runtime::{EnvironmentsSetup, EventReceiver, Runtime, RuntimeSetup};
+use krad_runtime::{EnvironmentsSetup, EventReceiver, Runtime, RuntimeHandle, RuntimeSetup};
 use krad_store::ChatImages;
 use std::error::Error;
 use std::path::PathBuf;
@@ -85,6 +85,71 @@ fn a_pasted_image_is_kept_by_the_runtime_and_forgotten_with_its_chat() -> TestRe
     while image.path.exists() {
         std::thread::yield_now();
     }
+    Ok(())
+}
+
+fn answered(feed: &mut EventReceiver, request: RequestId) -> Result<Answer, Box<dyn Error>> {
+    loop {
+        if let Feed::Event(event) = block_on(feed.next()).ok_or(FEED_ENDED)? {
+            if let EventKind::Answered {
+                request: heard,
+                answer,
+            } = event.kind
+            {
+                if heard == request {
+                    return Ok(*answer);
+                }
+            }
+        }
+    }
+}
+
+fn read_image(runtime: &RuntimeHandle, image: ChatImage) -> Result<RequestId, Box<dyn Error>> {
+    let id = runtime.next_request();
+    let read = Command::Chat(ChatCommand::ReadImage { image });
+    assert_eq!(block_on(runtime.send(id, read))?, Reply::Accepted);
+    Ok(id)
+}
+
+#[test]
+fn a_remote_client_reads_a_kept_image_as_bytes_but_nothing_outside_the_image_folder() -> TestResult
+{
+    let folder = Folder(std::env::temp_dir().join(format!(
+        "krad-runtime-image-bytes-{}",
+        new_session_id().as_str()
+    )));
+    let runtime = Runtime::start(RuntimeSetup {
+        chat_images: Some(ChatImages::new(folder.0.clone())),
+        ..RuntimeSetup::default()
+    })?;
+    let mut feed = runtime.subscribe();
+    block_on(feed.next()).ok_or(FEED_ENDED)?;
+    assert_eq!(
+        block_on(runtime.send(runtime.next_request(), attach()))?,
+        Reply::Accepted
+    );
+    let image = attached(&mut feed)?;
+    let id = read_image(&runtime, image)?;
+    assert_eq!(
+        answered(&mut feed, id)?,
+        Answer::ImageBytes {
+            format: ImageFormat::Png,
+            bytes: PNG.to_vec()
+        }
+    );
+    let secret = folder.0.join("secret.png");
+    std::fs::write(&secret, PNG)?;
+    let outside = ChatImage {
+        path: secret,
+        format: ImageFormat::Png,
+    };
+    let id = read_image(&runtime, outside)?;
+    assert_eq!(
+        answered(&mut feed, id)?,
+        Answer::Unreadable {
+            unreadable: Unreadable::Outside
+        }
+    );
     Ok(())
 }
 

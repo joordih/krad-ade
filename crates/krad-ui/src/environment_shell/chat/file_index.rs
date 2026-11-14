@@ -3,6 +3,7 @@ use krad_domain::{EntryKind, EnvironmentName, IndexEntry, ToastKind};
 use krad_protocol::{Answer, ChatCommand, Command};
 use std::path::{Path, PathBuf};
 
+use super::super::surface::ChatPlace;
 use super::super::EnvironmentShell;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -65,8 +66,12 @@ impl EnvironmentShell {
         wanted: FilesFor,
         cx: &mut Context<Self>,
     ) {
+        let place = match wanted {
+            FilesFor::Suggestions => self.chat_place(),
+            FilesFor::Palette => ChatPlace::here(&self.active),
+        };
         let asked = FilesQuery {
-            environment: self.active.clone(),
+            environment: place.environment.clone(),
             root,
             query: query.to_owned(),
             limit,
@@ -78,7 +83,11 @@ impl EnvironmentShell {
                     .suggestions
                     .as_ref()
                     .is_some_and(|found| found.answers(&asked)));
-        if known || !self.host_ready(&self.active, cx) {
+        let ready = place.local().map_or_else(
+            || self.chat_client(&place).is_some(),
+            |local| self.host_ready(local, cx),
+        );
+        if known || !ready {
             return;
         }
         self.chat.files.asked[FileSearches::slot(wanted)] = Some(asked.clone());
@@ -88,7 +97,7 @@ impl EnvironmentShell {
             query: asked.query.clone(),
             limit,
         });
-        let answer = self.runtime.ask(command, cx);
+        let answer = self.ask_at(&place, command, cx);
         cx.spawn(async move |this, cx| {
             let answer = answer.await;
             this.update(cx, |shell, cx| shell.files_found(asked, wanted, answer, cx))

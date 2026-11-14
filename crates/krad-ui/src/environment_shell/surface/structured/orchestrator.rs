@@ -3,12 +3,12 @@ use krad_domain::{SessionEdit, SessionId, SessionLead, TerminalId, DEFAULT_CHAT_
 
 use super::super::super::workers::LeadEnding;
 use super::super::super::EnvironmentShell;
+use super::super::ChatPlace;
 use super::structured_mut;
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn orchestrates(&self, id: TerminalId) -> bool {
-        self.envs
-            .get(&self.active)
+        self.live(&self.chat_place())
             .is_some_and(|live| live.data.session_led_by(id).is_some())
     }
 
@@ -18,7 +18,9 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let env = self.active.clone();
+        let Some(env) = self.shown_here() else {
+            return;
+        };
         if let Some(session) = self
             .envs
             .get(&env)
@@ -27,7 +29,7 @@ impl EnvironmentShell {
             self.ask_end_lead(LeadEnding::Dismiss(session), window, cx);
             return;
         }
-        let (harness, model) = structured_mut(self, &env, id)
+        let (harness, model) = structured_mut(self, &ChatPlace::here(&env), id)
             .map_or((DEFAULT_CHAT_HARNESS, None), |chat| {
                 (chat.harness, chat.chosen_model.clone())
             });

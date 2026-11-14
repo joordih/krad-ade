@@ -62,8 +62,7 @@ pub(super) fn bookmarks_of(messages: &[ChatMessage]) -> Vec<Option<Bookmark>> {
 
 impl EnvironmentShell {
     pub(super) fn chat_bookmarks(&self, id: TerminalId) -> Option<&ChatBookmarks> {
-        self.envs
-            .get(&self.active)?
+        self.live(&self.chat_place())?
             .data
             .nodes
             .iter()
@@ -105,17 +104,18 @@ impl EnvironmentShell {
     }
 
     fn toggle_bookmark(&mut self, id: TerminalId, bookmark: Bookmark) {
-        let env = self.active.clone();
+        let place = self.chat_place();
         let Some(mut bookmarks) = self
-            .envs
-            .get(&env)
+            .live(&place)
             .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
             .map(|node| node.bookmarks.clone())
         else {
             return;
         };
         bookmarks.toggle(bookmark);
-        self.set_node(&env, id, NodeField::Bookmarks(bookmarks));
+        if let Some(local) = place.local() {
+            self.set_node(local, id, NodeField::Bookmarks(bookmarks));
+        }
         self.store();
     }
 }

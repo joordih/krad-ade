@@ -172,8 +172,7 @@ impl EnvironmentShell {
             .structured()
             .and_then(StructuredChat::runtime_working_since)
             .or_else(|| {
-                self.envs
-                    .get(&self.active)
+                self.live(&self.chat_place())
                     .and_then(|live| live.working_since.get(&id))
                     .copied()
             });

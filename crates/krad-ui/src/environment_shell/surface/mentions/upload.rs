@@ -1,15 +1,9 @@
 use gpui_kit::{AppContext as _, Context};
 use krad_domain::{ChatImage, EnvironmentName, ImageFormat, Mention, TerminalId, ToastKind};
-use krad_protocol::{AgentRef, ChatCommand, Command, PastedImage};
+use krad_protocol::{AgentRef, ChatCommand, PastedImage};
 
 use super::super::super::EnvironmentShell;
-
-pub(super) fn chat_ref(env: &EnvironmentName, id: TerminalId) -> AgentRef {
-    AgentRef {
-        environment: env.clone(),
-        terminal: id,
-    }
-}
+use super::super::ChatPlace;
 
 fn split_images(mentions: Vec<Mention>) -> (Vec<Mention>, Vec<ChatImage>) {
     let mut paths = Vec::new();
@@ -31,7 +25,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         self.attach(
-            &chat.environment,
+            &ChatPlace::here(&chat.environment),
             chat.terminal,
             vec![Mention::Image(image)],
             cx,
@@ -40,31 +34,31 @@ impl EnvironmentShell {
 
     pub(super) fn attach_mentions(
         &mut self,
-        env: &EnvironmentName,
+        place: &ChatPlace,
         id: TerminalId,
         mentions: Vec<Mention>,
         cx: &mut Context<Self>,
     ) {
         let (paths, images) = split_images(mentions);
-        self.attach(env, id, paths, cx);
+        self.attach(place, id, paths, cx);
         for image in images {
-            Self::upload_image_file(env, id, image, cx);
+            Self::upload_image_file(place, id, image, cx);
         }
     }
 
     fn upload_image_file(
-        env: &EnvironmentName,
+        place: &ChatPlace,
         id: TerminalId,
         image: ChatImage,
         cx: &mut Context<Self>,
     ) {
         let read = cx.background_spawn(async move { std::fs::read(&image.path) });
-        let chat = chat_ref(env, id);
+        let place = place.clone();
         let format = image.format;
         cx.spawn(async move |this, cx| {
             let read = read.await;
             this.update(cx, |shell, _| match read {
-                Ok(bytes) => shell.upload_image(chat, format, bytes),
+                Ok(bytes) => shell.upload_image(&place, id, (format, bytes)),
                 Err(error) => shell.push_toast(ToastKind::Error, error.to_string()),
             })
             .unwrap_or_default();
@@ -72,11 +66,15 @@ impl EnvironmentShell {
         .detach();
     }
 
-    pub(super) fn upload_image(&self, chat: AgentRef, format: ImageFormat, bytes: Vec<u8>) {
+    pub(super) fn upload_image(
+        &self,
+        place: &ChatPlace,
+        id: TerminalId,
+        (format, bytes): (ImageFormat, Vec<u8>),
+    ) {
         let image = PastedImage { format, bytes };
-        self.runtime
-            .client
-            .post(Command::Chat(ChatCommand::AttachImage { chat, image }));
+        let chat = place.chat(id);
+        self.post_chat(place, ChatCommand::AttachImage { chat, image });
     }
 
     pub(in crate::environment_shell) fn forget_chat_images(
@@ -84,10 +82,13 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
     ) {
-        let chat = chat_ref(env, id);
-        self.runtime
-            .client
-            .post(Command::Chat(ChatCommand::ForgetImages { chat }));
+        let place = ChatPlace::here(env);
+        self.post_chat(
+            &place,
+            ChatCommand::ForgetImages {
+                chat: place.chat(id),
+            },
+        );
     }
 }
 

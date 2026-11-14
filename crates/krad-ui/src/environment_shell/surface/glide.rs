@@ -43,7 +43,7 @@ impl ChatView {
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn glide_chats(&mut self, now: Instant) -> bool {
-        let Some(live) = self.envs.get_mut(&self.active) else {
+        let Some(live) = self.live_mut(&self.chat_place()) else {
             return false;
         };
         live.chats

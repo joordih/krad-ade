@@ -213,6 +213,10 @@ fn conversation_commands() -> Vec<(&'static str, Value)> {
             json!({ "area": "chat", "verb": "attach_image", "chat": chat(), "image": { "format": "png", "bytes": [137, 80, 78, 71] } }),
         ),
         (
+            "chat_read_image",
+            json!({ "area": "chat", "verb": "read_image", "image": { "path": "/home/dev/.config/krad-ade/chat-images/6d61696e/3/1.png", "format": "png" } }),
+        ),
+        (
             "chat_send",
             json!({ "area": "chat", "verb": "send", "chat": chat(), "prompt": { "text": "Run the tests", "mentions": [] } }),
         ),

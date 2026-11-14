@@ -1,11 +1,15 @@
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
+use futures::{FutureExt as _, StreamExt as _};
 use krad_protocol::{
-    Command, ErrorCode, Feed, Hello, Reply, RequestId, Scope, Seq, Snapshot, Welcome,
+    AgentRef, Command, ErrorCode, Feed, Hello, Reply, RequestId, Scope, Seq, Snapshot, Welcome,
 };
 
 pub type Answer<T> = BoxFuture<'static, Result<T, ClientError>>;
 pub type Feeds = BoxStream<'static, Feed>;
+pub type TerminalBytesFeed = BoxStream<'static, Vec<u8>>;
+
+const NO_TERMINAL_BYTES: &str = "this client cannot watch a terminal's bytes";
 
 #[derive(Clone, PartialEq, Eq, Debug, thiserror::Error)]
 pub enum ClientError {
@@ -50,5 +54,16 @@ pub trait RuntimeClient: Send + Sync {
 
     fn post_as(&self, id: RequestId, command: Command) {
         drop(self.send_as(id, command));
+    }
+
+    fn watch_terminal(&self, _terminal: AgentRef) -> (Answer<Reply>, TerminalBytesFeed) {
+        let refused = Reply::Refused {
+            code: ErrorCode::Unsupported,
+            message: NO_TERMINAL_BYTES.to_owned(),
+        };
+        (
+            futures::future::ready(Ok(refused)).boxed(),
+            futures::stream::empty().boxed(),
+        )
     }
 }

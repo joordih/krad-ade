@@ -14,6 +14,7 @@ use super::super::ask::{AskQueue, Settled};
 use super::super::chat::{fold_entry, ChatMessage};
 use super::super::live_terminal::LiveTerminal;
 use super::super::EnvironmentShell;
+use super::ChatPlace;
 use super::{anchor, Backend, ChatView, SurfaceCommand};
 
 pub(super) const TRANSCRIPT_HARNESS: AgentPreset = AgentPreset::ClaudeCode;
@@ -136,7 +137,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        self.leave_runtime(&env, id);
+        self.leave_runtime(&ChatPlace::here(&env), id);
         if let Some(live) = self.envs.get_mut(&env) {
             live.chats.remove(&id);
         }

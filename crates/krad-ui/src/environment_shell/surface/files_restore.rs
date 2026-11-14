@@ -8,6 +8,7 @@ use krad_protocol::{Answer, RepoAsk};
 use std::future::Future;
 
 use super::super::EnvironmentShell;
+use super::ChatPlace;
 use super::{Backend, ChatView};
 use krad_domain::RewindScope;
 
@@ -173,7 +174,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         self.start_rewind(
-            env,
+            &ChatPlace::here(env),
             id,
             rewind.index,
             rewind.prompt,

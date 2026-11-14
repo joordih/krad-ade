@@ -79,8 +79,7 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn surface_menu(&self, id: TerminalId) -> Vec<MenuEntry> {
         let Some(node) = self
-            .envs
-            .get(&self.active)
+            .live(&self.chat_place())
             .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
         else {
             return Vec::new();
@@ -88,14 +87,17 @@ impl EnvironmentShell {
         let resumable = node.resume.is_some();
         let mut entries = Vec::new();
         if node.kind == NodeKind::Chat {
-            if resumable {
+            if resumable && self.shown_here().is_some() {
                 entries.push(MenuEntry::item(
                     CONTINUE_IN_TERMINAL_LABEL,
                     Some(IconName::Terminal),
                     MenuAction::ContinueInTerminal(id),
                 ));
             }
-        } else if let Some(switch) = self.surface_switch_of(&self.active, id) {
+        } else if let Some(switch) = self
+            .shown_here()
+            .and_then(|here| self.surface_switch_of(&here, id))
+        {
             entries.push(match switch.lock {
                 None if switch.on_chat => MenuEntry::item(
                     SHOW_TERMINAL_LABEL,

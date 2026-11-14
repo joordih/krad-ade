@@ -78,8 +78,7 @@ impl EnvironmentShell {
 
     fn chat_copies(&self, spot: ChatSpot) -> (Option<String>, Option<String>) {
         let Some(message) = self
-            .envs
-            .get(&self.active)
+            .live(&self.chat_place())
             .and_then(|live| live.chats.get(&spot.chat))
             .and_then(|chat| chat.chat.messages.get(spot.message))
         else {

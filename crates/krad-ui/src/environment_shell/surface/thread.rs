@@ -154,7 +154,7 @@ fn question_row(
                 cx,
             ))
         })
-        .children(sent_mentions(&message.mentions, pal, cx))
+        .children(sent_mentions(&message.mentions, &chat.images, pal, cx))
         .children(actions)
         .into_any_element()
 }
@@ -288,7 +288,7 @@ impl EnvironmentShell {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let chat = self.envs.get(&self.active)?.chats.get(&id)?;
+        let chat = self.live(&self.chat_place())?.chats.get(&id)?;
         let pal = palette(cx);
         Some(match item {
             ThreadItem::Earlier => Button::new((EARLIER_PREFIX, id.as_u64()))
@@ -345,11 +345,12 @@ impl EnvironmentShell {
                     .into_any_element()
             }
             ThreadItem::Loading => muted_line(LOADING_TEXT, pal),
-            ThreadItem::Pending(index) => Self::pending_bubble(id, index, chat.pending(index)?, cx),
+            ThreadItem::Pending(index) => {
+                Self::pending_bubble(id, (index, chat.pending(index)?), &chat.images, cx)
+            }
             ThreadItem::Status => {
                 let activity = self
-                    .envs
-                    .get(&self.active)
+                    .live(&self.chat_place())
                     .and_then(|live| live.sessions.get(&id))
                     .and_then(|session| session.activity.as_deref());
                 let started = self.turn_started(id, chat);

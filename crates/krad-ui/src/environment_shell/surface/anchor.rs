@@ -87,7 +87,7 @@ impl ChatView {
 
 impl EnvironmentShell {
     fn active_chat_mut(&mut self, id: TerminalId) -> Option<&mut ChatView> {
-        self.envs.get_mut(&self.active)?.chats.get_mut(&id)
+        self.live_mut(&self.chat_place())?.chats.get_mut(&id)
     }
 
     pub(super) fn scrolled_by_hand(&mut self, id: TerminalId) {

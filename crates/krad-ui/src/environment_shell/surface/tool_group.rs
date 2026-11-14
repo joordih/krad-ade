@@ -373,10 +373,9 @@ impl EnvironmentShell {
         open: bool,
         cx: &mut Context<Self>,
     ) {
-        let env = self.active.clone();
+        let place = self.chat_place();
         if let Some(chat) = self
-            .envs
-            .get_mut(&env)
+            .live_mut(&place)
             .and_then(|live| live.chats.get_mut(&id))
         {
             chat.tool_groups.insert(key, !open);

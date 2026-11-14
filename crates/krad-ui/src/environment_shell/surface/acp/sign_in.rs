@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 use super::super::super::sessions::Launch;
 use super::super::super::terminal_lifecycle::{NodeGroup, NodeSpec};
 use super::super::super::EnvironmentShell;
+use super::super::ChatPlace;
 use super::super::StructuredChat;
 
 const SIGN_IN_TERMINAL_LABEL: &str = "Sign in";
@@ -124,7 +125,9 @@ impl EnvironmentShell {
             SignInAction::Authenticate(method) => {
                 if structured.in_runtime() {
                     let env = self.active.clone();
-                    self.post_runtime_chat(&env, id, |chat| ChatCommand::SignIn { chat, method });
+                    self.post_runtime_chat(&ChatPlace::here(&env), id, |chat| {
+                        ChatCommand::SignIn { chat, method }
+                    });
                 }
             }
             SignInAction::Terminal { args, env, retry } => {

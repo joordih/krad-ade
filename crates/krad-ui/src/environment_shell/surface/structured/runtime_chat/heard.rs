@@ -1,6 +1,6 @@
 use gpui_kit::Context;
 use krad_domain::{
-    AgentState, AttentionKind, ChatLogChange, ChatMessage, EnvironmentName, Speaker, TerminalId,
+    AgentState, AttentionKind, ChatLogChange, ChatMessage, Mention, RuntimeId, Speaker, TerminalId,
 };
 use krad_protocol::{AgentRef, ChatAsk, ChatState, ChatSummary, EventKind};
 use std::time::Instant;
@@ -8,20 +8,27 @@ use std::time::Instant;
 use super::super::super::super::ask::Waiting;
 use super::super::super::super::workers::LaunchProgress;
 use super::super::super::super::EnvironmentShell;
-use super::super::super::{anchor, Backend, ChatView};
+use super::super::super::{anchor, Backend, ChatPlace, ChatView};
 use super::super::{structured_chat, structured_mut, StructuredChat};
 use super::shown::shown_problem;
 
 fn runtime_chat<'a>(
     shell: &'a mut EnvironmentShell,
-    env: &EnvironmentName,
+    place: &ChatPlace,
     id: TerminalId,
 ) -> Option<&'a mut ChatView> {
-    structured_chat(shell, env, id).filter(|chat| {
+    structured_chat(shell, place, id).filter(|chat| {
         chat.chat
             .structured()
             .is_some_and(StructuredChat::in_runtime)
     })
+}
+
+fn place_of(runtime: RuntimeId, chat: &AgentRef) -> ChatPlace {
+    ChatPlace {
+        runtime,
+        environment: chat.environment.clone(),
+    }
 }
 
 fn progress_of(message: &ChatMessage) -> LaunchProgress {
@@ -35,12 +42,22 @@ fn progress_of(message: &ChatMessage) -> LaunchProgress {
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn chat_event_heard(
         &mut self,
+        runtime: RuntimeId,
         kind: EventKind,
         cx: &mut Context<Self>,
     ) {
+        if let EventKind::ChatImageAttached { chat, image } = kind {
+            let place = place_of(runtime, &chat);
+            self.attach(&place, chat.terminal, vec![Mention::Image(image)], cx);
+            return self.fetch_shown_images(&place, chat.terminal, cx);
+        }
+        let Some(place) = kind.chat().map(|chat| place_of(runtime, chat)) else {
+            return;
+        };
+        let place = &place;
         match kind {
             EventKind::ChatOpened { chat, state } | EventKind::ChatState { chat, state } => {
-                self.runtime_chat_state(&chat, *state, cx);
+                self.runtime_chat_state(place, chat.terminal, *state, cx);
             }
             EventKind::ChatMessageAdded {
                 chat,
@@ -51,31 +68,43 @@ impl EnvironmentShell {
                 chat,
                 index,
                 message,
-            } => self.runtime_chat_message(&chat, index, *message, cx),
+            } => {
+                self.runtime_chat_message(place, chat.terminal, (index, *message), cx);
+                self.fetch_shown_images(place, chat.terminal, cx);
+            }
             EventKind::ChatMessageAppended { chat, index, text } => {
-                self.runtime_chat_appended(&chat, index, text);
+                self.runtime_chat_appended(place, chat.terminal, index, text);
             }
             EventKind::ChatMessagesPrepended { chat, count } => {
-                let (env, id) = (&chat.environment, chat.terminal);
-                if let Some(structured) = structured_mut(self, env, id) {
+                if let Some(structured) = structured_mut(self, place, chat.terminal) {
                     structured.shown.shifted(count);
                 }
-                self.page_in_earlier(env, id, cx);
+                self.page_in_earlier(place, chat.terminal, cx);
             }
             EventKind::ChatCheckpointed {
                 chat,
                 point,
                 checkpoint,
-            } => self.record_turn_checkpoint(&chat.environment, chat.terminal, point, checkpoint),
-            EventKind::ChatMessagesCut { chat, len } => self.runtime_chat_cut(&chat, len, cx),
-            EventKind::ChatAsk(ask) => self.runtime_chat_ask(ask, cx),
+            } => {
+                if let Some(env) = place.local() {
+                    let env = env.clone();
+                    self.record_turn_checkpoint(&env, chat.terminal, point, checkpoint);
+                }
+            }
+            EventKind::ChatMessagesCut { chat, len } => {
+                self.runtime_chat_cut(place, chat.terminal, len, cx);
+            }
+            EventKind::ChatAsk(ask) => self.runtime_chat_ask(place, ask, cx),
             EventKind::ChatAskSettled { chat, ask } => {
-                if let Some(chat) = runtime_chat(self, &chat.environment, chat.terminal) {
+                if let Some(chat) = runtime_chat(self, place, chat.terminal) {
                     chat.chat.asks_mut().forget_chat_ask(ask);
                 }
             }
             EventKind::ChatSpent { chat, report } => {
-                self.record_spend(&chat.environment, chat.terminal, report, None, cx);
+                if let Some(env) = place.local() {
+                    let env = env.clone();
+                    self.record_spend(&env, chat.terminal, report, None, cx);
+                }
             }
             _ => {}
         }
@@ -83,13 +112,15 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn runtime_chats_replaced(
         &mut self,
+        runtime: RuntimeId,
         summaries: Vec<ChatSummary>,
         cx: &mut Context<Self>,
     ) {
         for summary in summaries {
             let ChatSummary { state, tail, asks } = summary;
-            let chat = tail.chat.clone();
-            if let Some(shown) = runtime_chat(self, &chat.environment, chat.terminal) {
+            let place = place_of(runtime, &tail.chat);
+            let id = tail.chat.terminal;
+            if let Some(shown) = runtime_chat(self, &place, id) {
                 shown.chat.messages = tail.messages;
                 shown.opened_thoughts.clear();
                 shown.tool_groups.clear();
@@ -99,22 +130,21 @@ impl EnvironmentShell {
                 }
             }
             for ask in asks {
-                self.runtime_chat_ask(ask, cx);
+                self.runtime_chat_ask(&place, ask, cx);
             }
-            self.runtime_chat_state(&chat, state, cx);
+            self.runtime_chat_state(&place, id, state, cx);
         }
     }
 
     fn runtime_chat_message(
         &mut self,
-        chat: &AgentRef,
-        index: usize,
-        message: ChatMessage,
+        place: &ChatPlace,
+        id: TerminalId,
+        (index, message): (usize, ChatMessage),
         cx: &mut Context<Self>,
     ) {
-        let (env, id) = (&chat.environment, chat.terminal);
         let progress = progress_of(&message);
-        let Some((shown, index)) = runtime_chat(self, env, id).and_then(|shown| {
+        let Some((shown, index)) = runtime_chat(self, place, id).and_then(|shown| {
             let index = shown.chat.structured()?.shown.local(index)?;
             Some((shown, index))
         }) else {
@@ -125,16 +155,23 @@ impl EnvironmentShell {
         if followed {
             shown.thread.scroll_to_end();
         }
-        self.follow_launch_progress(env, id, progress, cx);
+        if let Some(env) = place.local() {
+            let env = env.clone();
+            self.follow_launch_progress(&env, id, progress, cx);
+        }
     }
 
-    fn runtime_chat_appended(&mut self, chat: &AgentRef, index: usize, text: String) {
-        let Some((shown, index)) =
-            runtime_chat(self, &chat.environment, chat.terminal).and_then(|shown| {
-                let index = shown.chat.structured()?.shown.local(index)?;
-                Some((shown, index))
-            })
-        else {
+    fn runtime_chat_appended(
+        &mut self,
+        place: &ChatPlace,
+        id: TerminalId,
+        index: usize,
+        text: String,
+    ) {
+        let Some((shown, index)) = runtime_chat(self, place, id).and_then(|shown| {
+            let index = shown.chat.structured()?.shown.local(index)?;
+            Some((shown, index))
+        }) else {
             return;
         };
         let followed = anchor::follows_tail(shown.anchor, &shown.thread);
@@ -144,18 +181,22 @@ impl EnvironmentShell {
         }
     }
 
-    fn runtime_chat_cut(&mut self, chat: &AgentRef, len: usize, cx: &mut Context<Self>) {
-        let Some((shown, len)) =
-            runtime_chat(self, &chat.environment, chat.terminal).and_then(|shown| {
-                let len = shown
-                    .chat
-                    .structured()?
-                    .shown
-                    .local(len)
-                    .unwrap_or_default();
-                Some((shown, len))
-            })
-        else {
+    fn runtime_chat_cut(
+        &mut self,
+        place: &ChatPlace,
+        id: TerminalId,
+        len: usize,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((shown, len)) = runtime_chat(self, place, id).and_then(|shown| {
+            let len = shown
+                .chat
+                .structured()?
+                .shown
+                .local(len)
+                .unwrap_or_default();
+            Some((shown, len))
+        }) else {
             return;
         };
         shown.chat.messages.truncate(len);
@@ -170,29 +211,43 @@ impl EnvironmentShell {
             shown.editing = None;
             shown.pins_latest = true;
             shown.start_glide(Instant::now());
-            self.files_rewind_settled(&chat.environment, chat.terminal, true, cx);
+            if let Some(env) = place.local() {
+                let env = env.clone();
+                self.files_rewind_settled(&env, id, true, cx);
+            }
         }
     }
 
-    fn runtime_chat_ask(&mut self, ask: ChatAsk, cx: &mut Context<Self>) {
-        let (env, id) = (ask.chat.environment.clone(), ask.chat.terminal);
-        let Some(shown) = runtime_chat(self, &env, id) else {
+    fn runtime_chat_ask(&mut self, place: &ChatPlace, ask: ChatAsk, cx: &mut Context<Self>) {
+        let id = ask.chat.terminal;
+        let Some(shown) = runtime_chat(self, place, id) else {
             return;
         };
         if shown.chat.asks().holds_chat_ask(ask.ask) {
             return;
         }
         shown.chat.asks_mut().push(Waiting::of_runtime(ask));
-        self.set_agent_state(&env, id, AgentState::WaitingForInput);
-        self.follow_launch_progress(&env, id, LaunchProgress::Started, cx);
+        if let Some(env) = place.local() {
+            let env = env.clone();
+            self.set_agent_state(&env, id, AgentState::WaitingForInput);
+            self.follow_launch_progress(&env, id, LaunchProgress::Started, cx);
+        }
     }
 
-    fn runtime_chat_state(&mut self, chat: &AgentRef, state: ChatState, cx: &mut Context<Self>) {
-        let (env, id) = (&chat.environment, chat.terminal);
-        if let (Some(problem), false) = (&state.problem, state.alive || state.working) {
+    fn runtime_chat_state(
+        &mut self,
+        place: &ChatPlace,
+        id: TerminalId,
+        state: ChatState,
+        cx: &mut Context<Self>,
+    ) {
+        let local = place.local().cloned();
+        if let (Some(problem), false, Some(env)) =
+            (&state.problem, state.alive || state.working, &local)
+        {
             self.follow_launch_progress(env, id, LaunchProgress::Failed(problem.clone()), cx);
         }
-        let Some(shown) = runtime_chat(self, env, id) else {
+        let Some(shown) = runtime_chat(self, place, id) else {
             return;
         };
         shown.chat.problem = shown_problem(&state);
@@ -230,25 +285,25 @@ impl EnvironmentShell {
         if let Some(resume) = resumed {
             structured.session_reported(resume);
         }
-        if asks_sign_in {
+        if let (true, Some(env)) = (asks_sign_in, &local) {
             self.set_agent_state(env, id, AgentState::WaitingForInput);
         }
         if was_working == state.working {
             return;
         }
-        if state.working {
-            self.set_agent_state(env, id, AgentState::Working);
-            return;
-        }
-        let settled = if waits {
-            AgentState::WaitingForInput
-        } else {
-            AgentState::Idle
+        let settled = match (state.working, waits) {
+            (true, _) => AgentState::Working,
+            (false, true) => AgentState::WaitingForInput,
+            (false, false) => AgentState::Idle,
         };
-        self.set_agent_state(env, id, settled);
-        if failed {
-            self.raise_attention(env, id, AttentionKind::Error);
+        if let Some(env) = &local {
+            self.set_agent_state(env, id, settled);
+            if failed && !state.working {
+                self.raise_attention(env, id, AttentionKind::Error);
+            }
         }
-        self.flush_structured(env, id, cx);
+        if !state.working {
+            self.flush_structured(place, id, cx);
+        }
     }
 }

@@ -324,6 +324,7 @@ impl Render for EnvironmentShell {
             self.sync_activity_grid(window, cx);
             if view == EnvironmentView::Sessions && !self.editing() {
                 self.sync_session_grid(window);
+                self.sync_hosted_terminal_grid(window, cx);
             }
         }
         let viewport = window.viewport_size();

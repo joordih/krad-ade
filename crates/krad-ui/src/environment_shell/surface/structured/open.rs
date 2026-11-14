@@ -6,7 +6,7 @@ use krad_domain::{
 use std::collections::HashMap;
 
 use super::super::super::EnvironmentShell;
-use super::super::{Backend, ChatView};
+use super::super::{Backend, ChatPlace, ChatView};
 use super::{structured_chat, StructuredChat};
 
 pub(in crate::environment_shell) fn restored_chats(
@@ -111,18 +111,19 @@ impl EnvironmentShell {
                 self.seed_acp_chats();
                 self.list_acp_models(agent, cx);
             }
-            self.runtime_chat_opened(env, id, cx);
+            let place = ChatPlace::here(env);
+            self.runtime_chat_opened(&place, id, cx);
             if prompted {
-                self.flush_structured(env, id, cx);
+                self.flush_structured(&place, id, cx);
             }
         }
     }
 
-    pub(super) fn note_history_waits_for_host(&mut self, env: &EnvironmentName, id: TerminalId) {
-        let Some(destination) = self.envs.get(env).map(|live| live.data.host.to_string()) else {
+    pub(super) fn note_history_waits_for_host(&mut self, place: &ChatPlace, id: TerminalId) {
+        let Some(destination) = self.live(place).map(|live| live.data.host.to_string()) else {
             return;
         };
-        if let Some(chat) = structured_chat(self, env, id) {
+        if let Some(chat) = structured_chat(self, place, id) {
             chat.chat.problem = Some(format!("{CONNECTING_TEXT} {destination}"));
         }
     }
@@ -136,8 +137,9 @@ impl EnvironmentShell {
             .envs
             .get(env)
             .map_or_else(Vec::new, |live| live.chats.keys().copied().collect());
+        let place = ChatPlace::here(env);
         for id in opening {
-            self.runtime_chat_opened(env, id, cx);
+            self.runtime_chat_opened(&place, id, cx);
         }
     }
 }

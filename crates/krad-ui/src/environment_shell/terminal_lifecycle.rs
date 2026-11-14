@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use super::sessions::Launch;
 use super::sessions_view::{session_terminals, show_current_session};
+use super::surface::ChatPlace;
 use super::EnvironmentShell;
 
 const NEW_CHAT_LABEL: &str = "New chat";
@@ -422,7 +423,7 @@ impl EnvironmentShell {
                 live.focused = live.data.nodes.first().map(|node| node.id);
             }
         }
-        self.close_runtime_chat(env, id, chat.as_ref());
+        self.close_runtime_chat(&ChatPlace::here(env), id, chat.as_ref());
         if ran {
             self.end_terminal(env, id);
         }

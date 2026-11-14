@@ -1,4 +1,5 @@
 use gpui_kit::Context;
+use krad_domain::RuntimeId;
 use krad_protocol::{EventKind, Snapshot, StatusReport, TerminalClassified, TerminalSummary};
 
 use super::super::EnvironmentShell;
@@ -42,6 +43,7 @@ impl EnvironmentShell {
         }
         if areas.contains(&Area::Runners) {
             self.reach_ready_runners(cx);
+            self.follow_hosted_places(cx);
         }
         match reach {
             Reach::Quietly => {}
@@ -85,6 +87,15 @@ impl EnvironmentShell {
                 self.hosted_failed(runner, &failure, cx);
                 return Reach::Shown;
             }
+            Heard::RemoteChat { runner, kind } => {
+                self.chat_event_heard(RuntimeId::Runner(runner), *kind, cx);
+                return Reach::Shown;
+            }
+            Heard::RemoteReplaced(runner) => {
+                self.follow_hosted_places(cx);
+                self.reseed_hosted_chats(runner, cx);
+                return Reach::Shown;
+            }
         }
         Reach::Attention
     }
@@ -99,7 +110,7 @@ impl EnvironmentShell {
         self.adopt_runtime_environments(cx);
         self.advance_harness_onboarding(cx);
         self.hosts_replaced(*snapshot.hosts, moves, cx);
-        self.runtime_chats_replaced(snapshot.chats, cx);
+        self.runtime_chats_replaced(RuntimeId::Local, snapshot.chats, cx);
         self.git_replaced(snapshot.git, cx);
         self.kraddies_replaced(*snapshot.kraddies);
         for summary in snapshot.terminals {
@@ -158,7 +169,7 @@ impl EnvironmentShell {
                 }
             }
             chat if chat.chat().is_some() => {
-                self.chat_event_heard(chat, cx);
+                self.chat_event_heard(RuntimeId::Local, chat, cx);
                 Reach::Attention
             }
             kind => {
