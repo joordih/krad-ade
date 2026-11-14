@@ -215,7 +215,7 @@ impl EnvironmentShell {
         cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(UI_TICK).await;
             let ticked = this.update(cx, |shell, cx| {
-                let changed = shell.apply_tick(cx);
+                let changed = shell.apply_tick();
                 shell.flush_live_work(cx);
                 if changed {
                     cx.notify();

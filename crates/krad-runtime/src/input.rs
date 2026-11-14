@@ -6,7 +6,7 @@ use krad_protocol::{AgentRef, Command, Feed, Reply, RequestId, Scope, Seq, Snaps
 use krad_session::AnsiPalette;
 use std::sync::Arc;
 
-use crate::bus::{Delegated, DelegationId, Mail};
+use crate::bus::{Delegated, DelegationId};
 use crate::chats::{ChatStart, OfferedBuffers};
 use crate::jobs::JobDone;
 use crate::kraddies::DigestReply;
@@ -51,10 +51,6 @@ pub(crate) enum Input {
     BusRespond {
         delegation: DelegationId,
         response: Response,
-    },
-    BusMail {
-        delegation: DelegationId,
-        mail: Mail,
     },
     BusDropped(DelegationId),
     Delegate(mpsc::Sender<Delegated>),

@@ -251,6 +251,32 @@ fn errors_print_their_code_in_json_and_their_message_in_text() {
 }
 
 #[test]
+fn a_deprecated_check_prints_no_mail_and_its_notice_once_on_stderr() {
+    let request = Request::Check { wait_secs: None };
+    let answer = crate::protocol::check_answer();
+    assert_eq!(
+        deprecation_notices(&answer),
+        [crate::protocol::CHECK_DEPRECATED]
+    );
+    let (Output::Stdout(text), Exit::Ok) = report(Verb::Check, &request, &answer, false) else {
+        unreachable!("check prints to stdout");
+    };
+    assert_eq!(text, "No new messages");
+    let older_mail = Response::Messages(vec![crate::protocol::Message {
+        id: 3,
+        from: 4,
+        from_title: "Claude Code · 4".to_owned(),
+        body: "API done".to_owned(),
+        deprecated: None,
+    }]);
+    assert_eq!(deprecation_notices(&older_mail), Vec::<&str>::new());
+    let (Output::Stdout(text), _) = report(Verb::Check, &request, &older_mail, false) else {
+        unreachable!("check prints to stdout");
+    };
+    assert_eq!(text, "#3 from 4 (Claude Code · 4): API done");
+}
+
+#[test]
 fn spawn_starts_an_acp_agent_by_its_id_and_list_names_it() -> Result<(), CliError> {
     let gemini = AgentPreset::Acp(
         "gemini"

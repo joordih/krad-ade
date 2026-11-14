@@ -19,7 +19,6 @@ impl From<Area> for Reach {
         match area {
             Area::Attention | Area::Settings => Self::Attention,
             Area::Statuses
-            | Area::Mail
             | Area::Health
             | Area::Usage
             | Area::Models
@@ -97,6 +96,10 @@ impl EnvironmentShell {
             }
             Heard::RemoteChat { runner, kind } => {
                 self.chat_event_heard(RuntimeId::Runner(runner), *kind, cx);
+                return Reach::Shown;
+            }
+            Heard::RunnerOutdated(runner) => {
+                self.runner_outdated(runner, cx);
                 return Reach::Shown;
             }
             Heard::RemoteReplaced(runner) => {
@@ -227,7 +230,6 @@ impl EnvironmentShell {
             | EventKind::DigestsChanged(_)
             | EventKind::AttentionLeft { .. }
             | EventKind::AttentionHistoryCleared
-            | EventKind::Mail(_)
             | EventKind::UsageShown(_)
             | EventKind::AskPending(_)
             | EventKind::AskSettled { .. }

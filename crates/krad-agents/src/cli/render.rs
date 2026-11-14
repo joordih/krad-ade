@@ -37,8 +37,17 @@ pub(super) fn render(verb: Verb, request: &Request, response: &Response) -> Stri
             Request::Send { to, .. } => format!("Sent message {id} to terminal {to}"),
             _ => format!("Sent message {id}"),
         },
-        Response::Messages(messages) if messages.is_empty() => NO_MESSAGES.to_owned(),
-        Response::Messages(messages) => lines(messages.iter().map(render_message)),
+        Response::Messages(messages) => {
+            let mail: Vec<&Message> = messages
+                .iter()
+                .filter(|message| message.deprecated.is_none())
+                .collect();
+            if mail.is_empty() {
+                NO_MESSAGES.to_owned()
+            } else {
+                lines(mail.into_iter().map(render_message))
+            }
+        }
         Response::Settled { target, state } => format!("Terminal {target} is {state}"),
         Response::TimedOut => TIMED_OUT.to_owned(),
         Response::Screen(screen) => screen.clone(),
@@ -249,6 +258,19 @@ const fn change_mark(kind: ChangeKind) -> char {
         ChangeKind::Untracked => '?',
         ChangeKind::Conflicted => 'U',
     }
+}
+
+pub(super) fn deprecation_notices(response: &Response) -> Vec<&str> {
+    let Response::Messages(messages) = response else {
+        return Vec::new();
+    };
+    let mut notices: Vec<&str> = messages
+        .iter()
+        .filter(|message| message.deprecated.is_some())
+        .map(|message| message.body.as_str())
+        .collect();
+    notices.dedup();
+    notices
 }
 
 fn render_message(message: &Message) -> String {

@@ -1,4 +1,4 @@
-use krad_domain::{Linger, RunnerState};
+use krad_domain::{Linger, RunnerState, PROCESS_WIRE_LAST_RELEASE};
 use std::borrow::Cow;
 
 use super::super::runtime_view::RunnerReach;
@@ -10,8 +10,11 @@ const READY: &str = "Ready";
 const UPDATE_PENDING: &str = "Ready; the update starts once no session runs";
 const FAILED_PREFIX: &str = "Failed: ";
 const REACHING_RUNTIME: &str = "Reaching its runtime";
-const RUNTIME_UPDATE_PENDING: &str =
-    "Update pending: it keeps only processes until it runs the new version";
+const RUNTIME_UPDATE_PENDING: &str = "Update pending: it keeps only processes until it runs the \
+                                      new version. Update it before the next release, which no \
+                                      longer drives older runners";
+const OUTDATED_RUNNER: &str = "runs an older runner that only versions up to";
+const OUTDATED_RUNNER_SUFFIX: &str = "can drive: update it before the next release";
 const RUNTIME_PREFIX: &str = "Runtime";
 const ONE_SESSION: &str = "1 session";
 const SESSIONS_SUFFIX: &str = "sessions";
@@ -42,6 +45,10 @@ pub(in crate::environment_shell) fn reach_label(
             "{RUNTIME_PREFIX} {build}, {sessions} {SESSIONS_SUFFIX}"
         )),
     }
+}
+
+pub(in crate::environment_shell) fn outdated_runner_toast(runner: &str) -> String {
+    format!("{runner} {OUTDATED_RUNNER} {PROCESS_WIRE_LAST_RELEASE} {OUTDATED_RUNNER_SUFFIX}")
 }
 
 pub(in crate::environment_shell) fn linger_warning(state: &RunnerState) -> Option<&'static str> {
@@ -80,5 +87,17 @@ mod tests {
         };
         assert_eq!(reach_label(&connected, 1), "Runtime 0.9.0, 1 session");
         assert_eq!(reach_label(&connected, 3), "Runtime 0.9.0, 3 sessions");
+    }
+
+    #[test]
+    fn an_older_runner_is_told_to_update_before_the_release_that_drops_the_process_wire() {
+        assert!(RUNTIME_UPDATE_PENDING.contains("before the next release"));
+        assert_eq!(
+            outdated_runner_toast("gpu"),
+            format!(
+                "gpu runs an older runner that only versions up to {PROCESS_WIRE_LAST_RELEASE} \
+                 can drive: update it before the next release"
+            )
+        );
     }
 }

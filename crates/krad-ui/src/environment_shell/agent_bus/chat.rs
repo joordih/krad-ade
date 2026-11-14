@@ -6,7 +6,6 @@ use krad_runtime::BusReply;
 use super::super::language_servers::CodeCaller;
 use super::super::EnvironmentShell;
 
-const NO_CHAT_INBOX: &str = "The chat has no inbox: follow agents with wait and read";
 const TERMINALS_ONLY: &str = "Only agents in terminals can do that";
 
 impl EnvironmentShell {
@@ -26,7 +25,6 @@ impl EnvironmentShell {
             Request::List => Response::Agents(self.agent_infos(environment, None)),
             Request::ListAll => Response::Agents(self.all_agent_infos(environment, None)),
             Request::Close(_) => Response::error(ErrorCode::Forbidden, super::ONLY_LEADS_CLOSE),
-            Request::Check { .. } => Response::error(ErrorCode::Unsupported, NO_CHAT_INBOX),
             Request::SubscribeAgents(_) => super::feed::streamed_by_the_bus(),
             Request::Hook { .. } | Request::Status(_) | Request::Ask { .. } => {
                 Response::error(ErrorCode::Unsupported, TERMINALS_ONLY)
@@ -53,7 +51,8 @@ impl EnvironmentShell {
                 Self::answer_kraddie_request(reply);
                 return;
             }
-            Request::CreateWorktree { .. }
+            Request::Check { .. }
+            | Request::CreateWorktree { .. }
             | Request::Send { .. }
             | Request::Read { .. }
             | Request::Wait { .. }

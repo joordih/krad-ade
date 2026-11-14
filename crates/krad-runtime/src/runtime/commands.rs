@@ -118,7 +118,7 @@ impl Runtime {
         match command {
             BusCommand::ObserveAgent { agent, seen, hint } => {
                 let key = AgentKey::new(agent.environment.as_str(), agent.terminal.as_u64());
-                bus.observe(&key, seen, hint, outbox);
+                bus.observe(&key, seen, hint);
             }
             BusCommand::ReconcileAgents {
                 environments,
@@ -128,7 +128,7 @@ impl Runtime {
                     .iter()
                     .map(|name| name.as_str().to_owned())
                     .collect();
-                bus.reconcile(&environments, agents, outbox);
+                bus.reconcile(&environments, agents);
             }
             command => {
                 return bus
@@ -247,13 +247,11 @@ impl Runtime {
         let Some(bus) = &mut self.bus else {
             return;
         };
-        let outbox = &mut self.outbox;
         match input {
             Input::BusRespond {
                 delegation,
                 response,
             } => bus.respond(delegation, response),
-            Input::BusMail { delegation, mail } => bus.post_mail(delegation, mail, outbox),
             Input::BusDropped(delegation) => bus.dropped(delegation),
             Input::Delegate(delegate) => bus.delegate_to(delegate),
             Input::Command { .. }

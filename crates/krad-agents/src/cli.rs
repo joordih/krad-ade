@@ -10,7 +10,7 @@ mod verb;
 mod watch;
 
 pub(crate) use exit::exit_codes_help;
-pub(crate) use request::{DEFAULT_READ_LINES, DEFAULT_WAIT_TIMEOUT};
+pub(crate) use request::DEFAULT_READ_LINES;
 
 use crate::client::call;
 use crate::discovery::ApiFile;
@@ -23,7 +23,7 @@ use crate::statusline::run_status_line;
 use agents::api_action;
 use exit::Exit;
 use krad_domain::AgentPreset;
-use render::render;
+use render::{deprecation_notices, render};
 use request::{build_request, parse_options, Options};
 use status::AgentStates;
 use std::ffi::OsStr;
@@ -155,6 +155,9 @@ fn execute(verb: Verb, request: &Request, options: &Options, api_file: Option<&A
     }
     match call(&bus.endpoint, &bus.token, &from, request.clone()) {
         Ok(response) => {
+            for notice in deprecation_notices(&response) {
+                emit(Output::Stderr(notice.to_owned()));
+            }
             let (output, exit) = report(verb, request, &response, json);
             emit(output);
             exit.code()

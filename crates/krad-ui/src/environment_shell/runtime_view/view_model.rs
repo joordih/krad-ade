@@ -20,7 +20,7 @@ use super::super::opencode::OpencodeMirror;
 use super::super::usage_bar::UsageMirror;
 use super::following::{Batch, Following};
 use super::settings::SettingsMirror;
-use super::{AgentSpot, AgentsMirror, GatewayMirror, HostMove, HostsMirror, MailNotices, Waiters};
+use super::{AgentSpot, AgentsMirror, GatewayMirror, HostMove, HostsMirror, Waiters};
 use super::{
     EnvironmentsMirror, GitMirror, GitMove, KraddiesMirror, LocalChats, NodesMoved,
     ShownEnvironments,
@@ -38,7 +38,6 @@ const RECONNECT_PAUSE: Duration = Duration::from_millis(500);
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub(in crate::environment_shell) enum Area {
     Statuses,
-    Mail,
     Attention,
     Health,
     Usage,
@@ -50,9 +49,8 @@ pub(in crate::environment_shell) enum Area {
 }
 
 impl Area {
-    const ALL: [Self; 10] = [
+    const ALL: [Self; 9] = [
         Self::Statuses,
-        Self::Mail,
         Self::Attention,
         Self::Health,
         Self::Usage,
@@ -94,6 +92,7 @@ pub(in crate::environment_shell) enum Heard {
         kind: Box<EventKind>,
     },
     RemoteReplaced(CloudRunnerId),
+    RunnerOutdated(CloudRunnerId),
 }
 
 #[derive(Default)]
@@ -107,7 +106,6 @@ pub(in crate::environment_shell) struct RuntimeNews;
 pub(in crate::environment_shell) struct ViewModel {
     pub(in crate::environment_shell) statuses: HashMap<AgentSpot, AgentStatus>,
     pub(in crate::environment_shell) asks: BTreeSet<AskId>,
-    pub(in crate::environment_shell) mail: MailNotices,
     pub(in crate::environment_shell) attention: AttentionMirror,
     pub(in crate::environment_shell) health: HealthMirror,
     pub(in crate::environment_shell) usage: UsageMirror,
@@ -139,7 +137,6 @@ impl Default for ViewModel {
         Self {
             statuses: HashMap::new(),
             asks: BTreeSet::new(),
-            mail: MailNotices::default(),
             attention: AttentionMirror::default(),
             health: HealthMirror::default(),
             usage: UsageMirror::default(),

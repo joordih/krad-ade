@@ -1,5 +1,6 @@
 use krad_agents::{
-    ApiDiscovery, Envelope, ErrorCode, Response, StateReason, TerminalState, API_VERSION,
+    check_answer, ApiDiscovery, Envelope, ErrorCode, Request, Response, StateReason, TerminalState,
+    API_VERSION, MAILBOX_REMOVED_IN,
 };
 use krad_domain::AgentState;
 use serde::de::DeserializeOwned;
@@ -83,6 +84,29 @@ fn the_listed_codes_states_and_reasons_are_the_ones_the_api_speaks() -> TestResu
     assert_eq!(listed, spoken);
     for reason in StateReason::ALL {
         assert_eq!(serde_json::to_value(reason)?, reason.name());
+    }
+    Ok(())
+}
+
+#[test]
+fn the_deprecated_mailbox_is_described_with_the_answer_old_clients_still_get() -> TestResult {
+    let api = description()?;
+    let deprecated = &api["deprecated"];
+    assert_eq!(deprecated["removed_in_api_version"], MAILBOX_REMOVED_IN.0);
+    assert!(MAILBOX_REMOVED_IN > API_VERSION);
+    assert_eq!(
+        serde_json::from_value::<Response>(api["responses"]["check_deprecated"].clone())?,
+        check_answer()
+    );
+    let check: Envelope = serde_json::from_value(api["requests"]["check"].clone())?;
+    assert!(matches!(check.request, Request::Check { .. }));
+    let send: Envelope = serde_json::from_value(api["requests"]["send"].clone())?;
+    assert!(matches!(send.request, Request::Send { .. }));
+    for name in ["Check", "Send"] {
+        assert!(deprecated["requests"][name].is_string(), "{name}");
+    }
+    for name in ["Messages", "Sent"] {
+        assert!(deprecated["responses"][name].is_string(), "{name}");
     }
     Ok(())
 }

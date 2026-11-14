@@ -11,7 +11,6 @@ mod feed;
 mod handle;
 mod hook;
 mod host_verbs;
-mod mailbox;
 mod mcp;
 mod offline;
 mod protocol;
@@ -38,18 +37,17 @@ pub use extension_tools::{
 };
 pub use feed::{AgentFeed, AgentKey, EVENT_RING_CAPACITY, SUBSCRIBER_QUEUE};
 pub use handle::{Caller, LeadHandle, TerminalHandle};
-pub use mailbox::{notice_text, Mailbox};
 pub use offline::{queued_events, runner_record, QueuedEvent};
 pub use protocol::{
-    current_api_info, lead_refusal, memory_hit_limit, AgentChangeKind, AgentEvent, AgentFilter,
-    AgentInfo, AgentSnapshot, AgentStatus, AgentSubscription, ApiError, ApiInfo, ApiVersion,
-    AutomationInfo, AutomationRunInfo, BusToken, ChangeSet, ChangedFile, CloseOrder, CloseTarget,
-    Closed, ClosedTarget, CoarseState, DigestInfo, Envelope, ErrorCode, FilePosition, Heartbeat,
-    KraddieChatInfo, KraddieInfo, KraddieMemoryInfo, KraddieRecallInfo, KraddieRunInfo,
-    KraddieSharingInfo, MemoryEntryInfo, MemoryHitInfo, MemoryTools, Message, PromptAnswer,
-    RecallView, Request, Response, SessionInfo, StateReason, StreamId, TerminalState, Timestamp,
-    VariantsRequest, WhenWorking, WorktreeFate, WorktreeInfo, WorktreeLeft, WorktreeOutcome,
-    API_VERSION, ASKPASS_WAIT, MAX_WAIT,
+    check_answer, current_api_info, lead_refusal, memory_hit_limit, AgentChangeKind, AgentEvent,
+    AgentFilter, AgentInfo, AgentSnapshot, AgentStatus, AgentSubscription, ApiError, ApiInfo,
+    ApiVersion, AutomationInfo, AutomationRunInfo, BusToken, ChangeSet, ChangedFile, CloseOrder,
+    CloseTarget, Closed, ClosedTarget, CoarseState, Deprecation, DigestInfo, Envelope, ErrorCode,
+    FilePosition, Heartbeat, KraddieChatInfo, KraddieInfo, KraddieMemoryInfo, KraddieRecallInfo,
+    KraddieRunInfo, KraddieSharingInfo, MemoryEntryInfo, MemoryHitInfo, MemoryTools, Message,
+    PromptAnswer, RecallView, Request, Response, SessionInfo, StateReason, StreamId, TerminalState,
+    Timestamp, VariantsRequest, WhenWorking, WorktreeFate, WorktreeInfo, WorktreeLeft,
+    WorktreeOutcome, API_VERSION, ASKPASS_WAIT, CHECK_DEPRECATED, MAILBOX_REMOVED_IN, MAX_WAIT,
 };
 pub use server::{serve, Endpoint, Incoming, RequestSink, SinkClosed, HEARTBEAT_INTERVAL};
 pub use token::new_token;

@@ -8,9 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::answers::Answer;
 use crate::app_events::WebhookTest;
 use crate::attention::{AttentionNotice, AttentionSnapshot};
-use crate::bus::{
-    AgentRef, AskId, AskSettlement, BusSnapshot, MailCount, PendingAsk, StatusReport,
-};
+use crate::bus::{AgentRef, AskId, AskSettlement, BusSnapshot, PendingAsk, StatusReport};
 use crate::chats::{ChatAsk, ChatAskId, ChatState, ChatSummary};
 use crate::cloud::{CloudDraftId, CloudNews, CloudOpened};
 use crate::environments::SpendingCrossed;
@@ -49,7 +47,6 @@ pub enum EventKind {
         request: RequestId,
     },
     AgentStatus(StatusReport),
-    Mail(MailCount),
     AskPending(PendingAsk),
     AgentHooked(HookHeard),
     AskSettled {
@@ -316,6 +313,20 @@ mod tests {
                 kind: EventKind::Unknown,
             }
         );
+        Ok(())
+    }
+
+    #[test]
+    fn mail_from_an_older_runtime_reads_as_unknown_and_its_snapshot_still_reads(
+    ) -> serde_json::Result<()> {
+        let event: Event = serde_json::from_str(
+            r#"{"seq":5,"kind":{"type":"mail","agent":{"environment":"main","terminal":4},"unread":2}}"#,
+        )?;
+        assert_eq!(event.kind, EventKind::Unknown);
+        let bus: BusSnapshot = serde_json::from_str(
+            r#"{"statuses":[],"mail":[{"agent":{"environment":"main","terminal":4},"unread":2}],"asks":[]}"#,
+        )?;
+        assert_eq!(bus, BusSnapshot::default());
         Ok(())
     }
 

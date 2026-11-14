@@ -19,7 +19,9 @@ pub(in crate::environment_shell) use entry::CloudMenu;
 pub(in crate::environment_shell) use krad_domain::RunnerState;
 pub(in crate::environment_shell) use krad_domain::{RunnerCli, RunnerLogin};
 pub(in crate::environment_shell) use sign_in::cli_label;
-pub(in crate::environment_shell) use state::{linger_warning, reach_label, runner_label};
+pub(in crate::environment_shell) use state::{
+    linger_warning, outdated_runner_toast, reach_label, runner_label,
+};
 
 use krad_domain::{CloudPlacement, CloudRunnerId, EnvironmentName, RuntimeId, TerminalId};
 

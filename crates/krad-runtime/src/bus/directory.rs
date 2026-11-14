@@ -28,10 +28,9 @@ impl Directory {
         key: &AgentKey,
         seen: Option<AgentInfo>,
         hint: Option<StateReason>,
-    ) -> bool {
+    ) {
         let seen = seen.map(|agent| tracked(key, agent));
         let index = self.agents.iter().position(|(known, _)| known == key);
-        let left = seen.is_none() && index.is_some();
         match (index, &seen) {
             (Some(index), Some(agent)) => self.agents[index].1 = agent.clone(),
             (Some(index), None) => {
@@ -41,14 +40,9 @@ impl Directory {
             (None, None) => {}
         }
         self.feed.observe(key.clone(), seen, hint, Timestamp::now());
-        left
     }
 
-    pub(crate) fn reconcile(
-        &mut self,
-        environments: &[String],
-        agents: Vec<AgentInfo>,
-    ) -> Vec<AgentKey> {
+    pub(crate) fn reconcile(&mut self, environments: &[String], agents: Vec<AgentInfo>) {
         let seen: Vec<(AgentKey, AgentInfo)> = agents
             .into_iter()
             .filter_map(|agent| {
@@ -57,20 +51,12 @@ impl Directory {
                 Some((key, agent))
             })
             .collect();
-        let gone: Vec<AgentKey> = self
-            .agents
-            .iter()
-            .map(|(key, _)| key)
-            .filter(|key| seen.iter().all(|(kept, _)| kept != *key))
-            .cloned()
-            .collect();
         self.feed.reconcile(
             environments,
             seen.iter().map(|(_, agent)| agent.clone()).collect(),
             Timestamp::now(),
         );
         self.agents = seen;
-        gone
     }
 
     pub(crate) fn agents_in(&self, environment: &str, me: Option<u64>) -> Vec<AgentInfo> {

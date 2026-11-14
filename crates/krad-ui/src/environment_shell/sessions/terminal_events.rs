@@ -133,10 +133,9 @@ impl EnvironmentShell {
         true
     }
 
-    pub(in crate::environment_shell) fn apply_tick(&mut self, cx: &mut App) -> bool {
+    pub(in crate::environment_shell) fn apply_tick(&mut self) -> bool {
         let now = Instant::now();
         let changed = self.expire_toasts(now);
-        self.service_agent_bus(cx);
         self.reconcile_agent_feed();
         changed
     }

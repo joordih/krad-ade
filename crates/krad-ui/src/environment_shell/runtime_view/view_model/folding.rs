@@ -14,7 +14,6 @@ impl ViewModel {
             .into_iter()
             .map(|report| (spot(report.agent), report.status))
             .collect();
-        self.mail.replace(take(&mut snapshot.bus.mail));
         self.attention.replace(take(&mut snapshot.attention));
         self.health.replace(take(&mut snapshot.health.checks));
         self.usage.replace(take(&mut snapshot.usage.shown));
@@ -105,10 +104,6 @@ impl ViewModel {
                 self.attention.raised(&notice);
                 self.heard(Heard::Event(EventKind::AttentionRaised(notice)));
                 Area::Attention
-            }
-            EventKind::Mail(mail) => {
-                self.mail.set(mail);
-                Area::Mail
             }
             EventKind::UsageShown(shown) => {
                 self.usage.apply(shown);

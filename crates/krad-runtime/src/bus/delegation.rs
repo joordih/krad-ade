@@ -1,6 +1,6 @@
 use futures::channel::{mpsc, oneshot};
 use futures::{Stream, StreamExt as _};
-use krad_agents::{Caller, Request, Response, TerminalHandle};
+use krad_agents::{Caller, Request, Response};
 use std::collections::{HashMap, VecDeque};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -24,14 +24,6 @@ pub struct Delegated {
     pub reply: BusReply,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Mail {
-    pub from: TerminalHandle,
-    pub from_title: String,
-    pub to: u64,
-    pub body: String,
-}
-
 #[derive(Debug)]
 pub struct BusReply {
     delegation: DelegationId,
@@ -49,14 +41,6 @@ impl BusReply {
             delegation,
             response,
         })
-    }
-
-    /// # Errors
-    ///
-    /// Fails when the runtime has stopped.
-    pub fn post_mail(mut self, mail: Mail) -> Result<(), RuntimeStopped> {
-        let delegation = self.delegation;
-        self.hand_back(Input::BusMail { delegation, mail })
     }
 
     #[must_use]

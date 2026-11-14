@@ -292,6 +292,25 @@ fn an_older_runner_keeps_the_process_wire_until_it_leaves_ready() {
 }
 
 #[test]
+fn an_older_runner_is_told_to_update_once_however_often_it_reconnects() {
+    let runner = CloudRunnerId(RUNNER);
+    let mut model = ViewModel::default();
+    runner_moved(&mut model, ready());
+    let mut told = 0;
+    for _ in 0..2 {
+        let connection = model.remotes.reaching(runner);
+        model.adopt_reached(runner, connection, Reached::ProcessWire);
+        told += model
+            .take_news()
+            .heard
+            .iter()
+            .filter(|heard| matches!(heard, Heard::RunnerOutdated(outdated) if *outdated == runner))
+            .count();
+    }
+    assert_eq!(told, 1);
+}
+
+#[test]
 fn acp_adapters_and_listings_are_read_from_the_runtime_s_events_in_the_view_model() {
     use super::super::super::harness_models::AcpListing;
     use krad_domain::{AcpAgentId, Host, ManagedAdapter};

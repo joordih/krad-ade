@@ -317,3 +317,34 @@ fn sessions_are_listed_created_and_closed_by_the_runtime_without_the_app() -> Te
         .all(|listed| listed.session != session));
     Ok(())
 }
+
+#[test]
+fn an_old_client_still_gets_answers_to_check_and_to_a_peer_send_without_the_app() -> TestResult {
+    let runtime = with_bus()?;
+    let started = std::time::Instant::now();
+    let checked = ask(
+        &runtime,
+        Request::Check {
+            wait_secs: Some(600),
+        },
+    )?;
+    assert!(started.elapsed() < ASK_STILL_WAITING * 10);
+    assert_eq!(checked, krad_agents::check_answer());
+    let Response::Messages(notices) = checked else {
+        return Err("check answers messages".into());
+    };
+    assert!(notices.iter().all(|notice| notice.deprecated.is_some()));
+    let sent = ask(
+        &runtime,
+        Request::Send {
+            to: CALLER + 1,
+            body: "API done".to_owned(),
+        },
+    )?;
+    let Response::Error(refusal) = sent else {
+        return Err(format!("a peer send was not refused: {sent:?}").into());
+    };
+    assert_eq!(refusal.code, krad_agents::ErrorCode::Forbidden);
+    assert!(refusal.message.contains("lead") && refusal.message.contains("workers"));
+    Ok(())
+}

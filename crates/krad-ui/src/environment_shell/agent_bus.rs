@@ -5,7 +5,6 @@ mod discovery;
 mod feed;
 mod lead;
 mod requests;
-mod service;
 mod typing;
 mod workspace;
 
@@ -21,7 +20,6 @@ use super::EnvironmentShell;
 
 pub(super) const ENTER: &[u8] = b"\r";
 
-const NO_SUCH_TERMINAL: &str = "No terminal with that id in your environment";
 const ONLY_LEADS_CLOSE: &str = "Only a session's lead can close workers and sessions";
 
 const ANSWERED_BY_RUNTIME: &str = "The runtime answers this request before it reaches the app";
@@ -152,6 +150,7 @@ impl EnvironmentShell {
             Request::List
             | Request::ListAll
             | Request::Check { .. }
+            | Request::Send { .. }
             | Request::Status(_)
             | Request::Ask { .. }
             | Request::CreateWorktree { .. }
@@ -161,10 +160,6 @@ impl EnvironmentShell {
             | Request::Read { .. }
             | Request::Spawn { .. } => Some(answered_by_runtime()),
             Request::Close(_) => Some(Response::error(ErrorCode::Forbidden, ONLY_LEADS_CLOSE)),
-            Request::Send { to, body } => {
-                self.post(from, to, body, reply);
-                return;
-            }
             Request::Askpass { .. } => Some(askpass::git_only()),
             Request::Tools => Some(Response::Tools(self.tool_catalog())),
             Request::SubscribeAgents(_) => Some(feed::streamed_by_the_bus()),

@@ -293,8 +293,9 @@ pub fn worker_brief(coordinator: u64, cli: &str, task: &str) -> String {
     format!(
         "{WORKER_BRIEF_OPENING}terminal {coordinator} in Krad ADE. \
          Do this task: {task} \
-         When you finish, report once with: {cli} send {coordinator} \"<what you did, in three sentences>\". \
-         If you are blocked, ask with: {cli} send {coordinator} \"Blocked: <reason>\" and then {cli} check --wait 600."
+         Terminal {coordinator} follows you with {cli} wait and {cli} read. \
+         When you finish, end with a short summary of what you did and how you checked it. \
+         If you are blocked, say why and stop; terminal {coordinator} will answer you."
     )
 }
 

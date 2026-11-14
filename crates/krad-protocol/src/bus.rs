@@ -59,18 +59,10 @@ pub struct StatusReport {
     pub status: AgentStatus,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct MailCount {
-    pub agent: AgentRef,
-    pub unread: usize,
-}
-
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub struct BusSnapshot {
     #[serde(default)]
     pub statuses: Vec<StatusReport>,
-    #[serde(default)]
-    pub mail: Vec<MailCount>,
     #[serde(default)]
     pub asks: Vec<PendingAsk>,
 }
@@ -200,10 +192,6 @@ mod tests {
                     context_used: Some(12),
                     ..AgentStatus::default()
                 },
-            }),
-            EventKind::Mail(MailCount {
-                agent: agent(),
-                unread: 2,
             }),
         ];
         for (seq, kind) in (1..).zip(events) {

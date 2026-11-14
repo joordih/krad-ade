@@ -35,9 +35,7 @@ mod workers;
 
 pub use adapters::kept_package;
 pub use app_events::EventsSetup;
-pub use bus::{
-    closed_worker_infos, BusAccess, BusReply, BusSetup, Delegated, DelegationReceiver, Mail,
-};
+pub use bus::{closed_worker_infos, BusAccess, BusReply, BusSetup, Delegated, DelegationReceiver};
 pub use chats::{
     runs_in_runtime, ChatBrief, ChatLaunch, ChatPlace, ChatRole, ChatStart, PreparedLaunch,
 };

@@ -59,9 +59,10 @@ used here (session, group, lead, Worker, Kraddie, keepsake) are defined in
 - **Deadlines.** Each request has a deadline after which the app answers `"TimedOut"`: 10 seconds
   for most requests, 1 minute for worktree, changes, close and variant picks, 1 minute for starting
   a Worker or a variants run, 2 minutes for code intelligence and extension tools. `Wait` and
-  `Check` with a wait last as long as asked, up to 30 minutes, plus one second.
-- **Leaving cancels.** A client that closes its connection while a request waits (a `Wait`, a
-  `Check --wait`) cancels it.
+  `Check` with a wait last as long as asked, up to 30 minutes, plus one second (`Check` is
+  deprecated and now answers at once).
+- **Leaving cancels.** A client that closes its connection while a request waits (a `Wait`)
+  cancels it.
 
 ## The envelope and the handshake
 
@@ -237,16 +238,21 @@ environment; for a `"Client"`, of every open environment.
 A lead that reads one of its Workers after the Worker has finished closes it, as `Close` would;
 reading a closed Worker answers `not_found` ("send it a message to reopen it").
 
-**`Check`**: the caller's unread mailbox messages; with `wait_secs`, blocks until one arrives
-(capped at 1800 seconds). A lead's chat has no mailbox and gets `unsupported`.
+**`Check`** (deprecated, removed in v2): agents no longer message each other, so there is no
+mailbox. Every caller still gets an answer in v1, at once, whatever `wait_secs` says: a `Messages`
+list with one deprecation notice and no mail. The notice's `deprecated` field (new and optional)
+names the version that removes `Check`; the `krad` CLI prints its body once to stderr and
+`No new messages` to stdout, and older CLIs print it as a message.
 
 ```json
 {"Check":{"wait_secs":600}}
-{"Messages":[{"id":3,"from":4,"from_title":"Claude Code · 4","body":"API done"}]}
+{"Messages":[{"id":0,"from":0,"from_title":"krad","body":"`krad check` is deprecated and will be removed in the next agents API version: agents no longer message each other; a lead follows its workers with wait and read","deprecated":{"removed_in":2}}]}
 ```
 
 **`Send`** (lead only): types `body` into a Worker as its next message, as the user would. A closed
-Worker reopens with its conversation first.
+Worker reopens with its conversation first. From any other caller it is refused with `forbidden`
+and a message that points at leads and Workers; the `Sent` answer of the old mailbox is no longer
+given and goes away in v2.
 
 ```json
 {"Send":{"to":12,"body":"Add a test for the empty case"}}
@@ -640,7 +646,7 @@ and may change.
 | `not_found` | No such agent, session, Kraddie, automation, run, group, file or memory | 4 |
 | `unauthorized` | Wrong token, or a `Lead` caller without the lead token | 5 |
 | `forbidden` | Not allowed for this caller (not a lead, a client, a path outside the group, memory out of reach for reading) | 5 |
-| `unsupported` | Not possible here (a lead's mailbox, another environment than the one on screen, a caller with no group) | 5 |
+| `unsupported` | Not possible here (another environment than the one on screen, a caller with no group) | 5 |
 | `not_owned` | Not one of the lead's Workers, or a session or run outside its group | 5 |
 | `busy` | Still working; close with `cancel_turn` | 5 |
 | `out_of_reach` | A Kraddie's memory this chat may not read | 5 |
@@ -674,8 +680,8 @@ instead of text (for `status`, an object with `working`, `waiting_for_input`, `d
 | `krad agents list [--all]` | The same |
 | `krad agents watch [--group G] [--harness H] [--terminal ID]... [--since SEQ --stream ID]` | `SubscribeAgents`; prints the snapshot, whose first line names its seq and stream, then one line per event until interrupted. `--harness` takes `claude`, `codex`, `opencode`, `acp:<id>` or a display name. |
 | `krad status` | `List`, grouped by state; agents of unknown harness are left out |
-| `krad send <id> <message>` | `Send` |
-| `krad check [--wait SECS]` | `Check` |
+| `krad send <id> <message>` | `Send`; leads only |
+| `krad check [--wait SECS]` | `Check`; deprecated, removed in v2: prints `No new messages` and the deprecation notice on stderr |
 | `krad wait <id> [--timeout SECS]` | `Wait`; 600 seconds by default, at most 1800 |
 | `krad read <id> [--lines N]` | `Read`; 40 lines by default |
 | `krad spawn --agent <claude\|codex\|opencode\|acp-id> [--worktree NAME] <task>` | `Spawn` |
@@ -826,6 +832,10 @@ readline.createInterface({ input: socket }).on("line", (line) => {
 - The error codes and the CLI's exit codes.
 - The discovery file's fields and its `KRAD_ADE_*` variables.
 - App event records with `api` 1, their kinds and fields, and the webhook headers and signature.
+
+**Deprecated in v1, removed in v2.** `Check`, the `Messages` and `Sent` answers and `krad check`
+(the mailbox is gone; see [Messages and screens](#messages-and-screens)). They keep parsing and
+answering for as long as the app serves v1; the description lists them under `deprecated`.
 
 **How v1 changes.** Only by addition: new requests, new response kinds, new optional fields, new
 error codes, states or reasons. The app ignores fields it does not know in a request, and clients

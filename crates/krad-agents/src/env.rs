@@ -1,7 +1,7 @@
-use crate::cli::{exit_codes_help, DEFAULT_READ_LINES, DEFAULT_WAIT_TIMEOUT};
+use crate::cli::{exit_codes_help, DEFAULT_READ_LINES};
 use crate::discovery::ApiFile;
 use crate::handle::Caller;
-use crate::protocol::{BusToken, API_VERSION};
+use crate::protocol::{BusToken, API_VERSION, MAILBOX_REMOVED_IN};
 use crate::server::Endpoint;
 use krad_domain::AgentPreset;
 use std::ffi::OsString;
@@ -163,7 +163,7 @@ pub fn terminal_env(endpoint: &Endpoint, caller: &Caller) -> Vec<(String, String
 #[must_use]
 pub fn guide(cli: &str) -> String {
     let agents = agent_programs();
-    let check_wait = DEFAULT_WAIT_TIMEOUT.as_secs();
+    let removed_in = MAILBOX_REMOVED_IN;
     let report_wait = WORKER_REPORT_WAIT.as_secs();
     let exit_codes = exit_codes_help();
     format!(
@@ -175,11 +175,11 @@ Commands:
   {cli} list
       List the other agents: terminal id, title, state and group.
   {cli} send <id> \"<message>\"
-      Send a message to terminal <id>. Use it to report results or hand off work.
-      Example: {cli} send 4 \"API done, tests pass. Your turn on the UI.\"
+      Lead only: type an instruction into one of your workers. Agents no
+      longer message each other; anyone else is refused.
   {cli} check [--wait SECS]
-      Read your unread messages. With --wait, block until one arrives.
-      Example: {cli} check --wait {check_wait}
+      Deprecated: agents no longer have a mailbox. It answers no messages and
+      will be removed in the next agents API version ({removed_in}).
   {cli} wait <id> [--timeout SECS]
       Block until terminal <id> stops working. Do this before using its result.
       Example: {cli} wait 4
@@ -188,8 +188,8 @@ Commands:
       Example: {cli} read 4 --lines {DEFAULT_READ_LINES}
   {cli} spawn --agent <{agents}> [--worktree <name>] \"<task>\"
       Start a worker agent in a session of its own in your group (or a new
-      git worktree of it). It reports back to you with send when done; wait for
-      it with {cli} check --wait {report_wait}.
+      git worktree of it). Follow it with {cli} wait <id> --timeout {report_wait}
+      and {cli} read <id>.
       An ACP agent starts by the id Settings shows for it; write acp:<id>
       when the id is also a harness program, as in acp:opencode.
   {cli} status
@@ -250,10 +250,6 @@ Commands:
 
 Exit codes:
 {exit_codes}
-
-Messages may also arrive as a typed notice like
-\"You have N new message(s) from other agents...\".
-When you see it, run `{cli} check` to read them.
 "
     )
 }
@@ -384,9 +380,9 @@ mod tests {
         let member = guide(CLI_PROGRAM);
         for line in [
             "krad-ade-agents spawn --agent <claude|codex|opencode|acp-agent-id> [--worktree <name>]",
-            "Example: krad-ade-agents check --wait 600",
+            "will be removed in the next agents API version (v2).",
             "Example: krad-ade-agents read 4 --lines 40",
-            "it with krad-ade-agents check --wait 900.",
+            "Follow it with krad-ade-agents wait <id> --timeout 900",
             "krad-ade-agents session create [NAME] [--group GROUP]",
             "krad-ade-agents open <file>[:LINE[:COLUMN]]",
             "(this CLI speaks v1)",

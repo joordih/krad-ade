@@ -4,7 +4,7 @@ use krad_client::{ClientError, Cursor, Runner, RuntimeClient};
 use krad_domain::{CloudRunnerId, EnvironmentName, RunnerState, RuntimeId, Session};
 use krad_protocol::{AgentRef, Answer, EventKind, Feed, HostedSummary, RequestId};
 use krad_runtime::{LineStop, RunnerLineError, RuntimeHandle};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -33,6 +33,7 @@ pub(in crate::environment_shell) struct Remotes {
     runtimes: BTreeMap<CloudRunnerId, RemoteRuntime>,
     connections: u64,
     awaited: BTreeMap<String, CloudRunnerId>,
+    outdated_told: BTreeSet<CloudRunnerId>,
 }
 
 impl Remotes {
@@ -62,6 +63,10 @@ impl Remotes {
         let remote = self.current(runner, connection)?;
         remote.connection = next;
         Some(next)
+    }
+
+    fn tell_outdated_once(&mut self, runner: CloudRunnerId) -> bool {
+        self.outdated_told.insert(runner)
     }
 
     pub(in crate::environment_shell) fn retain(&mut self, keep: impl Fn(CloudRunnerId) -> bool) {
@@ -261,6 +266,9 @@ impl ViewModel {
             }
             Reached::ProcessWire => {
                 remote.reach = RunnerReach::ProcessWire;
+                if self.remotes.tell_outdated_once(runner) {
+                    self.heard(Heard::RunnerOutdated(runner));
+                }
                 None
             }
             Reached::Unreachable => {

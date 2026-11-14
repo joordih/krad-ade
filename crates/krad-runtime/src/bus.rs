@@ -6,19 +6,18 @@ mod discovery;
 
 pub(crate) use discovery::withdraw as withdraw_discovery;
 mod lead;
-mod mail;
 
 pub(crate) use access::open;
 pub use access::{BusAccess, BusSetup};
-pub use delegation::{BusReply, Delegated, DelegationReceiver, Mail};
+pub use delegation::{BusReply, Delegated, DelegationReceiver};
 pub(crate) use delegation::{DelegationId, DELEGATION_BUFFER};
 pub use lead::closed_worker_infos;
 pub(crate) use lead::{as_lead, closed_worker_answer};
 
 use futures::channel::{mpsc, oneshot};
 use krad_agents::{
-    lead_refusal, AgentInfo, AgentKey, AgentStatus, Caller, Incoming, Request, Response,
-    StateReason, TerminalHandle,
+    check_answer, lead_refusal, AgentInfo, AgentKey, AgentStatus, Caller, Incoming, Request,
+    Response, StateReason, TerminalHandle,
 };
 use krad_domain::{EnvironmentName, TerminalId};
 use krad_protocol::{
@@ -32,7 +31,6 @@ use crate::input::Input;
 use asks::Asks;
 use delegation::Delegations;
 use directory::Directory;
-use mail::Mailboxes;
 
 fn reply_with(reply: oneshot::Sender<Response>, response: Response) {
     if reply.send(response).is_err() {
@@ -51,7 +49,6 @@ fn agent_of(handle: &TerminalHandle) -> AgentRef {
 pub(crate) struct Bus {
     access: Arc<BusAccess>,
     directory: Directory,
-    mail: Mailboxes,
     statuses: HashMap<AgentRef, AgentStatus>,
     asks: Asks,
     delegations: Delegations,
@@ -63,7 +60,6 @@ impl Bus {
         Self {
             access,
             directory,
-            mail: Mailboxes::default(),
             statuses: HashMap::new(),
             asks: Asks::default(),
             delegations: Delegations::new(inbox),
@@ -81,6 +77,10 @@ impl Bus {
             request,
             reply,
         } = incoming;
+        if matches!(request, Request::Check { .. }) {
+            reply_with(reply, check_answer());
+            return;
+        }
         let Caller::Terminal(terminal) = &from else {
             if matches!((&from, &request), (Caller::Client, Request::List)) {
                 reply_with(reply, Response::Agents(self.directory.every_agent()));
@@ -90,9 +90,6 @@ impl Bus {
             return;
         };
         match request {
-            Request::Check { wait_secs } => {
-                self.mail.check(terminal.clone(), wait_secs, reply, outbox);
-            }
             Request::Status(status) => {
                 let agent = agent_of(terminal);
                 outbox.push(EventKind::AgentStatus(StatusReport {
@@ -156,16 +153,6 @@ impl Bus {
         self.delegations.respond(delegation, response);
     }
 
-    pub(crate) fn post_mail(
-        &mut self,
-        delegation: DelegationId,
-        mail: Mail,
-        outbox: &mut Vec<EventKind>,
-    ) {
-        let id = self.mail.post(mail, outbox);
-        self.delegations.respond(delegation, Response::Sent { id });
-    }
-
     pub(crate) fn dropped(&mut self, delegation: DelegationId) {
         self.delegations.forget(delegation);
     }
@@ -179,22 +166,12 @@ impl Bus {
         key: &AgentKey,
         seen: Option<AgentInfo>,
         hint: Option<StateReason>,
-        outbox: &mut Vec<EventKind>,
     ) {
-        if self.directory.observe(key, seen, hint) {
-            self.mail.forget(key, outbox);
-        }
+        self.directory.observe(key, seen, hint);
     }
 
-    pub(crate) fn reconcile(
-        &mut self,
-        environments: &[String],
-        agents: Vec<AgentInfo>,
-        outbox: &mut Vec<EventKind>,
-    ) {
-        for gone in self.directory.reconcile(environments, agents) {
-            self.mail.forget(&gone, outbox);
-        }
+    pub(crate) fn reconcile(&mut self, environments: &[String], agents: Vec<AgentInfo>) {
+        self.directory.reconcile(environments, agents);
     }
 
     pub(crate) fn agents_in(&self, environment: &str, me: Option<u64>) -> Vec<AgentInfo> {
@@ -206,7 +183,6 @@ impl Bus {
     }
 
     pub(crate) fn tick(&mut self, outbox: &mut Vec<EventKind>) {
-        self.mail.tick();
         self.asks.tick(outbox);
         self.delegations.tick();
     }
@@ -221,7 +197,6 @@ impl Bus {
                     status: status.clone(),
                 })
                 .collect(),
-            mail: self.mail.counts(),
             asks: self.asks.pending(),
         }
     }

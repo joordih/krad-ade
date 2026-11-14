@@ -63,6 +63,18 @@
       "token": "6f1c0d9e2b7a4c58e3f09a1d7b6c2e40",
       "from": "Client",
       "request": { "SubscribeAgents": {} }
+    },
+    "check": {
+      "api_version": 1,
+      "token": "6f1c0d9e2b7a4c58e3f09a1d7b6c2e40",
+      "from": { "Terminal": { "environment": "main", "terminal": 4 } },
+      "request": { "Check": { "wait_secs": 600 } }
+    },
+    "send": {
+      "api_version": 1,
+      "token": "6f1c0d9e2b7a4c58e3f09a1d7b6c2e40",
+      "from": { "Terminal": { "environment": "main", "terminal": 4 } },
+      "request": { "Send": { "to": 12, "body": "Add a test for the empty case" } }
     }
   },
   "responses": {
@@ -90,6 +102,20 @@
           "is_self": false
         }
       ]
+    },
+    "check_deprecated": {
+      "Messages": [
+        {
+          "id": 0,
+          "from": 0,
+          "from_title": "krad",
+          "body": "`krad check` is deprecated and will be removed in the next agents API version: agents no longer message each other; a lead follows its workers with wait and read",
+          "deprecated": { "removed_in": 2 }
+        }
+      ]
+    },
+    "submitted": {
+      "Submitted": { "terminal": 12 }
     },
     "agent_snapshot": {
       "AgentSnapshot": {
@@ -184,6 +210,21 @@
     "slow_subscriber",
     "out_of_reach"
   ],
+  "deprecated": {
+    "removed_in_api_version": 2,
+    "why": "Agents no longer message each other: there is no mailbox. A lead starts its workers with Spawn, types into them with Send and follows them with Wait and Read.",
+    "requests": {
+      "Check": "Still parsed and answered in v1, at once, whatever wait_secs says: no mail, only one Messages entry whose deprecated field names the version that removes it (check_deprecated). The krad CLI prints that entry's body once to stderr and No new messages to stdout; older CLIs print it as a message.",
+      "Send": "Only from a lead to its workers, answered Submitted. From any other caller it is refused with forbidden, as before, and the message points at leads and workers."
+    },
+    "responses": {
+      "Messages": "Only the deprecation notice of Check; the deprecated field of its entries is new and optional.",
+      "Sent": "No longer answered: agents no longer post messages."
+    },
+    "cli": {
+      "krad check [--wait SECS]": "Deprecated: prints No new messages, and the deprecation notice on stderr"
+    }
+  },
   "cli": {
     "krad agents list [--all] [--json]": "The agents of every environment when run outside the app, of the terminal's environment inside it; --all adds closed workers",
     "krad agents watch [--json] [--group G] [--harness H] [--terminal ID] [--since SEQ --stream ID]": "Prints the snapshot, whose first line names its seq and stream, then one line per event until interrupted; --since with --stream resumes after that seq",

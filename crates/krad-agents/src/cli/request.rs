@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
-pub(crate) const DEFAULT_WAIT_TIMEOUT: Duration = Duration::from_mins(10);
+const DEFAULT_WAIT_TIMEOUT: Duration = Duration::from_mins(10);
 pub(crate) const DEFAULT_READ_LINES: usize = 40;
 const UNKNOWN_AGENT: &str =
     "Unknown agent; use a harness program such as claude, codex or opencode, or an ACP agent id";

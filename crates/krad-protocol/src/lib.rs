@@ -41,8 +41,7 @@ pub use answers::{AcpPackageShown, Answer, FoundMentions, WorktreeChecked};
 pub use app_events::{EventsCommand, WebhookTest};
 pub use attention::{AttentionCommand, AttentionNotice, AttentionSnapshot, AttentionWaiting};
 pub use bus::{
-    AgentRef, AskId, AskRequest, AskSettlement, BusCommand, BusSnapshot, MailCount, PendingAsk,
-    StatusReport,
+    AgentRef, AskId, AskRequest, AskSettlement, BusCommand, BusSnapshot, PendingAsk, StatusReport,
 };
 pub use chats::{
     AcpShown, AcpSignInAsk, ChatAsk, ChatAskId, ChatCommand, ChatContext, ChatLaunch, ChatMirror,

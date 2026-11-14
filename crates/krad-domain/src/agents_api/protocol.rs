@@ -28,6 +28,7 @@ pub use watch::{
 pub use workspace::{ChangeSet, ChangedFile, FilePosition, SessionInfo, WorktreeInfo};
 
 use super::code::{CodeAnswer, CodeRequest};
+use super::deprecated::{only_leads_send, Deprecation};
 use super::extension_tools::{ExtensionToolAnswer, ToolCatalog};
 use super::handle::Caller;
 use crate::harness_names as harness_name;
@@ -256,8 +257,13 @@ impl Request {
 #[must_use]
 pub fn lead_refusal(from: &Caller, request: &Request) -> Option<Response> {
     let is_lead = matches!(from, Caller::Lead(_));
-    (!is_lead && request.directs_workers())
-        .then(|| Response::Error(ApiError::new(ErrorCode::Forbidden, NOT_THE_LEAD)))
+    if is_lead || !request.directs_workers() {
+        return None;
+    }
+    Some(match request {
+        Request::Send { .. } => only_leads_send(),
+        _ => Response::Error(ApiError::new(ErrorCode::Forbidden, NOT_THE_LEAD)),
+    })
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -288,6 +294,8 @@ pub struct Message {
     pub from: u64,
     pub from_title: String,
     pub body: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deprecated: Option<Deprecation>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
