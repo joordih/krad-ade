@@ -83,12 +83,13 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    fn installed_on(&self, host: &Host, harness: AgentPreset) -> bool {
+    fn installed_on(&self, host: &Host, harness: AgentPreset, cx: &App) -> bool {
+        let agents = self.agents(cx);
         if host.is_local() {
-            return self.native_agents.contains(&harness);
+            return agents.native().contains(&harness);
         }
-        self.host_agents
-            .get(host)
+        agents
+            .on_host(host)
             .is_some_and(|found| found.contains(&harness))
     }
 
@@ -97,7 +98,7 @@ impl EnvironmentShell {
         USAGE_HARNESSES
             .into_iter()
             .filter(|harness| {
-                self.installed_on(host, *harness) || usage.knows(&(host.clone(), *harness))
+                self.installed_on(host, *harness, cx) || usage.knows(&(host.clone(), *harness))
             })
             .collect()
     }

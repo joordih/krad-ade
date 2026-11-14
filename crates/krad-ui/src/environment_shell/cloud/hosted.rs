@@ -7,13 +7,11 @@ use super::super::surface::ChatPlace;
 use super::super::EnvironmentShell;
 
 mod frame;
-mod lives;
 mod rows;
 mod terminal;
 mod terminal_open;
 mod terminal_view;
 
-pub(in crate::environment_shell) use lives::HostedLives;
 pub(in crate::environment_shell) use terminal_view::HostedTerminalView;
 
 const FAILED_PREFIX: &str = "The cloud session could not start on";
@@ -122,8 +120,8 @@ impl EnvironmentShell {
 
     fn forget_unshown_hosted_places(&mut self) {
         let shown = self.shown_hosted_place();
-        self.cloud
-            .lives
+        self.chat
+            .hosted
             .retain(|place| shown.as_ref() == Some(place));
     }
 }

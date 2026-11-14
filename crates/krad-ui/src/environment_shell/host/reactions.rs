@@ -26,12 +26,10 @@ impl EnvironmentShell {
             EventKind::MachineChannelWanted { environment } => {
                 self.connect_machine(&environment, cx);
             }
-            EventKind::HostAgentsFound {
-                environment,
-                host,
-                agents,
-            } => self.host_agents_found(&environment, (host, agents), cx),
-            EventKind::LocalAgentsFound(found) => self.local_agents_found(found, cx),
+            EventKind::HostAgentsFound { environment, .. } => {
+                self.host_agents_found(&environment, cx);
+            }
+            EventKind::LocalAgentsFound(found) => self.local_agents_found(&found, cx),
             EventKind::AcpAdapterChanged(kept) => self.acp_adapter_heard(kept.agent, cx),
             _ => {}
         }
@@ -39,21 +37,11 @@ impl EnvironmentShell {
 
     pub(in crate::environment_shell) fn hosts_replaced(
         &mut self,
-        snapshot: HostsSnapshot,
+        snapshot: &HostsSnapshot,
         moves: Vec<HostMove>,
         cx: &mut Context<Self>,
     ) {
-        for entry in snapshot
-            .hosts
-            .iter()
-            .filter(|entry| !entry.agents.is_empty())
-        {
-            if let Some(live) = self.envs.get(&entry.environment) {
-                self.host_agents
-                    .insert(live.data.host.clone(), entry.agents.clone());
-            }
-        }
-        for found in snapshot.local {
+        for found in &snapshot.local {
             self.local_agents_found(found, cx);
         }
         for moved in moves {
@@ -94,7 +82,6 @@ impl EnvironmentShell {
     }
 
     fn drop_sign_in_terminal(&mut self, env: &EnvironmentName, id: TerminalId) {
-        self.hosts.sign_in_terminals.remove(env);
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
@@ -170,9 +157,8 @@ impl EnvironmentShell {
         let destination = live.data.host.to_string();
         live.data
             .side_panel_mut()
-            .add_terminal(id, format!("{SIGN_IN_LABEL} · {destination}"));
+            .add_helper_terminal(id, format!("{SIGN_IN_LABEL} · {destination}"));
         live.terminals_tab = TerminalsTab::Shown;
-        self.hosts.sign_in_terminals.insert(env.clone(), id);
         let view = self.runtime.handle.open_sign_in(terminal_ref(env, id));
         self.keep_live_session(env, id, LiveTerminal::new(view, None));
         if *env == self.active {

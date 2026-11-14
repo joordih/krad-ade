@@ -17,7 +17,6 @@ use crate::theme::{
 
 const CARD_PREFIX: &str = "surface-worker";
 const WORKER_LABEL: &str = "Worker";
-const STARTING_LABEL: &str = "Starting…";
 const CLOSED_LABEL: &str = "Finished · open to read or continue it";
 pub(in crate::environment_shell) const NEEDS_YOU_LABEL: &str = "needs you";
 const SPAWN_VERB: &str = " spawn ";
@@ -134,9 +133,6 @@ impl EnvironmentShell {
     ) -> Option<String> {
         if !open {
             return Some(CLOSED_LABEL.to_owned());
-        }
-        if self.is_launching(env, terminal) {
-            return Some(STARTING_LABEL.to_owned());
         }
         let chat = self.envs.get(env)?.chats.get(&terminal)?;
         latest_activity(&chat.chat.messages)

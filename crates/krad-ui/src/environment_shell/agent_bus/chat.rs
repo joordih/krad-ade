@@ -1,12 +1,8 @@
 use gpui_kit::Context;
 use krad_domain::agents_api::{ErrorCode, Request, Response};
-use krad_domain::{
-    chat_worker_brief, AgentPreset, EnvironmentName, GroupId, PermissionMode, SessionId,
-    TerminalGroup, TerminalId,
-};
+use krad_domain::{EnvironmentName, GroupId, TerminalId};
 use krad_runtime::BusReply;
 
-use super::super::agent_hooks::{WorkerOf, WorkerOrder};
 use super::super::language_servers::CodeCaller;
 use super::super::live_terminal::LiveTerminal;
 use super::super::EnvironmentShell;
@@ -14,15 +10,6 @@ use super::requests::CLOSED_TERMINAL;
 
 const NO_CHAT_INBOX: &str = "The chat has no inbox: follow agents with wait and read";
 const TERMINALS_ONLY: &str = "Only agents in terminals can do that";
-const NO_CHAT_GROUP: &str = "The chat's group no longer exists";
-
-pub(super) struct ChatSpawn {
-    pub(super) agent: AgentPreset,
-    pub(super) worktree: Option<String>,
-    pub(super) task: String,
-    pub(super) lead: Option<SessionId>,
-    pub(super) mode: Option<PermissionMode>,
-}
 
 impl EnvironmentShell {
     pub(super) fn answer_chat(
@@ -42,28 +29,9 @@ impl EnvironmentShell {
             Request::ListAll => Response::Agents(self.all_agent_infos(environment, None)),
             Request::Close(_) => Response::error(ErrorCode::Forbidden, super::ONLY_LEADS_CLOSE),
             Request::Send { to, body } => self.submit_from_chat(environment, to, &body, cx),
-            Request::Wait { target, .. } => {
-                self.wait_for(environment, target, reply);
-                return;
-            }
             Request::Read { target, lines } => {
                 let tail = self.screen_tail(environment, target, lines);
                 Self::reply_tail(tail, reply, cx);
-                return;
-            }
-            Request::Spawn {
-                agent,
-                worktree,
-                task,
-            } => {
-                let spawn = ChatSpawn {
-                    agent,
-                    worktree,
-                    task,
-                    lead: None,
-                    mode: None,
-                };
-                self.start_chat_worker(environment, group, spawn, reply, cx);
                 return;
             }
             Request::Check { .. } => Response::error(ErrorCode::Unsupported, NO_CHAT_INBOX),
@@ -94,6 +62,8 @@ impl EnvironmentShell {
                 return;
             }
             Request::CreateWorktree { .. }
+            | Request::Wait { .. }
+            | Request::Spawn { .. }
             | Request::Changes { .. }
             | Request::RunVariants(_)
             | Request::Variants { .. }
@@ -132,51 +102,5 @@ impl EnvironmentShell {
         }
         self.submit_text_into(&env, id, body);
         Response::Submitted { terminal: to }
-    }
-
-    pub(super) fn start_chat_worker(
-        &mut self,
-        environment: &str,
-        group: GroupId,
-        spawn: ChatSpawn,
-        reply: BusReply,
-        cx: &mut Context<Self>,
-    ) {
-        let env = EnvironmentName::new(environment.to_owned());
-        match self.chat_worker_order(&env, group, spawn) {
-            Ok((group, order)) => self.start_worker(&env, &group, order, reply, cx),
-            Err(error) => reply.send(error).unwrap_or_default(),
-        }
-    }
-
-    fn chat_worker_order(
-        &self,
-        env: &EnvironmentName,
-        group: GroupId,
-        spawn: ChatSpawn,
-    ) -> Result<(TerminalGroup, WorkerOrder), Response> {
-        let text = spawn.task;
-        let preset = spawn.agent;
-        let group = self
-            .envs
-            .get(env)
-            .and_then(|live| live.data.group(group))
-            .cloned()
-            .ok_or_else(|| Response::error(ErrorCode::NotFound, NO_CHAT_GROUP))?;
-        let cloud = spawn
-            .lead
-            .and_then(|lead| self.envs.get(env)?.data.session(lead)?.cloud.clone());
-        let order = WorkerOrder {
-            preset,
-            worktree: spawn.worktree,
-            brief: chat_worker_brief(&text),
-            lead: spawn.lead.map(|session| WorkerOf {
-                session,
-                task: text,
-            }),
-            mode: spawn.mode,
-            cloud,
-        };
-        Ok((group, order))
     }
 }

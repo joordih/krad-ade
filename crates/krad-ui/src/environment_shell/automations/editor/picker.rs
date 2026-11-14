@@ -44,7 +44,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let entries = match picker.shelf {
-            None => cue_root(&editor.draft, self.automations.logins),
+            None => cue_root(&editor.draft, self.code_host_logins(cx)),
             Some(chosen) => cue_shelf(chosen, &editor.draft),
         };
         let rows: Vec<AnyElement> = entries

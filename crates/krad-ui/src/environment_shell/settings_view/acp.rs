@@ -179,7 +179,7 @@ impl EnvironmentShell {
             return Self::kept_adapter_row(index, agent, &kept, cx);
         }
         let detected = self
-            .installed_agents()
+            .installed_agents(cx)
             .contains(&AgentPreset::Acp(agent.id));
         let package = acp_package(agent.id);
         let install = package.map(|package| package.to_string());

@@ -40,8 +40,8 @@ impl EnvironmentShell {
             MenuEntry::Separator,
             MenuEntry::Header(NEW_TERMINAL_HEADER.to_owned()),
         ];
-        let default = self.offered_default_harness();
-        entries.extend(self.offered_agents().into_iter().map(|preset| {
+        let default = self.offered_default_harness(cx);
+        entries.extend(self.offered_agents(cx).into_iter().map(|preset| {
             MenuEntry::checked(
                 self.settings.acp.harness_name(preset),
                 preset == default,

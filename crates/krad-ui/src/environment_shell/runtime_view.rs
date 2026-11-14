@@ -6,17 +6,21 @@ use krad_runtime::RuntimeHandle;
 use krad_session::AnsiPalette;
 use std::sync::Arc;
 
+mod agents;
 mod asking;
 mod environments;
 mod following;
+mod gateway;
 mod heard;
 mod hosts;
 mod mail;
 mod settings;
 mod view_model;
 
+pub(super) use agents::AgentsMirror;
 use asking::Waiters;
 pub(super) use environments::EnvironmentsMirror;
+pub(super) use gateway::GatewayMirror;
 pub(super) use hosts::{HostMove, HostsMirror};
 pub(super) use mail::MailNotices;
 use view_model::RuntimeNews;

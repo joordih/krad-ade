@@ -221,7 +221,7 @@ impl EnvironmentShell {
     ) {
         let editor = AutomationEditor::new(editing, draft, window, cx);
         self.automations.editor = Some(Box::new(editor));
-        self.refresh_code_host_logins(cx);
+        self.refresh_code_host_logins();
         cx.notify();
     }
 

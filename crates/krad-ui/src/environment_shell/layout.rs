@@ -263,7 +263,6 @@ impl EnvironmentShell {
         self.flush_extension_prompts(window, cx);
         self.sync_extension_fields(window, cx);
         self.sync_extension_events(cx);
-        self.sync_app_events();
         self.sync_extension_tabs(cx);
         self.sync_extension_popover_focus(window, cx);
     }

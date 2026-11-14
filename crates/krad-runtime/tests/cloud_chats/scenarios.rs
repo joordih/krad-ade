@@ -8,8 +8,8 @@ use krad_domain::{
 };
 use krad_host::runner::queue_events;
 use krad_protocol::{
-    AgentRef, ChatAsk, ChatCommand, ChatMirror, CloudAskReplayed, Command, EventKind, NodeCommand,
-    Reply, RunnerCommand, Scope,
+    AgentRef, ChatAsk, ChatCommand, ChatMirror, Command, EventKind, NodeCommand, Reply,
+    RunnerCommand, Scope,
 };
 use krad_runtime::{ChatBrief, ChatRole, ChatStart, RunnerLineError, RuntimeHandle};
 use std::error::Error;
@@ -276,17 +276,21 @@ pub fn a_returning_runner_replays_what_its_chat_asked_while_the_app_was_away() -
     queue_ask(&cloud.runner_home.0, &cloud.install, &process)?;
     let reconnect = Command::Runner(RunnerCommand::Reconnect { runner: RUNNER });
     assert_eq!(send(&runtime, reconnect)?, Reply::Accepted);
-    let replayed = until(&cloud.started.feed, |kind| match kind {
-        EventKind::CloudAskReplayed(replayed) => Some(replayed),
+    let raised = until(&cloud.started.feed, |kind| match kind {
+        EventKind::AttentionRaised(notice) => Some(notice),
         _ => None,
     })?;
     assert_eq!(
-        replayed,
-        CloudAskReplayed {
-            agent: id.clone(),
-            kind: AttentionKind::Permission,
-            delivered: std::collections::BTreeSet::new(),
-        }
+        (
+            raised.target.environment,
+            raised.target.terminal,
+            raised.kind
+        ),
+        (
+            id.environment.clone(),
+            id.terminal,
+            AttentionKind::Permission
+        )
     );
     assert_eq!(send(&runtime, sent(&id, PROMPT))?, Reply::Accepted);
     cloud

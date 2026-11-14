@@ -40,7 +40,7 @@ impl EnvironmentShell {
             .opencode
             .of(&Host::Local)
             .is_some();
-        if known || !self.native_agents.contains(&AgentPreset::Opencode) {
+        if known || !self.agents(cx).native().contains(&AgentPreset::Opencode) {
             return;
         }
         self.runtime

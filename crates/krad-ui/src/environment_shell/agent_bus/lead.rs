@@ -5,7 +5,6 @@ use krad_domain::{AgentState, EnvironmentName, SessionId, TerminalId, VariantRun
 use krad_runtime::BusReply;
 
 use super::super::EnvironmentShell;
-use super::chat::ChatSpawn;
 use super::close::{pick_refusal, session_close_refusal};
 use super::requests::ScreenTail;
 use super::{handle, Settlement};
@@ -35,9 +34,6 @@ impl EnvironmentShell {
             .and_then(|live| live.data.session(session))
             .and_then(|session| Some((session.group, session.lead.as_ref()?.terminal)));
         let group = led_by.map(|(group, _)| group);
-        let mode = led_by
-            .and_then(|(_, terminal)| terminal)
-            .and_then(|terminal| self.chat_permission_mode(&env, terminal));
         let refusal = match group {
             None => NOT_A_LEAD_ANYMORE,
             Some(None) => NO_LEAD_GROUP,
@@ -46,19 +42,8 @@ impl EnvironmentShell {
                     Request::Close(order) => {
                         self.close_for_lead(&env, session, order, reply, cx);
                     }
-                    Request::Spawn {
-                        agent,
-                        worktree,
-                        task,
-                    } => {
-                        let spawn = ChatSpawn {
-                            agent,
-                            worktree,
-                            task,
-                            lead: Some(session),
-                            mode,
-                        };
-                        self.start_chat_worker(&lead.environment, group, spawn, reply, cx);
+                    Request::Spawn { .. } => {
+                        reply.send(super::answered_by_runtime()).unwrap_or_default();
                     }
                     request @ Request::CloseSession { session: closing } => {
                         let refused = self.envs.get(&env).and_then(|live| {
@@ -117,7 +102,7 @@ impl EnvironmentShell {
             settled,
             Settlement::Settled(TerminalState::Running(AgentState::Idle | AgentState::Done))
         );
-        idle && !self.is_launching(env, terminal)
+        idle
     }
 
     fn answer_worker(

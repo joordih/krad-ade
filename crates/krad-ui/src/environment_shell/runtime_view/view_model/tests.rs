@@ -322,3 +322,47 @@ fn acp_adapters_and_listings_are_read_from_the_runtime_s_events_in_the_view_mode
     let heard = model.take_news().heard;
     assert_eq!(heard.len(), 2, "the shell still hears both to react");
 }
+
+#[test]
+fn agents_the_gateway_and_code_host_logins_are_read_from_the_view_model() {
+    use krad_domain::{AgentPreset, CodeHost, LoginPlace};
+    use krad_protocol::{AgentPlace, CodeHostLogin, LocalAgents, LoginState};
+    let mut model = ViewModel::default();
+    let mut shown = snapshot();
+    shown.gateway = GatewayState::Checking;
+    shown.hosts.local = vec![LocalAgents {
+        place: AgentPlace::Native,
+        agents: vec![AgentPreset::Shell, AgentPreset::Codex],
+    }];
+    model.feed(Feed::Snapshot(shown));
+    assert_eq!(model.gateway.state, GatewayState::Checking);
+    assert!(model.agents.native().contains(&AgentPreset::Codex));
+    model.fold_event(EventKind::GatewayChanged {
+        state: GatewayState::Ready {
+            place: LoginPlace::Keyring,
+            models: Vec::new(),
+        },
+    });
+    assert!(model.gateway.ready());
+    model.fold_event(EventKind::CodeHostLogin(CodeHostLogin {
+        host: CodeHost::Github,
+        state: LoginState::SignedOut,
+        news: None,
+    }));
+    assert_eq!(
+        model.code_hosts.get(&CodeHost::Github),
+        Some(&LoginState::SignedOut)
+    );
+    model.fold_event(EventKind::LocalAgentsFound(LocalAgents {
+        place: AgentPlace::Wsl {
+            distro: "Ubuntu".to_owned(),
+        },
+        agents: vec![AgentPreset::ClaudeCode],
+    }));
+    assert_eq!(
+        model.agents.in_wsl("Ubuntu"),
+        Some(&[AgentPreset::ClaudeCode][..])
+    );
+    let heard = events(model.take_news());
+    assert_eq!(heard.len(), 3, "the shell still hears what it reacts to");
+}

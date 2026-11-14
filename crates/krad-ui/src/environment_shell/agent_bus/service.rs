@@ -1,33 +1,16 @@
 use gpui_kit::App;
-use krad_domain::agents_api::{notice_text, ErrorCode, Response};
+use krad_domain::agents_api::notice_text;
 use krad_domain::{parse_wsl_path, AgentState, EnvironmentName, TerminalId};
 use krad_protocol::Typing;
 use krad_runtime::cli_name;
 
 use super::super::runtime_view::MailNotices;
 use super::super::{EnvironmentShell, LiveEnv};
-use super::{Settlement, NO_SUCH_TERMINAL};
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn service_agent_bus(&mut self, cx: &mut App) {
         if self.runtime.handle.bus().is_none() {
             return;
-        }
-        let mut waiters = std::mem::take(&mut self.bus_work.settle_waiters);
-        waiters.retain(|(_, reply)| !reply.is_canceled());
-        for (target, reply) in waiters {
-            match self.settled_state(&target) {
-                Settlement::Settled(state) => reply
-                    .send(Response::Settled {
-                        target: target.terminal,
-                        state,
-                    })
-                    .unwrap_or_default(),
-                Settlement::Working => self.bus_work.settle_waiters.push((target, reply)),
-                Settlement::Missing => reply
-                    .send(Response::error(ErrorCode::NotFound, NO_SUCH_TERMINAL))
-                    .unwrap_or_default(),
-            }
         }
         let mut notices = Vec::new();
         let envs = &mut self.envs;

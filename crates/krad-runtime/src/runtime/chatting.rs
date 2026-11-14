@@ -1,5 +1,5 @@
 use krad_domain::EnvironmentName;
-use krad_domain::{AgentPreset, AttentionTarget, Host, ModelOffer, Sight};
+use krad_domain::{AgentPreset, AttentionKind, AttentionTarget, Host, ModelOffer, Sight};
 use krad_protocol::{
     AgentRef, Answer, AttentionCommand, ChatCommand, ErrorCode, EventKind, ModelsCommand, Reply,
     RequestId, UsageCommand,
@@ -212,6 +212,17 @@ impl Runtime {
         });
     }
 
+    pub(super) fn raise_attention(&mut self, agent: AgentRef, kind: AttentionKind) {
+        let title = self.environments.node_title(&agent).unwrap_or_default();
+        let command = AttentionCommand::Raise {
+            target: AttentionTarget::new(agent.environment, agent.terminal),
+            kind,
+            sight: Sight::Unwatched,
+            title,
+        };
+        self.attention.execute(&command, &mut self.outbox);
+    }
+
     fn chat_effect(&mut self, effect: ChatEffect) {
         let reply = match effect {
             ChatEffect::McpTrust { folder, trust } => {
@@ -220,14 +231,8 @@ impl Runtime {
                 return;
             }
             ChatEffect::Raise { chat, kind } => {
-                let title = self.environments.node_title(&chat).unwrap_or_default();
-                let command = AttentionCommand::Raise {
-                    target: AttentionTarget::new(chat.environment, chat.terminal),
-                    kind,
-                    sight: Sight::Unwatched,
-                    title,
-                };
-                self.attention.execute(&command, &mut self.outbox)
+                self.raise_attention(chat, kind);
+                return;
             }
             ChatEffect::Usage {
                 host,

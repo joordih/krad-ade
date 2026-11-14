@@ -233,13 +233,14 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         root: Option<&Path>,
         harness: AgentPreset,
+        cx: &App,
     ) -> bool {
         match harness {
-            AgentPreset::Gateway => self.gateway_ready(),
+            AgentPreset::Gateway => self.gateway(cx).ready(),
             AgentPreset::ClaudeCode
             | AgentPreset::Codex
             | AgentPreset::Opencode
-            | AgentPreset::Acp(_) => self.agents_for(env, root).contains(&harness),
+            | AgentPreset::Acp(_) => self.agents_for(env, root, cx).contains(&harness),
             AgentPreset::Shell => false,
         }
     }
@@ -262,7 +263,7 @@ impl EnvironmentShell {
         }
         let host = self.active_host();
         let offers = match harness {
-            AgentPreset::Gateway => self.gateway_offers(),
+            AgentPreset::Gateway => self.gateway(cx).offers(),
             AgentPreset::ClaudeCode
             | AgentPreset::Codex
             | AgentPreset::Opencode
@@ -324,7 +325,7 @@ impl EnvironmentShell {
                         .local()
                         .cloned()
                         .unwrap_or_else(|| self.active.clone());
-                    let available = self.agents_for(&here, root);
+                    let available = self.agents_for(&here, root, cx);
                     let in_cloud = self.cloud_placement_of(&here, id).is_some();
                     AgentPreset::chat_harnesses(&self.settings.acp.all_agents())
                         .into_iter()
@@ -332,7 +333,7 @@ impl EnvironmentShell {
                             other.native_twin() != harness.native_twin()
                                 && other.is_offered(available)
                                 && !(in_cloud && other.unavailable_in_cloud().is_some())
-                                && self.chats_on(&here, root, *other)
+                                && self.chats_on(&here, root, *other, cx)
                         })
                         .flat_map(|other| self.harness_picks(other, None, cx))
                         .collect()

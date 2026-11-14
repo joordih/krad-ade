@@ -128,7 +128,8 @@ impl EnvironmentShell {
     fn gateway_status(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let configured = self.settings.gateway.url.is_some();
-        let (mark, connected, state, detail) = match &self.gateway.link {
+        let link = self.gateway(cx).state.clone();
+        let (mark, connected, state, detail) = match &link {
             GatewayState::Unset => (
                 IconName::Key,
                 false,
@@ -158,7 +159,7 @@ impl EnvironmentShell {
             ),
         };
         let has_key = matches!(
-            self.gateway.link,
+            link,
             GatewayState::Ready { .. } | GatewayState::Failed { has_key: true, .. }
         );
         let mut actions = Vec::new();

@@ -96,7 +96,7 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let pal = palette(cx);
         let harnesses = self
-            .variant_harnesses()
+            .variant_harnesses(cx)
             .into_iter()
             .enumerate()
             .map(|(at, preset)| {

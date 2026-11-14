@@ -1,12 +1,11 @@
 use gpui_kit::Context;
 use krad_domain::{
-    AgentState, AttentionKind, ChatLogChange, ChatMessage, Mention, RuntimeId, Speaker, TerminalId,
+    AgentState, AttentionKind, ChatLogChange, ChatMessage, Mention, RuntimeId, TerminalId,
 };
 use krad_protocol::{AgentRef, ChatAsk, ChatState, ChatSummary, EventKind};
 use std::time::Instant;
 
 use super::super::super::super::ask::Waiting;
-use super::super::super::super::workers::LaunchProgress;
 use super::super::super::super::EnvironmentShell;
 use super::super::super::{anchor, Backend, ChatPlace, ChatView};
 use super::super::{structured_chat, structured_mut, StructuredChat};
@@ -28,14 +27,6 @@ fn place_of(runtime: RuntimeId, chat: &AgentRef) -> ChatPlace {
     ChatPlace {
         runtime,
         environment: chat.environment.clone(),
-    }
-}
-
-fn progress_of(message: &ChatMessage) -> LaunchProgress {
-    match (&message.speaker, &message.error) {
-        (Speaker::Assistant, Some(error)) => LaunchProgress::Failed(error.clone()),
-        (Speaker::Assistant, None) => LaunchProgress::Started,
-        (Speaker::User, _) => LaunchProgress::Unknown,
     }
 }
 
@@ -69,7 +60,7 @@ impl EnvironmentShell {
                 index,
                 message,
             } => {
-                self.runtime_chat_message(place, chat.terminal, (index, *message), cx);
+                self.runtime_chat_message(place, chat.terminal, (index, *message));
                 self.fetch_shown_images(place, chat.terminal, cx);
             }
             EventKind::ChatMessageAppended { chat, index, text } => {
@@ -94,7 +85,7 @@ impl EnvironmentShell {
             EventKind::ChatMessagesCut { chat, len } => {
                 self.runtime_chat_cut(place, chat.terminal, len, cx);
             }
-            EventKind::ChatAsk(ask) => self.runtime_chat_ask(place, ask, cx),
+            EventKind::ChatAsk(ask) => self.runtime_chat_ask(place, ask),
             EventKind::ChatAskSettled { chat, ask } => {
                 if let Some(chat) = runtime_chat(self, place, chat.terminal) {
                     chat.chat.asks_mut().forget_chat_ask(ask);
@@ -130,7 +121,7 @@ impl EnvironmentShell {
                 }
             }
             for ask in asks {
-                self.runtime_chat_ask(&place, ask, cx);
+                self.runtime_chat_ask(&place, ask);
             }
             self.runtime_chat_state(&place, id, state, cx);
         }
@@ -141,9 +132,7 @@ impl EnvironmentShell {
         place: &ChatPlace,
         id: TerminalId,
         (index, message): (usize, ChatMessage),
-        cx: &mut Context<Self>,
     ) {
-        let progress = progress_of(&message);
         let Some((shown, index)) = runtime_chat(self, place, id).and_then(|shown| {
             let index = shown.chat.structured()?.shown.local(index)?;
             Some((shown, index))
@@ -154,10 +143,6 @@ impl EnvironmentShell {
         ChatLogChange::Changed { index, message }.apply(&mut shown.chat.messages);
         if followed {
             shown.thread.scroll_to_end();
-        }
-        if let Some(env) = place.local() {
-            let env = env.clone();
-            self.follow_launch_progress(&env, id, progress, cx);
         }
     }
 
@@ -218,7 +203,7 @@ impl EnvironmentShell {
         }
     }
 
-    fn runtime_chat_ask(&mut self, place: &ChatPlace, ask: ChatAsk, cx: &mut Context<Self>) {
+    fn runtime_chat_ask(&mut self, place: &ChatPlace, ask: ChatAsk) {
         let id = ask.chat.terminal;
         let Some(shown) = runtime_chat(self, place, id) else {
             return;
@@ -230,7 +215,6 @@ impl EnvironmentShell {
         if let Some(env) = place.local() {
             let env = env.clone();
             self.set_agent_state(&env, id, AgentState::WaitingForInput);
-            self.follow_launch_progress(&env, id, LaunchProgress::Started, cx);
         }
     }
 
@@ -242,11 +226,6 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let local = place.local().cloned();
-        if let (Some(problem), false, Some(env)) =
-            (&state.problem, state.alive || state.working, &local)
-        {
-            self.follow_launch_progress(env, id, LaunchProgress::Failed(problem.clone()), cx);
-        }
         let Some(shown) = runtime_chat(self, place, id) else {
             return;
         };

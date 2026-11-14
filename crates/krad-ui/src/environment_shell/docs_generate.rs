@@ -1,7 +1,7 @@
 mod sheet;
 
 use gpui_kit::component::input::InputState;
-use gpui_kit::{AppContext as _, Context, Entity, Window};
+use gpui_kit::{App, AppContext as _, Context, Entity, Window};
 use krad_domain::{
     docs_prompt, AgentPreset, ModelId, SourceEntry, ToastKind, DEFAULT_DOCS_FOLDER, VAULT_DIR,
 };
@@ -56,9 +56,9 @@ impl EnvironmentShell {
         let Some(root) = self.active_group().map(|group| group.root.clone()) else {
             return;
         };
-        self.list_harness_models();
+        self.list_harness_models(cx);
         self.ensure_opencode(cx);
-        let preset = self.default_agent();
+        let preset = self.default_agent(cx);
         self.read_docs_sources(root, cx);
         let folder = cx.new(|cx| {
             InputState::new(window, cx)
@@ -115,19 +115,19 @@ impl EnvironmentShell {
         .detach();
     }
 
-    fn briefed_agents(&self) -> Vec<AgentPreset> {
-        self.offered_agents()
+    fn briefed_agents(&self, cx: &App) -> Vec<AgentPreset> {
+        self.offered_agents(cx)
             .into_iter()
             .filter(|preset| preset.is_agent())
             .collect()
     }
 
-    pub(super) fn default_agent(&self) -> Option<AgentPreset> {
-        let agents = self.briefed_agents();
+    pub(super) fn default_agent(&self, cx: &App) -> Option<AgentPreset> {
+        let agents = self.briefed_agents(cx);
         agents
             .iter()
             .copied()
-            .find(|preset| *preset == self.offered_default_harness())
+            .find(|preset| *preset == self.offered_default_harness(cx))
             .or_else(|| agents.first().copied())
     }
 
@@ -136,7 +136,7 @@ impl EnvironmentShell {
             return;
         };
         let current = (dialog.preset, dialog.model.clone());
-        let picks = self.briefed_agents().into_iter().flat_map(|harness| {
+        let picks = self.briefed_agents(cx).into_iter().flat_map(|harness| {
             let chosen = current.0 == Some(harness);
             let model = current.1.as_ref().filter(|_| chosen);
             let mut choices = self.model_choices(harness, model, cx);

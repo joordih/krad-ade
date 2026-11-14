@@ -23,7 +23,7 @@ impl Runtime {
         };
         let environment = EnvironmentName::new(environment);
         let target = match &incoming.request {
-            Request::Wait { target, .. } | Request::Read { target, .. } => TerminalId(*target),
+            Request::Read { target, .. } => TerminalId(*target),
             Request::Send { to, .. } => TerminalId(*to),
             _ => return Some(incoming),
         };
@@ -35,7 +35,6 @@ impl Runtime {
             return Some(incoming);
         }
         match (&incoming.request, lead) {
-            (Request::Wait { .. }, _) => self.wait_on_terminal(target, incoming.reply),
             (Request::Read { lines, .. }, _) => {
                 let lines = *lines;
                 self.read_terminal(&target, lead, lines, incoming.reply);
@@ -62,19 +61,6 @@ impl Runtime {
             .and_then(|data| data.nodes.iter().find(|node| node.id == target.terminal))
             .map_or(AgentState::Idle, |node| node.state);
         (state != AgentState::Working).then_some(TerminalState::Running(state))
-    }
-
-    fn wait_on_terminal(&mut self, target: AgentRef, reply: oneshot::Sender<Response>) {
-        match self.terminal_settled(&target) {
-            Some(state) => reply_with(
-                reply,
-                Response::Settled {
-                    target: target.terminal.as_u64(),
-                    state,
-                },
-            ),
-            None => self.workers.wait(target, reply),
-        }
     }
 
     fn read_terminal(

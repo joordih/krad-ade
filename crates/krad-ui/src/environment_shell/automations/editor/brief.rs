@@ -101,7 +101,7 @@ impl EnvironmentShell {
     }
 
     fn open_harness_choice(&mut self, origin: (f32, f32), cx: &mut Context<Self>) {
-        let agents = self.kraddie_agents();
+        let agents = self.kraddie_agents(cx);
         let current: Option<AgentPreset> = self
             .editor_draft()
             .and_then(|draft| draft.harness)

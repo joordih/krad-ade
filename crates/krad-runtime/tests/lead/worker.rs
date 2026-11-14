@@ -176,6 +176,47 @@ fn a_lead_starts_a_worker_and_closes_it() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn a_chat_that_leads_nothing_spawns_a_worker_the_runtime_starts_itself() -> TestResult {
+    let folder =
+        Folder(std::env::temp_dir().join(format!("krad-spawn-{}", new_session_id().as_str())));
+    std::fs::create_dir_all(&folder.0)?;
+    let runtime = start(lead_environment(&folder.0)?)?;
+    let mut events = runtime.subscribe();
+    let worker = spawned(&runtime)?;
+    let started = main_environment(&runtime)?;
+    let node = started
+        .nodes
+        .iter()
+        .find(|node| node.id == worker)
+        .ok_or("the worker has no node")?;
+    assert_eq!(node.kind, NodeKind::Chat);
+    assert!(started.worker(worker).is_none());
+    let chat = AgentRef {
+        environment: EnvironmentName::new(ENVIRONMENT.to_owned()),
+        terminal: worker,
+    };
+    until(&mut events, |kind| {
+        matches!(kind, EventKind::ChatMessageAdded { chat: heard, message, .. }
+            | EventKind::ChatMessageChanged { chat: heard, message, .. }
+            if *heard == chat && message.speaker == Speaker::Assistant
+                && message.text == RECORDED_ANSWER)
+    })?;
+    let waited = answered(call_from(
+        &runtime,
+        LEAD,
+        Request::Wait {
+            target: worker.0,
+            timeout_secs: 5,
+        },
+    )?)?;
+    assert!(matches!(
+        waited,
+        Response::Settled { target, state: TerminalState::Running(_) } if target == worker.0
+    ));
+    Ok(())
+}
+
 fn spawned(runtime: &RuntimeHandle) -> Result<TerminalId, Box<dyn Error>> {
     let spawn = Request::Spawn {
         agent: AgentPreset::ClaudeCode,

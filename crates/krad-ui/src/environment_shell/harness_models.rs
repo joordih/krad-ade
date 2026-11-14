@@ -1,4 +1,4 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::{AcpAgentId, AgentPreset, EnvironmentName, Host, ModelOffer, ToastKind};
 use krad_protocol::{
     AcpListing as Listing, AcpOffers, Command, HarnessSpot, ListedModels as Listed, ModelsCommand,
@@ -77,17 +77,17 @@ impl ModelsMirror {
 }
 
 impl EnvironmentShell {
-    pub(super) fn list_harness_models(&self) {
+    pub(super) fn list_harness_models(&self, cx: &App) {
         for harness in AgentPreset::NATIVE {
-            if self.native_agents.contains(&harness) {
+            if self.agents(cx).native().contains(&harness) {
                 self.list_models_at(HarnessSpot::default(), harness);
             }
         }
     }
 
-    pub(super) fn list_host_models(&self, env: &EnvironmentName) {
+    pub(super) fn list_host_models(&self, env: &EnvironmentName, cx: &App) {
         let host = self.env_host(env);
-        let Some(found) = self.host_agents.get(&host).cloned() else {
+        let Some(found) = self.agents(cx).on_host(&host).map(<[AgentPreset]>::to_vec) else {
             return;
         };
         for harness in found {
@@ -117,7 +117,7 @@ impl EnvironmentShell {
         ) || (!model.models.of(&host, preset).is_empty()
             && model.acp.acp_seeds.contains_key(&key));
         if busy_or_known
-            || !self.installed_agents().contains(&preset)
+            || !self.installed_agents(cx).contains(&preset)
             || self.settings.acp.agent(agent).is_none()
         {
             return;

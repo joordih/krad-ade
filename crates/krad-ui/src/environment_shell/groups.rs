@@ -7,67 +7,84 @@ use krad_extensions::host::HostLink;
 use krad_protocol::{AgentPlace, Command, HostCommand, LocalAgents};
 use std::path::{Path, PathBuf};
 
+use super::runtime_view::AgentsMirror;
 use super::EnvironmentShell;
 
 mod git_poll;
 
 pub(super) use git_poll::{GitKey, GroupGit};
 
-const SHELL_ONLY: &[AgentPreset] = &[AgentPreset::Shell];
 const FOLDER_PROMPT: &str = "Choose the group's root folder";
 const NO_GROUP_TEXT: &str = "Select a group first";
 const HOST_NOT_READY_TEXT: &str = "Connect to the environment's host before adding a group";
 
 impl EnvironmentShell {
-    pub(super) fn installed_agents(&self) -> &[AgentPreset] {
+    pub(super) fn installed_agents<'a>(&self, cx: &'a App) -> &'a [AgentPreset] {
         self.agents_for(
             &self.active,
             self.active_group().map(|group| group.root.as_path()),
+            cx,
         )
     }
 
-    pub(super) fn offered_agents(&self) -> Vec<AgentPreset> {
-        AgentPreset::offered(self.installed_agents())
+    pub(super) fn offered_agents(&self, cx: &App) -> Vec<AgentPreset> {
+        AgentPreset::offered(self.installed_agents(cx))
     }
 
-    pub(super) fn offered_default_harness(&self) -> AgentPreset {
+    pub(super) fn offered_default_harness(&self, cx: &App) -> AgentPreset {
         self.settings
             .default_harness
-            .as_offered(self.installed_agents())
+            .as_offered(self.installed_agents(cx))
     }
 
     pub(super) fn host_agents_known(&self, env: &EnvironmentName, cx: &App) -> bool {
         self.envs.get(env).is_some_and(|live| {
             live.data.host.is_local()
                 || (self.host_state(env, cx).is_connected()
-                    && self.host_agents.contains_key(&live.data.host))
+                    && self.agents(cx).on_host(&live.data.host).is_some())
         })
     }
 
-    pub(super) fn agents_for(&self, env: &EnvironmentName, root: Option<&Path>) -> &[AgentPreset] {
+    pub(super) fn agents<'a>(&self, cx: &'a App) -> &'a AgentsMirror {
+        &self.runtime.view.read(cx).agents
+    }
+
+    pub(super) fn agents_for<'a>(
+        &self,
+        env: &EnvironmentName,
+        root: Option<&Path>,
+        cx: &'a App,
+    ) -> &'a [AgentPreset] {
+        let agents = self.agents(cx);
         if let Some(host) = self
             .envs
             .get(env)
             .map(|live| &live.data.host)
             .filter(|host| !host.is_local())
         {
-            return self.host_agents.get(host).map_or(SHELL_ONLY, Vec::as_slice);
+            return agents.on_host_or_shell(host);
         }
         root.and_then(parse_wsl_path)
-            .and_then(|folder| self.wsl_agents.get(&folder.distro))
-            .unwrap_or(&self.native_agents)
+            .and_then(|folder| agents.in_wsl(&folder.distro))
+            .unwrap_or_else(|| agents.native())
     }
 
-    pub(in crate::environment_shell) fn detect_wsl_agents(&mut self, roots: &[PathBuf]) {
+    pub(in crate::environment_shell) fn detect_wsl_agents(
+        &mut self,
+        roots: &[PathBuf],
+        cx: &mut App,
+    ) {
         let distros: Vec<String> = roots
             .iter()
             .filter_map(|root| parse_wsl_path(root))
             .map(|folder| folder.distro)
             .collect();
         for distro in distros {
-            if !self.wsl_agents.contains_key(&distro) {
-                self.wsl_agents
-                    .insert(distro.clone(), vec![AgentPreset::Shell]);
+            let asked = self
+                .runtime
+                .view
+                .update(cx, |model, _| model.agents.ask_in_wsl(&distro));
+            if asked {
                 self.detect_agents_in(distro);
             }
         }
@@ -84,14 +101,8 @@ impl EnvironmentShell {
             }));
     }
 
-    pub(super) fn host_agents_found(
-        &mut self,
-        env: &EnvironmentName,
-        (host, installed): (Host, Vec<AgentPreset>),
-        cx: &mut Context<Self>,
-    ) {
-        self.host_agents.insert(host, installed);
-        self.list_host_models(env);
+    pub(super) fn host_agents_found(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
+        self.list_host_models(env, cx);
         self.place_usage();
         self.load_missing_histories(env, cx);
         let harnesses: Vec<AgentPreset> =
@@ -102,13 +113,17 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    pub(super) fn redetect_after_acp_change(&mut self) {
+    pub(super) fn redetect_after_acp_change(&mut self, cx: &mut App) {
         let agents = self.settings.acp.all_agents();
-        if agents == self.detected_acp {
+        let changed = self
+            .runtime
+            .view
+            .update(cx, |model, _| model.agents.acp_asked(agents));
+        if !changed {
             return;
         }
         self.detect_agents();
-        let distros: Vec<String> = self.wsl_agents.keys().cloned().collect();
+        let distros = self.agents(cx).wsl_distros();
         for distro in distros {
             self.detect_agents_in(distro);
         }
@@ -121,7 +136,6 @@ impl EnvironmentShell {
         for env in remote {
             self.detect_host_agents(&env);
         }
-        self.detected_acp = agents;
     }
 
     fn detect_agents_in(&self, distro: String) {
@@ -131,17 +145,11 @@ impl EnvironmentShell {
             .post(Command::Host(HostCommand::DetectLocalAgents { place }));
     }
 
-    pub(super) fn local_agents_found(&mut self, found: LocalAgents, cx: &mut Context<Self>) {
-        match found.place {
-            AgentPlace::Wsl { distro } => {
-                self.wsl_agents.insert(distro, found.agents);
-            }
-            AgentPlace::Native => {
-                self.native_agents = found.agents;
-                self.ensure_opencode(cx);
-                self.list_harness_models();
-                self.place_usage();
-            }
+    pub(super) fn local_agents_found(&mut self, found: &LocalAgents, cx: &mut Context<Self>) {
+        if found.place == AgentPlace::Native {
+            self.ensure_opencode(cx);
+            self.list_harness_models(cx);
+            self.place_usage();
         }
         cx.notify();
     }

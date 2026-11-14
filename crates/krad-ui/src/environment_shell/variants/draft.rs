@@ -1,5 +1,5 @@
 use gpui_kit::component::input::{InputState, TextareaState};
-use gpui_kit::{AppContext as _, Context, Entity, Window};
+use gpui_kit::{App, AppContext as _, Context, Entity, Window};
 use krad_domain::{
     launch_budget_warning, AgentPreset, BudgetStatus, GroupId, LaunchBudgetWarning, LaunchEstimate,
     ModelId, ProjectTask, ToastKind, VariantSpec, VariantsOrder, WorkerSurface, MAX_VARIANTS,
@@ -65,8 +65,8 @@ fn row(harness: AgentPreset, window: &mut Window, cx: &mut Context<EnvironmentSh
 }
 
 impl EnvironmentShell {
-    pub(super) fn variant_harnesses(&self) -> Vec<AgentPreset> {
-        self.offered_agents()
+    pub(super) fn variant_harnesses(&self, cx: &App) -> Vec<AgentPreset> {
+        self.offered_agents(cx)
             .into_iter()
             .filter(|preset| preset.is_agent() && preset.worker_surface() == WorkerSurface::Chat)
             .collect()
@@ -83,11 +83,11 @@ impl EnvironmentShell {
         else {
             return self.toast(ToastKind::Warning, NO_GROUP_TEXT, cx);
         };
-        let harnesses = self.variant_harnesses();
+        let harnesses = self.variant_harnesses(cx);
         let Some(first) = harnesses
             .iter()
             .copied()
-            .find(|preset| *preset == self.offered_default_harness())
+            .find(|preset| *preset == self.offered_default_harness(cx))
             .or_else(|| harnesses.first().copied())
         else {
             return self.toast(ToastKind::Warning, NO_AGENTS_TEXT, cx);
@@ -167,7 +167,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn add_variant_row(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let harness = self.variant_harnesses().first().copied();
+        let harness = self.variant_harnesses(cx).first().copied();
         let full = self
             .variants
             .draft

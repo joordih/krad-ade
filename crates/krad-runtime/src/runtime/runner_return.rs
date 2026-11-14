@@ -4,7 +4,7 @@ use krad_domain::{
 };
 use krad_host::runner::take_events_command;
 use krad_host::{HostCommand, HostLink};
-use krad_protocol::{AgentRef, CloudAskReplayed, EventKind, HookOrigin, HookReport};
+use krad_protocol::{AgentRef, EventKind, HookOrigin, HookReport};
 use std::collections::BTreeSet;
 use std::time::Instant;
 
@@ -155,14 +155,7 @@ impl Runtime {
             Replay::Hook(report) => {
                 self.hear_hook(agent, report, HookOrigin::Replayed { delivered });
             }
-            Replay::Attention(kind) => {
-                self.outbox
-                    .push(EventKind::CloudAskReplayed(CloudAskReplayed {
-                        agent,
-                        kind,
-                        delivered,
-                    }));
-            }
+            Replay::Attention(kind) => self.raise_attention(agent, kind),
         }
     }
 

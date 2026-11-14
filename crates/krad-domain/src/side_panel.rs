@@ -1,6 +1,6 @@
 use crate::ids::TerminalId;
 use serde::de::IntoDeserializer;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub const SIDE_PANEL_DEFAULT_W: f32 = 300.0;
 pub const SIDE_PANEL_MIN_W: f32 = 220.0;
@@ -10,10 +10,19 @@ pub const HISTORY_DEFAULT_H: f32 = 240.0;
 pub const HISTORY_MIN_H: f32 = 96.0;
 pub const HISTORY_MAX_H: f32 = 720.0;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TerminalLasting {
+    #[default]
+    Kept,
+    Helper,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SystemTerminal {
     pub id: TerminalId,
     pub title: String,
+    #[serde(skip)]
+    pub lasting: TerminalLasting,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,7 +59,11 @@ pub struct SidePanelLayout {
     pub width: f32,
     #[serde(default = "default_split")]
     pub split: f32,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "no_kept_terminal",
+        serialize_with = "kept_terminals"
+    )]
     pub terminals: Vec<SystemTerminal>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shown: Option<TerminalId>,
@@ -64,6 +77,23 @@ pub struct SidePanelLayout {
     pub history_open: bool,
     #[serde(default = "default_history_height")]
     pub history_height: f32,
+}
+
+fn kept(terminals: &[SystemTerminal]) -> impl Iterator<Item = &SystemTerminal> {
+    terminals
+        .iter()
+        .filter(|terminal| terminal.lasting == TerminalLasting::Kept)
+}
+
+fn no_kept_terminal(terminals: &[SystemTerminal]) -> bool {
+    kept(terminals).next().is_none()
+}
+
+fn kept_terminals<S: Serializer>(
+    terminals: &[SystemTerminal],
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.collect_seq(kept(terminals))
 }
 
 fn lenient_section<'de, D: Deserializer<'de>>(
@@ -126,7 +156,15 @@ impl SidePanelLayout {
     }
 
     pub fn add_terminal(&mut self, id: TerminalId, title: String) {
-        self.terminals.push(SystemTerminal { id, title });
+        self.add(id, title, TerminalLasting::Kept);
+    }
+
+    pub fn add_helper_terminal(&mut self, id: TerminalId, title: String) {
+        self.add(id, title, TerminalLasting::Helper);
+    }
+
+    fn add(&mut self, id: TerminalId, title: String, lasting: TerminalLasting) {
+        self.terminals.push(SystemTerminal { id, title, lasting });
         self.shown = Some(id);
     }
 
@@ -158,6 +196,21 @@ mod tests {
         assert_eq!(changes.section, SidePanelSection::Changes);
         let removed: SidePanelLayout = serde_json::from_str(r#"{"section":"audit"}"#)?;
         assert_eq!(removed.section, SidePanelSection::Explorer);
+        Ok(())
+    }
+
+    #[test]
+    fn helper_terminals_are_shown_but_never_written() -> Result<(), serde_json::Error> {
+        let mut panel = SidePanelLayout::default();
+        panel.add_terminal(TerminalId(1), "zsh · 1".to_owned());
+        panel.add_helper_terminal(TerminalId(2), "Sign in".to_owned());
+        assert!(panel.holds(TerminalId(2)));
+        let written: SidePanelLayout = serde_json::from_str(&serde_json::to_string(&panel)?)?;
+        let ids: Vec<TerminalId> = written.terminals.iter().map(|kept| kept.id).collect();
+        assert_eq!(ids, vec![TerminalId(1)]);
+        let mut helpers_only = SidePanelLayout::default();
+        helpers_only.add_helper_terminal(TerminalId(3), "Token".to_owned());
+        assert!(!serde_json::to_string(&helpers_only)?.contains("terminals\""));
         Ok(())
     }
 

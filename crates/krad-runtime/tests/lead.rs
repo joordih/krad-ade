@@ -20,6 +20,7 @@ const LEAD: TerminalId = TerminalId(1);
 const MEMBER: TerminalId = TerminalId(2);
 const OPEN_WORKER: TerminalId = TerminalId(3);
 const CLOSED_WORKER: TerminalId = TerminalId(4);
+const MISSING: TerminalId = TerminalId(99);
 const NO_BUS: &str = "the runtime serves no bus";
 const NO_DELEGATION: &str = "no request was delegated";
 const NO_SESSION: &str = "sessions mode opened no session";
@@ -179,6 +180,39 @@ fn a_closed_worker_is_settled_and_retired_without_asking_the_app() -> TestResult
     )?)?;
     assert!(matches!(
         read,
+        Response::Error(error) if error.code == ErrorCode::NotFound
+    ));
+    Ok(())
+}
+
+#[test]
+fn waits_on_terminals_the_app_never_opened_are_answered_by_the_runtime() -> TestResult {
+    let (runtime, _) = start()?;
+    let exited = answered(call_from(
+        &runtime,
+        LEAD,
+        Request::Wait {
+            target: MEMBER.0,
+            timeout_secs: 1,
+        },
+    )?)?;
+    assert_eq!(
+        exited,
+        Response::Settled {
+            target: MEMBER.0,
+            state: TerminalState::Exited,
+        }
+    );
+    let missing = answered(call_from(
+        &runtime,
+        LEAD,
+        Request::Wait {
+            target: MISSING.0,
+            timeout_secs: 1,
+        },
+    )?)?;
+    assert!(matches!(
+        missing,
         Response::Error(error) if error.code == ErrorCode::NotFound
     ));
     Ok(())

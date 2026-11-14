@@ -1,36 +1,45 @@
 use gpui_kit::App;
 use krad_client::RuntimeClient;
-use krad_domain::{EnvironmentData, RuntimeId};
+use krad_domain::{EnvironmentData, EnvironmentName, RuntimeId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::super::super::surface::ChatPlace;
-use super::super::super::{EnvironmentShell, LiveEnv};
+use super::super::{EnvironmentShell, LiveEnv};
+use super::ChatPlace;
 
-pub(in crate::environment_shell) struct HostedLive {
-    live: LiveEnv,
+const UNREACHED: &str = "The cloud runner is not connected";
+
+struct HostedPlace {
+    views: LiveEnv,
     client: Arc<dyn RuntimeClient>,
 }
 
 #[derive(Default)]
-pub(in crate::environment_shell) struct HostedLives(HashMap<ChatPlace, HostedLive>);
+pub(in crate::environment_shell) struct HostedPlaces(HashMap<ChatPlace, HostedPlace>);
 
-fn hosted_live(data: EnvironmentData, client: Arc<dyn RuntimeClient>) -> HostedLive {
-    let mut live = LiveEnv::new(data, None);
-    live.pending_chats.clear();
-    HostedLive { live, client }
+fn hosted_place(data: EnvironmentData, client: Arc<dyn RuntimeClient>) -> HostedPlace {
+    let mut views = LiveEnv::new(data, None);
+    views.pending_chats.clear();
+    HostedPlace { views, client }
 }
 
-impl HostedLives {
+fn reached<'a>(
+    environments: &'a [EnvironmentData],
+    environment: &EnvironmentName,
+) -> Option<&'a EnvironmentData> {
+    environments.iter().find(|data| data.name == *environment)
+}
+
+impl HostedPlaces {
     pub(in crate::environment_shell) fn get(&self, place: &ChatPlace) -> Option<&LiveEnv> {
-        self.0.get(place).map(|hosted| &hosted.live)
+        self.0.get(place).map(|hosted| &hosted.views)
     }
 
     pub(in crate::environment_shell) fn get_mut(
         &mut self,
         place: &ChatPlace,
     ) -> Option<&mut LiveEnv> {
-        self.0.get_mut(place).map(|hosted| &mut hosted.live)
+        self.0.get_mut(place).map(|hosted| &mut hosted.views)
     }
 
     pub(in crate::environment_shell) fn client(
@@ -52,20 +61,20 @@ impl HostedLives {
     ) {
         let (Some(data), Some(client)) = (data, client) else {
             if let Some(hosted) = self.0.get_mut(place) {
-                hosted.live.chats.values_mut().for_each(|chat| {
-                    chat.chat.problem = Some(super::UNREACHED.to_owned());
+                hosted.views.chats.values_mut().for_each(|chat| {
+                    chat.chat.problem = Some(UNREACHED.to_owned());
                 });
             }
             return;
         };
         match self.0.get_mut(place) {
             Some(hosted) => {
-                hosted.live.data.adopt(data);
+                hosted.views.data.adopt(data);
                 hosted.client = client;
             }
             None => {
                 self.0
-                    .insert(place.clone(), hosted_live(data.clone(), client));
+                    .insert(place.clone(), hosted_place(data.clone(), client));
             }
         }
     }
@@ -76,14 +85,6 @@ impl HostedLives {
 }
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn hosted_lives(&self) -> &HostedLives {
-        &self.cloud.lives
-    }
-
-    pub(in crate::environment_shell) fn hosted_lives_mut(&mut self) -> &mut HostedLives {
-        &mut self.cloud.lives
-    }
-
     pub(in crate::environment_shell) fn follow_hosted_place(
         &mut self,
         place: &ChatPlace,
@@ -92,22 +93,16 @@ impl EnvironmentShell {
         let Some(runner) = place.runner() else {
             return;
         };
-        let view = self.runtime.view.read(cx);
-        let data = view.remotes.get(runner).and_then(|remote| {
-            remote
-                .environments
-                .all()
-                .iter()
-                .find(|data| data.name == place.environment)
-        });
-        let client = view
-            .remotes
-            .route(&self.runtime.client, RuntimeId::Runner(runner));
-        self.cloud.lives.follow(place, data, client);
+        let remotes = &self.runtime.view.read(cx).remotes;
+        let data = remotes
+            .get(runner)
+            .and_then(|remote| reached(remote.environments.all(), &place.environment));
+        let client = remotes.route(&self.runtime.client, RuntimeId::Runner(runner));
+        self.chat.hosted.follow(place, data, client);
     }
 
     pub(in crate::environment_shell) fn follow_hosted_places(&mut self, cx: &App) {
-        let places: Vec<ChatPlace> = self.cloud.lives.places().cloned().collect();
+        let places: Vec<ChatPlace> = self.chat.hosted.places().cloned().collect();
         for place in places {
             self.follow_hosted_place(&place, cx);
         }

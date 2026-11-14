@@ -82,6 +82,7 @@ mod runner_return;
 mod runner_webhooks;
 mod running;
 mod session_changes;
+mod session_events;
 mod settling;
 mod setup;
 mod sign_in_launches;
@@ -92,6 +93,7 @@ mod variant_bus;
 mod variant_picks;
 mod variant_progress;
 mod variant_runs;
+mod waiting;
 mod worker_worktrees;
 mod working;
 
@@ -139,6 +141,7 @@ pub struct Runtime {
     settings: AppSettings,
     launches: Launches,
     workers: Workers,
+    sessions_seen: session_events::SessionsSeen,
     git: Git,
     kraddies: Kraddies,
     typist: Typist,
@@ -226,6 +229,7 @@ impl Runtime {
         inbox: &SyncSender<Input>,
         stopped: Arc<AtomicBool>,
     ) -> Self {
+        let sessions_seen = session_events::SessionsSeen::new(owned.environments.iter());
         Self {
             seq: Seq::default(),
             outbox: Vec::new(),
@@ -253,6 +257,7 @@ impl Runtime {
             settings: owned.settings,
             launches: Launches::new(owned.views, inbox.clone()),
             workers: Workers::default(),
+            sessions_seen,
             git: Git::default(),
             kraddies: Kraddies::start(owned.kraddies, inbox.clone()),
             typist: Typist::default(),
@@ -370,6 +375,7 @@ impl Runtime {
 
     fn flush(&mut self) {
         self.save_terminal_metas(Settling::No);
+        self.publish_session_events();
         self.environments.flush();
         self.settings.flush();
         self.kraddies.flush(&mut self.outbox);

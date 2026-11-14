@@ -21,4 +21,5 @@ pub(super) struct ChatState {
     suggest_scroll: ScrollHandle,
     files: file_index::FileSearches,
     skills: Option<Vec<Skill>>,
+    pub(super) hosted: super::surface::HostedPlaces,
 }

@@ -100,8 +100,8 @@ use gpui_kit::component::command::CommandState;
 use gpui_kit::{Context, Entity, FocusHandle, Subscription, Task, WeakEntity, Window};
 use krad_client::InProcess;
 use krad_domain::{
-    AgentPreset, EnvironmentData, EnvironmentName, EnvironmentView, Layout, Prompt, Settings,
-    SidebarWidth, TerminalId, Visibility, WorkMode, DEFAULT_ENVIRONMENT,
+    EnvironmentData, EnvironmentName, EnvironmentView, Layout, Prompt, Settings, SidebarWidth,
+    TerminalId, Visibility, WorkMode, DEFAULT_ENVIRONMENT,
 };
 use krad_store::{LayoutFile, LayoutWriter};
 use std::collections::{HashMap, HashSet};
@@ -178,10 +178,6 @@ pub struct EnvironmentShell {
     git_task: Option<Task<()>>,
     file_tree: file_tree::FileTree,
     viewer: Option<code_viewer::CodeView>,
-    native_agents: Vec<AgentPreset>,
-    wsl_agents: HashMap<String, Vec<AgentPreset>>,
-    host_agents: HashMap<krad_domain::Host, Vec<AgentPreset>>,
-    detected_acp: Vec<krad_domain::AcpAgent>,
     settings: Settings,
     settings_ui: Option<settings_view::SettingsUi>,
     bus_work: agent_bus::BusWork,
@@ -314,10 +310,6 @@ impl EnvironmentShell {
             git_task: None,
             file_tree: file_tree::FileTree::default(),
             viewer: None,
-            native_agents: vec![AgentPreset::Shell],
-            wsl_agents: HashMap::new(),
-            host_agents: HashMap::new(),
-            detected_acp: settings.acp.all_agents(),
             settings,
             settings_ui: None,
             bus_work: agent_bus::BusWork::default(),

@@ -1,7 +1,7 @@
 mod form;
 
 use gpui_kit::component::input::InputState;
-use gpui_kit::{AppContext as _, Context, Entity, Window};
+use gpui_kit::{App, AppContext as _, Context, Entity, Window};
 use krad_domain::{
     name_ideas, AgentPreset, Kraddie, KraddieId, KraddieName, KraddieWorkspace, ModelId, ToastKind,
     WorkerSurface, NAME_IDEAS_SHOWN,
@@ -44,9 +44,9 @@ fn read_model(text: &str) -> Result<Option<ModelId>, &'static str> {
 }
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn kraddie_agents(&self) -> Vec<AgentPreset> {
+    pub(in crate::environment_shell) fn kraddie_agents(&self, cx: &App) -> Vec<AgentPreset> {
         let mut agents: Vec<AgentPreset> = self
-            .offered_agents()
+            .offered_agents(cx)
             .into_iter()
             .filter(|preset| preset.is_agent() && preset.worker_surface() == WorkerSurface::Chat)
             .collect();
@@ -63,7 +63,7 @@ impl EnvironmentShell {
         let existing = id
             .and_then(|id| self.kraddies.entry(id))
             .map(|entry| entry.kraddie.clone());
-        let agents = self.kraddie_agents();
+        let agents = self.kraddie_agents(cx);
         let Some(harness) = existing
             .as_ref()
             .map(|kraddie| kraddie.harness)

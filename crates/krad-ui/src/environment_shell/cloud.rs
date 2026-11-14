@@ -1,7 +1,6 @@
 use gpui_kit::App;
 mod actions;
 mod badge;
-mod bus;
 mod entry;
 mod hosted;
 mod patch_dialog;
@@ -17,26 +16,20 @@ mod webhooks;
 pub(in crate::environment_shell) use actions::CloudAction;
 pub(in crate::environment_shell) use badge::{cloud_marker, CloudBadge};
 pub(in crate::environment_shell) use entry::CloudMenu;
-pub(in crate::environment_shell) use hosted::HostedLives;
 pub(in crate::environment_shell) use krad_domain::RunnerState;
 pub(in crate::environment_shell) use krad_domain::{RunnerCli, RunnerLogin};
 pub(in crate::environment_shell) use sign_in::cli_label;
 pub(in crate::environment_shell) use state::{linger_warning, reach_label, runner_label};
 
 use krad_domain::{CloudPlacement, CloudRunnerId, EnvironmentName, RuntimeId, TerminalId};
-use std::collections::HashSet;
 
 use super::EnvironmentShell;
-
-type NodeKey = (EnvironmentName, TerminalId);
 
 #[derive(Default)]
 pub(super) struct CloudRunners {
     asking: Option<krad_protocol::CloudDraftId>,
-    helpers: HashSet<NodeKey>,
     shown: Option<hosted::HostedChatKey>,
     terminal: Option<hosted::HostedTerminalView>,
-    lives: hosted::HostedLives,
 }
 
 impl EnvironmentShell {

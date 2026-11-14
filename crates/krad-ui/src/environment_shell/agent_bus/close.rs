@@ -77,7 +77,7 @@ impl EnvironmentShell {
             Settlement::Working
                 | Settlement::Settled(TerminalState::Running(AgentState::WaitingForInput))
         );
-        working || self.is_launching(env, terminal)
+        working
     }
 
     pub(super) fn close_for_lead(

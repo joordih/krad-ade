@@ -1,9 +1,8 @@
 use futures::channel::oneshot;
-use krad_agents::{ErrorCode, Response, TerminalState};
+use krad_agents::{ErrorCode, Response};
 use krad_domain::{
-    AgentPreset, AgentState, ChatBookmarks, ChatCheckpoints, ChatChoice, ChatUsage,
-    EnvironmentData, GroupId, NodeKind, SessionId, TerminalId, TerminalNode, TextScale,
-    WorkerSurface,
+    AgentPreset, AgentState, ChatBookmarks, ChatCheckpoints, ChatChoice, ChatUsage, GroupId,
+    NodeKind, TerminalId, TerminalNode, TextScale, WorkerSurface,
 };
 use krad_protocol::AgentRef;
 use std::collections::HashMap;
@@ -12,49 +11,19 @@ use crate::chats::{runs_in_runtime, Launch};
 
 mod closing;
 mod removal;
+mod spawning;
 
 pub use closing::{closed_target, refusal_error};
 pub use removal::removal_outcome;
 pub(crate) use removal::{remove_settled, LeadRemovals, Removal, WORKTREE_IN_USE};
+pub(crate) use spawning::{plan_worker, PendingWorker, SpawnPlan, WorkerAsker, WorkerOrder};
 
 const WORKER_FAILED: &str = "The worker could not start";
 const WORKER_CLOSED_EARLY: &str = "The worker was closed before it started";
 
-#[derive(Debug)]
-pub(crate) struct WorkerPlan {
-    pub(crate) group: GroupId,
-    pub(crate) lead_terminal: Option<TerminalId>,
-    pub(crate) in_cloud: bool,
-}
-
-#[derive(Debug)]
-pub(crate) struct PendingWorker {
-    pub(crate) lead: SessionId,
-    pub(crate) lead_terminal: Option<TerminalId>,
-    pub(crate) preset: AgentPreset,
-    pub(crate) task: String,
-    pub(crate) reply: oneshot::Sender<Response>,
-}
-
 #[must_use]
 pub(crate) fn runs_as_worker(agent: AgentPreset) -> bool {
     agent.worker_surface() == WorkerSurface::Chat && runs_in_runtime(agent)
-}
-
-#[must_use]
-pub(crate) fn plan_spawn(
-    data: &EnvironmentData,
-    lead: SessionId,
-    agent: AgentPreset,
-) -> Option<WorkerPlan> {
-    let session = data.session(lead)?;
-    let lead_terminal = session.lead.as_ref()?.terminal;
-    let group = session.group.filter(|group| data.group(*group).is_some())?;
-    runs_as_worker(agent).then_some(WorkerPlan {
-        group,
-        lead_terminal,
-        in_cloud: session.cloud.is_some(),
-    })
 }
 
 #[must_use]
@@ -134,23 +103,19 @@ impl Workers {
         self.waiters.push((target, reply));
     }
 
-    pub(crate) fn settle(&mut self, settled: impl Fn(&AgentRef) -> Option<TerminalState>) {
+    pub(crate) fn settle(&mut self, answer: impl Fn(&AgentRef) -> Option<Response>) {
         self.waiters.retain(|(_, reply)| !reply.is_canceled());
         let (done, waiting): (Vec<_>, Vec<_>) = std::mem::take(&mut self.waiters)
             .into_iter()
-            .map(|(target, reply)| (settled(&target), target, reply))
-            .partition(|(state, _, _)| state.is_some());
+            .map(|(target, reply)| (answer(&target), target, reply))
+            .partition(|(response, _, _)| response.is_some());
         self.waiters = waiting
             .into_iter()
             .map(|(_, target, reply)| (target, reply))
             .collect();
-        for (state, target, reply) in done {
-            let Some(state) = state else {
+        for (response, _, reply) in done {
+            let Some(response) = response else {
                 continue;
-            };
-            let response = Response::Settled {
-                target: target.terminal.as_u64(),
-                state,
             };
             if reply.send(response).is_err() {
                 tracing::trace!("a waiter left before its target settled");

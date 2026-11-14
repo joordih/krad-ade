@@ -78,7 +78,7 @@ impl EnvironmentShell {
             return;
         }
         let env = self.active.clone();
-        let harness = self.default_chat_harness(&env);
+        let harness = self.default_chat_harness(&env, cx);
         let act = ReviewAct::FixJob {
             request,
             job,

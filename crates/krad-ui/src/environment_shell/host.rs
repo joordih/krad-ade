@@ -10,10 +10,10 @@ pub(super) use folder_browser::{FolderBrowser, FolderPurpose};
 pub(super) use ssh_dialog::SshDialog;
 
 use gpui_kit::{AnyElement, App, Context, Window};
-use krad_domain::{EnvironmentName, Host, TerminalId};
+use krad_domain::{EnvironmentName, Host};
 use krad_extensions::host::HostLink;
 use krad_protocol::{Command, HostCommand, HostState};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use super::terminal_card::home_dir;
@@ -33,7 +33,6 @@ pub(super) enum HostDialog {
 pub(super) struct HostUi {
     pub(super) dialog: HostDialog,
     login_env_missing_told: HashSet<Host>,
-    sign_in_terminals: HashMap<EnvironmentName, TerminalId>,
 }
 
 impl EnvironmentShell {
@@ -108,10 +107,6 @@ impl EnvironmentShell {
 
     pub(super) fn service_hosts(&mut self, cx: &mut Context<Self>) {
         self.service_machine_connections(cx);
-    }
-
-    pub(super) fn sign_in_terminal_of(&self, env: &EnvironmentName) -> Option<TerminalId> {
-        self.hosts.sign_in_terminals.get(env).copied()
     }
 
     pub(super) fn close_hosts(&self) {

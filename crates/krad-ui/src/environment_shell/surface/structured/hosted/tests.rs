@@ -10,7 +10,7 @@ use krad_domain::{
 use krad_protocol::{ChatAskId, ChatState, ErrorCode};
 use std::sync::Arc;
 
-use super::super::super::super::cloud::HostedLives;
+use super::super::super::HostedPlaces;
 
 fn runner_place() -> ChatPlace {
     ChatPlace::hosted(CloudRunnerId(1), EnvironmentName::new("runner".to_owned()))
@@ -44,7 +44,7 @@ fn a_hosted_chat_s_commands_reach_its_runner_and_a_local_chat_s_stay_here() {
     let runner = RecordedClient::new(Vec::new());
     let local = RecordedClient::new(Vec::new());
     let local_client: Arc<dyn RuntimeClient> = Arc::clone(&local) as Arc<dyn RuntimeClient>;
-    let mut hosted = HostedLives::default();
+    let mut hosted = HostedPlaces::default();
     let data = EnvironmentData::empty(place.environment.clone());
     hosted.follow(
         &place,
@@ -102,7 +102,7 @@ fn a_hosted_chat_s_commands_reach_its_runner_and_a_local_chat_s_stay_here() {
 fn a_runner_out_of_reach_routes_nothing() {
     let place = runner_place();
     let local: Arc<dyn RuntimeClient> = RecordedClient::new(Vec::new());
-    let mut hosted = HostedLives::default();
+    let mut hosted = HostedPlaces::default();
     hosted.follow(&place, None, None);
     assert!(route_chat(&place, &local, &hosted).is_none());
 }

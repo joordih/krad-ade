@@ -42,6 +42,12 @@ impl ViewModel {
             .map(|shown| (shown.runner, shown))
             .collect();
         self.adopt_asks(take(&mut snapshot.bus.asks));
+        self.gateway.state = take(&mut snapshot.gateway);
+        self.agents.replace(
+            &snapshot.hosts.hosts,
+            &snapshot.environments,
+            &snapshot.hosts.local,
+        );
         let prompts = take(&mut snapshot.hosts.prompts);
         let moves = self.hosts.replace(&snapshot.hosts.hosts, prompts);
         self.news.areas.extend(Area::ALL);
@@ -179,6 +185,34 @@ impl ViewModel {
             EventKind::AcpAdapterChanged(kept) => {
                 self.adapters.insert(kept.agent, kept.adapter.clone());
                 self.heard(Heard::Event(EventKind::AcpAdapterChanged(kept)));
+                Area::Hosts
+            }
+            EventKind::GatewayChanged { state } => {
+                self.gateway.state = state.clone();
+                self.heard(Heard::Event(EventKind::GatewayChanged { state }));
+                Area::Settings
+            }
+            EventKind::CodeHostLogin(login) => {
+                self.code_hosts.insert(login.host, login.state.clone());
+                self.heard(Heard::Event(EventKind::CodeHostLogin(login)));
+                Area::Settings
+            }
+            EventKind::LocalAgentsFound(found) => {
+                self.agents.found_local(&found);
+                self.heard(Heard::Event(EventKind::LocalAgentsFound(found)));
+                Area::Hosts
+            }
+            EventKind::HostAgentsFound {
+                environment,
+                host,
+                agents,
+            } => {
+                self.agents.found_on(host.clone(), agents.clone());
+                self.heard(Heard::Event(EventKind::HostAgentsFound {
+                    environment,
+                    host,
+                    agents,
+                }));
                 Area::Hosts
             }
             EventKind::HostPrompted(prompt) => {

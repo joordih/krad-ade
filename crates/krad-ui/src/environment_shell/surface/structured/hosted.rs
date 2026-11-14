@@ -100,7 +100,8 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let places: Vec<ChatPlace> = self
-            .hosted_lives()
+            .chat
+            .hosted
             .places()
             .filter(|place| place.runner() == Some(runner))
             .cloned()

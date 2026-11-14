@@ -1,8 +1,7 @@
 use gpui_kit::{App, Context};
 use krad_domain::{
-    EnvironmentData, EnvironmentName, EnvironmentViewPreferences, Layout, SessionEdit,
-    SidePanelLayout, TerminalId, ToastKind, ViewPreferences, DEFAULT_ENVIRONMENT,
-    LAYOUT_SCHEMA_VERSION,
+    EnvironmentData, EnvironmentName, EnvironmentViewPreferences, Layout, SessionEdit, TerminalId,
+    ToastKind, ViewPreferences, DEFAULT_ENVIRONMENT, LAYOUT_SCHEMA_VERSION,
 };
 use krad_protocol::{Command, RuntimeCommand};
 
@@ -56,7 +55,7 @@ impl EnvironmentShell {
         }
     }
 
-    fn snapshot_env(&self, name: &EnvironmentName, live: &LiveEnv) -> EnvironmentData {
+    fn snapshot_env(live: &LiveEnv) -> EnvironmentData {
         EnvironmentData {
             name: live.data.name.clone(),
             host: live.data.host.clone(),
@@ -69,24 +68,13 @@ impl EnvironmentShell {
             groups: live.data.groups.clone(),
             sessions: live.data.sessions.clone(),
             active_session: live.data.active_session,
-            side_panel: self.persisted_side_panel(name, live),
+            side_panel: live.data.side_panel.clone(),
             note_tabs: live.data.note_tabs.clone(),
             extension_views: live.data.extension_views.clone(),
             retired_spend: live.data.retired_spend.clone(),
             variant_runs: live.data.variant_runs.clone(),
             archive: live.data.archive.clone(),
         }
-    }
-
-    fn persisted_side_panel(&self, name: &EnvironmentName, live: &LiveEnv) -> SidePanelLayout {
-        let mut side_panel = live.data.side_panel.clone();
-        if let Some(sign_in) = self.sign_in_terminal_of(name) {
-            side_panel.remove_terminal(sign_in);
-        }
-        for helper in self.runner_helper_terminals(name) {
-            side_panel.remove_terminal(helper);
-        }
-        side_panel
     }
 
     fn view_preferences(&self, environments: &[EnvironmentData]) -> ViewPreferences {
@@ -124,7 +112,7 @@ impl EnvironmentShell {
         let environments: Vec<EnvironmentData> = self
             .order
             .iter()
-            .filter_map(|name| Some(self.snapshot_env(name, self.envs.get(name)?)))
+            .filter_map(|name| Some(Self::snapshot_env(self.envs.get(name)?)))
             .collect();
         for command in self.runtime.environments.commands_toward(&environments) {
             self.runtime.client.post(Command::Environments(command));

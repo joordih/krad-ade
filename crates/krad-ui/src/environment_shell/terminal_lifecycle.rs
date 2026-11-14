@@ -1,4 +1,4 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::{
     new_session_id, AgentPreset, AgentState, CloudPlacement, EnvironmentName, GroupId, LiveSession,
     NodeEdit, NodeKind, NodePlace, PermissionMode, Prompt, SessionEdit, SessionSpec, StateReason,
@@ -178,7 +178,7 @@ impl EnvironmentShell {
         session: LiveSession,
         cx: &mut Context<Self>,
     ) -> Option<TerminalId> {
-        let preset = self.default_chat_harness(env);
+        let preset = self.default_chat_harness(env, cx);
         self.spawn_chat_as(env, group, preset, session, cx)
     }
 
@@ -278,14 +278,14 @@ impl EnvironmentShell {
         Some(id)
     }
 
-    pub(super) fn default_chat_harness(&self, env: &EnvironmentName) -> AgentPreset {
-        let available = self.agents_for(env, None);
+    pub(super) fn default_chat_harness(&self, env: &EnvironmentName, cx: &App) -> AgentPreset {
+        let available = self.agents_for(env, None, cx);
         let chosen = self.settings.default_harness.as_offered(available);
         let preferred = chosen.has_structured_chat().then_some(chosen);
         preferred
             .into_iter()
             .chain(AgentPreset::chat_harnesses(&self.settings.acp.all_agents()))
-            .find(|preset| self.chats_on(env, None, *preset) && preset.is_offered(available))
+            .find(|preset| self.chats_on(env, None, *preset, cx) && preset.is_offered(available))
             .unwrap_or(DEFAULT_CHAT_HARNESS)
     }
 
@@ -381,7 +381,6 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &mut Context<Self>,
     ) {
-        self.end_worker_launch(env, id);
         let workers = self
             .envs
             .get(env)
@@ -406,7 +405,6 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &mut Context<Self>,
     ) -> bool {
-        self.end_worker_launch(env, id);
         let Some(live) = self.envs.get_mut(env) else {
             return false;
         };

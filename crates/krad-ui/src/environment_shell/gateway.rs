@@ -1,12 +1,10 @@
 use gpui_kit::{App, Context};
-use krad_domain::{
-    AgentPreset, EnvironmentName, GatewayKey, GatewayModel, GatewayUrl, ModelOffer, TerminalId,
-    ToastKind,
-};
+use krad_domain::{AgentPreset, EnvironmentName, GatewayKey, GatewayUrl, TerminalId, ToastKind};
 use krad_protocol::{Command, EventKind, GatewayCommand, GatewayState};
 use std::path::PathBuf;
 use std::time::Duration;
 
+use super::runtime_view::GatewayMirror;
 use super::EnvironmentShell;
 
 const CHECK_DELAY: Duration = Duration::from_millis(600);
@@ -15,10 +13,8 @@ const KEY_FORGOTTEN_TOAST: &str = "Gateway key removed";
 
 #[derive(Default)]
 pub(super) struct Gateway {
-    pub(super) link: GatewayState,
     attempt: u64,
     saving: bool,
-    offers: Vec<ModelOffer>,
 }
 
 const fn saved(state: &GatewayState) -> bool {
@@ -61,7 +57,9 @@ impl EnvironmentShell {
             return;
         };
         self.gateway.saving = key.is_some();
-        self.gateway.link = GatewayState::Checking;
+        self.runtime
+            .view
+            .update(cx, |model, _| model.gateway.state = GatewayState::Checking);
         cx.notify();
         let timer = cx.background_executor().timer(delay);
         cx.spawn(async move |this, cx| {
@@ -86,13 +84,12 @@ impl EnvironmentShell {
         match kind {
             EventKind::GatewayChanged { state } => {
                 if state == GatewayState::Checking {
-                    self.gateway.link = state;
                     return;
                 }
                 if std::mem::take(&mut self.gateway.saving) && saved(&state) {
                     self.toast(ToastKind::Success, KEY_SAVED_TOAST, cx);
                 }
-                self.settle_gateway(state, cx);
+                self.settle_gateway(cx);
             }
             EventKind::GatewayKeyForgotten { error } => {
                 match error {
@@ -105,54 +102,31 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn gateway_replaced(&mut self, state: GatewayState) {
-        self.gateway.link = state;
-        self.refresh_gateway_offers();
+    pub(super) fn gateway_replaced(&mut self, cx: &mut App) {
+        self.refresh_gateway_offers(cx);
     }
 
-    fn settle_gateway(&mut self, link: GatewayState, cx: &mut Context<Self>) {
-        self.gateway.link = link;
-        self.refresh_gateway_offers();
+    fn settle_gateway(&mut self, cx: &mut Context<Self>) {
+        self.refresh_gateway_offers(cx);
         self.flush_chats_of(AgentPreset::Gateway, cx);
         cx.notify();
     }
 
     pub(super) fn recheck_failed_gateway(&mut self, cx: &mut Context<Self>) {
-        if matches!(self.gateway.link, GatewayState::Failed { .. }) {
+        if matches!(self.gateway(cx).state, GatewayState::Failed { .. }) {
             self.check_gateway(cx);
         }
     }
 
-    pub(super) fn gateway_served(&self) -> &[GatewayModel] {
-        match &self.gateway.link {
-            GatewayState::Ready { models, .. } => models,
-            GatewayState::Unset | GatewayState::Checking | GatewayState::Failed { .. } => &[],
-        }
+    pub(super) fn gateway<'a>(&self, cx: &'a App) -> &'a GatewayMirror {
+        &self.runtime.view.read(cx).gateway
     }
 
-    pub(super) fn refresh_gateway_offers(&mut self) {
-        let served = self.gateway_served();
-        let offers = self
-            .settings
-            .gateway
-            .models
-            .iter()
-            .filter_map(|model| {
-                served
-                    .iter()
-                    .find(|served| served.offer.value == model.as_str())
-                    .map(|served| served.offer.clone())
-            })
-            .collect();
-        self.gateway.offers = offers;
-    }
-
-    pub(super) fn gateway_offers(&self) -> &[ModelOffer] {
-        &self.gateway.offers
-    }
-
-    pub(super) fn gateway_ready(&self) -> bool {
-        matches!(self.gateway.link, GatewayState::Ready { .. })
+    pub(super) fn refresh_gateway_offers(&self, cx: &mut App) {
+        let chosen = &self.settings.gateway.models;
+        self.runtime
+            .view
+            .update(cx, |model, _| model.gateway.offer(chosen));
     }
 
     pub(super) fn chat_folder(&self, env: &EnvironmentName, id: TerminalId, cx: &App) -> PathBuf {

@@ -93,7 +93,7 @@ impl EnvironmentShell {
         let task = cx.spawn(async move |this, cx| loop {
             let checked = this.update(cx, |shell, cx| {
                 let roots = shell.group_roots();
-                shell.detect_wsl_agents(&roots);
+                shell.detect_wsl_agents(&roots, cx);
                 shell.ensure_project_checks(cx);
             });
             if checked.is_err() {

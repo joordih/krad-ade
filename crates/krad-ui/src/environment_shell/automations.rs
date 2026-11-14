@@ -9,19 +9,20 @@ mod wording;
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::{
-    canvas, div, px, AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement,
+    canvas, div, px, AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement,
     SharedString, Styled, Task, Window,
 };
 use krad_domain::{
     AgentPreset, AutomationKey, Effort, EnvironmentView, KraddieId, KraddieSchedule,
     PermissionMode, TemplateCatalog, TemplateCategory, Trigger,
 };
-use krad_gitlab::GitlabConfig;
-use krad_store::{read_github_login, read_gitlab_login};
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, SystemTime};
+
+use krad_domain::CodeHost;
+use krad_protocol::{CodeHostCommand, LoginState};
 
 use super::EnvironmentShell;
 use crate::actions::ToggleAutomations;
@@ -63,7 +64,6 @@ pub(super) struct AutomationsUi {
     editor: Option<Box<AutomationEditor>>,
     shelf: Shelf,
     side_by_side: bool,
-    logins: CodeHostLogins,
     ticker: Option<Task<()>>,
     numerals: Rc<[SharedString]>,
     island_width: Rc<Cell<Option<f32>>>,
@@ -101,7 +101,6 @@ impl Default for AutomationsUi {
                 category: TemplateCategory::Popular,
             },
             side_by_side: false,
-            logins: CodeHostLogins::default(),
             ticker: None,
             island_width: Rc::new(Cell::new(None)),
             numerals: (0..=NUMERALS_SHOWN)
@@ -269,28 +268,23 @@ impl EnvironmentShell {
         }));
     }
 
-    fn refresh_code_host_logins(&mut self, cx: &mut Context<Self>) {
-        let gitlab = GitlabConfig::try_from(&self.settings.gitlab).ok();
-        let read = cx.background_spawn(async move {
-            let github = read_github_login()
-                .map_err(|error| tracing::debug!(%error, "GitHub login not read"))
-                .is_ok_and(|login| login.is_some());
-            let gitlab = gitlab.is_some_and(|config| {
-                read_gitlab_login(&config.host)
-                    .map_err(|error| tracing::debug!(%error, "GitLab login not read"))
-                    .is_ok_and(|login| login.is_some())
-            });
-            CodeHostLogins { github, gitlab }
-        });
-        cx.spawn(async move |this, cx| {
-            let logins = read.await;
-            this.update(cx, |shell, cx| {
-                shell.automations.logins = logins;
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+    fn refresh_code_host_logins(&self) {
+        for host in [CodeHost::Github, CodeHost::Gitlab] {
+            self.post_code_host(CodeHostCommand::Check { host });
+        }
+    }
+
+    pub(super) fn code_host_logins(&self, cx: &App) -> CodeHostLogins {
+        let signed_in = |host| {
+            matches!(
+                self.runtime.view.read(cx).code_hosts.get(&host),
+                Some(LoginState::SignedIn { .. })
+            )
+        };
+        CodeHostLogins {
+            github: signed_in(CodeHost::Github),
+            gitlab: signed_in(CodeHost::Gitlab),
+        }
     }
 
     pub(super) fn run_automation_menu(

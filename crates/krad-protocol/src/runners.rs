@@ -1,10 +1,6 @@
-use krad_domain::{
-    AttentionKind, ClaudeOauthToken, CloudRunnerId, RunnerCli, RunnerLogin, RunnerState, WebhookId,
-};
+use krad_domain::{ClaudeOauthToken, CloudRunnerId, RunnerCli, RunnerLogin, RunnerState};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
 
-use crate::bus::AgentRef;
 use crate::hosts::RemoteBusState;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -96,14 +92,6 @@ pub struct RunnerBusShown {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct CloudAskReplayed {
-    pub agent: AgentRef,
-    pub kind: AttentionKind,
-    #[serde(default)]
-    pub delivered: BTreeSet<WebhookId>,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct RunnerRemoved {
     pub runner: CloudRunnerId,
     pub problem: Option<String>,
@@ -169,23 +157,13 @@ mod tests {
     }
 
     #[test]
-    fn a_runner_bus_and_a_replayed_cloud_ask_round_trip() -> serde_json::Result<()> {
+    fn a_runner_bus_round_trips() -> serde_json::Result<()> {
         let bus = RunnerBusShown {
             runner: CloudRunnerId(3),
             bus: RemoteBusState::Preparing,
         };
         let json = serde_json::to_string(&bus)?;
         assert_eq!(serde_json::from_str::<RunnerBusShown>(&json)?, bus);
-        let asked = CloudAskReplayed {
-            agent: AgentRef {
-                environment: krad_domain::EnvironmentName::new("api".to_owned()),
-                terminal: krad_domain::TerminalId(2),
-            },
-            kind: AttentionKind::Permission,
-            delivered: [WebhookId(4)].into_iter().collect(),
-        };
-        let json = serde_json::to_string(&asked)?;
-        assert_eq!(serde_json::from_str::<CloudAskReplayed>(&json)?, asked);
         Ok(())
     }
 }

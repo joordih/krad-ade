@@ -1,4 +1,4 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::RuntimeId;
 use krad_protocol::{EventKind, Snapshot, StatusReport, TerminalClassified, TerminalSummary};
 
@@ -102,20 +102,20 @@ impl EnvironmentShell {
 
     fn snapshot_heard(&mut self, snapshot: Snapshot, moves: Vec<HostMove>, cx: &mut Context<Self>) {
         self.runtime.environments.replace(snapshot.environments);
-        self.gateway_replaced(snapshot.gateway);
+        self.gateway_replaced(cx);
         let environments = self.runtime.environments.names();
         for environment in environments {
             self.offer_open_buffers(&environment, cx);
         }
         self.adopt_runtime_environments(cx);
         self.advance_harness_onboarding(cx);
-        self.hosts_replaced(*snapshot.hosts, moves, cx);
+        self.hosts_replaced(&snapshot.hosts, moves, cx);
         self.runtime_chats_replaced(RuntimeId::Local, snapshot.chats, cx);
         self.git_replaced(snapshot.git, cx);
         self.kraddies_replaced(*snapshot.kraddies);
         for summary in snapshot.terminals {
             self.adopt_launched_view(&summary.terminal);
-            self.terminal_summary_heard(summary);
+            self.terminal_summary_heard(summary, cx);
         }
     }
 
@@ -154,7 +154,7 @@ impl EnvironmentShell {
                 }
             }
             EventKind::TerminalEnded(summary) => {
-                self.terminal_summary_heard(summary);
+                self.terminal_summary_heard(summary, cx);
                 Reach::Terminals
             }
             EventKind::TerminalLaunched(launched) => {
@@ -179,10 +179,10 @@ impl EnvironmentShell {
         }
     }
 
-    fn terminal_summary_heard(&mut self, summary: TerminalSummary) {
+    fn terminal_summary_heard(&mut self, summary: TerminalSummary, cx: &App) {
         let TerminalSummary { terminal, run } = summary;
         if !run.is_running() {
-            self.terminal_ended(&terminal.environment, terminal.terminal, run);
+            self.terminal_ended(&terminal.environment, terminal.terminal, run, cx);
         }
     }
 
@@ -226,7 +226,6 @@ impl EnvironmentShell {
             EventKind::CodeHostLogin(login) => self.code_host_login_heard(login, cx),
             EventKind::RunnerChanged(shown) => self.runner_changed(shown.runner, cx),
             EventKind::RunnerRemoved(removed) => self.runner_removed(removed, cx),
-            EventKind::CloudAskReplayed(asked) => self.cloud_ask_replayed(asked),
             EventKind::RunnerNews(notice) => self.runner_news(notice, cx),
             EventKind::CloudPatchOffered { draft } => self.cloud_patch_offered(draft, cx),
             EventKind::CloudNews(news) => self.cloud_news(news, cx),

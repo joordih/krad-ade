@@ -31,8 +31,7 @@ use crate::opencode::{OpencodeShown, OpencodeSnapshot};
 use crate::problems::Problem;
 use crate::review::{CodeHostLogin, ReviewAnswered};
 use crate::runners::{
-    CloudAskReplayed, RunnerBusShown, RunnerLogins, RunnerNotice, RunnerRemoved, RunnerShown,
-    RunnersSnapshot,
+    RunnerBusShown, RunnerLogins, RunnerNotice, RunnerRemoved, RunnerShown, RunnersSnapshot,
 };
 use crate::terminals::{TerminalClassified, TerminalSummary};
 use crate::usage::{UsageShown, UsageSnapshot};
@@ -224,7 +223,6 @@ pub enum EventKind {
     RunnerReturned {
         runner: CloudRunnerId,
     },
-    CloudAskReplayed(CloudAskReplayed),
     RunnerLoginsChanged(RunnerLogins),
     RunnerNews(RunnerNotice),
     CloudPatchOffered {

@@ -5,9 +5,8 @@ use krad_agents::{
 };
 use krad_chat::{new_session_id, LiveSession};
 use krad_domain::{
-    chat_worker_brief, worker_mode, AgentPreset, AgentState, ClosePlan, CloseRefusal, CloseSubject,
-    EnvironmentName, GroupId, NodeEdit, NodePlace, Prompt, SessionEdit, SessionId, TerminalId,
-    WhenWorking, WorkerSpawn,
+    worker_mode, AgentPreset, AgentState, ClosePlan, CloseRefusal, CloseSubject, EnvironmentName,
+    GroupId, NodeEdit, NodePlace, Prompt, SessionEdit, SessionId, TerminalId, WhenWorking,
 };
 use krad_protocol::AgentRef;
 use std::time::SystemTime;
@@ -15,12 +14,20 @@ use std::time::SystemTime;
 use super::Runtime;
 use crate::chats::{ChatBrief, ChatRole, ChatStart};
 use crate::environments::UNKNOWN_ENVIRONMENT;
-use crate::workers::{closed_target, plan_spawn, refusal_error, worker_node, PendingWorker};
+use crate::workers::{
+    closed_target, plan_worker, refusal_error, worker_node, PendingWorker, SpawnPlan, WorkerAsker,
+    WorkerOrder,
+};
 
 pub(super) enum LeadClose {
     Removing(Vec<ClosePlan>),
     Refused(CloseRefusal),
     Closed(Vec<Closed>),
+}
+
+pub(super) struct SpawnRefused {
+    pub(super) reply: oneshot::Sender<Response>,
+    pub(super) response: Response,
 }
 
 pub(super) fn reply_with(reply: oneshot::Sender<Response>, response: Response) {
@@ -38,6 +45,23 @@ pub(super) fn agent(environment: &EnvironmentName, terminal: TerminalId) -> Agen
 
 impl Runtime {
     pub(super) fn answer_for_leads(&mut self, incoming: Incoming) -> Option<Incoming> {
+        if let (
+            Caller::Terminal(caller),
+            Request::Spawn {
+                agent,
+                worktree,
+                task,
+            },
+        ) = (&incoming.from, &incoming.request)
+        {
+            let caller = AgentRef {
+                environment: EnvironmentName::new(caller.environment.clone()),
+                terminal: TerminalId(caller.terminal),
+            };
+            let order = (*agent, worktree.as_deref(), task.as_str());
+            self.spawn_for_caller(&caller, order, incoming.reply);
+            return None;
+        }
         let Caller::Lead(lead) = &incoming.from else {
             return Some(incoming);
         };
@@ -98,18 +122,10 @@ impl Runtime {
         worker: (AgentPreset, Option<&str>, &str),
         incoming: Incoming,
     ) -> Option<Incoming> {
-        let Incoming {
-            from,
-            request,
-            reply,
-        } = incoming;
-        self.start_worker(lead, worker, reply)
-            .err()
-            .map(|reply| Incoming {
-                from,
-                request,
-                reply,
-            })
+        if let Err(refused) = self.start_worker(lead, worker, incoming.reply) {
+            reply_with(refused.reply, refused.response);
+        }
+        None
     }
 
     pub(super) fn start_worker(
@@ -117,28 +133,68 @@ impl Runtime {
         lead: &LeadHandle,
         (preset, worktree, task): (AgentPreset, Option<&str>, &str),
         reply: oneshot::Sender<Response>,
-    ) -> Result<(), oneshot::Sender<Response>> {
+    ) -> Result<(), SpawnRefused> {
         let environment = EnvironmentName::new(lead.environment.clone());
-        let session = SessionId(lead.session);
-        let Some(data) = self.environments.data(&environment) else {
-            return Err(reply);
-        };
-        let Some(plan) = plan_spawn(data, session, preset) else {
-            return Err(reply);
-        };
-        if plan.in_cloud && worktree.is_some() {
-            return Err(reply);
-        }
-        let pending = PendingWorker {
-            lead: session,
-            lead_terminal: plan.lead_terminal,
+        let order = WorkerOrder {
+            asker: WorkerAsker::Lead(SessionId(lead.session)),
             preset,
-            task: task.to_owned(),
+            worktree,
+            task,
+        };
+        self.spawn_ordered(&environment, &order, reply)
+    }
+
+    pub(super) fn spawn_for_caller(
+        &mut self,
+        caller: &AgentRef,
+        (preset, worktree, task): (AgentPreset, Option<&str>, &str),
+        reply: oneshot::Sender<Response>,
+    ) {
+        let order = WorkerOrder {
+            asker: WorkerAsker::Caller(caller.terminal),
+            preset,
+            worktree,
+            task,
+        };
+        if let Err(refused) = self.spawn_ordered(&caller.environment, &order, reply) {
+            reply_with(refused.reply, refused.response);
+        }
+    }
+
+    fn spawn_ordered(
+        &mut self,
+        environment: &EnvironmentName,
+        order: &WorkerOrder<'_>,
+        reply: oneshot::Sender<Response>,
+    ) -> Result<(), SpawnRefused> {
+        let Some(data) = self.environments.data(environment) else {
+            let response = Response::error(ErrorCode::NotFound, UNKNOWN_ENVIRONMENT);
+            return Err(SpawnRefused { reply, response });
+        };
+        let plan = match plan_worker(data, &self.settings.current.acp, order) {
+            Ok(plan) => plan,
+            Err(response) => return Err(SpawnRefused { reply, response }),
+        };
+        let SpawnPlan {
+            group,
+            spawn,
+            brief,
+            mode_of,
+            cloud,
+        } = plan;
+        let mode =
+            mode_of.and_then(|terminal| self.chats.permission_mode(&agent(environment, terminal)));
+        let pending = PendingWorker {
+            spawn,
+            preset: order.preset,
+            brief,
+            mode,
+            cloud,
             reply,
         };
-        match worktree {
-            Some(name) => self.spawn_in_worktree(&environment, plan.group, name, pending),
-            None => self.open_worker(&environment, pending, plan.group),
+        match order.worktree {
+            Some(name) => self.spawn_in_worktree(environment, group, name, pending),
+            None => self.open_worker(environment, pending, group),
         }
         Ok(())
     }
@@ -157,27 +213,22 @@ impl Runtime {
             return;
         };
         let PendingWorker {
-            lead,
-            lead_terminal,
+            spawn,
             preset,
-            task,
+            brief,
+            mode,
+            cloud,
             reply,
         } = pending;
         let id = TerminalId(data.next_id);
         let opened_session = data.next_session_id();
         let label = self.settings.current.acp.harness_name(preset);
         let node = worker_node(id, &label, preset, Some(group));
-        let cloud = data.session(lead).and_then(|session| session.cloud.clone());
-        let lead_mode = lead_terminal
-            .and_then(|terminal| self.chats.permission_mode(&agent(environment, terminal)));
         let opened = NodeEdit::Open {
             node: Box::new(node),
             place: NodePlace::Worker {
                 session: opened_session,
-                spawn: WorkerSpawn {
-                    lead: Some(lead),
-                    task: task.clone(),
-                },
+                spawn,
                 cloud,
             },
         };
@@ -189,7 +240,7 @@ impl Runtime {
             brief: ChatBrief {
                 model: None,
                 effort: None,
-                permission_mode: worker_mode(lead_mode, preset),
+                permission_mode: worker_mode(mode, preset),
                 mcp_servers: None,
                 role: ChatRole::Agent,
                 ..ChatBrief::default()
@@ -197,13 +248,10 @@ impl Runtime {
             prepared: None,
             session: LiveSession::Start(new_session_id()),
             messages: Vec::new(),
-            queued: vec![Prompt::from(chat_worker_brief(&task))],
+            queued: vec![Prompt::from(brief)],
             notices: Vec::new(),
         };
-        tracing::info!(
-            worker = id.as_u64(),
-            "a lead started a worker in the runtime"
-        );
+        tracing::info!(worker = id.as_u64(), "a worker started in the runtime");
         self.open_chat(&worker, start);
         self.workers.launching(worker, reply);
     }

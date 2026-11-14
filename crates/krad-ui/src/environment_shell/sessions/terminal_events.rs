@@ -66,6 +66,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
         run: ProcessRun,
+        cx: &App,
     ) -> bool {
         let first = self
             .envs
@@ -77,13 +78,19 @@ impl EnvironmentShell {
         }
         match run {
             ProcessRun::Running => false,
-            ProcessRun::Exited { code } => self.apply_exit(env, id, code),
+            ProcessRun::Exited { code } => self.apply_exit(env, id, code, cx),
             ProcessRun::Failed { error } => self.apply_spawn_failed(id, &error),
         }
     }
 
-    fn apply_exit(&mut self, env: &EnvironmentName, id: TerminalId, code: Option<i32>) -> bool {
-        if self.sign_in_terminal_of(env) == Some(id) {
+    fn apply_exit(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        code: Option<i32>,
+        cx: &App,
+    ) -> bool {
+        if self.host_state(env, cx).sign_in_terminal() == Some(id) {
             return true;
         }
         self.acp_sign_in_ended(env, id);

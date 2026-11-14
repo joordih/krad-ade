@@ -10,7 +10,7 @@ const ASKED_TEXT: &str = "An agent is writing the next section in a new terminal
 impl EnvironmentShell {
     pub(super) fn continue_note_with_agent(&mut self, path: &str, cx: &mut Context<Self>) {
         self.save_note(path, cx);
-        let Some(preset) = self.default_agent() else {
+        let Some(preset) = self.default_agent(cx) else {
             return;
         };
         let note = format!("{VAULT_DIR}/{path}");

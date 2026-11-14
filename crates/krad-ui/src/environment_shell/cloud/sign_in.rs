@@ -89,29 +89,8 @@ impl EnvironmentShell {
         let env = self.active.clone();
         let id = self.alloc_terminal_id(&env)?;
         let live = self.envs.get_mut(&env)?;
-        live.data.side_panel_mut().add_terminal(id, label);
+        live.data.side_panel_mut().add_helper_terminal(id, label);
         live.terminals_tab = TerminalsTab::Shown;
-        self.cloud.helpers.insert((env.clone(), id));
         Some((env, id))
-    }
-
-    pub(in crate::environment_shell) fn end_runner_helper(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-    ) {
-        self.cloud.helpers.remove(&(env.clone(), id));
-    }
-
-    pub(in crate::environment_shell) fn runner_helper_terminals(
-        &self,
-        env: &EnvironmentName,
-    ) -> Vec<TerminalId> {
-        self.cloud
-            .helpers
-            .iter()
-            .filter(|(owner, _)| owner == env)
-            .map(|(_, id)| *id)
-            .collect()
     }
 }

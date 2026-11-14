@@ -39,8 +39,8 @@ impl EnvironmentShell {
     }
 
     pub(super) fn open_agent_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let offered = self.offered_agents();
-        let default = self.offered_default_harness();
+        let offered = self.offered_agents(cx);
+        let default = self.offered_default_harness(cx);
         let preset = Some(default)
             .filter(|preset| preset.is_agent() && offered.contains(preset))
             .or_else(|| offered.iter().copied().find(|preset| preset.is_agent()))

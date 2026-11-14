@@ -266,7 +266,7 @@ impl EnvironmentShell {
                 .client
                 .post(Command::Settings(SettingsCommand::Save { settings }));
         }
-        self.redetect_after_acp_change();
+        self.redetect_after_acp_change(cx);
         cx.notify();
     }
 

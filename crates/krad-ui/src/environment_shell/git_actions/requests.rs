@@ -1,12 +1,9 @@
 use gpui_kit::Context;
-use krad_domain::agents_api::{ErrorCode, Response};
 use krad_domain::{EnvironmentName, GroupId, ToastKind};
 use krad_protocol::{Command, GitFinished, GitOutcome, Reply, RequestId};
-use krad_runtime::BusReply;
 use std::collections::HashMap;
 
 use super::super::sessions::Launch;
-use super::super::workers::WorkerLaunch;
 use super::super::EnvironmentShell;
 
 const STALE_TOAST: &str = "The file changed since its diff was read; try again.";
@@ -20,10 +17,6 @@ pub(in crate::environment_shell) enum GitFollowUp {
     SpawnIn {
         label: String,
         launch: Launch,
-    },
-    LaunchWorker {
-        launch: Box<WorkerLaunch>,
-        reply: BusReply,
     },
     ReloadSessionChanges,
 }
@@ -56,11 +49,6 @@ impl EnvironmentShell {
             return;
         };
         match follow {
-            GitFollowUp::LaunchWorker { reply, .. } => {
-                reply
-                    .send(Response::error(ErrorCode::BadRequest, message))
-                    .unwrap_or_default();
-            }
             GitFollowUp::Told { .. }
             | GitFollowUp::SelectGroup
             | GitFollowUp::SpawnIn { .. }
@@ -81,7 +69,7 @@ impl EnvironmentShell {
         let env = finished.environment;
         let opened = match finished.outcome {
             GitOutcome::Failed { message } => {
-                self.git_failed(follow, &message, cx);
+                self.git_failed(&follow, &message, cx);
                 return;
             }
             GitOutcome::Stale => {
@@ -95,13 +83,8 @@ impl EnvironmentShell {
         self.git_done(&env, follow, opened, cx);
     }
 
-    fn git_failed(&mut self, follow: GitFollowUp, message: &str, cx: &mut Context<Self>) {
+    fn git_failed(&mut self, follow: &GitFollowUp, message: &str, cx: &mut Context<Self>) {
         match follow {
-            GitFollowUp::LaunchWorker { reply, .. } => {
-                reply
-                    .send(Response::error(ErrorCode::Failed, message))
-                    .unwrap_or_default();
-            }
             GitFollowUp::ReloadSessionChanges => {
                 self.toast(ToastKind::Error, message, cx);
                 self.reload_session_changes(cx);
@@ -138,13 +121,6 @@ impl EnvironmentShell {
             }
             GitFollowUp::SpawnIn { label, launch } => {
                 self.spawn_terminal_in(env, opened, &label, launch, None, cx);
-            }
-            GitFollowUp::LaunchWorker { launch, reply } => {
-                let launch = WorkerLaunch {
-                    group: opened,
-                    ..*launch
-                };
-                self.launch_worker(env, launch, reply, cx);
             }
             GitFollowUp::ReloadSessionChanges => self.reload_session_changes(cx),
         }

@@ -58,14 +58,14 @@ fn model_rows(served: &[GatewayModel], curated: &[ModelId]) -> Vec<ModelRow> {
 impl EnvironmentShell {
     fn toggle_gateway_model(&mut self, model: &ModelId, cx: &mut Context<Self>) {
         self.settings.gateway.toggle_model(model);
-        self.refresh_gateway_offers();
+        self.refresh_gateway_offers(cx);
         self.save_settings(cx);
         cx.notify();
     }
 
     pub(super) fn gateway_models_card(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let rows = model_rows(self.gateway_served(), &self.settings.gateway.models);
+        let rows = model_rows(self.gateway(cx).served(), &self.settings.gateway.models);
         let shown: Vec<AnyElement> = if rows.is_empty() {
             vec![empty_row(MODELS_EMPTY, pal)]
         } else {

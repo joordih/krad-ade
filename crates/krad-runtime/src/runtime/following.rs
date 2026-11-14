@@ -66,9 +66,6 @@ impl Runtime {
         };
         let environment = EnvironmentName::new(environment);
         match incoming.request.clone() {
-            Request::Wait { target, .. } => {
-                self.wait_on_chat(&environment, TerminalId(target), incoming)
-            }
             Request::Read { target, lines } => {
                 self.read_chat(&environment, lead, (TerminalId(target), lines), incoming)
             }
@@ -95,29 +92,6 @@ impl Runtime {
             || self.workers.is_launching(target)
             || state == AgentState::Working;
         (!busy).then_some(TerminalState::Running(state))
-    }
-
-    fn wait_on_chat(
-        &mut self,
-        environment: &EnvironmentName,
-        target: TerminalId,
-        incoming: Incoming,
-    ) -> Option<Incoming> {
-        let target = agent(environment, target);
-        if !self.chats.is_open(&target) {
-            return Some(incoming);
-        }
-        match self.settled_state(&target) {
-            Some(state) => reply_with(
-                incoming.reply,
-                Response::Settled {
-                    target: target.terminal.as_u64(),
-                    state,
-                },
-            ),
-            None => self.workers.wait(target, incoming.reply),
-        }
-        None
     }
 
     fn read_chat(
@@ -291,7 +265,7 @@ impl Runtime {
 
     pub(super) fn settle_waiters(&mut self) {
         let mut workers = std::mem::take(&mut self.workers);
-        workers.settle(|target| self.settled_state(target));
+        workers.settle(|target| self.wait_answer(target));
         self.workers = workers;
     }
 }

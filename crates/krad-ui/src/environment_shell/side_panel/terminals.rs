@@ -73,7 +73,6 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        self.end_runner_helper(&env, id);
         let Some(live) = self.envs.get_mut(&env) else {
             return;
         };

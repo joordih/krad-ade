@@ -66,7 +66,7 @@ fn close(this: &mut EnvironmentShell, window: &mut Window, cx: &mut Context<Envi
 impl EnvironmentShell {
     fn composer_agents(&self, composer: &AgentComposer, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let pal = palette(cx);
-        self.offered_agents()
+        self.offered_agents(cx)
             .into_iter()
             .filter(|preset| preset.is_agent())
             .enumerate()

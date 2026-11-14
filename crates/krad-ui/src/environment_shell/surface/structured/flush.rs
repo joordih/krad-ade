@@ -55,10 +55,6 @@ impl EnvironmentShell {
         {
             chat.chat.problem = Some(error.to_string());
         }
-        if let Some(env) = place.local() {
-            let env = env.clone();
-            self.fail_worker_launch(&env, id, &error.to_string(), cx);
-        }
         false
     }
 

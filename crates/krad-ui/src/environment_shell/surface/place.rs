@@ -6,8 +6,8 @@ use krad_domain::{CloudRunnerId, EnvironmentName, RuntimeId, TerminalId};
 use krad_protocol::{AgentRef, Answer, Command};
 use std::sync::Arc;
 
-use super::super::cloud::HostedLives;
 use super::super::{EnvironmentShell, LiveEnv};
+use super::HostedPlaces;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub(in crate::environment_shell) struct ChatPlace {
@@ -58,7 +58,7 @@ impl ChatPlace {
 pub(in crate::environment_shell) fn route_chat<'a>(
     place: &ChatPlace,
     local: &'a Arc<dyn RuntimeClient>,
-    hosted: &'a HostedLives,
+    hosted: &'a HostedPlaces,
 ) -> Option<&'a Arc<dyn RuntimeClient>> {
     match place.runtime {
         RuntimeId::Local => Some(local),
@@ -81,7 +81,7 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn live(&self, place: &ChatPlace) -> Option<&LiveEnv> {
         match place.runtime {
             RuntimeId::Local => self.envs.get(&place.environment),
-            RuntimeId::Runner(_) => self.hosted_lives().get(place),
+            RuntimeId::Runner(_) => self.chat.hosted.get(place),
         }
     }
 
@@ -91,7 +91,7 @@ impl EnvironmentShell {
     ) -> Option<&mut LiveEnv> {
         match place.runtime {
             RuntimeId::Local => self.envs.get_mut(&place.environment),
-            RuntimeId::Runner(_) => self.hosted_lives_mut().get_mut(place),
+            RuntimeId::Runner(_) => self.chat.hosted.get_mut(place),
         }
     }
 
@@ -111,7 +111,7 @@ impl EnvironmentShell {
         &self,
         place: &ChatPlace,
     ) -> Option<&Arc<dyn RuntimeClient>> {
-        route_chat(place, &self.runtime.client, self.hosted_lives())
+        route_chat(place, &self.runtime.client, &self.chat.hosted)
     }
 }
 

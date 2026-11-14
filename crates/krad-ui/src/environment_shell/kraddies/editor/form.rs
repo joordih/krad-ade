@@ -201,7 +201,7 @@ impl EnvironmentShell {
         pal: &Palette,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let agents = self.kraddie_agents();
+        let agents = self.kraddie_agents(cx);
         let chosen = editor.harness.as_offered(&agents);
         agents
             .into_iter()

@@ -125,7 +125,7 @@ impl EnvironmentShell {
             return self.chat_client(place).is_none();
         };
         let link = self.env_link(env);
-        let agents_unknown = !link.is_local() && !self.host_agents.contains_key(&link.host());
+        let agents_unknown = !link.is_local() && self.agents(cx).on_host(&link.host()).is_none();
         self.awaits_remote_bus(env, cx) || !link.is_ready() || agents_unknown
     }
 

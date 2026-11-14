@@ -1,10 +1,12 @@
 use gpui_kit::{Context, EventEmitter};
 use krad_client::RuntimeClient;
 use krad_domain::{
-    AcpAgentId, AgentPreset, AgentStatus, CloudRunnerId, EnvironmentName, ManagedAdapter,
+    AcpAgentId, AgentPreset, AgentStatus, CloudRunnerId, CodeHost, EnvironmentName, ManagedAdapter,
     RunnerState, Settings,
 };
-use krad_protocol::{AskId, EventKind, Feed, PendingAsk, RemoteBusState, RunnerLogins, Snapshot};
+use krad_protocol::{
+    AskId, EventKind, Feed, LoginState, PendingAsk, RemoteBusState, RunnerLogins, Snapshot,
+};
 use std::collections::{BTreeSet, HashMap};
 use std::mem::take;
 use std::sync::Arc;
@@ -17,7 +19,7 @@ use super::super::opencode::OpencodeMirror;
 use super::super::usage_bar::UsageMirror;
 use super::following::{Batch, Following};
 use super::settings::SettingsMirror;
-use super::{AgentSpot, HostMove, HostsMirror, MailNotices, Waiters};
+use super::{AgentSpot, AgentsMirror, GatewayMirror, HostMove, HostsMirror, MailNotices, Waiters};
 
 mod folding;
 mod remotes;
@@ -103,6 +105,9 @@ pub(in crate::environment_shell) struct ViewModel {
     pub(in crate::environment_shell) adapters: HashMap<AcpAgentId, ManagedAdapter>,
     pub(in crate::environment_shell) opencode: OpencodeMirror,
     pub(in crate::environment_shell) hosts: HostsMirror,
+    pub(in crate::environment_shell) agents: AgentsMirror,
+    pub(in crate::environment_shell) gateway: GatewayMirror,
+    pub(in crate::environment_shell) code_hosts: HashMap<CodeHost, LoginState>,
     pub(in crate::environment_shell) settings: SettingsMirror,
     pub(in crate::environment_shell) runners: HashMap<CloudRunnerId, RunnerState>,
     pub(in crate::environment_shell) runner_buses: HashMap<CloudRunnerId, RemoteBusState>,
@@ -127,6 +132,9 @@ impl Default for ViewModel {
             acp: ListedModels::default(),
             opencode: OpencodeMirror::default(),
             hosts: HostsMirror::default(),
+            agents: AgentsMirror::default(),
+            gateway: GatewayMirror::default(),
+            code_hosts: HashMap::new(),
             settings: SettingsMirror::default(),
             runners: HashMap::new(),
             runner_buses: HashMap::new(),

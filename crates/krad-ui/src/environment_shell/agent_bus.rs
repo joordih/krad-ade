@@ -29,7 +29,6 @@ const ANSWERED_BY_RUNTIME: &str = "The runtime answers this request before it re
 
 #[derive(Default)]
 pub(super) struct BusWork {
-    settle_waiters: Vec<(TerminalHandle, BusReply)>,
     pub(super) remote_unavailable_told: HashSet<Host>,
 }
 
@@ -164,27 +163,17 @@ impl EnvironmentShell {
             | Request::Ask { .. }
             | Request::CreateWorktree { .. }
             | Request::Changes { .. }
-            | Request::Hook { .. } => Some(answered_by_runtime()),
+            | Request::Hook { .. }
+            | Request::Wait { .. }
+            | Request::Spawn { .. } => Some(answered_by_runtime()),
             Request::Close(_) => Some(Response::error(ErrorCode::Forbidden, ONLY_LEADS_CLOSE)),
             Request::Send { to, body } => {
                 self.post(from, to, body, reply);
                 return;
             }
-            Request::Wait { target, .. } => {
-                self.wait_for(&from.environment, target, reply);
-                return;
-            }
             Request::Read { target, lines } => {
                 let tail = self.screen_tail(&from.environment, target, lines);
                 Self::reply_tail(tail, reply, cx);
-                return;
-            }
-            Request::Spawn {
-                agent,
-                worktree,
-                task,
-            } => {
-                self.spawn_worker(from, agent, worktree, &task, reply, cx);
                 return;
             }
             Request::Askpass { .. } => Some(askpass::git_only()),
@@ -220,25 +209,6 @@ impl EnvironmentShell {
         };
         if let Some(response) = response {
             reply.send(response).unwrap_or_default();
-        }
-    }
-
-    fn wait_for(&mut self, environment: &str, target: u64, reply: BusReply) {
-        let target = TerminalHandle {
-            environment: environment.to_owned(),
-            terminal: target,
-        };
-        match self.settled_state(&target) {
-            Settlement::Settled(state) => reply
-                .send(Response::Settled {
-                    target: target.terminal,
-                    state,
-                })
-                .unwrap_or_default(),
-            Settlement::Missing => reply
-                .send(Response::error(ErrorCode::NotFound, NO_SUCH_TERMINAL))
-                .unwrap_or_default(),
-            Settlement::Working => self.bus_work.settle_waiters.push((target, reply)),
         }
     }
 }
