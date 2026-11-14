@@ -1,6 +1,6 @@
 use gpui_kit::{App, AppContext as _, Context, Entity};
 use krad_client::{InProcess, RuntimeClient};
-use krad_domain::{AgentStatus, EnvironmentName, RuntimeId, Settings, TerminalId};
+use krad_domain::{AgentStatus, EnvironmentData, EnvironmentName, RuntimeId, Settings, TerminalId};
 use krad_protocol::AgentRef;
 use krad_runtime::RuntimeHandle;
 use krad_session::AnsiPalette;
@@ -9,25 +9,31 @@ use std::sync::Arc;
 
 mod agents;
 mod asking;
+mod environment_copy;
 mod environments;
 mod following;
 mod gateway;
 mod git;
 mod heard;
 mod hosts;
+mod kraddie_minds;
 mod kraddies;
 mod mail;
 mod settings;
+mod shown_environments;
 mod view_model;
 
 pub(super) use agents::AgentsMirror;
 use asking::Waiters;
+pub(super) use environment_copy::{EnvironmentCopy, NodesMoved};
 pub(super) use environments::EnvironmentsMirror;
 pub(super) use gateway::GatewayMirror;
 pub(super) use git::{GitGroups, GitKey, GitMirror, GitMove};
 pub(super) use hosts::{HostMove, HostsMirror};
+pub(super) use kraddie_minds::KraddieMinds;
 pub(super) use kraddies::{AutomationEntry, KraddieBook, KraddieEntry, KraddiesMirror};
 pub(super) use mail::MailNotices;
+use shown_environments::ShownEnvironments;
 use view_model::RuntimeNews;
 pub(super) use view_model::{HostedFailure, RunnerReach, ViewModel};
 
@@ -44,6 +50,7 @@ pub(super) struct RuntimeLink {
     pub(super) handle: RuntimeHandle,
     pub(super) view: Entity<ViewModel>,
     pub(super) environments: Rc<EnvironmentsMirror>,
+    pub(super) order: Vec<EnvironmentName>,
     pub(super) settings: Rc<Settings>,
     pub(super) git: Rc<GitGroups>,
     pub(super) kraddies: Rc<KraddieBook>,
@@ -59,6 +66,7 @@ impl RuntimeLink {
             client: Arc::new(client),
             view: cx.new(|_| model),
             environments: Rc::default(),
+            order: Vec::new(),
             settings,
             git: Rc::default(),
             kraddies: Rc::default(),
@@ -69,9 +77,35 @@ impl RuntimeLink {
     pub(super) fn reread(&mut self, cx: &App) {
         let model = self.view.read(cx);
         self.environments = Rc::clone(&model.environments);
+        self.order = model.shown.names();
         self.settings = model.settings.current();
         self.git = model.git.current();
         self.kraddies = model.kraddies.current();
+    }
+
+    pub(super) fn shown(&self, env: &EnvironmentName, cx: &App) -> Option<Rc<EnvironmentCopy>> {
+        self.view.read(cx).shown.get(env).cloned()
+    }
+
+    pub(super) fn edit_shown<R>(
+        &mut self,
+        env: &EnvironmentName,
+        held: &mut Rc<EnvironmentCopy>,
+        cx: &mut App,
+        edit: impl FnOnce(&mut EnvironmentCopy) -> R,
+    ) -> Option<R> {
+        self.view
+            .update(cx, |model, _| model.shown.edit(env, held, edit))
+    }
+
+    pub(super) fn open_shown(&mut self, data: EnvironmentData, cx: &mut App) {
+        self.view.update(cx, |model, _| model.shown.open(data));
+        self.order = self.view.read(cx).shown.names();
+    }
+
+    pub(super) fn close_shown(&mut self, env: &EnvironmentName, cx: &mut App) {
+        self.view.update(cx, |model, _| model.shown.closed(env));
+        self.order = self.view.read(cx).shown.names();
     }
 
     pub(super) const fn palette(&self) -> Option<AnsiPalette> {

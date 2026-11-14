@@ -141,9 +141,7 @@ impl EnvironmentShell {
         if !typed.is_empty() {
             match dialog.target {
                 NameTarget::Environment(name) => {
-                    if let Some(live) = self.envs.get_mut(&name) {
-                        live.data.set_title(Some(typed));
-                    }
+                    self.retitle_environment(&name, Some(typed), cx);
                 }
                 NameTarget::Group(id) => {
                     let env = self.active.clone();
@@ -151,7 +149,7 @@ impl EnvironmentShell {
                         group: id,
                         name: typed,
                     };
-                    self.edit_environment(&env, renamed);
+                    self.edit_environment(&env, renamed, cx);
                 }
                 NameTarget::Symbol { path, at, .. } => {
                     self.rename_symbol(&path, at, typed, cx);
@@ -167,7 +165,7 @@ impl EnvironmentShell {
                 }
                 NameTarget::ServerInput { .. } | NameTarget::ExtensionInput { .. } => return,
             }
-            self.store();
+            self.save_view();
         }
         let entries = self.switcher_menu_entries();
         self.replace_menu_entries(entries);

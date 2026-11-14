@@ -51,7 +51,7 @@ impl EnvironmentShell {
             view: FileView::Commit(sha),
             opening,
         };
-        let Some(id) = self.edit_environment(&env, opened).opened() else {
+        let Some(id) = self.edit_environment(&env, opened, cx).opened() else {
             return;
         };
         let Some(live) = self.envs.get_mut(&env) else {
@@ -59,7 +59,7 @@ impl EnvironmentShell {
         };
         live.focused = Some(id);
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     pub(in crate::environment_shell) fn sync_changes_tabs(&mut self, cx: &mut Context<Self>) {
@@ -202,7 +202,7 @@ impl EnvironmentShell {
                     diff.refold();
                     diff.relocate_draft();
                 }
-                shell.refresh_diff_comments(&env, id);
+                shell.refresh_diff_comments(&env, id, cx);
                 cx.notify();
             })
             .unwrap_or_default();

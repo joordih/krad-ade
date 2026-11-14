@@ -52,6 +52,9 @@ impl ViewModel {
             &snapshot.hosts.local,
         );
         Rc::make_mut(&mut self.environments).replace(take(&mut snapshot.environments));
+        for (environment, moved) in self.shown.adopt(&self.environments) {
+            self.nodes_moved(&environment, moved);
+        }
         let git_moved = self.git.replace(take(&mut snapshot.git));
         self.kraddies.replace(&snapshot.kraddies);
         let prompts = take(&mut snapshot.hosts.prompts);

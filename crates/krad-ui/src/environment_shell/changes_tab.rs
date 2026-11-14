@@ -154,7 +154,7 @@ impl EnvironmentShell {
             view: FileView::Changes,
             opening,
         };
-        let Some(id) = self.edit_environment(&env, opened).opened() else {
+        let Some(id) = self.edit_environment(&env, opened, cx).opened() else {
             return;
         };
         let Some(live) = self.envs.get_mut(&env) else {
@@ -162,7 +162,7 @@ impl EnvironmentShell {
         };
         live.focused = Some(id);
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     pub(super) fn shown_changes_path(&self) -> Option<PathBuf> {

@@ -1,7 +1,7 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, Context, ElementId, InteractiveElement, IntoElement, ParentElement,
-    SharedString, StatefulInteractiveElement, Styled,
+    div, px, rgb, AnyElement, App, Context, ElementId, InteractiveElement, IntoElement,
+    ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_domain::{
     kraddie_chip_text, matching_kraddies, mention_pack, mentioned_kraddies, EnvironmentName,
@@ -113,6 +113,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         composer: TerminalId,
         text: String,
+        cx: &mut App,
     ) -> String {
         let known: Vec<KraddieId> = self
             .runtime
@@ -144,7 +145,7 @@ impl EnvironmentShell {
             chat: composer,
             kraddies: chosen.clone(),
         };
-        self.edit_environment(env, noted);
+        self.edit_environment(env, noted, cx);
         let packs: Vec<String> = chosen
             .iter()
             .filter_map(|id| self.kraddie_chip(id))

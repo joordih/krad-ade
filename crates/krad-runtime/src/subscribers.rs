@@ -15,6 +15,7 @@ pub(crate) struct Subscribers {
 struct Subscriber {
     feed: mpsc::Sender<Feed>,
     standing: Standing,
+    seen: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -35,6 +36,7 @@ impl Subscribers {
         let mut subscriber = Subscriber {
             feed,
             standing: Standing::Behind,
+            seen: 0,
         };
         let missed = since.and_then(|since| self.recent.after(since, now));
         if let Some(missed) = missed {
@@ -46,6 +48,20 @@ impl Subscribers {
             if subscriber.follow(&missed) == Delivery::Gone {
                 return;
             }
+        }
+        self.following.push(subscriber);
+    }
+
+    pub(crate) fn join(&mut self, feed: mpsc::Sender<Feed>, snapshot: Snapshot, seen: usize) {
+        let mut subscriber = Subscriber {
+            feed,
+            standing: Standing::Behind,
+            seen,
+        };
+        match subscriber.offer(Feed::Snapshot(snapshot)) {
+            Delivery::Sent => subscriber.standing = Standing::Current,
+            Delivery::Full => subscriber.seen = 0,
+            Delivery::Gone => return,
         }
         self.following.push(subscriber);
     }
@@ -66,7 +82,8 @@ impl Subscriber {
             }
             return delivery;
         }
-        self.follow(events)
+        let seen = std::mem::take(&mut self.seen).min(events.len());
+        self.follow(&events[seen..])
     }
 
     fn follow(&mut self, events: &[Event]) -> Delivery {
@@ -144,6 +161,23 @@ mod tests {
         subscribers.add(feed, None, Seq(0));
         subscribers.publish(&[pong(1)], || at(1));
         subscribers.publish(&[pong(2), pong(3)], || at(3));
+        assert_eq!(
+            drain(&mut receiver),
+            vec![
+                Feed::Snapshot(at(1)),
+                Feed::Event(pong(2)),
+                Feed::Event(pong(3)),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_subscriber_joining_mid_batch_gets_the_state_then_only_what_came_after() {
+        let (feed, mut receiver) = mpsc::channel(8);
+        let mut subscribers = Subscribers::default();
+        subscribers.join(feed, at(1), 1);
+        subscribers.publish(&[pong(1), pong(2)], || at(2));
+        subscribers.publish(&[pong(3)], || at(3));
         assert_eq!(
             drain(&mut receiver),
             vec![

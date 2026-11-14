@@ -244,8 +244,9 @@ impl EnvironmentShell {
         let pal = palette(cx);
         let owner = MemoryOwner::Kraddie(id.clone());
         let total = self
+            .runtime
             .kraddies
-            .memory
+            .digests
             .book(&owner)
             .map_or(0, |book| book.digests().len());
         let steps = self
@@ -256,17 +257,22 @@ impl EnvironmentShell {
             .copied()
             .unwrap_or_default();
         let shown = digest_cards_shown(total, steps);
-        let digests: Vec<AnyElement> = self.kraddies.memory.book(&owner).map_or_default(|book| {
-            book.digests()
-                .iter()
-                .rev()
-                .take(shown)
-                .enumerate()
-                .map(|(index, digest)| {
-                    self.digest_card(&owner, digest, index, layout.digest_card_w, cx)
-                })
-                .collect()
-        });
+        let digests: Vec<AnyElement> =
+            self.runtime
+                .kraddies
+                .digests
+                .book(&owner)
+                .map_or_default(|book| {
+                    book.digests()
+                        .iter()
+                        .rev()
+                        .take(shown)
+                        .enumerate()
+                        .map(|(index, digest)| {
+                            self.digest_card(&owner, digest, index, layout.digest_card_w, cx)
+                        })
+                        .collect()
+                });
         let more = (shown < total).then(|| {
             let target = id.clone();
             Button::new(MORE_DIGESTS_ID)

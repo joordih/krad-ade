@@ -44,8 +44,8 @@ impl EnvironmentShell {
             terminal: Some(id),
             ..SessionLead::new(harness, model)
         };
-        self.edit_environment(&env, SessionEdit::MakeLead { session, lead });
-        self.store();
+        self.edit_environment(&env, SessionEdit::MakeLead { session, lead }, cx);
+        self.save_view();
         cx.notify();
     }
 
@@ -55,8 +55,8 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        self.edit_environment(&env, SessionEdit::DismissLead { session: id });
+        self.edit_environment(&env, SessionEdit::DismissLead { session: id }, cx);
         cx.notify();
-        self.store();
+        self.save_view();
     }
 }

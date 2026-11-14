@@ -41,15 +41,15 @@ impl EnvironmentShell {
             ViewPlace::SidePanel(env) => {
                 if let Some(live) = self.envs.get_mut(&env) {
                     live.extension_side = Some(id);
-                    live.data.side_panel_mut().open = true;
+                    live.view.side_panel.open = true;
                 }
                 self.remember_extension_views(&env);
-                self.store();
+                self.save_view();
             }
             ViewPlace::Utilities(_) => self.show_utilities(UtilityTab::Extension(id), cx),
             ViewPlace::Popover(..) => self.show_extension_popover(id, cx),
             ViewPlace::FileTab(env, terminal) => {
-                self.edit_environment(&env, SessionEdit::Reveal { terminal });
+                self.edit_environment(&env, SessionEdit::Reveal { terminal }, cx);
                 if let Some(live) = self.envs.get_mut(&env) {
                     live.focused = Some(terminal);
                 }
@@ -240,13 +240,13 @@ impl EnvironmentShell {
             sidebar: self.shown_tab(live.extension_sidebar),
             side_panel: self.shown_tab(live.extension_side),
         };
-        if live.data.extension_views == shown {
+        if live.view.extension_views == shown {
             return;
         }
         if let Some(live) = self.envs.get_mut(env) {
-            live.data.set_extension_views(shown);
+            live.view.extension_views = shown;
         }
-        self.store();
+        self.save_view();
     }
 
     pub(in crate::environment_shell) fn restore_extension_views(&mut self, cx: &mut Context<Self>) {
@@ -258,7 +258,7 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get(&env) else {
             return;
         };
-        let wanted = live.data.extension_views.clone();
+        let wanted = live.view.extension_views.clone();
         let missing: Vec<ExtensionTab> = [
             (wanted.sidebar, live.extension_sidebar),
             (wanted.side_panel, live.extension_side),

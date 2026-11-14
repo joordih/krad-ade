@@ -101,7 +101,7 @@ impl EnvironmentShell {
     }
 
     fn ask_host(&mut self, command: HostCommand) {
-        self.store();
+        self.save_view();
         self.runtime.client.post(Command::Host(command));
     }
 

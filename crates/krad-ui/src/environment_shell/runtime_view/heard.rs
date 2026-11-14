@@ -34,6 +34,7 @@ impl EnvironmentShell {
     pub(super) fn runtime_news(&mut self, cx: &mut Context<Self>) {
         let News { heard, areas } = self.runtime.view.update(cx, |model, _| model.take_news());
         self.runtime.reread(cx);
+        self.environments_reread(cx);
         self.kraddies_redrawn();
         let shown = areas.iter().copied().map(Reach::from).max();
         let reach = heard
@@ -86,6 +87,10 @@ impl EnvironmentShell {
             Heard::OpencodeReady => self.opencode_ready(),
             Heard::SettingsAdopted => self.settings_adopted(cx),
             Heard::GitMoved(moved) => self.git_moved(moved, cx),
+            Heard::NodesMoved { environment, moved } => {
+                self.nodes_moved(&environment, moved, cx);
+                return Reach::Quietly;
+            }
             Heard::HostedFailed { runner, failure } => {
                 self.hosted_failed(runner, &failure, cx);
                 return Reach::Shown;
@@ -109,13 +114,11 @@ impl EnvironmentShell {
         for environment in environments {
             self.offer_open_buffers(&environment, cx);
         }
-        self.adopt_runtime_environments(cx);
         self.advance_harness_onboarding(cx);
         self.hosts_replaced(&snapshot.hosts, moves, cx);
         self.runtime_chats_replaced(RuntimeId::Local, snapshot.chats, cx);
-        self.kraddies_replaced(*snapshot.kraddies);
         for summary in snapshot.terminals {
-            self.adopt_launched_view(&summary.terminal);
+            self.adopt_launched_view(&summary.terminal, cx);
             self.terminal_summary_heard(summary, cx);
         }
     }
@@ -126,12 +129,8 @@ impl EnvironmentShell {
                 self.offer_open_buffers(&environment.name, cx);
                 Reach::Quietly
             }
-            EventKind::EnvironmentChanged {
-                environment,
-                changes,
-                answers,
-            } => {
-                self.environment_heard(&environment, &changes, answers, cx);
+            EventKind::EnvironmentChanged { environment, .. } => {
+                self.environment_heard(&environment);
                 Reach::Quietly
             }
             EventKind::EnvironmentClosed { .. } | EventKind::EnvironmentsOrdered { .. } => {
@@ -149,11 +148,11 @@ impl EnvironmentShell {
                 Reach::Terminals
             }
             EventKind::TerminalLaunched(launched) => {
-                self.terminal_launched(launched);
+                self.terminal_launched(launched, cx);
                 Reach::Terminals
             }
             EventKind::TerminalClassified(TerminalClassified { terminal, state }) => {
-                if self.terminal_classified(&terminal.environment, terminal.terminal, state) {
+                if self.terminal_classified(&terminal.environment, terminal.terminal, state, cx) {
                     Reach::Terminals
                 } else {
                     Reach::Quietly
@@ -170,7 +169,7 @@ impl EnvironmentShell {
         }
     }
 
-    fn terminal_summary_heard(&mut self, summary: TerminalSummary, cx: &App) {
+    fn terminal_summary_heard(&mut self, summary: TerminalSummary, cx: &mut App) {
         let TerminalSummary { terminal, run } = summary;
         if !run.is_running() {
             self.terminal_ended(&terminal.environment, terminal.terminal, run, cx);
@@ -186,11 +185,11 @@ impl EnvironmentShell {
             EventKind::WebhookTested(tested) => self.webhook_tested(tested, cx),
             EventKind::AttentionRaised(notice) => self.attention_raised(notice),
             EventKind::AgentStatus(report) => self.agent_status_heard(&report),
-            EventKind::AgentHooked(heard) => self.hook_heard(heard),
+            EventKind::AgentHooked(heard) => self.hook_heard(heard, cx),
             EventKind::ModelListFailed { error, .. } => self.model_list_failed(&error, cx),
             EventKind::AcpOffers(offers) => self.acp_offers_heard(&offers, cx),
             EventKind::OpencodeTerminalState { terminal, state } => {
-                self.apply_opencode_state(&terminal.environment, terminal.terminal, state);
+                self.apply_opencode_state(&terminal.environment, terminal.terminal, state, cx);
             }
             gateway
             @ (EventKind::GatewayChanged { .. } | EventKind::GatewayKeyForgotten { .. }) => {
@@ -201,8 +200,6 @@ impl EnvironmentShell {
             EventKind::GitFinished(finished) => self.git_finished(finished, cx),
             EventKind::SessionChangesRead(read) => self.session_changes_read(read),
             EventKind::WorktreeSwept(swept) => self.worktree_swept(&swept),
-            EventKind::KraddieChanged { kraddie } => self.kraddie_heard(*kraddie),
-            EventKind::DigestsChanged(owned) => self.digests_heard(owned),
             EventKind::KraddieRunFailed { task, reason } => {
                 self.kraddie_run_failed(&task, &reason, cx);
             }
@@ -226,6 +223,8 @@ impl EnvironmentShell {
             | EventKind::AcpAdapterChanged(_)) => self.host_event_heard(host, cx),
             EventKind::EnvironmentOpened { .. }
             | EventKind::EnvironmentClosed { .. }
+            | EventKind::KraddieChanged { .. }
+            | EventKind::DigestsChanged(_)
             | EventKind::AttentionLeft { .. }
             | EventKind::AttentionHistoryCleared
             | EventKind::Mail(_)

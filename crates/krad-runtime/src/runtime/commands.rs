@@ -229,6 +229,7 @@ impl Runtime {
             .and_then(|incoming| self.answer_kraddie_requests(incoming))
             .and_then(|incoming| self.answer_git_requests(incoming))
             .and_then(|incoming| self.answer_variant_requests(incoming))
+            .and_then(|incoming| self.answer_session_asks(incoming))
             .and_then(|incoming| self.answer_waits(incoming))
             .and_then(|incoming| self.answer_for_leads(incoming))
             .and_then(|incoming| self.answer_on_chats(incoming))

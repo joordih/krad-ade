@@ -269,9 +269,10 @@ impl EnvironmentShell {
     fn day_stats(&self, entry: &KraddieEntry, pal: &Palette) -> AnyElement {
         let id = entry.kraddie.id();
         let day = self
+            .runtime
             .kraddies
-            .profile
-            .activity_of(&id)
+            .minds
+            .activity(&id)
             .map_or_else(KraddieDay::default, |activity| activity.day(today()));
         let KraddieDay {
             prs_merged,

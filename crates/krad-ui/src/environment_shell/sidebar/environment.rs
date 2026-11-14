@@ -141,12 +141,12 @@ impl EnvironmentShell {
         let layout = &self.runtime.settings.sidebar;
         let mut moved = false;
         for live in self.envs.values_mut() {
-            let reachable = layout.reachable_view(live.data.view);
-            moved |= reachable != live.data.view;
-            live.data.set_view(reachable);
+            let reachable = layout.reachable_view(live.view.view);
+            moved |= reachable != live.view.view;
+            live.view.view = reachable;
         }
         if moved {
-            self.store();
+            self.save_view();
         }
     }
 }

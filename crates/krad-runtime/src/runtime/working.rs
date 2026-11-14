@@ -287,7 +287,7 @@ impl Runtime {
             .edit(environment, &closed.into(), None, &mut self.outbox);
     }
 
-    fn is_busy(&self, environment: &EnvironmentName, terminal: TerminalId) -> bool {
+    pub(super) fn is_busy(&self, environment: &EnvironmentName, terminal: TerminalId) -> bool {
         let worker = agent(environment, terminal);
         let working = self
             .environments

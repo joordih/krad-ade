@@ -184,7 +184,7 @@ impl EnvironmentShell {
         let watched = self.attention.window == WindowFocus::Foreground
             && self.active == *env
             && self.envs.get(env).is_some_and(|live| {
-                live.focused == Some(id) && live.data.view == EnvironmentView::Sessions
+                live.focused == Some(id) && live.view.view == EnvironmentView::Sessions
             });
         if watched {
             Sight::Watched

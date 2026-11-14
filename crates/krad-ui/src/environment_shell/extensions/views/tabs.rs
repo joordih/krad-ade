@@ -68,9 +68,9 @@ impl EnvironmentShell {
                     .get(&env)
                     .is_some_and(|live| live.data.nodes.iter().any(|node| node.id == terminal));
                 if open {
-                    self.edit_environment(&env, NodeEdit::Close { terminal });
+                    self.edit_environment(&env, NodeEdit::Close { terminal }, cx);
                 }
-                self.store();
+                self.save_view();
             }
         }
         cx.notify();

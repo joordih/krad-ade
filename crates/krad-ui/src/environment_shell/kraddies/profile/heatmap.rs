@@ -208,7 +208,10 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let map = self.kraddies.profile.heat_map(id);
+        let map = self
+            .kraddies
+            .profile
+            .heat_map(id, &self.runtime.kraddies.minds);
         let heat = layout.heat(map.weeks.len());
         let geometry = HeatGeometry::new(map.weeks.len(), heat.cell);
         let total = format!("{} {IN_RANGE}", metric_amount(map.metric, map.total));

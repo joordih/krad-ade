@@ -4,6 +4,7 @@ mod extension_tools;
 mod handle;
 mod mail;
 mod protocol;
+mod sessions;
 
 pub use code::{
     parse_target, CodeAnswer, CodeError, CodeLine, CodePosition, CodeRequest, CodeTool,
@@ -16,3 +17,4 @@ pub use extension_tools::{
 pub use handle::{Caller, LeadHandle, TerminalHandle};
 pub use mail::notice_text;
 pub use protocol::*;
+pub use sessions::{session_infos, target_group};

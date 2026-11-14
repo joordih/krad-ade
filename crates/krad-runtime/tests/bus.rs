@@ -4,15 +4,18 @@ use krad_agents::{
     call, AgentInfo, AgentStatus, AgentsError, Caller, Request, Response, TerminalHandle,
     TerminalState,
 };
+use krad_domain::agents_api::{session_infos, SessionInfo};
 use krad_domain::{
-    AgentPreset, AgentState, AskAnswer, AskKind, EnvironmentName, TerminalId, ToolDecision,
+    AgentPreset, AgentState, AskAnswer, AskKind, EnvironmentData, EnvironmentName, TerminalId,
+    ToolDecision,
 };
 use krad_protocol::{
-    AgentRef, AskSettlement, BusCommand, Command, ErrorCode, EventKind, Feed, PendingAsk, Reply,
-    StatusReport,
+    AgentRef, AskSettlement, BusCommand, Command, EnvironmentCommand, ErrorCode, EventKind, Feed,
+    PendingAsk, Reply, StatusReport,
 };
 use krad_runtime::{BusSetup, EventReceiver, Runtime, RuntimeHandle, RuntimeSetup};
 use std::error::Error;
+use std::path::PathBuf;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -26,6 +29,7 @@ const ASK_STILL_WAITING: Duration = Duration::from_millis(300);
 const NO_BUS: &str = "the runtime serves no bus";
 const FEED_ENDED: &str = "the feed ended";
 const NO_DELEGATION: &str = "no request was delegated";
+const OPENED_FILE: &str = "src/lib.rs";
 
 fn with_bus() -> Result<RuntimeHandle, Box<dyn Error>> {
     Ok(Runtime::start(RuntimeSetup {
@@ -203,16 +207,20 @@ fn a_status_line_report_becomes_an_agent_status_event_and_stays_in_the_snapshot(
 fn a_request_on_ui_state_is_delegated_and_its_answer_reaches_the_caller() -> TestResult {
     let runtime = with_bus()?;
     let mut delegations = runtime.delegate_bus();
-    let asked = call_in_background(&runtime, Request::Sessions)?;
+    let opened = Request::OpenFile {
+        path: PathBuf::from(OPENED_FILE),
+        position: None,
+    };
+    let asked = call_in_background(&runtime, opened.clone())?;
     let delegated = block_on(delegations.next()).ok_or(NO_DELEGATION)?;
     assert_eq!(delegated.from, Caller::Terminal(caller()));
-    assert_eq!(delegated.request, Request::Sessions);
+    assert_eq!(delegated.request, opened);
     assert!(!delegated.reply.is_canceled());
-    delegated.reply.send(Response::Sessions(Vec::new()))?;
-    assert_eq!(
-        asked.join().map_err(|_| "the caller panicked")??,
-        Response::Sessions(Vec::new())
-    );
+    let answer = Response::Opened {
+        path: PathBuf::from(OPENED_FILE),
+    };
+    delegated.reply.send(answer.clone())?;
+    assert_eq!(asked.join().map_err(|_| "the caller panicked")??, answer);
     Ok(())
 }
 
@@ -248,5 +256,64 @@ fn agents_list_the_directory_the_app_reports() -> TestResult {
             ..agent
         }])
     );
+    Ok(())
+}
+
+fn ask(runtime: &RuntimeHandle, request: Request) -> Result<Response, Box<dyn Error>> {
+    Ok(call_in_background(runtime, request)?
+        .join()
+        .map_err(|_| "the caller panicked")??)
+}
+
+fn listed(runtime: &RuntimeHandle) -> Result<Vec<SessionInfo>, Box<dyn Error>> {
+    match ask(runtime, Request::Sessions)? {
+        Response::Sessions(sessions) => Ok(sessions),
+        other => Err(format!("sessions were not listed: {other:?}").into()),
+    }
+}
+
+#[test]
+fn sessions_are_listed_created_and_closed_by_the_runtime_without_the_app() -> TestResult {
+    let runtime = with_bus()?;
+    let mut environment = EnvironmentData::empty(EnvironmentName::new(ENVIRONMENT.to_owned()));
+    let group = environment.add_group(PathBuf::from("/work/api"), None);
+    environment
+        .nodes
+        .push(serde_json::from_value(serde_json::json!({
+            "id": CALLER, "title": "shell", "state": "Idle", "group": group.0
+        }))?);
+    environment.next_id = CALLER + 1;
+    environment.enter_sessions();
+    let open = Command::Environments(EnvironmentCommand::Open {
+        environment: Box::new(environment.clone()),
+    });
+    assert_eq!(
+        block_on(runtime.send(runtime.next_request(), open))?,
+        Reply::Accepted
+    );
+    assert_eq!(listed(&runtime)?, session_infos(&environment));
+    let created = ask(
+        &runtime,
+        Request::CreateSession {
+            name: Some("review".to_owned()),
+            group: None,
+        },
+    )?;
+    let Response::SessionCreated { session } = created else {
+        return Err(format!("no session was created: {created:?}").into());
+    };
+    let review = listed(&runtime)?
+        .into_iter()
+        .find(|listed| listed.session == session)
+        .ok_or("the new session is listed")?;
+    assert_eq!(review.name, "review");
+    assert!(review.group.is_some(), "it lands in the caller's group");
+    assert_eq!(
+        ask(&runtime, Request::CloseSession { session })?,
+        Response::SessionClosed { session }
+    );
+    assert!(listed(&runtime)?
+        .iter()
+        .all(|listed| listed.session != session));
     Ok(())
 }

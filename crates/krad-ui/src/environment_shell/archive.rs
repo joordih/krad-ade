@@ -3,7 +3,7 @@ mod reopen;
 mod sheet;
 
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::{AppContext as _, Context, Entity, Subscription, Window};
+use gpui_kit::{App, AppContext as _, Context, Entity, Subscription, Window};
 use krad_domain::{
     ArchivedSessionId, EnvironmentEdit, EnvironmentName, GroupId, NodeEdit, SessionEdit, SessionId,
     TerminalId, ToastKind,
@@ -29,7 +29,12 @@ impl EnvironmentShell {
             .is_some_and(|live| live.data.archive.holds(terminal))
     }
 
-    pub(super) fn archive_session(&mut self, env: &EnvironmentName, session: SessionId) {
+    pub(super) fn archive_session(
+        &mut self,
+        env: &EnvironmentName,
+        session: SessionId,
+        cx: &mut App,
+    ) {
         let edit = if self.runtime.settings.archive_retention.keeps() {
             SessionEdit::Archive {
                 session,
@@ -38,10 +43,15 @@ impl EnvironmentShell {
         } else {
             SessionEdit::Leave { session }
         };
-        self.edit_environment(env, edit);
+        self.edit_environment(env, edit, cx);
     }
 
-    pub(super) fn archive_chat_tab(&mut self, env: &EnvironmentName, terminal: TerminalId) {
+    pub(super) fn archive_chat_tab(
+        &mut self,
+        env: &EnvironmentName,
+        terminal: TerminalId,
+        cx: &mut App,
+    ) {
         if !self.runtime.settings.archive_retention.keeps() {
             return;
         }
@@ -49,11 +59,16 @@ impl EnvironmentShell {
             terminal,
             at: SystemTime::now(),
         };
-        self.edit_environment(env, archived);
+        self.edit_environment(env, archived, cx);
     }
 
-    pub(super) fn forget_group_archive(&mut self, env: &EnvironmentName, group: GroupId) {
-        self.edit_environment(env, SessionEdit::ForgetGroupArchive { group });
+    pub(super) fn forget_group_archive(
+        &mut self,
+        env: &EnvironmentName,
+        group: GroupId,
+        cx: &mut App,
+    ) {
+        self.edit_environment(env, SessionEdit::ForgetGroupArchive { group }, cx);
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
@@ -66,8 +81,8 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn forget_environment_archive(&mut self, env: &EnvironmentName) {
-        self.edit_environment(env, SessionEdit::ForgetArchive);
+    pub(super) fn forget_environment_archive(&mut self, env: &EnvironmentName, cx: &mut App) {
+        self.edit_environment(env, SessionEdit::ForgetArchive, cx);
     }
 
     pub(super) fn sweep_archive(&mut self, cx: &mut Context<Self>) {
@@ -83,10 +98,10 @@ impl EnvironmentShell {
             return;
         }
         for env in stale {
-            self.edit_environment(&env, SessionEdit::ExpireArchive { retention, now });
+            self.edit_environment(&env, SessionEdit::ExpireArchive { retention, now }, cx);
         }
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     pub(super) fn start_archive_sweeps(&mut self, cx: &mut Context<Self>) {
@@ -146,9 +161,9 @@ impl EnvironmentShell {
 
     fn delete_archived(&mut self, forget: impl Into<EnvironmentEdit>, cx: &mut Context<Self>) {
         let env = self.active.clone();
-        self.edit_environment(&env, forget);
+        self.edit_environment(&env, forget, cx);
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     fn delete_archived_session(&mut self, id: ArchivedSessionId, cx: &mut Context<Self>) {

@@ -146,7 +146,7 @@ impl EnvironmentShell {
             view: FileView::Edit,
             opening,
         };
-        let Some(id) = self.edit_environment(&env, opened).opened() else {
+        let Some(id) = self.edit_environment(&env, opened, cx).opened() else {
             return;
         };
         let Some(live) = self.envs.get_mut(&env) else {
@@ -157,7 +157,7 @@ impl EnvironmentShell {
             editor.focus_pending = true;
         }
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     pub(super) fn shown_file_path(&self) -> Option<PathBuf> {
@@ -169,9 +169,9 @@ impl EnvironmentShell {
 
     pub(super) fn pin_file_tab(&mut self, id: TerminalId, cx: &mut Context<Self>) {
         let env = self.active.clone();
-        self.edit_environment(&env, NodeEdit::PinFile { terminal: id });
+        self.edit_environment(&env, NodeEdit::PinFile { terminal: id }, cx);
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     pub(super) fn show_file_tab(&mut self, id: TerminalId, cx: &mut Context<Self>) {
@@ -367,8 +367,8 @@ impl EnvironmentShell {
         }
         let pinned = live.data.open_file_of(id).is_some_and(|file| file.pinned);
         if !pinned {
-            self.edit_environment(env, NodeEdit::PinFile { terminal: id });
-            self.store();
+            self.edit_environment(env, NodeEdit::PinFile { terminal: id }, cx);
+            self.save_view();
         }
         cx.notify();
     }

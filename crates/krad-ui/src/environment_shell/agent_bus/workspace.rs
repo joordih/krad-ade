@@ -1,22 +1,19 @@
 use gpui_kit::Context;
 use krad_client::ClientError;
 use krad_domain::agents_api::{
-    ApiError, ErrorCode, FilePosition, Request, Response, SessionInfo, TerminalHandle,
+    target_group, ApiError, ErrorCode, FilePosition, Request, Response, TerminalHandle,
 };
-use krad_domain::{EnvironmentData, EnvironmentName, GroupId, SessionEdit, SessionId, TerminalId};
+use krad_domain::{EnvironmentName, GroupId, TerminalId};
 use krad_lsp::lsp_types::Position;
 use krad_protocol::{Answer, Command, ErrorCode as Failed, FileAsk, FileCommand};
 use krad_runtime::BusReply;
 use std::path::{Component, Path, PathBuf};
 
-use super::super::sessions_view::session_terminals;
 use super::super::EnvironmentShell;
 
 const NOT_A_WORKSPACE_REQUEST: &str = "Not a workspace request";
 const NO_ENVIRONMENT: &str = "The caller's environment is not open";
 const NO_SUCH_GROUP: &str = "No group with that name in your environment";
-const NO_CALLER_GROUP: &str = "The caller belongs to no group; name one with --group";
-const NO_SUCH_SESSION: &str = "No session with that id in your environment";
 const NOT_ON_SCREEN: &str = "That environment is not the one on screen; open it in the app first";
 const OUTSIDE_GROUP: &str = "The file is not inside the caller's group folder";
 const UNRESOLVED_GROUP: &str = "The caller's group folder could not be read";
@@ -34,37 +31,6 @@ fn refusal(code: ErrorCode, message: &str) -> ApiError {
 
 fn no_environment() -> ApiError {
     refusal(ErrorCode::NotFound, NO_ENVIRONMENT)
-}
-
-pub(super) fn session_infos(data: &EnvironmentData) -> Vec<SessionInfo> {
-    data.sessions
-        .iter()
-        .map(|session| SessionInfo {
-            session: session.id.as_u64(),
-            name: session.name.clone(),
-            group: session
-                .group
-                .and_then(|id| data.group(id))
-                .map(|group| group.name.clone()),
-            is_current: data.active_session == Some(session.id),
-            terminals: session_terminals(session).map(TerminalId::as_u64).collect(),
-        })
-        .collect()
-}
-
-pub(in crate::environment_shell) fn target_group(
-    data: &EnvironmentData,
-    caller: Option<GroupId>,
-    named: Option<&str>,
-) -> Result<GroupId, ApiError> {
-    let Some(name) = named else {
-        return caller.ok_or_else(|| refusal(ErrorCode::Unsupported, NO_CALLER_GROUP));
-    };
-    data.groups
-        .iter()
-        .find(|group| group.name == name)
-        .map(|group| group.id)
-        .ok_or_else(|| refusal(ErrorCode::NotFound, NO_SUCH_GROUP))
 }
 
 pub(super) fn file_in_group(root: &Path, requested: &Path) -> Result<PathBuf, ApiError> {
@@ -121,18 +87,10 @@ impl EnvironmentShell {
     ) {
         let env = EnvironmentName::new(environment.to_owned());
         let answered = match request {
-            Request::Hello => Ok(super::answered_by_runtime()),
-            Request::Sessions => self
-                .envs
-                .get(&env)
-                .map(|live| Response::Sessions(session_infos(&live.data)))
-                .ok_or_else(no_environment),
-            Request::CreateSession { name, group } => {
-                self.create_session_for(&env, caller, group.as_deref(), name, cx)
-            }
-            Request::CloseSession { session } => {
-                self.close_session_for(&env, SessionId(session), cx)
-            }
+            Request::Hello
+            | Request::Sessions
+            | Request::CreateSession { .. }
+            | Request::CloseSession { .. } => Ok(super::answered_by_runtime()),
             Request::OpenFile { path, position } => {
                 match self.checked_file_for(&env, caller, &path) {
                     Ok(checked) => {
@@ -147,50 +105,6 @@ impl EnvironmentShell {
         reply
             .send(answered.unwrap_or_else(Response::Error))
             .unwrap_or_default();
-    }
-
-    fn create_session_for(
-        &mut self,
-        env: &EnvironmentName,
-        caller: Option<GroupId>,
-        group: Option<&str>,
-        name: Option<String>,
-        cx: &mut Context<Self>,
-    ) -> Result<Response, ApiError> {
-        let live = self.envs.get(env).ok_or_else(no_environment)?;
-        let group = target_group(&live.data, caller, group)?;
-        let session = live.data.next_session_id();
-        let opened = SessionEdit::Open {
-            session,
-            group: Some(group),
-            name: name.unwrap_or_default(),
-            shown: false,
-        };
-        self.edit_environment(env, opened);
-        cx.notify();
-        self.store();
-        Ok(Response::SessionCreated {
-            session: session.as_u64(),
-        })
-    }
-
-    fn close_session_for(
-        &mut self,
-        env: &EnvironmentName,
-        session: SessionId,
-        cx: &mut Context<Self>,
-    ) -> Result<Response, ApiError> {
-        let data = &self.envs.get(env).ok_or_else(no_environment)?.data;
-        if data.session(session).is_none() {
-            return Err(refusal(ErrorCode::NotFound, NO_SUCH_SESSION));
-        }
-        if *env != self.active {
-            return Err(refusal(ErrorCode::Unsupported, NOT_ON_SCREEN));
-        }
-        self.close_session(session, cx);
-        Ok(Response::SessionClosed {
-            session: session.as_u64(),
-        })
     }
 
     fn checked_file_for(
@@ -254,44 +168,6 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_domain::SessionSpec;
-
-    fn environment() -> (EnvironmentData, GroupId) {
-        let mut data = EnvironmentData::empty(EnvironmentName::new("main".to_owned()));
-        let group = data.add_group(PathBuf::from("/work/api"), None);
-        data.enter_sessions();
-        (data, group)
-    }
-
-    #[test]
-    fn a_session_lands_in_the_named_group_or_the_callers() {
-        let (mut data, api) = environment();
-        let web = data.add_group(PathBuf::from("/work/web"), None);
-        let web_name = data.group(web).map(|group| group.name.clone());
-        assert_eq!(target_group(&data, Some(api), None), Ok(api));
-        assert_eq!(target_group(&data, Some(api), web_name.as_deref()), Ok(web));
-        assert_eq!(
-            target_group(&data, Some(api), Some("nope")).map_err(|error| error.code),
-            Err(ErrorCode::NotFound)
-        );
-        assert_eq!(
-            target_group(&data, None, None).map_err(|error| error.code),
-            Err(ErrorCode::Unsupported)
-        );
-        let shown = data.active_session;
-        let created = data.new_session(Some(api), SessionSpec::default());
-        data.active_session = shown;
-        let sessions = session_infos(&data);
-        let listed = sessions
-            .iter()
-            .find(|session| session.session == created.as_u64());
-        assert!(listed.is_some_and(|session| !session.is_current));
-        assert!(listed.is_some_and(|session| session.group.is_some()));
-        assert_eq!(
-            sessions.iter().filter(|session| session.is_current).count(),
-            usize::from(shown.is_some())
-        );
-    }
 
     #[test]
     fn only_files_inside_the_group_open() {

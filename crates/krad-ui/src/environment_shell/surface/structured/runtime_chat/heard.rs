@@ -1,4 +1,4 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::{
     AgentState, AttentionKind, ChatLogChange, ChatMessage, Mention, RuntimeId, TerminalId,
 };
@@ -79,13 +79,13 @@ impl EnvironmentShell {
             } => {
                 if let Some(env) = place.local() {
                     let env = env.clone();
-                    self.record_turn_checkpoint(&env, chat.terminal, point, checkpoint);
+                    self.record_turn_checkpoint(&env, chat.terminal, point, checkpoint, cx);
                 }
             }
             EventKind::ChatMessagesCut { chat, len } => {
                 self.runtime_chat_cut(place, chat.terminal, len, cx);
             }
-            EventKind::ChatAsk(ask) => self.runtime_chat_ask(place, ask),
+            EventKind::ChatAsk(ask) => self.runtime_chat_ask(place, ask, cx),
             EventKind::ChatAskSettled { chat, ask } => {
                 if let Some(chat) = runtime_chat(self, place, chat.terminal) {
                     chat.chat.asks_mut().forget_chat_ask(ask);
@@ -121,7 +121,7 @@ impl EnvironmentShell {
                 }
             }
             for ask in asks {
-                self.runtime_chat_ask(&place, ask);
+                self.runtime_chat_ask(&place, ask, cx);
             }
             self.runtime_chat_state(&place, id, state, cx);
         }
@@ -203,7 +203,7 @@ impl EnvironmentShell {
         }
     }
 
-    fn runtime_chat_ask(&mut self, place: &ChatPlace, ask: ChatAsk) {
+    fn runtime_chat_ask(&mut self, place: &ChatPlace, ask: ChatAsk, cx: &mut App) {
         let id = ask.chat.terminal;
         let Some(shown) = runtime_chat(self, place, id) else {
             return;
@@ -214,7 +214,7 @@ impl EnvironmentShell {
         shown.chat.asks_mut().push(Waiting::of_runtime(ask));
         if let Some(env) = place.local() {
             let env = env.clone();
-            self.set_agent_state(&env, id, AgentState::WaitingForInput);
+            self.set_agent_state(&env, id, AgentState::WaitingForInput, cx);
         }
     }
 
@@ -266,7 +266,7 @@ impl EnvironmentShell {
             structured.session_reported(resume);
         }
         if let (true, Some(env)) = (asks_sign_in, &local) {
-            self.set_agent_state(env, id, AgentState::WaitingForInput);
+            self.set_agent_state(env, id, AgentState::WaitingForInput, cx);
         }
         if was_working == state.working {
             return;
@@ -277,7 +277,7 @@ impl EnvironmentShell {
             (false, false) => AgentState::Idle,
         };
         if let Some(env) = &local {
-            self.set_agent_state(env, id, settled);
+            self.set_agent_state(env, id, settled, cx);
             if failed && !state.working {
                 self.raise_attention(env, id, AttentionKind::Error);
             }

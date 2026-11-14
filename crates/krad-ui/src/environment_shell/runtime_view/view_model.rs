@@ -21,7 +21,9 @@ use super::super::usage_bar::UsageMirror;
 use super::following::{Batch, Following};
 use super::settings::SettingsMirror;
 use super::{AgentSpot, AgentsMirror, GatewayMirror, HostMove, HostsMirror, MailNotices, Waiters};
-use super::{EnvironmentsMirror, GitMirror, GitMove, KraddiesMirror};
+use super::{
+    EnvironmentsMirror, GitMirror, GitMove, KraddiesMirror, NodesMoved, ShownEnvironments,
+};
 
 mod folding;
 mod read_copies;
@@ -78,6 +80,10 @@ pub(in crate::environment_shell) enum Heard {
     OpencodeReady,
     SettingsAdopted,
     GitMoved(GitMove),
+    NodesMoved {
+        environment: EnvironmentName,
+        moved: NodesMoved,
+    },
     HostedFailed {
         runner: CloudRunnerId,
         failure: HostedFailure,
@@ -114,6 +120,7 @@ pub(in crate::environment_shell) struct ViewModel {
     pub(in crate::environment_shell) code_hosts: HashMap<CodeHost, LoginState>,
     pub(in crate::environment_shell) settings: SettingsMirror,
     pub(in crate::environment_shell) environments: Rc<EnvironmentsMirror>,
+    pub(in crate::environment_shell) shown: ShownEnvironments,
     pub(in crate::environment_shell) git: GitMirror,
     pub(in crate::environment_shell) kraddies: KraddiesMirror,
     pub(in crate::environment_shell) runners: HashMap<CloudRunnerId, RunnerState>,
@@ -144,6 +151,7 @@ impl Default for ViewModel {
             code_hosts: HashMap::new(),
             settings: SettingsMirror::default(),
             environments: Rc::default(),
+            shown: ShownEnvironments::default(),
             git: GitMirror::default(),
             kraddies: KraddiesMirror::default(),
             runners: HashMap::new(),

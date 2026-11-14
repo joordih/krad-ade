@@ -14,7 +14,7 @@ use super::file_tree::FileAction;
 use super::name_dialogs::{DeleteTarget, NameTarget};
 use super::surface::{AcpChoice, ChatCopy};
 use super::workers::LeadEnding;
-use super::{EnvironmentShell, LiveEnv};
+use super::EnvironmentShell;
 use crate::components::{copy_with_feedback, IconName};
 
 const CREATE_WORKTREE_LABEL: &str = "Create worktree";
@@ -564,9 +564,7 @@ impl EnvironmentShell {
 
     fn new_environment(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let name = self.unused_env_name();
-        let data = EnvironmentData::empty(name.clone());
-        self.order.push(name.clone());
-        self.envs.insert(name.clone(), LiveEnv::new(data, None));
+        self.open_environment(EnvironmentData::empty(name.clone()), cx);
         self.switch_env(&name, cx);
         self.prompt_new_group(window, cx);
     }

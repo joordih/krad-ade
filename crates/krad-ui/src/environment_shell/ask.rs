@@ -277,7 +277,7 @@ impl EnvironmentShell {
             AgentState::Working
         };
         if let Some(env) = self.shown_here() {
-            self.set_agent_state(&env, owner, state);
+            self.set_agent_state(&env, owner, state, cx);
         }
         cx.notify();
     }

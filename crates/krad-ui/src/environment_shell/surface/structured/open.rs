@@ -93,7 +93,7 @@ impl EnvironmentShell {
                 },
                 cx,
             );
-            self.keep_choice(env, id, choice.clone());
+            self.keep_choice(env, id, choice.clone(), cx);
             structured.permission_mode = mode;
             structured.chosen_model = choice.model;
             structured.mcp_servers = choices.mcp_servers;

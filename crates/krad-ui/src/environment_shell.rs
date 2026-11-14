@@ -103,6 +103,7 @@ use krad_domain::{
     EnvironmentData, EnvironmentName, EnvironmentView, Layout, Prompt, Settings, SidebarWidth,
     TerminalId, Visibility, WorkMode, DEFAULT_ENVIRONMENT,
 };
+use krad_protocol::{Command, EnvironmentCommand};
 use krad_store::{LayoutFile, LayoutWriter};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -125,7 +126,6 @@ pub struct EnvironmentShell {
     focus: FocusHandle,
     file_tree_focus: FocusHandle,
     envs: HashMap<EnvironmentName, LiveEnv>,
-    order: Vec<EnvironmentName>,
     active: EnvironmentName,
     drag: DragState,
     fps_hud: Visibility,
@@ -255,7 +255,6 @@ impl EnvironmentShell {
             focus: cx.focus_handle(),
             file_tree_focus: cx.focus_handle(),
             envs: HashMap::new(),
-            order: Vec::new(),
             active: EnvironmentName::new(String::new()),
             drag: DragState::None,
             fps_hud: FPS_HUD_DEFAULT,
@@ -399,31 +398,34 @@ impl EnvironmentShell {
             self.show_host(name, cx);
             self.place_usage();
             cx.notify();
-            self.store();
+            self.save_view();
         }
     }
 
     fn close_env(&mut self, name: &EnvironmentName, cx: &mut Context<Self>) {
-        self.forget_environment_archive(name);
+        self.forget_environment_archive(name, cx);
         if let Some(live) = self.envs.remove(name) {
             for id in live.sessions.keys() {
                 self.end_terminal(name, *id);
             }
         }
-        self.order.retain(|entry| entry != name);
+        self.runtime.close_shown(name, cx);
+        self.runtime
+            .client
+            .post(Command::Environments(EnvironmentCommand::Close {
+                environment: name.clone(),
+            }));
         self.unseen.remove(name);
-        if self.order.is_empty() {
+        if self.runtime.order.is_empty() {
             let data = EnvironmentData::empty(EnvironmentName::new(DEFAULT_ENVIRONMENT.to_owned()));
-            let fresh = data.name.clone();
-            self.order.push(fresh.clone());
-            self.envs.insert(fresh.clone(), LiveEnv::new(data, None));
+            self.open_environment(data, cx);
         }
         if &self.active == name {
-            if let Some(first) = self.order.first().cloned() {
+            if let Some(first) = self.runtime.order.first().cloned() {
                 self.active = first;
             }
         }
         cx.notify();
-        self.store();
+        self.save_view();
     }
 }

@@ -34,7 +34,7 @@ impl EnvironmentShell {
         }
         let commands = std::mem::take(&mut structured.commands);
         let prompts = outbox.take_queued();
-        self.hand_to_runtime(place, id, &commands, prompts);
+        self.hand_to_runtime(place, id, &commands, prompts, cx);
     }
 
     pub(super) fn start_or_report(

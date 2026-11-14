@@ -228,7 +228,7 @@ impl EnvironmentShell {
         }
         let text = self.skill_message(harness, text);
         let text = match place.local().cloned() {
-            Some(local) => self.with_kraddie_packs(&local, id, text),
+            Some(local) => self.with_kraddie_packs(&local, id, text, cx),
             None => text,
         };
         if let Some(chat) = self
@@ -303,7 +303,7 @@ impl EnvironmentShell {
         place: &ChatPlace,
         id: TerminalId,
         command: &SurfaceCommand,
-        cx: &App,
+        cx: &mut App,
     ) -> HarnessChange {
         let SurfaceCommand::Model(harness, _) = command else {
             return HarnessChange::Kept;
@@ -337,7 +337,7 @@ impl EnvironmentShell {
             return HarnessChange::Kept;
         };
         structured.switch_harness(*harness);
-        self.set_node(&local, id, NodeField::Harness(Some(*harness)));
+        self.set_node(&local, id, NodeField::Harness(Some(*harness)), cx);
         self.seed_acp_chats(cx);
         HarnessChange::Switched
     }
@@ -356,7 +356,7 @@ impl EnvironmentShell {
         let place = self.chat_place();
         match self.harness_change(&place, id, &command, cx) {
             HarnessChange::Refused => return,
-            HarnessChange::Switched => self.store(),
+            HarnessChange::Switched => self.save_view(),
             HarnessChange::Kept => {}
         }
         let chosen = command.clone();

@@ -14,11 +14,11 @@ use chrono::{Local, NaiveDate};
 use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::{Bounds, Context, Entity, Pixels};
 use krad_domain::{HeatMap, HeatMetric, KraddieActivity, KraddieId, KraddieMind};
+
+use super::super::runtime_view::KraddieMinds;
 use krad_protocol::KraddieCommand;
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::SystemTime;
 
 use super::super::EnvironmentShell;
 
@@ -109,9 +109,6 @@ pub(in crate::environment_shell) struct ProfileUi {
     pub(super) open: Option<KraddieId>,
     section: ProfileSection,
     metric: HeatMetric,
-    minds: HashMap<KraddieId, KraddieMind>,
-    activity: HashMap<KraddieId, KraddieActivity>,
-    revision: u64,
     heat: RefCell<Option<(HeatKey, Rc<HeatMap>)>>,
     pub(in crate::environment_shell) hover: Option<HeatHover>,
     grid_origin: Rc<Cell<Option<Bounds<Pixels>>>>,
@@ -126,7 +123,6 @@ pub(in crate::environment_shell) struct ProfileUi {
     editing_line: Option<LineDraft>,
     session_model: Option<(KraddieId, Entity<InputState>)>,
     resetting: Option<KraddieId>,
-    last_check_in: HashMap<KraddieId, SystemTime>,
 }
 
 fn today() -> NaiveDate {
@@ -134,20 +130,12 @@ fn today() -> NaiveDate {
 }
 
 impl ProfileUi {
-    fn mind(&self, id: &KraddieId) -> KraddieMind {
-        self.minds.get(id).cloned().unwrap_or_default()
-    }
-
-    fn activity_of(&self, id: &KraddieId) -> Option<&KraddieActivity> {
-        self.activity.get(id)
-    }
-
-    fn heat_map(&self, id: &KraddieId) -> Rc<HeatMap> {
+    fn heat_map(&self, id: &KraddieId, minds: &KraddieMinds) -> Rc<HeatMap> {
         let key = HeatKey {
             kraddie: id.clone(),
             metric: self.metric,
             today: today(),
-            revision: self.revision,
+            revision: minds.revision,
         };
         let mut cache = self.heat.borrow_mut();
         if let Some((cached, map)) = cache.as_ref() {
@@ -156,7 +144,7 @@ impl ProfileUi {
             }
         }
         let empty = KraddieActivity::default();
-        let activity = self.activity.get(id).unwrap_or(&empty);
+        let activity = minds.activity(id).unwrap_or(&empty);
         let map = Rc::new(HeatMap::build(activity, key.today, key.metric));
         *cache = Some((key, Rc::clone(&map)));
         map
@@ -170,41 +158,13 @@ impl ProfileUi {
         };
     }
 
-    pub(super) fn adopt(
-        &mut self,
-        id: &KraddieId,
-        mind: KraddieMind,
-        activity: KraddieActivity,
-        last_check_in: Option<SystemTime>,
-    ) {
-        self.minds.insert(id.clone(), mind);
-        if self.activity.get(id) != Some(&activity) {
-            self.activity.insert(id.clone(), activity);
-            self.revision = self.revision.wrapping_add(1);
-        }
-        match last_check_in {
-            Some(at) => self.last_check_in.insert(id.clone(), at),
-            None => self.last_check_in.remove(id),
-        };
-    }
-
     pub(super) fn rename(&mut self, old: &KraddieId, new: &KraddieId) {
-        if let Some(mind) = self.minds.remove(old) {
-            self.minds.insert(new.clone(), mind);
-        }
-        if let Some(activity) = self.activity.remove(old) {
-            self.activity.insert(new.clone(), activity);
-        }
         if self.open.as_ref() == Some(old) {
             self.open = Some(new.clone());
         }
-        self.revision = self.revision.wrapping_add(1);
     }
 
     pub(super) fn forget(&mut self, id: &KraddieId) {
-        self.minds.remove(id);
-        self.activity.remove(id);
-        self.last_check_in.remove(id);
         if self.open.as_ref() == Some(id) {
             self.open = None;
         }
@@ -241,12 +201,12 @@ impl EnvironmentShell {
         (edit, command): (impl FnOnce(&mut KraddieMind), KraddieCommand),
         cx: &mut Context<Self>,
     ) {
-        edit(self.kraddies.profile.minds.entry(id.clone()).or_default());
+        self.edit_kraddie_book(cx, |book| edit(book.minds.mind_mut(id)));
         self.tell_kraddies(command, cx);
         cx.notify();
     }
 
     pub(in crate::environment_shell) fn kraddie_mind(&self, id: &KraddieId) -> KraddieMind {
-        self.kraddies.profile.mind(id)
+        self.runtime.kraddies.minds.mind(id)
     }
 }

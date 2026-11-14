@@ -45,14 +45,14 @@ impl EnvironmentShell {
         let cwd = group
             .and_then(|group| live.data.group(group))
             .map(|group| group.root.clone());
-        self.set_node(&env, id, NodeField::Kind(NodeKind::Terminal));
-        self.set_node(&env, id, NodeField::Harness(Some(harness)));
+        self.set_node(&env, id, NodeField::Kind(NodeKind::Terminal), cx);
+        self.set_node(&env, id, NodeField::Harness(Some(harness)), cx);
         let launch = Launch::Resume {
             preset: harness,
             resume: Some(resume),
         };
         self.start_session(&env, id, launch, cwd, &[], cx);
-        self.store();
+        self.save_view();
         cx.notify();
     }
 
@@ -74,9 +74,9 @@ impl EnvironmentShell {
             end_terminal_on(self.runtime.client.as_ref(), &env, id);
         }
         live.pending_chats.insert(id, LiveSession::Resume(resume));
-        self.set_node(&env, id, NodeField::Kind(NodeKind::Chat));
-        self.set_node(&env, id, NodeField::Harness(Some(harness)));
-        self.store();
+        self.set_node(&env, id, NodeField::Kind(NodeKind::Chat), cx);
+        self.set_node(&env, id, NodeField::Harness(Some(harness)), cx);
+        self.save_view();
         cx.notify();
     }
 }

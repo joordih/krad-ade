@@ -101,6 +101,10 @@ impl Runtime {
             kraddies: &self.kraddies,
             runners: &self.runners,
         }
-        .snapshot(self.seq, scope)
+        .snapshot(self.applied_seq(), scope)
+    }
+
+    fn applied_seq(&self) -> Seq {
+        self.outbox.iter().fold(self.seq, |seq, _| seq.next())
     }
 }

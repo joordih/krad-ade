@@ -39,13 +39,13 @@ impl EnvironmentShell {
             return;
         }
         let shown = self
-            .edit_environment(env, SessionEdit::Select { session })
+            .edit_environment(env, SessionEdit::Select { session }, cx)
             .applied();
         if shown {
             if let Some(live) = self.envs.get_mut(env) {
-                live.data.set_view(EnvironmentView::Sessions);
+                live.view.view = EnvironmentView::Sessions;
             }
-            self.store();
+            self.save_view();
             cx.notify();
         }
     }

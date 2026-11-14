@@ -39,7 +39,7 @@ impl EnvironmentShell {
     fn side_layout(&self) -> Option<&SidePanelLayout> {
         self.envs
             .get(&self.active)
-            .map(|live| &live.data.side_panel)
+            .map(|live| &live.view.side_panel)
     }
 
     fn edit_side_layout(
@@ -49,10 +49,10 @@ impl EnvironmentShell {
     ) {
         let env = self.active.clone();
         if let Some(live) = self.envs.get_mut(&env) {
-            edit(live.data.side_panel_mut());
+            edit(&mut live.view.side_panel);
         }
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     pub(super) fn toggle_side_panel(&mut self, cx: &mut Context<Self>) {
@@ -196,7 +196,7 @@ impl EnvironmentShell {
         };
         let env = self.active.clone();
         if let Some(live) = self.envs.get_mut(&env) {
-            let layout = live.data.side_panel_mut();
+            let layout = &mut live.view.side_panel;
             match drag {
                 SidePanelDrag::Width {
                     mouse_start,

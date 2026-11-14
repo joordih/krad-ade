@@ -8,14 +8,14 @@ use super::super::EnvironmentShell;
 const SHELL_LABEL: &str = "Terminal";
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn start_system_terminals(&mut self, cx: &App) {
+    pub(in crate::environment_shell) fn start_system_terminals(&mut self, cx: &mut App) {
         let env = self.active.clone();
         if !self.host_ready(&env, cx) {
             return;
         }
         let home = self.env_home(&env, cx);
         let missing: Vec<TerminalId> = self.envs.get(&env).map_or_default(|live| {
-            live.data
+            live.view
                 .side_panel
                 .terminals
                 .iter()
@@ -41,16 +41,16 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        let Some(id) = self.alloc_terminal_id(&env) else {
+        let Some(id) = self.alloc_terminal_id(&env, cx) else {
             return;
         };
         if let Some(live) = self.envs.get_mut(&env) {
             let title = format!("{SHELL_LABEL} · {}", id.as_u64());
-            live.data.side_panel_mut().add_terminal(id, title);
+            live.view.side_panel.add_terminal(id, title);
         }
         self.start_system_terminals(cx);
         self.show_system_terminal(id, window, cx);
-        self.store();
+        self.save_view();
     }
 
     pub(in crate::environment_shell) fn show_system_terminal(
@@ -60,7 +60,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         if let Some(live) = self.envs.get_mut(&self.active) {
-            live.data.side_panel_mut().shown = Some(id);
+            live.view.side_panel.shown = Some(id);
         }
         self.focus_pane(window, cx);
         self.focus_terminal(id, cx);
@@ -80,12 +80,12 @@ impl EnvironmentShell {
             end_terminal_on(self.runtime.client.as_ref(), &env, id);
         }
         live.images.remove(&id);
-        live.data.side_panel_mut().remove_terminal(id);
+        live.view.side_panel.remove_terminal(id);
         if live.focused == Some(id) {
             live.focused = live.shown_tab();
         }
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     pub(in crate::environment_shell) fn system_terminals_here(
@@ -101,7 +101,7 @@ impl EnvironmentShell {
                     .current_session()
                     .is_some_and(|session| session.panes.pane_of(id).is_some())
         };
-        live.data
+        live.view
             .side_panel
             .terminals
             .iter()
@@ -115,7 +115,7 @@ impl EnvironmentShell {
         let shown = self
             .envs
             .get(&self.active)
-            .and_then(|live| live.data.side_panel.shown_terminal());
+            .and_then(|live| live.view.side_panel.shown_terminal());
         shown
             .filter(|id| here.iter().any(|terminal| terminal.id == *id))
             .or_else(|| here.first().map(|terminal| terminal.id))

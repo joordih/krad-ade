@@ -13,7 +13,7 @@ use krad_extensions::api::{ExtensionId, HostKindId, MachineId};
 use std::collections::HashMap;
 
 use super::super::host::HostDialog;
-use super::super::{EnvironmentShell, LiveEnv};
+use super::super::EnvironmentShell;
 use super::{Deferred, Slot, SlotKey};
 
 const CONNECT_FAILED_TEXT: &str = "could not open a channel to";
@@ -132,8 +132,7 @@ impl EnvironmentShell {
                 label: machine.label.clone(),
             },
         };
-        self.order.push(name.clone());
-        self.envs.insert(name.clone(), LiveEnv::new(data, None));
+        self.open_environment(data, cx);
         self.switch_env(&name, cx);
     }
 

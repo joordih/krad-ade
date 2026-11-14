@@ -147,13 +147,13 @@ impl EnvironmentShell {
                     tab,
                     title: title.clone(),
                 };
-                let Some(terminal) = self.edit_environment(&env, opened).opened() else {
+                let Some(terminal) = self.edit_environment(&env, opened, cx).opened() else {
                     return false;
                 };
                 if let Some(live) = self.envs.get_mut(&env) {
                     live.focused = Some(terminal);
                 }
-                self.store();
+                self.save_view();
                 ViewPlace::FileTab(env, terminal)
             }
         };

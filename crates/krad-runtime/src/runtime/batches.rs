@@ -75,7 +75,14 @@ impl Runtime {
                 let answer = self.execute(id, command);
                 answer_to(reply, answer);
             }
-            Input::Subscribe { feed, since } => self.subscribers.add(feed, since, self.seq),
+            Input::Subscribe {
+                feed,
+                since: Some(since),
+            } => self.subscribers.add(feed, Some(since), self.seq),
+            Input::Subscribe { feed, since: None } => {
+                let snapshot = self.snapshot(Scope::Runtime);
+                self.subscribers.join(feed, snapshot, self.outbox.len());
+            }
             Input::Snapshot { scope, reply } => answer_to(reply, self.snapshot(scope)),
             Input::Stop => return Flow::Stopping,
             Input::WebhookTested(tested) => self.outbox.push(EventKind::WebhookTested(tested)),

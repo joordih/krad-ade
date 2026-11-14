@@ -69,27 +69,28 @@ impl EnvironmentShell {
             self.runner_name(runner),
             cli_label(cli)
         );
-        let Some((env, id)) = self.open_helper_terminal(label) else {
+        let Some((env, id)) = self.open_helper_terminal(label, cx) else {
             return;
         };
         let view = self
             .runtime
             .handle
             .open_runner_sign_in(terminal_ref(&env, id), runner, cli);
-        self.keep_live_session(&env, id, LiveTerminal::new(view, None));
+        self.keep_live_session(&env, id, LiveTerminal::new(view, None), cx);
         self.show_utilities(UtilityTab::Terminals, cx);
-        self.store();
+        self.save_view();
         cx.notify();
     }
 
     pub(in crate::environment_shell) fn open_helper_terminal(
         &mut self,
         label: String,
+        cx: &mut App,
     ) -> Option<(EnvironmentName, TerminalId)> {
         let env = self.active.clone();
-        let id = self.alloc_terminal_id(&env)?;
+        let id = self.alloc_terminal_id(&env, cx)?;
         let live = self.envs.get_mut(&env)?;
-        live.data.side_panel_mut().add_helper_terminal(id, label);
+        live.view.side_panel.add_helper_terminal(id, label);
         live.terminals_tab = TerminalsTab::Shown;
         Some((env, id))
     }

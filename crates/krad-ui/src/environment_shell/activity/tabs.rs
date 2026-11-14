@@ -169,7 +169,7 @@ impl EnvironmentShell {
             .find(|node| node.id == id)
             .map(|node| self.title_label(id, &node.title))
             .or_else(|| {
-                live.data
+                live.view
                     .side_panel
                     .terminals
                     .iter()
@@ -407,7 +407,7 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn sync_activity_grid(
         &mut self,
         window: &mut Window,
-        cx: &App,
+        cx: &mut App,
     ) {
         if !self.activity.is_visible() {
             return;

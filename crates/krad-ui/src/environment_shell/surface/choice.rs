@@ -37,6 +37,7 @@ fn edit_choice(
     env: &EnvironmentName,
     id: TerminalId,
     change: impl FnOnce(&mut ChatChoice),
+    cx: &mut App,
 ) {
     let Some(before) = shell
         .envs
@@ -49,7 +50,7 @@ fn edit_choice(
     let mut choice = before.clone();
     change(&mut choice);
     if choice != before {
-        shell.set_node(env, id, NodeField::Choice(choice));
+        shell.set_node(env, id, NodeField::Choice(choice), cx);
     }
 }
 
@@ -92,13 +93,13 @@ impl EnvironmentShell {
             SurfaceCommand::Model(harness, _) => Some(*harness),
             _ => self.chat_harness_of(env, id),
         };
-        edit_choice(self, env, id, |choice| chosen.apply(choice));
+        edit_choice(self, env, id, |choice| chosen.apply(choice), cx);
         if let Some(harness) = harness {
             self.edit_settings(cx, |settings| {
                 chosen.apply(settings.chat_defaults.entry(harness).or_default());
             });
         }
-        self.store();
+        self.save_view();
     }
 
     fn model_efforts(
@@ -113,7 +114,12 @@ impl EnvironmentShell {
             .map(|offer| offer.efforts.clone())
     }
 
-    pub(super) fn fit_effort_to_model(&mut self, env: &EnvironmentName, id: TerminalId, cx: &App) {
+    pub(super) fn fit_effort_to_model(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        cx: &mut App,
+    ) {
         let Some((harness, Some(model))) = structured_mut(self, env, id)
             .map(|structured| (structured.harness, structured.chosen_model.clone()))
         else {
@@ -152,7 +158,7 @@ impl EnvironmentShell {
         if let Some(effort) = fitted.filter(|_| structured.effort.is_none()) {
             structured.command(SurfaceCommand::Effort(effort));
         }
-        edit_choice(self, env, id, |choice| choice.effort = fitted);
+        edit_choice(self, env, id, |choice| choice.effort = fitted, cx);
     }
 
     pub(super) fn restored_choice(
@@ -206,7 +212,7 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn forget_unoffered_models(
         &mut self,
         harness: AgentPreset,
-        cx: &App,
+        cx: &mut App,
     ) {
         let Some(offers) = self.harness_offers(harness, cx) else {
             return;
@@ -236,7 +242,7 @@ impl EnvironmentShell {
             if let Some(structured) = structured_mut(self, &env, id) {
                 structured.chosen_model = None;
             }
-            edit_choice(self, &env, id, |choice| choice.model = None);
+            edit_choice(self, &env, id, |choice| choice.model = None, cx);
         }
     }
 
@@ -245,7 +251,8 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
         choice: ChatChoice,
+        cx: &mut App,
     ) {
-        edit_choice(self, env, id, |kept| *kept = choice);
+        edit_choice(self, env, id, |kept| *kept = choice, cx);
     }
 }

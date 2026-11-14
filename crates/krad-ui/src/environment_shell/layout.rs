@@ -288,7 +288,7 @@ impl EnvironmentShell {
         self.sync_commit_box(window, cx);
         self.sync_notes_view(view, window, cx);
         self.ensure_chat_sessions(cx);
-        self.sync_session_panes();
+        self.sync_session_panes(cx);
         self.end_hidden_anchors();
         self.sync_menu_focus(window, cx);
         self.sync_model_picker_focus(window, cx);

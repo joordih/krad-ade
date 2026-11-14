@@ -143,6 +143,7 @@ impl EnvironmentShell {
         id: TerminalId,
         commands: &[SlashCommand],
         prompts: Vec<Prompt>,
+        cx: &mut App,
     ) {
         let chat = place.chat(id);
         let starts_turn = !prompts.is_empty();
@@ -150,7 +151,7 @@ impl EnvironmentShell {
             self.post_chat(place, command);
         }
         if let Some(env) = place.local().filter(|_| starts_turn) {
-            self.set_agent_state(env, id, AgentState::Working);
+            self.set_agent_state(env, id, AgentState::Working, cx);
         }
     }
 

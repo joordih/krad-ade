@@ -232,11 +232,9 @@ impl EnvironmentShell {
             return;
         };
         let text = edit.text.read(cx).value().to_string();
-        let edited = self
-            .kraddies
-            .memory
-            .book_mut(&edit.owner)
-            .edit(edit.digest, &text);
+        let edited = self.edit_kraddie_book(cx, |book| {
+            book.digests.book_mut(&edit.owner).edit(edit.digest, &text)
+        });
         match edited {
             Ok(()) => self.tell_kraddies(
                 KraddieCommand::ReviseDigest {
@@ -260,7 +258,9 @@ impl EnvironmentShell {
         digest: DigestId,
         cx: &mut Context<Self>,
     ) {
-        if self.kraddies.memory.book_mut(owner).remove(digest).is_ok() {
+        let forgotten =
+            self.edit_kraddie_book(cx, |book| book.digests.book_mut(owner).remove(digest));
+        if forgotten.is_ok() {
             let command = KraddieCommand::ForgetDigest {
                 owner: owner.clone(),
                 digest,

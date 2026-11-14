@@ -97,6 +97,26 @@ fn view_preferences_dress_their_environment_after_a_restart() -> serde_json::Res
 }
 
 #[test]
+fn an_environment_takes_its_view_preferences_or_starts_with_defaults() {
+    let mut shown = main_environment();
+    shown.view = EnvironmentView::Review;
+    shown.side_panel.open = true;
+    let mut view = ViewPreferences {
+        environments: vec![EnvironmentViewPreferences::from(&shown)],
+        ..ViewPreferences::default()
+    };
+    assert_eq!(
+        view.take(&shown.name),
+        EnvironmentViewPreferences::from(&shown)
+    );
+    assert_eq!(view.environments, Vec::new());
+    assert_eq!(
+        view.take(&shown.name),
+        EnvironmentViewPreferences::new(shown.name.clone())
+    );
+}
+
+#[test]
 fn toolchain_choices_and_group_activation_survive_a_restart() -> serde_json::Result<()> {
     let mut environment = main_environment();
     let group = environment.add_group(PathBuf::from("/work/api"), None);

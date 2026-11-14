@@ -208,9 +208,9 @@ impl EnvironmentShell {
         let Some(live) = self.envs.get_mut(&environment) else {
             return;
         };
-        live.data.set_view(EnvironmentView::Sessions);
+        live.view.view = EnvironmentView::Sessions;
         live.selected_group = Some(group);
-        self.store();
+        self.save_view();
         cx.notify();
     }
 }

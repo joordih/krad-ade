@@ -296,24 +296,24 @@ impl EnvironmentShell {
         let env = self.active.clone();
         let view = self.runtime.settings.sidebar.reachable_view(view);
         if let Some(live) = self.envs.get_mut(&env) {
-            live.data.set_view(view);
+            live.view.view = view;
         }
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     fn with_sessions(&mut self, cx: &mut Context<Self>, edit: SessionEdit) {
         let env = self.active.clone();
         let shown = matches!(edit, SessionEdit::Select { .. } | SessionEdit::Open { .. });
-        let edited = self.edit_environment(&env, edit);
+        let edited = self.edit_environment(&env, edit, cx);
         if let Some(live) = self.envs.get_mut(&env) {
             if shown && edited.applied() {
-                live.data.set_view(EnvironmentView::Sessions);
+                live.view.view = EnvironmentView::Sessions;
             }
             show_current_session(live);
         }
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     fn select_session(&mut self, id: SessionId, cx: &mut Context<Self>) {
@@ -358,7 +358,7 @@ impl EnvironmentShell {
 
     pub(super) fn close_session(&mut self, id: SessionId, cx: &mut Context<Self>) {
         let env = self.active.clone();
-        self.archive_session(&env, id);
+        self.archive_session(&env, id, cx);
         let workers = self
             .envs
             .get(&env)

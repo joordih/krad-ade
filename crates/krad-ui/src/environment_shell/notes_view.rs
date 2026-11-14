@@ -100,7 +100,7 @@ impl EnvironmentShell {
         let group = self.active_group()?.id;
         self.envs
             .get(&self.active)?
-            .data
+            .view
             .note_tabs
             .iter()
             .find(|tabs| tabs.group == Some(group))
@@ -119,20 +119,20 @@ impl EnvironmentShell {
             return;
         };
         let index = live
-            .data
+            .view
             .note_tabs
             .iter()
             .position(|tabs| tabs.group == Some(group))
             .unwrap_or_else(|| {
-                live.data.note_tabs_mut().push(NoteTabs::for_group(group));
-                live.data.note_tabs.len() - 1
+                live.view.note_tabs.push(NoteTabs::for_group(group));
+                live.view.note_tabs.len() - 1
             });
-        let Some(tabs) = live.data.note_tabs_mut().get_mut(index) else {
+        let Some(tabs) = live.view.note_tabs.get_mut(index) else {
             return;
         };
         edit(tabs);
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     pub(super) fn vault_file(&self, path: &str) -> Option<PathBuf> {

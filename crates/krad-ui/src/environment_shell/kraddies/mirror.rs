@@ -1,7 +1,8 @@
 use gpui_kit::Context;
 use krad_domain::{KraddieId, ToastKind};
-use krad_protocol::{Command, KraddieCommand, KraddieState, KraddiesSnapshot, OwnedDigests, Reply};
+use krad_protocol::{Command, KraddieCommand, Reply};
 
+use super::super::runtime_view::KraddieBook;
 use super::super::EnvironmentShell;
 
 const FAILED_RUN_SEPARATOR: &str = ": ";
@@ -41,26 +42,6 @@ impl EnvironmentShell {
         self.tell_kraddies(KraddieCommand::UseNotes { titles }, cx);
     }
 
-    pub(in crate::environment_shell) fn kraddies_replaced(&mut self, snapshot: KraddiesSnapshot) {
-        for state in snapshot.kraddies {
-            self.kraddie_heard(state);
-        }
-        self.kraddies.memory.replace_books(snapshot.digests);
-    }
-
-    pub(in crate::environment_shell) fn kraddie_heard(&mut self, state: KraddieState) {
-        let id = state.id();
-        let KraddieState {
-            mind,
-            activity,
-            last_check_in,
-            ..
-        } = state;
-        self.kraddies
-            .profile
-            .adopt(&id, mind, activity, last_check_in);
-    }
-
     pub(in crate::environment_shell) fn kraddies_redrawn(&mut self) {
         let gone = self.kraddies.redraw(&self.runtime.kraddies.entries);
         for id in &gone {
@@ -68,6 +49,19 @@ impl EnvironmentShell {
             self.kraddies.memory.forget_book(id);
             self.forget_automation_selection(id);
         }
+    }
+
+    pub(in crate::environment_shell) fn edit_kraddie_book<R>(
+        &mut self,
+        cx: &mut Context<Self>,
+        edit: impl FnOnce(&mut KraddieBook) -> R,
+    ) -> R {
+        let edited = self
+            .runtime
+            .view
+            .update(cx, |model, _| model.kraddies.edit(edit));
+        self.runtime.reread(cx);
+        edited
     }
 
     pub(in crate::environment_shell) fn kraddie_removed(
@@ -80,10 +74,6 @@ impl EnvironmentShell {
             .update(cx, |model, _| model.kraddies.removed(id));
         self.runtime.reread(cx);
         self.kraddies_redrawn();
-    }
-
-    pub(in crate::environment_shell) fn digests_heard(&mut self, owned: OwnedDigests) {
-        self.kraddies.memory.adopt_book(owned);
     }
 
     pub(in crate::environment_shell) fn kraddie_run_failed(

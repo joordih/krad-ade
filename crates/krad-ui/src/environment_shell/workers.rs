@@ -54,8 +54,8 @@ impl EnvironmentShell {
             terminal,
             resume: reopen.resume,
         };
-        self.edit_environment(env, resumed);
-        self.store();
+        self.edit_environment(env, resumed, cx);
+        self.save_view();
         true
     }
 }

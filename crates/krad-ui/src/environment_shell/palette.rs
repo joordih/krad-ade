@@ -438,7 +438,7 @@ impl EnvironmentShell {
         let rows = PaletteRows {
             files: self.palette_files.clone(),
             agents: self.offered_agents(cx),
-            envs: self.order.clone(),
+            envs: self.runtime.order.clone(),
             notes: self.palette_notes(&query),
             note_lines: self.palette_note_lines().to_vec(),
             extensions: self.extension_palette_entries(),

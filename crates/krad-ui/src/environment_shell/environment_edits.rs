@@ -1,37 +1,26 @@
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use krad_domain::{
-    Edited, EnvironmentChange, EnvironmentEdit, EnvironmentName, NodeEdit, NodeField, NodeKind,
-    TerminalId,
+    Edited, EnvironmentChange, EnvironmentData, EnvironmentEdit, EnvironmentName,
+    EnvironmentViewPreferences, NodeEdit, NodeField, NodeKind, SessionEdit, TerminalId,
 };
-use krad_protocol::{Command, RequestId};
+use krad_protocol::{Command, EnvironmentCommand};
 
-use super::live_env::NodesMoved;
+use super::runtime_view::{EnvironmentCopy, NodesMoved};
 use super::surface::restored_chats;
-use super::EnvironmentShell;
+use super::{EnvironmentShell, LiveEnv};
 
 impl EnvironmentShell {
     pub(super) fn edit_environment(
         &mut self,
         env: &EnvironmentName,
         edit: impl Into<EnvironmentEdit>,
+        cx: &mut App,
     ) -> Edited {
-        if !self.runtime.environments.knows(env) {
-            self.store();
-        }
-        self.apply_edit(env, edit)
-    }
-
-    pub(super) fn apply_edit(
-        &mut self,
-        env: &EnvironmentName,
-        edit: impl Into<EnvironmentEdit>,
-    ) -> Edited {
-        let Some(live) = self.envs.get_mut(env) else {
-            return Edited::Ignored;
-        };
         let edit = edit.into();
         let request = self.runtime.client.next_request();
-        let edited = live.data.edit(&edit, request);
+        let Some(edited) = self.edit_shown(env, cx, |copy| copy.edit(&edit, request)) else {
+            return Edited::Ignored;
+        };
         drop(
             self.runtime
                 .client
@@ -40,34 +29,105 @@ impl EnvironmentShell {
         edited
     }
 
+    pub(super) fn edit_shown<R>(
+        &mut self,
+        env: &EnvironmentName,
+        cx: &mut App,
+        edit: impl FnOnce(&mut EnvironmentCopy) -> R,
+    ) -> Option<R> {
+        let live = self.envs.get_mut(env)?;
+        self.runtime.edit_shown(env, &mut live.data, cx, edit)
+    }
+
     pub(super) fn set_node(
         &mut self,
         env: &EnvironmentName,
         terminal: TerminalId,
         field: NodeField,
+        cx: &mut App,
     ) {
-        self.edit_environment(env, NodeEdit::Set { terminal, field });
+        self.edit_environment(env, NodeEdit::Set { terminal, field }, cx);
     }
 
-    pub(super) fn environment_heard(
+    pub(super) fn retitle_environment(
         &mut self,
         env: &EnvironmentName,
-        changes: &[EnvironmentChange],
-        answers: Option<RequestId>,
-        cx: &mut Context<Self>,
+        title: Option<String>,
+        cx: &mut App,
     ) {
-        let Some(runtime) = self.runtime.environments.get(env) else {
+        let shown = title.clone();
+        if self
+            .edit_shown(env, cx, |copy| copy.set_title(shown))
+            .is_none()
+        {
             return;
-        };
-        let Some(live) = self.envs.get_mut(env) else {
-            return;
-        };
-        let moved = live.data.heard(changes, answers, runtime);
-        self.nodes_moved(env, moved, cx);
-        self.groups_moved(env);
+        }
+        self.runtime
+            .client
+            .post(Command::Environments(EnvironmentCommand::Change {
+                environment: env.clone(),
+                changes: vec![EnvironmentChange::Title { title }],
+            }));
     }
 
-    fn groups_moved(&mut self, env: &EnvironmentName) {
+    pub(super) fn open_environment(&mut self, mut data: EnvironmentData, cx: &mut App) {
+        let name = data.name.clone();
+        let preferences = data.take_view();
+        self.runtime
+            .client
+            .post(Command::Environments(EnvironmentCommand::Open {
+                environment: Box::new(data.clone()),
+            }));
+        self.runtime.open_shown(data, cx);
+        self.attach_live_env(&name, preferences, cx);
+    }
+
+    pub(super) fn attach_live_env(
+        &mut self,
+        env: &EnvironmentName,
+        preferences: EnvironmentViewPreferences,
+        cx: &mut App,
+    ) {
+        let Some(data) = self.runtime.shown(env, cx) else {
+            return;
+        };
+        let focus = preferences
+            .focus
+            .filter(|id| data.nodes.iter().any(|node| node.id == *id));
+        self.envs
+            .insert(env.clone(), LiveEnv::new(data, preferences, focus));
+        if let Some(terminal) = focus {
+            self.edit_environment(env, SessionEdit::Reveal { terminal }, cx);
+        }
+    }
+
+    pub(super) fn environments_reread(&mut self, cx: &mut App) {
+        for (name, live) in &mut self.envs {
+            if let Some(shown) = self.runtime.view.read(cx).shown.get(name) {
+                live.data = std::rc::Rc::clone(shown);
+            }
+        }
+        let missing: Vec<EnvironmentName> = self
+            .runtime
+            .order
+            .iter()
+            .filter(|name| !self.envs.contains_key(*name))
+            .cloned()
+            .collect();
+        for name in missing {
+            let preferences = EnvironmentViewPreferences::new(name.clone());
+            self.attach_live_env(&name, preferences, cx);
+        }
+        let order = &self.runtime.order;
+        self.envs.retain(|name, _| order.contains(name));
+        if !self.envs.contains_key(&self.active) {
+            if let Some(first) = self.runtime.order.first() {
+                self.active = first.clone();
+            }
+        }
+    }
+
+    pub(super) fn environment_heard(&mut self, env: &EnvironmentName) {
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
@@ -84,24 +144,12 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn adopt_runtime_environments(&mut self, cx: &mut Context<Self>) {
-        let names: Vec<EnvironmentName> = self.envs.keys().cloned().collect();
-        for env in names {
-            let Some(runtime) = self.runtime.environments.get(&env) else {
-                continue;
-            };
-            let Some(live) = self.envs.get_mut(&env) else {
-                continue;
-            };
-            let moved = live.data.adopt(runtime);
-            self.nodes_moved(&env, moved, cx);
-        }
-    }
-
-    fn nodes_moved(&mut self, env: &EnvironmentName, moved: NodesMoved, cx: &mut Context<Self>) {
-        if moved.is_empty() {
-            return;
-        }
+    pub(super) fn nodes_moved(
+        &mut self,
+        env: &EnvironmentName,
+        moved: NodesMoved,
+        cx: &mut Context<Self>,
+    ) {
         for gone in moved.gone {
             self.forget_live_node(env, gone, cx);
         }

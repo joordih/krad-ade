@@ -142,7 +142,7 @@ impl EnvironmentShell {
         self.envs
             .get(&self.active)
             .map_or(EnvironmentView::Sessions, |live| {
-                self.runtime.settings.sidebar.reachable_view(live.data.view)
+                self.runtime.settings.sidebar.reachable_view(live.view.view)
             })
     }
 }

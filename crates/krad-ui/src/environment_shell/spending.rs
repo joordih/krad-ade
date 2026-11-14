@@ -92,13 +92,17 @@ impl EnvironmentShell {
     ) {
         let spending = self.runtime.settings.spending.clone();
         let report = report.or_model(model.and_then(ModelId::parse));
-        self.store();
-        let Some(live) = self.envs.get_mut(env) else {
-            return;
-        };
+        self.save_view();
         let request = self.runtime.client.next_request();
-        live.data
-            .record_usage(chat, &report, &spending.model_prices(), request);
+        let prices = spending.model_prices();
+        if self
+            .edit_shown(env, cx, |copy| {
+                copy.record_usage(chat, &report, &prices, request);
+            })
+            .is_none()
+        {
+            return;
+        }
         let recorded = EnvironmentCommand::RecordUsage {
             environment: env.clone(),
             chat,
@@ -111,7 +115,7 @@ impl EnvironmentShell {
                 .send_as(request, Command::Environments(recorded)),
         );
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     pub(super) fn spending_crossed(&mut self, crossed: &SpendingCrossed) {

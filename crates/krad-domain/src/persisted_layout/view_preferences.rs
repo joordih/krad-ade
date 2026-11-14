@@ -59,6 +59,17 @@ impl ViewPreferences {
         };
         environment.restore_view(self.environments.swap_remove(at));
     }
+
+    #[must_use]
+    pub fn take(&mut self, name: &EnvironmentName) -> EnvironmentViewPreferences {
+        self.environments
+            .iter()
+            .position(|view| view.name == *name)
+            .map_or_else(
+                || EnvironmentViewPreferences::new(name.clone()),
+                |at| self.environments.swap_remove(at),
+            )
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -74,6 +85,20 @@ pub struct EnvironmentViewPreferences {
     pub note_tabs: Vec<NoteTabs>,
     #[serde(default, skip_serializing_if = "ShownExtensionViews::is_empty")]
     pub extension_views: ShownExtensionViews,
+}
+
+impl EnvironmentViewPreferences {
+    #[must_use]
+    pub fn new(name: EnvironmentName) -> Self {
+        Self {
+            name,
+            view: EnvironmentView::default(),
+            focus: None,
+            side_panel: SidePanelLayout::default(),
+            note_tabs: Vec::new(),
+            extension_views: ShownExtensionViews::default(),
+        }
+    }
 }
 
 impl From<&EnvironmentData> for EnvironmentViewPreferences {

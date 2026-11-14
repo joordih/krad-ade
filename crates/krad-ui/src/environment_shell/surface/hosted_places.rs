@@ -1,9 +1,11 @@
 use gpui_kit::App;
 use krad_client::RuntimeClient;
-use krad_domain::{EnvironmentData, EnvironmentName, RuntimeId};
+use krad_domain::{EnvironmentData, EnvironmentName, EnvironmentViewPreferences, RuntimeId};
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 
+use super::super::runtime_view::EnvironmentCopy;
 use super::super::{EnvironmentShell, LiveEnv};
 use super::ChatPlace;
 
@@ -18,7 +20,8 @@ struct HostedPlace {
 pub(in crate::environment_shell) struct HostedPlaces(HashMap<ChatPlace, HostedPlace>);
 
 fn hosted_place(data: EnvironmentData, client: Arc<dyn RuntimeClient>) -> HostedPlace {
-    let mut views = LiveEnv::new(data, None);
+    let preferences = EnvironmentViewPreferences::new(data.name.clone());
+    let mut views = LiveEnv::new(Rc::new(EnvironmentCopy::new(data)), preferences, None);
     views.pending_chats.clear();
     HostedPlace { views, client }
 }
@@ -69,7 +72,7 @@ impl HostedPlaces {
         };
         match self.0.get_mut(place) {
             Some(hosted) => {
-                hosted.views.data.adopt(data);
+                Rc::make_mut(&mut hosted.views.data).adopt(data);
                 hosted.client = client;
             }
             None => {

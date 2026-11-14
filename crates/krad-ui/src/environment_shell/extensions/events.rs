@@ -66,6 +66,7 @@ impl EnvironmentShell {
 
     fn seen_now(&self) -> Seen {
         let groups = self
+            .runtime
             .order
             .iter()
             .filter_map(|name| {
@@ -80,7 +81,7 @@ impl EnvironmentShell {
                 .map(|file| file.path.clone())
         });
         Seen {
-            environments: self.order.clone(),
+            environments: self.runtime.order.clone(),
             groups,
             active_file,
         }

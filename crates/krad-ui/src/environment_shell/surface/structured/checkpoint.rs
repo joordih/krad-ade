@@ -1,3 +1,4 @@
+use gpui_kit::App;
 use krad_domain::{
     ChatCheckpoints, EnvironmentName, GitObjectId, NodeField, RewindPoint, TerminalId,
 };
@@ -20,13 +21,14 @@ impl EnvironmentShell {
         id: TerminalId,
         point: RewindPoint,
         checkpoint: GitObjectId,
+        cx: &mut App,
     ) {
         let Some(mut checkpoints) = self.chat_checkpoints(env, id) else {
             return;
         };
         checkpoints.record(point, checkpoint);
-        self.set_node(env, id, NodeField::Checkpoints(checkpoints));
-        self.store();
+        self.set_node(env, id, NodeField::Checkpoints(checkpoints), cx);
+        self.save_view();
     }
 
     pub(in crate::environment_shell::surface) fn turn_checkpoint(

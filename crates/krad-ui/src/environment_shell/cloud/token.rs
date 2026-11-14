@@ -26,16 +26,16 @@ impl EnvironmentShell {
         &mut self,
         cx: &mut Context<Self>,
     ) {
-        let Some((env, id)) = self.open_helper_terminal(SETUP_LABEL.to_owned()) else {
+        let Some((env, id)) = self.open_helper_terminal(SETUP_LABEL.to_owned(), cx) else {
             return;
         };
         let view = self
             .runtime
             .handle
             .open_claude_setup_token(terminal_ref(&env, id));
-        self.keep_live_session(&env, id, LiveTerminal::new(view, None));
+        self.keep_live_session(&env, id, LiveTerminal::new(view, None), cx);
         self.show_utilities(UtilityTab::Terminals, cx);
-        self.store();
+        self.save_view();
         cx.notify();
     }
 

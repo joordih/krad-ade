@@ -2,9 +2,11 @@ use krad_domain::{
     Automation, AutomationId, AutomationKey, EnvironmentName, Kraddie, KraddieHistory, KraddieId,
     KraddieOutcome, KraddieRun, SessionId,
 };
-use krad_protocol::{KraddieState, KraddiesSnapshot};
+use krad_protocol::{KraddieState, KraddiesSnapshot, OwnedDigests};
 use std::rc::Rc;
 use std::time::SystemTime;
+
+use super::kraddie_minds::{KraddieDigests, KraddieMinds};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::environment_shell) struct AutomationEntry {
@@ -82,6 +84,8 @@ impl KraddieEntry {
 pub(in crate::environment_shell) struct KraddieBook {
     pub(in crate::environment_shell) entries: Vec<KraddieEntry>,
     pub(in crate::environment_shell) opened_at: SystemTime,
+    pub(in crate::environment_shell) minds: KraddieMinds,
+    pub(in crate::environment_shell) digests: KraddieDigests,
 }
 
 impl Default for KraddieBook {
@@ -89,6 +93,8 @@ impl Default for KraddieBook {
         Self {
             entries: Vec::new(),
             opened_at: SystemTime::now(),
+            minds: KraddieMinds::default(),
+            digests: KraddieDigests::default(),
         }
     }
 }
@@ -161,20 +167,38 @@ impl KraddiesMirror {
         }
         book.entries = snapshot.kraddies.iter().map(KraddieEntry::from).collect();
         sort(&mut book.entries);
+        book.minds = KraddieMinds::default();
+        for state in &snapshot.kraddies {
+            book.minds.adopt(state);
+        }
+        book.digests.replace(&snapshot.digests);
     }
 
     pub(in crate::environment_shell) fn changed(&mut self, state: &KraddieState) {
-        let entries = &mut Rc::make_mut(&mut self.book).entries;
+        let book = Rc::make_mut(&mut self.book);
         let id = state.id();
-        entries.retain(|entry| entry.kraddie.id() != id);
-        entries.push(KraddieEntry::from(state));
-        sort(entries);
+        book.entries.retain(|entry| entry.kraddie.id() != id);
+        book.entries.push(KraddieEntry::from(state));
+        sort(&mut book.entries);
+        book.minds.adopt(state);
     }
 
     pub(in crate::environment_shell) fn removed(&mut self, id: &KraddieId) {
-        Rc::make_mut(&mut self.book)
-            .entries
-            .retain(|entry| entry.kraddie.id() != *id);
+        let book = Rc::make_mut(&mut self.book);
+        book.entries.retain(|entry| entry.kraddie.id() != *id);
+        book.minds.forget(id);
+        book.digests.forget(id);
+    }
+
+    pub(in crate::environment_shell) fn digests(&mut self, owned: &OwnedDigests) {
+        Rc::make_mut(&mut self.book).digests.adopt(owned);
+    }
+
+    pub(in crate::environment_shell) fn edit<R>(
+        &mut self,
+        edit: impl FnOnce(&mut KraddieBook) -> R,
+    ) -> R {
+        edit(Rc::make_mut(&mut self.book))
     }
 }
 
@@ -215,5 +239,32 @@ mod tests {
         assert!(mirror.current().entry(&milo).is_some());
         mirror.removed(&milo);
         assert_eq!(names(&mirror.current()), ["amber", "Zed"]);
+    }
+
+    #[test]
+    fn minds_check_ins_and_digest_books_are_kept_in_the_book_and_leave_with_their_kraddie() {
+        let mut mirror = KraddiesMirror::default();
+        let mut milo = state("Milo");
+        let checked = SystemTime::UNIX_EPOCH;
+        milo.last_check_in = Some(checked);
+        let id = milo.id();
+        mirror.replace(&KraddiesSnapshot {
+            opened_at: None,
+            kraddies: vec![milo.clone()],
+            digests: Vec::new(),
+        });
+        assert_eq!(mirror.current().minds.last_check_in(&id), Some(checked));
+        mirror.digests(&OwnedDigests {
+            owner: krad_domain::MemoryOwner::Kraddie(id.clone()),
+            book: krad_domain::DigestBook::default(),
+        });
+        assert!(mirror.current().digests.books.contains_key(&id));
+        milo.last_check_in = None;
+        mirror.changed(&milo);
+        assert_eq!(mirror.current().minds.last_check_in(&id), None);
+        mirror.removed(&id);
+        let book = mirror.current();
+        assert!(!book.digests.books.contains_key(&id));
+        assert!(book.minds.activity(&id).is_none());
     }
 }

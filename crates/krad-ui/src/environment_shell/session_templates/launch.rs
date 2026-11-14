@@ -88,7 +88,7 @@ impl EnvironmentShell {
                 name: spec.name,
                 shown: true,
             };
-            self.edit_environment(env, opened);
+            self.edit_environment(env, opened, cx);
         }
         let session = LiveSession::Start(new_session_id());
         let place = NodeGroup::Exactly(group);

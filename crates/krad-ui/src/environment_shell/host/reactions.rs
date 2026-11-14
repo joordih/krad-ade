@@ -86,7 +86,7 @@ impl EnvironmentShell {
             return;
         };
         live.sessions.remove(&id);
-        live.data.side_panel_mut().remove_terminal(id);
+        live.view.side_panel.remove_terminal(id);
         if live.focused == Some(id) {
             live.focused = live.shown_tab();
         }
@@ -144,23 +144,23 @@ impl EnvironmentShell {
             self.reload_file_tree(cx);
             self.refresh_vault(cx);
         }
-        self.store();
+        self.save_view();
     }
 
     fn sign_in_wanted(&mut self, env: &EnvironmentName, cx: &mut Context<Self>) {
-        let Some(id) = self.alloc_terminal_id(env) else {
+        let Some(id) = self.alloc_terminal_id(env, cx) else {
             return;
         };
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
         let destination = live.data.host.to_string();
-        live.data
-            .side_panel_mut()
+        live.view
+            .side_panel
             .add_helper_terminal(id, format!("{SIGN_IN_LABEL} · {destination}"));
         live.terminals_tab = TerminalsTab::Shown;
         let view = self.runtime.handle.open_sign_in(terminal_ref(env, id));
-        self.keep_live_session(env, id, LiveTerminal::new(view, None));
+        self.keep_live_session(env, id, LiveTerminal::new(view, None), cx);
         if *env == self.active {
             self.show_utilities(UtilityTab::Terminals, cx);
         }

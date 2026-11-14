@@ -275,6 +275,7 @@ impl EnvironmentShell {
                     root,
                     worktree,
                 },
+                cx,
             );
             if let Some(live) = self.envs.get_mut(env) {
                 live.selected_group = Some(group);
@@ -282,7 +283,7 @@ impl EnvironmentShell {
         }
         self.refresh_git(cx);
         cx.notify();
-        self.store();
+        self.save_view();
         id
     }
 
@@ -321,7 +322,7 @@ impl EnvironmentShell {
             .get(env)
             .and_then(|live| live.data.group(id))
             .cloned();
-        self.edit_environment(env, GroupEdit::Remove { group: id });
+        self.edit_environment(env, GroupEdit::Remove { group: id }, cx);
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };
@@ -332,9 +333,9 @@ impl EnvironmentShell {
         if let Some(removed) = removed {
             self.forget_group_toolchains(&host, &removed.root);
         }
-        self.forget_group_archive(env, id);
+        self.forget_group_archive(env, id, cx);
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     pub(super) fn detect_agents(&self) {

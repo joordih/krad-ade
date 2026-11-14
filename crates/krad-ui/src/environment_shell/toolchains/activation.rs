@@ -200,8 +200,9 @@ impl EnvironmentShell {
                 group: id,
                 activation,
             },
+            cx,
         );
-        self.store();
+        self.save_view();
         cx.notify();
     }
 

@@ -67,6 +67,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
         state: AgentState,
+        cx: &mut App,
     ) {
         let runs = self
             .envs
@@ -76,7 +77,7 @@ impl EnvironmentShell {
             return;
         }
         self.mark_terminal_hooked(env, id);
-        self.set_agent_state(env, id, state);
+        self.set_agent_state(env, id, state, cx);
     }
 }
 

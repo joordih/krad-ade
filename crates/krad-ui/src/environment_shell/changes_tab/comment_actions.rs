@@ -1,5 +1,5 @@
 use gpui_kit::component::input::{InputEvent, TextareaState};
-use gpui_kit::{AppContext as _, Context, Entity, SharedString, Subscription, Window};
+use gpui_kit::{App, AppContext as _, Context, Entity, SharedString, Subscription, Window};
 use krad_domain::{
     review_message, DiffAnchor, DiffComment, DiffCommentId, EnvironmentName, HunkLines, Session,
     SessionEdit, TerminalId, ToastKind,
@@ -115,14 +115,19 @@ impl LiveEnv {
 }
 
 impl EnvironmentShell {
-    pub(super) fn refresh_diff_comments(&mut self, env: &EnvironmentName, tab: TerminalId) {
+    pub(super) fn refresh_diff_comments(
+        &mut self,
+        env: &EnvironmentName,
+        tab: TerminalId,
+        cx: &mut App,
+    ) {
         let reanchored = self
             .envs
             .get_mut(env)
             .and_then(|live| live.sync_diff_comments(tab));
         if let Some(reanchored) = reanchored {
-            self.edit_environment(env, reanchored);
-            self.store();
+            self.edit_environment(env, reanchored, cx);
+            self.save_view();
         }
     }
 
@@ -131,6 +136,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         tab: TerminalId,
         edit: impl FnOnce(&mut Session) -> T,
+        cx: &mut App,
     ) -> Option<T> {
         let mut session = self.envs.get(env)?.tab_session(tab)?.clone();
         let before = session.diff_comments.clone();
@@ -140,7 +146,7 @@ impl EnvironmentShell {
                 session: session.id,
                 comments: session.diff_comments,
             };
-            self.edit_environment(env, kept);
+            self.edit_environment(env, kept, cx);
         }
         Some(edited)
     }
@@ -296,26 +302,31 @@ impl EnvironmentShell {
             _ => None,
         };
         let mut moved = false;
-        self.edit_tab_comments(&env, tab, |session| match draft.target {
-            DraftTarget::New { .. } if text.is_empty() => {}
-            DraftTarget::New { .. } => match quoted {
-                Some(quoted) => {
-                    session.add_diff_comment(quoted, text);
+        self.edit_tab_comments(
+            &env,
+            tab,
+            |session| match draft.target {
+                DraftTarget::New { .. } if text.is_empty() => {}
+                DraftTarget::New { .. } => match quoted {
+                    Some(quoted) => {
+                        session.add_diff_comment(quoted, text);
+                    }
+                    None => moved = true,
+                },
+                DraftTarget::Edit(id) if text.is_empty() => {
+                    session.remove_diff_comment(id);
                 }
-                None => moved = true,
+                DraftTarget::Edit(id) => {
+                    session.edit_diff_comment(id, text);
+                }
             },
-            DraftTarget::Edit(id) if text.is_empty() => {
-                session.remove_diff_comment(id);
-            }
-            DraftTarget::Edit(id) => {
-                session.edit_diff_comment(id, text);
-            }
-        });
+            cx,
+        );
         if moved {
             self.toast(ToastKind::Warning, DRAFT_MOVED, cx);
         }
-        self.refresh_diff_comments(&env, tab);
-        self.store();
+        self.refresh_diff_comments(&env, tab, cx);
+        self.save_view();
         cx.notify();
     }
 
@@ -327,13 +338,13 @@ impl EnvironmentShell {
     ) {
         let env = self.active.clone();
         let removed = self
-            .edit_tab_comments(&env, tab, |session| session.remove_diff_comment(id))
+            .edit_tab_comments(&env, tab, |session| session.remove_diff_comment(id), cx)
             .unwrap_or_default();
         if !removed {
             return;
         }
-        self.refresh_diff_comments(&env, tab);
-        self.store();
+        self.refresh_diff_comments(&env, tab, cx);
+        self.save_view();
         cx.notify();
     }
 
@@ -361,9 +372,9 @@ impl EnvironmentShell {
             self.toast(ToastKind::Warning, NO_AGENT, cx);
             return;
         }
-        self.edit_tab_comments(&env, tab, |session| session.diff_comments.clear());
-        self.refresh_diff_comments(&env, tab);
-        self.store();
+        self.edit_tab_comments(&env, tab, |session| session.diff_comments.clear(), cx);
+        self.refresh_diff_comments(&env, tab, cx);
+        self.save_view();
         self.toast(ToastKind::Success, REVIEW_SENT, cx);
     }
 }

@@ -1,10 +1,11 @@
 use krad_domain::{
-    Edited, EnvironmentChange, EnvironmentData, EnvironmentEdit, EnvironmentView, ModelPrices,
-    NodeKind, NoteTabs, ShownExtensionViews, SidePanelLayout, TerminalId, UsageReport,
+    Edited, EnvironmentChange, EnvironmentData, EnvironmentEdit, ModelPrices, NodeKind, TerminalId,
+    UsageReport,
 };
 use krad_protocol::RequestId;
 use std::ops::Deref;
 
+#[derive(Clone)]
 pub(in crate::environment_shell) struct EnvironmentCopy {
     data: EnvironmentData,
     awaiting: Option<RequestId>,
@@ -126,24 +127,8 @@ impl EnvironmentCopy {
         moved(&before, &nodes_of(&self.data))
     }
 
-    pub(in crate::environment_shell) fn set_view(&mut self, view: EnvironmentView) {
-        self.data.view = view;
-    }
-
     pub(in crate::environment_shell) fn set_title(&mut self, title: Option<String>) {
         self.data.title = title;
-    }
-
-    pub(in crate::environment_shell) const fn side_panel_mut(&mut self) -> &mut SidePanelLayout {
-        &mut self.data.side_panel
-    }
-
-    pub(in crate::environment_shell) const fn note_tabs_mut(&mut self) -> &mut Vec<NoteTabs> {
-        &mut self.data.note_tabs
-    }
-
-    pub(in crate::environment_shell) fn set_extension_views(&mut self, shown: ShownExtensionViews) {
-        self.data.extension_views = shown;
     }
 }
 

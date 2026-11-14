@@ -90,7 +90,7 @@ impl EnvironmentShell {
             }
             CloseRequest::Idle | CloseRequest::Confirming(_) | CloseRequest::Confirmed => {}
         }
-        self.store();
+        self.save_view();
         true
     }
 
@@ -152,7 +152,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         self.close_request = CloseRequest::Confirmed;
-        self.store();
+        self.save_view();
         self.close_hosts();
         self.remove_api_file();
         match then {

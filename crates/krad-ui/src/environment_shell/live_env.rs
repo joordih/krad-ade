@@ -1,19 +1,18 @@
-use krad_domain::{EnvironmentData, GroupId, PermissionMode, TerminalId};
+use krad_domain::{EnvironmentViewPreferences, GroupId, PermissionMode, TerminalId};
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::time::Instant;
 
-mod environment_copy;
-
-pub(super) use environment_copy::{EnvironmentCopy, NodesMoved};
-
 use super::live_terminal::LiveTerminal;
+use super::runtime_view::EnvironmentCopy;
 use super::{
     activity, archive, changes_tab, file_tab, session_templates, surface, terminal_images, workers,
     Prompt,
 };
 
 pub(super) struct LiveEnv {
-    pub(super) data: EnvironmentCopy,
+    pub(super) data: Rc<EnvironmentCopy>,
+    pub(super) view: EnvironmentViewPreferences,
     pub(super) sessions: HashMap<TerminalId, LiveTerminal>,
     pub(super) chats: HashMap<TerminalId, surface::ChatView>,
     pub(super) focused: Option<TerminalId>,
@@ -39,14 +38,19 @@ pub(super) struct LiveEnv {
 }
 
 impl LiveEnv {
-    pub(super) fn new(data: EnvironmentData, focused: Option<TerminalId>) -> Self {
+    pub(super) fn new(
+        data: Rc<EnvironmentCopy>,
+        view: EnvironmentViewPreferences,
+        focused: Option<TerminalId>,
+    ) -> Self {
         let selected_group = focused
             .and_then(|id| data.group_of(id))
             .or_else(|| data.groups.first())
             .map(|group| group.id);
         let pending_chats = surface::restored_chats(&data.nodes);
         Self {
-            data: EnvironmentCopy::new(data),
+            data,
+            view,
             sessions: HashMap::new(),
             chats: HashMap::new(),
             focused,

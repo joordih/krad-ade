@@ -57,7 +57,7 @@ impl EnvironmentShell {
     fn scale_without_storing(&mut self, tab: TerminalId, scale: TextScale, cx: &mut Context<Self>) {
         let env = self.active.clone();
         if self.text_scale_of(tab).is_some_and(|kept| kept != scale) {
-            self.set_node(&env, tab, NodeField::TextScale(scale));
+            self.set_node(&env, tab, NodeField::TextScale(scale), cx);
         }
         cx.notify();
     }
@@ -79,7 +79,7 @@ impl EnvironmentShell {
             }
             TouchPhase::Ended => {
                 self.gestures.pinch = None;
-                self.store();
+                self.save_view();
             }
             TouchPhase::Cancelled => {
                 if let Some((pinched, start)) = self.gestures.pinch.take() {
@@ -268,12 +268,12 @@ impl EnvironmentShell {
     pub(super) fn step_session(&mut self, forward: bool, cx: &mut Context<Self>) {
         let env = self.active.clone();
         let stepped = self
-            .edit_environment(&env, SessionEdit::Step { forward })
+            .edit_environment(&env, SessionEdit::Step { forward }, cx)
             .applied();
         if stepped {
             self.leave_main_overlays();
             cx.notify();
-            self.store();
+            self.save_view();
         }
     }
 

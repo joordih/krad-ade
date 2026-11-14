@@ -14,7 +14,7 @@ impl EnvironmentShell {
         let id = kraddie.id();
         if let Some(old) = replaced.filter(|old| **old != id) {
             self.kraddies.profile.rename(old, &id);
-            self.rename_kraddie_memory(old, &id);
+            self.rename_kraddie_memory(old, &id, cx);
         }
         let command = KraddieCommand::Save {
             kraddie: Box::new(kraddie),

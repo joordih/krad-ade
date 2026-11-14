@@ -1,6 +1,6 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, AppContext as _, Context, DragMoveEvent, FontWeight,
+    div, px, rgb, AnyElement, App, AppContext as _, Context, DragMoveEvent, FontWeight,
     InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, PinchEvent,
     Render, SharedString, StatefulInteractiveElement, Styled, WeakEntity, Window,
 };
@@ -233,7 +233,7 @@ impl EnvironmentShell {
         }
     }
 
-    pub(in crate::environment_shell) fn sync_session_panes(&mut self) {
+    pub(in crate::environment_shell) fn sync_session_panes(&mut self, cx: &mut App) {
         let env = self.active.clone();
         let target = self.pane_target.take();
         let Some(live) = self.envs.get_mut(&env) else {
@@ -246,7 +246,7 @@ impl EnvironmentShell {
             .filter(|id| !docked.contains(id))
             .collect();
         let guests: Vec<TerminalId> = live
-            .data
+            .view
             .side_panel
             .terminals
             .iter()
@@ -269,7 +269,7 @@ impl EnvironmentShell {
                 panes,
             };
             let env = self.active.clone();
-            self.edit_environment(&env, kept);
+            self.edit_environment(&env, kept, cx);
         }
     }
 
@@ -364,7 +364,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let terminal = live
-            .data
+            .view
             .side_panel
             .terminals
             .iter()
@@ -532,11 +532,11 @@ impl EnvironmentShell {
                     session: session.id,
                     panes,
                 };
-                self.edit_environment(&env, kept);
+                self.edit_environment(&env, kept, cx);
             }
         }
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     fn aim_tab_drop(&mut self, event: &DragMoveEvent<DraggedTab>, cx: &mut Context<Self>) {

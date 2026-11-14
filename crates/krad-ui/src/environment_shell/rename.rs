@@ -142,18 +142,16 @@ impl EnvironmentShell {
         match draft.target {
             RenameTarget::Terminal(id) => {
                 let env = self.active.clone();
-                self.set_node(&env, id, NodeField::Title(title.to_owned()));
+                self.set_node(&env, id, NodeField::Title(title.to_owned()), cx);
             }
             RenameTarget::Environment(name) => {
-                if let Some(live) = self.envs.get_mut(&name) {
-                    live.data.set_title(Some(title.to_owned()));
-                }
+                self.retitle_environment(&name, Some(title.to_owned()), cx);
             }
             RenameTarget::Worktree(group) => {
                 self.create_worktree(group, title, cx);
                 return;
             }
         }
-        self.store();
+        self.save_view();
     }
 }

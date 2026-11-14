@@ -249,7 +249,7 @@ impl EnvironmentShell {
         }
         self.focus_terminal(terminal, cx);
         cx.notify();
-        self.store();
+        self.save_view();
     }
 }
 

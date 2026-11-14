@@ -8,7 +8,11 @@ use super::super::shell_site::ShellSite;
 use super::super::EnvironmentShell;
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn terminal_launched(&mut self, launched: TerminalLaunched) {
+    pub(in crate::environment_shell) fn terminal_launched(
+        &mut self,
+        launched: TerminalLaunched,
+        cx: &mut App,
+    ) {
         let TerminalLaunched {
             terminal,
             harness,
@@ -22,17 +26,21 @@ impl EnvironmentShell {
         if !self.envs.contains_key(&env) {
             return;
         }
-        self.keep_live_session(&env, id, LiveTerminal::new(view, harness));
+        self.keep_live_session(&env, id, LiveTerminal::new(view, harness), cx);
         if launched_as == LaunchedAs::Shell {
             let site = ShellSite::of(&self.env_host(&env), false);
             self.activate_toolchains(&env, id, site);
         }
         if let Some(resume) = resume {
-            self.keep_opencode_resume(&env, id, resume);
+            self.keep_opencode_resume(&env, id, resume, cx);
         }
     }
 
-    pub(in crate::environment_shell) fn adopt_launched_view(&mut self, terminal: &AgentRef) {
+    pub(in crate::environment_shell) fn adopt_launched_view(
+        &mut self,
+        terminal: &AgentRef,
+        cx: &mut App,
+    ) {
         let Some(view) = self.runtime.handle.take_launched_view(terminal) else {
             return;
         };
@@ -44,7 +52,7 @@ impl EnvironmentShell {
                 .find(|node| node.id == id)
                 .and_then(|node| node.harness)
         });
-        self.keep_live_session(env, id, LiveTerminal::new(view, harness));
+        self.keep_live_session(env, id, LiveTerminal::new(view, harness), cx);
     }
 
     pub(in crate::environment_shell) fn terminal_classified(
@@ -52,13 +60,14 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
         state: AgentState,
+        cx: &mut App,
     ) -> bool {
         let unhooked = self
             .envs
             .get(env)
             .and_then(|live| live.sessions.get(&id))
             .is_some_and(|terminal| !terminal.hooked());
-        unhooked && self.set_agent_state(env, id, state)
+        unhooked && self.set_agent_state(env, id, state, cx)
     }
 
     pub(in crate::environment_shell) fn terminal_ended(
@@ -66,7 +75,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
         run: ProcessRun,
-        cx: &App,
+        cx: &mut App,
     ) -> bool {
         let first = self
             .envs
@@ -88,7 +97,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
         code: Option<i32>,
-        cx: &App,
+        cx: &mut App,
     ) -> bool {
         if self.host_state(env, cx).sign_in_terminal() == Some(id) {
             return true;
@@ -100,7 +109,7 @@ impl EnvironmentShell {
         if !live.sessions.contains_key(&id) {
             return false;
         }
-        self.set_node(env, id, NodeField::State(AgentState::Idle));
+        self.set_node(env, id, NodeField::State(AgentState::Idle), cx);
         self.publish_agent(env, id, None);
         let raw = id.as_u64();
         match code {
@@ -110,7 +119,7 @@ impl EnvironmentShell {
             ),
             None => self.push_toast(ToastKind::Info, format!("terminal #{raw} exited")),
         }
-        self.store();
+        self.save_view();
         true
     }
 

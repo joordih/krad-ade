@@ -145,7 +145,7 @@ impl EnvironmentShell {
         self.drag = DragState::None;
         cx.notify();
         if reshaped_layout {
-            self.store();
+            self.save_view();
         }
     }
 }

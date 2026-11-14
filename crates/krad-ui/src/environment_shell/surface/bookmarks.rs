@@ -1,4 +1,4 @@
-use gpui_kit::{Context, ElementId, IntoElement, StatefulInteractiveElement};
+use gpui_kit::{App, Context, ElementId, IntoElement, StatefulInteractiveElement};
 use krad_domain::{
     Bookmark, ChatBookmarks, Mention, NodeField, Speaker, TerminalId, TurnPrint, TurnSide,
 };
@@ -96,14 +96,14 @@ impl EnvironmentShell {
             pal,
         )
         .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-            this.toggle_bookmark(id, bookmark);
+            this.toggle_bookmark(id, bookmark, cx);
             cx.notify();
         }))
         .into_any_element();
         Some(BookmarkAction { button, marked })
     }
 
-    fn toggle_bookmark(&mut self, id: TerminalId, bookmark: Bookmark) {
+    fn toggle_bookmark(&mut self, id: TerminalId, bookmark: Bookmark, cx: &mut App) {
         let place = self.chat_place();
         let Some(mut bookmarks) = self
             .live(&place)
@@ -114,9 +114,9 @@ impl EnvironmentShell {
         };
         bookmarks.toggle(bookmark);
         if let Some(local) = place.local() {
-            self.set_node(local, id, NodeField::Bookmarks(bookmarks));
+            self.set_node(local, id, NodeField::Bookmarks(bookmarks), cx);
         }
-        self.store();
+        self.save_view();
     }
 }
 

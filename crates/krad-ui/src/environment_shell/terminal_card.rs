@@ -31,7 +31,7 @@ impl EnvironmentShell {
         window.focus(&self.focus, cx);
     }
 
-    pub(super) fn focus_terminal(&mut self, id: TerminalId, cx: &App) {
+    pub(super) fn focus_terminal(&mut self, id: TerminalId, cx: &mut App) {
         let env = self.active.clone();
         let shown = self
             .envs
@@ -41,11 +41,11 @@ impl EnvironmentShell {
             self.leave_main_overlays();
         }
         if self
-            .edit_environment(&env, SessionEdit::Reveal { terminal: id })
+            .edit_environment(&env, SessionEdit::Reveal { terminal: id }, cx)
             .applied()
         {
             if let Some(live) = self.envs.get_mut(&env) {
-                live.data.set_view(EnvironmentView::Sessions);
+                live.view.view = EnvironmentView::Sessions;
             }
         }
         let done = self.envs.get(&env).is_some_and(|live| {
@@ -55,7 +55,7 @@ impl EnvironmentShell {
                 .any(|node| node.id == id && node.state == AgentState::Done)
         });
         if done {
-            self.set_node(&env, id, NodeField::State(AgentState::Idle));
+            self.set_node(&env, id, NodeField::State(AgentState::Idle), cx);
         }
         if let Some(live) = self.envs.get_mut(&env) {
             live.focused = Some(id);
@@ -93,10 +93,10 @@ impl EnvironmentShell {
             .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
             .map(|node| (node.text_scale, change(node.text_scale)));
         if let Some((_, scale)) = scaled.filter(|(before, after)| before != after) {
-            self.set_node(&env, id, NodeField::TextScale(scale));
+            self.set_node(&env, id, NodeField::TextScale(scale), cx);
         }
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     pub(super) fn on_text_larger(

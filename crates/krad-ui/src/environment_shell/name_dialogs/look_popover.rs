@@ -87,8 +87,9 @@ impl EnvironmentShell {
                                 session,
                                 name: typed,
                             },
+                            cx,
                         );
-                        this.store();
+                        this.save_view();
                         cx.notify();
                     }
                 }
@@ -121,8 +122,8 @@ impl EnvironmentShell {
             return;
         };
         edit(&mut look);
-        self.edit_environment(&env, SessionEdit::SetLook { session, look });
-        self.store();
+        self.edit_environment(&env, SessionEdit::SetLook { session, look }, cx);
+        self.save_view();
         cx.notify();
     }
 

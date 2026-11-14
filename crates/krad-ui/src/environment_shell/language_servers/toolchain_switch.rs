@@ -83,7 +83,7 @@ impl EnvironmentShell {
         scope: &ToolchainScope,
         cx: &mut Context<Self>,
     ) {
-        self.store();
+        self.save_view();
         self.toolchains.activations.clear();
         self.refresh_toolchain_statuses();
         let mut handled: HashSet<ServerKey> = HashSet::new();

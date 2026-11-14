@@ -62,6 +62,7 @@ impl EnvironmentShell {
 
     fn environment_submenu(&self) -> MenuEntry {
         let mut entries: Vec<MenuEntry> = self
+            .runtime
             .order
             .iter()
             .map(|name| {

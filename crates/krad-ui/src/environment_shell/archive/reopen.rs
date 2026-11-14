@@ -38,7 +38,7 @@ impl EnvironmentShell {
         let Some(id) = self.open_terminal_at(env, &spec, launch, shell.cwd, cx) else {
             return;
         };
-        self.set_node(env, id, NodeField::Title(shell.title));
+        self.set_node(env, id, NodeField::Title(shell.title), cx);
     }
 
     pub(in crate::environment_shell) fn reopen_archived_session(
@@ -58,7 +58,7 @@ impl EnvironmentShell {
             return;
         };
         let Edited::Reopened(reopened) =
-            self.edit_environment(&env, SessionEdit::Reopen { archived: id })
+            self.edit_environment(&env, SessionEdit::Reopen { archived: id }, cx)
         else {
             return;
         };
@@ -78,18 +78,19 @@ impl EnvironmentShell {
                 SessionEdit::Select {
                     session: reopened.session,
                 },
+                cx,
             )
             .applied()
         {
             if let Some(live) = self.envs.get_mut(&env) {
-                live.data.set_view(EnvironmentView::Sessions);
+                live.view.view = EnvironmentView::Sessions;
             }
         }
         if let Some(live) = self.envs.get_mut(&env) {
             show_current_session(live);
         }
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     pub(in crate::environment_shell) fn reopen_archived_chat(
@@ -102,7 +103,7 @@ impl EnvironmentShell {
             live.archive_sheet = None;
         }
         if let Edited::Resumed(resumed) =
-            self.edit_environment(&env, NodeEdit::ReopenArchivedChat { terminal })
+            self.edit_environment(&env, NodeEdit::ReopenArchivedChat { terminal }, cx)
         {
             if let Some(live) = self.envs.get_mut(&env) {
                 live.focused = Some(resumed.terminal);
@@ -110,7 +111,7 @@ impl EnvironmentShell {
             self.resume_reopened(&env, std::slice::from_ref(&resumed));
         }
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     pub(in crate::environment_shell) fn reopen_from_archive(

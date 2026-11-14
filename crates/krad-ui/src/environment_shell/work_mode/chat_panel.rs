@@ -31,9 +31,9 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        self.edit_environment(&env, SessionEdit::RememberChat { terminal: id });
+        self.edit_environment(&env, SessionEdit::RememberChat { terminal: id }, cx);
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     fn chat_picker_entries(&self, live: &LiveEnv) -> Vec<MenuEntry> {

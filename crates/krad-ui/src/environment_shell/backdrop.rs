@@ -220,7 +220,7 @@ impl EnvironmentShell {
                 slot.retire_shown();
                 self.push_toast(ToastKind::Error, format!("{NOT_SHOWN_TEXT}: {error}"));
                 *self.backdrop.chosen.get_mut(place) = None;
-                self.store();
+                self.save_view();
             }
         }
         cx.notify();
@@ -302,7 +302,7 @@ impl EnvironmentShell {
             None => BackdropImage::new(copy),
         };
         *chosen = Some(image);
-        self.store();
+        self.save_view();
         cx.notify();
     }
 
@@ -310,7 +310,7 @@ impl EnvironmentShell {
         let Some(previous) = self.backdrop.chosen.get_mut(place).take() else {
             return;
         };
-        self.store();
+        self.save_view();
         let removing =
             cx.background_spawn(async move { forget_backdrop_image(place, &previous.file) });
         cx.spawn(async move |this, cx| {
@@ -338,7 +338,7 @@ impl EnvironmentShell {
             return;
         };
         edit(image);
-        self.store();
+        self.save_view();
         cx.notify();
     }
 }

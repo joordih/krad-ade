@@ -1,3 +1,4 @@
+use gpui_kit::App;
 use krad_domain::ToastKind;
 use krad_protocol::{Conversation, HookHeard, HookOrigin};
 use std::collections::BTreeSet;
@@ -9,7 +10,7 @@ const FRESH_CONVERSATION: &str = "Fresh conversation";
 const FRESH_TOAST: &str = "could not resume its conversation and started a fresh one";
 
 impl EnvironmentShell {
-    pub(super) fn hook_heard(&mut self, heard: HookHeard) {
+    pub(super) fn hook_heard(&mut self, heard: HookHeard, cx: &mut App) {
         let HookHeard {
             agent,
             harness,
@@ -56,7 +57,7 @@ impl EnvironmentShell {
             HookOrigin::Live => BTreeSet::new(),
         };
         self.with_webhooks_delivered(delivered, |shell| {
-            shell.set_agent_state(&env, id, state);
+            shell.set_agent_state(&env, id, state, cx);
         });
     }
 }

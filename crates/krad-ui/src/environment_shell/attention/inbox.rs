@@ -339,9 +339,9 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        self.edit_environment(&env, SessionEdit::ToggleAttention { session });
+        self.edit_environment(&env, SessionEdit::ToggleAttention { session }, cx);
         cx.notify();
-        self.store();
+        self.save_view();
     }
 }
 

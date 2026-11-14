@@ -523,7 +523,7 @@ impl EnvironmentShell {
             return self.surface_chat_body(id, chat, cx);
         }
         let node = live.data.nodes.iter().find(|node| node.id == id);
-        if node.is_none() && !live.data.side_panel.holds(id) {
+        if node.is_none() && !live.view.side_panel.holds(id) {
             return div().into_any_element();
         }
         if node.is_some_and(|node| node.kind == krad_domain::NodeKind::Extension) {

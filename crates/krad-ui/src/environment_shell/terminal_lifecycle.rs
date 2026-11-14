@@ -40,9 +40,13 @@ pub(super) struct NodeSpec<'a> {
 }
 
 impl EnvironmentShell {
-    pub(super) fn alloc_terminal_id(&mut self, env: &EnvironmentName) -> Option<TerminalId> {
+    pub(super) fn alloc_terminal_id(
+        &mut self,
+        env: &EnvironmentName,
+        cx: &mut App,
+    ) -> Option<TerminalId> {
         let id = TerminalId(self.envs.get(env)?.data.next_id);
-        self.edit_environment(env, NodeEdit::Reserve { terminal: id });
+        self.edit_environment(env, NodeEdit::Reserve { terminal: id }, cx);
         Some(id)
     }
 
@@ -88,7 +92,7 @@ impl EnvironmentShell {
         }
         if let Some(shown) = shown {
             let env = self.active.clone();
-            self.edit_environment(&env, SessionEdit::Select { session: shown });
+            self.edit_environment(&env, SessionEdit::Select { session: shown }, cx);
         }
         if let Some(group) = empty {
             let env = self.active.clone();
@@ -151,7 +155,7 @@ impl EnvironmentShell {
         after: Option<TerminalId>,
         cx: &mut Context<Self>,
     ) -> Option<TerminalId> {
-        let (id, cwd) = self.add_node(env, spec, after)?;
+        let (id, cwd) = self.add_node(env, spec, after, cx)?;
         self.start_session(env, id, launch, cwd, &[], cx);
         self.settle_new_node(cx);
         Some(id)
@@ -165,7 +169,7 @@ impl EnvironmentShell {
         cwd: Option<PathBuf>,
         cx: &mut Context<Self>,
     ) -> Option<TerminalId> {
-        let (id, default_cwd) = self.add_node(env, spec, None)?;
+        let (id, default_cwd) = self.add_node(env, spec, None, cx)?;
         self.start_session(env, id, launch, cwd.or(default_cwd), &[], cx);
         self.settle_new_node(cx);
         Some(id)
@@ -196,7 +200,7 @@ impl EnvironmentShell {
             label: NEW_CHAT_LABEL,
             group,
         };
-        let (id, _) = self.add_node(env, &spec, None)?;
+        let (id, _) = self.add_node(env, &spec, None, cx)?;
         if let Some(live) = self.envs.get_mut(env) {
             live.pending_chats.insert(id, session);
         }
@@ -221,7 +225,7 @@ impl EnvironmentShell {
             label: &label,
             group: NodeGroup::Exactly(group),
         };
-        let (id, _) = self.add_node(env, &spec, None)?;
+        let (id, _) = self.add_node(env, &spec, None, cx)?;
         let live = self.envs.get_mut(env)?;
         live.pending_chats.insert(id, session);
         if !prompts.is_empty() {
@@ -263,7 +267,7 @@ impl EnvironmentShell {
             node: Box::new(node),
             place,
         };
-        if !self.edit_environment(env, opened).applied() {
+        if !self.edit_environment(env, opened, cx).applied() {
             return None;
         }
         let live = self.envs.get_mut(env)?;
@@ -293,7 +297,7 @@ impl EnvironmentShell {
 
     fn settle_new_node(&mut self, cx: &mut Context<Self>) {
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     fn add_node(
@@ -301,6 +305,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         spec: &NodeSpec<'_>,
         after: Option<TerminalId>,
+        cx: &mut App,
     ) -> Option<(TerminalId, Option<PathBuf>)> {
         let id = TerminalId(self.envs.get(env)?.data.next_id);
         let (node, cwd, anchor) = self.new_node(env, id, spec, after)?;
@@ -308,7 +313,7 @@ impl EnvironmentShell {
             node: Box::new(node),
             place: NodePlace::Tab { anchor },
         };
-        if !self.edit_environment(env, opened).applied() {
+        if !self.edit_environment(env, opened, cx).applied() {
             return None;
         }
         self.envs.get_mut(env)?.focused = Some(id);
@@ -368,7 +373,7 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &mut Context<Self>,
     ) {
-        self.archive_chat_tab(env, id);
+        self.archive_chat_tab(env, id, cx);
         self.close_terminal_in(env, id, cx);
     }
 
@@ -390,7 +395,7 @@ impl EnvironmentShell {
         for worker in workers {
             self.close_terminal_in(env, worker, cx);
         }
-        self.edit_environment(env, NodeEdit::Close { terminal: id });
+        self.edit_environment(env, NodeEdit::Close { terminal: id }, cx);
         let chat = self.forget_live_node(env, id, cx);
         let archived = self.archive_holds(env, id);
         if !archived && chat {
@@ -398,7 +403,7 @@ impl EnvironmentShell {
             self.forget_acp_transcript(env, id);
         }
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     pub(super) fn forget_live_node(

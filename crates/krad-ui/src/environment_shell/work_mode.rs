@@ -53,7 +53,7 @@ impl EnvironmentShell {
         self.leave_hosted_chat();
         self.leave_hosted_terminal();
         cx.notify();
-        self.store();
+        self.save_view();
     }
 
     pub(super) fn toggle_work_mode(&mut self, cx: &mut Context<Self>) {

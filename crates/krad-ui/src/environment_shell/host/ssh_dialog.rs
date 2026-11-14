@@ -11,7 +11,7 @@ use std::future::Future;
 use super::super::dialog_parts::{
     field_label, sheet_footer, sheet_overlay, sheet_panel, sheet_title,
 };
-use super::super::{EnvironmentShell, LiveEnv};
+use super::super::EnvironmentShell;
 use super::HostDialog;
 use crate::components::{icon, Button, ButtonVariant, IconName};
 use crate::theme::{
@@ -140,8 +140,7 @@ impl EnvironmentShell {
         let mut data = EnvironmentData::empty(name.clone());
         data.title = Some(destination.to_string());
         data.host = Host::Ssh { destination };
-        self.order.push(name.clone());
-        self.envs.insert(name.clone(), LiveEnv::new(data, None));
+        self.open_environment(data, cx);
         self.switch_env(&name, cx);
     }
 

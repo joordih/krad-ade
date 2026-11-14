@@ -43,7 +43,7 @@ impl EnvironmentShell {
         intent: LaunchIntent,
         cwd: Option<PathBuf>,
     ) {
-        self.store();
+        self.save_view();
         self.runtime
             .client
             .post(Command::Terminal(TerminalCommand::Open {
@@ -60,7 +60,7 @@ impl EnvironmentShell {
         launch: Launch,
         cwd: Option<PathBuf>,
         prefill: &[String],
-        cx: &App,
+        cx: &mut App,
     ) {
         match LaunchIntent::try_from(launch) {
             Ok(intent) => self.launch_in_runtime(env, id, intent, cwd),
@@ -73,7 +73,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
         (launch, cwd, prefill): (Launch, Option<PathBuf>, &[String]),
-        cx: &App,
+        cx: &mut App,
     ) {
         let Launch::Command {
             program,
@@ -106,7 +106,7 @@ impl EnvironmentShell {
         let view = self
             .terminals()
             .open_terminal(terminal_ref(env, id), launch);
-        self.keep_live_session(env, id, LiveTerminal::new(view, None));
+        self.keep_live_session(env, id, LiveTerminal::new(view, None), cx);
     }
 
     pub(super) fn keep_live_session(
@@ -114,6 +114,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
         session: LiveTerminal,
+        cx: &mut App,
     ) {
         let harness_changed = self.envs.get(env).is_some_and(|live| {
             live.data
@@ -122,7 +123,7 @@ impl EnvironmentShell {
                 .any(|node| node.id == id && node.harness != session.harness)
         });
         if harness_changed {
-            self.set_node(env, id, NodeField::Harness(session.harness));
+            self.set_node(env, id, NodeField::Harness(session.harness), cx);
         }
         let Some(live) = self.envs.get_mut(env) else {
             return;
@@ -133,8 +134,14 @@ impl EnvironmentShell {
         }
     }
 
-    fn keep_opencode_resume(&mut self, env: &EnvironmentName, id: TerminalId, resume: ResumeId) {
-        self.set_node(env, id, NodeField::Resume(Some(resume)));
+    fn keep_opencode_resume(
+        &mut self,
+        env: &EnvironmentName,
+        id: TerminalId,
+        resume: ResumeId,
+        cx: &mut App,
+    ) {
+        self.set_node(env, id, NodeField::Resume(Some(resume)), cx);
     }
 
     pub(super) fn set_agent_state(
@@ -142,6 +149,7 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         id: TerminalId,
         state: AgentState,
+        cx: &mut App,
     ) -> bool {
         let Some(node) = self
             .envs
@@ -157,7 +165,7 @@ impl EnvironmentShell {
         let event = agent_event(id, node.harness, previous, state);
         let group = node.group;
         let waiting = previous == AgentState::Working && state == AgentState::WaitingForInput;
-        self.set_node(env, id, NodeField::State(state));
+        self.set_node(env, id, NodeField::State(state), cx);
         let Some(live) = self.envs.get_mut(env) else {
             return false;
         };

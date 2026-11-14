@@ -1,6 +1,8 @@
+use krad_domain::EnvironmentName;
 use krad_protocol::EventKind;
 use std::rc::Rc;
 
+use super::super::NodesMoved;
 use super::{Heard, ViewModel};
 
 impl ViewModel {
@@ -8,6 +10,8 @@ impl ViewModel {
         match kind {
             EventKind::EnvironmentOpened { environment } => {
                 Rc::make_mut(&mut self.environments).opened((*environment).clone());
+                let moved = self.shown.opened(&environment);
+                self.nodes_moved(&environment.name, moved);
                 self.heard(Heard::Event(EventKind::EnvironmentOpened { environment }));
             }
             EventKind::EnvironmentChanged {
@@ -16,6 +20,10 @@ impl ViewModel {
                 answers,
             } => {
                 Rc::make_mut(&mut self.environments).changed(&environment, changes.clone());
+                if let Some(runtime) = self.environments.get(&environment) {
+                    let moved = self.shown.heard(&environment, &changes, answers, runtime);
+                    self.nodes_moved(&environment, moved);
+                }
                 self.heard(Heard::Event(EventKind::EnvironmentChanged {
                     environment,
                     changes,
@@ -24,10 +32,12 @@ impl ViewModel {
             }
             EventKind::EnvironmentClosed { environment } => {
                 Rc::make_mut(&mut self.environments).closed(&environment);
+                self.shown.closed(&environment);
                 self.heard(Heard::Event(EventKind::EnvironmentClosed { environment }));
             }
             EventKind::EnvironmentsOrdered { order } => {
                 Rc::make_mut(&mut self.environments).ordered(&order);
+                self.shown.ordered(&order);
                 self.heard(Heard::Event(EventKind::EnvironmentsOrdered { order }));
             }
             EventKind::KraddieChanged { kraddie } => {
@@ -43,7 +53,23 @@ impl ViewModel {
                     self.heard(Heard::GitMoved(moved));
                 }
             }
+            EventKind::DigestsChanged(owned) => {
+                self.kraddies.digests(&owned);
+                self.heard(Heard::Event(EventKind::DigestsChanged(owned)));
+            }
             kind => self.heard(Heard::Event(kind)),
         }
     }
+
+    pub(super) fn nodes_moved(&mut self, environment: &EnvironmentName, moved: NodesMoved) {
+        if !moved.is_empty() {
+            self.heard(Heard::NodesMoved {
+                environment: environment.clone(),
+                moved,
+            });
+        }
+    }
 }
+
+#[cfg(test)]
+mod tests;

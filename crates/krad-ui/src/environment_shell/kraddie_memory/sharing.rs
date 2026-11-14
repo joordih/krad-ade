@@ -64,11 +64,13 @@ impl EnvironmentShell {
         &mut self,
         old: &KraddieId,
         new: &KraddieId,
+        cx: &mut Context<Self>,
     ) {
+        self.edit_kraddie_book(cx, |book| {
+            book.minds.rename(old, new);
+            book.digests.rename(old, new);
+        });
         let memory = &mut self.kraddies.memory;
-        if let Some(book) = memory.books.remove(old) {
-            memory.books.insert(new.clone(), book);
-        }
         if memory.expanded.remove(old) {
             memory.expanded.insert(new.clone());
         }
