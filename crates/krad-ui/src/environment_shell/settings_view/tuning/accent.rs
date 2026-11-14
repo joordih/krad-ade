@@ -72,7 +72,7 @@ impl EnvironmentShell {
     }
 
     fn accent_swatches(&self, pal: &Palette, cx: &mut Context<Self>) -> AnyElement {
-        let picked = self.settings.theme_tuning.accent;
+        let picked = self.runtime.settings.theme_tuning.accent;
         let theme = swatch_cell(picked == AccentChoice::Theme, pal)
             .id(THEME_ID)
             .on_click(cx.listener(|this: &mut Self, _, _, cx| {
@@ -99,7 +99,7 @@ impl EnvironmentShell {
     }
 
     fn accent_custom(&self, ui: &TuningUi, pal: &Palette, cx: &mut Context<Self>) -> AnyElement {
-        let picked = self.settings.theme_tuning.accent;
+        let picked = self.runtime.settings.theme_tuning.accent;
         let custom = match picked {
             AccentChoice::Custom(color) => Some(color),
             AccentChoice::Theme | AccentChoice::Swatch(_) => None,

@@ -46,16 +46,18 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let preferences = &mut self.settings.model_preferences;
-        match which {
-            Mark::Favorite => preferences.toggle_favorite(harness, &model),
-            Mark::NewChatDefault => preferences.toggle_default(harness, &model),
-        };
+        self.edit_settings(cx, |settings| {
+            let preferences = &mut settings.model_preferences;
+            match which {
+                Mark::Favorite => preferences.toggle_favorite(harness, &model),
+                Mark::NewChatDefault => preferences.toggle_default(harness, &model),
+            };
+        });
         if let Some(picker) = self.model_picker.as_mut() {
-            picker.choosing.remark(&self.settings.model_preferences);
+            picker
+                .choosing
+                .remark(&self.runtime.settings.model_preferences);
         }
-        self.save_settings(cx);
-        cx.notify();
     }
 }
 

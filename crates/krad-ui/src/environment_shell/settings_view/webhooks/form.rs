@@ -170,8 +170,7 @@ impl EnvironmentShell {
         else {
             return;
         };
-        let webhooks = &mut self.settings.webhooks;
-        match draft.ready(|| webhooks.issue_id()) {
+        match self.edit_settings(cx, |settings| draft.ready(|| settings.webhooks.issue_id())) {
             Ok(ready) => {
                 self.close_webhook_form(window, cx);
                 self.save_webhook(ready, cx);
@@ -204,13 +203,14 @@ impl EnvironmentShell {
                 if let Err(error) = written {
                     return shell.toast(ToastKind::Error, &error.to_string(), cx);
                 }
-                let removed_meanwhile =
-                    target == DraftTarget::Existing && shell.settings.webhooks.find(id).is_none();
+                let removed_meanwhile = target == DraftTarget::Existing
+                    && shell.runtime.settings.webhooks.find(id).is_none();
                 if removed_meanwhile {
                     return;
                 }
-                shell.settings.webhooks.save(hook.clone());
-                shell.save_settings(cx);
+                shell.edit_settings(cx, |settings| {
+                    settings.webhooks.save(hook.clone());
+                });
                 shell
                     .runtime
                     .client

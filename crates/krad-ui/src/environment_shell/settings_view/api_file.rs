@@ -15,7 +15,7 @@ const API_FILE_HINT: &str = "Leaves api.json in the app's config folder with the
 impl EnvironmentShell {
     pub(super) fn api_file_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.api_discovery_file;
+        let current = self.runtime.settings.api_discovery_file;
         let option = |id: &'static str, label: &'static str, choice: ApiDiscoveryFile| {
             segment(
                 id,
@@ -27,11 +27,10 @@ impl EnvironmentShell {
                 cx,
             )
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                if this.settings.api_discovery_file == choice {
+                if this.runtime.settings.api_discovery_file == choice {
                     return;
                 }
-                this.settings.api_discovery_file = choice;
-                this.save_settings(cx);
+                this.edit_settings(cx, |settings| settings.api_discovery_file = choice);
                 this.sync_api_file();
                 cx.notify();
             }))

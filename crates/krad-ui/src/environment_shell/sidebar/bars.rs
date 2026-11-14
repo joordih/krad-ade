@@ -98,7 +98,12 @@ impl EnvironmentShell {
         let tally = self
             .envs
             .get(&self.active)
-            .filter(|_| self.settings.sidebar.shows(SidebarPart::AgentCounts))
+            .filter(|_| {
+                self.runtime
+                    .settings
+                    .sidebar
+                    .shows(SidebarPart::AgentCounts)
+            })
             .map_or_default(|live| live.data.tally());
         let counts = tally.active_counts().into_iter().map(|(state, count)| {
             div()

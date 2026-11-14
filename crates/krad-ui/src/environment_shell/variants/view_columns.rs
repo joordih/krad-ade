@@ -108,7 +108,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let harness = self.settings.acp.harness_name(variant.spec.harness);
+        let harness = self.runtime.settings.acp.harness_name(variant.spec.harness);
         let (mark, mark_color) = harness_icon(variant.spec.harness, pal);
         let elapsed = variant.elapsed(now).map(|took| {
             let prefix = if variant.finished_at.is_some() {

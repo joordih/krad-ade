@@ -92,7 +92,12 @@ impl EnvironmentShell {
         });
         let typed_name = composer.worktree_name.read(cx).value().to_string();
         let name = sanitize_worktree_name(&typed_name).or_else(|| name_from_prompt(&prompt));
-        let label = self.settings.acp.harness_name(composer.preset).into_owned();
+        let label = self
+            .runtime
+            .settings
+            .acp
+            .harness_name(composer.preset)
+            .into_owned();
         match (composer.new_worktree, repo_group, name) {
             (true, Some(group), Some(name)) => {
                 let follow = GitFollowUp::SpawnIn { label, launch };

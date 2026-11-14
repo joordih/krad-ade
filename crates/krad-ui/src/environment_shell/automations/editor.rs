@@ -192,7 +192,7 @@ impl EnvironmentShell {
             .and_then(|id| self.automations.catalog.find(id))
             .map_or_else(AutomationDraft::default, AutomationDraft::from);
         let here = self.active_kraddie_workspace();
-        draft.kraddie = owner_for(&self.kraddies.entries, here.as_ref());
+        draft.kraddie = owner_for(&self.runtime.kraddies.entries, here.as_ref());
         self.show_automation_editor(None, draft, window, cx);
     }
 
@@ -205,7 +205,7 @@ impl EnvironmentShell {
         if self.editing_automation() == Some(key) {
             return;
         }
-        let Some((_, entry)) = self.kraddies.automation(key) else {
+        let Some((_, entry)) = self.runtime.kraddies.automation(key) else {
             return;
         };
         let draft = AutomationDraft::from((key.kraddie.clone(), entry.automation.clone()));

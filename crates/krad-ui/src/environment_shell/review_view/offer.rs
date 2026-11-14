@@ -3,7 +3,7 @@ use krad_domain::{CodeHost, EnvironmentName, EnvironmentView, Host};
 use krad_protocol::ReviewAct;
 use std::path::PathBuf;
 
-use crate::environment_shell::groups::GitKey;
+use crate::environment_shell::runtime_view::GitKey;
 use crate::environment_shell::EnvironmentShell;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

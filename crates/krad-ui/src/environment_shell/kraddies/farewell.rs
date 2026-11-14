@@ -27,7 +27,7 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(entry) = self.kraddies.entry(id) else {
+        let Some(entry) = self.runtime.kraddies.entry(id) else {
             return;
         };
         let detail = farewell_detail(entry.kraddie.name.as_str());

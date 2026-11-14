@@ -115,6 +115,7 @@ impl EnvironmentShell {
 
     fn edit_acp_agent(&mut self, id: AcpAgentId, window: &mut Window, cx: &mut Context<Self>) {
         let Some(agent) = self
+            .runtime
             .settings
             .acp
             .agents
@@ -128,10 +129,9 @@ impl EnvironmentShell {
     }
 
     fn remove_acp_agent(&mut self, id: AcpAgentId, cx: &mut Context<Self>) {
-        let Some(agent) = self.settings.acp.remove_agent(id) else {
+        let Some(agent) = self.edit_settings(cx, |settings| settings.acp.remove_agent(id)) else {
             return;
         };
-        self.save_settings(cx);
         cx.notify();
         let removed = cx.background_spawn(async move {
             agent.secret_keys().iter().try_for_each(delete_acp_secret)
@@ -318,10 +318,11 @@ impl EnvironmentShell {
 
     fn acp_custom_card(&self, form_open: bool, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let rows: Vec<AnyElement> = if self.settings.acp.agents.is_empty() {
+        let rows: Vec<AnyElement> = if self.runtime.settings.acp.agents.is_empty() {
             vec![empty_row(CUSTOM_EMPTY, pal)]
         } else {
-            self.settings
+            self.runtime
+                .settings
                 .acp
                 .agents
                 .iter()

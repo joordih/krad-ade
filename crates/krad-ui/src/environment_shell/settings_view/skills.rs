@@ -122,8 +122,9 @@ impl EnvironmentShell {
     }
 
     fn set_skill_enabled(&mut self, key: SkillKey, enabled: bool, cx: &mut Context<Self>) {
-        self.settings.skills.set_enabled(key, enabled);
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| {
+            settings.skills.set_enabled(key, enabled);
+        });
         cx.notify();
     }
 
@@ -171,7 +172,10 @@ impl EnvironmentShell {
                     .filter(|(_, skill)| skill.matches(&filter))
                     .map(|(index, skill)| self.skill_row(index, skill, cx))
                     .collect();
-                let hint = enabled_hint(enabled_count(skills, &self.settings.skills), skills.len());
+                let hint = enabled_hint(
+                    enabled_count(skills, &self.runtime.settings.skills),
+                    skills.len(),
+                );
                 if shown.is_empty() {
                     (vec![empty_row(NO_MATCH_TEXT, pal)], Some(hint))
                 } else {

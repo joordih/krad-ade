@@ -197,7 +197,7 @@ impl EnvironmentShell {
             &folder,
             &sources,
             &keep,
-            &self.settings.acp.harness_name(preset),
+            &self.runtime.settings.acp.harness_name(preset),
             dialog.model.as_ref(),
         );
         if let Some(root) = self.active_group().map(|group| group.root.clone()) {

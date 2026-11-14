@@ -121,14 +121,14 @@ impl EnvironmentShell {
         side: f32,
         cx: &Context<Self>,
     ) -> Option<AnyElement> {
-        let kraddie = self.kraddies.entry(&card.key.kraddie)?;
+        let kraddie = self.runtime.kraddies.entry(&card.key.kraddie)?;
         let mood = if card.on_duty() {
             self.kraddie_mood(kraddie)
         } else {
             KraddieMood::Idle
         };
-        let sprite = kraddie.sprite(mood);
-        self.kraddies.note_drawn(sprite);
+        let sprite = self.kraddies.sprite(kraddie, mood);
+        self.kraddies.note_drawn(&sprite);
         let frame = self.kraddies.frame();
         let bob = if card.on_duty() && !cx.reduce_motion() {
             idle_bob(frame)
@@ -140,7 +140,7 @@ impl EnvironmentShell {
                 .relative()
                 .flex_none()
                 .top(px(bob))
-                .child(kraddie_avatar(sprite, side, frame))
+                .child(kraddie_avatar(&sprite, side, frame))
                 .into_any_element(),
         )
     }
@@ -172,7 +172,7 @@ impl EnvironmentShell {
     }
 
     fn flip_automation(&mut self, key: &AutomationKey, cx: &mut Context<Self>) {
-        let Some((_, entry)) = self.kraddies.automation(key) else {
+        let Some((_, entry)) = self.runtime.kraddies.automation(key) else {
             return;
         };
         let switch = match entry.automation.switch {

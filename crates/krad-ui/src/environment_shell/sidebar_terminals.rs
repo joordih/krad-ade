@@ -107,7 +107,7 @@ impl EnvironmentShell {
                 name: group.name.clone(),
                 count: (!in_sessions).then_some(tally.total()),
                 branch: git
-                    .filter(|_| self.settings.sidebar.shows(SidebarPart::Branches))
+                    .filter(|_| self.runtime.settings.sidebar.shows(SidebarPart::Branches))
                     .map(branch_caption),
                 branch_control: None,
                 trailing: (tally.waiting > 0).then(|| {

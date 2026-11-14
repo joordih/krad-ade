@@ -38,7 +38,7 @@ impl EnvironmentShell {
         let Some(tools) = servers.tools.clone() else {
             return;
         };
-        let chosen = self.settings.server_runtimes.clone();
+        let chosen = self.runtime.settings.server_runtimes.clone();
         let plan = key.plan.clone();
         let Some(root) = self.server_directory(&key) else {
             return;
@@ -89,7 +89,7 @@ impl EnvironmentShell {
             return;
         };
         self.set_slot(key.clone(), ServerSlot::Installing, cx);
-        let chosen = self.settings.server_runtimes.clone();
+        let chosen = self.runtime.settings.server_runtimes.clone();
         let plan = key.plan.clone();
         let (Some(root), Some((link, platform))) =
             (self.server_directory(&key), self.server_link(&key.host))

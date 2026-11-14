@@ -103,7 +103,7 @@ impl EnvironmentShell {
                 let (mark, _) = harness_icon(preset, pal);
                 segment(
                     (HARNESS_PREFIX, index * HARNESS_STRIDE + at),
-                    self.settings.acp.harness_name(preset),
+                    self.runtime.settings.acp.harness_name(preset),
                     Some(mark),
                     row.harness == preset,
                     SegmentSize::Compact,

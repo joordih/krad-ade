@@ -361,7 +361,7 @@ impl EnvironmentShell {
             return div().into_any_element();
         };
         let session = live.sessions.get(&id);
-        let mono = mono_family(&self.settings.terminal_font);
+        let mono = mono_family(&self.runtime.settings.terminal_font);
         let colors = terminal_colors(cx);
         let (origin_x, origin_y) = self.window_origin();
         let top = origin_y + self.canvas_px.1 + WINDOW_INSET;
@@ -391,7 +391,7 @@ impl EnvironmentShell {
                 self.terminal_images(id),
                 BodyLook {
                     geometry,
-                    ligatures: self.settings.terminal_font.ligatures,
+                    ligatures: self.runtime.settings.terminal_font.ligatures,
                     zoom: UNZOOMED,
                     text_zoom: zoom,
                     focused: live.focused == Some(id),

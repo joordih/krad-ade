@@ -92,10 +92,7 @@ impl EnvironmentShell {
             return Vec::new();
         };
         let mut listed: BTreeMap<PathBuf, Listed> = BTreeMap::new();
-        for ((on, _), git) in &self.git {
-            if *on != host {
-                continue;
-            }
+        for git in self.runtime.git.on(&host) {
             let mut worktrees = git.worktrees.iter();
             let Some(main) = worktrees.next() else {
                 continue;
@@ -118,7 +115,10 @@ impl EnvironmentShell {
             .settings_ui
             .as_ref()
             .and_then(|ui| ui.worktrees.states.probes.get(&entry.path).cloned());
-        if !needs_confirming(self.settings.worktrees.confirm_removal, probe.as_ref()) {
+        if !needs_confirming(
+            self.runtime.settings.worktrees.confirm_removal,
+            probe.as_ref(),
+        ) {
             self.remove_listed(entry, probe.as_ref(), cx);
             return;
         }

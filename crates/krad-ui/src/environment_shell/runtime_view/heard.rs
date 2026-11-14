@@ -33,6 +33,8 @@ impl From<Area> for Reach {
 impl EnvironmentShell {
     pub(super) fn runtime_news(&mut self, cx: &mut Context<Self>) {
         let News { heard, areas } = self.runtime.view.update(cx, |model, _| model.take_news());
+        self.runtime.reread(cx);
+        self.kraddies_redrawn();
         let shown = areas.iter().copied().map(Reach::from).max();
         let reach = heard
             .into_iter()
@@ -82,7 +84,8 @@ impl EnvironmentShell {
                 return Reach::Shown;
             }
             Heard::OpencodeReady => self.opencode_ready(),
-            Heard::SettingsAdopted(settings) => self.settings_adopted(*settings, cx),
+            Heard::SettingsAdopted => self.settings_adopted(cx),
+            Heard::GitMoved(moved) => self.git_moved(moved, cx),
             Heard::HostedFailed { runner, failure } => {
                 self.hosted_failed(runner, &failure, cx);
                 return Reach::Shown;
@@ -101,7 +104,6 @@ impl EnvironmentShell {
     }
 
     fn snapshot_heard(&mut self, snapshot: Snapshot, moves: Vec<HostMove>, cx: &mut Context<Self>) {
-        self.runtime.environments.replace(snapshot.environments);
         self.gateway_replaced(cx);
         let environments = self.runtime.environments.names();
         for environment in environments {
@@ -111,7 +113,6 @@ impl EnvironmentShell {
         self.advance_harness_onboarding(cx);
         self.hosts_replaced(&snapshot.hosts, moves, cx);
         self.runtime_chats_replaced(RuntimeId::Local, snapshot.chats, cx);
-        self.git_replaced(snapshot.git, cx);
         self.kraddies_replaced(*snapshot.kraddies);
         for summary in snapshot.terminals {
             self.adopt_launched_view(&summary.terminal);
@@ -122,9 +123,7 @@ impl EnvironmentShell {
     fn apply_runtime_event(&mut self, kind: EventKind, cx: &mut Context<Self>) -> Reach {
         match kind {
             EventKind::EnvironmentOpened { environment } => {
-                let name = environment.name.clone();
-                self.runtime.environments.opened(*environment);
-                self.offer_open_buffers(&name, cx);
+                self.offer_open_buffers(&environment.name, cx);
                 Reach::Quietly
             }
             EventKind::EnvironmentChanged {
@@ -132,18 +131,10 @@ impl EnvironmentShell {
                 changes,
                 answers,
             } => {
-                self.runtime
-                    .environments
-                    .changed(&environment, changes.clone());
                 self.environment_heard(&environment, &changes, answers, cx);
                 Reach::Quietly
             }
-            EventKind::EnvironmentClosed { environment } => {
-                self.runtime.environments.closed(&environment);
-                Reach::Attention
-            }
-            EventKind::EnvironmentsOrdered { order } => {
-                self.runtime.environments.ordered(&order);
+            EventKind::EnvironmentClosed { .. } | EventKind::EnvironmentsOrdered { .. } => {
                 Reach::Attention
             }
             EventKind::TerminalChanged { terminal } => {
@@ -207,12 +198,10 @@ impl EnvironmentShell {
             }
             EventKind::SpendingCrossed(crossed) => self.spending_crossed(&crossed),
             EventKind::SettingsNotSaved { error } => self.settings_not_saved(&error),
-            EventKind::GitRead(read) => self.git_read_heard(read, cx),
             EventKind::GitFinished(finished) => self.git_finished(finished, cx),
             EventKind::SessionChangesRead(read) => self.session_changes_read(read),
             EventKind::WorktreeSwept(swept) => self.worktree_swept(&swept),
             EventKind::KraddieChanged { kraddie } => self.kraddie_heard(*kraddie),
-            EventKind::KraddieRemoved { kraddie } => self.kraddie_removed(&kraddie),
             EventKind::DigestsChanged(owned) => self.digests_heard(owned),
             EventKind::KraddieRunFailed { task, reason } => {
                 self.kraddie_run_failed(&task, &reason, cx);
@@ -247,6 +236,8 @@ impl EnvironmentShell {
             | EventKind::ModelsListed { .. }
             | EventKind::OpencodeServer(_)
             | EventKind::SettingsChanged { .. }
+            | EventKind::GitRead(_)
+            | EventKind::KraddieRemoved { .. }
             | EventKind::HostChanged { .. }
             | EventKind::RemoteBusChanged { .. }
             | EventKind::HostPrompted(_)

@@ -152,7 +152,7 @@ impl EnvironmentShell {
         self.extensions
             .slots
             .insert(key.clone(), Slot::Starting(waiting));
-        let chosen = self.settings.server_runtimes.clone();
+        let chosen = self.runtime.settings.server_runtimes.clone();
         let log = record.log.clone();
         let starting = cx.background_spawn(async move {
             let mut params = params;

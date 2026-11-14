@@ -75,7 +75,7 @@ impl KraddieMemoryUi {
 impl EnvironmentShell {
     pub(super) fn memory_library(&self) -> MemoryLibrary {
         let mut library = MemoryLibrary::default();
-        for entry in &self.kraddies.entries {
+        for entry in &self.runtime.kraddies.entries {
             let id = entry.kraddie.id();
             library.add_keepsakes(&id, &self.kraddie_mind(&id).memory);
             if let Some(book) = self.kraddies.memory.books.get(&id) {
@@ -99,12 +99,12 @@ impl EnvironmentShell {
             .memory
             .kraddie
             .clone()?;
-        let sprite = self.kraddies.entry(&id)?.sprite(KraddieMood::Idle);
-        Some(Rc::clone(sprite))
+        let entry = self.runtime.kraddies.entry(&id)?;
+        Some(self.kraddies.sprite(entry, KraddieMood::Idle))
     }
 
     pub(super) fn memory_tools_offered(&self) -> bool {
-        !self.kraddies.entries.is_empty() || !self.kraddies.memory.ordinary.is_empty()
+        !self.runtime.kraddies.entries.is_empty() || !self.kraddies.memory.ordinary.is_empty()
     }
 
     pub(super) fn memory_size(&self, kraddie: &KraddieId) -> MemorySize {

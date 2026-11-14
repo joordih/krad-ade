@@ -59,8 +59,9 @@ impl EnvironmentShell {
         };
         if keep {
             if let Some(anchor) = placing.anchor {
-                self.settings.toasts.placement = Some(frame.placement_of(anchor));
-                self.save_settings(cx);
+                self.edit_settings(cx, |settings| {
+                    settings.toasts.placement = Some(frame.placement_of(anchor));
+                });
             }
         }
         cx.notify();
@@ -68,8 +69,7 @@ impl EnvironmentShell {
 
     fn reset_toast_placing(&mut self, cx: &mut Context<Self>) {
         self.toasts.placing = None;
-        self.settings.toasts.placement = None;
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| settings.toasts.placement = None);
         cx.notify();
     }
 
@@ -120,7 +120,7 @@ impl EnvironmentShell {
         self.toasts
             .placing
             .and_then(|placing| placing.anchor)
-            .unwrap_or_else(|| frame.anchor_of(self.settings.toasts.placement))
+            .unwrap_or_else(|| frame.anchor_of(self.runtime.settings.toasts.placement))
     }
 
     pub(in crate::environment_shell) fn toast_placing_overlay(

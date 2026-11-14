@@ -112,7 +112,7 @@ impl EnvironmentShell {
             session,
             now: local_clock::now(),
         };
-        let settings = self.settings.attention;
+        let settings = self.runtime.settings.attention;
         if let Some(sound) = settings.sound(kind, circumstances) {
             attention_sound::play(sound);
         }
@@ -231,7 +231,7 @@ impl EnvironmentShell {
     }
 
     fn show_badge(&mut self, cx: &App) {
-        let settings = self.settings.attention;
+        let settings = self.runtime.settings.attention;
         let count = if settings.badge.is_on() {
             self.runtime
                 .view

@@ -68,6 +68,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> GatewayUi {
         let saved = self
+            .runtime
             .settings
             .gateway
             .url
@@ -103,11 +104,10 @@ impl EnvironmentShell {
             ui.gateway.url_error = read.as_ref().err().copied();
         }
         let url = read.unwrap_or_default();
-        if url == self.settings.gateway.url {
+        if url == self.runtime.settings.gateway.url {
             return cx.notify();
         }
-        self.settings.gateway.url = url;
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| settings.gateway.url = url);
         self.check_gateway_soon(cx);
     }
 
@@ -118,7 +118,7 @@ impl EnvironmentShell {
         let Some(key) = GatewayKey::parse(&field.read(cx).value()) else {
             return;
         };
-        if self.settings.gateway.url.is_none() {
+        if self.runtime.settings.gateway.url.is_none() {
             return;
         }
         field.update(cx, |field, cx| field.set_value("", window, cx));
@@ -127,7 +127,7 @@ impl EnvironmentShell {
 
     fn gateway_status(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let configured = self.settings.gateway.url.is_some();
+        let configured = self.runtime.settings.gateway.url.is_some();
         let link = self.gateway(cx).state.clone();
         let (mark, connected, state, detail) = match &link {
             GatewayState::Unset => (

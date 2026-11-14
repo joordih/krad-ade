@@ -18,7 +18,7 @@ impl EnvironmentShell {
         let Some(config) = krad_store::config_dir() else {
             return;
         };
-        let entries = self.settings.extensions.clone();
+        let entries = self.runtime.settings.extensions.clone();
         let bundled = self.bundled_manifests();
         let loading = cx.background_spawn(async move {
             let folders = trusted_manifest_folders(&config, &entries);
@@ -35,7 +35,7 @@ impl EnvironmentShell {
     }
 
     fn bundled_manifests(&self) -> Vec<BundledManifest> {
-        match self.settings.java_engine {
+        match self.runtime.settings.java_engine {
             JavaEngine::IntelliJ => vec![BundledManifest::IntellijJava],
             JavaEngine::Jdtls => Vec::new(),
         }
@@ -92,7 +92,7 @@ impl EnvironmentShell {
         ) else {
             return;
         };
-        let entries = self.settings.extensions.clone();
+        let entries = self.runtime.settings.extensions.clone();
         let bundled = self.bundled_manifests();
         let fetching = cx.background_spawn(async move {
             let folders = trusted_manifest_folders(&config, &entries);
@@ -144,7 +144,7 @@ impl EnvironmentShell {
             return;
         };
         self.set_slot(key.clone(), ServerSlot::InstallingServerRuntime(name), cx);
-        let chosen = self.settings.server_runtimes.clone();
+        let chosen = self.runtime.settings.server_runtimes.clone();
         let installing = cx.background_spawn(async move {
             tools.install_server_runtime_on(&link, platform, &id, &chosen)
         });
@@ -175,7 +175,7 @@ impl EnvironmentShell {
             multiple: false,
             prompt: Some(SharedString::from(FOLDER_PROMPT)),
         });
-        let chosen = self.settings.server_runtimes.clone();
+        let chosen = self.runtime.settings.server_runtimes.clone();
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = answer.await else {
                 return;
@@ -190,8 +190,9 @@ impl EnvironmentShell {
                 .await;
             this.update(cx, |shell, cx| {
                 if accepted {
-                    shell.settings.server_runtimes.choose(id, folder);
-                    shell.save_settings(cx);
+                    shell.edit_settings(cx, |settings| {
+                        settings.server_runtimes.choose(id, folder);
+                    });
                     shell.retry_server(key, cx);
                 } else {
                     let reason = format!("{} {NOT_IN_FOLDER_TEXT} {name}", folder.display());

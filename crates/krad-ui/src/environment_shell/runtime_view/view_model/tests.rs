@@ -366,3 +366,50 @@ fn agents_the_gateway_and_code_host_logins_are_read_from_the_view_model() {
     let heard = events(model.take_news());
     assert_eq!(heard.len(), 3, "the shell still hears what it reacts to");
 }
+
+#[test]
+fn environments_settings_and_git_are_read_copies_the_view_model_owns() {
+    use krad_domain::{AppearanceMode, GitStatus, GroupGit, Host, Refs};
+    use krad_protocol::GitRead;
+    use std::collections::HashMap;
+    use std::path::{Path, PathBuf};
+    let mut model = ViewModel::default();
+    let mut shown = snapshot();
+    shown.settings.appearance = AppearanceMode::Dark;
+    model.feed(Feed::Snapshot(shown));
+    assert_eq!(model.settings.current().appearance, AppearanceMode::Dark);
+    let adopted = model.take_news().heard;
+    assert!(adopted
+        .iter()
+        .any(|heard| matches!(heard, Heard::SettingsAdopted)));
+    assert_eq!(model.environments.names(), [name(MAIN), name(SIDE)]);
+    model.fold_event(EventKind::EnvironmentClosed {
+        environment: name(SIDE),
+    });
+    assert_eq!(model.environments.names(), [name(MAIN)]);
+    assert_eq!(
+        events(model.take_news()).len(),
+        1,
+        "the shell still hears it"
+    );
+    model.fold_event(EventKind::GitRead(GitRead {
+        host: Host::Local,
+        root: PathBuf::from("/r"),
+        git: Some(Box::new(GroupGit {
+            repo_root: PathBuf::from("/r"),
+            status: GitStatus::default(),
+            lines: HashMap::new(),
+            worktrees: Vec::new(),
+            refs: Refs::default(),
+        })),
+    }));
+    let moved = model.take_news().heard;
+    assert!(moved
+        .iter()
+        .any(|heard| matches!(heard, Heard::GitMoved(_))));
+    assert!(model
+        .git
+        .current()
+        .at(&Host::Local, Path::new("/r"))
+        .is_some());
+}

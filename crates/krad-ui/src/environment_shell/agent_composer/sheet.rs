@@ -81,7 +81,7 @@ impl EnvironmentShell {
                         cx.notify();
                     }))
                     .child(icon(mark, ICON_SM, mark_color))
-                    .child(self.settings.acp.harness_name(preset))
+                    .child(self.runtime.settings.acp.harness_name(preset))
                     .into_any_element()
             })
             .collect()

@@ -298,7 +298,7 @@ impl EnvironmentShell {
 
     fn sidebar_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let editing = self.editing();
-        let views = (!editing && self.settings.sidebar.shows(SidebarPart::Views))
+        let views = (!editing && self.runtime.settings.sidebar.shows(SidebarPart::Views))
             .then(|| self.view_list(cx));
         let list = if editing {
             self.side_section(cx)
@@ -313,9 +313,14 @@ impl EnvironmentShell {
             .child(self.environment_header(cx))
             .children(views)
             .children(
-                (!editing && self.settings.sidebar.shows_view(EnvironmentView::Kraddies))
-                    .then(|| self.sidebar_kraddies(cx))
-                    .flatten(),
+                (!editing
+                    && self
+                        .runtime
+                        .settings
+                        .sidebar
+                        .shows_view(EnvironmentView::Kraddies))
+                .then(|| self.sidebar_kraddies(cx))
+                .flatten(),
             )
             .child(list)
             .child(self.sidebar_footer(cx))

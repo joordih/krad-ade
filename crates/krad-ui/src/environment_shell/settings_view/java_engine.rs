@@ -25,12 +25,11 @@ impl EnvironmentShell {
         if let Some(ui) = &mut self.settings_ui {
             ui.languages.confirming_unstable = false;
         }
-        if self.settings.java_engine == engine {
+        if self.runtime.settings.java_engine == engine {
             cx.notify();
             return;
         }
-        self.settings.java_engine = engine;
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| settings.java_engine = engine);
         self.restart_language_servers(cx);
         cx.notify();
     }
@@ -41,7 +40,7 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !engine.is_unstable() || self.settings.java_engine == engine {
+        if !engine.is_unstable() || self.runtime.settings.java_engine == engine {
             self.set_java_engine(engine, cx);
             return;
         }
@@ -67,7 +66,7 @@ impl EnvironmentShell {
 
     pub(super) fn java_engine_card(&self, confirming: bool, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.java_engine;
+        let current = self.runtime.settings.java_engine;
         let engines = JavaEngine::ALL.map(|engine| {
             segment(
                 (ENGINE_PREFIX, engine as u64),

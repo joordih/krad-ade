@@ -94,10 +94,12 @@ impl EnvironmentShell {
     }
 
     fn remove_webhook(&mut self, id: WebhookId, cx: &mut Context<Self>) {
-        if self.settings.webhooks.remove(id).is_none() {
+        if self
+            .edit_settings(cx, |settings| settings.webhooks.remove(id))
+            .is_none()
+        {
             return;
         }
-        self.save_settings(cx);
         self.runtime
             .client
             .post(Command::Events(EventsCommand::RemoveWebhook { hook: id }));
@@ -117,7 +119,7 @@ impl EnvironmentShell {
     }
 
     fn test_webhook(&self, id: WebhookId) {
-        if self.settings.webhooks.find(id).is_none() {
+        if self.runtime.settings.webhooks.find(id).is_none() {
             return;
         }
         self.runtime
@@ -169,10 +171,11 @@ impl EnvironmentShell {
 
     fn webhooks_card(&self, form_open: bool, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let rows: Vec<AnyElement> = if self.settings.webhooks.hooks.is_empty() {
+        let rows: Vec<AnyElement> = if self.runtime.settings.webhooks.hooks.is_empty() {
             vec![empty_row(HOOKS_EMPTY, pal)]
         } else {
-            self.settings
+            self.runtime
+                .settings
                 .webhooks
                 .hooks
                 .iter()

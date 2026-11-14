@@ -38,7 +38,8 @@ impl EnvironmentShell {
         env: &EnvironmentName,
         session: SessionId,
     ) -> bool {
-        self.kraddies
+        self.runtime
+            .kraddies
             .run_on(env, session)
             .is_some_and(|(entry, _)| !entry.kraddie.settings.shows_in_sidebar())
     }
@@ -47,11 +48,12 @@ impl EnvironmentShell {
         &self,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        if self.kraddies.entries.is_empty() {
+        if self.runtime.kraddies.entries.is_empty() {
             return None;
         }
         let pal = palette(cx);
         let rows = self
+            .runtime
             .kraddies
             .entries
             .iter()
@@ -104,8 +106,8 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let id = entry.kraddie.id();
         let mood = self.kraddie_mood(entry);
-        let sprite = entry.sprite(mood);
-        self.kraddies.note_drawn(sprite);
+        let sprite = self.kraddies.sprite(entry, mood);
+        self.kraddies.note_drawn(&sprite);
         let selected = self.active_view() == EnvironmentView::Kraddies
             && self.kraddies.profile.open.as_ref() == Some(&id);
         let enter_id = (SharedString::from(format!("{ENTER_PREFIX}-{id}")), index);
@@ -132,7 +134,7 @@ impl EnvironmentShell {
             .active(|style| style.opacity(PRESSED_OPACITY))
             .child(self.kraddie_expander(index, &id, cx))
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| this.open_kraddie_page(&id, cx)))
-            .child(kraddie_avatar(sprite, AVATAR_SIDE, self.kraddies.frame()))
+            .child(kraddie_avatar(&sprite, AVATAR_SIDE, self.kraddies.frame()))
             .child(
                 div()
                     .flex_1()

@@ -9,6 +9,6 @@ impl EnvironmentShell {
         &self,
         runner: CloudRunnerId,
     ) -> bool {
-        self.settings.cloud.find(runner).is_none()
+        self.runtime.settings.cloud.find(runner).is_none()
     }
 }

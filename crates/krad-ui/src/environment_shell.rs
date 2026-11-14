@@ -174,11 +174,9 @@ pub struct EnvironmentShell {
     activity_log: activity::ActivityLog,
     close_request: CloseRequest,
     view_writer: Option<LayoutWriter>,
-    git: HashMap<groups::GitKey, groups::GroupGit>,
     git_task: Option<Task<()>>,
     file_tree: file_tree::FileTree,
     viewer: Option<code_viewer::CodeView>,
-    settings: Settings,
     settings_ui: Option<settings_view::SettingsUi>,
     bus_work: agent_bus::BusWork,
     gateway: gateway::Gateway,
@@ -306,11 +304,9 @@ impl EnvironmentShell {
             activity_log: activity::ActivityLog::default(),
             close_request: CloseRequest::Idle,
             view_writer: LayoutWriter::spawn(LayoutFile::View),
-            git: HashMap::new(),
             git_task: None,
             file_tree: file_tree::FileTree::default(),
             viewer: None,
-            settings,
             settings_ui: None,
             bus_work: agent_bus::BusWork::default(),
             gateway: gateway::Gateway::default(),
@@ -341,7 +337,7 @@ impl EnvironmentShell {
             automations: automations::AutomationsUi::default(),
             variants: variants::VariantsUi::default(),
             cloud: cloud::CloudRunners::default(),
-            runtime: runtime_view::RuntimeLink::new(runtime, cx),
+            runtime: runtime_view::RuntimeLink::new(runtime, settings, cx),
         }
     }
 

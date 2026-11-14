@@ -162,8 +162,8 @@ impl EnvironmentShell {
                 .or_default()
                 .push(root.join(file));
         }
-        let limit =
-            usize::try_from(self.settings.editor.project_check_limit.files()).unwrap_or(usize::MAX);
+        let limit = usize::try_from(self.runtime.settings.editor.project_check_limit.files())
+            .unwrap_or(usize::MAX);
         found
             .into_iter()
             .map(|(language, files)| {

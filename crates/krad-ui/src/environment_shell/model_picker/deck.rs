@@ -72,7 +72,7 @@ impl EnvironmentShell {
             picker.origin.0 - self.frame_inset.0,
             picker.origin.1 - self.frame_inset.1,
         );
-        let stacked = self.settings.beta.model_picker == ModelPickerLayout::Stacked;
+        let stacked = self.runtime.settings.beta.model_picker == ModelPickerLayout::Stacked;
         let (width, height) = if stacked {
             (DETAIL_W, DETAIL_H + STACKED_LIST_H)
         } else {
@@ -200,9 +200,7 @@ impl EnvironmentShell {
                 .when(!on, |button| button.hover(|style| style.bg(pal.bg_hover)))
                 .tooltip(move |_, cx| tooltip_view(tooltip.into(), cx))
                 .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                    this.settings.beta.model_picker = layout;
-                    this.save_settings(cx);
-                    cx.notify();
+                    this.edit_settings(cx, |settings| settings.beta.model_picker = layout);
                 }))
                 .child(icon(
                     glyph,

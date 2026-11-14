@@ -74,14 +74,14 @@ impl Render for ViewTerminal {
                 .text_color(rgb(pal.text_muted))
                 .child(STARTING_TEXT);
         };
-        let mono = mono_family(&shell.settings.terminal_font);
+        let mono = mono_family(&shell.runtime.settings.terminal_font);
         let look = BodyLook {
             geometry: BodyGeometry {
                 origin: (0.0, 0.0),
                 cell_w: shell.cell_width_px.unwrap_or(TERMINAL_FONT_PX),
                 line_h: TERMINAL_LINE_PX,
             },
-            ligatures: shell.settings.terminal_font.ligatures,
+            ligatures: shell.runtime.settings.terminal_font.ligatures,
             zoom: UNZOOMED,
             text_zoom: UNZOOMED,
             focused,

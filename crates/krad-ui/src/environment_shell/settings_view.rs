@@ -23,6 +23,7 @@ mod navigation;
 mod notifications;
 mod page;
 mod plan_usage;
+mod saving;
 mod search;
 mod sections;
 mod skills;
@@ -41,9 +42,7 @@ use gpui_kit::{
     div, px, rgb, AnyElement, BoxShadow, Context, Div, ElementId, InteractiveElement, IntoElement,
     ParentElement, SharedString, Stateful, Styled, Window,
 };
-use krad_domain::Settings;
-use krad_domain::{AppearanceMode, ToastKind};
-use krad_protocol::{Command, SettingsCommand};
+use krad_domain::AppearanceMode;
 
 use super::dialog_parts::{sheet_group, sheet_row};
 use super::EnvironmentShell;
@@ -63,7 +62,6 @@ const SWATCH_GAP: f32 = 10.0;
 const CHOICE_PAD: f32 = 14.0;
 const CHOICE_GAP: f32 = 10.0;
 const CHOICE_RING: f32 = 1.5;
-const SETTINGS_NOT_SAVED: &str = "Couldn't save the settings";
 
 pub(super) use navigation::SettingsPane;
 
@@ -254,33 +252,8 @@ impl EnvironmentShell {
         true
     }
 
-    pub(super) fn save_settings(&mut self, cx: &mut Context<Self>) {
-        let settings = &self.settings;
-        if self
-            .runtime
-            .view
-            .update(cx, |model, _| model.settings.send(settings))
-        {
-            let settings = Box::new(self.settings.clone());
-            self.runtime
-                .client
-                .post(Command::Settings(SettingsCommand::Save { settings }));
-        }
-        self.redetect_after_acp_change(cx);
-        cx.notify();
-    }
-
-    pub(super) fn settings_adopted(&mut self, adopted: Settings, cx: &mut Context<Self>) {
-        self.settings = adopted;
-        self.apply_active_theme(cx);
-    }
-
-    pub(super) fn settings_not_saved(&mut self, error: &str) {
-        self.push_toast(ToastKind::Error, format!("{SETTINGS_NOT_SAVED}: {error}"));
-    }
-
     pub(super) fn sync_system_appearance(&mut self, cx: &mut Context<Self>) {
-        if self.settings.appearance != AppearanceMode::System {
+        if self.runtime.settings.appearance != AppearanceMode::System {
             return;
         }
         let wanted = mode_appearance(AppearanceMode::System, system_is_dark(cx));
@@ -290,9 +263,8 @@ impl EnvironmentShell {
     }
 
     fn set_appearance(&mut self, mode: AppearanceMode, cx: &mut Context<Self>) {
-        self.settings.appearance = mode;
+        self.edit_settings(cx, |settings| settings.appearance = mode);
         self.apply_active_theme(cx);
-        self.save_settings(cx);
     }
 
     pub(super) fn toggle_appearance(&mut self, cx: &mut Context<Self>) {

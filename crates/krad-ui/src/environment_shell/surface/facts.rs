@@ -275,7 +275,7 @@ impl EnvironmentShell {
 
     fn settings_models(&self, harness: AgentPreset) -> Vec<ModelId> {
         if harness.takes_settings_models() {
-            self.settings.models(harness)
+            self.runtime.settings.models(harness)
         } else {
             Vec::new()
         }
@@ -327,7 +327,7 @@ impl EnvironmentShell {
                         .unwrap_or_else(|| self.active.clone());
                     let available = self.agents_for(&here, root, cx);
                     let in_cloud = self.cloud_placement_of(&here, id).is_some();
-                    AgentPreset::chat_harnesses(&self.settings.acp.all_agents())
+                    AgentPreset::chat_harnesses(&self.runtime.settings.acp.all_agents())
                         .into_iter()
                         .filter(|other| {
                             other.native_twin() != harness.native_twin()

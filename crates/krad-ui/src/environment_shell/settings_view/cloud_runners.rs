@@ -140,10 +140,11 @@ impl EnvironmentShell {
     fn cloud_runners_card(&self, ui: &CloudRunnersUi, cx: &mut Context<Self>) -> AnyElement {
         let form_open = ui.form.open;
         let pal = palette(cx);
-        let rows: Vec<AnyElement> = if self.settings.cloud.runners.is_empty() {
+        let rows: Vec<AnyElement> = if self.runtime.settings.cloud.runners.is_empty() {
             vec![empty_row(RUNNERS_EMPTY, pal)]
         } else {
-            self.settings
+            self.runtime
+                .settings
                 .cloud
                 .runners
                 .iter()

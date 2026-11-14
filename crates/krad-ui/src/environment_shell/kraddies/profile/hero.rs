@@ -167,7 +167,11 @@ impl EnvironmentShell {
     }
 
     fn hero_facts(&self, entry: &KraddieEntry, pal: &Palette) -> Div {
-        let harness = self.settings.acp.harness_name(entry.kraddie.harness);
+        let harness = self
+            .runtime
+            .settings
+            .acp
+            .harness_name(entry.kraddie.harness);
         div()
             .flex()
             .flex_row()
@@ -188,13 +192,13 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let sprite = entry.sprite(mood);
-        self.kraddies.note_drawn(sprite);
+        let sprite = self.kraddies.sprite(entry, mood);
+        self.kraddies.note_drawn(&sprite);
         let key = entry.kraddie.id().to_string();
         let pokes = self.kraddies.profile.pokes;
         let popped = div()
             .size(px(side))
-            .child(kraddie_canvas(sprite, self.kraddies.frame()))
+            .child(kraddie_canvas(&sprite, self.kraddies.frame()))
             .with_animation(
                 (SharedString::from(format!("{POP_ID}-{key}")), mood.index()),
                 Animation::new(MOOD_POP),

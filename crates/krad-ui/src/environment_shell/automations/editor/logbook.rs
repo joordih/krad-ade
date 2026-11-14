@@ -27,7 +27,7 @@ impl EnvironmentShell {
         pal: &Palette,
     ) -> Option<AnyElement> {
         let key = editor.editing.as_ref()?;
-        let (_, entry) = self.kraddies.automation(key)?;
+        let (_, entry) = self.runtime.kraddies.automation(key)?;
         let now = SystemTime::now();
         let rows: Vec<AnyElement> = entry
             .history

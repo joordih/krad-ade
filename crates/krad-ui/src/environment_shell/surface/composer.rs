@@ -53,7 +53,7 @@ impl EnvironmentShell {
         chat: &ChatView,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        if self.settings.beta.composer == ComposerDesign::Tray {
+        if self.runtime.settings.beta.composer == ComposerDesign::Tray {
             return self.tray_composer(id, chat, cx);
         }
         let pal = palette(cx);

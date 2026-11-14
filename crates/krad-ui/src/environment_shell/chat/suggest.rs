@@ -169,7 +169,7 @@ impl EnvironmentShell {
                 Some(
                     search_skills(
                         skills,
-                        &self.settings.skills,
+                        &self.runtime.settings.skills,
                         &suggest.query,
                         SUGGESTION_LIMIT,
                     )
@@ -319,7 +319,7 @@ impl EnvironmentShell {
             .strip_prefix(SKILL_PREFIX)?
             .split_whitespace()
             .next()
-            .filter(|name| self.settings.skills.allows_call(name))?;
+            .filter(|name| self.runtime.settings.skills.allows_call(name))?;
         let skill = self
             .chat
             .skills

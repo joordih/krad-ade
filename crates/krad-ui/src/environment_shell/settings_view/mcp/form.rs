@@ -193,6 +193,7 @@ impl EnvironmentShell {
             .map_err(|error| error.to_string())
             .and_then(|ready| {
                 if self
+                    .runtime
                     .settings
                     .mcp
                     .servers
@@ -254,9 +255,8 @@ impl EnvironmentShell {
                 if let Err(error) = written {
                     return shell.toast(ToastKind::Error, &error.to_string(), cx);
                 }
-                match shell.settings.mcp.add_server(server) {
+                match shell.edit_settings(cx, |settings| settings.mcp.add_server(server)) {
                     Ok(()) => {
-                        shell.save_settings(cx);
                         shell.toast(ToastKind::Success, ADDED_TOAST, cx);
                     }
                     Err(taken) => shell.toast(ToastKind::Warning, &taken.to_string(), cx),

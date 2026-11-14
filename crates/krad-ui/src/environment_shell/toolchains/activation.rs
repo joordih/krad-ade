@@ -173,7 +173,7 @@ impl EnvironmentShell {
         &self,
         group: &TerminalGroup,
     ) -> MenuEntry {
-        let global = self.settings.toolchain_activation;
+        let global = self.runtime.settings.toolchain_activation;
         let options = GroupActivation::ALL
             .into_iter()
             .map(|activation| {
@@ -222,7 +222,7 @@ impl EnvironmentShell {
         };
         if !group
             .activation
-            .resolve(self.settings.toolchain_activation)
+            .resolve(self.runtime.settings.toolchain_activation)
             .is_on()
         {
             return;

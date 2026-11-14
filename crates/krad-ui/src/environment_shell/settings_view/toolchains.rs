@@ -18,14 +18,13 @@ impl EnvironmentShell {
         activation: ToolchainActivation,
         cx: &mut Context<Self>,
     ) {
-        self.settings.toolchain_activation = activation;
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| settings.toolchain_activation = activation);
         cx.notify();
     }
 
     pub(super) fn toolchain_activation_card(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.toolchain_activation;
+        let current = self.runtime.settings.toolchain_activation;
         let option = |id: &'static str, label: &'static str, activation: ToolchainActivation| {
             segment(
                 id,

@@ -30,7 +30,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn archive_session(&mut self, env: &EnvironmentName, session: SessionId) {
-        let edit = if self.settings.archive_retention.keeps() {
+        let edit = if self.runtime.settings.archive_retention.keeps() {
             SessionEdit::Archive {
                 session,
                 at: SystemTime::now(),
@@ -42,7 +42,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn archive_chat_tab(&mut self, env: &EnvironmentName, terminal: TerminalId) {
-        if !self.settings.archive_retention.keeps() {
+        if !self.runtime.settings.archive_retention.keeps() {
             return;
         }
         let archived = NodeEdit::ArchiveChat {
@@ -71,7 +71,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn sweep_archive(&mut self, cx: &mut Context<Self>) {
-        let retention = self.settings.archive_retention;
+        let retention = self.runtime.settings.archive_retention;
         let now = SystemTime::now();
         let stale: Vec<EnvironmentName> = self
             .envs

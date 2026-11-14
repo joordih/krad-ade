@@ -47,7 +47,7 @@ impl EnvironmentShell {
         if !chosen.is_empty() {
             return Self::copy_text(Some(chosen), cx);
         }
-        if !self.settings.copy_mode.copies_on_shortcut() {
+        if !self.runtime.settings.copy_mode.copies_on_shortcut() {
             return;
         }
         let focused = self.envs.get(&self.active).and_then(|live| live.focused);
@@ -57,7 +57,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn copy_finished_selection(&self, id: TerminalId, cx: &mut Context<Self>) {
-        if self.settings.copy_mode.copies_on_select() {
+        if self.runtime.settings.copy_mode.copies_on_select() {
             self.copy_terminal_selection(id, cx);
         }
     }

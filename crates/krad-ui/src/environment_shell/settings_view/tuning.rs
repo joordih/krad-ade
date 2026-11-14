@@ -96,7 +96,7 @@ fn typed_color(
 
 impl EnvironmentShell {
     pub(super) fn tuning_ui(&self, window: &mut Window, cx: &mut Context<Self>) -> TuningUi {
-        let tuning = self.settings.theme_tuning;
+        let tuning = self.runtime.settings.theme_tuning;
         let mut events = Vec::new();
         let surfaces = Self::surface_sliders(&tuning, &mut events, cx);
         let accent = Self::accent_field(&tuning, &mut events, window, cx);
@@ -128,13 +128,17 @@ impl EnvironmentShell {
         write: TuningWrite,
         cx: &mut Context<Self>,
     ) {
-        let before = self.settings.theme_tuning;
-        edit(&mut self.settings.theme_tuning);
-        if self.settings.theme_tuning != before {
-            self.apply_active_theme(cx);
+        let before = self.runtime.settings.theme_tuning;
+        match write {
+            TuningWrite::Save => {
+                self.edit_settings(cx, |settings| edit(&mut settings.theme_tuning));
+            }
+            TuningWrite::Preview => {
+                self.preview_settings(cx, |settings| edit(&mut settings.theme_tuning));
+            }
         }
-        if write == TuningWrite::Save {
-            self.save_settings(cx);
+        if self.runtime.settings.theme_tuning != before {
+            self.apply_active_theme(cx);
         }
         cx.notify();
     }

@@ -118,7 +118,7 @@ impl EnvironmentShell {
             && model.acp.acp_seeds.contains_key(&key));
         if busy_or_known
             || !self.installed_agents(cx).contains(&preset)
-            || self.settings.acp.agent(agent).is_none()
+            || self.runtime.settings.acp.agent(agent).is_none()
         {
             return;
         }

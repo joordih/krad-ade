@@ -95,7 +95,7 @@ impl EnvironmentShell {
     fn template_detail(&self, template: &SessionTemplate) -> Option<SharedString> {
         let mut parts: Vec<String> = Vec::new();
         if let Some(harness) = template.harness {
-            parts.push(self.settings.acp.harness_name(harness).into_owned());
+            parts.push(self.runtime.settings.acp.harness_name(harness).into_owned());
         }
         if let Some(model) = &template.model {
             parts.push(model.to_string());

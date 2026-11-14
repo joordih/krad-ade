@@ -61,7 +61,7 @@ impl EnvironmentShell {
             next_in: &|kraddie, entry| self.automation_next_in(kraddie, entry),
             age: &|started| now.duration_since(started).ok(),
         };
-        let everything = automation_cards(&self.kraddies.entries, "", &clock);
+        let everything = automation_cards(&self.runtime.kraddies.entries, "", &clock);
         let filtered = (!query.trim().is_empty()).then(|| filtered_cards(&everything, &query));
         let cards = filtered.as_deref().unwrap_or(everything.as_slice());
         let content = if everything.is_empty() {

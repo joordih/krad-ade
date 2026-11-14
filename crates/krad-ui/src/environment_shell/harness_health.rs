@@ -122,10 +122,10 @@ impl EnvironmentShell {
     }
 
     pub(super) fn start_harness_onboarding(&mut self, cx: &mut Context<Self>) {
-        if !self.settings.harness_onboarding.is_pending() {
+        if !self.runtime.settings.harness_onboarding.is_pending() {
             return;
         }
-        if !self.settings.gateway.is_empty() {
+        if !self.runtime.settings.gateway.is_empty() {
             self.finish_harness_onboarding(cx);
             return;
         }
@@ -145,7 +145,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn advance_harness_onboarding(&mut self, cx: &mut Context<Self>) {
-        if !self.settings.harness_onboarding.is_pending() {
+        if !self.runtime.settings.harness_onboarding.is_pending() {
             return;
         }
         let place = HealthPlace::ThisComputer;
@@ -170,9 +170,9 @@ impl EnvironmentShell {
 
     fn finish_harness_onboarding(&mut self, cx: &mut Context<Self>) {
         self.harness_checks.onboarding_open = false;
-        self.settings.harness_onboarding = HarnessOnboarding::Done;
-        self.save_settings(cx);
-        cx.notify();
+        self.edit_settings(cx, |settings| {
+            settings.harness_onboarding = HarnessOnboarding::Done;
+        });
     }
 }
 

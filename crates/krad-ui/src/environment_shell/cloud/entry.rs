@@ -31,7 +31,7 @@ impl EnvironmentShell {
         group: &TerminalGroup,
         cx: &App,
     ) -> MenuEntry {
-        let runners = &self.settings.cloud.runners;
+        let runners = &self.runtime.settings.cloud.runners;
         let Some(first) = runners.first() else {
             return MenuEntry::item(NEW_LABEL, Some(IconName::Cloud), MenuAction::OpenSettings)
                 .disabled_when(true)
@@ -57,7 +57,8 @@ impl EnvironmentShell {
         action: impl Fn(CloudRunnerId) -> MenuAction,
         cx: &App,
     ) -> Vec<MenuEntry> {
-        self.settings
+        self.runtime
+            .settings
             .cloud
             .runners
             .iter()
@@ -73,7 +74,13 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let group = self.active_group().map(|group| group.id);
-        let runner = self.settings.cloud.runners.first().map(|runner| runner.id);
+        let runner = self
+            .runtime
+            .settings
+            .cloud
+            .runners
+            .first()
+            .map(|runner| runner.id);
         match (group, runner) {
             (Some(group), Some(runner)) => self.new_cloud_session(group, runner),
             (_, None) => self.toast(ToastKind::Warning, NO_RUNNER_REASON, cx),
@@ -82,7 +89,7 @@ impl EnvironmentShell {
     }
 
     pub(in crate::environment_shell) fn can_send_to_cloud(&self, session: SessionId) -> bool {
-        !self.settings.cloud.runners.is_empty()
+        !self.runtime.settings.cloud.runners.is_empty()
             && self
                 .envs
                 .get(&self.active)
@@ -96,7 +103,7 @@ impl EnvironmentShell {
         origin: (f32, f32),
         cx: &mut Context<Self>,
     ) {
-        match self.settings.cloud.runners.as_slice() {
+        match self.runtime.settings.cloud.runners.as_slice() {
             [] => self.toast(ToastKind::Warning, NO_RUNNER_REASON, cx),
             [runner] => {
                 let runner = runner.id;
@@ -122,7 +129,13 @@ impl EnvironmentShell {
             .get(&self.active)
             .and_then(|live| live.data.current_session())
             .map(|session| session.id);
-        let runner = self.settings.cloud.runners.first().map(|runner| runner.id);
+        let runner = self
+            .runtime
+            .settings
+            .cloud
+            .runners
+            .first()
+            .map(|runner| runner.id);
         match (current, runner) {
             (Some(session), Some(runner)) => self.send_session_to_cloud(session, runner),
             (None, _) => self.toast(ToastKind::Warning, NO_SESSION_TOAST, cx),

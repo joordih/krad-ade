@@ -23,7 +23,7 @@ impl EnvironmentShell {
     }
 
     pub(in crate::environment_shell) fn show_cloud_runners(&self, cx: &App) {
-        for runner in &self.settings.cloud.runners {
+        for runner in &self.runtime.settings.cloud.runners {
             if self.runner_state(runner.id, cx) == RunnerState::NotConnected {
                 self.ensure_runner_ready(runner.id);
             }
@@ -40,8 +40,7 @@ impl EnvironmentShell {
         destination: SshDestination,
         cx: &mut Context<Self>,
     ) {
-        let id = self.settings.cloud.add(name, destination);
-        self.save_settings(cx);
+        let id = self.edit_settings(cx, |settings| settings.cloud.add(name, destination));
         self.toast(ToastKind::Success, ADDED_TOAST, cx);
         self.ensure_runner_ready(id);
     }
@@ -51,10 +50,12 @@ impl EnvironmentShell {
         runner: CloudRunnerId,
         cx: &mut Context<Self>,
     ) {
-        if self.settings.cloud.remove(runner).is_none() {
+        if self
+            .edit_settings(cx, |settings| settings.cloud.remove(runner))
+            .is_none()
+        {
             return;
         }
-        self.save_settings(cx);
         self.runtime.view.update(cx, |model, _| {
             model.runner_logins.remove(&runner);
             model.runners.remove(&runner);

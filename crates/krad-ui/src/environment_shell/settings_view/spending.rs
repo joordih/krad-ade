@@ -28,20 +28,18 @@ fn budget_of(dollars: Option<f64>) -> Option<UsdCost> {
 
 impl EnvironmentShell {
     fn set_group_budget(&mut self, budget: Option<UsdCost>, cx: &mut Context<Self>) {
-        self.settings.spending.group_budget = budget;
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| settings.spending.group_budget = budget);
         cx.notify();
     }
 
     fn set_budget_warning(&mut self, warning: WarnPercent, cx: &mut Context<Self>) {
-        self.settings.spending.warn_at = warning;
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| settings.spending.warn_at = warning);
         cx.notify();
     }
 
     pub(super) fn spending_card(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.spending.group_budget;
+        let current = self.runtime.settings.spending.group_budget;
         let budgets = BUDGETS.iter().enumerate().map(|(at, &(label, dollars))| {
             let budget = budget_of(dollars);
             segment(
@@ -63,7 +61,7 @@ impl EnvironmentShell {
             segmented_track(pal).children(budgets).into_any_element(),
             pal,
         );
-        let warn_at = self.settings.spending.warn_at;
+        let warn_at = self.runtime.settings.spending.warn_at;
         let warnings = WARNINGS.iter().filter_map(|&(label, percent)| {
             let warning = WarnPercent::try_from(percent).ok()?;
             Some(

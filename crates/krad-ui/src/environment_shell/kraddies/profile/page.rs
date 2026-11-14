@@ -61,7 +61,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let id = self.kraddies.profile.open.clone()?;
-        let entry = self.kraddies.entry(&id)?;
+        let entry = self.runtime.kraddies.entry(&id)?;
         let pal = palette(cx);
         let layout = self.kraddie_layout(window);
         let section = self.kraddies.profile.section;

@@ -35,7 +35,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn forget_gateway_key(&mut self) {
-        let Some(url) = self.settings.gateway.url.clone() else {
+        let Some(url) = self.runtime.settings.gateway.url.clone() else {
             return;
         };
         self.runtime
@@ -51,7 +51,7 @@ impl EnvironmentShell {
     ) {
         self.gateway.attempt += 1;
         let attempt = self.gateway.attempt;
-        let Some(url) = self.settings.gateway.url.clone() else {
+        let Some(url) = self.runtime.settings.gateway.url.clone() else {
             self.gateway.saving = false;
             self.post_gateway_check(None, None);
             return;
@@ -123,7 +123,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn refresh_gateway_offers(&self, cx: &mut App) {
-        let chosen = &self.settings.gateway.models;
+        let chosen = &self.runtime.settings.gateway.models;
         self.runtime
             .view
             .update(cx, |model, _| model.gateway.offer(chosen));

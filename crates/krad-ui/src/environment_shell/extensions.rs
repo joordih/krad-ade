@@ -207,7 +207,7 @@ impl EnvironmentShell {
         let Some(config) = krad_store::config_dir() else {
             return;
         };
-        let entries = self.settings.extensions.clone();
+        let entries = self.runtime.settings.extensions.clone();
         let reading = cx.background_spawn(async move {
             let records = read_records(&config, entries);
             let values = krad_store::read_extension_settings();

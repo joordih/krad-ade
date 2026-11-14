@@ -52,7 +52,7 @@ impl EnvironmentShell {
                 .chat
                 .harness()
                 .acp_agent()
-                .and_then(|agent| self.settings.acp.agent(agent))
+                .and_then(|agent| self.runtime.settings.acp.agent(agent))
                 .is_some_and(|agent| agent.terminal.is_some());
         let methods = asked.methods.iter().enumerate().map(|(index, method)| {
             let picked = method.id.clone();

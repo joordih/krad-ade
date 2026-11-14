@@ -182,6 +182,7 @@ impl Chat {
             account: self.account.clone(),
             acp: self.acp.as_ref().map(|acp| acp.shown.clone()),
             mcp_trust: self.mcp.asked(),
+            launch: self.shown_launch(),
         }
     }
 

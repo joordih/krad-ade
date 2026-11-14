@@ -63,7 +63,7 @@ impl EnvironmentShell {
         let harness = dialog.preset.map(|preset| {
             (
                 preset,
-                SharedString::from(self.settings.acp.harness_name(preset)),
+                SharedString::from(self.runtime.settings.acp.harness_name(preset)),
             )
         });
         let pal = palette(cx);

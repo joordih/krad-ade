@@ -65,8 +65,14 @@ per crate:
   through its own runtime's client; a runner's terminals are watched through
   `RuntimeClient::watch_terminal` and painted from a local emulator.
   Detected agents, the Gateway's state and the code hosts' logins are read from the `ViewModel` too, never kept in the shell.
+  Settings, the runtime's environments, the groups' git reads and the Kraddies are owned by the
+  `ViewModel` and read through the `Rc` handles `RuntimeLink::reread` re-points after each batch
+  (`self.runtime.settings`, `.environments`, `.git`, `.kraddies`); settings change only through
+  `edit_settings` (or `preview_settings` for a live preview), never by writing a shell copy.
   The editor is the one exception the plan keeps UI-side: language servers, extensions, toolchains and the unsaved
-  buffers of file and note editors live with the window that edits them.
+  buffers of file and note editors live with the window that edits them. The app's own update
+  (`krad-update`) is the second: it replaces the process that owns the window, and the runtime may
+  not depend on `krad-update`.
   `RuntimeHandle` (`self.runtime.handle`) is only for what can
   never cross a wire: terminal views and actions, host links and machine channels, runner lines,
   open editor buffers, the bus delegation channel and its access, and withdrawing the discovery file. Pasted chat images go to the runtime as bytes (`chat/attach_image`),

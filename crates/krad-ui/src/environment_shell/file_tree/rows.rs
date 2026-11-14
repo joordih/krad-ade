@@ -286,7 +286,7 @@ impl EnvironmentShell {
     fn entry_icon(&self, entry: &DirEntry, expanded: bool, cx: &App) -> AnyElement {
         let is_dir = entry.kind == EntryKind::Directory;
         let dark = appearance(cx) == Appearance::Dark;
-        let colors = self.settings.file_icon_colors.palette(dark);
+        let colors = self.runtime.settings.file_icon_colors.palette(dark);
         let colored = self.file_icons.as_ref().and_then(|icons| {
             if !is_dir {
                 return icons.file(&entry.name, colors, ICON_SM);

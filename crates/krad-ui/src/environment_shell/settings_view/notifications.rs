@@ -100,7 +100,7 @@ const fn kind_key(kind: AttentionKind) -> &'static str {
 impl EnvironmentShell {
     pub(super) fn notifications_pane(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let settings = self.settings.attention;
+        let settings = self.runtime.settings.attention;
         let main = panel_card(
             [
                 Self::switch_row(
@@ -202,8 +202,7 @@ impl EnvironmentShell {
         edit: impl FnOnce(&mut AttentionSettings),
         cx: &mut Context<Self>,
     ) {
-        edit(&mut self.settings.attention);
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| edit(&mut settings.attention));
         cx.notify();
     }
 
@@ -236,7 +235,7 @@ impl EnvironmentShell {
 
     fn kind_card(&self, kind: AttentionKind, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let rule = self.settings.attention.rules.of(kind);
+        let rule = self.runtime.settings.attention.rules.of(kind);
         let key = kind_key(kind);
         let switch = |row: &'static str,
                       current: Switch,
@@ -298,7 +297,7 @@ impl EnvironmentShell {
 
     fn timing_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.attention.sound_timing;
+        let current = self.runtime.settings.attention.sound_timing;
         let segments = SoundTiming::ALL.map(|timing| {
             segment(
                 element_id(&[KEY_TIMING, timing.display_name()]),
@@ -319,7 +318,7 @@ impl EnvironmentShell {
 
     fn quiet_row(&self, edge: QuietEdge, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let quiet = self.settings.attention.quiet_hours;
+        let quiet = self.runtime.settings.attention.quiet_hours;
         let (label, key, time) = match edge {
             QuietEdge::Start => (QUIET_START_LABEL, KEY_START, quiet.start),
             QuietEdge::End => (QUIET_END_LABEL, KEY_END, quiet.end),

@@ -34,7 +34,12 @@ impl EnvironmentShell {
                 problem_marks(state.clone(), problems),
             ]
         });
-        let font_size = self.settings.editor_font.size_or(EDITOR_FONT_SIZE).as_f32();
+        let font_size = self
+            .runtime
+            .settings
+            .editor_font
+            .size_or(EDITOR_FONT_SIZE)
+            .as_f32();
         let library = self.is_library_document(&Document::new(&live.data.host, &editor.path));
         let text_px = font_size * scale.as_f32();
         let lines = state.read(cx).text().lines_len();
@@ -64,7 +69,9 @@ impl EnvironmentShell {
                             .bordered(false)
                             .readonly(library)
                             .text_size(px(text_px))
-                            .font_features(font_features(self.settings.editor_font.ligatures))
+                            .font_features(font_features(
+                                self.runtime.settings.editor_font.ligatures,
+                            ))
                             .h_full(),
                     )
                     .children(overlays.into_iter().flatten()),

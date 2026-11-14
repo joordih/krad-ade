@@ -541,7 +541,7 @@ impl EnvironmentShell {
         }
         let pal = palette(cx);
         let session = live.sessions.get(&id);
-        let mono = mono_family(&self.settings.terminal_font);
+        let mono = mono_family(&self.runtime.settings.terminal_font);
         let colors = terminal_colors(cx);
         let text_zoom =
             node.map_or(UNZOOMED, |node| node.text_scale.as_f32()) * self.terminal_font_zoom();
@@ -581,7 +581,7 @@ impl EnvironmentShell {
                 self.terminal_images(id),
                 BodyLook {
                     geometry,
-                    ligatures: self.settings.terminal_font.ligatures,
+                    ligatures: self.runtime.settings.terminal_font.ligatures,
                     zoom: UNZOOMED,
                     text_zoom,
                     focused: true,

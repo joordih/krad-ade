@@ -19,20 +19,18 @@ const INDICATORS: [(&str, UsageIndicator); 2] = [
 
 impl EnvironmentShell {
     fn set_usage_indicator(&mut self, indicator: UsageIndicator, cx: &mut Context<Self>) {
-        self.settings.plan_usage.indicator = indicator;
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| settings.plan_usage.indicator = indicator);
         cx.notify();
     }
 
     fn set_plan_warning(&mut self, warning: WarnPercent, cx: &mut Context<Self>) {
-        self.settings.plan_usage.warn_at = warning;
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| settings.plan_usage.warn_at = warning);
         cx.notify();
     }
 
     pub(super) fn plan_usage_card(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.plan_usage;
+        let current = self.runtime.settings.plan_usage;
         let indicators = INDICATORS.iter().map(|&(label, indicator)| {
             segment(
                 (INDICATOR_PREFIX, indicator as u64),

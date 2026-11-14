@@ -44,7 +44,7 @@ impl UsageMirror {
 
 impl EnvironmentShell {
     pub(super) fn usage_bar_shown(&self) -> bool {
-        self.settings.plan_usage.indicator == UsageIndicator::Shown
+        self.runtime.settings.plan_usage.indicator == UsageIndicator::Shown
     }
 
     pub(super) fn usage_bar_room(&self) -> f32 {
@@ -56,12 +56,12 @@ impl EnvironmentShell {
     }
 
     pub(super) fn toggle_usage_bar(&mut self, cx: &mut Context<Self>) {
-        self.settings.plan_usage.indicator = if self.usage_bar_shown() {
+        let indicator = if self.usage_bar_shown() {
             UsageIndicator::Hidden
         } else {
             UsageIndicator::Shown
         };
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| settings.plan_usage.indicator = indicator);
         self.place_usage();
         cx.notify();
     }

@@ -9,17 +9,15 @@ use crate::theme::advance_theme_fade;
 
 impl EnvironmentShell {
     pub fn apply_performance_mode(&self, cx: &mut App) {
-        follow_motion_preference(self.settings.performance_mode.reduces_motion(), cx);
+        follow_motion_preference(self.runtime.settings.performance_mode.reduces_motion(), cx);
     }
 
     pub(super) fn set_performance_mode(&mut self, mode: PerformanceMode, cx: &mut Context<Self>) {
-        if self.settings.performance_mode == mode {
+        if self.runtime.settings.performance_mode == mode {
             return;
         }
-        self.settings.performance_mode = mode;
+        self.edit_settings(cx, |settings| settings.performance_mode = mode);
         self.apply_performance_mode(cx);
-        self.save_settings(cx);
-        cx.notify();
     }
 
     pub(super) fn advance_motion(

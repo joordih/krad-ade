@@ -27,7 +27,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn scale_section(&self, pal: &Palette, cx: &mut Context<Self>) -> AnyElement {
-        let current = self.settings.theme_tuning.interface_scale;
+        let current = self.runtime.settings.theme_tuning.interface_scale;
         let segments = InterfaceScale::steps().map(|scale| {
             segment(
                 (SCALE_PREFIX, u64::from(scale.percent())),

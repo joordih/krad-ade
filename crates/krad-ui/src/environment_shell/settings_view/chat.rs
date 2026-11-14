@@ -54,7 +54,7 @@ impl EnvironmentShell {
 
     fn code_tools_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.code_tools;
+        let current = self.runtime.settings.code_tools;
         let option = |id: &'static str, label: &'static str, choice: CodeTools| {
             segment(
                 id,
@@ -66,8 +66,7 @@ impl EnvironmentShell {
                 cx,
             )
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                this.settings.code_tools = choice;
-                this.save_settings(cx);
+                this.edit_settings(cx, |settings| settings.code_tools = choice);
                 cx.notify();
             }))
         };
@@ -88,7 +87,7 @@ impl EnvironmentShell {
 
     fn extension_tools_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.extension_tools;
+        let current = self.runtime.settings.extension_tools;
         let option = |id: &'static str, label: &'static str, choice: ExtensionTools| {
             segment(
                 id,
@@ -100,8 +99,7 @@ impl EnvironmentShell {
                 cx,
             )
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                this.settings.extension_tools = choice;
-                this.save_settings(cx);
+                this.edit_settings(cx, |settings| settings.extension_tools = choice);
                 cx.notify();
             }))
         };
@@ -127,7 +125,7 @@ impl EnvironmentShell {
 
     fn composer_height_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.composer_height;
+        let current = self.runtime.settings.composer_height;
         let segments = ComposerHeight::ALL.map(|height| {
             segment(
                 (COMPOSER_HEIGHT_PREFIX, height as u64),
@@ -153,7 +151,7 @@ impl EnvironmentShell {
 
     fn archive_retention_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.archive_retention;
+        let current = self.runtime.settings.archive_retention;
         let segments = ArchiveRetention::ALL.map(|retention| {
             segment(
                 (RETENTION_PREFIX, retention as u64),
@@ -173,21 +171,19 @@ impl EnvironmentShell {
     }
 
     fn set_archive_retention(&mut self, retention: ArchiveRetention, cx: &mut Context<Self>) {
-        if self.settings.archive_retention == retention {
+        if self.runtime.settings.archive_retention == retention {
             return;
         }
-        self.settings.archive_retention = retention;
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| settings.archive_retention = retention);
         self.sweep_archive(cx);
         cx.notify();
     }
 
     fn set_composer_height(&mut self, height: ComposerHeight, cx: &mut Context<Self>) {
-        if self.settings.composer_height == height {
+        if self.runtime.settings.composer_height == height {
             return;
         }
-        self.settings.composer_height = height;
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| settings.composer_height = height);
         cx.notify();
     }
 }

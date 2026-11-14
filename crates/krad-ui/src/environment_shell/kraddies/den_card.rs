@@ -101,7 +101,11 @@ fn started_label(run: &KraddieRun) -> String {
 
 impl EnvironmentShell {
     fn kraddie_caption(&self, entry: &KraddieEntry) -> String {
-        let harness = self.settings.acp.harness_name(entry.kraddie.harness);
+        let harness = self
+            .runtime
+            .settings
+            .acp
+            .harness_name(entry.kraddie.harness);
         [
             harness.into_owned(),
             format!("{} {ROUTINES_LABEL}", entry.automations.len()),
@@ -121,10 +125,10 @@ impl EnvironmentShell {
         let id = entry.kraddie.id();
         let key = SharedString::from(id.to_string());
         let mood = self.kraddie_mood(entry);
-        let sprite = entry.sprite(mood);
-        self.kraddies.note_drawn(sprite);
+        let sprite = self.kraddies.sprite(entry, mood);
+        self.kraddies.note_drawn(&sprite);
         let avatar = idling(
-            kraddie_avatar(sprite, AVATAR_SIDE, self.kraddies.frame()),
+            kraddie_avatar(&sprite, AVATAR_SIDE, self.kraddies.frame()),
             (key.clone(), index),
         );
         let on = entry.kraddie.switch.is_on();
@@ -299,7 +303,12 @@ impl EnvironmentShell {
     }
 
     fn toggle_kraddie_switch(&mut self, id: &KraddieId, cx: &mut Context<Self>) {
-        let Some(mut kraddie) = self.kraddies.entry(id).map(|entry| entry.kraddie.clone()) else {
+        let Some(mut kraddie) = self
+            .runtime
+            .kraddies
+            .entry(id)
+            .map(|entry| entry.kraddie.clone())
+        else {
             return;
         };
         kraddie.switch = kraddie.switch.toggled();

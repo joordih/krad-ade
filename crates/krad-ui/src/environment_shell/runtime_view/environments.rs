@@ -1,7 +1,7 @@
 use krad_domain::{EnvironmentChange, EnvironmentData, EnvironmentName};
 use krad_protocol::EnvironmentCommand;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(in crate::environment_shell) struct EnvironmentsMirror(Vec<EnvironmentData>);
 
 fn names(environments: &[EnvironmentData]) -> Vec<&EnvironmentName> {
@@ -35,18 +35,18 @@ impl EnvironmentsMirror {
         self.0.iter().map(|kept| kept.name.clone()).collect()
     }
 
-    pub(super) fn opened(&mut self, environment: EnvironmentData) {
+    pub(in crate::environment_shell) fn opened(&mut self, environment: EnvironmentData) {
         match self.find_mut(&environment.name) {
             Some(kept) => *kept = environment,
             None => self.0.push(environment),
         }
     }
 
-    pub(super) fn closed(&mut self, name: &EnvironmentName) {
+    pub(in crate::environment_shell) fn closed(&mut self, name: &EnvironmentName) {
         self.0.retain(|kept| kept.name != *name);
     }
 
-    pub(super) fn ordered(&mut self, order: &[EnvironmentName]) {
+    pub(in crate::environment_shell) fn ordered(&mut self, order: &[EnvironmentName]) {
         self.0.sort_by_key(|kept| {
             order
                 .iter()
@@ -55,7 +55,11 @@ impl EnvironmentsMirror {
         });
     }
 
-    pub(super) fn changed(&mut self, name: &EnvironmentName, changes: Vec<EnvironmentChange>) {
+    pub(in crate::environment_shell) fn changed(
+        &mut self,
+        name: &EnvironmentName,
+        changes: Vec<EnvironmentChange>,
+    ) {
         if let Some(kept) = self.find_mut(name) {
             for change in changes {
                 kept.apply(change);

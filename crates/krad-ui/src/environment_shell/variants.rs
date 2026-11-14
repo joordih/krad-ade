@@ -34,7 +34,7 @@ impl EnvironmentShell {
         run.variant(variant).map_or_else(
             || variant.to_string(),
             |found| {
-                let harness = self.settings.acp.harness_name(found.spec.harness);
+                let harness = self.runtime.settings.acp.harness_name(found.spec.harness);
                 format!("{variant} {}", found.spec.label(&harness))
             },
         )

@@ -14,7 +14,7 @@ use krad_domain::{
     ModelId, PermissionMode, ResumeId, TerminalId,
 };
 use krad_domain::{Catalog, CommandOffer, SlashCommand};
-use krad_protocol::ChatCommand;
+use krad_protocol::{ChatCommand, ChatLaunch};
 
 use super::super::ask::AskQueue;
 use super::super::EnvironmentShell;
@@ -44,6 +44,7 @@ pub(in crate::environment_shell) struct StructuredChat {
     context_tokens: Option<u64>,
     pub(super) context_window: Option<u64>,
     pub(super) working: bool,
+    pub(in crate::environment_shell) launch: ChatLaunch,
     mcp_servers: Option<Vec<McpServerName>>,
     notices: Vec<String>,
     rewinding: bool,
@@ -70,6 +71,7 @@ impl StructuredChat {
             context_tokens: None,
             context_window: None,
             working: false,
+            launch: ChatLaunch::Answered,
             mcp_servers: None,
             notices: Vec::new(),
             rewinding: false,

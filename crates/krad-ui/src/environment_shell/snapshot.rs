@@ -1,24 +1,31 @@
-use gpui_kit::{App, Context};
+use gpui_kit::Context;
 use krad_domain::{
     EnvironmentData, EnvironmentName, EnvironmentViewPreferences, Layout, SessionEdit, TerminalId,
     ToastKind, ViewPreferences, DEFAULT_ENVIRONMENT, LAYOUT_SCHEMA_VERSION,
 };
 use krad_protocol::{Command, RuntimeCommand};
+use std::rc::Rc;
 
 use super::{EnvironmentShell, LiveEnv};
 
 impl EnvironmentShell {
-    pub(super) fn restore_layout(&mut self, layout: Layout, cx: &App) {
+    pub(super) fn restore_layout(&mut self, layout: Layout, cx: &mut Context<Self>) {
         let Layout { state, mut view } = layout;
         self.toolchains =
             super::toolchains::Toolchains::with_choices(std::mem::take(&mut view.toolchains));
         self.backdrop.chosen = std::mem::take(&mut view.backdrops);
-        self.backdrop.chosen.adopt_from(&mut self.settings);
+        let mut chosen = std::mem::take(&mut self.backdrop.chosen);
+        self.edit_settings(cx, |settings| chosen.adopt_from(settings));
+        self.backdrop.chosen = chosen;
         let mut environments = state.environments;
         for data in &mut environments {
             data.restart();
         }
-        self.runtime.environments.replace(environments.clone());
+        let seeded = environments.clone();
+        self.runtime.view.update(cx, |model, _| {
+            Rc::make_mut(&mut model.environments).replace(seeded);
+        });
+        self.runtime.reread(cx);
         let mut restored = 0;
         for mut data in environments {
             view.dress(&mut data);

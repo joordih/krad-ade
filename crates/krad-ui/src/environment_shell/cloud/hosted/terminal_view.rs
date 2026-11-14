@@ -226,7 +226,7 @@ impl EnvironmentShell {
     ) -> Option<AnyElement> {
         let view = self.cloud.terminal.as_ref()?;
         let pal = palette(cx);
-        let mono = mono_family(&self.settings.terminal_font);
+        let mono = mono_family(&self.runtime.settings.terminal_font);
         let colors = terminal_colors(cx);
         let text_zoom = UNZOOMED * self.terminal_font_zoom();
         let (origin_x, origin_y) = self.window_origin();
@@ -237,7 +237,7 @@ impl EnvironmentShell {
         };
         let look = BodyLook {
             geometry,
-            ligatures: self.settings.terminal_font.ligatures,
+            ligatures: self.runtime.settings.terminal_font.ligatures,
             zoom: UNZOOMED,
             text_zoom,
             focused: true,

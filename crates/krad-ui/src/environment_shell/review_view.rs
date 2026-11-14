@@ -151,7 +151,7 @@ pub(super) struct ReviewUi {
     filter: ReviewFilter,
     list: Option<RequestList>,
     detail: Option<RequestDetail>,
-    offers: HashMap<crate::environment_shell::groups::GitKey, Offer>,
+    offers: HashMap<crate::environment_shell::runtime_view::GitKey, Offer>,
     frame: ReviewFrame,
 }
 

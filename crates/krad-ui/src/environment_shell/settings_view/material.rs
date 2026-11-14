@@ -76,7 +76,7 @@ impl EnvironmentShell {
             }
             this.reload_workspace(cx);
             this.apply_performance_mode(cx);
-            let material = this.settings.window_material;
+            let material = this.runtime.settings.window_material;
             if usable_material(material) == window_material(cx) {
                 return;
             }
@@ -88,7 +88,7 @@ impl EnvironmentShell {
 
     pub(super) fn material_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.window_material;
+        let current = self.runtime.settings.window_material;
         let shown = if offered_materials().contains(&current) {
             current
         } else {
@@ -122,14 +122,14 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.settings.window_material = material;
+        self.edit_settings(cx, |settings| settings.window_material = material);
         apply_window_material(material, cx);
         self.sync_window_background(window, cx);
-        self.save_settings(cx);
     }
 
     pub(super) fn tint_ui(&self, cx: &mut Context<Self>) -> TintUi {
         let start = self
+            .runtime
             .settings
             .window_tint
             .opacity
@@ -158,11 +158,12 @@ impl EnvironmentShell {
         let Some(ui) = &self.settings_ui else {
             return Vec::new();
         };
-        if !tint_adjustable(usable_material(self.settings.window_material)) {
+        if !tint_adjustable(usable_material(self.runtime.settings.window_material)) {
             return Vec::new();
         }
         let pal = palette(cx);
         let percent = self
+            .runtime
             .settings
             .window_tint
             .opacity
@@ -181,7 +182,7 @@ impl EnvironmentShell {
     }
 
     fn tint_swatches(&self, pal: &Palette, cx: &mut Context<Self>) -> AnyElement {
-        let picked = self.settings.window_tint.hue;
+        let picked = self.runtime.settings.window_tint.hue;
         let cell = |selected: bool| swatch_cell(selected, pal);
         let default = cell(picked.is_none())
             .id(TINT_DEFAULT_ID)
@@ -209,9 +210,8 @@ impl EnvironmentShell {
     }
 
     fn edit_tint(&mut self, edit: impl FnOnce(&mut WindowTint), cx: &mut Context<Self>) {
-        edit(&mut self.settings.window_tint);
-        apply_window_tint(self.settings.window_tint, cx);
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| edit(&mut settings.window_tint));
+        apply_window_tint(self.runtime.settings.window_tint, cx);
         cx.notify();
     }
 }

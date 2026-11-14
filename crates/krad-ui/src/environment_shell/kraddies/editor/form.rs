@@ -210,7 +210,7 @@ impl EnvironmentShell {
                 let (glyph, _) = harness_icon(preset, pal);
                 segment(
                     (AGENT_PREFIX, index),
-                    self.settings.acp.harness_name(preset),
+                    self.runtime.settings.acp.harness_name(preset),
                     Some(glyph),
                     chosen == preset,
                     SegmentSize::Compact,
@@ -267,14 +267,14 @@ impl EnvironmentShell {
     fn kraddie_model_rows(&self, harness: AgentPreset, cx: &App) -> Vec<ModelChoice> {
         let mut group = HarnessModels {
             harness,
-            name: self.settings.acp.harness_name(harness).into(),
+            name: self.runtime.settings.acp.harness_name(harness).into(),
             models: self
                 .model_choices(harness, None, cx)
                 .into_iter()
                 .filter(|choice| choice.id.is_some())
                 .collect(),
         };
-        mark(&mut group, &self.settings.model_preferences);
+        mark(&mut group, &self.runtime.settings.model_preferences);
         group
             .models
             .sort_by_key(|choice| (!choice.marks.favorite, !choice.marks.default));

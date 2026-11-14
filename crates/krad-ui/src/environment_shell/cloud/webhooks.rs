@@ -10,10 +10,8 @@ impl EnvironmentShell {
         wanted: OfflineWebhooks,
         cx: &mut Context<Self>,
     ) {
-        if !self.settings.cloud.set_offline_webhooks(runner, wanted) {
-            return;
-        }
-        self.save_settings(cx);
-        cx.notify();
+        self.edit_settings(cx, |settings| {
+            settings.cloud.set_offline_webhooks(runner, wanted)
+        });
     }
 }

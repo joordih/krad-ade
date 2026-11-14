@@ -49,6 +49,12 @@ pub(in crate::environment_shell) struct LanguagesUi {
     pub(super) confirming_unstable: bool,
 }
 
+pub(super) fn replace_extension(extensions: &mut [ExtensionEntry], updated: ExtensionEntry) {
+    if let Some(known) = extensions.iter_mut().find(|known| known.id == updated.id) {
+        *known = updated;
+    }
+}
+
 impl EnvironmentShell {
     pub(super) fn languages_ui(window: &mut Window, cx: &mut Context<Self>) -> LanguagesUi {
         LanguagesUi {
@@ -62,7 +68,7 @@ impl EnvironmentShell {
         let Some(tools) = self.language_tools() else {
             return;
         };
-        let chosen = self.settings.server_runtimes.clone();
+        let chosen = self.runtime.settings.server_runtimes.clone();
         let checking = cx.background_spawn(async move { tools.server_runtime_statuses(&chosen) });
         cx.spawn(async move |this, cx| {
             let statuses = checking.await;
@@ -78,7 +84,6 @@ impl EnvironmentShell {
     }
 
     fn server_runtimes_changed(&mut self, cx: &mut Context<Self>) {
-        self.save_settings(cx);
         self.refresh_server_runtime_statuses(cx);
         self.load_language_tools(cx);
     }
@@ -93,7 +98,7 @@ impl EnvironmentShell {
             multiple: false,
             prompt: Some(SharedString::from(FOLDER_PROMPT)),
         });
-        let chosen = self.settings.server_runtimes.clone();
+        let chosen = self.runtime.settings.server_runtimes.clone();
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = answer.await else {
                 return;
@@ -107,7 +112,9 @@ impl EnvironmentShell {
                 .await;
             this.update(cx, |shell, cx| {
                 if accepted {
-                    shell.settings.server_runtimes.choose(id, folder);
+                    shell.edit_settings(cx, |settings| {
+                        settings.server_runtimes.choose(id, folder);
+                    });
                     shell.server_runtimes_changed(cx);
                 } else {
                     shell.toast(
@@ -130,7 +137,7 @@ impl EnvironmentShell {
         let Some(tools) = self.language_tools() else {
             return;
         };
-        let chosen = self.settings.server_runtimes.clone();
+        let chosen = self.runtime.settings.server_runtimes.clone();
         let installing =
             cx.background_spawn(async move { tools.install_server_runtime(&id, &chosen) });
         cx.spawn(async move |this, cx| {
@@ -147,7 +154,6 @@ impl EnvironmentShell {
     }
 
     pub(super) fn extensions_changed(&mut self, cx: &mut Context<Self>) {
-        self.save_settings(cx);
         self.load_language_tools(cx);
         self.load_extensions(cx);
         cx.notify();
@@ -160,10 +166,10 @@ impl EnvironmentShell {
     ) {
         match entry {
             Ok(entry) => {
-                self.settings
-                    .extensions
-                    .retain(|known| known.id != entry.id);
-                self.settings.extensions.push(entry);
+                self.edit_settings(cx, |settings| {
+                    settings.extensions.retain(|known| known.id != entry.id);
+                    settings.extensions.push(entry);
+                });
                 self.extensions_changed(cx);
             }
             Err(error) => self.toast(
@@ -226,6 +232,7 @@ impl EnvironmentShell {
             return;
         };
         let Some(entry) = self
+            .runtime
             .settings
             .extensions
             .iter()
@@ -236,14 +243,13 @@ impl EnvironmentShell {
         };
         match change {
             ExtensionChange::Toggle => {
-                if let Some(known) = self
-                    .settings
-                    .extensions
-                    .iter_mut()
-                    .find(|known| known.id == *id)
-                {
-                    known.enabled = !known.enabled;
-                }
+                self.edit_settings(cx, |settings| {
+                    if let Some(known) =
+                        settings.extensions.iter_mut().find(|known| known.id == *id)
+                    {
+                        known.enabled = !known.enabled;
+                    }
+                });
                 self.extensions_changed(cx);
             }
             ExtensionChange::Update if matches!(entry.source, ExtensionSource::Pinned { .. }) => {
@@ -255,7 +261,7 @@ impl EnvironmentShell {
                     let done = working.await;
                     this.update(cx, |shell, cx| {
                         match done {
-                            Ok(updated) => shell.replace_extension_entry(updated),
+                            Ok(updated) => shell.replace_extension_entry(updated, cx),
                             Err(error) => shell.toast(ToastKind::Error, &error.to_string(), cx),
                         }
                         shell.extensions_changed(cx);
@@ -274,7 +280,9 @@ impl EnvironmentShell {
                         if let Err(error) = done {
                             shell.toast(ToastKind::Error, &error.to_string(), cx);
                         }
-                        shell.settings.extensions.retain(|known| known.id != id);
+                        shell.edit_settings(cx, |settings| {
+                            settings.extensions.retain(|known| known.id != id);
+                        });
                         shell.extensions_changed(cx);
                     })
                     .unwrap_or_default();
@@ -284,15 +292,10 @@ impl EnvironmentShell {
         }
     }
 
-    fn replace_extension_entry(&mut self, updated: ExtensionEntry) {
-        if let Some(known) = self
-            .settings
-            .extensions
-            .iter_mut()
-            .find(|known| known.id == updated.id)
-        {
-            *known = updated;
-        }
+    fn replace_extension_entry(&mut self, updated: ExtensionEntry, cx: &mut Context<Self>) {
+        self.edit_settings(cx, |settings| {
+            replace_extension(&mut settings.extensions, updated);
+        });
     }
 
     fn server_runtime_row(
@@ -345,7 +348,9 @@ impl EnvironmentShell {
                     .label(DETECTED_LABEL)
                     .small()
                     .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                        this.settings.server_runtimes.forget(&forget_id);
+                        this.edit_settings(cx, |settings| {
+                            settings.server_runtimes.forget(&forget_id);
+                        });
                         this.server_runtimes_changed(cx);
                     }))
             }))

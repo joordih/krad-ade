@@ -39,6 +39,7 @@ impl EnvironmentShell {
         limit: usize,
     ) -> Vec<KraddieSuggestion> {
         let names = self
+            .runtime
             .kraddies
             .entries
             .iter()
@@ -48,10 +49,10 @@ impl EnvironmentShell {
             .take(limit)
             .filter_map(|name| {
                 let id = name.id();
-                let entry = self.kraddies.entry(&id)?;
+                let entry = self.runtime.kraddies.entry(&id)?;
                 Some(KraddieSuggestion {
                     size: self.memory_size(&id),
-                    sprite: Rc::clone(entry.sprite(KraddieMood::Idle)),
+                    sprite: self.kraddies.sprite(entry, KraddieMood::Idle),
                     name: name.clone(),
                     id,
                 })
@@ -60,7 +61,7 @@ impl EnvironmentShell {
     }
 
     fn kraddie_chip(&self, id: &KraddieId) -> Option<KraddieChip> {
-        let entry = self.kraddies.entry(id)?;
+        let entry = self.runtime.kraddies.entry(id)?;
         let owner = MemoryOwner::Kraddie(id.clone());
         let library = self.memory_library();
         let request = PackRequest {
@@ -114,6 +115,7 @@ impl EnvironmentShell {
         text: String,
     ) -> String {
         let known: Vec<KraddieId> = self
+            .runtime
             .kraddies
             .entries
             .iter()
@@ -173,8 +175,8 @@ impl EnvironmentShell {
             .filter(|chips| !chips.is_empty())?;
         let pal = palette(cx);
         let rows = chips.iter().filter_map(|chip| {
-            let entry = self.kraddies.entry(&chip.kraddie)?;
-            let sprite = entry.sprite(KraddieMood::Idle);
+            let entry = self.runtime.kraddies.entry(&chip.kraddie)?;
+            let sprite = self.kraddies.sprite(entry, KraddieMood::Idle);
             let tooltip = SharedString::from(chip.tooltip());
             let target = chip.kraddie.clone();
             let key = format!("{}-{}", composer.as_u64(), chip.kraddie);
@@ -213,7 +215,7 @@ impl EnvironmentShell {
                     row.border_color(rgb(pal.accent))
                 })
                 .tooltip(move |_, cx| tooltip_view(tooltip.clone(), cx))
-                .child(kraddie_avatar(sprite, CHIP_AVATAR, self.kraddies_frame()))
+                .child(kraddie_avatar(&sprite, CHIP_AVATAR, self.kraddies_frame()))
                 .child(chip.name.to_string())
                 .child(
                     div()

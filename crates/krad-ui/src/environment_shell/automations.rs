@@ -229,13 +229,14 @@ impl EnvironmentShell {
         kraddie: &super::kraddies::KraddieEntry,
         entry: &super::kraddies::AutomationEntry,
     ) -> Option<Duration> {
-        let at = super::kraddies::next_run(kraddie, entry, self.kraddies.opened_at())?;
+        let at = super::kraddies::next_run(kraddie, entry, self.runtime.kraddies.opened_at)?;
         let at = SystemTime::from(at);
         Some(at.duration_since(SystemTime::now()).unwrap_or_default())
     }
 
     fn soonest_countdown(&self) -> Option<Duration> {
-        self.kraddies
+        self.runtime
+            .kraddies
             .entries
             .iter()
             .flat_map(|kraddie| {

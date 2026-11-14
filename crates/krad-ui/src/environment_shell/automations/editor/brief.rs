@@ -41,7 +41,7 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let harness = editor.draft.harness.map_or_else(
             || OWN_AGENT.to_owned(),
-            |preset| self.settings.acp.harness_name(preset).into_owned(),
+            |preset| self.runtime.settings.acp.harness_name(preset).into_owned(),
         );
         let glyph = editor
             .draft
@@ -113,7 +113,7 @@ impl EnvironmentShell {
         )];
         entries.extend(agents.into_iter().map(|preset| {
             choice(
-                self.settings.acp.harness_name(preset),
+                self.runtime.settings.acp.harness_name(preset),
                 current == Some(preset),
                 AutomationMenu::Harness(Some(preset)),
             )

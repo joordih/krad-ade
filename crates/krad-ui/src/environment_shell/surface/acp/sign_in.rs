@@ -134,7 +134,7 @@ impl EnvironmentShell {
                 let agent = structured
                     .harness
                     .acp_agent()
-                    .and_then(|agent| self.settings.acp.agent(agent));
+                    .and_then(|agent| self.runtime.settings.acp.agent(agent));
                 if let Some(agent) = agent {
                     let command = CommandLine {
                         program: self.acp_program_name(&agent, cx),
@@ -167,7 +167,7 @@ impl EnvironmentShell {
         };
         let Some(agent) = harness
             .acp_agent()
-            .and_then(|agent| self.settings.acp.agent(agent))
+            .and_then(|agent| self.runtime.settings.acp.agent(agent))
         else {
             return;
         };

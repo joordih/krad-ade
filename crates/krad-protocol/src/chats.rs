@@ -242,6 +242,14 @@ pub struct AcpShown {
     pub sign_in: Option<AcpSignInAsk>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatLaunch {
+    #[default]
+    Answered,
+    Starting,
+}
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct ChatState {
     pub harness: AgentPreset,
@@ -271,6 +279,8 @@ pub struct ChatState {
     pub acp: Option<AcpShown>,
     #[serde(default)]
     pub mcp_trust: Option<McpTrustAsk>,
+    #[serde(default)]
+    pub launch: ChatLaunch,
 }
 
 impl ChatState {
@@ -299,6 +309,7 @@ impl ChatState {
             account: None,
             acp: None,
             mcp_trust: None,
+            launch: ChatLaunch::Answered,
         }
     }
 }

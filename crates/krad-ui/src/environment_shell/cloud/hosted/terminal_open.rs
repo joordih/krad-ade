@@ -144,7 +144,7 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let name = harness.map_or_else(
             || CHIP_LABEL.to_owned(),
-            |harness| self.settings.acp.harness_name(harness).into_owned(),
+            |harness| self.runtime.settings.acp.harness_name(harness).into_owned(),
         );
         let key = HostedTerminalKey {
             runner,
@@ -169,7 +169,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let name = intent.harness().map_or_else(String::new, |harness| {
-            self.settings.acp.harness_name(harness).into_owned()
+            self.runtime.settings.acp.harness_name(harness).into_owned()
         });
         let label = intent_label(&intent, &name);
         let key = key.clone();

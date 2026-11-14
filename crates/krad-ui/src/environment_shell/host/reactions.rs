@@ -194,7 +194,7 @@ impl EnvironmentShell {
 
     fn remote_bus_settled(&mut self, _env: &EnvironmentName, cx: &mut Context<Self>) {
         let harnesses: Vec<AgentPreset> =
-            AgentPreset::listed(&self.settings.acp.all_agents()).collect();
+            AgentPreset::listed(&self.runtime.settings.acp.all_agents()).collect();
         for harness in harnesses {
             self.flush_chats_of(harness, cx);
         }

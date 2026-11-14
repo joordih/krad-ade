@@ -12,7 +12,7 @@ use super::EnvironmentShell;
 
 mod git_poll;
 
-pub(super) use git_poll::{GitKey, GroupGit};
+pub(super) use git_poll::GroupGit;
 
 const FOLDER_PROMPT: &str = "Choose the group's root folder";
 const NO_GROUP_TEXT: &str = "Select a group first";
@@ -32,7 +32,8 @@ impl EnvironmentShell {
     }
 
     pub(super) fn offered_default_harness(&self, cx: &App) -> AgentPreset {
-        self.settings
+        self.runtime
+            .settings
             .default_harness
             .as_offered(self.installed_agents(cx))
     }
@@ -106,7 +107,7 @@ impl EnvironmentShell {
         self.place_usage();
         self.load_missing_histories(env, cx);
         let harnesses: Vec<AgentPreset> =
-            AgentPreset::listed(&self.settings.acp.all_agents()).collect();
+            AgentPreset::listed(&self.runtime.settings.acp.all_agents()).collect();
         for harness in harnesses {
             self.flush_chats_of(harness, cx);
         }
@@ -114,7 +115,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn redetect_after_acp_change(&mut self, cx: &mut App) {
-        let agents = self.settings.acp.all_agents();
+        let agents = self.runtime.settings.acp.all_agents();
         let changed = self
             .runtime
             .view
@@ -356,7 +357,7 @@ impl EnvironmentShell {
 
     pub(super) fn git_at(&self, env: &EnvironmentName, root: &Path) -> Option<&GroupGit> {
         let host = self.envs.get(env)?.data.host.clone();
-        self.git.get(&(host, root.to_path_buf()))
+        self.runtime.git.at(&host, root)
     }
 
     pub(super) fn active_git(&self, root: &Path) -> Option<&GroupGit> {

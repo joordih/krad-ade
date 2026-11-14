@@ -68,7 +68,7 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let pal = palette(cx);
         let id = element_index(index);
-        let enabled = self.settings.skills.is_enabled(&skill.key);
+        let enabled = self.runtime.settings.skills.is_enabled(&skill.key);
         let key = skill.key.clone();
         let tooltip = SharedString::from(places_tooltip(skill));
         let sources = div()

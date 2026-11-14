@@ -75,7 +75,7 @@ pub(super) struct GitlabUi {
 
 impl EnvironmentShell {
     pub(super) fn gitlab_ui(&self, window: &mut Window, cx: &mut Context<Self>) -> GitlabUi {
-        let saved = self.settings.gitlab.clone();
+        let saved = self.runtime.settings.gitlab.clone();
         let mut field = |value: String, placeholder: &'static str, cx: &mut Context<Self>| {
             cx.new(|cx| {
                 InputState::new(window, cx)
@@ -88,16 +88,16 @@ impl EnvironmentShell {
         let edits = [
             cx.subscribe(&host, |this: &mut Self, field, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
-                    this.settings.gitlab.host = field.read(cx).value().to_string();
-                    this.save_settings(cx);
+                    let host = field.read(cx).value().to_string();
+                    this.edit_settings(cx, |settings| settings.gitlab.host = host);
                 }
             }),
             cx.subscribe(
                 &client_id,
                 |this: &mut Self, field, event: &InputEvent, cx| {
                     if matches!(event, InputEvent::Change) {
-                        this.settings.gitlab.client_id = field.read(cx).value().to_string();
-                        this.save_settings(cx);
+                        let client_id = field.read(cx).value().to_string();
+                        this.edit_settings(cx, |settings| settings.gitlab.client_id = client_id);
                     }
                 },
             ),
@@ -113,7 +113,7 @@ impl EnvironmentShell {
     }
 
     fn gitlab_config(&mut self, cx: &mut Context<Self>) -> Option<GitlabConfig> {
-        GitlabConfig::try_from(&self.settings.gitlab)
+        GitlabConfig::try_from(&self.runtime.settings.gitlab)
             .map_err(|error| self.toast(ToastKind::Error, &error.to_string(), cx))
             .ok()
     }
@@ -185,8 +185,7 @@ impl EnvironmentShell {
     }
 
     fn set_gitlab_sign_in(&mut self, sign_in: GitlabSignIn, cx: &mut Context<Self>) {
-        self.settings.gitlab.sign_in = sign_in;
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| settings.gitlab.sign_in = sign_in);
         cx.notify();
     }
 }

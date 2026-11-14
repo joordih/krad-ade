@@ -91,7 +91,7 @@ impl EnvironmentShell {
     }
 
     fn diff_presets(&self, pal: &Palette, cx: &mut Context<Self>) -> AnyElement {
-        let current = self.settings.theme_tuning.diff.preset;
+        let current = self.runtime.settings.theme_tuning.diff.preset;
         let segments = DiffPreset::ALL.iter().map(|&preset| {
             segment(
                 (PRESET_PREFIX, preset_key(preset)),

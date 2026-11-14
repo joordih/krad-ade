@@ -9,6 +9,7 @@ use krad_protocol::{
 };
 use std::collections::{BTreeSet, HashMap};
 use std::mem::take;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -20,8 +21,10 @@ use super::super::usage_bar::UsageMirror;
 use super::following::{Batch, Following};
 use super::settings::SettingsMirror;
 use super::{AgentSpot, AgentsMirror, GatewayMirror, HostMove, HostsMirror, MailNotices, Waiters};
+use super::{EnvironmentsMirror, GitMirror, GitMove, KraddiesMirror};
 
 mod folding;
+mod read_copies;
 mod remotes;
 
 pub(in crate::environment_shell) use remotes::{HostedFailure, Remotes, RunnerReach};
@@ -73,7 +76,8 @@ pub(in crate::environment_shell) enum Heard {
     AskLetGo(AskId),
     ModelsRelisted(AgentPreset),
     OpencodeReady,
-    SettingsAdopted(Box<Settings>),
+    SettingsAdopted,
+    GitMoved(GitMove),
     HostedFailed {
         runner: CloudRunnerId,
         failure: HostedFailure,
@@ -109,6 +113,9 @@ pub(in crate::environment_shell) struct ViewModel {
     pub(in crate::environment_shell) gateway: GatewayMirror,
     pub(in crate::environment_shell) code_hosts: HashMap<CodeHost, LoginState>,
     pub(in crate::environment_shell) settings: SettingsMirror,
+    pub(in crate::environment_shell) environments: Rc<EnvironmentsMirror>,
+    pub(in crate::environment_shell) git: GitMirror,
+    pub(in crate::environment_shell) kraddies: KraddiesMirror,
     pub(in crate::environment_shell) runners: HashMap<CloudRunnerId, RunnerState>,
     pub(in crate::environment_shell) runner_buses: HashMap<CloudRunnerId, RemoteBusState>,
     pub(in crate::environment_shell) runner_logins: HashMap<CloudRunnerId, RunnerLogins>,
@@ -136,6 +143,9 @@ impl Default for ViewModel {
             gateway: GatewayMirror::default(),
             code_hosts: HashMap::new(),
             settings: SettingsMirror::default(),
+            environments: Rc::default(),
+            git: GitMirror::default(),
+            kraddies: KraddiesMirror::default(),
             runners: HashMap::new(),
             runner_buses: HashMap::new(),
             runner_logins: HashMap::new(),
@@ -150,6 +160,13 @@ impl Default for ViewModel {
 impl EventEmitter<RuntimeNews> for ViewModel {}
 
 impl ViewModel {
+    pub(in crate::environment_shell) fn new(settings: Settings) -> Self {
+        Self {
+            settings: SettingsMirror::new(settings),
+            ..Self::default()
+        }
+    }
+
     pub(in crate::environment_shell) fn follow(
         client: Arc<dyn RuntimeClient>,
         cx: &mut Context<Self>,

@@ -130,7 +130,7 @@ impl EnvironmentShell {
             host: host.clone(),
             group_root,
             host_cli,
-            timeout: self.settings.host_timeouts.command.duration(),
+            timeout: self.runtime.settings.host_timeouts.command.duration(),
         })
     }
 

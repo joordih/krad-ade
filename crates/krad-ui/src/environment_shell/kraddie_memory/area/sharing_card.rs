@@ -65,7 +65,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let Some(entry) = self.kraddies.entry(id) else {
+        let Some(entry) = self.runtime.kraddies.entry(id) else {
             return div().into_any_element();
         };
         let settings = &entry.kraddie.settings;
@@ -112,12 +112,13 @@ impl EnvironmentShell {
 
     fn reads_section(&self, id: &KraddieId, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let Some(reader) = self.kraddies.entry(id) else {
+        let Some(reader) = self.runtime.kraddies.entry(id) else {
             return div().into_any_element();
         };
-        let own = reader.sprite(KraddieMood::Idle);
+        let own = self.kraddies.sprite(reader, KraddieMood::Idle);
         let frame = self.kraddies_frame();
         let rows: Vec<AnyElement> = self
+            .runtime
             .kraddies
             .entries
             .iter()
@@ -146,10 +147,10 @@ impl EnvironmentShell {
                         let switch = if reads { Switch::Off } else { Switch::On };
                         this.set_memory_sharing(&reader_id, &from, switch, cx);
                     }))
-                    .child(kraddie_avatar(own, ARROW_AVATAR, frame))
+                    .child(kraddie_avatar(&own, ARROW_AVATAR, frame))
                     .child(icon(IconName::ChevronRight, ICON_XS, arrow))
                     .child(kraddie_avatar(
-                        other.sprite(KraddieMood::Idle),
+                        &self.kraddies.sprite(other, KraddieMood::Idle),
                         ARROW_AVATAR,
                         frame,
                     ))
@@ -193,6 +194,7 @@ impl EnvironmentShell {
 
     fn read_by_section(&self, id: &KraddieId, pal: &Palette) -> AnyElement {
         let readers: Vec<String> = self
+            .runtime
             .kraddies
             .entries
             .iter()
@@ -222,6 +224,7 @@ impl EnvironmentShell {
     fn folder_section(&self, id: &KraddieId, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let folder = self
+            .runtime
             .kraddies
             .entry(id)
             .and_then(|entry| entry.kraddie.workspace.as_ref())
@@ -287,7 +290,12 @@ impl EnvironmentShell {
         place: Option<KraddieWorkspace>,
         cx: &mut Context<Self>,
     ) {
-        let Some(mut kraddie) = self.kraddies.entry(id).map(|entry| entry.kraddie.clone()) else {
+        let Some(mut kraddie) = self
+            .runtime
+            .kraddies
+            .entry(id)
+            .map(|entry| entry.kraddie.clone())
+        else {
             return;
         };
         if kraddie.workspace == place {

@@ -15,7 +15,7 @@ impl EnvironmentShell {
         let id = entry.kraddie.id();
         let since = quiet_since(
             entry.last_started(),
-            self.kraddies.opened_at(),
+            self.runtime.kraddies.opened_at,
             self.kraddies.profile.last_check_in.get(&id).copied(),
         );
         entry.kraddie.settings.rounds.next_after(since)

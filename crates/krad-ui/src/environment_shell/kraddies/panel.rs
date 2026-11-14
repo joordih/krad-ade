@@ -63,7 +63,7 @@ impl EnvironmentShell {
         }
         let pal = palette(cx);
         let layout = self.kraddie_layout(window);
-        let body = if self.kraddies.entries.is_empty() {
+        let body = if self.runtime.kraddies.entries.is_empty() {
             self.den_empty(pal, cx)
         } else {
             self.den_grid(&layout, pal, cx)
@@ -187,10 +187,11 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let spans = place(
-            &vec![CardSpan::One; self.kraddies.entries.len()],
+            &vec![CardSpan::One; self.runtime.kraddies.entries.len()],
             layout.columns,
         );
         let cards = self
+            .runtime
             .kraddies
             .entries
             .iter()

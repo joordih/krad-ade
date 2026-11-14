@@ -89,7 +89,7 @@ fn answer_of(result: CallToolResult) -> ExtensionToolAnswer {
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn tool_catalog(&self) -> ToolCatalog {
-        let extension_tools = if self.settings.extension_tools == ExtensionTools::On {
+        let extension_tools = if self.runtime.settings.extension_tools == ExtensionTools::On {
             offered_tools(&self.usable_manifests())
                 .into_iter()
                 .map(|offered| offered.info)
@@ -98,7 +98,7 @@ impl EnvironmentShell {
             Vec::new()
         };
         ToolCatalog {
-            code_tools: self.settings.code_tools,
+            code_tools: self.runtime.settings.code_tools,
             extension_tools,
             memory_tools: if self.memory_tools_offered() {
                 MemoryTools::On
@@ -125,7 +125,7 @@ impl EnvironmentShell {
             refuse(reply, ErrorCode::BadRequest, NOT_A_TOOL_CALL);
             return;
         };
-        if self.settings.extension_tools != ExtensionTools::On {
+        if self.runtime.settings.extension_tools != ExtensionTools::On {
             refuse(reply, ErrorCode::Forbidden, TOOLS_OFF);
             return;
         }

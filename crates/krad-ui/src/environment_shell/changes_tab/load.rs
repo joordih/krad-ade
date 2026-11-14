@@ -129,25 +129,23 @@ impl EnvironmentShell {
 
     fn repo_holding(&self, path: &Path) -> Option<PathBuf> {
         let host = &self.envs.get(&self.active)?.data.host;
-        self.git
-            .iter()
-            .filter(|((owner, _), git)| owner == host && path.starts_with(&git.repo_root))
-            .map(|(_, git)| git.repo_root.clone())
+        self.runtime
+            .git
+            .on(host)
+            .filter(|git| path.starts_with(&git.repo_root))
+            .map(|git| git.repo_root.clone())
             .max_by_key(|root| root.components().count())
     }
 
     fn change_at(&self, path: &Path) -> Option<(PathBuf, FileChange)> {
         let host = &self.envs.get(&self.active)?.data.host;
-        self.git
-            .iter()
-            .filter(|((owner, _), _)| owner == host)
-            .find_map(|(_, git)| {
-                git.status
-                    .changes
-                    .iter()
-                    .find(|change| git.repo_root.join(&change.path) == path)
-                    .map(|change| (git.repo_root.clone(), change.clone()))
-            })
+        self.runtime.git.on(host).find_map(|git| {
+            git.status
+                .changes
+                .iter()
+                .find(|change| git.repo_root.join(&change.path) == path)
+                .map(|change| (git.repo_root.clone(), change.clone()))
+        })
     }
 
     fn read_diff(

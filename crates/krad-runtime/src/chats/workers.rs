@@ -1,7 +1,7 @@
 use krad_domain::{ChatMessage, PermissionMode, Prompt, ResumeId, Speaker};
-use krad_protocol::{AgentRef, EventKind, Reply};
+use krad_protocol::{AgentRef, ChatLaunch, EventKind, Reply};
 
-use super::{asks_of, ChatWork, Chats};
+use super::{asks_of, Chat, ChatWork, Chats};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Launch {
@@ -15,6 +15,28 @@ fn launch_of(message: &ChatMessage) -> Launch {
         (Speaker::Assistant, Some(error)) => Launch::Failed(error.clone()),
         (Speaker::Assistant, None) => Launch::Started,
         (Speaker::User, _) => Launch::Pending,
+    }
+}
+
+impl Chat {
+    fn launch(&self) -> Launch {
+        if !self.asks.is_empty() {
+            return Launch::Started;
+        }
+        self.messages
+            .iter()
+            .map(launch_of)
+            .find(|launch| *launch != Launch::Pending)
+            .unwrap_or(Launch::Pending)
+    }
+
+    pub(super) fn shown_launch(&self) -> ChatLaunch {
+        let asked = self.working || !self.outbox.is_empty();
+        if asked && self.launch() == Launch::Pending {
+            ChatLaunch::Starting
+        } else {
+            ChatLaunch::Answered
+        }
     }
 }
 
@@ -53,17 +75,9 @@ impl Chats {
     }
 
     pub(crate) fn launch(&self, id: &AgentRef) -> Launch {
-        let Some(chat) = self.open.get(id) else {
-            return Launch::Failed(String::new());
-        };
-        if !chat.asks.is_empty() {
-            return Launch::Started;
-        }
-        chat.messages
-            .iter()
-            .map(launch_of)
-            .find(|launch| *launch != Launch::Pending)
-            .unwrap_or(Launch::Pending)
+        self.open
+            .get(id)
+            .map_or_else(|| Launch::Failed(String::new()), Chat::launch)
     }
 
     pub(crate) fn send_prompt(

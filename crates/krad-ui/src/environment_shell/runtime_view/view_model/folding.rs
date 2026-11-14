@@ -3,6 +3,7 @@ use krad_protocol::{
 };
 use std::collections::BTreeSet;
 use std::mem::take;
+use std::rc::Rc;
 
 use super::super::spot;
 use super::{Area, Heard, ViewModel};
@@ -23,7 +24,9 @@ impl ViewModel {
             .map(|kept| (kept.agent, kept.adapter))
             .collect();
         self.opencode.replace(take(&mut snapshot.opencode));
-        self.settings.replace(*take(&mut snapshot.settings));
+        if self.settings.replace(*take(&mut snapshot.settings)) {
+            self.heard(Heard::SettingsAdopted);
+        }
         let runners = *take(&mut snapshot.runners);
         self.runners = runners
             .shown
@@ -48,6 +51,9 @@ impl ViewModel {
             &snapshot.environments,
             &snapshot.hosts.local,
         );
+        Rc::make_mut(&mut self.environments).replace(take(&mut snapshot.environments));
+        let git_moved = self.git.replace(take(&mut snapshot.git));
+        self.kraddies.replace(&snapshot.kraddies);
         let prompts = take(&mut snapshot.hosts.prompts);
         let moves = self.hosts.replace(&snapshot.hosts.hosts, prompts);
         self.news.areas.extend(Area::ALL);
@@ -55,6 +61,9 @@ impl ViewModel {
             snapshot: Box::new(snapshot),
             moves,
         });
+        if let Some(moved) = git_moved {
+            self.heard(Heard::GitMoved(moved));
+        }
     }
 
     fn adopt_asks(&mut self, asks: Vec<PendingAsk>) {
@@ -135,8 +144,8 @@ impl ViewModel {
                 Area::Opencode
             }
             EventKind::SettingsChanged { settings } => {
-                if let Some(adopted) = self.settings.changed(*settings) {
-                    self.heard(Heard::SettingsAdopted(Box::new(adopted)));
+                if self.settings.changed(*settings) {
+                    self.heard(Heard::SettingsAdopted);
                 }
                 Area::Settings
             }
@@ -223,7 +232,7 @@ impl ViewModel {
                 self.hosts.prompt_settled(prompt);
                 Area::Hosts
             }
-            kind => return self.heard(Heard::Event(kind)),
+            kind => return self.fold_read_copies(kind),
         };
         self.changed(area);
     }

@@ -42,7 +42,7 @@ impl EnvironmentShell {
         id: &KraddieId,
         cx: &mut Context<Self>,
     ) {
-        self.kraddie_removed(id);
+        self.kraddie_removed(id, cx);
         let command = KraddieCommand::Delete {
             kraddie: id.clone(),
         };
@@ -58,7 +58,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Option<AutomationKey> {
         let stays = previous.is_some_and(|key| key.kraddie == *kraddie);
-        let entry = self.kraddies.entry(kraddie)?;
+        let entry = self.runtime.kraddies.entry(kraddie)?;
         if !stays {
             automation.id =
                 AutomationId::after(entry.automations.iter().map(|known| &known.automation.id));

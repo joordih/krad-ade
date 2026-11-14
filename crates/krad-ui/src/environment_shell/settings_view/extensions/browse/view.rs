@@ -70,6 +70,7 @@ impl EnvironmentShell {
 
     fn update_from_index_by_id(&mut self, id: &str, cx: &mut Context<Self>) {
         let Some(entry) = self
+            .runtime
             .settings
             .extensions
             .iter()
@@ -117,7 +118,7 @@ impl EnvironmentShell {
                     })),
             )
             .into_any_element();
-        let repository = &self.settings.extension_index;
+        let repository = &self.runtime.settings.extension_index;
         let status = match &browser.state {
             IndexState::NotLoaded | IndexState::Loading => LOADING_TEXT.to_owned(),
             IndexState::Loaded(loaded) => {
@@ -142,7 +143,7 @@ impl EnvironmentShell {
             .map_or_else(Default::default, |browser| browser.working.clone());
         loaded
             .index
-            .updates(&self.settings.extensions)
+            .updates(&self.runtime.settings.extensions)
             .into_iter()
             .enumerate()
             .map(|(index, update)| {
@@ -208,7 +209,7 @@ impl EnvironmentShell {
             let rows = index_rows(
                 &loaded.index,
                 &text,
-                &self.settings.extensions,
+                &self.runtime.settings.extensions,
                 &browser.working,
             );
             let results: Vec<AnyElement> = if rows.is_empty() {

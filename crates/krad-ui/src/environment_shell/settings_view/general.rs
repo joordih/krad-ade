@@ -45,7 +45,7 @@ impl EnvironmentShell {
 
     pub(super) fn appearance_mode_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.appearance;
+        let current = self.runtime.settings.appearance;
         let option =
             |id: &'static str, label: &'static str, glyph: IconName, mode: AppearanceMode| {
                 segment(
@@ -86,7 +86,7 @@ impl EnvironmentShell {
 
     fn performance_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.performance_mode;
+        let current = self.runtime.settings.performance_mode;
         let segments = PerformanceMode::ALL.map(|mode| {
             segment(
                 (PERFORMANCE_PREFIX, mode as u64),
@@ -107,7 +107,7 @@ impl EnvironmentShell {
 
     fn app_updates_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.app_updates;
+        let current = self.runtime.settings.app_updates;
         let option = |id: &'static str, label: &'static str, check: AppUpdateCheck| {
             segment(
                 id,

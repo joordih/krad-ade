@@ -10,7 +10,7 @@ use krad_domain::{
     AgentPreset, EnvironmentData, EnvironmentEdit, EnvironmentName, NodeKind, RuntimeState,
     SessionEdit, SessionLead, Settings, Speaker, TerminalId, WhenWorking,
 };
-use krad_protocol::{AgentRef, Command, EventKind, Feed, Reply, Scope};
+use krad_protocol::{AgentRef, ChatLaunch, Command, EventKind, Feed, Reply, Scope};
 use krad_runtime::{
     BusSetup, EnvironmentsSetup, EventReceiver, Runtime, RuntimeHandle, RuntimeSetup, SettingsSetup,
 };
@@ -142,6 +142,11 @@ fn a_lead_starts_a_worker_and_closes_it() -> TestResult {
         terminal: worker,
     };
     until(&mut events, |kind| {
+        matches!(kind, EventKind::ChatOpened { chat: heard, state }
+            | EventKind::ChatState { chat: heard, state }
+            if *heard == chat && state.launch == ChatLaunch::Starting)
+    })?;
+    until(&mut events, |kind| {
         matches!(kind, EventKind::ChatMessageAdded { chat: heard, message, .. }
             | EventKind::ChatMessageChanged { chat: heard, message, .. }
             if *heard == chat && message.speaker == Speaker::Assistant
@@ -149,7 +154,7 @@ fn a_lead_starts_a_worker_and_closes_it() -> TestResult {
     })?;
     until(&mut events, |kind| {
         matches!(kind, EventKind::ChatState { chat: heard, state }
-            if *heard == chat && !state.working)
+            if *heard == chat && !state.working && state.launch == ChatLaunch::Answered)
     })?;
     let order = CloseOrder {
         target: CloseTarget::Agent(worker.0),

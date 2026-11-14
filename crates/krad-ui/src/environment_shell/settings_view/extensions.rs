@@ -300,7 +300,7 @@ impl EnvironmentShell {
         let lines = record.log.lines();
         if !lines.is_empty() {
             let shown = lines[lines.len().saturating_sub(LOG_SHOWN)..].join("\n");
-            let mono = mono_family(&self.settings.terminal_font);
+            let mono = mono_family(&self.runtime.settings.terminal_font);
             rows.push(card_field(
                 LOG_LABEL,
                 div()
@@ -326,6 +326,7 @@ impl EnvironmentShell {
             .map(|(index, record)| self.extension_card(index, record, cx))
             .collect();
         let untracked: Vec<AnyElement> = self
+            .runtime
             .settings
             .extensions
             .iter()

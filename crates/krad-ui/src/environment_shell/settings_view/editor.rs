@@ -29,14 +29,13 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
         edit: impl FnOnce(&mut EditorSettings),
     ) {
-        edit(&mut self.settings.editor);
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| edit(&mut settings.editor));
         cx.notify();
     }
 
     pub(super) fn editor_pane(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.editor;
+        let current = self.runtime.settings.editor;
         let lenses = ProblemLens::ALL.map(|lens| {
             segment(
                 (LENS_PREFIX, lens as u64),
@@ -84,14 +83,13 @@ impl EnvironmentShell {
                 (ICONS_PREFIX, colors as u64),
                 colors.display_name(),
                 None,
-                self.settings.file_icon_colors == colors,
+                self.runtime.settings.file_icon_colors == colors,
                 SegmentSize::Compact,
                 pal,
                 cx,
             )
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                this.settings.file_icon_colors = colors;
-                this.save_settings(cx);
+                this.edit_settings(cx, |settings| settings.file_icon_colors = colors);
                 cx.notify();
             }))
         });

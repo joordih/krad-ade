@@ -10,7 +10,7 @@ impl EnvironmentShell {
         self.runtime
             .client
             .post(Command::Bus(BusCommand::PublishDiscovery {
-                file: self.settings.api_discovery_file,
+                file: self.runtime.settings.api_discovery_file,
             }));
     }
 

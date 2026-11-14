@@ -285,7 +285,7 @@ impl EnvironmentShell {
         else {
             return;
         };
-        match admit(&self.settings.acp, editing, &draft) {
+        match admit(&self.runtime.settings.acp, editing, &draft) {
             Ok(admitted) => {
                 self.clear_acp_form(window, cx);
                 Self::save_acp_agent(admitted, cx);
@@ -317,8 +317,7 @@ impl EnvironmentShell {
                 if let Err(error) = stored {
                     return shell.toast(ToastKind::Error, &error.to_string(), cx);
                 }
-                shell.settings.acp = acp;
-                shell.save_settings(cx);
+                shell.edit_settings(cx, |settings| settings.acp = acp);
                 shell.detect_agents();
                 shell.toast(ToastKind::Success, ADDED_TOAST, cx);
             })

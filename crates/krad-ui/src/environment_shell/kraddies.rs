@@ -16,13 +16,11 @@ mod tile;
 mod transfer;
 
 use gpui_kit::{Context, Task};
-use krad_domain::{
-    AgentState, Automation, AutomationId, AutomationKey, EnvironmentName, Kraddie, KraddieHistory,
-    KraddieId, KraddieMood, KraddieOutcome, KraddieRun, SessionId,
-};
+use krad_domain::{AgentState, EnvironmentName, KraddieDesign, KraddieId, KraddieMood, SessionId};
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::{Instant, SystemTime};
+use std::time::Instant;
 
 use super::EnvironmentShell;
 use crate::kraddie_avatar::KraddieSprite;
@@ -31,81 +29,47 @@ pub(super) use clock::next_run;
 pub(super) use editor::KraddieEditor;
 pub(super) use studio::KraddieStudio;
 
-pub(super) struct AutomationEntry {
-    pub(super) automation: Automation,
-    pub(super) history: KraddieHistory,
-}
+pub(super) use super::runtime_view::{AutomationEntry, KraddieEntry};
 
-pub(super) struct KraddieEntry {
-    pub(super) kraddie: Kraddie,
-    pub(super) automations: Vec<AutomationEntry>,
-    pub(super) check_ins: KraddieHistory,
-    sprites: [Rc<KraddieSprite>; 5],
-}
+type MoodSprites = [Rc<KraddieSprite>; KraddieMood::ALL.len()];
 
-impl KraddieEntry {
-    pub(super) fn new(kraddie: Kraddie, automations: Vec<AutomationEntry>) -> Self {
-        let sprites =
-            KraddieMood::ALL.map(|mood| Rc::new(KraddieSprite::new(&kraddie.design, mood)));
-        Self {
-            kraddie,
-            automations,
-            check_ins: KraddieHistory::default(),
-            sprites,
-        }
-    }
+#[derive(Default)]
+pub(super) struct KraddieSprites(HashMap<KraddieId, (KraddieDesign, MoodSprites)>);
 
-    pub(super) fn sprite(&self, mood: KraddieMood) -> &Rc<KraddieSprite> {
-        &self.sprites[mood.index()]
-    }
-
-    pub(super) fn automation(&self, id: AutomationId) -> Option<&AutomationEntry> {
-        self.automations
-            .iter()
-            .find(|entry| entry.automation.id == id)
-    }
-
-    pub(super) fn latest_run(&self) -> Option<&KraddieRun> {
-        self.automations
-            .iter()
-            .filter_map(|entry| entry.history.latest())
-            .max_by_key(|run| run.started)
-    }
-
-    pub(super) fn runs_newest_first(&self) -> Vec<&KraddieRun> {
-        let mut runs: Vec<&KraddieRun> = self
-            .automations
-            .iter()
-            .flat_map(|entry| entry.history.newest_first())
-            .chain(self.check_ins.newest_first())
+impl KraddieSprites {
+    fn refresh(&mut self, entries: &[KraddieEntry]) -> Vec<KraddieId> {
+        let gone: Vec<KraddieId> = self
+            .0
+            .keys()
+            .filter(|id| !entries.iter().any(|entry| entry.kraddie.id() == **id))
+            .cloned()
             .collect();
-        runs.sort_by_key(|run| std::cmp::Reverse(run.started));
-        runs
+        for id in &gone {
+            self.0.remove(id);
+        }
+        for entry in entries {
+            let design = &entry.kraddie.design;
+            let drawn = self
+                .0
+                .get(&entry.kraddie.id())
+                .is_some_and(|(known, _)| known == design);
+            if drawn {
+                continue;
+            }
+            let sprites = KraddieMood::ALL.map(|mood| Rc::new(KraddieSprite::new(design, mood)));
+            self.0.insert(entry.kraddie.id(), (design.clone(), sprites));
+        }
+        gone
     }
 
-    pub(super) fn last_started(&self) -> Option<SystemTime> {
-        self.automations
-            .iter()
-            .filter_map(|entry| entry.history.last_started())
-            .chain(self.check_ins.last_started())
-            .max()
-    }
-
-    pub(super) fn run_count(&self) -> usize {
-        self.automations
-            .iter()
-            .map(|entry| entry.history.len())
-            .sum()
-    }
-
-    pub(super) fn key(&self, automation: AutomationId) -> AutomationKey {
-        AutomationKey::new(self.kraddie.id(), automation)
+    fn of(&self, entry: &KraddieEntry, mood: KraddieMood) -> Option<&Rc<KraddieSprite>> {
+        let (_, sprites) = self.0.get(&entry.kraddie.id())?;
+        sprites.get(mood.index())
     }
 }
 
 pub(super) struct KraddiesUi {
-    pub(super) entries: Vec<KraddieEntry>,
-    opened_at: SystemTime,
+    sprites: KraddieSprites,
     started: Instant,
     pub(super) editor: Option<KraddieEditor>,
     pub(super) studio: Option<KraddieStudio>,
@@ -120,8 +84,7 @@ pub(super) struct KraddiesUi {
 impl Default for KraddiesUi {
     fn default() -> Self {
         Self {
-            entries: Vec::new(),
-            opened_at: SystemTime::now(),
+            sprites: KraddieSprites::default(),
             started: Instant::now(),
             editor: None,
             studio: None,
@@ -136,20 +99,14 @@ impl Default for KraddiesUi {
 }
 
 impl KraddiesUi {
-    pub(super) fn entry(&self, id: &KraddieId) -> Option<&KraddieEntry> {
-        self.entries.iter().find(|entry| entry.kraddie.id() == *id)
+    pub(super) fn sprite(&self, entry: &KraddieEntry, mood: KraddieMood) -> Rc<KraddieSprite> {
+        self.sprites
+            .of(entry, mood)
+            .map_or_else(|| self.placeholder(), Rc::clone)
     }
 
-    pub(super) fn automation(
-        &self,
-        key: &AutomationKey,
-    ) -> Option<(&KraddieEntry, &AutomationEntry)> {
-        let kraddie = self.entry(&key.kraddie)?;
-        Some((kraddie, kraddie.automation(key.automation)?))
-    }
-
-    pub(super) const fn opened_at(&self) -> SystemTime {
-        self.opened_at
+    pub(super) fn redraw(&mut self, entries: &[KraddieEntry]) -> Vec<KraddieId> {
+        self.sprites.refresh(entries)
     }
 
     pub(super) fn frame(&self) -> u64 {
@@ -165,27 +122,6 @@ impl KraddiesUi {
             self.animated.set(true);
         }
     }
-
-    fn run_on(
-        &self,
-        env: &EnvironmentName,
-        session: SessionId,
-    ) -> Option<(&KraddieEntry, &KraddieOutcome)> {
-        self.entries.iter().find_map(|entry| {
-            let run = entry
-                .automations
-                .iter()
-                .flat_map(|routine| routine.history.newest_first())
-                .chain(entry.check_ins.newest_first())
-                .filter(|run| {
-                    run.session
-                        .as_ref()
-                        .is_some_and(|link| link.environment == *env && link.session == session)
-                })
-                .min_by_key(|run| std::cmp::Reverse(run.started))?;
-            Some((entry, &run.outcome))
-        })
-    }
 }
 
 impl EnvironmentShell {
@@ -199,12 +135,14 @@ impl EnvironmentShell {
         session: SessionId,
         agent: Option<AgentState>,
     ) -> Option<Rc<KraddieSprite>> {
-        let Some((entry, outcome)) = self.kraddies.run_on(env, session) else {
+        let Some((entry, outcome)) = self.runtime.kraddies.run_on(env, session) else {
             return self.kraddie_chat_look(env, session);
         };
-        let sprite = entry.sprite(KraddieMood::of_run(agent, Some(outcome)));
-        self.kraddies.note_drawn(sprite);
-        Some(Rc::clone(sprite))
+        let sprite = self
+            .kraddies
+            .sprite(entry, KraddieMood::of_run(agent, Some(outcome)));
+        self.kraddies.note_drawn(&sprite);
+        Some(sprite)
     }
 
     pub(super) fn kraddies_frame(&self) -> u64 {
@@ -227,5 +165,36 @@ impl EnvironmentShell {
                 .map(|node| node.state)
         });
         KraddieMood::of_run(agent, Some(&run.outcome))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use krad_domain::{AgentPreset, Kraddie};
+
+    fn entry(name: &str) -> KraddieEntry {
+        let name = name.parse().unwrap_or_else(|_| unreachable!());
+        KraddieEntry::new(Kraddie::new(name, AgentPreset::ClaudeCode), Vec::new())
+    }
+
+    #[test]
+    fn sprites_are_drawn_once_per_design_and_dropped_with_their_kraddie() {
+        let mut sprites = KraddieSprites::default();
+        let (amber, milo) = (entry("amber"), entry("Milo"));
+        let both = [amber.clone(), milo.clone()];
+        let nobody: [KraddieId; 0] = [];
+        assert_eq!(sprites.refresh(&both), nobody);
+        let drawn = sprites.of(&amber, KraddieMood::Idle).map(Rc::clone);
+        assert_eq!(sprites.refresh(&both), nobody);
+        let again = sprites.of(&amber, KraddieMood::Idle).map(Rc::clone);
+        assert!(drawn
+            .zip(again)
+            .is_some_and(|(drawn, again)| Rc::ptr_eq(&drawn, &again)));
+        assert_eq!(
+            sprites.refresh(std::slice::from_ref(&amber)),
+            [milo.kraddie.id()]
+        );
+        assert!(sprites.of(&milo, KraddieMood::Idle).is_none());
     }
 }

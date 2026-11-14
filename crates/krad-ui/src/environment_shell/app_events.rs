@@ -32,7 +32,7 @@ impl EnvironmentShell {
         self.runtime
             .client
             .post(Command::Events(EventsCommand::UseWebhooks {
-                webhooks: self.settings.webhooks.clone(),
+                webhooks: self.runtime.settings.webhooks.clone(),
             }));
     }
 

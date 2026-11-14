@@ -45,10 +45,10 @@ pub use bus::{
     StatusReport,
 };
 pub use chats::{
-    AcpShown, AcpSignInAsk, ChatAsk, ChatAskId, ChatCommand, ChatContext, ChatMirror, ChatOpen,
-    ChatPage, ChatState, ChatSummary, HistoryAsk, HistoryCursor, HistoryPart, KnownRecord,
-    McpOffered, McpSkippedShown, McpTrustAsk, MirrorChange, PastedImage, SubagentUpdate,
-    SubagentsAsk, SubagentsFrom, SubagentsRead, TranscriptAsk, TranscriptRead,
+    AcpShown, AcpSignInAsk, ChatAsk, ChatAskId, ChatCommand, ChatContext, ChatLaunch, ChatMirror,
+    ChatOpen, ChatPage, ChatState, ChatSummary, HistoryAsk, HistoryCursor, HistoryPart,
+    KnownRecord, McpOffered, McpSkippedShown, McpTrustAsk, MirrorChange, PastedImage,
+    SubagentUpdate, SubagentsAsk, SubagentsFrom, SubagentsRead, TranscriptAsk, TranscriptRead,
 };
 pub use cloud::{
     CarriedConversation, CloudChatStart, CloudCommand, CloudDraftId, CloudNews, CloudOpened,

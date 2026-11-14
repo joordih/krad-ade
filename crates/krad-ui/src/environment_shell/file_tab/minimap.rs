@@ -388,13 +388,13 @@ pub(super) fn new_minimap(text: &str, syntax: Syntax, cx: &mut App) -> Entity<Mi
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn toggle_minimap(&mut self, cx: &mut Context<Self>) {
-        self.settings.editor.minimap = self.settings.editor.minimap.toggled();
-        self.save_settings(cx);
-        cx.notify();
+        self.edit_settings(cx, |settings| {
+            settings.editor.minimap = settings.editor.minimap.toggled();
+        });
     }
 
     pub(in crate::environment_shell) fn hide_minimap(&mut self, cx: &mut Context<Self>) {
-        if !self.settings.editor.minimap.is_shown() {
+        if !self.runtime.settings.editor.minimap.is_shown() {
             return;
         }
         self.toggle_minimap(cx);

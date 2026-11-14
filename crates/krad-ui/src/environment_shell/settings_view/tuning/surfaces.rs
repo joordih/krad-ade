@@ -145,7 +145,7 @@ impl EnvironmentShell {
             TuningWrite::Save,
             cx,
         );
-        let tuning = self.settings.theme_tuning;
+        let tuning = self.runtime.settings.theme_tuning;
         let Some(ui) = &self.settings_ui else {
             return;
         };
@@ -162,7 +162,7 @@ impl EnvironmentShell {
     }
 
     fn pane_glass_switch(&self, pal: &Palette, cx: &mut Context<Self>) -> AnyElement {
-        let glass = self.settings.theme_tuning.main_pane.is_glass();
+        let glass = self.runtime.settings.theme_tuning.main_pane.is_glass();
         div()
             .id(PANE_GLASS_ID)
             .cursor_pointer()
@@ -184,7 +184,7 @@ impl EnvironmentShell {
         pal: &Palette,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let tuning = self.settings.theme_tuning;
+        let tuning = self.runtime.settings.theme_tuning;
         let surfaces = tuning.surfaces;
         let hue = surfaces.hue.value();
         let preview = hsl_rgb(f32::from(hue), PREVIEW_SATURATION, PREVIEW_LIGHTNESS);

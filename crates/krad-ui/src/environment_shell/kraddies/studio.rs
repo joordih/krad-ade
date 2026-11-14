@@ -183,6 +183,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let Some(design) = self
+            .runtime
             .kraddies
             .entry(id)
             .map(|entry| entry.kraddie.design.clone())
@@ -203,6 +204,7 @@ impl EnvironmentShell {
             return;
         };
         let Some(mut kraddie) = self
+            .runtime
             .kraddies
             .entry(&studio.kraddie)
             .map(|entry| entry.kraddie.clone())

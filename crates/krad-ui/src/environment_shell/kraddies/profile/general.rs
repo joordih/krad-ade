@@ -59,7 +59,12 @@ impl EnvironmentShell {
         edit: impl FnOnce(&mut KraddieSettings),
         cx: &mut Context<Self>,
     ) {
-        let Some(mut kraddie) = self.kraddies.entry(id).map(|entry| entry.kraddie.clone()) else {
+        let Some(mut kraddie) = self
+            .runtime
+            .kraddies
+            .entry(id)
+            .map(|entry| entry.kraddie.clone())
+        else {
             return;
         };
         edit(&mut kraddie.settings);
@@ -187,10 +192,10 @@ impl EnvironmentShell {
     }
 
     fn look_part(&self, id: &KraddieId, cx: &mut Context<Self>) -> AnyElement {
-        let Some(entry) = self.kraddies.entry(id) else {
+        let Some(entry) = self.runtime.kraddies.entry(id) else {
             return div().into_any_element();
         };
-        let sprite = entry.sprite(self.kraddie_mood(entry));
+        let sprite = self.kraddies.sprite(entry, self.kraddie_mood(entry));
         let studio = id.clone();
         div()
             .flex()
@@ -198,7 +203,7 @@ impl EnvironmentShell {
             .flex_wrap()
             .items_center()
             .gap(px(SPACE_3))
-            .child(kraddie_avatar(sprite, AVATAR_SIDE, self.kraddies.frame()))
+            .child(kraddie_avatar(&sprite, AVATAR_SIDE, self.kraddies.frame()))
             .child(
                 Button::new(STUDIO_BTN)
                     .label(STUDIO_LABEL)
@@ -213,13 +218,17 @@ impl EnvironmentShell {
     }
 
     fn brain_part(&self, id: &KraddieId, container: f32, cx: &mut Context<Self>) -> AnyElement {
-        let Some(entry) = self.kraddies.entry(id) else {
+        let Some(entry) = self.runtime.kraddies.entry(id) else {
             return div().into_any_element();
         };
         let pal = palette(cx);
         let settings = &entry.kraddie.settings;
         let agent = id.clone();
-        let harness = self.settings.acp.harness_name(entry.kraddie.harness);
+        let harness = self
+            .runtime
+            .settings
+            .acp
+            .harness_name(entry.kraddie.harness);
         let model = entry
             .kraddie
             .model
@@ -272,7 +281,7 @@ impl EnvironmentShell {
 
     fn projects_part(&self, id: &KraddieId, card_inner: f32, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let Some(entry) = self.kraddies.entry(id) else {
+        let Some(entry) = self.runtime.kraddies.entry(id) else {
             return div().into_any_element();
         };
         let home = entry.kraddie.workspace.as_ref().map(|workspace| {

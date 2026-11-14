@@ -13,14 +13,10 @@ impl EnvironmentShell {
         trust: McpProjectTrust,
         cx: &mut Context<Self>,
     ) {
-        self.settings.mcp.set_project_trust(folder, trust);
-        self.save_settings(cx);
-        cx.notify();
+        self.edit_settings(cx, |settings| settings.mcp.set_project_trust(folder, trust));
     }
 
     pub(super) fn forget_mcp_project(&mut self, folder: &Path, cx: &mut Context<Self>) {
-        self.settings.mcp.forget_project(folder);
-        self.save_settings(cx);
-        cx.notify();
+        self.edit_settings(cx, |settings| settings.mcp.forget_project(folder));
     }
 }

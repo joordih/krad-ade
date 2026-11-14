@@ -67,7 +67,7 @@ impl EnvironmentShell {
                 .draft
                 .kraddie
                 .as_ref()
-                .is_some_and(|kraddie| self.kraddies.entry(kraddie).is_some()),
+                .is_some_and(|kraddie| self.runtime.kraddies.entry(kraddie).is_some()),
             cues: editor.schedules.len() + editor.draft.triggers.len(),
             briefed: !editor.brief.read(cx).value().trim().is_empty(),
         }
@@ -167,6 +167,7 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let frame = self.kraddies.frame();
         let owners: Vec<AnyElement> = self
+            .runtime
             .kraddies
             .entries
             .iter()
@@ -174,8 +175,8 @@ impl EnvironmentShell {
             .map(|(index, kraddie)| {
                 let id = kraddie.kraddie.id();
                 let selected = editor.draft.kraddie.as_ref() == Some(&id);
-                let sprite = kraddie.sprite(self.kraddie_mood(kraddie));
-                self.kraddies.note_drawn(sprite);
+                let sprite = self.kraddies.sprite(kraddie, self.kraddie_mood(kraddie));
+                self.kraddies.note_drawn(&sprite);
                 segment(
                     (OWNER_PREFIX, index),
                     SharedString::from(kraddie.kraddie.name.to_string()),
@@ -186,7 +187,7 @@ impl EnvironmentShell {
                     cx,
                 )
                 .pl(px(SPACE_1))
-                .child(kraddie_avatar(sprite, OWNER_AVATAR, frame))
+                .child(kraddie_avatar(&sprite, OWNER_AVATAR, frame))
                 .flex_row_reverse()
                 .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
                     let id = id.clone();

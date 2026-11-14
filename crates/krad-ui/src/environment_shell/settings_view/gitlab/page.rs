@@ -163,7 +163,7 @@ impl EnvironmentShell {
                     .small()
                     .variant(ButtonVariant::Primary)
                     .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                        this.sign_in_gitlab(this.settings.gitlab.sign_in, cx);
+                        this.sign_in_gitlab(this.runtime.settings.gitlab.sign_in, cx);
                     })),
             ),
             GitlabStatus::SignedIn(_) => Some(
@@ -255,7 +255,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let chosen = self.settings.gitlab.sign_in;
+        let chosen = self.runtime.settings.gitlab.sign_in;
         let cards = GitlabSignIn::ALL.map(|method| {
             choice_card(
                 (METHOD_PREFIX, method as u64),
@@ -289,7 +289,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let host = &self.settings.gitlab.host;
+        let host = &self.runtime.settings.gitlab.host;
         let rows: Vec<AnyElement> = match &gitlab.remotes {
             None => vec![empty_row(PROJECTS_LOADING, pal)],
             Some(remotes) if remotes.is_empty() => vec![empty_row(PROJECTS_EMPTY, pal)],

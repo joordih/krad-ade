@@ -12,7 +12,7 @@ const COMPOSER_HINT: &str = "Try the redesigned chat composer and model picker. 
 impl EnvironmentShell {
     pub(super) fn beta_card(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.beta.composer;
+        let current = self.runtime.settings.beta.composer;
         let segments = ComposerDesign::ALL.map(|design| {
             segment(
                 (COMPOSER_PREFIX, design as u64),
@@ -24,8 +24,7 @@ impl EnvironmentShell {
                 cx,
             )
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                this.settings.beta.composer = design;
-                this.save_settings(cx);
+                this.edit_settings(cx, |settings| settings.beta.composer = design);
                 cx.notify();
             }))
         });

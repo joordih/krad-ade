@@ -159,7 +159,7 @@ impl EnvironmentShell {
             .data
             .group(group)
             .map_or_default(|group| group.name.clone());
-        let warning = launch_budget_warning(&self.settings.spending, spent, estimate)
+        let warning = launch_budget_warning(&self.runtime.settings.spending, spent, estimate)
             .map(|warning| launch_warning_text(&name, &warning));
         if let Some(draft) = &mut self.variants.draft {
             draft.warning = warning;

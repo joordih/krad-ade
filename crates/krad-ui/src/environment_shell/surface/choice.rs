@@ -94,8 +94,9 @@ impl EnvironmentShell {
         };
         edit_choice(self, env, id, |choice| chosen.apply(choice));
         if let Some(harness) = harness {
-            chosen.apply(self.settings.chat_defaults.entry(harness).or_default());
-            self.save_settings(cx);
+            self.edit_settings(cx, |settings| {
+                chosen.apply(settings.chat_defaults.entry(harness).or_default());
+            });
         }
         self.store();
     }
@@ -122,6 +123,7 @@ impl EnvironmentShell {
             return;
         };
         let remembered = self
+            .runtime
             .settings
             .chat_defaults
             .get(&harness)
@@ -167,6 +169,7 @@ impl EnvironmentShell {
             .and_then(|live| live.data.nodes.iter().find(|node| node.id == id))
             .map_or_default(|node| node.choice.clone());
         let remembered = self
+            .runtime
             .settings
             .chat_defaults
             .get(&harness)
@@ -194,7 +197,8 @@ impl EnvironmentShell {
         } else {
             None
         };
-        self.settings
+        self.runtime
+            .settings
             .model_preferences
             .new_chat_model(harness, last_used, listed)
     }

@@ -11,7 +11,11 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let window_h = window.viewport_size().height.as_f32();
-        let max_rows = self.settings.composer_height.max_rows(window_h, LINE_SM);
+        let max_rows = self
+            .runtime
+            .settings
+            .composer_height
+            .max_rows(window_h, LINE_SM);
         let stale = self
             .envs
             .values_mut()

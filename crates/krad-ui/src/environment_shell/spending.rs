@@ -90,7 +90,7 @@ impl EnvironmentShell {
         model: Option<&str>,
         cx: &mut Context<Self>,
     ) {
-        let spending = self.settings.spending.clone();
+        let spending = self.runtime.settings.spending.clone();
         let report = report.or_model(model.and_then(ModelId::parse));
         self.store();
         let Some(live) = self.envs.get_mut(env) else {
@@ -128,13 +128,13 @@ impl EnvironmentShell {
     pub(super) fn group_spend_label(&self, group: Option<GroupId>) -> Option<GroupSpendLabel> {
         let live = self.envs.get(&self.active)?;
         let spent = live.data.group_spend(group).cost;
-        let budget = self.settings.spending.group_budget;
+        let budget = self.runtime.settings.spending.group_budget;
         if spent.is_zero() {
             return None;
         }
         Some(GroupSpendLabel {
             text: budget_caption(spent, budget),
-            status: self.settings.spending.status(spent),
+            status: self.runtime.settings.spending.status(spent),
         })
     }
 }

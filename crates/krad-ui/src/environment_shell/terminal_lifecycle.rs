@@ -47,7 +47,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn add_terminal(&mut self, preset: AgentPreset, cx: &mut Context<Self>) {
-        let label = self.settings.acp.harness_name(preset);
+        let label = self.runtime.settings.acp.harness_name(preset);
         self.spawn_terminal(&label, Launch::Preset(preset), None, cx);
     }
 
@@ -214,7 +214,7 @@ impl EnvironmentShell {
         prompts: Vec<Prompt>,
         cx: &mut Context<Self>,
     ) -> Option<TerminalId> {
-        let label = self.settings.acp.harness_name(harness);
+        let label = self.runtime.settings.acp.harness_name(harness);
         let spec = NodeSpec {
             kind: NodeKind::Chat,
             harness: Some(harness),
@@ -250,7 +250,7 @@ impl EnvironmentShell {
         let spec = NodeSpec {
             kind: NodeKind::Chat,
             harness: Some(preset),
-            label: &self.settings.acp.harness_name(preset),
+            label: &self.runtime.settings.acp.harness_name(preset),
             group: NodeGroup::OrSelected(group),
         };
         let (node, _, _) = self.new_node(env, id, &spec, None)?;
@@ -280,11 +280,13 @@ impl EnvironmentShell {
 
     pub(super) fn default_chat_harness(&self, env: &EnvironmentName, cx: &App) -> AgentPreset {
         let available = self.agents_for(env, None, cx);
-        let chosen = self.settings.default_harness.as_offered(available);
+        let chosen = self.runtime.settings.default_harness.as_offered(available);
         let preferred = chosen.has_structured_chat().then_some(chosen);
         preferred
             .into_iter()
-            .chain(AgentPreset::chat_harnesses(&self.settings.acp.all_agents()))
+            .chain(AgentPreset::chat_harnesses(
+                &self.runtime.settings.acp.all_agents(),
+            ))
             .find(|preset| self.chats_on(env, None, *preset, cx) && preset.is_offered(available))
             .unwrap_or(DEFAULT_CHAT_HARNESS)
     }

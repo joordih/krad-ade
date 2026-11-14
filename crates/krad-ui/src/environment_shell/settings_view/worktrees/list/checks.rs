@@ -18,7 +18,7 @@ impl EnvironmentShell {
                 .probes
                 .insert(entry.path.clone(), Probe::Checking);
         }
-        let base = self.settings.worktrees.base;
+        let base = self.runtime.settings.worktrees.base;
         let worktrees = listed
             .into_iter()
             .map(|entry| WorktreeProbe {

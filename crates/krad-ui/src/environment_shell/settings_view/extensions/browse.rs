@@ -11,6 +11,7 @@ use krad_extensions::ExtensionError;
 use std::collections::BTreeSet;
 
 use super::super::super::EnvironmentShell;
+use super::super::languages::replace_extension;
 use super::super::SettingsPane;
 use rows::LoadFailure;
 
@@ -84,7 +85,7 @@ impl EnvironmentShell {
         if !open {
             return;
         }
-        let repository_text = self.settings.extension_index.to_string();
+        let repository_text = self.runtime.settings.extension_index.to_string();
         let missing_inputs = self
             .browser()
             .is_some_and(|browser| browser.query.is_none() || browser.repository.is_none());
@@ -135,7 +136,7 @@ impl EnvironmentShell {
             return;
         };
         browser.state = IndexState::Loading;
-        let repository = self.settings.extension_index.clone();
+        let repository = self.runtime.settings.extension_index.clone();
         let loading = cx.background_spawn(async move {
             load_index(&config, &repository, freshness).map_err(|error| failure_of(&error))
         });
@@ -165,12 +166,11 @@ impl EnvironmentShell {
         };
         let text = field.read(cx).value().to_string();
         match text.parse::<IndexRepository>() {
-            Ok(repository) if repository == self.settings.extension_index => {
+            Ok(repository) if repository == self.runtime.settings.extension_index => {
                 self.load_extension_index(Freshness::Refresh, cx);
             }
             Ok(repository) => {
-                self.settings.extension_index = repository;
-                self.save_settings(cx);
+                self.edit_settings(cx, |settings| settings.extension_index = repository);
                 self.load_extension_index(Freshness::Refresh, cx);
             }
             Err(error) => self.toast(ToastKind::Error, &error.to_string(), cx),
@@ -235,7 +235,7 @@ impl EnvironmentShell {
             .browser()
             .and_then(IndexBrowser::loaded)
             .map(|loaded| loaded.index.clone());
-        let repository = self.settings.extension_index.clone();
+        let repository = self.runtime.settings.extension_index.clone();
         let id = entry.id.to_string();
         self.set_working(&id, true);
         let updating = cx.background_spawn(async move {
@@ -254,14 +254,9 @@ impl EnvironmentShell {
                 shell.set_working(&id, false);
                 match updated {
                     Ok(PinnedUpdate::Moved(moved)) => {
-                        if let Some(slot) = shell
-                            .settings
-                            .extensions
-                            .iter_mut()
-                            .find(|known| known.id == moved.id)
-                        {
-                            *slot = moved;
-                        }
+                        shell.edit_settings(cx, |settings| {
+                            replace_extension(&mut settings.extensions, moved);
+                        });
                         shell.toast(ToastKind::Success, &format!("{id} {UPDATED_TEXT}"), cx);
                         shell.extensions_changed(cx);
                     }

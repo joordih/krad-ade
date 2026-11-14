@@ -4,6 +4,7 @@ use gpui_kit::{
     ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_domain::{AgentState, EnvironmentName, TerminalId};
+use krad_protocol::ChatLaunch;
 
 use super::super::ask::WorkerAsk;
 use super::super::chat::{AnswerPart, ChatMessage};
@@ -17,6 +18,7 @@ use crate::theme::{
 
 const CARD_PREFIX: &str = "surface-worker";
 const WORKER_LABEL: &str = "Worker";
+const STARTING_LABEL: &str = "Starting…";
 const CLOSED_LABEL: &str = "Finished · open to read or continue it";
 pub(in crate::environment_shell) const NEEDS_YOU_LABEL: &str = "needs you";
 const SPAWN_VERB: &str = " spawn ";
@@ -68,6 +70,13 @@ fn latest_activity(messages: &[ChatMessage]) -> Option<String> {
                 .map(str::to_owned),
             AnswerPart::Thinking(_) | AnswerPart::Ask(_) => None,
         })
+}
+
+fn shown_activity(launch: ChatLaunch, messages: &[ChatMessage]) -> Option<String> {
+    if launch == ChatLaunch::Starting {
+        return Some(STARTING_LABEL.to_owned());
+    }
+    latest_activity(messages)
 }
 
 fn shown_state(card: &WorkerCard) -> Option<AgentState> {
@@ -134,8 +143,11 @@ impl EnvironmentShell {
         if !open {
             return Some(CLOSED_LABEL.to_owned());
         }
-        let chat = self.envs.get(env)?.chats.get(&terminal)?;
-        latest_activity(&chat.chat.messages)
+        let chat = &self.envs.get(env)?.chats.get(&terminal)?.chat;
+        let launch = chat
+            .structured()
+            .map_or(ChatLaunch::Answered, |structured| structured.launch);
+        shown_activity(launch, &chat.messages)
     }
 
     pub(in crate::environment_shell) fn worker_card(
@@ -244,6 +256,7 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use krad_domain::Speaker;
 
     fn card(terminal: u64, task: &str) -> WorkerCard {
         WorkerCard {
@@ -268,5 +281,21 @@ mod tests {
         assert_eq!(spawned_worker(listing, &cards), None);
         let other = "cargo spawn Fix the login form";
         assert_eq!(spawned_worker(other, &cards), None);
+    }
+
+    #[test]
+    fn a_starting_worker_reads_starting_until_the_runtime_says_it_answered() {
+        let brief = [ChatMessage::new(
+            Speaker::User,
+            "Fix the login form".to_owned(),
+        )];
+        assert_eq!(
+            shown_activity(ChatLaunch::Starting, &brief).as_deref(),
+            Some(STARTING_LABEL)
+        );
+        assert_eq!(
+            shown_activity(ChatLaunch::Answered, &brief),
+            latest_activity(&brief)
+        );
     }
 }

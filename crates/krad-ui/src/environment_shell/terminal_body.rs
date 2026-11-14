@@ -211,7 +211,8 @@ impl EnvironmentShell {
     }
 
     pub(super) fn terminal_font_zoom(&self) -> f32 {
-        self.settings
+        self.runtime
+            .settings
             .terminal_font
             .size_or(TERMINAL_FONT_SIZE)
             .as_f32()
@@ -220,7 +221,7 @@ impl EnvironmentShell {
 
     pub(super) fn cell_width(&mut self, window: &mut Window) -> f32 {
         *self.cell_width_px.get_or_insert_with(|| {
-            let mono = font(mono_family(&self.settings.terminal_font));
+            let mono = font(mono_family(&self.runtime.settings.terminal_font));
             let font_id = window.text_system().resolve_font(&mono);
             window
                 .text_system()

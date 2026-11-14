@@ -79,7 +79,7 @@ fn folder_text(folder: &WorktreeFolder) -> String {
 
 impl EnvironmentShell {
     pub(super) fn worktrees_ui(&self, window: &mut Window, cx: &mut Context<Self>) -> WorktreesUi {
-        let saved = &self.settings.worktrees;
+        let saved = &self.runtime.settings.worktrees;
         let folder_value = folder_text(&saved.folder);
         let prefix_value = saved.branch_prefix.as_str().to_owned();
         let folder = cx.new(|cx| {
@@ -136,12 +136,7 @@ impl EnvironmentShell {
         edit: impl FnOnce(&mut WorktreeSettings),
         cx: &mut Context<Self>,
     ) {
-        let before = self.settings.worktrees.clone();
-        edit(&mut self.settings.worktrees);
-        if self.settings.worktrees != before {
-            self.save_settings(cx);
-        }
-        cx.notify();
+        self.edit_settings(cx, |settings| edit(&mut settings.worktrees));
     }
 
     pub(super) fn worktrees_pane(&self, ui: &WorktreesUi, cx: &mut Context<Self>) -> AnyElement {
@@ -193,7 +188,7 @@ impl EnvironmentShell {
     }
 
     fn auto_remove_row(&self, cx: &mut Context<Self>) -> AnyElement {
-        let on = self.settings.worktrees.cleanup == WorktreeCleanup::RemoveWhenMerged;
+        let on = self.runtime.settings.worktrees.cleanup == WorktreeCleanup::RemoveWhenMerged;
         Self::worktree_switch_row(
             AUTO_REMOVE_SWITCH,
             (AUTO_REMOVE_LABEL, AUTO_REMOVE_HINT),
@@ -209,7 +204,7 @@ impl EnvironmentShell {
     }
 
     fn fetch_row(&self, cx: &mut Context<Self>) -> AnyElement {
-        let on = self.settings.worktrees.fetch == BaseFetch::FetchFirst;
+        let on = self.runtime.settings.worktrees.fetch == BaseFetch::FetchFirst;
         Self::worktree_switch_row(
             FETCH_SWITCH,
             (FETCH_LABEL, FETCH_HINT),
@@ -225,7 +220,7 @@ impl EnvironmentShell {
     }
 
     fn env_row(&self, cx: &mut Context<Self>) -> AnyElement {
-        let on = self.settings.worktrees.env_files == EnvFiles::Copy;
+        let on = self.runtime.settings.worktrees.env_files == EnvFiles::Copy;
         Self::worktree_switch_row(
             ENV_SWITCH,
             (ENV_LABEL, ENV_HINT),
@@ -242,7 +237,7 @@ impl EnvironmentShell {
 
     fn confirm_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.worktrees.confirm_removal;
+        let current = self.runtime.settings.worktrees.confirm_removal;
         let option = |id: &'static str, label: &'static str, choice: RemovalConfirm| {
             segment(
                 id,
@@ -274,7 +269,7 @@ impl EnvironmentShell {
 
     fn base_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.worktrees.base;
+        let current = self.runtime.settings.worktrees.base;
         let segments = WorktreeBase::ALL.map(|base| {
             segment(
                 (BASE_PREFIX, base as u64),
@@ -314,7 +309,11 @@ impl EnvironmentShell {
         let pal = palette(cx);
         let preview = format!(
             "{PREFIX_PREVIEW}{}",
-            self.settings.worktrees.branch_prefix.branch(PREFIX_SAMPLE)
+            self.runtime
+                .settings
+                .worktrees
+                .branch_prefix
+                .branch(PREFIX_SAMPLE)
         );
         let field = div()
             .flex()

@@ -321,7 +321,7 @@ impl PaletteCmd {
 
 impl EnvironmentShell {
     fn palette_view_commands(&self) -> Vec<(&'static str, PaletteCmd)> {
-        let layout = &self.settings.sidebar;
+        let layout = &self.runtime.settings.sidebar;
         PALETTE_VIEW
             .iter()
             .filter(|(_, cmd)| cmd.opened_view().is_none_or(|view| layout.shows_view(view)))
@@ -459,7 +459,7 @@ impl EnvironmentShell {
                         .items(rows.agents.iter().map(|preset| {
                             let (glyph, color) = harness_icon(*preset, pal);
                             command_row(
-                                self.settings.acp.harness_name(*preset),
+                                self.runtime.settings.acp.harness_name(*preset),
                                 (glyph, Some(color)),
                                 None,
                             )

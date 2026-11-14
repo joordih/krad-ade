@@ -61,7 +61,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let existing = id
-            .and_then(|id| self.kraddies.entry(id))
+            .and_then(|id| self.runtime.kraddies.entry(id))
             .map(|entry| entry.kraddie.clone());
         let agents = self.kraddie_agents(cx);
         let Some(harness) = existing
@@ -147,6 +147,7 @@ impl EnvironmentShell {
 
     fn fresh_name_ideas(&self, seed: u64) -> Vec<&'static str> {
         let taken: Vec<KraddieId> = self
+            .runtime
             .kraddies
             .entries
             .iter()
@@ -196,7 +197,7 @@ impl EnvironmentShell {
             Ok(name) => name,
             Err(error) => return self.refuse_kraddie_editor(error.to_string(), cx),
         };
-        let taken = self.kraddies.entry(&name.id()).is_some()
+        let taken = self.runtime.kraddies.entry(&name.id()).is_some()
             && editor.replacing.as_ref() != Some(&name.id());
         if taken {
             return self.refuse_kraddie_editor(super::panel::NAME_TAKEN.to_owned(), cx);

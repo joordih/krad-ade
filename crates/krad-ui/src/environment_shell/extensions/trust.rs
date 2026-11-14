@@ -252,10 +252,11 @@ impl EnvironmentShell {
             self.ask_trust(&entry, cx);
             return;
         }
-        if !store_trust(&mut self.settings.extensions, &entry, &shown) {
+        if !self.edit_settings(cx, |settings| {
+            store_trust(&mut settings.extensions, &entry, &shown)
+        }) {
             return;
         }
-        self.save_settings(cx);
         self.load_language_tools(cx);
         self.load_extensions(cx);
         cx.notify();

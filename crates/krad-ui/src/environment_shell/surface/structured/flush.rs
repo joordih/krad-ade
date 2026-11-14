@@ -73,7 +73,9 @@ impl EnvironmentShell {
         if self.opens_in_runtime(place, id) {
             return self.open_in_runtime(place, id, cx);
         }
-        Err(StartError::NoChat(self.settings.acp.harness_name(harness)))
+        Err(StartError::NoChat(
+            self.runtime.settings.acp.harness_name(harness),
+        ))
     }
 
     pub(in crate::environment_shell) fn flush_chats_of(

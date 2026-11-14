@@ -88,9 +88,9 @@ impl EnvironmentShell {
                     frame: self.kraddies_frame(),
                     active: live.data.active_session == Some(session.id),
                     harness: Self::harness_of(live, session)
-                        .map(|harness| self.settings.acp.harness_name(harness)),
+                        .map(|harness| self.runtime.settings.acp.harness_name(harness)),
                     spent: spend_caption(&live.data.session_spend(session)),
-                    density: self.settings.sidebar.density,
+                    density: self.runtime.settings.sidebar.density,
                     cloud: session.cloud.as_ref().map(|placement| {
                         let waiting = status == CardStatus::Agent(AgentState::WaitingForInput);
                         self.cloud_badge(placement.runner, waiting, cx)
@@ -294,7 +294,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        let view = self.settings.sidebar.reachable_view(view);
+        let view = self.runtime.settings.sidebar.reachable_view(view);
         if let Some(live) = self.envs.get_mut(&env) {
             live.data.set_view(view);
         }

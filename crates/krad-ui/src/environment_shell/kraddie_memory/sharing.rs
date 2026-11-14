@@ -10,7 +10,12 @@ impl EnvironmentShell {
         edit: impl FnOnce(&mut KraddieSettings) -> bool,
         cx: &mut Context<Self>,
     ) {
-        let Some(mut kraddie) = self.kraddies.entry(id).map(|entry| entry.kraddie.clone()) else {
+        let Some(mut kraddie) = self
+            .runtime
+            .kraddies
+            .entry(id)
+            .map(|entry| entry.kraddie.clone())
+        else {
             return;
         };
         if edit(&mut kraddie.settings) {

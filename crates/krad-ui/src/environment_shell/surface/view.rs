@@ -267,7 +267,7 @@ impl EnvironmentShell {
             AgentNow::Waiting if waits_unseen => {
                 format!(
                     "{} {WAITING_TEXT}",
-                    self.settings.acp.harness_name(chat.chat.harness())
+                    self.runtime.settings.acp.harness_name(chat.chat.harness())
                 )
             }
             AgentNow::Exited => EXITED_TEXT.to_owned(),

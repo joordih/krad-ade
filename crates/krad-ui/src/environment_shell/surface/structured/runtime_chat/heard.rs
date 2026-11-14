@@ -248,6 +248,7 @@ impl EnvironmentShell {
             .as_ref()
             .is_some_and(|acp| structured.acp.adopt(acp));
         structured.adopt_catalog(state.commands.clone(), state.account.clone());
+        structured.launch = state.launch;
         let was_working = structured.working;
         if state.working {
             structured.working = true;

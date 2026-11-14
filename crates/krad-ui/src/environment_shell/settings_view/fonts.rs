@@ -89,7 +89,7 @@ impl FontZone {
 
 impl EnvironmentShell {
     fn font_entries(&self, zone: FontZone) -> Vec<MenuEntry> {
-        let current = zone.choice(&self.settings).family.as_deref();
+        let current = zone.choice(&self.runtime.settings).family.as_deref();
         let families = self.settings_ui.as_ref().map_or(&[][..], |ui| match zone {
             FontZone::Interface => ui.fonts.interface.as_slice(),
             FontZone::Editor | FontZone::Terminal => ui.fonts.monospace.as_slice(),
@@ -115,22 +115,21 @@ impl EnvironmentShell {
         edit: impl FnOnce(&mut FontChoice),
         cx: &mut Context<Self>,
     ) {
-        edit(zone.choice_mut(&mut self.settings));
+        self.edit_settings(cx, |settings| edit(zone.choice_mut(settings)));
         match zone {
-            FontZone::Interface => apply_interface_font(&self.settings.interface_font, cx),
+            FontZone::Interface => apply_interface_font(&self.runtime.settings.interface_font, cx),
             FontZone::Editor => {
-                apply_editor_font(&self.settings.editor_font, cx);
+                apply_editor_font(&self.runtime.settings.editor_font, cx);
             }
             FontZone::Terminal => self.cell_width_px = None,
         }
-        self.save_settings(cx);
         cx.notify();
     }
 
     fn family_picker(&self, zone: FontZone, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let shown = zone
-            .choice(&self.settings)
+            .choice(&self.runtime.settings)
             .family
             .clone()
             .unwrap_or_else(|| zone.default_label().to_owned());
@@ -186,7 +185,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let size = zone.choice(&self.settings).size_or(default);
+        let size = zone.choice(&self.runtime.settings).size_or(default);
         let step = move |grow: bool| {
             move |this: &mut Self,
                   _: &ClickEvent,
@@ -237,7 +236,7 @@ impl EnvironmentShell {
 
     fn ligatures_switch(&self, zone: FontZone, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = zone.choice(&self.settings).ligatures;
+        let current = zone.choice(&self.runtime.settings).ligatures;
         let options = Ligatures::all().map(|ligatures| {
             segment(
                 (LIGATURES_PREFIX, zone.key() * 2 + ligatures as u64),

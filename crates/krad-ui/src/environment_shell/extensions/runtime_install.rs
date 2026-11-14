@@ -123,7 +123,7 @@ impl EnvironmentShell {
         };
         let name = tools.server_runtime_name(&pending.runtime);
         self.push_toast(ToastKind::Info, format!("{INSTALLING_TEXT} {name}"));
-        let chosen = self.settings.server_runtimes.clone();
+        let chosen = self.runtime.settings.server_runtimes.clone();
         let runtime = pending.runtime.clone();
         let installing = cx.background_spawn(async move {
             tools.install_server_runtime_on(&link, platform, &runtime, &chosen)

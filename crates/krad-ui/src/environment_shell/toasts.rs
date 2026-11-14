@@ -107,7 +107,7 @@ impl EnvironmentShell {
             return div().into_any_element();
         }
         let frame = self.toast_frame(width, height);
-        let anchor = frame.anchor_of(self.settings.toasts.placement);
+        let anchor = frame.anchor_of(self.runtime.settings.toasts.placement);
         let side = frame.side_of(anchor);
         let cards = self
             .toasts
@@ -231,7 +231,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn expire_toasts(&mut self, now: Instant) -> bool {
-        let Some(lifetime) = self.settings.toasts.lifetime.duration() else {
+        let Some(lifetime) = self.runtime.settings.toasts.lifetime.duration() else {
             return false;
         };
         let before = self.toasts.shown.len();

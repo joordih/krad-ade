@@ -24,7 +24,7 @@ impl EnvironmentShell {
 
     fn copy_mode_card(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.copy_mode;
+        let current = self.runtime.settings.copy_mode;
         let options = CopyMode::all().map(|mode| {
             segment(
                 (COPY_MODE_PREFIX, mode as u64),
@@ -36,8 +36,7 @@ impl EnvironmentShell {
                 cx,
             )
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                this.settings.copy_mode = mode;
-                this.save_settings(cx);
+                this.edit_settings(cx, |settings| settings.copy_mode = mode);
                 cx.notify();
             }))
         });

@@ -314,7 +314,7 @@ impl EnvironmentShell {
             .automations
             .iter()
             .filter_map(|routine| {
-                let at = next_run(entry, routine, self.kraddies.opened_at)?;
+                let at = next_run(entry, routine, self.runtime.kraddies.opened_at)?;
                 Some((at, routine.automation.name.to_string()))
             })
             .collect();

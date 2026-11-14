@@ -255,8 +255,8 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         for group in &mut groups {
-            group.name = self.settings.acp.harness_name(group.harness).into();
-            marks::mark(group, &self.settings.model_preferences);
+            group.name = self.runtime.settings.acp.harness_name(group.harness).into();
+            marks::mark(group, &self.runtime.settings.model_preferences);
         }
         if groups
             .iter()
@@ -269,7 +269,7 @@ impl EnvironmentShell {
         };
         let focus = cx.focus_handle();
         if let PickFor::Chat(chat) = target {
-            if self.settings.beta.composer == ComposerDesign::Tray {
+            if self.runtime.settings.beta.composer == ComposerDesign::Tray {
                 self.embed_effort(chat, focus.clone());
             }
         }

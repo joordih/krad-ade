@@ -21,7 +21,7 @@ const BTN_PLACE: &str = "toast-setting-place";
 impl EnvironmentShell {
     pub(super) fn toasts_card(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let current = self.settings.toasts.lifetime;
+        let current = self.runtime.settings.toasts.lifetime;
         let segments = ToastLifetime::ALL.map(|lifetime| {
             segment(
                 SharedString::from(format!("{ID_PREFIX}-{}", lifetime.display_name())),
@@ -33,8 +33,7 @@ impl EnvironmentShell {
                 cx,
             )
             .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                this.settings.toasts.lifetime = lifetime;
-                this.save_settings(cx);
+                this.edit_settings(cx, |settings| settings.toasts.lifetime = lifetime);
                 cx.notify();
             }))
         });

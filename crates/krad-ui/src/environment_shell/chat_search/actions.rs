@@ -107,7 +107,7 @@ impl EnvironmentShell {
             self.push_toast(ToastKind::Warning, NOT_INDEXED_TEXT.to_owned());
             return;
         };
-        let harness_name = self.settings.acp.harness_name(chat.harness);
+        let harness_name = self.runtime.settings.acp.harness_name(chat.harness);
         let plan = fork_plan(
             &chat.title,
             &harness_name,
@@ -147,7 +147,7 @@ impl EnvironmentShell {
                     .unwrap_or_default(),
             ),
         };
-        let harness_name = self.settings.acp.harness_name(chat.harness);
+        let harness_name = self.runtime.settings.acp.harness_name(chat.harness);
         let text = chat_note_markdown(&title, &harness_name, kept);
         let stem = chat_note_stem(&title);
         let written = self.ask_active_repo(

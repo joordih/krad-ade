@@ -1,9 +1,10 @@
 use gpui_kit::{App, AppContext as _, Context, Entity};
 use krad_client::{InProcess, RuntimeClient};
-use krad_domain::{AgentStatus, EnvironmentName, RuntimeId, TerminalId};
+use krad_domain::{AgentStatus, EnvironmentName, RuntimeId, Settings, TerminalId};
 use krad_protocol::AgentRef;
 use krad_runtime::RuntimeHandle;
 use krad_session::AnsiPalette;
+use std::rc::Rc;
 use std::sync::Arc;
 
 mod agents;
@@ -11,8 +12,10 @@ mod asking;
 mod environments;
 mod following;
 mod gateway;
+mod git;
 mod heard;
 mod hosts;
+mod kraddies;
 mod mail;
 mod settings;
 mod view_model;
@@ -21,7 +24,9 @@ pub(super) use agents::AgentsMirror;
 use asking::Waiters;
 pub(super) use environments::EnvironmentsMirror;
 pub(super) use gateway::GatewayMirror;
+pub(super) use git::{GitGroups, GitKey, GitMirror, GitMove};
 pub(super) use hosts::{HostMove, HostsMirror};
+pub(super) use kraddies::{AutomationEntry, KraddieBook, KraddieEntry, KraddiesMirror};
 pub(super) use mail::MailNotices;
 use view_model::RuntimeNews;
 pub(super) use view_model::{HostedFailure, RunnerReach, ViewModel};
@@ -38,19 +43,35 @@ pub(super) struct RuntimeLink {
     pub(super) client: Arc<dyn RuntimeClient>,
     pub(super) handle: RuntimeHandle,
     pub(super) view: Entity<ViewModel>,
-    pub(super) environments: EnvironmentsMirror,
+    pub(super) environments: Rc<EnvironmentsMirror>,
+    pub(super) settings: Rc<Settings>,
+    pub(super) git: Rc<GitGroups>,
+    pub(super) kraddies: Rc<KraddieBook>,
     palette: Option<AnsiPalette>,
 }
 
 impl RuntimeLink {
-    pub(super) fn new(client: InProcess, cx: &mut App) -> Self {
+    pub(super) fn new(client: InProcess, settings: Settings, cx: &mut App) -> Self {
+        let model = ViewModel::new(settings);
+        let settings = model.settings.current();
         Self {
             handle: client.handle().clone(),
             client: Arc::new(client),
-            view: cx.new(|_| ViewModel::default()),
-            environments: EnvironmentsMirror::default(),
+            view: cx.new(|_| model),
+            environments: Rc::default(),
+            settings,
+            git: Rc::default(),
+            kraddies: Rc::default(),
             palette: None,
         }
+    }
+
+    pub(super) fn reread(&mut self, cx: &App) {
+        let model = self.view.read(cx);
+        self.environments = Rc::clone(&model.environments);
+        self.settings = model.settings.current();
+        self.git = model.git.current();
+        self.kraddies = model.kraddies.current();
     }
 
     pub(super) const fn palette(&self) -> Option<AnsiPalette> {

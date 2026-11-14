@@ -69,18 +69,19 @@ impl PickerTarget {
 
 impl EnvironmentShell {
     fn selection(&self) -> ThemeSelection {
-        self.settings.themes.clone().unwrap_or_default()
+        self.runtime.settings.themes.clone().unwrap_or_default()
     }
 
     fn environment_choice(&self, appearance: ThemeAppearance) -> Option<&ThemeId> {
-        self.settings
+        self.runtime
+            .settings
             .environment_themes
             .of(&self.active)
             .and_then(|theme| theme.for_appearance(appearance))
     }
 
     pub(in crate::environment_shell) fn apply_active_theme(&self, cx: &mut gpui_kit::App) {
-        apply_environment_theme(&self.settings, Some(&self.active), cx);
+        apply_environment_theme(&self.runtime.settings, Some(&self.active), cx);
     }
 
     pub(in crate::environment_shell) fn sync_environment_theme(&self, cx: &mut gpui_kit::App) {
@@ -99,12 +100,13 @@ impl EnvironmentShell {
         id: ThemeId,
         cx: &mut Context<Self>,
     ) {
-        self.settings
-            .themes
-            .get_or_insert_with(Default::default)
-            .set(appearance, id);
+        self.edit_settings(cx, |settings| {
+            settings
+                .themes
+                .get_or_insert_with(Default::default)
+                .set(appearance, id);
+        });
         self.apply_active_theme(cx);
-        self.save_settings(cx);
         cx.notify();
     }
 
@@ -115,23 +117,21 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let active = self.active.clone();
-        self.settings
-            .environment_themes
-            .set(&active, appearance, id);
+        self.edit_settings(cx, |settings| {
+            settings.environment_themes.set(&active, appearance, id);
+        });
         self.apply_active_theme(cx);
-        self.save_settings(cx);
         cx.notify();
     }
 
     fn reset_environment_theme(&mut self, cx: &mut Context<Self>) {
         let active = self.active.clone();
-        for appearance in [ThemeAppearance::Light, ThemeAppearance::Dark] {
-            self.settings
-                .environment_themes
-                .set(&active, appearance, None);
-        }
+        self.edit_settings(cx, |settings| {
+            for appearance in [ThemeAppearance::Light, ThemeAppearance::Dark] {
+                settings.environment_themes.set(&active, appearance, None);
+            }
+        });
         self.apply_active_theme(cx);
-        self.save_settings(cx);
         cx.notify();
     }
 

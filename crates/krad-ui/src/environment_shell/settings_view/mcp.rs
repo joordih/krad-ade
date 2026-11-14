@@ -67,16 +67,17 @@ impl EnvironmentShell {
     }
 
     fn toggle_mcp_server(&mut self, name: &McpServerName, cx: &mut Context<Self>) {
-        self.settings.mcp.toggle_server(name);
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| {
+            settings.mcp.toggle_server(name);
+        });
         cx.notify();
     }
 
     fn remove_mcp_server(&mut self, name: &McpServerName, cx: &mut Context<Self>) {
-        let Some(server) = self.settings.mcp.remove_server(name) else {
+        let Some(server) = self.edit_settings(cx, |settings| settings.mcp.remove_server(name))
+        else {
             return;
         };
-        self.save_settings(cx);
         cx.notify();
         let removed = cx.background_spawn(async move {
             server.secret_keys().iter().try_for_each(delete_mcp_secret)
@@ -127,10 +128,11 @@ impl EnvironmentShell {
 
     fn mcp_servers_card(&self, form_open: bool, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let rows: Vec<AnyElement> = if self.settings.mcp.servers.is_empty() {
+        let rows: Vec<AnyElement> = if self.runtime.settings.mcp.servers.is_empty() {
             vec![empty_row(SERVERS_EMPTY, pal)]
         } else {
-            self.settings
+            self.runtime
+                .settings
                 .mcp
                 .servers
                 .iter()
@@ -205,6 +207,7 @@ impl EnvironmentShell {
     fn mcp_projects_card(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
         let rows: Vec<AnyElement> = self
+            .runtime
             .settings
             .mcp
             .projects
@@ -227,7 +230,7 @@ impl EnvironmentShell {
         if open {
             sections.push(Self::mcp_form_section(&ui.form, cx));
         }
-        if !self.settings.mcp.projects.is_empty() {
+        if !self.runtime.settings.mcp.projects.is_empty() {
             sections.push(self.mcp_projects_card(cx));
         }
         sections.push(footnote(SECRETS_NOTE, pal));

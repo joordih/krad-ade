@@ -12,7 +12,7 @@ const EXPORTED: &str = "Kraddie exported";
 
 impl EnvironmentShell {
     pub(super) fn export_kraddie_file(&mut self, id: &KraddieId, cx: &mut Context<Self>) {
-        let Some((kraddie, automations)) = self.kraddies.entry(id).map(|entry| {
+        let Some((kraddie, automations)) = self.runtime.kraddies.entry(id).map(|entry| {
             let automations: Vec<Automation> = entry
                 .automations
                 .iter()
@@ -61,7 +61,7 @@ impl EnvironmentShell {
                 .spawn(async move { import_kraddie(&path) })
                 .await;
             this.update(cx, |shell, cx| match read {
-                Ok(read) if shell.kraddies.entry(&read.kraddie.id()).is_some() => {
+                Ok(read) if shell.runtime.kraddies.entry(&read.kraddie.id()).is_some() => {
                     shell.toast(ToastKind::Warning, NAME_TAKEN, cx);
                 }
                 Ok(read) => {

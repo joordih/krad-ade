@@ -121,7 +121,7 @@ impl EnvironmentShell {
         let pal = palette(cx);
         let host = self.active_host();
         let now = SystemTime::now();
-        let warn_at = self.settings.plan_usage.warn_at;
+        let warn_at = self.runtime.settings.plan_usage.warn_at;
         let blocks: Vec<AnyElement> = self
             .usage_harnesses(&host, cx)
             .into_iter()

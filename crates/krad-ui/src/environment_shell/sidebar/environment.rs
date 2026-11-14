@@ -21,6 +21,16 @@ const COMPACT_LABEL: &str = "Compact view";
 const PILL_H: f32 = 34.0;
 const BADGE: f32 = 22.0;
 
+fn toggle_sidebar_option(layout: &mut SidebarLayout, action: &MenuAction) -> bool {
+    match action {
+        MenuAction::ToggleSidebarPart(part) => layout.toggle(*part),
+        MenuAction::ToggleSidebarDensity => layout.density = layout.density.toggled(),
+        MenuAction::ToggleSidebarView(view) => layout.toggle_view(*view),
+        _ => return false,
+    }
+    true
+}
+
 impl EnvironmentShell {
     pub(super) fn environment_header(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
@@ -105,7 +115,7 @@ impl EnvironmentShell {
     }
 
     fn sidebar_options(&self) -> Vec<MenuEntry> {
-        sidebar_options(&self.settings.sidebar)
+        sidebar_options(&self.runtime.settings.sidebar)
     }
 
     pub(in crate::environment_shell) fn run_sidebar_option(
@@ -113,24 +123,22 @@ impl EnvironmentShell {
         action: &MenuAction,
         cx: &mut Context<Self>,
     ) {
-        let layout = &mut self.settings.sidebar;
-        match action {
-            MenuAction::ToggleSidebarPart(part) => layout.toggle(*part),
-            MenuAction::ToggleSidebarDensity => layout.density = layout.density.toggled(),
-            MenuAction::ToggleSidebarView(view) => {
-                layout.toggle_view(*view);
-                self.leave_hidden_views();
-            }
-            _ => return,
+        let toggled = self.edit_settings(cx, |settings| {
+            toggle_sidebar_option(&mut settings.sidebar, action)
+        });
+        if !toggled {
+            return;
         }
-        self.save_settings(cx);
+        if matches!(action, MenuAction::ToggleSidebarView(_)) {
+            self.leave_hidden_views();
+        }
         let entries = self.sidebar_options();
         self.replace_menu_entries(entries);
         cx.notify();
     }
 
     fn leave_hidden_views(&mut self) {
-        let layout = &self.settings.sidebar;
+        let layout = &self.runtime.settings.sidebar;
         let mut moved = false;
         for live in self.envs.values_mut() {
             let reachable = layout.reachable_view(live.data.view);

@@ -390,7 +390,7 @@ impl EnvironmentShell {
         let Some(state) = &editor.state else {
             return div().flex_1().into_any_element();
         };
-        let editor_settings = self.settings.editor;
+        let editor_settings = self.runtime.settings.editor;
         let scale = live
             .data
             .nodes

@@ -66,7 +66,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Part {
         let pal = palette(cx);
-        let Some(entry) = self.kraddies.entry(id) else {
+        let Some(entry) = self.runtime.kraddies.entry(id) else {
             return (SESSIONS_TITLE, None, div().into_any_element());
         };
         let sessions = entry.kraddie.settings.sessions;
@@ -143,6 +143,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let current = self
+            .runtime
             .kraddies
             .entry(id)
             .and_then(|entry| entry.kraddie.settings.session_model.as_ref())
@@ -178,7 +179,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Part {
         let pal = palette(cx);
-        let Some(entry) = self.kraddies.entry(id) else {
+        let Some(entry) = self.runtime.kraddies.entry(id) else {
             return (ROUNDS_TITLE, None, div().into_any_element());
         };
         let rounds = entry.kraddie.settings.rounds;

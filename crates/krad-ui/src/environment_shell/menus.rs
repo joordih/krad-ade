@@ -43,7 +43,7 @@ impl EnvironmentShell {
         let default = self.offered_default_harness(cx);
         entries.extend(self.offered_agents(cx).into_iter().map(|preset| {
             MenuEntry::checked(
-                self.settings.acp.harness_name(preset),
+                self.runtime.settings.acp.harness_name(preset),
                 preset == default,
                 MenuAction::NewTerminal(preset),
             )

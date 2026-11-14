@@ -109,7 +109,7 @@ fn check_notice(
 
 impl EnvironmentShell {
     pub(super) fn start_app_updates(&mut self, cx: &mut Context<Self>) {
-        if self.settings.app_updates != AppUpdateCheck::Automatic {
+        if self.runtime.settings.app_updates != AppUpdateCheck::Automatic {
             self.app_updates.schedule = None;
             return;
         }
@@ -128,8 +128,7 @@ impl EnvironmentShell {
     }
 
     pub(super) fn set_app_update_check(&mut self, check: AppUpdateCheck, cx: &mut Context<Self>) {
-        self.settings.app_updates = check;
-        self.save_settings(cx);
+        self.edit_settings(cx, |settings| settings.app_updates = check);
         self.start_app_updates(cx);
         cx.notify();
     }

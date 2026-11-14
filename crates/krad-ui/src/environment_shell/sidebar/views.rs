@@ -24,7 +24,7 @@ impl EnvironmentShell {
             .is_some_and(|live| live.extension_sidebar.is_some());
         let rows = offered_views(self.review_host().is_some())
             .into_iter()
-            .filter(|(view, _, _)| self.settings.sidebar.shows_view(*view))
+            .filter(|(view, _, _)| self.runtime.settings.sidebar.shows_view(*view))
             .map(|(view, glyph, label)| {
                 let selected = view == current && !extension_shown;
                 div()

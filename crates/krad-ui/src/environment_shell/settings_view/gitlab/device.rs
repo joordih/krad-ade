@@ -94,7 +94,7 @@ impl EnvironmentShell {
 
     fn device_header(&self, cx: &mut Context<Self>) -> AnyElement {
         let pal = palette(cx);
-        let host = bare(self.settings.gitlab.host.trim()).to_owned();
+        let host = bare(self.runtime.settings.gitlab.host.trim()).to_owned();
         div()
             .flex()
             .flex_row()

@@ -414,7 +414,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let picker = self.model_picker.as_ref()?;
-        if self.settings.beta.composer == ComposerDesign::Tray
+        if self.runtime.settings.beta.composer == ComposerDesign::Tray
             && matches!(picker.target, PickFor::Chat(_))
         {
             return self.model_deck_overlay(window, cx);

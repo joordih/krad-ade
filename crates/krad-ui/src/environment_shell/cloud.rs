@@ -43,7 +43,8 @@ impl EnvironmentShell {
     }
 
     pub(in crate::environment_shell) fn runner_name(&self, id: CloudRunnerId) -> String {
-        self.settings
+        self.runtime
+            .settings
             .cloud
             .find(id)
             .map_or_else(|| id.to_string(), |runner| runner.name.as_str().to_owned())
