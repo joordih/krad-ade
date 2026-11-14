@@ -1,18 +1,9 @@
 use gpui_kit::Context;
-use krad_chat::Runner;
-use krad_domain::{app_kept_acp_package, AcpAgent, AcpAgentId, AgentPreset, ManagedAdapter};
-use krad_host::HostLink;
+use krad_domain::{app_kept_acp_package, AcpAgent, AcpAgentId, ManagedAdapter};
 use krad_protocol::{Command, HostCommand, KeptAdapter};
-use krad_runtime::kept_package;
-use std::path::{Path, PathBuf};
 
-use crate::environment_shell::chat::StartError;
-use crate::environment_shell::terminal_card::home_dir;
 use crate::environment_shell::EnvironmentShell;
 
-const NO_NODE_TEXT: &str =
-    "needs Node.js to install itself. Install Node.js (with npm), then send the message again.";
-const FAILED_TEXT: &str = "could not install itself:";
 const KEPT_UNCHECKED: &str = "Installs itself in Krad ADE's folder on first use";
 const KEPT_CHECKING: &str = "Checking its adapter…";
 const KEPT_INSTALLING: &str = "Installing its adapter…";
@@ -43,43 +34,6 @@ pub(in crate::environment_shell) fn kept_adapter_view(adapter: &ManagedAdapter) 
 }
 
 impl EnvironmentShell {
-    pub(in crate::environment_shell) fn acp_runner(
-        &self,
-        link: &HostLink,
-        agent: &AcpAgent,
-        root: Option<&Path>,
-    ) -> Result<(Runner, PathBuf), StartError> {
-        let preset = AgentPreset::Acp(agent.id);
-        if kept_package(agent.id, link, root).is_none() {
-            return self.program_runner(link, preset, agent.program.clone(), root);
-        }
-        let name = self.settings.acp.harness_name(preset);
-        match self.acp_adapters.get(&agent.id) {
-            Some(ManagedAdapter::Ready { program, .. }) => {
-                let cwd = root
-                    .map(Path::to_path_buf)
-                    .or_else(|| home_dir().map(PathBuf::from))
-                    .unwrap_or_default();
-                Ok((Runner::Native(program.clone()), cwd))
-            }
-            Some(ManagedAdapter::NoNode) => {
-                Err(StartError::Adapter(format!("{name} {NO_NODE_TEXT}")))
-            }
-            Some(ManagedAdapter::Failed(reason)) => Err(StartError::Adapter(format!(
-                "{name} {FAILED_TEXT} {reason}"
-            ))),
-            Some(ManagedAdapter::Checking | ManagedAdapter::Installing) => Err(StartError::Waiting),
-            Some(ManagedAdapter::Unchecked) | None => {
-                self.runtime
-                    .client
-                    .post(Command::Host(HostCommand::CheckAcpAdapter {
-                        agent: agent.id,
-                    }));
-                Err(StartError::Waiting)
-            }
-        }
-    }
-
     pub(in crate::environment_shell) fn acp_program_name(&self, agent: &AcpAgent) -> String {
         match self.acp_adapters.get(&agent.id) {
             Some(ManagedAdapter::Ready { program, .. }) => program.to_string_lossy().into_owned(),
@@ -125,6 +79,7 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn only_a_blocked_adapter_offers_a_retry_and_each_state_says_where_it_is() {

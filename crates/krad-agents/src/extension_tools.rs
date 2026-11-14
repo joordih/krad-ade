@@ -1,81 +1,13 @@
-use crate::protocol::MemoryTools;
-use krad_domain::CodeTools;
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-pub const EXTENSION_TOOL_PREFIX: &str = "ext_";
-const NAME_SEPARATOR: char = '_';
-const NAME_FILLER: char = '-';
-const MAX_TOOL_NAME: usize = 64;
+pub use krad_domain::agents_api::{
+    extension_tool_name, is_extension_tool, ExtensionToolAnswer, ExtensionToolEffect,
+    ExtensionToolInfo, ExtensionToolOutcome, ToolCatalog, EXTENSION_TOOL_PREFIX,
+};
+
 const NO_EXTENSION_TOOLS: &str = "No extension tools";
 const OBJECT_TYPE: &str = "object";
 pub(crate) const TOOL_USAGE: &str = "Usage: krad-ade-agents tool NAME [JSON_ARGUMENTS]";
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExtensionToolEffect {
-    #[default]
-    ReadOnly,
-    Destructive,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExtensionToolInfo {
-    pub name: String,
-    pub extension: String,
-    pub description: String,
-    pub input_schema: Value,
-    pub effect: ExtensionToolEffect,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ToolCatalog {
-    pub code_tools: CodeTools,
-    pub extension_tools: Vec<ExtensionToolInfo>,
-    #[serde(default)]
-    pub memory_tools: MemoryTools,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExtensionToolOutcome {
-    #[default]
-    Done,
-    Failed,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExtensionToolAnswer {
-    pub text: String,
-    pub outcome: ExtensionToolOutcome,
-}
-
-fn mcp_safe(text: &str) -> String {
-    text.chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || character == NAME_FILLER {
-                character
-            } else {
-                NAME_FILLER
-            }
-        })
-        .collect()
-}
-
-#[must_use]
-pub fn extension_tool_name(extension: &str, tool: &str) -> Option<String> {
-    let name = format!(
-        "{EXTENSION_TOOL_PREFIX}{}{NAME_SEPARATOR}{}",
-        mcp_safe(extension),
-        mcp_safe(tool)
-    );
-    (name.len() <= MAX_TOOL_NAME).then_some(name)
-}
-
-#[must_use]
-pub fn is_extension_tool(name: &str) -> bool {
-    name.starts_with(EXTENSION_TOOL_PREFIX)
-}
 
 fn object_schema(schema: &Value) -> Value {
     if schema.get("type").and_then(Value::as_str) == Some(OBJECT_TYPE) {

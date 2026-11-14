@@ -1,30 +1,10 @@
-use krad_domain::{Effort, ModelId, Prompt, RewindId};
+use krad_domain::{Prompt, RewindId};
 use serde::Serialize;
-use std::fmt;
 
 use crate::control::json_line;
 use crate::mention::{read_prompt, shown_path, EncodedImage};
 
-const MODEL_COMMAND: &str = "/model";
-const EFFORT_COMMAND: &str = "/effort";
-const THINKING_COMMAND: &str = "/config thinking=";
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SlashCommand {
-    Model(ModelId),
-    Effort(Effort),
-    Thinking(bool),
-}
-
-impl fmt::Display for SlashCommand {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Model(model) => write!(formatter, "{MODEL_COMMAND} {model}"),
-            Self::Effort(effort) => write!(formatter, "{EFFORT_COMMAND} {effort}"),
-            Self::Thinking(on) => write!(formatter, "{THINKING_COMMAND}{on}"),
-        }
-    }
-}
+pub use krad_domain::SlashCommand;
 
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -92,6 +72,7 @@ pub(crate) fn user_message_line(prompt: &Prompt, uuid: Option<&RewindId>) -> Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use krad_domain::{Effort, ModelId};
     use serde_json::{json, Value};
 
     #[test]

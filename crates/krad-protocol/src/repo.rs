@@ -35,6 +35,10 @@ pub enum RepoAsk {
         path: PathBuf,
         removal: WorktreeRemoval,
     },
+    RemoveSettledWorktree {
+        repo: PathBuf,
+        path: PathBuf,
+    },
     RemoteUrls {
         roots: Vec<PathBuf>,
         remote: String,

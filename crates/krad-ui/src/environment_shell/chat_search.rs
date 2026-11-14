@@ -3,19 +3,20 @@ mod source;
 
 pub(super) use actions::ChatHitAction;
 
-use gpui_kit::{App, AppContext as _, Context, Task};
+use gpui_kit::{AppContext as _, Context, Task};
 use krad_domain::{
     search_chats, AgentPreset, Archive, ArchivedSession, ChatDocument, ChatHit, EnvironmentName,
     GroupId, HistoryQuery, ResumeId, TerminalId,
 };
-use krad_store::{acp_transcript_file, gateway_sessions_dir};
+use krad_protocol::{Answer, ChatCommand, Command, HistoryAsk};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::EnvironmentShell;
-use source::{merged, HistorySource, Indexed};
+use source::{merged, Indexed};
 
 const HITS_FOUND: usize = 12;
+const UNEXPECTED_ANSWER: &str = "the runtime answered with something else";
 
 type ChatKey = (EnvironmentName, TerminalId);
 
@@ -116,50 +117,18 @@ impl EnvironmentShell {
         })
     }
 
-    fn history_source(
-        &self,
-        env: &EnvironmentName,
-        chat: &GroupChat,
-        cx: &App,
-    ) -> Option<HistorySource> {
-        let resume = chat.resume.clone();
-        let root = self.active_group().map(|group| group.root.clone());
-        let link = self.env_link(env);
-        match chat.harness {
-            AgentPreset::ClaudeCode => Some(HistorySource::Claude {
-                link,
-                resume,
-                root,
-                cursor: self
-                    .chat_search
-                    .indexed
-                    .get(&(env.clone(), chat.id))
-                    .map_or_else(Default::default, |indexed| indexed.cursor.clone()),
-            }),
-            AgentPreset::Gateway => Some(HistorySource::Gateway {
-                sessions: gateway_sessions_dir()?,
-                cwd: root.unwrap_or_else(|| self.chat_folder(env, chat.id, cx)),
-                resume,
-            }),
-            AgentPreset::Acp(_) => Some(HistorySource::Acp {
-                file: acp_transcript_file(env, chat.id)?,
-            }),
-            AgentPreset::Codex => {
-                let (runner, cwd) = self
-                    .harness_runner(&link, AgentPreset::Codex, root.as_deref())
-                    .ok()?;
-                Some(HistorySource::Codex {
-                    runner,
-                    cwd,
-                    resume,
-                })
-            }
-            AgentPreset::Opencode => Some(HistorySource::Opencode {
-                server: self.opencode_server_of(env)?,
-                resume,
-            }),
-            AgentPreset::Shell => None,
-        }
+    fn history_ask(&self, chat: &GroupChat) -> Option<HistoryAsk> {
+        chat.harness.is_agent().then(|| HistoryAsk {
+            chat: chat.id,
+            harness: chat.harness,
+            resume: chat.resume.clone(),
+            root: self.active_group().map(|group| group.root.clone()),
+            cursor: self
+                .chat_search
+                .indexed
+                .get(&(self.active.clone(), chat.id))
+                .map_or_else(Default::default, |indexed| indexed.cursor.clone()),
+        })
     }
 
     fn needs_reading(&self, key: &ChatKey, place: ChatPlace) -> bool {
@@ -183,10 +152,10 @@ impl EnvironmentShell {
             if !self.needs_reading(&key, chat.place) {
                 continue;
             }
-            let Some(source) = self.history_source(&env, &chat, cx) else {
+            let Some(ask) = self.history_ask(&chat) else {
                 continue;
             };
-            self.read_chat_history(key, chat, source, cx);
+            self.read_chat_history(key, chat, ask, cx);
         }
     }
 
@@ -194,7 +163,7 @@ impl EnvironmentShell {
         &mut self,
         key: ChatKey,
         chat: GroupChat,
-        source: HistorySource,
+        ask: HistoryAsk,
         cx: &mut Context<Self>,
     ) {
         let revision = self.chat_revision(&key.0, key.1);
@@ -206,11 +175,19 @@ impl EnvironmentShell {
             .unwrap_or_default();
         self.chat_search.reading.insert(key.clone());
         let GroupChat { id, title, .. } = chat;
-        let read = cx.background_spawn(async move {
-            source.read().map(|read| merged(indexed, id, title, read))
+        let command = Command::Chat(ChatCommand::History {
+            environment: key.0.clone(),
+            ask,
         });
+        let asked = self.runtime.ask(command, cx);
         cx.spawn(async move |this, cx| {
-            let read = read.await;
+            let read = match asked.await {
+                Ok(Answer::History(part)) => Ok(cx
+                    .background_spawn(async move { merged(indexed, id, title, *part) })
+                    .await),
+                Ok(_) => Err(UNEXPECTED_ANSWER.to_owned()),
+                Err(error) => Err(error.to_string()),
+            };
             this.update(cx, |shell, cx| {
                 shell.chat_search.reading.remove(&key);
                 match read {

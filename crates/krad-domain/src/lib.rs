@@ -2,6 +2,7 @@ mod acp;
 mod agent;
 mod agent_feed;
 mod agent_status;
+pub mod agents_api;
 mod arcade;
 mod archive;
 mod attention;

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
-use crate::{AgentPreset, ModelId, ProjectTask, RelaunchIntent, ResumeId};
+use crate::{AcpAgentId, AgentPreset, ModelId, ProjectTask, RelaunchIntent, ResumeId};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "intent", rename_all = "snake_case")]
@@ -20,6 +21,14 @@ pub enum LaunchIntent {
     Task {
         task: ProjectTask,
     },
+    AcpSignIn {
+        agent: AcpAgentId,
+        program: String,
+        #[serde(default)]
+        args: Vec<String>,
+        #[serde(default)]
+        env: BTreeMap<String, String>,
+    },
 }
 
 impl LaunchIntent {
@@ -31,9 +40,11 @@ impl LaunchIntent {
             {
                 Some(*preset)
             }
-            Self::Preset { .. } | Self::Agent { .. } | Self::Resume { .. } | Self::Task { .. } => {
-                None
-            }
+            Self::Preset { .. }
+            | Self::Agent { .. }
+            | Self::Resume { .. }
+            | Self::Task { .. }
+            | Self::AcpSignIn { .. } => None,
         }
     }
 
@@ -41,7 +52,10 @@ impl LaunchIntent {
     pub fn model(&self) -> Option<&ModelId> {
         match self {
             Self::Agent { model, .. } => model.as_ref(),
-            Self::Preset { .. } | Self::Resume { .. } | Self::Task { .. } => None,
+            Self::Preset { .. }
+            | Self::Resume { .. }
+            | Self::Task { .. }
+            | Self::AcpSignIn { .. } => None,
         }
     }
 }

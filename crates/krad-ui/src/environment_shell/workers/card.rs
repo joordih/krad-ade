@@ -37,7 +37,7 @@ pub(in crate::environment_shell) fn spawned_worker<'a>(
     command: &str,
     cards: &'a [WorkerCard],
 ) -> Option<&'a WorkerCard> {
-    if cards.is_empty() || !command.contains(krad_agents::CLI_PROGRAM) {
+    if cards.is_empty() || !command.contains(krad_extensions::host::HOST_CLI_PROGRAM) {
         return None;
     }
     if !command.contains(SPAWN_VERB) {

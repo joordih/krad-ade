@@ -191,7 +191,6 @@ impl KraddiesUi {
 impl EnvironmentShell {
     pub(super) fn start_kraddie_clocks(&mut self, cx: &mut Context<Self>) {
         self.start_kraddie_clock(cx);
-        self.start_memory_clock(cx);
     }
 
     pub(super) fn session_kraddie_look(

@@ -171,6 +171,10 @@ impl Runtime {
             JobDone::OpencodeListed(listed) => self.opencode_listed(listed),
             JobDone::AcpSecretsRead(read) => self.acp_secrets_read(read),
             JobDone::AttachedLine(line) => self.attached_line_ready(line),
+            JobDone::OpencodeTerminal { terminal, state } => {
+                self.opencode_terminal_state(terminal, state);
+            }
+            JobDone::SignInEnvRead(read) => self.sign_in_env_read(read),
             JobDone::HostAgentsFound(found) => {
                 self.hosts.agents_found(found, &mut self.outbox);
                 self.flush_chats();
@@ -184,6 +188,7 @@ impl Runtime {
             }
             JobDone::HarnessChecked { .. }
             | JobDone::ModelsListed { .. }
+            | JobDone::AcpOffersRead(_)
             | JobDone::UsageRead { .. }
             | JobDone::Git(_)
             | JobDone::KraddieLines(_)

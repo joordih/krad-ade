@@ -186,7 +186,6 @@ pub struct EnvironmentShell {
     settings: Settings,
     settings_ui: Option<settings_view::SettingsUi>,
     bus_work: agent_bus::BusWork,
-    opencode: opencode::Opencode,
     gateway: gateway::Gateway,
     listed_models: harness_models::ListedModels,
     acp_adapters: HashMap<krad_domain::AcpAgentId, krad_domain::ManagedAdapter>,
@@ -241,7 +240,6 @@ impl EnvironmentShell {
         self.flush_noticed_chats(cx);
         self.flush_attention(cx);
         self.service_hosts(cx);
-        self.watch_new_opencode_terminals(cx);
     }
 
     pub fn with_seed(
@@ -327,7 +325,6 @@ impl EnvironmentShell {
             settings,
             settings_ui: None,
             bus_work: agent_bus::BusWork::default(),
-            opencode: opencode::Opencode::default(),
             gateway: gateway::Gateway::default(),
             listed_models: harness_models::ListedModels::default(),
             acp_adapters: HashMap::new(),

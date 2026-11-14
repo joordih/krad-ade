@@ -8,11 +8,11 @@ mod orchestrator;
 mod rewind;
 mod runtime_chat;
 
-use krad_chat::{Catalog, CommandOffer, SlashCommand};
 use krad_domain::{
     new_session_id, AgentPreset, Effort, EffortSnap, EnvironmentName, LiveSession, McpServerName,
     ModelId, PermissionMode, ResumeId, TerminalId,
 };
+use krad_domain::{Catalog, CommandOffer, SlashCommand};
 use krad_store::acp_transcript_file;
 
 use super::super::ask::AskQueue;
@@ -21,8 +21,6 @@ use super::acp::AcpOffers;
 use super::outbox::Outbox;
 use super::{Backend, ChatView, SurfaceCommand};
 
-pub(super) use acp::read_acp_env;
-pub(in crate::environment_shell) use acp::read_acp_secrets;
 pub(in crate::environment_shell) use open::restored_chats;
 pub(in crate::environment_shell) use runtime_chat::ChatDriver;
 use runtime_chat::RuntimeShown;

@@ -1,4 +1,4 @@
-use krad_agents::{ErrorCode, Response};
+use krad_domain::agents_api::{ErrorCode, Response};
 use krad_domain::{
     AgentInfo, AgentState, AttentionKind, EnvironmentName, NodeKind, StateReason, TerminalId,
     TerminalNode, TerminalState,

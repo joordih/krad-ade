@@ -5,9 +5,7 @@ pub use watch::HEARTBEAT_INTERVAL;
 use crate::error::AgentsError;
 use crate::feed::AgentFeed;
 use crate::handle::Caller;
-use crate::protocol::{
-    ApiError, ApiInfo, BusToken, Envelope, ErrorCode, Request, Response, API_VERSION,
-};
+use crate::protocol::{ApiError, BusToken, Envelope, ErrorCode, Request, Response, API_VERSION};
 use futures::channel::{mpsc, oneshot};
 use futures::executor::block_on;
 use futures::SinkExt;
@@ -137,7 +135,7 @@ fn answer(
         )));
     }
     match envelope.request {
-        Request::Hello => Some(Response::Hello(ApiInfo::current())),
+        Request::Hello => Some(Response::Hello(crate::protocol::current_api_info())),
         Request::SubscribeAgents(subscription) => {
             watch::stream_agents(stream, &endpoint.feed, subscription);
             None

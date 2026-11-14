@@ -1,5 +1,5 @@
 use gpui_kit::Context;
-use krad_agents::{ErrorCode, Response, TerminalHandle};
+use krad_domain::agents_api::{ErrorCode, Response, TerminalHandle};
 use krad_domain::{
     sanitize_worktree_name, worker_brief, AgentPreset, CloudPlacement, EnvironmentName,
     PermissionMode, SessionId, TerminalGroup, TerminalId, ToastKind, WorkerSpawn,

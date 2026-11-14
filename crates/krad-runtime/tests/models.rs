@@ -131,3 +131,57 @@ fn a_chat_keeps_the_models_of_its_harness_on_its_host_unless_none_are_offered() 
     assert_eq!(snapshot.models.listed, vec![listed]);
     Ok(())
 }
+
+#[test]
+fn an_acp_agent_off_path_reports_its_listing_as_failed() -> TestResult {
+    use krad_domain::{AcpAgent, AcpSettings, Settings};
+    use krad_protocol::{AcpListing, AcpOffers, HarnessSpot};
+    use krad_runtime::SettingsSetup;
+
+    let agent = AcpAgent {
+        id: "krad-test-missing".parse()?,
+        name: "Missing".to_owned(),
+        program: "krad-test-no-such-acp-agent".to_owned(),
+        args: Vec::new(),
+        env: Vec::new(),
+        terminal: None,
+    };
+    let id = agent.id;
+    let runtime = Runtime::start(RuntimeSetup {
+        settings: SettingsSetup {
+            settings: Settings {
+                acp: AcpSettings {
+                    agents: vec![agent],
+                },
+                ..Settings::default()
+            },
+            file: None,
+        },
+        ..RuntimeSetup::default()
+    })?;
+    let mut events = subscribed(&runtime)?;
+    let reply = block_on(runtime.send(
+        runtime.next_request(),
+        Command::Models(ModelsCommand::List {
+            spot: HarnessSpot::default(),
+            harness: AgentPreset::Acp(id),
+        }),
+    ))?;
+    assert_eq!(reply, Reply::Accepted);
+    let offers = loop {
+        if let Feed::Event(event) = block_on(events.next()).ok_or(FEED_ENDED)? {
+            if let EventKind::AcpOffers(offers) = event.kind {
+                break offers;
+            }
+        }
+    };
+    assert!(matches!(
+        offers,
+        AcpOffers {
+            host: Host::Local,
+            agent,
+            listing: AcpListing::Failed { ref error },
+        } if agent == id && error.ends_with("is not on PATH")
+    ));
+    Ok(())
+}

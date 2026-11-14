@@ -1,3 +1,4 @@
+mod containment;
 mod notes;
 mod reads;
 mod uploads;
@@ -136,6 +137,7 @@ fn worked(link: &HostLink, ask: FileAsk) -> Result<Answer, RepoError> {
                 .filter(|name| link.symlink_metadata(&dir.join(name)).is_ok())
                 .collect(),
         },
+        FileAsk::Contained { root, path } => containment::contained(link, &root, &path),
         FileAsk::Present { paths } => Answer::Present {
             present: paths.iter().map(|path| link.exists(path)).collect(),
         },

@@ -134,8 +134,7 @@ impl EnvironmentShell {
     }
 
     fn keep_opencode_resume(&mut self, env: &EnvironmentName, id: TerminalId, resume: ResumeId) {
-        self.set_node(env, id, NodeField::Resume(Some(resume.clone())));
-        self.note_opencode_terminal(env, id, resume);
+        self.set_node(env, id, NodeField::Resume(Some(resume)));
     }
 
     pub(super) fn set_agent_state(

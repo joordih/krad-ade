@@ -1,5 +1,5 @@
 use gpui_kit::Context;
-use krad_agents::{ErrorCode, Request, Response};
+use krad_domain::agents_api::{ErrorCode, Request, Response};
 use krad_domain::{
     chat_worker_brief, AgentPreset, EnvironmentName, GroupId, PermissionMode, SessionId,
     TerminalGroup, TerminalId,

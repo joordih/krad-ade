@@ -40,7 +40,7 @@ use acp::AcpChoice;
 pub(crate) use acp::AcpSecretsRead;
 use backend::ensure_live;
 pub(crate) use backend::resolve_once;
-pub use backend::{runs_in_runtime, ChatLaunch, LiveStarted};
+pub use backend::{runs_in_runtime, ChatLaunch};
 pub use brief::{ChatBrief, ChatRole, PreparedLaunch};
 pub(crate) use buffers::{EditorBuffers, OfferedBuffers};
 use chat::{Chat, HistoryWait};
@@ -273,6 +273,7 @@ impl Chats {
             | ChatCommand::ForgetMentions
             | ChatCommand::Transcript { .. }
             | ChatCommand::Subagents { .. }
+            | ChatCommand::History { .. }
             | ChatCommand::AttachImage { .. }
             | ChatCommand::ForgetImages { .. }
             | ChatCommand::Unknown => return None,

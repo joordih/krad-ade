@@ -16,10 +16,7 @@ const LINE_END: char = '\n';
 const READ_FAILED_TEXT: &str = "The file could not be read";
 const WRITE_FAILED_TEXT: &str = "The file could not be written";
 
-pub trait OpenBuffers: Send + Sync + 'static {
-    fn unsaved_text(&self, path: &Path) -> Option<String>;
-    fn written(&self, path: &Path, content: &str);
-}
+pub use krad_domain::OpenBuffers;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileWritten {

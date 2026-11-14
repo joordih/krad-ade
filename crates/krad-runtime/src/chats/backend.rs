@@ -1,4 +1,4 @@
-use krad_chat::{start_chat, AcpConfig, ChatBackend, EngineConfig, LiveChat, LiveConfig, Runner};
+use krad_chat::{start_chat, AcpConfig, ChatBackend, EngineConfig, LiveConfig, Runner};
 use krad_domain::{AgentPreset, Effort, ModelId, PermissionMode};
 use krad_protocol::AgentRef;
 
@@ -36,8 +36,6 @@ const GATEWAY_UNREACHED: &str =
 pub(crate) const OPENCODE_STARTING: &str = "opencode is still starting";
 const ACP_UNPREPARED: &str = "an ACP agent starts only inside an open chat";
 const UNKNOWN_PLACE: &str = "the chat's environment is not open in the runtime";
-
-pub type LiveStarted = Result<LiveChat, String>;
 
 #[derive(Clone)]
 pub enum ChatLaunch {

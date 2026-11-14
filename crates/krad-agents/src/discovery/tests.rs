@@ -88,7 +88,7 @@ fn a_clean_exit_removes_only_its_own_file() -> TestResult {
 fn a_file_is_stale_when_nobody_answers_or_another_process_does() {
     let answer = |pid| ApiInfo {
         pid,
-        ..ApiInfo::current()
+        ..crate::protocol::current_api_info()
     };
     assert_eq!(liveness(OTHER_PID, None), Liveness::NotAnswering);
     assert_eq!(

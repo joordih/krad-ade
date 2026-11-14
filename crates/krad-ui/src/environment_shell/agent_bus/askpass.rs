@@ -1,4 +1,4 @@
-use krad_agents::{ErrorCode, Response};
+use krad_domain::agents_api::{ErrorCode, Response};
 
 const GIT_ONLY: &str = "Only git asks for a sign-in through the bus";
 

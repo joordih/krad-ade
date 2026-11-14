@@ -243,7 +243,7 @@ fn errors_print_their_code_in_json_and_their_message_in_text() {
         unreachable!("text errors go to stderr");
     };
     assert_eq!(text, "No session 9");
-    let hello = Response::Hello(crate::protocol::ApiInfo::current());
+    let hello = Response::Hello(crate::protocol::current_api_info());
     let (Output::Stdout(text), Exit::Ok) = report(Verb::Api, &Request::Hello, &hello, false) else {
         unreachable!("api prints to stdout");
     };

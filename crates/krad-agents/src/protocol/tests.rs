@@ -1,6 +1,8 @@
 use super::*;
 use crate::handle::{LeadHandle, TerminalHandle};
+use krad_domain::AgentPreset;
 use krad_domain::AgentState;
+use std::path::PathBuf;
 
 #[test]
 fn envelope_roundtrips_through_json() -> Result<(), serde_json::Error> {

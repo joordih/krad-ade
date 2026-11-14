@@ -3,6 +3,8 @@ mod asks;
 mod delegation;
 mod directory;
 mod discovery;
+
+pub(crate) use discovery::withdraw as withdraw_discovery;
 mod lead;
 mod mail;
 

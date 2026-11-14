@@ -63,7 +63,6 @@ pub(super) use bus::ChatPresence;
 pub(super) use chat_menu::ChatCopy;
 pub(super) use edit_diff::edit_diffs;
 pub(super) use status_line::elapsed_label;
-pub(super) use structured::read_acp_secrets;
 pub(super) use structured::restored_chats;
 pub(super) use structured::StructuredChat;
 

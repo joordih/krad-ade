@@ -31,17 +31,6 @@ pub struct ApiInfo {
     pub pid: Option<u32>,
 }
 
-impl ApiInfo {
-    #[must_use]
-    pub fn current() -> Self {
-        Self {
-            api_version: API_VERSION,
-            build: krad_host::HOST_CLI_BUILD.to_owned(),
-            pid: Some(std::process::id()),
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
@@ -103,12 +92,19 @@ impl fmt::Display for ErrorCode {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-#[error("{message}")]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApiError {
     pub code: ErrorCode,
     pub message: String,
 }
+
+impl fmt::Display for ApiError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for ApiError {}
 
 impl ApiError {
     #[must_use]

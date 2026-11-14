@@ -1,8 +1,10 @@
 use krad_agents::{Caller, TerminalHandle};
-use krad_chat::{new_opencode_session_id, prepare_opencode_session, OpencodeServer};
+use krad_chat::{
+    new_opencode_session_id, prepare_opencode_session, watch_opencode_session, OpencodeServer,
+};
 use krad_domain::{
-    attach_line, parse_wsl_path, AgentPreset, CodeTools, EnvironmentName, ExtensionTools, Host,
-    LaunchIntent, ModelId, ResumeId,
+    attach_line, parse_wsl_path, AgentPreset, AgentState, CodeTools, EnvironmentName,
+    ExtensionTools, Host, LaunchIntent, ModelId, ResumeId,
 };
 use krad_host::HostLink;
 use krad_protocol::{
@@ -39,11 +41,22 @@ struct Attached {
     model: Option<ModelId>,
 }
 
-struct Resolved {
-    launch: TerminalLaunch,
-    launched: TerminalLaunched,
+pub(super) struct Resolved {
+    pub(super) launch: TerminalLaunch,
+    pub(super) launched: TerminalLaunched,
     attached: Option<(Attached, String)>,
     after_start: Option<String>,
+}
+
+impl Resolved {
+    pub(super) const fn bare(launch: TerminalLaunch, launched: TerminalLaunched) -> Self {
+        Self {
+            launch,
+            launched,
+            attached: None,
+            after_start: None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -187,6 +200,9 @@ impl Runtime {
             Reach::Ready(remote) => remote.cloned(),
             Reach::BusPreparing | Reach::Unreached => None,
         };
+        if matches!(waiting.intent, LaunchIntent::AcpSignIn { .. }) {
+            return self.read_sign_in_env(waiting, &host);
+        }
         let Some(resolved) = self.resolve(&waiting, &host, remote.as_ref()) else {
             return;
         };
@@ -194,7 +210,7 @@ impl Runtime {
     }
 
     #[tracing::instrument(skip_all, fields(environment = terminal.environment.as_str(), terminal = terminal.terminal.as_u64()))]
-    fn open_resolved(&mut self, terminal: AgentRef, resolved: Resolved) {
+    pub(super) fn open_resolved(&mut self, terminal: AgentRef, resolved: Resolved) {
         let Resolved {
             launch,
             launched,
@@ -211,6 +227,14 @@ impl Runtime {
         let Some((attached, line)) = attached else {
             return;
         };
+        let steps = self.jobs.steps();
+        let watched = terminal.clone();
+        watch_opencode_session(&attached.server, &attached.resume, move |state| {
+            steps.report(JobDone::OpencodeTerminal {
+                terminal: watched.clone(),
+                state,
+            });
+        });
         let started = self.jobs.run(move || {
             if let Err(error) = prepare_opencode_session(
                 &attached.server,
@@ -228,6 +252,13 @@ impl Runtime {
         });
         if let Err(error) = started {
             tracing::warn!(%error, "could not type the opencode line");
+        }
+    }
+
+    pub(super) fn opencode_terminal_state(&mut self, terminal: AgentRef, state: AgentState) {
+        if self.terminals.runs(&terminal) {
+            self.outbox
+                .push(EventKind::OpencodeTerminalState { terminal, state });
         }
     }
 
@@ -282,17 +313,7 @@ impl Runtime {
         let agent = context.line(&waiting.intent);
         let harness = waiting.intent.harness();
         let attached = self.attach(waiting, harness, site);
-        let caller = Caller::Terminal(TerminalHandle {
-            environment: environment.as_str().to_owned(),
-            terminal: waiting.terminal.terminal.as_u64(),
-        });
-        let mut vars = match (bus, host.is_local()) {
-            (Some(bus), true) => local_caller_vars(bus, &caller, site.is_wsl()),
-            (Some(_), false) => {
-                remote.map_or_else(Vec::new, |remote| remote_caller_vars(remote, &caller))
-            }
-            (None, _) => Vec::new(),
-        };
+        let mut vars = self.caller_vars(&waiting.terminal, host, site.is_wsl(), remote);
         if let Some(attached) = &attached {
             vars.extend(attached.server.client_env());
         }
@@ -337,6 +358,29 @@ impl Runtime {
         })
     }
 
+    pub(super) fn caller_vars(
+        &self,
+        terminal: &AgentRef,
+        host: &Host,
+        in_wsl: bool,
+        remote: Option<&krad_protocol::RemoteBusInfo>,
+    ) -> Vec<(String, String)> {
+        let caller = Caller::Terminal(TerminalHandle {
+            environment: terminal.environment.as_str().to_owned(),
+            terminal: terminal.terminal.as_u64(),
+        });
+        match (
+            self.bus.as_ref().map(crate::bus::Bus::access),
+            host.is_local(),
+        ) {
+            (Some(bus), true) => local_caller_vars(bus, &caller, in_wsl),
+            (Some(_), false) => {
+                remote.map_or_else(Vec::new, |remote| remote_caller_vars(remote, &caller))
+            }
+            (None, _) => Vec::new(),
+        }
+    }
+
     fn attach(
         &self,
         waiting: &WaitingLaunch,
@@ -355,7 +399,8 @@ impl Runtime {
             LaunchIntent::Preset { .. }
             | LaunchIntent::Agent { .. }
             | LaunchIntent::Resume { .. }
-            | LaunchIntent::Task { .. } => new_opencode_session_id(),
+            | LaunchIntent::Task { .. }
+            | LaunchIntent::AcpSignIn { .. } => new_opencode_session_id(),
         };
         Some(Attached {
             server,

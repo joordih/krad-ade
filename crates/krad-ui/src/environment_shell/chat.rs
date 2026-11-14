@@ -8,11 +8,10 @@ pub(super) use file_index::FilesFor;
 pub(super) use krad_domain::{fold_entry, AnswerPart, ChatMessage, ShownOutput};
 pub(super) use live::StartError;
 pub(super) use panel::question_bubble;
-pub(super) use suggest::workplace_home;
 use suggest::Suggest;
 
 use gpui_kit::ScrollHandle;
-use krad_chat::Skill;
+use krad_domain::Skill;
 
 use super::EnvironmentShell;
 

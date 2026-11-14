@@ -1,4 +1,4 @@
-use krad_domain::{AgentPreset, Host, ModelOffer};
+use krad_domain::{AcpAgentId, AcpOffered, AgentPreset, Host, ModelOffer};
 use serde::{Deserialize, Serialize};
 
 use crate::spots::HarnessSpot;
@@ -32,6 +32,28 @@ pub struct ListedModels {
     pub host: Host,
     pub harness: AgentPreset,
     pub models: Vec<ModelOffer>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct AcpOffers {
+    pub host: Host,
+    pub agent: AcpAgentId,
+    pub listing: AcpListing,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(tag = "listing", rename_all = "snake_case")]
+pub enum AcpListing {
+    Listing,
+    Waiting,
+    Offered {
+        offered: AcpOffered,
+    },
+    Failed {
+        error: String,
+    },
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
@@ -94,6 +116,16 @@ mod tests {
                 harness: AgentPreset::Codex,
                 error: "no app server".to_owned(),
             },
+            EventKind::AcpOffers(AcpOffers {
+                host: Host::Local,
+                agent: "gemini-cli".parse().map_err(serde::de::Error::custom)?,
+                listing: AcpListing::Offered {
+                    offered: AcpOffered {
+                        models: vec![offer()],
+                        ..AcpOffered::default()
+                    },
+                },
+            }),
         ];
         for kind in events {
             let event = Event { seq: Seq(1), kind };

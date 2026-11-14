@@ -1,4 +1,4 @@
-use krad_domain::{AcpAgentStart, AcpConfigOption, AcpModes, ChatEvent};
+use krad_domain::{AcpAgentStart, AcpConfigOption, AcpModes, AcpOffered, ChatEvent};
 use std::path::Path;
 use std::sync::mpsc::channel;
 use std::sync::Arc;
@@ -59,13 +59,6 @@ impl OpenBuffers for NoBuffers {
 enum AcpListing {
     Listed(Vec<ModelOffer>),
     Failed(String),
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct AcpOffered {
-    pub models: Vec<ModelOffer>,
-    pub modes: Option<AcpModes>,
-    pub options: Vec<AcpConfigOption>,
 }
 
 #[derive(Debug)]

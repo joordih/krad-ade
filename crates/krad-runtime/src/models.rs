@@ -6,6 +6,10 @@ use std::path::{Path, PathBuf};
 
 use crate::jobs::{JobDone, Jobs};
 
+mod acp;
+
+pub(crate) use acp::{AcpListingJob, AcpOffersRead};
+
 type ModelsKey = (Host, AgentPreset);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +46,7 @@ const fn keeps(harness: AgentPreset) -> bool {
 pub(crate) struct Models {
     listed: HashMap<ModelsKey, Vec<ModelOffer>>,
     asked: HashSet<ModelsKey>,
+    acp_listing: HashSet<(Host, krad_domain::AcpAgentId)>,
 }
 
 impl Models {

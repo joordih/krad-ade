@@ -1,3 +1,4 @@
+use krad_domain::agents_api::WorktreeOutcome;
 use krad_domain::{
     AcpAgentId, AcpPackageState, CheckpointChange, CommitFile, HistoryCommit, IndexEntry,
     LibrarySkill, ProjectTask, RestoredCheckpoint, SourceEntry, StoredTemplate, Worktree,
@@ -10,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use crate::chats::{ChatPage, SubagentsRead, TranscriptRead};
+use crate::chats::{ChatPage, HistoryPart, SubagentsRead, TranscriptRead};
 use crate::command::ErrorCode;
 use crate::files::{TextRead, Unreadable, VaultNoteText};
 
@@ -20,6 +21,7 @@ pub enum Answer {
     ChatPage(ChatPage),
     Transcript(Box<TranscriptRead>),
     Subagents(Box<SubagentsRead>),
+    History(Box<HistoryPart>),
     Mentions(FoundMentions),
     Done,
     DocsSources {
@@ -34,6 +36,9 @@ pub enum Answer {
     },
     WorktreeStates {
         states: Vec<WorktreeChecked>,
+    },
+    SettledRemoval {
+        outcome: WorktreeOutcome,
     },
     RemoteUrls {
         urls: Vec<Result<Option<String>, String>>,

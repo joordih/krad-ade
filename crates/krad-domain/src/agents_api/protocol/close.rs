@@ -1,6 +1,6 @@
 use super::ApiError;
-use krad_domain::WhenWorking;
-pub use krad_domain::WorktreeFate;
+use crate::WhenWorking;
+pub use crate::WorktreeFate;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -53,7 +53,7 @@ pub struct Closed {
 mod tests {
     use super::super::{lead_refusal, ErrorCode, Request, Response, TerminalState, WinnerOutcome};
     use super::*;
-    use crate::handle::{Caller, LeadHandle, TerminalHandle};
+    use crate::agents_api::{Caller, LeadHandle, TerminalHandle};
 
     fn order(target: CloseTarget) -> CloseOrder {
         CloseOrder {

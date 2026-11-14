@@ -125,6 +125,10 @@ impl AcpAdapters {
         }
     }
 
+    pub(crate) fn state(&self, agent: AcpAgentId) -> Option<&ManagedAdapter> {
+        self.kept.get(&agent)
+    }
+
     pub(crate) fn check(&mut self, agent: &AcpAgent, jobs: &Jobs, outbox: &mut Vec<EventKind>) {
         let Some(package) = app_kept_acp_package(agent.id) else {
             return;

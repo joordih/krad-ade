@@ -11,11 +11,13 @@ use std::time::SystemTime;
 use crate::bus::AgentRef;
 use crate::event::EventKind;
 
+mod history;
 mod mcp_trust;
 mod mirror;
 mod open;
 mod transcript;
 
+pub use history::{HistoryAsk, HistoryCursor, HistoryPart};
 pub use mcp_trust::{McpOffered, McpSkippedShown, McpTrustAsk};
 pub use mirror::{ChatMirror, MirrorChange};
 pub use open::ChatOpen;
@@ -57,6 +59,10 @@ pub enum ChatCommand {
     Subagents {
         environment: EnvironmentName,
         ask: SubagentsAsk,
+    },
+    History {
+        environment: EnvironmentName,
+        ask: HistoryAsk,
     },
     Send {
         chat: AgentRef,
@@ -177,6 +183,7 @@ impl ChatCommand {
             | Self::ForgetMentions
             | Self::Transcript { .. }
             | Self::Subagents { .. }
+            | Self::History { .. }
             | Self::Unknown => None,
         }
     }

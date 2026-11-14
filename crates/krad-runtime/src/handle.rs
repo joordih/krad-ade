@@ -1,7 +1,7 @@
 use futures::channel::{mpsc, oneshot};
 use krad_chat::acp::OpenBuffers;
-use krad_chat::{LiveEvent, LiveSession, OpencodeServer};
-use krad_domain::{AgentPreset, EnvironmentName, Host};
+use krad_chat::OpencodeServer;
+use krad_domain::{EnvironmentName, Host};
 use krad_protocol::{
     AgentRef, Command, Hello, Reply, RequestId, RuntimeCommand, RuntimeRun, Scope, Seq, Snapshot,
     TerminalCommand, Welcome, WriteBy,
@@ -15,9 +15,9 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use crate::bus::{BusAccess, DelegationReceiver, DELEGATION_BUFFER};
-use crate::chats::{ChatBrief, ChatStart, LiveStarted, OfferedBuffers};
+use crate::chats::{ChatStart, OfferedBuffers};
 use crate::hosts::HostLinks;
-use crate::input::{Input, LiveStart};
+use crate::input::Input;
 use crate::launches::LaunchedViews;
 use crate::opencode::OpencodeDirectory;
 use crate::terminals::{Shared, TerminalAction, TerminalLaunch, TerminalView};
@@ -153,6 +153,12 @@ impl RuntimeHandle {
         self.bus.as_deref()
     }
 
+    pub fn withdraw_discovery(&self) {
+        if let Some(access) = self.bus() {
+            crate::bus::withdraw_discovery(access);
+        }
+    }
+
     pub fn delegate_bus(&self) -> DelegationReceiver {
         let (delegate, receiver) = mpsc::channel(DELEGATION_BUFFER);
         self.deliver(Input::Delegate(delegate));
@@ -189,25 +195,6 @@ impl RuntimeHandle {
             environment,
             buffers,
         });
-    }
-
-    pub fn start_live_chat(
-        &self,
-        (chat, harness): (AgentRef, AgentPreset),
-        brief: ChatBrief,
-        session: LiveSession,
-        sink: impl FnMut(LiveEvent) + Send + 'static,
-    ) -> Pending<LiveStarted> {
-        let (reply, answer) = oneshot::channel();
-        self.deliver(Input::StartLiveChat(Box::new(LiveStart {
-            chat,
-            harness,
-            brief,
-            session,
-            sink: Box::new(sink),
-            reply,
-        })));
-        Pending(answer)
     }
 
     #[must_use]

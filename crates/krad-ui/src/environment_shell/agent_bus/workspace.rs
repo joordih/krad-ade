@@ -1,10 +1,11 @@
-use gpui_kit::{AppContext as _, Context};
-use krad_agents::{
-    ApiError, ApiInfo, ErrorCode, FilePosition, Request, Response, SessionInfo, TerminalHandle,
+use gpui_kit::Context;
+use krad_client::ClientError;
+use krad_domain::agents_api::{
+    ApiError, ErrorCode, FilePosition, Request, Response, SessionInfo, TerminalHandle,
 };
 use krad_domain::{EnvironmentData, EnvironmentName, GroupId, SessionEdit, SessionId, TerminalId};
-use krad_host::HostLink;
 use krad_lsp::lsp_types::Position;
+use krad_protocol::{Answer, Command, ErrorCode as Failed, FileAsk, FileCommand};
 use krad_runtime::BusReply;
 use std::path::{Component, Path, PathBuf};
 
@@ -19,10 +20,10 @@ const NO_SUCH_SESSION: &str = "No session with that id in your environment";
 const NOT_ON_SCREEN: &str = "That environment is not the one on screen; open it in the app first";
 const OUTSIDE_GROUP: &str = "The file is not inside the caller's group folder";
 const UNRESOLVED_GROUP: &str = "The caller's group folder could not be read";
+const UNEXPECTED_ANSWER: &str = "The runtime answered the file check with something else";
 const LINE_BASE: u32 = 1;
 
 struct CheckedFile {
-    link: HostLink,
     root: PathBuf,
     path: PathBuf,
 }
@@ -77,34 +78,20 @@ pub(super) fn file_in_group(root: &Path, requested: &Path) -> Result<PathBuf, Ap
     Ok(path)
 }
 
-pub(super) fn resolved_in_group(
-    link: &HostLink,
-    root: &Path,
-    path: &Path,
-) -> Result<PathBuf, ApiError> {
-    let real_root = link
-        .canonicalize(root)
-        .map_err(|_| refusal(ErrorCode::NotFound, UNRESOLVED_GROUP))?;
-    let mut existing = path;
-    let mut rest = Vec::new();
-    let real_existing = loop {
-        if let Ok(real) = link.canonicalize(existing) {
-            break real;
-        }
-        let (Some(parent), Some(name)) = (existing.parent(), existing.file_name()) else {
-            return Err(refusal(ErrorCode::Forbidden, OUTSIDE_GROUP));
-        };
-        rest.push(name);
-        existing = parent;
-    };
-    let real = rest
-        .iter()
-        .rev()
-        .fold(real_existing, |real, name| real.join(name));
-    if !real.starts_with(&real_root) {
-        return Err(refusal(ErrorCode::Forbidden, OUTSIDE_GROUP));
+fn containment(answer: Result<Answer, ClientError>) -> Result<(), ApiError> {
+    match answer {
+        Ok(Answer::Done) => Ok(()),
+        Ok(_) => Err(refusal(ErrorCode::Failed, UNEXPECTED_ANSWER)),
+        Err(ClientError::Failed {
+            code: Failed::Forbidden,
+            ..
+        }) => Err(refusal(ErrorCode::Forbidden, OUTSIDE_GROUP)),
+        Err(ClientError::Failed {
+            code: Failed::NotFound,
+            ..
+        }) => Err(refusal(ErrorCode::NotFound, UNRESOLVED_GROUP)),
+        Err(error) => Err(refusal(ErrorCode::Unavailable, &error.to_string())),
     }
-    Ok(path.to_path_buf())
 }
 
 fn editor_position(position: FilePosition) -> Position {
@@ -134,7 +121,7 @@ impl EnvironmentShell {
     ) {
         let env = EnvironmentName::new(environment.to_owned());
         let answered = match request {
-            Request::Hello => Ok(Response::Hello(ApiInfo::current())),
+            Request::Hello => Ok(super::answered_by_runtime()),
             Request::Sessions => self
                 .envs
                 .get(&env)
@@ -222,11 +209,7 @@ impl EnvironmentShell {
         if *env != self.active {
             return Err(refusal(ErrorCode::Unsupported, NOT_ON_SCREEN));
         }
-        Ok(CheckedFile {
-            link: self.env_link(env),
-            root,
-            path,
-        })
+        Ok(CheckedFile { root, path })
     }
 
     fn open_resolved_file(
@@ -236,18 +219,27 @@ impl EnvironmentShell {
         reply: BusReply,
         cx: &mut Context<Self>,
     ) {
-        let resolved = cx.background_spawn(async move {
-            resolved_in_group(&checked.link, &checked.root, &checked.path)
-        });
         cx.spawn(async move |this, cx| {
-            let resolved = resolved.await;
+            let Ok(asked) = this.update(cx, |shell, cx| {
+                let command = Command::File(FileCommand {
+                    environment: env.clone(),
+                    ask: FileAsk::Contained {
+                        root: checked.root,
+                        path: checked.path.clone(),
+                    },
+                });
+                shell.runtime.ask(command, cx)
+            }) else {
+                return;
+            };
+            let contained = containment(asked.await);
             this.update(cx, |shell, cx| {
-                let answer = resolved.and_then(|path| {
+                let answer = contained.and_then(|()| {
                     if env != shell.active {
                         return Err(refusal(ErrorCode::Unsupported, NOT_ON_SCREEN));
                     }
-                    shell.open_file_at(&path, position.map(editor_position), cx);
-                    Ok(Response::Opened { path })
+                    shell.open_file_at(&checked.path, position.map(editor_position), cx);
+                    Ok(Response::Opened { path: checked.path })
                 });
                 reply
                     .send(answer.unwrap_or_else(Response::Error))
@@ -345,35 +337,5 @@ mod tests {
                 character: 0
             }
         );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_link_that_leads_out_of_the_group_is_refused() -> std::io::Result<()> {
-        let base = std::env::temp_dir().join(format!("krad-ade-open-{}", std::process::id()));
-        drop(std::fs::remove_dir_all(&base));
-        let (root, outside) = (base.join("api"), base.join("secrets"));
-        std::fs::create_dir_all(root.join("src"))?;
-        std::fs::create_dir_all(&outside)?;
-        std::fs::write(root.join("src/lib.rs"), "")?;
-        std::fs::write(outside.join("key"), "")?;
-        std::os::unix::fs::symlink(&outside, root.join("escape"))?;
-        std::os::unix::fs::symlink(root.join("src/lib.rs"), root.join("lib.rs"))?;
-        let link = HostLink::Local;
-        let code = |requested: &str| {
-            let path = file_in_group(&root, Path::new(requested))?;
-            resolved_in_group(&link, &root, &path)
-        };
-        assert_eq!(code("src/lib.rs"), Ok(root.join("src/lib.rs")));
-        assert_eq!(code("lib.rs"), Ok(root.join("lib.rs")));
-        assert_eq!(code("src/new.rs"), Ok(root.join("src/new.rs")));
-        for outside in ["escape/key", "escape/missing.rs"] {
-            assert_eq!(
-                code(outside).map_err(|error| error.code),
-                Err(ErrorCode::Forbidden),
-                "{outside}"
-            );
-        }
-        std::fs::remove_dir_all(&base)
     }
 }

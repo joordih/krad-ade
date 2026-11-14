@@ -103,7 +103,6 @@ impl EnvironmentShell {
             return;
         }
         for gone in moved.gone {
-            self.digest_ended_chat(env, gone, cx);
             self.forget_live_node(env, gone, cx);
         }
         let Some(live) = self.envs.get_mut(env) else {

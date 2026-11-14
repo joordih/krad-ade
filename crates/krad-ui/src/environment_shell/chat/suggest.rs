@@ -1,12 +1,11 @@
 use gpui_kit::component::input::InlineToken;
 use gpui_kit::component::input::TextareaState;
 use gpui_kit::{Context, Entity, SharedString, Window};
-use krad_chat::shared_skill_message;
+use krad_domain::shared_skill_message;
 use krad_domain::{kraddie_mention_at, AgentPreset, TerminalId};
 use krad_domain::{search_skills, Skill, SkillSource};
 use krad_domain::{EntryKind, IndexEntry};
 use krad_protocol::{Answer, RepoAsk};
-pub(in crate::environment_shell) use krad_repo::workplace_home;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::PathBuf;

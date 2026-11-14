@@ -1,4 +1,4 @@
-use krad_domain::VariantSpec;
+use crate::VariantSpec;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

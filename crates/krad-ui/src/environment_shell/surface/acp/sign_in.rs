@@ -1,10 +1,9 @@
-use krad_host::HostLink;
 mod tray;
 
-use gpui_kit::{AppContext as _, Context};
+use gpui_kit::Context;
 use krad_domain::{
-    AcpAgent, AcpAuthMethod, AcpAuthMethodId, AcpSignIn, CommandLine, EnvironmentName, NodeKind,
-    TerminalId, ToastKind,
+    AcpAgentId, AcpAuthMethod, AcpAuthMethodId, AcpSignIn, CommandLine, EnvironmentName,
+    LaunchIntent, NodeKind, TerminalId,
 };
 use krad_protocol::{AgentRef, ChatCommand, Command};
 use std::collections::BTreeMap;
@@ -12,7 +11,6 @@ use std::collections::BTreeMap;
 use super::super::super::sessions::Launch;
 use super::super::super::terminal_lifecycle::{NodeGroup, NodeSpec};
 use super::super::super::EnvironmentShell;
-use super::super::structured::read_acp_env;
 use super::super::StructuredChat;
 
 const SIGN_IN_TERMINAL_LABEL: &str = "Sign in";
@@ -94,15 +92,6 @@ impl SignInAsk {
     }
 }
 
-fn sign_in_vars(
-    mut agent_env: Vec<(String, String)>,
-    method_env: BTreeMap<String, String>,
-) -> Vec<(String, String)> {
-    agent_env.retain(|(name, _)| !method_env.contains_key(name));
-    agent_env.extend(method_env);
-    agent_env
-}
-
 impl EnvironmentShell {
     fn chat_sign_in(&mut self, id: TerminalId) -> Option<&mut StructuredChat> {
         let env = self.active.clone();
@@ -148,8 +137,7 @@ impl EnvironmentShell {
                         program: self.acp_program_name(&agent),
                         args,
                     };
-                    let link = self.active_link();
-                    Self::sign_in_with_agent_env(id, agent, command, env, retry, link, cx);
+                    self.sign_in_in_its_terminal(id, agent.id, (command, env), retry, cx);
                 }
             }
         }
@@ -181,40 +169,25 @@ impl EnvironmentShell {
             return;
         };
         if let Some(command) = agent.terminal_command() {
-            let link = self.active_link();
-            Self::sign_in_with_agent_env(id, agent, command, BTreeMap::new(), retry, link, cx);
+            self.sign_in_in_its_terminal(id, agent.id, (command, BTreeMap::new()), retry, cx);
         }
     }
 
-    fn sign_in_with_agent_env(
+    fn sign_in_in_its_terminal(
+        &mut self,
         id: TerminalId,
-        agent: AcpAgent,
-        command: CommandLine,
-        method_env: BTreeMap<String, String>,
+        agent: AcpAgentId,
+        (command, env): (CommandLine, BTreeMap<String, String>),
         retry: AcpAuthMethodId,
-        link: HostLink,
         cx: &mut Context<Self>,
     ) {
-        let reading = cx.background_spawn(async move { read_acp_env(agent, &link) });
-        cx.spawn(async move |this, cx| {
-            let agent_env = reading.await;
-            this.update(cx, |shell, cx| {
-                match agent_env {
-                    Ok(agent_env) => {
-                        let launch = Launch::Command {
-                            program: command.program,
-                            args: command.args,
-                            vars: sign_in_vars(agent_env, method_env),
-                        };
-                        shell.open_sign_in_terminal(id, launch, retry, cx);
-                    }
-                    Err(error) => shell.push_toast(ToastKind::Error, error),
-                }
-                cx.notify();
-            })
-            .unwrap_or_default();
-        })
-        .detach();
+        let launch = Launch::Intent(LaunchIntent::AcpSignIn {
+            agent,
+            program: command.program,
+            args: command.args,
+            env,
+        });
+        self.open_sign_in_terminal(id, launch, retry, cx);
     }
 
     fn open_sign_in_terminal(
@@ -342,21 +315,5 @@ mod tests {
         assert_eq!(asked.terminal_ended(TerminalId(8)), None);
         assert_eq!(asked.terminal_ended(TerminalId(7)), Some(id("cli")));
         assert_eq!(asked.step, SignInStep::Signing(id("cli")));
-    }
-
-    #[test]
-    fn the_method_s_env_wins_over_the_agent_s_own() {
-        let agent_env = vec![
-            ("API_KEY".to_owned(), "from-settings".to_owned()),
-            ("MODE".to_owned(), "agent".to_owned()),
-        ];
-        let method_env = BTreeMap::from([("MODE".to_owned(), "login".to_owned())]);
-        assert_eq!(
-            sign_in_vars(agent_env, method_env),
-            [
-                ("API_KEY".to_owned(), "from-settings".to_owned()),
-                ("MODE".to_owned(), "login".to_owned()),
-            ]
-        );
     }
 }

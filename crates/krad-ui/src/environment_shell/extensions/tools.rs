@@ -1,5 +1,5 @@
 use gpui_kit::{AppContext as _, Context};
-use krad_agents::{
+use krad_domain::agents_api::{
     extension_tool_name, ErrorCode, ExtensionToolAnswer, ExtensionToolEffect, ExtensionToolInfo,
     ExtensionToolOutcome, MemoryTools, Request, Response, ToolCatalog,
 };

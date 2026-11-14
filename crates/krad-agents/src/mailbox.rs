@@ -50,10 +50,7 @@ impl Mailbox {
     }
 }
 
-#[must_use]
-pub fn notice_text(cli: &str, count: usize) -> String {
-    format!("You have {count} new message(s) from other agents. Run `{cli} check` to read them.")
-}
+pub use krad_domain::agents_api::notice_text;
 
 #[cfg(test)]
 mod tests {

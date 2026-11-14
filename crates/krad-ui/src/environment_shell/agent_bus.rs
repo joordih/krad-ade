@@ -11,7 +11,7 @@ mod workspace;
 
 use futures::StreamExt as _;
 use gpui_kit::{App, Context};
-use krad_agents::{Caller, ErrorCode, Request, Response, TerminalHandle};
+use krad_domain::agents_api::{Caller, ErrorCode, Request, Response, TerminalHandle};
 use krad_domain::TerminalState;
 use krad_domain::{parse_wsl_path, EnvironmentName, Host, TerminalId};
 use krad_runtime::{local_caller_vars, remote_caller_vars, BusReply, Delegated};

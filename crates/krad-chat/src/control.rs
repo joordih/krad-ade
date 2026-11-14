@@ -220,9 +220,10 @@ pub(crate) fn route(line: &str, init_id: &str) -> Option<Routed> {
                     request_id,
                     response,
                 },
-        } if request_id == init_id => {
-            Routed::Ready(Catalog::deserialize(&response).unwrap_or_default())
-        }
+        } if request_id == init_id => Routed::Ready(
+            catalog::CatalogLine::deserialize(&response)
+                .map_or_else(|_| Catalog::default(), Catalog::from),
+        ),
         IncomingLine::ControlResponse {
             response:
                 IncomingResponse::Success {

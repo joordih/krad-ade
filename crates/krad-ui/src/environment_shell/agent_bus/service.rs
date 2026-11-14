@@ -1,5 +1,5 @@
 use gpui_kit::App;
-use krad_agents::{notice_text, ErrorCode, Response};
+use krad_domain::agents_api::{notice_text, ErrorCode, Response};
 use krad_domain::{parse_wsl_path, AgentState, EnvironmentName, TerminalId};
 use krad_protocol::Typing;
 use krad_runtime::cli_name;

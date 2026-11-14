@@ -1,8 +1,8 @@
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::StreamExt as _;
 use gpui_kit::Context;
-use krad_chat::acp::OpenBuffers;
 use krad_domain::EnvironmentName;
+use krad_domain::OpenBuffers;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::Arc;

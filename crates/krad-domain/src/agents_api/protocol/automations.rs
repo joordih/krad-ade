@@ -1,4 +1,4 @@
-use krad_domain::Switch;
+use crate::Switch;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

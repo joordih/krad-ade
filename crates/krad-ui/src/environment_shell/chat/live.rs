@@ -1,18 +1,6 @@
-use futures::channel::mpsc::UnboundedReceiver;
-use futures::StreamExt as _;
-use gpui_kit::{Context, Task};
-use krad_chat::{ChatError, Runner};
-use krad_domain::{parse_wsl_path, AgentPreset};
-use krad_host::HostLink;
-use krad_session::find_program;
 use std::borrow::Cow;
 use std::fmt;
-use std::path::{Path, PathBuf};
 
-use super::super::terminal_card::home_dir;
-use super::super::EnvironmentShell;
-
-const NO_PROGRAM_TEXT: &str = "is not on PATH";
 const WAITING_TEXT: &str = "opencode is still starting";
 const NO_CHAT_TEXT: &str = "has no chat";
 
@@ -20,112 +8,15 @@ pub(in crate::environment_shell) type HarnessName = Cow<'static, str>;
 
 #[derive(Debug)]
 pub(in crate::environment_shell) enum StartError {
-    NoProgram(HarnessName),
     NoChat(HarnessName),
     Waiting,
-    Adapter(String),
-    Chat(ChatError),
 }
 
 impl fmt::Display for StartError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NoProgram(name) => write!(formatter, "{name} {NO_PROGRAM_TEXT}"),
             Self::NoChat(name) => write!(formatter, "{name} {NO_CHAT_TEXT}"),
             Self::Waiting => formatter.write_str(WAITING_TEXT),
-            Self::Adapter(error) => formatter.write_str(error),
-            Self::Chat(error) => error.fmt(formatter),
         }
-    }
-}
-
-impl From<ChatError> for StartError {
-    fn from(error: ChatError) -> Self {
-        Self::Chat(error)
-    }
-}
-
-impl EnvironmentShell {
-    pub(in crate::environment_shell) fn listen<E: 'static>(
-        mut receiver: UnboundedReceiver<E>,
-        cx: &mut Context<Self>,
-        mut apply: impl FnMut(&mut Self, E, &mut Context<Self>) + 'static,
-    ) -> Task<()> {
-        cx.spawn(async move |this, cx| {
-            while let Some(event) = receiver.next().await {
-                let applied = this.update(cx, |shell, cx| {
-                    apply(shell, event, cx);
-                    cx.notify();
-                });
-                if applied.is_err() {
-                    break;
-                }
-            }
-        })
-    }
-
-    pub(in crate::environment_shell) fn harness_runner(
-        &self,
-        link: &HostLink,
-        preset: AgentPreset,
-        root: Option<&Path>,
-    ) -> Result<(Runner, PathBuf), StartError> {
-        let program = self.launch_program(preset)?;
-        self.program_runner(link, preset, program, root)
-    }
-
-    pub(in crate::environment_shell) fn launch_program(
-        &self,
-        preset: AgentPreset,
-    ) -> Result<String, StartError> {
-        self.settings
-            .launch_line(preset)
-            .and_then(|line| line.split_whitespace().next().map(str::to_owned))
-            .ok_or_else(|| StartError::NoProgram(self.settings.acp.harness_name(preset)))
-    }
-
-    pub(in crate::environment_shell) fn program_runner(
-        &self,
-        link: &HostLink,
-        preset: AgentPreset,
-        program: String,
-        root: Option<&Path>,
-    ) -> Result<(Runner, PathBuf), StartError> {
-        if let HostLink::Remote(ssh) = link {
-            let found = self
-                .host_agents
-                .get(&link.host())
-                .ok_or(StartError::Waiting)?;
-            if !found.contains(&preset) {
-                return Err(StartError::NoProgram(
-                    self.settings.acp.harness_name(preset),
-                ));
-            }
-            let cwd = root
-                .map(Path::to_path_buf)
-                .or_else(|| ssh.home().map(Path::to_path_buf))
-                .ok_or(StartError::Waiting)?;
-            let runner = Runner::Ssh {
-                link: link.clone(),
-                program,
-            };
-            return Ok((runner, cwd));
-        }
-        let in_wsl = root.and_then(|root| parse_wsl_path(root).map(|inside| (root, inside)));
-        if let Some((root, inside)) = in_wsl {
-            let runner = Runner::Wsl {
-                distro: inside.distro,
-                program,
-            };
-            return Ok((runner, root.to_path_buf()));
-        }
-        let runner = find_program(&program)
-            .map(Runner::Native)
-            .ok_or_else(|| StartError::NoProgram(self.settings.acp.harness_name(preset)))?;
-        let cwd = root
-            .map(Path::to_path_buf)
-            .or_else(|| home_dir().map(PathBuf::from))
-            .unwrap_or_default();
-        Ok((runner, cwd))
     }
 }

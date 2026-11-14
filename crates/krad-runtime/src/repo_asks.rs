@@ -4,9 +4,11 @@ use krad_host::HostLink;
 use krad_protocol::{Answer, ErrorCode, RepoAsk, WorktreeChecked, WorktreeRemoval};
 use krad_repo::{
     add_note, add_worktree, checkpoint_changes, discard_worktree, docs_source_candidates,
-    read_docs_sources, read_session_templates, remove_worktree, restore_checkpoint,
-    reveal_in_file_manager, worktree_state, write_docs_sources, RepoError,
+    read_docs_sources, read_session_templates, remove_settled_worktree, remove_worktree,
+    restore_checkpoint, reveal_in_file_manager, worktree_state, write_docs_sources, RepoError,
 };
+
+use crate::workers::removal_outcome;
 
 pub(crate) use reads::{read_answer, replace_text};
 
@@ -73,6 +75,9 @@ pub(crate) fn answer(link: &HostLink, ask: RepoAsk) -> Answer {
             WorktreeRemoval::Discard => discard_worktree(link, &repo, &path),
         }
         .map(|()| Answer::Done),
+        RepoAsk::RemoveSettledWorktree { repo, path } => Ok(Answer::SettledRemoval {
+            outcome: removal_outcome(remove_settled_worktree(link, &repo, &path)),
+        }),
         RepoAsk::AddNote {
             root,
             folder,

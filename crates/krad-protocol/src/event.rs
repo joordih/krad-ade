@@ -1,7 +1,7 @@
 use krad_domain::{
-    AgentPreset, AttentionTarget, ChatImage, ChatMessage, CloudRunnerId, EnvironmentChange,
-    EnvironmentData, EnvironmentName, EventRecord, GitObjectId, Host, KraddieId, RewindPoint,
-    Settings, UsageReport,
+    AgentPreset, AgentState, AttentionTarget, ChatImage, ChatMessage, CloudRunnerId,
+    EnvironmentChange, EnvironmentData, EnvironmentName, EventRecord, GitObjectId, Host, KraddieId,
+    RewindPoint, Settings, UsageReport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +25,7 @@ use crate::hosts::{
 use crate::ids::{RequestId, Seq};
 use crate::kraddies::{KraddieState, KraddiesSnapshot, OwnedDigests};
 use crate::launches::TerminalLaunched;
-use crate::models::{ListedModels, ModelsOrigin, ModelsSnapshot};
+use crate::models::{AcpOffers, ListedModels, ModelsOrigin, ModelsSnapshot};
 use crate::opencode::{OpencodeShown, OpencodeSnapshot};
 use crate::problems::Problem;
 use crate::review::{CodeHostLogin, ReviewAnswered};
@@ -68,6 +68,11 @@ pub enum EventKind {
     ModelsListed {
         listed: ListedModels,
         origin: ModelsOrigin,
+    },
+    AcpOffers(AcpOffers),
+    OpencodeTerminalState {
+        terminal: AgentRef,
+        state: AgentState,
     },
     ModelListFailed {
         host: Host,

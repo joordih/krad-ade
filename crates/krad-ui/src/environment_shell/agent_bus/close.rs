@@ -1,5 +1,7 @@
-use gpui_kit::{AppContext as _, Context};
-use krad_agents::{
+use futures::future::join_all;
+use gpui_kit::Context;
+use krad_client::ClientError;
+use krad_domain::agents_api::{
     ApiError, CloseOrder, CloseTarget, Closed, ErrorCode, Response, TerminalState, WorktreeLeft,
     WorktreeOutcome,
 };
@@ -7,9 +9,8 @@ use krad_domain::{
     AgentState, AppEvent, ClosePlan, CloseRefusal, CloseSubject, EnvironmentData, EnvironmentName,
     GroupId, SessionId, TerminalId, WhenWorking, WorktreeFate,
 };
-use krad_protocol::{Command, GitAct, GitCommand};
-use krad_repo::{remove_settled_worktree, RepoError};
-use krad_runtime::{closed_target, refusal_error, removal_outcome, BusReply};
+use krad_protocol::{Answer, Command, GitAct, GitCommand, RepoAsk, RepoCommand};
+use krad_runtime::{closed_target, refusal_error, BusReply};
 use std::path::PathBuf;
 
 use super::super::EnvironmentShell;
@@ -17,6 +18,7 @@ use super::{handle, Settlement};
 
 const NOT_ON_SCREEN: &str = "That environment is not the one on screen; open it in the app first";
 const WORKTREE_IN_USE: &str = "Other sessions still use that worktree, so it was kept";
+const UNEXPECTED_ANSWER: &str = "The runtime answered the removal with something else";
 const UNKNOWN_VARIANTS_RUN: &str = "No variants run with that id in your environment";
 const FOREIGN_VARIANTS_RUN: &str = "Only the variants runs of your session's group can be picked";
 
@@ -44,6 +46,14 @@ pub(super) fn pick_refusal(run_group: Option<GroupId>, lead_group: GroupId) -> O
             Some(ApiError::new(ErrorCode::NotOwned, FOREIGN_VARIANTS_RUN))
         }
         Some(_) => None,
+    }
+}
+
+fn settled_outcome(answer: Result<Answer, ClientError>) -> WorktreeOutcome {
+    match answer {
+        Ok(Answer::SettledRemoval { outcome }) => outcome,
+        Ok(_) => WorktreeOutcome::Refused(ApiError::new(ErrorCode::Failed, UNEXPECTED_ANSWER)),
+        Err(error) => WorktreeOutcome::Refused(ApiError::new(ErrorCode::Failed, error.to_string())),
     }
 }
 
@@ -187,19 +197,23 @@ impl EnvironmentShell {
             reply.send(Response::Closed(closed)).unwrap_or_default();
             return;
         }
-        let link = self.env_link(env);
-        let removing = cx.background_spawn(async move {
-            removals
-                .into_iter()
-                .map(|removal| {
-                    let removed = remove_settled_worktree(&link, &removal.repo_root, &removal.path);
-                    (removal.group, removed)
-                })
-                .collect::<Vec<_>>()
-        });
+        let removing: Vec<_> = removals
+            .into_iter()
+            .map(|removal| {
+                let command = Command::Repo(RepoCommand {
+                    environment: env.clone(),
+                    ask: RepoAsk::RemoveSettledWorktree {
+                        repo: removal.repo_root,
+                        path: removal.path,
+                    },
+                });
+                let asked = self.runtime.ask(command, cx);
+                async move { (removal.group, settled_outcome(asked.await)) }
+            })
+            .collect();
         let env = env.clone();
         cx.spawn(async move |this, cx| {
-            let removed = removing.await;
+            let removed = join_all(removing).await;
             this.update(cx, |shell, cx| {
                 shell.finish_removals(&env, entries, removed, reply, cx);
             })
@@ -269,13 +283,12 @@ impl EnvironmentShell {
         &mut self,
         env: &EnvironmentName,
         entries: Vec<ClosedEntry>,
-        removed: Vec<(GroupId, Result<(), RepoError>)>,
+        removed: Vec<(GroupId, WorktreeOutcome)>,
         reply: BusReply,
         cx: &mut Context<Self>,
     ) {
         let mut outcomes: Vec<(GroupId, WorktreeOutcome)> = Vec::new();
-        for (group, result) in removed {
-            let outcome = removal_outcome(result);
+        for (group, outcome) in removed {
             if outcome == WorktreeOutcome::Removed {
                 self.publish_event(env, Some(group), AppEvent::WorktreeRemoved);
                 self.remove_group_in(env, group, cx);

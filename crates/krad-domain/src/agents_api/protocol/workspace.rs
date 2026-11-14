@@ -1,4 +1,4 @@
-use krad_domain::ChangeKind;
+use crate::ChangeKind;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 

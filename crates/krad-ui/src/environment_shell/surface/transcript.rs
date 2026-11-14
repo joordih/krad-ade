@@ -1,6 +1,6 @@
 use gpui_kit::{Context, Task, Window};
-use krad_chat::SlashCommand;
 use krad_client::ClientError;
+use krad_domain::SlashCommand;
 use krad_domain::{
     AgentPreset, AgentState, ChatEntry, ChatEvent, EnvironmentName, ResumeId, Speaker, TerminalId,
     ToolUseId, TranscriptChunk, TranscriptMark,

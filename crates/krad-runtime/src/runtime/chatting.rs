@@ -1,4 +1,3 @@
-use krad_chat::start_chat;
 use krad_domain::EnvironmentName;
 use krad_domain::{AgentPreset, AttentionTarget, Host, ModelOffer, Sight};
 use krad_protocol::{
@@ -14,29 +13,10 @@ use crate::chats::{
 };
 use crate::chats::{MentionQuery, UNKNOWN_CHAT};
 use crate::environments::UNKNOWN_ENVIRONMENT;
-use crate::input::{Input, LiveStart};
+use crate::input::Input;
 use crate::opencode::{OpencodeListed, OpencodeStarted};
 
 impl Runtime {
-    fn start_live_chat(&mut self, start: LiveStart) {
-        let LiveStart {
-            chat,
-            harness,
-            brief,
-            session,
-            sink,
-            reply,
-        } = start;
-        let started = self
-            .with_chat_work(|_, work| crate::chats::resolve_once((&chat, harness), &brief, work));
-        let started = started.map_err(String::from).and_then(|backend| {
-            start_chat(backend, &session, sink).map_err(|error| error.to_string())
-        });
-        if reply.send(started).is_err() {
-            tracing::trace!("a client left before its chat started");
-        }
-    }
-
     pub(super) fn with_chat_work<T>(
         &mut self,
         act: impl FnOnce(&mut Chats, &mut ChatWork<'_>) -> T,
@@ -77,7 +57,6 @@ impl Runtime {
                 environment,
                 buffers,
             } => self.buffers.offer(environment, buffers),
-            Input::StartLiveChat(start) => self.start_live_chat(*start),
             Input::Opencode(input) => self.opencode.apply(input, &self.jobs, &mut self.outbox),
             _ => {}
         }
@@ -122,6 +101,9 @@ impl Runtime {
             }
             ChatCommand::Subagents { environment, ask } => {
                 Some(self.ask_subagents(id, &environment, ask))
+            }
+            ChatCommand::History { environment, ask } => {
+                Some(self.ask_history(id, &environment, ask))
             }
             ChatCommand::ForgetMentions => {
                 self.chats.mentions.forget();

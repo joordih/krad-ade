@@ -38,6 +38,7 @@ use crate::typing::Typist;
 use crate::usage::Usage;
 use crate::workers::Workers;
 
+mod acp_listing;
 mod agent_commands;
 mod archive_files;
 mod bus_git;
@@ -56,6 +57,7 @@ mod following;
 mod git_acts;
 mod gitting;
 mod harness_spots;
+mod history_asks;
 mod hooking;
 mod host_asks;
 mod hosting;
@@ -79,6 +81,7 @@ mod running;
 mod session_changes;
 mod settling;
 mod setup;
+mod sign_in_launches;
 mod signing_in;
 mod terminal_targets;
 mod ticking;
@@ -97,6 +100,7 @@ pub(crate) use self::launching::AttachedLine;
 use self::parts::Parts;
 pub(crate) use self::replies::{answer_to, refused};
 pub use self::setup::RuntimeSetup;
+pub(crate) use self::sign_in_launches::SignInEnvRead;
 
 const THREAD_NAME: &str = "krad-runtime";
 const INPUT_CAPACITY: usize = 1024;
@@ -330,10 +334,7 @@ impl Runtime {
                 channel,
             } => self.hand_machine_channel(&environment, channel),
             Input::Wake => {}
-            chat @ (Input::OpenChat { .. }
-            | Input::OfferBuffers { .. }
-            | Input::StartLiveChat(_)
-            | Input::Opencode(_)) => {
+            chat @ (Input::OpenChat { .. } | Input::OfferBuffers { .. } | Input::Opencode(_)) => {
                 self.apply_chat_input(chat);
             }
             Input::JobDone(done) => self.job_done(done),

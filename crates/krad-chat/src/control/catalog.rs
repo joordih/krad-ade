@@ -119,16 +119,10 @@ fn claude_offers(lines: Vec<ModelOfferLine>) -> Vec<ModelOffer> {
         .collect()
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
-#[serde(from = "CatalogLine")]
-pub struct Catalog {
-    pub models: Vec<ModelOffer>,
-    pub commands: Vec<CommandOffer>,
-    pub subscription: Option<String>,
-}
+pub use krad_domain::Catalog;
 
 #[derive(Deserialize)]
-struct CatalogLine {
+pub(crate) struct CatalogLine {
     #[serde(default, deserialize_with = "each_entry")]
     models: Vec<ModelOfferLine>,
     #[serde(default, deserialize_with = "each_entry")]

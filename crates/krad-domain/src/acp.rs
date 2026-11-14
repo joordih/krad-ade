@@ -1,4 +1,5 @@
 mod adapter;
+mod buffers;
 mod command_line;
 mod controls;
 mod id;
@@ -8,13 +9,15 @@ mod secrets;
 mod settings;
 
 pub use adapter::{AdapterFound, AdapterStart, AdapterWork, ManagedAdapter};
+pub use buffers::OpenBuffers;
 pub use command_line::CommandLine;
 pub use controls::{AcpEffort, AcpOptionRole};
 pub use id::{AcpAgentId, AcpAgentIdError, MAX_ACP_AGENT_ID_LEN};
 pub use offers::{
     AcpAuthMethod, AcpAuthMethodId, AcpConfigCategory, AcpConfigChoice, AcpConfigOption,
     AcpConfigOptionId, AcpConfigValue, AcpMode, AcpModeId, AcpModel, AcpModelId, AcpModels,
-    AcpModes, AcpPermissionKind, AcpPermissionOption, AcpPermissionOptionId, AcpSignIn, AcpWanted,
+    AcpModes, AcpOffered, AcpPermissionKind, AcpPermissionOption, AcpPermissionOptionId, AcpSignIn,
+    AcpWanted,
 };
 pub use package::{AcpPackage, AcpPackageState, NpmPackage};
 pub use secrets::{AcpAgentStart, AcpSecretKey, EnteredEnvValue, EnteredEnvVariable, SplitEnv};

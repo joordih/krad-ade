@@ -1,9 +1,9 @@
 use krad_domain::{
-    AgentPreset, EnvironmentName, HarnessHealth, Host, HostPlatform, ModelOffer, PlanUsage,
-    UsageFailure,
+    AgentPreset, AgentState, EnvironmentName, HarnessHealth, Host, HostPlatform, ModelOffer,
+    PlanUsage, UsageFailure,
 };
 use krad_host::HostError;
-use krad_protocol::{Answer, HealthPlace, RequestId};
+use krad_protocol::{AgentRef, Answer, HealthPlace, RequestId};
 use std::io;
 use std::sync::mpsc::SyncSender;
 use std::thread;
@@ -19,10 +19,11 @@ use crate::gateway::{GatewayForgotten, GatewayRead};
 use crate::git::GitJob;
 use crate::hosts::{AgentsFound, Attempt, LocalFound, RemoteBus};
 use crate::input::Input;
+use crate::models::AcpOffersRead;
 use crate::opencode::{CloudOpencodeStarted, OpencodeListed, OpencodeStarted};
 use crate::reviews::ReviewDone;
 use crate::runners::RunnerDone;
-use crate::runtime::{AttachedLine, ChatImageDone, LinesCounted};
+use crate::runtime::{AttachedLine, ChatImageDone, LinesCounted, SignInEnvRead};
 use crate::usage::UsageKey;
 use crate::variants::VariantJob;
 
@@ -72,7 +73,13 @@ pub(crate) enum JobDone {
     OpencodeStarted(OpencodeStarted),
     OpencodeListed(OpencodeListed),
     AcpSecretsRead(AcpSecretsRead),
+    AcpOffersRead(AcpOffersRead),
     AttachedLine(AttachedLine),
+    OpencodeTerminal {
+        terminal: AgentRef,
+        state: AgentState,
+    },
+    SignInEnvRead(SignInEnvRead),
     HostAgentsFound(AgentsFound),
     LocalAgentsFound(LocalFound),
     McpRead(McpRead),
@@ -99,6 +106,10 @@ impl Jobs {
 
     pub(crate) fn run(&self, work: impl FnOnce() -> JobDone + Send + 'static) -> io::Result<()> {
         self.run_reporting(move |steps| steps.report(work()))
+    }
+
+    pub(crate) fn steps(&self) -> Steps {
+        Steps(self.0.clone())
     }
 
     pub(crate) fn run_reporting(

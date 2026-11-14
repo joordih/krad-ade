@@ -103,6 +103,10 @@ impl Runtime {
         let Some(spotted) = self.spotted(spot) else {
             return Some(refused(ErrorCode::NotFound, UNKNOWN_ENVIRONMENT));
         };
+        if let AgentPreset::Acp(agent) = harness {
+            self.list_acp_offers(&spotted, *agent);
+            return Some(Reply::Accepted);
+        }
         if let Ok((runner, cwd)) = self.spot_runner(&spotted, *harness) {
             self.models
                 .list((spotted.link.host(), *harness), runner, cwd, &self.jobs);
@@ -154,14 +158,14 @@ impl Runtime {
         })
     }
 
-    fn host_agents(&self, spotted: &Spotted) -> Option<&[AgentPreset]> {
+    pub(super) fn host_agents(&self, spotted: &Spotted) -> Option<&[AgentPreset]> {
         spotted
             .environment
             .as_ref()
             .and_then(|environment| self.hosts.agents(environment))
     }
 
-    fn spot_runner(&self, spotted: &Spotted, harness: AgentPreset) -> Sited {
+    pub(super) fn spot_runner(&self, spotted: &Spotted, harness: AgentPreset) -> Sited {
         let program = launch_program(&self.settings.current, harness).ok_or(NotHere::NoProgram)?;
         let here = HarnessHere {
             link: &spotted.link,

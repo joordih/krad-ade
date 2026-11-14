@@ -1,3 +1,4 @@
+mod catalog;
 mod library;
 mod offered;
 
@@ -5,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt;
 
+pub use catalog::{shared_skill_message, Catalog, SlashCommand};
 pub use library::{
     enabled_count, LibraryFilter, LibrarySkill, SkillHarness, SkillPlace, SkillScope,
 };

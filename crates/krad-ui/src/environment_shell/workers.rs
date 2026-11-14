@@ -2,7 +2,7 @@ mod card;
 mod ending;
 
 use gpui_kit::Context;
-use krad_agents::{ErrorCode, Response};
+use krad_domain::agents_api::{ErrorCode, Response};
 use krad_domain::{
     new_session_id, worker_mode, AgentPreset, CloudPlacement, EnvironmentName, GroupId,
     LiveSession, NodeEdit, PermissionMode, Prompt, TerminalId, WorkerSpawn, WorkerSurface,

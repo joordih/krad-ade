@@ -95,6 +95,7 @@ impl LineContext<'_> {
                     })
             }
             LaunchIntent::Task { task } => Some((task.command_line(quoting), None)),
+            LaunchIntent::AcpSignIn { .. } => None,
         }
     }
 

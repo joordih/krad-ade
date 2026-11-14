@@ -1,5 +1,4 @@
 use super::*;
-use krad_chat::AcpEvent;
 use krad_domain::{AcpConfigCategory, AcpConfigChoice, AcpMode, TerminalId};
 
 fn mode(id: &str) -> AcpMode {
@@ -17,6 +16,12 @@ fn modes(current: &str, available: &[&str]) -> AcpModes {
     }
 }
 
+enum AcpEvent {
+    Modes(AcpModes),
+    Models(AcpModels),
+    Options(Vec<AcpConfigOption>),
+}
+
 fn heard(offers: &mut AcpOffers, event: AcpEvent) {
     let mut shown = krad_protocol::AcpShown {
         modes: offers.modes.clone(),
@@ -29,7 +34,6 @@ fn heard(offers: &mut AcpOffers, event: AcpEvent) {
         AcpEvent::Modes(modes) => shown.modes = Some(modes),
         AcpEvent::Models(models) => shown.models = Some(models),
         AcpEvent::Options(options) => shown.options = options,
-        AcpEvent::SignInNeeded(_) => {}
     }
     assert!(!offers.adopt(&shown), "no sign-in was asked");
 }

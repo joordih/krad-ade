@@ -14,6 +14,7 @@ impl Runtime {
             JobDone::ModelsListed { key, listed } => {
                 self.models.listed(key, listed, &mut self.outbox);
             }
+            JobDone::AcpOffersRead(read) => self.models.acp_listed(read, &mut self.outbox),
             JobDone::UsageRead { key, read } => self.usage.read(&key, read, &mut self.outbox),
             JobDone::Git(job) => self.git_job_done(job),
             JobDone::KraddieLines(counted) => self.kraddie_lines_counted(counted),

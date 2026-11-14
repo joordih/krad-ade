@@ -25,6 +25,7 @@ pub(in crate::environment_shell) enum Launch {
         vars: Vec<(String, String)>,
     },
     Task(ProjectTask),
+    Intent(LaunchIntent),
 }
 
 impl From<RelaunchIntent> for Launch {
@@ -48,6 +49,7 @@ impl From<LaunchIntent> for Launch {
             },
             LaunchIntent::Resume { preset, resume } => Self::Resume { preset, resume },
             LaunchIntent::Task { task } => Self::Task(task),
+            intent @ LaunchIntent::AcpSignIn { .. } => Self::Intent(intent),
         }
     }
 }
@@ -69,6 +71,7 @@ impl TryFrom<Launch> for LaunchIntent {
             }),
             Launch::Resume { preset, resume } => Ok(Self::Resume { preset, resume }),
             Launch::Task(task) => Ok(Self::Task { task }),
+            Launch::Intent(intent) => Ok(intent),
             command @ Launch::Command { .. } => Err(command),
         }
     }

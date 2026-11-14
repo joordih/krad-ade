@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+use crate::model::ModelOffer;
+
 macro_rules! agent_reported_id {
     ($($name:ident),+ $(,)?) => {
         $(
@@ -25,6 +27,16 @@ pub struct AcpMode {
     pub id: AcpModeId,
     pub name: String,
     pub description: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcpOffered {
+    #[serde(default)]
+    pub models: Vec<ModelOffer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modes: Option<AcpModes>,
+    #[serde(default)]
+    pub options: Vec<AcpConfigOption>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -62,7 +62,6 @@ impl EnvironmentShell {
         let Some((_, harness, resume)) = self.node_resume(&env, id) else {
             return;
         };
-        self.forget_opencode_terminal(&env, id);
         let Some(live) = self.envs.get_mut(&env) else {
             return;
         };

@@ -1,15 +1,13 @@
 mod area;
 mod bus;
 mod chats;
-mod digests;
 mod layout;
 mod mention;
 mod sharing;
 mod sidebar;
 
 use gpui_kit::component::input::TextareaState;
-use gpui_kit::{Context, Entity, Task};
-use krad_chat::LiveChat;
+use gpui_kit::Entity;
 use krad_domain::{
     DigestBook, DigestId, EnvironmentName, KraddieChip, KraddieId, KraddieMood, MemoryLibrary,
     MemoryOwner, MemorySize, SessionId, TerminalId,
@@ -17,14 +15,11 @@ use krad_domain::{
 use krad_protocol::OwnedDigests;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::time::Instant;
 
 use super::EnvironmentShell;
 use crate::kraddie_avatar::KraddieSprite;
 
 pub(super) use mention::KraddieSuggestion;
-
-type ChatKey = (EnvironmentName, TerminalId);
 
 pub(super) struct DigestEdit {
     owner: MemoryOwner,
@@ -37,14 +32,10 @@ pub(super) struct KraddieMemoryUi {
     ordinary: DigestBook,
     books: HashMap<KraddieId, DigestBook>,
     known: bool,
-    quiet: HashMap<ChatKey, Instant>,
-    writing: HashMap<ChatKey, Option<LiveChat>>,
-    attempted: HashMap<ChatKey, usize>,
     pub(super) expanded: HashSet<KraddieId>,
     older_digests: HashMap<KraddieId, usize>,
     pub(super) chips: HashMap<TerminalId, Vec<KraddieChip>>,
     editing: Option<DigestEdit>,
-    ticker: Option<Task<()>>,
 }
 
 impl KraddieMemoryUi {
@@ -126,31 +117,5 @@ impl EnvironmentShell {
                 .get(kraddie)
                 .map_or(0, DigestBook::len),
         }
-    }
-
-    pub(super) fn chat_owner(&self, env: &EnvironmentName, chat: TerminalId) -> MemoryOwner {
-        self.envs
-            .get(env)
-            .and_then(|live| live.data.chat_memory(chat))
-            .map_or(MemoryOwner::Ordinary, krad_domain::SessionMemory::owner)
-    }
-
-    pub(super) fn start_memory_clock(&mut self, cx: &mut Context<Self>) {
-        if self.kraddies.memory.ticker.is_some() {
-            return;
-        }
-        self.kraddies.memory.ticker = Some(cx.spawn(async move |this, cx| loop {
-            let alive = this.update(cx, Self::tend_memory);
-            if alive.is_err() {
-                break;
-            }
-            cx.background_executor()
-                .timer(digests::DIGEST_CHECK_EVERY)
-                .await;
-        }));
-    }
-
-    fn tend_memory(&mut self, cx: &mut Context<Self>) {
-        self.check_digests(cx);
     }
 }

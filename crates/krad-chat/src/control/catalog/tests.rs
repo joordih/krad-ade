@@ -5,8 +5,10 @@ use serde_json::json;
 const LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 
 fn catalog(models: &serde_json::Value) -> Catalog {
-    serde_json::from_value(json!({ "models": models }))
-        .unwrap_or_else(|_| unreachable!("a catalog reads from any object"))
+    serde_json::from_value::<CatalogLine>(json!({ "models": models })).map_or_else(
+        |_| unreachable!("a catalog reads from any object"),
+        Catalog::from,
+    )
 }
 
 fn names(catalog: &Catalog) -> Vec<(&str, &str)> {

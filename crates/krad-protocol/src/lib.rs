@@ -44,9 +44,9 @@ pub use bus::{
 };
 pub use chats::{
     AcpShown, AcpSignInAsk, ChatAsk, ChatAskId, ChatCommand, ChatContext, ChatMirror, ChatOpen,
-    ChatPage, ChatState, ChatSummary, KnownRecord, McpOffered, McpSkippedShown, McpTrustAsk,
-    MirrorChange, PastedImage, SubagentUpdate, SubagentsAsk, SubagentsFrom, SubagentsRead,
-    TranscriptAsk, TranscriptRead,
+    ChatPage, ChatState, ChatSummary, HistoryAsk, HistoryCursor, HistoryPart, KnownRecord,
+    McpOffered, McpSkippedShown, McpTrustAsk, MirrorChange, PastedImage, SubagentUpdate,
+    SubagentsAsk, SubagentsFrom, SubagentsRead, TranscriptAsk, TranscriptRead,
 };
 pub use cloud::{
     CarriedConversation, CloudChatStart, CloudCommand, CloudDraftId, CloudNews, CloudOpened,
@@ -77,7 +77,9 @@ pub use hosts::{
 pub use ids::{ProtocolVersion, RequestId, Seq};
 pub use kraddies::{AutomationState, KraddieCommand, KraddieState, KraddiesSnapshot, OwnedDigests};
 pub use launches::{LaunchedAs, TerminalLaunched};
-pub use models::{ListedModels, ModelsCommand, ModelsOrigin, ModelsSnapshot};
+pub use models::{
+    AcpListing, AcpOffers, ListedModels, ModelsCommand, ModelsOrigin, ModelsSnapshot,
+};
 pub use opencode::{OpencodeCommand, OpencodeShown, OpencodeSnapshot, OpencodeStatus};
 pub use problems::{Problem, ProblemScope};
 pub use repo::{DiffOf, RepoAsk, RepoCommand, WorktreeProbe, WorktreeRemoval};

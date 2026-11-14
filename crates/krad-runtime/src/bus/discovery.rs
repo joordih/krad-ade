@@ -25,3 +25,13 @@ pub(crate) fn publish(access: &BusAccess, wanted: ApiDiscoveryFile) -> Reply {
     }
     Reply::Accepted
 }
+
+#[tracing::instrument(skip_all)]
+pub(crate) fn withdraw(access: &BusAccess) {
+    let Some(dir) = &access.config_dir else {
+        return;
+    };
+    if let Err(error) = ApiFile::in_config(dir).remove_if_written_by(std::process::id()) {
+        tracing::warn!(%error, "agents API discovery file left behind");
+    }
+}

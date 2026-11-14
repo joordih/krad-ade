@@ -1,6 +1,6 @@
 use super::harness_name;
 use super::{AgentInfo, StateReason, TerminalState, Timestamp};
-use krad_domain::{AgentPreset, AgentState};
+use crate::{AgentPreset, AgentState};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 

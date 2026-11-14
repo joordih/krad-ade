@@ -41,10 +41,10 @@ pub use handle::{Caller, LeadHandle, TerminalHandle};
 pub use mailbox::{notice_text, Mailbox};
 pub use offline::{queued_events, runner_record, QueuedEvent};
 pub use protocol::{
-    lead_refusal, memory_hit_limit, AgentChangeKind, AgentEvent, AgentFilter, AgentInfo,
-    AgentSnapshot, AgentStatus, AgentSubscription, ApiError, ApiInfo, ApiVersion, AutomationInfo,
-    AutomationRunInfo, BusToken, ChangeSet, ChangedFile, CloseOrder, CloseTarget, Closed,
-    ClosedTarget, CoarseState, DigestInfo, Envelope, ErrorCode, FilePosition, Heartbeat,
+    current_api_info, lead_refusal, memory_hit_limit, AgentChangeKind, AgentEvent, AgentFilter,
+    AgentInfo, AgentSnapshot, AgentStatus, AgentSubscription, ApiError, ApiInfo, ApiVersion,
+    AutomationInfo, AutomationRunInfo, BusToken, ChangeSet, ChangedFile, CloseOrder, CloseTarget,
+    Closed, ClosedTarget, CoarseState, DigestInfo, Envelope, ErrorCode, FilePosition, Heartbeat,
     KraddieChatInfo, KraddieInfo, KraddieMemoryInfo, KraddieRecallInfo, KraddieRunInfo,
     KraddieSharingInfo, MemoryEntryInfo, MemoryHitInfo, MemoryTools, Message, PromptAnswer,
     RecallView, Request, Response, SessionInfo, StateReason, StreamId, TerminalState, Timestamp,

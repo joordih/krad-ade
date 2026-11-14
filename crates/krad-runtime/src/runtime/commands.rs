@@ -267,7 +267,6 @@ impl Runtime {
             | Input::MachineChannel { .. }
             | Input::OpenChat { .. }
             | Input::OfferBuffers { .. }
-            | Input::StartLiveChat(_)
             | Input::Opencode(_)
             | Input::Wake
             | Input::Tick

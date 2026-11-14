@@ -75,6 +75,10 @@ pub enum FileAsk {
     Present {
         paths: Vec<PathBuf>,
     },
+    Contained {
+        root: PathBuf,
+        path: PathBuf,
+    },
     ReadTexts {
         paths: Vec<PathBuf>,
         limit: u64,

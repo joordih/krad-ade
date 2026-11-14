@@ -1,5 +1,7 @@
 use gpui_kit::{AppContext as _, Context};
-use krad_agents::{CodeAnswer, CodeLine, CodePosition, CodeRequest, CodeTool, ErrorCode, Response};
+use krad_domain::agents_api::{
+    CodeAnswer, CodeLine, CodePosition, CodeRequest, CodeTool, ErrorCode, Response,
+};
 use krad_domain::{EnvironmentName, GroupId, TerminalId};
 use krad_lsp::lsp_types::request::{
     DocumentDiagnosticRequest, GotoDefinition, HoverRequest, References, Rename,

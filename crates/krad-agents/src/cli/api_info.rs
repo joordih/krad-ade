@@ -145,7 +145,7 @@ mod tests {
         };
         let answer = |pid| ApiInfo {
             pid: Some(pid),
-            ..ApiInfo::current()
+            ..crate::protocol::current_api_info()
         };
         assert_eq!(check_live(&file, Some(&answer(PID))), Ok(()));
         assert!(check_live(&file, None).is_err_and(|error| error.contains(NOT_ANSWERING)));

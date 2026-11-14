@@ -2,7 +2,7 @@ mod heard;
 mod shown;
 
 use gpui_kit::{App, Context};
-use krad_chat::SlashCommand;
+use krad_domain::SlashCommand;
 use krad_domain::{AgentState, EnvironmentName, Prompt, RewindScope, TerminalId};
 use krad_protocol::{AgentRef, ChatCommand, ChatOpen, Command};
 use krad_runtime::runs_in_runtime;
