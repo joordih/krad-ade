@@ -10,6 +10,30 @@ use crate::terminals::{Shared, TerminalLaunch, TerminalPlace, Terminals};
 const SIGN_IN_UNAVAILABLE: &str = "This build cannot open an SSH sign-in terminal";
 const NO_SIGN_IN_WAITING: &str = "No sign-in is waiting for this environment";
 
+pub(crate) fn sign_in_launch(link: &HostLink) -> Option<TerminalLaunch> {
+    let HostLink::Remote(remote) = link else {
+        return None;
+    };
+    if remote.machine().is_some() {
+        return None;
+    }
+    let (program, args) = remote.sign_in_terminal();
+    Some(TerminalLaunch {
+        program: program.to_string_lossy().into_owned(),
+        args: args
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect(),
+        cwd: None,
+        vars: Vec::new(),
+        place: TerminalPlace::Here,
+        harness: None,
+        prefill: Vec::new(),
+        typed: None,
+        tap: None,
+    })
+}
+
 impl Hosts {
     pub(super) fn want_sign_in(
         &mut self,
@@ -17,9 +41,7 @@ impl Hosts {
         host: &Host,
         outbox: &mut Vec<EventKind>,
     ) {
-        let signs_in =
-            matches!(self.links.link(host), HostLink::Remote(remote) if remote.machine().is_none());
-        if !signs_in {
+        if sign_in_launch(&self.links.link(host)).is_none() {
             let reason = SIGN_IN_UNAVAILABLE.to_owned();
             return self.set(environment, HostState::Failed { reason }.into(), outbox);
         }
@@ -43,24 +65,9 @@ impl Hosts {
                 entry.host.clone()
             })
         });
-        let remote = waiting.map(|host| self.links.link(&host));
-        let Some(HostLink::Remote(remote)) = remote else {
+        let launch = waiting.and_then(|host| sign_in_launch(&self.links.link(&host)));
+        let Some(launch) = launch else {
             return Terminals::refuse(terminal, &shared, NO_SIGN_IN_WAITING, work.outbox);
-        };
-        let (program, args) = remote.sign_in_terminal();
-        let launch = TerminalLaunch {
-            program: program.to_string_lossy().into_owned(),
-            args: args
-                .iter()
-                .map(|arg| arg.to_string_lossy().into_owned())
-                .collect(),
-            cwd: None,
-            vars: Vec::new(),
-            place: TerminalPlace::Here,
-            harness: None,
-            prefill: Vec::new(),
-            typed: None,
-            tap: None,
         };
         let environment = terminal.environment.clone();
         let signing_in = HostState::SigningIn {

@@ -7,7 +7,8 @@ use super::backoff::reconnect_delay;
 use super::problem::{recovery, Recovery};
 
 const FIRST_RETRY: u32 = 1;
-const SIGN_IN_NOT_KEPT: &str =
+const SSH_ENDED_WITHOUT_CODE: &str = "ssh ended without an exit code";
+pub(crate) const SIGN_IN_NOT_KEPT: &str =
     "Signed in, but the connection did not stay open. Reconnect to try again.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,16 +63,19 @@ impl Tracked {
         if self.state.sign_in_terminal() != Some(terminal) {
             return None;
         }
-        let state = match code {
-            Some(0) => HostState::SignedIn,
-            Some(code) => HostState::Failed {
-                reason: format!("ssh exited with code {code}"),
-            },
-            None => HostState::Failed {
-                reason: "ssh ended without an exit code".to_owned(),
-            },
+        let state = match sign_in_ended(code) {
+            Ok(()) => HostState::SignedIn,
+            Err(reason) => HostState::Failed { reason },
         };
         Some(state.into())
+    }
+}
+
+pub(crate) fn sign_in_ended(code: Option<i32>) -> Result<(), String> {
+    match code {
+        Some(0) => Ok(()),
+        Some(code) => Err(format!("ssh exited with code {code}")),
+        None => Err(SSH_ENDED_WITHOUT_CODE.to_owned()),
     }
 }
 

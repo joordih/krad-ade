@@ -22,7 +22,8 @@ pub(crate) use agents::AgentsFound;
 pub(crate) use bus_slot::Reach;
 pub(crate) use links::HostLinks;
 pub(crate) use local_agents::LocalFound;
-pub(crate) use state::Attempt;
+pub(crate) use sign_in::sign_in_launch;
+pub(crate) use state::{sign_in_ended, Attempt, SIGN_IN_NOT_KEPT};
 
 use krad_domain::{AgentPreset, EnvironmentName, Host, HostPlatform};
 use krad_host::{HostError, HostLink, MachineChannel};

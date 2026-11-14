@@ -216,6 +216,7 @@ impl EnvironmentShell {
             EventKind::RunnerChanged(shown) => self.runner_changed(shown.runner, cx),
             EventKind::RunnerRemoved(removed) => self.runner_removed(removed, cx),
             EventKind::RunnerNews(notice) => self.runner_news(notice, cx),
+            EventKind::RunnerSignInWanted { runner } => self.runner_sign_in_wanted(runner, cx),
             EventKind::CloudPatchOffered { draft } => self.cloud_patch_offered(draft, cx),
             EventKind::CloudNews(news) => self.cloud_news(news, cx),
             EventKind::CloudSessionOpened(opened) => self.cloud_session_opened(opened, cx),

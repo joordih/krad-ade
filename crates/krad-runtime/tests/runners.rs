@@ -3,11 +3,12 @@
 use futures::executor::block_on;
 use futures::StreamExt as _;
 use krad_domain::{
-    ClaudeOauthToken, CloudRunner, CloudRunnerId, CloudSettings, OfflineWebhooks, PairingToken,
-    RunnerState, Settings,
+    ClaudeOauthToken, CloudRunner, CloudRunnerId, CloudSettings, EnvironmentName, OfflineWebhooks,
+    PairingToken, ProcessRun, RunnerState, Settings, TerminalId,
 };
 use krad_protocol::{
-    Command, ErrorCode, EventKind, Feed, Reply, RunnerCommand, RunnerRemoved, RunnerShown, Scope,
+    AgentRef, Command, ErrorCode, EventKind, Feed, Reply, RunnerCommand, RunnerRemoved,
+    RunnerShown, Scope,
 };
 use krad_runtime::{Runtime, RuntimeHandle, RuntimeSetup, SettingsSetup};
 use krad_store::Secrets;
@@ -24,9 +25,14 @@ const TIMED_OUT: &str = "the awaited event never came";
 const FAKE_SSH_DIR: &str = "tests/fixtures/fake-ssh";
 const PATH_VAR: &str = "PATH";
 const CONFIG_HOME_VAR: &str = "XDG_CONFIG_HOME";
+const SIGN_IN_MARK_VAR: &str = "KRAD_FAKE_SIGN_IN_MARK";
+const SIGN_IN_MARK: &str = "signed-in";
 const REFUSES: &str = "refuses.invalid";
 const ASKS: &str = "asks.invalid";
+const DECLINES: &str = "declines.invalid";
+const SIGNS_IN: &str = "signs-in.invalid";
 const CONNECTS: &str = "connects.invalid";
+const SIGN_IN_ENVIRONMENT: &str = "main";
 const UNKNOWN: CloudRunnerId = CloudRunnerId(99);
 const PAIRING: &str = "00112233445566778899aabbccddeeff";
 const CLAUDE_TOKEN: &str = "sk-ant-oat01-test";
@@ -51,6 +57,7 @@ fn use_fake_ssh_and_config(config: &Path) {
         std::env::set_var(PATH_VAR, path);
     }
     std::env::set_var(CONFIG_HOME_VAR, config);
+    std::env::set_var(SIGN_IN_MARK_VAR, config.join(SIGN_IN_MARK));
 }
 
 fn runners_on(hosts: &[&str]) -> Result<(CloudSettings, Vec<CloudRunnerId>), Box<dyn Error>> {
@@ -110,7 +117,8 @@ fn states_of(
                 if of != runner {
                     continue;
                 }
-                let settled = state.is_ready() || matches!(state, RunnerState::Failed { .. });
+                let settled = state.is_ready()
+                    || matches!(state, RunnerState::Failed { .. } | RunnerState::SigningIn);
                 states.push(state);
                 if settled {
                     return Ok(states);
@@ -140,6 +148,25 @@ fn removal_of(
     Err(TIMED_OUT.into())
 }
 
+fn sign_in_wanted(feed: &Receiver<Feed>, runner: CloudRunnerId) -> TestResult {
+    let deadline = Instant::now() + WAIT;
+    while Instant::now() < deadline {
+        if let Ok(Feed::Event(event)) = feed.recv_timeout(POLL) {
+            if event.kind == (EventKind::RunnerSignInWanted { runner }) {
+                return Ok(());
+            }
+        }
+    }
+    Err(TIMED_OUT.into())
+}
+
+fn sign_in_terminal(id: u64) -> AgentRef {
+    AgentRef {
+        environment: EnvironmentName::new(SIGN_IN_ENVIRONMENT.to_owned()),
+        terminal: TerminalId(id),
+    }
+}
+
 fn send(runtime: &RuntimeHandle, command: RunnerCommand) -> Result<Reply, Box<dyn Error>> {
     Ok(block_on(
         runtime.send(runtime.next_request(), Command::Runner(command)),
@@ -153,16 +180,79 @@ fn failure(states: &[RunnerState]) -> Option<&str> {
     }
 }
 
+fn signs_in_over_ssh(
+    runtime: &RuntimeHandle,
+    feed: &Receiver<Feed>,
+    [refuses, asks, declines, signs_in]: [CloudRunnerId; 4],
+) -> TestResult {
+    assert_eq!(
+        send(runtime, RunnerCommand::Ensure { runner: asks })?,
+        Reply::Accepted
+    );
+    let asked = states_of(feed, asks)?;
+    assert_eq!(asked, [RunnerState::Connecting, RunnerState::SigningIn]);
+    sign_in_wanted(feed, asks)?;
+    let stray = runtime.open_runner_ssh_sign_in(sign_in_terminal(1), refuses);
+    let view = runtime.open_runner_ssh_sign_in(sign_in_terminal(2), asks);
+    let not_kept = states_of(feed, asks)?;
+    assert_eq!(not_kept.first(), Some(&RunnerState::Connecting));
+    assert!(
+        failure(&not_kept).is_some_and(|reason| reason.contains("did not stay open")),
+        "{not_kept:?}"
+    );
+    assert_eq!(view.status().run, ProcessRun::Exited { code: Some(0) });
+    assert!(matches!(stray.status().run, ProcessRun::Failed { .. }));
+
+    assert_eq!(
+        send(runtime, RunnerCommand::Ensure { runner: declines })?,
+        Reply::Accepted
+    );
+    states_of(feed, declines)?;
+    sign_in_wanted(feed, declines)?;
+    drop(runtime.open_runner_ssh_sign_in(sign_in_terminal(3), declines));
+    let refused_sign_in = states_of(feed, declines)?;
+    assert!(
+        failure(&refused_sign_in).is_some_and(|reason| reason.contains("code 255")),
+        "{refused_sign_in:?}"
+    );
+
+    assert_eq!(
+        send(runtime, RunnerCommand::Ensure { runner: signs_in })?,
+        Reply::Accepted
+    );
+    assert_eq!(
+        states_of(feed, signs_in)?,
+        [RunnerState::Connecting, RunnerState::SigningIn]
+    );
+    sign_in_wanted(feed, signs_in)?;
+    drop(runtime.open_runner_ssh_sign_in(sign_in_terminal(4), signs_in));
+    let resumed = states_of(feed, signs_in)?;
+    assert_eq!(
+        resumed[..2],
+        [RunnerState::Connecting, RunnerState::Installing]
+    );
+    assert!(
+        failure(&resumed).is_some_and(|reason| reason.contains("no id")),
+        "{resumed:?}"
+    );
+    let terminals = block_on(runtime.snapshot(Scope::Runtime))?.terminals;
+    assert!(terminals
+        .iter()
+        .all(|summary| summary.terminal != sign_in_terminal(4)));
+    Ok(())
+}
+
 #[test]
 fn runners_connect_install_fail_with_a_reason_and_are_removed() -> TestResult {
     let config = Folder(std::env::temp_dir().join(format!(
         "krad-runtime-runners-config-{}",
         std::process::id()
     )));
+    std::fs::create_dir_all(&config.0)?;
     use_fake_ssh_and_config(&config.0);
-    let (cloud, ids) = runners_on(&[REFUSES, ASKS, CONNECTS])?;
-    let [refuses, asks, connects] = ids[..] else {
-        return Err("three runners were not added".into());
+    let (cloud, ids) = runners_on(&[REFUSES, ASKS, CONNECTS, DECLINES, SIGNS_IN])?;
+    let [refuses, asks, connects, declines, signs_in] = ids[..] else {
+        return Err("five runners were not added".into());
     };
     let secrets = Secrets::in_memory();
     secrets.write_cloud_runner_token(connects, &PAIRING.parse::<PairingToken>()?)?;
@@ -188,15 +278,7 @@ fn runners_connect_install_fail_with_a_reason_and_are_removed() -> TestResult {
         "{refusal:?}"
     );
 
-    assert_eq!(
-        send(&runtime, RunnerCommand::Ensure { runner: asks })?,
-        Reply::Accepted
-    );
-    let asked = states_of(&feed, asks)?;
-    assert!(
-        failure(&asked).is_some_and(|reason| reason.contains("asks for a password")),
-        "{asked:?}"
-    );
+    signs_in_over_ssh(&runtime, &feed, [refuses, asks, declines, signs_in])?;
 
     assert_eq!(
         send(&runtime, RunnerCommand::Ensure { runner: connects })?,
@@ -215,7 +297,7 @@ fn runners_connect_install_fail_with_a_reason_and_are_removed() -> TestResult {
     let shown = block_on(runtime.snapshot(Scope::Runtime))?.runners.shown;
     assert_eq!(
         shown.iter().map(|shown| shown.runner).collect::<Vec<_>>(),
-        [refuses, asks, connects]
+        [refuses, asks, connects, declines, signs_in]
     );
 
     assert_eq!(

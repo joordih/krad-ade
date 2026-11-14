@@ -22,10 +22,12 @@ const RUNNERS_HINT: &str = "Linux hosts, x86_64 or aarch64, reached over SSH. Cl
 const RUNNERS_EMPTY: &str = "No cloud runners yet.";
 const ADD_LABEL: &str = "Add cloud runner";
 const RECONNECT_LABEL: &str = "Reconnect";
+const SIGN_IN_LABEL: &str = "Show sign-in";
 const REMOVE_LABEL: &str = "Remove";
 const DETAIL_SEPARATOR: &str = " · ";
 const BTN_OPEN_FORM: &str = "cloud-runner-open-form";
 const RECONNECT_PREFIX: &str = "cloud-runner-reconnect";
+const SIGN_IN_PREFIX: &str = "cloud-runner-ssh-sign-in";
 const REMOVE_PREFIX: &str = "cloud-runner-remove";
 const OFFLINE_WEBHOOKS_PREFIX: &str = "cloud-runner-offline-webhooks";
 const OFFLINE_WEBHOOKS_LABEL: &str = "Send webhooks while the app is closed";
@@ -81,12 +83,23 @@ impl EnvironmentShell {
                 .small()
                 .variant(ButtonVariant::Secondary)
         };
+        let sign_in =
+            (state == RunnerState::SigningIn && self.runner_sign_in_shown(id)).then(|| {
+                Button::new((SIGN_IN_PREFIX, id.0))
+                    .label(SIGN_IN_LABEL)
+                    .small()
+                    .variant(ButtonVariant::Primary)
+                    .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                        this.show_runner_sign_in(id, window, cx);
+                    }))
+            });
         let controls =
             div()
                 .flex()
                 .flex_row()
                 .items_center()
                 .gap(px(SPACE_2))
+                .children(sign_in)
                 .child(button(RECONNECT_PREFIX, RECONNECT_LABEL).on_click(
                     cx.listener(move |this: &mut Self, _, _, _| this.reconnect_runner(id)),
                 ))
@@ -209,6 +222,8 @@ mod tests {
             runner_detail(&runner, &RunnerState::Connecting, None),
             "me@gpu:2200 · Connecting"
         );
+        assert!(runner_detail(&runner, &RunnerState::SigningIn, None)
+            .starts_with("me@gpu:2200 · Signing in…"));
         let ready = RunnerState::Ready {
             linger: krad_domain::Linger::Enabled,
         };

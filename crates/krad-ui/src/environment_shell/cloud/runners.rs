@@ -70,6 +70,8 @@ impl EnvironmentShell {
         runner: CloudRunnerId,
         cx: &mut Context<Self>,
     ) {
+        let state = self.runner_state(runner, cx);
+        self.runner_sign_in_moved(runner, &state);
         if self.runner_removed_from_settings(runner) {
             self.runtime.view.update(cx, |model, _| {
                 model.runners.remove(&runner);

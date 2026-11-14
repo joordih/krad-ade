@@ -5,6 +5,7 @@ use krad_protocol::{ErrorCode, EventKind, Reply, RunnerCommand, RunnerRemoved, R
 use krad_store::Secrets;
 
 use super::{refused, Runtime, UNSUPPORTED_COMMAND};
+use crate::hosts::Attempt;
 use crate::jobs::JobDone;
 use crate::runners::{
     explain, prepare_runner, retire_runner, PreparedRunner, ReadyRunner, RunnerDone,
@@ -31,7 +32,7 @@ impl Runtime {
                     return refused(ErrorCode::NotFound, UNKNOWN_RUNNER);
                 }
                 if !self.runners.state(runner).is_busy() {
-                    self.connect_runner(runner);
+                    self.connect_runner(runner, Attempt::First);
                 }
                 Reply::Accepted
             }
@@ -85,12 +86,12 @@ impl Runtime {
             RunnerState::NotConnected | RunnerState::Failed { .. }
         ) || link_lost
         {
-            self.connect_runner(runner);
+            self.connect_runner(runner, Attempt::First);
         }
         Reply::Accepted
     }
 
-    fn show_runner(&mut self, shown: Option<RunnerShown>) {
+    pub(super) fn show_runner(&mut self, shown: Option<RunnerShown>) {
         let Some(shown) = shown else {
             return;
         };
@@ -112,20 +113,26 @@ impl Runtime {
         self.outbox.push(EventKind::RunnerChanged(shown));
     }
 
-    fn runner_link(&self, runner: CloudRunnerId) -> Option<HostLink> {
+    pub(super) fn runner_link(&self, runner: CloudRunnerId) -> Option<HostLink> {
         self.runners.host(runner).map(|host| self.hosts.link(host))
     }
 
-    #[tracing::instrument(skip_all, fields(%runner))]
-    fn connect_runner(&mut self, runner: CloudRunnerId) {
+    #[tracing::instrument(skip_all, fields(%runner, ?attempt))]
+    pub(super) fn connect_runner(&mut self, runner: CloudRunnerId, attempt: Attempt) {
         let Some(HostLink::Remote(ssh)) = self.runner_link(runner) else {
             return;
         };
+        self.end_runner_sign_in(runner);
         let shown = self.runners.set(runner, RunnerState::Connecting);
         self.show_runner(shown);
         let started = self.jobs.run(move || {
             let outcome = ssh.connect();
-            RunnerDone::Connected { runner, outcome }.into()
+            RunnerDone::Connected {
+                runner,
+                attempt,
+                outcome,
+            }
+            .into()
         });
         if let Err(error) = started {
             tracing::warn!(%error, "a cloud runner connection could not start");
@@ -137,8 +144,16 @@ impl Runtime {
 
     pub(super) fn runner_done(&mut self, done: RunnerDone) {
         match done {
-            RunnerDone::Connected { runner, outcome } => self.runner_connected(runner, outcome),
-            RunnerDone::Prepared { runner, prepared } => self.runner_prepared(runner, prepared),
+            RunnerDone::Connected {
+                runner,
+                attempt,
+                outcome,
+            } => self.runner_connected((runner, attempt), outcome),
+            RunnerDone::Prepared {
+                runner,
+                attempt,
+                prepared,
+            } => self.runner_prepared((runner, attempt), prepared),
             RunnerDone::Removed {
                 runner,
                 host,
@@ -169,7 +184,7 @@ impl Runtime {
 
     fn runner_connected(
         &mut self,
-        runner: CloudRunnerId,
+        (runner, attempt): (CloudRunnerId, Attempt),
         outcome: Result<HostPlatform, HostError>,
     ) {
         if self.runners.state(runner) != RunnerState::Connecting {
@@ -177,6 +192,9 @@ impl Runtime {
         }
         if let Err(error) = outcome {
             tracing::info!(%runner, %error, "cloud runner connection failed");
+            if error.needs_sign_in() && self.ask_runner_sign_in(runner, attempt) {
+                return;
+            }
             let reason = match self.runners.host(runner) {
                 Some(Host::Ssh { destination }) => explain(&error, destination),
                 Some(_) | None => error.to_string(),
@@ -196,7 +214,12 @@ impl Runtime {
         let secrets = self.secrets.clone();
         let started = self.jobs.run(move || {
             let prepared = prepare_runner((&link, &secrets), &ssh, runner, install_id);
-            RunnerDone::Prepared { runner, prepared }.into()
+            RunnerDone::Prepared {
+                runner,
+                attempt,
+                prepared,
+            }
+            .into()
         });
         if let Err(error) = started {
             tracing::warn!(%error, "a cloud runner install could not start");
@@ -208,11 +231,17 @@ impl Runtime {
 
     fn runner_prepared(
         &mut self,
-        runner: CloudRunnerId,
+        (runner, attempt): (CloudRunnerId, Attempt),
         prepared: Result<PreparedRunner, RunnerSetupError>,
     ) {
         if self.runners.state(runner) != RunnerState::Installing {
             return;
+        }
+        if let Err(error) = &prepared {
+            if error.needs_sign_in() && self.ask_runner_sign_in(runner, attempt) {
+                tracing::info!(%runner, %error, "the cloud runner asked to sign in again");
+                return;
+            }
         }
         let ready = prepared.is_ok();
         let shown = match (prepared, self.runner_link(runner)) {
@@ -283,6 +312,7 @@ impl Runtime {
     #[tracing::instrument(skip_all, fields(%runner))]
     fn remove_runner(&mut self, runner: CloudRunnerId) -> Reply {
         self.cloud_runner_removed(runner);
+        self.end_runner_sign_in(runner);
         if let Some(bus) = self.runners.buses.forget(runner) {
             self.outbox.push(EventKind::RunnerBusChanged(bus));
         }

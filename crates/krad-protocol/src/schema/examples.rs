@@ -375,6 +375,10 @@ pub(super) fn events() -> Vec<(&'static str, Value)> {
             "answered_text_replaced",
             json!({ "feed": "event", "seq": 52, "kind": { "type": "answered", "request": 17, "answer": { "kind": "text_replaced", "replaced": false } } }),
         ),
+        (
+            "runner_signing_in",
+            json!({ "feed": "event", "seq": 53, "kind": { "type": "runner_changed", "runner": 1, "state": { "state": "signing_in" } } }),
+        ),
     ];
     events.extend(files::file_events());
     events
@@ -397,6 +401,10 @@ pub(super) fn forward_compatible() -> Vec<(Value, Value)> {
         (
             json!({ "type": "feed", "feed": "event", "seq": 50, "kind": { "type": "session_opened", "session": 3 } }),
             json!({ "type": "feed", "feed": "event", "seq": 50, "kind": { "type": "unknown" } }),
+        ),
+        (
+            json!({ "type": "feed", "feed": "event", "seq": 54, "kind": { "type": "runner_changed", "runner": 1, "state": { "state": "migrating" } } }),
+            json!({ "type": "feed", "feed": "event", "seq": 54, "kind": { "type": "runner_changed", "runner": 1, "state": { "state": "unknown" } } }),
         ),
         (
             json!({ "type": "reply", "id": 22, "reply": { "outcome": "refused", "code": "rate_limited", "message": "slow down" } }),

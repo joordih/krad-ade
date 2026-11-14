@@ -432,3 +432,24 @@ fn environments_settings_and_git_are_read_copies_the_view_model_owns() {
         .at(&Host::Local, Path::new("/r"))
         .is_some());
 }
+
+#[test]
+fn a_runner_signing_in_is_kept_in_the_read_copy_and_its_sign_in_reaches_the_shell() {
+    let runner = CloudRunnerId(RUNNER);
+    let mut model = ViewModel::default();
+    runner_moved(&mut model, RunnerState::SigningIn);
+    model.fold_event(EventKind::RunnerSignInWanted { runner });
+    assert_eq!(model.runners.get(&runner), Some(&RunnerState::SigningIn));
+    assert!(model.remotes.get(runner).is_none());
+    let heard = events(model.take_news());
+    assert_eq!(
+        heard,
+        [
+            EventKind::RunnerChanged(RunnerShown {
+                runner,
+                state: RunnerState::SigningIn,
+            }),
+            EventKind::RunnerSignInWanted { runner },
+        ]
+    );
+}

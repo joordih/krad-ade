@@ -52,6 +52,7 @@ impl Runtime {
             self.hear_kraddie_events(unread);
             self.settle_waiters();
             self.hear_ended_terminals(unread);
+            self.follow_runner_sign_ins(unread);
             self.follow_connections(unread);
             self.settle_cloud_runs();
             self.flush();

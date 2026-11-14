@@ -740,6 +740,17 @@
       },
       "seq": 49
     },
+    "runner_signing_in": {
+      "feed": "event",
+      "kind": {
+        "runner": 1,
+        "state": {
+          "state": "signing_in"
+        },
+        "type": "runner_changed"
+      },
+      "seq": 53
+    },
     "session_changes_read": {
       "feed": "event",
       "kind": {
@@ -955,6 +966,32 @@
           "type": "unknown"
         },
         "seq": 50,
+        "type": "feed"
+      }
+    },
+    {
+      "line": {
+        "feed": "event",
+        "kind": {
+          "runner": 1,
+          "state": {
+            "state": "migrating"
+          },
+          "type": "runner_changed"
+        },
+        "seq": 54,
+        "type": "feed"
+      },
+      "reads_as": {
+        "feed": "event",
+        "kind": {
+          "runner": 1,
+          "state": {
+            "state": "unknown"
+          },
+          "type": "runner_changed"
+        },
+        "seq": 54,
         "type": "feed"
       }
     },

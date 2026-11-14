@@ -33,6 +33,11 @@ impl Runtime {
             RunnerInput::OpenClaudeSetup { terminal, shared } => {
                 self.open_claude_setup(terminal, shared);
             }
+            RunnerInput::OpenSshSignIn {
+                terminal,
+                runner,
+                shared,
+            } => self.open_runner_ssh_sign_in((terminal, shared), runner),
             RunnerInput::Connect { runner, reply } => self.open_runner_line(runner, reply),
         }
     }

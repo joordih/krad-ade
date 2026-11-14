@@ -5,6 +5,9 @@ use super::super::runtime_view::RunnerReach;
 
 const NOT_CONNECTED: &str = "Not connected";
 const CONNECTING: &str = "Connecting";
+const SIGNING_IN: &str =
+    "Signing in…: type the password, passphrase or code in the SSH sign-in terminal";
+const UNKNOWN_STATE: &str = "In a state this version does not know";
 const INSTALLING: &str = "Installing the runner";
 const READY: &str = "Ready";
 const UPDATE_PENDING: &str = "Ready; the update starts once no session runs";
@@ -24,10 +27,12 @@ pub(in crate::environment_shell) fn runner_label(state: &RunnerState) -> Cow<'st
     match state {
         RunnerState::NotConnected => Cow::Borrowed(NOT_CONNECTED),
         RunnerState::Connecting => Cow::Borrowed(CONNECTING),
+        RunnerState::SigningIn => Cow::Borrowed(SIGNING_IN),
         RunnerState::Installing => Cow::Borrowed(INSTALLING),
         RunnerState::Ready { .. } => Cow::Borrowed(READY),
         RunnerState::UpdatePending { .. } => Cow::Borrowed(UPDATE_PENDING),
         RunnerState::Failed { reason } => Cow::Owned(format!("{FAILED_PREFIX}{reason}")),
+        RunnerState::Unknown => Cow::Borrowed(UNKNOWN_STATE),
     }
 }
 
@@ -74,6 +79,7 @@ mod tests {
         };
         assert_eq!(runner_label(&failed), "Failed: no route");
         assert_eq!(runner_label(&RunnerState::Installing), INSTALLING);
+        assert!(runner_label(&RunnerState::SigningIn).starts_with("Signing in…"));
     }
 
     #[test]

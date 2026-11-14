@@ -8,6 +8,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
 
+use crate::hosts::Attempt;
+
 mod bus;
 mod explain;
 mod install;
@@ -15,6 +17,7 @@ mod line;
 mod logins;
 mod own;
 mod sign_in;
+mod ssh_sign_in;
 mod webhooks;
 
 pub(crate) use bus::RunnerBuses;
@@ -30,6 +33,7 @@ pub(crate) use logins::{git_program, login_args, probe_login, Logins};
 pub(crate) use own::OwnActivity;
 pub use own::{OwnRunner, OWN_RUNNER};
 pub(crate) use sign_in::{forward_failure, login_script, LoopbackCallback, SignInWatch, SignIns};
+pub(crate) use ssh_sign_in::SshSignIns;
 
 #[derive(Clone)]
 pub(crate) struct ReadyRunner {
@@ -78,10 +82,12 @@ impl RunnerDirectory {
 pub(crate) enum RunnerDone {
     Connected {
         runner: CloudRunnerId,
+        attempt: Attempt,
         outcome: Result<HostPlatform, HostError>,
     },
     Prepared {
         runner: CloudRunnerId,
+        attempt: Attempt,
         prepared: Result<PreparedRunner, RunnerSetupError>,
     },
     Removed {
@@ -129,6 +135,7 @@ pub(crate) struct Runners {
     pub(crate) webhooks: RunnerWebhooksSync,
     pub(crate) logins: Logins,
     pub(crate) sign_ins: SignIns,
+    pub(crate) ssh_sign_ins: SshSignIns,
     pub(crate) own: Option<EnvironmentName>,
     pub(crate) activity: OwnActivity,
 }

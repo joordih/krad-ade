@@ -7,6 +7,7 @@ mod patch_dialog;
 mod runners;
 mod sessions;
 mod sign_in;
+mod ssh_sign_in;
 mod state;
 mod stops;
 mod token;
@@ -32,6 +33,7 @@ pub(super) struct CloudRunners {
     asking: Option<krad_protocol::CloudDraftId>,
     shown: Option<hosted::HostedChatKey>,
     terminal: Option<hosted::HostedTerminalView>,
+    sign_ins: ssh_sign_in::RunnerSignIns,
 }
 
 impl EnvironmentShell {

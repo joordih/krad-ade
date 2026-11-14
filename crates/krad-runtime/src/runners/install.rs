@@ -33,6 +33,19 @@ pub(crate) enum RunnerSetupError {
     Install(UnreportedInstall),
 }
 
+impl RunnerSetupError {
+    pub(crate) const fn needs_sign_in(&self) -> bool {
+        match self {
+            Self::Host(error) | Self::Cli(HostCliError::Host(error)) => error.needs_sign_in(),
+            Self::NoInstallId
+            | Self::Cli(_)
+            | Self::Vault(_)
+            | Self::BadToken
+            | Self::Install(_) => false,
+        }
+    }
+}
+
 impl fmt::Display for RunnerSetupError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
