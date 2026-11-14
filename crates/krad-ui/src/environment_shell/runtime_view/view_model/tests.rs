@@ -19,9 +19,9 @@ use crate::fake_client::RecordedClient;
 
 const MAIN: &str = "main";
 const SIDE: &str = "side";
-const RUNNER: u64 = 5;
+pub(super) const RUNNER: u64 = 5;
 const UNREACHABLE: &str = "the runner's bus is out of reach";
-const RUNNER_ENVIRONMENT: &str = "runner";
+pub(super) const RUNNER_ENVIRONMENT: &str = "runner";
 const RUNNER_BUILD: &str = "0.9.0";
 
 fn name(raw: &str) -> EnvironmentName {
@@ -40,7 +40,7 @@ fn waiting(terminal: u64) -> AttentionWaiting {
     }
 }
 
-fn snapshot() -> Snapshot {
+pub(super) fn snapshot() -> Snapshot {
     Snapshot {
         scope: Scope::Runtime,
         seq: Seq(10),
@@ -71,6 +71,7 @@ fn snapshot() -> Snapshot {
             }],
             ..RunnersSnapshot::default()
         }),
+        hosted: Vec::new(),
     }
 }
 
@@ -193,7 +194,7 @@ fn a_folded_event_names_its_area_and_hands_its_side_effects_over_once() {
     assert!(model.take_news().areas.is_empty());
 }
 
-fn runner_snapshot() -> Snapshot {
+pub(super) fn runner_snapshot() -> Snapshot {
     let mut environment = EnvironmentData::empty(name(RUNNER_ENVIRONMENT));
     environment.enter_sessions();
     environment.new_session(None, SessionSpec::default());
@@ -203,14 +204,14 @@ fn runner_snapshot() -> Snapshot {
     }
 }
 
-fn runner_moved(model: &mut ViewModel, state: RunnerState) {
+pub(super) fn runner_moved(model: &mut ViewModel, state: RunnerState) {
     model.fold_event(EventKind::RunnerChanged(RunnerShown {
         runner: CloudRunnerId(RUNNER),
         state,
     }));
 }
 
-fn ready() -> RunnerState {
+pub(super) fn ready() -> RunnerState {
     RunnerState::Ready {
         linger: Linger::Enabled,
     }
@@ -226,7 +227,11 @@ fn a_reached_runner_s_sessions_come_from_its_own_feed_tagged_with_its_runtime() 
     let follow = model.adopt_reached(
         runner,
         connection,
-        Reached::Connected(client.clone(), RUNNER_BUILD.to_owned()),
+        Reached::Connected {
+            client: client.clone(),
+            build: RUNNER_BUILD.to_owned(),
+            stop: None,
+        },
     );
     assert!(follow.is_some());
     assert_eq!(
@@ -274,7 +279,11 @@ fn an_older_runner_keeps_the_process_wire_until_it_leaves_ready() {
     let late = model.adopt_reached(
         runner,
         connection,
-        Reached::Connected(unreached, RUNNER_BUILD.to_owned()),
+        Reached::Connected {
+            client: unreached,
+            build: RUNNER_BUILD.to_owned(),
+            stop: None,
+        },
     );
     assert!(
         late.is_none() && model.remotes.get(runner).is_none(),

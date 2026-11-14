@@ -19,11 +19,22 @@ pub(in crate::environment_shell) struct Following {
 
 impl Following {
     pub(in crate::environment_shell) fn new(client: Arc<dyn RuntimeClient>) -> Self {
+        Self::resuming(client, Cursor::default())
+    }
+
+    pub(in crate::environment_shell) fn resuming(
+        client: Arc<dyn RuntimeClient>,
+        cursor: Cursor,
+    ) -> Self {
         Self {
             client,
-            cursor: Cursor::default(),
+            cursor,
             feeds: None,
         }
+    }
+
+    pub(in crate::environment_shell) const fn cursor(&self) -> Cursor {
+        self.cursor
     }
 
     pub(in crate::environment_shell) async fn next_batch(&mut self) -> Batch {

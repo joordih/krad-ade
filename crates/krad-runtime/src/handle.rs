@@ -20,7 +20,7 @@ use crate::hosts::HostLinks;
 use crate::input::Input;
 use crate::launches::LaunchedViews;
 use crate::opencode::OpencodeDirectory;
-use crate::terminals::{Shared, TerminalAction, TerminalLaunch, TerminalView};
+use crate::terminals::{Shared, TerminalAction, TerminalLaunch, TerminalView, TerminalWatch};
 
 mod hosts;
 mod waits;
@@ -138,6 +138,12 @@ impl RuntimeHandle {
     pub fn snapshot(&self, scope: Scope) -> Pending<Snapshot> {
         let (reply, answer) = oneshot::channel();
         self.deliver(Input::Snapshot { scope, reply });
+        Pending(answer)
+    }
+
+    pub fn watch_terminal(&self, terminal: AgentRef) -> Pending<Option<TerminalWatch>> {
+        let (reply, answer) = oneshot::channel();
+        self.deliver(Input::WatchTerminal { terminal, reply });
         Pending(answer)
     }
 

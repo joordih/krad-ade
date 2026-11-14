@@ -83,6 +83,7 @@ pub(crate) fn placement_for(
             .join(repo_slug)
             .join(session_slug),
         branch: format!("{BRANCH_PREFIX}{session_slug}"),
+        origin: None,
     }
 }
 

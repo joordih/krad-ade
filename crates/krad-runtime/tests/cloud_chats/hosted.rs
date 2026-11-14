@@ -13,6 +13,7 @@ use super::cloud::{
     cloned_with_remote, environment, environment_data, install_id, news, send, start, temp_folder,
     use_fake_runner, TestResult, RUNNER,
 };
+use super::hosted_view::the_runner_shows_its_hosted_sessions_terminals_and_failures;
 use super::mirror::ChatFeed;
 use super::repo::committed_repo;
 use super::runner::{install_host_cli, runner_dir, start_daemon};
@@ -122,7 +123,8 @@ pub fn a_cloud_session_handed_to_the_runner_s_runtime_chats_there_and_survives_i
     let hosted = news(&started.feed, |news| {
         matches!(news, CloudNews::Hosted { .. })
     })?;
-    if hosted != (CloudNews::Hosted { runner: RUNNER }) {
+    if !matches!(&hosted, CloudNews::Hosted { runner, slug } if *runner == RUNNER && !slug.is_empty())
+    {
         return Err(format!("{NOT_HOSTED}: {hosted:?}").into());
     }
     let desktop = environment_data(&started.runtime)?;
@@ -164,6 +166,11 @@ pub fn a_cloud_session_handed_to_the_runner_s_runtime_chats_there_and_survives_i
         }
     ));
     chats.until_chat(&id, listed)?;
+    the_runner_shows_its_hosted_sessions_terminals_and_failures(
+        &started.runtime,
+        &id,
+        started.group,
+    )?;
 
     let kept = steady_process(&first, &id)?;
     written(&runner_dir(&runner_home.0).join(STATE_FILE), &kept)?;

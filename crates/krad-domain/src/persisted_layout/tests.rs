@@ -279,6 +279,10 @@ fn a_cloud_session_keeps_its_runner_and_each_chat_its_journal_offset(
         repo_dir: PathBuf::from("/home/me/.krad-ade/runner/repos/api"),
         worktree: PathBuf::from("/home/me/.krad-ade/runner/worktrees/api/fix"),
         branch: "krad/fix".to_owned(),
+        origin: Some(crate::cloud::HostedOrigin {
+            environment: crate::EnvironmentName::new("laptop".to_owned()),
+            group,
+        }),
     };
     let process = CloudProcess {
         id: "chat-1".parse()?,

@@ -1,7 +1,12 @@
-use krad_protocol::{AgentRef, ChatAsk, ChatPage, ChatSummary};
+use krad_domain::{EnvironmentData, TerminalId};
+use krad_protocol::{
+    hosted_summaries, AgentRef, ChatAsk, ChatFacts, ChatPage, ChatState, ChatSummary, HostedSummary,
+};
+use std::collections::HashMap;
 
 use super::chat::Chat;
 use super::{Chats, CHAT_PAGE};
+use crate::runners::OwnActivity;
 
 impl Chats {
     pub(crate) fn snapshot(&self) -> Vec<ChatSummary> {
@@ -24,6 +29,29 @@ impl Chats {
             key(left).cmp(&key(right))
         });
         summaries
+    }
+
+    pub(crate) fn hosted(
+        &self,
+        data: &EnvironmentData,
+        activity: &OwnActivity,
+    ) -> Vec<HostedSummary> {
+        let states: HashMap<TerminalId, (ChatState, usize, &AgentRef)> = self
+            .open
+            .values()
+            .filter(|chat| chat.id.environment == data.name)
+            .map(|chat| (chat.id.terminal, (chat.state(), chat.asks.len(), &chat.id)))
+            .collect();
+        hosted_summaries(data, |terminal| {
+            let (state, asks, chat) = states.get(&terminal)?;
+            let heard = activity.of(chat);
+            Some(ChatFacts {
+                state,
+                asks: *asks,
+                last_activity: heard.map(|(_, at)| at),
+                seq: heard.map(|(seq, _)| seq),
+            })
+        })
     }
 
     pub(crate) fn page(&self, id: &AgentRef, before: usize, count: usize) -> Option<ChatPage> {

@@ -1,40 +1,37 @@
 use gpui_kit::{AppContext as _, Context};
-use krad_client::{ClientError, Runner, RuntimeClient};
+use krad_client::{ClientError, Cursor, Runner, RuntimeClient};
 use krad_domain::{CloudRunnerId, EnvironmentName, RunnerState, RuntimeId, Session};
-use krad_protocol::{AskId, EventKind, Feed, Snapshot};
-use krad_runtime::{RunnerLineError, RuntimeHandle};
-use std::collections::{BTreeMap, BTreeSet};
+use krad_protocol::{AgentRef, Feed, HostedSummary};
+use krad_runtime::{LineStop, RunnerLineError, RuntimeHandle};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use super::super::following::{Batch, Following};
-use super::super::EnvironmentsMirror;
-use super::{Area, RuntimeNews, ViewModel};
+use super::{Area, Heard, RuntimeNews, ViewModel};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::environment_shell) enum RunnerReach {
-    Connecting,
-    Connected { build: String },
-    ProcessWire,
-}
+mod backoff;
+mod remote;
+
+pub(in crate::environment_shell) use remote::{
+    Folded, HostedFailure, RemoteChat, RemoteRuntime, RunnerReach,
+};
 
 pub(in crate::environment_shell) enum Reached {
-    Connected(Arc<dyn RuntimeClient>, String),
+    Connected {
+        client: Arc<dyn RuntimeClient>,
+        build: String,
+        stop: Option<LineStop>,
+    },
     ProcessWire,
     Unreachable,
-}
-
-pub(in crate::environment_shell) struct RemoteRuntime {
-    pub(in crate::environment_shell) reach: RunnerReach,
-    pub(in crate::environment_shell) environments: EnvironmentsMirror,
-    pub(in crate::environment_shell) asks: BTreeSet<AskId>,
-    connection: u64,
 }
 
 #[derive(Default)]
 pub(in crate::environment_shell) struct Remotes {
     runtimes: BTreeMap<CloudRunnerId, RemoteRuntime>,
     connections: u64,
+    awaited: BTreeMap<String, CloudRunnerId>,
 }
 
 impl Remotes {
@@ -54,16 +51,16 @@ impl Remotes {
     pub(super) fn reaching(&mut self, runner: CloudRunnerId) -> u64 {
         self.connections += 1;
         let connection = self.connections;
-        self.runtimes.insert(
-            runner,
-            RemoteRuntime {
-                reach: RunnerReach::Connecting,
-                environments: EnvironmentsMirror::default(),
-                asks: BTreeSet::new(),
-                connection,
-            },
-        );
+        self.runtimes.insert(runner, RemoteRuntime::new(connection));
         connection
+    }
+
+    fn reaching_again(&mut self, runner: CloudRunnerId, connection: u64) -> Option<u64> {
+        self.connections += 1;
+        let next = self.connections;
+        let remote = self.current(runner, connection)?;
+        remote.connection = next;
+        Some(next)
     }
 
     pub(in crate::environment_shell) fn retain(&mut self, keep: impl Fn(CloudRunnerId) -> bool) {
@@ -85,45 +82,90 @@ impl Remotes {
                 })
         })
     }
-}
 
-impl RemoteRuntime {
-    fn adopt(&mut self, snapshot: Snapshot) {
-        self.environments.replace(snapshot.environments);
-        self.asks = snapshot
-            .bus
-            .asks
-            .iter()
-            .map(|pending| pending.ask)
-            .collect();
+    pub(in crate::environment_shell) fn hosted(
+        &self,
+    ) -> impl Iterator<Item = (CloudRunnerId, &HostedSummary)> {
+        self.runtimes.iter().flat_map(|(runner, remote)| {
+            remote.hosted.iter().map(move |summary| (*runner, summary))
+        })
     }
 
-    fn fold(&mut self, kind: EventKind) -> bool {
-        match kind {
-            EventKind::EnvironmentOpened { environment } => self.environments.opened(*environment),
-            EventKind::EnvironmentClosed { environment } => self.environments.closed(&environment),
-            EventKind::EnvironmentsOrdered { order } => self.environments.ordered(&order),
-            EventKind::EnvironmentChanged {
-                environment,
-                changes,
-                ..
-            } => self.environments.changed(&environment, changes),
-            EventKind::AskPending(pending) => return self.asks.insert(pending.ask),
-            EventKind::AskSettled { ask, .. } => return self.asks.remove(&ask),
-            _ => return false,
+    pub(in crate::environment_shell) fn chat(
+        &self,
+        runner: CloudRunnerId,
+        chat: &AgentRef,
+    ) -> Option<&RemoteChat> {
+        self.runtimes.get(&runner)?.chats.get(chat)
+    }
+
+    pub(in crate::environment_shell) fn route(
+        &self,
+        local: &Arc<dyn RuntimeClient>,
+        runtime: RuntimeId,
+    ) -> Option<Arc<dyn RuntimeClient>> {
+        match runtime {
+            RuntimeId::Local => Some(Arc::clone(local)),
+            RuntimeId::Runner(runner) => self.runtimes.get(&runner)?.client.clone(),
         }
-        true
+    }
+
+    pub(in crate::environment_shell) fn connected(&self, runner: CloudRunnerId) -> bool {
+        self.runtimes
+            .get(&runner)
+            .is_some_and(|remote| matches!(remote.reach, RunnerReach::Connected { .. }))
+    }
+
+    pub(in crate::environment_shell) fn await_hosted(
+        &mut self,
+        runner: CloudRunnerId,
+        slug: String,
+    ) {
+        self.awaited.insert(slug, runner);
+    }
+
+    fn awaited_failure(
+        &mut self,
+        runner: CloudRunnerId,
+        failure: HostedFailure,
+    ) -> Option<HostedFailure> {
+        (self.awaited.get(&failure.slug) == Some(&runner)).then(|| {
+            self.awaited.remove(&failure.slug);
+            failure
+        })
+    }
+
+    fn hosted_arrived(&mut self, runner: CloudRunnerId) {
+        let Some(remote) = self.runtimes.get(&runner) else {
+            return;
+        };
+        let branches: Vec<&str> = remote
+            .hosted
+            .iter()
+            .map(|summary| summary.branch.as_str())
+            .collect();
+        self.awaited.retain(|slug, waits| {
+            *waits != runner
+                || !branches
+                    .iter()
+                    .any(|branch| branch.ends_with(slug.as_str()))
+        });
     }
 }
 
-fn reached(connected: Result<Runner, ClientError>) -> Reached {
+fn reached(connected: Result<Runner, ClientError>, stop: LineStop) -> Reached {
     match connected {
         Ok(runner) => {
             let build = runner.welcome().build.clone();
-            Reached::Connected(Arc::new(runner), build)
+            Reached::Connected {
+                client: Arc::new(runner),
+                build,
+                stop: Some(stop),
+            }
         }
         Err(error) => {
             tracing::debug!(%error, "the runner's runtime did not welcome this window");
+            stop.stop();
             Reached::ProcessWire
         }
     }
@@ -138,7 +180,10 @@ async fn connect(handle: RuntimeHandle, runner: CloudRunnerId) -> Reached {
             return Reached::ProcessWire;
         }
     };
-    reached(Runner::connect(line.input, line.output, line.hello))
+    reached(
+        Runner::connect(line.input, line.output, line.hello),
+        line.stop,
+    )
 }
 
 impl ViewModel {
@@ -155,27 +200,36 @@ impl ViewModel {
             .collect();
         for runner in wanted {
             let connection = self.remotes.reaching(runner);
-            let reaching = cx.background_spawn(connect(handle.clone(), runner));
-            cx.spawn(async move |this, cx| {
-                let reached = reaching.await;
-                this.update(cx, |model, cx| {
-                    model.remote_reached(runner, connection, reached, cx);
-                })
-                .unwrap_or_default();
-            })
-            .detach();
+            Self::reach(handle.clone(), runner, connection, cx);
         }
+    }
+
+    fn reach(
+        handle: RuntimeHandle,
+        runner: CloudRunnerId,
+        connection: u64,
+        cx: &mut Context<Self>,
+    ) {
+        let reaching = cx.background_spawn(connect(handle.clone(), runner));
+        cx.spawn(async move |this, cx| {
+            let reached = reaching.await;
+            this.update(cx, |model, cx| {
+                model.remote_reached((runner, connection), reached, handle, cx);
+            })
+            .unwrap_or_default();
+        })
+        .detach();
     }
 
     fn remote_reached(
         &mut self,
-        runner: CloudRunnerId,
-        connection: u64,
+        (runner, connection): (CloudRunnerId, u64),
         reached: Reached,
+        handle: RuntimeHandle,
         cx: &mut Context<Self>,
     ) {
-        if let Some(client) = self.adopt_reached(runner, connection, reached) {
-            Self::follow_remote(runner, connection, client, cx);
+        if let Some((client, cursor)) = self.adopt_reached(runner, connection, reached) {
+            Self::follow_remote((runner, connection), client, cursor, handle, cx);
         }
         cx.emit(RuntimeNews);
     }
@@ -185,12 +239,19 @@ impl ViewModel {
         runner: CloudRunnerId,
         connection: u64,
         reached: Reached,
-    ) -> Option<Arc<dyn RuntimeClient>> {
+    ) -> Option<(Arc<dyn RuntimeClient>, Cursor)> {
         let remote = self.remotes.current(runner, connection)?;
         let follow = match reached {
-            Reached::Connected(client, build) => {
+            Reached::Connected {
+                client,
+                build,
+                stop,
+            } => {
+                remote.let_go();
                 remote.reach = RunnerReach::Connected { build };
-                Some(client)
+                remote.client = Some(Arc::clone(&client));
+                remote.stop = stop;
+                Some((client, remote.cursor))
             }
             Reached::ProcessWire => {
                 remote.reach = RunnerReach::ProcessWire;
@@ -206,16 +267,26 @@ impl ViewModel {
     }
 
     fn follow_remote(
-        runner: CloudRunnerId,
-        connection: u64,
+        (runner, connection): (CloudRunnerId, u64),
         client: Arc<dyn RuntimeClient>,
+        cursor: Cursor,
+        handle: RuntimeHandle,
         cx: &mut Context<Self>,
     ) {
-        let mut following = Following::new(client);
+        let mut following = Following::resuming(client, cursor);
         cx.spawn(async move |this, cx| loop {
             let Batch::Feeds(feeds) = following.next_batch().await else {
-                this.update(cx, |model, cx| model.remote_lost(runner, connection, cx))
+                let cursor = following.cursor();
+                let wait = this.update(cx, |model, cx| {
+                    model.remote_lost((runner, connection), cursor, cx)
+                });
+                if let Ok(Some(wait)) = wait {
+                    cx.background_executor().timer(wait).await;
+                    this.update(cx, |model, cx| {
+                        model.reach_again((runner, connection), handle, cx);
+                    })
                     .unwrap_or_default();
+                }
                 break;
             };
             let heard = this.update(cx, |model, cx| {
@@ -240,7 +311,14 @@ impl ViewModel {
         for feed in feeds {
             changed |= self.fold_remote(runner, connection, feed)?;
         }
-        if changed {
+        if let Some(remote) = self.remotes.current(runner, connection) {
+            remote.backoff.reset();
+            if changed {
+                remote.refresh_hosted();
+                self.remotes.hosted_arrived(runner);
+            }
+        }
+        if changed || !self.news.heard.is_empty() {
             self.changed(Area::Runners);
             cx.emit(RuntimeNews);
         }
@@ -254,22 +332,57 @@ impl ViewModel {
         feed: Feed,
     ) -> Option<bool> {
         let remote = self.remotes.current(runner, connection)?;
-        Some(match feed {
+        let Folded { changed, failure } = match feed {
             Feed::Snapshot(snapshot) => {
                 remote.adopt(snapshot);
-                true
+                Folded {
+                    changed: true,
+                    failure: None,
+                }
             }
-            Feed::Event(event) => remote.fold(event.kind),
-        })
+            Feed::Event(event) => remote.fold(event),
+        };
+        if let Some(failure) =
+            failure.and_then(|failure| self.remotes.awaited_failure(runner, failure))
+        {
+            self.heard(Heard::HostedFailed { runner, failure });
+        }
+        Some(changed)
     }
 
-    fn remote_lost(&mut self, runner: CloudRunnerId, connection: u64, cx: &mut Context<Self>) {
-        if self.remotes.current(runner, connection).is_none() {
-            return;
+    fn remote_lost(
+        &mut self,
+        (runner, connection): (CloudRunnerId, u64),
+        cursor: Cursor,
+        cx: &mut Context<Self>,
+    ) -> Option<Duration> {
+        let ready = self.runners.get(&runner).is_some_and(RunnerState::is_ready);
+        let remote = self.remotes.current(runner, connection)?;
+        remote.let_go();
+        remote.cursor = cursor;
+        remote.reach = RunnerReach::Connecting;
+        let wait = remote.backoff.next_wait();
+        if !ready {
+            self.remotes.retain(|kept| kept != runner);
         }
-        self.remotes.retain(|kept| kept != runner);
         self.changed(Area::Runners);
         cx.emit(RuntimeNews);
+        ready.then_some(wait)
+    }
+
+    fn reach_again(
+        &mut self,
+        (runner, connection): (CloudRunnerId, u64),
+        handle: RuntimeHandle,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.runners.get(&runner).is_some_and(RunnerState::is_ready) {
+            return;
+        }
+        let Some(next) = self.remotes.reaching_again(runner, connection) else {
+            return;
+        };
+        Self::reach(handle, runner, next, cx);
     }
 
     pub(super) fn forget_unready_remotes(&mut self) {
@@ -278,3 +391,6 @@ impl ViewModel {
             .retain(|runner| runners.get(&runner).is_some_and(RunnerState::is_ready));
     }
 }
+
+#[cfg(test)]
+mod tests;

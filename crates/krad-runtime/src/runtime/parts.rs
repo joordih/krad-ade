@@ -1,4 +1,6 @@
-use krad_protocol::{BusSnapshot, HostsSnapshot, RunnersSnapshot, Scope, Seq, Snapshot};
+use krad_protocol::{
+    BusSnapshot, HostedSummary, HostsSnapshot, RunnersSnapshot, Scope, Seq, Snapshot,
+};
 
 use super::Runtime;
 use crate::adapters::AcpAdapters;
@@ -64,7 +66,18 @@ impl Parts<'_> {
                 buses: self.runners.buses.snapshot(),
                 logins: self.runners.logins_snapshot(),
             }),
+            hosted: self.hosted(),
         }
+    }
+
+    fn hosted(&self) -> Vec<HostedSummary> {
+        self.runners
+            .own
+            .as_ref()
+            .and_then(|own| self.environments.data(own))
+            .map_or_else(Vec::new, |data| {
+                self.chats.hosted(data, &self.runners.activity)
+            })
     }
 }
 

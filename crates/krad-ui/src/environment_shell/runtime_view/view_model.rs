@@ -21,7 +21,7 @@ use super::{AgentSpot, HostMove, HostsMirror, MailNotices, Waiters};
 mod folding;
 mod remotes;
 
-pub(in crate::environment_shell) use remotes::{Remotes, RunnerReach};
+pub(in crate::environment_shell) use remotes::{HostedFailure, Remotes, RunnerReach};
 
 const FIRST_PACE: Duration = Duration::from_millis(16);
 const RECONNECT_PAUSE: Duration = Duration::from_millis(500);
@@ -71,6 +71,10 @@ pub(in crate::environment_shell) enum Heard {
     ModelsRelisted(AgentPreset),
     OpencodeReady,
     SettingsAdopted(Box<Settings>),
+    HostedFailed {
+        runner: CloudRunnerId,
+        failure: HostedFailure,
+    },
 }
 
 #[derive(Default)]

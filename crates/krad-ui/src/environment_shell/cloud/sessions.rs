@@ -1,4 +1,4 @@
-use gpui_kit::{Context, PromptButton, PromptLevel};
+use gpui_kit::{App, Context, PromptButton, PromptLevel};
 use krad_domain::{CloudRunnerId, EnvironmentView, GroupId, SessionId, ToastKind};
 use krad_protocol::{
     CloudCommand, CloudDraftId, CloudNews, CloudOpened, CloudReach, Command, PatchAnswer,
@@ -35,21 +35,34 @@ pub(super) const PATCH_CANCEL: &str = "Cancel";
 const BRING_ANSWER: usize = 0;
 const LEAVE_ANSWER: usize = 1;
 
+pub(super) const fn reach_for(connected: bool) -> CloudReach {
+    if connected {
+        CloudReach::Runtime
+    } else {
+        CloudReach::ProcessWire
+    }
+}
+
 impl EnvironmentShell {
     fn post_cloud(&self, command: CloudCommand) {
         self.runtime.client.post(Command::Cloud(command));
+    }
+
+    fn cloud_reach(&self, runner: CloudRunnerId, cx: &App) -> CloudReach {
+        reach_for(self.runtime.view.read(cx).remotes.connected(runner))
     }
 
     pub(in crate::environment_shell) fn new_cloud_session(
         &self,
         group: GroupId,
         runner: CloudRunnerId,
+        cx: &App,
     ) {
         self.post_cloud(CloudCommand::Create {
             environment: self.active.clone(),
             group,
             runner,
-            reach: CloudReach::ProcessWire,
+            reach: self.cloud_reach(runner, cx),
         });
     }
 
@@ -57,12 +70,13 @@ impl EnvironmentShell {
         &self,
         session: SessionId,
         runner: CloudRunnerId,
+        cx: &App,
     ) {
         self.post_cloud(CloudCommand::Send {
             environment: self.active.clone(),
             session,
             runner,
-            reach: CloudReach::ProcessWire,
+            reach: self.cloud_reach(runner, cx),
         });
     }
 
@@ -155,8 +169,13 @@ impl EnvironmentShell {
                 ToastKind::Info,
                 format!("{PREPARING_PREFIX} {}…", self.runner_name(runner)),
             ),
-            CloudNews::Hosted { runner } => (
-                ToastKind::Success,
+            CloudNews::Hosted { runner, slug } => (
+                {
+                    self.runtime
+                        .view
+                        .update(cx, |model, _| model.remotes.await_hosted(runner, slug));
+                    ToastKind::Success
+                },
                 format!("{HOSTED_PREFIX} {}", self.runner_name(runner)),
             ),
             CloudNews::RunnerFailed { runner, reason } => (

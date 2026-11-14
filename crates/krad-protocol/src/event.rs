@@ -19,6 +19,7 @@ use crate::gateway::GatewayState;
 use crate::git::{GitFinished, GitRead, SessionChangesRead, WorktreeSwept};
 use crate::harness_health::{HarnessChecked, HealthSnapshot};
 use crate::hooks::HookHeard;
+use crate::hosted::HostedSummary;
 use crate::hosts::{
     HostPrompt, HostState, HostsSnapshot, KeptAdapter, LocalAgents, PromptId, RemoteBusState,
 };
@@ -277,6 +278,8 @@ pub struct Snapshot {
     pub kraddies: Box<KraddiesSnapshot>,
     #[serde(default)]
     pub runners: Box<RunnersSnapshot>,
+    #[serde(default)]
+    pub hosted: Vec<HostedSummary>,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -339,6 +342,7 @@ mod tests {
                 git: Vec::new(),
                 kraddies: Box::default(),
                 runners: Box::default(),
+                hosted: Vec::new(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

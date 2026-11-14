@@ -35,6 +35,9 @@ pub enum TerminalCommand {
         terminal: AgentRef,
         typing: Typing,
     },
+    Watch {
+        terminal: AgentRef,
+    },
     #[serde(other)]
     Unknown,
 }

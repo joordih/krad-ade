@@ -6,6 +6,7 @@ mod pairing_requests;
 mod permits;
 mod profile;
 mod server;
+mod watching;
 
 pub use listener::{bind_runtime_socket, Listener, Stream};
 pub use profile::{OwnDaemon, RunnerProfile, RUNNER_ENVIRONMENT};

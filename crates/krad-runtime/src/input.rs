@@ -12,7 +12,7 @@ use crate::jobs::JobDone;
 use crate::kraddies::DigestReply;
 use crate::opencode::OpencodeInput;
 use crate::runners::{RunnerLine, RunnerLineError};
-use crate::terminals::{Shared, TerminalAction, TerminalLaunch};
+use crate::terminals::{Shared, TerminalAction, TerminalLaunch, TerminalWatch};
 
 #[derive(Debug)]
 pub(crate) enum RunnerInput {
@@ -74,6 +74,10 @@ pub(crate) enum Input {
     TerminalAction {
         terminal: AgentRef,
         action: TerminalAction,
+    },
+    WatchTerminal {
+        terminal: AgentRef,
+        reply: oneshot::Sender<Option<TerminalWatch>>,
     },
     TerminalPalette(AnsiPalette),
     OpenSignIn {

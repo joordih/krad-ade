@@ -21,6 +21,9 @@ pub enum ProblemScope {
     Chat {
         chat: AgentRef,
     },
+    CloudSession {
+        slug: String,
+    },
     #[serde(other)]
     Unknown,
 }

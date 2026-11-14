@@ -1,6 +1,6 @@
 use gpui_kit::{App, AppContext as _, Context, Entity};
 use krad_client::{InProcess, RuntimeClient};
-use krad_domain::{AgentStatus, EnvironmentName, TerminalId};
+use krad_domain::{AgentStatus, EnvironmentName, RuntimeId, TerminalId};
 use krad_protocol::AgentRef;
 use krad_runtime::RuntimeHandle;
 use krad_session::AnsiPalette;
@@ -20,7 +20,7 @@ pub(super) use environments::EnvironmentsMirror;
 pub(super) use hosts::{HostMove, HostsMirror};
 pub(super) use mail::MailNotices;
 use view_model::RuntimeNews;
-pub(super) use view_model::{RunnerReach, ViewModel};
+pub(super) use view_model::{HostedFailure, RunnerReach, ViewModel};
 
 use super::EnvironmentShell;
 
@@ -73,6 +73,18 @@ impl EnvironmentShell {
         self.runtime
             .view
             .update(cx, |model, cx| model.reach_ready_runners(&handle, cx));
+    }
+
+    pub(super) fn client_for(
+        &self,
+        runtime: RuntimeId,
+        cx: &App,
+    ) -> Option<Arc<dyn RuntimeClient>> {
+        self.runtime
+            .view
+            .read(cx)
+            .remotes
+            .route(&self.runtime.client, runtime)
     }
 
     pub(super) fn agent_status<'a>(

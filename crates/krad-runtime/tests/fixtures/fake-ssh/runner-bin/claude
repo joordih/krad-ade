@@ -2,5 +2,13 @@
 case "$1" in
   --version) echo "9.0.0 (Claude Code)" ;;
   auth) echo '{"loggedIn":false}' ;;
-  *) exec "$(dirname "$0")/../../fake-harness/claude-cloud" "$@" ;;
+  *)
+    if [ -n "$KRAD_TEST_OWNER" ]; then
+      (
+        while kill -0 "$KRAD_TEST_OWNER" 2>/dev/null; do sleep 1; done
+        kill -KILL "$$" 2>/dev/null
+      ) </dev/null >/dev/null 2>&1 &
+    fi
+    exec "$(dirname "$0")/../../fake-harness/claude-cloud" "$@"
+    ;;
 esac

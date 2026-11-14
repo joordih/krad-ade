@@ -3,6 +3,7 @@ mod actions;
 mod badge;
 mod bus;
 mod entry;
+mod hosted;
 mod patch_dialog;
 mod runners;
 mod sessions;
@@ -32,6 +33,8 @@ type NodeKey = (EnvironmentName, TerminalId);
 pub(super) struct CloudRunners {
     asking: Option<krad_protocol::CloudDraftId>,
     helpers: HashSet<NodeKey>,
+    shown: Option<hosted::HostedChatKey>,
+    composer: Option<hosted::HostedComposer>,
 }
 
 impl EnvironmentShell {

@@ -1,3 +1,4 @@
+use krad_domain::HostedOrigin;
 use krad_host::HostLink;
 use krad_protocol::{
     read_frame, write_frame, CloudChatStart, CloudCommand, Command, Frame, FrameError, Hello,
@@ -5,6 +6,9 @@ use krad_protocol::{
 };
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::PathBuf;
+use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use super::carry::{carry_chats, CarriedChat};
 use super::workspace::{placement_on, WorkspaceError, WorkspaceRequest};
@@ -13,6 +17,11 @@ use crate::runners::{open_runner_line, RunnerLine, RunnerLineError};
 const FIRST_REQUEST: RequestId = RequestId(1);
 const NO_WELCOME: &str = "the runner's runtime did not welcome this computer";
 const HUNG_UP: &str = "the runner's runtime closed the connection before it answered";
+const TOO_SLOW: &str = "the runner's runtime did not answer in time";
+const NO_READER: &str = "the hand-over could not start its reader";
+const READER_THREAD: &str = "krad-runtime-hand-over";
+const HAND_OVER_LIMIT: Duration = Duration::from_secs(60);
+const READ_AHEAD: usize = 16;
 
 #[derive(Debug)]
 pub(crate) struct HandOver {
@@ -23,6 +32,7 @@ pub(crate) struct HandOver {
     pub(crate) request: WorkspaceRequest,
     pub(crate) carried: Vec<CarriedChat>,
     pub(crate) starts: Vec<CloudChatStart>,
+    pub(crate) origin: Option<HostedOrigin>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -45,9 +55,33 @@ fn send(output: &mut impl Write, message: Message) -> Result<(), HandOverError> 
     Ok(())
 }
 
-fn next_message(input: &mut impl Read) -> Result<Message, HandOverError> {
+type FrameRead = Result<Option<Frame>, FrameError>;
+
+fn read_ahead(input: impl Read + Send + 'static) -> Result<Receiver<FrameRead>, HandOverError> {
+    let (frames, read) = sync_channel(READ_AHEAD);
+    let mut input = BufReader::new(input);
+    thread::Builder::new()
+        .name(READER_THREAD.to_owned())
+        .spawn(move || loop {
+            let frame = read_frame(&mut input);
+            let last = !matches!(frame, Ok(Some(_)));
+            if frames.send(frame).is_err() || last {
+                return;
+            }
+        })
+        .map_err(|_| HandOverError::Unanswered(NO_READER))?;
+    Ok(read)
+}
+
+fn next_message(frames: &Receiver<FrameRead>, deadline: Instant) -> Result<Message, HandOverError> {
     loop {
-        match read_frame(input)? {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let frame = match frames.recv_timeout(left) {
+            Ok(frame) => frame?,
+            Err(RecvTimeoutError::Timeout) => return Err(HandOverError::Unanswered(TOO_SLOW)),
+            Err(RecvTimeoutError::Disconnected) => return Err(HandOverError::Unanswered(HUNG_UP)),
+        };
+        match frame {
             Some(Frame::Message(message)) => return Ok(*message),
             Some(Frame::Terminal(_)) => {}
             None => return Err(HandOverError::Unanswered(HUNG_UP)),
@@ -55,16 +89,30 @@ fn next_message(input: &mut impl Read) -> Result<Message, HandOverError> {
     }
 }
 
-fn exchange(line: RunnerLine, command: Command) -> Result<Reply, HandOverError> {
+fn exchange(line: RunnerLine, command: Command, limit: Duration) -> Result<Reply, HandOverError> {
     let RunnerLine {
         input,
         output,
         hello,
+        stop,
     } = line;
+    let answered = talk(input, output, hello, command, Instant::now() + limit);
+    stop.stop();
+    answered
+}
+
+fn talk(
+    input: impl Read + Send + 'static,
+    output: impl Write,
+    hello: Hello,
+    command: Command,
+    deadline: Instant,
+) -> Result<Reply, HandOverError> {
     let mut output = BufWriter::new(output);
-    let mut input = BufReader::new(input);
+    let frames = read_ahead(input)?;
+    let input = &frames;
     send(&mut output, Message::Hello(hello))?;
-    let welcome = match next_message(&mut input)? {
+    let welcome = match next_message(input, deadline)? {
         Message::Welcome(welcome) => welcome,
         Message::Refused { message, .. } => return Err(HandOverError::Refused(message)),
         _ => return Err(HandOverError::Unanswered(NO_WELCOME)),
@@ -72,7 +120,7 @@ fn exchange(line: RunnerLine, command: Command) -> Result<Reply, HandOverError> 
     let id = welcome.first_request.unwrap_or(FIRST_REQUEST);
     send(&mut output, Message::Command { id, command })?;
     loop {
-        match next_message(&mut input)? {
+        match next_message(input, deadline)? {
             Message::Reply {
                 id: answered,
                 reply,
@@ -104,12 +152,40 @@ pub(crate) fn hand_over(over: HandOver) -> Result<(), HandOverError> {
             patch,
         },
         starts,
+        origin: over.origin,
     });
     let line = open_runner_line(&over.link, &over.cli, over.hello)?;
     let command = Command::Cloud(CloudCommand::Host { session });
-    if let Reply::Refused { message, .. } = exchange(line, command)? {
+    if let Reply::Refused { message, .. } = exchange(line, command, HAND_OVER_LIMIT)? {
         return Err(HandOverError::Refused(message));
     }
     tracing::info!("cloud session handed to the runner's runtime");
     Ok(())
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use krad_protocol::RuntimeCommand;
+    use std::os::unix::net::UnixStream;
+
+    const BUILD: &str = "0.0.0";
+    const SHORT: Duration = Duration::from_millis(50);
+
+    #[test]
+    fn a_runner_that_never_answers_the_hand_over_is_given_up_on() -> std::io::Result<()> {
+        let (ours, theirs) = UnixStream::pair()?;
+        let command = Command::Runtime(RuntimeCommand::Ping);
+        let deadline = Instant::now() + SHORT;
+        let talked = talk(
+            ours.try_clone()?,
+            ours,
+            Hello::new(BUILD),
+            command,
+            deadline,
+        );
+        assert!(matches!(talked, Err(HandOverError::Unanswered(TOO_SLOW))));
+        drop(theirs);
+        Ok(())
+    }
 }

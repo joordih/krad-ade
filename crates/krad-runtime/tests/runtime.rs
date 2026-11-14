@@ -94,6 +94,7 @@ fn a_subscriber_starts_from_a_snapshot_and_receives_events_with_rising_seqs() ->
             git: Vec::new(),
             kraddies: Box::default(),
             runners: Box::default(),
+            hosted: Vec::new(),
         }
     );
     Ok(())

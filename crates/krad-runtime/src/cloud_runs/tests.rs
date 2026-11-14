@@ -19,6 +19,7 @@ fn site() -> Result<CloudSite, Box<dyn std::error::Error>> {
             repo_dir: PathBuf::from("/r/repos/api"),
             worktree: PathBuf::from("/r/worktrees/api/api-a1"),
             branch: "krad/api-a1".to_owned(),
+            origin: None,
         },
         claude_token: None,
     })

@@ -81,6 +81,10 @@ impl EnvironmentShell {
             }
             Heard::OpencodeReady => self.opencode_ready(),
             Heard::SettingsAdopted(settings) => self.settings_adopted(*settings, cx),
+            Heard::HostedFailed { runner, failure } => {
+                self.hosted_failed(runner, &failure, cx);
+                return Reach::Shown;
+            }
         }
         Reach::Attention
     }

@@ -275,6 +275,7 @@ mod tests {
             repo_dir: PathBuf::from("/home/me/.krad-ade/runner/repos/api-1a2b3c4d"),
             worktree: PathBuf::from("/home/me/.krad-ade/runner/worktrees/api-1a2b3c4d/api-77"),
             branch: "krad/api-77".to_owned(),
+            origin: None,
         };
         if let Some(found) = bench
             .data

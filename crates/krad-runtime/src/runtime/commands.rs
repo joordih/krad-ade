@@ -261,6 +261,7 @@ impl Runtime {
             | Input::DigestHeard { .. }
             | Input::OpenTerminal { .. }
             | Input::TerminalAction { .. }
+            | Input::WatchTerminal { .. }
             | Input::TerminalPalette(_)
             | Input::OpenSignIn { .. }
             | Input::Runner(_)

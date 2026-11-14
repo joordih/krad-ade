@@ -1,5 +1,5 @@
 use krad_domain::review::MergeRequest;
-use krad_domain::{CloudRunnerId, EnvironmentName, GroupId};
+use krad_domain::{CloudRunnerId, EnvironmentName, GroupId, HostedOrigin};
 use krad_protocol::{CloudChatStart, CloudDraftId, CloudReach};
 use krad_repo::{RepoError, Worktree};
 use std::collections::HashMap;
@@ -35,6 +35,7 @@ pub(crate) struct CloudDraft {
     pub(crate) carried: Vec<CarriedChat>,
     pub(crate) starts: Vec<CloudChatStart>,
     pub(crate) reach: CloudReach,
+    pub(crate) origin: Option<HostedOrigin>,
 }
 
 #[derive(Debug)]
@@ -77,6 +78,7 @@ pub(crate) enum CloudDone {
     },
     HandedOver {
         runner: CloudRunnerId,
+        slug: String,
         handed: Result<(), HandOverError>,
     },
 }
@@ -132,6 +134,7 @@ mod tests {
             carried: Vec::new(),
             starts: Vec::new(),
             reach: CloudReach::ProcessWire,
+            origin: None,
         }
     }
 

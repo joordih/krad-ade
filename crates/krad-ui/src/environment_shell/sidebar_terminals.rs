@@ -248,7 +248,9 @@ impl EnvironmentShell {
     }
 
     fn group_rows(&self, group: Option<GroupId>, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        self.session_rows(group, cx)
+        let mut rows = self.session_rows(group, cx);
+        rows.extend(self.hosted_rows(group, cx));
+        rows
     }
 
     fn worktree_draft_row(draft: String, pal: &Palette) -> AnyElement {

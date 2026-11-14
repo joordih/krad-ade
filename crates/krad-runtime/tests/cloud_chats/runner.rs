@@ -26,6 +26,7 @@ const KILL_SIGNAL: &str = "-KILL";
 const NO_SOCKET: &str = "the cloud runner daemon never opened its socket";
 const PATH_VAR: &str = "PATH";
 const SHELL_VAR: &str = "SHELL";
+const OWNER_VAR: &str = "KRAD_TEST_OWNER";
 const SHELL: &str = "/bin/sh";
 const SYSTEM_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 const FAKE_SSH_DIR: &str = "tests/fixtures/fake-ssh";
@@ -128,6 +129,7 @@ fn spawn_daemon(runner_home: &Path) -> Result<Child, Box<dyn Error>> {
         .env(HOME_VAR, runner_home)
         .env(PATH_VAR, runner_path())
         .env(SHELL_VAR, SHELL)
+        .env(OWNER_VAR, std::process::id().to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

@@ -5,17 +5,19 @@ mod remote_pty;
 mod terminal;
 mod typed;
 mod view;
+mod watch;
 
 pub use action::TerminalAction;
 pub use launch::{
     remote_terminal, remote_terminal_opener, HostShell, OutputTap, TerminalLaunch, TerminalPlace,
 };
 pub use view::{ShownImage, TerminalFrame, TerminalStatus, TerminalView};
+pub use watch::TerminalWatch;
 
 pub(crate) use typed::Typed;
 pub(crate) use view::Shared;
 
-use krad_domain::{ProcessRun, TerminalMeta};
+use krad_domain::{EnvironmentName, ProcessRun, TerminalMeta};
 use krad_protocol::{
     AgentRef, ErrorCode, EventKind, Reply, TerminalClassified, TerminalCommand, TerminalSummary,
 };
@@ -32,6 +34,7 @@ use std::time::Instant;
 use self::launch::Placed;
 use self::pump::{PumpQueue, Pumped};
 use self::terminal::{Generation, Opened, Terminal, Written};
+use self::watch::Watchers;
 use crate::input::Input;
 use crate::runtime::refused;
 
@@ -51,6 +54,7 @@ pub(crate) struct Terminals {
     queue: PumpQueue,
     palette: AnsiPalette,
     generations: u64,
+    watchers: Watchers,
 }
 
 impl std::fmt::Debug for Terminals {
@@ -71,6 +75,7 @@ impl Terminals {
             queue,
             palette: XTERM_PALETTE,
             generations: 0,
+            watchers: Watchers::default(),
         }
     }
 
@@ -180,7 +185,18 @@ impl Terminals {
     }
 
     pub(crate) fn close(&mut self, terminal: &AgentRef) -> bool {
+        self.watchers.forget(terminal);
         self.live.remove(terminal).map(Terminal::kill).is_some()
+    }
+
+    pub(crate) fn watch(&mut self, terminal: &AgentRef) -> Option<TerminalWatch> {
+        self.live
+            .contains_key(terminal)
+            .then(|| self.watchers.watch(terminal))
+    }
+
+    pub(crate) fn keep_replays_of(&mut self, environment: EnvironmentName) {
+        self.watchers.keep_replays_of(environment);
     }
 
     pub(crate) fn pumped(&mut self, outbox: &mut Vec<EventKind>) {
@@ -212,6 +228,7 @@ impl Terminals {
                 let Some(live) = self.live.get_mut(&key) else {
                     return;
                 };
+                self.watchers.heard(&key, &bytes);
                 if let Some(state) = live.feed(&bytes) {
                     outbox.push(classified(key, state));
                 }
@@ -255,6 +272,7 @@ impl Terminals {
             TerminalCommand::Open { .. }
             | TerminalCommand::OpenMissing { .. }
             | TerminalCommand::Type { .. }
+            | TerminalCommand::Watch { .. }
             | TerminalCommand::Unknown => return None,
         };
         if let TerminalCommand::Close { terminal } = command {
@@ -279,6 +297,7 @@ impl Terminals {
             | TerminalCommand::Open { .. }
             | TerminalCommand::OpenMissing { .. }
             | TerminalCommand::Type { .. }
+            | TerminalCommand::Watch { .. }
             | TerminalCommand::Unknown => {}
         }
         Some(Reply::Accepted)

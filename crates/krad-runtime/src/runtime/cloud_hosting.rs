@@ -1,8 +1,9 @@
 use krad_chat::{new_session_id, LiveSession};
-use krad_domain::{CloudRunnerId, EnvironmentName, GroupEdit, GroupId, TerminalNode};
+use krad_domain::{CloudRunnerId, EnvironmentName, GroupEdit, GroupId, HostedOrigin, TerminalNode};
 use krad_host::HostLink;
 use krad_protocol::{
-    CloudNews, CloudReach, ErrorCode, Hello, HostedSession, HostedWorkspace, Reply,
+    CloudNews, CloudReach, ErrorCode, EventKind, Hello, HostedSession, HostedWorkspace, Problem,
+    ProblemScope, Reply,
 };
 use std::path::Path;
 
@@ -46,6 +47,7 @@ impl Runtime {
         let Some(own) = own else {
             return;
         };
+        self.terminals.keep_replays_of(own.environment.clone());
         self.runners.adopt_own(own);
         self.reopen_own_cloud_chats();
     }
@@ -123,8 +125,22 @@ impl Runtime {
             carried: Vec::new(),
             starts: hosted.starts,
             reach: CloudReach::ProcessWire,
+            origin: hosted.origin,
         });
         Reply::Accepted
+    }
+
+    pub(super) fn cloud_not_prepared(&mut self, draft: &CloudDraft, error: String) {
+        if self.runners.own.as_ref() == Some(&draft.environment) {
+            self.outbox.push(EventKind::Problem(Problem {
+                scope: ProblemScope::CloudSession {
+                    slug: draft.request.session_slug.clone(),
+                },
+                code: ErrorCode::Unavailable,
+                message: error.clone(),
+            }));
+        }
+        self.cloud_news(CloudNews::NotPrepared { error });
     }
 
     pub(super) fn hand_over_cloud_session(&mut self, ready: &ReadyRunner, mut draft: CloudDraft) {
@@ -132,6 +148,11 @@ impl Runtime {
         if draft.carried.is_empty() && draft.starts.is_empty() {
             draft.starts = vec![fresh_start(self.default_cloud_harness(), None)];
         }
+        let slug = draft.request.session_slug.clone();
+        let origin = Some(HostedOrigin {
+            environment: draft.environment,
+            group: draft.group,
+        });
         let over = HandOver {
             link: ready.link.clone(),
             cli: ready.cli.clone(),
@@ -140,9 +161,11 @@ impl Runtime {
             request: draft.request,
             carried: draft.carried,
             starts: draft.starts,
+            origin,
         };
         self.run_cloud_job(move || CloudDone::HandedOver {
             runner,
+            slug,
             handed: hand_over(over),
         });
     }
@@ -150,10 +173,11 @@ impl Runtime {
     pub(super) fn cloud_handed_over(
         &mut self,
         runner: CloudRunnerId,
+        slug: String,
         handed: Result<(), HandOverError>,
     ) {
         match handed {
-            Ok(()) => self.cloud_news(CloudNews::Hosted { runner }),
+            Ok(()) => self.cloud_news(CloudNews::Hosted { runner, slug }),
             Err(error) => {
                 tracing::warn!(%runner, %error, "the cloud session was not handed to the runner");
                 let error = error.to_string();

@@ -1,6 +1,9 @@
 use futures::channel::{mpsc, oneshot};
 use futures::SinkExt as _;
-use krad_protocol::{read_frame, Feed, Frame, Message, PairingAnswer, Reply, RequestId, Snapshot};
+use krad_domain::TerminalId;
+use krad_protocol::{
+    read_frame, Feed, Frame, Message, PairingAnswer, Reply, RequestId, Snapshot, TerminalBytes,
+};
 use std::collections::HashMap;
 use std::io::Read;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -15,6 +18,7 @@ pub(super) enum Awaiting {
 struct Expected {
     answers: HashMap<RequestId, Awaiting>,
     feed: Option<mpsc::Sender<Feed>>,
+    terminals: HashMap<TerminalId, mpsc::Sender<Vec<u8>>>,
 }
 
 #[derive(Default)]
@@ -41,6 +45,18 @@ impl Waiting {
         self.expected().feed = None;
     }
 
+    pub(super) fn watch(&self, terminal: TerminalId, bytes: mpsc::Sender<Vec<u8>>) {
+        self.expected().terminals.insert(terminal, bytes);
+    }
+
+    fn terminal(&self, terminal: TerminalId) -> Option<mpsc::Sender<Vec<u8>>> {
+        self.expected().terminals.get(&terminal).cloned()
+    }
+
+    fn unwatch(&self, terminal: TerminalId) {
+        self.expected().terminals.remove(&terminal);
+    }
+
     fn take(&self, id: RequestId) -> Option<Awaiting> {
         self.expected().answers.remove(&id)
     }
@@ -53,6 +69,7 @@ impl Waiting {
         let mut expected = self.expected();
         expected.answers.clear();
         expected.feed = None;
+        expected.terminals.clear();
     }
 }
 
@@ -104,11 +121,20 @@ fn take(message: Message, waiting: &Waiting) {
     }
 }
 
+fn take_terminal(bytes: TerminalBytes, waiting: &Waiting) {
+    let Some(mut sink) = waiting.terminal(bytes.terminal) else {
+        return;
+    };
+    if futures::executor::block_on(sink.send(bytes.bytes)).is_err() {
+        waiting.unwatch(bytes.terminal);
+    }
+}
+
 pub(super) fn read_all(input: &mut impl Read, waiting: &Waiting) {
     loop {
         match read_frame(input) {
             Ok(Some(Frame::Message(message))) => take(*message, waiting),
-            Ok(Some(Frame::Terminal(_))) => {}
+            Ok(Some(Frame::Terminal(bytes))) => take_terminal(bytes, waiting),
             Ok(None) => break,
             Err(error) => {
                 tracing::debug!(%error, "the runner connection ended");

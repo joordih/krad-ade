@@ -1,9 +1,13 @@
 use krad_domain::PairingPermission;
-use krad_protocol::{BusCommand, ChatCommand, CloudCommand, Command, PairingCommand};
+use krad_protocol::{
+    BusCommand, ChatCommand, CloudCommand, Command, PairingCommand, TerminalCommand,
+};
 
 pub(crate) const fn needed_for_command(command: &Command) -> PairingPermission {
     match command {
-        Command::Runtime(_) => PairingPermission::Read,
+        Command::Runtime(_) | Command::Terminal(TerminalCommand::Watch { .. }) => {
+            PairingPermission::Read
+        }
         Command::Bus(BusCommand::AnswerAsk { .. } | BusCommand::Answer { .. })
         | Command::Chat(
             ChatCommand::AnswerAsk { .. }

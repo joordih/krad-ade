@@ -1,5 +1,5 @@
 use krad_domain::{
-    AgentPreset, CloudRunnerId, EnvironmentName, GroupId, Prompt, ResumeId, SessionId,
+    AgentPreset, CloudRunnerId, EnvironmentName, GroupId, HostedOrigin, Prompt, ResumeId, SessionId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -38,6 +38,8 @@ pub struct HostedSession {
     pub workspace: HostedWorkspace,
     #[serde(default)]
     pub starts: Vec<CloudChatStart>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<HostedOrigin>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -122,6 +124,8 @@ pub enum CloudNews {
     },
     Hosted {
         runner: CloudRunnerId,
+        #[serde(default)]
+        slug: String,
     },
     RunnerFailed {
         runner: CloudRunnerId,

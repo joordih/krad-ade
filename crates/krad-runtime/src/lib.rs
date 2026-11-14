@@ -54,12 +54,12 @@ pub use mcp::{
     code_tools_server, mcp_servers, read_project_mcp, trust_of, trusted_servers, with_secrets,
     McpLaunch, McpTrust,
 };
-pub use runners::{OwnRunner, RunnerLine, RunnerLineError, OWN_RUNNER};
+pub use runners::{LineStop, OwnRunner, RunnerLine, RunnerLineError, OWN_RUNNER};
 pub use runtime::{Runtime, RuntimeSetup};
 pub use settings::SettingsSetup;
 pub use terminals::{
     remote_terminal, remote_terminal_opener, HostShell, OutputTap, ShownImage, TerminalAction,
-    TerminalFrame, TerminalLaunch, TerminalPlace, TerminalStatus, TerminalView,
+    TerminalFrame, TerminalLaunch, TerminalPlace, TerminalStatus, TerminalView, TerminalWatch,
 };
 pub use typing::paste_bytes;
 pub use workers::{closed_target, refusal_error, removal_outcome};

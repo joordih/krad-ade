@@ -3,6 +3,13 @@ use std::fmt;
 use std::path::PathBuf;
 
 use super::{CloudProcessId, CloudRunnerId, JournalOffset, REDACTED};
+use crate::{EnvironmentName, GroupId};
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct HostedOrigin {
+    pub environment: EnvironmentName,
+    pub group: GroupId,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CloudPlacement {
@@ -10,6 +17,8 @@ pub struct CloudPlacement {
     pub repo_dir: PathBuf,
     pub worktree: PathBuf,
     pub branch: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<HostedOrigin>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

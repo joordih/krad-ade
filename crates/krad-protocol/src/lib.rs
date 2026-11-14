@@ -15,6 +15,7 @@ mod git;
 mod harness_health;
 mod hello;
 mod hooks;
+mod hosted;
 mod hosts;
 mod ids;
 mod kraddies;
@@ -71,6 +72,7 @@ pub use harness_health::{
 };
 pub use hello::{Hello, RuntimeRun, Welcome};
 pub use hooks::{Conversation, HookHeard, HookOrigin, HookReport};
+pub use hosted::{hosted_summaries, ChatFacts, HostedChat, HostedSummary};
 pub use hosts::{
     AgentPlace, EnvironmentHost, HostCommand, HostPrompt, HostState, HostsSnapshot, KeptAdapter,
     LocalAgents, LoginEnv, PromptAnswer, PromptId, RemoteBusInfo, RemoteBusState,

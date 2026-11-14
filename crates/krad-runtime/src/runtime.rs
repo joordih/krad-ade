@@ -333,6 +333,9 @@ impl Runtime {
             Input::TerminalAction { terminal, action } => {
                 self.terminals.act(&terminal, action, &mut self.outbox);
             }
+            Input::WatchTerminal { terminal, reply } => {
+                answer_to(reply, self.terminals.watch(&terminal));
+            }
             Input::TerminalPalette(palette) => self.terminals.recolor(palette),
             Input::OpenSignIn { terminal, shared } => self.open_sign_in(terminal, shared),
             Input::Runner(runner) => self.apply_runner_input(runner),
@@ -381,6 +384,9 @@ impl Runtime {
                 }
             })
             .collect();
+        if let Some(own) = &self.runners.own {
+            self.runners.activity.heard(own, &events);
+        }
         let parts = Parts {
             bus: self.bus.as_ref(),
             attention: &self.attention,

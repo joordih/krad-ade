@@ -129,6 +129,7 @@ mod tests {
             git: Vec::new(),
             kraddies: Box::default(),
             runners: Box::default(),
+            hosted: Vec::new(),
         }
     }
 

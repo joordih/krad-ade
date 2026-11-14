@@ -1,7 +1,8 @@
 use futures::FutureExt as _;
 use krad_domain::{InstallId, PairingPermission, PairingPermissions};
 use krad_protocol::{
-    read_frame, Command, ErrorCode, Frame, Hello, Message, Reply, RequestId, Scope, Seq, Welcome,
+    read_frame, Command, ErrorCode, Frame, Hello, Message, Reply, RequestId, Scope, Seq,
+    TerminalCommand, Welcome,
 };
 use std::io::{BufReader, Read};
 use std::sync::Arc;
@@ -11,6 +12,7 @@ use super::outbox::{Answers, Outbox};
 use super::pairing_requests::answer_pairing;
 use super::permits::needed_for_command;
 use super::server::{ConnectionKey, RuntimeServer};
+use super::watching::watch_terminal;
 use crate::pairings::authorize;
 
 const STARTS_WITH_HELLO: &str = "a runtime connection starts with hello";
@@ -220,6 +222,10 @@ impl<S: Stream> Connection<S> {
         if !self.peer.allows(needed_for_command(&command)) {
             self.reply(id, refused(ErrorCode::Forbidden, NOT_ALLOWED));
             return;
+        }
+        if let Command::Terminal(TerminalCommand::Watch { terminal }) = command {
+            let sinks = (&self.outbox, &self.answers);
+            return watch_terminal(&self.server.handle, sinks, id, terminal);
         }
         let pending = self.server.handle.send(id, command);
         self.answers.wait_for(

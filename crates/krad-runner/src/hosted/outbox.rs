@@ -1,7 +1,7 @@
 use futures::channel::mpsc;
 use futures::future::BoxFuture;
 use futures::{Stream as FeedStream, StreamExt as _};
-use krad_protocol::{write_frame, Feed, Frame, Message};
+use krad_protocol::{write_frame, Feed, Frame, Message, TerminalBytes};
 use std::io::{BufWriter, Write};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::thread;
@@ -14,7 +14,7 @@ const ANSWERS_THREAD: &str = "krad-runner-answers";
 const FEED_THREAD: &str = "krad-runner-feed";
 
 #[derive(Clone)]
-pub(crate) struct Outbox(SyncSender<Message>);
+pub(crate) struct Outbox(SyncSender<Frame>);
 
 impl Outbox {
     pub(crate) fn start(stream: impl Stream) -> Option<Self> {
@@ -24,7 +24,11 @@ impl Outbox {
     }
 
     pub(crate) fn send(&self, message: Message) -> bool {
-        self.0.send(message).is_ok()
+        self.0.send(Frame::Message(Box::new(message))).is_ok()
+    }
+
+    pub(crate) fn send_terminal(&self, bytes: TerminalBytes) -> bool {
+        self.0.send(Frame::Terminal(bytes)).is_ok()
     }
 
     pub(crate) fn follow(&self, feed: impl FeedStream<Item = Feed> + Send + Unpin + 'static) {
@@ -43,10 +47,10 @@ async fn forward_feed(mut feed: impl FeedStream<Item = Feed> + Unpin, outbox: &O
     }
 }
 
-fn write_all(stream: impl Stream, receiver: &Receiver<Message>) {
+fn write_all(stream: impl Stream, receiver: &Receiver<Frame>) {
     let mut out = BufWriter::new(stream);
-    for message in receiver {
-        let written = write_frame(&mut out, &Frame::Message(Box::new(message)))
+    for frame in receiver {
+        let written = write_frame(&mut out, &frame)
             .map_err(|error| error.to_string())
             .and_then(|()| out.flush().map_err(|error| error.to_string()));
         if let Err(error) = written {

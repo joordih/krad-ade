@@ -165,7 +165,11 @@ impl Runtime {
         match done {
             CloudDone::RemoteRead { facts, url, diff } => self.remote_read(*facts, url, diff),
             CloudDone::Prepared { draft, prepared } => self.cloud_prepared(*draft, prepared),
-            CloudDone::HandedOver { runner, handed } => self.cloud_handed_over(runner, handed),
+            CloudDone::HandedOver {
+                runner,
+                slug,
+                handed,
+            } => self.cloud_handed_over(runner, slug, handed),
             results => self.cloud_result(results),
         }
     }
@@ -209,6 +213,7 @@ impl Runtime {
             carried: facts.carried,
             starts: Vec::new(),
             reach: facts.reach,
+            origin: None,
         };
         match offered_patch(diff) {
             Some(patch) => {
@@ -286,14 +291,14 @@ impl Runtime {
         draft: CloudDraft,
         prepared: Result<(PreparedWorkspace, Vec<CloudChatStart>), WorkspaceError>,
     ) {
-        let (prepared, starts) = match prepared {
+        let (mut prepared, starts) = match prepared {
             Ok(prepared) => prepared,
             Err(error) => {
                 tracing::warn!(%error, "the cloud session's workspace could not be prepared");
-                let error = error.to_string();
-                return self.cloud_news(CloudNews::NotPrepared { error });
+                return self.cloud_not_prepared(&draft, error.to_string());
             }
         };
+        prepared.placement.origin = draft.origin;
         if let Some(problem) = prepared.patch_problem {
             self.cloud_news(CloudNews::PatchProblem { problem });
         }
