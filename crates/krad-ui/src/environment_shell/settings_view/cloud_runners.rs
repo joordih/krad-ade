@@ -1,6 +1,7 @@
 mod draft;
 mod form;
 mod logins;
+mod sign_in;
 mod token;
 
 use gpui_kit::component::switch::Switch;
@@ -9,6 +10,7 @@ use krad_domain::{CloudRunner, OfflineWebhooks};
 
 use super::super::cloud::{linger_warning, reach_label, runner_label, RunnerState};
 use super::super::dialog_parts::sheet_padded;
+use super::super::host::SignInDialog;
 use super::super::runtime_view::RunnerReach;
 use super::sections::{empty_row, footnote, pane_column, settings_section};
 use super::{form_row, hint, panel_card, EnvironmentShell};
@@ -22,12 +24,10 @@ const RUNNERS_HINT: &str = "Linux hosts, x86_64 or aarch64, reached over SSH. Cl
 const RUNNERS_EMPTY: &str = "No cloud runners yet.";
 const ADD_LABEL: &str = "Add cloud runner";
 const RECONNECT_LABEL: &str = "Reconnect";
-const SIGN_IN_LABEL: &str = "Show sign-in";
 const REMOVE_LABEL: &str = "Remove";
 const DETAIL_SEPARATOR: &str = " · ";
 const BTN_OPEN_FORM: &str = "cloud-runner-open-form";
 const RECONNECT_PREFIX: &str = "cloud-runner-reconnect";
-const SIGN_IN_PREFIX: &str = "cloud-runner-ssh-sign-in";
 const REMOVE_PREFIX: &str = "cloud-runner-remove";
 const OFFLINE_WEBHOOKS_PREFIX: &str = "cloud-runner-offline-webhooks";
 const OFFLINE_WEBHOOKS_LABEL: &str = "Send webhooks while the app is closed";
@@ -37,6 +37,7 @@ const RUNNERS_NOTE: &str = "The app copies its host program to ~/.krad-ade on th
 pub(in crate::environment_shell) struct CloudRunnersUi {
     form: RunnerForm,
     token: TokenForm,
+    sign_in: Option<SignInDialog>,
 }
 
 fn runner_detail(
@@ -64,6 +65,7 @@ impl EnvironmentShell {
         CloudRunnersUi {
             form: RunnerForm::new(window, cx),
             token: TokenForm::new(window, cx),
+            sign_in: None,
         }
     }
 
@@ -83,23 +85,12 @@ impl EnvironmentShell {
                 .small()
                 .variant(ButtonVariant::Secondary)
         };
-        let sign_in =
-            (state == RunnerState::SigningIn && self.runner_sign_in_shown(id)).then(|| {
-                Button::new((SIGN_IN_PREFIX, id.0))
-                    .label(SIGN_IN_LABEL)
-                    .small()
-                    .variant(ButtonVariant::Primary)
-                    .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
-                        this.show_runner_sign_in(id, window, cx);
-                    }))
-            });
         let controls =
             div()
                 .flex()
                 .flex_row()
                 .items_center()
                 .gap(px(SPACE_2))
-                .children(sign_in)
                 .child(button(RECONNECT_PREFIX, RECONNECT_LABEL).on_click(
                     cx.listener(move |this: &mut Self, _, _, _| this.reconnect_runner(id)),
                 ))

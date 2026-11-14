@@ -3,7 +3,7 @@ for word in "$@"; do destination="$word"; done
 case " $* " in
   *" -- connects.invalid"*) exec "$(dirname "$0")/connects" "$@" ;;
   *" -- ready.invalid"*) exec "$(dirname "$0")/ready" "$@" ;;
-  *" -- signs-in.invalid"*) exec "$(dirname "$0")/signs-in" "$@" ;;
+  *" -- askpass.invalid"*) exec "$(dirname "$0")/askpass" "$@" ;;
 esac
 case " $* " in
   *" -O check "*) exit 255 ;;

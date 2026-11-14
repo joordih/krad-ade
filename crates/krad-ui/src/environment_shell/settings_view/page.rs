@@ -94,6 +94,7 @@ impl EnvironmentShell {
                 ))
                 .children(self.gitlab_device_dialog(cx))
                 .children(self.theme_editor_sheet(cx))
+                .children(self.runner_sign_in_sheet(cx))
                 .into_any_element(),
         )
     }

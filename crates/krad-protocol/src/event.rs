@@ -222,9 +222,6 @@ pub enum EventKind {
     },
     RunnerLoginsChanged(RunnerLogins),
     RunnerNews(RunnerNotice),
-    RunnerSignInWanted {
-        runner: CloudRunnerId,
-    },
     CloudPatchOffered {
         draft: CloudDraftId,
     },

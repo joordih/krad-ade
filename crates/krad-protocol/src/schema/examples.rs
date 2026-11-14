@@ -192,6 +192,10 @@ fn state_commands() -> Vec<(&'static str, Value)> {
             json!({ "area": "host", "verb": "ssh_hosts" }),
         ),
         (
+            "host_cancel_prompt",
+            json!({ "area": "host", "verb": "answer_prompt", "prompt": 2, "answer": null }),
+        ),
+        (
             "host_install_acp_package",
             json!({ "area": "host", "verb": "install_acp_package", "spot": { "environment": ENVIRONMENT }, "agent": "codex-acp" }),
         ),
@@ -383,6 +387,10 @@ pub(super) fn events() -> Vec<(&'static str, Value)> {
             "runner_signing_in",
             json!({ "feed": "event", "seq": 53, "kind": { "type": "runner_changed", "runner": 1, "state": { "state": "signing_in" } } }),
         ),
+        (
+            "runner_prompted",
+            json!({ "feed": "event", "seq": 55, "kind": { "type": "host_prompted", "prompt": 2, "asker": { "asker": "runner", "runner": 1 }, "kind": "secret", "text": "me@gpu's password: " } }),
+        ),
     ];
     events.extend(files::file_events());
     events
@@ -409,6 +417,10 @@ pub(super) fn forward_compatible() -> Vec<(Value, Value)> {
         (
             json!({ "type": "feed", "feed": "event", "seq": 54, "kind": { "type": "runner_changed", "runner": 1, "state": { "state": "migrating" } } }),
             json!({ "type": "feed", "feed": "event", "seq": 54, "kind": { "type": "runner_changed", "runner": 1, "state": { "state": "unknown" } } }),
+        ),
+        (
+            json!({ "type": "feed", "feed": "event", "seq": 56, "kind": { "type": "host_prompted", "prompt": 3, "asker": { "asker": "extension", "extension": "vm" }, "kind": "secret", "text": "Passphrase: " } }),
+            json!({ "type": "feed", "feed": "event", "seq": 56, "kind": { "type": "host_prompted", "prompt": 3, "asker": { "asker": "unknown" }, "kind": "secret", "text": "Passphrase: " } }),
         ),
         (
             json!({ "type": "reply", "id": 22, "reply": { "outcome": "refused", "code": "rate_limited", "message": "slow down" } }),

@@ -63,8 +63,15 @@ impl Runtime {
                 self.hosts.close_all();
                 return Some(Reply::Accepted);
             }
-            HostCommand::AnswerPrompt { .. }
-            | HostCommand::SshHosts
+            HostCommand::AnswerPrompt { prompt, answer } => {
+                let asked = self.hosts.prompt_asker(*prompt);
+                let given = answer.is_some();
+                let (hosts, mut work) = self.host_work();
+                let reply = hosts.execute(command, None, &mut work);
+                self.runner_prompt_answered(asked.as_ref(), given);
+                return reply;
+            }
+            HostCommand::SshHosts
             | HostCommand::AcpPackages { .. }
             | HostCommand::InstallAcpPackage { .. }
             | HostCommand::Unknown => None,

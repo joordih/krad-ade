@@ -58,6 +58,8 @@ pub enum HostError {
     NoMachineChannel,
     #[error("the channel to the machine closed: {0}")]
     MachineChannel(String),
+    #[error("{0}")]
+    SignInRefused(String),
 }
 
 impl From<HostError> for io::Error {

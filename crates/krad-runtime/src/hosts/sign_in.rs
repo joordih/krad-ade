@@ -10,7 +10,7 @@ use crate::terminals::{Shared, TerminalLaunch, TerminalPlace, Terminals};
 const SIGN_IN_UNAVAILABLE: &str = "This build cannot open an SSH sign-in terminal";
 const NO_SIGN_IN_WAITING: &str = "No sign-in is waiting for this environment";
 
-pub(crate) fn sign_in_launch(link: &HostLink) -> Option<TerminalLaunch> {
+fn sign_in_launch(link: &HostLink) -> Option<TerminalLaunch> {
     let HostLink::Remote(remote) = link else {
         return None;
     };

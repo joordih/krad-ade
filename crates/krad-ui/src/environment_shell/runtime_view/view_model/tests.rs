@@ -3,12 +3,12 @@ use futures::StreamExt as _;
 use krad_client::RuntimeClient;
 use krad_domain::{
     AttentionKind, AttentionTarget, CloudRunnerId, EnvironmentData, EnvironmentName, Linger,
-    RunnerState, RuntimeId, SessionSpec, TerminalId, Timestamp,
+    PromptAsker, PromptKind, RunnerState, RuntimeId, SessionSpec, TerminalId, Timestamp,
 };
 use krad_protocol::{
     AgentRef, AskId, AskSettlement, AttentionSnapshot, AttentionWaiting, BusSnapshot, Event,
-    EventKind, Feed, GatewayState, HealthSnapshot, ModelsSnapshot, OpencodeSnapshot,
-    RemoteBusState, RunnerBusShown, RunnerShown, RunnersSnapshot, Scope, Seq, Snapshot,
+    EventKind, Feed, GatewayState, HealthSnapshot, HostPrompt, ModelsSnapshot, OpencodeSnapshot,
+    PromptId, RemoteBusState, RunnerBusShown, RunnerShown, RunnersSnapshot, Scope, Seq, Snapshot,
     UsageSnapshot,
 };
 use std::sync::Arc;
@@ -434,22 +434,24 @@ fn environments_settings_and_git_are_read_copies_the_view_model_owns() {
 }
 
 #[test]
-fn a_runner_signing_in_is_kept_in_the_read_copy_and_its_sign_in_reaches_the_shell() {
+fn a_runner_s_prompt_is_kept_for_the_settings_dialog_until_it_is_settled() {
     let runner = CloudRunnerId(RUNNER);
     let mut model = ViewModel::default();
     runner_moved(&mut model, RunnerState::SigningIn);
-    model.fold_event(EventKind::RunnerSignInWanted { runner });
+    let prompt = HostPrompt {
+        prompt: PromptId(3),
+        asker: PromptAsker::Runner { runner },
+        kind: PromptKind::Secret,
+        text: "me@gpu's password: ".to_owned(),
+    };
+    model.fold_event(EventKind::HostPrompted(prompt.clone()));
     assert_eq!(model.runners.get(&runner), Some(&RunnerState::SigningIn));
-    assert!(model.remotes.get(runner).is_none());
-    let heard = events(model.take_news());
-    assert_eq!(
-        heard,
-        [
-            EventKind::RunnerChanged(RunnerShown {
-                runner,
-                state: RunnerState::SigningIn,
-            }),
-            EventKind::RunnerSignInWanted { runner },
-        ]
-    );
+    assert!(model.hosts.runner_prompt_waits());
+    assert_eq!(model.hosts.next_prompt(), None);
+    model.fold_event(EventKind::HostPromptSettled {
+        prompt: prompt.prompt,
+    });
+    assert!(!model.hosts.runner_prompt_waits());
+    model.fold_event(EventKind::HostPrompted(prompt.clone()));
+    assert_eq!(model.hosts.next_runner_prompt(), Some(prompt));
 }

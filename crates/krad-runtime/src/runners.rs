@@ -33,7 +33,7 @@ pub(crate) use logins::{git_program, login_args, probe_login, Logins};
 pub(crate) use own::OwnActivity;
 pub use own::{OwnRunner, OWN_RUNNER};
 pub(crate) use sign_in::{forward_failure, login_script, LoopbackCallback, SignInWatch, SignIns};
-pub(crate) use ssh_sign_in::SshSignIns;
+pub(crate) use ssh_sign_in::{SignInRun, SshSignIns};
 
 #[derive(Clone)]
 pub(crate) struct ReadyRunner {
@@ -89,6 +89,11 @@ pub(crate) enum RunnerDone {
         runner: CloudRunnerId,
         attempt: Attempt,
         prepared: Result<PreparedRunner, RunnerSetupError>,
+    },
+    SignedIn {
+        runner: CloudRunnerId,
+        run: SignInRun,
+        outcome: Result<(), HostError>,
     },
     Removed {
         runner: CloudRunnerId,

@@ -81,11 +81,7 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    pub(in crate::environment_shell) fn drop_sign_in_terminal(
-        &mut self,
-        env: &EnvironmentName,
-        id: TerminalId,
-    ) {
+    fn drop_sign_in_terminal(&mut self, env: &EnvironmentName, id: TerminalId) {
         let Some(live) = self.envs.get_mut(env) else {
             return;
         };

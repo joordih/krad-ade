@@ -71,7 +71,7 @@ impl Tracked {
     }
 }
 
-pub(crate) fn sign_in_ended(code: Option<i32>) -> Result<(), String> {
+fn sign_in_ended(code: Option<i32>) -> Result<(), String> {
     match code {
         Some(0) => Ok(()),
         Some(code) => Err(format!("ssh exited with code {code}")),

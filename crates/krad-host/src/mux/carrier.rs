@@ -10,12 +10,12 @@ use std::time::Duration;
 
 mod boot;
 
-use super::askpass::askpass_alias;
+use super::askpass::{ask_through, askpass_alias};
 use super::bootstrap::{self, BootstrapFailure};
 use super::bridge::splice_tcp;
 use super::broker::Broker;
 use super::channel::Channel;
-use super::prompt::PromptSender;
+use super::prompt::{PromptAsker, PromptSender};
 use super::session::{Incoming, Session};
 use super::wire::OpenRequest;
 use super::{MuxError, EXEC_VERB};
@@ -28,11 +28,6 @@ use crate::remote_link::lock;
 use crate::ssh::SshArgs;
 use boot::{boot, boot_failure, collect_errors, exited_within, machine_failure, stop};
 
-const ASKPASS_VAR: &str = "SSH_ASKPASS";
-const ASKPASS_REQUIRE_VAR: &str = "SSH_ASKPASS_REQUIRE";
-const ASKPASS_FORCED: &str = "force";
-const DISPLAY_VAR: &str = "DISPLAY";
-const PLACEHOLDER_DISPLAY: &str = "krad-ade:0";
 const ACCEPT_THREAD: &str = "krad-ade-mux-accepted";
 const BOOT_EXIT_WAIT: Duration = Duration::from_secs(2);
 const UNKNOWN_LISTENER: &str = "no forward waits for that listener";
@@ -78,18 +73,15 @@ impl MuxCarrier {
     ) -> Result<(Self, HostPlatform), HostError> {
         let local_cli = tools.local_cli.clone().ok_or(MuxError::NoLocalCli)?;
         let askpass = askpass_alias(&local_cli, tools.config_dir.as_deref())?;
-        let broker = Broker::start(args.destination.clone(), tools.prompts.clone())?;
+        let asker = PromptAsker::Host {
+            destination: args.destination.clone(),
+        };
+        let broker = Broker::start(asker, tools.prompts.clone())?;
         let mut command = Command::new(SshArgs::program());
-        command
-            .args(args.multiplexed_args(OsString::from(
-                transport::inline(&bootstrap::script()).ok_or(MuxError::Protocol)?,
-            )))
-            .env(ASKPASS_VAR, &askpass)
-            .env(ASKPASS_REQUIRE_VAR, ASKPASS_FORCED)
-            .envs(broker.env());
-        if std::env::var_os(DISPLAY_VAR).is_none() {
-            command.env(DISPLAY_VAR, PLACEHOLDER_DISPLAY);
-        }
+        command.args(args.multiplexed_args(OsString::from(
+            transport::inline(&bootstrap::script()).ok_or(MuxError::Protocol)?,
+        )));
+        ask_through(&mut command, &askpass, &broker);
         Self::start(
             Spawned {
                 command,
@@ -110,7 +102,10 @@ impl MuxCarrier {
         tools: &MuxTools,
     ) -> Result<(Self, HostPlatform), HostError> {
         let local_cli = tools.local_cli.clone().ok_or(MuxError::NoLocalCli)?;
-        let broker = Broker::start(args.destination.clone(), None)?;
+        let asker = PromptAsker::Host {
+            destination: args.destination.clone(),
+        };
+        let broker = Broker::start(asker, None)?;
         let mut command = Command::new(&channel.program);
         command
             .args(&channel.args)

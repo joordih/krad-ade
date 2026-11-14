@@ -22,14 +22,13 @@ pub(crate) use agents::AgentsFound;
 pub(crate) use bus_slot::Reach;
 pub(crate) use links::HostLinks;
 pub(crate) use local_agents::LocalFound;
-pub(crate) use sign_in::sign_in_launch;
-pub(crate) use state::{sign_in_ended, Attempt, SIGN_IN_NOT_KEPT};
+pub(crate) use state::{Attempt, SIGN_IN_NOT_KEPT};
 
-use krad_domain::{AgentPreset, EnvironmentName, Host, HostPlatform};
+use krad_domain::{AgentPreset, EnvironmentName, Host, HostPlatform, PromptAsker};
 use krad_host::{HostError, HostLink, MachineChannel};
 use krad_protocol::{
     AgentPlace, EnvironmentHost, ErrorCode, EventKind, HostCommand, HostState, HostsSnapshot,
-    LoginEnv, Reply,
+    LoginEnv, PromptId, Reply,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
@@ -365,6 +364,18 @@ impl Hosts {
 
     pub(crate) fn prompts(&self) -> Option<krad_host::mux::PromptSender> {
         self.links.prompts()
+    }
+
+    pub(crate) fn prompt_asker(&self, prompt: PromptId) -> Option<PromptAsker> {
+        self.prompts.asker(prompt).cloned()
+    }
+
+    pub(crate) fn decline_prompts(&mut self, asker: &PromptAsker, outbox: &mut Vec<EventKind>) {
+        self.prompts.decline(asker, outbox);
+    }
+
+    pub(crate) fn admit_prompts(&mut self, asker: &PromptAsker) {
+        self.prompts.admit(asker);
     }
 
     pub(crate) fn snapshot(&self) -> HostsSnapshot {
