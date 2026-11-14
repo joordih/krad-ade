@@ -19,6 +19,9 @@ use super::settings::SettingsMirror;
 use super::{AgentSpot, HostMove, HostsMirror, MailNotices, Waiters};
 
 mod folding;
+mod remotes;
+
+pub(in crate::environment_shell) use remotes::{Remotes, RunnerReach};
 
 const FIRST_PACE: Duration = Duration::from_millis(16);
 const RECONNECT_PAUSE: Duration = Duration::from_millis(500);
@@ -92,6 +95,7 @@ pub(in crate::environment_shell) struct ViewModel {
     pub(in crate::environment_shell) runners: HashMap<CloudRunnerId, RunnerState>,
     pub(in crate::environment_shell) runner_buses: HashMap<CloudRunnerId, RemoteBusState>,
     pub(in crate::environment_shell) runner_logins: HashMap<CloudRunnerId, RunnerLogins>,
+    pub(in crate::environment_shell) remotes: Remotes,
     pub(in crate::environment_shell) pace: Duration,
     pub(in crate::environment_shell::runtime_view) waiters: Waiters,
     news: News,
@@ -113,6 +117,7 @@ impl Default for ViewModel {
             runners: HashMap::new(),
             runner_buses: HashMap::new(),
             runner_logins: HashMap::new(),
+            remotes: Remotes::default(),
             pace: FIRST_PACE,
             waiters: Waiters::default(),
             news: News::default(),

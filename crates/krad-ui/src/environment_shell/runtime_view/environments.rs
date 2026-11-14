@@ -16,6 +16,10 @@ impl EnvironmentsMirror {
         self.0 = environments;
     }
 
+    pub(in crate::environment_shell) fn all(&self) -> &[EnvironmentData] {
+        &self.0
+    }
+
     pub(in crate::environment_shell) fn get(
         &self,
         name: &EnvironmentName,

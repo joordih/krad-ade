@@ -19,13 +19,20 @@ fn cli_dir() -> Option<PathBuf> {
 }
 
 pub(crate) fn serve(root: &Path) -> io::Result<i32> {
+    serve_runner(root, Secrets::system())
+}
+
+/// # Errors
+///
+/// Fails when the runner's sockets cannot be bound or its runtime cannot start.
+pub fn serve_runner(root: &Path, secrets: Secrets) -> io::Result<i32> {
     let daemon = RunnerDaemon::new(root);
     let processes = daemon.bind()?;
     let runtime = bind_runtime_socket(root)?;
     let handle = Runtime::start(
         RunnerProfile {
             root: root.to_owned(),
-            secrets: Secrets::system(),
+            secrets,
             cli_dir: cli_dir(),
         }
         .setup(),

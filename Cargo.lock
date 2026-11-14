@@ -4015,6 +4015,7 @@ dependencies = [
  "futures",
  "krad-agents",
  "krad-chat",
+ "krad-client",
  "krad-domain",
  "krad-github",
  "krad-gitlab",

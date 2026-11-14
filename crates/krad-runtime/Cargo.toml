@@ -23,7 +23,8 @@ tracing.workspace = true
 ureq.workspace = true
 
 [dev-dependencies]
-krad-runner.workspace = true
+krad-client.workspace = true
+krad-runner = { workspace = true, features = ["runtime"] }
 serde_json.workspace = true
 
 [[test]]

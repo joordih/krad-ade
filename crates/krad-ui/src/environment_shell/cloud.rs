@@ -19,9 +19,9 @@ pub(in crate::environment_shell) use entry::CloudMenu;
 pub(in crate::environment_shell) use krad_domain::RunnerState;
 pub(in crate::environment_shell) use krad_domain::{RunnerCli, RunnerLogin};
 pub(in crate::environment_shell) use sign_in::cli_label;
-pub(in crate::environment_shell) use state::{linger_warning, runner_label};
+pub(in crate::environment_shell) use state::{linger_warning, reach_label, runner_label};
 
-use krad_domain::{CloudPlacement, CloudRunnerId, EnvironmentName, TerminalId};
+use krad_domain::{CloudPlacement, CloudRunnerId, EnvironmentName, RuntimeId, TerminalId};
 use std::collections::HashSet;
 
 use super::EnvironmentShell;
@@ -49,6 +49,20 @@ impl EnvironmentShell {
             .cloud
             .find(id)
             .map_or_else(|| id.to_string(), |runner| runner.name.as_str().to_owned())
+    }
+
+    pub(in crate::environment_shell) fn runner_reach(
+        &self,
+        id: CloudRunnerId,
+        cx: &App,
+    ) -> Option<(super::runtime_view::RunnerReach, usize)> {
+        let remotes = &self.runtime.view.read(cx).remotes;
+        let reach = remotes.get(id)?.reach.clone();
+        let sessions = remotes
+            .sessions()
+            .filter(|(runtime, _, _)| *runtime == RuntimeId::Runner(id))
+            .count();
+        Some((reach, sessions))
     }
 
     pub(in crate::environment_shell) fn runner_state(

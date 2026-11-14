@@ -26,6 +26,7 @@ impl ViewModel {
             .into_iter()
             .map(|shown| (shown.runner, shown.state))
             .collect();
+        self.forget_unready_remotes();
         self.runner_buses = runners
             .buses
             .into_iter()
@@ -138,6 +139,7 @@ impl ViewModel {
         let area = match kind {
             EventKind::RunnerChanged(RunnerShown { runner, state }) => {
                 self.runners.insert(runner, state.clone());
+                self.forget_unready_remotes();
                 self.heard(Heard::Event(EventKind::RunnerChanged(RunnerShown {
                     runner,
                     state,

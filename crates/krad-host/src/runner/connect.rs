@@ -5,6 +5,21 @@ use std::path::Path;
 use std::thread;
 
 const INPUT_THREAD: &str = "krad-cloud-connect-input";
+const CHUNK_BYTES: usize = 32 * 1024;
+
+fn pass_on(input: &mut impl Read, output: &mut impl Write) -> io::Result<()> {
+    let mut chunk = vec![0; CHUNK_BYTES];
+    loop {
+        let read = match input.read(&mut chunk) {
+            Ok(0) => return output.flush(),
+            Ok(read) => read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        output.write_all(&chunk[..read])?;
+        output.flush()?;
+    }
+}
 
 /// # Errors
 ///
@@ -24,8 +39,7 @@ pub fn bridge(
             }
             sending.shutdown(Shutdown::Write).ok();
         })?;
-    io::copy(&mut stream, output)?;
-    output.flush()
+    pass_on(&mut stream, output)
 }
 
 #[cfg(test)]

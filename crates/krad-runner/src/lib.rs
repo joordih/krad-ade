@@ -33,6 +33,8 @@ pub use daemon::RunnerDaemon;
 pub use hosted::{
     bind_runtime_socket, Listener, RunnerProfile, RuntimeServer, Stream, RUNNER_ENVIRONMENT,
 };
+#[cfg(all(unix, feature = "runtime"))]
+pub use serving::serve_runner;
 #[cfg(unix)]
 pub use verbs::{pair_over_ssh, run_runner_verb};
 

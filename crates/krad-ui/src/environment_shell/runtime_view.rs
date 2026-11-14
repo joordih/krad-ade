@@ -20,7 +20,7 @@ pub(super) use environments::EnvironmentsMirror;
 pub(super) use hosts::{HostMove, HostsMirror};
 pub(super) use mail::MailNotices;
 use view_model::RuntimeNews;
-pub(super) use view_model::ViewModel;
+pub(super) use view_model::{RunnerReach, ViewModel};
 
 use super::EnvironmentShell;
 
@@ -66,6 +66,13 @@ impl EnvironmentShell {
             shell.runtime_news(cx);
         })
         .detach();
+    }
+
+    fn reach_ready_runners(&self, cx: &mut Context<Self>) {
+        let handle = self.runtime.handle.clone();
+        self.runtime
+            .view
+            .update(cx, |model, cx| model.reach_ready_runners(&handle, cx));
     }
 
     pub(super) fn agent_status<'a>(

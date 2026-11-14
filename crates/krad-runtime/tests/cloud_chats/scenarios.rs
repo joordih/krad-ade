@@ -1,16 +1,17 @@
 use futures::executor::block_on;
 use krad_agents::{QueuedEvent, Request};
 use krad_chat::{new_session_id, LiveSession};
+use krad_client::{Runner, RuntimeClient};
 use krad_domain::{
-    AgentPreset, AskAnswer, AttentionKind, ChatMessage, CloudProcess, InstallId, JournalOffset,
-    NodeEdit, NodeField, Prompt, Speaker, Timestamp,
+    AgentPreset, AskAnswer, AttentionKind, ChatMessage, CloudProcess, CloudRunnerId, InstallId,
+    JournalOffset, NodeEdit, NodeField, PairingPermissions, Prompt, Speaker, Timestamp,
 };
 use krad_host::runner::queue_events;
 use krad_protocol::{
     AgentRef, ChatAsk, ChatCommand, ChatMirror, CloudAskReplayed, Command, EventKind, NodeCommand,
-    Reply, RunnerCommand,
+    Reply, RunnerCommand, Scope,
 };
-use krad_runtime::{ChatBrief, ChatRole, ChatStart, RuntimeHandle};
+use krad_runtime::{ChatBrief, ChatRole, ChatStart, RunnerLineError, RuntimeHandle};
 use std::error::Error;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -35,6 +36,8 @@ const NOT_OPENED: &str = "the carried chat never opened";
 const NO_PROCESS: &str = "the cloud chat kept no process";
 const NO_ASK: &str = "the chat never asked";
 const NOT_SAVED: &str = "the cloud chat's offset was never kept";
+const RUNNER_ENVIRONMENT: &str = "runner";
+const UNKNOWN_RUNNER: CloudRunnerId = CloudRunnerId(9);
 
 struct CloudChat {
     started: Started,
@@ -290,5 +293,28 @@ pub fn a_returning_runner_replays_what_its_chat_asked_while_the_app_was_away() -
         .chats
         .until_chat(&id, |mirror| settled_with(mirror, 2))?;
     close(&mut cloud)?;
+    Ok(())
+}
+
+pub fn the_desktop_reaches_a_ready_runner_s_runtime_through_cloud_connect() -> TestResult {
+    let cloud = open_cloud_chat("cl")?;
+    let runtime = &cloud.started.runtime;
+    assert_eq!(
+        block_on(runtime.connect_runner(UNKNOWN_RUNNER))?.err(),
+        Some(RunnerLineError::NotReady)
+    );
+    let line = block_on(runtime.connect_runner(RUNNER))??;
+    let client = Runner::connect(line.input, line.output, line.hello)?;
+    assert_eq!(
+        client.welcome().permissions,
+        Some(PairingPermissions::all())
+    );
+    let snapshot = block_on(client.snapshot(Scope::Runtime))?;
+    let names: Vec<&str> = snapshot
+        .environments
+        .iter()
+        .map(|environment| environment.name.as_str())
+        .collect();
+    assert_eq!(names, [RUNNER_ENVIRONMENT]);
     Ok(())
 }

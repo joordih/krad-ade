@@ -40,6 +40,9 @@ impl EnvironmentShell {
         if areas.contains(&Area::Health) {
             self.advance_harness_onboarding(cx);
         }
+        if areas.contains(&Area::Runners) {
+            self.reach_ready_runners(cx);
+        }
         match reach {
             Reach::Quietly => {}
             Reach::Shown => cx.notify(),

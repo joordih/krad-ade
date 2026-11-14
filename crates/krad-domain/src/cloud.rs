@@ -3,6 +3,7 @@ mod placement;
 mod runner;
 mod runner_login;
 mod runner_state;
+mod runtime_id;
 mod webhooks;
 
 pub use claude_token::{ClaudeOauthToken, ClaudeOauthTokenError};
@@ -10,6 +11,7 @@ pub use placement::{CloudPlacement, CloudProcess, OpencodePassword};
 pub use runner::*;
 pub use runner_login::{RunnerCli, RunnerLogin};
 pub use runner_state::{Linger, RunnerState};
+pub use runtime_id::RuntimeId;
 pub use webhooks::{RunnerWebhooks, SyncedWebhook, WebhookTarget};
 
 use serde::{Deserialize, Serialize};

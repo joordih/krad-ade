@@ -7,8 +7,9 @@ use gpui_kit::component::switch::Switch;
 use gpui_kit::{div, px, AnyElement, Context, IntoElement, ParentElement, Styled, Window};
 use krad_domain::{CloudRunner, OfflineWebhooks};
 
-use super::super::cloud::{linger_warning, runner_label, RunnerState};
+use super::super::cloud::{linger_warning, reach_label, runner_label, RunnerState};
 use super::super::dialog_parts::sheet_padded;
+use super::super::runtime_view::RunnerReach;
 use super::sections::{empty_row, footnote, pane_column, settings_section};
 use super::{form_row, hint, panel_card, EnvironmentShell};
 use crate::components::{Button, ButtonVariant, IconName};
@@ -36,12 +37,21 @@ pub(in crate::environment_shell) struct CloudRunnersUi {
     token: TokenForm,
 }
 
-fn runner_detail(runner: &CloudRunner, state: &RunnerState) -> String {
-    format!(
+fn runner_detail(
+    runner: &CloudRunner,
+    state: &RunnerState,
+    reach: Option<&(RunnerReach, usize)>,
+) -> String {
+    let mut detail = format!(
         "{}{DETAIL_SEPARATOR}{}",
         runner.destination,
         runner_label(state)
-    )
+    );
+    if let Some((reach, sessions)) = reach {
+        detail.push_str(DETAIL_SEPARATOR);
+        detail.push_str(&reach_label(reach, *sessions));
+    }
+    detail
 }
 
 impl EnvironmentShell {
@@ -64,6 +74,7 @@ impl EnvironmentShell {
     ) -> Vec<AnyElement> {
         let id = runner.id;
         let state = self.runner_state(id, cx);
+        let reach = self.runner_reach(id, cx);
         let button = |prefix: &'static str, label: &'static str| {
             Button::new((prefix, id.0))
                 .label(label)
@@ -85,7 +96,7 @@ impl EnvironmentShell {
                 .into_any_element();
         let row = form_row(
             runner.name.as_str(),
-            Some(&runner_detail(runner, &state)),
+            Some(&runner_detail(runner, &state, reach.as_ref())),
             controls,
             pal,
         );
@@ -194,8 +205,15 @@ mod tests {
             offline_webhooks: OfflineWebhooks::Off,
         };
         assert_eq!(
-            runner_detail(&runner, &RunnerState::Connecting),
+            runner_detail(&runner, &RunnerState::Connecting, None),
             "me@gpu:2200 · Connecting"
+        );
+        let ready = RunnerState::Ready {
+            linger: krad_domain::Linger::Enabled,
+        };
+        assert_eq!(
+            runner_detail(&runner, &ready, Some(&(RunnerReach::ProcessWire, 0))),
+            "me@gpu:2200 · Ready · Update pending: it keeps only processes until it runs the new version"
         );
         Ok(())
     }

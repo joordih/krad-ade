@@ -33,6 +33,7 @@ impl Runtime {
             RunnerInput::OpenClaudeSetup { terminal, shared } => {
                 self.open_claude_setup(terminal, shared);
             }
+            RunnerInput::Connect { runner, reply } => self.open_runner_line(runner, reply),
         }
     }
 

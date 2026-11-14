@@ -11,6 +11,7 @@ use std::path::PathBuf;
 mod bus;
 mod explain;
 mod install;
+mod line;
 mod logins;
 mod sign_in;
 mod webhooks;
@@ -22,6 +23,8 @@ pub(crate) use webhooks::{runner_webhooks_plan, RunnerWebhooksSync};
 
 pub(crate) use explain::explain;
 pub(crate) use install::{prepare_runner, retire_runner, PreparedRunner, RunnerSetupError};
+pub(crate) use line::open_runner_line;
+pub use line::{RunnerLine, RunnerLineError};
 pub(crate) use logins::{git_program, login_args, probe_login, Logins};
 pub(crate) use sign_in::{forward_failure, login_script, LoopbackCallback, SignInWatch, SignIns};
 

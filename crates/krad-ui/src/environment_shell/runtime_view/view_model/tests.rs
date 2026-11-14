@@ -2,22 +2,27 @@ use futures::executor::block_on;
 use futures::StreamExt as _;
 use krad_client::RuntimeClient;
 use krad_domain::{
-    AttentionKind, AttentionTarget, CloudRunnerId, EnvironmentData, EnvironmentName, TerminalId,
-    Timestamp,
+    AttentionKind, AttentionTarget, CloudRunnerId, EnvironmentData, EnvironmentName, Linger,
+    RunnerState, RuntimeId, SessionSpec, TerminalId, Timestamp,
 };
 use krad_protocol::{
     AgentRef, AskId, AskSettlement, AttentionSnapshot, AttentionWaiting, BusSnapshot, Event,
     EventKind, Feed, GatewayState, HealthSnapshot, ModelsSnapshot, OpencodeSnapshot,
-    RemoteBusState, RunnerBusShown, RunnersSnapshot, Scope, Seq, Snapshot, UsageSnapshot,
+    RemoteBusState, RunnerBusShown, RunnerShown, RunnersSnapshot, Scope, Seq, Snapshot,
+    UsageSnapshot,
 };
+use std::sync::Arc;
 
-use super::{Area, Heard, News, ViewModel};
+use super::remotes::Reached;
+use super::{Area, Heard, News, RunnerReach, ViewModel};
 use crate::fake_client::RecordedClient;
 
 const MAIN: &str = "main";
 const SIDE: &str = "side";
 const RUNNER: u64 = 5;
 const UNREACHABLE: &str = "the runner's bus is out of reach";
+const RUNNER_ENVIRONMENT: &str = "runner";
+const RUNNER_BUILD: &str = "0.9.0";
 
 fn name(raw: &str) -> EnvironmentName {
     EnvironmentName::new(raw.to_owned())
@@ -186,4 +191,93 @@ fn a_folded_event_names_its_area_and_hands_its_side_effects_over_once() {
     );
     assert!(news.heard.is_empty(), "an ask never held is not let go");
     assert!(model.take_news().areas.is_empty());
+}
+
+fn runner_snapshot() -> Snapshot {
+    let mut environment = EnvironmentData::empty(name(RUNNER_ENVIRONMENT));
+    environment.enter_sessions();
+    environment.new_session(None, SessionSpec::default());
+    Snapshot {
+        environments: vec![environment],
+        ..snapshot()
+    }
+}
+
+fn runner_moved(model: &mut ViewModel, state: RunnerState) {
+    model.fold_event(EventKind::RunnerChanged(RunnerShown {
+        runner: CloudRunnerId(RUNNER),
+        state,
+    }));
+}
+
+fn ready() -> RunnerState {
+    RunnerState::Ready {
+        linger: Linger::Enabled,
+    }
+}
+
+#[test]
+fn a_reached_runner_s_sessions_come_from_its_own_feed_tagged_with_its_runtime() {
+    let runner = CloudRunnerId(RUNNER);
+    let mut model = ViewModel::default();
+    runner_moved(&mut model, ready());
+    let connection = model.remotes.reaching(runner);
+    let client = RecordedClient::new(vec![Feed::Snapshot(runner_snapshot())]);
+    let follow = model.adopt_reached(
+        runner,
+        connection,
+        Reached::Connected(client.clone(), RUNNER_BUILD.to_owned()),
+    );
+    assert!(follow.is_some());
+    assert_eq!(
+        model.remotes.get(runner).map(|remote| remote.reach.clone()),
+        Some(RunnerReach::Connected {
+            build: RUNNER_BUILD.to_owned()
+        })
+    );
+    let mut feeds = client.subscribe(None);
+    while let Some(feed) = block_on(feeds.next()) {
+        assert_eq!(model.fold_remote(runner, connection, feed), Some(true));
+    }
+    let sessions: Vec<(RuntimeId, &str)> = model
+        .remotes
+        .sessions()
+        .map(|(runtime, environment, _)| (runtime, environment.as_str()))
+        .collect();
+    assert_eq!(sessions, [(RuntimeId::Runner(runner), RUNNER_ENVIRONMENT)]);
+    assert!(
+        model.attention.queue.is_empty(),
+        "a runner's feed stays out of the local copy"
+    );
+    assert_eq!(
+        model.fold_remote(runner, connection + 1, Feed::Snapshot(snapshot())),
+        None,
+        "a feed of an older connection is not folded"
+    );
+}
+
+#[test]
+fn an_older_runner_keeps_the_process_wire_until_it_leaves_ready() {
+    let runner = CloudRunnerId(RUNNER);
+    let mut model = ViewModel::default();
+    runner_moved(&mut model, ready());
+    let connection = model.remotes.reaching(runner);
+    let follow = model.adopt_reached(runner, connection, Reached::ProcessWire);
+    assert!(follow.is_none());
+    assert_eq!(
+        model.remotes.get(runner).map(|remote| remote.reach.clone()),
+        Some(RunnerReach::ProcessWire)
+    );
+    runner_moved(&mut model, RunnerState::NotConnected);
+    assert!(model.remotes.get(runner).is_none());
+    let unreached: Arc<RecordedClient> = RecordedClient::new(Vec::new());
+    let late = model.adopt_reached(
+        runner,
+        connection,
+        Reached::Connected(unreached, RUNNER_BUILD.to_owned()),
+    );
+    assert!(
+        late.is_none() && model.remotes.get(runner).is_none(),
+        "a connection that finishes after its runner left is dropped"
+    );
 }

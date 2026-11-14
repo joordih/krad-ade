@@ -11,6 +11,7 @@ use crate::chats::{ChatStart, OfferedBuffers};
 use crate::jobs::JobDone;
 use crate::kraddies::DigestReply;
 use crate::opencode::OpencodeInput;
+use crate::runners::{RunnerLine, RunnerLineError};
 use crate::terminals::{Shared, TerminalAction, TerminalLaunch};
 
 #[derive(Debug)]
@@ -24,6 +25,10 @@ pub(crate) enum RunnerInput {
     OpenClaudeSetup {
         terminal: AgentRef,
         shared: Arc<Shared>,
+    },
+    Connect {
+        runner: CloudRunnerId,
+        reply: oneshot::Sender<Result<RunnerLine, RunnerLineError>>,
     },
 }
 

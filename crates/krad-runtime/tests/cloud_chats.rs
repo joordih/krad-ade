@@ -20,7 +20,7 @@ use std::process::ExitCode;
 type Case = (&'static str, fn() -> cloud::TestResult);
 
 #[cfg(unix)]
-const CASES: [Case; 2] = [
+const CASES: [Case; 3] = [
     (
         "a_cloud_chat_answers_on_the_runner_reattaches_from_its_offset_and_replays_its_journal",
         scenarios::a_cloud_chat_answers_on_the_runner_reattaches_from_its_offset_and_replays_its_journal,
@@ -28,6 +28,10 @@ const CASES: [Case; 2] = [
     (
         "a_returning_runner_replays_what_its_chat_asked_while_the_app_was_away",
         scenarios::a_returning_runner_replays_what_its_chat_asked_while_the_app_was_away,
+    ),
+    (
+        "the_desktop_reaches_a_ready_runner_s_runtime_through_cloud_connect",
+        scenarios::the_desktop_reaches_a_ready_runner_s_runtime_through_cloud_connect,
     ),
 ];
 

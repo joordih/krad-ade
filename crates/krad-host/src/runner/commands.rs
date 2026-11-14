@@ -3,8 +3,8 @@ use std::path::Path;
 use std::process::Output;
 
 use super::{
-    ATTACH_VERB, INSTALL_ENV, PAIR_VERB, RESIZE_VERB, STATUS_VERB, STOP_VERB, TOKEN_ENV,
-    UNPAIR_VERB,
+    ATTACH_VERB, CONNECT_VERB, INSTALL_ENV, PAIR_VERB, RESIZE_VERB, STATUS_VERB, STOP_VERB,
+    TOKEN_ENV, UNPAIR_VERB,
 };
 use crate::command::HostCommand;
 use crate::error::HostError;
@@ -54,6 +54,13 @@ pub fn pair_command(cli: &Path, install: &InstallId) -> HostCommand {
 pub fn unpair_command(cli: &Path, install: &InstallId) -> HostCommand {
     let mut command = HostCommand::new(cli);
     command.args([UNPAIR_VERB, install.as_str()]);
+    command
+}
+
+#[must_use]
+pub fn connect_command(cli: &Path) -> HostCommand {
+    let mut command = HostCommand::new(cli);
+    command.arg(CONNECT_VERB);
     command
 }
 
@@ -166,6 +173,9 @@ mod tests {
             ["cloud-stop", "shell-1"]
         );
         assert_eq!(args(&status_command(cli, &pairing)), ["cloud-status"]);
+        let connect = connect_command(cli);
+        assert_eq!(args(&connect), ["cloud-connect"]);
+        assert_eq!(connect.env_from_stdin, Vec::<OsString>::new());
         assert_eq!(
             args(&pair_command(cli, &pairing.install)),
             ["cloud-pair", "0123456789abcdef"]

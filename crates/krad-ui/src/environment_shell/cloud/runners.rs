@@ -58,6 +58,7 @@ impl EnvironmentShell {
         self.runtime.view.update(cx, |model, _| {
             model.runner_logins.remove(&runner);
             model.runners.remove(&runner);
+            model.remotes.retain(|kept| kept != runner);
         });
         self.post_runner(RunnerCommand::Remove { runner });
         cx.notify();
@@ -71,6 +72,7 @@ impl EnvironmentShell {
         if self.runner_removed_from_settings(runner) {
             self.runtime.view.update(cx, |model, _| {
                 model.runners.remove(&runner);
+                model.remotes.retain(|kept| kept != runner);
             });
         }
     }

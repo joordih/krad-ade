@@ -21,8 +21,8 @@ pub use attach::{attach, list, resize, stop};
 #[cfg(unix)]
 pub use cli::{report as report_verb_failure, run_client_verb, runner_root, EXIT_FAILED, EXIT_OK};
 pub use commands::{
-    attach_terminal_command, authorize, pair_command, resize_command, run_authorized,
-    status_command, stop_command, unpair_command, TerminalAttach,
+    attach_terminal_command, authorize, connect_command, pair_command, resize_command,
+    run_authorized, status_command, stop_command, unpair_command, TerminalAttach,
 };
 #[cfg(unix)]
 pub use connect::bridge;

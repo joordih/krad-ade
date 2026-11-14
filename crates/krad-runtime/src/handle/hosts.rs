@@ -1,11 +1,13 @@
+use futures::channel::oneshot;
 use krad_domain::{CloudRunnerId, EnvironmentName, Host, RunnerCli};
 use krad_host::mux::PromptSender;
 use krad_host::{HostLink, MachineChannel};
 use krad_protocol::AgentRef;
 use std::sync::Arc;
 
-use super::RuntimeHandle;
+use super::{Pending, RuntimeHandle};
 use crate::input::{Input, RunnerInput};
+use crate::runners::{RunnerLine, RunnerLineError};
 use crate::terminals::{HostShell, Shared, TerminalPlace, TerminalView};
 
 impl RuntimeHandle {
@@ -63,6 +65,15 @@ impl RuntimeHandle {
             shared,
         }));
         view
+    }
+
+    pub fn connect_runner(
+        &self,
+        runner: CloudRunnerId,
+    ) -> Pending<Result<RunnerLine, RunnerLineError>> {
+        let (reply, answer) = oneshot::channel();
+        self.deliver(Input::Runner(RunnerInput::Connect { runner, reply }));
+        Pending(answer)
     }
 
     pub fn hand_machine_channel(

@@ -54,6 +54,7 @@ pub use mcp::{
     code_tools_server, mcp_servers, read_project_mcp, trust_of, trusted_servers, with_secrets,
     McpLaunch, McpTrust,
 };
+pub use runners::{RunnerLine, RunnerLineError};
 pub use runtime::{Runtime, RuntimeSetup};
 pub use settings::SettingsSetup;
 pub use terminals::{

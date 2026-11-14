@@ -3,7 +3,7 @@
 use futures::executor::block_on;
 use futures::StreamExt as _;
 use krad_agents::{call, Caller, Request, Response, TerminalHandle};
-use krad_client::{ClientError, Feeds, Runner, RuntimeClient};
+use krad_client::{ClientError, Cursor, Feeds, Runner, RuntimeClient};
 use krad_domain::{InstallId, Pairing, PairingPermission, PairingPermissions, ToolDecision};
 use krad_protocol::{
     BusCommand, Command, ErrorCode, EventKind, Feed, Hello, PairingAnswer, PairingCommand,
@@ -262,5 +262,39 @@ fn a_client_of_another_major_version_is_refused_as_unsupported() -> TestResult {
             ..
         }
     ));
+    Ok(())
+}
+
+#[test]
+fn a_desktop_back_on_the_same_runner_run_resumes_from_its_seq() -> TestResult {
+    let hosted = hosted("resume")?;
+    let pairing = hosted.pair(FIRST_INSTALL)?;
+    let away = hosted.paired(pairing.clone())?;
+    let mut cursor = Cursor::default();
+    assert_eq!(cursor.welcomed(away.welcome()), None);
+    let mut feed = away.subscribe(None);
+    let snapshot = block_on(feed.next()).ok_or(FEED_ENDED)?;
+    assert!(matches!(snapshot, Feed::Snapshot(_)));
+    cursor.heard(&snapshot);
+    drop(feed);
+    drop(away);
+    let asked = hosted.ask_in_background()?;
+    let back = hosted.paired(pairing)?;
+    let since = cursor.welcomed(back.welcome());
+    assert!(since.is_some(), "the runner's runtime kept its run");
+    let mut resumed = back.subscribe(since);
+    let first = block_on(resumed.next()).ok_or(FEED_ENDED)?;
+    let Feed::Event(first) = first else {
+        return Err("a client back within the ring got a snapshot".into());
+    };
+    let pending = match first.kind {
+        EventKind::AskPending(pending) => pending,
+        _ => next_ask(&mut resumed)?,
+    };
+    assert_eq!(answer(&back, &pending, allow())?, Reply::Accepted);
+    assert_eq!(
+        asked.join().map_err(|_| "the caller panicked")?,
+        Some(Response::Decided(allow()))
+    );
     Ok(())
 }
