@@ -1,5 +1,5 @@
 use krad_domain::review::MergeRequest;
-use krad_domain::{CloudRunnerId, EnvironmentName, GroupId, HostedOrigin};
+use krad_domain::{CloudRunnerId, EnvironmentName, GroupId, HostedOrigin, SessionId};
 use krad_protocol::{CloudChatStart, CloudDraftId, CloudReach};
 use krad_repo::{RepoError, Worktree};
 use std::collections::HashMap;
@@ -12,13 +12,13 @@ mod results;
 mod workspace;
 
 pub(crate) use carry::{
-    carried_chats, carry_chats, first_start, fresh_start, CarriedChat, CarrySource,
+    carried_chats, carry_chats, first_start, fresh_start, with_sent_prompt, CarriedChat,
+    CarrySource, MovedChat,
 };
 pub(crate) use hand_over::{hand_over, HandOver, HandOverError};
 pub(crate) use naming::{
     cloud_chat_harness, cloud_session_name, holds_cloud_work, new_nonce as draft_nonce,
-    offered_patch, reached_limit, sent_session_name, session_slug, upstream_branch,
-    upstream_remote,
+    offered_patch, reached_limit, session_slug, upstream_branch, upstream_remote,
 };
 pub use naming::{new_nonce, node_process_id};
 pub(crate) use results::{
@@ -38,6 +38,7 @@ pub(crate) struct CloudDraft {
     pub(crate) starts: Vec<CloudChatStart>,
     pub(crate) reach: CloudReach,
     pub(crate) origin: Option<HostedOrigin>,
+    pub(crate) moving: Option<SessionId>,
 }
 
 #[derive(Debug)]
@@ -51,6 +52,7 @@ pub(crate) struct DraftFacts {
     pub(crate) carried: Vec<CarriedChat>,
     pub(crate) starts: Vec<CloudChatStart>,
     pub(crate) reach: CloudReach,
+    pub(crate) moving: Option<SessionId>,
 }
 
 #[derive(Debug)]
@@ -62,7 +64,7 @@ pub(crate) enum CloudDone {
     },
     Prepared {
         draft: Box<CloudDraft>,
-        prepared: Result<(PreparedWorkspace, Vec<CloudChatStart>), WorkspaceError>,
+        prepared: Result<(PreparedWorkspace, Vec<MovedChat>), WorkspaceError>,
     },
     Pushed {
         branch: String,
@@ -139,6 +141,7 @@ mod tests {
             starts: Vec::new(),
             reach: CloudReach::ProcessWire,
             origin: None,
+            moving: None,
         }
     }
 

@@ -15,10 +15,6 @@ pub enum TerminalCommand {
     OpenMissing {
         environment: EnvironmentName,
     },
-    OpenBeside {
-        beside: AgentRef,
-        intent: LaunchIntent,
-    },
     Write {
         terminal: AgentRef,
         bytes: Vec<u8>,
@@ -161,12 +157,6 @@ mod tests {
             },
             TerminalCommand::Close {
                 terminal: terminal(),
-            },
-            TerminalCommand::OpenBeside {
-                beside: terminal(),
-                intent: LaunchIntent::Preset {
-                    preset: krad_domain::AgentPreset::Codex,
-                },
             },
             TerminalCommand::Type {
                 terminal: terminal(),

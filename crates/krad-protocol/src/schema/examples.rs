@@ -172,10 +172,6 @@ fn state_commands() -> Vec<(&'static str, Value)> {
             json!({ "area": "terminal", "verb": "resize", "terminal": chat(), "size": { "cols": 120, "rows": 40, "cell_width_px": 8, "cell_height_px": 16 } }),
         ),
         (
-            "terminal_open_beside",
-            json!({ "area": "terminal", "verb": "open_beside", "beside": chat(), "intent": { "intent": "preset", "preset": "Shell" } }),
-        ),
-        (
             "terminal_scroll",
             json!({ "area": "terminal", "verb": "scroll", "terminal": chat(), "scroll": { "to": "bottom" } }),
         ),
@@ -303,7 +299,7 @@ fn workspace_commands() -> Vec<(&'static str, Value)> {
         ),
         (
             "cloud_send",
-            json!({ "area": "cloud", "verb": "send", "environment": ENVIRONMENT, "session": 2, "runner": 1, "reach": "process_wire" }),
+            json!({ "area": "cloud", "verb": "send", "environment": ENVIRONMENT, "session": 2, "runner": 1, "prompt": { "chat": 4, "prompt": { "text": "Fix the flaky login test", "mentions": [] } } }),
         ),
         (
             "cloud_host",
@@ -370,10 +366,6 @@ pub(super) fn events() -> Vec<(&'static str, Value)> {
         (
             "answered",
             json!({ "feed": "event", "seq": 50, "kind": { "type": "answered", "request": 15, "answer": { "kind": "mentions", "entries": [{ "path": "src/main.rs", "kind": "file" }] } } }),
-        ),
-        (
-            "answered_terminal_opened",
-            json!({ "feed": "event", "seq": 52, "kind": { "type": "answered", "request": 17, "answer": { "kind": "terminal_opened", "terminal": { "environment": ENVIRONMENT, "terminal": 9 } } } }),
         ),
         (
             "answered_failed",

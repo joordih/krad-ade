@@ -14,7 +14,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::cloud::{environment, TestResult, RUNNER};
-use super::hosted_terminals::a_terminal_opened_beside_a_hosted_chat_runs_in_its_session_until_closed;
 use super::mirror::ChatFeed;
 use super::scenarios::{sent, settled_with, PROMPT};
 
@@ -231,7 +230,6 @@ pub fn the_runner_shows_its_hosted_sessions_terminals_and_failures(
     let client = runner(runtime)?;
     metadata_names_the_origin(&client, id, group)?;
     terminal_frames_cross_the_connection(&client, id.environment.as_str())?;
-    a_terminal_opened_beside_a_hosted_chat_runs_in_its_session_until_closed(&client, id)?;
     a_pasted_image_is_read_back_as_bytes(&client, id)?;
     a_broken_clone_is_reported_for_its_slug(&client)?;
     resumes_from_its_last_seq(runtime, id)

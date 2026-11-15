@@ -46,6 +46,15 @@ impl RunnerSetupError {
     }
 }
 
+impl RunnerSetupError {
+    pub(crate) const fn is_session_refused(&self) -> bool {
+        matches!(
+            self,
+            Self::Host(error) | Self::Cli(HostCliError::Host(error)) if error.is_session_refused()
+        )
+    }
+}
+
 impl fmt::Display for RunnerSetupError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -201,4 +210,22 @@ pub(crate) fn retire_runner(
         .chain(uninstalled)
         .filter_map(Result::err)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use krad_host::SshFailure;
+
+    #[test]
+    fn a_refused_session_drops_the_connection_instead_of_asking_for_the_password() {
+        let refused = RunnerSetupError::Cli(HostCliError::Host(HostError::Ssh(
+            SshFailure::SessionRefused,
+        )));
+        assert!(refused.is_session_refused());
+        assert!(!refused.needs_sign_in());
+        let password = RunnerSetupError::Host(HostError::Ssh(SshFailure::NeedsInteractiveSignIn));
+        assert!(!password.is_session_refused());
+        assert!(password.needs_sign_in());
+    }
 }

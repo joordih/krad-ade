@@ -8,11 +8,6 @@ use super::super::EnvironmentShell;
 
 mod frame;
 mod rows;
-mod terminal;
-mod terminal_open;
-mod terminal_view;
-
-pub(in crate::environment_shell) use terminal_view::HostedTerminalView;
 
 const FAILED_PREFIX: &str = "The cloud session could not start on";
 const UNREACHED: &str = "The cloud runner is not connected";
@@ -102,7 +97,6 @@ impl EnvironmentShell {
         }
         self.open_hosted_chat(&place, key.chat.terminal, window, cx);
         self.list_hosted_models(&key, cx);
-        self.cloud.terminal = None;
         self.cloud.shown = Some(key);
         self.forget_unshown_hosted_places();
         cx.notify();

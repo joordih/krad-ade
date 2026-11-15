@@ -274,12 +274,35 @@ impl RemoteLink {
         if let Some(mux) = lock(&self.mux).take() {
             mux.close();
         }
-        if let Some(args) = self.args.sign_out_args().filter(|_| self.machine.is_none()) {
-            let mut exit = ssh_command(&args);
-            exit.stdin(Stdio::null());
-            output_within(exit, self.args.timeouts.connect.duration(), Waited::Connect).ok();
+        if self.machine.is_none() {
+            self.exit_master();
         }
         tracing::info!(destination = %self.args.destination, "closed the host connection");
+    }
+
+    fn exit_master(&self) {
+        let Some(args) = self.args.sign_out_args() else {
+            return;
+        };
+        let mut exit = ssh_command(&args);
+        exit.stdin(Stdio::null());
+        if let Err(error) =
+            output_within(exit, self.args.timeouts.connect.duration(), Waited::Connect)
+        {
+            tracing::debug!(%error, "the ssh master did not answer the exit request");
+        }
+    }
+
+    pub(crate) fn retire_stale_master(&self) {
+        if !self.signed_in() {
+            return;
+        }
+        tracing::info!(destination = %self.args.destination, "closing the previous ssh master before signing in again");
+        self.open.store(false, Ordering::Release);
+        lock(&self.interactive).take();
+        lock(&self.bulk).take();
+        lock(&self.connection).take();
+        self.exit_master();
     }
 }
 

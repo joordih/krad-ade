@@ -26,7 +26,7 @@ pub(super) use geometry::{
     TERMINAL_LINE_PX,
 };
 use screen::session_screen;
-pub(super) use screen::{embedded_screen, frame_screen, screen_body, BodyLook};
+pub(super) use screen::{embedded_screen, BodyLook};
 
 const GRID_PROBE_CHAR: char = 'm';
 const CARD_STARTING_TEXT: &str = "starting…";

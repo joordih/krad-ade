@@ -58,6 +58,12 @@ impl BadgeLook {
     }
 }
 
+pub(super) fn tab_marks(on_chat: bool, in_cloud: bool) -> impl Iterator<Item = IconName> {
+    [(on_chat, IconName::Chat), (in_cloud, IconName::Cloud)]
+        .into_iter()
+        .filter_map(|(shown, glyph)| shown.then_some(glyph))
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum StateDot {
     Waiting,
@@ -272,6 +278,20 @@ mod tests {
             BadgeLook::of(AgentPreset::ClaudeCode, false, true, pal),
             BadgeLook::Bare(IconName::File)
         );
+    }
+
+    #[test]
+    fn a_tab_whose_session_runs_in_the_cloud_shows_the_cloud_after_its_chat_mark() {
+        assert_eq!(
+            tab_marks(true, true).collect::<Vec<_>>(),
+            [IconName::Chat, IconName::Cloud]
+        );
+        assert_eq!(tab_marks(true, false).collect::<Vec<_>>(), [IconName::Chat]);
+        assert_eq!(
+            tab_marks(false, true).collect::<Vec<_>>(),
+            [IconName::Cloud]
+        );
+        assert_eq!(tab_marks(false, false).count(), 0);
     }
 
     #[test]

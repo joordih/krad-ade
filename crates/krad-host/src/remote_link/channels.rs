@@ -1,10 +1,13 @@
-use std::process::{Child, Stdio};
+use std::io::Read as _;
+use std::process::{Child, ChildStderr, Stdio};
 use std::sync::atomic::Ordering;
 use std::sync::{mpsc, Arc, Mutex, TryLockError};
 use std::thread;
+use std::time::Duration;
 
 use super::{lock, ssh_command, RemoteLink};
 use crate::error::{HostError, Waited};
+use crate::failure::SshFailure;
 use crate::mux::OpenRequest;
 use crate::mux::{Channel, Stream};
 use crate::sftp::{Sftp, SftpError};
@@ -13,6 +16,44 @@ use crate::ssh::Interaction;
 pub(super) const HOME_DIR: &str = ".";
 const SFTP_ERRORS_THREAD: &str = "krad-ade-sftp-errors";
 const HANDSHAKE_THREAD: &str = "krad-ade-sftp-handshake";
+const SSH_SAID_THREAD: &str = "krad-ade-sftp-ssh-said";
+const SSH_SAID_LIMIT_BYTES: u64 = 16 * 1024;
+const SSH_SAID_WAIT: Duration = Duration::from_secs(2);
+
+struct SshSaid(mpsc::Receiver<String>);
+
+impl SshSaid {
+    fn listen(stderr: Option<ChildStderr>) -> Result<Self, HostError> {
+        let (sender, said) = mpsc::channel();
+        if let Some(stderr) = stderr {
+            thread::Builder::new()
+                .name(SSH_SAID_THREAD.to_owned())
+                .spawn(move || {
+                    let mut text = String::new();
+                    let mut limited = stderr.take(SSH_SAID_LIMIT_BYTES);
+                    limited.read_to_string(&mut text).ok();
+                    sender.send(text).ok();
+                    std::io::copy(&mut limited.into_inner(), &mut std::io::sink()).ok();
+                })?;
+        }
+        Ok(Self(said))
+    }
+
+    fn explain(&self, error: HostError) -> HostError {
+        let said = self.0.recv_timeout(SSH_SAID_WAIT).unwrap_or_default();
+        explained(error, &said)
+    }
+}
+
+fn explained(error: HostError, said: &str) -> HostError {
+    if said.trim().is_empty() {
+        return error;
+    }
+    match SshFailure::classify(said) {
+        SshFailure::Other(_) if !matches!(error, HostError::Sftp(SftpError::Closed)) => error,
+        failure => HostError::Ssh(failure),
+    }
+}
 
 enum Keep {
     Process(Child),
@@ -76,7 +117,7 @@ impl RemoteLink {
         let mut child = ssh_command(&self.args.base(Interaction::Subsystem))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()?;
         let pipes = child.stdin.take().zip(child.stdout.take());
         let Some((stdin, stdout)) = pipes else {
@@ -84,6 +125,7 @@ impl RemoteLink {
             child.wait().ok();
             return Err(HostError::NotConnected);
         };
+        let said = SshSaid::listen(child.stderr.take())?;
         match self.handshake_within(stdout, stdin) {
             Ok(sftp) => {
                 tracing::debug!("sftp channel open");
@@ -95,7 +137,7 @@ impl RemoteLink {
             Err(error) => {
                 child.kill().ok();
                 child.wait().ok();
-                Err(error)
+                Err(said.explain(error))
             }
         }
     }
@@ -193,7 +235,13 @@ impl RemoteLink {
         lane: Lane,
         run: impl FnOnce(&Sftp) -> Result<T, SftpError>,
     ) -> Result<T, HostError> {
-        let sftp = self.channel(lane)?;
+        let sftp = match self.channel(lane) {
+            Err(error) if lane == Lane::Bulk && error.is_session_refused() => {
+                tracing::warn!(%error, "no second sftp channel; sending through the first one");
+                self.channel(Lane::Interactive)?
+            }
+            opened => opened?,
+        };
         let result = run(&sftp).map_err(HostError::from);
         if let Err(error) = &result {
             if error.breaks_the_channel() || sftp.is_closed() {
@@ -217,4 +265,32 @@ fn drain_errors(channel: &crate::mux::Channel) -> Result<(), HostError> {
             }
         })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const REFUSED: &str =
+        "mux_client_request_session: session request failed: Session open refused by peer\n\
+                           me@host: Permission denied (publickey,password).\n";
+
+    #[test]
+    fn a_channel_that_closed_early_tells_what_ssh_said() {
+        let error = explained(HostError::Sftp(SftpError::Closed), REFUSED);
+        assert!(error.is_session_refused());
+        let other = explained(
+            HostError::Sftp(SftpError::Closed),
+            "kex: connection reset\n",
+        );
+        assert_eq!(other.to_string(), "ssh failed: kex: connection reset");
+    }
+
+    #[test]
+    fn a_quiet_ssh_keeps_the_sftp_reason() {
+        let error = explained(HostError::Sftp(SftpError::Closed), "  \n");
+        assert!(matches!(error, HostError::Sftp(SftpError::Closed)));
+        let timed_out = explained(HostError::TimedOut(Waited::Connect), "debug noise\n");
+        assert!(matches!(timed_out, HostError::TimedOut(Waited::Connect)));
+    }
 }

@@ -1,13 +1,12 @@
 use gpui_kit::{App, Context};
 use krad_client::RuntimeClient;
 use krad_domain::{
-    AgentPreset, CloudRunner, CloudRunnerId, EnvironmentName, GroupId, Prompt, RunnerState,
-    SessionId, TerminalId,
+    CloudRunner, CloudRunnerId, EnvironmentName, GroupId, Prompt, RunnerState, SessionId,
+    TerminalId,
 };
-use krad_protocol::{CloudCommand, CloudReach, Command, FirstChat};
+use krad_protocol::{CloudCommand, Command, SentPrompt};
 
 use super::super::runtime_view::RunnerReach;
-use super::super::sessions_view::session_terminals;
 use super::super::surface::Backend;
 use super::super::EnvironmentShell;
 
@@ -47,8 +46,8 @@ pub(in crate::environment_shell) struct RunOnChoice {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::environment_shell) struct FirstMessage {
     pub(in crate::environment_shell) environment: EnvironmentName,
-    pub(in crate::environment_shell) group: GroupId,
-    pub(in crate::environment_shell) harness: AgentPreset,
+    pub(in crate::environment_shell) session: SessionId,
+    pub(in crate::environment_shell) chat: TerminalId,
     pub(in crate::environment_shell) prompt: Prompt,
 }
 
@@ -119,13 +118,12 @@ pub(in crate::environment_shell) fn post_first_message(
     let RunOn::Runner(runner) = run_on else {
         return false;
     };
-    client.post(Command::Cloud(CloudCommand::Create {
+    client.post(Command::Cloud(CloudCommand::Send {
         environment: first.environment.clone(),
-        group: first.group,
+        session: first.session,
         runner,
-        reach: CloudReach::Runtime,
-        first: Some(FirstChat {
-            harness: first.harness,
+        prompt: Some(SentPrompt {
+            chat: first.chat,
             prompt: first.prompt.clone(),
         }),
     }));
@@ -195,30 +193,19 @@ impl EnvironmentShell {
     pub(in crate::environment_shell) fn first_message_to_cloud(
         &mut self,
         id: TerminalId,
-        harness: AgentPreset,
         text: &str,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let Some(offer) = self.run_on_offer(id) else {
-            return false;
-        };
+    ) -> Option<Prompt> {
+        let offer = self.run_on_offer(id)?;
         let first = FirstMessage {
             environment: self.active.clone(),
-            group: offer.group,
-            harness,
+            session: offer.session,
+            chat: id,
             prompt: Prompt::new(text, Vec::new()),
         };
         if !post_first_message(self.runtime.client.as_ref(), offer.run_on, &first) {
-            return false;
+            return None;
         }
-        let only_this_chat = self
-            .envs
-            .get(&first.environment)
-            .and_then(|live| live.data.session(offer.session))
-            .is_some_and(|session| session_terminals(session).eq(std::iter::once(id)));
-        if only_this_chat {
-            self.close_session(offer.session, cx);
-        } else if let Some(chat) = self
+        if let Some(chat) = self
             .envs
             .get_mut(&first.environment)
             .and_then(|live| live.chats.get_mut(&id))
@@ -226,7 +213,7 @@ impl EnvironmentShell {
             chat.mentions.clear();
             chat.attached.clear();
         }
-        true
+        Some(first.prompt)
     }
 }
 
@@ -250,8 +237,8 @@ mod tests {
     fn first() -> FirstMessage {
         FirstMessage {
             environment: EnvironmentName::new("api".to_owned()),
-            group: GroupId(1),
-            harness: AgentPreset::Codex,
+            session: SessionId(3),
+            chat: TerminalId(7),
             prompt: Prompt::new("Fix the flaky login test", Vec::new()),
         }
     }
@@ -341,7 +328,7 @@ mod tests {
     }
 
     #[test]
-    fn a_first_message_on_a_runner_creates_its_cloud_session_and_here_posts_nothing() {
+    fn a_first_message_on_a_runner_moves_its_own_session_there_and_here_posts_nothing() {
         let client = RecordedClient::new(Vec::new());
         assert!(!post_first_message(client.as_ref(), RunOn::Here, &first()));
         assert_eq!(client.sent(), Vec::new());
@@ -352,13 +339,12 @@ mod tests {
         ));
         assert_eq!(
             client.sent(),
-            vec![Command::Cloud(CloudCommand::Create {
+            vec![Command::Cloud(CloudCommand::Send {
                 environment: EnvironmentName::new("api".to_owned()),
-                group: GroupId(1),
+                session: SessionId(3),
                 runner: CloudRunnerId(2),
-                reach: CloudReach::Runtime,
-                first: Some(FirstChat {
-                    harness: AgentPreset::Codex,
+                prompt: Some(SentPrompt {
+                    chat: TerminalId(7),
                     prompt: Prompt::new("Fix the flaky login test", Vec::new()),
                 }),
             })]

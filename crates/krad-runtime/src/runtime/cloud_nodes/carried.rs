@@ -7,6 +7,25 @@ use super::super::Runtime;
 use crate::chats::{ChatBrief, ChatRole, ChatStart};
 use crate::workers::worker_node;
 
+pub(in crate::runtime) fn carried_start(start: CloudChatStart) -> ChatStart {
+    let session = match start.conversation {
+        CarriedConversation::Fresh(resume) => LiveSession::Start(resume),
+        CarriedConversation::Forked(resume) => LiveSession::Fork(resume),
+    };
+    ChatStart {
+        harness: start.harness,
+        brief: ChatBrief {
+            role: ChatRole::Agent,
+            ..ChatBrief::default()
+        },
+        prepared: None,
+        session,
+        messages: Vec::new(),
+        queued: start.prompts,
+        notices: Vec::new(),
+    }
+}
+
 impl Runtime {
     pub(in crate::runtime) fn open_carried_chats(
         &mut self,
@@ -45,23 +64,7 @@ impl Runtime {
         if !in_session {
             return None;
         }
-        let conversation = match &start.conversation {
-            CarriedConversation::Fresh(resume) => LiveSession::Start(resume.clone()),
-            CarriedConversation::Forked(resume) => LiveSession::Fork(resume.clone()),
-        };
-        let chat = ChatStart {
-            harness: start.harness,
-            brief: ChatBrief {
-                role: ChatRole::Agent,
-                ..ChatBrief::default()
-            },
-            prepared: None,
-            session: conversation,
-            messages: Vec::new(),
-            queued: start.prompts.clone(),
-            notices: Vec::new(),
-        };
-        self.open_chat(&agent(environment, terminal), chat);
+        self.open_chat(&agent(environment, terminal), carried_start(start.clone()));
         Some(terminal)
     }
 }

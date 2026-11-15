@@ -136,14 +136,6 @@ pub(crate) fn cloud_session_name(group: &str, ordinal: usize) -> String {
     }
 }
 
-pub(crate) fn sent_session_name(session: &str) -> String {
-    if session.starts_with(SESSION_NAME_PREFIX) {
-        session.to_owned()
-    } else {
-        format!("{SESSION_NAME_PREFIX}{session}")
-    }
-}
-
 pub(crate) fn holds_cloud_work(session: &Session, nodes: &[TerminalNode]) -> bool {
     session.cloud.is_some()
         && session
@@ -250,8 +242,6 @@ mod tests {
     fn cloud_sessions_are_named_after_their_group() {
         assert_eq!(cloud_session_name("api", 1), "Cloud · api");
         assert_eq!(cloud_session_name("api", 3), "Cloud · api 3");
-        assert_eq!(sent_session_name("Fix login"), "Cloud · Fix login");
-        assert_eq!(sent_session_name("Cloud · api"), "Cloud · api");
     }
 
     #[test]

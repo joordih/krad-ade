@@ -2,7 +2,7 @@ use krad_domain::{AgentPreset, CloudRunnerId, EnvironmentName, GroupId, SessionE
 use krad_host::HostLink;
 use krad_protocol::{
     CloudCommand, CloudDraftId, CloudNews, CloudOpened, CloudReach, ErrorCode, EventKind,
-    FirstChat, PatchAnswer, Reply,
+    FirstChat, PatchAnswer, Reply, SentPrompt,
 };
 use krad_repo::{resolved_remote_url, working_patch_with_untracked, ORIGIN_REMOTE};
 
@@ -10,9 +10,9 @@ use super::working::agent;
 use super::{refused, Runtime, UNSUPPORTED_COMMAND};
 use crate::cloud::{
     carried_chats, carry_chats, cloud_chat_harness, cloud_session_name, draft_nonce, first_start,
-    fresh_start, holds_cloud_work, offered_patch, prepare_workspace, reached_limit,
-    sent_session_name, session_slug, upstream_branch, upstream_remote, CarriedChat, CarrySource,
-    CloudDone, CloudDraft, DraftFacts, PreparedWorkspace, WorkspaceError, WorkspaceRequest,
+    fresh_start, holds_cloud_work, offered_patch, prepare_workspace, reached_limit, session_slug,
+    upstream_branch, upstream_remote, with_sent_prompt, CarriedChat, CarrySource, CloudDone,
+    CloudDraft, DraftFacts, MovedChat, PreparedWorkspace, WorkspaceError, WorkspaceRequest,
 };
 use crate::jobs::JobDone;
 use krad_protocol::CloudChatStart;
@@ -39,8 +39,8 @@ impl Runtime {
                 environment,
                 session,
                 runner,
-                reach,
-            } => self.send_to_cloud(environment, session, (runner, reach)),
+                prompt,
+            } => self.send_to_cloud(environment, session, runner, prompt),
             CloudCommand::Host { session } => return self.host_cloud_session(*session),
             CloudCommand::AnswerPatch { draft, answer } => self.answer_patch(draft, answer),
             CloudCommand::Push {
@@ -101,7 +101,8 @@ impl Runtime {
         &mut self,
         environment: EnvironmentName,
         session: SessionId,
-        (runner, reach): (CloudRunnerId, CloudReach),
+        runner: CloudRunnerId,
+        prompt: Option<SentPrompt>,
     ) {
         let Some(data) = self.environments.data(&environment) else {
             return self.cloud_news(CloudNews::NoSession);
@@ -115,7 +116,6 @@ impl Runtime {
         let Some(group) = found.group else {
             return self.cloud_news(CloudNews::NoGroup);
         };
-        let name = sent_session_name(&found.name);
         let chats = &self.chats;
         let messages = |terminal| chats.messages(&agent(&environment, terminal));
         let source = CarrySource {
@@ -124,10 +124,14 @@ impl Runtime {
             acp: &self.settings.current.acp,
             messages: &messages,
         };
-        let carried = carried_chats(&source, session);
-        tracing::info!(%runner, chats = carried.len(), "sending a session to the cloud");
+        let mut carried = carried_chats(&source, session);
+        if let Some(sent) = prompt {
+            with_sent_prompt(&mut carried, sent);
+        }
+        tracing::info!(%runner, chats = carried.len(), "moving a session to the cloud");
+        let reach = CloudReach::ProcessWire;
         let chats = (carried, Vec::new());
-        self.create_cloud_session((environment, group, runner), reach, Some(name), chats);
+        self.create_cloud_session((environment, group, runner), reach, Some(session), chats);
     }
 
     #[tracing::instrument(skip_all, fields(%runner))]
@@ -135,7 +139,7 @@ impl Runtime {
         &mut self,
         (environment, group, runner): (EnvironmentName, GroupId, CloudRunnerId),
         reach: CloudReach,
-        name: Option<String>,
+        moving: Option<SessionId>,
         (carried, starts): (Vec<CarriedChat>, Vec<CloudChatStart>),
     ) {
         let max = self.settings.current.cloud.max_sessions;
@@ -157,6 +161,9 @@ impl Runtime {
             .unwrap_or(ORIGIN_REMOTE)
             .to_owned();
         let root = found.root.clone();
+        let name = moving
+            .and_then(|session| data.session(session))
+            .map(|session| session.name.clone());
         let facts = Box::new(DraftFacts {
             environment,
             group,
@@ -167,6 +174,7 @@ impl Runtime {
             carried,
             starts,
             reach,
+            moving,
         });
         self.run_cloud_job(move || {
             let home = std::env::home_dir();
@@ -233,6 +241,7 @@ impl Runtime {
             starts: facts.starts,
             reach: facts.reach,
             origin: None,
+            moving: facts.moving,
         };
         match offered_patch(diff) {
             Some(patch) => {
@@ -289,13 +298,11 @@ impl Runtime {
         let link = link.clone();
         let request = draft.request.clone();
         let carried = std::mem::take(&mut draft.carried);
-        let ready_starts = std::mem::take(&mut draft.starts);
         let draft = Box::new(draft);
         self.run_cloud_job(move || {
             let prepared = prepare_workspace(&link, &request).map(|prepared| {
-                let mut starts = carry_chats(&link, &prepared.placement.worktree, carried);
-                starts.extend(ready_starts);
-                (prepared, starts)
+                let moved = carry_chats(&link, &prepared.placement.worktree, carried);
+                (prepared, moved)
             });
             CloudDone::Prepared { draft, prepared }
         });
@@ -312,9 +319,9 @@ impl Runtime {
     fn cloud_prepared(
         &mut self,
         draft: CloudDraft,
-        prepared: Result<(PreparedWorkspace, Vec<CloudChatStart>), WorkspaceError>,
+        prepared: Result<(PreparedWorkspace, Vec<MovedChat>), WorkspaceError>,
     ) {
-        let (mut prepared, starts) = match prepared {
+        let (mut prepared, moved) = match prepared {
             Ok(prepared) => prepared,
             Err(error) => {
                 tracing::warn!(%error, "the cloud session's workspace could not be prepared");
@@ -325,12 +332,19 @@ impl Runtime {
         if let Some(problem) = prepared.patch_problem {
             self.cloud_news(CloudNews::PatchProblem { problem });
         }
+        if let Some(session) = draft.moving {
+            let environment = draft.environment;
+            return self.cloud_moved((environment, session), prepared.placement, moved);
+        }
         let CloudDraft {
             environment,
             group,
             name,
+            starts: ready_starts,
             ..
         } = draft;
+        let mut starts: Vec<CloudChatStart> = moved.into_iter().map(|moved| moved.start).collect();
+        starts.extend(ready_starts);
         let Some(session) = self
             .environments
             .data(&environment)

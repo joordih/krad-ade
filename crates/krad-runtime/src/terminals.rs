@@ -271,7 +271,6 @@ impl Terminals {
             | TerminalCommand::Close { terminal } => terminal.clone(),
             TerminalCommand::Open { .. }
             | TerminalCommand::OpenMissing { .. }
-            | TerminalCommand::OpenBeside { .. }
             | TerminalCommand::Type { .. }
             | TerminalCommand::Watch { .. }
             | TerminalCommand::Unknown => return None,
@@ -297,7 +296,6 @@ impl Terminals {
             TerminalCommand::Close { .. }
             | TerminalCommand::Open { .. }
             | TerminalCommand::OpenMissing { .. }
-            | TerminalCommand::OpenBeside { .. }
             | TerminalCommand::Type { .. }
             | TerminalCommand::Watch { .. }
             | TerminalCommand::Unknown => {}

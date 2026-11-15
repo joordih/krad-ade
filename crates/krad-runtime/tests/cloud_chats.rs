@@ -5,14 +5,14 @@ mod cloud;
 #[path = "cloud_chats/hosted.rs"]
 mod hosted;
 #[cfg(unix)]
-#[path = "cloud_chats/hosted_terminals.rs"]
-mod hosted_terminals;
-#[cfg(unix)]
 #[path = "cloud_chats/hosted_view.rs"]
 mod hosted_view;
 #[cfg(unix)]
 #[path = "cloud_chats/mirror.rs"]
 mod mirror;
+#[cfg(unix)]
+#[path = "cloud_chats/moved.rs"]
+mod moved;
 #[cfg(unix)]
 #[path = "support/repo.rs"]
 mod repo;
@@ -32,7 +32,7 @@ use std::process::ExitCode;
 type Case = (&'static str, fn() -> cloud::TestResult);
 
 #[cfg(unix)]
-const CASES: [Case; 5] = [
+const CASES: [Case; 6] = [
     (
         "a_cloud_runner_asks_for_its_password_in_the_app_and_signs_in_with_the_answer",
         runner_sign_in::a_cloud_runner_asks_for_its_password_in_the_app_and_signs_in_with_the_answer,
@@ -52,6 +52,10 @@ const CASES: [Case; 5] = [
     (
         "a_cloud_session_handed_to_the_runner_s_runtime_chats_there_and_survives_its_restart",
         hosted::a_cloud_session_handed_to_the_runner_s_runtime_chats_there_and_survives_its_restart,
+    ),
+    (
+        "a_session_sent_to_the_cloud_moves_in_place_and_its_chat_goes_on_on_the_runner",
+        moved::a_session_sent_to_the_cloud_moves_in_place_and_its_chat_goes_on_on_the_runner,
     ),
 ];
 

@@ -63,7 +63,7 @@ impl EnvironmentShell {
             environment: self.active.clone(),
             session,
             runner,
-            reach: CloudReach::Runtime,
+            prompt: None,
         });
     }
 

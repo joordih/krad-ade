@@ -2,7 +2,7 @@ use krad_agents::{AgentKey, Caller, Incoming, Request};
 use krad_domain::{AppEvent, Edited, EnvironmentEdit, EnvironmentName, NodeEdit};
 use krad_protocol::{
     AgentRef, BusCommand, Command, ErrorCode, EventKind, EventsCommand, HookOrigin, HostCommand,
-    Reply, RequestId, RuntimeCommand, TerminalCommand, UsageCommand,
+    Reply, RequestId, RuntimeCommand, UsageCommand,
 };
 
 use super::hooking::{agent_of, hook_report};
@@ -80,9 +80,6 @@ impl Runtime {
                 self.flush_chats();
                 self.run_ready_stops();
                 reply.unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND))
-            }
-            Command::Terminal(TerminalCommand::OpenBeside { beside, intent }) => {
-                self.open_beside(id, &beside, intent)
             }
             Command::Terminal(command) => self
                 .execute_terminal(command)

@@ -13,6 +13,8 @@ pub const LINGER_UNAVAILABLE_MARKER: &str = "krad-cloud-runner: linger unavailab
 const UNIT_DIR: &str = "$HOME/.config/systemd/user";
 const RUNTIME_DIR_DEFAULT: &str =
     "export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"";
+const RUNNING_BINARY: &str =
+    "pid=$(systemctl --user show --property=MainPID --value \"$service\" 2>/dev/null)";
 const RUNNING_STATUS_PATTERN: &str = "*\"\trunning\t\"*";
 const UNIT_QUOTE: char = '"';
 const UNIT_ESCAPES: [(char, &str); 3] = [('\\', "\\\\"), ('"', "\\\""), ('%', "%%")];
@@ -118,6 +120,8 @@ pub fn install_script(cli: &Path) -> String {
          changed=0\n\
          if [ -f \"$unit\" ] && ! cmp -s \"$unit\" \"$unit.new\"; then changed=1; fi\n\
          mv -f \"$unit.new\" \"$unit\" || exit 1\n\
+         {RUNNING_BINARY}\n\
+         if [ -n \"$pid\" ] && [ \"$pid\" != 0 ] && ! [ /proc/\"$pid\"/exe -ef \"$cli\" ]; then changed=1; fi\n\
          loginctl enable-linger \"$(id -un)\" >/dev/null 2>&1 || echo '{LINGER_UNAVAILABLE_MARKER}'\n\
          systemctl --user daemon-reload || exit 1\n\
          systemctl --user enable --now \"$service\" || exit 1\n\
@@ -192,12 +196,25 @@ mod tests {
         assert!(script.contains("systemctl --user daemon-reload || exit 1\n"));
         assert!(script.contains("systemctl --user enable --now \"$service\" || exit 1\n"));
         assert!(script.contains("! cmp -s \"$unit\" \"$unit.new\"; then changed=1;"));
+        assert!(script.contains(RUNNING_BINARY));
+        assert!(script.contains("! [ /proc/\"$pid\"/exe -ef \"$cli\" ]; then changed=1;"));
         assert!(script.contains("status=$(\"$cli\" cloud-status 2>/dev/null) || return 1"));
         assert!(script.contains("*\"\trunning\t\"*) return 1"));
         assert!(script.contains("systemctl --user restart \"$service\""));
         assert!(script.contains(&format!("echo '{UPDATE_PENDING_MARKER}'")));
         assert!(script.ends_with(&format!("echo '{READY_MARKER}'\n")));
         assert!(script.contains("KillMode=process"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_install_script_is_valid_posix_shell() -> std::io::Result<()> {
+        let script = install_script(Path::new("/home/me/bin/krad-ade-agents"));
+        let checked = std::process::Command::new("/bin/sh")
+            .args(["-n", "-c", &script])
+            .output()?;
+        assert!(checked.status.success(), "{checked:?}");
+        Ok(())
     }
 
     #[test]

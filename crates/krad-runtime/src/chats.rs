@@ -11,6 +11,7 @@ mod heard;
 mod history;
 mod mcp_prep;
 mod mentions;
+mod moving;
 mod queue;
 mod resolve;
 mod subagents_read;

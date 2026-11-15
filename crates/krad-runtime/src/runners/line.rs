@@ -1,7 +1,7 @@
 use krad_host::runner::connect_command;
 use krad_host::{HostError, HostLink};
 use krad_protocol::Hello;
-use std::io;
+use std::io::{self, BufRead as _, BufReader, Read};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Stdio};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
@@ -9,6 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 const REAPER_THREAD: &str = "krad-runtime-runner-line";
+const STDERR_THREAD: &str = "krad-runtime-runner-line-stderr";
 const NO_PIPES: &str = "the runner's connection has no pipes";
 const REAP_POLL: Duration = Duration::from_millis(250);
 
@@ -78,6 +79,20 @@ fn watch(mut child: Child, stops: &Receiver<()>) {
     }
 }
 
+fn tell_what_it_says(stderr: impl Read + Send + 'static) -> io::Result<()> {
+    thread::Builder::new()
+        .name(STDERR_THREAD.to_owned())
+        .spawn(move || {
+            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                let said = line.trim();
+                if !said.is_empty() {
+                    tracing::warn!(said, "the runner connection's ssh said");
+                }
+            }
+        })
+        .map(drop)
+}
+
 fn reap(child: Child) -> io::Result<LineStop> {
     let (stop, stops) = channel();
     thread::Builder::new()
@@ -96,8 +111,11 @@ pub(crate) fn open_runner_line(
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
     let mut child = command.spawn()?;
+    if let Some(stderr) = child.stderr.take() {
+        tell_what_it_says(stderr)?;
+    }
     let (Some(output), Some(input)) = (child.stdin.take(), child.stdout.take()) else {
         child.kill().ok();
         return Err(RunnerLineError::Failed(NO_PIPES.to_owned()));

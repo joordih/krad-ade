@@ -32,9 +32,6 @@ impl EnvironmentShell {
     }
 
     pub(super) fn send_to_focused(&mut self, bytes: Vec<u8>, cx: &mut Context<Self>) {
-        if self.send_to_hosted_terminal(&bytes, cx) {
-            return;
-        }
         let Some(focused) = self.focused_terminal() else {
             return;
         };
@@ -80,9 +77,6 @@ impl EnvironmentShell {
             alt: modifiers.alt,
             shift: modifiers.shift,
         };
-        if self.type_into_hosted_terminal((key, key_char), held, cx) {
-            return;
-        }
         let Some(focused) = self.focused_terminal() else {
             return;
         };

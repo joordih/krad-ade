@@ -216,7 +216,13 @@ impl EnvironmentShell {
             self.recheck_failed_gateway(cx);
         }
         let text = self.skill_message(harness, text);
-        if self.first_message_to_cloud(id, harness, &text, cx) {
+        if let Some(prompt) = self.first_message_to_cloud(id, &text) {
+            if let Some(chat) = self
+                .live_mut(&place)
+                .and_then(|live| live.chats.get_mut(&id))
+            {
+                chat.show_queued(prompt);
+            }
             return cx.notify();
         }
         let text = match place.local().cloned() {

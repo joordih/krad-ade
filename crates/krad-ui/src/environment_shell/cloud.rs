@@ -33,7 +33,6 @@ use super::EnvironmentShell;
 pub(super) struct CloudRunners {
     asking: Option<krad_protocol::CloudDraftId>,
     shown: Option<hosted::HostedChatKey>,
-    terminal: Option<hosted::HostedTerminalView>,
 }
 
 impl EnvironmentShell {

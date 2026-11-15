@@ -38,6 +38,7 @@ impl RemoteLink {
             .ok_or_else(|| HostError::SignInRefused(NO_PROMPTS.to_owned()))?;
         let askpass = askpass_alias(local_cli, self.tools.config_dir.as_deref())?;
         self.args.ensure_control_dir()?;
+        self.retire_stale_master();
         let broker = Broker::start(asker, Some(prompts))?;
         let mut command = ssh_command(&self.args.sign_in_args(Interaction::Terminal));
         command.stdin(Stdio::null());

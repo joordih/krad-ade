@@ -37,12 +37,21 @@ pub enum SftpError {
     Protocol,
     #[error("the host did not answer the SFTP request in time")]
     TimedOut,
+    #[error("the SFTP channel closed before the host answered")]
+    Closed,
 }
 
 impl SftpError {
     #[must_use]
     pub const fn is_not_found(&self) -> bool {
         matches!(self, Self::NotFound(_))
+    }
+}
+
+fn closed_early(error: io::Error) -> SftpError {
+    match error.kind() {
+        io::ErrorKind::UnexpectedEof => SftpError::Closed,
+        _ => SftpError::Io(error),
     }
 }
 
@@ -78,7 +87,7 @@ impl Sftp {
         Packet::new(PacketType::Init)
             .u32(PROTOCOL_VERSION)
             .send(&mut output)?;
-        let mut reply = Message::receive(&mut input)?;
+        let mut reply = Message::receive(&mut input).map_err(closed_early)?;
         if reply.kind != PacketType::Version {
             return Err(SftpError::Protocol);
         }
@@ -379,5 +388,20 @@ fn status(reply: &mut Message, path: &str) -> Result<StatusCode, SftpError> {
             path: path.to_owned(),
             message,
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_channel_that_ends_before_the_version_says_it_closed() {
+        let shaken = Sftp::handshake(
+            io::Cursor::new(Vec::new()),
+            io::sink(),
+            Duration::from_secs(1),
+        );
+        assert!(matches!(shaken, Err(SftpError::Closed)));
     }
 }

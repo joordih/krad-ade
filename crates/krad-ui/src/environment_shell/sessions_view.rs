@@ -324,7 +324,6 @@ impl EnvironmentShell {
     pub(super) fn leave_main_overlays(&mut self) {
         self.drop_settings();
         self.leave_hosted_chat();
-        self.leave_hosted_terminal();
         let env = self.active.clone();
         let extension = self
             .envs

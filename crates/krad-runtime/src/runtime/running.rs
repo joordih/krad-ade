@@ -127,6 +127,9 @@ impl Runtime {
         self.show_runner(shown);
         let started = self.jobs.run(move || {
             let outcome = ssh.connect();
+            if outcome.as_ref().is_err_and(HostError::is_session_refused) {
+                ssh.close();
+            }
             RunnerDone::Connected {
                 runner,
                 attempt,
@@ -219,6 +222,12 @@ impl Runtime {
         let secrets = self.secrets.clone();
         let started = self.jobs.run(move || {
             let prepared = prepare_runner((&link, &secrets), &ssh, runner, install_id);
+            if prepared
+                .as_ref()
+                .is_err_and(RunnerSetupError::is_session_refused)
+            {
+                ssh.close();
+            }
             RunnerDone::Prepared {
                 runner,
                 attempt,

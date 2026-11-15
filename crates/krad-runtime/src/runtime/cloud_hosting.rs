@@ -126,6 +126,7 @@ impl Runtime {
             starts: hosted.starts,
             reach: CloudReach::ProcessWire,
             origin: hosted.origin,
+            moving: None,
         });
         Reply::Accepted
     }

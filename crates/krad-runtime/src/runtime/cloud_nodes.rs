@@ -12,6 +12,8 @@ use crate::opencode::CloudOpencodeStarted;
 mod carried;
 mod launching;
 
+pub(super) use carried::carried_start;
+
 const RUNNER_PREFIX: &str = "Cloud runner";
 const FAILED_PREFIX: &str = "Failed: ";
 const CLOUD_OFFSETS_EVERY: Duration = Duration::from_secs(2);

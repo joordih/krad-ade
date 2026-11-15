@@ -1,5 +1,6 @@
 use krad_domain::{
-    AgentPreset, CloudRunnerId, EnvironmentName, GroupId, HostedOrigin, Prompt, ResumeId, SessionId,
+    AgentPreset, CloudRunnerId, EnvironmentName, GroupId, HostedOrigin, Prompt, ResumeId,
+    SessionId, TerminalId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -58,8 +59,8 @@ pub enum CloudCommand {
         environment: EnvironmentName,
         session: SessionId,
         runner: CloudRunnerId,
-        #[serde(default)]
-        reach: CloudReach,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prompt: Option<SentPrompt>,
     },
     Host {
         session: Box<HostedSession>,
@@ -87,6 +88,12 @@ pub enum CloudCommand {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct FirstChat {
     pub harness: AgentPreset,
+    pub prompt: Prompt,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct SentPrompt {
+    pub chat: TerminalId,
     pub prompt: Prompt,
 }
 

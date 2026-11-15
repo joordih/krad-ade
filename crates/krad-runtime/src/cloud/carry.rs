@@ -4,7 +4,7 @@ use krad_domain::{
     HistoryMessage, Prompt, ResumeId, Session, SessionId, TerminalId,
 };
 use krad_host::HostLink;
-use krad_protocol::{CarriedConversation, CloudChatStart, FirstChat};
+use krad_protocol::{CarriedConversation, CloudChatStart, FirstChat, SentPrompt};
 use krad_repo::workplace_home;
 use std::path::{Path, PathBuf};
 
@@ -21,9 +21,27 @@ pub(crate) struct Transcript {
 
 #[derive(Clone, Debug)]
 pub(crate) struct CarriedChat {
+    terminal: TerminalId,
     harness: AgentPreset,
     transcript: Option<Transcript>,
     seed: Option<String>,
+    prompts: Vec<Prompt>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MovedChat {
+    pub(crate) terminal: TerminalId,
+    pub(crate) start: CloudChatStart,
+}
+
+pub(crate) fn with_sent_prompt(carried: &mut [CarriedChat], sent: SentPrompt) {
+    let Some(chat) = carried.iter_mut().find(|chat| chat.terminal == sent.chat) else {
+        return tracing::warn!(
+            chat = sent.chat.as_u64(),
+            "the prompt sent with the session belongs to no chat it carries"
+        );
+    };
+    chat.prompts.push(sent.prompt);
 }
 
 fn last_turns(messages: &[HistoryMessage]) -> &[HistoryMessage] {
@@ -78,7 +96,7 @@ pub(crate) fn carry_chats(
     runner: &HostLink,
     worktree: &Path,
     carried: Vec<CarriedChat>,
-) -> Vec<CloudChatStart> {
+) -> Vec<MovedChat> {
     let runner_home = match runner {
         HostLink::Remote(ssh) => ssh.home().map(Path::to_path_buf),
         HostLink::Local => None,
@@ -91,13 +109,18 @@ pub(crate) fn carry_chats(
                 .as_ref()
                 .zip(runner_home.as_deref())
                 .and_then(|(transcript, home)| forked(transcript, runner, home, worktree));
-            match conversation {
+            let mut start = match conversation {
                 Some(conversation) => CloudChatStart {
                     harness: chat.harness,
                     conversation,
                     prompts: Vec::new(),
                 },
                 None => fresh_start(chat.harness, chat.seed),
+            };
+            start.prompts.extend(chat.prompts);
+            MovedChat {
+                terminal: chat.terminal,
+                start,
             }
         })
         .collect()
@@ -151,9 +174,11 @@ pub(crate) fn carried_chats(source: &CarrySource<'_>, session: SessionId) -> Vec
                 });
             let harness = cloud_chat_harness(harness, &candidates);
             Some(CarriedChat {
+                terminal: id,
                 transcript: transcript.filter(|_| harness == AgentPreset::ClaudeCode),
                 harness,
                 seed,
+                prompts: Vec::new(),
             })
         })
         .collect()
@@ -176,6 +201,40 @@ mod tests {
         assert_eq!(kept.len(), CARRIED_MESSAGES);
         assert_eq!(kept.first().map(|message| message.text.as_str()), Some("5"));
         assert_eq!(last_turns(&messages[..2]).len(), 2);
+    }
+
+    #[test]
+    fn a_prompt_sent_with_a_moving_session_follows_its_own_chat_after_the_summary() {
+        let chat = |terminal| CarriedChat {
+            terminal: TerminalId(terminal),
+            harness: AgentPreset::Codex,
+            transcript: None,
+            seed: Some("earlier".to_owned()),
+            prompts: Vec::new(),
+        };
+        let mut carried = vec![chat(4), chat(5)];
+        let prompt = Prompt::new("Fix the flaky test", Vec::new());
+        with_sent_prompt(
+            &mut carried,
+            SentPrompt {
+                chat: TerminalId(5),
+                prompt: prompt.clone(),
+            },
+        );
+        with_sent_prompt(
+            &mut carried,
+            SentPrompt {
+                chat: TerminalId(9),
+                prompt: prompt.clone(),
+            },
+        );
+        let moved = carry_chats(&HostLink::Local, Path::new("/work"), carried);
+        let prompts: Vec<(TerminalId, usize)> = moved
+            .iter()
+            .map(|chat| (chat.terminal, chat.start.prompts.len()))
+            .collect();
+        assert_eq!(prompts, [(TerminalId(4), 1), (TerminalId(5), 2)]);
+        assert_eq!(moved[1].start.prompts.last(), Some(&prompt));
     }
 
     #[test]

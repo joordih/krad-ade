@@ -143,7 +143,10 @@ fn talk(
 #[tracing::instrument(skip_all, fields(runner = %over.request.runner))]
 pub(crate) fn hand_over(over: HandOver) -> Result<(), HandOverError> {
     let placement = placement_on(&over.link, &over.request)?;
-    let mut starts = carry_chats(&over.link, &placement.worktree, over.carried);
+    let mut starts: Vec<_> = carry_chats(&over.link, &placement.worktree, over.carried)
+        .into_iter()
+        .map(|moved| moved.start)
+        .collect();
     starts.extend(over.starts);
     let WorkspaceRequest {
         remote_url,

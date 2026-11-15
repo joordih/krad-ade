@@ -57,7 +57,6 @@ impl EnvironmentShell {
         let title =
             harness.map(|harness| self.runtime.settings.acp.harness_name(harness).into_owned());
         let caption = format!("{ON_RUNNER} {}", self.runner_name(key.runner));
-        let terminals = self.hosted_terminal_chips(key, cx);
         div()
             .flex()
             .flex_row()
@@ -81,7 +80,6 @@ impl EnvironmentShell {
                     .text_color(rgb(pal.text_muted))
                     .child(caption),
             )
-            .children(terminals)
             .child(
                 Button::new(CLOSE_ID)
                     .label(CLOSE_LABEL)

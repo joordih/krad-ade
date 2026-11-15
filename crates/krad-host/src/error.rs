@@ -89,13 +89,18 @@ impl HostError {
     }
 
     #[must_use]
+    pub const fn is_session_refused(&self) -> bool {
+        matches!(self, Self::Ssh(failure) if failure.is_session_refused())
+    }
+
+    #[must_use]
     pub const fn breaks_the_channel(&self) -> bool {
         matches!(
             self,
             Self::Io(_)
                 | Self::NotConnected
                 | Self::TimedOut(_)
-                | Self::Sftp(SftpError::Io(_) | SftpError::TimedOut)
+                | Self::Sftp(SftpError::Io(_) | SftpError::TimedOut | SftpError::Closed)
                 | Self::Mux(MuxError::Closed | MuxError::Io(_))
         )
     }

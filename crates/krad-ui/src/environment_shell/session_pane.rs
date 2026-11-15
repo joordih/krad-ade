@@ -9,7 +9,8 @@ pub(in crate::environment_shell) use tab_motion::entering_tab;
 pub(in crate::environment_shell) use tab_picker::tab_picker_shell;
 
 use tab_look::{
-    sweep_color, tab_badge, tab_tile, working_sweep, BadgeLook, StateDot, TAB_HOVER_GROUP,
+    sweep_color, tab_badge, tab_marks, tab_tile, working_sweep, BadgeLook, StateDot,
+    TAB_HOVER_GROUP,
 };
 
 use panes::{pane_px, PANE_STRIP_H};
@@ -217,9 +218,6 @@ fn position_of(event: &ClickEvent) -> (f32, f32) {
 
 impl EnvironmentShell {
     pub(super) fn session_pane(&self, cx: &mut Context<Self>) -> AnyElement {
-        if let Some(hosted) = self.hosted_terminal_pane(cx) {
-            return hosted;
-        }
         if let Some(hosted) = self.hosted_chat_pane(cx) {
             return hosted;
         }
@@ -393,6 +391,7 @@ impl EnvironmentShell {
         };
         let status = CardStatus::of(node.state, session);
         let on_chat = live.chats.contains_key(&id);
+        let in_cloud = self.cloud_placement_of(&live.data.name, id).is_some();
         let is_file = file.is_some();
         let working = status == CardStatus::Agent(AgentState::Working);
         let peeks = !is_file && preset != AgentPreset::Shell;
@@ -458,9 +457,10 @@ impl EnvironmentShell {
                             .bg(rgb(pal.text_default)),
                     )
                 })
-                .when(on_chat, |tab| {
-                    tab.child(icon(IconName::Chat, STATUS_ICON, pal.text_muted))
-                })
+                .children(
+                    tab_marks(on_chat, in_cloud)
+                        .map(|glyph| icon(glyph, STATUS_ICON, pal.text_muted)),
+                )
                 .when_some(peek, |tab, fallback| Self::with_peek(tab, id, fallback, cx))
                 .child(Self::close_tab_button(id, TabTrailing::of(shown), cx))
                 .when(working, |tab| {

@@ -175,7 +175,7 @@ fn reached(connected: Result<Runner, ClientError>, stop: LineStop) -> Reached {
             }
         }
         Err(error) => {
-            tracing::debug!(%error, "the runner's runtime did not welcome this window");
+            tracing::warn!(%error, "the runner's runtime did not welcome this window");
             stop.stop();
             Reached::ProcessWire
         }
@@ -187,7 +187,7 @@ async fn connect(handle: RuntimeHandle, runner: CloudRunnerId) -> Reached {
         Ok(Ok(line)) => line,
         Ok(Err(RunnerLineError::NotReady)) | Err(_) => return Reached::Unreachable,
         Ok(Err(error @ RunnerLineError::Failed(_))) => {
-            tracing::debug!(%error, "the runner's runtime is out of reach");
+            tracing::warn!(%error, "the runner's runtime is out of reach");
             return Reached::ProcessWire;
         }
     };

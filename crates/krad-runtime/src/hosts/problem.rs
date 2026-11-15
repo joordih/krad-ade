@@ -16,7 +16,8 @@ pub(crate) const fn recovery(error: &HostError) -> Recovery {
             SshFailure::HostKeyChanged
             | SshFailure::HostKeyUnknown
             | SshFailure::AuthenticationFailed
-            | SshFailure::NeedsInteractiveSignIn,
+            | SshFailure::NeedsInteractiveSignIn
+            | SshFailure::SessionRefused,
         )
         | HostError::UnsupportedPlatform(_)
         | HostError::NoInstallId => Recovery::WaitForUser,
@@ -59,6 +60,9 @@ fn explain_ssh(failure: &SshFailure, destination: &SshDestination) -> String {
         SshFailure::NeedsInteractiveSignIn => format!(
             "{destination} asks for a password or passphrase. Reconnect to sign in."
         ),
+        SshFailure::SessionRefused => format!(
+            "{destination} refused to open another SSH session on this connection. Its SSH server allows MaxSessions sessions per connection and commands still running there hold them. Reconnect to start a fresh connection; if it keeps happening, raise MaxSessions in the host's sshd_config."
+        ),
         SshFailure::Other(message) if message.is_empty() => {
             format!("Could not connect to {destination}.")
         }
@@ -86,6 +90,7 @@ mod tests {
             SshFailure::HostKeyUnknown,
             SshFailure::AuthenticationFailed,
             SshFailure::NeedsInteractiveSignIn,
+            SshFailure::SessionRefused,
         ] {
             assert_eq!(recovery(&HostError::Ssh(failure)), Recovery::WaitForUser);
         }
@@ -117,6 +122,16 @@ mod tests {
         );
         assert!(text.contains("Reconnect to sign in"));
         assert!(!text.contains("agent"));
+        Ok(())
+    }
+
+    #[test]
+    fn a_refused_session_points_at_max_sessions_not_at_the_password() -> TestResult {
+        let destination: SshDestination = "wsl".parse()?;
+        let error = HostError::Ssh(SshFailure::SessionRefused);
+        let text = explain_host_problem(&error, &destination);
+        assert!(text.contains("MaxSessions"));
+        assert!(!error.needs_sign_in());
         Ok(())
     }
 }

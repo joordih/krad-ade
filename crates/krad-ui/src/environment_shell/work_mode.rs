@@ -51,7 +51,6 @@ impl EnvironmentShell {
         }
         self.work_mode = mode;
         self.leave_hosted_chat();
-        self.leave_hosted_terminal();
         cx.notify();
         self.save_view();
     }

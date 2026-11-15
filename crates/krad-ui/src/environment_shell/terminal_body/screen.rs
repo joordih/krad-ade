@@ -36,7 +36,7 @@ pub(super) fn session_screen(
     )
 }
 
-pub(in crate::environment_shell) fn frame_screen(
+fn frame_screen(
     body: Div,
     frame: Arc<TerminalFrame>,
     uploaded: Option<&TerminalImages>,
@@ -140,12 +140,7 @@ pub(in crate::environment_shell) fn embedded_screen(
     session_screen(body, session, None, look, mono, colors)
 }
 
-pub(in crate::environment_shell) fn screen_body(
-    look: BodyLook,
-    mono: &SharedString,
-    colors: &TerminalColors,
-    cx: &App,
-) -> Div {
+fn screen_body(look: BodyLook, mono: &SharedString, colors: &TerminalColors, cx: &App) -> Div {
     div()
         .relative()
         .flex_1()
