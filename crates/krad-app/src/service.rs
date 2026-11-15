@@ -1,5 +1,6 @@
-use krad_domain::{DeviceName, InstallId, PairingToken};
+use krad_domain::{DeviceName, InstallId, PairingPermission, PairingPermissions, PairingToken};
 use krad_host::runner::{ensure_private_dir, runtime_socket};
+use krad_protocol::{PairingAnswer, PairingCommand};
 use krad_runner::{bind_runtime_socket, pair_over_ssh, RuntimeServer};
 use krad_runtime::Clock;
 use std::fs::{self, OpenOptions};
@@ -13,6 +14,13 @@ use crate::desktop_runtime::{config_folder, lock_runtime, start_desktop_runtime}
 pub(crate) const SERVICE_VERB: &str = "service";
 const INSTALL: &str = "install";
 const UNINSTALL: &str = "uninstall";
+const WEB_ACCESS: &str = "web-access";
+const PAIR_BROWSER: &str = "pair-browser";
+const BROWSER_PERMISSIONS: [PairingPermission; 3] = [
+    PairingPermission::Read,
+    PairingPermission::Answer,
+    PairingPermission::Drive,
+];
 const RUNTIME_FOLDER: &str = "runtime";
 const DESKTOP_INSTALL: &str = "krad-ade-desktop";
 const DESKTOP_DEVICE: &str = "This computer's app";
@@ -20,7 +28,9 @@ const DESKTOP_TOKEN: &str = "desktop.token";
 const PRIVATE_FILE: u32 = 0o600;
 const SERVICE_LABEL: &str = "com.joordih.krad-ade.runtime";
 const SYSTEMD_UNIT: &str = "krad-ade-runtime.service";
-const USAGE: &str = "usage: krad-ade service [install | uninstall]";
+const USAGE: &str = "usage: krad-ade service [install | uninstall | web-access <on|off|status> ... | pair-browser [--admin]]";
+const ADMIN_FLAG: &str = "--admin";
+const NO_CODE: &str = "the service did not make a pairing code";
 const BAD_NAME: &str = "the desktop pairing has an invalid name";
 const UNSUPPORTED: &str = "this computer's runtime runs as a service on macOS and Linux only";
 
@@ -175,11 +185,44 @@ fn uninstall() -> io::Result<i32> {
     Ok(0)
 }
 
+fn say(text: &str) -> io::Result<i32> {
+    let mut out = io::stdout().lock();
+    writeln!(out, "{text}")?;
+    out.flush()?;
+    Ok(0)
+}
+
+fn web_access(rest: &[String]) -> io::Result<i32> {
+    let root = runtime_folder(&config_folder()?);
+    ensure_private_dir(&root)?;
+    let said = krad_web_listener::web_access_command(rest, &root)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
+    say(&said)
+}
+
+fn pair_browser(rest: &[String]) -> io::Result<i32> {
+    let mut permissions: PairingPermissions = BROWSER_PERMISSIONS.into_iter().collect();
+    if rest.iter().any(|flag| flag == ADMIN_FLAG) {
+        permissions = PairingPermissions::all();
+    }
+    let runner = crate::desktop_runtime::connect_service(&config_folder()?)?;
+    let answer = futures::executor::block_on(
+        runner.pairing(PairingCommand::CreatePairingCode { permissions }),
+    )
+    .map_err(|error| io::Error::other(error.to_string()))?;
+    let PairingAnswer::Code { code, .. } = answer else {
+        return Err(io::Error::other(NO_CODE));
+    };
+    say(code.expose())
+}
+
 pub(crate) fn run_service_verb(rest: &[String], clock: Clock) -> i32 {
     let outcome = match rest.first().map(String::as_str) {
         None => serve(clock),
         Some(INSTALL) => install(),
         Some(UNINSTALL) => uninstall(),
+        Some(WEB_ACCESS) => web_access(&rest[1..]),
+        Some(PAIR_BROWSER) => pair_browser(&rest[1..]),
         Some(_) => Err(io::Error::new(io::ErrorKind::InvalidInput, USAGE)),
     };
     outcome.unwrap_or_else(|error| {

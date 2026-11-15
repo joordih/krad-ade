@@ -3831,6 +3831,7 @@ dependencies = [
 name = "krad-app"
 version = "0.4.1"
 dependencies = [
+ "futures",
  "gpui-kit",
  "krad-agents",
  "krad-client",

@@ -46,7 +46,10 @@ fn status(root: &Path) -> Result<String, WebAccessError> {
     })
 }
 
-fn run(verb_args: &[String], root: &Path) -> Result<String, WebAccessError> {
+/// # Errors
+///
+/// Fails on a malformed command, refused settings or a settings file that cannot be written.
+pub fn web_access_command(verb_args: &[String], root: &Path) -> Result<String, WebAccessError> {
     let (action, rest) = verb_args.split_first().ok_or_else(usage)?;
     match action.as_str() {
         "status" => status(root),
@@ -69,7 +72,7 @@ pub fn run_web_access_verb(verb: &str, rest: &[String]) -> Option<i32> {
     }
     let outcome = runner_root()
         .map_err(WebAccessError::Io)
-        .and_then(|root| run(rest, &root))
+        .and_then(|root| web_access_command(rest, &root))
         .and_then(|said| {
             let mut out = io::stdout().lock();
             writeln!(out, "{said}")?;
@@ -104,11 +107,11 @@ mod tests {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let root = std::env::temp_dir().join(format!("krad-web-verb-{}", std::process::id()));
         std::fs::create_dir_all(&root)?;
-        assert!(run(&words("on 100.101.102.103:7421"), &root).is_err());
-        assert_eq!(run(&words("status"), &root)?, OFF);
-        run(&words("on 127.0.0.1:7421"), &root)?;
-        assert!(run(&words("status"), &root)?.contains("127.0.0.1:7421"));
-        assert_eq!(run(&words("off"), &root)?, OFF);
+        assert!(web_access_command(&words("on 100.101.102.103:7421"), &root).is_err());
+        assert_eq!(web_access_command(&words("status"), &root)?, OFF);
+        web_access_command(&words("on 127.0.0.1:7421"), &root)?;
+        assert!(web_access_command(&words("status"), &root)?.contains("127.0.0.1:7421"));
+        assert_eq!(web_access_command(&words("off"), &root)?, OFF);
         std::fs::remove_dir_all(&root)?;
         Ok(())
     }
