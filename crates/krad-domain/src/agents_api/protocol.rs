@@ -271,6 +271,7 @@ pub fn lead_refusal(from: &Caller, request: &Request) -> Option<Response> {
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(rename = "AgentsPromptAnswer"))]
 #[serde(transparent)]
 pub struct PromptAnswer(String);
 
@@ -294,6 +295,7 @@ impl fmt::Debug for PromptAnswer {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(rename = "AgentsMessage"))]
 pub struct Message {
     pub id: u64,
     pub from: u64,

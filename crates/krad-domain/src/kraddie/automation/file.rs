@@ -51,6 +51,7 @@ pub struct AutomationsFile {
 
 #[derive(Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(rename = "AutomationVersionOnly"))]
 struct VersionOnly {
     format: AutomationFormatVersion,
 }

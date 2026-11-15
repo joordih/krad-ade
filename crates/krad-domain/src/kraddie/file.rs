@@ -73,6 +73,7 @@ pub struct ReadKraddie {
 
 #[derive(Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(rename = "KraddieVersionOnly"))]
 struct VersionOnly {
     format: KraddieFormatVersion,
 }

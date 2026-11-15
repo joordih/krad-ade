@@ -39,6 +39,7 @@ impl EventApiVersion {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(rename = "AppEventKind"))]
 #[serde(rename_all = "snake_case")]
 pub enum EventKind {
     AgentStarted,

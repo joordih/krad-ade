@@ -11,6 +11,13 @@ use ts_rs::{Config, TS};
 const BINDINGS: &str = "../../web/src/protocol";
 const WRITE_VARIABLE: &str = "KRAD_WRITE_TS";
 const LARGE_INT: &str = "number";
+const SAME_RUST_NAME: [(&str, &str); 5] = [
+    ("ErrorCode.ts", "\"already_answered\""),
+    ("AgentsErrorCode.ts", "\"unsupported_api_version\""),
+    ("Scope.ts", "\"runtime\""),
+    ("ReviewScope.ts", "\"AssignedToMe\""),
+    ("Message.ts", "\"take_delegations\""),
+];
 const STALE: &str = "web/src/protocol is out of date: run `KRAD_WRITE_TS=1 cargo test -p krad-protocol --features ts --test typescript`";
 
 fn files(root: &Path) -> io::Result<BTreeMap<PathBuf, Vec<u8>>> {
@@ -45,6 +52,14 @@ fn the_web_bindings_match_the_protocol() -> Result<(), Box<dyn Error>> {
     let config = Config::new().with_large_int(LARGE_INT).with_out_dir(&fresh);
     Message::export_all(&config)?;
     let generated = files(&fresh)?;
+    for (file, expected) in SAME_RUST_NAME {
+        let text = generated
+            .get(Path::new(file))
+            .map_or_else(String::new, |bytes| {
+                String::from_utf8_lossy(bytes).into_owned()
+            });
+        assert!(text.contains(expected), "{file} lost its own type: {text}");
+    }
     if std::env::var_os(WRITE_VARIABLE).is_some() {
         let target = bindings();
         if target.exists() {

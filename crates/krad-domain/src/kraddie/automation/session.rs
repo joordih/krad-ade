@@ -25,6 +25,7 @@ impl WorkingCopy {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(rename = "AutomationConversation"))]
 #[serde(rename_all = "snake_case")]
 pub enum Conversation {
     #[default]

@@ -35,6 +35,7 @@ pub struct ApiInfo {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(rename = "AgentsErrorCode"))]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
     Unauthorized,

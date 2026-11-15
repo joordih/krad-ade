@@ -2,6 +2,8 @@
 import type { AgentEvent } from "./AgentEvent";
 import type { AgentInfo } from "./AgentInfo";
 import type { AgentSnapshot } from "./AgentSnapshot";
+import type { AgentsMessage } from "./AgentsMessage";
+import type { AgentsPromptAnswer } from "./AgentsPromptAnswer";
 import type { ApiError } from "./ApiError";
 import type { ApiInfo } from "./ApiInfo";
 import type { AutomationInfo } from "./AutomationInfo";
@@ -19,8 +21,6 @@ import type { KraddieRunInfo } from "./KraddieRunInfo";
 import type { KraddieSharingInfo } from "./KraddieSharingInfo";
 import type { MemoryEntryInfo } from "./MemoryEntryInfo";
 import type { MemoryHitInfo } from "./MemoryHitInfo";
-import type { Message } from "./Message";
-import type { PromptAnswer } from "./PromptAnswer";
 import type { SessionInfo } from "./SessionInfo";
 import type { TerminalState } from "./TerminalState";
 import type { ToolCatalog } from "./ToolCatalog";
@@ -28,4 +28,4 @@ import type { ToolDecision } from "./ToolDecision";
 import type { VariantRun } from "./VariantRun";
 import type { WorktreeInfo } from "./WorktreeInfo";
 
-export type Response = { "Agents": Array<AgentInfo> } | { "Sent": { id: number, } } | { "Messages": Array<Message> } | { "Settled": { target: number, state: TerminalState, } } | "TimedOut" | { "Screen": string } | "Noted" | { "Spawned": { terminal: number, } } | { "Submitted": { terminal: number, } } | { "Decided": ToolDecision } | { "Code": CodeAnswer } | { "Tools": ToolCatalog } | { "ExtensionTool": ExtensionToolAnswer } | { "Answered": PromptAnswer | null } | { "Hello": ApiInfo } | { "Sessions": Array<SessionInfo> } | { "SessionCreated": { session: number, } } | { "SessionClosed": { session: number, } } | { "WorktreeCreated": WorktreeInfo } | { "Opened": { path: string, } } | { "Changes": ChangeSet } | { "Closed": Array<Closed> } | { "Kraddies": Array<KraddieInfo> } | { "KraddieStarted": KraddieRunInfo } | { "Automations": Array<AutomationInfo> } | { "AutomationStarted": AutomationRunInfo } | { "AutomationSwitched": AutomationInfo } | { "KraddieMemory": KraddieMemoryInfo } | { "KraddieRecall": KraddieRecallInfo } | { "KraddieChatOpened": KraddieChatInfo } | { "KraddieShared": KraddieSharingInfo } | { "MemoryHits": Array<MemoryHitInfo> } | { "MemoryEntry": MemoryEntryInfo } | { "VariantsStarted": { run: number, } } | { "Variants": Array<VariantRun> } | { "VariantPicked": { run: number, variant: number, } } | { "AgentSnapshot": AgentSnapshot } | { "AgentEvent": AgentEvent } | { "Heartbeat": Heartbeat } | { "Error": ApiError };
+export type Response = { "Agents": Array<AgentInfo> } | { "Sent": { id: number, } } | { "Messages": Array<AgentsMessage> } | { "Settled": { target: number, state: TerminalState, } } | "TimedOut" | { "Screen": string } | "Noted" | { "Spawned": { terminal: number, } } | { "Submitted": { terminal: number, } } | { "Decided": ToolDecision } | { "Code": CodeAnswer } | { "Tools": ToolCatalog } | { "ExtensionTool": ExtensionToolAnswer } | { "Answered": AgentsPromptAnswer | null } | { "Hello": ApiInfo } | { "Sessions": Array<SessionInfo> } | { "SessionCreated": { session: number, } } | { "SessionClosed": { session: number, } } | { "WorktreeCreated": WorktreeInfo } | { "Opened": { path: string, } } | { "Changes": ChangeSet } | { "Closed": Array<Closed> } | { "Kraddies": Array<KraddieInfo> } | { "KraddieStarted": KraddieRunInfo } | { "Automations": Array<AutomationInfo> } | { "AutomationStarted": AutomationRunInfo } | { "AutomationSwitched": AutomationInfo } | { "KraddieMemory": KraddieMemoryInfo } | { "KraddieRecall": KraddieRecallInfo } | { "KraddieChatOpened": KraddieChatInfo } | { "KraddieShared": KraddieSharingInfo } | { "MemoryHits": Array<MemoryHitInfo> } | { "MemoryEntry": MemoryEntryInfo } | { "VariantsStarted": { run: number, } } | { "Variants": Array<VariantRun> } | { "VariantPicked": { run: number, variant: number, } } | { "AgentSnapshot": AgentSnapshot } | { "AgentEvent": AgentEvent } | { "Heartbeat": Heartbeat } | { "Error": ApiError };
