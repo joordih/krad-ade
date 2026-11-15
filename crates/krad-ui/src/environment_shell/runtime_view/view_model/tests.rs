@@ -72,6 +72,7 @@ pub(super) fn snapshot() -> Snapshot {
             ..RunnersSnapshot::default()
         }),
         hosted: Vec::new(),
+        buffers: Vec::new(),
     }
 }
 

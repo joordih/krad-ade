@@ -160,6 +160,7 @@ impl Runtime {
             JobDone::Answered { request, answer } => {
                 self.outbox.push(EventKind::Answered { request, answer });
             }
+            JobDone::Buffer(done) => self.buffer_job_done(done),
             JobDone::Uploaded { request, answer } => {
                 self.uploads.finished(request, &mut self.outbox);
                 self.outbox.push(EventKind::Answered { request, answer });

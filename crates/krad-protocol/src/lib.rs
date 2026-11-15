@@ -6,6 +6,7 @@ mod bus;
 mod chats;
 mod cloud;
 mod command;
+mod editor;
 mod environments;
 mod event;
 mod files;
@@ -55,6 +56,7 @@ pub use cloud::{
     CloudReach, FirstChat, HostedSession, HostedWorkspace, PatchAnswer, SentPrompt,
 };
 pub use command::{Command, ErrorCode, Reply, RuntimeCommand};
+pub use editor::{BufferEdited, BufferId, BufferNotOpened, EditorCommand, OpenedBuffer};
 pub use environments::{EnvironmentCommand, SpendingCrossed};
 pub use event::{Event, EventKind, Feed, Scope, Snapshot};
 pub use files::{

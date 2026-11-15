@@ -266,6 +266,11 @@ impl EnvironmentShell {
             | EventKind::RunnerReturned { .. }
             | EventKind::Pong { .. }
             | EventKind::Answered { .. }
+            | EventKind::BufferOpened(_)
+            | EventKind::BufferEdited(_)
+            | EventKind::BufferSaved { .. }
+            | EventKind::BufferClosed { .. }
+            | EventKind::BufferNotOpened(_)
             | EventKind::Unknown => {}
         }
     }

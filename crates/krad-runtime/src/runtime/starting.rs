@@ -8,6 +8,7 @@ use std::thread;
 use crate::adapters::AcpAdapters;
 use crate::app_events::AppEvents;
 use crate::attention::Attention;
+use crate::buffers::Buffers;
 use crate::bus::{open, Bus, BusAccess};
 use crate::chats::{Chats, EditorBuffers};
 use crate::cloud::CloudSessions;
@@ -150,6 +151,7 @@ impl Runtime {
             secrets: owned.secrets,
             chat_images: owned.chat_images,
             uploads: Uploads::default(),
+            editor: Buffers::default(),
             stopped,
         }
     }

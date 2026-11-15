@@ -6,6 +6,7 @@ use std::sync::Arc;
 use crate::adapters::AcpAdapters;
 use crate::app_events::AppEvents;
 use crate::attention::Attention;
+use crate::buffers::Buffers;
 use crate::bus::Bus;
 use crate::chats::{Chats, EditorBuffers};
 use crate::cloud::CloudSessions;
@@ -47,6 +48,7 @@ mod clouding;
 mod code_host_watch;
 mod commands;
 mod digesting;
+mod editing;
 mod file_asks;
 mod finished_jobs;
 mod following;
@@ -142,5 +144,6 @@ pub struct Runtime {
     secrets: Secrets,
     chat_images: Option<ChatImages>,
     uploads: Uploads,
+    editor: Buffers,
     stopped: Arc<AtomicBool>,
 }

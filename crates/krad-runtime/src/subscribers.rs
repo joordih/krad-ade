@@ -147,6 +147,7 @@ mod tests {
             kraddies: Box::default(),
             runners: Box::default(),
             hosted: Vec::new(),
+            buffers: Vec::new(),
         }
     }
 

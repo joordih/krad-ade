@@ -1,5 +1,6 @@
 use serde_json::{json, Value};
 
+mod editor;
 mod files;
 
 pub(super) const VERSIONING: &str = "protocol_version is the major version. Within it every change is additive: new fields carry a default, new commands, events, messages and codes read as `unknown` on an older peer, which answers a command it does not know with Refused(unsupported) instead of closing. A breaking change raises the major version, and the runtime refuses a Hello of another major version.";
@@ -97,6 +98,7 @@ pub(super) fn commands() -> Vec<(&'static str, Value)> {
     commands.extend(workspace_commands());
     commands.extend(repo_commands());
     commands.extend(files::file_commands());
+    commands.extend(editor::editor_commands());
     commands
 }
 
@@ -385,6 +387,7 @@ pub(super) fn events() -> Vec<(&'static str, Value)> {
         ),
     ];
     events.extend(files::file_events());
+    events.extend(editor::editor_events());
     events
 }
 

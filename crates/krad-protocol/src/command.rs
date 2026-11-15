@@ -6,6 +6,7 @@ use crate::attention::AttentionCommand;
 use crate::bus::BusCommand;
 use crate::chats::ChatCommand;
 use crate::cloud::CloudCommand;
+use crate::editor::EditorCommand;
 use crate::environments::EnvironmentCommand;
 use crate::files::FileCommand;
 use crate::gateway::GatewayCommand;
@@ -56,6 +57,7 @@ pub enum Command {
     Cloud(CloudCommand),
     Repo(RepoCommand),
     File(FileCommand),
+    Editor(EditorCommand),
     #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,

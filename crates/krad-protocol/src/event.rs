@@ -1,5 +1,5 @@
 use krad_domain::{
-    AgentPreset, AgentState, AttentionTarget, ChatImage, ChatMessage, CloudRunnerId,
+    AgentPreset, AgentState, AttentionTarget, BufferVersion, ChatImage, ChatMessage, CloudRunnerId,
     EnvironmentChange, EnvironmentData, EnvironmentName, EventRecord, GitObjectId, Host, KraddieId,
     RewindPoint, Settings, UsageReport,
 };
@@ -11,6 +11,7 @@ use crate::attention::{AttentionNotice, AttentionSnapshot};
 use crate::bus::{AgentRef, AskId, AskSettlement, BusSnapshot, PendingAsk, StatusReport};
 use crate::chats::{ChatAsk, ChatAskId, ChatState, ChatSummary};
 use crate::cloud::{CloudDraftId, CloudNews, CloudOpened};
+use crate::editor::{BufferEdited, BufferId, BufferNotOpened, OpenedBuffer};
 use crate::environments::SpendingCrossed;
 use crate::files::UploadShown;
 use crate::gateway::GatewayState;
@@ -191,6 +192,16 @@ pub enum EventKind {
         image: ChatImage,
     },
     Problem(Problem),
+    BufferOpened(Box<OpenedBuffer>),
+    BufferEdited(Box<BufferEdited>),
+    BufferSaved {
+        buffer: BufferId,
+        version: BufferVersion,
+    },
+    BufferClosed {
+        buffer: BufferId,
+    },
+    BufferNotOpened(Box<BufferNotOpened>),
     Answered {
         request: RequestId,
         answer: Box<Answer>,
@@ -281,6 +292,8 @@ pub struct Snapshot {
     pub runners: Box<RunnersSnapshot>,
     #[serde(default)]
     pub hosted: Vec<HostedSummary>,
+    #[serde(default)]
+    pub buffers: Vec<OpenedBuffer>,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -359,6 +372,7 @@ mod tests {
                 kraddies: Box::default(),
                 runners: Box::default(),
                 hosted: Vec::new(),
+                buffers: Vec::new(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

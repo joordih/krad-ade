@@ -11,6 +11,7 @@ import type { HostsSnapshot } from "./HostsSnapshot";
 import type { KraddiesSnapshot } from "./KraddiesSnapshot";
 import type { ModelsSnapshot } from "./ModelsSnapshot";
 import type { OpencodeSnapshot } from "./OpencodeSnapshot";
+import type { OpenedBuffer } from "./OpenedBuffer";
 import type { RunnersSnapshot } from "./RunnersSnapshot";
 import type { Scope } from "./Scope";
 import type { Seq } from "./Seq";
@@ -18,4 +19,4 @@ import type { Settings } from "./Settings";
 import type { TerminalSummary } from "./TerminalSummary";
 import type { UsageSnapshot } from "./UsageSnapshot";
 
-export type Snapshot = { scope: Scope, seq: Seq, bus: BusSnapshot, attention: AttentionSnapshot, health: HealthSnapshot, usage: UsageSnapshot, models: ModelsSnapshot, environments: Array<EnvironmentData>, terminals: Array<TerminalSummary>, hosts: HostsSnapshot, chats: Array<ChatSummary>, opencode: OpencodeSnapshot, gateway: GatewayState, settings: Settings, git: Array<GitRead>, kraddies: KraddiesSnapshot, runners: RunnersSnapshot, hosted: Array<HostedSummary>, };
+export type Snapshot = { scope: Scope, seq: Seq, bus: BusSnapshot, attention: AttentionSnapshot, health: HealthSnapshot, usage: UsageSnapshot, models: ModelsSnapshot, environments: Array<EnvironmentData>, terminals: Array<TerminalSummary>, hosts: HostsSnapshot, chats: Array<ChatSummary>, opencode: OpencodeSnapshot, gateway: GatewayState, settings: Settings, git: Array<GitRead>, kraddies: KraddiesSnapshot, runners: RunnersSnapshot, hosted: Array<HostedSummary>, buffers: Array<OpenedBuffer>, };

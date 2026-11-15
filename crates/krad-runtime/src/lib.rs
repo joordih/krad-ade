@@ -1,6 +1,7 @@
 mod adapters;
 mod app_events;
 mod attention;
+mod buffers;
 mod bus;
 mod chats;
 mod cloud;

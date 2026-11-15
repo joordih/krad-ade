@@ -27,7 +27,8 @@
     "runner",
     "cloud",
     "repo",
-    "file"
+    "file",
+    "editor"
   ],
   "commands": {
     "agent_close_worker": {
@@ -247,6 +248,33 @@
       "area": "code_host",
       "host": "Github",
       "verb": "check"
+    },
+    "editor_close": {
+      "area": "editor",
+      "buffer": 1,
+      "verb": "close"
+    },
+    "editor_edit": {
+      "area": "editor",
+      "based_on": 7,
+      "buffer": 1,
+      "edit": {
+        "end": 12,
+        "start": 12,
+        "text": "\n    run();"
+      },
+      "verb": "edit"
+    },
+    "editor_open": {
+      "area": "editor",
+      "environment": "main",
+      "path": "/home/dev/app/src/main.rs",
+      "verb": "open"
+    },
+    "editor_save": {
+      "area": "editor",
+      "buffer": 1,
+      "verb": "save"
     },
     "environments_order": {
       "area": "environments",
@@ -680,6 +708,62 @@
         "type": "attention_left"
       },
       "seq": 46
+    },
+    "buffer_closed": {
+      "feed": "event",
+      "kind": {
+        "buffer": 1,
+        "type": "buffer_closed"
+      },
+      "seq": 63
+    },
+    "buffer_edited": {
+      "feed": "event",
+      "kind": {
+        "author": 21,
+        "buffer": 1,
+        "edit": {
+          "end": 12,
+          "start": 12,
+          "text": "\n    run();"
+        },
+        "type": "buffer_edited",
+        "version": 8
+      },
+      "seq": 61
+    },
+    "buffer_not_opened": {
+      "feed": "event",
+      "kind": {
+        "environment": "main",
+        "message": "the file is not UTF-8 text",
+        "path": "/home/dev/app/logo.png",
+        "request": 22,
+        "type": "buffer_not_opened"
+      },
+      "seq": 64
+    },
+    "buffer_opened": {
+      "feed": "event",
+      "kind": {
+        "buffer": 1,
+        "environment": "main",
+        "path": "/home/dev/app/src/main.rs",
+        "saved": 0,
+        "text": "fn main() {}\n",
+        "type": "buffer_opened",
+        "version": 0
+      },
+      "seq": 60
+    },
+    "buffer_saved": {
+      "feed": "event",
+      "kind": {
+        "buffer": 1,
+        "type": "buffer_saved",
+        "version": 8
+      },
+      "seq": 62
     },
     "chat_ask_settled": {
       "feed": "event",
@@ -1207,6 +1291,7 @@
         "history": [],
         "waiting": []
       },
+      "buffers": [],
       "bus": {
         "asks": [],
         "statuses": []
@@ -1277,6 +1362,7 @@
           "history": [],
           "waiting": []
         },
+        "buffers": [],
         "bus": {
           "asks": [],
           "statuses": []

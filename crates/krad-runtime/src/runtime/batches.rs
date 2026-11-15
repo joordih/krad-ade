@@ -169,6 +169,7 @@ impl Runtime {
             git: &self.git,
             kraddies: &self.kraddies,
             runners: &self.runners,
+            buffers: &self.editor,
         };
         let seq = self.seq;
         self.subscribers

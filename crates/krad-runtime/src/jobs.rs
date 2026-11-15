@@ -1,10 +1,11 @@
 use krad_domain::{
-    AgentPreset, AgentState, EnvironmentName, HarnessHealth, Host, HostPlatform, ModelOffer,
-    PlanUsage, UsageFailure,
+    AgentPreset, AgentState, BufferVersion, EnvironmentName, HarnessHealth, Host, HostPlatform,
+    ModelOffer, PlanUsage, UsageFailure,
 };
 use krad_host::HostError;
-use krad_protocol::{AgentRef, Answer, HealthPlace, RequestId};
+use krad_protocol::{AgentRef, Answer, BufferId, HealthPlace, RequestId};
 use std::io;
+use std::path::PathBuf;
 use std::sync::mpsc::SyncSender;
 use std::thread;
 
@@ -30,7 +31,22 @@ use crate::variants::VariantJob;
 const JOB_THREAD: &str = "krad-runtime-job";
 
 #[derive(Debug)]
+pub(crate) enum BufferJob {
+    Read {
+        place: (EnvironmentName, PathBuf),
+        read: Result<String, String>,
+    },
+    Written {
+        buffer: BufferId,
+        version: BufferVersion,
+        environment: EnvironmentName,
+        written: Result<(), String>,
+    },
+}
+
+#[derive(Debug)]
 pub(crate) enum JobDone {
+    Buffer(BufferJob),
     Answered {
         request: RequestId,
         answer: Box<Answer>,

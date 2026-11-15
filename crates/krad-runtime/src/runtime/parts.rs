@@ -5,6 +5,7 @@ use krad_protocol::{
 use super::Runtime;
 use crate::adapters::AcpAdapters;
 use crate::attention::Attention;
+use crate::buffers::Buffers;
 use crate::bus::Bus;
 use crate::chats::Chats;
 use crate::environments::Environments;
@@ -37,6 +38,7 @@ pub(super) struct Parts<'a> {
     pub(super) git: &'a Git,
     pub(super) kraddies: &'a Kraddies,
     pub(super) runners: &'a Runners,
+    pub(super) buffers: &'a Buffers,
 }
 
 impl Parts<'_> {
@@ -67,6 +69,7 @@ impl Parts<'_> {
                 logins: self.runners.logins_snapshot(),
             }),
             hosted: self.hosted(),
+            buffers: self.buffers.snapshot(),
         }
     }
 
@@ -100,6 +103,7 @@ impl Runtime {
             git: &self.git,
             kraddies: &self.kraddies,
             runners: &self.runners,
+            buffers: &self.editor,
         }
         .snapshot(self.applied_seq(), scope)
     }

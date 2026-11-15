@@ -29,7 +29,7 @@ const ERROR_CODES: [ErrorCode; 8] = [
 
 const SCOPES: [Scope; 1] = [Scope::Runtime];
 
-const AREAS: [&str; 28] = [
+const AREAS: [&str; 29] = [
     "runtime",
     "bus",
     "events",
@@ -58,6 +58,7 @@ const AREAS: [&str; 28] = [
     "cloud",
     "repo",
     "file",
+    "editor",
 ];
 
 const fn listed_code(code: ErrorCode) -> bool {
@@ -104,6 +105,7 @@ const fn area(command: &Command) -> Option<&'static str> {
         Command::Cloud(_) => "cloud",
         Command::Repo(_) => "repo",
         Command::File(_) => "file",
+        Command::Editor(_) => "editor",
         Command::Unknown => return None,
     })
 }
