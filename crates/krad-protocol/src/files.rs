@@ -104,6 +104,11 @@ pub enum FileAsk {
     CancelUpload {
         upload: RequestId,
     },
+    Put {
+        dir: PathBuf,
+        name: String,
+        bytes: Vec<u8>,
+    },
     Watch {
         dir: PathBuf,
     },

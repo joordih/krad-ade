@@ -11,7 +11,7 @@ use std::thread;
 use super::connection::serve_connection;
 use super::listener::{Listener, Stream};
 use super::pairing_codes::{PairingCodes, Redeemed};
-use crate::pairings::{pair, unpair};
+use crate::pairings::{authorize, pair, unpair};
 
 const CONNECTION_THREAD: &str = "krad-runner-connection";
 const REQUEST_SPACE_BITS: u32 = 32;
@@ -93,6 +93,11 @@ impl RuntimeServer {
             .entry(install.clone())
             .or_default()
             .insert(key, Box::new(move || stream.close()));
+    }
+
+    #[must_use]
+    pub fn authorize(&self, pairing: &krad_domain::Pairing) -> Option<PairingPermissions> {
+        authorize(&self.root, pairing)
     }
 
     /// # Errors

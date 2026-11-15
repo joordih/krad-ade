@@ -23,4 +23,5 @@ tracing.workspace = true
 tungstenite.workspace = true
 
 [dev-dependencies]
+krad-domain.workspace = true
 krad-runtime.workspace = true

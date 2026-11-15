@@ -6,16 +6,18 @@ mod uploads;
 use krad_domain::{EntryKind, FileStat};
 use krad_host::{HostError, HostLink, Metadata};
 use krad_protocol::{
-    Answer, ErrorCode, FileAsk, NewFile, TextRead, MAX_FOUND_LINES, MAX_READ_BYTES, MAX_TEXTS_READ,
-    MAX_WRITE_BYTES,
+    Answer, ErrorCode, FileAsk, NewFile, TextRead, MAX_ATTACHMENT_BYTES, MAX_FOUND_LINES,
+    MAX_READ_BYTES, MAX_TEXTS_READ, MAX_WRITE_BYTES,
 };
 use krad_repo::{
     create_dir, create_file, delete_entry, index_files, move_entry, read_text, relocate_entry,
     rename_entry, replace_in_file, search_project, search_text, undo_replace, RepoError,
 };
+use std::path::{Path, PathBuf};
 
 pub(crate) use uploads::{upload, Uploads};
 
+const TOO_LARGE_PUT: &str = "the file is too large to upload";
 const TOO_LARGE_TO_WRITE: &str = "the text is too large to write";
 const ALREADY_EXISTS_TEXT: &str = "already exists";
 const UNKNOWN_ASK: &str = "this file ask is not known to the runtime";
@@ -92,6 +94,35 @@ pub(crate) fn answer(link: &HostLink, ask: FileAsk) -> Answer {
     }
 }
 
+fn put(link: &HostLink, dir: &Path, name: &str, bytes: &[u8]) -> Result<Answer, RepoError> {
+    if bytes.len() > MAX_ATTACHMENT_BYTES {
+        return Ok(Answer::Failed {
+            code: ErrorCode::Invalid,
+            message: TOO_LARGE_PUT.to_owned(),
+        });
+    }
+    let path = create_file(link, dir, name)?;
+    link.write(&path, bytes)?;
+    Ok(Answer::Placed { path })
+}
+
+fn read_texts(link: &HostLink, paths: Vec<PathBuf>, limit: u64) -> Answer {
+    Answer::Texts {
+        texts: paths
+            .into_iter()
+            .take(MAX_TEXTS_READ)
+            .filter_map(|path| {
+                let file = read_text(link, &path, limit.min(MAX_READ_BYTES)).ok()?;
+                Some(TextRead {
+                    path,
+                    text: file.text,
+                    truncated: file.truncated,
+                })
+            })
+            .collect(),
+    }
+}
+
 fn worked(link: &HostLink, ask: FileAsk) -> Result<Answer, RepoError> {
     Ok(match ask {
         FileAsk::Read {
@@ -115,6 +146,7 @@ fn worked(link: &HostLink, ask: FileAsk) -> Result<Answer, RepoError> {
         FileAsk::CreateFile { dir, name } => Answer::Placed {
             path: create_file(link, &dir, &name)?,
         },
+        FileAsk::Put { dir, name, bytes } => put(link, &dir, &name, &bytes)?,
         FileAsk::CreateDir { dir, name } => Answer::Placed {
             path: create_dir(link, &dir, &name)?,
         },
@@ -141,20 +173,7 @@ fn worked(link: &HostLink, ask: FileAsk) -> Result<Answer, RepoError> {
         FileAsk::Present { paths } => Answer::Present {
             present: paths.iter().map(|path| link.exists(path)).collect(),
         },
-        FileAsk::ReadTexts { paths, limit } => Answer::Texts {
-            texts: paths
-                .into_iter()
-                .take(MAX_TEXTS_READ)
-                .filter_map(|path| {
-                    let file = read_text(link, &path, limit.min(MAX_READ_BYTES)).ok()?;
-                    Some(TextRead {
-                        path,
-                        text: file.text,
-                        truncated: file.truncated,
-                    })
-                })
-                .collect(),
-        },
+        FileAsk::ReadTexts { paths, limit } => read_texts(link, paths, limit),
         FileAsk::Index { root } => Answer::Indexed {
             files: index_files(link, &root)?
                 .files()

@@ -1,8 +1,10 @@
 use krad_domain::{DeviceName, InstallId, Pairing, PairingCode};
-use krad_protocol::Scope;
+use krad_domain::{EnvironmentName, PairingPermission};
+use krad_protocol::{Answer, Command, EventKind, Feed, FileAsk, FileCommand, Reply, Scope};
 use krad_runner::{RedeemRefusal, RuntimeServer};
 use serde::{Deserialize, Serialize};
 use std::io::Write as _;
+use std::path::PathBuf;
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,7 +15,7 @@ use tungstenite::WebSocket;
 use crate::assets::asset;
 use crate::cookie::{clear_pairing, pairing_of, set_pairing};
 use crate::guard::Guard;
-use crate::http::{read_request, HttpError, Request, Response, STRICT_TRANSPORT};
+use crate::http::{read_request, HttpError, Request, Response, STRICT_TRANSPORT, UPLOAD_PATH};
 use crate::socket::{self, WebStream};
 use crate::tls::Wire;
 
@@ -133,6 +135,7 @@ impl Routes {
             ("POST", PAIRING_PATH) => self.pair(wire, request),
             ("DELETE", PAIRING_PATH) => self.forget(wire, request),
             ("GET", THEME_PATH) => self.theme(wire),
+            ("POST", UPLOAD_PATH) => self.upload(wire, request),
             ("GET" | "HEAD", _) => match asset(&request.path) {
                 Some(found) => {
                     let body = if request.method == "HEAD" {
@@ -196,6 +199,68 @@ impl Routes {
         let library = krad_palette::theme_library(krad_store::read_user_themes());
         let css = krad_palette::settings_css(&snapshot.settings, &library);
         self.answer(wire, &status(OK).with_body(CSS, css.as_bytes()))
+    }
+
+    fn upload(&self, wire: &mut Wire, request: &Request) -> Next {
+        if !self.guard.same_origin(request) {
+            return self.refuse(wire, FORBIDDEN, "cross-origin request");
+        }
+        let allowed = pairing_of(request)
+            .and_then(|pairing| self.server.authorize(&pairing))
+            .is_some_and(|permissions| permissions.allows(PairingPermission::Drive));
+        if !allowed {
+            return self.refuse(wire, FORBIDDEN, "this browser may not upload files");
+        }
+        let (Some(environment), Some(dir), Some(name)) = (
+            request.query("environment"),
+            request.query("dir"),
+            request.query("name"),
+        ) else {
+            return self.refuse(
+                wire,
+                BAD_REQUEST,
+                "expected an environment, a dir and a name",
+            );
+        };
+        let handle = &self.server.handle;
+        let mut feed = handle.subscribe();
+        let id = handle.next_request();
+        let put = Command::File(FileCommand {
+            environment: EnvironmentName::new(environment),
+            ask: FileAsk::Put {
+                dir: PathBuf::from(dir),
+                name,
+                bytes: request.body.clone(),
+            },
+        });
+        match futures::executor::block_on(handle.send(id, put)) {
+            Ok(Reply::Accepted) => {}
+            Ok(Reply::Refused { message, .. }) => return self.refuse(wire, BAD_REQUEST, &message),
+            Err(_) => return self.answer(wire, &status(UNAVAILABLE)),
+        }
+        let answer = loop {
+            match futures::executor::block_on(futures::StreamExt::next(&mut feed)) {
+                Some(Feed::Event(event)) => {
+                    if let EventKind::Answered { request, answer } = event.kind {
+                        if request == id {
+                            break Some(*answer);
+                        }
+                    }
+                }
+                Some(Feed::Snapshot(_)) => {}
+                None => break None,
+            }
+        };
+        match answer {
+            Some(Answer::Placed { path }) => {
+                let body =
+                    serde_json::to_vec(&serde_json::json!({ "path": path })).unwrap_or_default();
+                self.answer(wire, &status(OK).with_body(JSON, &body))
+            }
+            Some(Answer::Failed { message, .. }) => self.refuse(wire, BAD_REQUEST, &message),
+            Some(_) => self.refuse(wire, FAILED, "the runtime answered something else"),
+            None => self.answer(wire, &status(UNAVAILABLE)),
+        }
     }
 
     fn forget(&self, wire: &mut Wire, request: &Request) -> Next {

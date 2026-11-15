@@ -3,6 +3,8 @@ use std::io::{self, Read, Write};
 const HEAD_END: &[u8] = b"\r\n\r\n";
 const MAX_HEAD_BYTES: usize = 16 * 1024;
 const MAX_BODY_BYTES: usize = 4 * 1024;
+pub(crate) const MAX_UPLOAD_BYTES: usize = 32 * 1024 * 1024;
+pub(crate) const UPLOAD_PATH: &str = "/upload";
 const READ_CHUNK: usize = 4096;
 const SECURITY_HEADERS: &str = "Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'\r\n\
 X-Content-Type-Options: nosniff\r\n\
@@ -45,9 +47,40 @@ impl Request {
         })
     }
 
+    pub(crate) fn query(&self, name: &str) -> Option<String> {
+        let (_, query) = self.path.split_once('?')?;
+        query.split('&').find_map(|pair| {
+            let (key, value) = pair.split_once('=')?;
+            (key == name).then(|| percent_decoded(value)).flatten()
+        })
+    }
+
     pub(crate) fn closes(&self) -> bool {
         self.has_token("connection", "close")
     }
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    char::from(byte)
+        .to_digit(16)
+        .and_then(|digit| u8::try_from(digit).ok())
+}
+
+fn percent_decoded(value: &str) -> Option<String> {
+    let mut bytes = Vec::with_capacity(value.len());
+    let mut raw = value.bytes();
+    while let Some(byte) = raw.next() {
+        match byte {
+            b'%' => {
+                let high = hex_value(raw.next()?)?;
+                let low = hex_value(raw.next()?)?;
+                bytes.push(high * 16 + low);
+            }
+            b'+' => bytes.push(b' '),
+            other => bytes.push(other),
+        }
+    }
+    String::from_utf8(bytes).ok()
 }
 
 fn head_end(buffer: &[u8]) -> Option<usize> {
@@ -108,7 +141,12 @@ pub(crate) fn read_request(
         Some(raw) => raw.parse::<usize>().map_err(|_| HttpError::BadHead)?,
         None => 0,
     };
-    if length > MAX_BODY_BYTES {
+    let limit = if request.path.split('?').next() == Some(UPLOAD_PATH) {
+        MAX_UPLOAD_BYTES
+    } else {
+        MAX_BODY_BYTES
+    };
+    if length > limit {
         return Err(HttpError::BodyTooLarge);
     }
     while pending.len() < length {
@@ -191,6 +229,17 @@ mod tests {
         let second = read_request(&mut input, &mut pending)?.ok_or("no second request")?;
         assert_eq!(second.path, "/");
         assert!(read_request(&mut input, &mut pending)?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn query_values_are_percent_decoded() -> Result<(), Box<dyn std::error::Error>> {
+        let raw = b"POST /upload?dir=%2Fhome%2Fdev%2Fapp&name=caf%C3%A9+notes.txt HTTP/1.1\r\nContent-Length: 0\r\n\r\n";
+        let mut pending = Vec::new();
+        let request = read_request(&mut &raw[..], &mut pending)?.ok_or("no request")?;
+        assert_eq!(request.query("dir").as_deref(), Some("/home/dev/app"));
+        assert_eq!(request.query("name").as_deref(), Some("café notes.txt"));
+        assert_eq!(request.query("missing"), None);
         Ok(())
     }
 
