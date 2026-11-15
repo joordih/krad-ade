@@ -272,6 +272,8 @@ impl EnvironmentShell {
             | EventKind::BufferClosed { .. }
             | EventKind::BufferNotOpened(_)
             | EventKind::FolderChanged(_)
+            | EventKind::Diagnostics(_)
+            | EventKind::LanguageServer(_)
             | EventKind::Unknown => {}
         }
     }

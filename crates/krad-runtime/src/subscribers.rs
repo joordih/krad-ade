@@ -148,6 +148,7 @@ mod tests {
             runners: Box::default(),
             hosted: Vec::new(),
             buffers: Vec::new(),
+            language_servers: Vec::new(),
         }
     }
 

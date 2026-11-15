@@ -21,6 +21,7 @@ use crate::harness_health::Health;
 use crate::hosts::Hosts;
 use crate::jobs::Jobs;
 use crate::kraddies::Kraddies;
+use crate::languages::Languages;
 use crate::launches::Launches;
 use crate::models::Models;
 use crate::opencode::OpencodeServers;
@@ -68,6 +69,7 @@ mod kraddie_following;
 mod kraddie_rounds;
 mod kraddie_runs;
 mod kraddie_worktrees;
+mod languages;
 mod launching;
 mod parts;
 mod removing;
@@ -101,6 +103,7 @@ pub(crate) use self::chat_images::ChatImageDone;
 pub(crate) use self::ci_fixing::PendingFix;
 pub(crate) use self::kraddie_following::LinesCounted;
 pub(crate) use self::kraddie_runs::RunPlan;
+pub(crate) use self::languages::LanguageJob;
 pub(crate) use self::launching::AttachedLine;
 
 pub(crate) use self::replies::{answer_to, refused};
@@ -147,5 +150,6 @@ pub struct Runtime {
     uploads: Uploads,
     editor: Buffers,
     folders: FolderWatches,
+    languages: Languages,
     stopped: Arc<AtomicBool>,
 }

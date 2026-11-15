@@ -73,6 +73,7 @@ pub(super) fn snapshot() -> Snapshot {
         }),
         hosted: Vec::new(),
         buffers: Vec::new(),
+        language_servers: Vec::new(),
     }
 }
 

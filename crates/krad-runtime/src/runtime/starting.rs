@@ -25,6 +25,7 @@ use crate::hosts::Hosts;
 use crate::input::Input;
 use crate::jobs::Jobs;
 use crate::kraddies::{Kraddies, KraddiesSetup};
+use crate::languages::Languages;
 use crate::launches::{LaunchedViews, Launches};
 use crate::models::Models;
 use crate::opencode::{OpencodeDirectory, OpencodeServers};
@@ -154,6 +155,7 @@ impl Runtime {
             uploads: Uploads::default(),
             editor: Buffers::default(),
             folders: FolderWatches::default(),
+            languages: Languages::default(),
             stopped,
         }
     }

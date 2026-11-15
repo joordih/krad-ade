@@ -14,6 +14,7 @@ use crate::cloud::{CloudDraftId, CloudNews, CloudOpened};
 use crate::editor::{BufferEdited, BufferId, BufferNotOpened, OpenedBuffer};
 use crate::environments::SpendingCrossed;
 use crate::files::FolderChanged;
+use crate::language::{FileDiagnostics, ServerShown};
 use crate::files::UploadShown;
 use crate::gateway::GatewayState;
 use crate::git::{GitFinished, GitRead, SessionChangesRead, WorktreeSwept};
@@ -204,6 +205,8 @@ pub enum EventKind {
     },
     BufferNotOpened(Box<BufferNotOpened>),
     FolderChanged(Box<FolderChanged>),
+    Diagnostics(Box<FileDiagnostics>),
+    LanguageServer(Box<ServerShown>),
     Answered {
         request: RequestId,
         answer: Box<Answer>,
@@ -296,6 +299,8 @@ pub struct Snapshot {
     pub hosted: Vec<HostedSummary>,
     #[serde(default)]
     pub buffers: Vec<OpenedBuffer>,
+    #[serde(default)]
+    pub language_servers: Vec<ServerShown>,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -375,6 +380,7 @@ mod tests {
                 runners: Box::default(),
                 hosted: Vec::new(),
                 buffers: Vec::new(),
+                language_servers: Vec::new(),
             }),
             Feed::Event(Event {
                 seq: Seq(3),

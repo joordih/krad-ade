@@ -81,7 +81,7 @@ impl Buffers {
         (environment, path): Place,
         read: Result<String, String>,
         outbox: &mut Vec<EventKind>,
-    ) {
+    ) -> Option<BufferId> {
         let place = (environment, path);
         let waiting = self.opening.remove(&place).unwrap_or_default();
         let (environment, path) = place;
@@ -96,7 +96,7 @@ impl Buffers {
                         message: message.clone(),
                     }))
                 }));
-                return;
+                return None;
             }
         };
         self.last += 1;
@@ -110,6 +110,16 @@ impl Buffers {
         outbox.push(EventKind::BufferOpened(Box::new(open.shown(buffer))));
         self.by_place.insert((environment, path), buffer);
         self.open.insert(buffer, open);
+        Some(buffer)
+    }
+
+    pub(crate) fn document(&self, buffer: BufferId) -> Option<(EnvironmentName, PathBuf, String)> {
+        let open = self.open.get(&buffer)?;
+        Some((
+            open.environment.clone(),
+            open.path.clone(),
+            open.text.text().to_owned(),
+        ))
     }
 
     pub(crate) fn edit(
@@ -200,7 +210,10 @@ mod tests {
         assert!(buffers.begin_open(&environment, &path, RequestId(1)));
         assert!(!buffers.begin_open(&environment, &path, RequestId(2)));
         let mut outbox = Vec::new();
-        buffers.read(place(), Ok("fn main() {}\n".to_owned()), &mut outbox);
+        assert_eq!(
+            buffers.read(place(), Ok("fn main() {}\n".to_owned()), &mut outbox),
+            Some(BufferId(1))
+        );
         assert!(
             matches!(outbox.as_slice(), [EventKind::BufferOpened(opened)] if opened.buffer == BufferId(1))
         );
@@ -215,7 +228,10 @@ mod tests {
         buffers.begin_open(&environment, &path, RequestId(1));
         buffers.begin_open(&environment, &path, RequestId(2));
         let mut outbox = Vec::new();
-        buffers.read(place(), Err("not text".to_owned()), &mut outbox);
+        assert_eq!(
+            buffers.read(place(), Err("not text".to_owned()), &mut outbox),
+            None
+        );
         assert_eq!(outbox.len(), 2);
         assert_eq!(buffers.snapshot(), Vec::new());
     }
@@ -226,7 +242,9 @@ mod tests {
         let (environment, path) = place();
         buffers.begin_open(&environment, &path, RequestId(1));
         let mut outbox = Vec::new();
-        buffers.read(place(), Ok("ab".to_owned()), &mut outbox);
+        assert!(buffers
+            .read(place(), Ok("ab".to_owned()), &mut outbox)
+            .is_some());
         let buffer = BufferId(1);
         let insert = TextEdit::new(1, 1, "X");
         let reply = buffers.edit(

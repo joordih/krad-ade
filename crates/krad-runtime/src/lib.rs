@@ -19,6 +19,7 @@ mod hosts;
 mod input;
 mod jobs;
 mod kraddies;
+mod languages;
 mod launches;
 mod mcp;
 mod models;

@@ -170,6 +170,7 @@ impl Runtime {
             kraddies: &self.kraddies,
             runners: &self.runners,
             buffers: &self.editor,
+            languages: &self.languages,
         };
         let seq = self.seq;
         self.subscribers

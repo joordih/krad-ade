@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+use crate::language::LanguageAnswer;
 use crate::chats::{ChatPage, HistoryPart, SubagentsRead, TranscriptRead};
 use crate::command::ErrorCode;
 use crate::files::{TextRead, Unreadable, VaultNoteText};
@@ -20,6 +21,9 @@ use crate::files::{TextRead, Unreadable, VaultNoteText};
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Answer {
+    Language {
+        answer: LanguageAnswer,
+    },
     ChatPage(ChatPage),
     Transcript(Box<TranscriptRead>),
     Subagents(Box<SubagentsRead>),

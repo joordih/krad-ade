@@ -28,7 +28,8 @@
     "cloud",
     "repo",
     "file",
-    "editor"
+    "editor",
+    "language"
   ],
   "commands": {
     "agent_close_worker": {
@@ -429,6 +430,36 @@
       "switch": "on",
       "verb": "share_memory"
     },
+    "language_hover": {
+      "area": "language",
+      "ask": {
+        "at": {
+          "character": 4,
+          "line": 0
+        },
+        "verb": "hover"
+      },
+      "buffer": 1
+    },
+    "language_install_server": {
+      "area": "language",
+      "ask": {
+        "verb": "install_server"
+      },
+      "buffer": 1
+    },
+    "language_rename": {
+      "area": "language",
+      "ask": {
+        "at": {
+          "character": 7,
+          "line": 3
+        },
+        "new_name": "start",
+        "verb": "rename"
+      },
+      "buffer": 1
+    },
     "models_keep": {
       "area": "models",
       "harness": "ClaudeCode",
@@ -678,6 +709,21 @@
       },
       "seq": 53
     },
+    "answered_hover": {
+      "feed": "event",
+      "kind": {
+        "answer": {
+          "answer": {
+            "kind": "hover",
+            "markdown": "`fn main()`"
+          },
+          "kind": "language"
+        },
+        "request": 23,
+        "type": "answered"
+      },
+      "seq": 67
+    },
     "answered_text_replaced": {
       "feed": "event",
       "kind": {
@@ -798,6 +844,32 @@
       },
       "seq": 43
     },
+    "diagnostics": {
+      "feed": "event",
+      "kind": {
+        "diagnostics": [
+          {
+            "message": "expected `;`",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 0
+              },
+              "start": {
+                "character": 0,
+                "line": 0
+              }
+            },
+            "severity": "error",
+            "source": "rustc"
+          }
+        ],
+        "environment": "main",
+        "path": "/home/dev/app/src/main.rs",
+        "type": "diagnostics"
+      },
+      "seq": 65
+    },
     "environment_changed": {
       "feed": "event",
       "kind": {
@@ -823,6 +895,19 @@
         "type": "folder_changed"
       },
       "seq": 56
+    },
+    "language_server": {
+      "feed": "event",
+      "kind": {
+        "environment": "main",
+        "package": "rust-analyzer",
+        "root": "/home/dev/app",
+        "state": {
+          "state": "running"
+        },
+        "type": "language_server"
+      },
+      "seq": 66
     },
     "pong": {
       "feed": "event",
@@ -1341,6 +1426,7 @@
         "digests": [],
         "kraddies": []
       },
+      "language_servers": [],
       "models": {
         "listed": []
       },
@@ -1411,6 +1497,7 @@
           "digests": [],
           "kraddies": []
         },
+        "language_servers": [],
         "models": {
           "listed": []
         },

@@ -24,7 +24,7 @@ use crate::models::AcpOffersRead;
 use crate::opencode::{CloudOpencodeStarted, OpencodeListed, OpencodeStarted};
 use crate::reviews::ReviewDone;
 use crate::runners::RunnerDone;
-use crate::runtime::{AttachedLine, ChatImageDone, LinesCounted, SignInEnvRead};
+use crate::runtime::{AttachedLine, ChatImageDone, LanguageJob, LinesCounted, SignInEnvRead};
 use crate::usage::UsageKey;
 use crate::variants::VariantJob;
 
@@ -47,6 +47,7 @@ pub(crate) enum BufferJob {
 #[derive(Debug)]
 pub(crate) enum JobDone {
     Buffer(BufferJob),
+    Language(LanguageJob),
     FolderListed {
         folder: (EnvironmentName, PathBuf),
         listed: Result<Vec<DirEntry>, String>,

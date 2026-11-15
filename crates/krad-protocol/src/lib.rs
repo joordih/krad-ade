@@ -20,6 +20,7 @@ mod hosted;
 mod hosts;
 mod ids;
 mod kraddies;
+mod language;
 mod launches;
 mod models;
 mod opencode;
@@ -56,6 +57,11 @@ pub use cloud::{
     CloudReach, FirstChat, HostedSession, HostedWorkspace, PatchAnswer, SentPrompt,
 };
 pub use command::{Command, ErrorCode, Reply, RuntimeCommand};
+pub use language::{
+    CodeDiagnostic, CodeLocation, Completion, DiagnosticSeverity, FileDiagnostics, FileEdits,
+    LanguageAnswer, LanguageAsk, LanguageCommand, RangeEdit, ServerShown, ServerState, Signature,
+    TextPosition, TextRange,
+};
 pub use editor::{BufferEdited, BufferId, BufferNotOpened, EditorCommand, OpenedBuffer};
 pub use environments::{EnvironmentCommand, SpendingCrossed};
 pub use event::{Event, EventKind, Feed, Scope, Snapshot};

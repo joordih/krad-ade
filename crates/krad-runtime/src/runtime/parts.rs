@@ -14,6 +14,7 @@ use crate::git::Git;
 use crate::harness_health::Health;
 use crate::hosts::Hosts;
 use crate::kraddies::Kraddies;
+use crate::languages::Languages;
 use crate::models::Models;
 use crate::opencode::OpencodeServers;
 use crate::runners::Runners;
@@ -39,6 +40,7 @@ pub(super) struct Parts<'a> {
     pub(super) kraddies: &'a Kraddies,
     pub(super) runners: &'a Runners,
     pub(super) buffers: &'a Buffers,
+    pub(super) languages: &'a Languages,
 }
 
 impl Parts<'_> {
@@ -70,6 +72,7 @@ impl Parts<'_> {
             }),
             hosted: self.hosted(),
             buffers: self.buffers.snapshot(),
+            language_servers: self.languages.snapshot(),
         }
     }
 
@@ -104,6 +107,7 @@ impl Runtime {
             kraddies: &self.kraddies,
             runners: &self.runners,
             buffers: &self.editor,
+            languages: &self.languages,
         }
         .snapshot(self.applied_seq(), scope)
     }

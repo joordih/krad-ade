@@ -64,6 +64,7 @@ impl Runtime {
             Command::Repo(command) => self.execute_repo(id, command),
             Command::File(command) => self.execute_file(id, command),
             Command::Editor(command) => self.execute_editor(id, command),
+            Command::Language(command) => self.execute_language(id, command),
             Command::Host(command) => self
                 .execute_host(command)
                 .unwrap_or_else(|| refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND)),

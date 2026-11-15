@@ -17,6 +17,18 @@ pub(super) fn editor_commands() -> Vec<(&'static str, Value)> {
             json!({ "area": "editor", "verb": "save", "buffer": 1 }),
         ),
         (
+            "language_hover",
+            json!({ "area": "language", "buffer": 1, "ask": { "verb": "hover", "at": { "line": 0, "character": 4 } } }),
+        ),
+        (
+            "language_rename",
+            json!({ "area": "language", "buffer": 1, "ask": { "verb": "rename", "at": { "line": 3, "character": 7 }, "new_name": "start" } }),
+        ),
+        (
+            "language_install_server",
+            json!({ "area": "language", "buffer": 1, "ask": { "verb": "install_server" } }),
+        ),
+        (
             "editor_close",
             json!({ "area": "editor", "verb": "close", "buffer": 1 }),
         ),
@@ -36,6 +48,18 @@ pub(super) fn editor_events() -> Vec<(&'static str, Value)> {
         (
             "buffer_saved",
             json!({ "feed": "event", "seq": 62, "kind": { "type": "buffer_saved", "buffer": 1, "version": 8 } }),
+        ),
+        (
+            "diagnostics",
+            json!({ "feed": "event", "seq": 65, "kind": { "type": "diagnostics", "environment": ENVIRONMENT, "path": "/home/dev/app/src/main.rs", "diagnostics": [{ "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 2 } }, "severity": "error", "message": "expected `;`", "source": "rustc" }] } }),
+        ),
+        (
+            "language_server",
+            json!({ "feed": "event", "seq": 66, "kind": { "type": "language_server", "environment": ENVIRONMENT, "root": "/home/dev/app", "package": "rust-analyzer", "state": { "state": "running" } } }),
+        ),
+        (
+            "answered_hover",
+            json!({ "feed": "event", "seq": 67, "kind": { "type": "answered", "request": 23, "answer": { "kind": "language", "answer": { "kind": "hover", "markdown": "`fn main()`" } } } }),
         ),
         (
             "buffer_closed",

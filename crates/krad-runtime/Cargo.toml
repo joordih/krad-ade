@@ -16,7 +16,10 @@ krad-host.workspace = true
 krad-protocol.workspace = true
 krad-repo.workspace = true
 krad-session.workspace = true
+krad-extensions.workspace = true
+krad-lsp.workspace = true
 krad-store.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
@@ -25,7 +28,6 @@ ureq.workspace = true
 [dev-dependencies]
 krad-client.workspace = true
 krad-runner = { workspace = true, features = ["runtime"] }
-serde_json.workspace = true
 
 [[test]]
 name = "cloud_chats"

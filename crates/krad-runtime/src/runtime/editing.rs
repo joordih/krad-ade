@@ -44,11 +44,20 @@ impl Runtime {
                 buffer,
                 based_on,
                 edit,
-            } => self
-                .editor
-                .edit(buffer, (based_on, &edit), id, &mut self.outbox),
+            } => {
+                let reply = self
+                    .editor
+                    .edit(buffer, (based_on, &edit), id, &mut self.outbox);
+                if reply == Reply::Accepted {
+                    self.language_buffer_edited(buffer);
+                }
+                reply
+            }
             EditorCommand::Save { buffer } => self.save_buffer(buffer),
-            EditorCommand::Close { buffer } => self.editor.close(buffer, &mut self.outbox),
+            EditorCommand::Close { buffer } => {
+                self.language_buffer_closed(buffer);
+                self.editor.close(buffer, &mut self.outbox)
+            }
             EditorCommand::Unknown => refused(ErrorCode::Unsupported, UNKNOWN_VERB),
         }
     }
@@ -87,14 +96,21 @@ impl Runtime {
 
     pub(super) fn buffer_job_done(&mut self, done: BufferJob) {
         match done {
-            BufferJob::Read { place, read } => self.editor.read(place, read, &mut self.outbox),
+            BufferJob::Read { place, read } => {
+                if let Some(buffer) = self.editor.read(place, read, &mut self.outbox) {
+                    self.attach_language(buffer);
+                }
+            }
             BufferJob::Written {
                 buffer,
                 version,
                 environment,
                 written,
             } => match written {
-                Ok(()) => self.editor.saved(buffer, version, &mut self.outbox),
+                Ok(()) => {
+                    self.editor.saved(buffer, version, &mut self.outbox);
+                    self.language_buffer_saved(buffer);
+                }
                 Err(message) => self.outbox.push(EventKind::Problem(Problem {
                     scope: ProblemScope::Environment { environment },
                     code: ErrorCode::Failed,

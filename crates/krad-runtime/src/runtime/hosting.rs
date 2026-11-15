@@ -161,6 +161,7 @@ impl Runtime {
                 self.outbox.push(EventKind::Answered { request, answer });
             }
             JobDone::Buffer(done) => self.buffer_job_done(done),
+            JobDone::Language(done) => self.language_job_done(done),
             JobDone::FolderListed { folder, listed } => self.folder_listed((folder, listed)),
             JobDone::Uploaded { request, answer } => {
                 self.uploads.finished(request, &mut self.outbox);
