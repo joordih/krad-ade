@@ -4,10 +4,12 @@ import type { AgentRef } from "./AgentRef";
 import type { ApiDiscoveryFile } from "./ApiDiscoveryFile";
 import type { AskAnswer } from "./AskAnswer";
 import type { AskId } from "./AskId";
+import type { DelegationId } from "./DelegationId";
 import type { EnvironmentName } from "./EnvironmentName";
 import type { HookReport } from "./HookReport";
+import type { Response } from "./Response";
 import type { StateReason } from "./StateReason";
 import type { ToolDecision } from "./ToolDecision";
 import type { WebhookId } from "./WebhookId";
 
-export type BusCommand = { "verb": "answer_ask", ask: AskId, decision: ToolDecision, } | { "verb": "answer", ask: AskId, answer: AskAnswer, } | { "verb": "publish_discovery", file: ApiDiscoveryFile, } | { "verb": "replay_hook", agent: AgentRef, report: HookReport, delivered: Array<WebhookId>, } | { "verb": "observe_agent", agent: AgentRef, seen?: AgentInfo | null, hint?: StateReason | null, } | { "verb": "reconcile_agents", environments: Array<EnvironmentName>, agents: Array<AgentInfo>, };
+export type BusCommand = { "verb": "answer_ask", ask: AskId, decision: ToolDecision, } | { "verb": "answer", ask: AskId, answer: AskAnswer, } | { "verb": "publish_discovery", file: ApiDiscoveryFile, } | { "verb": "replay_hook", agent: AgentRef, report: HookReport, delivered: Array<WebhookId>, } | { "verb": "observe_agent", agent: AgentRef, seen?: AgentInfo | null, hint?: StateReason | null, } | { "verb": "reconcile_agents", environments: Array<EnvironmentName>, agents: Array<AgentInfo>, } | { "verb": "respond", delegation: DelegationId, response: Response, };

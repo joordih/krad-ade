@@ -41,7 +41,8 @@ pub use answers::{AcpPackageShown, Answer, FoundMentions, WorktreeChecked};
 pub use app_events::{EventsCommand, WebhookTest};
 pub use attention::{AttentionCommand, AttentionNotice, AttentionSnapshot, AttentionWaiting};
 pub use bus::{
-    AgentRef, AskId, AskRequest, AskSettlement, BusCommand, BusSnapshot, PendingAsk, StatusReport,
+    AgentRef, AskId, AskRequest, AskSettlement, BusCommand, BusSnapshot, DelegatedRequest,
+    PendingAsk, StatusReport,
 };
 pub use chats::{
     AcpShown, AcpSignInAsk, ChatAsk, ChatAskId, ChatCommand, ChatContext, ChatLaunch, ChatMirror,
@@ -76,7 +77,7 @@ pub use hosts::{
     AgentPlace, EnvironmentHost, HostCommand, HostPrompt, HostState, HostsSnapshot, KeptAdapter,
     LocalAgents, LoginEnv, PromptAnswer, PromptId, RemoteBusInfo, RemoteBusState,
 };
-pub use ids::{ProtocolVersion, RequestId, Seq};
+pub use ids::{DelegationId, ProtocolVersion, RequestId, Seq};
 pub use kraddies::{AutomationState, KraddieCommand, KraddieState, KraddiesSnapshot, OwnedDigests};
 pub use launches::{LaunchedAs, TerminalLaunched};
 pub use models::{

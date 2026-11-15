@@ -1,4 +1,5 @@
 mod connection;
+mod delegating;
 mod listener;
 mod outbox;
 mod pairing_codes;

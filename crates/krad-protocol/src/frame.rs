@@ -5,6 +5,7 @@ use krad_domain::TerminalId;
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
+use crate::bus::DelegatedRequest;
 use crate::command::{Command, ErrorCode, Reply};
 use crate::event::{Feed, Scope, Snapshot};
 use crate::hello::{Hello, Welcome};
@@ -72,6 +73,8 @@ pub enum Message {
         code: ErrorCode,
         message: String,
     },
+    TakeDelegations,
+    Delegated(Box<DelegatedRequest>),
     #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,

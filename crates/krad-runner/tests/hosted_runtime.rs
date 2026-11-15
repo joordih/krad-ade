@@ -298,3 +298,45 @@ fn a_desktop_back_on_the_same_runner_run_resumes_from_its_seq() -> TestResult {
     );
     Ok(())
 }
+
+#[test]
+fn a_remote_client_answers_the_bus_requests_the_runtime_delegates() -> TestResult {
+    let hosted = hosted("delegations")?;
+    let client = hosted.paired(hosted.pair(FIRST_INSTALL)?)?;
+    let mut delegated = client.take_delegations();
+    let endpoint = &hosted.runtime.bus().ok_or(NO_BUS)?.endpoint;
+    let (address, token) = (endpoint.address.to_string(), endpoint.token.clone());
+    let opened = std::path::PathBuf::from("/runner/repos/api/README.md");
+    let wanted = opened.clone();
+    let asking = thread::spawn(move || {
+        let request = Request::OpenFile {
+            path: wanted,
+            position: None,
+        };
+        call(&address, &token, &Caller::Client, request).ok()
+    });
+    let request = block_on(delegated.next()).ok_or("nothing was delegated")?;
+    assert_eq!(request.from, Caller::Client);
+    assert!(matches!(&request.request, Request::OpenFile { path, .. } if *path == opened));
+    let answered = block_on(client.send(Command::Bus(BusCommand::Respond {
+        delegation: request.delegation,
+        response: Response::Noted,
+    })))?;
+    assert_eq!(answered, Reply::Accepted);
+    assert_eq!(
+        asking.join().map_err(|_| "the caller panicked")?,
+        Some(Response::Noted)
+    );
+    let again = block_on(client.send(Command::Bus(BusCommand::Respond {
+        delegation: request.delegation,
+        response: Response::Noted,
+    })))?;
+    assert!(matches!(
+        again,
+        Reply::Refused {
+            code: ErrorCode::NotFound,
+            ..
+        }
+    ));
+    Ok(())
+}

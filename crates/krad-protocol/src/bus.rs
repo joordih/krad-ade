@@ -1,3 +1,4 @@
+use krad_domain::agents_api::{Caller, Request, Response};
 use krad_domain::{
     AgentInfo, AgentStatus, ApiDiscoveryFile, AskAnswer, AskKind, EnvironmentName, StateReason,
     TerminalId, ToolDecision, ToolUseId, WebhookId,
@@ -7,6 +8,15 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 
 use crate::hooks::HookReport;
+use crate::ids::DelegationId;
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+pub struct DelegatedRequest {
+    pub delegation: DelegationId,
+    pub from: Caller,
+    pub request: Request,
+}
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -105,6 +115,10 @@ pub enum BusCommand {
     ReconcileAgents {
         environments: Vec<EnvironmentName>,
         agents: Vec<AgentInfo>,
+    },
+    Respond {
+        delegation: DelegationId,
+        response: Response,
     },
     #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]

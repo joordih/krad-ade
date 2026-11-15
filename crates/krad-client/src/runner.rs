@@ -14,11 +14,12 @@ use std::thread;
 use std::time::Duration;
 
 use self::inbox::{read_all, Awaiting, Waiting};
-use crate::client::{Answer, ClientError, Feeds, RuntimeClient, TerminalBytesFeed};
+use crate::client::{Answer, ClientError, DelegatedFeed, Feeds, RuntimeClient, TerminalBytesFeed};
 
 const OUTBOX_CAPACITY: usize = 256;
 const FEED_CAPACITY: usize = 1024;
 const TERMINAL_CAPACITY: usize = 256;
+const DELEGATION_CAPACITY: usize = 64;
 const WRITER_THREAD: &str = "krad-client-runner-writer";
 const READER_THREAD: &str = "krad-client-runner-reader";
 const NO_WELCOME: &str = "the runner did not welcome the client";
@@ -149,6 +150,15 @@ impl Runner {
                 Err(oneshot::Canceled) => Err(ClientError::Stopped),
             })
             .boxed()
+    }
+
+    pub fn take_delegations(&self) -> DelegatedFeed {
+        let (sender, delegated) = mpsc::channel(DELEGATION_CAPACITY);
+        self.waiting.delegate_to(sender);
+        if self.outbox.send(Message::TakeDelegations).is_err() {
+            tracing::debug!("the runner connection closed before taking delegations");
+        }
+        delegated.boxed()
     }
 
     pub fn pairing(&self, command: PairingCommand) -> Answer<PairingAnswer> {

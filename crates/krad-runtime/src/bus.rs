@@ -145,6 +145,7 @@ impl Bus {
             BusCommand::ReplayHook { .. }
             | BusCommand::ObserveAgent { .. }
             | BusCommand::ReconcileAgents { .. }
+            | BusCommand::Respond { .. }
             | BusCommand::Unknown => None,
         }
     }

@@ -2,12 +2,14 @@ use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use futures::{FutureExt as _, StreamExt as _};
 use krad_protocol::{
-    AgentRef, Command, ErrorCode, Feed, Hello, Reply, RequestId, Scope, Seq, Snapshot, Welcome,
+    AgentRef, Command, DelegatedRequest, ErrorCode, Feed, Hello, Reply, RequestId, Scope, Seq,
+    Snapshot, Welcome,
 };
 
 pub type Answer<T> = BoxFuture<'static, Result<T, ClientError>>;
 pub type Feeds = BoxStream<'static, Feed>;
 pub type TerminalBytesFeed = BoxStream<'static, Vec<u8>>;
+pub type DelegatedFeed = BoxStream<'static, DelegatedRequest>;
 
 const NO_TERMINAL_BYTES: &str = "this client cannot watch a terminal's bytes";
 

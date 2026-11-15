@@ -12,6 +12,11 @@ impl ProtocolVersion {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RequestId(pub u64);
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(transparent)]
+pub struct DelegationId(pub u64);
+
 #[derive(
     Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize,
 )]

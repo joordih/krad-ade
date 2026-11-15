@@ -1,12 +1,13 @@
 use futures::FutureExt as _;
 use krad_domain::{InstallId, PairingPermission, PairingPermissions};
 use krad_protocol::{
-    read_frame, Command, ErrorCode, Frame, Hello, Message, Reply, RequestId, Scope, Seq,
-    TerminalCommand, Welcome,
+    read_frame, BusCommand, Command, ErrorCode, Frame, Hello, Message, Reply, RequestId, Scope,
+    Seq, TerminalCommand, Welcome,
 };
 use std::io::{BufReader, Read};
 use std::sync::Arc;
 
+use super::delegating::{take_delegations, Delegations};
 use super::listener::Stream;
 use super::outbox::{Answers, Outbox};
 use super::pairing_requests::answer_pairing;
@@ -20,6 +21,8 @@ const NOT_PAIRED: &str = "this installation is not paired with the cloud runner"
 const NOT_ALLOWED: &str = "this pairing does not allow that";
 const UNKNOWN_MESSAGE: &str = "this runtime does not know that message";
 const ALREADY_FOLLOWING: &str = "this connection already follows the runtime";
+const NO_DELEGATIONS: &str = "this connection does not take the delegated requests";
+const ALREADY_DELEGATE: &str = "this connection already takes the delegated requests";
 const FOREIGN_REQUEST: &str = "that request id is outside this connection's range";
 const STOPPED: &str = "the runtime has stopped";
 
@@ -69,6 +72,7 @@ struct Connection {
     outbox: Outbox,
     answers: Answers,
     following: bool,
+    delegations: Option<Delegations>,
 }
 
 pub(crate) fn serve_connection(server: &Arc<RuntimeServer>, stream: impl Stream) {
@@ -98,6 +102,7 @@ pub(crate) fn serve_connection(server: &Arc<RuntimeServer>, stream: impl Stream)
         outbox,
         answers,
         following: false,
+        delegations: None,
     };
     connection.serve(&mut input);
     if let Peer::Paired { install, .. } = &connection.peer {
@@ -179,7 +184,9 @@ impl Connection {
                 let answer = answer_pairing(&self.server, &self.peer, command);
                 self.outbox.send(answer.into_message(id));
             }
+            Message::TakeDelegations => self.take_delegations(),
             Message::Welcome(_)
+            | Message::Delegated(_)
             | Message::Reply { .. }
             | Message::Feed(_)
             | Message::Snapshot { .. }
@@ -214,6 +221,25 @@ impl Connection {
         }
     }
 
+    fn take_delegations(&mut self) {
+        if !self.peer.allows(PairingPermission::Drive) {
+            self.outbox
+                .send(refused_message(ErrorCode::Forbidden, NOT_ALLOWED));
+            return;
+        }
+        if self.delegations.is_some() {
+            self.outbox
+                .send(refused_message(ErrorCode::Busy, ALREADY_DELEGATE));
+            return;
+        }
+        let delegations = Delegations::default();
+        if let Some(refusal) = take_delegations(&self.server.handle, &self.outbox, &delegations) {
+            self.outbox.send(refusal);
+            return;
+        }
+        self.delegations = Some(delegations);
+    }
+
     fn command(&self, id: RequestId, command: Command) {
         if !self.key.owns(id) {
             self.reply(id, refused(ErrorCode::Invalid, FOREIGN_REQUEST));
@@ -222,6 +248,17 @@ impl Connection {
         if !self.peer.allows(needed_for_command(&command)) {
             self.reply(id, refused(ErrorCode::Forbidden, NOT_ALLOWED));
             return;
+        }
+        if let Command::Bus(BusCommand::Respond {
+            delegation,
+            response,
+        }) = command
+        {
+            let reply = self.delegations.as_ref().map_or_else(
+                || refused(ErrorCode::NotFound, NO_DELEGATIONS),
+                |delegations| delegations.respond(delegation, response),
+            );
+            return self.reply(id, reply);
         }
         if let Command::Terminal(TerminalCommand::Watch { terminal }) = command {
             let sinks = (&self.outbox, &self.answers);

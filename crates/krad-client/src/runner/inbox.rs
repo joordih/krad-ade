@@ -2,7 +2,8 @@ use futures::channel::{mpsc, oneshot};
 use futures::SinkExt as _;
 use krad_domain::TerminalId;
 use krad_protocol::{
-    read_frame, Feed, Frame, Message, PairingAnswer, Reply, RequestId, Snapshot, TerminalBytes,
+    read_frame, DelegatedRequest, Feed, Frame, Message, PairingAnswer, Reply, RequestId, Snapshot,
+    TerminalBytes,
 };
 use std::collections::HashMap;
 use std::io::Read;
@@ -19,6 +20,7 @@ struct Expected {
     answers: HashMap<RequestId, Awaiting>,
     feed: Option<mpsc::Sender<Feed>>,
     terminals: HashMap<TerminalId, mpsc::Sender<Vec<u8>>>,
+    delegate: Option<mpsc::Sender<DelegatedRequest>>,
 }
 
 #[derive(Default)]
@@ -49,6 +51,18 @@ impl Waiting {
         self.expected().terminals.insert(terminal, bytes);
     }
 
+    pub(super) fn delegate_to(&self, delegate: mpsc::Sender<DelegatedRequest>) {
+        self.expected().delegate = Some(delegate);
+    }
+
+    fn delegate(&self) -> Option<mpsc::Sender<DelegatedRequest>> {
+        self.expected().delegate.clone()
+    }
+
+    fn stop_delegating(&self) {
+        self.expected().delegate = None;
+    }
+
     fn terminal(&self, terminal: TerminalId) -> Option<mpsc::Sender<Vec<u8>>> {
         self.expected().terminals.get(&terminal).cloned()
     }
@@ -70,6 +84,7 @@ impl Waiting {
         expected.answers.clear();
         expected.feed = None;
         expected.terminals.clear();
+        expected.delegate = None;
     }
 }
 
@@ -108,6 +123,13 @@ fn take(message: Message, waiting: &Waiting) {
                 }
             }
         }
+        Message::Delegated(delegated) => {
+            if let Some(mut sender) = waiting.delegate() {
+                if futures::executor::block_on(sender.send(*delegated)).is_err() {
+                    waiting.stop_delegating();
+                }
+            }
+        }
         Message::Refused { code, .. } => {
             tracing::debug!(?code, "the runner refused a message");
         }
@@ -117,6 +139,7 @@ fn take(message: Message, waiting: &Waiting) {
         | Message::Command { .. }
         | Message::AskSnapshot { .. }
         | Message::Pairing { .. }
+        | Message::TakeDelegations
         | Message::Unknown => {}
     }
 }
