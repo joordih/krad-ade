@@ -57,7 +57,8 @@ pub use runtime::{Runtime, RuntimeSetup};
 pub use settings::SettingsSetup;
 pub use terminals::{
     remote_terminal, remote_terminal_opener, HostShell, OutputTap, ShownImage, TerminalAction,
-    TerminalFrame, TerminalLaunch, TerminalPlace, TerminalStatus, TerminalView, TerminalWatch,
+    TerminalFrame, TerminalLaunch, TerminalPlace, TerminalStatus, TerminalSurface, TerminalView,
+    TerminalWatch,
 };
 pub use typing::paste_bytes;
 pub use workers::{closed_target, refusal_error, removal_outcome};

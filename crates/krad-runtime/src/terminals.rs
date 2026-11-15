@@ -11,7 +11,7 @@ pub use action::TerminalAction;
 pub use launch::{
     remote_terminal, remote_terminal_opener, HostShell, OutputTap, TerminalLaunch, TerminalPlace,
 };
-pub use view::{ShownImage, TerminalFrame, TerminalStatus, TerminalView};
+pub use view::{ShownImage, TerminalFrame, TerminalStatus, TerminalSurface, TerminalView};
 pub use watch::TerminalWatch;
 
 pub(crate) use typed::Typed;

@@ -3872,6 +3872,7 @@ dependencies = [
  "krad-domain",
  "krad-protocol",
  "krad-runtime",
+ "krad-session",
  "thiserror 2.0.21",
  "tracing",
 ]

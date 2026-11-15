@@ -29,12 +29,14 @@ pub struct TerminalStatus {
     pub mouse_tracking: bool,
 }
 
+type Waker = Box<dyn Fn() + Send + Sync>;
+
 pub(crate) struct Shared {
     frame: RwLock<Arc<TerminalFrame>>,
     status: RwLock<TerminalStatus>,
     wanted: AtomicBool,
     stale: AtomicBool,
-    wake: SyncSender<Input>,
+    wake: Waker,
 }
 
 impl fmt::Debug for Shared {
@@ -44,7 +46,15 @@ impl fmt::Debug for Shared {
 }
 
 impl Shared {
-    pub(crate) fn new(wake: SyncSender<Input>) -> Arc<Self> {
+    pub(crate) fn new(inbox: SyncSender<Input>) -> Arc<Self> {
+        Self::waking(Box::new(move || {
+            if let Err(error) = inbox.try_send(Input::Wake) {
+                tracing::trace!(%error, "the runtime is busy; it renders on its next batch");
+            }
+        }))
+    }
+
+    fn waking(wake: Waker) -> Arc<Self> {
         Arc::new(Self {
             frame: RwLock::new(Arc::new(TerminalFrame::default())),
             status: RwLock::new(TerminalStatus::default()),
@@ -73,6 +83,36 @@ impl Shared {
     }
 }
 
+pub struct TerminalSurface {
+    shared: Arc<Shared>,
+}
+
+impl TerminalSurface {
+    #[must_use]
+    pub fn new(wake: impl Fn() + Send + Sync + 'static) -> (Self, TerminalView) {
+        let shared = Shared::waking(Box::new(wake));
+        let view = TerminalView::new(Arc::clone(&shared));
+        (Self { shared }, view)
+    }
+
+    pub fn publish(&self, frame: TerminalFrame) {
+        self.shared.publish(frame);
+    }
+
+    pub fn set_status(&self, status: TerminalStatus) {
+        self.shared.set_status(status);
+    }
+
+    pub fn mark_stale(&self) {
+        self.shared.mark_stale();
+    }
+
+    #[must_use]
+    pub fn is_wanted(&self) -> bool {
+        self.shared.is_wanted()
+    }
+}
+
 #[derive(Clone)]
 pub struct TerminalView {
     shared: Arc<Shared>,
@@ -95,9 +135,7 @@ impl TerminalView {
     pub fn paint_frame(&self) -> Arc<TerminalFrame> {
         let was_wanted = self.shared.wanted.swap(true, Ordering::AcqRel);
         if !was_wanted && self.shared.stale.load(Ordering::Acquire) {
-            if let Err(error) = self.shared.wake.try_send(Input::Wake) {
-                tracing::trace!(%error, "the runtime is busy; it renders on its next batch");
-            }
+            (self.shared.wake)();
         }
         self.frame()
     }
