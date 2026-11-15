@@ -134,7 +134,7 @@ mod tests {
         let now = Instant::now();
         assert_eq!(watches.watch(folder(), now), Reply::Accepted);
         assert_eq!(watches.due(now), vec![folder()]);
-        assert!(watches.due(now).is_empty());
+        assert_eq!(watches.due(now), Vec::<Folder>::new());
         let mut outbox = Vec::new();
         watches.listed(folder(), Ok(vec![entry("a.rs")]), now, &mut outbox);
         watches.due(now + WATCH_INTERVAL);
