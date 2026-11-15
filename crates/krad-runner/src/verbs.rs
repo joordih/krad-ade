@@ -6,14 +6,23 @@ use std::io::{self, Write};
 use std::path::Path;
 
 use crate::pairings::{pair, unpair, SSH_DEVICE};
-use crate::serving::serve;
+use crate::serving::{serve, Transport};
 
 const INSTALL_USAGE: &str = "usage: cloud-pair <install> [device] | cloud-unpair <install>";
 
 #[must_use]
 pub fn run_runner_verb(verb: &str, rest: &[String]) -> Option<i32> {
+    run_runner_verb_with(verb, rest, Vec::new())
+}
+
+#[must_use]
+pub fn run_runner_verb_with(
+    verb: &str,
+    rest: &[String],
+    transports: Vec<Transport>,
+) -> Option<i32> {
     let outcome = match verb {
-        RUNNER_VERB => runner_root().and_then(|root| serve(&root)),
+        RUNNER_VERB => runner_root().and_then(|root| serve(&root, transports)),
         PAIR_VERB => run_pair(rest),
         UNPAIR_VERB => run_unpair(rest),
         _ => return None,

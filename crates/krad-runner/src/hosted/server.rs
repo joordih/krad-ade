@@ -1,4 +1,4 @@
-use krad_domain::InstallId;
+use krad_domain::{DeviceName, InstallId, PairingCode, PairingPermissions, PairingToken};
 use krad_protocol::RequestId;
 use krad_runtime::RuntimeHandle;
 use std::collections::HashMap;
@@ -10,8 +10,8 @@ use std::thread;
 
 use super::connection::serve_connection;
 use super::listener::{Listener, Stream};
-use super::pairing_codes::PairingCodes;
-use crate::pairings::unpair;
+use super::pairing_codes::{PairingCodes, Redeemed};
+use crate::pairings::{pair, unpair};
 
 const CONNECTION_THREAD: &str = "krad-runner-connection";
 const REQUEST_SPACE_BITS: u32 = 32;
@@ -29,15 +29,27 @@ impl ConnectionKey {
     }
 }
 
-pub struct RuntimeServer<S> {
+type Closer = Box<dyn Fn() + Send>;
+
+#[derive(Debug, thiserror::Error)]
+pub enum RedeemRefusal {
+    #[error("that pairing code is unknown, used or expired")]
+    UnknownCode,
+    #[error("too many pairing codes were tried, wait a minute")]
+    TooManyTries,
+    #[error("the runtime could not keep the pairing")]
+    NotKept(#[source] io::Error),
+}
+
+pub struct RuntimeServer {
     pub(crate) handle: RuntimeHandle,
     pub(crate) root: PathBuf,
     pub(crate) codes: PairingCodes,
     connections: AtomicU64,
-    live: Mutex<HashMap<InstallId, HashMap<ConnectionKey, S>>>,
+    live: Mutex<HashMap<InstallId, HashMap<ConnectionKey, Closer>>>,
 }
 
-impl<S: Stream> RuntimeServer<S> {
+impl RuntimeServer {
     #[must_use]
     pub fn new(handle: RuntimeHandle, root: &Path) -> Arc<Self> {
         Arc::new(Self {
@@ -49,7 +61,7 @@ impl<S: Stream> RuntimeServer<S> {
         })
     }
 
-    pub fn serve(self: &Arc<Self>, listener: &impl Listener<Stream = S>) {
+    pub fn serve<L: Listener>(self: &Arc<Self>, listener: &L) {
         loop {
             let stream = match listener.accept() {
                 Ok(stream) => stream,
@@ -72,15 +84,36 @@ impl<S: Stream> RuntimeServer<S> {
         ConnectionKey(self.connections.fetch_add(1, Ordering::Relaxed))
     }
 
-    fn live(&self) -> MutexGuard<'_, HashMap<InstallId, HashMap<ConnectionKey, S>>> {
+    fn live(&self) -> MutexGuard<'_, HashMap<InstallId, HashMap<ConnectionKey, Closer>>> {
         self.live.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    pub(crate) fn admit(&self, install: &InstallId, key: ConnectionKey, stream: S) {
+    pub(crate) fn admit(&self, install: &InstallId, key: ConnectionKey, stream: impl Stream) {
         self.live()
             .entry(install.clone())
             .or_default()
-            .insert(key, stream);
+            .insert(key, Box::new(move || stream.close()));
+    }
+
+    /// # Errors
+    ///
+    /// Refuses an unknown, used or expired code, any code while too many were tried, and a
+    /// pairing that could not be written.
+    pub fn redeem(
+        &self,
+        code: &PairingCode,
+        install: &InstallId,
+        device: DeviceName,
+    ) -> Result<(PairingToken, PairingPermissions), RedeemRefusal> {
+        let permissions = match self.codes.redeem(code) {
+            Redeemed::Granted(permissions) => permissions,
+            Redeemed::Unknown => return Err(RedeemRefusal::UnknownCode),
+            Redeemed::TooManyTries => return Err(RedeemRefusal::TooManyTries),
+        };
+        let token = pair(&self.root, install, device, permissions.clone())
+            .map_err(RedeemRefusal::NotKept)?;
+        tracing::info!(install = install.as_str(), "paired a device with a code");
+        Ok((token, permissions))
     }
 
     pub(crate) fn leave(&self, install: &InstallId, key: ConnectionKey) {
@@ -97,7 +130,9 @@ impl<S: Stream> RuntimeServer<S> {
     pub(crate) fn revoke(&self, install: &InstallId) -> io::Result<bool> {
         let removed = unpair(&self.root, install)?;
         let streams = self.live().remove(install).unwrap_or_default();
-        streams.values().for_each(Stream::close);
+        for close in streams.values() {
+            close();
+        }
         tracing::info!(install = install.as_str(), "revoked a pairing");
         Ok(removed)
     }

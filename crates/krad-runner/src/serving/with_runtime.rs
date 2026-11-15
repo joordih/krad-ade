@@ -4,6 +4,7 @@ use krad_runtime::Runtime;
 use krad_store::Secrets;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::thread;
 
 use crate::daemon::RunnerDaemon;
@@ -39,14 +40,16 @@ fn own_daemon(root: &Path) -> io::Result<Option<OwnDaemon>> {
     }))
 }
 
-pub(crate) fn serve(root: &Path) -> io::Result<i32> {
-    serve_runner(root, Secrets::system())
+pub type Transport = Box<dyn FnOnce(&Path, &Arc<RuntimeServer>) + Send>;
+
+pub(crate) fn serve(root: &Path, transports: Vec<Transport>) -> io::Result<i32> {
+    serve_runner(root, Secrets::system(), transports)
 }
 
 /// # Errors
 ///
 /// Fails when the runner's sockets cannot be bound or its runtime cannot start.
-pub fn serve_runner(root: &Path, secrets: Secrets) -> io::Result<i32> {
+pub fn serve_runner(root: &Path, secrets: Secrets, transports: Vec<Transport>) -> io::Result<i32> {
     let daemon = RunnerDaemon::new(root);
     let processes = daemon.bind()?;
     let runtime = bind_runtime_socket(root)?;
@@ -62,7 +65,11 @@ pub fn serve_runner(root: &Path, secrets: Secrets) -> io::Result<i32> {
     thread::Builder::new()
         .name(PROCESSES_THREAD.to_owned())
         .spawn(move || daemon.serve(&processes))?;
+    let server = RuntimeServer::new(handle, root);
+    for transport in transports {
+        transport(root, &server);
+    }
     tracing::info!("cloud runner listening with its runtime");
-    RuntimeServer::new(handle, root).serve(&runtime);
+    server.serve(&runtime);
     Ok(EXIT_OK)
 }

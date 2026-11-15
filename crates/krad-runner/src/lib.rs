@@ -31,13 +31,15 @@ mod verbs;
 pub use daemon::RunnerDaemon;
 #[cfg(all(unix, feature = "runtime"))]
 pub use hosted::{
-    bind_runtime_socket, Listener, OwnDaemon, RunnerProfile, RuntimeServer, Stream,
+    bind_runtime_socket, Listener, OwnDaemon, RedeemRefusal, RunnerProfile, RuntimeServer, Stream,
     RUNNER_ENVIRONMENT,
 };
 #[cfg(all(unix, feature = "runtime"))]
 pub use serving::serve_runner;
 #[cfg(unix)]
-pub use verbs::{pair_over_ssh, run_runner_verb};
+pub use serving::Transport;
+#[cfg(unix)]
+pub use verbs::{pair_over_ssh, run_runner_verb, run_runner_verb_with};
 
 #[cfg(not(unix))]
 #[must_use]

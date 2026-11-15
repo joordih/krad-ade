@@ -1,15 +1,13 @@
 use krad_protocol::{ErrorCode, Message, PairingAnswer, PairingCommand, Reply, RequestId};
 
 use super::connection::{refused, Peer};
-use super::listener::Stream;
 use super::permits::needed_for_pairing;
-use super::server::RuntimeServer;
-use crate::pairings::{pair, paired_devices};
+use super::server::{RedeemRefusal, RuntimeServer};
+use crate::pairings::paired_devices;
 
 const NOT_ALLOWED: &str = "pairing other devices needs the admin permission";
 const MORE_THAN_HELD: &str = "a pairing code cannot grant more than its maker holds";
 const NO_CODE: &str = "the cloud runner could not make a pairing code";
-const UNKNOWN_CODE: &str = "that pairing code is unknown, used or expired";
 const NOT_KEPT: &str = "the cloud runner could not keep the pairing";
 const NO_PAIRING: &str = "no installation with that id is paired";
 const UNKNOWN_VERB: &str = "this runtime does not know that pairing command";
@@ -32,8 +30,20 @@ fn no(code: ErrorCode, message: &str) -> PairingOutcome {
     PairingOutcome::Refused(refused(code, message))
 }
 
-pub(crate) fn answer_pairing<S: Stream>(
-    server: &RuntimeServer<S>,
+fn redeem_refused(refusal: &RedeemRefusal) -> PairingOutcome {
+    let code = match refusal {
+        RedeemRefusal::UnknownCode => ErrorCode::NotFound,
+        RedeemRefusal::TooManyTries => ErrorCode::Busy,
+        RedeemRefusal::NotKept(error) => {
+            tracing::warn!(%error, "a redeemed pairing could not be kept");
+            ErrorCode::Failed
+        }
+    };
+    no(code, &refusal.to_string())
+}
+
+pub(crate) fn answer_pairing(
+    server: &RuntimeServer,
     peer: &Peer,
     command: PairingCommand,
 ) -> PairingOutcome {
@@ -58,21 +68,12 @@ pub(crate) fn answer_pairing<S: Stream>(
             code,
             install,
             device,
-        } => {
-            let Some(permissions) = server.codes.redeem(&code) else {
-                return no(ErrorCode::NotFound, UNKNOWN_CODE);
-            };
-            match pair(&server.root, &install, device, permissions.clone()) {
-                Ok(token) => {
-                    tracing::info!(install = install.as_str(), "paired a device with a code");
-                    PairingOutcome::Answered(PairingAnswer::Redeemed { token, permissions })
-                }
-                Err(error) => {
-                    tracing::warn!(%error, "a redeemed pairing could not be kept");
-                    no(ErrorCode::Failed, NOT_KEPT)
-                }
+        } => match server.redeem(&code, &install, device) {
+            Ok((token, permissions)) => {
+                PairingOutcome::Answered(PairingAnswer::Redeemed { token, permissions })
             }
-        }
+            Err(refusal) => redeem_refused(&refusal),
+        },
         PairingCommand::ListPairings => PairingOutcome::Answered(PairingAnswer::Pairings {
             devices: paired_devices(&server.root),
         }),

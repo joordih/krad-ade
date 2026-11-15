@@ -61,8 +61,8 @@ fn refused_message(code: ErrorCode, message: &str) -> Message {
     }
 }
 
-struct Connection<S> {
-    server: Arc<RuntimeServer<S>>,
+struct Connection {
+    server: Arc<RuntimeServer>,
     key: ConnectionKey,
     peer: Peer,
     welcome: Welcome,
@@ -71,7 +71,7 @@ struct Connection<S> {
     following: bool,
 }
 
-pub(crate) fn serve_connection<S: Stream>(server: &Arc<RuntimeServer<S>>, stream: S) {
+pub(crate) fn serve_connection(server: &Arc<RuntimeServer>, stream: impl Stream) {
     let (Ok(reading), Ok(kept)) = (stream.try_clone(), stream.try_clone()) else {
         tracing::debug!("a runtime connection could not be shared between threads");
         return;
@@ -105,8 +105,8 @@ pub(crate) fn serve_connection<S: Stream>(server: &Arc<RuntimeServer<S>>, stream
     }
 }
 
-fn greet<S: Stream>(
-    server: &RuntimeServer<S>,
+fn greet(
+    server: &RuntimeServer,
     key: ConnectionKey,
     input: &mut impl Read,
     outbox: &Outbox,
@@ -138,7 +138,7 @@ fn greet<S: Stream>(
     }
 }
 
-fn peer_of<S>(server: &RuntimeServer<S>, hello: &Hello) -> Option<Peer> {
+fn peer_of(server: &RuntimeServer, hello: &Hello) -> Option<Peer> {
     let Some(pairing) = &hello.pairing else {
         return Some(Peer::Unpaired);
     };
@@ -149,7 +149,7 @@ fn peer_of<S>(server: &RuntimeServer<S>, hello: &Hello) -> Option<Peer> {
     })
 }
 
-impl<S: Stream> Connection<S> {
+impl Connection {
     fn serve(&mut self, input: &mut impl Read) {
         loop {
             match read_frame(input) {
