@@ -17,8 +17,8 @@ const WHITE: u32 = 0x00ff_ffff;
 const BLACK: u32 = 0x0000_0000;
 const READABLE_STEPS: u16 = 20;
 
-pub(crate) const AA_BODY_TEXT: f32 = 4.5;
-pub(crate) const AA_LARGE_TEXT: f32 = 3.0;
+pub const AA_BODY_TEXT: f32 = 4.5;
+pub const AA_LARGE_TEXT: f32 = 3.0;
 
 fn channels(color: u32) -> [f32; 3] {
     CHANNEL_SHIFTS.map(|shift| {
@@ -43,7 +43,8 @@ fn channel_byte(value: f32) -> u8 {
         .unwrap_or(u8::MAX)
 }
 
-pub(crate) fn hsl_rgb(hue: f32, saturation: f32, lightness: f32) -> u32 {
+#[must_use]
+pub fn hsl_rgb(hue: f32, saturation: f32, lightness: f32) -> u32 {
     let (saturation, lightness) = (saturation.clamp(0.0, 1.0), lightness.clamp(0.0, 1.0));
     let chroma = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation;
     let sector = hue.rem_euclid(FULL_TURN) / SECTOR;
@@ -60,7 +61,8 @@ pub(crate) fn hsl_rgb(hue: f32, saturation: f32, lightness: f32) -> u32 {
     pack([red + base, green + base, blue + base])
 }
 
-pub(crate) fn hsl_lightness(color: u32) -> f32 {
+#[must_use]
+pub fn hsl_lightness(color: u32) -> f32 {
     let values = channels(color);
     let high = values.iter().copied().fold(0.0, f32::max);
     let low = values.iter().copied().fold(1.0, f32::min);
@@ -78,7 +80,8 @@ fn relative_luminance(color: u32) -> f32 {
     LUMA_RED * red + LUMA_GREEN * green + LUMA_BLUE * blue
 }
 
-pub(crate) fn contrast(first: u32, second: u32) -> f32 {
+#[must_use]
+pub fn contrast(first: u32, second: u32) -> f32 {
     let (a, b) = (relative_luminance(first), relative_luminance(second));
     (a.max(b) + CONTRAST_FLARE) / (a.min(b) + CONTRAST_FLARE)
 }
@@ -90,13 +93,15 @@ fn worst_contrast(text: u32, backgrounds: &[u32]) -> f32 {
         .fold(f32::INFINITY, f32::min)
 }
 
-pub(crate) fn mix(from: u32, to: u32, share: f32) -> u32 {
+#[must_use]
+pub fn mix(from: u32, to: u32, share: f32) -> u32 {
     let (from, to) = (channels(from), channels(to));
     let share = share.clamp(0.0, 1.0);
     pack([0, 1, 2].map(|index| from[index] + (to[index] - from[index]) * share))
 }
 
-pub(crate) fn readable(text: u32, backgrounds: &[u32], minimum: f32) -> u32 {
+#[must_use]
+pub fn readable(text: u32, backgrounds: &[u32], minimum: f32) -> u32 {
     if worst_contrast(text, backgrounds) >= minimum {
         return text;
     }
@@ -110,7 +115,8 @@ pub(crate) fn readable(text: u32, backgrounds: &[u32], minimum: f32) -> u32 {
         .unwrap_or(toward)
 }
 
-pub(crate) fn clearest_on(background: u32, current: u32, minimum: f32) -> u32 {
+#[must_use]
+pub fn clearest_on(background: u32, current: u32, minimum: f32) -> u32 {
     if contrast(current, background) >= minimum {
         return current;
     }

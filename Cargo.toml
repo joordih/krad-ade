@@ -147,6 +147,7 @@ krad-github = { path = "crates/krad-github" }
 krad-gitlab = { path = "crates/krad-gitlab" }
 krad-host = { path = "crates/krad-host" }
 krad-lsp = { path = "crates/krad-lsp" }
+krad-palette = { path = "crates/krad-palette" }
 krad-protocol = { path = "crates/krad-protocol" }
 krad-pty = { path = "crates/krad-pty" }
 krad-repo = { path = "crates/krad-repo" }

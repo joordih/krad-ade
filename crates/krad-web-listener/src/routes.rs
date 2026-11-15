@@ -1,4 +1,5 @@
 use krad_domain::{DeviceName, InstallId, Pairing, PairingCode};
+use krad_protocol::Scope;
 use krad_runner::{RedeemRefusal, RuntimeServer};
 use serde::{Deserialize, Serialize};
 use std::io::Write as _;
@@ -18,6 +19,8 @@ use crate::tls::Wire;
 
 pub(crate) const RUNTIME_PATH: &str = "/runtime";
 pub(crate) const PAIRING_PATH: &str = "/pairing";
+pub(crate) const THEME_PATH: &str = "/theme.css";
+const CSS: &str = "text/css; charset=utf-8";
 const HEAD_TIMEOUT: Duration = Duration::from_secs(15);
 const JSON: &str = "application/json";
 
@@ -30,6 +33,7 @@ const METHOD_NOT_ALLOWED: (u16, &str) = (405, "Method Not Allowed");
 const TOO_LARGE: (u16, &str) = (413, "Content Too Large");
 const TOO_MANY: (u16, &str) = (429, "Too Many Requests");
 const FAILED: (u16, &str) = (500, "Internal Server Error");
+const UNAVAILABLE: (u16, &str) = (503, "Service Unavailable");
 const SWITCHING: &str = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ";
 
 #[derive(Deserialize)]
@@ -128,6 +132,7 @@ impl Routes {
             ("GET", RUNTIME_PATH) => self.upgrade(wire, request),
             ("POST", PAIRING_PATH) => self.pair(wire, request),
             ("DELETE", PAIRING_PATH) => self.forget(wire, request),
+            ("GET", THEME_PATH) => self.theme(wire),
             ("GET" | "HEAD", _) => match asset(&request.path) {
                 Some(found) => {
                     let body = if request.method == "HEAD" {
@@ -181,6 +186,16 @@ impl Routes {
                 self.refuse(wire, code, &refusal.to_string())
             }
         }
+    }
+
+    fn theme(&self, wire: &mut Wire) -> Next {
+        let Ok(snapshot) = futures::executor::block_on(self.server.handle.snapshot(Scope::Runtime))
+        else {
+            return self.answer(wire, &status(UNAVAILABLE));
+        };
+        let library = krad_palette::theme_library(krad_store::read_user_themes());
+        let css = krad_palette::settings_css(&snapshot.settings, &library);
+        self.answer(wire, &status(OK).with_body(CSS, css.as_bytes()))
     }
 
     fn forget(&self, wire: &mut Wire, request: &Request) -> Next {

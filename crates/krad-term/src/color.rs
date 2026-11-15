@@ -1,14 +1,11 @@
 use libghostty_vt::style::{Palette, RgbColor};
 
-pub const ANSI_COLORS: usize = 16;
+pub use krad_palette::ANSI_COLORS;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AnsiPalette(pub [u32; ANSI_COLORS]);
 
-pub const XTERM_PALETTE: AnsiPalette = AnsiPalette([
-    0x00_00_00, 0xcd_00_00, 0x00_cd_00, 0xcd_cd_00, 0x00_00_ee, 0xcd_00_cd, 0x00_cd_cd, 0xe5_e5_e5,
-    0x7f_7f_7f, 0xff_00_00, 0x00_ff_00, 0xff_ff_00, 0x5c_5c_ff, 0xff_00_ff, 0x00_ff_ff, 0xff_ff_ff,
-]);
+pub const XTERM_PALETTE: AnsiPalette = AnsiPalette(krad_palette::XTERM_ANSI);
 
 const PALETTE_SIZE: usize = 256;
 const CUBE_LEVELS: [u8; CUBE_SIDE] = [0, 95, 135, 175, 215, 255];

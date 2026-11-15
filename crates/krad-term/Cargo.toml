@@ -6,5 +6,6 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+krad-palette.workspace = true
 libghostty-vt.workspace = true
 libghostty-vt-sys.workspace = true

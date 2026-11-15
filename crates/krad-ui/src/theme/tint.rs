@@ -4,14 +4,6 @@ use krad_domain::{Hue, TintOpacity, WindowMaterial, WindowTint};
 use super::Palette;
 use crate::window_frame::tint_adjustable;
 
-const BLUE: u32 = 0x0040_8cff;
-const PURPLE: u32 = 0x009b_6bf2;
-const PINK: u32 = 0x00e8_5d9c;
-const RED: u32 = 0x00e5_4d4d;
-const ORANGE: u32 = 0x00f0_8a3c;
-const YELLOW: u32 = 0x00e6_b829;
-const GREEN: u32 = 0x003f_b96b;
-const TEAL: u32 = 0x0026_b0b0;
 const FULL_ALPHA: u32 = 0xff;
 const HUE_SHARE: u32 = 18;
 const PERCENT: u32 = 100;
@@ -20,17 +12,7 @@ const CHANNEL_MASK: u32 = 0xff;
 const CHANNELS: [u32; 3] = [2 * CHANNEL_BITS, CHANNEL_BITS, 0];
 
 pub(crate) const fn hue_rgb(hue: Hue, pal: &Palette) -> u32 {
-    match hue {
-        Hue::Blue => BLUE,
-        Hue::Purple => PURPLE,
-        Hue::Pink => PINK,
-        Hue::Red => RED,
-        Hue::Orange => ORANGE,
-        Hue::Yellow => YELLOW,
-        Hue::Green => GREEN,
-        Hue::Teal => TEAL,
-        Hue::Gray => pal.text_muted,
-    }
+    krad_palette::hue_rgb(hue, pal.text_muted)
 }
 
 struct CurrentTint(WindowTint);
@@ -86,9 +68,10 @@ mod tests {
     #[test]
     fn a_hue_only_colours_the_neutral_tint() {
         let base = 0x0017_1717;
-        assert_eq!(mix(base, YELLOW, 0), base);
-        assert_eq!(mix(base, YELLOW, PERCENT), YELLOW);
-        let tinted = mix(base, YELLOW, HUE_SHARE);
+        let yellow = krad_palette::hue_rgb(Hue::Yellow, base);
+        assert_eq!(mix(base, yellow, 0), base);
+        assert_eq!(mix(base, yellow, PERCENT), yellow);
+        let tinted = mix(base, yellow, HUE_SHARE);
         let red = (tinted >> CHANNELS[0]) & CHANNEL_MASK;
         assert!(red > 0x17 && red < 0x50, "{tinted:06x}");
     }

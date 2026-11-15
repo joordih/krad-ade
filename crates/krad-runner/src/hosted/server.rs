@@ -42,7 +42,7 @@ pub enum RedeemRefusal {
 }
 
 pub struct RuntimeServer {
-    pub(crate) handle: RuntimeHandle,
+    pub handle: RuntimeHandle,
     pub(crate) root: PathBuf,
     pub(crate) codes: PairingCodes,
     connections: AtomicU64,

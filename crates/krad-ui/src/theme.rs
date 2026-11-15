@@ -1,3 +1,4 @@
+mod bridge;
 mod editor;
 mod fade;
 mod fonts;
@@ -16,13 +17,13 @@ pub(crate) use fonts::{
     EDITOR_FONT_SIZE, SYSTEM_MONO_LABEL, TERMINAL_FONT_SIZE, UI_FONT_FAMILY,
 };
 pub(crate) use glass::{backdrop_veil, level_fill, shell_opacity, sidebar_fill, SurfaceLevel};
+pub(crate) use krad_palette::hsl_rgb;
 pub use library::install_theme_library;
 pub(crate) use library::{add_to_library, theme_library};
 pub(crate) use surface_tokens::*;
 pub use tint::apply_window_tint;
 pub(crate) use tint::hue_rgb;
 pub(crate) use tokens::*;
-pub(crate) use tuning::hsl_rgb;
 
 use gpui_kit::component::theme::{Theme, ThemeMode};
 use gpui_kit::{
@@ -64,7 +65,7 @@ pub enum Appearance {
 }
 
 impl Appearance {
-    pub(crate) const fn palette(self) -> &'static Palette {
+    pub(crate) fn palette(self) -> &'static Palette {
         match self {
             Self::Light => &LIGHT,
             Self::Dark => &DARK,
@@ -227,7 +228,7 @@ pub(crate) fn palette(cx: &App) -> &'static Palette {
 pub(crate) fn current_theme(cx: &App) -> &krad_domain::Theme {
     static FALLBACK: std::sync::OnceLock<krad_domain::Theme> = std::sync::OnceLock::new();
     cx.try_global::<CurrentTheme>().map_or_else(
-        || FALLBACK.get_or_init(|| library::krad_theme(&DARK, ThemeAppearance::Dark)),
+        || FALLBACK.get_or_init(|| krad_palette::krad_theme(ThemeAppearance::Dark)),
         |current| &current.theme,
     )
 }
@@ -329,8 +330,8 @@ pub fn apply_themes(
         .find(|theme| &theme.id == wanted)
         .cloned()
         .unwrap_or_else(|| match appearance {
-            Appearance::Light => library::krad_theme(&LIGHT, ThemeAppearance::Light),
-            Appearance::Dark => library::krad_theme(&DARK, ThemeAppearance::Dark),
+            Appearance::Light => krad_palette::krad_theme(ThemeAppearance::Light),
+            Appearance::Dark => krad_palette::krad_theme(ThemeAppearance::Dark),
         });
     apply_theme(theme, cx);
 }

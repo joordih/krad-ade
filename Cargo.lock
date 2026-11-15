@@ -3971,6 +3971,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "krad-palette"
+version = "0.4.1"
+dependencies = [
+ "krad-domain",
+ "tracing",
+]
+
+[[package]]
 name = "krad-protocol"
 version = "0.4.1"
 dependencies = [
@@ -4067,6 +4075,7 @@ dependencies = [
 name = "krad-term"
 version = "0.4.1"
 dependencies = [
+ "krad-palette",
  "libghostty-vt",
  "libghostty-vt-sys",
 ]
@@ -4087,6 +4096,7 @@ dependencies = [
  "krad-github",
  "krad-gitlab",
  "krad-lsp",
+ "krad-palette",
  "krad-protocol",
  "krad-runtime",
  "krad-session",
@@ -4120,11 +4130,14 @@ dependencies = [
 name = "krad-web-listener"
 version = "0.4.1"
 dependencies = [
+ "futures",
  "krad-domain",
  "krad-host",
+ "krad-palette",
  "krad-protocol",
  "krad-runner",
  "krad-runtime",
+ "krad-store",
  "rustls",
  "rustls-pki-types",
  "serde",

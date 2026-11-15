@@ -152,6 +152,20 @@ fn the_page_is_served_with_its_security_headers() -> TestResult {
 }
 
 #[test]
+fn the_theme_is_served_as_css_from_the_runtime_settings() -> TestResult {
+    let served = served("theme")?;
+    let answer = served.http(&format!(
+        "GET /theme.css HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
+        served.address
+    ))?;
+    assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
+    assert!(answer.contains("Content-Type: text/css"));
+    assert!(answer.contains("--krad-accent: #"));
+    assert!(answer.contains("--krad-text-sm: 13px;"));
+    Ok(())
+}
+
+#[test]
 fn a_socket_from_another_origin_is_refused() -> TestResult {
     let served = served("origin")?;
     assert!(served.socket("http://evil.example", None).is_err());
