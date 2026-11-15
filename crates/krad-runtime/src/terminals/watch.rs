@@ -1,4 +1,3 @@
-use krad_domain::EnvironmentName;
 use krad_protocol::AgentRef;
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
@@ -43,20 +42,13 @@ pub struct TerminalWatch {
 
 #[derive(Debug, Default)]
 pub(crate) struct Watchers {
-    kept: Option<EnvironmentName>,
     recent: HashMap<AgentRef, Recent>,
     watching: HashMap<AgentRef, Vec<SyncSender<Vec<u8>>>>,
 }
 
 impl Watchers {
-    pub(crate) fn keep_replays_of(&mut self, environment: EnvironmentName) {
-        self.kept = Some(environment);
-    }
-
     pub(crate) fn heard(&mut self, terminal: &AgentRef, bytes: &[u8]) {
-        if self.kept.as_ref() == Some(&terminal.environment) {
-            self.recent.entry(terminal.clone()).or_default().keep(bytes);
-        }
+        self.recent.entry(terminal.clone()).or_default().keep(bytes);
         let Some(watchers) = self.watching.get_mut(terminal) else {
             return;
         };
@@ -95,7 +87,7 @@ impl Watchers {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_domain::TerminalId;
+    use krad_domain::{EnvironmentName, TerminalId};
 
     fn terminal(environment: &str) -> AgentRef {
         AgentRef {
@@ -105,14 +97,13 @@ mod tests {
     }
 
     #[test]
-    fn a_watcher_gets_the_kept_replay_then_every_later_chunk() {
+    fn a_watcher_of_any_terminal_gets_its_kept_replay_then_every_later_chunk() {
         let mut watchers = Watchers::default();
-        watchers.keep_replays_of(EnvironmentName::new("runner".to_owned()));
         watchers.heard(&terminal("runner"), b"$ ls\r\n");
-        watchers.heard(&terminal("desk"), b"secret");
+        watchers.heard(&terminal("desk"), b"$ pwd\r\n");
         let watch = watchers.watch(&terminal("runner"));
         assert_eq!(watch.replay, b"$ ls\r\n");
-        assert_eq!(watchers.watch(&terminal("desk")).replay, Vec::<u8>::new());
+        assert_eq!(watchers.watch(&terminal("desk")).replay, b"$ pwd\r\n");
         watchers.heard(&terminal("runner"), b"a.txt");
         assert_eq!(watch.bytes.try_recv().ok(), Some(b"a.txt".to_vec()));
     }
@@ -120,7 +111,6 @@ mod tests {
     #[test]
     fn the_replay_keeps_only_the_latest_bytes() {
         let mut watchers = Watchers::default();
-        watchers.keep_replays_of(EnvironmentName::new("runner".to_owned()));
         watchers.heard(&terminal("runner"), &vec![b'a'; REPLAY_BYTES]);
         watchers.heard(&terminal("runner"), b"end");
         let replay = watchers.watch(&terminal("runner")).replay;
@@ -131,7 +121,6 @@ mod tests {
     #[test]
     fn a_trimmed_replay_starts_at_an_escape_so_no_sequence_is_cut_in_half() {
         let mut watchers = Watchers::default();
-        watchers.keep_replays_of(EnvironmentName::new("runner".to_owned()));
         let mut early = b"\x1b[38;5;196m".to_vec();
         early.extend(vec![b'a'; REPLAY_BYTES - 4]);
         watchers.heard(&terminal("runner"), &early);
@@ -143,7 +132,6 @@ mod tests {
     #[test]
     fn an_untrimmed_replay_is_kept_from_its_first_byte() {
         let mut watchers = Watchers::default();
-        watchers.keep_replays_of(EnvironmentName::new("runner".to_owned()));
         watchers.heard(&terminal("runner"), b"plain \x1b[1mbold");
         let replay = watchers.watch(&terminal("runner")).replay;
         assert_eq!(replay, b"plain \x1b[1mbold");

@@ -17,7 +17,7 @@ pub use watch::TerminalWatch;
 pub(crate) use typed::Typed;
 pub(crate) use view::Shared;
 
-use krad_domain::{EnvironmentName, ProcessRun, TerminalMeta};
+use krad_domain::{ProcessRun, TerminalMeta};
 use krad_protocol::{
     AgentRef, ErrorCode, EventKind, Reply, TerminalClassified, TerminalCommand, TerminalSummary,
 };
@@ -193,10 +193,6 @@ impl Terminals {
         self.live
             .contains_key(terminal)
             .then(|| self.watchers.watch(terminal))
-    }
-
-    pub(crate) fn keep_replays_of(&mut self, environment: EnvironmentName) {
-        self.watchers.keep_replays_of(environment);
     }
 
     pub(crate) fn pumped(&mut self, outbox: &mut Vec<EventKind>) {

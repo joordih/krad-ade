@@ -47,7 +47,6 @@ impl Runtime {
         let Some(own) = own else {
             return;
         };
-        self.terminals.keep_replays_of(own.environment.clone());
         self.runners.adopt_own(own);
         self.reopen_own_cloud_chats();
     }
