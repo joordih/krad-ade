@@ -5,6 +5,7 @@ pub const MAX_MEMORY_LINES: usize = 200;
 pub const MAX_MEMORY_LINE_CHARS: usize = 300;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum MemoryError {
     Empty,
@@ -41,12 +42,14 @@ fn one_line(text: &str) -> Result<String, MemoryError> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct MemoryLine {
     pub index: usize,
     pub text: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(default)]
 pub struct KraddieMemory {
     lines: Vec<String>,

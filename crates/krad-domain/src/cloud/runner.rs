@@ -11,6 +11,7 @@ const DEFAULT_MAX_SESSIONS: u8 = 4;
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CloudRunnerId(pub u64);
 
 impl fmt::Display for CloudRunnerId {
@@ -37,6 +38,8 @@ impl fmt::Display for CloudRunnerNameError {
 impl std::error::Error for CloudRunnerNameError {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct CloudRunnerName(String);
 
@@ -83,6 +86,7 @@ impl fmt::Display for CloudRunnerName {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CloudRunner {
     pub id: CloudRunnerId,
     pub name: CloudRunnerName,
@@ -92,6 +96,7 @@ pub struct CloudRunner {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum OfflineWebhooks {
     #[default]
@@ -111,12 +116,14 @@ const fn default_max_sessions() -> u8 {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CloudStop {
     pub runner: CloudRunnerId,
     pub process: CloudProcessId,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CloudSettings {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub runners: Vec<CloudRunner>,

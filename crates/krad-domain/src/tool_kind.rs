@@ -24,6 +24,7 @@ const CLAUDE_TOOLS: [(&str, ToolKind); 17] = [
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum ToolKind {
     Shell,
     Read,

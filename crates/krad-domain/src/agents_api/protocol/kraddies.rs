@@ -2,6 +2,7 @@ use crate::Switch;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddieInfo {
     pub id: String,
     pub name: String,
@@ -16,6 +17,7 @@ pub struct KraddieInfo {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddieMemoryInfo {
     pub kraddie: String,
     pub lines: Vec<String>,
@@ -23,6 +25,7 @@ pub struct KraddieMemoryInfo {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddieRunInfo {
     pub kraddie: String,
     pub run: u64,

@@ -11,6 +11,7 @@ const WEBHOOK_NAME_MAX_CHARS: usize = 64;
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct WebhookId(pub u64);
 
@@ -21,6 +22,8 @@ impl fmt::Display for WebhookId {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct WebhookUrl(String);
 
@@ -80,6 +83,8 @@ impl fmt::Display for WebhookNameError {
 impl std::error::Error for WebhookNameError {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct WebhookName(String);
 
@@ -120,6 +125,7 @@ impl From<WebhookName> for String {
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct WebhookSecret(String);
 
@@ -143,6 +149,7 @@ impl fmt::Debug for WebhookSecret {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum WebhookSigning {
     #[default]
@@ -151,6 +158,7 @@ pub enum WebhookSigning {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Webhook {
     pub id: WebhookId,
     pub name: WebhookName,
@@ -169,6 +177,7 @@ impl Webhook {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct WebhookSettings {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hooks: Vec<Webhook>,

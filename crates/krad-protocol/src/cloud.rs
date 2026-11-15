@@ -5,9 +5,11 @@ use krad_domain::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CloudDraftId(pub u64);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum PatchAnswer {
     Bring,
@@ -16,6 +18,7 @@ pub enum PatchAnswer {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum CloudReach {
     #[default]
@@ -24,6 +27,7 @@ pub enum CloudReach {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct HostedWorkspace {
     pub remote_url: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -34,6 +38,7 @@ pub struct HostedWorkspace {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct HostedSession {
     pub name: String,
     pub workspace: HostedWorkspace,
@@ -44,6 +49,7 @@ pub struct HostedSession {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum CloudCommand {
     Create {
@@ -81,23 +87,27 @@ pub enum CloudCommand {
         environment: EnvironmentName,
         session: SessionId,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct FirstChat {
     pub harness: AgentPreset,
     pub prompt: Prompt,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SentPrompt {
     pub chat: TerminalId,
     pub prompt: Prompt,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "conversation", content = "resume", rename_all = "snake_case")]
 pub enum CarriedConversation {
     Fresh(ResumeId),
@@ -105,6 +115,7 @@ pub enum CarriedConversation {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CloudChatStart {
     pub harness: AgentPreset,
     pub conversation: CarriedConversation,
@@ -113,6 +124,7 @@ pub struct CloudChatStart {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CloudOpened {
     pub environment: EnvironmentName,
     pub session: SessionId,
@@ -121,6 +133,7 @@ pub struct CloudOpened {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "news", rename_all = "snake_case")]
 pub enum CloudNews {
     AtLimit,
@@ -167,6 +180,7 @@ pub enum CloudNews {
     ResultFailed {
         error: String,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }

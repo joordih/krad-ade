@@ -5,6 +5,7 @@ const VERSION_PREFIX: &str = "v";
 const UNSUPPORTED_VERSION: &str = "This app serves the agents API";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct ApiVersion(pub u16);
 
@@ -24,6 +25,7 @@ impl fmt::Display for ApiVersion {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ApiInfo {
     pub api_version: ApiVersion,
     pub build: String,
@@ -32,6 +34,7 @@ pub struct ApiInfo {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
     Unauthorized,
@@ -93,6 +96,7 @@ impl fmt::Display for ErrorCode {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ApiError {
     pub code: ErrorCode,
     pub message: String,

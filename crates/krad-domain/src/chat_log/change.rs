@@ -5,6 +5,7 @@ use super::ChatMessage;
 use crate::chat::{ChatEntry, ChatEvent};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "change", rename_all = "snake_case")]
 pub enum ChatLogChange {
     Added { index: usize, message: ChatMessage },

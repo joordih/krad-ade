@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct StreamId(pub String);
 
@@ -15,6 +16,7 @@ impl fmt::Display for StreamId {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum AgentChangeKind {
     Opened,
@@ -23,6 +25,7 @@ pub enum AgentChangeKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "kebab-case")]
 pub enum CoarseState {
     Idle,
@@ -43,6 +46,7 @@ impl From<TerminalState> for CoarseState {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AgentEvent {
     pub seq: u64,
     pub at: Timestamp,
@@ -51,6 +55,7 @@ pub struct AgentEvent {
     pub terminal: u64,
     pub title: String,
     pub group: Option<String>,
+    #[cfg_attr(feature = "ts", ts(as = "Option<String>"))]
     #[serde(with = "harness_name::display_name")]
     pub harness: Option<AgentPreset>,
     pub previous: Option<TerminalState>,
@@ -61,6 +66,7 @@ pub struct AgentEvent {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AgentSnapshot {
     pub stream: StreamId,
     pub seq: u64,
@@ -70,6 +76,7 @@ pub struct AgentSnapshot {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Heartbeat {
     pub stream: StreamId,
     pub seq: u64,
@@ -77,11 +84,13 @@ pub struct Heartbeat {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AgentFilter {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+    #[cfg_attr(feature = "ts", ts(as = "Option<String>"))]
     #[serde(
         default,
         with = "harness_name::display_name",
@@ -136,6 +145,7 @@ struct Seen<'a> {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AgentSubscription {
     #[serde(default)]
     pub filter: AgentFilter,

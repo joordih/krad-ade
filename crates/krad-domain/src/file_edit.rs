@@ -4,6 +4,7 @@ const MAX_DIFF_CELLS: usize = 250_000;
 const LINE_END: char = '\n';
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum LineChange {
     Kept,
     Removed,
@@ -12,6 +13,7 @@ pub enum LineChange {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct EditLine {
     pub change: LineChange,
     pub text: String,
@@ -22,6 +24,7 @@ pub struct EditLine {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct FileEdit {
     pub path: String,
     pub lines: Vec<EditLine>,

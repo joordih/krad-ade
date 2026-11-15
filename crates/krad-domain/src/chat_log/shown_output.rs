@@ -9,6 +9,7 @@ const SIGNAL_LEAD: &str = "Stopped by";
 const SUCCESS_CODE: u32 = 0;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ShownOutput {
     pub text: String,
     pub failure: Option<String>,

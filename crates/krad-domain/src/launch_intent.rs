@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use crate::{AcpAgentId, AgentPreset, ModelId, ProjectTask, RelaunchIntent, ResumeId};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "intent", rename_all = "snake_case")]
 pub enum LaunchIntent {
     Preset {

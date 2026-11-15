@@ -34,6 +34,7 @@ impl fmt::Display for CodeError {
 impl std::error::Error for CodeError {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum CodeTool {
     Diagnostics,
@@ -103,12 +104,14 @@ impl FromStr for CodeTool {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CodePosition {
     pub line: u32,
     pub character: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CodeRequest {
     pub tool: CodeTool,
     pub path: String,
@@ -119,6 +122,7 @@ pub struct CodeRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CodeLine {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
@@ -128,6 +132,7 @@ pub struct CodeLine {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CodeAnswer {
     pub lines: Vec<CodeLine>,
     pub partial: bool,

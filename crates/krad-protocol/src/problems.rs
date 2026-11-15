@@ -5,6 +5,7 @@ use crate::bus::AgentRef;
 use crate::command::ErrorCode;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Problem {
     pub scope: ProblemScope,
     pub code: ErrorCode,
@@ -12,6 +13,7 @@ pub struct Problem {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "on", rename_all = "snake_case")]
 pub enum ProblemScope {
     Runtime,
@@ -24,6 +26,7 @@ pub enum ProblemScope {
     CloudSession {
         slug: String,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }

@@ -2,6 +2,7 @@ use krad_domain::{GatewayKey, GatewayModel, GatewayUrl, LoginPlace};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum GatewayCommand {
     Check {
@@ -11,11 +12,13 @@ pub enum GatewayCommand {
     ForgetKey {
         url: GatewayUrl,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum GatewayState {
     #[default]

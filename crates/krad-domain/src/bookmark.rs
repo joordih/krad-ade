@@ -5,6 +5,7 @@ const PRINT_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const PRINT_PRIME: u64 = 0x0100_0000_01b3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct TurnPrint(u64);
 
@@ -30,12 +31,14 @@ impl From<&str> for TurnPrint {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum TurnSide {
     Question,
     Answer,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Bookmark {
     pub turn: TurnPrint,
     #[serde(default)]
@@ -44,6 +47,7 @@ pub struct Bookmark {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct ChatBookmarks(BTreeSet<Bookmark>);
 

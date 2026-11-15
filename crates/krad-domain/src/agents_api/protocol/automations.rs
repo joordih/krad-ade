@@ -2,6 +2,7 @@ use crate::Switch;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AutomationInfo {
     pub kraddie: String,
     pub id: u32,
@@ -18,6 +19,7 @@ pub struct AutomationInfo {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AutomationRunInfo {
     pub kraddie: String,
     pub automation: String,

@@ -4,6 +4,8 @@ use std::fmt;
 use std::time::SystemTime;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(into = "String", try_from = "String")]
 pub struct Timestamp(DateTime<Utc>);
 

@@ -4,6 +4,7 @@ use krad_domain::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum PairingCommand {
     CreatePairingCode {
@@ -18,11 +19,13 @@ pub enum PairingCommand {
     RevokePairing {
         install: InstallId,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PairingAnswer {
     Code {
@@ -37,6 +40,7 @@ pub enum PairingAnswer {
         devices: Vec<PairedDevice>,
     },
     Revoked,
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }

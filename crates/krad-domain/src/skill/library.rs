@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use super::{SkillKey, SkillKind, SkillSettings};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum SkillHarness {
     ClaudeCode,
@@ -27,6 +28,7 @@ impl SkillHarness {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum SkillScope {
     Project,
@@ -44,6 +46,7 @@ impl SkillScope {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SkillPlace {
     pub harness: SkillHarness,
     pub scope: SkillScope,
@@ -52,6 +55,7 @@ pub struct SkillPlace {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct LibrarySkill {
     pub key: SkillKey,
     pub description: String,

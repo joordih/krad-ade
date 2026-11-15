@@ -14,6 +14,7 @@ const WORKTREE_PREFIX: &str = "variant";
 const VARIANT_MARK: &str = "#";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct VariantRunId(pub u64);
 
@@ -24,6 +25,7 @@ impl fmt::Display for VariantRunId {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct VariantId(pub u32);
 
@@ -34,6 +36,7 @@ impl fmt::Display for VariantId {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct VariantWorktree {
     pub path: PathBuf,
     pub branch: String,
@@ -41,6 +44,7 @@ pub struct VariantWorktree {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChangedLines {
     pub path: PathBuf,
     pub added: u32,
@@ -48,6 +52,7 @@ pub struct ChangedLines {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct DiffSummary {
     pub files: Vec<ChangedLines>,
     #[serde(default)]
@@ -79,6 +84,7 @@ impl DiffSummary {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Variant {
     pub id: VariantId,
     pub spec: VariantSpec,
@@ -89,8 +95,10 @@ pub struct Variant {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal: Option<TerminalId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<crate::ts_shapes::SerdeSystemTime>"))]
     pub started_at: Option<SystemTime>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<crate::ts_shapes::SerdeSystemTime>"))]
     pub finished_at: Option<SystemTime>,
     #[serde(default, skip_serializing_if = "Spend::is_empty")]
     pub spent: Spend,
@@ -155,12 +163,14 @@ impl Variant {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RunDecision {
     pub winner: VariantId,
     pub outcome: WinnerOutcome,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum RunPhase {
     Running,
@@ -180,6 +190,7 @@ impl RunPhase {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct VariantRun {
     pub id: VariantRunId,
     pub group: GroupId,
@@ -187,6 +198,7 @@ pub struct VariantRun {
     pub prompt: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub test: Option<ProjectTask>,
+    #[cfg_attr(feature = "ts", ts(as = "crate::ts_shapes::SerdeSystemTime"))]
     pub created_at: SystemTime,
     pub variants: Vec<Variant>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

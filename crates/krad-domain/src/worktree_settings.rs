@@ -9,6 +9,7 @@ const PREFIX_EDGE: char = '/';
 pub const ENV_FILE_PREFIX: &str = ".env";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum WorktreeCleanup {
     #[default]
@@ -17,6 +18,7 @@ pub enum WorktreeCleanup {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum WorktreeFolder {
     #[default]
@@ -25,6 +27,7 @@ pub enum WorktreeFolder {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum WorktreeBase {
     #[default]
@@ -45,6 +48,7 @@ impl WorktreeBase {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum BaseFetch {
     #[default]
@@ -53,6 +57,7 @@ pub enum BaseFetch {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum EnvFiles {
     #[default]
@@ -61,6 +66,7 @@ pub enum EnvFiles {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum RemovalConfirm {
     #[default]
@@ -69,6 +75,8 @@ pub enum RemovalConfirm {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(from = "String", into = "String")]
 pub struct BranchPrefix(String);
 
@@ -119,6 +127,7 @@ impl From<BranchPrefix> for String {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct WorktreeSettings {
     #[serde(default)]
     pub cleanup: WorktreeCleanup,
@@ -156,6 +165,7 @@ pub struct WorktreeCheck {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum WorktreeState {
     Dirty,

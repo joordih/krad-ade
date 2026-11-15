@@ -38,6 +38,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TerminalGroup {
     pub id: GroupId,
     pub name: String,
@@ -49,6 +50,7 @@ pub struct TerminalGroup {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct WorktreeOrigin {
     pub repo_root: PathBuf,
     pub branch: String,

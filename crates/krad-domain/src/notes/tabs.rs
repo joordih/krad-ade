@@ -6,6 +6,7 @@ use crate::ids::GroupId;
 const PATH_SEPARATOR: char = '/';
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum NoteMode {
     #[default]
@@ -26,6 +27,7 @@ impl NoteMode {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct NoteTab {
     pub path: String,
     pub pinned: bool,
@@ -34,6 +36,7 @@ pub struct NoteTab {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct NoteTabs {
     pub group: Option<GroupId>,
     pub tabs: Vec<NoteTab>,

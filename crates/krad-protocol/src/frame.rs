@@ -34,6 +34,7 @@ impl TryFrom<u8> for FrameKind {
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Message {
     Hello(Hello),
@@ -71,6 +72,7 @@ pub enum Message {
         code: ErrorCode,
         message: String,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }

@@ -7,6 +7,7 @@ use crate::acp::{AcpAgent, AcpAgentId};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum AgentState {
     Idle,
     Working,
@@ -63,6 +64,13 @@ pub enum ModelDelivery {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
+#[cfg_attr(
+    feature = "ts",
+    derive(ts_rs::TS),
+    ts(
+        type = "\"Shell\" | \"ClaudeCode\" | \"Codex\" | \"Opencode\" | \"Gateway\" | `Acp:${string}`"
+    )
+)]
 pub enum AgentPreset {
     #[default]
     Shell,

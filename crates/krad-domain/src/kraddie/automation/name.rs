@@ -6,6 +6,7 @@ const MAX_AUTOMATION_NAME_CHARS: usize = 60;
 const KEY_SEPARATOR: char = '/';
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct AutomationId(pub u32);
 
@@ -51,6 +52,8 @@ impl fmt::Display for AutomationNameError {
 impl std::error::Error for AutomationNameError {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct AutomationName(String);
 
@@ -105,6 +108,7 @@ impl fmt::Display for AutomationName {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AutomationKey {
     pub kraddie: KraddieId,
     pub automation: AutomationId,

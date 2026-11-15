@@ -11,6 +11,7 @@ pub const KRADDIE_FORMAT_VERSION: KraddieFormatVersion = KraddieFormatVersion(2)
 const FIRST_FORMAT_WITH_AUTOMATIONS: KraddieFormatVersion = KraddieFormatVersion(2);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct KraddieFormatVersion(pub u32);
 
@@ -54,6 +55,7 @@ impl From<AutomationsFileError> for KraddieFileError {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddieFile {
     pub format: KraddieFormatVersion,
     #[serde(alias = "pet")]
@@ -70,6 +72,7 @@ pub struct ReadKraddie {
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 struct VersionOnly {
     format: KraddieFormatVersion,
 }

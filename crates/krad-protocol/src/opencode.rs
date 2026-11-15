@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::spots::HarnessSpot;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum OpencodeStatus {
     Starting,
@@ -13,12 +14,14 @@ pub enum OpencodeStatus {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct OpencodeShown {
     pub host: Host,
     pub status: OpencodeStatus,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum OpencodeCommand {
     Start {
@@ -28,11 +31,13 @@ pub enum OpencodeCommand {
     Refresh {
         host: Host,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct OpencodeSnapshot {
     #[serde(default)]
     pub servers: Vec<OpencodeShown>,

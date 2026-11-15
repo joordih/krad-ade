@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum NodeEdit {
     Open {
@@ -52,6 +53,7 @@ pub enum NodeEdit {
     },
     ArchiveChat {
         terminal: TerminalId,
+        #[cfg_attr(feature = "ts", ts(as = "crate::ts_shapes::SerdeSystemTime"))]
         at: SystemTime,
     },
     ReopenArchivedChat {
@@ -60,11 +62,13 @@ pub enum NodeEdit {
     DeleteArchivedChat {
         terminal: TerminalId,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "at", rename_all = "snake_case")]
 pub enum NodePlace {
     Tab {
@@ -78,6 +82,7 @@ pub enum NodePlace {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "field", content = "value", rename_all = "snake_case")]
 pub enum NodeField {
     State(AgentState),

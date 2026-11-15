@@ -16,6 +16,7 @@ pub enum ToastKind {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum ToastLifetime {
     Short,
@@ -50,6 +51,8 @@ impl ToastLifetime {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "f32"))]
 #[serde(from = "f32", into = "f32")]
 pub struct WindowFraction(u16);
 
@@ -100,6 +103,7 @@ pub enum StackDirection {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ToastPlacement {
     pub x: WindowFraction,
     pub y: WindowFraction,
@@ -134,6 +138,7 @@ impl ToastPlacement {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ToastSettings {
     #[serde(default)]
     pub lifetime: ToastLifetime,

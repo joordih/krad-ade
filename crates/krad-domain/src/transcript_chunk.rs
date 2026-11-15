@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{ChatEntry, ToolUseId};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "mark", content = "call", rename_all = "snake_case")]
 pub enum TranscriptMark {
     ToolFinished(ToolUseId),
@@ -10,6 +11,7 @@ pub enum TranscriptMark {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TranscriptChunk {
     pub entries: Vec<ChatEntry>,
     pub marks: Vec<TranscriptMark>,
@@ -17,6 +19,7 @@ pub struct TranscriptChunk {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SubagentMeta {
     pub tool_use_id: ToolUseId,

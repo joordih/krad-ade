@@ -5,6 +5,7 @@ use crate::chat::ChatEntry;
 use crate::harness::is_worker_brief;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum ChatOpener {
     Lead,
@@ -12,8 +13,10 @@ pub enum ChatOpener {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChatOrigin {
     pub opener: ChatOpener,
+    #[cfg_attr(feature = "ts", ts(as = "Option<crate::ts_shapes::SerdeSystemTime>"))]
     pub started: Option<SystemTime>,
 }
 

@@ -3,6 +3,7 @@ use super::report::{RunningSpend, Spend, UsageReport};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChatUsage {
     #[serde(default, skip_serializing_if = "Spend::is_empty")]
     settled: Spend,

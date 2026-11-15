@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime};
 pub const MAX_TEST_TAIL_BYTES: usize = 8 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum TestVerdict {
     Passed,
@@ -26,8 +27,10 @@ impl TestVerdict {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TestOutcome {
     pub verdict: TestVerdict,
+    #[cfg_attr(feature = "ts", ts(as = "crate::ts_shapes::SerdeDuration"))]
     pub took: Duration,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tail: String,
@@ -56,6 +59,7 @@ fn output_tail(output: &str, limit: usize) -> &str {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum VariantStatus {
     Launching,

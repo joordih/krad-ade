@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SessionInfo {
     pub session: u64,
     pub name: String,
@@ -12,6 +13,7 @@ pub struct SessionInfo {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct WorktreeInfo {
     pub group: String,
     pub path: PathBuf,
@@ -19,12 +21,14 @@ pub struct WorktreeInfo {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChangedFile {
     pub path: PathBuf,
     pub kind: ChangeKind,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChangeSet {
     pub group: String,
     pub root: PathBuf,
@@ -34,6 +38,7 @@ pub struct ChangeSet {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct FilePosition {
     pub line: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]

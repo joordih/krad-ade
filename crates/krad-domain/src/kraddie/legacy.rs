@@ -10,6 +10,7 @@ use serde::Deserialize;
 const CODE_HOSTS: [CodeHost; 2] = [CodeHost::Github, CodeHost::Gitlab];
 
 #[derive(Debug, Default, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub(super) struct LegacyRoutine {
     #[serde(default)]
     instructions: String,
@@ -20,6 +21,7 @@ pub(super) struct LegacyRoutine {
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub(super) struct LegacyFile {
     #[serde(alias = "pet")]
     pub(super) kraddie: LegacyRoutine,

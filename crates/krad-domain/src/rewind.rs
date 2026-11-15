@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::agent::AgentPreset;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct RewindId(String);
 
@@ -26,6 +27,7 @@ impl From<String> for RewindId {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum RewindPoint {
     Message(RewindId),
     Turn(RewindId),
@@ -33,6 +35,7 @@ pub enum RewindPoint {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum RewindScope {
     Conversation,

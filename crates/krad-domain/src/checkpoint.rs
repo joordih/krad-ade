@@ -6,12 +6,14 @@ use crate::git_object::GitObjectId;
 use crate::rewind::RewindPoint;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TurnCheckpoint {
     pub point: RewindPoint,
     pub checkpoint: GitObjectId,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct ChatCheckpoints(Vec<TurnCheckpoint>);
 
@@ -49,6 +51,7 @@ impl AgentPreset {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum CheckpointChangeKind {
     Reverted,
@@ -57,12 +60,14 @@ pub enum CheckpointChangeKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CheckpointChange {
     pub path: PathBuf,
     pub kind: CheckpointChangeKind,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[must_use]
 pub struct RestoredCheckpoint {
     pub undo: GitObjectId,

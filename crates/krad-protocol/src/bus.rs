@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use crate::hooks::HookReport;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AgentRef {
     pub environment: EnvironmentName,
     pub terminal: TerminalId,
@@ -17,6 +18,7 @@ pub struct AgentRef {
 #[derive(
     Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize,
 )]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AskId(pub u64);
 
 impl AskId {
@@ -27,6 +29,7 @@ impl AskId {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AskRequest {
     pub tool: String,
     pub input: Value,
@@ -37,6 +40,7 @@ pub struct AskRequest {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct PendingAsk {
     pub ask: AskId,
     pub agent: AgentRef,
@@ -47,6 +51,7 @@ pub struct PendingAsk {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum AskSettlement {
     Answered,
@@ -54,12 +59,14 @@ pub enum AskSettlement {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct StatusReport {
     pub agent: AgentRef,
     pub status: AgentStatus,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct BusSnapshot {
     #[serde(default)]
     pub statuses: Vec<StatusReport>,
@@ -68,6 +75,7 @@ pub struct BusSnapshot {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum BusCommand {
     AnswerAsk {
@@ -98,6 +106,7 @@ pub enum BusCommand {
         environments: Vec<EnvironmentName>,
         agents: Vec<AgentInfo>,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }

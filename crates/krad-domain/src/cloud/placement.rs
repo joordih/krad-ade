@@ -6,12 +6,14 @@ use super::{CloudProcessId, CloudRunnerId, JournalOffset, REDACTED};
 use crate::{EnvironmentName, GroupId};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct HostedOrigin {
     pub environment: EnvironmentName,
     pub group: GroupId,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CloudPlacement {
     pub runner: CloudRunnerId,
     pub repo_dir: PathBuf,
@@ -22,12 +24,14 @@ pub struct CloudPlacement {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CloudProcess {
     pub id: CloudProcessId,
     pub offset: JournalOffset,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct OpencodePassword(String);
 

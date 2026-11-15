@@ -33,6 +33,8 @@ impl fmt::Display for IntervalError {
 impl std::error::Error for IntervalError {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "u32"))]
 #[serde(try_from = "u32", into = "u32")]
 pub struct IntervalMinutes(u32);
 
@@ -82,6 +84,8 @@ impl fmt::Display for WeekdaysError {
 impl std::error::Error for WeekdaysError {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "Vec<String>"))]
 #[serde(try_from = "Vec<String>", into = "Vec<String>")]
 pub struct Weekdays(u8);
 
@@ -155,6 +159,7 @@ impl From<Weekdays> for Vec<String> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum KraddieSchedule {
     Every { minutes: IntervalMinutes },

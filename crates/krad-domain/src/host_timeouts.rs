@@ -9,6 +9,8 @@ const MIN_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_TIMEOUT: Duration = Duration::from_hours(1);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "u64"))]
 #[serde(from = "u64", into = "u64")]
 pub struct TimeoutSecs(Duration);
 
@@ -37,6 +39,7 @@ impl From<TimeoutSecs> for u64 {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct HostTimeouts {
     #[serde(default = "default_connect")]
     pub connect: TimeoutSecs,

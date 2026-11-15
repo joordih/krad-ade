@@ -4,6 +4,7 @@ use std::fmt;
 const REDACTED: &str = "[REDACTED]";
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GitlabSettings {
     #[serde(default)]
     pub host: String,
@@ -14,6 +15,7 @@ pub struct GitlabSettings {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum GitlabSignIn {
     #[default]
@@ -33,6 +35,7 @@ impl GitlabSettings {
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GitlabTokens {
     pub access_token: String,
     pub refresh_token: String,

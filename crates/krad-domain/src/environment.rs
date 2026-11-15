@@ -24,6 +24,7 @@ pub use edit::{Edited, EnvironmentEdit, GroupEdit, NodeEdit, NodeField, NodePlac
 pub use relaunch::{Relaunch, RelaunchIntent, RESTORE_MARKER};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TerminalNode {
     pub id: TerminalId,
     pub title: String,
@@ -59,6 +60,7 @@ pub struct TerminalNode {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum NodeKind {
     #[default]
     Terminal,
@@ -82,12 +84,14 @@ fn valid_resume_id<'de, D: Deserializer<'de>>(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TerminalMeta {
     pub cwd: String,
     pub scrollback: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct EnvironmentData {
     pub name: EnvironmentName,
     #[serde(default, skip_serializing_if = "Host::is_local")]

@@ -11,6 +11,7 @@ use std::collections::HashMap;
 pub const DEFAULT_SESSION_NAME: &str = "Main";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Session {
     pub id: SessionId,
     pub group: Option<GroupId>,

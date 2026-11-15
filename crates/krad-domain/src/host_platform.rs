@@ -7,6 +7,7 @@ const X86_64_MACHINE: &str = "x86_64";
 const AARCH64_MACHINES: [&str; 2] = ["aarch64", "arm64"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum HostPlatform {
     LinuxX86_64,

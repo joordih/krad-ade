@@ -4,6 +4,7 @@ use crate::event::{AppEvent, EventKind};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum AppTrigger {
     AgentFinished,
@@ -66,6 +67,7 @@ impl EventKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum CodeHostTrigger {
     RequestOpened,
@@ -108,6 +110,7 @@ pub const fn code_host_name(host: CodeHost) -> &'static str {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CodeHostWake {
     pub host: CodeHost,
     pub event: CodeHostTrigger,
@@ -127,6 +130,7 @@ pub enum AutomationEvent {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Trigger {
     Schedule {

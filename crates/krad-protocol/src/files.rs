@@ -11,12 +11,14 @@ pub const MAX_FOUND_LINES: usize = 5_000;
 pub const MAX_TEXTS_READ: usize = 256;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct FileCommand {
     pub environment: EnvironmentName,
     pub ask: FileAsk,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum OverLimit {
     #[default]
@@ -25,6 +27,7 @@ pub enum OverLimit {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum FileAsk {
     Read {
@@ -140,11 +143,13 @@ pub enum FileAsk {
         extension: String,
         bytes: Vec<u8>,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "reason", rename_all = "snake_case")]
 pub enum Unreadable {
     TooLarge { len: u64, limit: u64 },
@@ -154,6 +159,7 @@ pub enum Unreadable {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TextRead {
     pub path: PathBuf,
     pub text: String,
@@ -161,18 +167,21 @@ pub struct TextRead {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct NewFile {
     pub path: PathBuf,
     pub text: String,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct VaultNoteText {
     pub path: String,
     pub text: String,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct UploadShown {
     pub upload: RequestId,
     pub sent: u64,

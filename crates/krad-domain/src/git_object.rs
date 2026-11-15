@@ -7,6 +7,8 @@ const SHA256_HEX_LEN: usize = 64;
 const NOT_AN_OBJECT_ID: &str = "not a git object id";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct GitObjectId(String);
 

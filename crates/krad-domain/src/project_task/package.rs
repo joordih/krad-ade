@@ -25,6 +25,7 @@ pub const PACKAGE_LOCKFILES: [(&str, NodePackageManager); 4] = [
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum NodePackageManager {
     #[default]
     Npm,
@@ -54,6 +55,7 @@ impl NodePackageManager {
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 struct PackageManifest {
     #[serde(default)]
     scripts: BTreeMap<String, String>,

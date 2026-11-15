@@ -24,6 +24,8 @@ impl fmt::Display for McpNameError {
 impl std::error::Error for McpNameError {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct McpServerName(String);
 
@@ -71,6 +73,8 @@ impl fmt::Display for McpServerName {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct McpVariableName(String);
 
@@ -118,6 +122,8 @@ impl fmt::Display for McpVariableName {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct McpUrl(String);
 

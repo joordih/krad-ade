@@ -6,6 +6,7 @@ use crate::host::SshDestination;
 const CONFIRM_MARKER: &str = "(yes/no";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum PromptKind {
     Secret,
@@ -24,6 +25,7 @@ impl PromptKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "asker", rename_all = "snake_case")]
 pub enum PromptAsker {
     Host {
@@ -33,6 +35,7 @@ pub enum PromptAsker {
     Runner {
         runner: CloudRunnerId,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }

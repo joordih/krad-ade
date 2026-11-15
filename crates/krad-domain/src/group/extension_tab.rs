@@ -6,6 +6,7 @@ use crate::view::EnvironmentView;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ExtensionTab {
     pub extension: String,
     pub view: String,
@@ -14,6 +15,7 @@ pub struct ExtensionTab {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ShownExtensionViews {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sidebar: Option<ExtensionTab>,

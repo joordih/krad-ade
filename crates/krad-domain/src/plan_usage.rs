@@ -18,13 +18,14 @@ const DEFAULT_PLAN_WARNING: WarnPercent = WarnPercent::known(80);
 pub const UNTIMED_ALERT_LASTS: Duration = Duration::from_mins(30);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum WindowSpan {
     FiveHours,
     Weekly,
     Monthly,
     Rolling,
-    Lasting(Duration),
+    Lasting(#[cfg_attr(feature = "ts", ts(as = "crate::ts_shapes::SerdeDuration"))] Duration),
     Named(String),
 }
 
@@ -51,6 +52,7 @@ impl WindowSpan {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct UsageWindow {
     pub span: WindowSpan,
     pub scope: Option<String>,
@@ -60,6 +62,7 @@ pub struct UsageWindow {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum LimitStatus {
     Warning,
@@ -67,9 +70,11 @@ pub enum LimitStatus {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct LimitAlert {
     pub status: LimitStatus,
     pub resets_at: Option<ResetTime>,
+    #[cfg_attr(feature = "ts", ts(as = "crate::ts_shapes::SerdeSystemTime"))]
     pub heard_at: SystemTime,
 }
 
@@ -86,6 +91,7 @@ impl LimitAlert {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct PlanUsage {
     pub plan: Option<String>,
     pub windows: Vec<UsageWindow>,
@@ -135,6 +141,7 @@ impl PlanUsage {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum UsageIndicator {
     #[default]
     Shown,
@@ -152,6 +159,7 @@ fn lenient_plan_warning<'de, D: Deserializer<'de>>(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct PlanUsageSettings {
     #[serde(default)]
     pub indicator: UsageIndicator,

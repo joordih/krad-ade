@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "u16"))]
 #[serde(from = "u16", into = "u16")]
 pub struct InterfaceScale(u16);
 

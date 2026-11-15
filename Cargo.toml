@@ -121,6 +121,7 @@ serde_json = "1"
 schemars = "1.2"
 thiserror = "2"
 toml = "1"
+ts-rs = { version = "12", features = ["no-serde-warnings", "serde-json-impl"] }
 tungstenite = { version = "0.30", default-features = false, features = [
   "handshake",
 ] }

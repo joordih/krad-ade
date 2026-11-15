@@ -24,6 +24,7 @@ const PLAIN_PUNCTUATION: [char; 7] = ['-', '_', '.', '/', ':', '=', '+'];
 const OPTION_PREFIX: char = '-';
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum TaskSource {
     PackageScripts(NodePackageManager),
     Cargo,
@@ -44,6 +45,7 @@ impl TaskSource {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ProjectTask {
     pub source: TaskSource,
     pub name: String,

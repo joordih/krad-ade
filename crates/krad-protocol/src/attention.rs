@@ -2,6 +2,7 @@ use krad_domain::{AgentState, AttentionKind, AttentionTarget, Sight, Timestamp};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum AttentionCommand {
     Observe {
@@ -25,11 +26,13 @@ pub enum AttentionCommand {
         target: AttentionTarget,
     },
     ClearHistory,
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AttentionNotice {
     pub target: AttentionTarget,
     pub kind: AttentionKind,
@@ -38,6 +41,7 @@ pub struct AttentionNotice {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AttentionWaiting {
     pub target: AttentionTarget,
     pub kind: AttentionKind,
@@ -45,6 +49,7 @@ pub struct AttentionWaiting {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AttentionSnapshot {
     #[serde(default)]
     pub waiting: Vec<AttentionWaiting>,

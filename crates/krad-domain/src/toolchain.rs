@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 macro_rules! id_newtype {
     ($name:ident) => {
         #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+        #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
         #[serde(transparent)]
         pub struct $name(String);
 
@@ -49,6 +50,7 @@ id_newtype!(ToolchainKind);
 id_newtype!(LocatorId);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "at", rename_all = "snake_case")]
 pub enum ToolchainLocation {
     Path { path: PathBuf },
@@ -66,6 +68,7 @@ impl ToolchainLocation {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Toolchain {
     pub family: ToolchainFamilyId,
     pub kind: ToolchainKind,

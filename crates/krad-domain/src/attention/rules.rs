@@ -3,6 +3,7 @@ use super::quiet_hours::{QuietHours, TimeOfDay};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum Switch {
     On,
@@ -35,6 +36,7 @@ impl Switch {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum AttentionSound {
     #[default]
@@ -61,6 +63,7 @@ impl AttentionSound {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum SoundTiming {
     #[default]
@@ -81,6 +84,7 @@ impl SoundTiming {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum SessionAttention {
     #[default]
@@ -104,6 +108,7 @@ impl SessionAttention {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KindRule {
     pub notify: Switch,
     pub sound: AttentionSound,
@@ -117,6 +122,7 @@ pub const DEFAULT_KIND_RULE: KindRule = KindRule {
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AttentionRules {
     pub finished: KindRule,
     pub asks: KindRule,
@@ -164,6 +170,7 @@ pub struct Circumstances {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AttentionSettings {
     pub notifications: Switch,
     pub actions: Switch,

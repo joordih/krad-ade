@@ -9,6 +9,7 @@ const GIT_CALLER: &str = "git";
 const CLIENT_CALLER: &str = "client";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TerminalHandle {
     pub environment: String,
     pub terminal: u64,
@@ -38,12 +39,14 @@ impl FromStr for TerminalHandle {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct LeadHandle {
     pub environment: String,
     pub session: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum Caller {
     Terminal(TerminalHandle),
     Lead(LeadHandle),

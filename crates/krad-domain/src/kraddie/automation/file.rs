@@ -5,6 +5,7 @@ use std::fmt;
 pub const AUTOMATIONS_FORMAT_VERSION: AutomationFormatVersion = AutomationFormatVersion(1);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct AutomationFormatVersion(pub u32);
 
@@ -42,12 +43,14 @@ impl From<AutomationError> for AutomationsFileError {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AutomationsFile {
     pub format: AutomationFormatVersion,
     pub automations: Vec<Automation>,
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 struct VersionOnly {
     format: AutomationFormatVersion,
 }

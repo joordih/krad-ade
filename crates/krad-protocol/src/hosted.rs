@@ -9,6 +9,7 @@ use crate::chats::ChatState;
 use crate::ids::Seq;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct HostedChat {
     pub target: WebhookTarget,
     #[serde(default)]
@@ -20,12 +21,17 @@ pub struct HostedChat {
     #[serde(default)]
     pub spend: Spend,
     #[serde(default)]
+    #[cfg_attr(
+        feature = "ts",
+        ts(as = "Option<krad_domain::ts_shapes::SerdeSystemTime>")
+    )]
     pub last_activity: Option<SystemTime>,
     #[serde(default)]
     pub seq: Option<Seq>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct HostedSummary {
     pub environment: EnvironmentName,
     pub session: SessionId,
@@ -40,6 +46,10 @@ pub struct HostedSummary {
     #[serde(default)]
     pub spend: Spend,
     #[serde(default)]
+    #[cfg_attr(
+        feature = "ts",
+        ts(as = "Option<krad_domain::ts_shapes::SerdeSystemTime>")
+    )]
     pub last_activity: Option<SystemTime>,
     #[serde(default)]
     pub seq: Option<Seq>,

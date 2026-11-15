@@ -11,6 +11,7 @@ pub enum WindowFocus {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum Sight {
     Watched,
@@ -18,6 +19,7 @@ pub enum Sight {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum AttentionKind {
     Permission,
@@ -77,6 +79,7 @@ impl Transition {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AttentionTarget {
     pub environment: EnvironmentName,
     pub terminal: TerminalId,

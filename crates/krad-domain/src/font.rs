@@ -5,6 +5,8 @@ use crate::settings::{Ligatures, TerminalFont};
 const LEGACY_JETBRAINS_MONO: &str = "JetBrains Mono";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "u8"))]
 #[serde(from = "u8", into = "u8")]
 pub struct FontSize(u8);
 
@@ -47,6 +49,7 @@ impl From<FontSize> for u8 {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct FontChoice {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub family: Option<String>,
@@ -69,6 +72,7 @@ impl FontChoice {
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(untagged)]
 enum StoredFont {
     Legacy(TerminalFont),

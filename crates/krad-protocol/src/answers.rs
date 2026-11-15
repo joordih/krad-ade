@@ -17,6 +17,7 @@ use crate::command::ErrorCode;
 use crate::files::{TextRead, Unreadable, VaultNoteText};
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Answer {
     ChatPage(ChatPage),
@@ -96,6 +97,10 @@ pub enum Answer {
         len: u64,
         truncated: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(
+            feature = "ts",
+            ts(as = "Option<krad_domain::ts_shapes::SerdeSystemTime>")
+        )]
         modified: Option<SystemTime>,
     },
     Unreadable {
@@ -149,22 +154,26 @@ pub enum Answer {
         code: ErrorCode,
         message: String,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct FoundMentions {
     pub entries: Vec<IndexEntry>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct WorktreeChecked {
     pub path: PathBuf,
     pub state: Result<WorktreeState, String>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpPackageShown {
     pub agent: AcpAgentId,
     pub state: AcpPackageState,

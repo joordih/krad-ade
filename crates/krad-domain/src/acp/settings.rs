@@ -27,6 +27,7 @@ impl fmt::Display for AcpAgentRejected {
 impl std::error::Error for AcpAgentRejected {}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpSettings {
     #[serde(
         default,

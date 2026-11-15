@@ -76,12 +76,14 @@ pub struct McpProjectFile {
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 struct RawFile {
     #[serde(default, rename = "mcpServers")]
     servers: BTreeMap<String, Value>,
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 struct RawServer {
     #[serde(default, rename = "type")]
     kind: Option<String>,

@@ -11,6 +11,7 @@ const UUID_GROUP_ENDS: [usize; 4] = [8, 12, 16, 20];
 const UUID_HEX_DIGITS: usize = 32;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", content = "from", rename_all = "snake_case")]
 pub enum LiveSession {
     Start(ResumeId),
@@ -30,6 +31,7 @@ impl LiveSession {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ResumeCut {
     pub from: ResumeId,
     pub at: RewindId,

@@ -19,6 +19,7 @@ pub use origin::{ChatOpener, ChatOrigin};
 pub use shown_output::ShownOutput;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum Speaker {
     User,
@@ -26,6 +27,7 @@ pub enum Speaker {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum AnswerPart {
     Thinking(String),
@@ -35,6 +37,7 @@ pub enum AnswerPart {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChatMessage {
     pub speaker: Speaker,
     pub text: String,

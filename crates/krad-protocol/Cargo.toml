@@ -5,7 +5,11 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+ts = ["krad-domain/ts", "dep:ts-rs"]
+
 [dependencies]
+ts-rs = { workspace = true, optional = true }
 krad-domain.workspace = true
 serde.workspace = true
 serde_json.workspace = true

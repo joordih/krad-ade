@@ -2,6 +2,7 @@ use crate::hue::Hue;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum SessionIcon {
     Folder,
@@ -44,6 +45,7 @@ impl SessionIcon {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SessionLook {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<Hue>,

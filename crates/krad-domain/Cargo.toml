@@ -5,7 +5,11 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+ts = ["dep:ts-rs", "krad-extension-id/ts"]
+
 [dependencies]
+ts-rs = { workspace = true, optional = true }
 chrono.workspace = true
 krad-extension-id.workspace = true
 serde.workspace = true

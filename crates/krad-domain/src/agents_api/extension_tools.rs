@@ -9,6 +9,7 @@ const NAME_FILLER: char = '-';
 const MAX_TOOL_NAME: usize = 64;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum ExtensionToolEffect {
     #[default]
@@ -17,6 +18,7 @@ pub enum ExtensionToolEffect {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ExtensionToolInfo {
     pub name: String,
     pub extension: String,
@@ -26,6 +28,7 @@ pub struct ExtensionToolInfo {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ToolCatalog {
     pub code_tools: CodeTools,
     pub extension_tools: Vec<ExtensionToolInfo>,
@@ -34,6 +37,7 @@ pub struct ToolCatalog {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum ExtensionToolOutcome {
     #[default]
@@ -42,6 +46,7 @@ pub enum ExtensionToolOutcome {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ExtensionToolAnswer {
     pub text: String,
     pub outcome: ExtensionToolOutcome,

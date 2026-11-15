@@ -7,6 +7,8 @@ use super::REDACTED;
 const MAX_TOKEN_LEN: usize = 512;
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct ClaudeOauthToken(String);
 

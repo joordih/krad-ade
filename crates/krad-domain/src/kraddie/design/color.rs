@@ -21,6 +21,8 @@ impl fmt::Display for KraddieColorError {
 impl std::error::Error for KraddieColorError {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct KraddieColor(u32);
 

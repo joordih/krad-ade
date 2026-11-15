@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::bus::AgentRef;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum LaunchedAs {
     Shell,
@@ -12,6 +13,7 @@ pub enum LaunchedAs {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TerminalLaunched {
     pub terminal: AgentRef,
     pub harness: Option<AgentPreset>,

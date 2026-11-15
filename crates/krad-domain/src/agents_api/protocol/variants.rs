@@ -2,6 +2,7 @@ use crate::VariantSpec;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct VariantsRequest {
     pub prompt: String,
     pub variants: Vec<VariantSpec>,

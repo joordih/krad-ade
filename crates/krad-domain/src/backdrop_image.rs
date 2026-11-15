@@ -18,6 +18,7 @@ impl BackdropPlace {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Backdrops {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window: Option<BackdropImage>,
@@ -57,6 +58,7 @@ impl Backdrops {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum BackdropFit {
     #[default]
@@ -81,6 +83,8 @@ impl BackdropFit {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "u8"))]
 #[serde(from = "u8", into = "u8")]
 pub struct BackdropPercent(u8);
 
@@ -132,6 +136,7 @@ const fn default_dim() -> BackdropPercent {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct BackdropImage {
     pub file: PathBuf,
     #[serde(default)]

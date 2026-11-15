@@ -55,6 +55,7 @@ const NOT_THE_LEAD: &str = "Only the session's lead can start, direct or close w
                             sessions or pick a variant: ask the user in the lead chat";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum Request {
     List,
     ListAll,
@@ -74,6 +75,7 @@ pub enum Request {
         lines: usize,
     },
     Hook {
+        #[cfg_attr(feature = "ts", ts(as = "String"))]
         #[serde(with = "harness_name::program")]
         harness: AgentPreset,
         event: String,
@@ -94,6 +96,7 @@ pub enum Request {
         call: Option<ToolUseId>,
     },
     Spawn {
+        #[cfg_attr(feature = "ts", ts(as = "String"))]
         #[serde(with = "harness_name::program")]
         agent: AgentPreset,
         worktree: Option<String>,
@@ -267,6 +270,7 @@ pub fn lead_refusal(from: &Caller, request: &Request) -> Option<Response> {
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct PromptAnswer(String);
 
@@ -289,6 +293,7 @@ impl fmt::Debug for PromptAnswer {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Message {
     pub id: u64,
     pub from: u64,
@@ -299,6 +304,7 @@ pub struct Message {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum Response {
     Agents(Vec<AgentInfo>),
     Sent { id: u64 },

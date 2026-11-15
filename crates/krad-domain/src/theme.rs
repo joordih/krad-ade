@@ -7,10 +7,12 @@ pub use color::{ThemeColor, ThemeColorError};
 pub const ANSI_COLORS: usize = 16;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct ThemeId(pub String);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum ThemeAppearance {
     Light,
@@ -19,6 +21,7 @@ pub enum ThemeAppearance {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ThemeCredit {
     pub author: String,
     pub license: String,
@@ -26,6 +29,7 @@ pub struct ThemeCredit {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct InterfaceColors {
     pub background: ThemeColor,
     pub surface: ThemeColor,
@@ -41,6 +45,7 @@ pub struct InterfaceColors {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TerminalColors {
     pub background: ThemeColor,
     pub foreground: ThemeColor,
@@ -50,6 +55,7 @@ pub struct TerminalColors {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SyntaxColors {
     pub comment: ThemeColor,
     pub keyword: ThemeColor,
@@ -69,6 +75,7 @@ pub struct SyntaxColors {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Theme {
     pub id: ThemeId,
     pub name: String,

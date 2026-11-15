@@ -7,6 +7,7 @@ use crate::git_object::GitObjectId;
 use crate::ids::SessionId;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SessionChanges {
     pub baseline: GitObjectId,
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]

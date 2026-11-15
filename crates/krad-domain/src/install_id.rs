@@ -6,6 +6,8 @@ const MIN_LEN: usize = 8;
 const MAX_LEN: usize = 64;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct InstallId(String);
 

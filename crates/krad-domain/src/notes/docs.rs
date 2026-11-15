@@ -4,6 +4,7 @@ use super::{KEY_GENERATED_BY, KEY_MODEL, KEY_SOURCES, NOTE_EXTENSION, VAULT_DIR}
 use crate::model::ModelId;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SourceEntry {
     pub relative: String,
     pub is_dir: bool,

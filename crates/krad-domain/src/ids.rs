@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TerminalId(pub u64);
 
 impl TerminalId {
@@ -11,6 +12,7 @@ impl TerminalId {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TabId(pub u64);
 
 impl TabId {
@@ -21,6 +23,7 @@ impl TabId {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct EnvironmentName(String);
 
 impl EnvironmentName {
@@ -36,6 +39,7 @@ impl EnvironmentName {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GroupId(pub u64);
 
 impl GroupId {
@@ -46,6 +50,7 @@ impl GroupId {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SessionId(pub u64);
 
 impl SessionId {
@@ -59,6 +64,8 @@ const RESUME_ID_MAX_CHARS: usize = 128;
 const RESUME_ID_PUNCTUATION: [char; 2] = ['-', '_'];
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct ResumeId(String);
 

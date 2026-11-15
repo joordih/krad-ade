@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::server_runtime::ServerRuntimeId;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct LanguageId(String);
 
@@ -32,6 +33,7 @@ impl fmt::Display for LanguageId {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct LanguageDef {
     pub id: LanguageId,
     pub name: String,

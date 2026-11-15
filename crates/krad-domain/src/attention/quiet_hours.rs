@@ -14,6 +14,8 @@ pub const DEFAULT_QUIET_START: TimeOfDay = TimeOfDay::at_hour(DEFAULT_QUIET_STAR
 pub const DEFAULT_QUIET_END: TimeOfDay = TimeOfDay::at_hour(DEFAULT_QUIET_END_HOUR);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct TimeOfDay {
     minutes: u16,
@@ -101,6 +103,7 @@ impl From<TimeOfDay> for String {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct QuietHours {
     pub switch: Switch,
     pub start: TimeOfDay,

@@ -14,6 +14,7 @@ const OPTION_SEPARATOR: char = '=';
 const PATTERN_MARKS: [char; 3] = ['*', '?', '!'];
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Host {
     #[default]
@@ -27,6 +28,7 @@ pub enum Host {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ExtensionMachine {
     pub extension: String,
     pub kind: String,
@@ -68,6 +70,8 @@ impl fmt::Display for Host {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct SshDestination {
     pub user: Option<String>,

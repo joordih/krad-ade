@@ -11,6 +11,7 @@ const INSTRUCTION_BREAK: &str = "\n\n";
 const LABEL_SEPARATOR: &str = " · ";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct VariantSpec {
     pub harness: AgentPreset,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -66,6 +67,7 @@ impl fmt::Display for VariantsOrderError {
 impl std::error::Error for VariantsOrderError {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct VariantsOrder {
     pub prompt: String,
     pub variants: Vec<VariantSpec>,

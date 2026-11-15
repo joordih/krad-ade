@@ -19,6 +19,8 @@ pub use preference::{Marked, ModelPreferences};
 const MODEL_PUNCTUATION: &str = "._/:@-[]";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct ModelId(String);
 
@@ -112,6 +114,7 @@ pub(crate) fn lenient_effort<'de, D: Deserializer<'de>>(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum Effort {
     Minimal,

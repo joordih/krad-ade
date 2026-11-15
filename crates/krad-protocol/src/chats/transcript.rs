@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TranscriptAsk {
     pub resume: ResumeId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -17,6 +18,7 @@ pub struct TranscriptAsk {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TranscriptRead {
     pub resume: ResumeId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -25,6 +27,10 @@ pub struct TranscriptRead {
     pub file: Option<PathBuf>,
     pub chunk: TranscriptChunk,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "ts",
+        ts(as = "Option<krad_domain::ts_shapes::SerdeSystemTime>")
+    )]
     pub started: Option<SystemTime>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub problem: Option<String>,
@@ -39,6 +45,7 @@ impl TranscriptRead {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "from", rename_all = "snake_case")]
 pub enum SubagentsFrom {
     Claude {
@@ -55,6 +62,7 @@ pub enum SubagentsFrom {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KnownRecord {
     pub record: PathBuf,
     pub read: u64,
@@ -62,6 +70,7 @@ pub struct KnownRecord {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SubagentsAsk {
     pub resume: ResumeId,
     pub from: SubagentsFrom,
@@ -69,6 +78,7 @@ pub struct SubagentsAsk {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SubagentUpdate {
     pub meta: SubagentMeta,
     pub record: PathBuf,
@@ -76,6 +86,7 @@ pub struct SubagentUpdate {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SubagentsRead {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub home: Option<PathBuf>,

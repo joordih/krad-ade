@@ -11,6 +11,7 @@ pub enum Marked {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ModelPreferences {
     #[serde(
         default,

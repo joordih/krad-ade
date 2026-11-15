@@ -12,6 +12,7 @@ const BELOW_A_CENT: &str = "<$0.01";
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct UsdCost(u64);
 

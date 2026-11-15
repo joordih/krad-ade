@@ -6,6 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 const DEFAULT_BUDGET_WARNING: WarnPercent = WarnPercent::known(80);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum BudgetStatus {
     Within,
@@ -29,6 +30,7 @@ fn lenient_warning<'de, D: Deserializer<'de>>(deserializer: D) -> Result<WarnPer
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SpendSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_budget: Option<UsdCost>,

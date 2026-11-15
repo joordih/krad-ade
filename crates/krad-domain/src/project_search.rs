@@ -5,6 +5,7 @@ use std::path::PathBuf;
 const GLOB_LIST_SEPARATOR: char = ',';
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum PatternSyntax {
     #[default]
@@ -13,6 +14,7 @@ pub enum PatternSyntax {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum CaseMatching {
     #[default]
@@ -21,6 +23,7 @@ pub enum CaseMatching {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum WordMatching {
     #[default]
@@ -29,6 +32,7 @@ pub enum WordMatching {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ProjectQuery {
     pub pattern: String,
     pub syntax: PatternSyntax,
@@ -39,6 +43,7 @@ pub struct ProjectQuery {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct FoundLine {
     pub line: u32,
     pub text: String,
@@ -46,6 +51,7 @@ pub struct FoundLine {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct FileMatches {
     pub path: PathBuf,
     pub lines: Vec<FoundLine>,
@@ -59,6 +65,7 @@ impl FileMatches {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ProjectMatches {
     pub files: Vec<FileMatches>,
     pub truncated: bool,
@@ -72,18 +79,21 @@ impl ProjectMatches {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Replacement {
     pub replaced: usize,
     pub changed_lines: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ReplacedFile {
     pub outcome: Replacement,
     pub undo: Option<ReplaceUndo>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ReplaceUndo {
     pub path: PathBuf,
     pub before: String,
@@ -98,6 +108,7 @@ impl ReplaceUndo {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum UndoOutcome {
     Restored,
@@ -105,6 +116,7 @@ pub enum UndoOutcome {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TextMatch {
     pub path: PathBuf,
     pub line: u32,

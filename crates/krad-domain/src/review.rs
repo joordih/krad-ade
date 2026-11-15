@@ -26,6 +26,7 @@ macro_rules! numeric_id {
             Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, serde::Serialize,
             serde::Deserialize,
         )]
+        #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
         #[serde(transparent)]
         pub struct $name(pub u64);
 
@@ -45,6 +46,8 @@ numeric_id!(JobId);
 numeric_id!(IssueNumber);
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct ProjectPath(String);
 
@@ -98,6 +101,7 @@ impl AsRef<str> for ProjectPath {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum HeadRepository {
     #[default]
     Same,
@@ -116,6 +120,7 @@ impl HeadRepository {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct CommitSha(pub String);
 
@@ -129,10 +134,12 @@ impl CommitSha {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct DiscussionId(pub String);
 
 #[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct User {
     pub id: UserId,
     pub username: String,
@@ -140,6 +147,7 @@ pub struct User {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum MergeRequestState {
     Opened,
     Closed,
@@ -149,6 +157,7 @@ pub enum MergeRequestState {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum MergeStatus {
     Mergeable,
     Checking,
@@ -164,6 +173,7 @@ pub enum MergeStatus {
 }
 
 #[derive(Clone, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct MergeRequest {
     pub iid: MergeRequestIid,
     pub title: String,
@@ -187,12 +197,14 @@ pub struct MergeRequest {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct DiffRefs {
     pub base_sha: CommitSha,
     pub head_sha: CommitSha,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Commit {
     pub id: CommitSha,
     pub short_id: String,
@@ -204,6 +216,7 @@ pub struct Commit {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Change {
     pub old_path: String,
     pub new_path: String,
@@ -214,6 +227,7 @@ pub struct Change {
 }
 
 #[derive(Clone, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Discussion {
     pub id: DiscussionId,
     pub individual_note: bool,
@@ -238,6 +252,7 @@ impl Discussion {
 }
 
 #[derive(Clone, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Note {
     pub id: NoteId,
     pub body: String,
@@ -250,6 +265,7 @@ pub struct Note {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct NotePosition {
     pub old_path: Option<String>,
     pub new_path: Option<String>,
@@ -258,6 +274,7 @@ pub struct NotePosition {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Approvals {
     pub approved: bool,
     pub approvals_required: u32,
@@ -266,11 +283,13 @@ pub struct Approvals {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Approval {
     pub user: User,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum CiStatus {
     Created,
     WaitingForResource,
@@ -288,6 +307,7 @@ pub enum CiStatus {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Pipeline {
     pub id: PipelineId,
     pub sha: CommitSha,
@@ -299,6 +319,7 @@ pub struct Pipeline {
 }
 
 #[derive(Clone, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Job {
     pub id: JobId,
     pub name: String,
@@ -311,6 +332,7 @@ pub struct Job {
 #[derive(
     Clone, Copy, PartialEq, Eq, Hash, Debug, Default, serde::Serialize, serde::Deserialize,
 )]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum StateFilter {
     #[default]
     Opened,
@@ -322,6 +344,7 @@ pub enum StateFilter {
 #[derive(
     Clone, Copy, PartialEq, Eq, Hash, Debug, Default, serde::Serialize, serde::Deserialize,
 )]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum Scope {
     #[default]
     All,
@@ -332,6 +355,7 @@ pub enum Scope {
 #[derive(
     Clone, Copy, PartialEq, Eq, Hash, Debug, Default, serde::Serialize, serde::Deserialize,
 )]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct MergeRequestQuery {
     pub state: StateFilter,
     pub scope: Scope,
@@ -347,6 +371,7 @@ pub struct NewMergeRequest {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct MergeOptions {
     pub sha: Option<CommitSha>,
     pub squash: bool,

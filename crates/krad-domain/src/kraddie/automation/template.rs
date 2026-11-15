@@ -5,6 +5,7 @@ use std::fmt;
 const BUILT_IN: &str = include_str!("templates.json");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum TemplateCategory {
     Popular,
@@ -39,6 +40,7 @@ impl TemplateCategory {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum TemplateIcon {
     Bug,
@@ -54,6 +56,7 @@ pub enum TemplateIcon {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AutomationTemplate {
     pub id: String,
     pub categories: Vec<TemplateCategory>,

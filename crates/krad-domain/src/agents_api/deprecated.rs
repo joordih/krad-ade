@@ -14,6 +14,7 @@ const ONLY_LEADS_SEND: &str = "Only the session's lead can send to its workers: 
                                them with wait and read";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Deprecation {
     pub removed_in: ApiVersion,
 }

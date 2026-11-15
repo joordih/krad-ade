@@ -9,6 +9,8 @@ const EMPTY_MARK: char = '.';
 const INDEX_RADIX: u32 = 16;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "u8"))]
 #[serde(try_from = "u8", into = "u8")]
 pub struct PaletteIndex(u8);
 
@@ -103,6 +105,8 @@ impl fmt::Display for PixelGridError {
 impl std::error::Error for PixelGridError {}
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "Vec<String>"))]
 #[serde(try_from = "Vec<String>", into = "Vec<String>")]
 pub struct PixelGrid {
     cells: Vec<Option<PaletteIndex>>,

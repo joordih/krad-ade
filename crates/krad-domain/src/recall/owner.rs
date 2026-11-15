@@ -10,6 +10,7 @@ const KEEPSAKE_LABEL: &str = "keepsake";
 const DIGEST_LABEL: &str = "digest";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum MemoryOwner {
     Ordinary,
@@ -42,6 +43,7 @@ impl fmt::Display for MemoryOwner {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct DigestId(pub u64);
 

@@ -61,6 +61,7 @@ impl DiffColorSlot {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum DiffPreset {
     #[default]
@@ -94,6 +95,7 @@ impl DiffPreset {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct DiffColors {
     #[serde(default)]
     pub preset: DiffPreset,

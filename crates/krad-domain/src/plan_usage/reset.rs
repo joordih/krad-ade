@@ -6,6 +6,7 @@ const MILLIS_PER_SECOND: u64 = 1_000;
 const EPOCH_MILLIS_FROM: u64 = 10_000_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct ResetTime(u64);
 

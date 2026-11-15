@@ -9,6 +9,7 @@ const WORKER_NAME_CHARS: usize = 40;
 const ELLIPSIS: char = '…';
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct WorkerSpawn {
     pub lead: Option<SessionId>,
     pub task: String,

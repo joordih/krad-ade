@@ -4,6 +4,7 @@ use super::{normalize, MosaicTab, MAIN_RATIO_MAX, MAIN_RATIO_MIN};
 use crate::ids::{TabId, TerminalId};
 
 #[derive(Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct MosaicState {
     pub tabs: Vec<MosaicTab>,
     pub active: TabId,

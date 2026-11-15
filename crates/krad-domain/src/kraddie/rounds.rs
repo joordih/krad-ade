@@ -9,6 +9,7 @@ pub const QUIET_ONE_HOUR: Duration = Duration::from_secs(60 * MINUTE);
 pub const QUIET_TWO_HOURS: Duration = Duration::from_secs(120 * MINUTE);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum QuietSpan {
     FifteenMinutes,
@@ -48,6 +49,7 @@ impl QuietSpan {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(default)]
 pub struct KraddieRounds {
     pub switch: Switch,

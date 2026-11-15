@@ -6,6 +6,7 @@ pub const ORIGIN_REMOTE: &str = "origin";
 const REMOTE_SEPARATOR: char = '/';
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "place", content = "remote", rename_all = "snake_case")]
 pub enum BranchPlace {
     Local,
@@ -13,6 +14,7 @@ pub enum BranchPlace {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Branch {
     pub name: String,
     pub place: BranchPlace,
@@ -30,6 +32,7 @@ impl fmt::Display for Branch {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Refs {
     pub branches: Vec<Branch>,
     pub tags: Vec<String>,

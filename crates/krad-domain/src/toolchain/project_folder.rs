@@ -4,6 +4,8 @@ use std::fmt;
 use std::path::{Component, Path, PathBuf};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "PathBuf"))]
 #[serde(try_from = "PathBuf", into = "PathBuf")]
 pub struct ProjectFolder(PathBuf);
 

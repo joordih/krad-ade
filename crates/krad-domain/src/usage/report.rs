@@ -7,6 +7,7 @@ use std::iter::Sum;
 use std::ops::{Add, AddAssign};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Spend {
     #[serde(default)]
     pub tokens: TokenUsage,
@@ -68,6 +69,7 @@ impl Sum for Spend {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ReportedUsage {
     pub tokens: TokenUsage,
     pub cost: Option<UsdCost>,
@@ -89,6 +91,7 @@ impl ReportedUsage {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum UsageReport {
     Added(ReportedUsage),

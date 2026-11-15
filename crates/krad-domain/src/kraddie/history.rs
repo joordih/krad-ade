@@ -8,10 +8,12 @@ use std::time::SystemTime;
 pub const MAX_KRADDIE_HISTORY: usize = 50;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct KraddieRunId(pub u64);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddieSessionLink {
     pub environment: EnvironmentName,
     pub session: SessionId,
@@ -19,6 +21,7 @@ pub struct KraddieSessionLink {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum KraddieOutcome {
     Starting,
@@ -54,8 +57,10 @@ impl KraddieOutcome {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddieRun {
     pub id: KraddieRunId,
+    #[cfg_attr(feature = "ts", ts(as = "crate::ts_shapes::SerdeSystemTime"))]
     pub started: SystemTime,
     pub wake: KraddieWake,
     pub outcome: KraddieOutcome,
@@ -66,7 +71,9 @@ pub struct KraddieRun {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddieHistory {
+    #[cfg_attr(feature = "ts", ts(as = "Vec<KraddieRun>"))]
     runs: VecDeque<KraddieRun>,
 }
 

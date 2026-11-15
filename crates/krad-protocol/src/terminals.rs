@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use crate::bus::AgentRef;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum TerminalCommand {
     Open {
@@ -38,11 +39,13 @@ pub enum TerminalCommand {
     Watch {
         terminal: AgentRef,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "how", rename_all = "snake_case")]
 pub enum Typing {
     Prompt {
@@ -57,11 +60,13 @@ pub enum Typing {
     Steps {
         steps: Vec<Vec<u8>>,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum WriteBy {
     User,
@@ -70,23 +75,27 @@ pub enum WriteBy {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "to", rename_all = "snake_case")]
 pub enum TerminalScroll {
     Lines {
         lines: i32,
     },
     Bottom,
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TerminalSummary {
     pub terminal: AgentRef,
     pub run: ProcessRun,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TerminalClassified {
     pub terminal: AgentRef,
     pub state: AgentState,

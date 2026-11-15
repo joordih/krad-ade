@@ -52,6 +52,7 @@ impl fmt::Display for DesignError {
 impl std::error::Error for DesignError {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddieLayer {
     pub name: String,
     pub shown: Switch,
@@ -70,12 +71,14 @@ impl KraddieLayer {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct MoodLook {
     pub expression: PixelGrid,
     pub animation: KraddieAnimation,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct MoodLooks {
     pub idle: MoodLook,
     pub working: MoodLook,
@@ -118,6 +121,7 @@ pub enum PaintTarget {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddieDesign {
     pub style: BodyStyle,
     pub palette: Vec<KraddieColor>,

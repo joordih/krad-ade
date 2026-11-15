@@ -24,6 +24,7 @@ const INBOX: &str = "The attention inbox:";
 const NOTHING: &str = "(none)";
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(default)]
 pub struct KraddieMind {
     pub compass: KraddieCompass,

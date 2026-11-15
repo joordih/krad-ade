@@ -17,6 +17,7 @@ const SECRET_KEY_SEPARATOR: char = '/';
 const ARGUMENT_JOINER: &str = " ";
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum McpValue {
     Plain(String),
@@ -33,12 +34,14 @@ impl fmt::Debug for McpValue {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct McpVariable {
     pub name: McpVariableName,
     pub value: McpValue,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum McpTransport {
     Stdio {
@@ -66,6 +69,7 @@ impl McpTransport {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum McpServerState {
     #[default]
@@ -84,6 +88,7 @@ impl McpServerState {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct McpServer {
     pub name: McpServerName,
     pub transport: McpTransport,
@@ -140,6 +145,7 @@ impl fmt::Display for McpSecretKey {
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct McpSecret(String);
 

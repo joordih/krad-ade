@@ -49,7 +49,7 @@ pub fn serve_as_host_cli() -> Option<ExitCode> {
         run_askpass(rest.first().map_or("", String::as_str))
     } else if verb == RUNNER_VERB {
         runner_root()
-            .and_then(|root| serve_runner(&root, Secrets::in_memory()))
+            .and_then(|root| serve_runner(&root, Secrets::in_memory(), Vec::new()))
             .unwrap_or(i32::from(EXIT_FAILED))
     } else {
         run_runner_verb(verb, rest)

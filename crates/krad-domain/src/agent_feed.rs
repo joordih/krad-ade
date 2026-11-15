@@ -9,6 +9,7 @@ const EXITED: &str = "exited";
 const CLOSED: &str = "closed";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AgentInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<String>,
@@ -16,12 +17,15 @@ pub struct AgentInfo {
     pub title: String,
     pub group: Option<String>,
     pub state: TerminalState,
+    #[cfg_attr(feature = "ts", ts(as = "Option<String>"))]
     #[serde(with = "harness_names::display_name")]
     pub harness: Option<AgentPreset>,
     pub is_self: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(into = "String", try_from = "String")]
 pub enum TerminalState {
     Running(AgentState),
@@ -59,6 +63,7 @@ impl TryFrom<String> for TerminalState {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum StateReason {
     TurnStarted,

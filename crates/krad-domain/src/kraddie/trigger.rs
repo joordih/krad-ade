@@ -3,6 +3,7 @@ use crate::event::EventKind;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum KraddieEvent {
     AgentFinished,
@@ -38,6 +39,7 @@ impl From<KraddieEvent> for EventKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", content = "event", rename_all = "snake_case")]
 pub enum KraddieWake {
     Schedule,

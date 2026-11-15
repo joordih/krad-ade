@@ -12,6 +12,8 @@ pub use diff::{DiffColorSlot, DiffColors, DiffPreset, DiffTriple};
 pub use scale::InterfaceScale;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "u8"))]
 #[serde(from = "u8", into = "u8")]
 pub struct Percent(u8);
 
@@ -51,6 +53,8 @@ impl From<Percent> for u8 {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "u16"))]
 #[serde(from = "u16", into = "u16")]
 pub struct HueDegrees(u16);
 
@@ -85,6 +89,8 @@ impl From<HueDegrees> for u16 {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "u8"))]
 #[serde(from = "u8", into = "u8")]
 pub struct DarkLightness(Percent);
 
@@ -127,6 +133,7 @@ impl From<DarkLightness> for u8 {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SurfaceTone {
     #[serde(default)]
     pub hue: HueDegrees,
@@ -144,6 +151,7 @@ impl SurfaceTone {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum AccentChoice {
     #[default]
@@ -160,6 +168,7 @@ impl AccentChoice {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum MainPaneMaterial {
     #[default]
@@ -180,6 +189,7 @@ impl MainPaneMaterial {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ThemeTuning {
     #[serde(default, skip_serializing_if = "AccentChoice::is_default")]
     pub accent: AccentChoice,
@@ -203,6 +213,7 @@ impl ThemeTuning {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct EnvironmentTheme {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub light: Option<ThemeId>,
@@ -241,6 +252,7 @@ impl EnvironmentTheme {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct EnvironmentThemes(HashMap<EnvironmentName, EnvironmentTheme>);
 

@@ -6,6 +6,7 @@ use std::fmt;
 pub const DIGESTS_FORMAT_VERSION: DigestsFormatVersion = DigestsFormatVersion(1);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct DigestsFormatVersion(pub u32);
 
@@ -47,6 +48,7 @@ fn readable_digests<'de, D: Deserializer<'de>>(
 }
 
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 struct DigestsFile {
     #[serde(default)]
     format: DigestsFormatVersion,

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::{lenient_effort, lenient_model, Effort, ModelId};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChatChoice {
     #[serde(
         default,

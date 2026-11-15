@@ -2,6 +2,7 @@ use krad_domain::{AgentPreset, EnvironmentName, SessionId, TerminalId, WhenWorki
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AgentCommand {
     pub environment: EnvironmentName,
     pub lead: SessionId,
@@ -9,6 +10,7 @@ pub struct AgentCommand {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum AgentAct {
     StartWorker {
@@ -24,6 +26,7 @@ pub enum AgentAct {
         #[serde(default)]
         worktree: WorktreeFate,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }

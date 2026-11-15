@@ -7,6 +7,7 @@ pub const COMPOSER_ROOMY_MAX_H: f32 = 400.0;
 pub const COMPOSER_WINDOW_SHARE: f32 = 0.4;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum ComposerHeight {
     Compact,

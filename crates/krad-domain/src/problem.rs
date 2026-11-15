@@ -9,6 +9,7 @@ pub enum ProblemSeverity {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum ProblemLens {
     Off,
     Errors,
@@ -49,6 +50,7 @@ impl ProblemLens {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum Minimap {
     #[default]
     Shown,
@@ -86,6 +88,8 @@ impl Minimap {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "u32"))]
 #[serde(from = "u32", into = "u32")]
 pub struct ProjectCheckLimit(u32);
 
@@ -136,6 +140,7 @@ impl From<ProjectCheckLimit> for u32 {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct EditorSettings {
     #[serde(default, skip_serializing_if = "ProblemLens::is_default")]
     pub problem_lens: ProblemLens,

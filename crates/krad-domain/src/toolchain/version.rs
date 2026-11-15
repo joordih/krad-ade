@@ -11,6 +11,8 @@ const TILDE: char = '~';
 const EQUALS: char = '=';
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct ToolchainVersion {
     raw: String,
@@ -126,6 +128,7 @@ impl Ord for ToolchainVersion {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum VersionRequirement {
     Prefix(Vec<u64>),

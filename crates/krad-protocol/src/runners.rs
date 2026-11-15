@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::hosts::RemoteBusState;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum RunnerCommand {
     Ensure {
@@ -25,17 +26,20 @@ pub enum RunnerCommand {
     ForgetClaudeToken {
         runner: CloudRunnerId,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CliLogin {
     pub cli: RunnerCli,
     pub login: RunnerLogin,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RunnerLogins {
     pub runner: CloudRunnerId,
     pub logins: Vec<CliLogin>,
@@ -43,6 +47,7 @@ pub struct RunnerLogins {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "news", rename_all = "snake_case")]
 pub enum RunnerNews {
     ClaudeTokenKept,
@@ -59,11 +64,13 @@ pub enum RunnerNews {
     SignInNotForwarded {
         message: String,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RunnersSnapshot {
     #[serde(default)]
     pub shown: Vec<RunnerShown>,
@@ -74,24 +81,28 @@ pub struct RunnersSnapshot {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RunnerNotice {
     pub runner: CloudRunnerId,
     pub news: RunnerNews,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RunnerShown {
     pub runner: CloudRunnerId,
     pub state: RunnerState,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RunnerBusShown {
     pub runner: CloudRunnerId,
     pub bus: RemoteBusState,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RunnerRemoved {
     pub runner: CloudRunnerId,
     pub problem: Option<String>,

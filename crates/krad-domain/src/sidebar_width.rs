@@ -5,6 +5,8 @@ pub const SIDEBAR_MIN_W: f32 = 200.0;
 pub const SIDEBAR_MAX_W: f32 = 520.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "f32"))]
 #[serde(from = "f32", into = "f32")]
 pub struct SidebarWidth(f32);
 

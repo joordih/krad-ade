@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::spots::HarnessSpot;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum HealthPlace {
     ThisComputer,
@@ -12,6 +13,7 @@ pub enum HealthPlace {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "state", content = "health", rename_all = "snake_case")]
 pub enum HarnessCheck {
     Checking,
@@ -20,6 +22,7 @@ pub enum HarnessCheck {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct HarnessChecked {
     pub place: HealthPlace,
     pub harness: AgentPreset,
@@ -27,17 +30,20 @@ pub struct HarnessChecked {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum HealthCommand {
     Check {
         #[serde(default)]
         spot: HarnessSpot,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct HealthSnapshot {
     #[serde(default)]
     pub checks: Vec<HarnessChecked>,

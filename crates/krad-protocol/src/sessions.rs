@@ -2,18 +2,21 @@ use krad_domain::{EnvironmentEdit, EnvironmentName, GroupEdit, NodeEdit, Session
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SessionCommand {
     pub environment: EnvironmentName,
     pub edit: SessionEdit,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GroupCommand {
     pub environment: EnvironmentName,
     pub edit: GroupEdit,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct NodeCommand {
     pub environment: EnvironmentName,
     pub edit: NodeEdit,

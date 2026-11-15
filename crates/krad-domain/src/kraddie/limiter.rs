@@ -6,6 +6,7 @@ use std::fmt;
 pub const MAX_KRADDIE_RUNS: usize = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum RunRefusal {
     AlreadyRunning,

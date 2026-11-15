@@ -4,6 +4,7 @@ use std::fmt;
 const REDACTED: &str = "[REDACTED]";
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GithubToken {
     pub access_token: String,
 }

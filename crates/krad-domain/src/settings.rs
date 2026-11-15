@@ -33,6 +33,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum AppearanceMode {
     #[default]
     Light,
@@ -44,6 +45,7 @@ pub const KRAD_LIGHT_THEME: &str = "krad-light";
 pub const KRAD_DARK_THEME: &str = "krad-dark";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ThemeSelection {
     pub light: ThemeId,
     pub dark: ThemeId,
@@ -76,6 +78,7 @@ impl ThemeSelection {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum TerminalTheme {
     #[default]
     MatchApp,
@@ -153,6 +156,7 @@ impl TerminalTheme {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum TerminalFont {
     #[default]
     System,
@@ -160,6 +164,7 @@ pub enum TerminalFont {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum Ligatures {
     #[default]
     On,
@@ -182,6 +187,7 @@ impl Ligatures {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum CopyMode {
     #[default]
     Shortcut,
@@ -216,6 +222,7 @@ impl CopyMode {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum HarnessOnboarding {
     #[default]
     Pending,
@@ -230,6 +237,7 @@ impl HarnessOnboarding {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum AppUpdateCheck {
     #[default]
     Automatic,
@@ -237,6 +245,7 @@ pub enum AppUpdateCheck {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum CodeTools {
     #[default]
@@ -245,6 +254,7 @@ pub enum CodeTools {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum ApiDiscoveryFile {
     #[default]
@@ -260,6 +270,7 @@ impl ApiDiscoveryFile {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum ExtensionTools {
     #[default]
@@ -268,6 +279,7 @@ pub enum ExtensionTools {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum PerformanceMode {
     #[default]
@@ -298,6 +310,7 @@ impl PerformanceMode {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Settings {
     #[serde(default)]
     pub appearance: AppearanceMode,
@@ -431,6 +444,7 @@ impl Settings {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum WindowMaterial {
     Opaque,
     Blurred,
@@ -449,6 +463,8 @@ impl WindowMaterial {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "u8"))]
 #[serde(from = "u8", into = "u8")]
 pub struct TintOpacity(u8);
 
@@ -483,6 +499,7 @@ impl From<TintOpacity> for u8 {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct WindowTint {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hue: Option<Hue>,

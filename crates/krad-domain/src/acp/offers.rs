@@ -7,6 +7,7 @@ macro_rules! agent_reported_id {
     ($($name:ident),+ $(,)?) => {
         $(
             #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+            #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
             #[serde(transparent)]
             pub struct $name(pub String);
         )+
@@ -23,6 +24,7 @@ agent_reported_id!(
 );
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpMode {
     pub id: AcpModeId,
     pub name: String,
@@ -30,6 +32,7 @@ pub struct AcpMode {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpOffered {
     #[serde(default)]
     pub models: Vec<ModelOffer>,
@@ -40,6 +43,7 @@ pub struct AcpOffered {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpModes {
     pub current: AcpModeId,
     pub available: Vec<AcpMode>,
@@ -53,6 +57,7 @@ impl AcpModes {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpModel {
     pub id: AcpModelId,
     pub name: String,
@@ -60,6 +65,7 @@ pub struct AcpModel {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpModels {
     pub current: AcpModelId,
     pub available: Vec<AcpModel>,
@@ -91,6 +97,7 @@ impl AcpModels {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpConfigChoice {
     pub value: AcpConfigValue,
     pub name: String,
@@ -98,17 +105,20 @@ pub struct AcpConfigChoice {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum AcpConfigCategory {
     Mode,
     Model,
     ThoughtLevel,
     ModelConfig,
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Other,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpConfigOption {
     pub id: AcpConfigOptionId,
     pub name: String,
@@ -133,6 +143,7 @@ impl AcpConfigOption {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum AcpPermissionKind {
     AllowOnce,
@@ -149,6 +160,7 @@ impl AcpPermissionKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpPermissionOption {
     pub id: AcpPermissionOptionId,
     pub name: String,
@@ -156,6 +168,7 @@ pub struct AcpPermissionOption {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AcpSignIn {
     ByAgent,
@@ -166,6 +179,7 @@ pub enum AcpSignIn {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpAuthMethod {
     pub id: AcpAuthMethodId,
     pub name: String,
@@ -174,6 +188,7 @@ pub struct AcpAuthMethod {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpWanted {
     pub mode: Option<AcpModeId>,
     pub options: Vec<(AcpConfigOptionId, AcpConfigValue)>,

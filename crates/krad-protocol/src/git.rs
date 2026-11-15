@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use crate::ids::RequestId;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GitCommand {
     pub environment: EnvironmentName,
     pub group: GroupId,
@@ -15,6 +16,7 @@ pub struct GitCommand {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum GitAct {
     Refresh,
@@ -64,11 +66,13 @@ pub enum GitAct {
         branch: Branch,
     },
     RemoveWorktree,
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChangesCommand {
     pub environment: EnvironmentName,
     pub session: SessionId,
@@ -76,6 +80,7 @@ pub struct ChangesCommand {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum ChangesAct {
     Capture,
@@ -91,11 +96,13 @@ pub enum ChangesAct {
     Unaccept {
         hunks: Vec<HunkFingerprint>,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GitRead {
     pub host: Host,
     pub root: PathBuf,
@@ -103,6 +110,7 @@ pub struct GitRead {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum GitOutcome {
     Done,
@@ -113,11 +121,13 @@ pub enum GitOutcome {
     Failed {
         message: String,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GitFinished {
     pub request: RequestId,
     pub environment: EnvironmentName,
@@ -125,6 +135,7 @@ pub struct GitFinished {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct WorktreeSwept {
     pub environment: EnvironmentName,
     pub group: GroupId,
@@ -132,6 +143,7 @@ pub struct WorktreeSwept {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "read", rename_all = "snake_case")]
 pub enum ChangesRead {
     NoRepository,
@@ -142,11 +154,13 @@ pub enum ChangesRead {
         repo: PathBuf,
         files: Vec<FilePatch>,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SessionChangesRead {
     pub request: RequestId,
     pub environment: EnvironmentName,

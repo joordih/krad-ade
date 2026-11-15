@@ -12,6 +12,8 @@ static BUNDLED: LazyLock<Vec<ModelPrice>> =
     LazyLock::new(|| serde_json::from_str(BUNDLED_PRICES).unwrap_or_default());
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "f64"))]
 #[serde(try_from = "f64", into = "f64")]
 pub struct PricePerMillion(UsdCost);
 
@@ -37,6 +39,7 @@ impl PricePerMillion {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ModelPrice {
     pub model: String,
     #[serde(default)]

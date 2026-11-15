@@ -10,6 +10,7 @@ use std::str::FromStr;
 pub const ACTIVITY_KEPT_DAYS: u64 = 200;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(type = "string"))]
 pub struct KraddieDate(pub NaiveDate);
 
 impl fmt::Display for KraddieDate {
@@ -40,6 +41,7 @@ impl<'de> Deserialize<'de> for KraddieDate {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(default)]
 pub struct KraddieDay {
     pub runs: u32,
@@ -109,6 +111,7 @@ impl KraddieDay {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(default)]
 pub struct KraddieActivity {
     days: BTreeMap<KraddieDate, KraddieDay>,

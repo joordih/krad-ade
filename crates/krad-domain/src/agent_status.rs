@@ -2,6 +2,7 @@ use crate::ResetTime;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AgentStatus {
     pub model_id: Option<String>,
     pub model_name: Option<String>,

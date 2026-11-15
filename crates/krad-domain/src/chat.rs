@@ -11,6 +11,7 @@ use crate::rewind::RewindPoint;
 use crate::tool_kind::ToolKind;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct ToolUseId(String);
 
@@ -28,6 +29,7 @@ impl From<&str> for ToolUseId {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ToolCall {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<ToolUseId>,
@@ -53,6 +55,7 @@ impl ToolCall {
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(untagged)]
 enum SavedEdits {
     Many(Vec<FileEdit>),
@@ -70,6 +73,7 @@ fn one_or_many_edits<'de, D: Deserializer<'de>>(
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ToolOutput {
     pub text: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -81,6 +85,7 @@ pub struct ToolOutput {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum ChatEvent {
     Session(ResumeId),
     Text(String),
@@ -102,6 +107,7 @@ pub enum ChatEvent {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum AskVerdict {
     Allowed,
     AllowedAlways,
@@ -113,12 +119,14 @@ pub enum AskVerdict {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AskOutcome {
     pub subject: String,
     pub verdict: AskVerdict,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum ChatEntry {
     User {
         text: String,

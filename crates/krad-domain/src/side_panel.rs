@@ -18,6 +18,7 @@ pub enum TerminalLasting {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SystemTerminal {
     pub id: TerminalId,
     pub title: String,
@@ -26,6 +27,7 @@ pub struct SystemTerminal {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum SidePanelSection {
     #[default]
@@ -34,6 +36,7 @@ pub enum SidePanelSection {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum ChangesLayout {
     #[default]
@@ -52,6 +55,7 @@ impl ChangesLayout {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SidePanelLayout {
     #[serde(default)]
     pub open: bool,

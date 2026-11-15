@@ -10,10 +10,13 @@ use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct DiffCommentId(pub u64);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "RawHunkLines"))]
 #[serde(try_from = "RawHunkLines")]
 pub struct HunkLines {
     first: usize,
@@ -21,6 +24,7 @@ pub struct HunkLines {
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 struct RawHunkLines {
     first: usize,
     last: usize,
@@ -87,6 +91,7 @@ impl HunkLines {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct DiffAnchor {
     pub path: PathBuf,
     pub hunk: HunkFingerprint,
@@ -94,6 +99,7 @@ pub struct DiffAnchor {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum DiffSide {
     Old,
@@ -101,6 +107,7 @@ pub enum DiffSide {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct LineSpan {
     pub side: DiffSide,
     pub first: u32,
@@ -108,6 +115,7 @@ pub struct LineSpan {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct DiffQuote {
     pub anchor: DiffAnchor,
     pub span: LineSpan,
@@ -115,6 +123,7 @@ pub struct DiffQuote {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum AnchorState {
     #[default]
@@ -123,6 +132,7 @@ pub enum AnchorState {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct DiffComment {
     pub id: DiffCommentId,
     pub quote: DiffQuote,

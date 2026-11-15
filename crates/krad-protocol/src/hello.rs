@@ -7,10 +7,12 @@ use crate::ids::{ProtocolVersion, RequestId};
 const OTHER_VERSION: &str = "this runtime speaks another major version of the protocol";
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct RuntimeRun(pub u64);
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Hello {
     pub protocol: ProtocolVersion,
     pub build: String,
@@ -19,6 +21,7 @@ pub struct Hello {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Welcome {
     pub protocol: ProtocolVersion,
     pub build: String,

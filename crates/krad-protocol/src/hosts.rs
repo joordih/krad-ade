@@ -11,6 +11,7 @@ use crate::spots::HarnessSpot;
 const REDACTED: &str = "[REDACTED]";
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum HostState {
     #[default]
@@ -37,6 +38,7 @@ pub enum HostState {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum LoginEnv {
     #[default]
@@ -85,6 +87,7 @@ impl HostState {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RemoteBusInfo {
     pub remote_port: u16,
     pub bin_dir: PathBuf,
@@ -94,6 +97,7 @@ pub struct RemoteBusInfo {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "bus", rename_all = "snake_case")]
 pub enum RemoteBusState {
     #[default]
@@ -123,6 +127,7 @@ impl RemoteBusState {
 #[derive(
     Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize,
 )]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct PromptId(pub u64);
 
 impl PromptId {
@@ -133,6 +138,7 @@ impl PromptId {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct HostPrompt {
     pub prompt: PromptId,
     pub asker: PromptAsker,
@@ -141,6 +147,7 @@ pub struct HostPrompt {
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct PromptAnswer(String);
 
@@ -163,6 +170,7 @@ impl fmt::Debug for PromptAnswer {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct EnvironmentHost {
     pub environment: EnvironmentName,
     pub state: HostState,
@@ -173,6 +181,7 @@ pub struct EnvironmentHost {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct HostsSnapshot {
     #[serde(default)]
     pub hosts: Vec<EnvironmentHost>,
@@ -185,12 +194,14 @@ pub struct HostsSnapshot {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KeptAdapter {
     pub agent: AcpAgentId,
     pub adapter: ManagedAdapter,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "place", rename_all = "snake_case")]
 pub enum AgentPlace {
     Native,
@@ -198,12 +209,14 @@ pub enum AgentPlace {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct LocalAgents {
     pub place: AgentPlace,
     pub agents: Vec<AgentPreset>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum HostCommand {
     Show {
@@ -237,6 +250,7 @@ pub enum HostCommand {
         spot: HarnessSpot,
         agent: AcpAgentId,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }

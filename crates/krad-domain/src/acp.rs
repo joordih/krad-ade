@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 pub const ACP_DISPLAY_SUFFIX: &str = " (ACP)";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpAgent {
     pub id: AcpAgentId,
     pub name: String,

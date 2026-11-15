@@ -25,6 +25,7 @@ use crate::usage::UsageCommand;
 use crate::variants::VariantCommand;
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "area", rename_all = "snake_case")]
 pub enum Command {
     Runtime(RuntimeCommand),
@@ -55,20 +56,24 @@ pub enum Command {
     Cloud(CloudCommand),
     Repo(RepoCommand),
     File(FileCommand),
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum RuntimeCommand {
     Ping,
     Settle,
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum Reply {
     Accepted,
@@ -76,6 +81,7 @@ pub enum Reply {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
     Unsupported,
@@ -86,6 +92,7 @@ pub enum ErrorCode {
     Busy,
     Forbidden,
     Failed,
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }

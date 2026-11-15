@@ -39,6 +39,7 @@ pub struct PersistedLayout {
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 struct StoredLayout {
     version: u32,
     active: EnvironmentName,

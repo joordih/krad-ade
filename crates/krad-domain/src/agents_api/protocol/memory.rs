@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum RecallView {
     #[default]
@@ -20,6 +21,7 @@ pub const DEFAULT_MEMORY_HITS: usize = 8;
 pub const MAX_MEMORY_HITS: usize = 30;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct MemoryHitInfo {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -28,6 +30,7 @@ pub struct MemoryHitInfo {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct MemoryEntryInfo {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -36,6 +39,7 @@ pub struct MemoryEntryInfo {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddieChatInfo {
     pub kraddie: String,
     pub session: u64,
@@ -43,6 +47,7 @@ pub struct KraddieChatInfo {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct DigestInfo {
     pub id: String,
     pub chat: String,
@@ -50,6 +55,7 @@ pub struct DigestInfo {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddieRecallInfo {
     pub kraddie: String,
     pub keepsakes: Vec<String>,
@@ -59,6 +65,7 @@ pub struct KraddieRecallInfo {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddieSharingInfo {
     pub kraddie: String,
     pub reads: Vec<String>,
@@ -72,6 +79,7 @@ pub fn memory_hit_limit(asked: Option<usize>) -> usize {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum MemoryTools {
     On,

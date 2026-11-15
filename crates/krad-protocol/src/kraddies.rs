@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AutomationState {
     pub automation: Automation,
     #[serde(default)]
@@ -14,6 +15,7 @@ pub struct AutomationState {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddieState {
     pub kraddie: Kraddie,
     #[serde(default)]
@@ -25,6 +27,10 @@ pub struct KraddieState {
     #[serde(default)]
     pub activity: KraddieActivity,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "ts",
+        ts(as = "Option<krad_domain::ts_shapes::SerdeSystemTime>")
+    )]
     pub last_check_in: Option<SystemTime>,
 }
 
@@ -78,14 +84,20 @@ impl KraddieState {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct OwnedDigests {
     pub owner: MemoryOwner,
     pub book: DigestBook,
 }
 
 #[derive(Clone, Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddiesSnapshot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "ts",
+        ts(as = "Option<krad_domain::ts_shapes::SerdeSystemTime>")
+    )]
     pub opened_at: Option<SystemTime>,
     #[serde(default)]
     pub kraddies: Vec<KraddieState>,
@@ -94,6 +106,7 @@ pub struct KraddiesSnapshot {
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum KraddieCommand {
     Save {
@@ -176,6 +189,7 @@ pub enum KraddieCommand {
     UseNotes {
         titles: Vec<String>,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }

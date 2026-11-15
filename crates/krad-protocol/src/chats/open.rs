@@ -5,6 +5,7 @@ use krad_domain::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChatOpen {
     pub harness: AgentPreset,
     pub model: Option<ModelId>,

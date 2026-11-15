@@ -27,6 +27,8 @@ impl fmt::Display for AcpAgentIdError {
 impl std::error::Error for AcpAgentIdError {}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct AcpAgentId {
     len: u8,

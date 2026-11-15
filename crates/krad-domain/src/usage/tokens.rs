@@ -3,6 +3,7 @@ use std::iter::Sum;
 use std::ops::{Add, AddAssign};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TokenUsage {
     #[serde(default)]
     pub input: u64,

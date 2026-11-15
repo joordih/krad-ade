@@ -27,10 +27,12 @@ pub use transcript::{
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct ChatAskId(pub u64);
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum ChatCommand {
     Open {
@@ -149,11 +151,13 @@ pub enum ChatCommand {
     ReadImage {
         image: ChatImage,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct PastedImage {
     pub format: ImageFormat,
     pub bytes: Vec<u8>,
@@ -219,18 +223,21 @@ impl EventKind {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChatContext {
     pub tokens: Option<u64>,
     pub window: Option<u64>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpSignInAsk {
     pub methods: Vec<AcpAuthMethod>,
     pub asked: u32,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpShown {
     pub modes: Option<AcpModes>,
     pub models: Option<AcpModels>,
@@ -243,6 +250,7 @@ pub struct AcpShown {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum ChatLaunch {
     #[default]
@@ -251,6 +259,7 @@ pub enum ChatLaunch {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChatState {
     pub harness: AgentPreset,
     pub working: bool,
@@ -266,6 +275,10 @@ pub struct ChatState {
     #[serde(default)]
     pub notices: Vec<String>,
     #[serde(default)]
+    #[cfg_attr(
+        feature = "ts",
+        ts(as = "Option<krad_domain::ts_shapes::SerdeSystemTime>")
+    )]
     pub working_since: Option<SystemTime>,
     #[serde(default)]
     pub earlier: bool,
@@ -315,6 +328,7 @@ impl ChatState {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChatAsk {
     pub chat: AgentRef,
     pub ask: ChatAskId,
@@ -323,6 +337,7 @@ pub struct ChatAsk {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChatPage {
     pub chat: AgentRef,
     pub len: usize,
@@ -331,6 +346,7 @@ pub struct ChatPage {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChatSummary {
     pub state: ChatState,
     pub tail: ChatPage,

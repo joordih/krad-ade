@@ -18,6 +18,8 @@ const OPENAI_LABEL: &str = "OpenAI";
 const GOOGLE_LABEL: &str = "Google";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct GatewayUrl(String);
 
@@ -64,6 +66,7 @@ impl fmt::Display for GatewayUrl {
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct GatewayKey(String);
 
@@ -93,6 +96,8 @@ pub struct GatewayAccess {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "u64"))]
 #[serde(try_from = "u64", into = "u64")]
 pub struct ContextWindow(u64);
 
@@ -160,6 +165,7 @@ fn lenient_windows<'de, D: Deserializer<'de>>(
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GatewaySettings {
     #[serde(
         default,
@@ -203,6 +209,7 @@ impl GatewaySettings {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum Vendor {
     Anthropic,
@@ -244,6 +251,7 @@ impl From<&str> for Vendor {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GatewayModel {
     pub offer: ModelOffer,
     pub vendor: Vendor,

@@ -5,6 +5,7 @@ use super::FileChange;
 use crate::ChangeKind;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct FolderChanges {
     pub tracked: Vec<PathBuf>,
     pub untracked: Vec<PathBuf>,

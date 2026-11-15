@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum SessionEdit {
     Open {
@@ -89,6 +90,7 @@ pub enum SessionEdit {
     },
     Archive {
         session: SessionId,
+        #[cfg_attr(feature = "ts", ts(as = "crate::ts_shapes::SerdeSystemTime"))]
         at: SystemTime,
     },
     Leave {
@@ -106,8 +108,10 @@ pub enum SessionEdit {
     ForgetArchive,
     ExpireArchive {
         retention: ArchiveRetention,
+        #[cfg_attr(feature = "ts", ts(as = "crate::ts_shapes::SerdeSystemTime"))]
         now: SystemTime,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }

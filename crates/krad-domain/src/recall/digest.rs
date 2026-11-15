@@ -28,6 +28,7 @@ impl fmt::Display for DigestError {
 impl std::error::Error for DigestError {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct DigestChat {
     pub environment: EnvironmentName,
     pub session: SessionId,
@@ -46,6 +47,7 @@ impl DigestChat {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum DigestAuthor {
     #[default]
@@ -54,9 +56,11 @@ pub enum DigestAuthor {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChatDigest {
     pub id: DigestId,
     pub chat: DigestChat,
+    #[cfg_attr(feature = "ts", ts(as = "crate::ts_shapes::SerdeSystemTime"))]
     pub written: SystemTime,
     pub facts: Vec<String>,
     #[serde(default)]
@@ -73,10 +77,12 @@ impl ChatDigest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct DigestDraft {
     pub chat: DigestChat,
     pub facts: Vec<String>,
     pub covered: usize,
+    #[cfg_attr(feature = "ts", ts(as = "crate::ts_shapes::SerdeSystemTime"))]
     pub written: SystemTime,
 }
 
@@ -103,6 +109,8 @@ fn bounded_facts<'a>(facts: impl IntoIterator<Item = &'a str>) -> Vec<String> {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "Vec<ChatDigest>"))]
 #[serde(from = "Vec<ChatDigest>", into = "Vec<ChatDigest>")]
 pub struct DigestBook {
     digests: Vec<ChatDigest>,

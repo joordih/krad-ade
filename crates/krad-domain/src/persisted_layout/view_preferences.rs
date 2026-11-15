@@ -18,6 +18,7 @@ const fn current_version() -> u32 {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ViewPreferences {
     #[serde(default = "current_version")]
     pub version: u32,
@@ -74,6 +75,7 @@ impl ViewPreferences {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct EnvironmentViewPreferences {
     pub name: EnvironmentName,
     #[serde(default, deserialize_with = "crate::view::lenient_view")]

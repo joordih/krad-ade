@@ -53,6 +53,7 @@ pub const CHECKED_HARNESSES: [AgentPreset; 3] = [
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct HarnessVersion {
     pub major: u32,
     pub minor: u32,
@@ -148,6 +149,7 @@ impl AgentPreset {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum SignIn {
     SignedIn,
@@ -156,6 +158,7 @@ pub enum SignIn {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum HarnessHealth {
     Missing,

@@ -89,6 +89,8 @@ mod tool_decision;
 mod tool_kind;
 mod toolchain;
 mod transcript_chunk;
+#[cfg(feature = "ts")]
+pub mod ts_shapes;
 mod usage;
 mod variants;
 mod vault_entry;

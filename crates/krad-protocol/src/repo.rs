@@ -4,12 +4,14 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RepoCommand {
     pub environment: EnvironmentName,
     pub ask: RepoAsk,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum RepoAsk {
     DocsSources {
@@ -103,11 +105,13 @@ pub enum RepoAsk {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         dir: Option<PathBuf>,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DiffOf {
     Working { change: FileChange },
@@ -115,6 +119,7 @@ pub enum DiffOf {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct WorktreeProbe {
     pub main: PathBuf,
     pub path: PathBuf,
@@ -123,6 +128,7 @@ pub struct WorktreeProbe {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum WorktreeRemoval {
     Clean,

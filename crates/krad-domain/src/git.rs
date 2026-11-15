@@ -18,6 +18,7 @@ const EDGE_TRIMMED: [char; 2] = ['-', '.'];
 const PARENT_DIR_MARKER: &str = "..";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct FileChange {
     pub path: PathBuf,
     pub kind: ChangeKind,
@@ -25,6 +26,7 @@ pub struct FileChange {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GitStatus {
     pub head: Option<String>,
     pub branch: Option<String>,
@@ -37,6 +39,7 @@ pub struct GitStatus {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct LineCount {
     pub added: u32,
     pub removed: u32,
@@ -68,12 +71,14 @@ pub fn sanitize_worktree_name(raw: &str) -> Option<String> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Worktree {
     pub path: PathBuf,
     pub branch: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GroupGit {
     pub repo_root: PathBuf,
     pub status: GitStatus,
@@ -114,6 +119,7 @@ impl GroupGit {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum CommitMode {
     New,
@@ -121,6 +127,7 @@ pub enum CommitMode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum CommitScope {
     Staged,
@@ -128,6 +135,7 @@ pub enum CommitScope {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "to", rename_all = "snake_case")]
 pub enum PushTarget {
     Upstream,

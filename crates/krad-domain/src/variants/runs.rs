@@ -12,6 +12,7 @@ pub const MAX_KEPT_RUNS: usize = 8;
 const FIRST_RUN: u64 = 1;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct VariantRuns {
     #[serde(default)]
     runs: Vec<VariantRun>,

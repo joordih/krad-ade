@@ -8,6 +8,7 @@ pub const MAIN_RATIO_MAX: f32 = 0.8;
 pub const MAIN_RATIO_DEFAULT: f32 = 0.6;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum Arrangement {
     #[default]
     Columns,
@@ -17,12 +18,14 @@ pub enum Arrangement {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Tile {
     pub id: TerminalId,
     pub share: f32,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct MosaicTab {
     pub id: TabId,
     pub name: String,

@@ -4,6 +4,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 #[derive(
     Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize,
 )]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum EnvironmentView {
     #[default]
     Sessions,

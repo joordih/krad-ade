@@ -4,6 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use crate::VAULT_DIR;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum VaultEntryKind {
     Folder,
@@ -12,6 +13,7 @@ pub enum VaultEntryKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct VaultEntry {
     pub path: String,
     pub kind: VaultEntryKind,

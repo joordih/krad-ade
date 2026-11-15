@@ -9,7 +9,11 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+ts = ["dep:ts-rs"]
+
 [dependencies]
+ts-rs = { workspace = true, optional = true }
 serde.workspace = true
 
 [dev-dependencies]

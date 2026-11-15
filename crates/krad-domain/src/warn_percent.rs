@@ -4,6 +4,8 @@ use std::fmt;
 const FULL_PERCENT: u16 = 100;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "u8"))]
 #[serde(try_from = "u8", into = "u8")]
 pub struct WarnPercent(u8);
 

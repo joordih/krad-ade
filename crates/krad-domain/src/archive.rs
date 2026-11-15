@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ArchivedSessionId(pub u64);
 
 impl ArchivedSessionId {
@@ -28,6 +29,7 @@ impl ArchivedSessionId {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ArchivedChat {
     pub terminal: TerminalId,
     pub title: String,
@@ -42,6 +44,7 @@ pub struct ArchivedChat {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ArchivedShell {
     pub title: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -49,12 +52,14 @@ pub struct ArchivedShell {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ArchivedSession {
     pub id: ArchivedSessionId,
     pub group: GroupId,
     pub name: String,
     #[serde(default, skip_serializing_if = "SessionLook::is_plain")]
     pub look: SessionLook,
+    #[cfg_attr(feature = "ts", ts(as = "crate::ts_shapes::SerdeSystemTime"))]
     pub closed: SystemTime,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub chats: Vec<ArchivedChat>,
@@ -92,6 +97,7 @@ impl ArchivedSession {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum ChatHome {
     Open(SessionId),
@@ -100,10 +106,12 @@ pub enum ChatHome {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct LooseChat {
     pub group: GroupId,
     pub home: ChatHome,
     pub session_name: String,
+    #[cfg_attr(feature = "ts", ts(as = "crate::ts_shapes::SerdeSystemTime"))]
     pub closed: SystemTime,
     pub chat: ArchivedChat,
 }
@@ -119,6 +127,7 @@ impl LooseChat {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Archive {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sessions: Vec<ArchivedSession>,

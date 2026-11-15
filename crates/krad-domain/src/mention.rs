@@ -15,6 +15,7 @@ const MENTIONS_SEPARATOR: &str = "\n\n";
 const PATH_SEPARATOR: &str = "\n";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum ImageFormat {
     Png,
@@ -83,12 +84,14 @@ impl TryFrom<&Path> for ImageFormat {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ChatImage {
     pub path: PathBuf,
     pub format: ImageFormat,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum Mention {
     Path(PathBuf),
     Image(ChatImage),
@@ -113,6 +116,7 @@ impl From<PathBuf> for Mention {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Prompt {
     pub text: String,
     pub mentions: Vec<Mention>,

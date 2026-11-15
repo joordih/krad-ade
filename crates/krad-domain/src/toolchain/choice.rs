@@ -5,6 +5,7 @@ use super::{ProjectFolder, Toolchain, ToolchainFamilyId};
 use crate::host::Host;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ToolchainScope {
     #[serde(default, skip_serializing_if = "Host::is_local")]
     pub host: Host,
@@ -34,12 +35,14 @@ pub enum ToolchainSelection {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ToolchainChoice {
     pub scope: ToolchainScope,
     pub toolchain: Toolchain,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct ToolchainChoices(Vec<ToolchainChoice>);
 

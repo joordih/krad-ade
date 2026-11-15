@@ -71,6 +71,7 @@ impl fmt::Display for AutomationError {
 impl std::error::Error for AutomationError {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Automation {
     pub id: AutomationId,
     pub name: AutomationName,

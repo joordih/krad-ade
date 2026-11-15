@@ -7,6 +7,7 @@ use crate::ids::{GroupId, TerminalId};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GroupSpend {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<GroupId>,
@@ -14,6 +15,7 @@ pub struct GroupSpend {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct RetiredSpend(Vec<GroupSpend>);
 

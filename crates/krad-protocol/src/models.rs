@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::spots::HarnessSpot;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum ModelsOrigin {
     Listing,
@@ -11,6 +12,7 @@ pub enum ModelsOrigin {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum ModelsCommand {
     List {
@@ -23,11 +25,13 @@ pub enum ModelsCommand {
         harness: AgentPreset,
         models: Vec<ModelOffer>,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ListedModels {
     pub host: Host,
     pub harness: AgentPreset,
@@ -35,6 +39,7 @@ pub struct ListedModels {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AcpOffers {
     pub host: Host,
     pub agent: AcpAgentId,
@@ -42,6 +47,7 @@ pub struct AcpOffers {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "listing", rename_all = "snake_case")]
 pub enum AcpListing {
     Listing,
@@ -52,11 +58,13 @@ pub enum AcpListing {
     Failed {
         error: String,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ModelsSnapshot {
     #[serde(default)]
     pub listed: Vec<ListedModels>,

@@ -7,6 +7,8 @@ const REPOSITORY_SEPARATOR: char = '/';
 const REPOSITORY_PUNCTUATION: [char; 3] = ['-', '_', '.'];
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct IndexRepository(String);
 

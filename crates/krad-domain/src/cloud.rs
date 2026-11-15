@@ -32,6 +32,8 @@ const ENDED_PREFIX: &str = "ended:";
 const UNKNOWN_CODE: &str = "?";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct CloudProcessId(String);
 
@@ -93,6 +95,7 @@ impl fmt::Display for CloudProcessId {
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct JournalOffset(pub u64);
 
 impl JournalOffset {
@@ -103,6 +106,8 @@ impl JournalOffset {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct PairingToken(String);
 
@@ -162,6 +167,7 @@ impl From<PairingToken> for String {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Pairing {
     pub install: InstallId,
     pub token: PairingToken,

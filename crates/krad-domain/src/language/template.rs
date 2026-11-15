@@ -8,6 +8,7 @@ const FOLDER_SEPARATOR: char = '/';
 const PACKAGE_GAP: &str = "\n\n";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct LanguageTemplate {
     pub id: String,
     pub label: String,

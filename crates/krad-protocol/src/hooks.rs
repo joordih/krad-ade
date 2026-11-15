@@ -5,6 +5,7 @@ use std::collections::BTreeSet;
 use crate::bus::AgentRef;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct HookReport {
     pub harness: AgentPreset,
     pub event: String,
@@ -19,6 +20,7 @@ pub struct HookReport {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "from", rename_all = "snake_case")]
 pub enum HookOrigin {
     #[default]
@@ -30,6 +32,7 @@ pub enum HookOrigin {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum Conversation {
     #[default]
@@ -38,6 +41,7 @@ pub enum Conversation {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct HookHeard {
     pub agent: AgentRef,
     pub harness: AgentPreset,

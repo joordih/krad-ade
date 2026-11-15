@@ -21,6 +21,8 @@ const ID_PUNCTUATION: &str = "-_.";
 const HIDDEN_PREFIX: char = '.';
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "String"))]
 #[serde(try_from = "String", into = "String")]
 pub struct TemplateId(String);
 
@@ -76,6 +78,7 @@ impl fmt::Display for TemplateId {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct WorktreeTemplate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -83,6 +86,8 @@ pub struct WorktreeTemplate {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(as = "TemplateFile"))]
 #[serde(try_from = "TemplateFile", into = "TemplateFile")]
 pub struct SessionTemplate {
     pub name: String,
@@ -133,6 +138,7 @@ impl SessionTemplate {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum TemplateError {
     Json(String),
@@ -143,6 +149,7 @@ pub enum TemplateError {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct StoredTemplate {
     pub id: TemplateId,
     pub template: Result<SessionTemplate, TemplateError>,
@@ -182,6 +189,7 @@ impl FromStr for SessionTemplate {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 struct TemplateFile {
     format: u32,

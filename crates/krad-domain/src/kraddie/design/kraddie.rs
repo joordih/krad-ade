@@ -23,6 +23,7 @@ const SHARED_COLORS: [u32; 5] = [
 const OUTLINE_COLOR: u32 = 0x001d_1b2e;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum BodyStyle {
     #[default]

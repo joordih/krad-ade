@@ -6,6 +6,7 @@ const DEFAULT_FILE_ICON: &str = "_file";
 const SUFFIX_SEPARATOR: char = '.';
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum FileIconColors {
     #[default]
     Automatic,
@@ -53,6 +54,7 @@ impl FileIconColors {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum IconPaletteId {
     Base,
@@ -66,6 +68,7 @@ impl IconPaletteId {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct FolderIcons {
     pub collapsed: String,
     pub expanded: String,
@@ -83,6 +86,7 @@ impl FolderIcons {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct FileIconTheme {
     directory_icons: FolderIcons,
     package_icons: FolderIcons,
@@ -145,6 +149,7 @@ impl FromStr for FileIconTheme {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct IconPalettes {
     base: HashMap<String, String>,
     light: HashMap<String, String>,

@@ -9,6 +9,7 @@ use crate::{ChangeKind, GitObjectId, HunkFingerprint};
 pub use parse::parse_patch;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum PatchStatus {
     Added,
@@ -17,6 +18,7 @@ pub enum PatchStatus {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum HunkLineKind {
     Context,
@@ -25,6 +27,7 @@ pub enum HunkLineKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct HunkLine {
     pub kind: HunkLineKind,
     pub text: String,
@@ -32,6 +35,7 @@ pub struct HunkLine {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Hunk {
     pub old_start: usize,
     pub new_start: usize,
@@ -40,6 +44,7 @@ pub struct Hunk {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "body", content = "of", rename_all = "snake_case")]
 pub enum PatchBody {
     Text(Vec<Hunk>),
@@ -49,6 +54,7 @@ pub enum PatchBody {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct FilePatch {
     pub path: PathBuf,
     pub status: PatchStatus,

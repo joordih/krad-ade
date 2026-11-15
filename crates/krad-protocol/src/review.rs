@@ -10,6 +10,7 @@ use std::time::Duration;
 use crate::ids::RequestId;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ReviewCommand {
     pub environment: EnvironmentName,
     pub root: PathBuf,
@@ -17,12 +18,14 @@ pub struct ReviewCommand {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RequestRef {
     pub project: ProjectPath,
     pub iid: MergeRequestIid,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum ReviewAct {
     Probe,
@@ -47,11 +50,13 @@ pub enum ReviewAct {
         job: JobId,
         harness: AgentPreset,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "write", rename_all = "snake_case")]
 pub enum ReviewWrite {
     Comment {
@@ -69,11 +74,13 @@ pub enum ReviewWrite {
     Merge {
         options: MergeOptions,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "fetched", content = "value", rename_all = "snake_case")]
 pub enum Fetched<T> {
     Ready(T),
@@ -87,6 +94,7 @@ impl<T, E: std::fmt::Display> From<Result<T, E>> for Fetched<T> {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "connection", rename_all = "snake_case")]
 pub enum ReviewConnection {
     SignedOut { reason: String },
@@ -95,18 +103,21 @@ pub enum ReviewConnection {
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ListedRequests {
     pub project: ProjectPath,
     pub requests: Vec<MergeRequest>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RowFacts {
     pub pipeline: Option<CiStatus>,
     pub approvals: Approvals,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RequestDetailRead {
     pub iid: MergeRequestIid,
     pub request: Fetched<MergeRequest>,
@@ -119,6 +130,7 @@ pub struct RequestDetailRead {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "fix", rename_all = "snake_case")]
 pub enum FixOutcome {
     Sent {
@@ -138,11 +150,13 @@ pub enum FixOutcome {
     Failed {
         message: String,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "answer", rename_all = "snake_case")]
 pub enum ReviewAnswer {
     Probed {
@@ -171,11 +185,13 @@ pub enum ReviewAnswer {
         job: JobId,
         fix: FixOutcome,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ReviewAnswered {
     pub request: RequestId,
     pub environment: EnvironmentName,
@@ -184,6 +200,7 @@ pub struct ReviewAnswered {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum CodeHostCommand {
     Check {
@@ -198,11 +215,13 @@ pub enum CodeHostCommand {
     SignOut {
         host: CodeHost,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "with", rename_all = "snake_case")]
 pub enum SignInWith {
     GithubDevice,
@@ -220,6 +239,7 @@ impl SignInWith {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "login", rename_all = "snake_case")]
 pub enum LoginState {
     Checking,
@@ -234,13 +254,16 @@ pub enum LoginState {
     WaitingForCode {
         user_code: String,
         page: String,
+        #[cfg_attr(feature = "ts", ts(as = "krad_domain::ts_shapes::SerdeDuration"))]
         expires_in: Duration,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "news", rename_all = "snake_case")]
 pub enum LoginNews {
     SignedIn {
@@ -250,11 +273,13 @@ pub enum LoginNews {
     Failed {
         message: String,
     },
+    #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CodeHostLogin {
     pub host: CodeHost,
     pub state: LoginState,

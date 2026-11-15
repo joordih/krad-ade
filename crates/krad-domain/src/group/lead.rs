@@ -6,6 +6,7 @@ use crate::usage::Spend;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SessionLead {
     pub preset: AgentPreset,
     #[serde(default, deserialize_with = "lenient_model")]
@@ -29,6 +30,7 @@ impl SessionLead {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Worker {
     pub terminal: TerminalId,
     pub task: String,
@@ -41,6 +43,7 @@ pub struct Worker {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct WorkerReopen {
     pub harness: AgentPreset,
     #[serde(default, skip_serializing_if = "Option::is_none")]

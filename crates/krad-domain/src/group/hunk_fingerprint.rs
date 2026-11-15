@@ -5,6 +5,7 @@ const FNV_PRIME: u64 = 0x0100_0000_01b3;
 const LINE_END: u8 = b'\n';
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct HunkFingerprint(u64);
 

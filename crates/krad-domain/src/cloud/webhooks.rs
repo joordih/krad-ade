@@ -6,6 +6,7 @@ use crate::ids::{EnvironmentName, GroupId, TerminalId};
 use crate::{AgentPreset, AgentState};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SyncedWebhook {
     #[serde(flatten)]
     pub hook: Webhook,
@@ -14,6 +15,7 @@ pub struct SyncedWebhook {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct WebhookTarget {
     pub process: CloudProcessId,
     pub environment: EnvironmentName,
@@ -26,6 +28,7 @@ pub struct WebhookTarget {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RunnerWebhooks {
     #[serde(default)]
     pub hooks: Vec<SyncedWebhook>,

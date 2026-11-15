@@ -11,6 +11,7 @@ fn field<T: DeserializeOwned>(stored: Option<Value>, fallback: T) -> T {
 }
 
 #[derive(Default, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(default)]
 struct StoredKindRule {
     notify: Option<Value>,
@@ -30,6 +31,7 @@ impl<'de> Deserialize<'de> for KindRule {
 }
 
 #[derive(Default, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(default)]
 struct StoredRules {
     finished: Option<Value>,
@@ -51,6 +53,7 @@ impl<'de> Deserialize<'de> for AttentionRules {
 }
 
 #[derive(Default, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(default)]
 struct StoredQuietHours {
     switch: Option<Value>,
@@ -71,6 +74,7 @@ impl<'de> Deserialize<'de> for QuietHours {
 }
 
 #[derive(Default, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(default)]
 struct StoredAttention {
     notifications: Option<Value>,

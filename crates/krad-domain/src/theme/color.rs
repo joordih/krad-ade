@@ -8,6 +8,7 @@ const HEX_RADIX: u32 = 16;
 const CHANNEL_MAX: f32 = 255.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(type = "string"))]
 pub struct ThemeColor(pub u32);
 
 #[derive(Debug, PartialEq, Eq)]

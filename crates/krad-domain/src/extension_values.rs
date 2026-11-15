@@ -8,6 +8,7 @@ const REDACTED: &str = "[REDACTED]";
 const SECRET_KEY_SEPARATOR: char = '/';
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(untagged)]
 pub enum ExtensionSettingValue {
     Toggle(bool),
@@ -16,6 +17,7 @@ pub enum ExtensionSettingValue {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct ExtensionSettings(BTreeMap<ExtensionId, BTreeMap<String, ExtensionSettingValue>>);
 
@@ -64,6 +66,7 @@ impl fmt::Display for ExtensionSecretKey {
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct ExtensionSecret(String);
 

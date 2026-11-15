@@ -8,6 +8,7 @@ use crate::recall::ChatDigests;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(default)]
 pub struct KraddieSessions {
     pub sidebar: Switch,
@@ -24,8 +25,10 @@ impl Default for KraddieSessions {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(default)]
 pub struct KraddieSettings {
+    #[cfg_attr(feature = "ts", ts(as = "Option<String>"))]
     #[serde(with = "effort_name", skip_serializing_if = "Option::is_none")]
     pub effort: Option<Effort>,
     #[serde(skip_serializing_if = "Option::is_none")]

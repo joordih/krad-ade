@@ -13,6 +13,7 @@ pub use library::{
 pub use offered::{search_skills, Skill, SkillSource};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum SkillKind {
     Skill,
@@ -45,6 +46,7 @@ impl fmt::Display for SkillKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CommandOffer {
     pub name: String,
     #[serde(default)]
@@ -52,6 +54,7 @@ pub struct CommandOffer {
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SkillKey {
     pub kind: SkillKind,
     pub name: String,
@@ -68,6 +71,7 @@ impl SkillKey {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct SkillSettings {
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub disabled: BTreeSet<SkillKey>,

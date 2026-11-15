@@ -21,6 +21,7 @@ impl Default for RuntimeState {
 }
 
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 struct StoredState {
     version: u32,
     #[serde(default)]
