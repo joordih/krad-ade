@@ -119,7 +119,7 @@ A Linux machine of the user's where the app installed the `cloud-runner` daemon 
 _Avoid_: runner, cloud, server, worker, remote host
 
 **Pairing**:
-Giving one installation of the app a revocable token for a cloud runner, created over SSH on the runner. The daemon only listens on the runner's loopback, so the token is never the only barrier.
+Giving one client, an installation of the app or a web client, a revocable token for a runtime with chosen permissions. A cloud runner's first one is created over SSH on the runner; later ones are redeemed from a one-use code shown by a client that may administer it. A runtime is only reachable from its loopback or the user's private network, so the token is never the only barrier.
 _Avoid_: login, linking, registration
 
 **Archive**:
@@ -465,12 +465,20 @@ _Avoid_: theme store, marketplace, gallery
 ### Runtime and clients
 
 **Runtime**:
-The part of the app that owns its live state without a window: environments, sessions, chats, terminals, agents, attention, Kraddies, automations, variants and cloud runners. The app runs one, and each cloud runner runs its own. It changes only through commands and tells its clients what happened through events.
+The part of the app that owns its live state without a window: environments, sessions, chats, terminals, agents, attention, Kraddies, automations, variants and cloud runners. This computer runs one as a user service that starts at login and outlives the app's window, or inside the app on Windows, and each cloud runner runs its own. It changes only through commands and tells its clients what happened through events.
 _Avoid_: store, backend, core, engine, server, daemon
 
 **Client**:
 What drives a runtime: the app's window for its own runtime and for each cloud runner it is paired with, or any other program. It starts from a snapshot, follows the events and sends commands; it never changes the runtime's state directly.
 _Avoid_: frontend, UI, consumer, view
+
+**Web client**:
+Krad in a browser: a client with the same look and functions as the app's window, served by the runtime it drives, which the user pairs with this computer's runtime and with each cloud runner separately, showing their sessions together like the app does. It only reaches runtimes on the user's private network and has no window-only features such as the dock badge or the native menu.
+_Avoid_: web app, dashboard, remote UI, browser app
+
+**Web access**:
+The setting of a runtime that lets web clients reach and pair with it, off until the user turns it on.
+_Avoid_: web server, remote access, exposure
 
 **Command**:
 What a client asks a runtime to do, such as opening a session, sending a message or answering an ask. The runtime accepts or refuses it at once, a refusal with a stable code; what it did arrives later as events, which every client sees.
