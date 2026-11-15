@@ -1,11 +1,8 @@
-use gpui_kit::component::input::{EditorState, Rope, RopeExt as _};
+use gpui_kit::component::input::EditorState;
 use gpui_kit::{AppContext as _, Context, Entity, Window};
 use krad_extensions::host::HostLink;
-use krad_lsp::lsp_types::{
-    DocumentChangeOperation, DocumentChanges, OneOf, ResourceOp, TextDocumentEdit, TextEdit,
-    WorkspaceEdit,
-};
-use krad_lsp::uri_path;
+use krad_lsp::lsp_types::{TextEdit, WorkspaceEdit};
+pub(super) use krad_lsp::{apply_text_edits, descending, workspace_changes};
 use std::path::{Path, PathBuf};
 
 use super::super::EnvironmentShell;
@@ -13,103 +10,6 @@ use super::Document;
 use krad_domain::{Host, ToastKind};
 
 const WRITE_FAILED_TEXT: &str = "Couldn't apply the change to";
-
-pub(super) fn descending(mut edits: Vec<TextEdit>) -> Vec<TextEdit> {
-    edits
-        .sort_by_key(|edit| std::cmp::Reverse((edit.range.start.line, edit.range.start.character)));
-    edits
-}
-
-pub(super) fn apply_text_edits(text: &str, edits: Vec<TextEdit>) -> String {
-    let mut rope = Rope::from(text);
-    for edit in descending(edits) {
-        let start = rope.position_to_offset(&edit.range.start);
-        let end = rope.position_to_offset(&edit.range.end);
-        rope.replace(start..end, &edit.new_text);
-    }
-    rope.to_string()
-}
-
-#[derive(Debug, Default, PartialEq, Eq)]
-pub(super) struct WorkspaceChanges {
-    pub(super) created: Vec<PathBuf>,
-    pub(super) edited: Vec<(PathBuf, Vec<TextEdit>)>,
-    pub(super) renamed: Vec<(PathBuf, PathBuf)>,
-    pub(super) deleted: Vec<PathBuf>,
-}
-
-impl WorkspaceChanges {
-    fn edit(&mut self, path: Option<PathBuf>, edits: Vec<TextEdit>) {
-        let Some(path) = path else {
-            return;
-        };
-        match self.edited.iter_mut().find(|(known, _)| *known == path) {
-            Some((_, known)) => known.extend(edits),
-            None => self.edited.push((path, edits)),
-        }
-    }
-
-    fn operation(&mut self, operation: ResourceOp) {
-        match operation {
-            ResourceOp::Create(create) => self.created.extend(uri_path(&create.uri)),
-            ResourceOp::Rename(rename) => {
-                if let (Some(from), Some(to)) =
-                    (uri_path(&rename.old_uri), uri_path(&rename.new_uri))
-                {
-                    self.renamed.push((from, to));
-                }
-            }
-            ResourceOp::Delete(delete) => self.deleted.extend(uri_path(&delete.uri)),
-        }
-    }
-
-    fn renamed_to(&self, path: &Path) -> Option<&Path> {
-        self.renamed
-            .iter()
-            .find(|(from, _)| from == path)
-            .map(|(_, to)| to.as_path())
-    }
-}
-
-fn document_edits(document: TextDocumentEdit) -> (Option<PathBuf>, Vec<TextEdit>) {
-    let edits = document
-        .edits
-        .into_iter()
-        .map(|edit| match edit {
-            OneOf::Left(edit) => edit,
-            OneOf::Right(annotated) => annotated.text_edit,
-        })
-        .collect();
-    (uri_path(&document.text_document.uri), edits)
-}
-
-pub(super) fn workspace_changes(edit: WorkspaceEdit) -> WorkspaceChanges {
-    let mut changes = WorkspaceChanges::default();
-    for (uri, edits) in edit.changes.unwrap_or_default() {
-        changes.edit(uri_path(&uri), edits);
-    }
-    match edit.document_changes {
-        Some(DocumentChanges::Edits(documents)) => {
-            for document in documents {
-                let (path, edits) = document_edits(document);
-                changes.edit(path, edits);
-            }
-        }
-        Some(DocumentChanges::Operations(operations)) => {
-            for operation in operations {
-                match operation {
-                    DocumentChangeOperation::Edit(document) => {
-                        let (path, edits) = document_edits(document);
-                        changes.edit(path, edits);
-                    }
-                    DocumentChangeOperation::Op(operation) => changes.operation(operation),
-                }
-            }
-        }
-        None => {}
-    }
-    changes
-}
 
 impl EnvironmentShell {
     pub(super) fn open_state(&self, document: &Document) -> Option<Entity<EditorState>> {
@@ -247,6 +147,9 @@ impl EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use krad_lsp::lsp_types::{
+        DocumentChangeOperation, DocumentChanges, OneOf, ResourceOp, TextDocumentEdit,
+    };
     use krad_lsp::lsp_types::{Position, Range, Uri};
     use std::collections::HashMap;
     use std::str::FromStr;

@@ -48,6 +48,7 @@ mod cloud_nodes;
 mod cloud_results;
 mod clouding;
 mod code_host_watch;
+mod code_tools;
 mod commands;
 mod digesting;
 mod editing;
