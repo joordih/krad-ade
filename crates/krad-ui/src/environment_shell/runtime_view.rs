@@ -1,8 +1,7 @@
 use gpui_kit::{App, AppContext as _, Context, Entity};
-use krad_client::{InProcess, RuntimeClient};
+use krad_client::{InProcess, Runner, RuntimeClient};
 use krad_domain::{AgentStatus, EnvironmentData, EnvironmentName, RuntimeId, Settings, TerminalId};
 use krad_protocol::AgentRef;
-use krad_runtime::RuntimeHandle;
 use krad_session::AnsiPalette;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -37,6 +36,7 @@ use shown_environments::ShownEnvironments;
 use view_model::RuntimeNews;
 pub(super) use view_model::{HostedFailure, RunnerReach, ViewModel};
 
+use super::local_reach::{LocalReach, ServiceReach};
 use super::EnvironmentShell;
 
 type AgentSpot = (EnvironmentName, TerminalId);
@@ -45,9 +45,14 @@ fn spot(agent: AgentRef) -> AgentSpot {
     (agent.environment, agent.terminal)
 }
 
+pub enum LocalRuntime {
+    InProcess(InProcess),
+    Service(Runner),
+}
+
 pub(super) struct RuntimeLink {
     pub(super) client: Arc<dyn RuntimeClient>,
-    pub(super) handle: RuntimeHandle,
+    pub(super) local: LocalReach,
     pub(super) view: Entity<ViewModel>,
     pub(super) environments: Rc<EnvironmentsMirror>,
     pub(super) order: Vec<EnvironmentName>,
@@ -59,12 +64,23 @@ pub(super) struct RuntimeLink {
 }
 
 impl RuntimeLink {
-    pub(super) fn new(client: InProcess, settings: Settings, cx: &mut App) -> Self {
+    pub(super) fn new(runtime: LocalRuntime, settings: Settings, cx: &mut App) -> Self {
         let model = ViewModel::new(settings);
         let settings = model.settings.current();
+        let (client, local): (Arc<dyn RuntimeClient>, LocalReach) = match runtime {
+            LocalRuntime::InProcess(client) => {
+                let handle = client.handle().clone();
+                (Arc::new(client), LocalReach::InProcess(handle))
+            }
+            LocalRuntime::Service(runner) => {
+                let runner = Arc::new(runner);
+                let reach = LocalReach::Service(ServiceReach::new(Arc::clone(&runner)));
+                (runner, reach)
+            }
+        };
         Self {
-            handle: client.handle().clone(),
-            client: Arc::new(client),
+            local,
+            client,
             view: cx.new(|_| model),
             environments: Rc::default(),
             order: Vec::new(),
@@ -121,7 +137,7 @@ impl RuntimeLink {
 
     pub(super) fn use_palette(&mut self, palette: AnsiPalette) {
         if self.palette.replace(palette) != Some(palette) {
-            self.handle.terminal_palette(palette);
+            self.local.terminal_palette(palette);
         }
     }
 }
@@ -139,7 +155,9 @@ impl EnvironmentShell {
     }
 
     fn reach_ready_runners(&self, cx: &mut Context<Self>) {
-        let handle = self.runtime.handle.clone();
+        let Some(handle) = self.runtime.local.handle().cloned() else {
+            return;
+        };
         self.runtime
             .view
             .update(cx, |model, cx| model.reach_ready_runners(&handle, cx));

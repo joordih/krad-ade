@@ -7,6 +7,7 @@ use krad_domain::{
 use krad_session::wsl_shell;
 use std::path::PathBuf;
 
+use super::live_terminal::terminal_ref;
 use super::sessions::Launch;
 use super::sessions_view::{session_terminals, show_current_session};
 use super::surface::{ChatPlace, ChatSeed};
@@ -415,6 +416,7 @@ impl EnvironmentShell {
         };
         let ran = live.sessions.remove(&id).is_some();
         let chat = live.chats.remove(&id);
+        self.runtime.local.forget_terminal(&terminal_ref(env, id));
         if live.focused == Some(id) {
             live.focused = None;
             show_current_session(live);

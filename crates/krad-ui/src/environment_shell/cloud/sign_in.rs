@@ -4,6 +4,7 @@ use krad_protocol::{Command, RunnerCommand};
 
 use super::super::activity::{TerminalsTab, UtilityTab};
 use super::super::live_terminal::{terminal_ref, LiveTerminal};
+use super::super::local_reach::SERVICE_ONLY_TEXT;
 use super::super::EnvironmentShell;
 
 const LABEL_PREFIX: &str = "Sign in on";
@@ -72,10 +73,10 @@ impl EnvironmentShell {
         let Some((env, id)) = self.open_helper_terminal(label, cx) else {
             return;
         };
-        let view = self
-            .runtime
-            .handle
-            .open_runner_sign_in(terminal_ref(&env, id), runner, cli);
+        let Some(handle) = self.runtime.local.handle() else {
+            return self.push_toast(ToastKind::Warning, SERVICE_ONLY_TEXT.to_owned());
+        };
+        let view = handle.open_runner_sign_in(terminal_ref(&env, id), runner, cli);
         self.keep_live_session(&env, id, LiveTerminal::new(view, None), cx);
         self.show_utilities(UtilityTab::Terminals, cx);
         self.save_view();

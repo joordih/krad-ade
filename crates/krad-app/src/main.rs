@@ -13,6 +13,7 @@ use gpui_kit::{application, init, open_window, AppContext, WindowDecorations, Wi
 use krad_client::InProcess;
 use krad_runtime::Clock;
 use krad_store::{config_dir, APP_NAME};
+use krad_ui::LocalRuntime;
 use krad_ui::{
     active_appearance, apply_editor_font, apply_interface_font, apply_settings_theme,
     apply_window_material, apply_window_tint, http_client, initial_window_bounds,
@@ -22,6 +23,41 @@ use krad_ui::{
 
 const APP_TITLE: &str = "Krad ADE";
 const APP_IDENTIFIER: &str = "com.joordih.krad-ade";
+
+fn open_runtime() -> std::io::Result<(
+    Option<desktop_runtime::RuntimeLock>,
+    LocalRuntime,
+    desktop_runtime::Seen,
+)> {
+    let config = desktop_runtime::config_folder()?;
+    match desktop_runtime::lock_runtime(&config) {
+        Ok(lock) => {
+            let started = desktop_runtime::start_desktop_runtime(Clock::new(local_moment))?;
+            let seen = desktop_runtime::Seen {
+                layout: started.layout,
+                settings: started.settings,
+                user_themes: started.user_themes,
+                host_tools: started.host_tools,
+            };
+            Ok((
+                Some(lock),
+                LocalRuntime::InProcess(InProcess::new(started.runtime)),
+                seen,
+            ))
+        }
+        #[cfg(unix)]
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+            let runner = desktop_runtime::connect_service(&config)?;
+            tracing::info!("the app is a client of this computer's runtime service");
+            Ok((
+                None,
+                LocalRuntime::Service(runner),
+                desktop_runtime::seen_from_files(),
+            ))
+        }
+        Err(error) => Err(error),
+    }
+}
 
 fn main() {
     let log_guard = logging::start(config_dir().as_deref());
@@ -35,28 +71,19 @@ fn main() {
             std::process::exit(code);
         }
     }
-    let lock = match desktop_runtime::config_folder()
-        .and_then(|config| desktop_runtime::lock_runtime(&config))
-    {
-        Ok(lock) => lock,
+    let (lock, runtime, seen) = match open_runtime() {
+        Ok(opened) => opened,
         Err(error) => {
-            tracing::error!(%error, "this computer's runtime could not be locked");
+            tracing::error!(%error, "this computer's runtime could not be opened");
             std::process::exit(1);
         }
     };
-    let desktop_runtime::Started {
+    let desktop_runtime::Seen {
         layout,
         settings,
         user_themes,
         host_tools,
-        runtime,
-    } = match desktop_runtime::start_desktop_runtime(Clock::new(local_moment)) {
-        Ok(started) => started,
-        Err(error) => {
-            tracing::error!(%error, "could not start the runtime");
-            std::process::exit(1);
-        }
-    };
+    } = seen;
     application()
         .with_assets(AppAssets)
         .with_http_client(http_client())
@@ -85,13 +112,7 @@ fn main() {
             };
             match open_window(options, cx, |window, cx| {
                 let view = cx.new(|cx| {
-                    EnvironmentShell::with_seed(
-                        cx,
-                        layout,
-                        settings,
-                        host_tools,
-                        InProcess::new(runtime),
-                    )
+                    EnvironmentShell::with_seed(cx, layout, settings, host_tools, runtime)
                 });
                 let palette = cx.new(|cx| CommandState::new(window, cx));
                 let weak = view.downgrade();

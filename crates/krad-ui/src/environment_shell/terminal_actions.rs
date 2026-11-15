@@ -71,10 +71,11 @@ impl EnvironmentShell {
             return;
         }
         let selection = self
-            .terminals()
+            .runtime
+            .local
             .terminal_selection(terminal_ref(&self.active, id));
         cx.spawn(async move |_, cx| {
-            let Ok(Some(text)) = selection.await else {
+            let Some(text) = selection.await else {
                 return;
             };
             cx.update(|cx| Self::copy_text(Some(text), cx));
@@ -193,14 +194,14 @@ impl EnvironmentShell {
             }
             return;
         };
-        let found = self.terminals().search_terminal(
+        let found = self.runtime.local.search_terminal(
             terminal_ref(&self.active, id),
             query.clone(),
             direction,
             restart,
         );
         cx.spawn(async move |this, cx| {
-            let found = found.await.unwrap_or(false);
+            let found = found.await;
             this.update(cx, |shell, cx| {
                 if let Some(search) = shell.search.as_mut().filter(|search| search.text == query) {
                     search.missing = !query.is_empty() && !found;

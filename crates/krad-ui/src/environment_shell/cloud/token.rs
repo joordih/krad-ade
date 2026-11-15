@@ -1,9 +1,11 @@
 use gpui_kit::{App, Context};
+use krad_domain::ToastKind;
 use krad_domain::{ClaudeOauthToken, CloudRunnerId};
 use krad_protocol::{Command, RunnerCommand};
 
 use super::super::activity::UtilityTab;
 use super::super::live_terminal::{terminal_ref, LiveTerminal};
+use super::super::local_reach::SERVICE_ONLY_TEXT;
 use super::super::EnvironmentShell;
 
 const SETUP_LABEL: &str = "Claude Code token";
@@ -29,10 +31,10 @@ impl EnvironmentShell {
         let Some((env, id)) = self.open_helper_terminal(SETUP_LABEL.to_owned(), cx) else {
             return;
         };
-        let view = self
-            .runtime
-            .handle
-            .open_claude_setup_token(terminal_ref(&env, id));
+        let Some(handle) = self.runtime.local.handle() else {
+            return self.push_toast(ToastKind::Warning, SERVICE_ONLY_TEXT.to_owned());
+        };
+        let view = handle.open_claude_setup_token(terminal_ref(&env, id));
         self.keep_live_session(&env, id, LiveTerminal::new(view, None), cx);
         self.show_utilities(UtilityTab::Terminals, cx);
         self.save_view();

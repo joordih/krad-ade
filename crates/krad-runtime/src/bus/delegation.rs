@@ -24,42 +24,73 @@ pub struct Delegated {
     pub reply: BusReply,
 }
 
-#[derive(Debug)]
+type Respond = Box<dyn FnOnce(Response) -> bool + Send>;
+
+enum Back {
+    Runtime {
+        delegation: DelegationId,
+        inbox: Option<SyncSender<Input>>,
+    },
+    Remote(Option<Respond>),
+}
+
 pub struct BusReply {
-    delegation: DelegationId,
-    inbox: Option<SyncSender<Input>>,
+    back: Back,
     withdrawn: Arc<AtomicBool>,
 }
 
+impl std::fmt::Debug for BusReply {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("BusReply").finish_non_exhaustive()
+    }
+}
+
 impl BusReply {
+    #[must_use]
+    pub fn remote(respond: impl FnOnce(Response) -> bool + Send + 'static) -> Self {
+        Self {
+            back: Back::Remote(Some(Box::new(respond))),
+            withdrawn: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
     /// # Errors
     ///
     /// Fails when the runtime has stopped.
     pub fn send(mut self, response: Response) -> Result<(), RuntimeStopped> {
-        let delegation = self.delegation;
-        self.hand_back(Input::BusRespond {
-            delegation,
-            response,
-        })
+        match &mut self.back {
+            Back::Runtime { delegation, inbox } => {
+                let delegation = *delegation;
+                let inbox = inbox.take().ok_or(RuntimeStopped)?;
+                inbox
+                    .send(Input::BusRespond {
+                        delegation,
+                        response,
+                    })
+                    .map_err(|_| RuntimeStopped)
+            }
+            Back::Remote(respond) => {
+                let respond = respond.take().ok_or(RuntimeStopped)?;
+                respond(response).then_some(()).ok_or(RuntimeStopped)
+            }
+        }
     }
 
     #[must_use]
     pub fn is_canceled(&self) -> bool {
         self.withdrawn.load(Ordering::Acquire)
     }
-
-    fn hand_back(&mut self, input: Input) -> Result<(), RuntimeStopped> {
-        let inbox = self.inbox.take().ok_or(RuntimeStopped)?;
-        inbox.send(input).map_err(|_| RuntimeStopped)
-    }
 }
 
 impl Drop for BusReply {
     fn drop(&mut self) {
-        let Some(inbox) = self.inbox.take() else {
+        let Back::Runtime { delegation, inbox } = &mut self.back else {
             return;
         };
-        if inbox.try_send(Input::BusDropped(self.delegation)).is_err() {
+        let Some(inbox) = inbox.take() else {
+            return;
+        };
+        if inbox.try_send(Input::BusDropped(*delegation)).is_err() {
             tracing::trace!("a dropped bus reply did not reach the runtime");
         }
     }
@@ -127,8 +158,10 @@ impl Delegations {
             from,
             request,
             reply: BusReply {
-                delegation: self.last,
-                inbox: Some(self.inbox.clone()),
+                back: Back::Runtime {
+                    delegation: self.last,
+                    inbox: Some(self.inbox.clone()),
+                },
                 withdrawn,
             },
         });

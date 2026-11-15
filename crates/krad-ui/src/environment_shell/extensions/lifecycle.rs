@@ -205,7 +205,7 @@ impl EnvironmentShell {
         if matches!(live.data.host, Host::Local) {
             return Some((HostLink::Local, None));
         }
-        let link = self.runtime.handle.host_link(&live.data.host);
+        let link = self.runtime.local.host_link(&live.data.host)?;
         let platform = match &link {
             HostLink::Local => None,
             HostLink::Remote(remote) => remote.platform(),

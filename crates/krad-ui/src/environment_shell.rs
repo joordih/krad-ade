@@ -47,6 +47,7 @@ mod language_servers;
 mod layout;
 mod live_env;
 mod live_terminal;
+mod local_reach;
 mod markdown_images;
 mod mcp;
 mod menus;
@@ -63,6 +64,7 @@ mod repo_asks;
 mod review_view;
 mod rubber_band;
 mod runtime_view;
+pub use runtime_view::LocalRuntime;
 mod session_changes;
 mod session_look;
 mod session_pane;
@@ -98,7 +100,6 @@ mod worktrees;
 
 use gpui_kit::component::command::CommandState;
 use gpui_kit::{Context, Entity, FocusHandle, Subscription, Task, WeakEntity, Window};
-use krad_client::InProcess;
 use krad_domain::{
     EnvironmentData, EnvironmentName, EnvironmentView, Layout, Settings, SidebarWidth, TerminalId,
     Visibility, WorkMode, DEFAULT_ENVIRONMENT,
@@ -237,7 +238,7 @@ impl EnvironmentShell {
         layout: Layout,
         settings: Settings,
         host_tools: krad_runtime::HostTools,
-        runtime: InProcess,
+        runtime: LocalRuntime,
     ) -> Self {
         let mut shell = Self::assemble(cx, settings, host_tools, runtime);
         shell.start(layout, cx);
@@ -248,7 +249,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
         settings: Settings,
         host_tools: krad_runtime::HostTools,
-        runtime: InProcess,
+        runtime: LocalRuntime,
     ) -> Self {
         Self {
             focus: cx.focus_handle(),

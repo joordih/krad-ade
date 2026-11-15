@@ -14,6 +14,8 @@ use std::path::{Path, PathBuf};
 const LOCK_FILE: &str = "runtime.lock";
 const HELD: &str = "another runtime of this computer already runs; close it or stop its service";
 const NO_CONFIG: &str = "there is no config folder";
+#[cfg(unix)]
+const BAD_TOKEN: &str = "the app's pairing with this computer's runtime is not valid";
 
 pub(crate) struct RuntimeLock {
     _held: File,
@@ -113,4 +115,54 @@ pub(crate) fn start_desktop_runtime(clock: Clock) -> io::Result<Started> {
         host_tools,
         runtime,
     })
+}
+
+pub(crate) struct Seen {
+    pub(crate) layout: krad_domain::Layout,
+    pub(crate) settings: krad_domain::Settings,
+    pub(crate) user_themes: Vec<krad_domain::Theme>,
+    pub(crate) host_tools: HostTools,
+}
+
+pub(crate) fn seen_from_files() -> Seen {
+    for (name, value) in krad_ui::login_shell_env() {
+        std::env::set_var(name, value);
+    }
+    let (layout, _) = opened_layout();
+    let mut settings = read_settings();
+    settings.migrate_themes();
+    Seen {
+        layout,
+        settings,
+        user_themes: read_user_themes(),
+        host_tools: HostTools::discover(),
+    }
+}
+
+#[cfg(unix)]
+/// # Errors
+///
+/// Fails when the service's socket or the app's pairing cannot be reached.
+pub(crate) fn connect_service(config: &Path) -> io::Result<krad_client::Runner> {
+    use krad_domain::Pairing;
+    use krad_protocol::Hello;
+    use std::os::unix::net::UnixStream;
+
+    let token = std::fs::read_to_string(crate::service::desktop_token_file(config))?
+        .trim()
+        .parse()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, BAD_TOKEN))?;
+    let pairing = Pairing {
+        install: crate::service::desktop_install()?,
+        token,
+    };
+    let socket = krad_host::runner::runtime_socket(&crate::service::runtime_folder(config));
+    let stream = UnixStream::connect(socket)?;
+    let reading = stream.try_clone()?;
+    krad_client::Runner::connect(
+        reading,
+        stream,
+        Hello::paired(env!("CARGO_PKG_VERSION"), pairing),
+    )
+    .map_err(|error| io::Error::other(error.to_string()))
 }

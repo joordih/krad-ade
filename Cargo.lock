@@ -3836,6 +3836,7 @@ dependencies = [
  "krad-client",
  "krad-domain",
  "krad-host",
+ "krad-protocol",
  "krad-runner",
  "krad-runtime",
  "krad-store",

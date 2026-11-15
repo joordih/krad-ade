@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use super::super::activity::{TerminalsTab, UtilityTab};
 use super::super::live_terminal::{terminal_ref, LiveTerminal};
+use super::super::local_reach::SERVICE_ONLY_TEXT;
 use super::super::runtime_view::HostMove;
 use super::super::EnvironmentShell;
 
@@ -159,7 +160,10 @@ impl EnvironmentShell {
             .side_panel
             .add_helper_terminal(id, format!("{SIGN_IN_LABEL} · {destination}"));
         live.terminals_tab = TerminalsTab::Shown;
-        let view = self.runtime.handle.open_sign_in(terminal_ref(env, id));
+        let Some(view) = self.runtime.local.open_sign_in(terminal_ref(env, id)) else {
+            self.push_toast(ToastKind::Warning, SERVICE_ONLY_TEXT.to_owned());
+            return;
+        };
         self.keep_live_session(env, id, LiveTerminal::new(view, None), cx);
         if *env == self.active {
             self.show_utilities(UtilityTab::Terminals, cx);

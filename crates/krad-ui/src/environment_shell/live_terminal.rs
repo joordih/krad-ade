@@ -1,7 +1,7 @@
 use krad_client::RuntimeClient;
 use krad_domain::{AgentPreset, EnvironmentName, GridSize, TerminalId};
 use krad_protocol::{AgentRef, Command, TerminalCommand, WriteBy};
-use krad_runtime::{RuntimeHandle, TerminalAction, TerminalView};
+use krad_runtime::{TerminalAction, TerminalView};
 use std::time::Instant;
 
 use super::EnvironmentShell;
@@ -68,10 +68,6 @@ pub(super) fn end_terminal_on(runtime: &dyn RuntimeClient, env: &EnvironmentName
 }
 
 impl EnvironmentShell {
-    pub(super) fn terminals(&self) -> &RuntimeHandle {
-        &self.runtime.handle
-    }
-
     pub(super) fn write_terminal(
         &self,
         env: &EnvironmentName,
@@ -94,7 +90,8 @@ impl EnvironmentShell {
         id: TerminalId,
         action: TerminalAction,
     ) {
-        self.terminals()
+        self.runtime
+            .local
             .act_on_terminal(terminal_ref(env, id), action);
     }
 
@@ -114,7 +111,8 @@ impl EnvironmentShell {
             .and_then(|live| live.sessions.get_mut(&id))
             .is_some_and(|terminal| terminal.regrid(size));
         if regridded {
-            self.terminals()
+            self.runtime
+                .client
                 .post(Command::Terminal(TerminalCommand::Resize {
                     terminal: terminal_ref(env, id),
                     size,

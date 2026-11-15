@@ -11,7 +11,8 @@ impl EnvironmentShell {
         id: TerminalId,
         typing: Typing,
     ) {
-        self.terminals()
+        self.runtime
+            .client
             .post(Command::Terminal(TerminalCommand::Type {
                 terminal: terminal_ref(env, id),
                 typing,

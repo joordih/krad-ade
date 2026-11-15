@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use super::live_terminal::{terminal_ref, LiveTerminal};
+use super::local_reach::SERVICE_ONLY_TEXT;
 use super::EnvironmentShell;
 
 const HOST_NOT_READY_TEXT: &str = "Connect to the environment's host first";
@@ -88,10 +89,14 @@ impl EnvironmentShell {
             return;
         }
         let (wsl, _) = self.launch_site(env, cwd.as_deref());
-        let place =
+        let Some(place) =
             self.runtime
-                .handle
-                .host_place(&self.env_host(env), HostShell::Given, wsl.is_some());
+                .local
+                .host_place(&self.env_host(env), HostShell::Given, wsl.is_some())
+        else {
+            self.push_toast(ToastKind::Warning, SERVICE_ONLY_TEXT.to_owned());
+            return;
+        };
         let launch = TerminalLaunch {
             program,
             args,
@@ -103,9 +108,14 @@ impl EnvironmentShell {
             typed: None,
             tap: None,
         };
-        let view = self
-            .terminals()
-            .open_terminal(terminal_ref(env, id), launch);
+        let Some(view) = self
+            .runtime
+            .local
+            .open_terminal(terminal_ref(env, id), launch)
+        else {
+            self.push_toast(ToastKind::Warning, SERVICE_ONLY_TEXT.to_owned());
+            return;
+        };
         self.keep_live_session(env, id, LiveTerminal::new(view, None), cx);
     }
 

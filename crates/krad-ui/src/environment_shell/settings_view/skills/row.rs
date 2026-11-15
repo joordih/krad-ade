@@ -84,7 +84,7 @@ impl EnvironmentShell {
             .tooltip(move |_, cx| tooltip_view(tooltip.clone(), cx));
         let revealed: Option<PathBuf> = self
             .active_link()
-            .is_local()
+            .is_some_and(|link| link.is_local())
             .then(|| skill.places.first().map(|place| place.file.clone()))
             .flatten();
         let reveal = revealed.map(|file| {
