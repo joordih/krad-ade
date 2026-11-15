@@ -1,91 +1,57 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod desktop_runtime;
 mod logging;
 #[cfg(windows)]
 mod rounded_corners;
+#[cfg(unix)]
+mod service;
 
 use gpui_kit::component::command::CommandState;
 use gpui_kit::component::TitleBar;
 use gpui_kit::{application, init, open_window, AppContext, WindowDecorations, WindowOptions};
-use krad_agents::CliPlace;
 use krad_client::InProcess;
-use krad_runtime::{
-    BusSetup, Clock, EnvironmentsSetup, EventsSetup, HostTools, KraddiesSetup, Runtime,
-    RuntimeSetup, SettingsSetup,
-};
-use krad_store::{
-    config_dir, open_layout, read_settings, read_user_themes, ChatImages, LayoutOpening,
-    OpenedLayout, Secrets, APP_NAME,
-};
+use krad_runtime::Clock;
+use krad_store::{config_dir, APP_NAME};
 use krad_ui::{
     active_appearance, apply_editor_font, apply_interface_font, apply_settings_theme,
     apply_window_material, apply_window_tint, http_client, initial_window_bounds,
-    install_app_menus, install_theme_library, key_bindings, local_moment, login_shell_env,
-    match_window_frame, register_fonts, title_bar_options, window_background, AppAssets,
-    Appearance, EnvironmentShell,
+    install_app_menus, install_theme_library, key_bindings, local_moment, match_window_frame,
+    register_fonts, title_bar_options, window_background, AppAssets, Appearance, EnvironmentShell,
 };
 
 const APP_TITLE: &str = "Krad ADE";
 const APP_IDENTIFIER: &str = "com.joordih.krad-ade";
 
-fn opened_layout() -> (krad_domain::Layout, EnvironmentsSetup) {
-    let OpenedLayout { layout, opening } = open_layout();
-    let state = layout.state.clone();
-    let setup = match &opening {
-        LayoutOpening::StateUnreadable { .. } => EnvironmentsSetup { state, file: None },
-        _ => EnvironmentsSetup::in_config_folder(state),
-    };
-    match opening {
-        LayoutOpening::Empty | LayoutOpening::Read => {}
-        LayoutOpening::Migrated { from, .. } => {
-            tracing::info!(
-                from,
-                "split the layout into state and view files, kept the old one"
-            );
-        }
-        LayoutOpening::MigratedUnsaved { from, error } => {
-            tracing::warn!(from, %error, "could not save the split layout; the old file stays");
-        }
-        LayoutOpening::SingleFileFromNewerApp { version } => {
-            tracing::warn!(version, "the layout is from a newer app; left untouched");
-        }
-        LayoutOpening::StateSetAside { .. } => {
-            tracing::warn!("the state file could not be read; kept it aside and started empty");
-        }
-        LayoutOpening::StateUnreadable { error } => {
-            tracing::error!(%error, "could not read the state file; it will not be written");
-        }
-    }
-    (layout, setup)
-}
-
 fn main() {
     let log_guard = logging::start(config_dir().as_deref());
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "krad-ade starting");
-    for (name, value) in login_shell_env() {
-        std::env::set_var(name, value);
+    #[cfg(unix)]
+    {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        if args.first().map(String::as_str) == Some(service::SERVICE_VERB) {
+            let code = service::run_service_verb(&args[1..], Clock::new(local_moment));
+            drop(log_guard);
+            std::process::exit(code);
+        }
     }
-    let (layout, environments) = opened_layout();
-    let mut settings = read_settings();
-    settings.migrate_themes();
-    let user_themes = read_user_themes();
-    let host_tools = HostTools::discover();
-    let bus = CliPlace::find().map(|cli| BusSetup {
-        cli_dir: cli.dir(),
-        config_dir: config_dir(),
-    });
-    let runtime = match Runtime::start(RuntimeSetup {
-        bus,
-        events: Some(EventsSetup::in_config_folder()),
-        environments,
-        settings: SettingsSetup::in_config_folder(settings.clone()),
-        kraddies: KraddiesSetup::in_config_folder(Clock::new(local_moment)),
-        secrets: Secrets::system(),
-        chat_images: ChatImages::in_config_folder(),
-        host_tools: host_tools.clone(),
-        own_runner: None,
-    }) {
-        Ok(runtime) => runtime,
+    let lock = match desktop_runtime::config_folder()
+        .and_then(|config| desktop_runtime::lock_runtime(&config))
+    {
+        Ok(lock) => lock,
+        Err(error) => {
+            tracing::error!(%error, "this computer's runtime could not be locked");
+            std::process::exit(1);
+        }
+    };
+    let desktop_runtime::Started {
+        layout,
+        settings,
+        user_themes,
+        host_tools,
+        runtime,
+    } = match desktop_runtime::start_desktop_runtime(Clock::new(local_moment)) {
+        Ok(started) => started,
         Err(error) => {
             tracing::error!(%error, "could not start the runtime");
             std::process::exit(1);
@@ -154,5 +120,6 @@ fn main() {
                 }
             }
         });
+    drop(lock);
     drop(log_guard);
 }

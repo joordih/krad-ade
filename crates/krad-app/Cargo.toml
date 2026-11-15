@@ -10,6 +10,9 @@ default = ["desktop"]
 desktop = [
   "dep:gpui-kit",
   "dep:krad-client",
+  "dep:krad-host",
+  "dep:krad-web-listener",
+  "krad-runner/runtime",
   "dep:krad-runtime",
   "dep:krad-store",
   "dep:krad-ui",
@@ -37,6 +40,7 @@ gpui-kit = { workspace = true, optional = true }
 krad-agents = { workspace = true, features = ["python-toolchains"] }
 krad-client = { workspace = true, optional = true }
 krad-domain.workspace = true
+krad-host = { workspace = true, optional = true }
 krad-runner.workspace = true
 krad-runtime = { workspace = true, optional = true }
 krad-store = { workspace = true, optional = true }
