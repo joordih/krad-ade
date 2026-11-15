@@ -81,6 +81,7 @@ mod tally;
 mod terminal_grid;
 #[cfg(test)]
 mod test_support;
+mod text_edit;
 mod text_scale;
 mod theme;
 mod theme_tuning;
@@ -179,6 +180,9 @@ pub use sign_in_prompt::{PromptAsker, PromptKind};
 pub use skill::*;
 pub use tally::*;
 pub use terminal_grid::GridSize;
+pub use text_edit::{
+    byte_index, BufferVersion, EditQueue, EditRefusal, Order, TextEdit, VersionedText,
+};
 pub use text_scale::*;
 pub use theme::*;
 pub use theme_tuning::*;
