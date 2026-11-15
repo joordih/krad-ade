@@ -14,6 +14,7 @@ use crate::cloud_runs::CloudRuns;
 use crate::code_hosts::CodeHostWatch;
 use crate::environments::Environments;
 use crate::file_asks::Uploads;
+use crate::folder_watch::FolderWatches;
 use crate::gateway::Gateway;
 use crate::git::Git;
 use crate::harness_health::Health;
@@ -145,5 +146,6 @@ pub struct Runtime {
     chat_images: Option<ChatImages>,
     uploads: Uploads,
     editor: Buffers,
+    folders: FolderWatches,
     stopped: Arc<AtomicBool>,
 }

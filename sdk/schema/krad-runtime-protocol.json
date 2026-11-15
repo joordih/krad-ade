@@ -331,6 +331,14 @@
       },
       "environment": "main"
     },
+    "file_watch": {
+      "area": "file",
+      "ask": {
+        "dir": "/home/dev/app/src",
+        "verb": "watch"
+      },
+      "environment": "main"
+    },
     "file_write": {
       "area": "file",
       "ask": {
@@ -799,6 +807,22 @@
         "type": "environment_changed"
       },
       "seq": 47
+    },
+    "folder_changed": {
+      "feed": "event",
+      "kind": {
+        "dir": "/home/dev/app/src",
+        "entries": [
+          {
+            "kind": "file",
+            "name": "main.rs",
+            "path": "/home/dev/app/src/main.rs"
+          }
+        ],
+        "environment": "main",
+        "type": "folder_changed"
+      },
+      "seq": 56
     },
     "pong": {
       "feed": "event",

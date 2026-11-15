@@ -1,6 +1,6 @@
 use krad_domain::{
-    AgentPreset, AgentState, BufferVersion, EnvironmentName, HarnessHealth, Host, HostPlatform,
-    ModelOffer, PlanUsage, UsageFailure,
+    AgentPreset, AgentState, BufferVersion, DirEntry, EnvironmentName, HarnessHealth, Host,
+    HostPlatform, ModelOffer, PlanUsage, UsageFailure,
 };
 use krad_host::HostError;
 use krad_protocol::{AgentRef, Answer, BufferId, HealthPlace, RequestId};
@@ -47,6 +47,10 @@ pub(crate) enum BufferJob {
 #[derive(Debug)]
 pub(crate) enum JobDone {
     Buffer(BufferJob),
+    FolderListed {
+        folder: (EnvironmentName, PathBuf),
+        listed: Result<Vec<DirEntry>, String>,
+    },
     Answered {
         request: RequestId,
         answer: Box<Answer>,

@@ -16,6 +16,7 @@ use crate::cloud_runs::CloudRuns;
 use crate::code_hosts::CodeHostWatch;
 use crate::environments::Environments;
 use crate::file_asks::Uploads;
+use crate::folder_watch::FolderWatches;
 use crate::gateway::Gateway;
 use crate::git::Git;
 use crate::handle::RuntimeHandle;
@@ -152,6 +153,7 @@ impl Runtime {
             chat_images: owned.chat_images,
             uploads: Uploads::default(),
             editor: Buffers::default(),
+            folders: FolderWatches::default(),
             stopped,
         }
     }

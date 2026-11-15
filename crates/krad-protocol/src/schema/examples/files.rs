@@ -17,6 +17,10 @@ pub(super) fn file_commands() -> Vec<(&'static str, Value)> {
             json!({ "area": "file", "environment": ENVIRONMENT, "ask": { "verb": "upload", "dir": "/home/dev/app/assets", "sources": ["/Users/dev/Desktop/logo.png"], "existing": "skip" } }),
         ),
         (
+            "file_watch",
+            json!({ "area": "file", "environment": ENVIRONMENT, "ask": { "verb": "watch", "dir": "/home/dev/app/src" } }),
+        ),
+        (
             "file_search",
             json!({ "area": "file", "environment": ENVIRONMENT, "ask": { "verb": "search", "root": "/home/dev/app", "query": { "pattern": "todo", "syntax": "literal", "case": "insensitive", "word": "anywhere", "include": ["*.rs"], "exclude": [] }, "limit": 2000 } }),
         ),
@@ -32,6 +36,10 @@ pub(super) fn file_events() -> Vec<(&'static str, Value)> {
         (
             "answered_unreadable",
             json!({ "feed": "event", "seq": 54, "kind": { "type": "answered", "request": 19, "answer": { "kind": "unreadable", "unreadable": { "reason": "too_large", "len": 9_000_000, "limit": 2_097_152 } } } }),
+        ),
+        (
+            "folder_changed",
+            json!({ "feed": "event", "seq": 56, "kind": { "type": "folder_changed", "environment": ENVIRONMENT, "dir": "/home/dev/app/src", "entries": [{ "name": "main.rs", "path": "/home/dev/app/src/main.rs", "kind": "file" }] } }),
         ),
         (
             "upload_progress",

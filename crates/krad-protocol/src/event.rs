@@ -13,6 +13,7 @@ use crate::chats::{ChatAsk, ChatAskId, ChatState, ChatSummary};
 use crate::cloud::{CloudDraftId, CloudNews, CloudOpened};
 use crate::editor::{BufferEdited, BufferId, BufferNotOpened, OpenedBuffer};
 use crate::environments::SpendingCrossed;
+use crate::files::FolderChanged;
 use crate::files::UploadShown;
 use crate::gateway::GatewayState;
 use crate::git::{GitFinished, GitRead, SessionChangesRead, WorktreeSwept};
@@ -202,6 +203,7 @@ pub enum EventKind {
         buffer: BufferId,
     },
     BufferNotOpened(Box<BufferNotOpened>),
+    FolderChanged(Box<FolderChanged>),
     Answered {
         request: RequestId,
         answer: Box<Answer>,

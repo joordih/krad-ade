@@ -179,3 +179,36 @@ fn a_file_that_is_not_text_is_not_opened_and_an_unknown_buffer_is_refused() -> T
     ));
     Ok(())
 }
+
+#[test]
+fn a_watched_folder_is_announced_again_when_a_file_appears() -> TestResult {
+    let folder = folder("watch")?;
+    fs::write(folder.0.join("a.rs"), FIRST_TEXT)?;
+    let (runtime, mut feed) = start(&folder.0)?;
+    let watch = Command::File(krad_protocol::FileCommand {
+        environment: main_name(),
+        ask: krad_protocol::FileAsk::Watch {
+            dir: folder.0.clone(),
+        },
+    });
+    assert_eq!(
+        block_on(runtime.send(runtime.next_request(), watch))?,
+        Reply::Accepted
+    );
+    let listed = |kind: &EventKind| matches!(kind, EventKind::FolderChanged(_));
+    let EventKind::FolderChanged(first) = next_kind(&mut feed, listed)? else {
+        return Err("no folder change".into());
+    };
+    assert_eq!(first.entries.len(), 1);
+    fs::write(folder.0.join("b.rs"), FIRST_TEXT)?;
+    let EventKind::FolderChanged(second) = next_kind(&mut feed, listed)? else {
+        return Err("no folder change".into());
+    };
+    let names: Vec<&str> = second
+        .entries
+        .iter()
+        .map(|entry| entry.name.as_str())
+        .collect();
+    assert!(names.contains(&"b.rs"), "{names:?}");
+    Ok(())
+}

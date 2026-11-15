@@ -187,8 +187,10 @@ fn worked(link: &HostLink, ask: FileAsk) -> Result<Answer, RepoError> {
         | FileAsk::CreateVaultFolder { .. }
         | FileAsk::WriteNote { .. }
         | FileAsk::SaveAttachment { .. }) => notes::answer(link, notes)?,
-        FileAsk::Upload { .. } | FileAsk::CancelUpload { .. } | FileAsk::Unknown => {
-            refused(ErrorCode::Unsupported, UNKNOWN_ASK)
-        }
+        FileAsk::Upload { .. }
+        | FileAsk::CancelUpload { .. }
+        | FileAsk::Watch { .. }
+        | FileAsk::Unwatch { .. }
+        | FileAsk::Unknown => refused(ErrorCode::Unsupported, UNKNOWN_ASK),
     })
 }

@@ -9,6 +9,7 @@ mod cloud_runs;
 mod code_hosts;
 mod environments;
 mod file_asks;
+mod folder_watch;
 mod gateway;
 mod git;
 mod handle;

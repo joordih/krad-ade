@@ -60,8 +60,9 @@ pub use editor::{BufferEdited, BufferId, BufferNotOpened, EditorCommand, OpenedB
 pub use environments::{EnvironmentCommand, SpendingCrossed};
 pub use event::{Event, EventKind, Feed, Scope, Snapshot};
 pub use files::{
-    FileAsk, FileCommand, NewFile, OverLimit, TextRead, Unreadable, UploadShown, VaultNoteText,
-    MAX_ATTACHMENT_BYTES, MAX_FOUND_LINES, MAX_READ_BYTES, MAX_TEXTS_READ, MAX_WRITE_BYTES,
+    FileAsk, FileCommand, FolderChanged, NewFile, OverLimit, TextRead, Unreadable, UploadShown,
+    VaultNoteText, MAX_ATTACHMENT_BYTES, MAX_FOUND_LINES, MAX_READ_BYTES, MAX_TEXTS_READ,
+    MAX_WRITE_BYTES,
 };
 pub use frame::{read_frame, write_frame, Frame, FrameError, Message, TerminalBytes};
 pub use gateway::{GatewayCommand, GatewayState};

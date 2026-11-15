@@ -1,4 +1,6 @@
-use krad_domain::{EnvironmentName, FileMatches, ProjectQuery, ReplaceUndo, UploadExisting};
+use krad_domain::{
+    DirEntry, EnvironmentName, FileMatches, ProjectQuery, ReplaceUndo, UploadExisting,
+};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -102,6 +104,12 @@ pub enum FileAsk {
     CancelUpload {
         upload: RequestId,
     },
+    Watch {
+        dir: PathBuf,
+    },
+    Unwatch {
+        dir: PathBuf,
+    },
     Search {
         root: PathBuf,
         query: ProjectQuery,
@@ -186,6 +194,14 @@ pub struct UploadShown {
     pub upload: RequestId,
     pub sent: u64,
     pub total: u64,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+pub struct FolderChanged {
+    pub environment: EnvironmentName,
+    pub dir: PathBuf,
+    pub entries: Vec<DirEntry>,
 }
 
 #[cfg(test)]
