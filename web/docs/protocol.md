@@ -99,3 +99,20 @@ browser cannot do what was asked.
   in UTF-16. JavaScript strings are UTF-16, so CodeMirror positions map directly.
 - `Option` fields are optional properties that may also be `null`.
 - A WebSocket message is capped at 8 MiB: send files through `/upload`, never as JSON bytes.
+
+## Cloud runners through this computer
+
+The browser only ever talks to this computer's runtime. To follow a cloud runner, the client wraps
+messages as `{"type":"via_runner","runner":N,"message":…}`; the runtime opens the line to that runner
+and answers with the same wrapper, and the runner's terminal bytes arrive as frame kind 3
+(`u64 runner`, `u64 terminal`, bytes). `client.relay(runner)` hides all of this: it returns a
+`RuntimeClient` that behaves like a direct one, reconnects with its parent and gets the runner's own
+snapshot. Permissions are the intersection of the browser's pairing and the runner's. Only
+`hello`, `subscribe`, `ask_snapshot` and commands are relayed.
+
+## Notifications
+
+`GET /push` gives the runtime's VAPID public key, `POST /push` keeps a browser's push subscription
+(only Apple, Google, Mozilla and Microsoft push services are accepted) and `DELETE /push` with
+`{"endpoint"}` forgets it; all need a paired browser. The runtime sends a notification when a chat
+goes from working to waiting or done, with `{title, body, tag, url}`, `url` being a `#s=` address.

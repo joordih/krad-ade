@@ -3,7 +3,8 @@
 Krad Web is Krad ADE in a browser: the same look and the same functions as the desktop window
 (`crates/krad-ui`), driving a runtime over a WebSocket. It is a **client**: every piece of state
 lives in the runtime; the web reads a snapshot, follows events and sends commands. The owner uses it
-from other machines on their tailnet, so it must be a faithful **replica**, not a redesign.
+from their phone and other machines on their tailnet, so it must be a faithful **replica**, not a
+redesign: the same environments, groups, sessions, chats (local and cloud), kraddies and history.
 
 Read `../CONTEXT.md` (the domain glossary) once before the first change, and use its words in code,
 UI text and commits.
@@ -17,6 +18,16 @@ UI text and commits.
 - **One client.** All runtime traffic goes through `src/runtime/client.ts` (`RuntimeClient`) and
   `src/runtime/http.ts`. Extend them; screens never open sockets or call `fetch` on runtime paths
   themselves.
+- **One store.** `src/state/store.ts` (`AppStore`) holds one `RuntimeView` per runtime: `"local"`
+  (this computer) and `"runner:N"` for each ready cloud runner, reached **through** the local
+  runtime with `client.relay(runner)`. A session lives on exactly one runtime; send its commands
+  with `store.send(runtime, command)` to that runtime. Never connect to a runner directly.
+  `src/state/runtimeView.ts` is the pure reducer (snapshot, events, chat pages) and
+  `src/state/sessions.ts` the selectors that merge cloud sessions into their origin group.
+- **Mobile first.** One breakpoint, 900px (`useWide()` in `src/ui/App.tsx`). Below it the sidebar
+  and the session are two screens with a back button; above it the desktop layout. Every screen
+  works at 390px wide by touch alone: no hover-only actions, inputs at 16px so iOS does not zoom,
+  `env(safe-area-inset-*)` at the edges. Enter sends only on wide screens.
 - **Replica.** Each screen copies its desktop counterpart: layout, spacing, sizes, states, wording,
   keyboard shortcuts. The desktop source is the spec; `../assets/screenshots/` shows the result.
   When the desktop and this guide disagree, the desktop wins.
@@ -31,6 +42,15 @@ UI text and commits.
 - **Assets from the repo.** Fonts: `../assets/fonts` (Inter, JetBrains Mono). UI icons:
   `../assets/icons` (Hugeicons SVGs, same names the desktop uses). File icons:
   `../assets/file-icons`. Copy them at build time; never redraw them.
+- **Read-only code.** There is no code editor in the web (owner decision). Files and diffs are
+  shown read-only, highlighted with Shiki using a theme built from the 14 `--krad-syntax-*`
+  properties (`comment keyword string escape number constant attribute type operator function
+  property tag variable punctuation`). Map TextMate scopes to them the way the desktop maps its
+  captures in `../crates/krad-ui/src/theme/editor.rs` (`highlight_json`): comments italic, `title`
+  bold, `embedded` in the text colour.
+- **Addresses.** `#pair=CODE` pairs the browser on load (the QR in Settings → Cloud runners → Web
+  access); `#s=runtime|environment|session` opens a session and is what notifications link to.
+  Keep both working; add new fragments the same way.
 - **Tests beside code.** Logic (reducers, OT, formatting, keyboard maps) gets a `*.test.ts` next to
   it, run by Vitest. Components stay thin over tested logic.
 
@@ -41,8 +61,9 @@ UI text and commits.
    description or your notes.
 2. Find the commands, events and snapshot fields it needs in `docs/protocol.md` and
    `src/protocol/`. Done when each action on the list maps to a command or a delegated request.
-3. Build it: state in the store (`src/runtime/store.ts` reducers), view in components, tests for
-   the reducers and pure helpers. Done when `npm run typecheck`, `npm test` and `npm run build` pass.
+3. Build it: state in `src/state/` (extend `runtimeView.ts` for new events, add selectors), view in
+   `src/ui/`, tests for the reducers and pure helpers. `src/ui/chat/` is the model screen: copy its
+   shape. Done when `npm run typecheck`, `npm test` and `npm run build` pass.
 4. Check it against a live runtime (see *Running against a runtime*) and against the desktop or its
    screenshot side by side. Done when every element on the step 1 list works and looks the same.
 5. Tick the screen in `docs/screens.md`.
@@ -59,8 +80,10 @@ export XDG_CONFIG_HOME=/tmp/krad-dev            # a short path: Unix sockets cap
 ./target/debug/krad-ade service pair-browser    # prints a one-use code (10 minutes)
 ```
 
-Then `npm run dev` here (it proxies `/runtime`, `/pairing`, `/upload` and `/theme.css` to
-`KRAD_RUNTIME`, default `http://127.0.0.1:7421`), open the dev URL and enter the code. To ship, run
+Then `npm run dev` here (it proxies `/runtime`, `/pairing`, `/upload`, `/push` and `/theme.css` to
+`KRAD_RUNTIME`, default `http://127.0.0.1:7421`), open the dev URL and enter the code. The runtime starts empty; to see a screen with
+data, drive it with commands from a small script on the Unix socket (`config/krad-ade/runtime/`,
+token in `desktop.token`), or point it at a copy of a real config. To ship, run
 `npm run build`; the next `cargo build` embeds `web/dist` into the binary that serves it.
 
 ## Reference
@@ -69,5 +92,5 @@ Then `npm run dev` here (it proxies `/runtime`, `/pairing`, `/upload` and `/them
   an event, terminals, uploads or bus delegations.
 - **Screens**: `docs/screens.md` — the checklist of desktop screens to replicate, with their source
   folders and protocol areas.
-- **Editor sync**: `docs/editor-sync.md` — read before building the code editor or anything that
-  edits runtime buffers; it defines the OT port the editor depends on.
+- **Editor sync**: `docs/editor-sync.md` — only if the owner asks for editing later; it defines the
+  OT port an editor would depend on.
