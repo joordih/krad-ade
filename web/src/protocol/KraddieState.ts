@@ -3,7 +3,8 @@ import type { AutomationState } from "./AutomationState";
 import type { Kraddie } from "./Kraddie";
 import type { KraddieActivity } from "./KraddieActivity";
 import type { KraddieHistory } from "./KraddieHistory";
+import type { KraddieId } from "./KraddieId";
 import type { KraddieMind } from "./KraddieMind";
 import type { SerdeSystemTime } from "./SerdeSystemTime";
 
-export type KraddieState = { kraddie: Kraddie, automations: Array<AutomationState>, check_ins: KraddieHistory, mind: KraddieMind, activity: KraddieActivity, last_check_in?: SerdeSystemTime | null, };
+export type KraddieState = { key?: KraddieId | null, kraddie: Kraddie, automations: Array<AutomationState>, check_ins: KraddieHistory, mind: KraddieMind, activity: KraddieActivity, last_check_in?: SerdeSystemTime | null, };

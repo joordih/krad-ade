@@ -31,7 +31,7 @@ impl Kraddies {
         }
         let Some(old) = renamed else {
             if let Some(state) = self.state_mut(&id) {
-                state.kraddie = kraddie;
+                state.replace(kraddie);
             } else {
                 self.states.push(KraddieState::new(kraddie));
                 self.changed.insert(id.clone());
@@ -45,7 +45,7 @@ impl Kraddies {
             return Err(refused(ErrorCode::NotFound, NO_KRADDIE));
         };
         let mut state = self.states.remove(at);
-        state.kraddie = kraddie;
+        state.replace(kraddie);
         self.limiter.end_kraddie(&old);
         self.rename_readers(&old, &id);
         if let Some(book) = self.books.remove(&old) {

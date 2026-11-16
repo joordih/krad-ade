@@ -17,6 +17,8 @@ pub struct AutomationState {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddieState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<KraddieId>,
     pub kraddie: Kraddie,
     #[serde(default)]
     pub automations: Vec<AutomationState>,
@@ -38,6 +40,7 @@ impl KraddieState {
     #[must_use]
     pub fn new(kraddie: Kraddie) -> Self {
         Self {
+            key: Some(kraddie.id()),
             kraddie,
             automations: Vec::new(),
             check_ins: KraddieHistory::default(),
@@ -45,6 +48,11 @@ impl KraddieState {
             activity: KraddieActivity::default(),
             last_check_in: None,
         }
+    }
+
+    pub fn replace(&mut self, kraddie: Kraddie) {
+        self.key = Some(kraddie.id());
+        self.kraddie = kraddie;
     }
 
     #[must_use]
