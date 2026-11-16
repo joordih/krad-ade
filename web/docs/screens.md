@@ -32,14 +32,20 @@ version: finish what its line says is missing.
   and diffs, images, checklists, bookmarks, checkpoints and rewind, search, opening a new chat.
 - [~] **Composer.** Text, mentions, attachments (`/upload` then the path), queueing, interrupt, model,
   effort, permission mode, slash commands. `surface/composer*`, `surface/mentions*`, `model_picker/`.
-  Done: send, queue while working, interrupt, shows model and permission mode. Missing: changing
-  model, effort and permission mode, mentions, attachments, slash commands, the queued list.
+  Done: send, queue while working, interrupt, model, effort and permission mode pickers (popover on
+  wide screens, bottom sheet on phones, `src/ui/chat/Picker.tsx`), the queued list with cancel.
+  Missing: mentions, attachments, slash commands.
 - [~] **Asks, questions and plans.** `ask/`, `surface/answer*`, `surface/choice.rs`. Areas: `chat`,
-  `bus` (`answer_ask`). Done: permission, questions, plan approval, ACP options
-  (`src/ui/chat/AskCard.tsx`). Missing: deny with a message, the desktop's exact wording.
+  `bus` (`answer_ask`). Done: permission, questions, plan approval, ACP options, denying with a
+  message and plan feedback (`src/ui/chat/AskCard.tsx`). Missing: the desktop's exact wording
+  everywhere else.
 - [ ] **Workers.** `workers/`, `agent_bus/` (lead and members).
-- [ ] **Terminal.** Emulator fed by `watchTerminal`, keys and resize back, search, selection, links.
-  `terminal_body*`, `terminal_actions.rs`, `live_terminal.rs`, `input.rs`. Area: `terminal`.
+- [~] **Terminal.** Emulator fed by `watchTerminal`, keys and resize back, search, selection, links.
+  `terminal_body*`, `terminal_actions.rs`, `live_terminal.rs`, `input.rs`. Area: `terminal`. Done:
+  ghostty-web emulator fed by `watchTerminal`, keys and grid size back, the runtime emulator's own
+  query replies discarded, theme from `--krad-ansi-0..15`, and an extra-keys row on phones (Esc,
+  Tab, sticky Ctrl, arrows, Ctrl+C) (`src/ui/terminal/`). Missing: search, links and the desktop's
+  terminal actions.
 
 ## 3. Git and review
 

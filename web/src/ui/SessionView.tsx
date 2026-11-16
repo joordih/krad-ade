@@ -3,6 +3,7 @@ import { sessionNodes } from "../state/sessions";
 import type { AppStore, AppState } from "../state/store";
 import { ChatView } from "./chat/ChatView";
 import { Icon } from "./Icon";
+import { TerminalView } from "./terminal/TerminalView";
 import type { Selected } from "./Sidebar";
 
 export function SessionView({
@@ -54,8 +55,16 @@ export function SessionView({
           chat={{ environment: environment.name, terminal: active.id }}
           wide={wide}
         />
+      ) : active ? (
+        <TerminalView
+          key={`${selected.runtime}/${environment.name}/${active.id}`}
+          store={store}
+          runtime={selected.runtime}
+          terminal={{ environment: environment.name, terminal: active.id }}
+          wide={wide}
+        />
       ) : (
-        <div className="empty">{active ? "Terminals arrive in the next screen." : "This session has no tabs."}</div>
+        <div className="empty">This session has no tabs.</div>
       )}
     </>
   );

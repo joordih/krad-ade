@@ -22,7 +22,9 @@ export function ChatView({
   chat: AgentRef;
   wide: boolean;
 }) {
-  const shown = state.views[runtime]?.chats[chatKey(chat)];
+  const view = state.views[runtime];
+  const shown = view?.chats[chatKey(chat)];
+  const models = view?.snapshot?.models.listed ?? [];
   const scroller = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const count = shown?.messages.length ?? 0;
@@ -63,9 +65,9 @@ export function ChatView({
         </div>
       </div>
       {shown.asks.map((ask) => (
-        <AskCard key={ask.ask} ask={ask} send={send} />
+        <AskCard key={ask.ask} ask={ask} send={send} wide={wide} />
       ))}
-      <Composer chat={chat} state={shown.state} send={send} wide={wide} />
+      <Composer chat={chat} state={shown.state} send={send} wide={wide} models={models} />
     </div>
   );
 }
