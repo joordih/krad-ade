@@ -3843,6 +3843,7 @@ dependencies = [
  "krad-store",
  "krad-ui",
  "krad-web-listener",
+ "serde_json",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",

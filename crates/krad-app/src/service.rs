@@ -8,6 +8,7 @@ use std::io::{self, Write};
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{Duration, SystemTime};
 
 use crate::desktop_runtime::{config_folder, lock_runtime, start_desktop_runtime};
 
@@ -31,6 +32,9 @@ const SYSTEMD_UNIT: &str = "krad-ade-runtime.service";
 const USAGE: &str = "usage: krad-ade service [install | uninstall | web-access <on|off|status> ... | pair-browser [--admin]]";
 const ADMIN_FLAG: &str = "--admin";
 const NO_CODE: &str = "the service did not make a pairing code";
+const UPDATE_CHECK: Duration = Duration::from_secs(60);
+const RESTART_FOR_UPDATE: i32 = 75;
+const UPDATE_THREAD: &str = "krad-ade-service-update";
 const BAD_NAME: &str = "the desktop pairing has an invalid name";
 const UNSUPPORTED: &str = "this computer's runtime runs as a service on macOS and Linux only";
 
@@ -70,6 +74,7 @@ fn serve(clock: Clock) -> io::Result<i32> {
     let started = start_desktop_runtime(clock)?;
     let listener = bind_runtime_socket(&root)?;
     pair_desktop(&root, &config)?;
+    watch_for_update(started.runtime.clone())?;
     let server = RuntimeServer::new(started.runtime, &root);
     if let Err(error) = krad_web_listener::start_web_access(&root, &server) {
         tracing::warn!(%error, "web access did not start");
@@ -77,6 +82,46 @@ fn serve(clock: Clock) -> io::Result<i32> {
     tracing::info!(socket = %runtime_socket(&root).display(), "this computer's runtime serves");
     server.serve(&listener);
     Ok(0)
+}
+
+fn binary_changed_at() -> Option<SystemTime> {
+    std::env::current_exe()
+        .and_then(std::fs::metadata)
+        .and_then(|meta| meta.modified())
+        .ok()
+}
+
+fn idle(snapshot: &krad_protocol::Snapshot) -> bool {
+    snapshot
+        .environments
+        .iter()
+        .flat_map(|environment| &environment.nodes)
+        .all(|node| node.state != krad_domain::AgentState::Working)
+}
+
+fn watch_for_update(runtime: krad_runtime::RuntimeHandle) -> io::Result<()> {
+    let started = binary_changed_at();
+    std::thread::Builder::new()
+        .name(UPDATE_THREAD.to_owned())
+        .spawn(move || loop {
+            std::thread::sleep(UPDATE_CHECK);
+            if binary_changed_at() == started {
+                continue;
+            }
+            let Ok(snapshot) =
+                futures::executor::block_on(runtime.snapshot(krad_protocol::Scope::Runtime))
+            else {
+                return;
+            };
+            if idle(&snapshot) {
+                tracing::info!("the app was updated and no agent works: the service restarts");
+                if let Err(error) = futures::executor::block_on(runtime.settle()) {
+                    tracing::debug!(%error, "the runtime stopped before it settled");
+                }
+                std::process::exit(RESTART_FOR_UPDATE);
+            }
+        })
+        .map(drop)
 }
 
 fn launch_agent_file() -> io::Result<PathBuf> {
@@ -234,6 +279,33 @@ pub(crate) fn run_service_verb(rest: &[String], clock: Clock) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn snapshot_with(
+        state: krad_domain::AgentState,
+    ) -> Result<krad_protocol::Snapshot, serde_json::Error> {
+        let mut data = krad_domain::EnvironmentData::empty(krad_domain::EnvironmentName::new(
+            "main".to_owned(),
+        ));
+        let node: krad_domain::TerminalNode = serde_json::from_value(serde_json::json!({
+            "id": 1, "title": "agent", "state": state, "group": null, "kind": "Terminal"
+        }))?;
+        data.nodes.push(node);
+        let mut snapshot: krad_protocol::Snapshot =
+            serde_json::from_value(serde_json::json!({ "scope": "runtime", "seq": 1 }))?;
+        snapshot.environments = vec![data];
+        Ok(snapshot)
+    }
+
+    #[test]
+    fn the_service_waits_for_working_agents_before_an_update_restart(
+    ) -> Result<(), serde_json::Error> {
+        assert!(idle(&snapshot_with(krad_domain::AgentState::Idle)?));
+        assert!(idle(&snapshot_with(
+            krad_domain::AgentState::WaitingForInput
+        )?));
+        assert!(!idle(&snapshot_with(krad_domain::AgentState::Working)?));
+        Ok(())
+    }
 
     #[test]
     fn the_service_files_run_this_binary_with_the_service_verb() {
