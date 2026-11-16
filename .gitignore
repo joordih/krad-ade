@@ -3,7 +3,7 @@ target/
 .krad-ade/
 .claude/
 *.local*
-docs/
+/docs/
 DESIGN.md
 .sc/
 dist/
