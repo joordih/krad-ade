@@ -1,4 +1,4 @@
-use krad_domain::{AppearanceMode, Settings, Theme, ThemeAppearance, ThemeTuning};
+use krad_domain::{AppearanceMode, Settings, SyntaxColors, Theme, ThemeAppearance, ThemeTuning};
 use std::fmt::Write as _;
 
 use crate::builtin::themed;
@@ -109,11 +109,6 @@ fn colors(palette: &Palette) -> Vec<(String, String)> {
         ("diff-added", palette.diff_added),
         ("diff-removed", palette.diff_removed),
         ("diff-modified", palette.diff_modified),
-        ("syntax-keyword", palette.syntax.keyword),
-        ("syntax-string", palette.syntax.string),
-        ("syntax-comment", palette.syntax.comment),
-        ("syntax-number", palette.syntax.number),
-        ("syntax-type", palette.syntax.type_name),
     ];
     let washes = [
         ("bg-hover", palette.bg_hover),
@@ -148,9 +143,36 @@ fn colors(palette: &Palette) -> Vec<(String, String)> {
         .collect()
 }
 
-fn declarations(out: &mut String, palette: &Palette, scheme: &str) {
+fn syntax(code: &SyntaxColors) -> [(&'static str, u32); 14] {
+    [
+        ("syntax-comment", code.comment.0),
+        ("syntax-keyword", code.keyword.0),
+        ("syntax-string", code.string.0),
+        ("syntax-escape", code.escape.0),
+        ("syntax-number", code.number.0),
+        ("syntax-constant", code.constant.0),
+        ("syntax-attribute", code.attribute.0),
+        ("syntax-type", code.type_name.0),
+        ("syntax-operator", code.operator.0),
+        ("syntax-function", code.function.0),
+        ("syntax-property", code.property.0),
+        ("syntax-tag", code.tag.0),
+        ("syntax-variable", code.variable.0),
+        ("syntax-punctuation", code.punctuation.0),
+    ]
+}
+
+struct Slot {
+    palette: Palette,
+    syntax: SyntaxColors,
+}
+
+fn declarations(out: &mut String, slot: &Slot, scheme: &str) {
     let _ = writeln!(out, "  color-scheme: {scheme};");
-    for (name, value) in colors(palette) {
+    let code = syntax(&slot.syntax)
+        .into_iter()
+        .map(|(name, color)| (name.to_owned(), hex(color)));
+    for (name, value) in colors(&slot.palette).into_iter().chain(code) {
         let _ = writeln!(out, "  {PREFIX}{name}: {value};");
     }
 }
@@ -167,7 +189,7 @@ pub fn settled_palette(theme: &Theme, tuning: &ThemeTuning) -> Palette {
     tune(&base, tuning, theme.appearance)
 }
 
-fn slot_palette(settings: &Settings, library: &[Theme], slot: ThemeAppearance) -> Palette {
+fn slot(settings: &Settings, library: &[Theme], slot: ThemeAppearance) -> Slot {
     let selection = settings.theme_selection(None);
     let wanted = selection.for_appearance(slot);
     let theme = library
@@ -175,7 +197,10 @@ fn slot_palette(settings: &Settings, library: &[Theme], slot: ThemeAppearance) -
         .find(|theme| &theme.id == wanted)
         .cloned()
         .unwrap_or_else(|| krad_theme(slot));
-    settled_palette(&theme, &settings.theme_tuning)
+    Slot {
+        palette: settled_palette(&theme, &settings.theme_tuning),
+        syntax: theme.syntax,
+    }
 }
 
 #[must_use]
@@ -191,8 +216,8 @@ pub fn tokens_css(scale: f32) -> String {
 
 #[must_use]
 pub fn settings_css(settings: &Settings, library: &[Theme]) -> String {
-    let light = slot_palette(settings, library, ThemeAppearance::Light);
-    let dark = slot_palette(settings, library, ThemeAppearance::Dark);
+    let light = slot(settings, library, ThemeAppearance::Light);
+    let dark = slot(settings, library, ThemeAppearance::Dark);
     let mut out = tokens_css(settings.theme_tuning.interface_scale.factor());
     out.push_str(":root {\n");
     match settings.appearance {
@@ -236,6 +261,11 @@ mod tests {
         let both = settings_css(&settings, &library);
         assert!(both.contains(DARK_QUERY));
         assert!(both.contains(&hex(LIGHT.accent)));
+        let light_code = krad_theme(ThemeAppearance::Light).syntax;
+        assert!(both.contains(&format!(
+            "{PREFIX}syntax-punctuation: {};",
+            hex(light_code.punctuation.0)
+        )));
         assert!(both.contains(&hex(DARK.accent)));
         settings.appearance = AppearanceMode::Dark;
         let dark = settings_css(&settings, &library);
