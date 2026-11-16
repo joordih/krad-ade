@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(unix)]
+mod awake;
 mod desktop_runtime;
 #[cfg(unix)]
 mod handover;

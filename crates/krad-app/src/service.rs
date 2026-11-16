@@ -78,6 +78,9 @@ fn serve(clock: Clock) -> io::Result<i32> {
     let listener = bind_runtime_socket(&root)?;
     pair_desktop(&root, &config)?;
     watch_for_update(started.runtime.clone())?;
+    if matches!(krad_web_listener::read_web_access(&root), Ok(Some(_))) {
+        crate::awake::keep_awake_for_agents(started.runtime.clone())?;
+    }
     let server = RuntimeServer::new(started.runtime, &root);
     if let Err(error) = krad_web_listener::start_web_access(&root, &server) {
         tracing::warn!(%error, "web access did not start");
