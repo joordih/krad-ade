@@ -1,8 +1,14 @@
-import { environmentNames, groupsOf, type SessionItem } from "../state/sessions";
+import {
+  environmentNames,
+  groupsOf,
+  type SessionItem,
+} from "../state/sessions";
 import type { AppState } from "../state/store";
 import { Icon } from "./Icon";
+import { NotificationsButton } from "./NotificationsButton";
 
-export type Selected = { runtime: string; environment: string; session: number } | undefined;
+export type Selected =
+  { runtime: string; environment: string; session: number } | undefined;
 
 const STATE_LABEL: Record<string, string> = {
   Working: "Working",
@@ -16,7 +22,8 @@ function detail(item: SessionItem): string {
   const terminals = item.nodes.length - chats;
   const parts = [STATE_LABEL[item.state] ?? item.state];
   if (chats) parts.push(`${chats} ${chats === 1 ? "chat" : "chats"}`);
-  if (terminals) parts.push(`${terminals} ${terminals === 1 ? "terminal" : "terminals"}`);
+  if (terminals)
+    parts.push(`${terminals} ${terminals === 1 ? "terminal" : "terminals"}`);
   if (item.cloud) parts.push("cloud");
   return parts.join(" · ");
 }
@@ -37,17 +44,23 @@ export function Sidebar({
   const groups = groupsOf(state, environment);
   return (
     <nav className="sidebar">
-      <label className="env-switch">
-        <Icon name="layers-01" small />
-        <select value={environment} onChange={(event) => onEnvironment(event.target.value)}>
-          {environmentNames(state).map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
-        <Icon name="arrow-down-01" small />
-      </label>
+      <div className="sidebar-head">
+        <label className="env-switch">
+          <Icon name="layers-01" small />
+          <select
+            value={environment}
+            onChange={(event) => onEnvironment(event.target.value)}
+          >
+            {environmentNames(state).map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <Icon name="arrow-down-01" small />
+        </label>
+        <NotificationsButton />
+      </div>
       {groups.map((group) => (
         <section key={group.group?.id ?? "cloud"}>
           <div className="group-head">
@@ -68,7 +81,13 @@ export function Sidebar({
               <button
                 key={`${item.runtime}/${item.environment}/${item.session.id}`}
                 className={isSelected ? "session-row selected" : "session-row"}
-                onClick={() => onSelect({ runtime: item.runtime, environment: item.environment, session: item.session.id })}
+                onClick={() =>
+                  onSelect({
+                    runtime: item.runtime,
+                    environment: item.environment,
+                    session: item.session.id,
+                  })
+                }
               >
                 <span className={`dot ${item.state}`} />
                 <span className="texts">

@@ -111,6 +111,19 @@ input {
   overflow: hidden;
 }
 
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.bell {
+  background: none;
+  color: var(--krad-text-muted);
+}
+.bell.on {
+  color: var(--krad-accent);
+}
+
 .env-switch {
   display: flex;
   align-items: center;

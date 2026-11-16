@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { RuntimeClient } from "../runtime/client";
+import { registerWorker } from "../runtime/push";
 import { AppStore, useApp } from "../state/store";
 import { environmentNames } from "../state/sessions";
 import { Pairing } from "./Pairing";
@@ -26,7 +27,11 @@ function useSelected(): [Selected, (selected: Selected) => void] {
   useEffect(() => {
     const moved = () => setSelected(selectedFromAddress());
     addEventListener("popstate", moved);
-    return () => removeEventListener("popstate", moved);
+    addEventListener("hashchange", moved);
+    return () => {
+      removeEventListener("popstate", moved);
+      removeEventListener("hashchange", moved);
+    };
   }, []);
   const select = (next: Selected) => {
     if (next) {
@@ -58,6 +63,12 @@ export function App() {
   const wide = useWide();
   const [environment, setEnvironment] = useState<string>();
   const [selected, setSelected] = useSelected();
+
+  useEffect(() => {
+    registerWorker((url) => {
+      location.hash = new URL(url).hash;
+    }).catch((error: unknown) => console.warn(error));
+  }, []);
 
   useEffect(() => {
     store.start();
