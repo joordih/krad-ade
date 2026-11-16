@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod desktop_runtime;
+#[cfg(unix)]
+mod handover;
 mod logging;
 #[cfg(windows)]
 mod rounded_corners;

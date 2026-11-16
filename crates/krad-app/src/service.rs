@@ -17,6 +17,9 @@ const INSTALL: &str = "install";
 const UNINSTALL: &str = "uninstall";
 const WEB_ACCESS: &str = "web-access";
 const PAIR_BROWSER: &str = "pair-browser";
+const ENABLE: &str = "enable";
+const HANDOVER: &str = "handover";
+const HANDBACK: &str = "handback";
 const BROWSER_PERMISSIONS: [PairingPermission; 3] = [
     PairingPermission::Read,
     PairingPermission::Answer,
@@ -29,7 +32,7 @@ const DESKTOP_TOKEN: &str = "desktop.token";
 const PRIVATE_FILE: u32 = 0o600;
 const SERVICE_LABEL: &str = "com.joordih.krad-ade.runtime";
 const SYSTEMD_UNIT: &str = "krad-ade-runtime.service";
-const USAGE: &str = "usage: krad-ade service [install | uninstall | web-access <on|off|status> ... | pair-browser [--admin]]";
+const USAGE: &str = "usage: krad-ade service [install | uninstall | enable | handover <pid> | handback <pid> | web-access <on|off|status> ... | pair-browser [--admin]]";
 const ADMIN_FLAG: &str = "--admin";
 const NO_CODE: &str = "the service did not make a pairing code";
 const UPDATE_CHECK: Duration = Duration::from_secs(60);
@@ -180,6 +183,14 @@ fn user_domain() -> io::Result<String> {
     Ok(format!("gui/{uid}"))
 }
 
+pub(crate) fn start_service() -> io::Result<()> {
+    install().map(drop)
+}
+
+pub(crate) fn stop_service() -> io::Result<()> {
+    uninstall().map(drop)
+}
+
 fn install() -> io::Result<i32> {
     let exe = std::env::current_exe()?;
     if cfg!(target_os = "macos") {
@@ -261,6 +272,13 @@ fn pair_browser(rest: &[String]) -> io::Result<i32> {
     say(code.expose())
 }
 
+fn pid_arg(rest: &[String]) -> io::Result<&str> {
+    rest.get(1)
+        .map(String::as_str)
+        .filter(|pid| pid.bytes().all(|byte| byte.is_ascii_digit()) && !pid.is_empty())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, USAGE))
+}
+
 pub(crate) fn run_service_verb(rest: &[String], clock: Clock) -> i32 {
     let outcome = match rest.first().map(String::as_str) {
         None => serve(clock),
@@ -268,6 +286,13 @@ pub(crate) fn run_service_verb(rest: &[String], clock: Clock) -> i32 {
         Some(UNINSTALL) => uninstall(),
         Some(WEB_ACCESS) => web_access(&rest[1..]),
         Some(PAIR_BROWSER) => pair_browser(&rest[1..]),
+        Some(ENABLE) => crate::handover::enable().and_then(|url| say(&url)),
+        Some(HANDOVER) => pid_arg(rest)
+            .and_then(crate::handover::hand_over)
+            .map(|()| 0),
+        Some(HANDBACK) => pid_arg(rest)
+            .and_then(crate::handover::hand_back)
+            .map(|()| 0),
         Some(_) => Err(io::Error::new(io::ErrorKind::InvalidInput, USAGE)),
     };
     outcome.unwrap_or_else(|error| {

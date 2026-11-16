@@ -3,6 +3,7 @@ mod form;
 mod logins;
 mod sign_in;
 mod token;
+mod web_access;
 
 use gpui_kit::component::switch::Switch;
 use gpui_kit::{div, px, AnyElement, Context, IntoElement, ParentElement, Styled, Window};
@@ -18,6 +19,7 @@ use crate::components::{Button, ButtonVariant, IconName};
 use crate::theme::{palette, Palette, SPACE_2};
 use form::RunnerForm;
 use token::TokenForm;
+use web_access::WebAccessUi;
 
 const RUNNERS_TITLE: &str = "Cloud runners";
 const RUNNERS_HINT: &str = "Linux hosts, x86_64 or aarch64, reached over SSH. Cloud sessions run there and keep going while this computer sleeps or is closed.";
@@ -38,6 +40,7 @@ pub(in crate::environment_shell) struct CloudRunnersUi {
     form: RunnerForm,
     token: TokenForm,
     sign_in: Option<SignInDialog>,
+    web: WebAccessUi,
 }
 
 fn runner_detail(
@@ -66,6 +69,7 @@ impl EnvironmentShell {
             form: RunnerForm::new(window, cx),
             token: TokenForm::new(window, cx),
             sign_in: None,
+            web: WebAccessUi::default(),
         }
     }
 
@@ -187,7 +191,10 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let pal = palette(cx);
         let open = ui.form.open;
-        let mut sections = vec![self.cloud_runners_card(ui, cx)];
+        let mut sections = vec![
+            self.web_access_section(&ui.web, cx),
+            self.cloud_runners_card(ui, cx),
+        ];
         if open {
             sections.push(Self::runner_form_section(&ui.form, cx));
         }

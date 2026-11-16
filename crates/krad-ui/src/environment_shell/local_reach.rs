@@ -5,7 +5,7 @@ use futures::{FutureExt as _, StreamExt as _};
 use krad_client::{Runner, RuntimeClient, TerminalMirror};
 use krad_domain::{EnvironmentName, Host, OpenBuffers};
 use krad_extensions::host::HostLink;
-use krad_protocol::{AgentRef, BusCommand, Command};
+use krad_protocol::{AgentRef, BusCommand, Command, PairingAnswer, PairingCommand};
 use krad_runtime::{
     BusAccess, BusReply, Delegated, HostShell, RuntimeHandle, TerminalAction, TerminalLaunch,
     TerminalPlace, TerminalView,
@@ -45,6 +45,16 @@ impl LocalReach {
         match self {
             Self::InProcess(handle) => Some(handle),
             Self::Service(_) => None,
+        }
+    }
+
+    pub(super) fn browser_code(
+        &self,
+        command: PairingCommand,
+    ) -> Option<krad_client::Answer<PairingAnswer>> {
+        match self {
+            Self::InProcess(_) => None,
+            Self::Service(service) => Some(service.client.pairing(command)),
         }
     }
 

@@ -13,6 +13,8 @@ desktop = [
   "dep:krad-client",
   "dep:krad-host",
   "dep:krad-protocol",
+  "dep:serde",
+  "dep:serde_json",
   "dep:krad-web-listener",
   "krad-runner/runtime",
   "dep:krad-runtime",
@@ -45,6 +47,8 @@ krad-client = { workspace = true, optional = true }
 krad-domain.workspace = true
 krad-host = { workspace = true, optional = true }
 krad-protocol = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 krad-runner.workspace = true
 krad-runtime = { workspace = true, optional = true }
 krad-store = { workspace = true, optional = true }
@@ -53,6 +57,3 @@ krad-web-listener = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 tracing-appender = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
-
-[dev-dependencies]
-serde_json.workspace = true
