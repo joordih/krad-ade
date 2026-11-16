@@ -27,6 +27,10 @@ impl Outbox {
         self.0.send(Frame::Message(Box::new(message))).is_ok()
     }
 
+    pub(crate) fn send_frame(&self, frame: Frame) -> bool {
+        self.0.send(frame).is_ok()
+    }
+
     pub(crate) fn send_terminal(&self, bytes: TerminalBytes) -> bool {
         self.0.send(Frame::Terminal(bytes)).is_ok()
     }

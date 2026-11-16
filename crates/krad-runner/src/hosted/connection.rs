@@ -12,6 +12,7 @@ use super::listener::Stream;
 use super::outbox::{Answers, Outbox};
 use super::pairing_requests::answer_pairing;
 use super::permits::needed_for_command;
+use super::relaying::Relays;
 use super::server::{ConnectionKey, RuntimeServer};
 use super::watching::watch_terminal;
 use crate::pairings::authorize;
@@ -73,6 +74,7 @@ struct Connection {
     answers: Answers,
     following: bool,
     delegations: Option<Delegations>,
+    relays: Relays,
 }
 
 pub(crate) fn serve_connection(server: &Arc<RuntimeServer>, stream: impl Stream) {
@@ -103,6 +105,7 @@ pub(crate) fn serve_connection(server: &Arc<RuntimeServer>, stream: impl Stream)
         answers,
         following: false,
         delegations: None,
+        relays: Relays::default(),
     };
     connection.serve(&mut input);
     if let Peer::Paired { install, .. } = &connection.peer {
@@ -159,7 +162,7 @@ impl Connection {
         loop {
             match read_frame(input) {
                 Ok(Some(Frame::Message(message))) => self.take(*message),
-                Ok(Some(Frame::Terminal(_))) => {
+                Ok(Some(Frame::Terminal(_) | Frame::RunnerTerminal { .. })) => {
                     self.outbox
                         .send(refused_message(ErrorCode::Unsupported, UNKNOWN_MESSAGE));
                 }
@@ -185,6 +188,11 @@ impl Connection {
                 self.outbox.send(answer.into_message(id));
             }
             Message::TakeDelegations => self.take_delegations(),
+            Message::ViaRunner { runner, message } => {
+                let held = self.peer.permissions();
+                self.relays
+                    .take(&self.server.handle, (&held, &self.outbox), runner, *message);
+            }
             Message::Welcome(_)
             | Message::Delegated(_)
             | Message::Reply { .. }

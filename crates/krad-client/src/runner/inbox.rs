@@ -1,10 +1,13 @@
 use futures::channel::{mpsc, oneshot};
 use futures::SinkExt as _;
-use krad_domain::TerminalId;
+use krad_domain::{CloudRunnerId, TerminalId};
 use krad_protocol::{
     read_frame, DelegatedRequest, Feed, Frame, Message, PairingAnswer, Reply, RequestId, Snapshot,
-    TerminalBytes,
+    TerminalBytes, Welcome,
 };
+use std::sync::Arc;
+
+use crate::client::ClientError;
 use std::collections::HashMap;
 use std::io::Read;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -21,6 +24,8 @@ struct Expected {
     feed: Option<mpsc::Sender<Feed>>,
     terminals: HashMap<TerminalId, mpsc::Sender<Vec<u8>>>,
     delegate: Option<mpsc::Sender<DelegatedRequest>>,
+    relays: HashMap<CloudRunnerId, Arc<Waiting>>,
+    welcome: Option<oneshot::Sender<Result<Welcome, ClientError>>>,
 }
 
 #[derive(Default)]
@@ -63,6 +68,22 @@ impl Waiting {
         self.expected().delegate = None;
     }
 
+    pub(super) fn relay_to(&self, runner: CloudRunnerId, relay: Arc<Self>) {
+        self.expected().relays.insert(runner, relay);
+    }
+
+    fn relay(&self, runner: CloudRunnerId) -> Option<Arc<Self>> {
+        self.expected().relays.get(&runner).cloned()
+    }
+
+    pub(super) fn expect_welcome(&self, welcome: oneshot::Sender<Result<Welcome, ClientError>>) {
+        self.expected().welcome = Some(welcome);
+    }
+
+    fn welcomed(&self) -> Option<oneshot::Sender<Result<Welcome, ClientError>>> {
+        self.expected().welcome.take()
+    }
+
     fn terminal(&self, terminal: TerminalId) -> Option<mpsc::Sender<Vec<u8>>> {
         self.expected().terminals.get(&terminal).cloned()
     }
@@ -85,6 +106,12 @@ impl Waiting {
         expected.feed = None;
         expected.terminals.clear();
         expected.delegate = None;
+        expected.welcome = None;
+        let relays: Vec<Arc<Self>> = expected.relays.drain().map(|(_, relay)| relay).collect();
+        drop(expected);
+        for relay in relays {
+            relay.close();
+        }
     }
 }
 
@@ -99,8 +126,27 @@ fn hand_reply(awaiting: Awaiting, reply: Reply) {
     }
 }
 
+fn take_relayed(runner: CloudRunnerId, message: Message, waiting: &Waiting) {
+    let Some(relay) = waiting.relay(runner) else {
+        return;
+    };
+    let message = match message {
+        Message::Welcome(welcome) => match relay.welcomed() {
+            Some(sender) => return drop(sender.send(Ok(welcome))),
+            None => Message::Welcome(welcome),
+        },
+        Message::Refused { code, message } => match relay.welcomed() {
+            Some(sender) => return drop(sender.send(Err(ClientError::Refused { code, message }))),
+            None => Message::Refused { code, message },
+        },
+        other => other,
+    };
+    take(message, &relay);
+}
+
 fn take(message: Message, waiting: &Waiting) {
     match message {
+        Message::ViaRunner { runner, message } => take_relayed(runner, *message, waiting),
         Message::Reply { id, reply } => {
             if let Some(awaiting) = waiting.take(id) {
                 hand_reply(awaiting, reply);
@@ -158,6 +204,11 @@ pub(super) fn read_all(input: &mut impl Read, waiting: &Waiting) {
         match read_frame(input) {
             Ok(Some(Frame::Message(message))) => take(*message, waiting),
             Ok(Some(Frame::Terminal(bytes))) => take_terminal(bytes, waiting),
+            Ok(Some(Frame::RunnerTerminal { runner, bytes })) => {
+                if let Some(relay) = waiting.relay(runner) {
+                    take_terminal(bytes, &relay);
+                }
+            }
             Ok(None) => break,
             Err(error) => {
                 tracing::debug!(%error, "the runner connection ended");

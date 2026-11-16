@@ -57,11 +57,6 @@ pub use cloud::{
     CloudReach, FirstChat, HostedSession, HostedWorkspace, PatchAnswer, SentPrompt,
 };
 pub use command::{Command, ErrorCode, Reply, RuntimeCommand};
-pub use language::{
-    CodeDiagnostic, CodeLocation, Completion, DiagnosticSeverity, FileDiagnostics, FileEdits,
-    LanguageAnswer, LanguageAsk, LanguageCommand, RangeEdit, ServerShown, ServerState, Signature,
-    TextPosition, TextRange,
-};
 pub use editor::{BufferEdited, BufferId, BufferNotOpened, EditorCommand, OpenedBuffer};
 pub use environments::{EnvironmentCommand, SpendingCrossed};
 pub use event::{Event, EventKind, Feed, Scope, Snapshot};
@@ -88,6 +83,11 @@ pub use hosts::{
 };
 pub use ids::{DelegationId, ProtocolVersion, RequestId, Seq};
 pub use kraddies::{AutomationState, KraddieCommand, KraddieState, KraddiesSnapshot, OwnedDigests};
+pub use language::{
+    CodeDiagnostic, CodeLocation, Completion, DiagnosticSeverity, FileDiagnostics, FileEdits,
+    LanguageAnswer, LanguageAsk, LanguageCommand, RangeEdit, ServerShown, ServerState, Signature,
+    TextPosition, TextRange,
+};
 pub use launches::{LaunchedAs, TerminalLaunched};
 pub use models::{
     AcpListing, AcpOffers, ListedModels, ModelsCommand, ModelsOrigin, ModelsSnapshot,

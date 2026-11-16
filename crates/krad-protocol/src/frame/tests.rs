@@ -153,3 +153,33 @@ fn malformed_bodies_are_refused() {
         assert!(read.as_ref().is_err_and(expected), "{body:?}: {read:?}");
     }
 }
+
+#[test]
+fn a_runner_terminal_frame_round_trips_with_its_runner() -> Result<(), FrameError> {
+    let frame = Frame::RunnerTerminal {
+        runner: CloudRunnerId(3),
+        bytes: TerminalBytes {
+            terminal: TerminalId(9),
+            bytes: b"ls\r\n".to_vec(),
+        },
+    };
+    let mut written = Vec::new();
+    write_frame(&mut written, &frame)?;
+    assert_eq!(read_frame(&mut written.as_slice())?, Some(frame));
+    Ok(())
+}
+
+#[test]
+fn a_message_for_a_runner_carries_the_wrapped_message() -> serde_json::Result<()> {
+    let via = Message::ViaRunner {
+        runner: CloudRunnerId(2),
+        message: Box::new(Message::Subscribe { since: None }),
+    };
+    let json = serde_json::to_string(&via)?;
+    assert_eq!(
+        json,
+        r#"{"type":"via_runner","runner":2,"message":{"type":"subscribe"}}"#
+    );
+    assert_eq!(serde_json::from_str::<Message>(&json)?, via);
+    Ok(())
+}

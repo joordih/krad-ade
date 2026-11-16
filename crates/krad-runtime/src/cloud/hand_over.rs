@@ -92,7 +92,7 @@ fn next_message(frames: &Receiver<FrameRead>, deadline: Instant) -> Result<Messa
         };
         match frame {
             Some(Frame::Message(message)) => return Ok(*message),
-            Some(Frame::Terminal(_)) => {}
+            Some(Frame::Terminal(_) | Frame::RunnerTerminal { .. }) => {}
             None => return Err(HandOverError::Unanswered(HUNG_UP)),
         }
     }

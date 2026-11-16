@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use krad_domain::TerminalId;
+use krad_domain::{CloudRunnerId, TerminalId};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
@@ -14,6 +14,7 @@ use crate::pairings::{PairingAnswer, PairingCommand};
 
 pub(crate) const LENGTH_BYTES: usize = 4;
 pub(crate) const TERMINAL_ID_BYTES: usize = 8;
+pub(crate) const RUNNER_ID_BYTES: usize = 8;
 pub(crate) const MAX_FRAME_BYTES: u32 = 8 * 1024 * 1024;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -21,13 +22,14 @@ pub(crate) const MAX_FRAME_BYTES: u32 = 8 * 1024 * 1024;
 pub(crate) enum FrameKind {
     Message = 1,
     Terminal = 2,
+    RunnerTerminal = 3,
 }
 
 impl TryFrom<u8> for FrameKind {
     type Error = FrameError;
 
     fn try_from(byte: u8) -> Result<Self, FrameError> {
-        [Self::Message, Self::Terminal]
+        [Self::Message, Self::Terminal, Self::RunnerTerminal]
             .into_iter()
             .find(|kind| *kind as u8 == byte)
             .ok_or(FrameError::UnknownKind(byte))
@@ -75,6 +77,10 @@ pub enum Message {
     },
     TakeDelegations,
     Delegated(Box<DelegatedRequest>),
+    ViaRunner {
+        runner: CloudRunnerId,
+        message: Box<Message>,
+    },
     #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
@@ -90,6 +96,10 @@ pub struct TerminalBytes {
 pub enum Frame {
     Message(Box<Message>),
     Terminal(TerminalBytes),
+    RunnerTerminal {
+        runner: CloudRunnerId,
+        bytes: TerminalBytes,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -131,6 +141,15 @@ pub fn read_frame(input: &mut impl Read) -> Result<Option<Frame>, FrameError> {
             payload,
         )?)))),
         FrameKind::Terminal => read_terminal(payload).map(|bytes| Some(Frame::Terminal(bytes))),
+        FrameKind::RunnerTerminal => {
+            let (runner, rest) = payload
+                .split_first_chunk::<RUNNER_ID_BYTES>()
+                .ok_or(FrameError::MissingTerminal)?;
+            Ok(Some(Frame::RunnerTerminal {
+                runner: CloudRunnerId(u64::from_be_bytes(*runner)),
+                bytes: read_terminal(rest)?,
+            }))
+        }
     }
 }
 
@@ -148,6 +167,12 @@ pub fn write_frame(output: &mut impl Write, frame: &Frame) -> Result<(), FrameEr
             body.push(FrameKind::Terminal as u8);
             body.extend_from_slice(&terminal.terminal.as_u64().to_be_bytes());
             body.extend_from_slice(&terminal.bytes);
+        }
+        Frame::RunnerTerminal { runner, bytes } => {
+            body.push(FrameKind::RunnerTerminal as u8);
+            body.extend_from_slice(&runner.0.to_be_bytes());
+            body.extend_from_slice(&bytes.terminal.as_u64().to_be_bytes());
+            body.extend_from_slice(&bytes.bytes);
         }
     }
     let len = u32::try_from(body.len())

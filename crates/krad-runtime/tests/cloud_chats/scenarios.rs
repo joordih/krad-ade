@@ -322,3 +322,42 @@ pub fn the_desktop_reaches_a_ready_runner_s_runtime_through_cloud_connect() -> T
     assert_eq!(names, [RUNNER_ENVIRONMENT]);
     Ok(())
 }
+
+pub fn a_client_of_this_computer_s_runtime_reaches_a_cloud_runner_through_it() -> TestResult {
+    let cloud = open_cloud_chat("rl")?;
+    let runtime = cloud.started.runtime.clone();
+    let root = temp_folder("relay")?;
+    let listener = krad_runner::bind_runtime_socket(&root.0)?;
+    let server = krad_runner::RuntimeServer::new(runtime, &root.0);
+    let serving = std::sync::Arc::clone(&server);
+    std::thread::spawn(move || serving.serve(&listener));
+    let install: InstallId = "phone-0000000001".parse()?;
+    let token = krad_runner::pair_over_ssh(&root.0, &install, "Phone".parse()?)?;
+    let socket = krad_host::runner::runtime_socket(&root.0);
+    let stream = std::os::unix::net::UnixStream::connect(socket)?;
+    let laptop = Runner::connect(
+        stream.try_clone()?,
+        stream,
+        krad_protocol::Hello::paired("0.0.0", krad_domain::Pairing { install, token }),
+    )?;
+    let relayed = block_on(laptop.relay(RUNNER))?;
+    assert_eq!(
+        relayed.welcome().permissions,
+        Some(PairingPermissions::all())
+    );
+    let snapshot = block_on(relayed.snapshot(Scope::Runtime))?;
+    let names: Vec<&str> = snapshot
+        .environments
+        .iter()
+        .map(|environment| environment.name.as_str())
+        .collect();
+    assert_eq!(names, [RUNNER_ENVIRONMENT]);
+    let mut feeds = relayed.subscribe(None);
+    let first = block_on(futures::StreamExt::next(&mut feeds));
+    assert!(matches!(first, Some(krad_protocol::Feed::Snapshot(_))));
+    let pong = block_on(relayed.send(Command::Runtime(krad_protocol::RuntimeCommand::Ping)))?;
+    assert_eq!(pong, Reply::Accepted);
+    let unknown = block_on(laptop.relay(CloudRunnerId(99)));
+    assert!(unknown.is_err());
+    Ok(())
+}

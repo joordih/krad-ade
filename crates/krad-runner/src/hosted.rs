@@ -6,6 +6,7 @@ mod pairing_codes;
 mod pairing_requests;
 mod permits;
 mod profile;
+mod relaying;
 mod server;
 mod watching;
 

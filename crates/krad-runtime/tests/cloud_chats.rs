@@ -32,7 +32,7 @@ use std::process::ExitCode;
 type Case = (&'static str, fn() -> cloud::TestResult);
 
 #[cfg(unix)]
-const CASES: [Case; 6] = [
+const CASES: [Case; 7] = [
     (
         "a_cloud_runner_asks_for_its_password_in_the_app_and_signs_in_with_the_answer",
         runner_sign_in::a_cloud_runner_asks_for_its_password_in_the_app_and_signs_in_with_the_answer,
@@ -48,6 +48,10 @@ const CASES: [Case; 6] = [
     (
         "the_desktop_reaches_a_ready_runner_s_runtime_through_cloud_connect",
         scenarios::the_desktop_reaches_a_ready_runner_s_runtime_through_cloud_connect,
+    ),
+    (
+        "a_client_of_this_computer_s_runtime_reaches_a_cloud_runner_through_it",
+        scenarios::a_client_of_this_computer_s_runtime_reaches_a_cloud_runner_through_it,
     ),
     (
         "a_cloud_session_handed_to_the_runner_s_runtime_chats_there_and_survives_its_restart",

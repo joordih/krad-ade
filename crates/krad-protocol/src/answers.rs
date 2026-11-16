@@ -12,10 +12,10 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use crate::language::LanguageAnswer;
 use crate::chats::{ChatPage, HistoryPart, SubagentsRead, TranscriptRead};
 use crate::command::ErrorCode;
 use crate::files::{TextRead, Unreadable, VaultNoteText};
+use crate::language::LanguageAnswer;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

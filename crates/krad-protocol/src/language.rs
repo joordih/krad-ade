@@ -4,7 +4,9 @@ use std::path::PathBuf;
 
 use crate::editor::BufferId;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize,
+)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct TextPosition {
     pub line: u32,
@@ -29,12 +31,25 @@ pub struct LanguageCommand {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "verb", rename_all = "snake_case")]
 pub enum LanguageAsk {
-    Completion { at: TextPosition },
-    Hover { at: TextPosition },
-    Definition { at: TextPosition },
-    References { at: TextPosition },
-    SignatureHelp { at: TextPosition },
-    Rename { at: TextPosition, new_name: String },
+    Completion {
+        at: TextPosition,
+    },
+    Hover {
+        at: TextPosition,
+    },
+    Definition {
+        at: TextPosition,
+    },
+    References {
+        at: TextPosition,
+    },
+    SignatureHelp {
+        at: TextPosition,
+    },
+    Rename {
+        at: TextPosition,
+        new_name: String,
+    },
     Format,
     InstallServer,
     #[cfg_attr(feature = "ts", ts(skip))]
@@ -92,11 +107,22 @@ pub struct FileEdits {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LanguageAnswer {
-    Completions { items: Vec<Completion> },
-    Hover { markdown: Option<String> },
-    Locations { locations: Vec<CodeLocation> },
-    Signatures { signatures: Vec<Signature>, active: Option<u32> },
-    Edits { files: Vec<FileEdits> },
+    Completions {
+        items: Vec<Completion>,
+    },
+    Hover {
+        markdown: Option<String>,
+    },
+    Locations {
+        locations: Vec<CodeLocation>,
+    },
+    Signatures {
+        signatures: Vec<Signature>,
+        active: Option<u32>,
+    },
+    Edits {
+        files: Vec<FileEdits>,
+    },
     #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]
     Unknown,
@@ -136,11 +162,15 @@ pub struct FileDiagnostics {
 pub enum ServerState {
     Locating,
     NotInstalled,
-    NeedsServerRuntime { name: String },
+    NeedsServerRuntime {
+        name: String,
+    },
     Installing,
     Starting,
     Running,
-    Failed { reason: String },
+    Failed {
+        reason: String,
+    },
     Stopped,
     #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]

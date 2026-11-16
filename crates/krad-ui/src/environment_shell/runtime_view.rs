@@ -34,7 +34,7 @@ pub(super) use kraddies::{AutomationEntry, KraddieBook, KraddieEntry, KraddiesMi
 pub(super) use local_chats::LocalChats;
 use shown_environments::ShownEnvironments;
 use view_model::RuntimeNews;
-pub(super) use view_model::{HostedFailure, RunnerReach, ViewModel};
+pub(super) use view_model::{HostedFailure, RunnerReach, RunnerReacher, ViewModel};
 
 use super::local_reach::{LocalReach, ServiceReach};
 use super::EnvironmentShell;
@@ -155,9 +155,7 @@ impl EnvironmentShell {
     }
 
     fn reach_ready_runners(&self, cx: &mut Context<Self>) {
-        let Some(handle) = self.runtime.local.handle().cloned() else {
-            return;
-        };
+        let handle = self.runtime.local.runner_reacher();
         self.runtime
             .view
             .update(cx, |model, cx| model.reach_ready_runners(&handle, cx));

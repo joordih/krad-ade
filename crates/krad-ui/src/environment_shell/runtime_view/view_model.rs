@@ -30,7 +30,9 @@ mod folding;
 mod read_copies;
 mod remotes;
 
-pub(in crate::environment_shell) use remotes::{HostedFailure, Remotes, RunnerReach};
+pub(in crate::environment_shell) use remotes::{
+    HostedFailure, Remotes, RunnerReach, RunnerReacher,
+};
 
 const FIRST_PACE: Duration = Duration::from_millis(16);
 const RECONNECT_PAUSE: Duration = Duration::from_millis(500);

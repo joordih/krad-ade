@@ -2,6 +2,7 @@ mod inbox;
 
 use futures::channel::{mpsc, oneshot};
 use futures::{FutureExt as _, StreamExt as _};
+use krad_domain::CloudRunnerId;
 use krad_protocol::{
     read_frame, write_frame, AgentRef, Command, ErrorCode, Frame, Hello, Message, PairingAnswer,
     PairingCommand, Reply, RequestId, Scope, Seq, Snapshot, TerminalCommand, Welcome,
@@ -28,8 +29,36 @@ const CONNECT_LIMIT: Duration = Duration::from_secs(20);
 const NO_THREAD: &str = "the runner client could not start its threads";
 const FIRST_REQUEST: RequestId = RequestId(1);
 
+#[derive(Clone)]
+enum Outlet {
+    Direct(SyncSender<Message>),
+    Via {
+        outbox: SyncSender<Message>,
+        runner: CloudRunnerId,
+    },
+}
+
+impl Outlet {
+    fn send(&self, message: Message) -> bool {
+        let sent = match self {
+            Self::Direct(outbox) => outbox.send(message),
+            Self::Via { outbox, runner } => outbox.send(Message::ViaRunner {
+                runner: *runner,
+                message: Box::new(message),
+            }),
+        };
+        sent.is_ok()
+    }
+
+    const fn outbox(&self) -> &SyncSender<Message> {
+        match self {
+            Self::Direct(outbox) | Self::Via { outbox, .. } => outbox,
+        }
+    }
+}
+
 pub struct Runner {
-    outbox: SyncSender<Message>,
+    outbox: Outlet,
     waiting: Arc<Waiting>,
     next: AtomicU64,
     welcome: Welcome,
@@ -120,11 +149,38 @@ impl Runner {
         spawn(WRITER_THREAD, move || write_all(output, &outgoing))?;
         let first = welcome.first_request.unwrap_or(FIRST_REQUEST);
         Ok(Self {
-            outbox,
+            outbox: Outlet::Direct(outbox),
             waiting,
             next: AtomicU64::new(first.0),
             welcome,
         })
+    }
+
+    pub fn relay(&self, runner: CloudRunnerId) -> Answer<Self> {
+        let relay = Arc::new(Waiting::default());
+        let (welcomed, welcome) = oneshot::channel();
+        relay.expect_welcome(welcomed);
+        self.waiting.relay_to(runner, Arc::clone(&relay));
+        let outbox = Outlet::Via {
+            outbox: self.outbox.outbox().clone(),
+            runner,
+        };
+        let hello = Message::Hello(Hello::new(&self.welcome.build));
+        if !outbox.send(hello) {
+            return futures::future::ready(Err(ClientError::Stopped)).boxed();
+        }
+        welcome
+            .map(move |welcome| {
+                let welcome = welcome.map_err(|_| ClientError::Stopped)??;
+                let first = welcome.first_request.unwrap_or(FIRST_REQUEST);
+                Ok(Self {
+                    outbox,
+                    waiting: relay,
+                    next: AtomicU64::new(first.0),
+                    welcome,
+                })
+            })
+            .boxed()
     }
 
     #[must_use]
@@ -140,7 +196,7 @@ impl Runner {
         answer: oneshot::Receiver<Result<T, Reply>>,
     ) -> Answer<T> {
         self.waiting.wait(id, awaiting);
-        if self.outbox.send(message).is_err() {
+        if !self.outbox.send(message) {
             self.waiting.forget(id);
         }
         answer
@@ -155,7 +211,7 @@ impl Runner {
     pub fn take_delegations(&self) -> DelegatedFeed {
         let (sender, delegated) = mpsc::channel(DELEGATION_CAPACITY);
         self.waiting.delegate_to(sender);
-        if self.outbox.send(Message::TakeDelegations).is_err() {
+        if !self.outbox.send(Message::TakeDelegations) {
             tracing::debug!("the runner connection closed before taking delegations");
         }
         delegated.boxed()
@@ -187,7 +243,7 @@ impl RuntimeClient for Runner {
     fn subscribe(&self, since: Option<Seq>) -> Feeds {
         let (sender, feeds) = mpsc::channel(FEED_CAPACITY);
         self.waiting.follow(sender);
-        if self.outbox.send(Message::Subscribe { since }).is_err() {
+        if !self.outbox.send(Message::Subscribe { since }) {
             self.waiting.stop_following();
         }
         feeds.boxed()

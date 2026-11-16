@@ -11,6 +11,8 @@ use krad_runtime::{
     TerminalPlace, TerminalView,
 };
 use krad_session::{AnsiPalette, SearchDirection};
+
+use super::runtime_view::RunnerReacher;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -43,6 +45,13 @@ impl LocalReach {
         match self {
             Self::InProcess(handle) => Some(handle),
             Self::Service(_) => None,
+        }
+    }
+
+    pub(super) fn runner_reacher(&self) -> RunnerReacher {
+        match self {
+            Self::InProcess(handle) => RunnerReacher::Line(handle.clone()),
+            Self::Service(service) => RunnerReacher::Relay(Arc::clone(&service.client)),
         }
     }
 

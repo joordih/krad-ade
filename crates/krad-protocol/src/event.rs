@@ -14,7 +14,6 @@ use crate::cloud::{CloudDraftId, CloudNews, CloudOpened};
 use crate::editor::{BufferEdited, BufferId, BufferNotOpened, OpenedBuffer};
 use crate::environments::SpendingCrossed;
 use crate::files::FolderChanged;
-use crate::language::{FileDiagnostics, ServerShown};
 use crate::files::UploadShown;
 use crate::gateway::GatewayState;
 use crate::git::{GitFinished, GitRead, SessionChangesRead, WorktreeSwept};
@@ -26,6 +25,7 @@ use crate::hosts::{
 };
 use crate::ids::{RequestId, Seq};
 use crate::kraddies::{KraddieState, KraddiesSnapshot, OwnedDigests};
+use crate::language::{FileDiagnostics, ServerShown};
 use crate::launches::TerminalLaunched;
 use crate::models::{AcpOffers, ListedModels, ModelsOrigin, ModelsSnapshot};
 use crate::opencode::{OpencodeShown, OpencodeSnapshot};
