@@ -39,6 +39,7 @@ export interface ClientOptions {
   build: string;
   socket?: (url: string) => SocketLike;
   schedule?: (run: () => void, afterMs: number) => unknown;
+  parent?: { client: RuntimeClient; runner: number };
 }
 
 type Waiting =
@@ -81,6 +82,7 @@ export class RuntimeClient {
   private readonly statuses = new Set<Listener<ConnectionStatus>>();
   private readonly delegates = new Set<Listener<DelegatedRequest>>();
   private takesDelegations = false;
+  private readonly children = new Map<number, RuntimeClient>();
   private readonly url: string;
   private readonly makeSocket: (url: string) => SocketLike;
   private readonly schedule: (run: () => void, afterMs: number) => unknown;
@@ -93,14 +95,33 @@ export class RuntimeClient {
 
   connect(): void {
     this.stopped = false;
+    if (this.options.parent) {
+      this.options.parent.client.children.set(this.options.parent.runner, this);
+      if (this.options.parent.client.welcome) this.open();
+      return;
+    }
     this.open();
   }
 
   close(): void {
     this.stopped = true;
-    this.socket?.close();
+    if (this.options.parent) {
+      this.options.parent.client.children.delete(this.options.parent.runner);
+    } else {
+      this.socket?.close();
+    }
     this.fail(new Error("the client closed"));
     this.tell({ status: "closed" });
+  }
+
+  relay(runner: number): RuntimeClient {
+    const known = this.children.get(runner);
+    if (known) return known;
+    return new RuntimeClient({ url: this.url, build: this.options.build, parent: { client: this, runner } });
+  }
+
+  get runner(): number | undefined {
+    return this.options.parent?.runner;
   }
 
   get permissions(): Welcome["permissions"] {
@@ -198,14 +219,23 @@ export class RuntimeClient {
     return id;
   }
 
+  private connected(): boolean {
+    const parent = this.options.parent;
+    return parent ? parent.client.welcome !== undefined : this.socket !== undefined;
+  }
+
   private write(message: Message): boolean {
-    if (!this.socket || !this.welcome) {
-      return message.type === "hello" && this.socket !== undefined && this.sendRaw(message);
+    if (!this.connected() || !this.welcome) {
+      return message.type === "hello" && this.connected() && this.sendRaw(message);
     }
     return this.sendRaw(message);
   }
 
   private sendRaw(message: Message): boolean {
+    const parent = this.options.parent;
+    if (parent) {
+      return parent.client.sendRaw({ type: "via_runner", runner: parent.runner, message });
+    }
     try {
       this.socket?.send(encodeMessage(message));
       return this.socket !== undefined;
@@ -220,6 +250,10 @@ export class RuntimeClient {
 
   private open(): void {
     this.tell({ status: "connecting" });
+    if (this.options.parent) {
+      this.sendRaw({ type: "hello", protocol: PROTOCOL_VERSION, build: this.options.build });
+      return;
+    }
     const socket = this.makeSocket(this.url);
     socket.binaryType = "arraybuffer";
     this.socket = socket;
@@ -235,7 +269,8 @@ export class RuntimeClient {
     this.socket = undefined;
     this.welcome = undefined;
     this.fail(new Error("the runtime connection closed"));
-    if (this.stopped) return;
+    for (const child of this.children.values()) child.lost();
+    if (this.stopped || this.options.parent) return;
     const retryInMs = this.backoff;
     this.backoff = Math.min(this.backoff * 2, MAX_BACKOFF_MS);
     this.tell({ status: "waiting", retryInMs });
@@ -254,6 +289,10 @@ export class RuntimeClient {
     const frame = decodeFrame(data);
     if (!frame) return;
     if (frame.kind === "terminal") return this.heardTerminal(frame.terminal);
+    if (frame.kind === "runner_terminal") {
+      this.children.get(frame.runner)?.heardTerminal(frame.terminal);
+      return;
+    }
     this.take(frame.message);
   }
 
@@ -268,8 +307,11 @@ export class RuntimeClient {
     const sameRun = this.lastRun === welcome.run && this.lastSeq !== undefined;
     this.lastRun = welcome.run;
     this.sendRaw(sameRun ? { type: "subscribe", since: this.lastSeq } : { type: "subscribe" });
-    if (this.takesDelegations) this.sendRaw({ type: "take_delegations" });
+    if (this.takesDelegations && !this.options.parent) this.sendRaw({ type: "take_delegations" });
     this.tell({ status: "open", welcome });
+    for (const child of this.children.values()) {
+      if (!child.stopped) child.open();
+    }
   }
 
   private take(message: Message): void {
@@ -278,9 +320,12 @@ export class RuntimeClient {
         return this.welcomed(message);
       case "refused":
         if (!this.welcome) {
-          this.stopped = true;
+          if (!this.options.parent) this.stopped = true;
           this.tell({ status: "refused", code: message.code, message: message.message });
         }
+        return;
+      case "via_runner":
+        this.children.get(message.runner)?.take(message.message);
         return;
       case "feed":
         return this.fed(message);

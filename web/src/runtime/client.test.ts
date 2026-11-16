@@ -126,3 +126,35 @@ describe("RuntimeClient", () => {
     expect(scheduled).toHaveLength(0);
   });
 });
+
+describe("relayed runners", () => {
+  it("greets the runner through the parent, follows it and gets its terminal bytes", async () => {
+    const { client, sockets, scheduled } = harness();
+    client.connect();
+    const socket = sockets[0]!;
+    socket.onopen?.();
+    socket.welcome(1, 100);
+    const runner = client.relay(4);
+    runner.connect();
+    expect(socket.sent.at(-1)).toMatchObject({ type: "via_runner", runner: 4, message: { type: "hello" } });
+    socket.deliver({
+      type: "via_runner",
+      runner: 4,
+      message: { type: "welcome", protocol: 1, build: "runner", run: 3, permissions: ["read"], first_request: 900 },
+    });
+    expect(socket.sent.at(-1)).toEqual({ type: "via_runner", runner: 4, message: { type: "subscribe" } });
+    const bytes: Uint8Array[] = [];
+    const watching = runner.watchTerminal({ environment: "runner", terminal: 7 }, (chunk) => bytes.push(chunk));
+    expect(socket.sent.at(-1)).toMatchObject({ type: "via_runner", runner: 4, message: { type: "command", id: 900 } });
+    socket.deliver({ type: "via_runner", runner: 4, message: { type: "reply", id: 900, reply: { outcome: "accepted" } } });
+    await expect(watching).resolves.toEqual({ outcome: "accepted" });
+    socket.onmessage?.({ data: new Uint8Array([3, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 7, 111, 107]) });
+    expect(bytes).toEqual([new Uint8Array([111, 107])]);
+    socket.close();
+    scheduled[0]!();
+    const again = sockets[1]!;
+    again.onopen?.();
+    again.welcome(1, 200);
+    expect(again.sent.at(-1)).toMatchObject({ type: "via_runner", runner: 4, message: { type: "hello" } });
+  });
+});
