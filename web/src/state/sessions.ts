@@ -33,6 +33,23 @@ export function strongest(nodes: TerminalNode[]): AgentState {
   return nodes.reduce<AgentState>((best, node) => (STATE_WEIGHT[node.state] > STATE_WEIGHT[best] ? node.state : best), "Idle");
 }
 
+/** The tab a session shows: the picked one, its last chat, its first chat, else its first tab. */
+export function shownNode(nodes: TerminalNode[], session: Session, picked?: number): TerminalNode | undefined {
+  return (
+    nodes.find((node) => node.id === picked) ??
+    nodes.find((node) => node.id === session.last_chat) ??
+    nodes.find((node) => node.kind === "Chat") ??
+    nodes[0]
+  );
+}
+
+/** The session holding a terminal, as the attention queue's targets name it. */
+export function sessionOfTerminal(environment: EnvironmentData, terminal: number): Session | undefined {
+  return (environment.sessions ?? []).find((session) =>
+    session.tabs.tabs.some((tab) => tab.tiles.some((tile) => tile.id === terminal)),
+  );
+}
+
 function item(runtime: RuntimeKey, environment: EnvironmentData, session: Session, cloud: boolean): SessionItem {
   const nodes = sessionNodes(environment, session);
   return { runtime, environment: environment.name, session, nodes, state: strongest(nodes), cloud };

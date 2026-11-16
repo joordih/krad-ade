@@ -10,17 +10,24 @@ version: finish what its line says is missing.
 
 - [~] **Pairing and connection.** Pair with a code, show connection state (connecting, waiting to
   retry, refused, open), forget this browser. Done: code entry, `#pair=`, connecting and
-  reconnecting lines (`src/ui/Pairing.tsx`, `App.tsx`). Missing: forget this browser. Desktop counterpart: Settings → Cloud runners pairing.
-  `src/runtime/http.ts`, `client.onStatus`.
+  reconnecting lines (`src/ui/Pairing.tsx`, `App.tsx`), forget this browser in the sidebar's small
+  "This browser" menu (`forgetPairing`). Missing: the desktop's pairing screen states and wording.
+  Desktop counterpart: Settings → Cloud runners pairing. `src/runtime/http.ts`, `client.onStatus`.
 - [ ] **Window frame, backdrop, top bar.** `../window_frame.rs`, `backdrop.rs`, `top_bar.rs`,
   `../theme.rs` (backdrop gradient, surface levels, shadows: `--krad-shadow-*`).
 - [~] **Sidebar.** Environments, groups, sessions, agent status dots, attention badges. `sidebar/`,
   `sessions_view.rs`, `attention/`. Areas: `environments`, `session`, `group`, `attention`. Done:
   environment switch, groups with branch, sessions with state, cloud sessions merged in
-  (`src/ui/Sidebar.tsx`). Missing: attention badges, new, rename, close session, kraddie sessions.
-- [ ] **Panes and tabs.** Session panes, tab strip, splitting, focus, drag to reorder. `session_pane/`,
+  (`src/ui/Sidebar.tsx`), new session in a group (with its first chat), rename and close a session,
+  mute a session, attention badges and a jump button that walks the waiting queue, Kraddie sessions
+  under their Kraddie, session menus by right click, long press or the phone's "..." button.
+  Missing: the attention inbox with its history filter, session icons and colours, sidebar density.
+- [~] **Panes and tabs.** Session panes, tab strip, splitting, focus, drag to reorder. `session_pane/`,
   `layout.rs`, `surface.rs`, `crates/krad-domain/src/persisted_layout/` (from the repo root) for its types. Tabs are runtime state (`node` area); pane
-  arrangement is per browser (keep it in `localStorage`).
+  arrangement is per browser (keep it in `localStorage`). Done: the tab strip with focus, a new chat
+  (default or a chosen harness), a new terminal with a chosen harness, close and rename a tab, and
+  tab menus by right click, long press or the phone's "..." button (`src/ui/SessionView.tsx`).
+  Missing: splitting, drag to reorder and the per-browser pane arrangement.
 - [ ] **Command palette.** `palette/`, `../components`, key bindings in `../keymap.rs`.
 - [ ] **Toasts and dialogs.** `toasts/`, `dialog_parts/`, `name_dialogs/`, `context_menu/`.
 
@@ -28,8 +35,9 @@ version: finish what its line says is missing.
 
 - [~] **Chat transcript.** Messages, tool calls, diffs, thinking, images, bookmarks, checkpoints,
   earlier pages. `surface/` (largest folder), `chat/`, `chat_search/`. Area: `chat`. Done: messages,
-  markdown, thinking, tool rows, earlier pages, follow scroll (`src/ui/chat/`). Missing: tool output
-  and diffs, images, checklists, bookmarks, checkpoints and rewind, search, opening a new chat.
+  markdown, thinking, tool rows, earlier pages, follow scroll, and opening or resuming a chat that
+  the runtime has not started yet from its tab (`src/ui/chat/`). Missing: tool output
+  and diffs, images, checklists, bookmarks, checkpoints and rewind, search.
 - [~] **Composer.** Text, mentions, attachments (`/upload` then the path), queueing, interrupt, model,
   effort, permission mode, slash commands. `surface/composer*`, `surface/mentions*`, `model_picker/`.
   Done: send, queue while working, interrupt, model, effort and permission mode pickers (popover on

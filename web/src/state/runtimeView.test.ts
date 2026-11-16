@@ -64,3 +64,18 @@ describe("chat events", () => {
     expect(view.chats[chatKey(chat)]!.asks).toHaveLength(0);
   });
 });
+
+describe("attention events", () => {
+  const target = { environment: "main", terminal: 4 };
+  const notice = { target, kind: "permission" as const, title: "agent 4", at: "2026-11-16T10:01:00Z" };
+
+  it("raises, leaves and clears the queue", () => {
+    let view = applyEvent(EMPTY_VIEW, event({ type: "attention_raised", ...notice }));
+    expect(view.attention.waiting).toHaveLength(1);
+    expect(view.attention.history).toHaveLength(1);
+    view = applyEvent(view, event({ type: "attention_left", target }, 2));
+    expect(view.attention.waiting).toHaveLength(0);
+    view = applyEvent(view, event({ type: "attention_history_cleared" }, 3));
+    expect(view.attention.history).toHaveLength(0);
+  });
+});

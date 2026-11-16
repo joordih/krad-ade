@@ -6,7 +6,16 @@ import type { EnvironmentChange } from "../protocol/EnvironmentChange";
 import type { EnvironmentData } from "../protocol/EnvironmentData";
 import type { Event } from "../protocol/Event";
 import type { Feed } from "../protocol/Feed";
+import type { KraddieState } from "../protocol/KraddieState";
 import type { Snapshot } from "../protocol/Snapshot";
+import {
+  attentionCleared,
+  attentionFromSnapshot,
+  attentionLeft,
+  attentionRaised,
+  EMPTY_ATTENTION,
+  type Attention,
+} from "./attention";
 
 export type ChatKey = string;
 
@@ -23,9 +32,16 @@ export type RuntimeView = {
   seq: number | undefined;
   environments: EnvironmentData[];
   chats: Record<ChatKey, ChatView>;
+  attention: Attention;
 };
 
-export const EMPTY_VIEW: RuntimeView = { snapshot: undefined, seq: undefined, environments: [], chats: {} };
+export const EMPTY_VIEW: RuntimeView = {
+  snapshot: undefined,
+  seq: undefined,
+  environments: [],
+  chats: {},
+  attention: EMPTY_ATTENTION,
+};
 
 export function chatKey(chat: AgentRef): ChatKey {
   return `${chat.environment}/${chat.terminal}`;
@@ -103,7 +119,20 @@ export function fromSnapshot(snapshot: Snapshot): RuntimeView {
       asks: summary.asks,
     };
   }
-  return { snapshot, seq: snapshot.seq, environments: snapshot.environments, chats };
+  return { snapshot, seq: snapshot.seq, environments: snapshot.environments, chats, attention: attentionFromSnapshot(snapshot.attention) };
+}
+
+function withKraddies(view: RuntimeView, change: (known: KraddieState[]) => KraddieState[]): RuntimeView {
+  if (!view.snapshot) return view;
+  const known = view.snapshot.kraddies.kraddies;
+  return {
+    ...view,
+    snapshot: { ...view.snapshot, kraddies: { ...view.snapshot.kraddies, kraddies: change(known) } },
+  };
+}
+
+function kraddieKey(state: KraddieState): string {
+  return state.key ?? state.kraddie.name;
 }
 
 export function applyEvent(view: RuntimeView, event: Event): RuntimeView {
@@ -132,6 +161,19 @@ export function applyEvent(view: RuntimeView, event: Event): RuntimeView {
       };
     case "settings_changed":
       return view.snapshot ? { ...view, snapshot: { ...view.snapshot, settings: kind.settings } } : view;
+    case "attention_raised":
+      return { ...view, attention: attentionRaised(view.attention, kind) };
+    case "attention_left":
+      return { ...view, attention: attentionLeft(view.attention, kind.target) };
+    case "attention_history_cleared":
+      return { ...view, attention: attentionCleared(view.attention) };
+    case "kraddie_changed":
+      return withKraddies(view, (known) => [
+        ...known.filter((state) => kraddieKey(state) !== kraddieKey(kind.kraddie)),
+        kind.kraddie,
+      ]);
+    case "kraddie_removed":
+      return withKraddies(view, (known) => known.filter((state) => kraddieKey(state) !== kind.kraddie));
     case "chat_opened":
     case "chat_state":
       return withChat(view, kind.chat, (chat) => ({ ...chat, state: kind.state }));

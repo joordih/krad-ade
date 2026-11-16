@@ -1,8 +1,13 @@
 import { useEffect, useRef } from "react";
 import type { AgentRef } from "../../protocol/AgentRef";
 import type { Command } from "../../protocol/Command";
+import type { TerminalNode } from "../../protocol/TerminalNode";
+import { openChatCommand } from "../../state/sessionEdits";
 import { chatKey } from "../../state/runtimeView";
 import type { AppStore, AppState, RuntimeKey } from "../../state/store";
+import { Icon } from "../Icon";
+import { sendCommand } from "../send";
+import { newResumeId } from "../uuid";
 import { AskCard } from "./AskCard";
 import { Composer } from "./Composer";
 import { Message } from "./Message";
@@ -14,12 +19,14 @@ export function ChatView({
   state,
   runtime,
   chat,
+  node,
   wide,
 }: {
   store: AppStore;
   state: AppState;
   runtime: RuntimeKey;
   chat: AgentRef;
+  node?: TerminalNode;
   wide: boolean;
 }) {
   const view = state.views[runtime];
@@ -40,7 +47,26 @@ export function ChatView({
   };
 
   if (!shown) {
-    return <div className="empty">This chat has not started on its runtime yet.</div>;
+    const resume = node?.resume;
+    return (
+      <div className="empty chat-start">
+        <Icon name="bubble-chat" />
+        <div className="chat-start-text">
+          <strong>This chat has not started on its runtime yet.</strong>
+          <span className="detail">
+            {resume
+              ? "Open it here to resume where the agent left off."
+              : "Open it here to start the agent in this tab."}
+          </span>
+        </div>
+        <button
+          className="button primary"
+          onClick={() => sendCommand(store, runtime, openChatCommand(chat, node, newResumeId))}
+        >
+          {resume ? "Resume chat" : "Open chat"}
+        </button>
+      </div>
+    );
   }
   return (
     <div className="chat">
