@@ -61,6 +61,11 @@ impl RuntimeServer {
         })
     }
 
+    #[must_use]
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     pub fn serve<L: Listener>(self: &Arc<Self>, listener: &L) {
         loop {
             let stream = match listener.accept() {

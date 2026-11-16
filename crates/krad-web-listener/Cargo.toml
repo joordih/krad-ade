@@ -7,6 +7,7 @@ repository.workspace = true
 build = "build.rs"
 
 [dependencies]
+base64.workspace = true
 futures.workspace = true
 krad-domain.workspace = true
 krad-host.workspace = true
@@ -14,6 +15,7 @@ krad-palette.workspace = true
 krad-protocol.workspace = true
 krad-runner = { workspace = true, features = ["runtime"] }
 krad-store.workspace = true
+ring.workspace = true
 rustls.workspace = true
 rustls-pki-types.workspace = true
 serde.workspace = true
@@ -21,6 +23,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tungstenite.workspace = true
+ureq.workspace = true
 
 [dev-dependencies]
 krad-domain.workspace = true

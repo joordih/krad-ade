@@ -3,12 +3,13 @@ include!(concat!(env!("OUT_DIR"), "/web_assets.rs"));
 const INDEX: &str = "index.html";
 const NOT_BUILT: &[u8] = b"<!doctype html><meta charset=utf-8><title>Krad Web</title><p>Krad Web was not built into this runtime.";
 const HTML: &str = "text/html; charset=utf-8";
-const CONTENT_TYPES: [(&str, &str); 12] = [
+const CONTENT_TYPES: [(&str, &str); 13] = [
     ("html", HTML),
     ("js", "text/javascript; charset=utf-8"),
     ("mjs", "text/javascript; charset=utf-8"),
     ("css", "text/css; charset=utf-8"),
     ("json", "application/json"),
+    ("webmanifest", "application/manifest+json"),
     ("svg", "image/svg+xml"),
     ("png", "image/png"),
     ("ico", "image/x-icon"),

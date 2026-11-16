@@ -4140,6 +4140,7 @@ dependencies = [
 name = "krad-web-listener"
 version = "0.4.1"
 dependencies = [
+ "base64 0.22.1",
  "futures",
  "krad-domain",
  "krad-host",
@@ -4148,6 +4149,7 @@ dependencies = [
  "krad-runner",
  "krad-runtime",
  "krad-store",
+ "ring",
  "rustls",
  "rustls-pki-types",
  "serde",
@@ -4155,6 +4157,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "tungstenite",
+ "ureq",
 ]
 
 [[package]]

@@ -110,6 +110,7 @@ ratex-svg = { version = "0.1.15", features = ["embed-fonts"] }
 ratex-types = "0.1.15"
 qrcode = { version = "0.14", default-features = false }
 raw-window-handle = "0.6"
+ring = "0.17"
 rustls = { version = "0.23", default-features = false, features = [
   "ring",
   "std",

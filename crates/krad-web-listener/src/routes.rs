@@ -16,12 +16,14 @@ use crate::assets::asset;
 use crate::cookie::{clear_pairing, pairing_of, set_pairing};
 use crate::guard::Guard;
 use crate::http::{read_request, HttpError, Request, Response, STRICT_TRANSPORT, UPLOAD_PATH};
+use crate::push::{Push, Subscription};
 use crate::socket::{self, WebStream};
 use crate::tls::Wire;
 
 pub(crate) const RUNTIME_PATH: &str = "/runtime";
 pub(crate) const PAIRING_PATH: &str = "/pairing";
 pub(crate) const THEME_PATH: &str = "/theme.css";
+pub(crate) const PUSH_PATH: &str = "/push";
 const CSS: &str = "text/css; charset=utf-8";
 const HEAD_TIMEOUT: Duration = Duration::from_secs(15);
 const JSON: &str = "application/json";
@@ -45,6 +47,16 @@ struct Redeem {
     device: DeviceName,
 }
 
+#[derive(Deserialize)]
+struct Lapsed {
+    endpoint: String,
+}
+
+#[derive(Serialize)]
+struct PushKey {
+    key: String,
+}
+
 #[derive(Serialize)]
 struct Refusal<'a> {
     error: &'a str,
@@ -55,6 +67,7 @@ pub(crate) struct Routes {
     pub(crate) guard: Guard,
     pub(crate) secure: bool,
     pub(crate) streams: SyncSender<WebStream>,
+    pub(crate) push: Option<Arc<Push>>,
 }
 
 enum Next {
@@ -136,6 +149,7 @@ impl Routes {
             ("DELETE", PAIRING_PATH) => self.forget(wire, request),
             ("GET", THEME_PATH) => self.theme(wire),
             ("POST", UPLOAD_PATH) => self.upload(wire, request),
+            ("GET" | "POST" | "DELETE", PUSH_PATH) => self.push(wire, request),
             ("GET" | "HEAD", _) => match asset(&request.path) {
                 Some(found) => {
                     let body = if request.method == "HEAD" {
@@ -260,6 +274,42 @@ impl Routes {
             Some(Answer::Failed { message, .. }) => self.refuse(wire, BAD_REQUEST, &message),
             Some(_) => self.refuse(wire, FAILED, "the runtime answered something else"),
             None => self.answer(wire, &status(UNAVAILABLE)),
+        }
+    }
+
+    fn push(&self, wire: &mut Wire, request: &Request) -> Next {
+        if !self.guard.same_origin(request) {
+            return self.refuse(wire, FORBIDDEN, "cross-origin request");
+        }
+        let allowed = pairing_of(request)
+            .and_then(|pairing| self.server.authorize(&pairing))
+            .is_some_and(|permissions| permissions.allows(PairingPermission::Read));
+        if !allowed {
+            return self.refuse(wire, FORBIDDEN, "this browser is not paired");
+        }
+        let Some(push) = &self.push else {
+            return self.answer(wire, &status(UNAVAILABLE));
+        };
+        let kept = match request.method.as_str() {
+            "GET" => {
+                let body = serde_json::to_vec(&PushKey {
+                    key: push.public_key(),
+                })
+                .unwrap_or_default();
+                return self.answer(wire, &status(OK).with_body(JSON, &body));
+            }
+            "POST" => match serde_json::from_slice::<Subscription>(&request.body) {
+                Ok(subscription) => push.subscribe(subscription),
+                Err(_) => return self.refuse(wire, BAD_REQUEST, "expected a push subscription"),
+            },
+            _ => match serde_json::from_slice::<Lapsed>(&request.body) {
+                Ok(lapsed) => push.unsubscribe(&lapsed.endpoint),
+                Err(_) => return self.refuse(wire, BAD_REQUEST, "expected an endpoint"),
+            },
+        };
+        match kept {
+            Ok(()) => self.answer(wire, &status(NO_CONTENT)),
+            Err(error) => self.refuse(wire, BAD_REQUEST, &error.to_string()),
         }
     }
 

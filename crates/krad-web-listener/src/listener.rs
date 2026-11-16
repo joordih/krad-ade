@@ -9,6 +9,7 @@ use std::thread;
 
 use crate::config::{read_web_access, WebAccess, WebAccessError};
 use crate::guard::Guard;
+use crate::push::{watch, Push};
 use crate::routes::Routes;
 use crate::socket::WebStream;
 use crate::tls::{Certificates, Wire};
@@ -96,6 +97,21 @@ impl Acceptor {
     }
 }
 
+fn start_push(server: &Arc<RuntimeServer>) -> Option<Arc<Push>> {
+    let push = match Push::open(server.root()) {
+        Ok(push) => Arc::new(push),
+        Err(error) => {
+            tracing::warn!(%error, "push notifications are off");
+            return None;
+        }
+    };
+    if let Err(error) = watch(server, Arc::clone(&push)) {
+        tracing::warn!(%error, "push notifications could not watch the runtime");
+        return None;
+    }
+    Some(push)
+}
+
 /// # Errors
 ///
 /// Fails when the settings are refused, the certificate cannot be loaded or the address cannot
@@ -109,12 +125,14 @@ pub fn bind_web_access(
     let socket = TcpListener::bind(access.bind)?;
     let address = socket.local_addr()?;
     let (sender, streams) = mpsc::sync_channel(PENDING_STREAMS);
+    let push = start_push(server);
     let acceptor = Acceptor {
         routes: Arc::new(Routes {
             server: Arc::clone(server),
             guard: Guard::new(address, &access.names, access.secure()),
             secure: access.secure(),
             streams: sender,
+            push,
         }),
         certificates,
         open: Arc::new(AtomicUsize::new(0)),
