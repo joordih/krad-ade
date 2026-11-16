@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted (amended by ADR-0059)
 ---
 
 # Web clients reach runtimes over a WebSocket on the private network only

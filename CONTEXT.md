@@ -473,11 +473,11 @@ What drives a runtime: the app's window for its own runtime and for each cloud r
 _Avoid_: frontend, UI, consumer, view
 
 **Web client**:
-Krad in a browser: a client with the same look and functions as the app's window, served by the runtime it drives, which the user pairs with this computer's runtime and with each cloud runner separately, showing their sessions together like the app does. It only reaches runtimes on the user's private network and has no window-only features such as the dock badge or the native menu.
+Krad in a browser, on a computer or a phone: a client with the functions of the app's window, served by this computer's runtime and paired with it once. It sees the same groups, sessions, chats, history, Kraddies and automations as the app, cloud sessions included, because this computer's runtime reaches the cloud runners for it. On a large screen it looks like the app's window; on a phone it keeps the functions with a layout of its own. It only reaches runtimes on the user's private network and has no window-only features such as the dock badge or the native menu.
 _Avoid_: web app, dashboard, remote UI, browser app
 
 **Web access**:
-The setting of a runtime that lets web clients reach and pair with it, off until the user turns it on.
+The setting of this computer's runtime that lets web clients reach and pair with it, off until the user turns it on from the app; turning it on keeps the runtime running as a service, serves it on the private network and shows a code to pair a browser. While it is on and an agent works or waits for an answer, the computer stays awake.
 _Avoid_: web server, remote access, exposure
 
 **Command**:
