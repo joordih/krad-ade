@@ -193,7 +193,7 @@ mod tests {
     fn manifest(version: &str) -> Result<ReleaseManifest, serde_json::Error> {
         serde_json::from_value(serde_json::json!({
             "version": version,
-            "builds": {
+            "targets": {
                 "aarch64-macos": { "file": "app.tar.gz", "size": 1, "signature": SIGNATURE }
             }
         }))

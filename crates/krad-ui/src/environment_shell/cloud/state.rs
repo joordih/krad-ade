@@ -1,4 +1,4 @@
-use krad_domain::{Linger, RunnerState, PROCESS_WIRE_LAST_RELEASE};
+use krad_domain::{Linger, RunnerState};
 use std::borrow::Cow;
 
 use super::super::runtime_view::RunnerReach;
@@ -12,11 +12,6 @@ const READY: &str = "Ready";
 const UPDATE_PENDING: &str = "Ready; the update starts once no session runs";
 const FAILED_PREFIX: &str = "Failed: ";
 const REACHING_RUNTIME: &str = "Reaching its runtime";
-const RUNTIME_UPDATE_PENDING: &str = "Update pending: it keeps only processes until it runs the \
-                                      new version. Update it before the next release, which no \
-                                      longer drives older runners";
-const OUTDATED_RUNNER: &str = "runs an older runner that only versions up to";
-const OUTDATED_RUNNER_SUFFIX: &str = "can drive: update it before the next release";
 const RUNTIME_PREFIX: &str = "Runtime";
 const ONE_SESSION: &str = "1 session";
 const SESSIONS_SUFFIX: &str = "sessions";
@@ -41,7 +36,6 @@ pub(in crate::environment_shell) fn reach_label(
 ) -> Cow<'static, str> {
     match reach {
         RunnerReach::Connecting => Cow::Borrowed(REACHING_RUNTIME),
-        RunnerReach::ProcessWire => Cow::Borrowed(RUNTIME_UPDATE_PENDING),
         RunnerReach::Connected { build } if sessions == 1 => {
             Cow::Owned(format!("{RUNTIME_PREFIX} {build}, {ONE_SESSION}"))
         }
@@ -49,10 +43,6 @@ pub(in crate::environment_shell) fn reach_label(
             "{RUNTIME_PREFIX} {build}, {sessions} {SESSIONS_SUFFIX}"
         )),
     }
-}
-
-pub(in crate::environment_shell) fn outdated_runner_toast(runner: &str) -> String {
-    format!("{runner} {OUTDATED_RUNNER} {PROCESS_WIRE_LAST_RELEASE} {OUTDATED_RUNNER_SUFFIX}")
 }
 
 pub(in crate::environment_shell) fn linger_warning(state: &RunnerState) -> Option<&'static str> {
@@ -82,27 +72,12 @@ mod tests {
     }
 
     #[test]
-    fn an_older_runner_reads_as_update_pending_and_a_reached_one_counts_its_sessions() {
-        assert_eq!(
-            reach_label(&RunnerReach::ProcessWire, 0),
-            RUNTIME_UPDATE_PENDING
-        );
+    fn a_runner_being_reached_says_so_and_a_reached_one_counts_its_sessions() {
+        assert_eq!(reach_label(&RunnerReach::Connecting, 0), REACHING_RUNTIME);
         let connected = RunnerReach::Connected {
             build: "0.9.0".to_owned(),
         };
         assert_eq!(reach_label(&connected, 1), "Runtime 0.9.0, 1 session");
         assert_eq!(reach_label(&connected, 3), "Runtime 0.9.0, 3 sessions");
-    }
-
-    #[test]
-    fn an_older_runner_is_told_to_update_before_the_release_that_drops_the_process_wire() {
-        assert!(RUNTIME_UPDATE_PENDING.contains("before the next release"));
-        assert_eq!(
-            outdated_runner_toast("gpu"),
-            format!(
-                "gpu runs an older runner that only versions up to {PROCESS_WIRE_LAST_RELEASE} \
-                 can drive: update it before the next release"
-            )
-        );
     }
 }

@@ -3,7 +3,6 @@ use std::fmt;
 
 pub const MAX_COMPASS_CHARS: usize = 20_000;
 pub const COMPASS_FILE: &str = "compass.md";
-pub const LEGACY_COMPASS_FILE: &str = "soul.md";
 pub const DEFAULT_COMPASS: &str = "# Compass\n\nPoint me the right way. A few lines go a long way:\n\n- what matters most in this project\n- what I should leave alone\n- how you like to hear back from me\n";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

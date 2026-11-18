@@ -98,10 +98,6 @@ impl EnvironmentShell {
                 self.chat_event_heard(RuntimeId::Runner(runner), *kind, cx);
                 return Reach::Shown;
             }
-            Heard::RunnerOutdated(runner) => {
-                self.runner_outdated(runner, cx);
-                return Reach::Shown;
-            }
             Heard::RemoteReplaced(runner) => {
                 self.follow_hosted_places(cx);
                 self.reseed_hosted_chats(runner, cx);

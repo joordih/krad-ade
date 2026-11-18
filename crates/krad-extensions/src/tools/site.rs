@@ -175,13 +175,10 @@ impl LanguageTools {
             .registry
             .package(&plan.package)
             .map(|package| package.purl.version.clone());
-        let versioned = self.package_dir_at(site, plan);
-        let legacy = site.root.join(PACKAGES_DIR).join(&plan.package);
-        [versioned, legacy].into_iter().find(|dir| {
-            installed_version(site.link, dir).is_some_and(|installed| {
-                current.as_ref().is_none_or(|current| *current == installed)
-            })
-        })
+        let dir = self.package_dir_at(site, plan);
+        installed_version(site.link, &dir)
+            .is_some_and(|installed| current.as_ref().is_none_or(|current| *current == installed))
+            .then_some(dir)
     }
 
     fn found_server_runtimes_at<F: FindServerRuntime>(

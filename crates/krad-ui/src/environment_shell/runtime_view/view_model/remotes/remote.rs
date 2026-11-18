@@ -17,7 +17,6 @@ use super::backoff::Backoff;
 pub(in crate::environment_shell) enum RunnerReach {
     Connecting,
     Connected { build: String },
-    ProcessWire,
 }
 
 pub(in crate::environment_shell) struct RemoteChat {

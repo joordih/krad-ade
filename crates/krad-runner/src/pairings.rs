@@ -1,11 +1,9 @@
 #[cfg(any(test, feature = "runtime"))]
 mod devices;
-mod migration;
 mod stored;
 
 #[cfg(any(test, feature = "runtime"))]
 pub(crate) use devices::paired_devices;
-pub(crate) use migration::{migrate_plain_tokens, SSH_DEVICE};
 
 use krad_domain::{DeviceName, InstallId, Pairing, PairingPermissions, PairingToken, Timestamp};
 use krad_host::new_pairing_token;
@@ -16,6 +14,7 @@ use std::path::Path;
 
 use self::stored::{read_stored, write_stored, StoredPairing, TokenHash};
 
+pub(crate) const SSH_DEVICE: &str = "paired over SSH";
 const BAD_TOKEN: &str = "the cloud runner could not make a pairing token";
 
 pub(crate) fn pair(

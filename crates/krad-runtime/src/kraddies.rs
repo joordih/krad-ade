@@ -167,9 +167,6 @@ impl Kraddies {
     }
 
     fn read_shelf(&mut self, files: &KraddieShelf) {
-        for error in files.settle_folder() {
-            tracing::warn!(%error, "old Kraddie file not moved; it loads where it is");
-        }
         let today = self.clock.now().date();
         for shelved in files.read_all() {
             let id = shelved.kraddie.id();

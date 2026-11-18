@@ -416,7 +416,7 @@ fn kraddie_verbs_list_and_wake_kraddies_by_name() -> Result<(), CliError> {
 }
 
 #[test]
-fn kraddie_chats_memory_and_sharing_go_through_the_cli_and_the_pet_alias() -> Result<(), CliError> {
+fn kraddie_chats_memory_and_sharing_go_through_the_cli() -> Result<(), CliError> {
     assert_eq!(
         request_of("kraddie", &["chat", "new", "nightly"])?,
         Some(Request::NewKraddieChat {
@@ -424,14 +424,14 @@ fn kraddie_chats_memory_and_sharing_go_through_the_cli_and_the_pet_alias() -> Re
         })
     );
     assert_eq!(
-        request_of("pet", &["memory", "show", "nightly", "--json"])?,
+        request_of("kraddie", &["memory", "show", "nightly", "--json"])?,
         Some(Request::KraddieRecall {
             name: "nightly".to_owned(),
             view: crate::protocol::RecallView::Show,
         })
     );
     assert_eq!(
-        request_of("pet", &["share", "nightly", "linter"])?,
+        request_of("kraddie", &["share", "nightly", "linter"])?,
         Some(Request::ShareKraddieMemory {
             reader: "nightly".to_owned(),
             from: "linter".to_owned(),
@@ -853,18 +853,13 @@ fn automations_render_as_lines_and_refusals_keep_their_exit_code() {
 }
 
 #[test]
-fn the_old_verb_still_reaches_kraddies_but_stays_out_of_the_usage() -> Result<(), CliError> {
-    let old = super::verb::LEGACY_KRADDIE_VERB;
-    assert_eq!(request_of(old, &["list"])?, Some(Request::Kraddies));
+fn the_former_kraddie_verb_is_an_unknown_command() {
+    const FORMER_VERB: &str = "pet";
     assert_eq!(
-        request_of(old, &["memory", "nightly"])?,
-        Some(Request::KraddieMemory {
-            name: "nightly".to_owned(),
-        })
+        FORMER_VERB.parse::<Verb>(),
+        Err(CliError::UnknownCommand(FORMER_VERB.to_owned()))
     );
-    assert_eq!(request_of(old, &[]), Err(CliError::KraddieNeedsAction));
     let usage = usage(CLI_NAME);
     assert!(usage.contains("|kraddie|"), "{usage}");
-    assert!(!usage.contains(&format!("|{old}|")), "{usage}");
-    Ok(())
+    assert!(!usage.contains(&format!("|{FORMER_VERB}|")), "{usage}");
 }

@@ -714,7 +714,6 @@ instead of text (for `status`, an object with `working`, `waiting_for_input`, `d
 | `krad api info [--show-token]` | `Hello` and the [staleness check](#finding-the-endpoint) |
 | `krad help [lead]` | The guide |
 
-`krad pet` still runs `krad kraddie`, from the feature's former name; it is not listed in the help.
 The verbs `hook`, `ask`, `statusline` and `mcp` are run by the harnesses the app configures, not by
 people, and are not listed either.
 

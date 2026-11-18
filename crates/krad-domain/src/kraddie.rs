@@ -5,7 +5,6 @@ mod design;
 mod file;
 mod heatmap;
 mod history;
-mod legacy;
 mod limiter;
 mod memory;
 mod mind;
@@ -29,8 +28,7 @@ pub use automation::{
     MAX_INSTRUCTIONS_CHARS, MAX_TRIGGERS, UNTITLED,
 };
 pub use compass::{
-    CompassTooLong, KraddieCompass, COMPASS_FILE, DEFAULT_COMPASS, LEGACY_COMPASS_FILE,
-    MAX_COMPASS_CHARS,
+    CompassTooLong, KraddieCompass, COMPASS_FILE, DEFAULT_COMPASS, MAX_COMPASS_CHARS,
 };
 pub use heatmap::{
     HeatCell, HeatLevel, HeatMap, HeatMetric, HeatWeek, MonthLabel, DAYS_PER_WEEK, HEATMAP_MONTHS,
@@ -52,7 +50,7 @@ pub use design::{
 };
 pub use file::{
     KraddieFile, KraddieFileError, KraddieFormatVersion, ReadKraddie, KRADDIE_FILE_EXTENSION,
-    KRADDIE_FORMAT_VERSION, LEGACY_KRADDIE_FILE_EXTENSION,
+    KRADDIE_FORMAT_VERSION,
 };
 pub use history::{
     KraddieHistory, KraddieOutcome, KraddieRun, KraddieRunId, KraddieSessionLink,

@@ -66,15 +66,6 @@ impl EnvironmentShell {
         self.toast(ToastKind::Error, &text, cx);
     }
 
-    pub(in crate::environment_shell) fn runner_outdated(
-        &mut self,
-        runner: CloudRunnerId,
-        cx: &mut Context<Self>,
-    ) {
-        let text = super::outdated_runner_toast(&self.runner_name(runner));
-        self.toast(ToastKind::Warning, &text, cx);
-    }
-
     pub(in crate::environment_shell) fn shown_hosted_place(&self) -> Option<ChatPlace> {
         self.cloud.shown.as_ref().map(HostedChatKey::place)
     }

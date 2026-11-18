@@ -335,7 +335,7 @@ Agent a lead starts through the bus to do part of the work, briefed to report ba
 _Avoid_: sub-agent, child, job, terminal
 
 **Kraddie**:
-The creature species of the app, and the feature named after it (the Kraddies): a Worker with an identity that lives between sessions, with a name the user gives it (there is no default name), a painted design, a harness and model and the repository it works in. It owns automations, its routines, and each of their runs works as a Worker session without a lead, reporting through the attention queue. Kept as a `.kraddie` file in the user's config folder (older `.kradpet` files and the folder of its former name still load), with its automations next to it. Its base art is also called Kraddie.
+The creature species of the app, and the feature named after it (the Kraddies): a Worker with an identity that lives between sessions, with a name the user gives it (there is no default name), a painted design, a harness and model and the repository it works in. It owns automations, its routines, and each of their runs works as a Worker session without a lead, reporting through the attention queue. Kept as a `.kraddie` file in the user's config folder, with its automations next to it. Its base art is also called Kraddie.
 _Avoid_: bot, cron job, mascot
 
 **Automation**:

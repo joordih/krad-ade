@@ -6,7 +6,6 @@ use krad_domain::{
 };
 use krad_protocol::{CloudCommand, Command, SentPrompt};
 
-use super::super::runtime_view::RunnerReach;
 use super::super::surface::Backend;
 use super::super::EnvironmentShell;
 
@@ -16,7 +15,6 @@ const SIGNING_IN: &str = "Signing in";
 const INSTALLING: &str = "Installing";
 const NOT_CONNECTED: &str = "Not connected";
 const FAILED: &str = "Failed";
-const UPDATE_PENDING: &str = "Update pending";
 const UNKNOWN: &str = "Unknown";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -58,19 +56,15 @@ pub(in crate::environment_shell) struct RunOnOffer {
     pub(in crate::environment_shell) run_on: RunOn,
 }
 
-const fn state_label(state: &RunnerState, reach: Option<&RunnerReach>) -> &'static str {
-    match (state, reach) {
-        (
-            RunnerState::Ready { .. } | RunnerState::UpdatePending { .. },
-            Some(RunnerReach::ProcessWire),
-        ) => UPDATE_PENDING,
-        (RunnerState::Ready { .. } | RunnerState::UpdatePending { .. }, _) => READY,
-        (RunnerState::Connecting, _) => CONNECTING,
-        (RunnerState::SigningIn, _) => SIGNING_IN,
-        (RunnerState::Installing, _) => INSTALLING,
-        (RunnerState::NotConnected, _) => NOT_CONNECTED,
-        (RunnerState::Failed { .. }, _) => FAILED,
-        (RunnerState::Unknown, _) => UNKNOWN,
+const fn state_label(state: &RunnerState) -> &'static str {
+    match state {
+        RunnerState::Ready { .. } | RunnerState::UpdatePending { .. } => READY,
+        RunnerState::Connecting => CONNECTING,
+        RunnerState::SigningIn => SIGNING_IN,
+        RunnerState::Installing => INSTALLING,
+        RunnerState::NotConnected => NOT_CONNECTED,
+        RunnerState::Failed { .. } => FAILED,
+        RunnerState::Unknown => UNKNOWN,
     }
 }
 
@@ -81,7 +75,7 @@ const fn takes_sessions(state: &RunnerState) -> bool {
 pub(in crate::environment_shell) fn run_on_choices(
     here: String,
     runners: &[CloudRunner],
-    reached: impl Fn(CloudRunnerId) -> (RunnerState, Option<RunnerReach>),
+    state_of: impl Fn(CloudRunnerId) -> RunnerState,
 ) -> Vec<RunOnChoice> {
     let local = RunOnChoice {
         run_on: RunOn::Here,
@@ -90,11 +84,11 @@ pub(in crate::environment_shell) fn run_on_choices(
         open: true,
     };
     let remote = runners.iter().map(|runner| {
-        let (state, reach) = reached(runner.id);
+        let state = state_of(runner.id);
         RunOnChoice {
             run_on: RunOn::Runner(runner.id),
             label: runner.name.as_str().to_owned(),
-            state: Some(state_label(&state, reach.as_ref())),
+            state: Some(state_label(&state)),
             open: takes_sessions(&state),
         }
     });
@@ -138,14 +132,10 @@ impl EnvironmentShell {
     }
 
     pub(in crate::environment_shell) fn run_on_choices(&self, cx: &App) -> Vec<RunOnChoice> {
-        let remotes = &self.runtime.view.read(cx).remotes;
         run_on_choices(
             self.run_on_here_label(),
             &self.runtime.settings.cloud.runners,
-            |runner| {
-                let reach = remotes.get(runner).map(|remote| remote.reach.clone());
-                (self.runner_state(runner, cx), reach)
-            },
+            |runner| self.runner_state(runner, cx),
         )
     }
 
@@ -248,7 +238,6 @@ mod tests {
         let runners = [
             runner(1, "gpu"),
             runner(2, "lab"),
-            runner(3, "old"),
             runner(4, "vm"),
             runner(5, "far"),
         ];
@@ -256,21 +245,12 @@ mod tests {
             linger: Linger::Enabled,
         };
         let choices = run_on_choices("This computer".to_owned(), &runners, |id| match id.0 {
-            1 => (
-                ready.clone(),
-                Some(RunnerReach::Connected {
-                    build: "0.4.2".to_owned(),
-                }),
-            ),
-            2 => (RunnerState::Connecting, None),
-            3 => (ready.clone(), Some(RunnerReach::ProcessWire)),
-            4 => (RunnerState::SigningIn, None),
-            _ => (
-                RunnerState::Failed {
-                    reason: "no route".to_owned(),
-                },
-                None,
-            ),
+            1 => ready.clone(),
+            2 => RunnerState::Connecting,
+            4 => RunnerState::SigningIn,
+            _ => RunnerState::Failed {
+                reason: "no route".to_owned(),
+            },
         });
         let read: Vec<(RunOn, &str, Option<&str>, bool)> = choices
             .iter()
@@ -292,12 +272,6 @@ mod tests {
                     RunOn::Runner(CloudRunnerId(2)),
                     "lab",
                     Some(CONNECTING),
-                    true
-                ),
-                (
-                    RunOn::Runner(CloudRunnerId(3)),
-                    "old",
-                    Some(UPDATE_PENDING),
                     true
                 ),
                 (

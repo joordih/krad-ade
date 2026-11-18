@@ -22,8 +22,6 @@ pub(crate) struct ReleaseManifest {
     #[serde(default)]
     pub(crate) notes: String,
     #[serde(default, deserialize_with = "known_targets")]
-    builds: HashMap<ReleaseTarget, ReleaseBuild>,
-    #[serde(default, deserialize_with = "known_targets")]
     targets: HashMap<ReleaseTarget, ReleaseBuild>,
 }
 
@@ -49,9 +47,7 @@ pub(crate) struct ReleaseTargetError(String);
 
 impl ReleaseManifest {
     pub(crate) fn build(&self, target: ReleaseTarget) -> Option<&ReleaseBuild> {
-        self.targets
-            .get(&target)
-            .or_else(|| self.builds.get(&target))
+        self.targets.get(&target)
     }
 }
 
@@ -150,7 +146,7 @@ mod tests {
         serde_json::json!({
             "version": "0.2.0",
             "notes": "Faster chats",
-            "builds": {
+            "targets": {
                 "aarch64-macos": { "file": file, "size": 5, "signature": SIGNATURE }
             }
         })
@@ -181,11 +177,6 @@ mod tests {
     fn picks_the_build_of_each_architecture() -> TestResult {
         let manifest: ReleaseManifest = serde_json::from_value(serde_json::json!({
             "version": "0.4.0",
-            "builds": {
-                "aarch64-macos": build("legacy-aarch64-macos.app.tar.gz"),
-                "x86_64-windows": build("legacy-setup.exe"),
-                "x86_64-linux": build("legacy-x86_64-linux.tar.gz")
-            },
             "targets": {
                 "aarch64-macos": build("aarch64-macos.app.tar.gz"),
                 "x86_64-macos": build("x86_64-macos.app.tar.gz"),
@@ -205,21 +196,6 @@ mod tests {
             let picked = manifest.build(target).ok_or("no build picked")?;
             assert_eq!(picked.file.as_ref(), file, "{target:?}");
         }
-        Ok(())
-    }
-
-    #[test]
-    fn a_target_only_in_the_legacy_builds_still_resolves() -> TestResult {
-        let manifest: ReleaseManifest = serde_json::from_value(serde_json::json!({
-            "version": "0.4.0",
-            "builds": { "x86_64-linux": build("x86_64-linux.tar.gz") },
-            "targets": { "aarch64-linux": build("aarch64-linux.tar.gz") }
-        }))?;
-        let linux = manifest
-            .build(ReleaseTarget::LinuxX86_64)
-            .ok_or("no x86_64 Linux build")?;
-        assert_eq!(linux.file.as_ref(), "x86_64-linux.tar.gz");
-        assert!(manifest.build(ReleaseTarget::MacosX86_64).is_none());
         Ok(())
     }
 

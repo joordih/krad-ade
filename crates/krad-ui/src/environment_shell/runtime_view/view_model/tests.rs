@@ -12,8 +12,9 @@ use krad_protocol::{
     UsageSnapshot,
 };
 use std::sync::Arc;
+use std::time::Duration;
 
-use super::remotes::Reached;
+use super::remotes::{Adopted, Reached};
 use super::{Area, Heard, News, RunnerReach, ViewModel};
 use crate::fake_client::RecordedClient;
 
@@ -264,16 +265,26 @@ fn a_reached_runner_s_sessions_come_from_its_own_feed_tagged_with_its_runtime() 
 }
 
 #[test]
-fn an_older_runner_keeps_the_process_wire_until_it_leaves_ready() {
+fn a_runner_whose_runtime_is_out_of_reach_is_retried_with_a_growing_wait() {
     let runner = CloudRunnerId(RUNNER);
     let mut model = ViewModel::default();
     runner_moved(&mut model, ready());
     let connection = model.remotes.reaching(runner);
-    let follow = model.adopt_reached(runner, connection, Reached::ProcessWire);
-    assert!(follow.is_none());
+    let waits: Vec<Option<Duration>> = (0..2)
+        .map(
+            |_| match model.adopt_reached(runner, connection, Reached::OutOfReach) {
+                Some(Adopted::RetryIn(wait)) => Some(wait),
+                _ => None,
+            },
+        )
+        .collect();
+    assert_eq!(
+        waits,
+        [Some(Duration::from_secs(1)), Some(Duration::from_secs(2))]
+    );
     assert_eq!(
         model.remotes.get(runner).map(|remote| remote.reach.clone()),
-        Some(RunnerReach::ProcessWire)
+        Some(RunnerReach::Connecting)
     );
     runner_moved(&mut model, RunnerState::NotConnected);
     assert!(model.remotes.get(runner).is_none());
@@ -291,25 +302,6 @@ fn an_older_runner_keeps_the_process_wire_until_it_leaves_ready() {
         late.is_none() && model.remotes.get(runner).is_none(),
         "a connection that finishes after its runner left is dropped"
     );
-}
-
-#[test]
-fn an_older_runner_is_told_to_update_once_however_often_it_reconnects() {
-    let runner = CloudRunnerId(RUNNER);
-    let mut model = ViewModel::default();
-    runner_moved(&mut model, ready());
-    let mut told = 0;
-    for _ in 0..2 {
-        let connection = model.remotes.reaching(runner);
-        model.adopt_reached(runner, connection, Reached::ProcessWire);
-        told += model
-            .take_news()
-            .heard
-            .iter()
-            .filter(|heard| matches!(heard, Heard::RunnerOutdated(outdated) if *outdated == runner))
-            .count();
-    }
-    assert_eq!(told, 1);
 }
 
 #[test]

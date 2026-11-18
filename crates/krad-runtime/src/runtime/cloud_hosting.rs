@@ -145,10 +145,6 @@ impl Runtime {
 
     pub(super) fn hand_over_cloud_session(&mut self, ready: &ReadyRunner, mut draft: CloudDraft) {
         let runner = draft.request.runner;
-        let fallback = Box::new(CloudDraft {
-            reach: CloudReach::ProcessWire,
-            ..draft.clone()
-        });
         if draft.carried.is_empty() && draft.starts.is_empty() {
             draft.starts = vec![fresh_start(self.default_cloud_harness(), None)];
         }
@@ -171,7 +167,6 @@ impl Runtime {
             runner,
             slug,
             handed: hand_over(over),
-            fallback,
         });
     }
 
@@ -179,17 +174,9 @@ impl Runtime {
         &mut self,
         (runner, slug): (CloudRunnerId, String),
         handed: Result<(), HandOverError>,
-        fallback: CloudDraft,
     ) {
         match handed {
             Ok(()) => self.cloud_news(CloudNews::Hosted { runner, slug }),
-            Err(HandOverError::NoRuntime(reason)) => {
-                tracing::info!(%runner, %reason, "the runner keeps the cloud session on its process wire");
-                match self.runners.directory.get(runner) {
-                    Some(ready) => self.prepare_on_the_wire(&ready.link, fallback),
-                    None => self.cloud_news(CloudNews::NotPrepared { error: reason }),
-                }
-            }
             Err(error) => {
                 tracing::warn!(%runner, %error, "the cloud session was not handed to the runner");
                 let error = error.to_string();

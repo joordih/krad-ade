@@ -4,8 +4,6 @@ use std::time::SystemTime;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-const LEGACY_FOLDER: &str = "pets";
-
 fn scratch(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("krad-store-kraddies-{name}-{}", std::process::id()))
 }
@@ -36,7 +34,7 @@ fn kraddies_their_automations_and_each_history_live_in_their_own_files() -> Test
     shelf.write_automations(&kraddie.id(), &automations)?;
     let key = AutomationKey::new(kraddie.id(), AutomationId(2));
     shelf.write_history(&key, &finished_once())?;
-    std::fs::write(dir.join("broken.kradpet"), b"{")?;
+    std::fs::write(dir.join("broken.kraddie"), b"{")?;
     let read = shelf.read_all();
     let [shelved] = read.as_slice() else {
         unreachable!("one Kraddie");
@@ -61,45 +59,6 @@ fn kraddies_their_automations_and_each_history_live_in_their_own_files() -> Test
 }
 
 #[test]
-fn an_old_kraddie_file_migrates_once_and_keeps_its_run_history() -> TestResult {
-    let dir = scratch("migrate");
-    std::fs::create_dir_all(&dir)?;
-    let shelf = KraddieShelf::at(dir.clone());
-    let kraddie = Kraddie::new("Gardener".parse()?, AgentPreset::Codex);
-    let old = KraddieFile::new(kraddie.clone(), Vec::new())
-        .write()?
-        .replace("\"format\": 2", "\"format\": 1")
-        .replacen(
-            "\"switch\": \"on\"",
-            "\"switch\": \"on\", \"instructions\": \"Weed the backlog.\"",
-            1,
-        );
-    std::fs::write(dir.join("gardener.kradpet"), old)?;
-    std::fs::write(
-        dir.join("gardener.json"),
-        serde_json::to_vec(&finished_once())?,
-    )?;
-    let first = shelf.read_all();
-    let [shelved] = first.as_slice() else {
-        unreachable!("one Kraddie");
-    };
-    let [migrated] = shelved.automations.as_slice() else {
-        unreachable!("one automation");
-    };
-    assert_eq!(migrated.automation.instructions, "Weed the backlog.");
-    assert_eq!(migrated.history.len(), 1);
-    assert!(!dir.join("gardener.json").exists());
-    assert!(dir.join("gardener.1.runs.json").exists());
-    assert!(!dir.join("gardener.kradpet").exists());
-    let rewritten = std::fs::read_to_string(dir.join("gardener.kraddie"))?;
-    assert!(rewritten.contains("\"format\": 2"), "{rewritten}");
-    assert!(!rewritten.contains("Weed"), "{rewritten}");
-    assert_eq!(shelf.read_all(), first);
-    std::fs::remove_dir_all(&dir)?;
-    Ok(())
-}
-
-#[test]
 fn an_exported_kraddie_imports_back_with_its_automations_and_junk_is_refused() -> TestResult {
     let dir = scratch("export");
     std::fs::create_dir_all(&dir)?;
@@ -113,14 +72,14 @@ fn an_exported_kraddie_imports_back_with_its_automations_and_junk_is_refused() -
     assert_eq!(imported.kraddie, kraddie.exported());
     assert_eq!(imported.automations, vec![automation.exported()]);
     assert!(!std::fs::read_to_string(&path)?.contains("/work/garden"));
-    let junk = dir.join("junk.kradpet");
+    let junk = dir.join("junk.kraddie");
     std::fs::write(&junk, b"{\"format\":1}")?;
     assert!(matches!(
         import_kraddie(&junk),
         Err(KraddieStoreError::File(_))
     ));
     assert!(matches!(
-        import_kraddie(&dir.join("missing.kradpet")),
+        import_kraddie(&dir.join("missing.kraddie")),
         Err(KraddieStoreError::Io(_))
     ));
     std::fs::remove_dir_all(&dir)?;
@@ -128,48 +87,22 @@ fn an_exported_kraddie_imports_back_with_its_automations_and_junk_is_refused() -
 }
 
 #[test]
-fn kraddies_saved_in_the_old_folder_load_from_the_new_one() -> TestResult {
-    let config = scratch("old-folder");
-    let old = config.join(LEGACY_FOLDER);
-    std::fs::create_dir_all(&old)?;
-    let kraddie = Kraddie::new("Lantern".parse()?, AgentPreset::ClaudeCode);
-    let text = KraddieFile::new(kraddie.clone(), vec![routine(1, "Sweep")?]).write()?;
-    std::fs::write(old.join("lantern.kradpet"), text)?;
-    let shelf = KraddieShelf::at(config.join("kraddies"));
-    assert!(shelf.settle_folder().is_empty());
-    let read = shelf.read_all();
-    let [shelved] = read.as_slice() else {
-        unreachable!("one Kraddie");
-    };
-    assert_eq!(shelved.kraddie, kraddie);
-    assert!(config.join("kraddies").join("lantern.kraddie").exists());
-    assert!(!old.exists());
-    assert_eq!(shelf.read_all(), read);
-    std::fs::remove_dir_all(&config)?;
-    Ok(())
-}
-
-#[test]
-fn an_old_file_beside_its_new_one_never_replaces_it() -> TestResult {
-    let dir = scratch("both");
+fn a_kraddie_file_without_its_automations_file_hands_them_over() -> TestResult {
+    let dir = scratch("adopt");
     std::fs::create_dir_all(&dir)?;
+    let kraddie = Kraddie::new("Lantern".parse()?, AgentPreset::ClaudeCode);
+    let automations = vec![routine(1, "Sweep")?];
+    let text = KraddieFile::new(kraddie.clone(), automations.clone()).write()?;
+    std::fs::write(dir.join("lantern.kraddie"), text)?;
     let shelf = KraddieShelf::at(dir.clone());
-    let kraddie = Kraddie::new("Gardener".parse()?, AgentPreset::Codex);
-    shelf.write(&kraddie)?;
-    let older = Kraddie::new("Gardener".parse()?, AgentPreset::ClaudeCode);
-    let old = KraddieFile::new(older, Vec::new())
-        .write()?
-        .replace("\"format\": 2", "\"format\": 1");
-    std::fs::write(dir.join("gardener.kradpet"), old)?;
     let read = shelf.read_all();
     let [shelved] = read.as_slice() else {
         unreachable!("one Kraddie");
     };
     assert_eq!(shelved.kraddie, kraddie);
-    assert_eq!(
-        import_kraddie(&dir.join("gardener.kraddie"))?.kraddie,
-        kraddie
-    );
+    assert_eq!(shelved.migration_problem, None);
+    assert!(dir.join("lantern.automations.json").exists());
+    assert_eq!(shelf.read_all(), read);
     std::fs::remove_dir_all(&dir)?;
     Ok(())
 }

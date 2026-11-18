@@ -4,8 +4,6 @@
 mod awake;
 mod desktop_runtime;
 mod logging;
-#[cfg(unix)]
-mod old_service;
 #[cfg(windows)]
 mod rounded_corners;
 #[cfg(unix)]
@@ -29,31 +27,9 @@ use krad_ui::{
 use std::io;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 const APP_TITLE: &str = "Krad ADE";
 const APP_IDENTIFIER: &str = "com.joordih.krad-ade";
-const LOCK_RELEASE_WAIT: Duration = Duration::from_secs(10);
-const LOCK_RETRY: Duration = Duration::from_millis(200);
-
-fn lock_after_old_service(config: &Path) -> io::Result<desktop_runtime::RuntimeLock> {
-    #[cfg(unix)]
-    if old_service::retire_old_service(&web_access::web_access_folder(config)) {
-        let until = Instant::now() + LOCK_RELEASE_WAIT;
-        loop {
-            match desktop_runtime::lock_runtime(config) {
-                Err(error)
-                    if error.kind() == io::ErrorKind::WouldBlock && Instant::now() < until =>
-                {
-                    std::thread::sleep(LOCK_RETRY);
-                }
-                locked => return locked,
-            }
-        }
-    }
-    desktop_runtime::lock_runtime(config)
-}
-
 #[cfg(unix)]
 fn host_web_access(config: &Path, runtime: &RuntimeHandle) -> Option<Arc<dyn WebAccessHost>> {
     let root = web_access::web_access_folder(config);
@@ -82,7 +58,7 @@ struct Opened {
 
 fn open_runtime() -> io::Result<Opened> {
     let config = desktop_runtime::config_folder()?;
-    let lock = lock_after_old_service(&config)?;
+    let lock = desktop_runtime::lock_runtime(&config)?;
     let started = desktop_runtime::start_desktop_runtime(Clock::new(local_moment))?;
     let web_access = host_web_access(&config, &started.runtime);
     Ok(Opened {

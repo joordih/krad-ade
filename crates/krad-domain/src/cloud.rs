@@ -1,6 +1,5 @@
 mod claude_token;
 mod placement;
-mod process_wire;
 mod runner;
 mod runner_login;
 mod runner_state;
@@ -9,7 +8,6 @@ mod webhooks;
 
 pub use claude_token::{ClaudeOauthToken, ClaudeOauthTokenError};
 pub use placement::{CloudPlacement, CloudProcess, HostedOrigin, OpencodePassword};
-pub use process_wire::PROCESS_WIRE_LAST_RELEASE;
 pub use runner::*;
 pub use runner_login::{RunnerCli, RunnerLogin};
 pub use runner_state::{Linger, RunnerState};

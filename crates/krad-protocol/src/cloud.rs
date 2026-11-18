@@ -17,11 +17,10 @@ pub enum PatchAnswer {
     Cancel,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum CloudReach {
-    #[default]
     ProcessWire,
     Runtime,
 }
@@ -56,7 +55,6 @@ pub enum CloudCommand {
         environment: EnvironmentName,
         group: GroupId,
         runner: CloudRunnerId,
-        #[serde(default)]
         reach: CloudReach,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         first: Option<FirstChat>,

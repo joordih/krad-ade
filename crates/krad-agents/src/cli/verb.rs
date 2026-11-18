@@ -133,9 +133,6 @@ impl FromStr for Verb {
     type Err = CliError;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
-        if text == LEGACY_KRADDIE_VERB {
-            return Ok(Self::Kraddie);
-        }
         Self::ALL
             .into_iter()
             .find(|verb| verb.name() == text)
@@ -272,7 +269,6 @@ pub(super) const RUN: &str = "run";
 pub(super) const REMEMBER: &str = "remember";
 pub(super) const MEMORY: &str = "memory";
 const CLOSE: &str = "close";
-pub(super) const LEGACY_KRADDIE_VERB: &str = "pet";
 
 pub(super) fn usage(program: &str) -> String {
     let verbs = Verb::USAGE_ORDER

@@ -1,5 +1,4 @@
 use super::*;
-use krad_domain::PairingPermission;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
@@ -55,20 +54,5 @@ fn a_pairing_keeps_only_the_token_s_hash_in_a_private_file() -> TestResult {
     assert!(unpair(&root.0, &install)?);
     assert_eq!(authorize(&root.0, &renewed), None);
     assert!(!unpair(&root.0, &install)?);
-    Ok(())
-}
-
-#[test]
-fn a_plain_token_from_an_older_runner_is_kept_as_its_hash() -> TestResult {
-    let root = root("migrate");
-    let install: InstallId = "0123456789abcdef".parse()?;
-    let token: PairingToken = "00112233445566778899aabbccddeeff".parse()?;
-    ensure_private_dir(&clients_dir(&root.0))?;
-    let plain = clients_dir(&root.0).join("0123456789abcdef.token");
-    fs::write(&plain, token.expose())?;
-    migrate_plain_tokens(&root.0);
-    assert!(!plain.exists());
-    let permissions = authorize(&root.0, &Pairing { install, token });
-    assert!(permissions.is_some_and(|granted| granted.allows(PairingPermission::Admin)));
     Ok(())
 }

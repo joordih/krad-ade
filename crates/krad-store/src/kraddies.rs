@@ -1,5 +1,3 @@
-mod folder;
-mod migration;
 mod profile;
 mod rename;
 
@@ -11,10 +9,10 @@ use crate::layout::write_atomically;
 use krad_domain::{
     Automation, AutomationKey, AutomationsFile, AutomationsFileError, Kraddie, KraddieFile,
     KraddieFileError, KraddieHistory, KraddieId, ReadKraddie, KRADDIE_FILE_EXTENSION,
-    LEGACY_KRADDIE_FILE_EXTENSION,
 };
 use std::path::{Path, PathBuf};
 
+const KRADDIES_DIR: &str = "kraddies";
 const NAME_SEPARATOR: char = '.';
 const HISTORY_SUFFIX: &str = "runs";
 const AUTOMATIONS_SUFFIX: &str = "automations";
@@ -53,7 +51,7 @@ pub struct KraddieShelf {
 impl KraddieShelf {
     #[must_use]
     pub fn in_config() -> Option<Self> {
-        config_dir().map(|dir| Self::at(dir.join(folder::KRADDIES_DIR)))
+        config_dir().map(|dir| Self::at(dir.join(KRADDIES_DIR)))
     }
 
     #[must_use]
@@ -84,46 +82,24 @@ impl KraddieShelf {
         )
     }
 
-    fn legacy_history_path(&self, id: &KraddieId) -> PathBuf {
-        self.dir.join(id.as_str()).with_extension(JSON_EXTENSION)
-    }
-
-    #[must_use]
-    pub fn settle_folder(&self) -> Vec<std::io::Error> {
-        folder::settle(&self.dir)
-    }
-
     #[must_use]
     pub fn read_all(&self) -> Vec<ShelvedKraddie> {
-        let leftover = folder::leftover(&self.dir).map(Self::at);
-        let mut kraddies = self.read_folder();
-        for shelved in leftover.iter().flat_map(Self::read_folder) {
-            let id = shelved.kraddie.id();
-            if !kraddies.iter().any(|known| known.kraddie.id() == id) {
-                kraddies.push(shelved);
-            }
-        }
-        kraddies.sort_by_key(|shelved| shelved.kraddie.name.as_str().to_lowercase());
-        kraddies
-    }
-
-    fn read_folder(&self) -> Vec<ShelvedKraddie> {
         let Ok(entries) = std::fs::read_dir(&self.dir) else {
             return Vec::new();
         };
-        let mut paths: Vec<PathBuf> = entries
+        let mut kraddies: Vec<ShelvedKraddie> = Vec::new();
+        let reads = entries
             .filter_map(Result::ok)
             .map(|entry| entry.path())
             .filter(|path| is_kraddie_file(path))
-            .collect();
-        paths.sort_by_key(|path| folder::is_legacy_kraddie_file(path));
-        let mut kraddies: Vec<ShelvedKraddie> = Vec::new();
-        for read in paths.iter().filter_map(|path| read_kraddie(path).ok()) {
+            .filter_map(|path| read_kraddie(&path).ok());
+        for read in reads {
             let id = read.kraddie.id();
             if kraddies.iter().all(|known| known.kraddie.id() != id) {
                 kraddies.push(self.shelved(read));
             }
         }
+        kraddies.sort_by_key(|shelved| shelved.kraddie.name.as_str().to_lowercase());
         kraddies
     }
 
@@ -137,7 +113,10 @@ impl KraddieShelf {
                 read.automations
             }
             None => {
-                migration_problem = self.adopt(&read).err().map(|error| error.to_string());
+                migration_problem = self
+                    .write_automations(&id, &read.automations)
+                    .err()
+                    .map(|error| error.to_string());
                 read.automations
             }
         };
@@ -183,7 +162,7 @@ impl KraddieShelf {
         let text = KraddieFile::new(kraddie.clone(), Vec::new()).write()?;
         let path = self.kraddie_path(&kraddie.id());
         write_atomically(&path, text.as_bytes())?;
-        remove_if_present(&path.with_extension(LEGACY_KRADDIE_FILE_EXTENSION))
+        Ok(())
     }
 
     /// # Errors
@@ -225,13 +204,7 @@ impl KraddieShelf {
 
     fn delete_files(&self, id: &KraddieId) -> Result<(), KraddieStoreError> {
         let histories = self.history_files(id);
-        let path = self.kraddie_path(id);
-        let own = [
-            path.with_extension(LEGACY_KRADDIE_FILE_EXTENSION),
-            path,
-            self.automations_path(id),
-            self.legacy_history_path(id),
-        ];
+        let own = [self.kraddie_path(id), self.automations_path(id)];
         for path in own.into_iter().chain(histories) {
             remove_if_present(&path)?;
         }
@@ -271,10 +244,8 @@ fn remove_if_present(path: &Path) -> Result<(), KraddieStoreError> {
 }
 
 fn is_kraddie_file(path: &Path) -> bool {
-    folder::is_legacy_kraddie_file(path)
-        || path
-            .extension()
-            .is_some_and(|extension| extension == KRADDIE_FILE_EXTENSION)
+    path.extension()
+        .is_some_and(|extension| extension == KRADDIE_FILE_EXTENSION)
 }
 
 fn read_kraddie(path: &Path) -> Result<ReadKraddie, KraddieStoreError> {

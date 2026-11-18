@@ -1,8 +1,7 @@
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::settings::{Ligatures, TerminalFont};
-
-const LEGACY_JETBRAINS_MONO: &str = "JetBrains Mono";
+use crate::settings::Ligatures;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -72,31 +71,20 @@ impl FontChoice {
 }
 
 #[derive(Deserialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(untagged)]
-enum StoredFont {
-    Legacy(TerminalFont),
+enum ReadFont {
     Choice(FontChoice),
-}
-
-impl From<StoredFont> for FontChoice {
-    fn from(stored: StoredFont) -> Self {
-        match stored {
-            StoredFont::Choice(choice) => choice,
-            StoredFont::Legacy(TerminalFont::System) => Self::default(),
-            StoredFont::Legacy(TerminalFont::JetBrainsMono) => Self {
-                family: Some(LEGACY_JETBRAINS_MONO.to_owned()),
-                ..Self::default()
-            },
-        }
-    }
+    Unreadable(IgnoredAny),
 }
 
 /// # Errors
 ///
-/// Fails when the value is neither an old terminal font name nor a font choice.
-pub fn stored_font<'de, D: Deserializer<'de>>(deserializer: D) -> Result<FontChoice, D::Error> {
-    StoredFont::deserialize(deserializer).map(FontChoice::from)
+/// Fails only when the deserializer itself fails; an unreadable value reads as the default font.
+pub fn lenient_font<'de, D: Deserializer<'de>>(deserializer: D) -> Result<FontChoice, D::Error> {
+    Ok(match ReadFont::deserialize(deserializer)? {
+        ReadFont::Choice(choice) => choice,
+        ReadFont::Unreadable(_) => FontChoice::default(),
+    })
 }
 
 #[cfg(test)]
@@ -105,7 +93,7 @@ mod tests {
 
     #[derive(Deserialize)]
     struct Holder {
-        #[serde(deserialize_with = "stored_font")]
+        #[serde(deserialize_with = "lenient_font")]
         font: FontChoice,
     }
 
@@ -116,11 +104,10 @@ mod tests {
     }
 
     #[test]
-    fn old_terminal_font_names_become_font_choices() {
-        assert_eq!(read(r#"{"font":"System"}"#), Some(FontChoice::default()));
+    fn an_unreadable_font_reads_as_the_default_and_a_choice_is_kept() {
         assert_eq!(
-            read(r#"{"font":"JetBrainsMono"}"#).and_then(|font| font.family),
-            Some("JetBrains Mono".to_owned())
+            read(r#"{"font":"JetBrainsMono"}"#),
+            Some(FontChoice::default())
         );
         let full = read(r#"{"font":{"family":"Fira Code","size":40,"ligatures":"Off"}}"#);
         assert_eq!(

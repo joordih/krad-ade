@@ -38,8 +38,33 @@ fn install_fake_cli(runner_home: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn handed_to_the_runner_s_runtime(started: &Started) -> TestResult {
+    let create = CloudCommand::Create {
+        environment: environment(),
+        group: started.group,
+        runner: RUNNER,
+        reach: CloudReach::Runtime,
+        first: None,
+    };
+    assert_eq!(
+        send(&started.runtime, Command::Cloud(create))?,
+        Reply::Accepted
+    );
+    let settled = news(&started.feed, |news| {
+        matches!(
+            news,
+            CloudNews::NotPrepared { .. } | CloudNews::Hosted { .. }
+        )
+    })?;
+    assert!(
+        matches!(settled, CloudNews::NotPrepared { .. }),
+        "a runner without a runtime is not handed the session: {settled:?}"
+    );
+    Ok(())
+}
+
 #[test]
-fn a_cloud_session_is_prepared_over_the_wire_of_a_runner_without_a_runtime_and_its_branch_comes_home(
+fn a_runner_without_a_runtime_is_not_handed_a_session_but_one_prepared_on_its_wire_comes_home(
 ) -> TestResult {
     let config = temp_folder("cs-config")?;
     let runner_home = temp_folder("cs-home")?;
@@ -53,11 +78,12 @@ fn a_cloud_session_is_prepared_over_the_wire_of_a_runner_without_a_runtime_and_i
     let root = local.0.join("work");
     install_fake_cli(&runner_home.0)?;
     let started = start(&root, install_id()?)?;
+    handed_to_the_runner_s_runtime(&started)?;
     let first = FirstChat {
         harness: AgentPreset::Codex,
         prompt: Prompt::new(FIRST_PROMPT, Vec::new()),
     };
-    let (logins, opened) = create_cloud_session(&started, CloudReach::Runtime, Some(first))?;
+    let (logins, opened) = create_cloud_session(&started, CloudReach::ProcessWire, Some(first))?;
     let Started {
         runtime,
         group,

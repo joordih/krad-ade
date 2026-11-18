@@ -1,14 +1,9 @@
-use super::super::automation::{AppTrigger, AutomationId, CodeHostTrigger, Trigger, WorkingCopy};
-use super::super::schedule::KraddieSchedule;
-use super::super::{KraddieWorkspace, Weekdays};
+use super::super::automation::{AutomationId, Trigger, WorkingCopy};
+use super::super::KraddieWorkspace;
 use super::*;
 use crate::agent::AgentPreset;
-use crate::attention::TimeOfDay;
-use crate::code_host::CodeHost;
 use crate::ids::EnvironmentName;
 use std::path::PathBuf;
-
-const KRADDIE_SWITCH: &str = "\"switch\": \"on\"";
 
 fn kraddie() -> Kraddie {
     let mut kraddie = Kraddie::new(
@@ -34,14 +29,6 @@ fn routine() -> Automation {
     automation
 }
 
-fn first_format(kraddie: &Kraddie, legacy: &str) -> String {
-    KraddieFile::new(kraddie.exported(), Vec::new())
-        .write()
-        .unwrap_or_else(|_| unreachable!())
-        .replace("\"format\": 2", "\"format\": 1")
-        .replacen(KRADDIE_SWITCH, &format!("{KRADDIE_SWITCH}{legacy}"), 1)
-}
-
 #[test]
 fn an_exported_kraddie_carries_its_automations_without_the_users_paths() {
     let exported = KraddieFile::new(kraddie().exported(), vec![routine().exported()]);
@@ -51,58 +38,6 @@ fn an_exported_kraddie_carries_its_automations_without_the_users_paths() {
     let read = KraddieFile::read(&text).unwrap_or_else(|error| unreachable!("{error}"));
     assert_eq!(read.kraddie, exported.kraddie);
     assert_eq!(read.automations, exported.automations);
-    assert!(!read.migrated);
-}
-
-#[test]
-fn a_first_format_kraddie_becomes_one_automation_with_its_instructions_and_triggers() {
-    let legacy = r#",
-    "instructions": "Keep the build green.",
-    "schedule": {"kind": "at", "time": "06:30", "days": ["mon", "tue", "wed", "thu", "fri"]},
-    "events": ["ci_failed", "git_changed"]"#;
-    let read = KraddieFile::read(&first_format(&kraddie(), legacy))
-        .unwrap_or_else(|error| unreachable!("{error}"));
-    assert!(read.migrated);
-    let [automation] = read.automations.as_slice() else {
-        unreachable!("one automation");
-    };
-    assert_eq!(automation.id, AutomationId::FIRST);
-    assert_eq!(automation.name.as_str(), "Nightly");
-    assert_eq!(automation.instructions, "Keep the build green.");
-    let schedule = KraddieSchedule::At {
-        time: TimeOfDay::new(6, 30).unwrap_or_else(|_| unreachable!()),
-        days: Weekdays::WORKDAYS,
-    };
-    assert_eq!(
-        automation.triggers,
-        vec![
-            Trigger::Manual,
-            Trigger::Schedule { schedule },
-            Trigger::CodeHost {
-                host: CodeHost::Github,
-                event: CodeHostTrigger::CiFailed,
-            },
-            Trigger::CodeHost {
-                host: CodeHost::Gitlab,
-                event: CodeHostTrigger::CiFailed,
-            },
-            Trigger::App {
-                event: AppTrigger::GitChanged,
-            },
-        ]
-    );
-}
-
-#[test]
-fn a_bare_first_format_kraddie_still_loads_and_can_be_run_by_hand() {
-    let read = KraddieFile::read(&first_format(&kraddie(), ""))
-        .unwrap_or_else(|error| unreachable!("{error}"));
-    assert_eq!(read.kraddie.name.as_str(), "Nightly");
-    let [automation] = read.automations.as_slice() else {
-        unreachable!("one automation");
-    };
-    assert!(automation.is_manual());
-    assert_eq!(automation.instructions, "");
 }
 
 #[test]
@@ -156,26 +91,4 @@ fn importing_refuses_newer_formats_broken_designs_and_odd_kraddies() {
         KraddieFile::read(&bad_name),
         Err(KraddieFileError::Unreadable(_))
     ));
-}
-
-const LEGACY_KRADDIE_KEY: &str = "\"pet\":";
-const LEGACY_ROUNDS_KEY: &str = "\"heartbeat\":";
-
-#[test]
-fn a_file_from_before_the_rename_still_reads() {
-    let mut owner = kraddie();
-    owner.settings.rounds.switch = crate::attention::Switch::On;
-    let text = KraddieFile::new(owner.clone(), vec![routine()])
-        .write()
-        .unwrap_or_else(|_| unreachable!());
-    let old = text
-        .replacen("\"kraddie\":", LEGACY_KRADDIE_KEY, 1)
-        .replacen("\"rounds\":", LEGACY_ROUNDS_KEY, 1);
-    assert!(
-        old.contains(LEGACY_KRADDIE_KEY) && old.contains(LEGACY_ROUNDS_KEY),
-        "{old}"
-    );
-    let read = KraddieFile::read(&old).unwrap_or_else(|error| unreachable!("{error}"));
-    assert_eq!(read.kraddie, owner);
-    assert_eq!(read.automations, vec![routine()]);
 }

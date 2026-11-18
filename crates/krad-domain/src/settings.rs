@@ -9,7 +9,7 @@ use crate::composer_height::ComposerHeight;
 use crate::event::WebhookSettings;
 use crate::extension_index::{lenient_index_repository, IndexRepository};
 use crate::file_icon::FileIconColors;
-use crate::font::{stored_font, FontChoice};
+use crate::font::{lenient_font, FontChoice};
 use crate::gateway::GatewaySettings;
 use crate::gitlab::GitlabSettings;
 use crate::host_timeouts::HostTimeouts;
@@ -75,92 +75,6 @@ impl ThemeSelection {
             ThemeAppearance::Dark => self.dark = id,
         }
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-pub enum TerminalTheme {
-    #[default]
-    MatchApp,
-    XcodeLight,
-    XcodeDark,
-    SolarizedLight,
-    SolarizedDark,
-    GitHubLight,
-    OneDark,
-    Dracula,
-    Nord,
-    TokyoNight,
-    GruvboxDark,
-}
-
-impl TerminalTheme {
-    const fn library_theme(self) -> Option<(ThemeAppearance, &'static str)> {
-        match self {
-            Self::MatchApp => None,
-            Self::XcodeLight => Some((ThemeAppearance::Light, "xcode-light")),
-            Self::XcodeDark => Some((ThemeAppearance::Dark, "xcode-dark")),
-            Self::SolarizedLight => Some((ThemeAppearance::Light, "solarized-light")),
-            Self::SolarizedDark => Some((ThemeAppearance::Dark, "solarized-dark")),
-            Self::GitHubLight => Some((ThemeAppearance::Light, "github-light-default")),
-            Self::OneDark => Some((ThemeAppearance::Dark, "one-dark-pro")),
-            Self::Dracula => Some((ThemeAppearance::Dark, "dracula")),
-            Self::Nord => Some((ThemeAppearance::Dark, "nord")),
-            Self::TokyoNight => Some((ThemeAppearance::Dark, "tokyo-night")),
-            Self::GruvboxDark => Some((ThemeAppearance::Dark, "gruvbox-dark-medium")),
-        }
-    }
-
-    #[must_use]
-    pub fn as_selection(self) -> ThemeSelection {
-        let mut selection = ThemeSelection::default();
-        if let Some((appearance, id)) = self.library_theme() {
-            selection.set(appearance, ThemeId(id.to_owned()));
-        }
-        selection
-    }
-
-    #[must_use]
-    pub const fn all() -> [Self; 11] {
-        [
-            Self::MatchApp,
-            Self::XcodeLight,
-            Self::XcodeDark,
-            Self::SolarizedLight,
-            Self::SolarizedDark,
-            Self::GitHubLight,
-            Self::OneDark,
-            Self::Dracula,
-            Self::Nord,
-            Self::TokyoNight,
-            Self::GruvboxDark,
-        ]
-    }
-
-    #[must_use]
-    pub const fn display_name(self) -> &'static str {
-        match self {
-            Self::MatchApp => "Match app",
-            Self::XcodeLight => "Xcode Light",
-            Self::XcodeDark => "Xcode Dark",
-            Self::SolarizedLight => "Solarized Light",
-            Self::SolarizedDark => "Solarized Dark",
-            Self::GitHubLight => "GitHub Light",
-            Self::OneDark => "One Dark",
-            Self::Dracula => "Dracula",
-            Self::Nord => "Nord",
-            Self::TokyoNight => "Tokyo Night",
-            Self::GruvboxDark => "Gruvbox Dark",
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-pub enum TerminalFont {
-    #[default]
-    System,
-    JetBrainsMono,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
@@ -318,8 +232,6 @@ pub struct Settings {
     pub code_tools: CodeTools,
     #[serde(default)]
     pub extension_tools: ExtensionTools,
-    #[serde(default, skip_serializing)]
-    pub terminal_theme: TerminalTheme,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub themes: Option<ThemeSelection>,
     #[serde(default, skip_serializing_if = "EnvironmentThemes::is_empty")]
@@ -332,7 +244,7 @@ pub struct Settings {
     pub harness_commands: HashMap<AgentPreset, String>,
     #[serde(default)]
     pub copy_mode: CopyMode,
-    #[serde(default, deserialize_with = "stored_font")]
+    #[serde(default, deserialize_with = "lenient_font")]
     pub terminal_font: FontChoice,
     #[serde(default)]
     pub editor_font: FontChoice,
@@ -366,11 +278,7 @@ pub struct Settings {
     pub chat_backdrop_image: Option<BackdropImage>,
     #[serde(default)]
     pub app_updates: AppUpdateCheck,
-    #[serde(
-        default,
-        alias = "toolchains",
-        skip_serializing_if = "ServerRuntimePaths::is_empty"
-    )]
+    #[serde(default, skip_serializing_if = "ServerRuntimePaths::is_empty")]
     pub server_runtimes: ServerRuntimePaths,
     #[serde(
         default,
@@ -431,11 +339,6 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn migrate_themes(&mut self) -> &ThemeSelection {
-        let legacy = self.terminal_theme;
-        self.themes.get_or_insert_with(|| legacy.as_selection())
-    }
-
     #[must_use]
     pub fn theme_selection(&self, environment: Option<&EnvironmentName>) -> ThemeSelection {
         let app = self.themes.clone().unwrap_or_default();
@@ -642,21 +545,12 @@ mod tests {
     }
 
     #[test]
-    fn an_old_terminal_theme_becomes_the_theme_of_its_appearance() {
-        let mut settings: Settings =
-            serde_json::from_str(r#"{"terminal_theme":"Dracula"}"#).unwrap_or_default();
-        let selection = settings.migrate_themes().clone();
-        assert_eq!(selection.dark, ThemeId("dracula".to_owned()));
-        assert_eq!(selection.light, ThemeId(KRAD_LIGHT_THEME.to_owned()));
-        let written = serde_json::to_string(&settings).unwrap_or_default();
-        assert!(!written.contains("terminal_theme"));
-        assert!(written.contains("dracula"));
-    }
-
-    #[test]
     fn settings_roundtrip_and_old_files_get_defaults() -> serde_json::Result<()> {
         let mut settings = Settings {
-            themes: Some(TerminalTheme::Dracula.as_selection()),
+            themes: Some(ThemeSelection {
+                dark: ThemeId("dracula".to_owned()),
+                ..ThemeSelection::default()
+            }),
             default_harness: AgentPreset::Codex,
             copy_mode: CopyMode::Both,
             composer_height: ComposerHeight::Roomy,
@@ -667,9 +561,7 @@ mod tests {
             .insert(AgentPreset::ClaudeCode, "claude --model opus".to_owned());
         let back: Settings = serde_json::from_str(&serde_json::to_string(&settings)?)?;
         assert_eq!(back, settings);
-        let partial: Settings =
-            serde_json::from_str(r#"{"terminal_theme":"Nord","agent_surface":"Chat"}"#)?;
-        assert_eq!(partial.terminal_theme, TerminalTheme::Nord);
+        let partial: Settings = serde_json::from_str(r#"{"agent_surface":"Chat"}"#)?;
         assert_eq!(partial.default_harness, AgentPreset::Shell);
         assert_eq!(partial.copy_mode, CopyMode::Shortcut);
         assert_eq!(
@@ -764,11 +656,9 @@ mod tests {
     #[test]
     fn stored_lists_drop_invalid_and_repeated_names() -> serde_json::Result<()> {
         let stored: Settings = serde_json::from_str(
-            r#"{"terminal_theme":"Nord",
-            "harness_models":{"ClaudeCode":["opus"," ","opus","two words","haiku"]},
+            r#"{"harness_models":{"ClaudeCode":["opus"," ","opus","two words","haiku"]},
             "gateway":{"models":["gemini-3-pro","a&b","gemini-3-pro"]}}"#,
         )?;
-        assert_eq!(stored.terminal_theme, TerminalTheme::Nord);
         let names = |models: &[ModelId]| -> Vec<String> {
             models.iter().map(ToString::to_string).collect()
         };

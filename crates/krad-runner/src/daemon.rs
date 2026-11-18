@@ -3,7 +3,7 @@ use krad_host::mux::TerminalSize;
 use krad_host::runner::wire::{CloudLaunch, Envelope, Reply, Request};
 use krad_host::runner::{ensure_private_dir, runner_socket, PROCESS_ENV};
 
-use crate::pairings::{authorize, migrate_plain_tokens};
+use crate::pairings::authorize;
 use std::collections::HashMap;
 use std::fs;
 use std::io;
@@ -43,7 +43,6 @@ pub struct RunnerDaemon {
 impl RunnerDaemon {
     #[must_use]
     pub fn new(root: &Path) -> Arc<Self> {
-        migrate_plain_tokens(root);
         Arc::new(Self {
             root: root.to_owned(),
             processes: Mutex::new(adopt_previous(&root.join(PROCESSES_DIR))),

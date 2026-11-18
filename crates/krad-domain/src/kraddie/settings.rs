@@ -38,7 +38,6 @@ pub struct KraddieSettings {
     pub sessions: KraddieSessions,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_model: Option<ModelId>,
-    #[serde(alias = "heartbeat")]
     pub rounds: KraddieRounds,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub reads: Vec<KraddieId>,

@@ -1,14 +1,11 @@
 use super::automation::{validate_automations, Automation, AutomationsFileError};
 use super::design::DesignError;
-use super::legacy::LegacyFile;
 use super::Kraddie;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
 pub const KRADDIE_FILE_EXTENSION: &str = "kraddie";
-pub const LEGACY_KRADDIE_FILE_EXTENSION: &str = "kradpet";
 pub const KRADDIE_FORMAT_VERSION: KraddieFormatVersion = KraddieFormatVersion(2);
-const FIRST_FORMAT_WITH_AUTOMATIONS: KraddieFormatVersion = KraddieFormatVersion(2);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -58,7 +55,6 @@ impl From<AutomationsFileError> for KraddieFileError {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct KraddieFile {
     pub format: KraddieFormatVersion,
-    #[serde(alias = "pet")]
     pub kraddie: Kraddie,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub automations: Vec<Automation>,
@@ -68,7 +64,6 @@ pub struct KraddieFile {
 pub struct ReadKraddie {
     pub kraddie: Kraddie,
     pub automations: Vec<Automation>,
-    pub migrated: bool,
 }
 
 #[derive(Deserialize)]
@@ -97,8 +92,7 @@ impl KraddieFile {
 
     /// # Errors
     /// Fails when the text is not a kraddie file, is newer than this app reads, or its kraddie or
-    /// automations are not valid. A file of the first format becomes a kraddie with one
-    /// automation holding its old instructions and triggers.
+    /// automations are not valid.
     pub fn read(text: &str) -> Result<ReadKraddie, KraddieFileError> {
         let unreadable = |error: serde_json::Error| KraddieFileError::Unreadable(error.to_string());
         let version: VersionOnly = serde_json::from_str(text).map_err(unreadable)?;
@@ -106,23 +100,11 @@ impl KraddieFile {
             return Err(KraddieFileError::NewerFormat(version.format));
         }
         let file: Self = serde_json::from_str(text).map_err(unreadable)?;
-        let migrated = version.format < FIRST_FORMAT_WITH_AUTOMATIONS;
-        let automations = if migrated {
-            let legacy: LegacyFile = serde_json::from_str(text).map_err(unreadable)?;
-            legacy
-                .kraddie
-                .into_automation(&file.kraddie.name)
-                .into_iter()
-                .collect()
-        } else {
-            file.automations
-        };
         validate(&file.kraddie)?;
-        validate_automations(&automations)?;
+        validate_automations(&file.automations)?;
         Ok(ReadKraddie {
             kraddie: file.kraddie,
-            automations,
-            migrated,
+            automations: file.automations,
         })
     }
 }

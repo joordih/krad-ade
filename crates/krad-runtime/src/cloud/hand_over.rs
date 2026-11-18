@@ -47,15 +47,6 @@ pub(crate) enum HandOverError {
     Unanswered(&'static str),
     #[error("the runner's runtime refused the cloud session: {0}")]
     Refused(String),
-    #[error("the runner has no runtime that welcomes this computer: {0}")]
-    NoRuntime(String),
-}
-
-fn unwelcomed(error: HandOverError) -> HandOverError {
-    match error {
-        HandOverError::NoRuntime(_) => error,
-        error => HandOverError::NoRuntime(error.to_string()),
-    }
 }
 
 fn send(output: &mut impl Write, message: Message) -> Result<(), HandOverError> {
@@ -120,11 +111,11 @@ fn talk(
     let mut output = BufWriter::new(output);
     let frames = read_ahead(input)?;
     let input = &frames;
-    send(&mut output, Message::Hello(hello)).map_err(unwelcomed)?;
-    let welcome = match next_message(input, deadline).map_err(unwelcomed)? {
+    send(&mut output, Message::Hello(hello))?;
+    let welcome = match next_message(input, deadline)? {
         Message::Welcome(welcome) => welcome,
-        Message::Refused { message, .. } => return Err(HandOverError::NoRuntime(message)),
-        _ => return Err(HandOverError::NoRuntime(NO_WELCOME.to_owned())),
+        Message::Refused { message, .. } => return Err(HandOverError::Refused(message)),
+        _ => return Err(HandOverError::Unanswered(NO_WELCOME)),
     };
     let id = welcome.first_request.unwrap_or(FIRST_REQUEST);
     send(&mut output, Message::Command { id, command })?;
@@ -166,8 +157,7 @@ pub(crate) fn hand_over(over: HandOver) -> Result<(), HandOverError> {
         starts,
         origin: over.origin,
     });
-    let line = open_runner_line(&over.link, &over.cli, over.hello)
-        .map_err(|error| unwelcomed(error.into()))?;
+    let line = open_runner_line(&over.link, &over.cli, over.hello)?;
     let command = Command::Cloud(CloudCommand::Host { session });
     if let Reply::Refused { message, .. } = exchange(line, command, HAND_OVER_LIMIT)? {
         return Err(HandOverError::Refused(message));
@@ -198,7 +188,7 @@ mod tests {
             deadline,
         );
         assert!(
-            matches!(talked, Err(HandOverError::NoRuntime(ref reason)) if reason == TOO_SLOW),
+            matches!(talked, Err(HandOverError::Unanswered(TOO_SLOW))),
             "{talked:?}"
         );
         drop(theirs);
@@ -206,8 +196,8 @@ mod tests {
     }
 
     #[test]
-    fn a_runner_that_hangs_up_before_its_welcome_has_no_runtime_to_hand_over_to(
-    ) -> std::io::Result<()> {
+    fn a_runner_that_hangs_up_before_its_welcome_is_not_handed_the_session() -> std::io::Result<()>
+    {
         let (ours, theirs) = UnixStream::pair()?;
         drop(theirs);
         let talked = talk(
@@ -218,7 +208,10 @@ mod tests {
             Instant::now() + SHORT,
         );
         assert!(
-            matches!(talked, Err(HandOverError::NoRuntime(_))),
+            matches!(
+                talked,
+                Err(HandOverError::Frame(_) | HandOverError::Unanswered(HUNG_UP))
+            ),
             "{talked:?}"
         );
         Ok(())

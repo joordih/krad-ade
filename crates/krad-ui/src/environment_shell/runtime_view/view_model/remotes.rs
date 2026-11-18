@@ -4,7 +4,7 @@ use krad_client::{ClientError, Cursor, Runner, RuntimeClient};
 use krad_domain::{CloudRunnerId, EnvironmentName, RunnerState, RuntimeId, Session};
 use krad_protocol::{AgentRef, Answer, EventKind, Feed, HostedSummary, RequestId};
 use krad_runtime::{LineStop, RunnerLineError, RuntimeHandle};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -24,8 +24,13 @@ pub(in crate::environment_shell) enum Reached {
         build: String,
         stop: Option<LineStop>,
     },
-    ProcessWire,
+    OutOfReach,
     Unreachable,
+}
+
+pub(super) enum Adopted {
+    Follow(Arc<dyn RuntimeClient>, Cursor),
+    RetryIn(Duration),
 }
 
 #[derive(Default)]
@@ -33,7 +38,6 @@ pub(in crate::environment_shell) struct Remotes {
     runtimes: BTreeMap<CloudRunnerId, RemoteRuntime>,
     connections: u64,
     awaited: BTreeMap<String, CloudRunnerId>,
-    outdated_told: BTreeSet<CloudRunnerId>,
 }
 
 impl Remotes {
@@ -63,10 +67,6 @@ impl Remotes {
         let remote = self.current(runner, connection)?;
         remote.connection = next;
         Some(next)
-    }
-
-    fn tell_outdated_once(&mut self, runner: CloudRunnerId) -> bool {
-        self.outdated_told.insert(runner)
     }
 
     pub(in crate::environment_shell) fn retain(&mut self, keep: impl Fn(CloudRunnerId) -> bool) {
@@ -177,7 +177,7 @@ fn reached(connected: Result<Runner, ClientError>, stop: LineStop) -> Reached {
         Err(error) => {
             tracing::warn!(%error, "the runner's runtime did not welcome this window");
             stop.stop();
-            Reached::ProcessWire
+            Reached::OutOfReach
         }
     }
 }
@@ -188,7 +188,7 @@ async fn connect(handle: RuntimeHandle, runner: CloudRunnerId) -> Reached {
         Ok(Err(RunnerLineError::NotReady)) | Err(_) => return Reached::Unreachable,
         Ok(Err(error @ RunnerLineError::Failed(_))) => {
             tracing::warn!(%error, "the runner's runtime is out of reach");
-            return Reached::ProcessWire;
+            return Reached::OutOfReach;
         }
     };
     reached(
@@ -239,8 +239,14 @@ impl ViewModel {
         handle: RuntimeHandle,
         cx: &mut Context<Self>,
     ) {
-        if let Some((client, cursor)) = self.adopt_reached(runner, connection, reached) {
-            Self::follow_remote((runner, connection), client, cursor, handle, cx);
+        match self.adopt_reached(runner, connection, reached) {
+            Some(Adopted::Follow(client, cursor)) => {
+                Self::follow_remote((runner, connection), client, cursor, handle, cx);
+            }
+            Some(Adopted::RetryIn(wait)) => {
+                Self::retry_reach((runner, connection), wait, handle, cx);
+            }
+            None => {}
         }
         cx.emit(RuntimeNews);
     }
@@ -250,7 +256,7 @@ impl ViewModel {
         runner: CloudRunnerId,
         connection: u64,
         reached: Reached,
-    ) -> Option<(Arc<dyn RuntimeClient>, Cursor)> {
+    ) -> Option<Adopted> {
         let remote = self.remotes.current(runner, connection)?;
         let follow = match reached {
             Reached::Connected {
@@ -262,14 +268,11 @@ impl ViewModel {
                 remote.reach = RunnerReach::Connected { build };
                 remote.client = Some(Arc::clone(&client));
                 remote.stop = stop;
-                Some((client, remote.cursor))
+                Adopted::Follow(client, remote.cursor)
             }
-            Reached::ProcessWire => {
-                remote.reach = RunnerReach::ProcessWire;
-                if self.remotes.tell_outdated_once(runner) {
-                    self.heard(Heard::RunnerOutdated(runner));
-                }
-                None
+            Reached::OutOfReach => {
+                remote.reach = RunnerReach::Connecting;
+                Adopted::RetryIn(remote.backoff.next_wait())
             }
             Reached::Unreachable => {
                 self.remotes.retain(|kept| kept != runner);
@@ -277,7 +280,23 @@ impl ViewModel {
             }
         };
         self.changed(Area::Runners);
-        follow
+        Some(follow)
+    }
+
+    fn retry_reach(
+        (runner, connection): (CloudRunnerId, u64),
+        wait: Duration,
+        handle: RuntimeHandle,
+        cx: &mut Context<Self>,
+    ) {
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(wait).await;
+            this.update(cx, |model, cx| {
+                model.reach_again((runner, connection), handle, cx);
+            })
+            .unwrap_or_default();
+        })
+        .detach();
     }
 
     fn follow_remote(

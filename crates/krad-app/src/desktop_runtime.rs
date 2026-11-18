@@ -87,8 +87,7 @@ pub(crate) fn start_desktop_runtime(clock: Clock) -> io::Result<Started> {
         std::env::set_var(name, value);
     }
     let (layout, environments) = opened_layout();
-    let mut settings = read_settings();
-    settings.migrate_themes();
+    let settings = read_settings();
     let user_themes = read_user_themes();
     let host_tools = HostTools::discover();
     let bus = CliPlace::find().map(|cli| BusSetup {

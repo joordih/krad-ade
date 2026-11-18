@@ -10,7 +10,6 @@ pub enum EnvironmentView {
     Sessions,
     Notes,
     Automations,
-    #[serde(alias = "Pets")]
     Kraddies,
     Review,
 }
@@ -42,8 +41,6 @@ pub(crate) fn lenient_view<'de, D: Deserializer<'de>>(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const LEGACY_VIEW: &str = r#""Pets""#;
 
     const fn persisted(view: EnvironmentView) -> &'static str {
         match view {
@@ -78,15 +75,6 @@ mod tests {
         assert_eq!(notes.view, EnvironmentView::Notes);
         let removed: Saved = serde_json::from_str(r#"{"view":"Workflows"}"#)?;
         assert_eq!(removed.view, EnvironmentView::Sessions);
-        Ok(())
-    }
-
-    #[test]
-    fn the_view_saved_before_the_rename_opens_kraddies() -> serde_json::Result<()> {
-        assert_eq!(
-            serde_json::from_str::<EnvironmentView>(LEGACY_VIEW)?,
-            EnvironmentView::Kraddies
-        );
         Ok(())
     }
 }

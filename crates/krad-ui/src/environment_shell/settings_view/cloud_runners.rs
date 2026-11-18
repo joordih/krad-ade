@@ -225,9 +225,8 @@ mod tests {
             linger: krad_domain::Linger::Enabled,
         };
         assert_eq!(
-            runner_detail(&runner, &ready, Some(&(RunnerReach::ProcessWire, 0))),
-            "me@gpu:2200 · Ready · Update pending: it keeps only processes until it runs the new \
-             version. Update it before the next release, which no longer drives older runners"
+            runner_detail(&runner, &ready, Some(&(RunnerReach::Connecting, 0))),
+            "me@gpu:2200 · Ready · Reaching its runtime"
         );
         Ok(())
     }

@@ -92,7 +92,6 @@ pub(in crate::environment_shell) enum Heard {
         kind: Box<EventKind>,
     },
     RemoteReplaced(CloudRunnerId),
-    RunnerOutdated(CloudRunnerId),
 }
 
 #[derive(Default)]

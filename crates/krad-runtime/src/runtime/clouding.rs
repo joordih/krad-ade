@@ -195,8 +195,7 @@ impl Runtime {
                 runner,
                 slug,
                 handed,
-                fallback,
-            } => self.cloud_handed_over((runner, slug), handed, *fallback),
+            } => self.cloud_handed_over((runner, slug), handed),
             results => self.cloud_result(results),
         }
     }
@@ -294,7 +293,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn prepare_on_the_wire(&mut self, link: &HostLink, mut draft: CloudDraft) {
+    fn prepare_on_the_wire(&mut self, link: &HostLink, mut draft: CloudDraft) {
         let link = link.clone();
         let request = draft.request.clone();
         let carried = std::mem::take(&mut draft.carried);
