@@ -403,7 +403,7 @@ impl MarkdownPlugin for CalloutPlugin {
     }
 }
 
-pub(super) fn reading_extensions() -> MarkdownExtensions {
+pub(crate) fn reading_extensions() -> MarkdownExtensions {
     MarkdownExtensions::default()
         .plugin(MathPlugin { display: false })
         .plugin(MathPlugin { display: true })

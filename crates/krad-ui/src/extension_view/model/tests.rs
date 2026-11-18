@@ -276,6 +276,105 @@ fn sliders_count_as_received_when_a_patch_sends_them_again() -> TestResult {
     Ok(())
 }
 
+fn markdown(name: &str, text: &str) -> Result<Node, IdError> {
+    Ok(Node {
+        key: key(name)?,
+        element: Element::Markdown {
+            text: text.to_owned(),
+        },
+    })
+}
+
+#[test]
+fn markdowns_count_as_received_when_their_text_changes_and_leave_with_their_node() -> TestResult {
+    let mut model = ViewModel::new(flex(
+        "root",
+        vec![markdown("intro", "# Plan")?, markdown("steps", "1. Read")?],
+    )?);
+    assert_eq!(
+        model.take_received_markdowns(),
+        HashSet::from([key("intro")?, key("steps")?])
+    );
+    model.apply(vec![Patch::Replace {
+        node: markdown("steps", "1. Read\n2. Write")?,
+    }]);
+    assert_eq!(
+        model.take_received_markdowns(),
+        HashSet::from([key("steps")?])
+    );
+    assert_eq!(
+        model.markdown_text(&key("steps")?),
+        Some("1. Read\n2. Write")
+    );
+    model.apply(vec![Patch::Remove { key: key("intro")? }]);
+    assert!(model.take_received_markdowns().is_empty());
+    assert_eq!(model.every_markdown_key(), HashSet::from([key("steps")?]));
+    Ok(())
+}
+
+#[test]
+fn markdowns_sent_again_with_the_same_text_are_not_received() -> TestResult {
+    let mut model = ViewModel::new(flex(
+        "root",
+        vec![markdown("intro", "# Plan")?, markdown("steps", "1. Read")?],
+    )?);
+    model.take_received_markdowns();
+    model.apply(vec![Patch::Replace {
+        node: flex(
+            "root",
+            vec![markdown("intro", "# Plan")?, markdown("steps", "1. Read")?],
+        )?,
+    }]);
+    assert!(model.take_received_markdowns().is_empty());
+    model.apply(vec![Patch::Replace {
+        node: flex(
+            "root",
+            vec![markdown("intro", "# Plan")?, markdown("steps", "2. Write")?],
+        )?,
+    }]);
+    assert_eq!(
+        model.take_received_markdowns(),
+        HashSet::from([key("steps")?])
+    );
+    Ok(())
+}
+
+#[test]
+fn markdowns_in_rows_count_as_received_once_and_leave_with_their_rows() -> TestResult {
+    let mut model = ViewModel::new(list_view()?);
+    let list = key("containers")?;
+    assert!(model.take_received_markdowns().is_empty());
+    model.rows_needed(&list, 0..10);
+    let row = |text: &str| -> Result<ListRow, IdError> {
+        Ok(ListRow {
+            node: markdown("note", text)?,
+            menu: Vec::new(),
+        })
+    };
+    model.set_rows(
+        list.clone(),
+        RowsResult::List {
+            rows: vec![row("a")?],
+        },
+    );
+    assert_eq!(
+        model.take_received_markdowns(),
+        HashSet::from([key("note")?])
+    );
+    model.rows_needed(&list, 0..10);
+    model.set_rows(
+        list.clone(),
+        RowsResult::List {
+            rows: vec![row("a")?],
+        },
+    );
+    assert!(model.take_received_markdowns().is_empty());
+    assert_eq!(model.every_markdown_key(), HashSet::from([key("note")?]));
+    model.apply(vec![Patch::Invalidate { key: list }]);
+    assert!(model.every_markdown_key().is_empty());
+    Ok(())
+}
+
 #[test]
 fn sliders_in_rows_are_bounded_found_and_counted_as_received() -> TestResult {
     let mut model = ViewModel::new(list_view()?);

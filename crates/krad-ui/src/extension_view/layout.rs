@@ -1,9 +1,10 @@
+use gpui_kit::base::text::TextViewState;
 use gpui_kit::base::TextView;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::ActiveTheme;
 use gpui_kit::{
-    div, img, px, rgb, AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
-    SharedString, StatefulInteractiveElement, Styled,
+    div, img, px, rgb, AnyElement, Context, Div, Entity, InteractiveElement, IntoElement,
+    ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 use krad_extensions::api::view::{
     ButtonVariant as ViewButton, Detail, Direction, Element, Enabled, ImageSource, Node, TextStyle,
@@ -17,9 +18,10 @@ use super::style::{
 };
 use super::ExtensionView;
 use crate::components::{icon, working_dots, Button, ButtonVariant, IconName};
+use crate::environment_shell::reading_extensions;
 use crate::theme::{
     Palette, CHIP_H, ICON, ICON_XS, LINE_XS, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2, TEXT_2XS,
-    TEXT_XS,
+    TEXT_SM, TEXT_XS,
 };
 
 const DETAIL_LABEL_W: f32 = 140.0;
@@ -124,6 +126,16 @@ impl ExtensionView {
                 style,
                 children,
             } => {
+                if let Some(state) = self.reading_scroll(*direction, children) {
+                    return markdown_text(styled(div(), style, pal), pal)
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_h_0()
+                        .min_w_0()
+                        .child(reading_view(state).scrollable(true).flex_1().min_h_0())
+                        .into_any_element();
+                }
                 let scroll = styled(div(), style, pal)
                     .id(element_id(SCROLL_PREFIX, &node.key))
                     .flex()
@@ -143,14 +155,19 @@ impl ExtensionView {
     fn content(&self, node: &Node, pal: &Palette, cx: &mut Context<Self>) -> AnyElement {
         match &node.element {
             Element::Text { text, style } => text_element(text, *style, pal, cx),
-            Element::Markdown { text } => div()
-                .min_w_0()
-                .child(
-                    TextView::markdown(element_id(MARKDOWN_PREFIX, &node.key), text.clone())
-                        .selectable(true)
-                        .on_link_click(|_, _, _, _| {}),
-                )
-                .into_any_element(),
+            Element::Markdown { text } => {
+                let view = self.markdowns.get(&node.key).map_or_else(
+                    || {
+                        TextView::markdown(element_id(MARKDOWN_PREFIX, &node.key), text.clone())
+                            .selectable(true)
+                            .on_link_click(|_, _, _, _| {})
+                    },
+                    |(_, state)| reading_view(state),
+                );
+                markdown_text(div().min_w_0(), pal)
+                    .child(view)
+                    .into_any_element()
+            }
             Element::Icon {
                 icon: glyph,
                 color: tint,
@@ -252,6 +269,20 @@ impl ExtensionView {
         }
     }
 
+    fn reading_scroll(
+        &self,
+        direction: Direction,
+        children: &[Node],
+    ) -> Option<&Entity<TextViewState>> {
+        let [only] = children else {
+            return None;
+        };
+        if direction != Direction::Column || !matches!(only.element, Element::Markdown { .. }) {
+            return None;
+        }
+        self.markdowns.get(&only.key).map(|(_, state)| state)
+    }
+
     pub(super) fn elements(
         &self,
         children: &[Node],
@@ -288,6 +319,19 @@ impl ExtensionView {
             .child(img(path).size_full())
             .into_any_element()
     }
+}
+
+fn reading_view(state: &Entity<TextViewState>) -> TextView {
+    TextView::new(state)
+        .selectable(true)
+        .markdown_extensions(reading_extensions())
+        .on_link_click(|_, _, _, _| {})
+}
+
+fn markdown_text(container: Div, pal: &Palette) -> Div {
+    container
+        .text_size(px(TEXT_SM))
+        .text_color(rgb(pal.text_strong))
 }
 
 pub(super) fn bundled_path(folder: &Path, relative: &Path) -> Option<PathBuf> {

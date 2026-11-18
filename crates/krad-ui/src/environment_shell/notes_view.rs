@@ -10,6 +10,7 @@ mod sidebar;
 mod tabs_bar;
 mod tree;
 
+pub(crate) use markdown::reading_extensions;
 pub(super) use palette::{note_line_label, NoteLine};
 
 use gpui_kit::{

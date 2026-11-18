@@ -38,6 +38,7 @@ mod harness_models;
 mod host;
 mod template_popup;
 pub use host::HostTools;
+pub(crate) use notes_view::reading_extensions;
 mod automations;
 mod input;
 mod kraddie_memory;

@@ -70,6 +70,7 @@ pub(crate) struct ViewModel {
     selection: HashMap<NodeKey, Vec<NodeKey>>,
     appended: HashSet<NodeKey>,
     received_sliders: HashSet<NodeKey>,
+    received_markdowns: HashSet<NodeKey>,
 }
 
 impl ViewModel {
@@ -82,8 +83,10 @@ impl ViewModel {
             selection: HashMap::new(),
             appended: HashSet::new(),
             received_sliders: HashSet::new(),
+            received_markdowns: HashSet::new(),
         };
         slider_keys(&model.root, &mut model.received_sliders);
+        model.received_markdowns = markdown_keys(&model.root);
         model.reflatten();
         model
     }
@@ -99,13 +102,16 @@ impl ViewModel {
                 _ => None,
             };
             let mut sliders = HashSet::new();
+            let mut markdowns = HashSet::new();
             if let Patch::Replace { node } | Patch::Insert { node, .. } = &patch {
                 slider_keys(node, &mut sliders);
+                markdowns = self.changed_markdowns(node);
             }
             match apply(&mut self.root, patch) {
                 Ok(Applied::Changed) => {
                     self.appended.extend(appended);
                     self.received_sliders.extend(sliders);
+                    self.received_markdowns.extend(markdowns);
                 }
                 Ok(Applied::RowsInvalidated(node)) => {
                     self.rows.remove(&node);
@@ -122,6 +128,27 @@ impl ViewModel {
 
     pub(crate) fn take_received_sliders(&mut self) -> HashSet<NodeKey> {
         std::mem::take(&mut self.received_sliders)
+    }
+
+    pub(crate) fn take_received_markdowns(&mut self) -> HashSet<NodeKey> {
+        std::mem::take(&mut self.received_markdowns)
+    }
+
+    pub(crate) fn markdown_text(&self, key: &NodeKey) -> Option<&str> {
+        match &self.find_node(key)?.element {
+            Element::Markdown { text } => Some(text),
+            _ => None,
+        }
+    }
+
+    fn changed_markdowns(&self, node: &Node) -> HashSet<NodeKey> {
+        let mut found = Vec::new();
+        markdown_texts(node, &mut found);
+        found
+            .into_iter()
+            .filter(|(key, text)| self.markdown_text(key) != Some(*text))
+            .map(|(key, _)| key.clone())
+            .collect()
     }
 
     fn reflatten(&mut self) {
@@ -159,18 +186,23 @@ impl ViewModel {
     }
 
     pub(crate) fn set_rows(&mut self, node: NodeKey, rows: RowsResult) {
-        let store = self.rows.entry(node).or_default();
+        let store = self.rows.entry(node.clone()).or_default();
         let start = store.starts.pop_front().unwrap_or_default();
         store.requested.retain(|range| range.start != start);
         let cached: Vec<CachedRow> = match rows {
             RowsResult::List { rows } => rows.into_iter().map(CachedRow::List).collect(),
             RowsResult::Table { rows } => rows.into_iter().map(CachedRow::Table).collect(),
         };
-        for (index, row) in (start..).zip(cached) {
-            let row = row.bounded();
+        let cached: Vec<CachedRow> = cached.into_iter().map(CachedRow::bounded).collect();
+        for row in &cached {
             for node in row.nodes() {
                 slider_keys(node, &mut self.received_sliders);
+                let markdowns = self.changed_markdowns(node);
+                self.received_markdowns.extend(markdowns);
             }
+        }
+        let store = self.rows.entry(node).or_default();
+        for (index, row) in (start..).zip(cached) {
             store.rows.insert(index, row);
         }
     }
@@ -184,6 +216,14 @@ impl ViewModel {
         slider_keys(&self.root, &mut keys);
         for node in self.cached_nodes() {
             slider_keys(node, &mut keys);
+        }
+        keys
+    }
+
+    pub(crate) fn every_markdown_key(&self) -> HashSet<NodeKey> {
+        let mut keys = markdown_keys(&self.root);
+        for node in self.cached_nodes() {
+            keys.extend(markdown_keys(node));
         }
         keys
     }
@@ -264,6 +304,21 @@ pub(crate) fn slider_keys(node: &Node, keys: &mut HashSet<NodeKey>) {
     for child in node.children() {
         slider_keys(child, keys);
     }
+}
+
+fn markdown_texts<'a>(node: &'a Node, found: &mut Vec<(&'a NodeKey, &'a str)>) {
+    if let Element::Markdown { text } = &node.element {
+        found.push((&node.key, text));
+    }
+    for child in node.children() {
+        markdown_texts(child, found);
+    }
+}
+
+fn markdown_keys(node: &Node) -> HashSet<NodeKey> {
+    let mut found = Vec::new();
+    markdown_texts(node, &mut found);
+    found.into_iter().map(|(key, _)| key.clone()).collect()
 }
 
 pub(crate) fn stream_keys(node: &Node, keys: &mut Vec<NodeKey>) {

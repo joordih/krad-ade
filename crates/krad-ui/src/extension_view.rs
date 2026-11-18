@@ -6,6 +6,7 @@ mod slider;
 mod style;
 
 use futures::channel::mpsc::UnboundedSender;
+use gpui_kit::base::text::TextViewState;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
     AnyView, AppContext as _, Context, Entity, IntoElement, ParentElement, Render, Styled,
@@ -38,6 +39,7 @@ pub(crate) struct ExtensionView {
     sorts: HashMap<NodeKey, Sort>,
     streams: HashMap<NodeKey, UniformListScrollHandle>,
     sliders: HashMap<NodeKey, Entity<SliderView>>,
+    markdowns: HashMap<NodeKey, (String, Entity<TextViewState>)>,
     inputs_stale: bool,
     subscriptions: Vec<Subscription>,
 }
@@ -54,6 +56,7 @@ impl ExtensionView {
             sorts: HashMap::new(),
             streams: HashMap::new(),
             sliders: HashMap::new(),
+            markdowns: HashMap::new(),
             inputs_stale: true,
             subscriptions: Vec::new(),
         }
@@ -72,9 +75,11 @@ impl ExtensionView {
         self.sorts.clear();
         self.streams.clear();
         self.sliders.clear();
+        self.markdowns.clear();
         self.subscriptions.clear();
         self.inputs_stale = true;
         self.sync_sliders(cx);
+        self.sync_markdowns(cx);
         cx.notify();
     }
 
@@ -91,6 +96,8 @@ impl ExtensionView {
         self.inputs_stale = true;
         self.sync_sliders(cx);
         self.prune_sliders();
+        self.sync_markdowns(cx);
+        self.prune_markdowns();
         cx.notify();
     }
 
@@ -116,9 +123,34 @@ impl ExtensionView {
         self.sliders.retain(|key, _| present.contains(key));
     }
 
+    fn sync_markdowns(&mut self, cx: &mut Context<Self>) {
+        for key in self.model.take_received_markdowns() {
+            let Some(text) = self.model.markdown_text(&key) else {
+                continue;
+            };
+            match self.markdowns.get_mut(&key) {
+                Some((known, _)) if known == text => {}
+                Some((known, state)) => {
+                    text.clone_into(known);
+                    state.update(cx, |state, cx| state.set_text(text, cx));
+                }
+                None => {
+                    let state = cx.new(|cx| TextViewState::markdown(text, cx));
+                    self.markdowns.insert(key, (text.to_owned(), state));
+                }
+            }
+        }
+    }
+
+    fn prune_markdowns(&mut self) {
+        let present = self.model.every_markdown_key();
+        self.markdowns.retain(|key, _| present.contains(key));
+    }
+
     pub(crate) fn set_rows(&mut self, node: NodeKey, rows: RowsResult, cx: &mut Context<Self>) {
         self.model.set_rows(node, rows);
         self.sync_sliders(cx);
+        self.sync_markdowns(cx);
         cx.notify();
     }
 
@@ -267,6 +299,7 @@ impl Render for ExtensionView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.prepare_inputs(window, cx);
         self.sync_sliders(cx);
+        self.sync_markdowns(cx);
         let pal = palette(cx);
         gpui_kit::div()
             .size_full()
