@@ -38,7 +38,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::highlight::TokenKind;
-use crate::window_frame::{match_window_frame, usable_material};
+use crate::window_frame::{match_window_frame, usable_material, CLIENT_WINDOW_RADIUS};
 
 use self::palettes::{DARK, LIGHT};
 
@@ -519,6 +519,8 @@ fn style_kit_theme(theme: &mut Theme, pal: &Palette, interface: SharedString, sc
     theme.muted = pal.bg_hover.into();
     theme.muted_foreground = color(pal.text_subtle);
     theme.border = pal.border.into();
+    theme.window_border = pal.border.into();
+    theme.window_radius = px(CLIENT_WINDOW_RADIUS);
     theme.input = pal.border.into();
     theme.ring = color(pal.accent);
     theme.selection = tinted(pal.accent, SELECTION_ALPHA).into();

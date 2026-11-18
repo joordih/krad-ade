@@ -1,8 +1,9 @@
+use gpui_kit::base::HandleEdge;
 use gpui_kit::component::ActiveTheme;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, ClipboardItem, Context, InteractiveElement, IntoElement, MouseButton,
-    MouseDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
+    div, px, rgb, AnyElement, ClipboardItem, Context, InteractiveElement, IntoElement,
+    ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::{relative_age, ToastKind, Visibility};
 use std::collections::VecDeque;
@@ -13,7 +14,7 @@ mod tabs;
 
 pub(super) use tabs::{TerminalsTab, UtilityTab};
 
-use super::drag::DragState;
+use super::drag::{edge_handle, DragState, EdgeDrag, FixedSide};
 use super::session_pane::DraggedTab;
 use super::EnvironmentShell;
 use crate::actions::ToggleActivity;
@@ -26,11 +27,11 @@ use crate::theme::{
 const ACTIVITY_PANEL_H: f32 = 168.0;
 const ACTIVITY_MIN_H: f32 = 96.0;
 const ACTIVITY_MAX_H: f32 = 640.0;
-const HEIGHT_HANDLE_H: f32 = 6.0;
 const COPY_BUTTON: f32 = 20.0;
 const LIST_ID: &str = "activity-list";
 const PANEL_ID: &str = "activity-panel";
 const HANDLE_ID: &str = "activity-handle";
+const HEIGHT_HANDLE_ID: &str = "activity-height";
 const TOOLTIP_OPEN: &str = "Utilities";
 const LOG_PAD_X: f32 = SPACE_1_5 + SPACE_2;
 const TOOLTIP_KEEP_OPEN: &str = "Keep the utilities open";
@@ -59,18 +60,6 @@ pub(super) struct ActivityEntry {
 pub(super) struct ActivityLog {
     entries: VecDeque<ActivityEntry>,
     height: f32,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct ActivityDrag {
-    mouse_start: f32,
-    height_start: f32,
-}
-
-impl ActivityDrag {
-    pub(super) fn height_at(self, y: f32) -> f32 {
-        self.height_start + (self.mouse_start - y)
-    }
 }
 
 impl Default for ActivityLog {
@@ -140,7 +129,7 @@ impl EnvironmentShell {
     ) {
         if !self.activity.is_visible()
             || self.activity_opened != ActivityOpened::ByHover
-            || matches!(self.drag, DragState::ResizeActivity(_))
+            || matches!(self.drag, DragState::Resize(EdgeDrag::Activity))
         {
             return;
         }
@@ -152,18 +141,10 @@ impl EnvironmentShell {
         }
     }
 
-    pub(super) fn follow_activity_drag(&mut self, y: f32, cx: &mut Context<Self>) {
-        let DragState::ResizeActivity(drag) = self.drag else {
-            return;
-        };
-        self.activity_log.set_height(drag.height_at(y));
-        cx.notify();
-    }
-
     pub(super) fn release_captured_drag(&mut self, cx: &mut Context<Self>) {
         if matches!(
             self.drag,
-            DragState::ResizeActivity(_) | DragState::Select { .. } | DragState::Report { .. }
+            DragState::Resize(_) | DragState::Select { .. } | DragState::Report { .. }
         ) {
             self.end_drag(cx);
         }
@@ -332,7 +313,20 @@ impl EnvironmentShell {
                 docked.is_none() && !problems && extension.is_none(),
                 |panel| panel.child(self.activity_log_list(now, cx)),
             )
-            .child(Self::height_handle(height, cx))
+            .on_drag_move(Self::follow_edge(cx, |this, edge, moved, _| {
+                (edge == EdgeDrag::Activity).then(|| {
+                    this.activity_log
+                        .set_height(moved.extent_from(FixedSide::Bottom));
+                })
+            }))
+            .child(
+                edge_handle(
+                    HEIGHT_HANDLE_ID,
+                    gpui_kit::Axis::Vertical,
+                    EdgeDrag::Activity,
+                )
+                .inside(HandleEdge::Leading),
+            )
             .on_drop(cx.listener(|this: &mut Self, dragged: &DraggedTab, _, cx| {
                 cx.stop_propagation();
                 this.dock_in_activity(dragged.id, cx);
@@ -407,28 +401,6 @@ impl EnvironmentShell {
                         this.copy_activity(text.clone(), cx);
                     }))
                     .child(icon(IconName::Copy, ICON_XS, pal.text_muted)),
-            )
-            .into_any_element()
-    }
-
-    fn height_handle(height: f32, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .absolute()
-            .top_0()
-            .left_0()
-            .right_0()
-            .h(px(HEIGHT_HANDLE_H))
-            .cursor_row_resize()
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
-                    cx.stop_propagation();
-                    this.drag = DragState::ResizeActivity(ActivityDrag {
-                        mouse_start: event.position.y.as_f32(),
-                        height_start: height,
-                    });
-                    cx.notify();
-                }),
             )
             .into_any_element()
     }

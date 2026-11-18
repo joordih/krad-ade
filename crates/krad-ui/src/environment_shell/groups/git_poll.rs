@@ -53,6 +53,7 @@ impl EnvironmentShell {
             files,
             vanished,
         } = moved;
+        self.reload_change_marks(&files, cx);
         let mut by_host: HashMap<Host, Vec<(PathBuf, DiskChange)>> = HashMap::new();
         for (host, path, change) in files {
             by_host.entry(host).or_default().push((path, change));

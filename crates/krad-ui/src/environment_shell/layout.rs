@@ -3,21 +3,18 @@ use gpui_kit::base::TextSelectionLayer;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     canvas, div, px, rgb, AnyElement, Context, DispatchPhase, InteractiveElement, IntoElement,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Render, Styled,
-    Window,
+    MouseButton, MouseMoveEvent, MouseUpEvent, ParentElement, Render, Styled, Window,
 };
 use krad_domain::EnvironmentView;
 use std::time::Instant;
 
 use super::code_viewer::VIEWER_MIN_W;
-use super::drag::DragState;
 use super::EnvironmentShell;
 use crate::actions::{MinimizeWindow, ZoomWindow};
 use crate::theme::{palette, window_backdrop, TOOLBAR_H, WINDOW_INSET};
 use crate::window_frame::{content_inset, window_frame};
 
 const PANE_MIN_W: f32 = 320.0;
-const WIDTH_HANDLE_W: f32 = 6.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum SidePanel {
@@ -41,48 +38,6 @@ impl PanelWidths {
         self.viewer
             .map(|width| width.clamp(VIEWER_MIN_W.min(max), max))
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub(super) struct PanelDrag {
-    pub(super) panel: SidePanel,
-    mouse_start: f32,
-    width_start: f32,
-}
-
-impl PanelDrag {
-    pub(super) fn width_at(self, x: f32) -> f32 {
-        self.width_start + (self.mouse_start - x)
-    }
-}
-
-pub(super) fn width_handle(
-    panel: SidePanel,
-    width: f32,
-    cx: &mut Context<EnvironmentShell>,
-) -> AnyElement {
-    div()
-        .absolute()
-        .left_0()
-        .top_0()
-        .bottom_0()
-        .w(px(WIDTH_HANDLE_W))
-        .cursor_col_resize()
-        .on_mouse_down(
-            MouseButton::Left,
-            cx.listener(
-                move |this: &mut EnvironmentShell, event: &MouseDownEvent, _, cx| {
-                    cx.stop_propagation();
-                    this.drag = DragState::ResizePanel(PanelDrag {
-                        panel,
-                        mouse_start: event.position.x.as_f32(),
-                        width_start: width,
-                    });
-                    cx.notify();
-                },
-            ),
-        )
-        .into_any_element()
 }
 
 impl EnvironmentShell {
@@ -151,11 +106,9 @@ impl EnvironmentShell {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if event.pressed_button == Some(MouseButton::Left) {
-            self.drag_to(event.position.x.as_f32(), event.position.y.as_f32(), cx);
-            return;
+        if event.pressed_button != Some(MouseButton::Left) {
+            self.end_drag(cx);
         }
-        self.end_drag(cx);
     }
 
     fn pointer_watch(cx: &mut Context<Self>) -> AnyElement {
@@ -172,10 +125,7 @@ impl EnvironmentShell {
                     let window_h = window.viewport_size().height.as_f32();
                     moved
                         .update(cx, |shell, cx| match event.pressed_button {
-                            Some(MouseButton::Left) => {
-                                shell.follow_activity_drag(y, cx);
-                                shell.drag_in_terminal(x, y, cx);
-                            }
+                            Some(MouseButton::Left) => shell.drag_in_terminal(x, y, cx),
                             Some(_) => {}
                             None => {
                                 shell.follow_pointer_for_peek(x, cx);
@@ -401,7 +351,6 @@ impl Render for EnvironmentShell {
         window_frame(
             root.into_any_element(),
             window,
-            pal,
             (window_backdrop(pal, cx), image),
         )
     }
@@ -410,10 +359,6 @@ impl Render for EnvironmentShell {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn same(a: f32, b: f32) -> bool {
-        (a - b).abs() < f32::EPSILON
-    }
 
     #[test]
     fn the_viewer_follows_the_card_until_dragged_and_then_leaves_room_for_the_view() {
@@ -426,16 +371,5 @@ mod tests {
         );
         widths.set(SidePanel::Viewer, 0.0);
         assert_eq!(widths.viewer_in(1_200.0), Some(VIEWER_MIN_W));
-    }
-
-    #[test]
-    fn dragging_a_left_edge_left_widens_its_card() {
-        let drag = PanelDrag {
-            panel: SidePanel::Viewer,
-            mouse_start: 800.0,
-            width_start: 400.0,
-        };
-        assert!(same(drag.width_at(700.0), 500.0));
-        assert!(same(drag.width_at(900.0), 300.0));
     }
 }

@@ -204,13 +204,10 @@ impl EnvironmentShell {
                 else {
                     return;
                 };
-                for (file, diff) in files.iter_mut().zip(&diffs) {
+                for (file, diff) in files.iter_mut().zip(diffs) {
                     file.set_diff(diff, DiffSource::LocalCheckout);
                 }
-                if let Some(detail) = shell.review.detail.as_mut() {
-                    detail.forget_colors();
-                    detail.sync_rows();
-                }
+                shell.show_review_file(cx);
                 cx.notify();
             })
             .unwrap_or_default();

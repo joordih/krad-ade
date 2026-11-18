@@ -1,4 +1,4 @@
-use gpui_kit::{Context, DummyKeyboardMapper, KeyBinding, KeyBindingContextPredicate};
+use gpui_kit::{App, Context, KeyBinding, KeyBindingContextPredicate};
 use krad_extensions::api::manifest::KeybindingContribution;
 use krad_extensions::api::QualifiedCommand;
 use std::collections::{BTreeSet, HashSet};
@@ -52,20 +52,12 @@ fn shell_context() -> Option<Rc<KeyBindingContextPredicate>> {
         .map(Rc::new)
 }
 
-fn load(keys: &str, command: &QualifiedCommand) -> Option<KeyBinding> {
+fn load(keys: &str, command: &QualifiedCommand, cx: &App) -> Option<KeyBinding> {
     let action = RunExtensionCommand {
         extension: command.extension.clone(),
         command: command.command.clone(),
     };
-    KeyBinding::load(
-        keys,
-        Box::new(action),
-        shell_context(),
-        false,
-        None,
-        &DummyKeyboardMapper,
-    )
-    .ok()
+    KeyBinding::load(keys, Box::new(action), shell_context(), false, None, cx).ok()
 }
 
 pub(super) struct Planned {
@@ -73,7 +65,11 @@ pub(super) struct Planned {
     pub(super) conflicts: Vec<KeyConflict>,
 }
 
-pub(super) fn plan(app: &[KeyBinding], wanted: &[(QualifiedCommand, String)]) -> Planned {
+pub(super) fn plan(
+    app: &[KeyBinding],
+    wanted: &[(QualifiedCommand, String)],
+    load: impl Fn(&str, &QualifiedCommand) -> Option<KeyBinding>,
+) -> Planned {
     let mut bindings: Vec<(String, QualifiedCommand, KeyBinding)> = Vec::new();
     let mut conflicts = Vec::new();
     for (command, keys) in wanted {
@@ -183,7 +179,9 @@ impl EnvironmentShell {
             })
             .collect();
         self.forget_stale_shortcuts(&wanted, cx);
-        let planned = plan(&crate::keymap::key_bindings(), &wanted);
+        let planned = plan(&crate::keymap::key_bindings(), &wanted, |keys, command| {
+            load(keys, command, cx)
+        });
         self.extensions.conflicts = planned.conflicts;
         let fresh: Vec<KeyBinding> = planned
             .bindings
@@ -215,6 +213,17 @@ mod tests {
         })
     }
 
+    const KNOWN_KEYS: [&str; 2] = ["cmd-p", "cmd-alt-l"];
+
+    fn load_known(keys: &str, command: &QualifiedCommand) -> Option<KeyBinding> {
+        let keys = KNOWN_KEYS.into_iter().find(|known| *known == keys)?;
+        let action = RunExtensionCommand {
+            extension: command.extension.clone(),
+            command: command.command.clone(),
+        };
+        Some(KeyBinding::new(keys, action, None))
+    }
+
     #[test]
     fn bindings_that_clash_with_the_app_or_an_earlier_extension_are_skipped() -> Result<(), IdError>
     {
@@ -229,7 +238,7 @@ mod tests {
             (command("other", "logs")?, "cmd-alt-l".to_owned()),
             (command("other", "broken")?, "cmd-x-y".to_owned()),
         ];
-        let planned = plan(&app, &wanted);
+        let planned = plan(&app, &wanted, load_known);
         assert_eq!(planned.bindings.len(), 1);
         let clashes: Vec<&ClashWith> = planned
             .conflicts

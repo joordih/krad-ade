@@ -1,7 +1,7 @@
 mod lines;
 mod selection;
 
-use gpui_kit::base::TextView as BaseTextView;
+use gpui_kit::base::{HandleEdge, TextView as BaseTextView};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, AppContext as _, Context, ElementId, FocusHandle, FontWeight,
@@ -15,8 +15,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::dialog_parts::{segment, SegmentSize};
+use super::drag::{edge_handle, EdgeDrag, FixedSide};
 use super::file_tree::change_color;
-use super::layout::{width_handle, SidePanel};
+use super::layout::SidePanel;
 use super::markdown_images::with_local_images;
 use super::settings_view::segmented_track;
 use super::EnvironmentShell;
@@ -30,6 +31,7 @@ use krad_domain::LanguageDef;
 use selection::CodeSelection;
 
 const BTN_CLOSE_VIEWER: &str = "close-viewer";
+const WIDTH_HANDLE_ID: &str = "code-viewer-width";
 const TOOLTIP_CLOSE_VIEWER: &str = "Close file";
 const MAX_VIEW_BYTES: u64 = 2 * 1024 * 1024;
 const TAB_AS_SPACES: &str = "    ";
@@ -273,7 +275,20 @@ impl EnvironmentShell {
                 .child(header)
                 .child(body)
                 .children(text.map(|text| Self::viewer_footer(text, pal)))
-                .child(width_handle(SidePanel::Viewer, width, cx))
+                .on_drag_move(Self::follow_edge(cx, |this, edge, moved, _| {
+                    (edge == EdgeDrag::Viewer).then(|| {
+                        this.panel_widths
+                            .set(SidePanel::Viewer, moved.extent_from(FixedSide::Right));
+                    })
+                }))
+                .child(
+                    edge_handle(
+                        WIDTH_HANDLE_ID,
+                        gpui_kit::Axis::Horizontal,
+                        EdgeDrag::Viewer,
+                    )
+                    .inside(HandleEdge::Leading),
+                )
                 .into_any_element(),
         )
     }

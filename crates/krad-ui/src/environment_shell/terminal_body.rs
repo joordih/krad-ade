@@ -1,7 +1,7 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, font, px, rgb, AnyElement, Context, InteractiveElement, IntoElement, MouseButton,
-    MouseDownEvent, ParentElement, ScrollWheelEvent, SharedString, Styled, Window,
+    MouseDownEvent, ParentElement, ScrollEvent, SharedString, Styled, Window,
 };
 use krad_domain::TerminalId;
 use krad_runtime::TerminalAction;
@@ -116,19 +116,19 @@ impl EnvironmentShell {
                     this.paste_into(id, cx);
                 }),
             )
-            .on_scroll_wheel(cx.listener(
-                move |this: &mut Self, event: &ScrollWheelEvent, _, cx| {
+            .on_scroll(
+                cx.listener(move |this: &mut Self, event: &ScrollEvent, _, cx| {
                     cx.stop_propagation();
                     let delta = event.delta.pixel_delta(px(geometry.line_h));
-                    if event.modifiers.secondary() {
+                    if event.modifiers.secondary(cx) {
                         this.step_text_scale(id, delta.y.as_f32() < 0.0, cx);
                     } else {
                         let cell =
                             geometry.cell_at(event.position.x.as_f32(), event.position.y.as_f32());
                         this.scroll_terminal(id, delta.y.as_f32() / geometry.line_h, cell, cx);
                     }
-                },
-            ));
+                }),
+            );
         match session {
             Some(session) if agent_starting(session) => body
                 .child(starting_view(id, session, mono, cx))
@@ -158,7 +158,7 @@ impl EnvironmentShell {
             cx.notify();
             return;
         };
-        if event.modifiers.secondary() {
+        if event.modifiers.secondary(cx) {
             if let Some(url) = link_at(&session.view.frame().screen.rows, cell) {
                 cx.open_url(&url);
                 return;

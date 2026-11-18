@@ -1,5 +1,5 @@
 use gpui_kit::{
-    div, px, rgb, AnyElement, Context, IntoElement, ParentElement, ScrollDelta, ScrollWheelEvent,
+    div, px, rgb, AnyElement, Context, IntoElement, ParentElement, ScrollDelta, ScrollEvent,
     Styled, TouchPhase, Window,
 };
 use std::time::Instant;
@@ -68,7 +68,7 @@ impl EnvironmentShell {
         true
     }
 
-    pub(super) fn drag_settings(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
+    pub(super) fn drag_settings(&mut self, event: &ScrollEvent, cx: &mut Context<Self>) {
         if self.settings_ui.is_none() {
             return;
         }

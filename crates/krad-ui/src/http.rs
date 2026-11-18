@@ -2,9 +2,9 @@ use futures::channel::oneshot;
 use futures::future::BoxFuture;
 use futures::FutureExt as _;
 use gpui_kit::http_client::http::HeaderValue;
-use gpui_kit::http_client::{
-    anyhow, AsyncBody, HttpClient, Method, Request, Response, Result as HttpResult, Url,
-};
+use gpui_kit::http_client::{AsyncBody, HttpClient, Method, Request, Response, Url};
+use gpui_kit::Result as HttpResult;
+use std::io;
 use std::sync::Arc;
 use std::thread;
 
@@ -51,7 +51,7 @@ impl HttpClient for UreqClient {
         request: Request<AsyncBody>,
     ) -> BoxFuture<'static, HttpResult<Response<AsyncBody>>> {
         if request.method() != Method::GET {
-            return async { Err(anyhow!(ONLY_GET)) }.boxed();
+            return async { Err(io::Error::other(ONLY_GET).into()) }.boxed();
         }
         let uri = request.uri().to_string();
         let agent = self.agent.clone();
@@ -63,7 +63,9 @@ impl HttpClient for UreqClient {
             });
         async move {
             spawned?;
-            answered.await.map_err(|_| anyhow!(FETCH_DROPPED))?
+            answered
+                .await
+                .map_err(|_| io::Error::other(FETCH_DROPPED))?
         }
         .boxed()
     }

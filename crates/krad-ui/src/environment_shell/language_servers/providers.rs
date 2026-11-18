@@ -1,7 +1,7 @@
 use gpui_kit::component::input::{
     CompletionProvider, DefinitionProvider, HoverProvider, Lsp, Rope, RopeExt as _,
 };
-use gpui_kit::http_client::Result;
+use gpui_kit::Result;
 use gpui_kit::{App, AppContext as _, Task, WeakEntity, Window};
 use krad_lsp::lsp_types::request::{
     Completion, GotoDefinition, HoverRequest, SignatureHelpRequest,

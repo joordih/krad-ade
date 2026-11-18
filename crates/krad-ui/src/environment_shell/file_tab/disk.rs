@@ -98,6 +98,7 @@ impl EnvironmentShell {
                             }
                             editor.modified = modified;
                         }
+                        shell.load_change_marks(&env, id, cx);
                     }
                     Err(error) => {
                         shell.push_toast(ToastKind::Error, format!("{SAVE_FAILED_TEXT}: {error}"));

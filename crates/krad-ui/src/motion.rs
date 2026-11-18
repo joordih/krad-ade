@@ -1,12 +1,6 @@
 mod easing;
-#[cfg(target_os = "linux")]
-mod linux;
-#[cfg(target_os = "macos")]
-mod macos;
 mod preference;
 mod tween;
-#[cfg(windows)]
-mod windows;
 
 pub(crate) use easing::{ease_out_cubic, ease_out_emphasized, Easing, LAYOUT_SHIFT, THEME_FADE};
 pub(crate) use preference::follow_motion_preference;
@@ -47,11 +41,6 @@ impl Spring {
 
     pub(crate) fn set_target(&mut self, target: f32) {
         self.target = target;
-        self.resting = false;
-    }
-
-    pub(crate) fn kick(&mut self, velocity: f32) {
-        self.velocity = velocity;
         self.resting = false;
     }
 

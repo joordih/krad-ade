@@ -333,7 +333,7 @@ mod tests {
             let chord = binding
                 .keystrokes()
                 .iter()
-                .map(gpui_kit::KeybindingKeystroke::unparse)
+                .map(|keystroke| keystroke.unparse(TEST_OS))
                 .collect::<Vec<_>>()
                 .join(" ");
             let context = binding
@@ -350,6 +350,7 @@ mod tests {
         clashes
     }
 
+    const TEST_OS: gpui_kit::OperatingSystem = gpui_kit::OperatingSystem::Mac;
     const SHELL: &[&str] = &["KradShell"];
     const TERMINAL: &[&str] = &["KradShell KradTerminal"];
     const COMPOSER: &[&str] = &["KradShell", "Input"];
@@ -362,7 +363,7 @@ mod tests {
             .map(|context| gpui_kit::KeyContext::parse(context))
             .collect::<Result<Vec<_>, _>>()
             .ok()?;
-        let input = [gpui_kit::Keystroke::parse(chord).ok()?];
+        let input = [gpui_kit::Keystroke::parse_with_os(chord, TEST_OS).ok()?];
         let (bindings, _) = keymap.bindings_for_input(&input, &stack);
         bindings.first().map(|binding| binding.action().name())
     }

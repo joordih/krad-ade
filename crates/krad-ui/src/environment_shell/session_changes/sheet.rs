@@ -1,32 +1,31 @@
-use gpui_kit::component::ActiveTheme;
+use gpui_kit::component::diff::{DiffAnnotation, DiffLinePosition, DiffState};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    SharedString, StatefulInteractiveElement, Styled, Window,
+    div, px, rgb, AnyElement, Context, Entity, FontWeight, IntoElement, ParentElement, Styled,
+    Window,
 };
 use krad_domain::{ChangeKind, LineCount, PatchBody};
 
 use super::super::dialog_parts::{sheet_overlay, sheet_panel, sheet_title};
+use super::super::diff_view::{
+    change_decorations, id_number, mode_toggle, numbered_id, shell_element, themed_diff,
+};
 use super::super::discard::Discard;
 use super::super::file_tree::{change_color, change_mark};
-use super::super::review_view::{diff_row, DiffLine};
 use super::super::EnvironmentShell;
-use super::rows::{review_rows, FileRow, HunkRow, ReviewedFile};
+use super::rows::{review_rows, FileRow, ReviewedFile};
 use super::{close, ReviewLoad, SessionReview};
-use crate::components::{icon, Button, ButtonVariant, EmptyState, IconName};
+use crate::components::{Button, ButtonVariant, EmptyState, IconName};
 use crate::theme::{
-    palette, Palette, ICON_SM, LINE_SM, LINE_XS, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_2, SPACE_3,
-    SPACE_6, TEXT_SM, TEXT_XS, TOOLBAR_H,
+    palette, Palette, ICON_SM, LINE_SM, LINE_XS, RADIUS_XS, SPACE_1, SPACE_1_5, SPACE_6, TEXT_SM,
+    TEXT_XS, TOOLBAR_H,
 };
 
 const SHEET_W: f32 = 960.0;
-const DIFF_LINE_H: f32 = 20.0;
-const FILE_ROW_H: f32 = 32.0;
 const TITLE: &str = "Session changes";
-const BODY_ID: &str = "session-changes-body";
-const FILE_BLOCK: &str = "session-change-file";
-const HUNK_BLOCK: &str = "session-change-hunk";
-const FILE_HEADER: &str = "session-change-file-header";
+const HUNK_FOOTER: &str = "session-change-hunk";
+const FILE_NOTE: &str = "session-change-note";
+const BTN_MODE: &str = "session-changes-mode";
 const BTN_CLOSE: &str = "session-changes-close";
 const BTN_REFRESH: &str = "session-changes-refresh";
 const BTN_RESTART: &str = "session-changes-restart";
@@ -118,6 +117,23 @@ fn accept_button(reviewed: bool, tooltip: &'static str) -> Button {
         .tooltip(if reviewed { TOOLTIP_UNACCEPT } else { tooltip })
 }
 
+fn file_note(file: &ReviewedFile) -> Option<&'static str> {
+    match file.patch.body {
+        PatchBody::Text(_) => None,
+        PatchBody::Binary => Some(NOT_TEXT),
+        PatchBody::Submodule => Some(SUBMODULE_TEXT),
+        PatchBody::Renamed { .. } => Some(RENAMED_TEXT),
+    }
+}
+
+fn session_note(note: &'static str, cx: &Context<EnvironmentShell>) -> AnyElement {
+    div()
+        .text_size(px(TEXT_XS))
+        .text_color(rgb(palette(cx).text_muted))
+        .child(note)
+        .into_any_element()
+}
+
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn session_changes_sheet(
         &self,
@@ -153,7 +169,7 @@ impl EnvironmentShell {
                     .flex()
                     .flex_col()
                     .flex_1()
-                    .child(Self::session_toolbar(String::new(), cx))
+                    .child(Self::session_toolbar(String::new(), None, cx))
                     .child(EmptyState::new(
                         IconName::CancelCircle,
                         FAILED_TITLE,
@@ -164,8 +180,8 @@ impl EnvironmentShell {
             ReviewLoad::Ready { files, .. } => files,
         };
         let changes = self.session_changes_of(&review.env, review.session);
-        let rows = review_rows(files, changes, &review.expanded);
-        let toolbar = Self::session_toolbar(summary(&rows), cx);
+        let rows = review_rows(files, changes);
+        let toolbar = Self::session_toolbar(summary(&rows), Some(&review.diff), cx);
         if rows.is_empty() {
             return div()
                 .flex()
@@ -179,14 +195,6 @@ impl EnvironmentShell {
                 ))
                 .into_any_element();
         }
-        let mono = cx.theme().mono_font_family.clone();
-        let blocks: Vec<AnyElement> = rows
-            .iter()
-            .filter_map(|row| {
-                let file = files.get(row.file)?;
-                Some(Self::session_file_block(row, file, mono.clone(), cx))
-            })
-            .collect();
         div()
             .flex()
             .flex_col()
@@ -195,22 +203,93 @@ impl EnvironmentShell {
             .child(toolbar)
             .child(
                 div()
-                    .id(BODY_ID)
                     .flex()
                     .flex_col()
                     .flex_1()
                     .min_h_0()
-                    .overflow_y_scroll()
-                    .gap(px(SPACE_2))
                     .px(px(SPACE_6))
                     .pb(px(SPACE_6))
-                    .children(blocks),
+                    .child(Self::session_diff(review, files, cx)),
             )
             .into_any_element()
     }
 
-    fn session_toolbar(summary: String, cx: &mut Context<Self>) -> AnyElement {
+    fn session_diff(
+        review: &SessionReview,
+        files: &[ReviewedFile],
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let pal = palette(cx);
+        let decorations: Vec<_> = files
+            .iter()
+            .flat_map(|file| change_decorations(&file.path, &file.runs, pal))
+            .collect();
+        let annotations: Vec<DiffAnnotation> = files
+            .iter()
+            .enumerate()
+            .flat_map(|(index, file)| {
+                let note = file_note(file).map(|_| {
+                    DiffAnnotation::file(numbered_id(FILE_NOTE, index as u64), file.path.clone())
+                });
+                let footers = (0..file.hunks.len()).filter_map(|hunk| {
+                    Some(DiffAnnotation::line(
+                        numbered_id(HUNK_FOOTER, hunk as u64),
+                        file.hunk_end(hunk)?,
+                    ))
+                });
+                note.into_iter().chain(footers).collect::<Vec<_>>()
+            })
+            .collect();
+        let shell = cx.entity().downgrade();
+        let header_shell = shell.clone();
+        themed_diff(&review.diff)
+            .rounded(px(RADIUS_XS))
+            .border_1()
+            .border_color(pal.divider)
+            .decorations(decorations)
+            .annotations(annotations)
+            .render_header(move |file, _, cx| {
+                let path = file.path().clone();
+                shell_element(&header_shell, cx, |this, cx| {
+                    let (index, file, row) = this.session_file_at(path.as_str())?;
+                    Some(Self::session_file_header(index, &row, file, cx))
+                })
+            })
+            .render_annotation(move |annotation, _, cx| {
+                let path = annotation.path().clone();
+                let at = annotation.position().cloned();
+                let number = id_number(annotation.id());
+                shell_element(&shell, cx, |this, cx| {
+                    let (index, file, row) = this.session_file_at(path.as_str())?;
+                    match at {
+                        Some(at) => Self::session_hunk_footer(index, file, &row, &at, cx),
+                        None => number
+                            .and(file_note(file))
+                            .map(|note| session_note(note, cx)),
+                    }
+                })
+            })
+            .into_any_element()
+    }
+
+    fn session_file_at(&self, path: &str) -> Option<(usize, &ReviewedFile, FileRow)> {
+        let review = self.session_changes.review.as_ref()?;
+        let ReviewLoad::Ready { files } = &review.load else {
+            return None;
+        };
+        let index = files.iter().position(|file| file.path.as_str() == path)?;
+        let changes = self.session_changes_of(&review.env, review.session);
+        let row = review_rows(files, changes).into_iter().nth(index)?;
+        Some((index, files.get(index)?, row))
+    }
+
+    fn session_toolbar(
+        summary: String,
+        diff: Option<&Entity<DiffState>>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let pal = palette(cx);
+        let mode = diff.map(|diff| mode_toggle(BTN_MODE, diff, cx));
         div()
             .flex()
             .flex_row()
@@ -223,6 +302,7 @@ impl EnvironmentShell {
             .line_height(px(LINE_XS))
             .text_color(rgb(pal.text_muted))
             .child(div().flex_1().min_w_0().truncate().child(summary))
+            .children(mode)
             .child(
                 Button::new(BTN_RESTART)
                     .icon(IconName::Repeat)
@@ -244,69 +324,14 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    fn session_file_block(
-        row: &FileRow,
-        file: &ReviewedFile,
-        mono: SharedString,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let pal = palette(cx);
-        let index = row.file;
-        let note = match file.patch.body {
-            PatchBody::Text(_) => None,
-            PatchBody::Binary => Some(NOT_TEXT),
-            PatchBody::Submodule => Some(SUBMODULE_TEXT),
-            PatchBody::Renamed { .. } => Some(RENAMED_TEXT),
-        };
-        let hunks: Vec<AnyElement> = row
-            .hunks
-            .iter()
-            .filter_map(|hunk| {
-                let lines = file.hunks.get(hunk.hunk)?;
-                Some(Self::session_hunk_block(index, *hunk, file, lines, cx))
-            })
-            .collect();
-        div()
-            .id((FILE_BLOCK, index))
-            .flex()
-            .flex_col()
-            .flex_none()
-            .rounded(px(RADIUS_XS))
-            .border_1()
-            .border_color(pal.divider)
-            .overflow_hidden()
-            .child(Self::session_file_header(row, file, cx))
-            .when(row.expanded, |block| {
-                block
-                    .children(note.map(|note| {
-                        div()
-                            .px(px(SPACE_3))
-                            .py(px(SPACE_2))
-                            .text_size(px(TEXT_XS))
-                            .text_color(rgb(pal.text_muted))
-                            .child(note)
-                    }))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .font_family(mono)
-                            .text_size(px(TEXT_XS))
-                            .line_height(px(DIFF_LINE_H))
-                            .children(hunks),
-                    )
-            })
-            .into_any_element()
-    }
-
     fn session_file_header(
+        index: usize,
         row: &FileRow,
         file: &ReviewedFile,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let index = row.file;
-        let path = file.patch.path.clone();
+        let path = &file.patch.path;
         let kind = ChangeKind::from(file.patch.status);
         let color = change_color(kind, pal);
         let name = path
@@ -321,30 +346,12 @@ impl EnvironmentShell {
             PatchBody::Submodule | PatchBody::Renamed { .. }
         );
         div()
-            .id(FILE_HEADER)
             .flex()
             .flex_row()
             .items_center()
             .gap(px(SPACE_1_5))
-            .h(px(FILE_ROW_H))
-            .px(px(SPACE_2))
-            .bg(rgb(pal.bg_panel))
-            .cursor_pointer()
-            .hover(|style| style.bg(pal.bg_hover))
             .text_size(px(TEXT_SM))
             .line_height(px(LINE_SM))
-            .on_click(cx.listener(move |this: &mut Self, _, _, cx| {
-                this.toggle_session_file(&path, cx);
-            }))
-            .child(icon(
-                if row.expanded {
-                    IconName::ChevronDown
-                } else {
-                    IconName::ChevronRight
-                },
-                ICON_SM,
-                pal.text_subtle,
-            ))
             .child(
                 div()
                     .flex_none()
@@ -380,7 +387,6 @@ impl EnvironmentShell {
             .child(
                 accept_button(row.reviewed, TOOLTIP_ACCEPT_FILE).on_click(cx.listener(
                     move |this: &mut Self, _, _, cx| {
-                        cx.stop_propagation();
                         this.toggle_session_reviewed(&prints, cx);
                     },
                 )),
@@ -392,7 +398,6 @@ impl EnvironmentShell {
                         .small()
                         .tooltip(TOOLTIP_REVERT_FILE)
                         .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
-                            cx.stop_propagation();
                             this.ask_session_revert(index, None, window, cx);
                         })),
                 )
@@ -400,60 +405,45 @@ impl EnvironmentShell {
             .into_any_element()
     }
 
-    fn session_hunk_block(
+    fn session_hunk_footer(
         file_index: usize,
-        row: HunkRow,
         file: &ReviewedFile,
-        lines: &[DiffLine],
+        row: &FileRow,
+        at: &DiffLinePosition,
         cx: &mut Context<Self>,
-    ) -> AnyElement {
+    ) -> Option<AnyElement> {
+        let hunk = file.hunk_at(at)?;
+        let reviewed = row.hunks.get(hunk).copied().unwrap_or_default();
+        let prints = vec![file.patch.hunks().get(hunk)?.fingerprint];
         let pal = palette(cx);
-        let prints = file
-            .patch
-            .hunks()
-            .get(row.hunk)
-            .map_or_else(Vec::new, |hunk| vec![hunk.fingerprint]);
-        let hunk = row.hunk;
-        div()
-            .id((HUNK_BLOCK, hunk))
-            .flex()
-            .flex_col()
-            .border_t_1()
-            .border_color(pal.divider)
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(SPACE_1))
-                    .h(px(FILE_ROW_H))
-                    .px(px(SPACE_2))
-                    .bg(rgb(pal.bg_panel))
-                    .text_color(rgb(pal.text_muted))
-                    .child(div().flex_1().min_w_0().child(hunk_label(file, hunk)))
-                    .child(
-                        accept_button(row.reviewed, TOOLTIP_ACCEPT_HUNK).on_click(cx.listener(
-                            move |this: &mut Self, _, _, cx| {
-                                this.toggle_session_reviewed(&prints, cx);
-                            },
-                        )),
-                    )
-                    .child(
-                        Button::new(BTN_REVERT)
-                            .icon(IconName::Undo)
-                            .small()
-                            .tooltip(TOOLTIP_REVERT_HUNK)
-                            .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
-                                this.ask_session_revert(file_index, Some(hunk), window, cx);
-                            })),
-                    ),
-            )
-            .children(
-                lines
-                    .iter()
-                    .map(|line| div().h(px(DIFF_LINE_H)).child(diff_row(line, None, pal))),
-            )
-            .into_any_element()
+        Some(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(SPACE_1))
+                .text_size(px(TEXT_XS))
+                .line_height(px(LINE_XS))
+                .text_color(rgb(pal.text_muted))
+                .child(div().flex_1().min_w_0().child(hunk_label(file, hunk)))
+                .child(
+                    accept_button(reviewed, TOOLTIP_ACCEPT_HUNK).on_click(cx.listener(
+                        move |this: &mut Self, _, _, cx| {
+                            this.toggle_session_reviewed(&prints, cx);
+                        },
+                    )),
+                )
+                .child(
+                    Button::new(BTN_REVERT)
+                        .icon(IconName::Undo)
+                        .small()
+                        .tooltip(TOOLTIP_REVERT_HUNK)
+                        .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                            this.ask_session_revert(file_index, Some(hunk), window, cx);
+                        })),
+                )
+                .into_any_element(),
+        )
     }
 
     fn ask_session_revert(

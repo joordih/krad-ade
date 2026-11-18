@@ -2,14 +2,14 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, relative, rgb, AnyElement, Context, ElementId, ExternalPaths, FontWeight,
-    InteractiveElement, IntoElement, ListState, ParentElement, ScrollHandle, ScrollWheelEvent,
+    InteractiveElement, IntoElement, ListState, ParentElement, ScrollHandle,
     StatefulInteractiveElement, Styled,
 };
 use krad_domain::{AgentState, TerminalId};
 
 use super::super::ask::{tray, tray_button};
 use super::super::live_terminal::LiveTerminal;
-use super::super::rubber_band::{band_watch, BandKey, ScrollEdges};
+use super::super::overscroll::overscroll;
 use super::super::sidebar::PanelReveal;
 use super::super::EnvironmentShell;
 use super::dot_field::dot_field;
@@ -25,6 +25,7 @@ const DOWN_BUTTON_OFFSET: f32 = 12.0;
 const BOTTOM_SLACK: f32 = 24.0;
 
 const DOWN_PREFIX: &str = "surface-down";
+const BOUNCE_PREFIX: &str = "surface-bounce";
 const OPEN_TERMINAL_PREFIX: &str = "surface-open-terminal";
 const TOOLTIP_DOWN: &str = "Jump to the latest";
 const WAITING_TEXT: &str = "is asking you something in the terminal.";
@@ -181,7 +182,7 @@ impl EnvironmentShell {
                     .flex_1()
                     .min_h_0()
                     .opacity(landed)
-                    .child(self.bouncing_thread(id, chat, now, cx))
+                    .child(Self::bouncing_thread(id, chat, now, cx))
                     .children(self.timeline_strip(id, chat, cx))
                     .when(!following, |area| area.child(Self::jump_down(id, cx))),
             )
@@ -226,29 +227,23 @@ impl EnvironmentShell {
     }
 
     fn bouncing_thread(
-        &self,
         id: TerminalId,
         chat: &ChatView,
         now: AgentNow,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let bounce = chat.thread.clone();
-        let edges = move || ScrollEdges {
-            offset: -bounce.scroll_px_offset_for_scrollbar().y.as_f32(),
-            max: bounce.max_offset_for_scrollbar().y.as_f32(),
-        };
-        div()
-            .relative()
-            .size_full()
-            .top(px(self.gestures.bands.offset(BandKey::Chat(id))))
-            .on_scroll_wheel(
-                cx.listener(move |this: &mut Self, _: &ScrollWheelEvent, _, _| {
-                    this.scrolled_by_hand(id);
-                }),
-            )
-            .child(Self::surface_thread(id, chat, now, cx))
-            .child(band_watch(BandKey::Chat(id), edges, cx))
-            .into_any_element()
+        let shell = cx.entity().downgrade();
+        overscroll(
+            (BOUNCE_PREFIX, id.as_u64()),
+            &chat.thread,
+            Self::surface_thread(id, chat, now, cx),
+        )
+        .on_scroll(move |_, cx| {
+            shell
+                .update(cx, |this, _| this.scrolled_by_hand(id))
+                .unwrap_or_default();
+        })
+        .into_any_element()
     }
 
     fn agent_notice(

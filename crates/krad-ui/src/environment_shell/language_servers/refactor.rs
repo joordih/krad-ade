@@ -1,5 +1,5 @@
 use gpui_kit::component::input::{CodeActionProvider, EditorState, Rope, RopeExt as _};
-use gpui_kit::http_client::Result;
+use gpui_kit::Result;
 use gpui_kit::{App, Context, Entity, SharedString, Task, Window};
 use krad_domain::{Host, ToastKind};
 use krad_lsp::lsp_types::request::{

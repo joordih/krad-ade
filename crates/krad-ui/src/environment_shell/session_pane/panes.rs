@@ -1,8 +1,8 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, App, AppContext as _, Context, DragMoveEvent, FontWeight,
-    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, WeakEntity, Window,
+    InteractiveElement, IntoElement, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, WeakEntity, Window,
 };
 use krad_domain::{
     Axis, DividerId, LayoutTemplate, PaneId, SessionEdit, SessionPanes, SnapZone, TerminalId,
@@ -10,7 +10,7 @@ use krad_domain::{
 };
 use std::time::Instant;
 
-use super::super::drag::DragState;
+use super::super::drag::{edge_handle, EdgeDrag};
 use super::super::{EnvironmentShell, LiveEnv};
 use super::{tab_badge, tab_tile, BadgeLook, StripPlace};
 use crate::components::{card, icon, Button, IconName};
@@ -29,7 +29,6 @@ const GUEST_TAB_PREFIX: &str = "pane-guest-tab";
 const GUEST_BACK_PREFIX: &str = "pane-guest-back";
 const GUEST_BACK_TOOLTIP: &str = "Back to the side panel";
 const ZONE_REACH: f32 = 0.3;
-const DIVIDER_HIT: f32 = 8.0;
 const PREVIEW_RESPONSE_S: f32 = 0.18;
 const PREVIEW_FILL_ALPHA: u32 = 0x26;
 const TEMPLATE_W: f32 = 72.0;
@@ -291,7 +290,7 @@ impl EnvironmentShell {
             .dividers()
             .into_iter()
             .map(|(divider, axis, ratio, frame)| {
-                Self::pane_divider_handle(divider, axis, ratio, frame, size, cx)
+                Self::pane_divider_handle(divider, axis, ratio, frame, size)
             })
             .collect();
         let dragging = cx.has_active_drag();
@@ -304,6 +303,19 @@ impl EnvironmentShell {
                     this.aim_tab_drop(event, cx);
                 },
             ))
+            .on_drag_move(Self::follow_edge(cx, |this, edge, moved, cx| {
+                let EdgeDrag::Pane {
+                    divider,
+                    axis,
+                    frame,
+                } = edge
+                else {
+                    return None;
+                };
+                let ratio = moved.ratio_across(axis, frame);
+                this.edit_panes(cx, |panes| panes.resize(divider, ratio));
+                Some(())
+            }))
             .on_drop(cx.listener(|this: &mut Self, dragged: &DraggedTab, _, cx| {
                 this.drop_tab(dragged.id, cx);
             }))
@@ -441,70 +453,35 @@ impl EnvironmentShell {
         ratio: f32,
         frame: UnitRect,
         size: (f32, f32),
-        cx: &mut Context<Self>,
     ) -> AnyElement {
-        let pal = palette(cx);
-        let base = div()
-            .id((DIVIDER_PREFIX, u64::from(divider.0)))
-            .absolute()
-            .occlude()
-            .hover(|style| style.bg(pal.bg_hover))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |this: &mut Self, _: &MouseDownEvent, _, cx| {
-                    cx.stop_propagation();
-                    this.drag = DragState::ResizePane {
-                        divider,
-                        axis,
-                        frame,
-                    };
-                }),
-            );
-        let element = match axis {
-            Axis::Row => {
-                let at = (frame.x + frame.w * ratio) * size.0;
-                base.left(px(at - DIVIDER_HIT / 2.0))
+        let anchor = div().absolute();
+        let (anchor, along) = match axis {
+            Axis::Row => (
+                anchor
+                    .left(px((frame.x + frame.w * ratio) * size.0))
                     .top(px(frame.y * size.1))
-                    .w(px(DIVIDER_HIT))
-                    .h(px(frame.h * size.1))
-                    .cursor_col_resize()
-            }
-            Axis::Column => {
-                let at = (frame.y + frame.h * ratio) * size.1;
-                base.top(px(at - DIVIDER_HIT / 2.0))
+                    .h(px(frame.h * size.1)),
+                gpui_kit::Axis::Horizontal,
+            ),
+            Axis::Column => (
+                anchor
+                    .top(px((frame.y + frame.h * ratio) * size.1))
                     .left(px(frame.x * size.0))
-                    .h(px(DIVIDER_HIT))
-                    .w(px(frame.w * size.0))
-                    .cursor_row_resize()
-            }
+                    .w(px(frame.w * size.0)),
+                gpui_kit::Axis::Vertical,
+            ),
         };
-        element.rounded(px(RADIUS_XS)).into_any_element()
-    }
-
-    pub(in crate::environment_shell) fn drag_pane_divider(
-        &mut self,
-        x: f32,
-        y: f32,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let DragState::ResizePane {
-            divider,
-            axis,
-            frame,
-        } = self.drag
-        else {
-            return false;
-        };
-        let (origin_x, origin_y) = self.window_origin();
-        let (width, height) = self.canvas_px;
-        let ratio = match axis {
-            Axis::Row => ((x - origin_x) / width.max(1.0) - frame.x) / frame.w.max(f32::EPSILON),
-            Axis::Column => {
-                ((y - origin_y) / height.max(1.0) - frame.y) / frame.h.max(f32::EPSILON)
-            }
-        };
-        self.edit_panes(cx, |panes| panes.resize(divider, ratio));
-        true
+        anchor
+            .child(edge_handle(
+                (DIVIDER_PREFIX, u64::from(divider.0)),
+                along,
+                EdgeDrag::Pane {
+                    divider,
+                    axis,
+                    frame,
+                },
+            ))
+            .into_any_element()
     }
 
     pub(in crate::environment_shell) fn edit_panes(

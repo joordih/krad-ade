@@ -1,64 +1,52 @@
-use krad_domain::review::Discussion;
+use gpui_kit::component::diff::{DiffLinePosition, DiffSide};
+use gpui_kit::SharedString;
+use krad_domain::review::{Discussion, NotePosition};
 
-use super::{anchor_line, ChangedFile};
+use super::ChangedFile;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub(in crate::environment_shell) struct ThreadAnchor {
-    pub(in crate::environment_shell) line: usize,
     pub(in crate::environment_shell) discussion: usize,
+    pub(in crate::environment_shell) position: DiffLinePosition,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(in crate::environment_shell) enum DiffItem {
-    Line(usize),
-    Thread(usize),
+fn note_line(path: &SharedString, position: &NotePosition) -> Option<DiffLinePosition> {
+    let (side, line) = match (position.new_line, position.old_line) {
+        (Some(new), _) => (DiffSide::Modified, new),
+        (None, Some(old)) => (DiffSide::Original, old),
+        (None, None) => return None,
+    };
+    Some(DiffLinePosition::new(
+        path.clone(),
+        side,
+        usize::try_from(line).ok()?,
+    ))
 }
 
 pub(in crate::environment_shell) fn thread_anchors(
     files: &[ChangedFile],
     discussions: &[Discussion],
-) -> Vec<Vec<ThreadAnchor>> {
-    let mut anchors: Vec<Vec<ThreadAnchor>> = vec![Vec::new(); files.len()];
-    for (discussion, thread) in discussions.iter().enumerate() {
-        let Some(position) = thread.notes.first().and_then(|note| note.position.as_ref()) else {
-            continue;
-        };
-        let Some((file, lines)) = files
-            .iter()
-            .zip(anchors.iter_mut())
-            .find(|(file, _)| file.holds(position))
-        else {
-            continue;
-        };
-        if let Some(line) = anchor_line(&file.lines, position) {
-            lines.push(ThreadAnchor { line, discussion });
-        }
-    }
-    for lines in &mut anchors {
-        lines.sort_by_key(|anchor| (anchor.line, anchor.discussion));
-    }
-    anchors
-}
-
-pub(in crate::environment_shell) fn diff_items(
-    line_count: usize,
-    anchors: &[ThreadAnchor],
-) -> Vec<DiffItem> {
-    let mut items = Vec::with_capacity(line_count + anchors.len());
-    let mut pending = anchors.iter().peekable();
-    for line in 0..line_count {
-        items.push(DiffItem::Line(line));
-        while let Some(anchor) = pending.next_if(|anchor| anchor.line == line) {
-            items.push(DiffItem::Thread(anchor.discussion));
-        }
-    }
-    items
+    shown: usize,
+    path: &SharedString,
+) -> Vec<ThreadAnchor> {
+    discussions
+        .iter()
+        .enumerate()
+        .filter_map(|(discussion, thread)| {
+            let position = thread.notes.first()?.position.as_ref()?;
+            let holder = files.iter().position(|file| file.holds(position))?;
+            (holder == shown).then_some(ThreadAnchor {
+                discussion,
+                position: note_line(path, position)?,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krad_domain::review::{Change, DiscussionId, Note, NoteId, NotePosition, User, UserId};
+    use krad_domain::review::{Change, DiscussionId, Note, NoteId, User, UserId};
 
     const DIFF: &str = "@@ -1,2 +1,3 @@\n a\n-b\n+c\n+d\n";
 
@@ -100,66 +88,37 @@ mod tests {
     }
 
     #[test]
-    fn threads_are_anchored_once_to_their_file_and_line() {
+    fn threads_hang_under_their_new_line_or_their_removed_old_line_of_the_shown_file() {
         let files = [file("a.rs"), file("b.rs")];
         let discussions = [
             thread("b.rs", Some(3), None),
             thread("a.rs", None, Some(2)),
             thread("c.rs", Some(1), None),
-            thread("b.rs", Some(1), None),
+            thread("b.rs", Some(1), Some(1)),
         ];
-        let anchors = thread_anchors(&files, &discussions);
+        let path = SharedString::from("b.rs");
+        let anchors = thread_anchors(&files, &discussions, 1, &path);
         assert_eq!(
-            anchors[0],
-            [ThreadAnchor {
-                line: 2,
-                discussion: 1
-            }]
-        );
-        assert_eq!(
-            anchors[1],
+            anchors,
             [
                 ThreadAnchor {
-                    line: 1,
-                    discussion: 3
+                    discussion: 0,
+                    position: DiffLinePosition::new("b.rs", DiffSide::Modified, 3),
                 },
                 ThreadAnchor {
-                    line: 4,
-                    discussion: 0
-                }
+                    discussion: 3,
+                    position: DiffLinePosition::new("b.rs", DiffSide::Modified, 1),
+                },
             ],
-            "sorted by line, the unknown file is skipped"
+            "threads of other files are left out"
         );
-    }
-
-    #[test]
-    fn every_line_is_one_item_with_its_threads_right_after_it() {
-        let anchors = [
-            ThreadAnchor {
-                line: 1,
-                discussion: 5,
-            },
-            ThreadAnchor {
-                line: 1,
-                discussion: 6,
-            },
-            ThreadAnchor {
-                line: 3,
-                discussion: 2,
-            },
-        ];
+        let first = thread_anchors(&files, &discussions, 0, &SharedString::from("a.rs"));
         assert_eq!(
-            diff_items(4, &anchors),
-            [
-                DiffItem::Line(0),
-                DiffItem::Line(1),
-                DiffItem::Thread(5),
-                DiffItem::Thread(6),
-                DiffItem::Line(2),
-                DiffItem::Line(3),
-                DiffItem::Thread(2),
-            ]
+            first,
+            [ThreadAnchor {
+                discussion: 1,
+                position: DiffLinePosition::new("a.rs", DiffSide::Original, 2),
+            }]
         );
-        assert_eq!(diff_items(20_000, &[]).len(), 20_000, "nothing is cut");
     }
 }

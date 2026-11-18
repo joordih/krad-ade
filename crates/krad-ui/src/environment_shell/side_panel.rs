@@ -7,27 +7,21 @@ mod terminals;
 pub(super) use changes::{ChangesAction, CommitHistory};
 pub(super) use search::SideSearch;
 
+use gpui_kit::base::HandleEdge;
 use gpui_kit::{
-    div, px, AnyElement, Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
-    ParentElement, Styled, Window,
+    div, px, AnyElement, Context, InteractiveElement, IntoElement, ParentElement, Styled, Window,
 };
 use krad_domain::{EnvironmentView, SidePanelLayout, SIDE_PANEL_DEFAULT_W};
 use std::time::Instant;
 
-use super::drag::DragState;
+use super::drag::{edge_handle, EdgeDrag, FixedSide};
 use super::sidebar::PanelReveal;
 use super::EnvironmentShell;
 use crate::actions::ToggleSidePanel;
 use crate::components::card;
 use crate::theme::{palette, WINDOW_INSET};
 
-const WIDTH_HANDLE_W: f32 = 6.0;
-
-#[derive(Clone, Copy)]
-pub(super) enum SidePanelDrag {
-    Width { mouse_start: f32, width_start: f32 },
-    History { mouse_start: f32, height_start: f32 },
-}
+const WIDTH_HANDLE_ID: &str = "side-panel-width";
 
 #[derive(Clone, Copy)]
 struct PanelFrame {
@@ -161,54 +155,30 @@ impl EnvironmentShell {
                         .left(px(WINDOW_INSET))
                         .w(px(frame.width))
                         .opacity(shown)
+                        .on_drag_move(Self::follow_edge(cx, |this, edge, moved, _| {
+                            (edge == EdgeDrag::SidePanel).then(|| {
+                                this.resize_side_layout(|layout| {
+                                    layout.set_width(moved.extent_from(FixedSide::Right));
+                                });
+                            })
+                        }))
                         .child(panel)
-                        .child(Self::width_handle(frame.width, cx)),
+                        .child(
+                            edge_handle(
+                                WIDTH_HANDLE_ID,
+                                gpui_kit::Axis::Horizontal,
+                                EdgeDrag::SidePanel,
+                            )
+                            .inside(HandleEdge::Leading),
+                        ),
                 )
                 .into_any_element(),
         )
     }
 
-    fn width_handle(width: f32, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .absolute()
-            .left_0()
-            .top_0()
-            .bottom_0()
-            .w(px(WIDTH_HANDLE_W))
-            .cursor_col_resize()
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
-                    cx.stop_propagation();
-                    this.drag = DragState::SidePanel(SidePanelDrag::Width {
-                        mouse_start: event.position.x.as_f32(),
-                        width_start: width,
-                    });
-                    cx.notify();
-                }),
-            )
-            .into_any_element()
-    }
-
-    pub(super) fn drag_side_panel(&mut self, x: f32, y: f32, cx: &mut Context<Self>) -> bool {
-        let DragState::SidePanel(drag) = self.drag else {
-            return false;
-        };
-        let env = self.active.clone();
-        if let Some(live) = self.envs.get_mut(&env) {
-            let layout = &mut live.view.side_panel;
-            match drag {
-                SidePanelDrag::Width {
-                    mouse_start,
-                    width_start,
-                } => layout.set_width(width_start + (mouse_start - x)),
-                SidePanelDrag::History {
-                    mouse_start,
-                    height_start,
-                } => layout.set_history_height(height_start + (mouse_start - y)),
-            }
+    fn resize_side_layout(&mut self, resize: impl FnOnce(&mut SidePanelLayout)) {
+        if let Some(live) = self.envs.get_mut(&self.active) {
+            resize(&mut live.view.side_panel);
         }
-        cx.notify();
-        true
     }
 }

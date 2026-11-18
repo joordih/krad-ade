@@ -136,11 +136,11 @@ pub(super) fn style_editor(cx: &mut App) {
     let theme = Theme::global_mut(cx);
     theme.mono_font_family = look.family;
     if let Some(style) = style {
-        theme.highlight_theme = Arc::new(HighlightTheme {
-            name,
-            appearance: kit_mode,
-            style,
-        });
+        let mut highlight = HighlightTheme::clone(&HighlightTheme::default_dark());
+        highlight.name = name;
+        highlight.appearance = kit_mode;
+        highlight.style = style;
+        theme.highlight_theme = Arc::new(highlight);
     }
 }
 

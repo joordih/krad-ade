@@ -1,13 +1,12 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, uniform_list, AnyElement, Context, FontWeight, InteractiveElement, IntoElement,
-    MouseButton, MouseDownEvent, ParentElement, StatefulInteractiveElement, Styled, Window,
+    ParentElement, StatefulInteractiveElement, Styled, Window,
 };
 use std::ops::Range;
 
-use super::super::super::super::drag::DragState;
+use super::super::super::super::drag::{edge_handle, EdgeDrag, FixedSide};
 use super::super::super::super::EnvironmentShell;
-use super::super::super::SidePanelDrag;
 use super::{history_rows, HistoryLoad, HistoryRow};
 use crate::components::{icon, Button, IconName};
 use crate::theme::{
@@ -21,7 +20,7 @@ const HISTORY_LABEL: &str = "History";
 const TOOLTIP_REFRESH: &str = "Reload the history";
 const LOADING_TEXT: &str = "Loading…";
 const NO_COMMITS_TEXT: &str = "No commits yet.";
-const HANDLE_H: f32 = 6.0;
+const HANDLE_ID: &str = "side-history-height";
 
 impl EnvironmentShell {
     pub(in crate::environment_shell::side_panel) fn history_section(
@@ -45,8 +44,19 @@ impl EnvironmentShell {
             .when(open, |section| {
                 section
                     .h(px(height))
+                    .on_drag_move(Self::follow_edge(cx, |this, edge, moved, _| {
+                        (edge == EdgeDrag::History).then(|| {
+                            this.resize_side_layout(|layout| {
+                                layout.set_history_height(moved.extent_from(FixedSide::Bottom));
+                            });
+                        })
+                    }))
                     .child(self.history_body(cx))
-                    .child(Self::history_handle(height, cx))
+                    .child(edge_handle(
+                        HANDLE_ID,
+                        gpui_kit::Axis::Vertical,
+                        EdgeDrag::History,
+                    ))
             })
             .into_any_element()
     }
@@ -186,27 +196,5 @@ impl EnvironmentShell {
                 })
             })
             .collect()
-    }
-
-    fn history_handle(height: f32, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .absolute()
-            .left_0()
-            .right_0()
-            .top(px(-HANDLE_H / 2.0))
-            .h(px(HANDLE_H))
-            .cursor_row_resize()
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
-                    cx.stop_propagation();
-                    this.drag = DragState::SidePanel(SidePanelDrag::History {
-                        mouse_start: event.position.y.as_f32(),
-                        height_start: height,
-                    });
-                    cx.notify();
-                }),
-            )
-            .into_any_element()
     }
 }

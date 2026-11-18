@@ -201,7 +201,7 @@ impl EnvironmentShell {
             EventKind::SpendingCrossed(crossed) => self.spending_crossed(&crossed),
             EventKind::SettingsNotSaved { error } => self.settings_not_saved(&error),
             EventKind::GitFinished(finished) => self.git_finished(finished, cx),
-            EventKind::SessionChangesRead(read) => self.session_changes_read(read),
+            EventKind::SessionChangesRead(read) => self.session_changes_read(read, cx),
             EventKind::WorktreeSwept(swept) => self.worktree_swept(&swept),
             EventKind::KraddieRunFailed { task, reason } => {
                 self.kraddie_run_failed(&task, &reason, cx);

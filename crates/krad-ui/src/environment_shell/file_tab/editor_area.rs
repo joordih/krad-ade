@@ -9,7 +9,6 @@ use super::super::{EnvironmentShell, LiveEnv};
 use super::line_numbers::{gutter_width, line_numbers};
 use super::minimap::minimap;
 use super::problem_lens::problem_lens;
-use super::problem_marks::problem_marks;
 use super::problem_underlines::problem_underlines;
 use super::FileEditor;
 use crate::theme::{font_features, EDITOR_FONT_SIZE};
@@ -30,8 +29,7 @@ impl EnvironmentShell {
         let overlays = editor.problems.clone().map(|problems| {
             [
                 problem_underlines(state.clone(), problems.clone()),
-                problem_lens(state.clone(), problems.clone(), settings.problem_lens),
-                problem_marks(state.clone(), problems),
+                problem_lens(state.clone(), problems, settings.problem_lens),
             ]
         });
         let font_size = self

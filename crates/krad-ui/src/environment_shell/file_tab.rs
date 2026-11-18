@@ -1,11 +1,12 @@
 mod agent_buffers;
 mod disk;
 mod editor_area;
+pub(super) mod editor_marks;
+mod git_marks;
 mod line_numbers;
 mod minimap;
 mod problem_lens;
 pub(super) mod problem_list;
-mod problem_marks;
 mod problem_underlines;
 
 use gpui_kit::component::input::{EditorState, InputEvent};
@@ -25,6 +26,7 @@ use crate::components::{Button, ButtonVariant, EmptyState, IconName};
 use crate::highlight::Syntax;
 use crate::language::editor_id;
 use crate::theme::{palette, LINE_SM, SPACE_1, SPACE_2, TEXT_SM};
+use editor_marks::EditorMarks;
 use minimap::{new_minimap, Minimap};
 use problem_list::ProblemList;
 
@@ -55,6 +57,7 @@ pub(super) struct FileEditor {
     pub(super) state: Option<Entity<EditorState>>,
     minimap: Option<Entity<Minimap>>,
     pub(super) problems: Option<Entity<ProblemList>>,
+    pub(super) marks: EditorMarks,
     load: Load,
     dirty: bool,
     edits: EditCount,
@@ -71,6 +74,7 @@ impl FileEditor {
             state: None,
             minimap: None,
             problems: None,
+            marks: EditorMarks::default(),
             load: Load::Pending,
             dirty: false,
             edits: EditCount::default(),
@@ -318,6 +322,7 @@ impl EnvironmentShell {
                 state.set_value(file.text, window, cx);
                 state.set_scroll_offset(scroll, cx);
             });
+            self.load_change_marks(env, id, cx);
             return;
         }
         let shown_minimap = new_minimap(&file.text, syntax, cx);
@@ -349,13 +354,16 @@ impl EnvironmentShell {
             },
         );
         let path = editor.path.clone();
+        let marks = EditorMarks::new(&state, cx);
         if let Some(editor) = self.editor_mut(env, id) {
             editor.state = Some(state.clone());
             editor.minimap = Some(shown_minimap);
             editor.problems = Some(cx.new(|_| ProblemList::default()));
+            editor.marks = marks;
             editor.changes = Some(changes);
         }
         self.attach_language_server(id, &path, &state, cx);
+        self.load_change_marks(env, id, cx);
     }
 
     fn mark_edited(&mut self, env: &EnvironmentName, id: TerminalId, cx: &mut Context<Self>) {

@@ -147,8 +147,7 @@ impl EnvironmentShell {
         detail.discussions = read.discussions.into();
         detail.approvals = read.approvals.into();
         detail.pipelines = read.pipelines.into();
-        detail.forget_colors();
-        detail.sync_rows();
+        self.show_review_file(cx);
         self.read_local_diffs(cx);
     }
 }

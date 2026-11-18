@@ -1,20 +1,24 @@
+use gpui_kit::component::diff::DiffAnnotation;
 use gpui_kit::component::ActiveTheme;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, list, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement,
-    ParentElement, SharedString, StatefulInteractiveElement, Styled, StyledText,
+    div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
+    SharedString, StatefulInteractiveElement, Styled,
 };
 
 use super::detail::RequestDetail;
-use super::diff::{ChangedFile, DiffItem, DiffLine, LineHighlights, LineKind};
+use super::diff::{thread_anchors, ChangedFile};
+use super::meta_line;
 use super::threads::ThreadPlace;
 use super::Remote;
-use super::{meta_line, WASH_ALPHA};
 use crate::components::{chip, icon, IconName};
+use crate::environment_shell::diff_view::{
+    change_decorations, id_number, mode_toggle, numbered_id, shell_element, themed_diff,
+};
 use crate::environment_shell::EnvironmentShell;
 use crate::theme::{
-    palette, row_fill, row_shadow, tinted, Palette, LINE_2XS, RADIUS_XS, SPACE_0_5, SPACE_1_5,
-    SPACE_2, TEXT_2XS, TEXT_XS, TOOLBAR_H,
+    palette, row_fill, row_shadow, LINE_2XS, RADIUS_XS, SPACE_0_5, SPACE_1_5, SPACE_2, TEXT_2XS,
+    TEXT_XS, TOOLBAR_H,
 };
 
 const EMPTY_PAD: f32 = 16.0;
@@ -22,14 +26,9 @@ const FILES_PAD_Y: f32 = 10.0;
 const FILE_ROW_H: f32 = 28.0;
 const FILE_ICON: f32 = 13.0;
 const DIFF_HEADER_PAD_X: f32 = 14.0;
-const DIFF_LINE_H: f32 = 20.0;
-const NUMBER_W: f32 = 40.0;
-const SIGN_W: f32 = 18.0;
-pub(in crate::environment_shell) const DIFF_GUTTER_W: f32 = NUMBER_W * 2.0;
-const THREAD_INSET_LEFT: f32 = DIFF_GUTTER_W + SIGN_W;
-const THREAD_INSET_RIGHT: f32 = 16.0;
-const THREAD_INSET_BOTTOM: f32 = 10.0;
 const FILES_ID: &str = "review-files";
+const BTN_MODE: &str = "review-diff-mode";
+const THREAD_PREFIX: &str = "review-diff-thread";
 const FILE_PREFIX: &str = "review-file";
 const ADDED_SIGN: &str = "+";
 const REMOVED_SIGN: &str = "−";
@@ -73,7 +72,7 @@ impl EnvironmentShell {
             .flex_1()
             .min_h_0()
             .children(rail)
-            .child(Self::changed_file_diff(shown, detail, cx))
+            .child(Self::changed_file_diff(selected, shown, detail, files, cx))
             .into_any_element()
     }
 
@@ -126,15 +125,17 @@ impl EnvironmentShell {
                 if let Some(detail) = this.review.detail.as_mut() {
                     detail.select_file(index);
                 }
-                this.paint_review_file(cx);
+                this.show_review_file(cx);
                 cx.notify();
             }))
             .into_any_element()
     }
 
     fn changed_file_diff(
+        index: usize,
         file: &ChangedFile,
         detail: &RequestDetail,
+        files: &[ChangedFile],
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
@@ -143,6 +144,51 @@ impl EnvironmentShell {
             format!("{} → {}", file.change.old_path, file.change.new_path)
         } else {
             file.change.new_path.clone()
+        };
+        let shown = &detail.shown;
+        let body = if let Some(reason) = &shown.failure {
+            padded(meta_line(reason, pal))
+        } else {
+            let threads = match &detail.discussions {
+                Remote::Ready(discussions) => {
+                    thread_anchors(files, discussions, index, &shown.path)
+                }
+                Remote::Loading | Remote::Failed(_) => Vec::new(),
+            };
+            let shell = cx.entity().downgrade();
+            themed_diff(&shown.state)
+                .header_visible(false)
+                .decorations(change_decorations(&shown.path, &shown.runs, pal).collect::<Vec<_>>())
+                .annotations(threads.into_iter().map(|anchor| {
+                    DiffAnnotation::line(
+                        numbered_id(THREAD_PREFIX, anchor.discussion as u64),
+                        anchor.position,
+                    )
+                }))
+                .render_annotation(move |annotation, _, cx| {
+                    let discussion = id_number(annotation.id())
+                        .and_then(|discussion| usize::try_from(discussion).ok());
+                    shell_element(&shell, cx, |this, cx| {
+                        let detail = this.review.detail.as_ref()?;
+                        let Remote::Ready(discussions) = &detail.discussions else {
+                            return None;
+                        };
+                        let discussion = discussion?;
+                        Some(
+                            div()
+                                .font_family(cx.theme().font_family.clone())
+                                .child(Self::thread(
+                                    discussion,
+                                    discussions.get(discussion)?,
+                                    detail,
+                                    ThreadPlace::Diff,
+                                    cx,
+                                ))
+                                .into_any_element(),
+                        )
+                    })
+                })
+                .into_any_element()
         };
         div()
             .flex()
@@ -166,7 +212,7 @@ impl EnvironmentShell {
                             .flex_1()
                             .min_w_0()
                             .truncate()
-                            .font_family(mono.clone())
+                            .font_family(mono)
                             .text_size(px(TEXT_XS))
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(rgb(pal.text_strong))
@@ -175,134 +221,12 @@ impl EnvironmentShell {
                     .child(chip(
                         SharedString::from(file.source.label(detail.words)),
                         pal,
-                    )),
+                    ))
+                    .child(mode_toggle(BTN_MODE, &shown.state, cx)),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h_0()
-                    .font_family(mono)
-                    .text_size(px(TEXT_XS))
-                    .line_height(px(DIFF_LINE_H))
-                    .child(
-                        list(
-                            detail.diff_list.clone(),
-                            cx.processor(|this: &mut Self, index: usize, _, cx| {
-                                this.diff_item(index, cx)
-                                    .unwrap_or_else(|| div().into_any_element())
-                            }),
-                        )
-                        .size_full(),
-                    ),
-            )
+            .child(div().flex().flex_col().flex_1().min_h_0().child(body))
             .into_any_element()
     }
-
-    fn diff_item(&self, index: usize, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let detail = self.review.detail.as_ref()?;
-        let (file_index, file) = detail.shown_file()?;
-        let pal = palette(cx);
-        Some(match *detail.items.get(index)? {
-            DiffItem::Line(line) => {
-                let colors = detail
-                    .colors
-                    .get(&file_index)
-                    .and_then(|colors| colors.line(line));
-                div()
-                    .h(px(DIFF_LINE_H))
-                    .child(diff_row(file.lines.get(line)?, colors, pal))
-                    .into_any_element()
-            }
-            DiffItem::Thread(discussion) => {
-                let Remote::Ready(discussions) = &detail.discussions else {
-                    return None;
-                };
-                div()
-                    .pt(px(SPACE_2))
-                    .pb(px(THREAD_INSET_BOTTOM))
-                    .pl(px(THREAD_INSET_LEFT))
-                    .pr(px(THREAD_INSET_RIGHT))
-                    .font_family(cx.theme().font_family.clone())
-                    .child(Self::thread(
-                        discussion,
-                        discussions.get(discussion)?,
-                        detail,
-                        ThreadPlace::Diff,
-                        cx,
-                    ))
-                    .into_any_element()
-            }
-        })
-    }
-}
-
-pub(in crate::environment_shell) fn diff_row(
-    line: &DiffLine,
-    highlights: Option<&LineHighlights>,
-    pal: &Palette,
-) -> AnyElement {
-    let (background, sign, sign_color) = match line.kind {
-        LineKind::Added => (
-            Some(tinted(pal.diff_added, WASH_ALPHA)),
-            ADDED_SIGN,
-            pal.diff_added,
-        ),
-        LineKind::Removed => (
-            Some(tinted(pal.diff_removed, WASH_ALPHA)),
-            REMOVED_SIGN,
-            pal.diff_removed,
-        ),
-        LineKind::Context | LineKind::Hunk => (None, "", pal.text_muted),
-    };
-    let text_color = if line.kind == LineKind::Hunk {
-        pal.text_muted
-    } else {
-        pal.text_strong
-    };
-    let number = |value: Option<u32>| {
-        div()
-            .flex_none()
-            .w(px(NUMBER_W))
-            .pr(px(SPACE_2))
-            .text_right()
-            .text_color(rgb(pal.text_muted))
-            .child(value.map_or_default(|value| value.to_string()))
-    };
-    let text = highlights.map_or_else(
-        || line.text.clone().into_any_element(),
-        |highlights| {
-            StyledText::new(line.text.clone())
-                .with_highlights(highlights.iter().cloned())
-                .into_any_element()
-        },
-    );
-    div()
-        .flex()
-        .flex_row()
-        .flex_none()
-        .when(line.kind == LineKind::Hunk, |row| row.bg(rgb(pal.bg_panel)))
-        .when_some(background, gpui_kit::Styled::bg)
-        .text_color(rgb(text_color))
-        .child(number(line.old))
-        .child(number(line.new))
-        .child(
-            div()
-                .flex_none()
-                .w(px(SIGN_W))
-                .text_color(rgb(sign_color))
-                .child(sign),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .child(text),
-        )
-        .into_any_element()
 }
 
 fn padded(content: AnyElement) -> AnyElement {

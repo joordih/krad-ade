@@ -5,23 +5,18 @@ use gpui_kit::{
 };
 use krad_domain::{AnchorState, DiffCommentId, DiffSide, LineSpan, TerminalId};
 
-use super::super::review_view::DIFF_GUTTER_W;
 use super::super::{EnvironmentShell, LiveEnv};
-use super::comments::CommentPart;
-use super::DIFF_LINE_H;
 use crate::components::{icon, tooltip_view, Button, ButtonVariant, IconName};
 use crate::theme::{
     level_fill, palette, tinted, SurfaceLevel, ICON_XS, LINE_SM, RADIUS_SM, RADIUS_XS, SPACE_1,
-    SPACE_1_5, SPACE_2, SPACE_3, TEXT_SM,
+    SPACE_1_5, SPACE_2, TEXT_SM,
 };
 
-const BTN_COMMENT_PREFIX: &str = "changes-tab-comment";
 const BTN_EDIT_PREFIX: &str = "changes-tab-comment-edit";
 const BTN_DELETE_PREFIX: &str = "changes-tab-comment-delete";
 const BTN_SAVE: &str = "changes-tab-comment-save";
 const BTN_CANCEL: &str = "changes-tab-comment-cancel";
 const BTN_SEND_REVIEW: &str = "changes-tab-send-review";
-const TOOLTIP_COMMENT: &str = "Comment on this line (Shift-click to extend the range)";
 const TOOLTIP_EDIT: &str = "Edit comment";
 const TOOLTIP_DELETE: &str = "Delete comment";
 const TOOLTIP_SEND_REVIEW: &str = "Send every comment of this session to its agent";
@@ -34,8 +29,7 @@ const LINE_WORD: &str = "line";
 const LINES_WORD: &str = "lines";
 const OLD_SIDE_WORD: &str = "(previous version)";
 const SELECTION_ALPHA: u32 = 0x33;
-const COMMENT_ALPHA: u32 = 0x14;
-const BUTTON_INSET: f32 = 2.0;
+const ACTION_SIZE: f32 = 16.0;
 
 fn span_label(span: LineSpan) -> String {
     let lines = if span.first == span.last {
@@ -54,102 +48,71 @@ pub(super) fn comment_title(span: LineSpan) -> SharedString {
 }
 
 impl EnvironmentShell {
-    pub(super) fn comment_button(
-        tab: TerminalId,
-        line: usize,
-        group: &'static str,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let pal = palette(cx);
-        div()
-            .id((BTN_COMMENT_PREFIX, line))
-            .absolute()
-            .left(px(DIFF_GUTTER_W))
-            .top(px(BUTTON_INSET))
-            .size(px(DIFF_LINE_H - 2.0 * BUTTON_INSET))
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded(px(RADIUS_XS))
-            .bg(rgb(pal.accent))
-            .cursor_pointer()
-            .invisible()
-            .group_hover(group, Styled::visible)
-            .tooltip(|_, cx| tooltip_view(TOOLTIP_COMMENT.into(), cx))
-            .on_click(
-                cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
-                    this.start_comment(tab, line, event.modifiers().shift, window, cx);
-                }),
-            )
-            .child(icon(IconName::Add, ICON_XS, pal.on_accent))
-            .into_any_element()
-    }
-
     pub(super) fn selection_wash(cx: &Context<Self>) -> gpui_kit::Rgba {
         tinted(palette(cx).accent, SELECTION_ALPHA)
     }
 
-    pub(super) fn comment_row(
+    pub(super) fn comment_card(
         live: &LiveEnv,
         tab: TerminalId,
         id: DiffCommentId,
-        part: CommentPart,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
         let Some(comment) = live.tab_comment(tab, id) else {
-            return div().h(px(DIFF_LINE_H)).into_any_element();
+            return div().into_any_element();
         };
-        let row = div()
+        let stale = (comment.state == AnchorState::Stale).then(|| {
+            div()
+                .flex_none()
+                .text_color(rgb(pal.warning_fg))
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(STALE_LABEL)
+        });
+        let header = div()
             .flex()
             .flex_row()
             .items_center()
             .gap(px(SPACE_1_5))
-            .h(px(DIFF_LINE_H))
-            .pl(px(DIFF_GUTTER_W))
-            .pr(px(SPACE_3))
-            .bg(tinted(pal.accent, COMMENT_ALPHA));
-        let CommentPart::Text(text_row) = part else {
-            let stale = (comment.state == AnchorState::Stale).then(|| {
+            .text_color(rgb(pal.text_muted))
+            .child(icon(IconName::Comment, ICON_XS, pal.accent))
+            .child(
                 div()
-                    .flex_none()
-                    .text_color(rgb(pal.warning_fg))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(STALE_LABEL)
-            });
-            return row
-                .text_color(rgb(pal.text_muted))
-                .child(icon(IconName::Comment, ICON_XS, pal.accent))
-                .child(div().flex_none().child(span_label(comment.quote.span)))
-                .children(stale)
-                .child(Self::comment_action(
-                    (BTN_EDIT_PREFIX, id.0),
-                    IconName::Pencil,
-                    TOOLTIP_EDIT,
-                    cx.listener(move |this: &mut Self, _: &ClickEvent, window, cx| {
-                        this.edit_comment(tab, id, window, cx);
-                    }),
-                    cx,
-                ))
-                .child(Self::comment_action(
-                    (BTN_DELETE_PREFIX, id.0),
-                    IconName::Close,
-                    TOOLTIP_DELETE,
-                    cx.listener(move |this: &mut Self, _: &ClickEvent, _, cx| {
-                        this.delete_comment(tab, id, cx);
-                    }),
-                    cx,
-                ))
-                .into_any_element();
-        };
-        let text = comment
-            .text
-            .lines()
-            .nth(text_row)
-            .unwrap_or_default()
-            .to_owned();
-        row.text_color(rgb(pal.text_strong))
-            .child(text)
+                    .flex_1()
+                    .min_w_0()
+                    .child(span_label(comment.quote.span)),
+            )
+            .children(stale)
+            .child(Self::comment_action(
+                (BTN_EDIT_PREFIX, id.0),
+                IconName::Pencil,
+                TOOLTIP_EDIT,
+                cx.listener(move |this: &mut Self, _: &ClickEvent, window, cx| {
+                    this.edit_comment(tab, id, window, cx);
+                }),
+                cx,
+            ))
+            .child(Self::comment_action(
+                (BTN_DELETE_PREFIX, id.0),
+                IconName::Close,
+                TOOLTIP_DELETE,
+                cx.listener(move |this: &mut Self, _: &ClickEvent, _, cx| {
+                    this.delete_comment(tab, id, cx);
+                }),
+                cx,
+            ));
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(SPACE_1))
+            .text_size(px(TEXT_SM))
+            .line_height(px(LINE_SM))
+            .child(header)
+            .child(
+                div()
+                    .text_color(rgb(pal.text_strong))
+                    .child(comment.text.clone()),
+            )
             .into_any_element()
     }
 
@@ -164,7 +127,7 @@ impl EnvironmentShell {
         div()
             .id(id)
             .flex_none()
-            .size(px(DIFF_LINE_H - 2.0 * BUTTON_INSET))
+            .size(px(ACTION_SIZE))
             .flex()
             .items_center()
             .justify_center()

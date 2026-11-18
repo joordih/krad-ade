@@ -1,4 +1,4 @@
-use gpui_kit::Context;
+use gpui_kit::{Context, SharedString};
 use krad_client::ClientError;
 use krad_domain::review::CommitSha;
 use krad_domain::{
@@ -7,11 +7,12 @@ use krad_domain::{
 use krad_protocol::{Answer, DiffOf, RepoAsk};
 use std::path::{Path, PathBuf};
 
+use super::super::diff_view::{change_runs, new_diff_state, parse_files, with_headers};
 use super::super::review_view::numbered_lines;
 use super::super::session_changes::LoadGeneration;
 use super::super::EnvironmentShell;
 use super::revert::block_starts;
-use super::{DiffColors, DiffLoad, FileDiff, ReadDiff};
+use super::{DiffLoad, FileDiff, ReadDiff};
 
 enum DiffSource {
     Working(Option<(PathBuf, FileChange)>),
@@ -89,8 +90,7 @@ impl EnvironmentShell {
         }
         match diff.load {
             DiffLoad::Pending => {}
-            DiffLoad::Ready(_) => return self.paint_diff(&env, id, cx),
-            DiffLoad::Reading | DiffLoad::Failed(_) => return,
+            DiffLoad::Ready(_) | DiffLoad::Reading | DiffLoad::Failed(_) => return,
         }
         diff.load = DiffLoad::Reading;
         let generation = diff.generation.advance();
@@ -167,17 +167,39 @@ impl EnvironmentShell {
                 cx,
             )
         });
+        let Some(path) = self
+            .envs
+            .get(&env)
+            .and_then(|live| live.diffs.get(&id))
+            .map(|diff| diff.path.to_string_lossy().into_owned())
+        else {
+            return;
+        };
         let executor = cx.background_executor().clone();
         let reading = async move {
-            let Some(asked) = asked else {
-                return Ok(Vec::new());
+            let text = match asked {
+                Some(asked) => asked.await?,
+                None => String::new(),
             };
-            let text = asked.await?;
-            Ok::<_, ClientError>(executor.spawn(async move { numbered_lines(&text) }).await)
+            Ok::<_, ClientError>(
+                executor
+                    .spawn(async move {
+                        let files = parse_files(&with_headers(&path, &path, &text));
+                        (numbered_lines(&text), files)
+                    })
+                    .await,
+            )
         };
         cx.spawn(async move |this, cx| {
             let read = reading.await;
             this.update(cx, |shell, cx| {
+                let read = read
+                    .map_err(|error| error.to_string())
+                    .and_then(|(lines, files)| {
+                        files
+                            .map(|files| (lines, shell.with_languages(files)))
+                            .map_err(|error| error.to_string())
+                    });
                 if let Some(diff) = shell
                     .envs
                     .get_mut(&env)
@@ -186,20 +208,24 @@ impl EnvironmentShell {
                 {
                     let revertible = diff.view == FileView::Changes;
                     diff.load = match read {
-                        Ok(lines) => DiffLoad::Ready(ReadDiff {
-                            blocks: if revertible {
-                                block_starts(&lines)
-                            } else {
-                                Vec::new()
-                            },
-                            lines,
-                            rows: Vec::new(),
-                            widest: 0,
-                            colors: DiffColors::Unpainted,
-                        }),
-                        Err(error) => DiffLoad::Failed(error.to_string()),
+                        Ok((lines, files)) => {
+                            let path = files
+                                .first()
+                                .map_or_else(SharedString::default, |file| file.path().clone());
+                            DiffLoad::Ready(ReadDiff {
+                                blocks: if revertible {
+                                    block_starts(&lines)
+                                } else {
+                                    Vec::new()
+                                },
+                                runs: change_runs(&lines),
+                                lines,
+                                path,
+                                view: new_diff_state(files, cx),
+                            })
+                        }
+                        Err(reason) => DiffLoad::Failed(reason),
                     };
-                    diff.refold();
                     diff.relocate_draft();
                 }
                 shell.refresh_diff_comments(&env, id, cx);

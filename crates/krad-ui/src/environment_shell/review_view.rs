@@ -8,7 +8,6 @@ mod list;
 mod marks;
 mod offer;
 mod overview;
-mod paint;
 mod remote;
 mod summary;
 mod tabs;
@@ -31,9 +30,8 @@ use crate::components::{
     card, split_island, Button, ButtonVariant, CenteredEmpty, EmptyState, IconName,
 };
 use crate::theme::{palette, Palette};
-pub(super) use changes::{diff_row, DIFF_GUTTER_W};
-use detail::{RequestDetail, ReviewTab};
-pub(super) use diff::{highlight_diff, numbered_lines, DiffLine, LineHighlights, LineKind};
+use detail::RequestDetail;
+pub(super) use diff::{numbered_lines, DiffLine, LineKind};
 use layout::{review_frame, ReviewFrame};
 use marks::{
     avatar, ci_color, ci_glyph, ci_label, merge_status_label, meta_line, state_color, state_label,
@@ -204,14 +202,6 @@ impl EnvironmentShell {
         self.ensure_review_list(&root, cx);
         let (width, _) = self.content_size(window);
         self.review.frame = review_frame(width, self.review.detail.is_some());
-        if self
-            .review
-            .detail
-            .as_ref()
-            .is_some_and(|detail| detail.tab == ReviewTab::Changes)
-        {
-            self.paint_review_file(cx);
-        }
         let frame = self.review.frame;
         let detail = frame.shows_detail().then(|| match &self.review.detail {
             Some(detail) => self.request_detail(detail, cx),

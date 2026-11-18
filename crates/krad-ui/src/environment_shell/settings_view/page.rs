@@ -1,10 +1,10 @@
-use crate::environment_shell::rubber_band::{band_watch, BandKey, ScrollEdges};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, Context, FontWeight, InteractiveElement, IntoElement, KeyDownEvent,
     ParentElement, ScrollHandle, StatefulInteractiveElement, Styled, Window,
 };
 
+use super::super::overscroll::overscroll;
 use super::super::sidebar::SIDEBAR_WIDTH;
 use super::super::EnvironmentShell;
 use super::navigation::{PaneMatch, SettingsSection};
@@ -21,6 +21,7 @@ const NAV_BAR_ID: &str = "settings-nav-bar";
 const NAV_LIST_ID: &str = "settings-nav-list";
 const PAGE_BAR_ID: &str = "settings-page-bar";
 const SETTINGS_SCROLL_ID: &str = "settings-page";
+const SETTINGS_BOUNCE_ID: &str = "settings-page-bounce";
 const BTN_BACK: &str = "settings-back";
 const NAV_ROW_PREFIX: &str = "settings-nav";
 const SETTINGS_TITLE: &str = "Settings";
@@ -84,15 +85,7 @@ impl EnvironmentShell {
                     }),
                 )
                 .child(Self::settings_nav(ui, nav_width(window), cx))
-                .child(Self::settings_main(
-                    ui.pane,
-                    content,
-                    (
-                        ui.scroll.clone(),
-                        self.gestures.bands.offset(BandKey::Settings),
-                    ),
-                    cx,
-                ))
+                .child(Self::settings_main(ui.pane, content, &ui.scroll, cx))
                 .children(self.gitlab_device_dialog(cx))
                 .children(self.theme_editor_sheet(cx))
                 .children(self.runner_sign_in_sheet(cx))
@@ -225,15 +218,10 @@ impl EnvironmentShell {
     fn settings_main(
         pane: SettingsPane,
         content: AnyElement,
-        (scroll, bounce): (ScrollHandle, f32),
+        scroll: &ScrollHandle,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = palette(cx);
-        let edges_of = scroll.clone();
-        let edges = move || ScrollEdges {
-            offset: -edges_of.offset().y.as_f32(),
-            max: edges_of.max_offset().y.as_f32(),
-        };
         card(pal, cx)
             .flex()
             .flex_col()
@@ -261,61 +249,52 @@ impl EnvironmentShell {
                             .child(div().text_color(rgb(pal.text_strong)).child(pane.title())),
                     ),
             )
-            .child(
+            .child(overscroll(
+                SETTINGS_BOUNCE_ID,
+                scroll,
                 div()
-                    .relative()
+                    .id(SETTINGS_SCROLL_ID)
                     .flex()
                     .flex_col()
                     .flex_1()
                     .min_h_0()
+                    .items_center()
+                    .overflow_y_scroll()
+                    .track_scroll(scroll)
+                    .px(px(SPACE_6))
+                    .pb(px(SPACE_6))
                     .child(
                         div()
-                            .id(SETTINGS_SCROLL_ID)
                             .flex()
                             .flex_col()
-                            .flex_1()
-                            .min_h_0()
-                            .items_center()
-                            .overflow_y_scroll()
-                            .track_scroll(&scroll)
-                            .px(px(SPACE_6))
-                            .pb(px(SPACE_6))
+                            .w_full()
+                            .max_w(px(PAGE_W))
+                            .pt(px(PAGE_TOP))
+                            .gap(px(PAGE_GAP))
                             .child(
                                 div()
-                                    .relative()
-                                    .top(px(bounce))
                                     .flex()
                                     .flex_col()
-                                    .w_full()
-                                    .max_w(px(PAGE_W))
-                                    .pt(px(PAGE_TOP))
-                                    .gap(px(PAGE_GAP))
+                                    .gap(px(SPACE_1))
                                     .child(
                                         div()
-                                            .flex()
-                                            .flex_col()
-                                            .gap(px(SPACE_1))
-                                            .child(
-                                                div()
-                                                    .text_size(px(PAGE_TITLE_TEXT))
-                                                    .line_height(px(PAGE_TITLE_LINE))
-                                                    .font_weight(FontWeight::SEMIBOLD)
-                                                    .text_color(rgb(pal.text_strong))
-                                                    .child(pane.title()),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(px(TEXT_SM))
-                                                    .line_height(px(LINE_SM))
-                                                    .text_color(rgb(pal.text_muted))
-                                                    .child(pane.description()),
-                                            ),
+                                            .text_size(px(PAGE_TITLE_TEXT))
+                                            .line_height(px(PAGE_TITLE_LINE))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(rgb(pal.text_strong))
+                                            .child(pane.title()),
                                     )
-                                    .child(content),
-                            ),
-                    )
-                    .child(band_watch(BandKey::Settings, edges, cx)),
-            )
+                                    .child(
+                                        div()
+                                            .text_size(px(TEXT_SM))
+                                            .line_height(px(LINE_SM))
+                                            .text_color(rgb(pal.text_muted))
+                                            .child(pane.description()),
+                                    ),
+                            )
+                            .child(content),
+                    ),
+            ))
             .into_any_element()
     }
 

@@ -6,17 +6,10 @@ use std::ops::{Range, RangeInclusive};
 use std::path::Path;
 
 use super::super::review_view::{DiffLine, LineKind};
-use super::folds::DiffRow;
 
 const ADDED_PREFIX: char = '+';
 const REMOVED_PREFIX: char = '-';
 const CONTEXT_PREFIX: char = ' ';
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum CommentPart {
-    Header,
-    Text(usize),
-}
 
 struct Hunk {
     body: Range<usize>,
@@ -137,7 +130,6 @@ pub(super) fn reanchor(lines: &[DiffLine], comments: &mut [DiffComment]) -> bool
 pub(super) struct PlacedComment {
     pub(super) id: DiffCommentId,
     pub(super) after: Option<usize>,
-    pub(super) text_rows: usize,
 }
 
 impl PlacedComment {
@@ -145,48 +137,8 @@ impl PlacedComment {
         Self {
             id: comment.id,
             after: locate(lines, &comment.quote.anchor).map(|range| *range.end()),
-            text_rows: comment.text.lines().count().max(1),
         }
     }
-
-    fn rows(&self) -> impl Iterator<Item = DiffRow> + '_ {
-        std::iter::once(CommentPart::Header)
-            .chain((0..self.text_rows).map(CommentPart::Text))
-            .map(|part| DiffRow::Comment { id: self.id, part })
-    }
-}
-
-const fn row_start(row: DiffRow) -> Option<usize> {
-    match row {
-        DiffRow::Line(index) | DiffRow::Fold { first: index, .. } => Some(index),
-        DiffRow::Comment { .. } => None,
-    }
-}
-
-pub(super) fn with_comments(rows: Vec<DiffRow>, placed: &[PlacedComment]) -> Vec<DiffRow> {
-    let mut out: Vec<DiffRow> = placed
-        .iter()
-        .filter(|comment| comment.after.is_none())
-        .flat_map(PlacedComment::rows)
-        .collect();
-    let mut anchored: Vec<&PlacedComment> = placed
-        .iter()
-        .filter(|comment| comment.after.is_some())
-        .collect();
-    anchored.sort_by_key(|comment| comment.after);
-    let mut pending = anchored.into_iter().peekable();
-    let starts: Vec<Option<usize>> = rows.iter().copied().map(row_start).collect();
-    for (position, row) in rows.into_iter().enumerate() {
-        out.push(row);
-        let next_start = starts[position + 1..].iter().flatten().next().copied();
-        while let Some(comment) =
-            pending.next_if(|comment| next_start.is_none_or(|next| comment.after < Some(next)))
-        {
-            out.extend(comment.rows());
-        }
-    }
-    out.extend(pending.flat_map(PlacedComment::rows));
-    out
 }
 
 #[cfg(test)]
@@ -310,59 +262,16 @@ mod tests {
     }
 
     #[test]
-    fn comment_rows_follow_their_last_line_and_stale_ones_lead() {
-        let rows = vec![
-            DiffRow::Line(1),
-            DiffRow::Line(2),
-            DiffRow::Fold {
-                first: 3,
-                hidden: 4,
-            },
-            DiffRow::Line(9),
-        ];
-        let placed = [
-            PlacedComment {
-                id: DiffCommentId(1),
-                after: Some(2),
-                text_rows: 2,
-            },
-            PlacedComment {
-                id: DiffCommentId(2),
-                after: None,
-                text_rows: 1,
-            },
-            PlacedComment {
-                id: DiffCommentId(3),
-                after: Some(5),
-                text_rows: 1,
-            },
-        ];
-        let header = |id| DiffRow::Comment {
-            id: DiffCommentId(id),
-            part: CommentPart::Header,
+    fn a_placed_comment_follows_the_last_line_it_quotes_or_has_none_when_stale() {
+        let lines = numbered_lines(DIFF);
+        let Some(quoted) = quote(&lines, Path::new(FILE), 2, 3) else {
+            unreachable!("both lines are in the first hunk");
         };
-        let text = |id, line| DiffRow::Comment {
-            id: DiffCommentId(id),
-            part: CommentPart::Text(line),
-        };
+        let placed = comment(quoted);
+        assert_eq!(PlacedComment::new(&lines, &placed).after, Some(3));
         assert_eq!(
-            with_comments(rows, &placed),
-            [
-                header(2),
-                text(2, 0),
-                DiffRow::Line(1),
-                DiffRow::Line(2),
-                header(1),
-                text(1, 0),
-                text(1, 1),
-                DiffRow::Fold {
-                    first: 3,
-                    hidden: 4
-                },
-                header(3),
-                text(3, 0),
-                DiffRow::Line(9),
-            ]
+            PlacedComment::new(&numbered_lines(EDITED), &placed).after,
+            None
         );
     }
 }

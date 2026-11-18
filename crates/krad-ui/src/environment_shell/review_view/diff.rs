@@ -1,11 +1,10 @@
 mod rows;
-mod syntax;
 
 use krad_domain::review::{Change, NotePosition};
 
+use super::super::diff_view::with_headers;
 use super::words::HostWords;
-pub(in crate::environment_shell) use rows::{diff_items, thread_anchors, DiffItem, ThreadAnchor};
-pub(in crate::environment_shell) use syntax::{highlight_diff, LineHighlights};
+pub(in crate::environment_shell) use rows::thread_anchors;
 
 const HUNK_PREFIX: &str = "@@";
 const ADDED_PREFIX: char = '+';
@@ -53,6 +52,7 @@ impl DiffSource {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(in crate::environment_shell) struct ChangedFile {
     pub(super) change: Change,
+    pub(super) text: String,
     pub(super) lines: Vec<DiffLine>,
     pub(super) added: usize,
     pub(super) removed: usize,
@@ -61,28 +61,31 @@ pub(in crate::environment_shell) struct ChangedFile {
 
 impl ChangedFile {
     pub(super) fn new(change: Change) -> Self {
-        let lines = numbered_lines(&change.diff);
         let mut file = Self {
-            change,
+            text: String::new(),
             lines: Vec::new(),
             added: 0,
             removed: 0,
             source: DiffSource::CodeHost,
+            change,
         };
-        file.set_lines(lines, DiffSource::CodeHost);
+        let diff = file.change.diff.clone();
+        file.set_diff(diff, DiffSource::CodeHost);
         file
     }
 
-    pub(super) fn set_diff(&mut self, diff: &str, source: DiffSource) {
-        self.set_lines(numbered_lines(diff), source);
-    }
-
-    fn set_lines(&mut self, lines: Vec<DiffLine>, source: DiffSource) {
+    pub(super) fn set_diff(&mut self, diff: String, source: DiffSource) {
+        let lines = numbered_lines(&diff);
         let count = |kind| lines.iter().filter(|line| line.kind == kind).count();
         self.added = count(LineKind::Added);
         self.removed = count(LineKind::Removed);
         self.lines = lines;
+        self.text = diff;
         self.source = source;
+    }
+
+    pub(super) fn patch(&self) -> String {
+        with_headers(&self.change.old_path, &self.change.new_path, &self.text)
     }
 
     pub(super) fn name(&self) -> &str {
@@ -159,14 +162,6 @@ fn range_start(range: &str) -> Option<u32> {
         .and_then(|start| start.parse().ok())
 }
 
-pub(super) fn anchor_line(lines: &[DiffLine], position: &NotePosition) -> Option<usize> {
-    if let Some(new) = position.new_line {
-        return lines.iter().position(|line| line.new == Some(new));
-    }
-    let old = position.old_line?;
-    lines.iter().position(|line| line.old == Some(old))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,20 +231,8 @@ mod tests {
         assert_eq!((file.added, file.removed), (3, 2));
         assert_eq!(file.name(), "lib.rs");
         assert_eq!(file.source, DiffSource::CodeHost);
-    }
-
-    #[test]
-    fn notes_hang_under_their_new_line_or_their_removed_old_line() {
-        let lines = numbered_lines(DIFF);
-        let at = |old_line, new_line| NotePosition {
-            old_path: None,
-            new_path: None,
-            old_line,
-            new_line,
-        };
-        assert_eq!(anchor_line(&lines, &at(None, Some(20))), Some(4));
-        assert_eq!(anchor_line(&lines, &at(Some(19), None)), Some(2));
-        assert_eq!(anchor_line(&lines, &at(Some(18), Some(18))), Some(1));
-        assert_eq!(anchor_line(&lines, &at(None, Some(99))), None);
+        assert!(file
+            .patch()
+            .starts_with("--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -18,4"));
     }
 }

@@ -388,7 +388,7 @@ impl EnvironmentShell {
                         move |this: &mut Self, event: &KeyDownEvent, window, cx| {
                             let keystroke = &event.keystroke;
                             if keystroke.key == PASTE_KEY
-                                && keystroke.modifiers.secondary()
+                                && keystroke.modifiers.secondary(cx)
                                 && this.paste_image(&pasted, window, cx)
                             {
                                 cx.stop_propagation();

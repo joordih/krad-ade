@@ -1,25 +1,22 @@
 use gpui_kit::component::{window_border, window_paddings};
 use gpui_kit::{
-    div, px, size, AnyElement, App, Background, Bounds, CursorStyle, Decorations,
-    InteractiveElement, IntoElement, MouseButton, ParentElement, ResizeEdge, Styled, Window,
-    WindowBackgroundAppearance, WindowBounds,
+    div, px, size, AnyElement, App, Background, Bounds, Decorations, IntoElement, ParentElement,
+    Styled, Window, WindowBackgroundAppearance, WindowBounds,
 };
 
 use krad_domain::WindowMaterial;
 use std::sync::OnceLock;
 
-use crate::theme::Palette;
 pub(crate) use backdrop::{backdrop_layer, BackdropLayer, Viewport};
 
 const INITIAL_WIDTH: f32 = 1440.0;
 const INITIAL_HEIGHT: f32 = 900.0;
 const MAX_DISPLAY_SHARE: f32 = 0.85;
 
-const WINDOW_RADIUS: f32 = 10.0;
 const WINDOW_SHADOW_PX: f32 = 0.0;
-const RESIZE_BAND: f32 = 6.0;
-const RESIZE_CORNER: f32 = 14.0;
 const IS_LINUX: bool = cfg!(target_os = "linux");
+const LINUX_WINDOW_RADIUS: f32 = 10.0;
+pub(crate) const CLIENT_WINDOW_RADIUS: f32 = if IS_LINUX { LINUX_WINDOW_RADIUS } else { 0.0 };
 const IS_MACOS: bool = cfg!(target_os = "macos");
 const OFFERED_MATERIALS: &[WindowMaterial] = if IS_MACOS {
     &[
@@ -216,92 +213,20 @@ pub(crate) const fn usable_window_background(
 pub(crate) fn window_frame(
     content: AnyElement,
     window: &Window,
-    pal: &Palette,
     (backdrop, image): (Background, Option<BackdropLayer>),
 ) -> AnyElement {
-    let floating = match window.window_decorations() {
-        Decorations::Client { tiling } => IS_LINUX && !tiling.is_tiled(),
-        Decorations::Server => false,
-    };
     let underlay = image.map(|layer| backdrop_layer(&layer, Viewport::of(window)));
-    if !floating {
-        return window_border()
-            .shadow_size(px(WINDOW_SHADOW_PX))
-            .child(
-                div()
-                    .relative()
-                    .size_full()
-                    .bg(backdrop)
-                    .children(underlay)
-                    .child(content),
-            )
-            .into_any_element();
-    }
-    div()
-        .relative()
-        .size_full()
-        .rounded(px(WINDOW_RADIUS))
-        .overflow_hidden()
-        .border_1()
-        .border_color(pal.border)
-        .bg(backdrop)
-        .children(underlay)
-        .child(content)
-        .children(resize_zones())
+    window_border()
+        .shadow_size(px(WINDOW_SHADOW_PX))
+        .child(
+            div()
+                .relative()
+                .size_full()
+                .bg(backdrop)
+                .children(underlay)
+                .child(content),
+        )
         .into_any_element()
-}
-
-fn resize_zones() -> Vec<AnyElement> {
-    let edge = |resize: ResizeEdge, cursor: CursorStyle| {
-        div()
-            .absolute()
-            .cursor(cursor)
-            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                cx.stop_propagation();
-                window.start_window_resize(resize);
-            })
-    };
-    vec![
-        edge(ResizeEdge::Top, CursorStyle::ResizeUpDown)
-            .top_0()
-            .left(px(RESIZE_CORNER))
-            .right(px(RESIZE_CORNER))
-            .h(px(RESIZE_BAND)),
-        edge(ResizeEdge::Bottom, CursorStyle::ResizeUpDown)
-            .bottom_0()
-            .left(px(RESIZE_CORNER))
-            .right(px(RESIZE_CORNER))
-            .h(px(RESIZE_BAND)),
-        edge(ResizeEdge::Left, CursorStyle::ResizeLeftRight)
-            .left_0()
-            .top(px(RESIZE_CORNER))
-            .bottom(px(RESIZE_CORNER))
-            .w(px(RESIZE_BAND)),
-        edge(ResizeEdge::Right, CursorStyle::ResizeLeftRight)
-            .right_0()
-            .top(px(RESIZE_CORNER))
-            .bottom(px(RESIZE_CORNER))
-            .w(px(RESIZE_BAND)),
-        edge(ResizeEdge::TopLeft, CursorStyle::ResizeUpLeftDownRight)
-            .top_0()
-            .left_0()
-            .size(px(RESIZE_CORNER)),
-        edge(ResizeEdge::BottomRight, CursorStyle::ResizeUpLeftDownRight)
-            .bottom_0()
-            .right_0()
-            .size(px(RESIZE_CORNER)),
-        edge(ResizeEdge::TopRight, CursorStyle::ResizeUpRightDownLeft)
-            .top_0()
-            .right_0()
-            .size(px(RESIZE_CORNER)),
-        edge(ResizeEdge::BottomLeft, CursorStyle::ResizeUpRightDownLeft)
-            .bottom_0()
-            .left_0()
-            .size(px(RESIZE_CORNER)),
-    ]
-    .into_iter()
-    .map(IntoElement::into_any_element)
-    .collect()
 }
 
 #[cfg(test)]

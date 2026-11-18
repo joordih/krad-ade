@@ -18,8 +18,8 @@ globset = "0.4"
 grep-matcher = "0.1"
 grep-regex = "0.1"
 grep-searcher = "0.1"
-gpui-fps = "0.7.3"
-gpui-kit = { version = "0.7.3", features = [
+gpui-fps = "0.10.0"
+gpui-kit = { version = "0.10.0", features = [
   "tree-sitter-astro",
   "tree-sitter-bash",
   "tree-sitter-c",

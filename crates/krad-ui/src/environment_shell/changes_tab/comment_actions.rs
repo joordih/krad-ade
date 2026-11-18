@@ -1,8 +1,8 @@
 use gpui_kit::component::input::{InputEvent, TextareaState};
 use gpui_kit::{App, AppContext as _, Context, Entity, SharedString, Subscription, Window};
 use krad_domain::{
-    review_message, DiffAnchor, DiffComment, DiffCommentId, EnvironmentName, HunkLines, Session,
-    SessionEdit, TerminalId, ToastKind,
+    review_message, DiffAnchor, DiffComment, DiffCommentId, EnvironmentName, Session, SessionEdit,
+    TerminalId, ToastKind,
 };
 
 use super::super::{EnvironmentShell, LiveEnv};
@@ -55,17 +55,6 @@ pub(super) struct CommentDraft {
     _events: Subscription,
 }
 
-impl CommentDraft {
-    pub(super) fn covers(&self, index: usize) -> bool {
-        match self.target {
-            DraftTarget::New { one, other, .. } => {
-                HunkLines::new(one, other).range().contains(&index)
-            }
-            DraftTarget::Edit(_) => false,
-        }
-    }
-}
-
 fn draft_placeholder() -> String {
     format!("Comment for the agent ({COMMIT_HINT} to save)")
 }
@@ -93,7 +82,6 @@ impl LiveEnv {
         let session = id.and_then(|id| self.data.session(id));
         let (DiffLoad::Ready(read), Some(session)) = (&diff.load, session) else {
             diff.comments.clear();
-            diff.refold();
             return None;
         };
         let mut changed = false;
@@ -106,7 +94,6 @@ impl LiveEnv {
             changed |= reanchor(&read.lines, std::slice::from_mut(comment));
             diff.comments.push(PlacedComment::new(&read.lines, comment));
         }
-        diff.refold();
         changed.then_some(SessionEdit::SetDiffComments {
             session: session.id,
             comments,
@@ -201,48 +188,41 @@ impl EnvironmentShell {
     pub(super) fn start_comment(
         &mut self,
         tab: TerminalId,
-        line: usize,
-        extend: bool,
+        one: usize,
+        other: usize,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let env = self.active.clone();
-        let Some(diff) = self
-            .envs
-            .get_mut(&env)
-            .and_then(|live| live.diffs.get_mut(&tab))
-        else {
+        let Some(diff) = self.envs.get(&env).and_then(|live| live.diffs.get(&tab)) else {
             return;
         };
         let DiffLoad::Ready(read) = &diff.load else {
             return;
         };
-        if let Some(CommentDraft {
-            target: DraftTarget::New { one, other, anchor },
-            title,
-            ..
-        }) = &mut diff.draft
-        {
-            if extend && same_hunk(&read.lines, *one, line) {
-                *other = line;
-                let quoted = quote(&read.lines, &diff.path, *one, line);
-                *title = quoted.as_ref().map(|quoted| comment_title(quoted.span));
-                *anchor = quoted.map(|quoted| quoted.anchor);
-                cx.notify();
-                return;
-            }
-        }
-        let quoted = quote(&read.lines, &diff.path, line, line);
+        let (one, other) = if same_hunk(&read.lines, one, other) {
+            (one, other)
+        } else {
+            (other, other)
+        };
+        let quoted = quote(&read.lines, &diff.path, one, other);
         let title = quoted.as_ref().map(|quoted| comment_title(quoted.span));
+        let kept = diff
+            .draft
+            .as_ref()
+            .filter(|draft| matches!(draft.target, DraftTarget::New { .. }))
+            .map_or_else(String::new, |draft| {
+                draft.field.read(cx).value().to_string()
+            });
         self.open_draft(
             tab,
             DraftTarget::New {
-                one: line,
-                other: line,
+                one,
+                other,
                 anchor: quoted.map(|quoted| quoted.anchor),
             },
             title,
-            String::new(),
+            kept,
             window,
             cx,
         );

@@ -1,14 +1,14 @@
 use futures::StreamExt as _;
 use gpui_kit::component::input::RopeExt as _;
 use gpui_kit::{
-    App, Context, Div, InteractiveElement, MouseButton, MouseDownEvent, NavigationDirection,
-    ScrollWheelEvent, Task, Window,
+    canvas, AnyElement, App, Context, DispatchPhase, Div, InteractiveElement, IntoElement,
+    MouseButton, MouseDownEvent, NavigationDirection, ParentElement, ScrollEvent, Styled, Task,
+    TouchPhase, Window,
 };
 use krad_domain::{FileOpening, NavigationPlace, NavigationStep, TerminalId};
 use krad_lsp::lsp_types::Position;
 use std::collections::HashMap;
 
-use super::rubber_band::RubberBands;
 use super::settings_swipe::SettingsSwipe;
 use super::EnvironmentShell;
 use crate::actions::{NavigateBack, NavigateForward};
@@ -21,7 +21,6 @@ pub(super) struct Gestures {
     native: Option<Task<()>>,
     cursor_lines: HashMap<TerminalId, u32>,
     pub(super) settings: SettingsSwipe,
-    pub(super) bands: RubberBands,
 }
 
 impl EnvironmentShell {
@@ -158,11 +157,33 @@ impl EnvironmentShell {
                 this.on_navigation_button(event, cx);
             }),
         )
-        .on_scroll_wheel(cx.listener(
-            |this: &mut Self, event: &ScrollWheelEvent, _, cx| {
+        .on_scroll(cx.listener(|this: &mut Self, event: &ScrollEvent, _, cx| {
+            if event.touch_phase == TouchPhase::Moved {
                 this.drag_settings(event, cx);
+            }
+        }))
+        .child(Self::swipe_bounds_watch(cx))
+    }
+
+    fn swipe_bounds_watch(cx: &mut Context<Self>) -> AnyElement {
+        let shell = cx.entity().downgrade();
+        canvas(
+            |_, _, _| (),
+            move |_, (), window, _| {
+                let shell = shell.clone();
+                window.on_mouse_event(move |event: &ScrollEvent, phase, _, cx| {
+                    if phase != DispatchPhase::Capture || event.touch_phase == TouchPhase::Moved {
+                        return;
+                    }
+                    shell
+                        .update(cx, |shell, cx| shell.drag_settings(event, cx))
+                        .unwrap_or_default();
+                });
             },
-        ))
+        )
+        .absolute()
+        .size_0()
+        .into_any_element()
     }
 
     pub(super) fn advance_gestures(
@@ -171,7 +192,7 @@ impl EnvironmentShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        self.advance_settings_swipe(now, window, cx) | self.gestures.bands.advance(now)
+        self.advance_settings_swipe(now, window, cx)
     }
 
     pub(super) fn start_watches(&mut self, cx: &mut Context<Self>) {

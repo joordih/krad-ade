@@ -1,21 +1,22 @@
+use gpui_kit::component::diff::DiffState;
 use gpui_kit::component::input::TextareaState;
 use gpui_kit::{
     div, px, AnyElement, AppContext as _, Context, Entity, InteractiveElement, IntoElement,
-    ListAlignment, ListState, ParentElement, StatefulInteractiveElement, Styled, Window,
+    ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
 };
 use krad_domain::review::{
     Approvals, Commit, Discussion, DiscussionId, Job, JobId, MergeRequest, MergeRequestState,
     MergeStatus, Pipeline, ProjectPath, UserId,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::PathBuf;
 
-use super::diff::{diff_items, thread_anchors, ChangedFile, DiffItem, ThreadAnchor};
+use super::diff::ChangedFile;
 use super::remote::Approval;
 use super::threads::ReplyDraft;
 use super::words::HostWords;
 use super::Remote;
-use crate::environment_shell::changes_tab::DiffColors;
+use crate::environment_shell::diff_view::{change_runs, new_diff_state, parse_files, ChangeRun};
 use crate::environment_shell::EnvironmentShell;
 use crate::theme::palette;
 
@@ -24,7 +25,6 @@ const SCROLL_ID: &str = "review-detail";
 const MERGE_LABEL: &str = "Merge";
 const CONFIRM_MERGE_LABEL: &str = "Click again to merge";
 const COMMENT_ROWS: usize = 2;
-const DIFF_OVERDRAW: f32 = 600.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub(super) enum ReviewTab {
@@ -53,6 +53,14 @@ impl ReviewTab {
     }
 }
 
+pub(super) struct ShownDiff {
+    pub(super) state: Entity<DiffState>,
+    pub(super) patch: Option<(usize, String)>,
+    pub(super) path: SharedString,
+    pub(super) runs: Vec<ChangeRun>,
+    pub(super) failure: Option<String>,
+}
+
 pub(in crate::environment_shell) struct RequestDetail {
     pub(super) root: PathBuf,
     pub(super) project: ProjectPath,
@@ -61,10 +69,7 @@ pub(in crate::environment_shell) struct RequestDetail {
     pub(super) commits: Remote<Vec<Commit>>,
     pub(super) files: Remote<Vec<ChangedFile>>,
     pub(super) selected_file: usize,
-    pub(super) anchors: Vec<Vec<ThreadAnchor>>,
-    pub(super) items: Vec<DiffItem>,
-    pub(super) diff_list: ListState,
-    pub(super) colors: HashMap<usize, DiffColors>,
+    pub(super) shown: ShownDiff,
     pub(super) discussions: Remote<Vec<Discussion>>,
     pub(super) approvals: Remote<Approvals>,
     pub(super) pipelines: Remote<Vec<Pipeline>>,
@@ -102,10 +107,13 @@ impl RequestDetail {
             commits: Remote::Loading,
             files: Remote::Loading,
             selected_file: 0,
-            anchors: Vec::new(),
-            items: Vec::new(),
-            diff_list: ListState::new(0, ListAlignment::Top, px(DIFF_OVERDRAW)),
-            colors: HashMap::new(),
+            shown: ShownDiff {
+                state: new_diff_state(Vec::new(), cx),
+                patch: None,
+                path: SharedString::default(),
+                runs: Vec::new(),
+                failure: None,
+            },
             discussions: Remote::Loading,
             approvals: Remote::Loading,
             pipelines: Remote::Loading,
@@ -149,7 +157,6 @@ impl RequestDetail {
             .update(cx, |field, cx| field.set_value("", window, cx));
         let discussion = reply.discussion.clone();
         self.reply = None;
-        self.remeasure_threads();
         Some((discussion, text))
     }
 
@@ -161,49 +168,8 @@ impl RequestDetail {
         Some((index, files.get(index)?))
     }
 
-    pub(super) fn sync_rows(&mut self) {
-        self.anchors = match (&self.files, &self.discussions) {
-            (Remote::Ready(files), Remote::Ready(discussions)) => {
-                thread_anchors(files, discussions)
-            }
-            _ => Vec::new(),
-        };
-        let items = self.shown_items();
-        if items == self.items {
-            self.remeasure_threads();
-        } else {
-            self.set_items(items);
-        }
-    }
-
     pub(super) fn select_file(&mut self, index: usize) {
-        if self.selected_file == index {
-            return;
-        }
         self.selected_file = index;
-        let items = self.shown_items();
-        self.set_items(items);
-    }
-
-    pub(super) fn forget_colors(&mut self) {
-        self.colors.clear();
-    }
-
-    pub(super) fn remeasure_threads(&self) {
-        self.diff_list.remeasure_items(0..self.items.len());
-    }
-
-    fn shown_items(&self) -> Vec<DiffItem> {
-        let Some((index, file)) = self.shown_file() else {
-            return Vec::new();
-        };
-        let anchors = self.anchors.get(index).map_or(&[][..], Vec::as_slice);
-        diff_items(file.lines.len(), anchors)
-    }
-
-    fn set_items(&mut self, items: Vec<DiffItem>) {
-        self.diff_list.reset(items.len());
-        self.items = items;
     }
 
     pub(super) fn approval_action(&self, me: Option<UserId>) -> Option<Approval> {
@@ -252,6 +218,51 @@ fn ready_len<T>(remote: &Remote<Vec<T>>) -> Option<usize> {
 }
 
 impl EnvironmentShell {
+    pub(super) fn show_review_file(&mut self, cx: &mut Context<Self>) {
+        let Some((index, file)) = self
+            .review
+            .detail
+            .as_ref()
+            .and_then(RequestDetail::shown_file)
+        else {
+            return;
+        };
+        let patch = file.patch();
+        let runs = change_runs(&file.lines);
+        let same = self
+            .review
+            .detail
+            .as_ref()
+            .and_then(|detail| detail.shown.patch.as_ref())
+            .is_some_and(|(shown, text)| *shown == index && *text == patch);
+        if same {
+            return;
+        }
+        let files = parse_files(&patch).map(|files| self.with_languages(files));
+        let Some(detail) = self.review.detail.as_mut() else {
+            return;
+        };
+        let shown = &mut detail.shown;
+        let files = match files {
+            Ok(files) => {
+                shown.failure = None;
+                files
+            }
+            Err(error) => {
+                shown.failure = Some(error.to_string());
+                Vec::new()
+            }
+        };
+        shown.path = files
+            .first()
+            .map_or_else(SharedString::default, |file| file.path().clone());
+        shown.runs = runs;
+        shown.patch = Some((index, patch));
+        shown
+            .state
+            .update(cx, |state, cx| state.set_files(files, cx));
+    }
+
     pub(super) fn request_detail(
         &self,
         detail: &RequestDetail,

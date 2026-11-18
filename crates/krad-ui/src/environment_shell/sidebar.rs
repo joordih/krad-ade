@@ -4,14 +4,14 @@ mod views;
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    div, px, AnyElement, Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
-    ParentElement, StatefulInteractiveElement, Styled, Window,
+    div, px, AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
+    StatefulInteractiveElement, Styled, Window,
 };
 use std::time::Instant;
 
 use krad_domain::{EnvironmentView, SidebarPart, SidebarWidth};
 
-use super::drag::DragState;
+use super::drag::{edge_handle, EdgeDrag, FixedSide};
 use super::EnvironmentShell;
 use crate::actions::ToggleSidebar;
 use crate::components::{icon, tooltip_view, Button, IconName};
@@ -35,19 +35,7 @@ const SIDEBAR_TOGGLE_LEFT: f32 = LEADING_CONTROLS_END_PX + TOGGLE_GAP;
 pub(super) const SIDEBAR_TOGGLE_END: f32 = SIDEBAR_TOGGLE_LEFT + ICON_BUTTON_SM + TOGGLE_GAP;
 
 pub(super) const SIDEBAR_WIDTH: f32 = 240.0;
-const SIDEBAR_HANDLE_W: f32 = 8.0;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct SidebarDrag {
-    mouse_start: f32,
-    width_start: f32,
-}
-
-impl SidebarDrag {
-    pub(super) const fn width_at(self, x: f32) -> SidebarWidth {
-        SidebarWidth::new(self.width_start + (x - self.mouse_start))
-    }
-}
+const SIDEBAR_HANDLE_ID: &str = "sidebar-width";
 const FOOTER_H: f32 = 36.0;
 const SIDEBAR_RESPONSE_S: f32 = 0.35;
 const MAX_FRAME_S: f32 = 1.0 / 30.0;
@@ -261,26 +249,17 @@ impl EnvironmentShell {
         (self.sidebar_w.as_f32() + WINDOW_INSET) * self.sidebar.fraction()
     }
 
-    fn sidebar_width_handle(&self, cx: &mut Context<Self>) -> AnyElement {
-        let width = self.sidebar_w.as_f32();
+    fn sidebar_width_handle() -> AnyElement {
         div()
             .absolute()
             .top_0()
             .bottom_0()
-            .right(px(-SIDEBAR_HANDLE_W / 2.0))
-            .w(px(SIDEBAR_HANDLE_W))
-            .cursor_col_resize()
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |this: &mut Self, event: &MouseDownEvent, _, cx| {
-                    cx.stop_propagation();
-                    this.drag = DragState::ResizeSidebar(SidebarDrag {
-                        mouse_start: event.position.x.as_f32(),
-                        width_start: width,
-                    });
-                    cx.notify();
-                }),
-            )
+            .right_0()
+            .child(edge_handle(
+                SIDEBAR_HANDLE_ID,
+                gpui_kit::Axis::Horizontal,
+                EdgeDrag::Sidebar,
+            ))
             .into_any_element()
     }
 
@@ -348,8 +327,13 @@ impl EnvironmentShell {
                     .left(px(width - self.sidebar_w.as_f32() - WINDOW_INSET))
                     .w(px(self.sidebar_w.as_f32()))
                     .opacity(shown)
+                    .on_drag_move(Self::follow_edge(cx, |this, edge, moved, _| {
+                        (edge == EdgeDrag::Sidebar).then(|| {
+                            this.sidebar_w = SidebarWidth::new(moved.extent_from(FixedSide::Left));
+                        })
+                    }))
                     .child(self.sidebar_content(cx))
-                    .child(self.sidebar_width_handle(cx)),
+                    .child(Self::sidebar_width_handle()),
             )
             .into_any_element()
     }

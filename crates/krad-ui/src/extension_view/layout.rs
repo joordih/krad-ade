@@ -148,7 +148,7 @@ impl ExtensionView {
                 .child(
                     TextView::markdown(element_id(MARKDOWN_PREFIX, &node.key), text.clone())
                         .selectable(true)
-                        .on_link_click(|_, _, _, _| {}),
+                        .link(|_, _| None),
                 )
                 .into_any_element(),
             Element::Icon {

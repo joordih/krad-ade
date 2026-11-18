@@ -1,8 +1,8 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     canvas, div, point, px, rgb, AnyElement, Bounds, Context, InteractiveElement, IntoElement,
-    MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, PathBuilder, Pixels,
-    ScrollWheelEvent, StatefulInteractiveElement, Styled,
+    MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, PathBuilder, Pixels, ScrollEvent,
+    StatefulInteractiveElement, Styled,
 };
 use krad_domain::{FileOpening, GraphLayout, NoteGraph};
 
@@ -113,16 +113,13 @@ impl EnvironmentShell {
             .flex()
             .flex_1()
             .min_h_0()
-            .on_scroll_wheel(
-                cx.listener(|this: &mut Self, event: &ScrollWheelEvent, _, cx| {
-                    if let Some(drawn) = this.notes.graph.vault.as_mut() {
-                        let delta = event.delta.pixel_delta(px(LINE_XS)).y.as_f32();
-                        drawn.zoom =
-                            (drawn.zoom * (1.0 - delta * ZOOM_STEP)).clamp(ZOOM_MIN, ZOOM_MAX);
-                        cx.notify();
-                    }
-                }),
-            )
+            .on_scroll(cx.listener(|this: &mut Self, event: &ScrollEvent, _, cx| {
+                if let Some(drawn) = this.notes.graph.vault.as_mut() {
+                    let delta = event.delta.pixel_delta(px(LINE_XS)).y.as_f32();
+                    drawn.zoom = (drawn.zoom * (1.0 - delta * ZOOM_STEP)).clamp(ZOOM_MIN, ZOOM_MAX);
+                    cx.notify();
+                }
+            }))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this: &mut Self, event: &MouseDownEvent, _, cx| {

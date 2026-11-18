@@ -19,6 +19,7 @@ pub(in crate::environment_shell) use problem_rows::{
     FileRow, HostProblems, ProblemLine, ProblemRow,
 };
 
+use super::super::file_tab::editor_marks::EditorMarks;
 use super::super::file_tab::problem_list::ProblemList;
 use super::super::EnvironmentShell;
 use super::Document;
@@ -304,16 +305,23 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let known = self.language_servers.diagnostics.of(document);
-        let editors: Vec<(Entity<EditorState>, Entity<ProblemList>)> = self
+        let editors: Vec<(Entity<EditorState>, Entity<ProblemList>, EditorMarks)> = self
             .envs
             .values()
             .filter(|live| live.data.host == document.host)
             .flat_map(|live| live.editors.values())
             .filter(|editor| editor.path == document.path)
-            .filter_map(|editor| Some((editor.state.clone()?, editor.problems.clone()?)))
+            .filter_map(|editor| {
+                Some((
+                    editor.state.clone()?,
+                    editor.problems.clone()?,
+                    editor.marks.clone(),
+                ))
+            })
             .collect();
-        for (state, problems) in editors {
+        for (state, problems, marks) in editors {
             let found = ProblemList::from_diagnostics(known, state.read(cx).text());
+            marks.show_problems(&found, &state, cx);
             problems.update(cx, |problems, cx| {
                 *problems = found;
                 cx.notify();

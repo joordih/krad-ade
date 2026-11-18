@@ -4,15 +4,17 @@ mod sheet;
 
 pub(super) use generation::LoadGeneration;
 
-use gpui_kit::{Context, Window};
-use krad_domain::{EnvironmentName, HunkFingerprint, SessionChanges, SessionId};
+use gpui_kit::component::diff::DiffState;
+use gpui_kit::{Context, Entity, SharedString, Window};
+use krad_domain::{EnvironmentName, FilePatch, HunkFingerprint, SessionChanges, SessionId};
 use krad_protocol::{
     ChangesAct, ChangesCommand, ChangesRead, Command, RequestId, SessionChangesRead,
 };
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
 
-use rows::ReviewedFile;
+use rows::{display_patch, ReviewedFile};
+
+use super::diff_view::{new_diff_state, parse_files};
 
 use super::EnvironmentShell;
 
@@ -32,7 +34,8 @@ struct SessionReview {
     session: SessionId,
     load: ReviewLoad,
     awaiting: Option<RequestId>,
-    expanded: HashSet<PathBuf>,
+    diff: Entity<DiffState>,
+    shown: String,
 }
 
 enum ReviewLoad {
@@ -89,7 +92,8 @@ impl EnvironmentShell {
             session,
             load: ReviewLoad::Reading,
             awaiting: None,
-            expanded: HashSet::new(),
+            diff: new_diff_state(Vec::new(), cx),
+            shown: String::new(),
         });
         self.load_session_changes(ChangesAct::Read, cx);
     }
@@ -126,8 +130,12 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    pub(super) fn session_changes_read(&mut self, read: SessionChangesRead) {
-        let Some(review) = self.session_changes.review.as_mut() else {
+    pub(super) fn session_changes_read(
+        &mut self,
+        read: SessionChangesRead,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(review) = self.session_changes.review.as_ref() else {
             return;
         };
         let current = review.env == read.environment
@@ -136,15 +144,56 @@ impl EnvironmentShell {
         if !current {
             return;
         }
-        review.awaiting = None;
-        review.load = match read.read {
+        let load = match read.read {
             ChangesRead::NoRepository => ReviewLoad::NoRepository,
             ChangesRead::Failed { message } => ReviewLoad::Failed(message),
-            ChangesRead::Ready { files, .. } => ReviewLoad::Ready {
-                files: files.into_iter().map(ReviewedFile::from).collect(),
-            },
+            ChangesRead::Ready { files, .. } => self.show_session_files(files, cx),
             ChangesRead::Unknown => ReviewLoad::Reading,
         };
+        if let Some(review) = self.session_changes.review.as_mut() {
+            review.awaiting = None;
+            review.load = load;
+        }
+    }
+
+    fn show_session_files(
+        &mut self,
+        patches: Vec<FilePatch>,
+        cx: &mut Context<Self>,
+    ) -> ReviewLoad {
+        let text: String = patches.iter().map(display_patch).collect();
+        let files: Vec<ReviewedFile> = patches.into_iter().map(ReviewedFile::from).collect();
+        let unchanged = self
+            .session_changes
+            .review
+            .as_ref()
+            .is_some_and(|review| review.shown == text);
+        if unchanged {
+            return ReviewLoad::Ready { files };
+        }
+        let shown = match parse_files(&text) {
+            Ok(shown) => self.with_languages(shown),
+            Err(error) => return ReviewLoad::Failed(error.to_string()),
+        };
+        let Some(review) = self.session_changes.review.as_mut() else {
+            return ReviewLoad::Reading;
+        };
+        review.shown = text;
+        review.diff.update(cx, |state, cx| {
+            let known: HashSet<SharedString> = state
+                .files()
+                .iter()
+                .map(|file| file.path().clone())
+                .collect();
+            let fresh: Vec<SharedString> = files
+                .iter()
+                .map(|file| file.path.clone())
+                .filter(|path| !known.contains(path))
+                .collect();
+            state.set_files(shown, cx);
+            state.set_files_collapsed(fresh, true, cx);
+        });
+        ReviewLoad::Ready { files }
     }
 
     fn toggle_session_reviewed(&mut self, prints: &[HunkFingerprint], cx: &mut Context<Self>) {
@@ -166,16 +215,6 @@ impl EnvironmentShell {
             session,
             act,
         }));
-        cx.notify();
-    }
-
-    fn toggle_session_file(&mut self, path: &Path, cx: &mut Context<Self>) {
-        let Some(review) = self.session_changes.review.as_mut() else {
-            return;
-        };
-        if !review.expanded.remove(path) {
-            review.expanded.insert(path.to_path_buf());
-        }
         cx.notify();
     }
 }
