@@ -3,16 +3,17 @@ use gpui_kit::component::input::{
 };
 use gpui_kit::KeyBinding;
 
+#[cfg(any(not(target_os = "macos"), test))]
+use crate::actions::SHELL_OUTSIDE_TERMINAL_KEY_CONTEXT;
 use crate::actions::{
-    AcceptCompletion, AskConfirm, AskDeny, CloseAllTabs, CloseTab, CopySelection, DeleteLine,
-    DuplicateLine, FindInFiles, FindReferences, MoveLineDown, MoveLineUp, NavigateBack,
-    NavigateForward, NewAgent, NewTerminal, NewTreeFile, NextProblem, NextWaitingAgent,
-    OpenSettings, PasteClipboard, PreviousProblem, QuickOpen, Reformat, RenameFile, RenameSymbol,
-    SaveFile, SearchTerminal, SendBackTab, SendTab, ShowTabAt, SplitTerminal, TextLarger,
-    TextReset, TextSmaller, ToggleActivity, ToggleAttentionInbox, ToggleFps, ToggleLineComment,
-    TogglePalette, ToggleSidePanel, ToggleSidebar, ToggleWorkMode, ASK_KEY_CONTEXT,
-    EDITOR_KEY_CONTEXT, FILE_TAB_KEY_CONTEXT, FILE_TREE_KEY_CONTEXT, SHELL_KEY_CONTEXT,
-    VIEWER_KEY_CONTEXT,
+    AcceptCompletion, AskConfirm, AskDeny, CloseAllTabs, CloseTab, CloseWindow, CopySelection,
+    DeleteLine, DuplicateLine, FindInFiles, FindReferences, MoveLineDown, MoveLineUp, NavigateBack,
+    NavigateForward, NewAgent, NewChat, NewTreeFile, NextProblem, NextWaitingAgent, OpenSettings,
+    PasteClipboard, PreviousProblem, QuickOpen, Reformat, RenameFile, RenameSymbol, SaveFile,
+    SearchTerminal, SendBackTab, SendTab, ShowTabAt, SplitTerminal, TextLarger, TextReset,
+    TextSmaller, ToggleActivity, ToggleAttentionInbox, ToggleFps, ToggleLineComment, TogglePalette,
+    ToggleSidePanel, ToggleSidebar, ToggleWorkMode, ASK_KEY_CONTEXT, EDITOR_KEY_CONTEXT,
+    FILE_TAB_KEY_CONTEXT, FILE_TREE_KEY_CONTEXT, SHELL_KEY_CONTEXT, VIEWER_KEY_CONTEXT,
 };
 #[cfg(target_os = "macos")]
 use crate::actions::{HideApp, HideOtherApps, MinimizeWindow, Quit};
@@ -21,8 +22,10 @@ struct KeySet {
     toggle_fps: &'static str,
     palette: &'static str,
     open_settings_hint: &'static str,
-    new_terminal: &'static str,
-    new_terminal_hint: &'static str,
+    control_scope: &'static str,
+    new_chat: &'static str,
+    new_chat_in_terminal: Option<&'static str>,
+    new_chat_hint: &'static str,
     navigate_back: &'static str,
     navigate_forward: &'static str,
     tab_slots: [&'static str; 9],
@@ -33,6 +36,7 @@ struct KeySet {
     close_tab_hint: &'static str,
     close_all_tabs: &'static str,
     close_all_tabs_hint: &'static str,
+    close_window: &'static str,
     copy: &'static str,
     viewer_copy: &'static str,
     copy_hint: &'static str,
@@ -71,8 +75,10 @@ const MAC_KEYS: KeySet = KeySet {
     toggle_fps: "cmd-alt-shift-f",
     palette: "cmd-k",
     open_settings_hint: "⌘,",
-    new_terminal: "cmd-t",
-    new_terminal_hint: "⌘T",
+    control_scope: SHELL_KEY_CONTEXT,
+    new_chat: "cmd-t",
+    new_chat_in_terminal: None,
+    new_chat_hint: "⌘T",
     navigate_back: "ctrl--",
     navigate_forward: "ctrl-shift--",
     tab_slots: [
@@ -83,8 +89,9 @@ const MAC_KEYS: KeySet = KeySet {
     split_terminal: "cmd-d",
     close_tab: "cmd-w",
     close_tab_hint: "⌘W",
-    close_all_tabs: "cmd-shift-w",
-    close_all_tabs_hint: "⌘⇧W",
+    close_all_tabs: "cmd-alt-w",
+    close_all_tabs_hint: "⌥⌘W",
+    close_window: "cmd-shift-w",
     copy: "cmd-c",
     viewer_copy: "cmd-c",
     copy_hint: "⌘C",
@@ -123,8 +130,10 @@ const OTHER_KEYS: KeySet = KeySet {
     toggle_fps: "ctrl-alt-shift-f",
     palette: "ctrl-shift-p",
     open_settings_hint: "Ctrl+,",
-    new_terminal: "ctrl-shift-t",
-    new_terminal_hint: "Ctrl+Shift+T",
+    control_scope: SHELL_OUTSIDE_TERMINAL_KEY_CONTEXT,
+    new_chat: "ctrl-t",
+    new_chat_in_terminal: Some("ctrl-shift-t"),
+    new_chat_hint: "Ctrl+T",
     navigate_back: "alt-left",
     navigate_forward: "alt-right",
     tab_slots: [
@@ -135,10 +144,11 @@ const OTHER_KEYS: KeySet = KeySet {
     ],
     new_tree_file: "ctrl-shift-n",
     split_terminal: "ctrl-shift-d",
-    close_tab: "ctrl-shift-w",
-    close_tab_hint: "Ctrl+Shift+W",
+    close_tab: "ctrl-w",
+    close_tab_hint: "Ctrl+W",
     close_all_tabs: "ctrl-alt-shift-w",
     close_all_tabs_hint: "Ctrl+Alt+Shift+W",
+    close_window: "ctrl-shift-w",
     copy: "ctrl-shift-c",
     viewer_copy: "ctrl-c",
     copy_hint: "Ctrl+Shift+C",
@@ -217,7 +227,7 @@ const ASK_DENY: &str = "escape";
 
 pub(crate) const OPEN_SETTINGS_HINT: &str = KEYS.open_settings_hint;
 pub(crate) const FREE_DROP_HINT: &str = KEYS.free_drop_hint;
-pub(crate) const NEW_TERMINAL_HINT: &str = KEYS.new_terminal_hint;
+pub(crate) const NEW_CHAT_HINT: &str = KEYS.new_chat_hint;
 pub(crate) const TAB_SLOT_HINTS: [&str; 9] = KEYS.tab_slot_hints;
 pub(crate) const COPY_HINT: &str = KEYS.copy_hint;
 pub(crate) const PASTE_HINT: &str = KEYS.paste_hint;
@@ -236,11 +246,17 @@ pub fn key_bindings() -> Vec<KeyBinding> {
 
 fn bindings_for(keys: &KeySet) -> Vec<KeyBinding> {
     let scope = Some(SHELL_KEY_CONTEXT);
-    let mut bindings = Vec::new();
+    let controls = Some(keys.control_scope);
+    let mut bindings: Vec<KeyBinding> = keys
+        .new_chat_in_terminal
+        .iter()
+        .map(|key| KeyBinding::new(key, NewChat, scope))
+        .collect();
     bindings.extend([
+        KeyBinding::new(keys.close_window, CloseWindow, None),
         KeyBinding::new(keys.toggle_fps, ToggleFps, scope),
         KeyBinding::new(keys.palette, TogglePalette, scope),
-        KeyBinding::new(keys.new_terminal, NewTerminal, scope),
+        KeyBinding::new(keys.new_chat, NewChat, controls),
         KeyBinding::new(keys.navigate_back, NavigateBack, scope),
         KeyBinding::new(keys.navigate_forward, NavigateForward, scope),
     ]);
@@ -252,7 +268,7 @@ fn bindings_for(keys: &KeySet) -> Vec<KeyBinding> {
     );
     bindings.extend([
         KeyBinding::new(keys.split_terminal, SplitTerminal, scope),
-        KeyBinding::new(keys.close_tab, CloseTab, scope),
+        KeyBinding::new(keys.close_tab, CloseTab, controls),
         KeyBinding::new(keys.close_all_tabs, CloseAllTabs, scope),
         KeyBinding::new(keys.copy, CopySelection, scope),
         KeyBinding::new(keys.paste, PasteClipboard, scope),
@@ -332,6 +348,72 @@ mod tests {
             .collect();
         clashes.sort();
         clashes
+    }
+
+    const SHELL: &[&str] = &["KradShell"];
+    const TERMINAL: &[&str] = &["KradShell KradTerminal"];
+    const COMPOSER: &[&str] = &["KradShell", "Input"];
+    const SETTINGS: &[&str] = &[];
+
+    fn action_for(keys: &KeySet, chord: &str, contexts: &[&str]) -> Option<&'static str> {
+        let keymap = gpui_kit::Keymap::new(bindings_for(keys));
+        let stack = contexts
+            .iter()
+            .map(|context| gpui_kit::KeyContext::parse(context))
+            .collect::<Result<Vec<_>, _>>()
+            .ok()?;
+        let input = [gpui_kit::Keystroke::parse(chord).ok()?];
+        let (bindings, _) = keymap.bindings_for_input(&input, &stack);
+        bindings.first().map(|binding| binding.action().name())
+    }
+
+    #[test]
+    fn mac_command_keys_open_and_close_chats_and_close_the_window() {
+        for place in [SHELL, TERMINAL, COMPOSER] {
+            assert_eq!(action_for(&MAC_KEYS, "cmd-t", place), Some("krad::NewChat"));
+            assert_eq!(
+                action_for(&MAC_KEYS, "cmd-w", place),
+                Some("krad::CloseTab")
+            );
+            assert_eq!(
+                action_for(&MAC_KEYS, "cmd-alt-w", place),
+                Some("krad::CloseAllTabs")
+            );
+        }
+        for place in [SHELL, TERMINAL, SETTINGS] {
+            assert_eq!(
+                action_for(&MAC_KEYS, "cmd-shift-w", place),
+                Some("krad::CloseWindow")
+            );
+        }
+    }
+
+    #[test]
+    fn plain_control_keys_open_and_close_chats_only_outside_a_focused_terminal() {
+        for place in [SHELL, COMPOSER] {
+            assert_eq!(
+                action_for(&OTHER_KEYS, "ctrl-t", place),
+                Some("krad::NewChat")
+            );
+            assert_eq!(
+                action_for(&OTHER_KEYS, "ctrl-w", place),
+                Some("krad::CloseTab")
+            );
+        }
+        assert_eq!(action_for(&OTHER_KEYS, "ctrl-t", TERMINAL), None);
+        assert_eq!(action_for(&OTHER_KEYS, "ctrl-w", TERMINAL), None);
+        for place in [SHELL, TERMINAL] {
+            assert_eq!(
+                action_for(&OTHER_KEYS, "ctrl-shift-t", place),
+                Some("krad::NewChat")
+            );
+        }
+        for place in [SHELL, TERMINAL, SETTINGS] {
+            assert_eq!(
+                action_for(&OTHER_KEYS, "ctrl-shift-w", place),
+                Some("krad::CloseWindow")
+            );
+        }
     }
 
     #[test]

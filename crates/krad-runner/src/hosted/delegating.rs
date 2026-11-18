@@ -69,7 +69,7 @@ pub(crate) fn take_delegations(
                     from,
                     request,
                 }));
-                if !outbox.send(message) {
+                if !outbox.stream(message) {
                     return;
                 }
             }

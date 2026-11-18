@@ -6,7 +6,7 @@ use krad_protocol::{
 };
 use krad_runner::{pair_over_ssh, RuntimeServer};
 use krad_runtime::{Runtime, RuntimeSetup};
-use krad_web_listener::{bind_web_access, WebAccess};
+use krad_web_listener::{bind_web_access, serve_web_access, WebAccess};
 use std::error::Error;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
@@ -254,5 +254,57 @@ fn a_browser_pairs_with_a_code_and_follows_the_runtime_through_its_cookie() -> T
         }
     };
     assert!(ended);
+    Ok(())
+}
+
+#[test]
+fn web_access_served_in_process_pairs_a_browser_and_stops_when_turned_off() -> TestResult {
+    let root = std::env::temp_dir().join(format!("krad-web-in-process-{}", std::process::id()));
+    std::fs::create_dir_all(&root)?;
+    let runtime_server = RuntimeServer::new(Runtime::start(RuntimeSetup::default())?, &root);
+    let access = WebAccess {
+        bind: "127.0.0.1:0".parse()?,
+        tls: None,
+        names: Vec::new(),
+    };
+    let web = serve_web_access(&access, &runtime_server)?;
+    let served = Served {
+        root,
+        address: web.address,
+    };
+    let (code, _) = runtime_server
+        .offer_pairing_code(browser_permissions())
+        .ok_or("no pairing code")?;
+    let body = format!(
+        r#"{{"code":"{}","install":"{BROWSER_INSTALL}","device":"Phone"}}"#,
+        code.expose()
+    );
+    let answer = served.http(&format!(
+        "POST /pairing HTTP/1.1\r\nHost: {}\r\nOrigin: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        served.address,
+        served.origin(),
+        body.len()
+    ))?;
+    assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
+    let cookie = cookie_of(&answer)?;
+    let mut browser = served.socket(&served.origin(), Some(&cookie))?;
+    let Message::Welcome(welcome) = welcomed(&mut browser, Hello::new(BUILD))? else {
+        return Err("the browser was not welcomed".into());
+    };
+    assert_eq!(welcome.permissions, Some(browser_permissions()));
+
+    web.stop();
+    let ended = loop {
+        match browser.read() {
+            Ok(WsMessage::Close(_)) | Err(_) => break true,
+            Ok(_) => {}
+        }
+    };
+    assert!(ended);
+    let refused = (0..50).any(|_| {
+        thread::sleep(Duration::from_millis(20));
+        TcpStream::connect(served.address).is_err()
+    });
+    assert!(refused, "web access still accepts connections");
     Ok(())
 }

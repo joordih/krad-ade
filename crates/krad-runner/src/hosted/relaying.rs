@@ -1,9 +1,9 @@
 use krad_domain::{CloudRunnerId, PairingPermission, PairingPermissions};
-use krad_protocol::{read_frame, write_frame, ErrorCode, Frame, Message, Reply};
+use krad_protocol::{read_frame, write_frame, ErrorCode, Frame, Message, Reply, RequestId};
 use krad_runtime::{RunnerLine, RuntimeHandle};
 use std::collections::HashMap;
 use std::io::{BufReader, BufWriter, Write as _};
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::thread;
 
 use super::outbox::Outbox;
@@ -17,6 +17,7 @@ const NOT_REACHED: &str = "reach the cloud runner with a hello first";
 const CLOSED: &str = "the cloud runner's line closed";
 const NOT_ALLOWED: &str = "this pairing does not allow that";
 const NOT_RELAYED: &str = "pairing and delegations are not relayed to a cloud runner";
+const LINE_FULL: &str = "the cloud runner's line is busy, try again";
 
 #[derive(Default)]
 pub(crate) struct Relays {
@@ -35,6 +36,24 @@ fn refusal(code: ErrorCode, message: &str) -> Message {
         code,
         message: message.to_owned(),
     }
+}
+
+const fn asked_by(message: &Message) -> Option<RequestId> {
+    match message {
+        Message::Command { id, .. } | Message::AskSnapshot { id, .. } => Some(*id),
+        _ => None,
+    }
+}
+
+fn busy(asked: Option<RequestId>) -> Message {
+    let Some(id) = asked else {
+        return refusal(ErrorCode::Busy, LINE_FULL);
+    };
+    let reply = Reply::Refused {
+        code: ErrorCode::Busy,
+        message: LINE_FULL.to_owned(),
+    };
+    Message::Reply { id, reply }
 }
 
 fn shared(held: &PairingPermissions, offered: Option<PairingPermissions>) -> PairingPermissions {
@@ -62,10 +81,10 @@ fn read_from_runner(
                     }
                     other => other,
                 };
-                outbox.send(via(runner, message))
+                outbox.stream(via(runner, message))
             }
             Ok(Some(Frame::Terminal(bytes))) => {
-                outbox.send_frame(Frame::RunnerTerminal { runner, bytes })
+                outbox.stream_frame(Frame::RunnerTerminal { runner, bytes })
             }
             Ok(Some(Frame::RunnerTerminal { .. })) => true,
             Ok(None) | Err(_) => {
@@ -186,9 +205,16 @@ impl Relays {
             outbox.send(via(runner, refusal(ErrorCode::NotFound, NOT_REACHED)));
             return;
         };
-        if line.send(Frame::Message(Box::new(message))).is_err() {
-            self.lines.remove(&runner);
-            outbox.send(via(runner, refusal(ErrorCode::Unavailable, CLOSED)));
+        let asked = asked_by(&message);
+        match line.try_send(Frame::Message(Box::new(message))) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) => {
+                outbox.send(via(runner, busy(asked)));
+            }
+            Err(TrySendError::Disconnected(_)) => {
+                self.lines.remove(&runner);
+                outbox.send(via(runner, refusal(ErrorCode::Unavailable, CLOSED)));
+            }
         }
     }
 }

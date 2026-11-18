@@ -13,8 +13,8 @@ pub(crate) enum SwipeDirection {
 }
 
 impl SwipeDirection {
-    pub(crate) const fn is_forward(self) -> bool {
-        matches!(self, Self::Left)
+    pub(crate) const fn is_back(self) -> bool {
+        matches!(self, Self::Right)
     }
 }
 

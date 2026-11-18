@@ -10,8 +10,6 @@ import {
   countIn,
   EMPTY_ATTENTION,
   nextSpot,
-  nextWaiting,
-  orderedWaiting,
   spotsOf,
   type Attention,
 } from "./attention";
@@ -55,14 +53,13 @@ describe("attention state", () => {
     expect(attention.history.map((entry) => entry.target.terminal)).toEqual([2, 1]);
   });
 
-  it("walks the queue oldest first and wraps", () => {
-    const queue = [waiting(2, "ask", 2), waiting(1, "permission", 1), waiting(3, "error", 3)];
-    expect(orderedWaiting(queue).map((entry) => entry.target.terminal)).toEqual([1, 2, 3]);
-    expect(nextWaiting(queue, target(2))?.target.terminal).toBe(3);
-    expect(nextWaiting(queue, target(3))?.target.terminal).toBe(1);
-    expect(nextWaiting(queue)?.target.terminal).toBe(1);
-    expect(nextWaiting(queue, target(9))?.target.terminal).toBe(1);
-    expect(nextWaiting([])).toBeUndefined();
+  it("walks one runtime's queue oldest first and wraps", () => {
+    const spots = spotsOf({ local: { attention: { ...EMPTY_ATTENTION, waiting: [waiting(2, "ask", 2), waiting(1, "permission", 1), waiting(3, "error", 3)] } } });
+    expect(spots.map((spot) => spot.target.terminal)).toEqual([1, 2, 3]);
+    expect(nextSpot(spots, target(2))?.target.terminal).toBe(3);
+    expect(nextSpot(spots, target(3))?.target.terminal).toBe(1);
+    expect(nextSpot(spots)?.target.terminal).toBe(1);
+    expect(nextSpot(spots, target(9))?.target.terminal).toBe(1);
   });
 
   it("counts the queue of one session's terminals", () => {

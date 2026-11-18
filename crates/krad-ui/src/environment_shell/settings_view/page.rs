@@ -74,11 +74,12 @@ impl EnvironmentShell {
                 .min_h_0()
                 .p(px(WINDOW_INSET))
                 .gap(px(WINDOW_INSET))
+                .track_focus(&ui.focus)
                 .on_key_down(
                     cx.listener(|this: &mut Self, event: &KeyDownEvent, window, cx| {
                         if event.keystroke.key == ESCAPE_KEY {
                             cx.stop_propagation();
-                            this.close_settings(window, cx);
+                            this.escape_settings(window, cx);
                         }
                     }),
                 )

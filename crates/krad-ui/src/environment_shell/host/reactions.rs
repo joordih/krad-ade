@@ -1,11 +1,13 @@
 use gpui_kit::{App, Context};
 use krad_domain::{EnvironmentName, TerminalId, ToastKind};
-use krad_protocol::{EventKind, HostState, HostsSnapshot, LoginEnv, RemoteBusInfo, RemoteBusState};
+use krad_protocol::{
+    Command, EventKind, HostCommand, HostState, HostsSnapshot, LoginEnv, RemoteBusInfo,
+    RemoteBusState,
+};
 use std::path::PathBuf;
 
 use super::super::activity::{TerminalsTab, UtilityTab};
-use super::super::live_terminal::{terminal_ref, LiveTerminal};
-use super::super::local_reach::SERVICE_ONLY_TEXT;
+use super::super::live_terminal::terminal_ref;
 use super::super::runtime_view::HostMove;
 use super::super::EnvironmentShell;
 
@@ -160,11 +162,11 @@ impl EnvironmentShell {
             .side_panel
             .add_helper_terminal(id, format!("{SIGN_IN_LABEL} · {destination}"));
         live.terminals_tab = TerminalsTab::Shown;
-        let Some(view) = self.runtime.local.open_sign_in(terminal_ref(env, id)) else {
-            self.push_toast(ToastKind::Warning, SERVICE_ONLY_TEXT.to_owned());
-            return;
-        };
-        self.keep_live_session(env, id, LiveTerminal::new(view, None), cx);
+        self.runtime
+            .client
+            .post(Command::Host(HostCommand::OpenSignIn {
+                terminal: terminal_ref(env, id),
+            }));
         if *env == self.active {
             self.show_utilities(UtilityTab::Terminals, cx);
         }

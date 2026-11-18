@@ -3,15 +3,15 @@
 use futures::executor::block_on;
 use futures::StreamExt as _;
 use krad_domain::{
-    AgentPreset, EnvironmentData, EnvironmentName, Host, ProcessRun, PromptAsker, RuntimeState,
-    SshDestination, TerminalId,
+    AgentPreset, CloudRunnerId, EnvironmentData, EnvironmentName, Host, ProcessRun, PromptAsker,
+    RunnerCli, RuntimeState, SshDestination, TerminalId,
 };
 use krad_host::mux::SignInPrompt;
 use krad_protocol::{
     AgentPlace, AgentRef, Command, EnvironmentCommand, ErrorCode, EventKind, Feed, HostCommand,
-    HostState, PromptAnswer, Reply, Scope, TerminalSummary,
+    HostState, PromptAnswer, Reply, RunnerCommand, Scope, TerminalSummary,
 };
-use krad_runtime::{EnvironmentsSetup, Runtime, RuntimeHandle, RuntimeSetup};
+use krad_runtime::{EnvironmentsSetup, Runtime, RuntimeHandle, RuntimeSetup, TerminalView};
 use std::error::Error;
 use std::path::Path;
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
@@ -31,6 +31,8 @@ const REFUSES: &str = "refuses.invalid";
 const ASKS: &str = "asks.invalid";
 const DECLINES: &str = "declines.invalid";
 const SIGN_IN_TERMINAL: TerminalId = TerminalId(50);
+const UNKNOWN_RUNNER: CloudRunnerId = CloudRunnerId(9);
+const NO_VIEW: &str = "the sign-in terminal left no view to watch";
 
 static FAKE_SSH: Once = Once::new();
 
@@ -126,6 +128,22 @@ fn show(environment: &str) -> Command {
     })
 }
 
+fn open_sign_in(
+    runtime: &RuntimeHandle,
+    terminal: &AgentRef,
+) -> Result<TerminalView, Box<dyn Error>> {
+    let command = host(HostCommand::OpenSignIn {
+        terminal: terminal.clone(),
+    });
+    assert_eq!(
+        block_on(runtime.send(runtime.next_request(), command))?,
+        Reply::Accepted
+    );
+    runtime
+        .take_launched_view(terminal)
+        .ok_or_else(|| NO_VIEW.into())
+}
+
 fn failure_of(state: &HostState) -> Option<&str> {
     match state {
         HostState::Failed { reason } => Some(reason),
@@ -169,7 +187,11 @@ fn a_host_asking_for_a_password_signs_in_through_a_runtime_terminal() -> TestRes
         environment: named("box"),
         terminal: SIGN_IN_TERMINAL,
     };
-    let view = runtime.open_sign_in(sign_in);
+    let view = open_sign_in(&runtime, &sign_in)?;
+    until(
+        &feed,
+        |kind| matches!(kind, EventKind::TerminalLaunched(launched) if launched.terminal == sign_in),
+    )?;
     assert_eq!(
         host_state(&feed, "box")?,
         HostState::SigningIn {
@@ -195,10 +217,13 @@ fn a_declined_sign_in_fails_with_the_exit_code_and_keeps_its_terminal() -> TestR
     let feed = follow(&runtime)?;
     runtime.post(show("box"));
     until(&feed, |kind| matches!(kind, EventKind::SignInWanted { .. }))?;
-    drop(runtime.open_sign_in(AgentRef {
-        environment: named("box"),
-        terminal: SIGN_IN_TERMINAL,
-    }));
+    drop(open_sign_in(
+        &runtime,
+        &AgentRef {
+            environment: named("box"),
+            terminal: SIGN_IN_TERMINAL,
+        },
+    )?);
     host_state(&feed, "box")?;
     let declined = host_state(&feed, "box")?;
     assert!(failure_of(&declined).is_some_and(|reason| reason.contains("code 255")));
@@ -218,7 +243,7 @@ fn a_sign_in_terminal_nobody_waits_for_fails_at_once() -> TestResult {
         environment: named("box"),
         terminal: SIGN_IN_TERMINAL,
     };
-    let view = runtime.open_sign_in(stray.clone());
+    let view = open_sign_in(&runtime, &stray)?;
     let ended = until(&feed, |kind| matches!(kind, EventKind::TerminalEnded(_)))?;
     let EventKind::TerminalEnded(TerminalSummary { terminal, run }) = ended else {
         return Err(TIMED_OUT.into());
@@ -346,3 +371,37 @@ fn agents_on_this_computer_are_found_by_the_runtime_and_kept_in_its_snapshot() -
 
 #[path = "hosts/chat_wait.rs"]
 mod chat_wait;
+
+#[test]
+fn a_runner_sign_in_asked_over_the_protocol_ends_in_the_terminal_a_client_watches() -> TestResult {
+    let runtime = runtime_with(vec![on("box", None)?])?;
+    let feed = follow(&runtime)?;
+    let terminal = AgentRef {
+        environment: named("box"),
+        terminal: SIGN_IN_TERMINAL,
+    };
+    let command = Command::Runner(RunnerCommand::OpenSignIn {
+        terminal: terminal.clone(),
+        runner: UNKNOWN_RUNNER,
+        cli: RunnerCli::Github,
+    });
+    assert_eq!(
+        block_on(runtime.send(runtime.next_request(), command))?,
+        Reply::Accepted
+    );
+    let view = runtime.take_launched_view(&terminal).ok_or(NO_VIEW)?;
+    until(
+        &feed,
+        |kind| matches!(kind, EventKind::TerminalLaunched(launched) if launched.terminal == terminal),
+    )?;
+    let ended = until(&feed, |kind| matches!(kind, EventKind::TerminalEnded(_)))?;
+    assert!(matches!(
+        ended,
+        EventKind::TerminalEnded(TerminalSummary {
+            run: ProcessRun::Failed { .. },
+            ..
+        })
+    ));
+    assert!(matches!(view.status().run, ProcessRun::Failed { .. }));
+    Ok(())
+}

@@ -193,9 +193,9 @@ impl EnvironmentShell {
 
     fn machine_failed(&mut self, env: &EnvironmentName, reason: String) {
         self.extensions.machines.pending.remove(env);
-        if let Some(handle) = self.runtime.local.handle() {
-            handle.hand_machine_channel(env.clone(), Err(reason));
-        }
+        self.runtime
+            .handle
+            .hand_machine_channel(env.clone(), Err(reason));
     }
 
     fn ask_for_channel(&mut self, key: &SlotKey, env: &EnvironmentName, cx: &mut Context<Self>) {
@@ -251,9 +251,9 @@ impl EnvironmentShell {
             }
         };
         let channel = machine_channel(channel.command);
-        if let Some(handle) = self.runtime.local.handle() {
-            handle.hand_machine_channel(env.clone(), Ok(channel));
-        }
+        self.runtime
+            .handle
+            .hand_machine_channel(env.clone(), Ok(channel));
     }
 
     pub(in crate::environment_shell) fn service_machine_connections(

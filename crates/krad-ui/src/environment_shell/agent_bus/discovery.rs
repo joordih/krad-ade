@@ -4,7 +4,7 @@ use super::super::EnvironmentShell;
 
 impl EnvironmentShell {
     pub(in crate::environment_shell) fn sync_api_file(&self) {
-        if self.runtime.local.bus().is_none() {
+        if self.runtime.handle.bus().is_none() {
             return;
         }
         self.runtime
@@ -15,6 +15,6 @@ impl EnvironmentShell {
     }
 
     pub(in crate::environment_shell) fn remove_api_file(&self) {
-        self.runtime.local.withdraw_discovery();
+        self.runtime.handle.withdraw_discovery();
     }
 }

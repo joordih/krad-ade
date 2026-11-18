@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0060
 ---
 
 # This computer's runtime runs as a user service

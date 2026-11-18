@@ -230,7 +230,7 @@ impl EnvironmentShell {
         let beside_pane = viewer_extent + self.side_panel_extent();
         let view = self.view_card(view, window, cx);
         let view = self.content_shift.wrap(view, Instant::now());
-        let pane = self.main_pane(view, cx);
+        let pane = self.main_pane(view, window, cx);
         div()
             .relative()
             .flex()

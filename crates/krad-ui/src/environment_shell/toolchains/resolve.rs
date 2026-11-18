@@ -112,7 +112,7 @@ impl EnvironmentShell {
         group_root: PathBuf,
     ) -> Option<DiscoveryInputs> {
         let live = self.envs.values().find(|live| live.data.host == *host)?;
-        let link = self.runtime.local.host_link(&live.data.host)?;
+        let link = self.runtime.handle.host_link(&live.data.host);
         let (host_cli, home) = match &link {
             HostLink::Local => (
                 self.host_tools.local_cli.clone(),

@@ -47,7 +47,6 @@ mod language_servers;
 mod layout;
 mod live_env;
 mod live_terminal;
-mod local_reach;
 mod markdown_images;
 mod mcp;
 mod menus;
@@ -64,7 +63,6 @@ mod repo_asks;
 mod review_view;
 mod rubber_band;
 mod runtime_view;
-pub use runtime_view::LocalRuntime;
 mod session_changes;
 mod session_look;
 mod session_pane;
@@ -100,6 +98,7 @@ mod worktrees;
 
 use gpui_kit::component::command::CommandState;
 use gpui_kit::{Context, Entity, FocusHandle, Subscription, Task, WeakEntity, Window};
+use krad_client::InProcess;
 use krad_domain::{
     EnvironmentData, EnvironmentName, EnvironmentView, Layout, Settings, SidebarWidth, TerminalId,
     Visibility, WorkMode, DEFAULT_ENVIRONMENT,
@@ -108,6 +107,7 @@ use krad_protocol::{Command, EnvironmentCommand};
 use krad_store::{LayoutFile, LayoutWriter};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use self::drag::DragState;
@@ -117,6 +117,7 @@ use self::toasts::Toasts;
 use self::window_close::CloseRequest;
 
 use crate::components::{new_copy_feedback, CopyFeedback};
+use crate::web_access::WebAccessHost;
 
 const FPS_HUD_DEFAULT: Visibility = Visibility::Hidden;
 const FULL_REFRESH_HZ: u32 = 30;
@@ -209,6 +210,7 @@ pub struct EnvironmentShell {
     variants: variants::VariantsUi,
     cloud: cloud::CloudRunners,
     runtime: runtime_view::RuntimeLink,
+    web_access: Option<Arc<dyn WebAccessHost>>,
 }
 
 impl EnvironmentShell {
@@ -238,9 +240,10 @@ impl EnvironmentShell {
         layout: Layout,
         settings: Settings,
         host_tools: krad_runtime::HostTools,
-        runtime: LocalRuntime,
+        runtime: InProcess,
+        web_access: Option<Arc<dyn WebAccessHost>>,
     ) -> Self {
-        let mut shell = Self::assemble(cx, settings, host_tools, runtime);
+        let mut shell = Self::assemble(cx, settings, host_tools, runtime, web_access);
         shell.start(layout, cx);
         shell
     }
@@ -249,7 +252,8 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
         settings: Settings,
         host_tools: krad_runtime::HostTools,
-        runtime: LocalRuntime,
+        runtime: InProcess,
+        web_access: Option<Arc<dyn WebAccessHost>>,
     ) -> Self {
         Self {
             focus: cx.focus_handle(),
@@ -337,6 +341,7 @@ impl EnvironmentShell {
             variants: variants::VariantsUi::default(),
             cloud: cloud::CloudRunners::default(),
             runtime: runtime_view::RuntimeLink::new(runtime, settings, cx),
+            web_access,
         }
     }
 

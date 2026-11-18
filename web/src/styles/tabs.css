@@ -1,0 +1,185 @@
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--krad-space-0-5);
+  height: var(--krad-tab-strip-h);
+  padding: 0 var(--krad-space-2);
+  border-bottom: var(--krad-web-hairline) solid var(--krad-divider);
+  overflow-x: auto;
+}
+.tabs > button {
+  flex: none;
+}
+.tabs .back {
+  display: none;
+}
+.tab-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: none;
+  border-radius: var(--krad-web-tab-radius);
+}
+.tab-wrap:hover {
+  background: var(--krad-bg-hover);
+}
+.tab-wrap.active {
+  background: var(--krad-bg-row-selected);
+  box-shadow: var(--krad-shadow-row);
+}
+.tab {
+  display: flex;
+  align-items: center;
+  gap: var(--krad-space-1-5);
+  min-width: var(--krad-web-tab-min-w);
+  max-width: var(--krad-web-tab-max-w);
+  height: var(--krad-icon-button);
+  padding: 0 var(--krad-space-1-5) 0 var(--krad-space-1);
+  border-radius: var(--krad-web-tab-radius);
+  color: var(--krad-text-default);
+  font-size: var(--krad-text-sm);
+  line-height: var(--krad-line-sm);
+  white-space: nowrap;
+}
+.tab.active {
+  color: var(--krad-text-strong);
+}
+.tab-wrap > .tab.active,
+.tab-wrap > .tab:hover {
+  background: none;
+}
+.tabs > .tab {
+  min-width: 0;
+}
+.files-toggle {
+  flex: none;
+  margin-left: auto;
+  width: var(--krad-icon-button-sm);
+  height: var(--krad-icon-button-sm);
+  border-radius: var(--krad-radius-xs);
+  background: none;
+  color: var(--krad-text-muted);
+}
+.files-toggle:hover {
+  background: var(--krad-bg-hover);
+}
+.files-toggle.on {
+  background: var(--krad-bg-selected);
+  color: var(--krad-text-strong);
+}
+.tab-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tab-title.preview {
+  font-style: italic;
+}
+.tab-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--krad-web-tab-badge);
+  height: var(--krad-web-tab-badge);
+  border-radius: var(--krad-web-tab-badge-radius);
+}
+.tab-badge.brand {
+  background: var(--krad-web-brand-claude);
+  color: var(--krad-on-accent);
+}
+.tab-badge.strong {
+  background: var(--krad-text-strong);
+  color: var(--krad-bg-surface);
+}
+.tab-badge.accent {
+  background: var(--krad-accent);
+  color: var(--krad-on-accent);
+}
+.tab-badge.subtle,
+.tab-badge.neutral {
+  background: var(--krad-bg-hover);
+  color: var(--krad-text-strong);
+}
+.tab-badge.bare {
+  color: var(--krad-text-muted);
+}
+.tab-dot {
+  position: absolute;
+  top: calc(-1 * var(--krad-web-dot-outset));
+  right: calc(-1 * var(--krad-web-dot-outset));
+  width: var(--krad-web-dot);
+  height: var(--krad-web-dot);
+  border-radius: 50%;
+  box-shadow: 0 0 0 var(--krad-web-dot-ring) var(--krad-bg-surface);
+}
+.tab-dot.waiting {
+  background: var(--krad-warning);
+}
+.tab-dot.done {
+  background: var(--krad-success);
+}
+.tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--krad-web-tab-close);
+  height: var(--krad-web-tab-close);
+  margin-right: var(--krad-space-1);
+  border-radius: 50%;
+  color: var(--krad-text-muted);
+  visibility: hidden;
+}
+.tab-wrap:hover .tab-close,
+.tab-wrap.active .tab-close,
+.tab-wrap:focus-within .tab-close {
+  visibility: visible;
+}
+.tab-close:hover {
+  background: var(--krad-bg-hover);
+  color: var(--krad-text-strong);
+}
+.tab-more {
+  display: inline-flex;
+  flex: none;
+  background: none;
+  color: var(--krad-text-muted);
+}
+.tab-add {
+  display: inline-flex;
+  flex: none;
+  background: none;
+  color: var(--krad-text-muted);
+}
+.tab.renaming {
+  min-width: 0;
+  max-width: none;
+}
+.tab-rename-input {
+  height: var(--krad-cta-sm-h);
+  width: var(--krad-sidebar-w);
+  max-width: var(--krad-web-rename-max-w);
+  border: var(--krad-web-hairline) solid var(--krad-accent);
+  border-radius: var(--krad-radius-xs);
+  background: var(--krad-bg-panel);
+  color: var(--krad-text-strong);
+  font: inherit;
+  padding: 0 var(--krad-space-1);
+  outline: none;
+}
+
+@media (max-width: 899px) {
+  .tabs .back {
+    display: inline-flex;
+  }
+  .files-toggle {
+    width: var(--krad-icon-button);
+    height: var(--krad-icon-button);
+  }
+  .tab-rename-input {
+    font-size: var(--krad-web-phone-text);
+  }
+}

@@ -101,7 +101,6 @@ impl Runtime {
                 answer_to(reply, self.terminals.watch(&terminal));
             }
             Input::TerminalPalette(palette) => self.terminals.recolor(palette),
-            Input::OpenSignIn { terminal, shared } => self.open_sign_in(terminal, shared),
             Input::Runner(runner) => self.apply_runner_input(runner),
             Input::MachineChannel {
                 environment,

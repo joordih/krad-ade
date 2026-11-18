@@ -3,64 +3,93 @@
 #[cfg(unix)]
 mod awake;
 mod desktop_runtime;
-#[cfg(unix)]
-mod handover;
 mod logging;
+#[cfg(unix)]
+mod old_service;
 #[cfg(windows)]
 mod rounded_corners;
 #[cfg(unix)]
-mod service;
+mod tailnet;
+#[cfg(unix)]
+mod web_access;
 
 use gpui_kit::component::command::CommandState;
 use gpui_kit::component::TitleBar;
 use gpui_kit::{application, init, open_window, AppContext, WindowDecorations, WindowOptions};
 use krad_client::InProcess;
-use krad_runtime::Clock;
+use krad_runtime::{Clock, RuntimeHandle};
 use krad_store::{config_dir, APP_NAME};
-use krad_ui::LocalRuntime;
 use krad_ui::{
     active_appearance, apply_editor_font, apply_interface_font, apply_settings_theme,
     apply_window_material, apply_window_tint, http_client, initial_window_bounds,
     install_app_menus, install_theme_library, key_bindings, local_moment, match_window_frame,
     register_fonts, title_bar_options, window_background, AppAssets, Appearance, EnvironmentShell,
+    WebAccessHost,
 };
+use std::io;
+use std::path::Path;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 const APP_TITLE: &str = "Krad ADE";
 const APP_IDENTIFIER: &str = "com.joordih.krad-ade";
+const LOCK_RELEASE_WAIT: Duration = Duration::from_secs(10);
+const LOCK_RETRY: Duration = Duration::from_millis(200);
 
-fn open_runtime() -> std::io::Result<(
-    Option<desktop_runtime::RuntimeLock>,
-    LocalRuntime,
-    desktop_runtime::Seen,
-)> {
-    let config = desktop_runtime::config_folder()?;
-    match desktop_runtime::lock_runtime(&config) {
-        Ok(lock) => {
-            let started = desktop_runtime::start_desktop_runtime(Clock::new(local_moment))?;
-            let seen = desktop_runtime::Seen {
-                layout: started.layout,
-                settings: started.settings,
-                user_themes: started.user_themes,
-                host_tools: started.host_tools,
-            };
-            Ok((
-                Some(lock),
-                LocalRuntime::InProcess(InProcess::new(started.runtime)),
-                seen,
-            ))
+fn lock_after_old_service(config: &Path) -> io::Result<desktop_runtime::RuntimeLock> {
+    #[cfg(unix)]
+    if old_service::retire_old_service(&web_access::web_access_folder(config)) {
+        let until = Instant::now() + LOCK_RELEASE_WAIT;
+        loop {
+            match desktop_runtime::lock_runtime(config) {
+                Err(error)
+                    if error.kind() == io::ErrorKind::WouldBlock && Instant::now() < until =>
+                {
+                    std::thread::sleep(LOCK_RETRY);
+                }
+                locked => return locked,
+            }
         }
-        #[cfg(unix)]
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-            let runner = desktop_runtime::connect_service(&config)?;
-            tracing::info!("the app is a client of this computer's runtime service");
-            Ok((
-                None,
-                LocalRuntime::Service(runner),
-                desktop_runtime::seen_from_files(),
-            ))
-        }
-        Err(error) => Err(error),
     }
+    desktop_runtime::lock_runtime(config)
+}
+
+#[cfg(unix)]
+fn host_web_access(config: &Path, runtime: &RuntimeHandle) -> Option<Arc<dyn WebAccessHost>> {
+    let root = web_access::web_access_folder(config);
+    match web_access::AppWebAccess::new(runtime.clone(), root) {
+        Ok(web) => {
+            web.restore();
+            Some(Arc::new(web))
+        }
+        Err(error) => {
+            tracing::warn!(%error, "web access is unavailable");
+            None
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn host_web_access(_config: &Path, _runtime: &RuntimeHandle) -> Option<Arc<dyn WebAccessHost>> {
+    None
+}
+
+struct Opened {
+    lock: desktop_runtime::RuntimeLock,
+    started: desktop_runtime::Started,
+    web_access: Option<Arc<dyn WebAccessHost>>,
+}
+
+fn open_runtime() -> io::Result<Opened> {
+    let config = desktop_runtime::config_folder()?;
+    let lock = lock_after_old_service(&config)?;
+    let started = desktop_runtime::start_desktop_runtime(Clock::new(local_moment))?;
+    let web_access = host_web_access(&config, &started.runtime);
+    Ok(Opened {
+        lock,
+        started,
+        web_access,
+    })
 }
 
 fn main() {
@@ -69,25 +98,30 @@ fn main() {
     #[cfg(unix)]
     {
         let args: Vec<String> = std::env::args().skip(1).collect();
-        if args.first().map(String::as_str) == Some(service::SERVICE_VERB) {
-            let code = service::run_service_verb(&args[1..], Clock::new(local_moment));
+        if args.first().map(String::as_str) == Some(web_access::WEB_ACCESS_VERB) {
+            let code = web_access::run_web_access_verb(&args[1..]);
             drop(log_guard);
             std::process::exit(code);
         }
     }
-    let (lock, runtime, seen) = match open_runtime() {
+    let Opened {
+        lock,
+        started,
+        web_access,
+    } = match open_runtime() {
         Ok(opened) => opened,
         Err(error) => {
             tracing::error!(%error, "this computer's runtime could not be opened");
             std::process::exit(1);
         }
     };
-    let desktop_runtime::Seen {
+    let desktop_runtime::Started {
         layout,
         settings,
         user_themes,
         host_tools,
-    } = seen;
+        runtime,
+    } = started;
     application()
         .with_assets(AppAssets)
         .with_http_client(http_client())
@@ -116,7 +150,14 @@ fn main() {
             };
             match open_window(options, cx, |window, cx| {
                 let view = cx.new(|cx| {
-                    EnvironmentShell::with_seed(cx, layout, settings, host_tools, runtime)
+                    EnvironmentShell::with_seed(
+                        cx,
+                        layout,
+                        settings,
+                        host_tools,
+                        InProcess::new(runtime),
+                        web_access,
+                    )
                 });
                 let palette = cx.new(|cx| CommandState::new(window, cx));
                 let weak = view.downgrade();

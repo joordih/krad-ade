@@ -16,6 +16,11 @@ export const PROTOCOL_VERSION = 1;
 export const RUNTIME_PATH = "/runtime";
 const FIRST_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
+const NOT_CONNECTED = "the runtime is not connected";
+const CLIENT_CLOSED = "the client closed";
+const CONNECTION_CLOSED = "the runtime connection closed";
+const PLAIN_REPLY = "the runtime answered with a plain reply";
+const UNKNOWN_CODE = "unknown";
 
 export interface SocketLike {
   binaryType: string;
@@ -42,10 +47,12 @@ export interface ClientOptions {
   parent?: { client: RuntimeClient; runner: number };
 }
 
+type Settle<T> = { resolve: (value: T) => void; reject: (error: Error) => void };
+
 type Waiting =
-  | { kind: "reply"; resolve: (reply: Reply) => void; reject: (error: Error) => void }
-  | { kind: "snapshot"; resolve: (snapshot: Snapshot) => void; reject: (error: Error) => void }
-  | { kind: "paired"; resolve: (answer: PairingAnswer) => void; reject: (error: Error) => void };
+  | ({ kind: "reply" } & Settle<Reply>)
+  | ({ kind: "snapshot" } & Settle<Snapshot>)
+  | ({ kind: "paired" } & Settle<PairingAnswer>);
 
 type Listener<T> = (value: T) => void;
 
@@ -110,7 +117,7 @@ export class RuntimeClient {
     } else {
       this.socket?.close();
     }
-    this.fail(new Error("the client closed"));
+    this.fail(new Error(CLIENT_CLOSED));
     this.tell({ status: "closed" });
   }
 
@@ -152,26 +159,17 @@ export class RuntimeClient {
   }
 
   send(command: Command): Promise<Reply> {
-    const id = this.request();
-    return new Promise((resolve, reject) => {
-      this.waiting.set(id, { kind: "reply", resolve, reject });
-      if (!this.write({ type: "command", id, command })) {
-        this.waiting.delete(id);
-        reject(new Error("the runtime is not connected"));
-      }
-    });
+    return this.exchange(this.request(), (id) => ({ type: "command", id, command }), (settle) => ({ kind: "reply", ...settle }));
   }
 
   async ask(command: Command): Promise<Answer> {
     const id = this.request();
     const answered = new Promise<Answer>((resolve) => this.answers.set(id, resolve));
-    const reply = await new Promise<Reply>((resolve, reject) => {
-      this.waiting.set(id, { kind: "reply", resolve, reject });
-      if (!this.write({ type: "command", id, command })) {
-        this.waiting.delete(id);
-        reject(new Error("the runtime is not connected"));
-      }
-    }).catch((error: unknown) => {
+    const reply = await this.exchange<Reply>(
+      id,
+      () => ({ type: "command", id, command }),
+      (settle) => ({ kind: "reply", ...settle }),
+    ).catch((error: unknown) => {
       this.answers.delete(id);
       throw error;
     });
@@ -183,25 +181,15 @@ export class RuntimeClient {
   }
 
   snapshot(): Promise<Snapshot> {
-    const id = this.request();
-    return new Promise((resolve, reject) => {
-      this.waiting.set(id, { kind: "snapshot", resolve, reject });
-      if (!this.write({ type: "ask_snapshot", id, scope: "runtime" })) {
-        this.waiting.delete(id);
-        reject(new Error("the runtime is not connected"));
-      }
-    });
+    return this.exchange(
+      this.request(),
+      (id) => ({ type: "ask_snapshot", id, scope: "runtime" }),
+      (settle) => ({ kind: "snapshot", ...settle }),
+    );
   }
 
   pairing(command: PairingCommand): Promise<PairingAnswer> {
-    const id = this.request();
-    return new Promise((resolve, reject) => {
-      this.waiting.set(id, { kind: "paired", resolve, reject });
-      if (!this.write({ type: "pairing", id, command })) {
-        this.waiting.delete(id);
-        reject(new Error("the runtime is not connected"));
-      }
-    });
+    return this.exchange(this.request(), (id) => ({ type: "pairing", id, command }), (settle) => ({ kind: "paired", ...settle }));
   }
 
   watchTerminal(terminal: AgentRef, listener: Listener<Uint8Array>): Promise<Reply> {
@@ -217,6 +205,22 @@ export class RuntimeClient {
     const id = this.nextRequest;
     this.nextRequest += 1;
     return id;
+  }
+
+  private exchange<T>(id: number, message: (id: number) => Message, waiting: (settle: Settle<T>) => Waiting): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      this.waiting.set(id, waiting({ resolve, reject }));
+      if (!this.write(message(id))) {
+        this.waiting.delete(id);
+        reject(new Error(NOT_CONNECTED));
+      }
+    });
+  }
+
+  private settled(id: number): Waiting | undefined {
+    const waiting = this.waiting.get(id);
+    this.waiting.delete(id);
+    return waiting;
   }
 
   private connected(): boolean {
@@ -268,7 +272,7 @@ export class RuntimeClient {
   private lost(): void {
     this.socket = undefined;
     this.welcome = undefined;
-    this.fail(new Error("the runtime connection closed"));
+    this.fail(new Error(CONNECTION_CLOSED));
     for (const child of this.children.values()) child.lost();
     if (this.stopped || this.options.parent) return;
     const retryInMs = this.backoff;
@@ -330,35 +334,23 @@ export class RuntimeClient {
       case "feed":
         return this.fed(message);
       case "reply": {
-        const waiting = this.waiting.get(message.id);
-        if (waiting?.kind === "reply") {
-          this.waiting.delete(message.id);
-          waiting.resolve(message.reply);
-        } else if (waiting) {
-          this.waiting.delete(message.id);
-          const reply = message.reply;
+        const waiting = this.settled(message.id);
+        const reply = message.reply;
+        if (waiting?.kind === "reply") waiting.resolve(reply);
+        else if (waiting)
           waiting.reject(
-            reply.outcome === "refused"
-              ? new RuntimeError(reply.code, reply.message)
-              : new RuntimeError("unknown", "the runtime answered with a plain reply"),
+            reply.outcome === "refused" ? new RuntimeError(reply.code, reply.message) : new RuntimeError(UNKNOWN_CODE, PLAIN_REPLY),
           );
-        }
         return;
       }
       case "snapshot": {
-        const waiting = this.waiting.get(message.id);
-        if (waiting?.kind === "snapshot") {
-          this.waiting.delete(message.id);
-          waiting.resolve(message.snapshot);
-        }
+        const waiting = this.settled(message.id);
+        if (waiting?.kind === "snapshot") waiting.resolve(message.snapshot);
         return;
       }
       case "paired": {
-        const waiting = this.waiting.get(message.id);
-        if (waiting?.kind === "paired") {
-          this.waiting.delete(message.id);
-          waiting.resolve(message.answer);
-        }
+        const waiting = this.settled(message.id);
+        if (waiting?.kind === "paired") waiting.resolve(message.answer);
         return;
       }
       case "delegated":

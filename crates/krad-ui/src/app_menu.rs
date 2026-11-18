@@ -1,9 +1,9 @@
 use gpui_kit::{App, Menu, MenuItem, OsAction, SystemMenuType};
 
 use crate::actions::{
-    CloseWindow, CopySelection, HideApp, HideOtherApps, MinimizeWindow, NewAgent, NewTerminal,
-    OpenSettings, PasteClipboard, Quit, SearchTerminal, ShowAllApps, SplitTerminal, TextLarger,
-    TextReset, TextSmaller, ToggleActivity, ToggleFps, ToggleMinimap, TogglePalette,
+    CloseTab, CloseWindow, CopySelection, HideApp, HideOtherApps, MinimizeWindow, NewAgent,
+    NewChat, OpenSettings, PasteClipboard, Quit, SearchTerminal, ShowAllApps, SplitTerminal,
+    TextLarger, TextReset, TextSmaller, ToggleActivity, ToggleFps, ToggleMinimap, TogglePalette,
     ToggleSidePanel, ToggleSidebar, ZoomWindow,
 };
 
@@ -21,9 +21,10 @@ const HIDE_OTHERS_ITEM: &str = "Hide Others";
 const SHOW_ALL_ITEM: &str = "Show All";
 const QUIT_ITEM: &str = "Quit Krad ADE";
 
-const NEW_TERMINAL_ITEM: &str = "New Terminal";
+const NEW_CHAT_ITEM: &str = "New Chat";
 const NEW_AGENT_ITEM: &str = "New Agent…";
 const SPLIT_ITEM: &str = "Split Terminal";
+const CLOSE_TAB_ITEM: &str = "Close Tab";
 const CLOSE_WINDOW_ITEM: &str = "Close Window";
 
 const COPY_ITEM: &str = "Copy";
@@ -69,10 +70,11 @@ fn menus() -> Vec<Menu> {
         menu(
             FILE_MENU,
             vec![
-                MenuItem::action(NEW_TERMINAL_ITEM, NewTerminal),
+                MenuItem::action(NEW_CHAT_ITEM, NewChat),
                 MenuItem::action(NEW_AGENT_ITEM, NewAgent),
                 MenuItem::action(SPLIT_ITEM, SplitTerminal),
                 MenuItem::separator(),
+                MenuItem::action(CLOSE_TAB_ITEM, CloseTab),
                 MenuItem::action(CLOSE_WINDOW_ITEM, CloseWindow),
             ],
         ),

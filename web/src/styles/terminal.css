@@ -1,0 +1,51 @@
+.terminal {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--krad-bg-surface);
+}
+.terminal-host {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--krad-space-2);
+  font-family: var(--krad-mono);
+  outline: none;
+}
+.terminal-host canvas {
+  display: block;
+}
+.terminal-problem {
+  padding: 0 var(--krad-space-3) var(--krad-space-2);
+  font-size: var(--krad-text-xs);
+}
+.terminal-keys {
+  display: flex;
+  align-items: center;
+  gap: var(--krad-space-1);
+  padding: var(--krad-space-1-5) var(--krad-space-2);
+  padding-bottom: max(var(--krad-space-1-5), env(safe-area-inset-bottom));
+  border-top: var(--krad-web-hairline) solid var(--krad-divider);
+  background: var(--krad-bg-panel);
+  overflow-x: auto;
+}
+.terminal-key {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--krad-button-h);
+  height: var(--krad-button-h);
+  padding: 0 var(--krad-space-2);
+  border-radius: var(--krad-radius-sm);
+  background: var(--krad-bg-hover);
+  color: var(--krad-text-strong);
+  font-family: var(--krad-mono);
+  font-size: var(--krad-text-xs);
+}
+.terminal-key.on {
+  background: var(--krad-accent);
+  color: var(--krad-on-accent);
+}

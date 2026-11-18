@@ -12,6 +12,7 @@ use crate::guard::Guard;
 use crate::push::{watch, Push};
 use crate::routes::Routes;
 use crate::socket::WebStream;
+use crate::stopping::Stopping;
 use crate::tls::{Certificates, Wire};
 
 const ACCEPT_THREAD: &str = "krad-web-accept";
@@ -23,6 +24,7 @@ const ACCEPT_STOPPED: &str = "web access stopped accepting connections";
 
 pub struct WebListener {
     streams: Mutex<Receiver<WebStream>>,
+    stopping: Stopping,
     pub address: SocketAddr,
 }
 
@@ -30,11 +32,32 @@ impl Listener for WebListener {
     type Stream = WebStream;
 
     fn accept(&self) -> io::Result<WebStream> {
-        self.streams
+        let stream = self
+            .streams
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .recv()
-            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, ACCEPT_STOPPED))
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, ACCEPT_STOPPED))?;
+        if self.stopping.stopped() {
+            return Err(io::Error::new(io::ErrorKind::BrokenPipe, ACCEPT_STOPPED));
+        }
+        Ok(stream)
+    }
+}
+
+#[must_use]
+pub struct ServedWebAccess {
+    pub address: SocketAddr,
+    stopping: Stopping,
+}
+
+impl ServedWebAccess {
+    pub fn stop(self) {
+        self.stopping.stop();
+        if let Err(error) = TcpStream::connect(self.address) {
+            tracing::debug!(%error, "web access had already stopped accepting");
+        }
+        tracing::info!(address = %self.address, "web access stopped");
     }
 }
 
@@ -42,6 +65,7 @@ struct Acceptor {
     routes: Arc<Routes>,
     certificates: Option<Certificates>,
     open: Arc<AtomicUsize>,
+    stopping: Stopping,
 }
 
 struct Admitted(Arc<AtomicUsize>);
@@ -89,6 +113,9 @@ impl Acceptor {
 
     fn run(&self, listener: &TcpListener) {
         for socket in listener.incoming() {
+            if self.stopping.stopped() {
+                return;
+            }
             match socket {
                 Ok(socket) => self.take(socket),
                 Err(error) => tracing::debug!(%error, "a web connection was not accepted"),
@@ -97,7 +124,7 @@ impl Acceptor {
     }
 }
 
-fn start_push(server: &Arc<RuntimeServer>) -> Option<Arc<Push>> {
+fn start_push(server: &Arc<RuntimeServer>, stopping: &Stopping) -> Option<Arc<Push>> {
     let push = match Push::open(server.root()) {
         Ok(push) => Arc::new(push),
         Err(error) => {
@@ -105,7 +132,7 @@ fn start_push(server: &Arc<RuntimeServer>) -> Option<Arc<Push>> {
             return None;
         }
     };
-    if let Err(error) = watch(server, Arc::clone(&push)) {
+    if let Err(error) = watch(server, Arc::clone(&push), stopping) {
         tracing::warn!(%error, "push notifications could not watch the runtime");
         return None;
     }
@@ -125,7 +152,8 @@ pub fn bind_web_access(
     let socket = TcpListener::bind(access.bind)?;
     let address = socket.local_addr()?;
     let (sender, streams) = mpsc::sync_channel(PENDING_STREAMS);
-    let push = start_push(server);
+    let stopping = Stopping::default();
+    let push = start_push(server, &stopping);
     let acceptor = Acceptor {
         routes: Arc::new(Routes {
             server: Arc::clone(server),
@@ -133,17 +161,45 @@ pub fn bind_web_access(
             secure: access.secure(),
             streams: sender,
             push,
+            stopping: stopping.clone(),
         }),
         certificates,
         open: Arc::new(AtomicUsize::new(0)),
+        stopping: stopping.clone(),
     };
     thread::Builder::new()
         .name(ACCEPT_THREAD.to_owned())
         .spawn(move || acceptor.run(&socket))?;
     Ok(WebListener {
         streams: Mutex::new(streams),
+        stopping,
         address,
     })
+}
+
+/// # Errors
+///
+/// Fails when the settings are refused, the certificate cannot be loaded, the address cannot be
+/// bound or the serving thread cannot start.
+pub fn serve_web_access(
+    access: &WebAccess,
+    server: &Arc<RuntimeServer>,
+) -> Result<ServedWebAccess, WebAccessError> {
+    let listener = bind_web_access(access, server)?;
+    let handle = ServedWebAccess {
+        address: listener.address,
+        stopping: listener.stopping.clone(),
+    };
+    let server = Arc::clone(server);
+    thread::Builder::new()
+        .name(SERVE_THREAD.to_owned())
+        .spawn(move || {
+            while let Ok(stream) = listener.accept() {
+                server.serve_stream(stream);
+            }
+        })?;
+    tracing::info!(address = %handle.address, secure = access.secure(), "web access listening");
+    Ok(handle)
 }
 
 /// # Errors
@@ -157,14 +213,7 @@ pub fn start_web_access(
         tracing::debug!("web access is off");
         return Ok(None);
     };
-    let listener = bind_web_access(&access, server)?;
-    let address = listener.address;
-    let server = Arc::clone(server);
-    thread::Builder::new()
-        .name(SERVE_THREAD.to_owned())
-        .spawn(move || server.serve(&listener))?;
-    tracing::info!(%address, secure = access.secure(), "web access listening");
-    Ok(Some(address))
+    Ok(Some(serve_web_access(&access, server)?.address))
 }
 
 pub fn web_transport() -> Transport {

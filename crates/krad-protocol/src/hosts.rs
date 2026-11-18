@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
 
+use crate::bus::AgentRef;
 use crate::spots::HarnessSpot;
 
 const REDACTED: &str = "[REDACTED]";
@@ -228,6 +229,9 @@ pub enum HostCommand {
     AnswerPrompt {
         prompt: PromptId,
         answer: Option<PromptAnswer>,
+    },
+    OpenSignIn {
+        terminal: AgentRef,
     },
     DetectAgents {
         environment: EnvironmentName,

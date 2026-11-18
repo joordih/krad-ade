@@ -42,13 +42,11 @@ fn handle(env: &EnvironmentName, id: TerminalId) -> TerminalHandle {
 
 impl EnvironmentShell {
     pub(super) fn start_agent_bus(&mut self, cx: &mut Context<Self>) {
-        if !self.runtime.local.takes_delegations() {
+        if self.runtime.handle.bus().is_none() {
             return;
         }
-        if self.runtime.local.bus().is_some() {
-            self.sync_api_file();
-        }
-        let mut delegated = self.runtime.local.delegations();
+        self.sync_api_file();
+        let mut delegated = self.runtime.handle.delegate_bus();
         cx.spawn(async move |this, cx| {
             while let Some(request) = delegated.next().await {
                 if this
@@ -68,7 +66,7 @@ impl EnvironmentShell {
         id: TerminalId,
         cx: &App,
     ) -> Vec<(String, String)> {
-        let Some(bus) = self.runtime.local.bus() else {
+        let Some(bus) = self.runtime.handle.bus() else {
             return Vec::new();
         };
         if self

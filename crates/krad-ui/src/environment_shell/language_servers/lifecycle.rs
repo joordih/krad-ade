@@ -22,7 +22,7 @@ impl EnvironmentShell {
         if !self.envs.values().any(|live| live.data.host == *host) {
             return None;
         }
-        let link = self.link_for(host)?;
+        let link = self.link_for(host);
         let platform = match &link {
             HostLink::Local => None,
             HostLink::Remote(ssh) => ssh.platform(),

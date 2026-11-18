@@ -19,7 +19,7 @@ impl EnvironmentShell {
             launched_as,
             resume,
         } = launched;
-        let Some(view) = self.runtime.local.take_launched_view(&terminal) else {
+        let Some(view) = self.runtime.handle.take_launched_view(&terminal) else {
             return;
         };
         let (env, id) = (terminal.environment, terminal.terminal);
@@ -41,7 +41,7 @@ impl EnvironmentShell {
         terminal: &AgentRef,
         cx: &mut App,
     ) {
-        let Some(view) = self.runtime.local.take_launched_view(terminal) else {
+        let Some(view) = self.runtime.handle.take_launched_view(terminal) else {
             return;
         };
         let (env, id) = (&terminal.environment, terminal.terminal);

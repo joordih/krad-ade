@@ -5,7 +5,7 @@ actions!(
     [
         ToggleFps,
         TogglePalette,
-        NewTerminal,
+        NewChat,
         SplitTerminal,
         CloseWindow,
         CloseTab,
@@ -72,6 +72,11 @@ pub(crate) struct RunExtensionCommand {
 }
 
 pub(crate) const SHELL_KEY_CONTEXT: &str = "KradShell";
+
+pub(crate) const TERMINAL_KEY_CONTEXT: &str = "KradTerminal";
+
+#[cfg(any(not(target_os = "macos"), test))]
+pub(crate) const SHELL_OUTSIDE_TERMINAL_KEY_CONTEXT: &str = "KradShell && !KradTerminal";
 
 pub(crate) const VIEWER_KEY_CONTEXT: &str = "KradCodeViewer";
 

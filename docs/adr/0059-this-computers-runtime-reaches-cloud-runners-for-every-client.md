@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted (amended by ADR-0060)
 ---
 
 # This computer's runtime reaches the cloud runners for every client

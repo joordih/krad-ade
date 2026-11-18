@@ -1,5 +1,4 @@
 use futures::channel::{mpsc, oneshot};
-use futures::SinkExt as _;
 use krad_domain::{CloudRunnerId, TerminalId};
 use krad_protocol::{
     read_frame, DelegatedRequest, Feed, Frame, Message, PairingAnswer, Reply, RequestId, Snapshot,
@@ -7,6 +6,7 @@ use krad_protocol::{
 };
 use std::sync::Arc;
 
+use super::feed_queue::FeedSink;
 use crate::client::ClientError;
 use std::collections::HashMap;
 use std::io::Read;
@@ -21,11 +21,12 @@ pub(super) enum Awaiting {
 #[derive(Default)]
 struct Expected {
     answers: HashMap<RequestId, Awaiting>,
-    feed: Option<mpsc::Sender<Feed>>,
-    terminals: HashMap<TerminalId, mpsc::Sender<Vec<u8>>>,
-    delegate: Option<mpsc::Sender<DelegatedRequest>>,
+    feed: Option<FeedSink>,
+    terminals: HashMap<TerminalId, mpsc::UnboundedSender<Vec<u8>>>,
+    delegate: Option<mpsc::UnboundedSender<DelegatedRequest>>,
     relays: HashMap<CloudRunnerId, Arc<Waiting>>,
     welcome: Option<oneshot::Sender<Result<Welcome, ClientError>>>,
+    closed: bool,
 }
 
 #[derive(Default)]
@@ -37,30 +38,42 @@ impl Waiting {
     }
 
     pub(super) fn wait(&self, id: RequestId, awaiting: Awaiting) {
-        self.expected().answers.insert(id, awaiting);
+        let mut expected = self.expected();
+        if !expected.closed {
+            expected.answers.insert(id, awaiting);
+        }
     }
 
     pub(super) fn forget(&self, id: RequestId) {
         self.expected().answers.remove(&id);
     }
 
-    pub(super) fn follow(&self, feed: mpsc::Sender<Feed>) {
-        self.expected().feed = Some(feed);
+    pub(super) fn follow(&self, feed: FeedSink) {
+        let mut expected = self.expected();
+        if !expected.closed {
+            expected.feed = Some(feed);
+        }
     }
 
     pub(super) fn stop_following(&self) {
         self.expected().feed = None;
     }
 
-    pub(super) fn watch(&self, terminal: TerminalId, bytes: mpsc::Sender<Vec<u8>>) {
-        self.expected().terminals.insert(terminal, bytes);
+    pub(super) fn watch(&self, terminal: TerminalId, bytes: mpsc::UnboundedSender<Vec<u8>>) {
+        let mut expected = self.expected();
+        if !expected.closed {
+            expected.terminals.insert(terminal, bytes);
+        }
     }
 
-    pub(super) fn delegate_to(&self, delegate: mpsc::Sender<DelegatedRequest>) {
-        self.expected().delegate = Some(delegate);
+    pub(super) fn delegate_to(&self, delegate: mpsc::UnboundedSender<DelegatedRequest>) {
+        let mut expected = self.expected();
+        if !expected.closed {
+            expected.delegate = Some(delegate);
+        }
     }
 
-    fn delegate(&self) -> Option<mpsc::Sender<DelegatedRequest>> {
+    fn delegate(&self) -> Option<mpsc::UnboundedSender<DelegatedRequest>> {
         self.expected().delegate.clone()
     }
 
@@ -69,7 +82,12 @@ impl Waiting {
     }
 
     pub(super) fn relay_to(&self, runner: CloudRunnerId, relay: Arc<Self>) {
-        self.expected().relays.insert(runner, relay);
+        let mut expected = self.expected();
+        if expected.closed {
+            drop(expected);
+            return relay.close();
+        }
+        expected.relays.insert(runner, relay);
     }
 
     fn relay(&self, runner: CloudRunnerId) -> Option<Arc<Self>> {
@@ -77,14 +95,17 @@ impl Waiting {
     }
 
     pub(super) fn expect_welcome(&self, welcome: oneshot::Sender<Result<Welcome, ClientError>>) {
-        self.expected().welcome = Some(welcome);
+        let mut expected = self.expected();
+        if !expected.closed {
+            expected.welcome = Some(welcome);
+        }
     }
 
     fn welcomed(&self) -> Option<oneshot::Sender<Result<Welcome, ClientError>>> {
         self.expected().welcome.take()
     }
 
-    fn terminal(&self, terminal: TerminalId) -> Option<mpsc::Sender<Vec<u8>>> {
+    fn terminal(&self, terminal: TerminalId) -> Option<mpsc::UnboundedSender<Vec<u8>>> {
         self.expected().terminals.get(&terminal).cloned()
     }
 
@@ -96,12 +117,19 @@ impl Waiting {
         self.expected().answers.remove(&id)
     }
 
-    fn feed(&self) -> Option<mpsc::Sender<Feed>> {
-        self.expected().feed.clone()
+    fn hand_feed(&self, feed: Feed) {
+        let mut expected = self.expected();
+        let Some(sink) = &expected.feed else {
+            return;
+        };
+        if !sink.push(feed) {
+            expected.feed = None;
+        }
     }
 
     fn close(&self) {
         let mut expected = self.expected();
+        expected.closed = true;
         expected.answers.clear();
         expected.feed = None;
         expected.terminals.clear();
@@ -163,17 +191,14 @@ fn take(message: Message, waiting: &Waiting) {
             }
         }
         Message::Feed(feed) => {
-            if let Some(mut sender) = waiting.feed() {
-                if futures::executor::block_on(sender.send(feed)).is_err() {
-                    waiting.stop_following();
-                }
-            }
+            waiting.hand_feed(feed);
         }
         Message::Delegated(delegated) => {
-            if let Some(mut sender) = waiting.delegate() {
-                if futures::executor::block_on(sender.send(*delegated)).is_err() {
-                    waiting.stop_delegating();
-                }
+            let refused = waiting
+                .delegate()
+                .is_some_and(|sender| sender.unbounded_send(*delegated).is_err());
+            if refused {
+                waiting.stop_delegating();
             }
         }
         Message::Refused { code, .. } => {
@@ -191,10 +216,10 @@ fn take(message: Message, waiting: &Waiting) {
 }
 
 fn take_terminal(bytes: TerminalBytes, waiting: &Waiting) {
-    let Some(mut sink) = waiting.terminal(bytes.terminal) else {
+    let Some(sink) = waiting.terminal(bytes.terminal) else {
         return;
     };
-    if futures::executor::block_on(sink.send(bytes.bytes)).is_err() {
+    if sink.unbounded_send(bytes.bytes).is_err() {
         waiting.unwatch(bytes.terminal);
     }
 }

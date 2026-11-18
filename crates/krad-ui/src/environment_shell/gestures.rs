@@ -2,11 +2,9 @@ use futures::StreamExt as _;
 use gpui_kit::component::input::RopeExt as _;
 use gpui_kit::{
     App, Context, Div, InteractiveElement, MouseButton, MouseDownEvent, NavigationDirection,
-    PinchEvent, ScrollDelta, ScrollWheelEvent, Task, TouchPhase, Window,
+    ScrollWheelEvent, Task, Window,
 };
-use krad_domain::{
-    FileOpening, NavigationPlace, NavigationStep, NodeField, SessionEdit, TerminalId, TextScale,
-};
+use krad_domain::{FileOpening, NavigationPlace, NavigationStep, TerminalId};
 use krad_lsp::lsp_types::Position;
 use std::collections::HashMap;
 
@@ -16,78 +14,14 @@ use super::EnvironmentShell;
 use crate::actions::{NavigateBack, NavigateForward};
 use crate::native_swipe::watch_swipes;
 
-const SWIPE_MIN_PX: f32 = 160.0;
 const JUMP_LINES: u32 = 10;
-const SWIPE_DOMINANCE: f32 = 2.5;
 
 #[derive(Default)]
 pub(super) struct Gestures {
-    pinch: Option<(TerminalId, TextScale)>,
-    swipe: (f32, f32),
     native: Option<Task<()>>,
     cursor_lines: HashMap<TerminalId, u32>,
     pub(super) settings: SettingsSwipe,
     pub(super) bands: RubberBands,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Swipe {
-    Left,
-    Right,
-}
-
-fn swipe_of((dx, dy): (f32, f32)) -> Option<Swipe> {
-    if dx.abs() < SWIPE_MIN_PX || dx.abs() < dy.abs() * SWIPE_DOMINANCE {
-        return None;
-    }
-    Some(if dx > 0.0 { Swipe::Right } else { Swipe::Left })
-}
-
-impl EnvironmentShell {
-    fn text_scale_of(&self, tab: TerminalId) -> Option<TextScale> {
-        self.envs
-            .get(&self.active)?
-            .data
-            .nodes
-            .iter()
-            .find(|node| node.id == tab)
-            .map(|node| node.text_scale)
-    }
-
-    fn scale_without_storing(&mut self, tab: TerminalId, scale: TextScale, cx: &mut Context<Self>) {
-        let env = self.active.clone();
-        if self.text_scale_of(tab).is_some_and(|kept| kept != scale) {
-            self.set_node(&env, tab, NodeField::TextScale(scale), cx);
-        }
-        cx.notify();
-    }
-
-    pub(super) fn pinch_tab(
-        &mut self,
-        tab: TerminalId,
-        event: &PinchEvent,
-        cx: &mut Context<Self>,
-    ) {
-        match event.phase {
-            TouchPhase::Started => {
-                self.gestures.pinch = self.text_scale_of(tab).map(|scale| (tab, scale));
-            }
-            TouchPhase::Moved => {
-                if let Some(scale) = self.text_scale_of(tab) {
-                    self.scale_without_storing(tab, scale.pinched(event.delta), cx);
-                }
-            }
-            TouchPhase::Ended => {
-                self.gestures.pinch = None;
-                self.save_view();
-            }
-            TouchPhase::Cancelled => {
-                if let Some((pinched, start)) = self.gestures.pinch.take() {
-                    self.scale_without_storing(pinched, start, cx);
-                }
-            }
-        }
-    }
 }
 
 impl EnvironmentShell {
@@ -226,7 +160,7 @@ impl EnvironmentShell {
         )
         .on_scroll_wheel(cx.listener(
             |this: &mut Self, event: &ScrollWheelEvent, _, cx| {
-                this.on_swipe_scroll(event, cx);
+                this.drag_settings(event, cx);
             },
         ))
     }
@@ -251,11 +185,9 @@ impl EnvironmentShell {
         };
         self.gestures.native = Some(cx.spawn(async move |this, cx| {
             while let Some(direction) = watch.swipes.next().await {
-                let forward = direction.is_forward();
                 let swiped = this.update(cx, |shell, cx| {
-                    let left_settings = !forward && shell.leave_settings(cx);
-                    if !left_settings {
-                        shell.step_session(forward, cx);
+                    if direction.is_back() {
+                        shell.leave_settings(cx);
                     }
                 });
                 if swiped.is_err() {
@@ -263,60 +195,5 @@ impl EnvironmentShell {
                 }
             }
         }));
-    }
-
-    pub(super) fn step_session(&mut self, forward: bool, cx: &mut Context<Self>) {
-        let env = self.active.clone();
-        let stepped = self
-            .edit_environment(&env, SessionEdit::Step { forward }, cx)
-            .applied();
-        if stepped {
-            self.leave_main_overlays();
-            cx.notify();
-            self.save_view();
-        }
-    }
-
-    pub(super) fn on_swipe_scroll(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
-        if !event.modifiers.alt && self.drag_settings(event, cx) {
-            return;
-        }
-        let ScrollDelta::Pixels(delta) = event.delta else {
-            return;
-        };
-        match event.touch_phase {
-            TouchPhase::Started | TouchPhase::Cancelled => self.gestures.swipe = (0.0, 0.0),
-            TouchPhase::Moved => {
-                let (dx, dy) = self.gestures.swipe;
-                self.gestures.swipe = (dx + delta.x.as_f32(), dy + delta.y.as_f32());
-            }
-            TouchPhase::Ended => {
-                let swiped = swipe_of(std::mem::take(&mut self.gestures.swipe));
-                match (swiped, event.modifiers.alt) {
-                    (Some(Swipe::Right), true) => {
-                        if !self.leave_settings(cx) {
-                            self.step_session(false, cx);
-                        }
-                    }
-                    (Some(Swipe::Left), true) => self.step_session(true, cx),
-                    (Some(Swipe::Right), false) => self.navigate(NavigationStep::Back, cx),
-                    (Some(Swipe::Left), false) => self.navigate(NavigationStep::Forward, cx),
-                    (None, _) => {}
-                }
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn only_a_long_mostly_horizontal_swipe_counts() {
-        assert_eq!(swipe_of((200.0, 20.0)), Some(Swipe::Right));
-        assert_eq!(swipe_of((-200.0, 10.0)), Some(Swipe::Left));
-        assert_eq!(swipe_of((90.0, 0.0)), None);
-        assert_eq!(swipe_of((200.0, 120.0)), None);
     }
 }

@@ -12,6 +12,7 @@ use std::thread;
 
 use super::reach::Reached;
 use super::{Notice, Push};
+use crate::stopping::Stopping;
 
 const WATCH_THREAD: &str = "krad-web-push-watch";
 const SEND_THREAD: &str = "krad-web-push-send";
@@ -171,25 +172,37 @@ impl Watcher {
     }
 }
 
-fn deliver(push: &Push, notices: &Receiver<Notice>) {
+fn deliver(push: &Push, notices: &Receiver<Notice>, stopping: &Stopping) {
     for notice in notices {
+        if stopping.stopped() {
+            return;
+        }
         push.notify(&notice);
     }
 }
 
-pub(crate) fn watch(server: &Arc<RuntimeServer>, push: Arc<Push>) -> std::io::Result<()> {
+pub(crate) fn watch(
+    server: &Arc<RuntimeServer>,
+    push: Arc<Push>,
+    stopping: &Stopping,
+) -> std::io::Result<()> {
     let (sender, notices) = mpsc::sync_channel(PENDING_NOTICES);
+    let delivering = stopping.clone();
     thread::Builder::new()
         .name(SEND_THREAD.to_owned())
-        .spawn(move || deliver(&push, &notices))?;
+        .spawn(move || deliver(&push, &notices, &delivering))?;
     let mut feed = server.handle.subscribe();
     let server = Arc::clone(server);
+    let stopping = stopping.clone();
     thread::Builder::new()
         .name(WATCH_THREAD.to_owned())
         .spawn(move || {
             let mut watcher = Watcher::local();
-            let reached = Reached::default();
+            let reached = Reached::new(stopping.clone());
             while let Some(next) = futures::executor::block_on(feed.next()) {
+                if stopping.stopped() {
+                    return;
+                }
                 let notices = watcher.take(next);
                 for runner in &watcher.ready {
                     reached.reach(&server, *runner, &sender);

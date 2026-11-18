@@ -62,7 +62,7 @@ impl EnvironmentShell {
         cx: &mut Context<Self>,
     ) {
         let buffers = Self::tab_buffers(env, cx);
-        self.runtime.local.offer_open_buffers(env.clone(), buffers);
+        self.runtime.handle.offer_open_buffers(env.clone(), buffers);
     }
 
     fn answer_buffer_asks(

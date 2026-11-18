@@ -15,7 +15,7 @@ fn forward(terminal: &AgentRef, watch: TerminalWatch, outbox: &Outbox) {
     let id = terminal.terminal;
     let replay = (!watch.replay.is_empty()).then_some(watch.replay);
     for bytes in replay.into_iter().chain(watch.bytes) {
-        if !outbox.send_terminal(TerminalBytes {
+        if !outbox.stream_terminal(TerminalBytes {
             terminal: id,
             bytes,
         }) {

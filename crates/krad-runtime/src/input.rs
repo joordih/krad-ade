@@ -1,6 +1,6 @@
 use futures::channel::{mpsc, oneshot};
 use krad_agents::{Incoming, Response};
-use krad_domain::{CloudRunnerId, EnvironmentName, RunnerCli};
+use krad_domain::{CloudRunnerId, EnvironmentName};
 use krad_host::MachineChannel;
 use krad_protocol::{AgentRef, Command, Feed, Reply, RequestId, Scope, Seq, Snapshot, WebhookTest};
 use krad_session::AnsiPalette;
@@ -16,16 +16,6 @@ use crate::terminals::{Shared, TerminalAction, TerminalLaunch, TerminalWatch};
 
 #[derive(Debug)]
 pub(crate) enum RunnerInput {
-    OpenSignIn {
-        terminal: AgentRef,
-        runner: CloudRunnerId,
-        cli: RunnerCli,
-        shared: Arc<Shared>,
-    },
-    OpenClaudeSetup {
-        terminal: AgentRef,
-        shared: Arc<Shared>,
-    },
     Connect {
         runner: CloudRunnerId,
         reply: oneshot::Sender<Result<RunnerLine, RunnerLineError>>,
@@ -76,10 +66,6 @@ pub(crate) enum Input {
         reply: oneshot::Sender<Option<TerminalWatch>>,
     },
     TerminalPalette(AnsiPalette),
-    OpenSignIn {
-        terminal: AgentRef,
-        shared: Arc<Shared>,
-    },
     Runner(RunnerInput),
     MachineChannel {
         environment: EnvironmentName,

@@ -4,11 +4,12 @@ use krad_runtime::RuntimeHandle;
 use std::collections::HashMap;
 use std::io;
 use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
 const AWAKE_CHECK: Duration = Duration::from_secs(20);
 const WAITING_KEPT_AWAKE: Duration = Duration::from_hours(2);
-const AWAKE_THREAD: &str = "krad-ade-service-awake";
+const AWAKE_THREAD: &str = "krad-ade-awake";
 #[cfg(target_os = "macos")]
 const HOLD: [&str; 2] = ["caffeinate", "-i"];
 #[cfg(not(target_os = "macos"))]
@@ -92,26 +93,35 @@ impl Awake {
     }
 }
 
+pub(crate) struct KeptAwake {
+    _stop: Sender<()>,
+}
+
+fn watch(runtime: &RuntimeHandle, stop: &Receiver<()>) {
+    let mut awake = Awake::default();
+    loop {
+        let Ok(snapshot) = futures::executor::block_on(runtime.snapshot(Scope::Runtime)) else {
+            break;
+        };
+        let wanted = awake.wanted(&snapshot, Instant::now());
+        awake.keep(wanted);
+        match stop.recv_timeout(AWAKE_CHECK) {
+            Err(RecvTimeoutError::Timeout) => {}
+            Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    awake.release();
+}
+
 /// # Errors
 ///
 /// Fails when the watching thread cannot start.
-pub(crate) fn keep_awake_for_agents(runtime: RuntimeHandle) -> io::Result<()> {
+pub(crate) fn keep_awake_for_agents(runtime: RuntimeHandle) -> io::Result<KeptAwake> {
+    let (stop, stopped) = mpsc::channel();
     std::thread::Builder::new()
         .name(AWAKE_THREAD.to_owned())
-        .spawn(move || {
-            let mut awake = Awake::default();
-            loop {
-                let Ok(snapshot) = futures::executor::block_on(runtime.snapshot(Scope::Runtime))
-                else {
-                    awake.release();
-                    return;
-                };
-                let wanted = awake.wanted(&snapshot, Instant::now());
-                awake.keep(wanted);
-                std::thread::sleep(AWAKE_CHECK);
-            }
-        })
-        .map(drop)
+        .spawn(move || watch(&runtime, &stopped))?;
+    Ok(KeptAwake { _stop: stop })
 }
 
 #[cfg(test)]
@@ -127,6 +137,15 @@ mod tests {
             serde_json::from_value(serde_json::json!({ "scope": "runtime", "seq": 1 }))?;
         snapshot.environments = vec![data];
         Ok(snapshot)
+    }
+
+    #[test]
+    fn the_watch_ends_once_web_access_lets_go_of_it() -> Result<(), Box<dyn std::error::Error>> {
+        let runtime = krad_runtime::Runtime::start(krad_runtime::RuntimeSetup::default())?;
+        let (stop, stopped) = mpsc::channel();
+        drop(stop);
+        watch(&runtime, &stopped);
+        Ok(())
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use krad_domain::{ClaudeOauthToken, CloudRunnerId, RunnerCli, RunnerLogin, RunnerState};
 use serde::{Deserialize, Serialize};
 
+use crate::bus::AgentRef;
 use crate::hosts::RemoteBusState;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -25,6 +26,14 @@ pub enum RunnerCommand {
     },
     ForgetClaudeToken {
         runner: CloudRunnerId,
+    },
+    OpenSignIn {
+        terminal: AgentRef,
+        runner: CloudRunnerId,
+        cli: RunnerCli,
+    },
+    OpenClaudeSetup {
+        terminal: AgentRef,
     },
     #[cfg_attr(feature = "ts", ts(skip))]
     #[serde(other)]

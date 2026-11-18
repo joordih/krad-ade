@@ -39,7 +39,7 @@ const RUNNERS_NOTE: &str = "The app copies its host program to ~/.krad-ade on th
 pub(in crate::environment_shell) struct CloudRunnersUi {
     form: RunnerForm,
     token: TokenForm,
-    sign_in: Option<SignInDialog>,
+    pub(super) sign_in: Option<SignInDialog>,
     web: WebAccessUi,
 }
 
@@ -191,10 +191,9 @@ impl EnvironmentShell {
     ) -> AnyElement {
         let pal = palette(cx);
         let open = ui.form.open;
-        let mut sections = vec![
-            self.web_access_section(&ui.web, cx),
-            self.cloud_runners_card(ui, cx),
-        ];
+        let mut sections: Vec<AnyElement> =
+            self.web_access_section(&ui.web, cx).into_iter().collect();
+        sections.push(self.cloud_runners_card(ui, cx));
         if open {
             sections.push(Self::runner_form_section(&ui.form, cx));
         }

@@ -1,18 +1,19 @@
 import { useSyncExternalStore } from "react";
 import type { AgentRef } from "../protocol/AgentRef";
+import type { Answer } from "../protocol/Answer";
 import type { Command } from "../protocol/Command";
 import type { Reply } from "../protocol/Reply";
 import { RuntimeClient, type ConnectionStatus } from "../runtime/client";
 import { reloadTheme } from "../runtime/http";
-import { applyFeed, EMPTY_VIEW, prependPage, type RuntimeView } from "./runtimeView";
+import { pageCommand } from "./commands/chat";
+import { listFolderCommand } from "./commands/files";
+import { applyFeed, EMPTY_VIEW, prependPage, withFolderListing, type RuntimeView } from "./runtimeView";
+import { LOCAL, runnerKey, type RuntimeKey } from "./runtimes";
 
-export const LOCAL = "local";
-export type RuntimeKey = string;
+export { LOCAL, runnerKey, type RuntimeKey } from "./runtimes";
+
 const EARLIER_PAGE = 40;
-
-export function runnerKey(runner: number): RuntimeKey {
-  return `runner:${runner}`;
-}
+const NOT_REACHED = "that runtime is not reached";
 
 export type AppState = {
   status: ConnectionStatus;
@@ -24,7 +25,7 @@ type Listener = () => void;
 export class AppStore {
   private state: AppState = { status: { status: "connecting" }, views: { [LOCAL]: EMPTY_VIEW } };
   private readonly listeners = new Set<Listener>();
-  private readonly runners = new Map<number, RuntimeClient>();
+  private readonly runners = new Map<RuntimeKey, RuntimeClient>();
 
   constructor(readonly local: RuntimeClient) {
     local.onStatus((status) => this.set({ ...this.state, status }));
@@ -56,24 +57,30 @@ export class AppStore {
   }
 
   client(key: RuntimeKey): RuntimeClient | undefined {
-    if (key === LOCAL) return this.local;
-    const runner = Number(key.slice(key.indexOf(":") + 1));
-    return this.runners.get(runner);
+    return key === LOCAL ? this.local : this.runners.get(key);
   }
 
   send(key: RuntimeKey, command: Command): Promise<Reply> {
     const client = this.client(key);
-    if (!client) return Promise.reject(new Error("that runtime is not reached"));
-    return client.send(command);
+    return client ? client.send(command) : Promise.reject(new Error(NOT_REACHED));
+  }
+
+  ask(key: RuntimeKey, command: Command): Promise<Answer> {
+    const client = this.client(key);
+    return client ? client.ask(command) : Promise.reject(new Error(NOT_REACHED));
   }
 
   async loadEarlier(key: RuntimeKey, chat: AgentRef, before: number): Promise<void> {
-    const client = this.client(key);
-    if (!client || before <= 0) return;
-    const count = Math.min(EARLIER_PAGE, before);
-    const answer = await client.ask({ area: "chat", verb: "page", chat, before, count });
+    if (before <= 0) return;
+    const answer = await this.ask(key, pageCommand(chat, before, Math.min(EARLIER_PAGE, before)));
     if (answer.kind !== "chat_page") return;
     this.setView(key, prependPage(this.view(key), chat, answer.from, answer.messages));
+  }
+
+  async loadFolder(key: RuntimeKey, environment: string, dir: string): Promise<void> {
+    const answer = await this.ask(key, listFolderCommand(environment, dir));
+    if (answer.kind !== "entries") return;
+    this.setView(key, withFolderListing(this.view(key), environment, dir, answer.entries));
   }
 
   private set(state: AppState): void {
@@ -88,10 +95,10 @@ export class AppStore {
   private reachRunners(): void {
     const shown = this.view(LOCAL).snapshot?.runners.shown ?? [];
     for (const { runner, state } of shown) {
-      if (state.state !== "ready" || this.runners.has(runner)) continue;
-      const client = this.local.relay(runner);
-      this.runners.set(runner, client);
       const key = runnerKey(runner);
+      if (state.state !== "ready" || this.runners.has(key)) continue;
+      const client = this.local.relay(runner);
+      this.runners.set(key, client);
       client.onFeed((feed) => this.setView(key, applyFeed(this.view(key), feed)));
       client.connect();
     }

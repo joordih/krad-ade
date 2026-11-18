@@ -10,6 +10,7 @@ mod push;
 mod reach;
 mod routes;
 mod socket;
+mod stopping;
 mod tls;
 mod verb;
 
@@ -17,7 +18,10 @@ pub use config::{
     read_web_access, turn_off_web_access, web_access_file, write_web_access, TlsFiles, WebAccess,
     WebAccessError,
 };
-pub use listener::{bind_web_access, start_web_access, web_transport, WebListener};
+pub use listener::{
+    bind_web_access, serve_web_access, start_web_access, web_transport, ServedWebAccess,
+    WebListener,
+};
 pub use reach::{is_loopback, is_private_network};
 pub use socket::WebStream;
 pub use verb::{run_web_access_verb, web_access_command, WEB_ACCESS_VERB};

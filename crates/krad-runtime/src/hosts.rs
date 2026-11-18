@@ -107,7 +107,8 @@ impl Hosts {
             HostCommand::AnswerPrompt { prompt, answer } => {
                 return Some(self.prompts.answer(prompt, answer, work.outbox));
             }
-            HostCommand::DetectAgents { .. }
+            HostCommand::OpenSignIn { .. }
+            | HostCommand::DetectAgents { .. }
             | HostCommand::DetectLocalAgents { .. }
             | HostCommand::CheckAcpAdapter { .. }
             | HostCommand::RetryAcpAdapter { .. }

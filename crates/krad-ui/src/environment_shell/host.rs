@@ -37,8 +37,8 @@ pub(super) struct HostUi {
 }
 
 impl EnvironmentShell {
-    pub(super) fn link_for(&self, host: &Host) -> Option<HostLink> {
-        self.runtime.local.host_link(host)
+    pub(super) fn link_for(&self, host: &Host) -> HostLink {
+        self.runtime.handle.host_link(host)
     }
 
     pub(in crate::environment_shell) fn host_state<'a>(

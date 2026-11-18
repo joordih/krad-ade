@@ -24,15 +24,6 @@ const NOT_STARTED: &str = "could not start";
 impl Runtime {
     pub(super) fn apply_runner_input(&mut self, input: RunnerInput) {
         match input {
-            RunnerInput::OpenSignIn {
-                terminal,
-                runner,
-                cli,
-                shared,
-            } => self.open_runner_sign_in((terminal, shared), runner, cli),
-            RunnerInput::OpenClaudeSetup { terminal, shared } => {
-                self.open_claude_setup(terminal, shared);
-            }
             RunnerInput::Connect { runner, reply } => self.open_runner_line(runner, reply),
         }
     }

@@ -18,6 +18,7 @@ use crate::guard::Guard;
 use crate::http::{read_request, HttpError, Request, Response, STRICT_TRANSPORT, UPLOAD_PATH};
 use crate::push::{Push, Subscription};
 use crate::socket::{self, WebStream};
+use crate::stopping::Stopping;
 use crate::tls::Wire;
 
 pub(crate) const RUNTIME_PATH: &str = "/runtime";
@@ -68,6 +69,7 @@ pub(crate) struct Routes {
     pub(crate) secure: bool,
     pub(crate) streams: SyncSender<WebStream>,
     pub(crate) push: Option<Arc<Push>>,
+    pub(crate) stopping: Stopping,
 }
 
 enum Next {
@@ -113,7 +115,7 @@ impl Routes {
     fn hand_over(&self, wire: Wire, pending: Vec<u8>, pairing: Option<Pairing>) {
         let socket =
             WebSocket::from_partially_read(wire, pending, Role::Server, Some(socket::config()));
-        match socket::start(socket, pairing) {
+        match socket::start(socket, pairing, self.stopping.clone()) {
             Ok(stream) => {
                 if self.streams.send(stream).is_err() {
                     tracing::debug!("the runtime stopped taking web connections");

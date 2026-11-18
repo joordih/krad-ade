@@ -6,6 +6,7 @@ mod chat;
 mod cloud_runners;
 mod code_host_logins;
 mod editor;
+mod escape;
 mod extensions;
 mod flat_pane;
 mod fonts;
@@ -39,8 +40,8 @@ mod worktrees;
 
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, rgb, AnyElement, BoxShadow, Context, Div, ElementId, InteractiveElement, IntoElement,
-    ParentElement, SharedString, Stateful, Styled, Window,
+    div, px, rgb, AnyElement, BoxShadow, Context, Div, ElementId, FocusHandle, InteractiveElement,
+    IntoElement, ParentElement, SharedString, Stateful, Styled, Window,
 };
 use krad_domain::AppearanceMode;
 
@@ -87,6 +88,7 @@ pub(super) struct SettingsUi {
     fonts: crate::font_catalog::FontCatalog,
     theme_editor: Option<theme_editor::ThemeEditor>,
     scroll: gpui_kit::ScrollHandle,
+    focus: FocusHandle,
 }
 
 impl From<AppearanceMode> for Appearance {
@@ -204,6 +206,8 @@ impl EnvironmentShell {
         let search = Self::settings_search_ui(window, cx);
         let skills = Self::skills_ui(window, cx);
         let worktrees = self.worktrees_ui(window, cx);
+        let focus = cx.focus_handle();
+        window.focus(&focus, cx);
         self.settings_ui = Some(SettingsUi {
             pane: SettingsPane::General,
             search,
@@ -224,6 +228,7 @@ impl EnvironmentShell {
             fonts: crate::font_catalog::font_catalog(cx),
             theme_editor: None,
             scroll: gpui_kit::ScrollHandle::new(),
+            focus,
         });
         self.refresh_gitlab_status();
         self.refresh_github_status();

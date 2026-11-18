@@ -4,12 +4,13 @@ use krad_runner::RuntimeServer;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, BufReader, BufWriter};
 use std::sync::mpsc::SyncSender;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use super::watch::{pass_on, Watcher};
 use super::Notice;
+use crate::stopping::Stopping;
 
 const RUNNER_THREAD: &str = "krad-web-push-runner";
 const RETRY_AFTER: Duration = Duration::from_mins(1);
@@ -34,8 +35,11 @@ impl Lines {
     }
 }
 
-#[derive(Clone, Default)]
-pub(super) struct Reached(Arc<Mutex<Lines>>);
+#[derive(Clone)]
+pub(super) struct Reached {
+    lines: Arc<Mutex<Lines>>,
+    stopping: Stopping,
+}
 
 fn send(output: &mut impl io::Write, message: Message) -> io::Result<()> {
     write_frame(output, &Frame::Message(Box::new(message)))
@@ -47,6 +51,7 @@ fn follow(
     server: &RuntimeServer,
     runner: CloudRunnerId,
     sender: &SyncSender<Notice>,
+    stopping: &Stopping,
 ) -> io::Result<()> {
     let line = futures::executor::block_on(server.handle.connect_runner(runner))
         .map_err(|_| io::Error::other("the runtime stopped"))?
@@ -57,7 +62,7 @@ fn follow(
     let followed = (|| {
         send(&mut output, Message::Hello(line.hello))?;
         let mut watcher = Watcher::runner(runner);
-        loop {
+        while !stopping.stopped() {
             let frame =
                 read_frame(&mut input).map_err(|error| io::Error::other(error.to_string()))?;
             match frame {
@@ -74,23 +79,31 @@ fn follow(
                 None => return Ok(()),
             }
         }
+        Ok(())
     })();
     stop.stop();
     followed
 }
 
 impl Reached {
+    pub(super) fn new(stopping: Stopping) -> Self {
+        Self {
+            lines: Arc::default(),
+            stopping,
+        }
+    }
+
+    fn lines(&self) -> MutexGuard<'_, Lines> {
+        self.lines.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     pub(super) fn reach(
         &self,
         server: &Arc<RuntimeServer>,
         runner: CloudRunnerId,
         sender: &SyncSender<Notice>,
     ) {
-        let started = self
-            .0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .start(runner, Instant::now());
+        let started = self.lines().start(runner, Instant::now());
         if !started {
             return;
         }
@@ -98,23 +111,14 @@ impl Reached {
         let spawned = thread::Builder::new()
             .name(RUNNER_THREAD.to_owned())
             .spawn(move || {
-                if let Err(error) = follow(&server, runner, &sender) {
+                if let Err(error) = follow(&server, runner, &sender, &reached.stopping) {
                     tracing::debug!(%error, "push notifications stopped following a cloud runner");
                 }
-                reached
-                    .0
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .open
-                    .remove(&runner);
+                reached.lines().open.remove(&runner);
             });
         if let Err(error) = spawned {
             tracing::warn!(%error, "push notifications could not follow a cloud runner");
-            self.0
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .open
-                .remove(&runner);
+            self.lines().open.remove(&runner);
         }
     }
 }

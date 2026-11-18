@@ -1,4 +1,6 @@
-use krad_domain::{DeviceName, InstallId, PairingCode, PairingPermissions, PairingToken};
+use krad_domain::{
+    DeviceName, InstallId, PairingCode, PairingPermissions, PairingToken, Timestamp,
+};
 use krad_protocol::RequestId;
 use krad_runtime::RuntimeHandle;
 use std::collections::HashMap;
@@ -68,21 +70,29 @@ impl RuntimeServer {
 
     pub fn serve<L: Listener>(self: &Arc<Self>, listener: &L) {
         loop {
-            let stream = match listener.accept() {
-                Ok(stream) => stream,
-                Err(error) => {
-                    tracing::debug!(%error, "a runtime connection was not accepted");
-                    continue;
-                }
-            };
-            let server = Arc::clone(self);
-            let spawned = thread::Builder::new()
-                .name(CONNECTION_THREAD.to_owned())
-                .spawn(move || serve_connection(&server, stream));
-            if let Err(error) = spawned {
-                tracing::warn!(%error, "could not serve a runtime connection");
+            match listener.accept() {
+                Ok(stream) => self.serve_stream(stream),
+                Err(error) => tracing::debug!(%error, "a runtime connection was not accepted"),
             }
         }
+    }
+
+    pub fn serve_stream<S: Stream>(self: &Arc<Self>, stream: S) {
+        let server = Arc::clone(self);
+        let spawned = thread::Builder::new()
+            .name(CONNECTION_THREAD.to_owned())
+            .spawn(move || serve_connection(&server, stream));
+        if let Err(error) = spawned {
+            tracing::warn!(%error, "could not serve a runtime connection");
+        }
+    }
+
+    #[must_use]
+    pub fn offer_pairing_code(
+        &self,
+        permissions: PairingPermissions,
+    ) -> Option<(PairingCode, Timestamp)> {
+        self.codes.offer(permissions)
     }
 
     pub(crate) fn next_key(&self) -> ConnectionKey {

@@ -1,6 +1,5 @@
 import type { GridSize } from "../../protocol/GridSize";
 
-/** A key the phone keyboard has no way to send, with the bytes a terminal expects. */
 export type ExtraKey = {
   key: string;
   label: string;
@@ -18,30 +17,31 @@ export const EXTRA_KEYS: ExtraKey[] = [
   { key: "ctrl-c", label: "Ctrl+C", data: "\u0003" },
 ];
 
-/** The sticky modifier: the next typed character goes back as a control code. */
 export const CTRL_KEY = { key: "ctrl", label: "Ctrl" } as const;
 
-/**
- * The control code a character produces with Ctrl held, following the terminal
- * convention (`a`–`z` → 0x01–0x1a, `[` → Esc, `?` → Delete).
- */
+const CONTROL_UPPER_FIRST = 64;
+const CONTROL_UPPER_LAST = 95;
+const CONTROL_LOWER_FIRST = 97;
+const CONTROL_LOWER_LAST = 122;
+const CONTROL_LOWER_OFFSET = 96;
+const DELETE = "\u007f";
+const NUL = "\u0000";
+
 export function controlOf(character: string): string {
   const code = character.charCodeAt(0);
-  if (code >= 64 && code <= 95) return String.fromCharCode(code - 64);
-  if (code >= 97 && code <= 122) return String.fromCharCode(code - 96);
-  if (character === "?") return "\u007f";
-  if (character === " ") return "\u0000";
+  if (code >= CONTROL_UPPER_FIRST && code <= CONTROL_UPPER_LAST) return String.fromCharCode(code - CONTROL_UPPER_FIRST);
+  if (code >= CONTROL_LOWER_FIRST && code <= CONTROL_LOWER_LAST) return String.fromCharCode(code - CONTROL_LOWER_OFFSET);
+  if (character === "?") return DELETE;
+  if (character === " ") return NUL;
   return character;
 }
 
-/** Turns typed text into what it sends while the sticky Ctrl key is on. */
 export function withStickyCtrl(data: string, sticky: boolean): string {
   const first = data[0];
   if (!sticky || first === undefined) return data;
   return controlOf(first) + data.slice(1);
 }
 
-/** The grid description the runtime needs alongside a resize. */
 export function gridOf(cols: number, rows: number, cellWidth: number, cellHeight: number): GridSize {
   return {
     cols: Math.max(1, Math.floor(cols)),

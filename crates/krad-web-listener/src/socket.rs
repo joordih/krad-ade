@@ -10,6 +10,7 @@ use std::time::Duration;
 use tungstenite::protocol::WebSocketConfig;
 use tungstenite::{Message as WsMessage, WebSocket};
 
+use crate::stopping::Stopping;
 use crate::tls::Wire;
 
 const LENGTH_BYTES: usize = 4;
@@ -147,6 +148,7 @@ struct Pump {
     outbound: Receiver<Vec<u8>>,
     shared: Arc<Shared>,
     pairing: Option<Pairing>,
+    stopping: Stopping,
 }
 
 enum Turn {
@@ -212,7 +214,7 @@ impl Pump {
     }
 
     fn run(mut self) {
-        while !self.shared.closed.load(Ordering::Acquire) {
+        while !self.shared.closed.load(Ordering::Acquire) && !self.stopping.stopped() {
             if matches!(self.send_pending(), Turn::Done) || matches!(self.receive(), Turn::Done) {
                 break;
             }
@@ -229,7 +231,11 @@ pub(crate) fn config() -> WebSocketConfig {
         .max_frame_size(Some(MAX_MESSAGE_BYTES))
 }
 
-pub(crate) fn start(socket: WebSocket<Wire>, pairing: Option<Pairing>) -> io::Result<WebStream> {
+pub(crate) fn start(
+    socket: WebSocket<Wire>,
+    pairing: Option<Pairing>,
+    stopping: Stopping,
+) -> io::Result<WebStream> {
     socket.get_ref().set_read_timeout(POLL)?;
     let (inbound, frames) = mpsc::sync_channel(INBOUND_CAPACITY);
     let (outbound, pending) = mpsc::sync_channel(OUTBOUND_CAPACITY);
@@ -249,6 +255,7 @@ pub(crate) fn start(socket: WebSocket<Wire>, pairing: Option<Pairing>) -> io::Re
         outbound: pending,
         shared: Arc::clone(&shared),
         pairing,
+        stopping,
     };
     thread::Builder::new()
         .name(PUMP_THREAD.to_owned())

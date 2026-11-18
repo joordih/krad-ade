@@ -1,0 +1,156 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--krad-font);
+  font-size: var(--krad-text-sm);
+  line-height: var(--krad-line-sm);
+  color: var(--krad-text-default);
+  background: linear-gradient(135deg, var(--krad-backdrop-from), var(--krad-backdrop-to));
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+button:disabled {
+  cursor: default;
+}
+
+textarea,
+input {
+  font: inherit;
+  color: var(--krad-text-strong);
+}
+
+.hidden-input {
+  display: none;
+}
+
+.icon {
+  display: inline-flex;
+  flex: none;
+  width: var(--krad-icon);
+  height: var(--krad-icon);
+}
+.icon svg {
+  width: 100%;
+  height: 100%;
+}
+.icon.sm {
+  width: var(--krad-icon-sm);
+  height: var(--krad-icon-sm);
+}
+.icon.xs {
+  width: var(--krad-icon-xs);
+  height: var(--krad-icon-xs);
+}
+.icon.tone-muted {
+  color: var(--krad-text-muted);
+}
+.icon.tone-subtle {
+  color: var(--krad-text-subtle);
+}
+.icon.tone-strong {
+  color: var(--krad-text-strong);
+}
+.icon.tone-accent {
+  color: var(--krad-accent);
+}
+.icon.tone-brand {
+  color: var(--krad-web-brand-claude);
+}
+.icon.tone-warning {
+  color: var(--krad-warning);
+}
+.icon.tone-disabled {
+  color: var(--krad-text-disabled);
+}
+.icon.tone-attention {
+  color: var(--krad-attention);
+}
+.icon.spins {
+  animation: krad-spin var(--krad-web-spin) linear infinite;
+}
+@keyframes krad-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .icon.spins {
+    animation: none;
+  }
+}
+
+.round {
+  width: var(--krad-icon-button);
+  height: var(--krad-icon-button);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--krad-bg-hover);
+  color: var(--krad-text-strong);
+}
+.round.primary {
+  background: var(--krad-accent);
+  color: var(--krad-on-accent);
+}
+
+.button {
+  height: var(--krad-button-h);
+  padding: 0 var(--krad-space-3);
+  border-radius: var(--krad-radius-sm);
+  background: var(--krad-bg-hover);
+  color: var(--krad-text-strong);
+}
+.button.primary {
+  background: var(--krad-accent);
+  color: var(--krad-on-accent);
+}
+.button.primary:active {
+  background: var(--krad-accent-pressed);
+}
+.button.picked {
+  box-shadow: inset 0 0 0 var(--krad-web-hairline) var(--krad-accent);
+}
+.button:disabled {
+  opacity: var(--krad-web-unavailable);
+}
+
+.link {
+  color: var(--krad-text-strong);
+}
+.link:hover,
+.link:focus-visible {
+  color: var(--krad-accent);
+  text-decoration: underline;
+}
+
+.empty {
+  margin: auto;
+  color: var(--krad-text-muted);
+  text-align: center;
+  padding: var(--krad-space-6);
+}
+.error-text {
+  color: var(--krad-error);
+}
+.detail {
+  color: var(--krad-text-muted);
+}

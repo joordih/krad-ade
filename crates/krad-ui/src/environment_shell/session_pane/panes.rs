@@ -1,8 +1,8 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, rgb, AnyElement, App, AppContext as _, Context, DragMoveEvent, FontWeight,
-    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, PinchEvent,
-    Render, SharedString, StatefulInteractiveElement, Styled, WeakEntity, Window,
+    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, Render,
+    SharedString, StatefulInteractiveElement, Styled, WeakEntity, Window,
 };
 use krad_domain::{
     Axis, DividerId, LayoutTemplate, PaneId, SessionEdit, SessionPanes, SnapZone, TerminalId,
@@ -343,13 +343,6 @@ impl EnvironmentShell {
             .flex()
             .flex_col()
             .overflow_hidden()
-            .when_some(shown, |card, tab| {
-                card.on_pinch(
-                    cx.listener(move |this: &mut Self, event: &PinchEvent, _, cx| {
-                        this.pinch_tab(tab, event, cx);
-                    }),
-                )
-            })
             .when(several, |card| {
                 card.child(self.pane_strip(live, panes, id, StripPlace::Pane, cx))
             })

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../protocol/ChatMessage";
 import type { Event } from "../protocol/Event";
 import { applyEvent, chatKey, EMPTY_VIEW, prependPage, type RuntimeView } from "./runtimeView";
+import { diagnosticsKey, folderKey } from "./files";
 
 const chat = { environment: "main", terminal: 4 };
 
@@ -62,6 +63,40 @@ describe("chat events", () => {
     expect(view.chats[chatKey(chat)]!.asks).toHaveLength(1);
     view = applyEvent(view, event({ type: "chat_ask_settled", chat, ask: 3 }));
     expect(view.chats[chatKey(chat)]!.asks).toHaveLength(0);
+  });
+});
+
+describe("file events", () => {
+  it("keeps watched folder listings and a file's diagnostics", () => {
+    let view = applyEvent(
+      EMPTY_VIEW,
+      event({
+        type: "folder_changed",
+        environment: "main",
+        dir: "/r",
+        entries: [{ name: "main.rs", path: "/r/main.rs", kind: "file" }],
+      }),
+    );
+    expect(view.folders[folderKey("main", "/r")]?.map((entry) => entry.name)).toEqual(["main.rs"]);
+    view = applyEvent(
+      view,
+      event(
+        {
+          type: "diagnostics",
+          environment: "main",
+          path: "/r/main.rs",
+          diagnostics: [
+            {
+              range: { start: { line: 2, character: 4 }, end: { line: 2, character: 9 } },
+              severity: "warning",
+              message: "unused",
+            },
+          ],
+        },
+        2,
+      ),
+    );
+    expect(view.diagnostics[diagnosticsKey("main", "/r/main.rs")]?.[0]?.message).toBe("unused");
   });
 });
 

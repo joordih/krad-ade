@@ -7,7 +7,6 @@ use krad_domain::{
 use krad_session::wsl_shell;
 use std::path::PathBuf;
 
-use super::live_terminal::terminal_ref;
 use super::sessions::Launch;
 use super::sessions_view::{session_terminals, show_current_session};
 use super::surface::{ChatPlace, ChatSeed};
@@ -91,7 +90,11 @@ impl EnvironmentShell {
         for group in bare {
             self.start_chat_session(Some(group), cx);
         }
-        if let Some(shown) = shown {
+        let moved = self
+            .envs
+            .get(&self.active)
+            .is_some_and(|live| live.data.active_session != shown);
+        if let Some(shown) = shown.filter(|_| moved) {
             let env = self.active.clone();
             self.edit_environment(&env, SessionEdit::Select { session: shown }, cx);
         }
@@ -416,7 +419,6 @@ impl EnvironmentShell {
         };
         let ran = live.sessions.remove(&id).is_some();
         let chat = live.chats.remove(&id);
-        self.runtime.local.forget_terminal(&terminal_ref(env, id));
         if live.focused == Some(id) {
             live.focused = None;
             show_current_session(live);

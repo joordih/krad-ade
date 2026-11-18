@@ -3,7 +3,9 @@ import type { EnvironmentData } from "../protocol/EnvironmentData";
 import type { Session } from "../protocol/Session";
 import type { TerminalGroup } from "../protocol/TerminalGroup";
 import type { TerminalNode } from "../protocol/TerminalNode";
-import { LOCAL, runnerKey, type AppState, type RuntimeKey } from "./store";
+import { environmentNamed, sessionIn } from "./environments";
+import { LOCAL, runnerKey, type RuntimeKey } from "./runtimes";
+import type { AppState } from "./store";
 
 export type SessionItem = {
   runtime: RuntimeKey;
@@ -33,7 +35,6 @@ export function strongest(nodes: TerminalNode[]): AgentState {
   return nodes.reduce<AgentState>((best, node) => (STATE_WEIGHT[node.state] > STATE_WEIGHT[best] ? node.state : best), "Idle");
 }
 
-/** The tab a session shows: the picked one, its last chat, its first chat, else its first tab. */
 export function shownNode(nodes: TerminalNode[], session: Session, picked?: number): TerminalNode | undefined {
   return (
     nodes.find((node) => node.id === picked) ??
@@ -43,7 +44,6 @@ export function shownNode(nodes: TerminalNode[], session: Session, picked?: numb
   );
 }
 
-/** The session holding a terminal, as the attention queue's targets name it. */
 export function sessionOfTerminal(environment: EnvironmentData, terminal: number): Session | undefined {
   return (environment.sessions ?? []).find((session) =>
     session.tabs.tabs.some((tab) => tab.tiles.some((tile) => tile.id === terminal)),
@@ -56,7 +56,7 @@ function item(runtime: RuntimeKey, environment: EnvironmentData, session: Sessio
 }
 
 export function groupsOf(state: AppState, environment: string): GroupItem[] {
-  const local = state.views[LOCAL]?.environments.find((known) => known.name === environment);
+  const local = environmentNamed(state.views[LOCAL]?.environments, environment);
   if (!local) return [];
   const reached = new Set(
     Object.entries(state.views)
@@ -81,6 +81,20 @@ export function groupsOf(state: AppState, environment: string): GroupItem[] {
     }
   }
   return loose.sessions.length > 0 ? [...groups, loose] : groups;
+}
+
+export type SessionPlace = { runtime: RuntimeKey; environment: string; session: number };
+
+export function placedSession(state: AppState, place: SessionPlace | undefined) {
+  if (!place) return undefined;
+  const environment = environmentNamed(state.views[place.runtime]?.environments, place.environment);
+  const session = sessionIn(environment, place.session);
+  return environment && session ? { environment, session } : undefined;
+}
+
+export function terminalSession(state: AppState, runtime: RuntimeKey, environment: string, terminal: number): Session | undefined {
+  const known = environmentNamed(state.views[runtime]?.environments, environment);
+  return known ? sessionOfTerminal(known, terminal) : undefined;
 }
 
 export function environmentNames(state: AppState): string[] {

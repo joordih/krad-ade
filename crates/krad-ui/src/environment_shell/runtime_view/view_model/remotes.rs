@@ -182,34 +182,7 @@ fn reached(connected: Result<Runner, ClientError>, stop: LineStop) -> Reached {
     }
 }
 
-#[derive(Clone)]
-pub(in crate::environment_shell) enum RunnerReacher {
-    Line(RuntimeHandle),
-    Relay(Arc<Runner>),
-}
-
-async fn relayed(laptop: Arc<Runner>, runner: CloudRunnerId) -> Reached {
-    match laptop.relay(runner).await {
-        Ok(client) => {
-            let build = client.welcome().build.clone();
-            Reached::Connected {
-                client: Arc::new(client),
-                build,
-                stop: None,
-            }
-        }
-        Err(error) => {
-            tracing::debug!(%error, "this computer's runtime did not reach the runner");
-            Reached::Unreachable
-        }
-    }
-}
-
-async fn connect(reacher: RunnerReacher, runner: CloudRunnerId) -> Reached {
-    let handle = match reacher {
-        RunnerReacher::Line(handle) => handle,
-        RunnerReacher::Relay(laptop) => return relayed(laptop, runner).await,
-    };
+async fn connect(handle: RuntimeHandle, runner: CloudRunnerId) -> Reached {
     let line = match handle.connect_runner(runner).await {
         Ok(Ok(line)) => line,
         Ok(Err(RunnerLineError::NotReady)) | Err(_) => return Reached::Unreachable,
@@ -227,7 +200,7 @@ async fn connect(reacher: RunnerReacher, runner: CloudRunnerId) -> Reached {
 impl ViewModel {
     pub(in crate::environment_shell) fn reach_ready_runners(
         &mut self,
-        handle: &RunnerReacher,
+        handle: &RuntimeHandle,
         cx: &mut Context<Self>,
     ) {
         let wanted: Vec<CloudRunnerId> = self
@@ -243,7 +216,7 @@ impl ViewModel {
     }
 
     fn reach(
-        handle: RunnerReacher,
+        handle: RuntimeHandle,
         runner: CloudRunnerId,
         connection: u64,
         cx: &mut Context<Self>,
@@ -263,7 +236,7 @@ impl ViewModel {
         &mut self,
         (runner, connection): (CloudRunnerId, u64),
         reached: Reached,
-        handle: RunnerReacher,
+        handle: RuntimeHandle,
         cx: &mut Context<Self>,
     ) {
         if let Some((client, cursor)) = self.adopt_reached(runner, connection, reached) {
@@ -311,7 +284,7 @@ impl ViewModel {
         (runner, connection): (CloudRunnerId, u64),
         client: Arc<dyn RuntimeClient>,
         cursor: Cursor,
-        handle: RunnerReacher,
+        handle: RuntimeHandle,
         cx: &mut Context<Self>,
     ) {
         let mut following = Following::resuming(client, cursor);
@@ -426,7 +399,7 @@ impl ViewModel {
     fn reach_again(
         &mut self,
         (runner, connection): (CloudRunnerId, u64),
-        handle: RunnerReacher,
+        handle: RuntimeHandle,
         cx: &mut Context<Self>,
     ) {
         if !self.runners.get(&runner).is_some_and(RunnerState::is_ready) {

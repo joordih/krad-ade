@@ -1,0 +1,41 @@
+.shell {
+  height: 100%;
+  display: flex;
+  gap: var(--krad-window-inset);
+  padding: var(--krad-window-inset);
+  padding-top: max(var(--krad-window-inset), env(safe-area-inset-top));
+  padding-bottom: max(var(--krad-window-inset), env(safe-area-inset-bottom));
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: var(--krad-bg-surface);
+  border-radius: var(--krad-radius-xl);
+  box-shadow: var(--krad-shadow-card);
+  overflow: hidden;
+}
+
+.status-line {
+  color: var(--krad-text-muted);
+  font-size: var(--krad-text-xs);
+  padding: var(--krad-space-1) var(--krad-space-2);
+}
+
+@media (max-width: 899px) {
+  .shell {
+    padding: 0;
+    gap: 0;
+  }
+  .shell.at-list .main,
+  .shell.at-session .sidebar {
+    display: none;
+  }
+  .main {
+    border-radius: 0;
+    box-shadow: none;
+  }
+}

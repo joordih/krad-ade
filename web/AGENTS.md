@@ -24,7 +24,7 @@ UI text and commits.
   with `store.send(runtime, command)` to that runtime. Never connect to a runner directly.
   `src/state/runtimeView.ts` is the pure reducer (snapshot, events, chat pages) and
   `src/state/sessions.ts` the selectors that merge cloud sessions into their origin group.
-- **Mobile first.** One breakpoint, 900px (`useWide()` in `src/ui/App.tsx`). Below it the sidebar
+- **Mobile first.** One breakpoint, 900px (`useWide()` in `src/ui/shell/useWide.ts`). Below it the sidebar
   and the session are two screens with a back button; above it the desktop layout. Every screen
   works at 390px wide by touch alone: no hover-only actions, inputs at 16px so iOS does not zoom,
   `env(safe-area-inset-*)` at the edges. Enter sends only on wide screens.
@@ -62,8 +62,10 @@ UI text and commits.
 2. Find the commands, events and snapshot fields it needs in `docs/protocol.md` and
    `src/protocol/`. Done when each action on the list maps to a command or a delegated request.
 3. Build it: state in `src/state/` (extend `runtimeView.ts` for new events, add selectors), view in
-   `src/ui/`, tests for the reducers and pure helpers. `src/ui/chat/` is the model screen: copy its
-   shape. Done when `npm run typecheck`, `npm test` and `npm run build` pass.
+   `src/ui/<screen>/`, command builders in `src/state/commands/`, shared pieces in
+   `src/ui/primitives/`, styles in `src/styles/<screen>.css`, tests for the reducers and pure
+   helpers. `src/ui/chat/` is the model screen: copy its shape (thin components over tested
+   `*.ts` helpers next to them). Done when `npm run typecheck`, `npm test` and `npm run build` pass.
 4. Check it against a live runtime (see *Running against a runtime*) and against the desktop or its
    screenshot side by side. Done when every element on the step 1 list works and looks the same.
 5. Tick the screen in `docs/screens.md`.
@@ -75,15 +77,16 @@ From the repo root, with a throwaway config so the owner's real state is untouch
 ```sh
 cargo build -p krad-app --bin krad-ade
 export XDG_CONFIG_HOME=/tmp/krad-dev            # a short path: Unix sockets cap their length
-./target/debug/krad-ade service web-access on 127.0.0.1:7421
-./target/debug/krad-ade service &               # this computer's runtime, headless
-./target/debug/krad-ade service pair-browser    # prints a one-use code (10 minutes)
+./target/debug/krad-ade web-access on 127.0.0.1:7421
+./target/debug/krad-ade &                       # the app serves its runtime while it is open
 ```
 
+The app hosts web access itself (ADR-0060): it serves its own runtime while its window is open.
+Make a one-use code (10 minutes) with Settings → Cloud runners → Web access → Pair a browser.
 Then `npm run dev` here (it proxies `/runtime`, `/pairing`, `/upload`, `/push` and `/theme.css` to
-`KRAD_RUNTIME`, default `http://127.0.0.1:7421`), open the dev URL and enter the code. The runtime starts empty; to see a screen with
-data, drive it with commands from a small script on the Unix socket (`config/krad-ade/runtime/`,
-token in `desktop.token`), or point it at a copy of a real config. To ship, run
+`KRAD_RUNTIME`, default `http://127.0.0.1:7421`), open the dev URL and enter the code. The runtime
+starts empty; to see a screen with data, use the app's window, or point it at a copy of a real
+config. To ship, run
 `npm run build`; the next `cargo build` embeds `web/dist` into the binary that serves it.
 
 ## Reference

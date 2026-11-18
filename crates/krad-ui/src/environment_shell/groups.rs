@@ -172,14 +172,14 @@ impl EnvironmentShell {
             .is_none_or(|live| live.data.host.is_local())
     }
 
-    pub(super) fn active_link(&self) -> Option<HostLink> {
+    pub(super) fn active_link(&self) -> HostLink {
         self.env_link(&self.active)
     }
 
-    pub(super) fn env_link(&self, env: &EnvironmentName) -> Option<HostLink> {
+    pub(super) fn env_link(&self, env: &EnvironmentName) -> HostLink {
         self.envs
             .get(env)
-            .and_then(|live| self.runtime.local.host_link(&live.data.host))
+            .map_or_default(|live| self.runtime.handle.host_link(&live.data.host))
     }
 
     pub(super) fn active_group(&self) -> Option<&TerminalGroup> {

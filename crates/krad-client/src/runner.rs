@@ -1,3 +1,4 @@
+mod feed_queue;
 mod inbox;
 
 use futures::channel::{mpsc, oneshot};
@@ -9,18 +10,15 @@ use krad_protocol::{
 };
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender};
+use std::sync::mpsc::{channel, sync_channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use self::feed_queue::feed_queue;
 use self::inbox::{read_all, Awaiting, Waiting};
 use crate::client::{Answer, ClientError, DelegatedFeed, Feeds, RuntimeClient, TerminalBytesFeed};
 
-const OUTBOX_CAPACITY: usize = 256;
-const FEED_CAPACITY: usize = 1024;
-const TERMINAL_CAPACITY: usize = 256;
-const DELEGATION_CAPACITY: usize = 64;
 const WRITER_THREAD: &str = "krad-client-runner-writer";
 const READER_THREAD: &str = "krad-client-runner-reader";
 const NO_WELCOME: &str = "the runner did not welcome the client";
@@ -31,9 +29,9 @@ const FIRST_REQUEST: RequestId = RequestId(1);
 
 #[derive(Clone)]
 enum Outlet {
-    Direct(SyncSender<Message>),
+    Direct(Sender<Message>),
     Via {
-        outbox: SyncSender<Message>,
+        outbox: Sender<Message>,
         runner: CloudRunnerId,
     },
 }
@@ -50,7 +48,7 @@ impl Outlet {
         sent.is_ok()
     }
 
-    const fn outbox(&self) -> &SyncSender<Message> {
+    const fn outbox(&self) -> &Sender<Message> {
         match self {
             Self::Direct(outbox) | Self::Via { outbox, .. } => outbox,
         }
@@ -145,7 +143,7 @@ impl Runner {
             Err(RecvTimeoutError::Timeout) => return Err(failed(WELCOME_TOO_SLOW)),
             Err(RecvTimeoutError::Disconnected) => return Err(failed(NO_WELCOME)),
         };
-        let (outbox, outgoing) = sync_channel(OUTBOX_CAPACITY);
+        let (outbox, outgoing) = channel();
         spawn(WRITER_THREAD, move || write_all(output, &outgoing))?;
         let first = welcome.first_request.unwrap_or(FIRST_REQUEST);
         Ok(Self {
@@ -209,7 +207,7 @@ impl Runner {
     }
 
     pub fn take_delegations(&self) -> DelegatedFeed {
-        let (sender, delegated) = mpsc::channel(DELEGATION_CAPACITY);
+        let (sender, delegated) = mpsc::unbounded();
         self.waiting.delegate_to(sender);
         if !self.outbox.send(Message::TakeDelegations) {
             tracing::debug!("the runner connection closed before taking delegations");
@@ -241,8 +239,8 @@ impl RuntimeClient for Runner {
     }
 
     fn subscribe(&self, since: Option<Seq>) -> Feeds {
-        let (sender, feeds) = mpsc::channel(FEED_CAPACITY);
-        self.waiting.follow(sender);
+        let (sink, feeds) = feed_queue();
+        self.waiting.follow(sink);
         if !self.outbox.send(Message::Subscribe { since }) {
             self.waiting.stop_following();
         }
@@ -250,7 +248,7 @@ impl RuntimeClient for Runner {
     }
 
     fn watch_terminal(&self, terminal: AgentRef) -> (Answer<Reply>, TerminalBytesFeed) {
-        let (sink, bytes) = mpsc::channel(TERMINAL_CAPACITY);
+        let (sink, bytes) = mpsc::unbounded();
         self.waiting.watch(terminal.terminal, sink);
         let watch = Command::Terminal(TerminalCommand::Watch { terminal });
         (self.send(watch), bytes.boxed())

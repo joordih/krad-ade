@@ -8,7 +8,7 @@ use super::side_panel::SidePanelDrag;
 use super::sidebar::SidebarDrag;
 use super::terminal_body::BodyGeometry;
 use super::EnvironmentShell;
-use crate::actions::{NewTerminal, ToggleFps, TogglePalette};
+use crate::actions::{NewChat, ToggleFps, TogglePalette};
 
 #[derive(Clone)]
 pub(in crate::environment_shell) enum DragState {
@@ -62,12 +62,7 @@ impl EnvironmentShell {
         self.toggle_palette(window, cx);
     }
 
-    pub(super) fn on_new_terminal(
-        &mut self,
-        _: &NewTerminal,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn on_new_chat(&mut self, _: &NewChat, _: &mut Window, cx: &mut Context<Self>) {
         self.add_new_tab(cx);
     }
 

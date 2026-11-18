@@ -91,7 +91,7 @@ impl EnvironmentShell {
         action: TerminalAction,
     ) {
         self.runtime
-            .local
+            .handle
             .act_on_terminal(terminal_ref(env, id), action);
     }
 

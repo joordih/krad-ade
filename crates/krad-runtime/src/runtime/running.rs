@@ -55,6 +55,20 @@ impl Runtime {
                 self.save_claude_token(runner, None);
                 Reply::Accepted
             }
+            RunnerCommand::OpenSignIn {
+                terminal,
+                runner,
+                cli,
+            } => {
+                let shared = self.launch_helper(terminal.clone());
+                self.open_runner_sign_in((terminal, shared), runner, cli);
+                Reply::Accepted
+            }
+            RunnerCommand::OpenClaudeSetup { terminal } => {
+                let shared = self.launch_helper(terminal.clone());
+                self.open_claude_setup(terminal, shared);
+                Reply::Accepted
+            }
             RunnerCommand::Unknown => refused(ErrorCode::Unsupported, UNSUPPORTED_COMMAND),
         }
     }

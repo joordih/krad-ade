@@ -26,11 +26,6 @@ impl TextScale {
     }
 
     #[must_use]
-    pub fn pinched(self, delta: f32) -> Self {
-        Self::new(self.0 * (1.0 + delta))
-    }
-
-    #[must_use]
     pub const fn as_f32(self) -> f32 {
         self.0
     }
@@ -58,11 +53,5 @@ mod tests {
             tiny = tiny.smaller();
         }
         assert_close(tiny.as_f32(), TextScale::MIN);
-    }
-
-    #[test]
-    fn a_pinch_scales_by_its_delta_within_bounds() {
-        assert_close(TextScale::default().pinched(0.1).as_f32(), 1.1);
-        assert_close(TextScale::default().pinched(-0.5).as_f32(), TextScale::MIN);
     }
 }

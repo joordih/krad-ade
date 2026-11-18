@@ -23,6 +23,23 @@ fn a_show_has_its_wire_shape_and_a_newer_verb_reads_as_unknown() -> serde_json::
 }
 
 #[test]
+fn a_sign_in_terminal_is_asked_for_with_its_terminal() -> serde_json::Result<()> {
+    let command = Command::Host(HostCommand::OpenSignIn {
+        terminal: AgentRef {
+            environment: main(),
+            terminal: TerminalId(4),
+        },
+    });
+    let json = serde_json::to_string(&command)?;
+    assert_eq!(
+        json,
+        r#"{"area":"host","verb":"open_sign_in","terminal":{"environment":"main","terminal":4}}"#
+    );
+    assert_eq!(serde_json::from_str::<Command>(&json)?, command);
+    Ok(())
+}
+
+#[test]
 fn an_answer_travels_but_never_prints() -> serde_json::Result<()> {
     let command = HostCommand::AnswerPrompt {
         prompt: PromptId(3),

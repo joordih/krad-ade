@@ -40,3 +40,7 @@ krad-runtime.workspace = true
 [[test]]
 name = "hosted_runtime"
 required-features = ["runtime"]
+
+[[test]]
+name = "hosted_backpressure"
+required-features = ["runtime"]

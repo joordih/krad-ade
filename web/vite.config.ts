@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import packageJson from "./package.json" with { type: "json" };
 
 const RUNTIME_PATHS = ["/runtime", "/pairing", "/upload", "/push", "/theme.css"];
 
@@ -24,6 +25,7 @@ export default defineConfig(({ mode }) => {
   );
   return {
     plugins: [react()],
+    define: { __KRAD_WEB_VERSION__: JSON.stringify(packageJson.version) },
     server: { proxy: proxied },
     build: { outDir: "dist", emptyOutDir: true, sourcemap: false },
   };

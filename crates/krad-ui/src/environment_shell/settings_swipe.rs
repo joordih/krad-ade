@@ -68,16 +68,12 @@ impl EnvironmentShell {
         true
     }
 
-    pub(super) fn drag_settings(
-        &mut self,
-        event: &ScrollWheelEvent,
-        cx: &mut Context<Self>,
-    ) -> bool {
+    pub(super) fn drag_settings(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
         if self.settings_ui.is_none() {
-            return false;
+            return;
         }
         let ScrollDelta::Pixels(delta) = event.delta else {
-            return true;
+            return;
         };
         let swipe = &mut self.gestures.settings;
         match event.touch_phase {
@@ -114,7 +110,6 @@ impl EnvironmentShell {
             }
             TouchPhase::Moved | TouchPhase::Ended => {}
         }
-        true
     }
 
     pub(super) fn advance_settings_swipe(

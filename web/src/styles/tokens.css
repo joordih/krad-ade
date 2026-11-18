@@ -1,0 +1,101 @@
+@font-face {
+  font-family: "Inter";
+  src: url("../../../assets/fonts/Inter-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("../../../assets/fonts/Inter-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("../../../assets/fonts/Inter-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../../../assets/fonts/JetBrainsMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+
+:root {
+  --krad-font: Inter, system-ui, -apple-system, sans-serif;
+  --krad-mono: "JetBrains Mono", ui-monospace, monospace;
+  --krad-sidebar-w: 280px;
+  --krad-web-hairline: 1px;
+  --krad-web-unavailable: 0.5;
+  --krad-web-dot: 8px;
+  --krad-web-dot-ring: 2px;
+  --krad-web-dot-outset: 3px;
+  --krad-web-brand-claude: #d97757;
+  --krad-web-phone-text: 16px;
+  --krad-web-spin: 1200ms;
+  --krad-web-column-w: 760px;
+  --krad-web-round-button: 30px;
+  --krad-web-session-row-h: 44px;
+  --krad-web-tab-min-w: 110px;
+  --krad-web-tab-max-w: 200px;
+  --krad-web-tab-radius: 8px;
+  --krad-web-tab-badge: 20px;
+  --krad-web-tab-badge-radius: 6px;
+  --krad-web-tab-close: 18px;
+  --krad-web-rename-max-w: 60vw;
+  --krad-web-message-gap: 22px;
+  --krad-web-bubble-max-w: 85%;
+  --krad-web-answer-line: 22px;
+  --krad-web-question-text: 22px;
+  --krad-web-question-line: 30px;
+  --krad-web-thread-pad-top: 20px;
+  --krad-web-thread-pad-bottom: 28px;
+  --krad-web-tool-row-h: 22px;
+  --krad-web-elbow-w: 10px;
+  --krad-web-elbow-radius: 4px;
+  --krad-web-thought-rule: 2px;
+  --krad-web-composer-max-h: 200px;
+  --krad-web-ask-max-h: 240px;
+  --krad-web-chip-max-w: 220px;
+  --krad-web-meter-bar-w: 2px;
+  --krad-web-meter-min-h: 4px;
+  --krad-web-meter-max-h: 11px;
+  --krad-web-meter-gap: 1.5px;
+  --krad-web-meter-idle: 25%;
+  --krad-web-meter-min-tone: 35%;
+  --krad-web-queued-lines: 3;
+  --krad-web-tab-size: 4;
+  --krad-web-ring: 16px;
+  --krad-web-ring-stroke: 2px;
+  --krad-web-suggestions-max-h: 300px;
+  --krad-web-picker-w: 360px;
+  --krad-web-picker-h: 380px;
+  --krad-web-rail-w: 48px;
+  --krad-web-rail-button: 34px;
+  --krad-web-rail-radius: 9px;
+  --krad-web-search-h: 44px;
+  --krad-web-section-h: 26px;
+  --krad-web-model-row-h: 32px;
+  --krad-web-model-row-tall-h: 46px;
+  --krad-web-model-badge-h: 16px;
+  --krad-web-model-badge-radius: 5px;
+  --krad-web-mark-button: 22px;
+  --krad-web-mark-radius: 6px;
+  --krad-web-menu-w: 300px;
+  --krad-web-side-panel-w: 300px;
+  --krad-web-side-header-h: 36px;
+  --krad-web-side-tab-h: 26px;
+  --krad-web-files-sheet-h: 85vh;
+  --krad-web-sheet-max-h: 70vh;
+  --krad-web-menu-max-h: 60vh;
+  --krad-web-panel-max-h: 30vh;
+  --krad-web-phone-panel-max-h: 40vh;
+  --krad-web-pairing-w: 360px;
+  --krad-web-code-letters: 0.2em;
+  --krad-web-indent: 0;
+  --krad-web-depth: 0;
+  --krad-web-gutter: 2;
+  --krad-web-share: 0;
+}

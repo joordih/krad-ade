@@ -4,7 +4,7 @@ use futures::channel::mpsc::UnboundedReceiver;
 pub(crate) enum SwipeDirection {}
 
 impl SwipeDirection {
-    pub(crate) const fn is_forward(self) -> bool {
+    pub(crate) const fn is_back(self) -> bool {
         match self {}
     }
 }

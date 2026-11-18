@@ -1,5 +1,5 @@
 use gpui_kit::{
-    div, AnyElement, Context, InteractiveElement, IntoElement, KeyDownEvent, Modifiers,
+    div, AnyElement, Context, InteractiveElement, IntoElement, KeyContext, KeyDownEvent, Modifiers,
     ParentElement, Styled, Window,
 };
 use krad_domain::TerminalId;
@@ -10,7 +10,7 @@ use krad_session::KeyModifiers;
 use super::live_terminal::LiveTerminal;
 use super::rename::KEY_ESCAPE;
 use super::EnvironmentShell;
-use crate::actions::{SendBackTab, SendTab, SHELL_KEY_CONTEXT};
+use crate::actions::{SendBackTab, SendTab, SHELL_KEY_CONTEXT, TERMINAL_KEY_CONTEXT};
 use crate::typed_text::typed_text;
 
 const TAB: &[u8] = b"\t";
@@ -90,7 +90,21 @@ impl EnvironmentShell {
         cx.notify();
     }
 
-    pub(super) fn main_pane(&self, view: AnyElement, cx: &mut Context<Self>) -> AnyElement {
+    fn shell_key_context(&self, window: &Window) -> KeyContext {
+        let mut context = KeyContext::default();
+        context.add(SHELL_KEY_CONTEXT);
+        if self.focus.is_focused(window) && self.focused_terminal().is_some() {
+            context.add(TERMINAL_KEY_CONTEXT);
+        }
+        context
+    }
+
+    pub(super) fn main_pane(
+        &self,
+        view: AnyElement,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         div()
             .relative()
             .flex()
@@ -98,10 +112,10 @@ impl EnvironmentShell {
             .min_w_0()
             .min_h_0()
             .track_focus(&self.focus)
-            .key_context(SHELL_KEY_CONTEXT)
+            .key_context(self.shell_key_context(window))
             .on_action(cx.listener(Self::on_toggle_fps))
             .on_action(cx.listener(Self::on_toggle_palette))
-            .on_action(cx.listener(Self::on_new_terminal))
+            .on_action(cx.listener(Self::on_new_chat))
             .on_action(cx.listener(Self::on_show_tab_at))
             .on_action(cx.listener(Self::on_run_extension_command))
             .on_action(cx.listener(Self::on_navigate_back))

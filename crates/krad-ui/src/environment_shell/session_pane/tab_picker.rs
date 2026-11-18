@@ -9,7 +9,7 @@ use super::super::sessions::Launch;
 use super::super::{EnvironmentShell, LiveEnv};
 use crate::actions::ShowTabAt;
 use crate::components::{icon, tooltip_view, IconName};
-use crate::keymap::{NEW_TERMINAL_HINT, TAB_SLOT_HINTS};
+use crate::keymap::{NEW_CHAT_HINT, TAB_SLOT_HINTS};
 use crate::theme::{palette, row_fill, CAPSULE_H, ICON_SM};
 
 const BTN_TAB_PICKER: &str = "session-tab-picker";
@@ -91,7 +91,7 @@ impl EnvironmentShell {
                     Some(IconName::Add),
                     MenuAction::NewTabIn(pane),
                 )
-                .with_trailing(NEW_TERMINAL_HINT)
+                .with_trailing(NEW_CHAT_HINT)
                 .with_key(NEW_TAB_KEY),
             ],
         }

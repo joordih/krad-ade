@@ -1,8 +1,8 @@
 use krad_domain::EnvironmentName;
 use krad_host::MachineChannel;
 use krad_protocol::{
-    AgentRef, EnvironmentCommand, ErrorCode, EventKind, HostCommand, Reply, RequestId,
-    TerminalSummary,
+    AgentRef, EnvironmentCommand, ErrorCode, EventKind, HostCommand, LaunchedAs, Reply, RequestId,
+    TerminalLaunched, TerminalSummary,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -29,6 +29,10 @@ impl Runtime {
     }
 
     pub(super) fn execute_host(&mut self, command: HostCommand) -> Option<Reply> {
+        if let HostCommand::OpenSignIn { terminal } = command {
+            self.open_watched_sign_in(terminal);
+            return Some(Reply::Accepted);
+        }
         let host = match &command {
             HostCommand::Show { environment } | HostCommand::Reconnect { environment } => {
                 self.environments.host_of(environment)
@@ -71,7 +75,8 @@ impl Runtime {
                 self.runner_prompt_answered(asked.as_ref(), given);
                 return reply;
             }
-            HostCommand::SshHosts
+            HostCommand::OpenSignIn { .. }
+            | HostCommand::SshHosts
             | HostCommand::AcpPackages { .. }
             | HostCommand::InstallAcpPackage { .. }
             | HostCommand::Unknown => None,
@@ -123,7 +128,19 @@ impl Runtime {
         hosts.tick(Instant::now(), &mut work);
     }
 
-    pub(super) fn open_sign_in(&mut self, terminal: AgentRef, shared: Arc<Shared>) {
+    pub(super) fn launch_helper(&mut self, terminal: AgentRef) -> Arc<Shared> {
+        self.outbox
+            .push(EventKind::TerminalLaunched(TerminalLaunched {
+                terminal: terminal.clone(),
+                harness: None,
+                launched_as: LaunchedAs::Line,
+                resume: None,
+            }));
+        self.launches.view(terminal)
+    }
+
+    fn open_watched_sign_in(&mut self, terminal: AgentRef) {
+        let shared = self.launch_helper(terminal.clone());
         let (hosts, mut work) = self.host_work();
         hosts.open_sign_in(terminal, shared, &mut work);
     }
